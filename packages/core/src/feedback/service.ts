@@ -23,8 +23,7 @@ import { itemEmbeddings } from '../db/schema-item-embeddings.js';
 import { mockups } from '../db/schema-mockups.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { assertProjectAccess } from '../lib/authz.js';
-import { permissionFactsOf } from '../permissions/index.js';
+import { permissionFactsOf, requireCan } from '../permissions/index.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
@@ -225,7 +224,7 @@ export async function createFeedback(input: {
   dedupKey?: string | undefined;
 }): Promise<FeedbackOutcome> {
   const { projectId, actor, request } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const prepared = await preparedFeedback(projectId, actor, request);
   if (!prepared.ok) return prepared;
   let id = '';
@@ -280,7 +279,7 @@ async function personalAct(
   act: 'verified' | 'reopened',
 ): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'viewer');
+  await requireCan({ userId: actor.userId }, 'project.read', projectId);
   const forbidden = verifyActRefusal(
     await roleFacts(actor, projectId),
     act === 'verified' ? 'verifying feedback' : 'reopening feedback',
@@ -343,7 +342,7 @@ export async function redactReporterData(input: {
   actor: FeedbackActor;
 }): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'viewer');
+  await requireCan({ userId: actor.userId }, 'project.read', projectId);
   const forbidden = redactActRefusal(await roleFacts(actor, projectId));
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const first = await rowIn(db, projectId, input.ref);

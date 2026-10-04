@@ -418,29 +418,3 @@ export async function drainQuestionDeliveries(
   }
   return result;
 }
-
-/** The drain is a backstop, not the fast path: a newly asked question goes out on the next tick. */
-const DRAIN_INTERVAL_MS = 30_000;
-
-/**
- * Run the drain on a timer until the returned stopper is called.
- */
-export function startQuestionDrainLoop(alive: () => boolean): () => void {
-  let running = false;
-  const tick = (): void => {
-    if (running || !alive()) return;
-    running = true;
-    void drainQuestionDeliveries()
-      .then((r) => {
-        if (r.owed > 0) logger.info({ ...r }, 'rocketchat: question delivery drain');
-      })
-      .catch((err) => logger.error({ err }, 'rocketchat: question delivery drain failed'))
-      .finally(() => {
-        running = false;
-      });
-  };
-  const timer = setInterval(tick, DRAIN_INTERVAL_MS);
-  timer.unref?.();
-  tick();
-  return () => clearInterval(timer);
-}

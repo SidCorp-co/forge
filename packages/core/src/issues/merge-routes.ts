@@ -3,8 +3,7 @@
  *
  * `merged_at` is not a field like the others: `jobs/queued-gates.ts` reads it
  * to release every `blocks` dependent, so writing it says work shipped. These
- * two routes exist so an agent on the CLI can say that over REST instead of
- * through `forge_issues.mark_merged`.
+ * two routes are the one door that says it.
  *
  * ISS-959 — the mark also records the commit it was made at, so the claim is
  * checkable rather than a judgement call read out of the note's prose.
@@ -38,12 +37,13 @@ import {
   MergeInputError,
   mergeStoredChangeRequest,
 } from '../integrations/source-host/merge.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { mergedLandingSchema } from './landing-evidence.js';
 import { applyMergeMarker, MergeMarkerError, mergedCommitShaSchema } from './merge-marker.js';
+import { requireHeld } from '../permissions/index.js';
 
 export const issueMergeRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -81,7 +81,7 @@ async function runMergeMarker(
   if (!issue) throw notFound('issue not found');
 
   const access = await loadProjectAccess(issue.projectId, userId);
-  assertProjectRole(access, 'member');
+  requireHeld(access, 'project.write');
 
   const actor = restActor(c);
   try {
@@ -219,7 +219,7 @@ issueMergeRoutes.post(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
 
     const stored = await resolveStoredPullRequest(issue.projectId, issueId, body.pullRequest);
     if ('refusal' in stored) {

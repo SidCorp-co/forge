@@ -1,13 +1,7 @@
 /**
- * ISS-102 / ISS-145 — the pipeline-run actions, and the one legacy tool name
- * still answering for them.
- *
- * The five action functions (list/get/pause/resume/cancel) carry the logic —
- * auth check, db read, control call — and `forge_project_pipeline_runs`
- * dispatches into all five. Only `forge_pipeline_runs.get` is still
- * registered under its own name, because `forge-skill-audit` calls it that
- * way; it emits `X-MCP-Deprecation` via `handler.ts`. The other four shim
- * factories were deleted once nothing named them.
+ * ISS-102 / ISS-145 — the pipeline-run actions. The five action functions
+ * (list/get/pause/resume/cancel) carry the logic — auth check, db read, control
+ * call — and `forge_project_pipeline_runs` dispatches into all five.
  */
 
 import { z } from 'zod';
@@ -21,16 +15,11 @@ import {
 } from '../../pipeline/runs-control.js';
 import { laneOf } from '../../pipeline/runs-lane.js';
 import { loadRunLivenessByRunIds, residentMasterOn } from '../../pipeline/runs-liveness.js';
-import { deprecationFor } from '../deprecation.js';
 import {
-  assertPrincipalIsMember,
-  assertPrincipalIsWriter,
-  type ContextScopedMcpToolFactory,
-  type McpContext,
   principalAgency,
   principalUserId,
-  zodToMcpSchema,
 } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 import { buildListEnvelope, overfetch } from './list-envelope.js';
 
 export const pipelineRunsListInputSchema = z
@@ -51,7 +40,7 @@ export const pipelineRunsCancelInputSchema = z
 async function loadRunForPrincipal(principal: McpPrincipal, runId: string) {
   const row = await readPipelineRun(runId);
   if (!row) throw new Error('NOT_FOUND: pipeline run not found');
-  await assertPrincipalIsMember(principal, row.projectId);
+  await requireCan({ userId: principal.userId }, 'project.read', row.projectId);
   return row;
 }
 
@@ -59,7 +48,7 @@ export async function pipelineRunsListHandler(
   principal: McpPrincipal,
   input: z.infer<typeof pipelineRunsListInputSchema>,
 ) {
-  await assertPrincipalIsMember(principal, input.projectId);
+  await requireCan({ userId: principal.userId }, 'project.read', input.projectId);
 
   const runsLimit = input.limit ?? 50;
   const rows = await listPipelineRuns({
@@ -105,7 +94,7 @@ export async function pipelineRunsPauseHandler(
   input: z.infer<typeof pipelineRunsRunIdInputSchema>,
 ) {
   const loaded = await loadRunForPrincipal(principal, input.runId);
-  await assertPrincipalIsWriter(principal, loaded.projectId);
+  await requireCan({ userId: principal.userId }, 'project.write', loaded.projectId);
   const run = await pausePipelineRun(input.runId, {
     type: 'user',
     id: principalUserId(principal),
@@ -119,7 +108,7 @@ export async function pipelineRunsResumeHandler(
   input: z.infer<typeof pipelineRunsRunIdInputSchema>,
 ) {
   const loaded = await loadRunForPrincipal(principal, input.runId);
-  await assertPrincipalIsWriter(principal, loaded.projectId);
+  await requireCan({ userId: principal.userId }, 'project.write', loaded.projectId);
   const run = await resumePipelineRun(input.runId, {
     type: 'user',
     id: principalUserId(principal),
@@ -133,29 +122,10 @@ export async function pipelineRunsCancelHandler(
   input: z.infer<typeof pipelineRunsCancelInputSchema>,
 ) {
   const loaded = await loadRunForPrincipal(principal, input.runId);
-  await assertPrincipalIsWriter(principal, loaded.projectId);
+  await requireCan({ userId: principal.userId }, 'project.write', loaded.projectId);
   return cancelPipelineRun(input.runId, {
     actorUserId: principalUserId(principal),
     actorAgency: principalAgency(principal),
     ...(input.parkIssue !== undefined ? { parkIssue: input.parkIssue } : {}),
   });
 }
-
-function recordDeprecation(ctx: McpContext | { deprecations?: Set<string> }, toolName: string) {
-  if (deprecationFor(toolName) && ctx.deprecations) ctx.deprecations.add(toolName);
-}
-
-export const forgePipelineRunsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
-  name: 'forge_pipeline_runs.get',
-  reach: 'project',
-  route: '/api/pipeline-runs',
-  grant: 'pipeline:read',
-  description:
-    '[DEPRECATED — use forge_project_pipeline_runs (action=get)] Fetch a single pipeline run plus a per-status job count breakdown. Requires the principal to be a member of the run’s project; PAT principals must additionally have the run’s project in their allowlist.',
-  inputSchema: zodToMcpSchema(pipelineRunsRunIdInputSchema),
-  handler: async (args) => {
-    recordDeprecation(ctx, 'forge_pipeline_runs.get');
-    const input = pipelineRunsRunIdInputSchema.parse(args);
-    return pipelineRunsGetHandler(ctx.principal, input);
-  },
-});

@@ -1,6 +1,6 @@
 /**
- * The compact project-state digest `forge_pm.snapshot` primes a PM decision
- * turn with. Six independent reads keyed on `project_id`, trimmed to a small
+ * The compact project-state digest `GET /api/projects/:id/pm/snapshot` primes
+ * a PM decision turn with. Six independent reads keyed on `project_id`, trimmed to a small
  * predictable payload (target < 2 KB JSON for a typical project) so the digest
  * fits in the agent's priming context without crowding out memory excerpts.
  */

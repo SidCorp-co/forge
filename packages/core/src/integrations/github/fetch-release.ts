@@ -116,21 +116,22 @@ export async function run(): Promise<void> {
   console.log(`[runner-release] published runner ${version} (${commit ?? 'no commit'}) to ${dir}`);
 }
 
-export function registerRunnerReleaseRefetch(intervalMs = 30 * 60_000): NodeJS.Timeout | null {
-  if (!process.env.RUNNER_RELEASE_DIR) return null;
-  // `main`'s runner head rides this same tick: it is the other half of what a box
-  // is compared against, and it is read once per tick rather than per request.
-  void refreshMainRunnerHead();
-  const timer = setInterval(() => {
-    void refreshMainRunnerHead();
-    void run().catch((err) => {
-      console.warn(
-        `[runner-release] periodic refetch skipped: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    });
-  }, intervalMs);
-  timer.unref?.();
-  return timer;
+/** Whether this core serves runner builds from its own disk, and so keeps them fresh. */
+export function servesRunnerReleases(): boolean {
+  return Boolean(process.env.RUNNER_RELEASE_DIR);
+}
+
+/**
+ * The process timer (`timer-registry.ts`): `main`'s runner head rides the same tick, the other half
+ * of what a box is compared against, read once per tick rather than per request.
+ */
+export async function refetchRunnerRelease(): Promise<void> {
+  await refreshMainRunnerHead();
+  await run().catch((err) => {
+    console.warn(
+      `[runner-release] periodic refetch skipped: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
 }
 
 // Only run when invoked directly (`node dist/integrations/github/fetch-release.js`), not

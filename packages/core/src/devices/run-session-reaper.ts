@@ -67,25 +67,3 @@ export async function reapDeadRunSessions(): Promise<ReapedRunSession[]> {
   }
   return reaped;
 }
-
-export const RUN_SESSION_REAPER_QUEUE = 'run-session-reaper';
-
-let registered = false;
-
-/** Run the sweep every minute, for the same reason the master reaper does. */
-export async function registerRunSessionReaper(): Promise<void> {
-  if (registered) return;
-  const { boss } = await import('../queue/boss.js');
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(RUN_SESSION_REAPER_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(RUN_SESSION_REAPER_QUEUE, async () => {
-    const reaped = await reapDeadRunSessions();
-    if (reaped.length > 0) {
-      logger.info({ reaped: reaped.length }, 'run-session-reaper: sweep returned runs');
-    }
-  });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(RUN_SESSION_REAPER_QUEUE, '* * * * *');
-  registered = true;
-}

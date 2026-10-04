@@ -5,9 +5,9 @@
 // Precedence: org row (if any) shadows the code default for that provider.
 // Same shape as a project skill shadowing a global template.
 //
-// Slug space is shared with the code registry via `integration-<provider>`, so
-// one `forge_guide get <slug>` reaches either tier and the two can never
-// collide (no code guide may use that prefix — asserted in the tests).
+// Slug space is shared with the code registry via `integration-<provider>`, so the two can never
+// collide (no code guide may use that prefix). `GET /api/projects/:id/guides/<slug>.md` reads a
+// slug as the project's org shadows it; the public `GET /api/guides/<slug>.md` knows the code tier only.
 
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';

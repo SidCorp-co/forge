@@ -14,11 +14,12 @@ import {
   conversationParticipants,
   conversations,
 } from '../db/schema-conversations.js';
-import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import type { Executor, TxOnly } from './db-executor.js';
 import { existingProjectHandle, handleNameForProject } from './handles.js';
 import { conversationTransport } from './ports.js';
 import { appendMessagesIn } from './store.js';
+import { holds } from '../permissions/index.js';
 
 const badRequest = (message: string, code: string) =>
   new HTTPException(400, { message, cause: { code } });
@@ -292,7 +293,7 @@ export async function addableHandles(
   const out: HandleCandidate[] = [];
   for (const project of candidateProjects) {
     const access = await effectiveProjectRole(actorUserId, project.id);
-    if (!projectRoleAtLeast(access?.role ?? null, 'member')) continue;
+    if (!(access ? holds(access, 'project.write') : false)) continue;
 
     const losesReaderIds = scope.includes(project.id)
       ? []
@@ -342,7 +343,7 @@ async function peopleWithoutRoleOn(userIds: readonly string[], projectId: string
   const out: string[] = [];
   for (const userId of userIds) {
     const access = await effectiveProjectRole(userId, projectId);
-    if (!projectRoleAtLeast(access?.role ?? null, 'viewer')) out.push(userId);
+    if (!(access ? holds(access, 'project.read') : false)) out.push(userId);
   }
   return out;
 }

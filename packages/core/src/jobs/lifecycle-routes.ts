@@ -1,4 +1,4 @@
-import { JOB_MACHINE } from '@forge/contracts/job-machine';
+import { JOB_MACHINE, OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { jobEvents, jobs, skills } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
-import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
@@ -30,8 +30,8 @@ import { salvageSchema, salvageSet } from './prior-attempts.js';
 import { JobResumeError, resumeHeldJob } from './resume-job.js';
 import type { RetryOutcome } from './retry.js';
 import { deriveSessionFinal } from './session-transcript.js';
-import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { jobTurnVerdictRoutes } from './turn-verdict-routes.js';
+import { holds, requireHeld } from '../permissions/index.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -535,7 +535,7 @@ jobLifecycleUserRoutes.post(
 
     const job = await loadJob(id);
     const access = await loadProjectAccess(job.projectId, userId);
-    if (!projectRoleAtLeast(access.role, 'member')) await assertPlatformAdmin(c);
+    if (!holds(access, 'project.write')) await assertPlatformAdmin(c);
 
     const body = c.req.valid('json');
 
@@ -573,7 +573,7 @@ jobLifecycleUserRoutes.post(
 
     const job = await loadJob(id);
     const access = await loadProjectAccess(job.projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    requireHeld(access, 'project.write');
 
     const body = c.req.valid('json');
 

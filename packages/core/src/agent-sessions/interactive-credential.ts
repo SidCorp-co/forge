@@ -6,8 +6,9 @@
  */
 
 import { HTTPException } from 'hono/http-exception';
-import type { agentSessions, ProjectMemberRole } from '../db/schema.js';
-import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import type { agentSessions } from '../db/schema.js';
+import { effectiveProjectRole } from '../lib/authz.js';
+import { type PermissionFacts, permissionRefusal, requireHeld } from '../permissions/index.js';
 import {
   type ChatClient,
   type DispatchChatTurnArgs,
@@ -50,12 +51,10 @@ export const RUNNER_OUTDATED_REFUSAL: SessionRefusal = {
 
 /**
  * A session on a paired box runs a shell in the box holder's checkout, which no Forge token
- * bounds, so a viewer is refused one rather than handed a read-only token.
+ * bounds, so a session takes project.write rather than handing a reader a read-only token.
  */
-export function sessionRoleRefusal(
-  role: ProjectMemberRole | null | undefined,
-): SessionRefusal | null {
-  if (!role) {
+export function sessionRoleRefusal(facts: PermissionFacts | null | undefined): SessionRefusal | null {
+  if (!facts?.role) {
     return {
       status: 403,
       code: 'SESSION_NO_ROLE',
@@ -63,20 +62,12 @@ export function sessionRoleRefusal(
         'You hold no role on this project, so no agent session can run here as you. A project admin can add you.',
     };
   }
-  if (!projectRoleAtLeast(role, 'member')) {
-    return {
-      status: 403,
-      code: 'SESSION_VIEWER',
-      message:
-        "A viewer cannot run an agent session: it runs a shell in a paired box's checkout, which a read-only Forge token does not bound. A project admin can make you a member.",
-    };
-  }
-  return null;
+  const refusal = permissionRefusal(facts, 'project.write', 'running an agent session');
+  return refusal ? { status: 403, code: refusal.code, message: refusal.detail } : null;
 }
 
-export function assertMayRunSession(role: ProjectMemberRole | null | undefined): void {
-  const refusal = sessionRoleRefusal(role);
-  if (refusal) throw refusalError(refusal);
+export function assertMayRunSession(facts: PermissionFacts): void {
+  requireHeld(facts, 'project.write', 'running an agent session');
 }
 
 /** Where only older runners are free a turn is refused, never handed to one that spends its holder's credential. */
@@ -116,7 +107,7 @@ export async function readBoxAuthority(args: {
   | { ok: false; refusal: SessionRefusal }
 > {
   const roleRefusal = sessionRoleRefusal(
-    (await effectiveProjectRole(args.asker.userId, args.projectId))?.role,
+    await effectiveProjectRole(args.asker.userId, args.projectId),
   );
   if (roleRefusal) return { ok: false, refusal: roleRefusal };
   const got = await resolveSessionAuthority(args);

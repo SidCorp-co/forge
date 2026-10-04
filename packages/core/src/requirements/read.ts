@@ -28,8 +28,7 @@ import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ReadDoor } from '../feedback/egress.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { permissionFactsOf } from '../permissions/index.js';
-import { assertProjectAccess } from '../lib/authz.js';
+import { permissionFactsOf, requireCan } from '../permissions/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
 import { approvalRequired } from '../release-batch/approvals.js';
@@ -170,7 +169,7 @@ async function standingViewer(viewer: RequirementActor | null, projectId: string
 }
 
 export async function listRequirementsAs(viewer: RequirementActor, projectId: string) {
-  await assertProjectAccess(projectId, viewer.userId, 'viewer');
+  await requireCan({ userId: viewer.userId }, 'project.read', projectId);
   const rows = await db
     .select()
     .from(requirements)
@@ -444,6 +443,6 @@ export async function readRequirementAs(
   ref: string,
   door: ReadDoor = {},
 ): Promise<RequirementDetail> {
-  await assertProjectAccess(projectId, viewer.userId, 'viewer');
+  await requireCan({ userId: viewer.userId }, 'project.read', projectId);
   return detailOf(await rowIn(db, projectId, ref), viewer, door);
 }

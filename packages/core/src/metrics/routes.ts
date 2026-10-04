@@ -7,6 +7,7 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { buildInterventionsReport } from './interventions-report.js';
 import { BUCKETS, METRICS, runTimeseries, stepDurationsForProject } from './queries.js';
 import { buildRetryRescuesReport, buildSessionFailuresReport } from './session-failures-report.js';
+import { requireHeld } from '../permissions/index.js';
 
 /**
  * Project-scoped time-series metrics for the v2 dashboard trend charts
@@ -30,9 +31,6 @@ const timeseriesQuerySchema = z.object({
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
 projectMetricsRoutes.get(
   '/:id/metrics/timeseries',
   zValidator('param', idParamSchema, (result) => {
@@ -46,7 +44,7 @@ projectMetricsRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(id, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const { metric, days, bucket, groupBy } = c.req.valid('query');
     const result = await runTimeseries({
@@ -77,7 +75,7 @@ projectMetricsRoutes.get(
   async (c) => {
     const { id } = c.req.valid('param');
     const access = await loadProjectAccess(id, c.get('userId'));
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const { days, step, breakdown } = c.req.valid('query');
     return c.json({
@@ -102,7 +100,7 @@ projectMetricsRoutes.get(
   async (c) => {
     const { id } = c.req.valid('param');
     const access = await loadProjectAccess(id, c.get('userId'));
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const { days } = c.req.valid('query');
     return c.json(await buildRetryRescuesReport(id, days));
@@ -120,7 +118,7 @@ projectMetricsRoutes.get(
   async (c) => {
     const { id } = c.req.valid('param');
     const access = await loadProjectAccess(id, c.get('userId'));
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const { days } = c.req.valid('query');
     return c.json(await buildSessionFailuresReport(id, days));
@@ -138,7 +136,7 @@ projectMetricsRoutes.get(
   async (c) => {
     const { id } = c.req.valid('param');
     const access = await loadProjectAccess(id, c.get('userId'));
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const { days } = c.req.valid('query');
     return c.json(await buildInterventionsReport([id], days));

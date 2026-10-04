@@ -156,7 +156,7 @@ function stepAfter(from: IssueStatus, to: IssueStatus, held: WorkStep | null): W
 
 /**
  * THE issue state-machine writer. Every surface — REST `/transition`,
- * REST `PATCH /batch`, MCP `forge_issues`, the reconciler, the release batch — routes through here so
+ * REST `PATCH /batch`, the reconciler, the release batch — routes through here so
  * the lifecycle's edges and guards (`transition-guards.ts`), the conditional UPDATE, the work state,
  * WS broadcast, pipeline-health refresh and run close cannot drift apart.
  *

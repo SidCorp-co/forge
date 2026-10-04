@@ -6,6 +6,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { listResolvedFacts } from '../prompt/facts/resolve.js';
+import { requireHeld } from '../permissions/index.js';
 
 const querySchema = z.object({
   projectId: z.uuid(),
@@ -34,9 +35,7 @@ skillFactsRoutes.get('/', requireAuth(), assertEmailVerified(), validQuery, asyn
 
   const userId = c.get('userId');
   const access = await loadProjectAccess(query.projectId, userId);
-  if (!access.role) {
-    throw new HTTPException(403, { message: 'not a project member', cause: { code: 'FORBIDDEN' } });
-  }
+  requireHeld(access, 'project.read');
 
   const facts = await listResolvedFacts(query.projectId, query.stage ?? null);
   return c.json({ facts });

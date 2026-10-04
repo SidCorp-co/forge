@@ -19,9 +19,6 @@ export function masterCharterPath(projectId: string): string {
   return `/api/projects/${projectId}/master-charter`;
 }
 
-export const MASTER_CHARTER_IS_A_PERSONS_WRITE =
-  'a master charter is written by a person and read by a master. This request arrived on an agent credential, so it is refused: a standing goal an agent can edit is a job description the agent can talk itself out of. Write it from a signed-in session, or from a token belonging to a person.';
-
 export interface MasterCharterWrite {
   goal: string;
   rules: string[];

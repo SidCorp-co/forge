@@ -101,16 +101,16 @@ Current mode: **${mode}** (propose = create draft issues for human review; auto 
 Read ALL of the following sources before deciding anything:
 
 **a) Pipeline runs**
-Call forge_project_pipeline_runs to get the 20 most recent completed runs.
+Call \`forge-runner api 'projects/${input.projectId}/pipeline-runs?limit=20'\` to get the 20 most recent runs, and keep the completed ones.
 For each run note: status (closed/reopen/failed), stage that bounced, issue complexity/category.
 Compute: reopen rate over last 10 runs = (reopen+failed) / 10.
 
 **b) Step durations and cost**
-Call forge_metrics_project_step_durations (days=14).
+Call \`forge-runner api 'projects/${input.projectId}/metrics/step-durations?days=14'\`.
 Identify stages with p95 > 3× the median or cost outliers. Token-bloated prompts are a skill defect.
 
 **c) Issues with reopen count**
-Call forge_issues.list with status=closed, reopenCount≥1 (use filter if available), limit=20.
+Call \`forge-runner api 'projects/${input.projectId}/issues?status=closed&limit=20'\` and keep the issues with reopenCount ≥ 1.
 A recurring reopen in the same stage/category is the highest-signal weakness.
 
 **d) Forge agent reports**
@@ -118,11 +118,11 @@ Call forge_agent_report with action=list.
 Filter for kind=skill_gap, friction, unclear_step, redundant_step. These are direct agent reports of skill defects.
 
 **e) Project skills catalog**
-Call forge_skills.list with scope=project to get all project-registered skills.
-Then call forge_skills.get for the 3–5 skills with the most evidence of weakness from (a)–(d).
+Call \`forge-runner api 'skills?scope=project&projectId=${input.projectId}'\` to get all project-registered skills.
+Then read \`forge-runner api skills/<id>\` for the 3–5 skills with the most evidence of weakness from (a)–(d).
 
 **f) Prior steward run history**
-Call forge_memory_search with query="steward run-history" sourceFilter=["note"] topK=3.
+Call \`forge-runner api memory/search -X POST\` with \`{ projectId, query: "steward run-history", sourceFilter: ["note"], topK: 3 }\`.
 Read the most recent run-history note. Report whether the previously-weakest domain improved this run.
 
 **Identify the WEAKEST DOMAIN this run** — the area with the highest concentration of quality signals:
@@ -132,7 +132,7 @@ UI / API / merge / plan-quality / review-rigor / test-coverage / release-correct
 
 ## STEP 2 — Recall per-skill memory
 
-For each candidate skill you plan to assess, call forge_memory_search with:
+For each candidate skill you plan to assess, call \`forge-runner api memory/search -X POST\` with \`projectId\` and:
 - query: "steward <skillName>" (e.g. "steward forge-test")
 - sourceFilter: ["knowledge"]
 - topK: 5
@@ -180,7 +180,7 @@ A finding with no responsible artifact (skill name + section) is not a finding �
 For EACH decision from Step 3:
 
 **If mode=propose (default):**
-Create a DRAFT issue via forge_issues.create:
+Create a DRAFT issue via \`forge-runner api projects/${input.projectId}/issues -X POST\`:
 - status: "draft"
 - title: "Steward: improve <skillName> — <one-line summary>"
 - description: proposed skill change as a fenced diff or code block + signal evidence + rationale
@@ -188,7 +188,7 @@ Create a DRAFT issue via forge_issues.create:
 Do NOT edit the skill file directly.
 
 **If mode=auto:**
-Call forge_skills.update to apply the improvement directly.
+Call \`forge-runner api skills/<id> -X PUT\` to apply the improvement directly.
 Report the exact change and why it fits this project.
 
 **Forge-level issues (routing):**
@@ -209,7 +209,7 @@ If you decide to skip a skill (no actionable improvement found this run, or idem
 
 For EACH skill you assessed or acted on:
 
-1. Call forge_memory_search with sourceRef prefix "steward/<skillName>/" to load all existing entries.
+1. Call \`forge-runner api 'memory?projectId=${input.projectId}&source=knowledge'\` and keep the entries whose sourceRef starts with "steward/<skillName>/".
 2. Estimate total tokens: sum of len(textContent)/4 for all entries.
 3. If (current total + new learning content) > 2000 tokens:
    **YOU MUST CURATE before writing** — do not blind-append.
@@ -218,7 +218,7 @@ For EACH skill you assessed or acted on:
    - PRUNE stale entries (superseded decisions, one-off observations no longer relevant)
    - KEEP behavior-changing learnings (conventions, anti-patterns, project-specific rules)
    - After curation, total MUST be ≤ 2000 tokens for that skill namespace
-4. Write new learnings via forge_memory.write:
+4. Write new learnings via \`forge-runner api memory -X POST\` (with \`projectId\`):
    - source: "knowledge"
    - sourceRef: "steward/<skillName>/<topic>" (e.g. "steward/forge-test/pass-b-ui")
    - textContent: the learning (concise, behavior-changing)
@@ -252,7 +252,7 @@ Field meanings:
 - weakestDomain: the domain with the highest concentration of quality signals this run
 - skillsAssessed: every skill you evaluated (including skips)
 - actions: one entry per decision (proposed/applied/feedback/skipped)
-- memoryWrites: one entry per forge_memory.write call (tokensAfter = estimated post-write total for that namespace)
+- memoryWrites: one entry per memory write (tokensAfter = estimated post-write total for that namespace)
 - idempotencySkips: list of "<skill>: <reason>" for decisions skipped due to idempotency check
 
 ---

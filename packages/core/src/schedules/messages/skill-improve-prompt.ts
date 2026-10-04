@@ -84,21 +84,21 @@ ${msg.appliesWhen}`
 ### Step 1 — Read 4 context sources (do this BEFORE evaluating anything)
 
 **a) Project skills**
-Call forge_skills.list with scope="project" to get the skill list.
-Then call forge_skills.get for each skill listed in "Applies to skills" above (plus related skills you discover).
+Call \`forge-runner api 'skills?scope=project&projectId=$FORGE_PROJECT_ID'\` to get the skill list.
+Then read \`forge-runner api skills/<id>\` for each skill listed in "Applies to skills" above (plus related skills you discover).
 
 **b) Project knowledge**
-Call forge_knowledge (list/get/search) to retrieve project knowledge entries. They document project structure, conventions, stack, and key decisions.
+Call \`forge-runner api projects/$FORGE_PROJECT_ID/knowledge\` (one entry: \`…/knowledge/<slug>\`; search: \`…/knowledge/search -X POST\`) to retrieve project knowledge entries. They document project structure, conventions, stack, and key decisions.
 
 **c) Project memory**
-Call forge_memory_search with:
+Call \`forge-runner api memory/search -X POST\` with \`projectId: $FORGE_PROJECT_ID\` and:
   - query: "${msg.key} conventions idiom fix-pattern"
   - topK: 5
   - sourceFilter: ["knowledge", "decision", "fix-pattern"]
 Also try a second search with query: "${skillList} idiom pattern" to surface project-specific patterns.
 
 **d) Recent pipeline runs**
-Call forge_project_pipeline_runs (or forge_pipeline_runs_get) to retrieve the 20 most recent runs.
+Call \`forge-runner api 'projects/$FORGE_PROJECT_ID/pipeline-runs?limit=20'\` to retrieve the 20 most recent runs.
 Look for any with status=reopen or failure patterns relevant to the skills above — they signal gaps the improvement should address.
 
 ### Step 2 — Evaluate appliesWhen
@@ -107,7 +107,7 @@ ${
     ? `The condition that must hold for this improvement to be relevant is:
 > "${msg.appliesWhen}"
 
-Read the project configuration (baseBranch, mergeStates, its policy as config.policy, and its project document as config.projectDocument) via forge_config, and the project's own prose via forge_knowledge. The project document is what says whether the project has a release step at all and what it means: no production environment (no release step), production deploying from the branch work lands on (no ref moves; the release is an act on its deploy binding) or from a branch the promotions reach (the release crosses each promotion by its own \`via\`, then deploys). Do NOT infer it from the branch names — baseBranch is where work is cut from and says nothing about where a release goes.
+Read the project configuration (baseBranch, mergeStates, its policy as config.policy, and its project document as config.projectDocument) via \`forge-runner api projects/$FORGE_PROJECT_ID/config\`, and the project's own prose via \`forge-runner api projects/$FORGE_PROJECT_ID/knowledge\`. The project document is what says whether the project has a release step at all and what it means: no production environment (no release step), production deploying from the branch work lands on (no ref moves; the release is an act on its deploy binding) or from a branch the promotions reach (the release crosses each promotion by its own \`via\`, then deploys). Do NOT infer it from the branch names — baseBranch is where work is cut from and says nothing about where a release goes.
 Make a judgment: does this condition hold for this project?
 
 - If NOT met → write a one-sentence reason, then go directly to Step 5 and report status="skipped" with that reason. Do not propose or apply.
@@ -132,12 +132,12 @@ Current mode: **${mode}**
 
 ${
   mode === 'propose'
-    ? `Create a DRAFT issue (status="draft") via forge_issues.create:
+    ? `Create a DRAFT issue (status="draft") via \`forge-runner api projects/$FORGE_PROJECT_ID/issues -X POST\`:
   - title: "Improve ${skillList}: ${msg.title}"
   - description: The proposed skill change as a fenced markdown code block (or a diff), plus a brief rationale for why it applies to this project.
   - category: "feature"
 Do NOT modify the skill file directly — this is a proposal for human review.`
-    : `Call forge_skills.update to apply the improvement directly to the target skill(s).
+    : `Call \`forge-runner api skills/<id> -X PUT\` to apply the improvement directly to the target skill(s).
 Report the exact change you made and why it fits this project.`
 }
 

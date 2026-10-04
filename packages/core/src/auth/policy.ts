@@ -1,7 +1,8 @@
 import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { assertOrgRoleOnProject, effectiveProjectRole } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import type { UserVars } from '../middleware/require-user.js';
+import { requireOrgHeld } from '../permissions/index.js';
 
 type UserCtx = Context<{ Variables: UserVars }>;
 
@@ -12,5 +13,5 @@ export async function assertUserIsProjectOwner(c: UserCtx, projectId: string): P
   const user = c.get('user');
   const access = await effectiveProjectRole(user.id, projectId);
   if (!access) throw forbidden('not a project owner');
-  assertOrgRoleOnProject(access, 'admin', 'not a project owner');
+  requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
 }

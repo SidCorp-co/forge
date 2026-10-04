@@ -10,7 +10,7 @@ import {
   issues,
   waitingKinds,
 } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
@@ -29,6 +29,7 @@ import { issueParkRoutes } from './park-routes.js';
 import { recordEventRoutes } from './record-events/routes.js';
 import { refuseOffRecoveryEdge, withRecoveryHint } from './recovery-move.js';
 import { refuseLegacyStatusFields } from './status-input.js';
+import { requireHeld } from '../permissions/index.js';
 
 const transitionBodySchema = z
   .object({
@@ -249,7 +250,7 @@ transitionRoutes.post(
     const fromStatus = issue.status as IssueStatus;
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
     let result: StatusTransitionResult;
     try {
       if (recovery) refuseOffRecoveryEdge(fromStatus, toStatus);

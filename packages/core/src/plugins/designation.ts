@@ -41,25 +41,6 @@ export function readPluginDesignations(agentConfig: unknown, slug: string): Plug
 }
 
 /**
- * Wholesale replace, deliberately: a list has no stable per-entry key a caller could patch by, and
- * a silent nested merge is exactly how sibling entries get clobbered. `null` clears the list.
- */
-export function mergePluginDesignations(
-  patch: PluginDesignation[] | null,
-): PluginDesignation[] | null {
-  if (patch === null) return null;
-  const seen = new Set<string>();
-  const out: PluginDesignation[] = [];
-  for (const d of patch) {
-    const key = `${d.marketplace}::${d.name}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(d);
-  }
-  return out;
-}
-
-/**
  * Union the designations of every project a device serves, keyed by `marketplace::name`.
  *
  * A device holds ONE marketplace clone and ONE installed version, so differing `pinnedRef` SHAs

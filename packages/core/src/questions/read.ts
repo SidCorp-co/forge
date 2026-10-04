@@ -7,7 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, count, desc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, type ProjectMemberRole } from '../db/schema.js';
+import { issues } from '../db/schema.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import {
   type AnswerShape,
@@ -21,8 +21,9 @@ import {
 } from '../db/schema-questions.js';
 import type { PersonVia } from '../ecosystem/channel-schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import type { EgressSurface } from '../lib/data-egress.js';
+import { type PermissionFacts, requireHeld } from '../permissions/index.js';
 import { questionnaireSurface } from '../questionnaires/read.js';
 import {
   type AskAnswer,
@@ -37,31 +38,32 @@ import {
 
 export type VisibleOption = QuestionOption & { locked: boolean };
 
-async function roleOn(projectId: string, userId: string): Promise<ProjectMemberRole | null> {
+/** The caller's access to the project, or null where they hold no role on it. */
+async function accessOn(projectId: string, userId: string): Promise<PermissionFacts | null> {
   const access = await effectiveProjectRole(userId, projectId);
-  return access?.role ?? null;
+  return access?.role ? access : null;
 }
 
-function shapeOf(current: QuestionStep | undefined, role: ProjectMemberRole | null) {
+function shapeOf(current: QuestionStep | undefined, access: PermissionFacts | null) {
   const choice = current ? isChoiceStep(current) : true;
   const options: VisibleOption[] =
     current && isChoiceStep(current)
-      ? current.options.map((o) => ({ ...o, locked: !mayChoose(o, role) }))
+      ? current.options.map((o) => ({ ...o, locked: !mayChoose(o, access) }))
       : [];
   return {
     answerShape: (choice ? 'choice' : 'free_text') satisfies AnswerShape as AnswerShape,
     options,
     recommendedOptionId: current && isChoiceStep(current) ? current.recommendedOptionId : '',
     needed: current && !isChoiceStep(current) ? current.needed : '',
-    locked: choice ? false : !mayAnswerFreeText(role),
+    locked: choice ? false : !mayAnswerFreeText(access),
     prompt: current?.prompt ?? '',
     round: current?.round ?? 0,
     askedAt: current?.askedAt ?? '',
   };
 }
 
-function seenBy<T extends { steps: QuestionStep[] }>(row: T, role: ProjectMemberRole | null) {
-  return { ...row, ...shapeOf(row.steps[row.steps.length - 1], role) };
+function seenBy<T extends { steps: QuestionStep[] }>(row: T, access: PermissionFacts | null) {
+  return { ...row, ...shapeOf(row.steps[row.steps.length - 1], access) };
 }
 
 /**
@@ -85,13 +87,9 @@ export type AskAsInput = {
 export async function askAs(args: AskAsInput) {
   const issue = await readAskedIssue(args.issueId);
   if (!issue?.projectId) return null;
-  const role = await roleOn(issue.projectId, args.userId);
-  if (!role) return null;
-  if (!projectRoleAtLeast(role, 'member')) {
-    throw new QuestionRefused(
-      'asking a question writes a row, and this caller is a viewer on the project the issue belongs to',
-    );
-  }
+  const access = await accessOn(issue.projectId, args.userId);
+  if (!access) return null;
+  requireHeld(access, 'project.write', 'asking a question');
   const ask: AskInput = {
     id: randomUUID(),
     projectId: issue.projectId,
@@ -168,8 +166,8 @@ export async function projectQuestionsFor(
   page: { limit: number; cursor?: QuestionCursor | undefined } = { limit: 50 },
   issueless = false,
 ): Promise<ProjectQuestionPage | null> {
-  const role = await roleOn(projectId, userId);
-  if (!role) return null;
+  const access = await accessOn(projectId, userId);
+  if (!access) return null;
   const scope = and(
     eq(agentQuestions.projectId, projectId),
     status ? eq(agentQuestions.status, status) : undefined,
@@ -186,6 +184,9 @@ export async function projectQuestionsFor(
         id: agentQuestions.id,
         projectId: agentQuestions.projectId,
         issueId: agentQuestions.issueId,
+        feedbackId: agentQuestions.feedbackId,
+        requirementId: agentQuestions.requirementId,
+        batchId: agentQuestions.batchId,
         agentSessionId: agentQuestions.agentSessionId,
         status: agentQuestions.status,
         blockerKind: agentQuestions.blockerKind,
@@ -220,7 +221,7 @@ export async function projectQuestionsFor(
     questions: pageRows.map(({ cursor: _cursor, ...row }) => ({
       ...row,
       rounds: Number(row.rounds),
-      ...shapeOf(row.currentStep ?? undefined, role),
+      ...shapeOf(row.currentStep ?? undefined, access),
     })),
     total,
     hasMore,
@@ -257,9 +258,9 @@ export async function readQuestionFor(questionId: string, userId: string) {
     .where(eq(agentQuestions.id, questionId))
     .limit(1);
   if (!row?.projectId) return null;
-  const role = await roleOn(row.projectId, userId);
-  if (!role) return null;
-  return seenBy(row, role);
+  const access = await accessOn(row.projectId, userId);
+  if (!access) return null;
+  return seenBy(row, access);
 }
 
 export async function readQuestionsForIssue(issueId: string, userId: string) {
@@ -269,14 +270,14 @@ export async function readQuestionsForIssue(issueId: string, userId: string) {
     .where(eq(issues.id, issueId))
     .limit(1);
   if (!issue?.projectId) return null;
-  const role = await roleOn(issue.projectId, userId);
-  if (!role) return null;
+  const access = await accessOn(issue.projectId, userId);
+  if (!access) return null;
   const rows = await db
     .select()
     .from(agentQuestions)
     .where(and(eq(agentQuestions.issueId, issueId), eq(agentQuestions.projectId, issue.projectId)))
     .orderBy(desc(agentQuestions.createdAt), desc(agentQuestions.id));
-  return rows.map((row) => seenBy(row, role));
+  return rows.map((row) => seenBy(row, access));
 }
 
 export async function answerAs(args: {
@@ -297,8 +298,8 @@ export async function answerAs(args: {
   if (!row?.projectId) {
     throw new QuestionRefused(`no question ${args.questionId}`, 'QUESTION_NOT_FOUND');
   }
-  const role = await roleOn(row.projectId, args.userId);
-  if (!role) throw new QuestionRefused(`no question ${args.questionId}`, 'QUESTION_NOT_FOUND');
+  const access = await accessOn(row.projectId, args.userId);
+  if (!access) throw new QuestionRefused(`no question ${args.questionId}`, 'QUESTION_NOT_FOUND');
   return answerQuestion({
     questionId: args.questionId,
     answer: args.answer,
@@ -306,7 +307,7 @@ export async function answerAs(args: {
     by: args.userId,
     agency: args.agency ?? 'human',
     via: args.via,
-    role,
+    facts: access,
     ...(args.note === undefined ? {} : { note: args.note }),
   });
 }

@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issueAttachments, issues } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
-import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { restActor } from '../middleware/auth.js';
 import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth.js';
@@ -19,6 +19,7 @@ import {
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
+import { holds, requireHeld } from '../permissions/index.js';
 
 const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
   new HTTPException(400, { message, cause: { code, details } });
@@ -65,7 +66,7 @@ issueAttachmentRoutes.post(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
 
     const body = await c.req.parseBody();
     const file = body.file;
@@ -156,7 +157,7 @@ attachmentRoutes.get(
     if (!row) throw notFound('attachment not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     let buffer: Buffer;
     try {
@@ -200,10 +201,10 @@ attachmentRoutes.delete(
     if (!row) throw notFound('attachment not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    requireHeld(access, 'project.write');
 
     const isUploader = row.uploaderId === userId;
-    const isAdmin = projectRoleAtLeast(access.role, 'admin');
+    const isAdmin = holds(access, 'project.admin');
     if (!isUploader && !isAdmin) throw forbidden('only the uploader or a project admin may delete');
 
     await getStorage().delete(row.path);

@@ -14,12 +14,12 @@ import {
 } from '../db/schema-requirements.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { plannedBaselineSeqIn } from './baselines.js';
 import { planDriftOf } from './plan-drift.js';
 import { notFound, type RequirementActor, requirementKey, rowIn, signerRefusal } from './read.js';
 import { linkIssueRefusal } from './rules.js';
 import { answer, inTx, lockRequirements, type RequirementOutcome } from './service.js';
+import { requireCan } from '../permissions/index.js';
 
 async function issueIn(projectId: string, ref: string, userId: string) {
   const issue = await resolveIssueRouteRef(ref, projectId, userId);
@@ -38,7 +38,7 @@ export async function linkIssue(input: {
   adoptPlan?: boolean | undefined;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const row = await rowIn(db, projectId, input.ref);
   const issue = await issueIn(projectId, input.issue, actor.userId);
   if (input.adoptPlan) {
@@ -107,7 +107,7 @@ export async function unlinkIssue(input: {
   issue: string;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const row = await rowIn(db, projectId, input.ref);
   const issue = await issueIn(projectId, input.issue, actor.userId);
   await db
@@ -130,7 +130,7 @@ export async function linkWorkflow(input: {
   workflowId: string;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const row = await rowIn(db, projectId, input.ref);
   const [wf] = await db
     .select({ projectId: projectWorkflows.projectId })
@@ -153,7 +153,7 @@ export async function unlinkWorkflow(input: {
   workflowId: string;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const row = await rowIn(db, projectId, input.ref);
   await db
     .delete(requirementWorkflows)

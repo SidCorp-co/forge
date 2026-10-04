@@ -4,7 +4,6 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions, agentSessionTurns, projects } from '../db/schema.js';
-import { assertProjectRole } from '../lib/authz.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { openOneShotRun } from '../pipeline/runs.js';
@@ -41,6 +40,7 @@ import {
   syncTurnsWithMessages,
   truncateTurnsAfter,
 } from './turns-helpers.js';
+import { requireHeld } from '../permissions/index.js';
 
 function isUserEntry(m: unknown): boolean {
   return !!m && typeof m === 'object' && (m as { type?: string }).type === 'user';
@@ -114,7 +114,7 @@ agentSessionTurnsRoutes.patch(
     const userId = c.get('userId');
 
     const { session, access } = await ensureSessionMember(id, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
     assertSessionOwnerOrAdmin(session, access, userId);
 
     if (session.status === 'running' || session.status === 'queued') {
@@ -200,7 +200,7 @@ agentSessionTurnsRoutes.post(
     const userId = c.get('userId');
 
     const { session, access } = await ensureSessionMember(id, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
     assertSessionOwnerOrAdmin(session, access, userId);
 
     if (session.status === 'running' || session.status === 'queued') {
@@ -298,7 +298,7 @@ agentSessionTurnsRoutes.post(
     const userId = c.get('userId');
 
     const { session, access } = await ensureSessionMember(id, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
     const turn = await findTurnInSession(id, fromTurnId);
     if (!turn) throw notFound('turn not found');
 

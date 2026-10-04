@@ -18,7 +18,7 @@ import { SESSION_SILENCE_TIMEOUT_MS } from '../devices/session-silence.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { killGraceMs } from '../jobs/kill-gate.js';
 import { getLoopThresholds } from '../jobs/loop-monitor-thresholds.js';
-import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { readMasterStanding } from '../masters/read.js';
@@ -28,6 +28,7 @@ import {
 } from '@forge/contracts/run-machine';
 import { BASE_COLUMNS, type BaseRun, gatherFacts, MASTER_RUN_SQL, RUN_SCOPE_SQL } from './facts.js';
 import { runStandingOf, type StandingContext } from './standing.js';
+import { holds } from '../permissions/index.js';
 
 export interface RunViewer {
   userId: string;
@@ -55,11 +56,11 @@ async function viewerOf(viewer: RunViewer | null, projectId: string) {
     effectiveProjectRole(viewer.userId, projectId),
     peopleOf([viewer.userId]),
   ]);
-  const role = access?.role ?? null;
+  // A person's wait addresses its viewer as "You" only when the viewer is a person.
   const person = people.get(viewer.userId)?.kind !== 'agent';
   return {
-    canWrite: person && (role === 'admin' || role === 'member'),
-    isAdmin: person && projectRoleAtLeast(role, 'admin'),
+    canWrite: person && access !== null && holds(access, 'project.write'),
+    isAdmin: person && access !== null && holds(access, 'project.admin'),
   };
 }
 

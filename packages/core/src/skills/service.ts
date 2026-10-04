@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, or } from 'drizzle-orm';
+import { and, eq, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects, runners, type SkillTarget, skills } from '../db/schema.js';
 import { logger } from '../logger.js';
@@ -89,54 +89,6 @@ export const skillProjection = {
   pinnedBy: skills.pinnedBy,
   pinnedAt: skills.pinnedAt,
 } as const;
-
-/** One catalog row: exactly the stored columns `forge_skills.list` renders. */
-export type SkillListRow = {
-  id: string;
-  name: string;
-  description: string;
-  scope: 'global' | 'project';
-  projectId: string | null;
-  version: number;
-  contentHash: string;
-  target: SkillTarget | null;
-  evalScore: number | null;
-  basedOnGlobalVersion: number | null;
-  pinned: boolean | null;
-  pinnedReason: string | null;
-};
-
-/**
- * The catalog projection: the twelve columns a `forge_skills.list` row is
- * rendered from, and nothing else.
- */
-export const skillListProjection = {
-  id: skills.id,
-  name: skills.name,
-  description: skills.description,
-  scope: skills.scope,
-  projectId: skills.projectId,
-  version: skills.version,
-  contentHash: skills.contentHash,
-  target: skills.target,
-  evalScore: skills.evalScore,
-  basedOnGlobalVersion: skills.basedOnGlobalVersion,
-  pinned: skills.pinned,
-  pinnedReason: skills.pinnedReason,
-} as const;
-
-/**
- * The catalog of skills visible to a project: its own project-scoped skills
- * plus every global skill, in the columns the catalog row renders. Ordered by
- * scope then name — the order the `forge_skills.list` MCP tool returns.
- */
-export async function listProjectSkillCatalog(projectId: string): Promise<SkillListRow[]> {
-  return db
-    .select(skillListProjection)
-    .from(skills)
-    .where(or(eq(skills.scope, 'global'), eq(skills.projectId, projectId)))
-    .orderBy(skills.scope, skills.name) as Promise<SkillListRow[]>;
-}
 
 /**
  * Fetch a skill by id, but only return it if it is either global or scoped
@@ -448,8 +400,8 @@ export interface RequestSkillSyncResult {
 }
 
 /**
- * The single explicit-push entrypoint shared by the web Sync actions and the
- * `forge_skills.push` MCP tool. Resolves the project's device-bound runners,
+ * The single explicit-push entrypoint, shared by `POST /api/skills/bulk-push` and project
+ * onboarding. Resolves the project's device-bound runners,
  * emits `skillSyncRequested` (→ one `skill.sync` WS command per device room),
  * and returns the devices that were signalled. No-op (empty deviceIds) when
  * the project has no device-bound runner. Never seeds skills itself — the

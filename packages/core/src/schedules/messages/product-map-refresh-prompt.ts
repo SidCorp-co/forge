@@ -33,12 +33,12 @@ If a forge-product-map skill is installed for this project, you MAY use its \`re
 ---
 
 ## STEP 1 — Load the current map
-Call \`forge_knowledge action=list projectId=${projectId}\`. Note each entry's slug, kind (overview/scenario/workflow/rule), confidence, and \`updatedAt\`. For entries you may change, \`forge_knowledge action=get slug=<slug>\` to read the body + \`metadata.relatedIssueIds\`.
+Call \`forge-runner api projects/${projectId}/knowledge\`. Note each entry's slug, kind (overview/scenario/workflow/rule), confidence, and \`updatedAt\`. For entries you may change, \`forge-runner api projects/${projectId}/knowledge/<slug>\` to read the body + \`metadata.relatedIssueIds\`.
 
 If the project has NO product-map entries yet (no overview/scenario/workflow), BOOTSTRAP the core set instead of refreshing: a \`product-overview\` mindmap + one \`scenario\` per major user journey found in shipped issues + \`workflow\` state-diagrams for obvious entity lifecycles.
 
 ## STEP 2 — Load issues shipped since the map was last touched
-Call \`forge_issues action=list projectId=${projectId} status=closed\` (and \`status=awaiting_release\` if used). Focus on issues whose \`mergedAt\`/\`updatedAt\` is NEWER than the \`updatedAt\` of the entries they relate to. For each: title, acceptanceCriteria keywords, the user-facing capability/route it touches.
+Call \`forge-runner api 'projects/${projectId}/issues?status=closed'\` (and \`status=awaiting_release\` if used). Focus on issues whose \`mergedAt\`/\`updatedAt\` is NEWER than the \`updatedAt\` of the entries they relate to. For each: title, acceptanceCriteria keywords, the user-facing capability/route it touches.
 
 ## STEP 3 — Diff and refresh
 For each existing entry, decide: UNCHANGED (skip) · CHANGED (a newer shipped issue alters/extends the journey → refresh the diagram + append the issue id to \`metadata.relatedIssueIds\`) · or a NEW user journey with no covering scenario (add one, cap ${MAX_NEW_ENTRIES_PER_RUN} new entries/run).
@@ -60,8 +60,8 @@ For each existing entry, decide: UNCHANGED (skip) · CHANGED (a newer shipped is
 ## STEP 4 — Apply (${mode})
 ${
   isAuto
-    ? `For each CHANGED/NEW entry, call \`forge_knowledge action=upsert\` with the refreshed body (keep the same slug for updates so it replaces in place; kebab-slug for new). Set \`authoredBy: "agent"\`, \`injection: "on_demand"\`. Leave UNCHANGED entries untouched (do not bump them).`
-    : 'DRY-RUN — call NOTHING that writes. Output a list of {slug, kind, change: updated|new, why, backing issue ids}. Do NOT call forge_knowledge upsert/delete and do NOT create issues.'
+    ? `For each CHANGED/NEW entry, call \`forge-runner api projects/${projectId}/knowledge/<slug> -X PUT\` with the refreshed body (keep the same slug for updates so it replaces in place; kebab-slug for new). Set \`authoredBy: "agent"\`, \`injection: "on_demand"\`. Leave UNCHANGED entries untouched (do not bump them).`
+    : 'DRY-RUN — call NOTHING that writes. Output a list of {slug, kind, change: updated|new, why, backing issue ids}. Do NOT write or delete knowledge and do NOT create issues.'
 }
 
 ## STEP 5 — Report

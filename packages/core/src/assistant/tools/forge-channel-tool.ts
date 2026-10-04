@@ -230,7 +230,7 @@ const isWrite = (action: ChannelAction) => (CHANNEL_WRITES as readonly string[])
 
 const OWN_AUTHORITY: readonly ChannelAction[] = ['hold', 'release', 'gate'];
 
-// cm:why a hold and a gate are read-gated here as on REST: who may act is the hold rule's HOLD_NOT_AUTHORISED and the gate option's QUESTION_AUTHORITY_REQUIRED, so both doors refuse a viewer with the same code
+// cm:why a hold and a gate are read-gated here as on REST: who may act is the hold rule's HOLD_NOT_AUTHORISED and the gate option's PERMISSION_FORBIDDEN, so both doors refuse a viewer with the same code
 const roleNeeded = (action: ChannelAction) =>
   isWrite(action) && !OWN_AUTHORITY.includes(action) ? 'write' : 'read';
 

@@ -2,7 +2,7 @@
  * The guards of a questionnaire (workflow project-onboarding rev 1, steps `ask`, `answer-lands` and
  * `what-next`), as pure functions over what the service read: which items a batch may carry, how
  * many rounds a thread may send, which state a batch must be in to take answers, and whether each
- * answer fits its item. Who may post or submit is `lib/person-act.ts:actMiss`, worded here.
+ * answer fits its item. Who may post or submit is a permission.
  */
 
 import {
@@ -12,9 +12,7 @@ import {
   type QuestionnaireItem,
   type QuestionnaireStatus,
 } from '@forge/contracts/onboarding';
-import type { ProjectMemberRole } from '../db/schema.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
-import { actMiss, PERSON_ACT, PROJECT_AGENT_WRITE } from '../lib/person-act.js';
+import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
 export type QuestionnaireRefusal = OnboardingRefusal;
 
@@ -236,41 +234,8 @@ export function answerRefusals(
   return out;
 }
 
-export interface ActorFacts {
-  userId: string;
-  agency: ActorAgency;
-  role: ProjectMemberRole | null;
-}
+export const submitterRefusal = (facts: PermissionFacts): QuestionnaireRefusal | null =>
+  permissionRefusal(facts, 'questionnaires.answer', 'answering a questionnaire');
 
-// cm:guard answering a questionnaire is a person's act of the project (QUESTIONNAIRE_SUBMIT_FORBIDDEN):
-// an agent or the assistant never answers on a person's behalf
-export function submitterRefusal(
-  facts: ActorFacts,
-  projectId: string,
-): QuestionnaireRefusal | null {
-  const miss = actMiss(facts, PERSON_ACT);
-  if (!miss) return null;
-  return {
-    code: 'QUESTIONNAIRE_SUBMIT_FORBIDDEN',
-    path: '',
-    detail:
-      miss.kind === 'agent-not-allowed'
-        ? `${facts.userId} acts as an agent; a questionnaire is answered by a person of project ${projectId}, never on their behalf.`
-        : `${facts.userId} holds ${facts.role ?? 'no role'} on project ${projectId}; answering a questionnaire takes member or above.`,
-  };
-}
-
-// cm:guard a questionnaire is posted by the project's own agent (QUESTIONNAIRE_POST_FORBIDDEN); the BA
-// door posts through its bound tool, never through this door
-export function posterRefusal(facts: ActorFacts, projectId: string): QuestionnaireRefusal | null {
-  const miss = actMiss(facts, PROJECT_AGENT_WRITE);
-  if (!miss) return null;
-  return {
-    code: 'QUESTIONNAIRE_POST_FORBIDDEN',
-    path: '',
-    detail:
-      miss.kind === 'person-not-allowed'
-        ? `${facts.userId} acts as a person; a questionnaire is posted by project ${projectId}'s own agent, which asks, while a person answers.`
-        : `${facts.userId} holds ${facts.role ?? 'no role'} on project ${projectId}; only that project's own agent (member or above) posts its questionnaire.`,
-  };
-}
+export const posterRefusal = (facts: PermissionFacts): QuestionnaireRefusal | null =>
+  permissionRefusal(facts, 'questionnaires.write', 'posting a questionnaire');

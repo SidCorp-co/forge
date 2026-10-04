@@ -19,11 +19,7 @@ import type {
   ScheduleStanding,
   ScheduleState,
 } from '@forge/contracts/automation-standing';
-import type {
-  ScheduleRunSkipReason,
-  ScheduleRunStatus,
-  ScheduleRunTrigger,
-} from '@forge/contracts/schedules';
+import type { LastFire } from '../schedules/fires.js';
 import { type ScheduleStreak, streakFails } from '../schedules/streak.js';
 
 export interface AutomationViewer {
@@ -49,16 +45,7 @@ export interface ScheduleFacts {
   owner: AutomationPerson | null;
 }
 
-export interface LastFireFacts {
-  id: string;
-  status: ScheduleRunStatus;
-  trigger: ScheduleRunTrigger;
-  startedAt: Date;
-  finishedAt: Date | null;
-  reason: ScheduleRunSkipReason | null;
-  refusal: string | null;
-  sessionId: string | null;
-}
+export type LastFireFacts = LastFire;
 
 export interface FireFacts extends LastFireFacts {
   scheduleId: string;

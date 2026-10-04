@@ -26,8 +26,7 @@ import {
   writeIssueRelations,
 } from '../issues/relations-service.js';
 import { emitIssueFieldUpdate } from '../issues/update-hook.js';
-import { permissionRefusalFor } from '../permissions/index.js';
-import { assertProjectAccess } from '../lib/authz.js';
+import { permissionRefusalFor, requireCan } from '../permissions/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { notAnEdgeError, transition } from '../lifecycle/transition.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -324,7 +323,7 @@ export async function withdrawSuggestion(input: {
   actor: SuggestionActor;
 }): Promise<SuggestionOutcome> {
   const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const refusals = await inTx(async (tx) => {
     const row = await rowOf(tx, projectId, input.id, true);
     const refusal = withdrawRefusal(actor.userId, row.producerId) ?? decidedRefusal(row.status);

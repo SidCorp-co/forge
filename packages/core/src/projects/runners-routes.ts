@@ -7,7 +7,7 @@ import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
 import { residentMasterSql } from '../devices/master-session.js';
 import { readRunnerPoolRead } from '../devices/pool-read-report.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { transition } from '../lifecycle/transition.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema } from '../middleware/route-errors.js';
@@ -16,6 +16,7 @@ import { hooks } from '../pipeline/hooks.js';
 import { clearRunnerFaultFlags } from '../runners/clear-fault-flags.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
 import { defaultRunnerCapabilities } from '../runners/select.js';
+import { requireHeld } from '../permissions/index.js';
 
 // ISS-172 Slice A — runner-shaped binding endpoints. `POST /:id/runners`
 // upserts a (project, device, 'claude-code') runner row; `DELETE
@@ -50,7 +51,7 @@ projectRunnerRoutes.get(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(id, userId);
-    assertProjectRole(access, 'viewer', 'project member required');
+    requireHeld(access, 'project.read');
 
     const rows = await db
       .select({
@@ -111,7 +112,7 @@ projectRunnerRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(id, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    requireHeld(access, 'project.admin');
 
     const [device] = await db
       .select({
@@ -256,7 +257,7 @@ projectRunnerRoutes.patch(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(id, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    requireHeld(access, 'project.admin');
 
     const [runner] = await db
       .update(runners)
@@ -299,7 +300,7 @@ projectRunnerRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(id, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    requireHeld(access, 'project.admin');
 
     const [target] = await db
       .select({ id: runners.id })
@@ -328,7 +329,7 @@ projectRunnerRoutes.delete(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(id, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    requireHeld(access, 'project.admin');
 
     // Idempotent: 204 whether the runner existed or not, mirroring the old
     // PUT/DELETE /:id/devices/:deviceId contract.

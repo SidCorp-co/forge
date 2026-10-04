@@ -38,7 +38,6 @@ import {
 
 const RETRY_BACKOFF_MS = 60_000;
 const MAX_BACKOFF_MS = 3_600_000;
-const DRAIN_INTERVAL_MS = 30_000;
 const OPENING_LEASE_MS = 60_000;
 const OPENING_RENEW_MS = 20_000;
 const DRAIN_BATCH = 200;
@@ -390,10 +389,11 @@ export async function drainCommentMirror(now: Date = new Date()): Promise<Commen
 
 let draining = false;
 
-function runDrain(bus: HooksBus): void {
-  if (draining) return;
+/** One drain of owed comments and announcements; a drain already running is not doubled. */
+export function runCommentMirrorDrain(bus: HooksBus): Promise<void> {
+  if (draining) return Promise.resolve();
   draining = true;
-  void Promise.allSettled([drainCommentMirror(), drainOwedAnnouncements(bus)])
+  return Promise.allSettled([drainCommentMirror(), drainOwedAnnouncements(bus)])
     .then(([out, announced]) => {
       if (out.status === 'rejected')
         logger.error({ err: out.reason }, 'rocketchat: comment mirror drain failed');
@@ -411,26 +411,13 @@ function runDrain(bus: HooksBus): void {
 }
 
 /**
- * Run the drain on a timer until the returned stopper is called.
- */
-export function startCommentMirrorLoop(alive: () => boolean, bus: HooksBus): () => void {
-  const tick = (): void => {
-    if (alive()) runDrain(bus);
-  };
-  const timer = setInterval(tick, DRAIN_INTERVAL_MS);
-  timer.unref?.();
-  tick();
-  return () => clearInterval(timer);
-}
-
-/**
  * Register the wake-up. A new comment drains now instead of on the next tick.
  */
 export function registerCommentMirror(bus: HooksBus): void {
   bus.on(
     'commentCreated',
     async () => {
-      runDrain(bus);
+      void runCommentMirrorDrain(bus);
     },
     { name: 'rocketchat-comment-mirror' },
   );

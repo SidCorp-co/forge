@@ -126,7 +126,7 @@ function describe(row: { description?: unknown; descriptionFormat?: unknown }): 
  * Hook work is detached with `queueMicrotask` so it never adds LiteLLM
  * latency to the request path. Hook subscribers use `indexMemoryBestEffort`,
  * which logs and swallows failures — eventually consistent. Explicit callers
- * (REST `POST /api/memory`, MCP `forge_memory.write`, knowledge ingest) use
+ * (REST `POST /api/memory`, knowledge ingest) use
  * `indexMemory` which throws so the caller can report or retry.
  *
  * If higher durability is required later (bursts, retry-on-process-restart),

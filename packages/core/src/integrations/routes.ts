@@ -15,7 +15,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { integrationDeliveries } from '../db/schema.js';
-import { effectiveProjectRole, orgRoleAtLeast } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -34,11 +34,8 @@ import { rocketChatBindingOfProject } from './rocketchat/binding.js';
 import { fetchBotRooms } from './rocketchat/rest-client.js';
 import {
   adapterOrRefuse,
-  assertAdmin,
-  assertProjectMember,
   bindingWriteMoved,
   broadcastIntegrationChanged,
-  forbidden,
   notFound,
   notifyConnectionChanged,
   summarizeBinding,
@@ -52,6 +49,7 @@ import {
   setBindingInboundSecret,
   updateConnection,
 } from './store.js';
+import { requireCan, requireOrgHeld } from '../permissions/index.js';
 
 // Owner-scoped connection CRUD lives in its own module; re-exported so
 // `src/index.ts` keeps importing both routers from `./integrations/routes.js`.
@@ -69,8 +67,7 @@ async function projectBinding(
   userId: string,
   need?: 'admin',
 ): Promise<BindingWithConnection> {
-  const role = await assertProjectMember(projectId, userId);
-  if (need === 'admin') assertAdmin(role);
+  await requireCan({ userId }, need === 'admin' ? 'project.admin' : 'project.read', projectId);
   const existing = await findBindingWithConnectionById(id);
   if (!existing || existing.binding.projectId !== projectId) throw notFound();
   return existing;
@@ -79,7 +76,7 @@ async function projectBinding(
 integrationsRoutes.get('/:projectId/integrations', async (c) => {
   const projectId = c.req.param('projectId');
   const userId = c.get('userId');
-  await assertProjectMember(projectId, userId);
+  await requireCan({ userId }, 'project.read', projectId);
 
   const pairs = await listBindingsForProject(projectId);
   // One array under both keys: `items` is the alias the `forge` CLI and the runner read (ISS-1191).
@@ -138,8 +135,8 @@ integrationsRoutes.patch(
       connection.ownerType === 'org' &&
       (mergedConfig !== undefined || patch.secrets !== undefined)
     ) {
-      const access = await effectiveProjectRole(userId, projectId);
-      if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
+      const access = await loadProjectAccess(projectId, userId);
+      requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
     }
 
     let mergedSecrets: Record<string, unknown> | undefined;
@@ -209,7 +206,7 @@ integrationsRoutes.post(
   async (c) => {
     const projectId = c.req.param('projectId');
     const userId = c.get('userId');
-    await assertProjectMember(projectId, userId);
+    await requireCan({ userId }, 'project.read', projectId);
     const body = c.req.valid('json');
 
     let auth: { serverUrl: string; authToken: string; userId: string };
@@ -316,7 +313,7 @@ integrationsRoutes.post('/:projectId/integrations/:id/deliveries/:deliveryId/ret
 integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
   const projectId = c.req.param('projectId');
   const userId = c.get('userId');
-  await assertProjectMember(projectId, userId);
+  await requireCan({ userId }, 'project.read', projectId);
 
   return c.json({ cards: await buildIntegrationsStatusCards(projectId) });
 });
@@ -326,7 +323,7 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
 integrationsRoutes.get('/:projectId/integrations/mcp-preview', async (c) => {
   const projectId = c.req.param('projectId');
   const userId = c.get('userId');
-  await assertProjectMember(projectId, userId);
+  await requireCan({ userId }, 'project.read', projectId);
 
   return c.json(await buildMcpPreview(projectId));
 });

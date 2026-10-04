@@ -13,7 +13,7 @@ import {
   sessionRuntimeStates,
   terminalAgentSessionStatuses,
 } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
@@ -26,6 +26,7 @@ import { readJobGate } from './job-queries.js';
 import { scrubJobOutput } from './job-secret-scrub.js';
 import { maybeDeriveIncremental } from './session-transcript.js';
 import { TERMINAL_JOB_STATUSES } from '@forge/contracts/job-machine';
+import { requireHeld } from '../permissions/index.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -84,7 +85,7 @@ jobEventsListRoutes.get(
     if (!job) throw notFound('job not found');
 
     const access = await loadProjectAccess(job.projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
+    requireHeld(access, 'project.read');
 
     const whereClauses = [eq(jobEvents.jobId, jobId)];
     if (sinceSeq !== undefined) whereClauses.push(gt(jobEvents.seq, sinceSeq));

@@ -1,6 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
 import type { BindingRole } from '../db/schema.js';
-import { effectiveProjectRole } from '../lib/authz.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import type { AgentAccess } from './agent-access.js';
@@ -54,20 +53,6 @@ export function adapterOrRefuse(provider: string): IntegrationAdapterMethods {
 
 export function notifyConnectionChanged(provider: string, connectionId: string): void {
   getAdapter(provider)?.onConnectionChanged?.(connectionId);
-}
-
-export async function assertProjectMember(
-  projectId: string,
-  userId: string,
-): Promise<'admin' | 'member' | 'viewer'> {
-  const access = await effectiveProjectRole(userId, projectId);
-  if (!access) throw notFound('project');
-  if (!access.role) throw forbidden();
-  return access.role;
-}
-
-export function assertAdmin(role: 'admin' | 'member' | 'viewer'): void {
-  if (role !== 'admin') throw forbidden();
 }
 
 export function summarizeBinding(pair: BindingWithConnection) {

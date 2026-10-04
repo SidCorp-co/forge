@@ -10,7 +10,7 @@
  * it is what a model actually reads, and a second copy here is one that goes
  * stale.
  *
- * Authorization is membership-level like `forge_issues`, raised to writer for
+ * Authorization is membership-level, raised to writer for
  * the two actions that change a sheet. No DEVICE_REQUIRED entry — the tool has
  * no runner dependency.
  */
@@ -25,13 +25,12 @@ import {
   listGoogleIntegrations,
 } from '../../integrations/google/commands.js';
 import {
-  assertPrincipalIsMember,
-  assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   type McpContext,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const cellSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 
@@ -139,19 +138,19 @@ async function dispatchAction(input: Input, ctx: McpContext): Promise<unknown> {
 
   switch (input.action) {
     case 'list': {
-      await assertPrincipalIsMember(principal, projectId);
+      await requireCan({ userId: principal.userId }, 'project.read', projectId);
       return listGoogleIntegrations(projectId);
     }
     case 'info': {
-      await assertPrincipalIsMember(principal, projectId);
+      await requireCan({ userId: principal.userId }, 'project.read', projectId);
       return googleSheetsInfo({ projectId, ...spreadsheet });
     }
     case 'read': {
-      await assertPrincipalIsMember(principal, projectId);
+      await requireCan({ userId: principal.userId }, 'project.read', projectId);
       return googleSheetsRead({ projectId, ...spreadsheet, range: requireRange(input, 'read') });
     }
     case 'update': {
-      await assertPrincipalIsWriter(principal, projectId);
+      await requireCan({ userId: principal.userId }, 'project.write', projectId);
       return googleSheetsUpdate({
         projectId,
         ...spreadsheet,
@@ -160,7 +159,7 @@ async function dispatchAction(input: Input, ctx: McpContext): Promise<unknown> {
       });
     }
     case 'append': {
-      await assertPrincipalIsWriter(principal, projectId);
+      await requireCan({ userId: principal.userId }, 'project.write', projectId);
       return googleSheetsAppend({
         projectId,
         ...spreadsheet,

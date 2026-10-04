@@ -16,10 +16,10 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { rowIn as feedbackRowIn } from '../feedback/read.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { rowIn } from '../requirements/read.js';
 import { designNodesIn } from '../workflows/node-refs.js';
 import type { KernelActor } from '../lifecycle/transition.js';
+import { requireCan } from '../permissions/index.js';
 
 export interface SuggestionActor {
   userId: string;
@@ -131,7 +131,7 @@ export async function listSuggestions(input: {
   statuses?: readonly SuggestionStatus[] | undefined;
   limit?: number | undefined;
 }): Promise<SuggestionListResponse> {
-  await assertProjectAccess(input.projectId, input.userId, 'viewer');
+  await requireCan({ userId: input.userId }, 'project.read', input.projectId);
   const target = input.target
     ? await resolveTarget(input.projectId, input.target, input.userId)
     : null;

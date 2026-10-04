@@ -137,8 +137,8 @@ const shape = (outcome: DispatchOutcome) => ({
  * this to say what it checks — a run announcing that its method would not load still deploys.
  */
 export const RELEASE_DEPLOY_BEFORE_RECORDING =
-  'RELEASE_NOTHING_RECORDED: this release run has recorded nothing through forge_release_batch, so nothing ' +
-  'shows the credential it runs on can record what this deploy would do. Make one call first — action=method ' +
+  'RELEASE_NOTHING_RECORDED: this release run has recorded nothing on its release batch, so nothing ' +
+  'shows the credential it runs on can record what this deploy would do. Make one call first — POST .../method ' +
   'says what you are working from, and `loaded: false` with a detail is a valid answer — then deploy. ' +
   'A release deploy is refused before production changes, never after.';
 

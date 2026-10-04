@@ -63,8 +63,8 @@ export async function selectChannelGates(userId: string): Promise<AttentionGateR
     .flatMap((r) => {
       const current = r.steps.at(-1);
       if (r.origin?.kind !== 'channel_gate' || !current || !isChoiceStep(current)) return [];
-      const role = roles.get(r.projectId)?.role ?? null;
-      if (!current.options.some((o) => mayChoose(o, role))) return [];
+      const access = roles.get(r.projectId) ?? null;
+      if (!current.options.some((o) => mayChoose(o, access))) return [];
       return [
         {
           questionId: r.questionId,

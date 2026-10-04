@@ -29,7 +29,7 @@ export const AGENT_CONFIG_KEYS = Object.keys(agentConfigSchema.shape) as AgentCo
 
 export const AGENT_CONFIG_DOORS: Record<AgentConfigKey, string> = {
   assistantWeekly: 'the `assistantWeekly` field on `PATCH /api/projects/:id`',
-  plugins: '`PATCH /api/projects/:id/plugins`, or MCP `forge_config` action=update with `plugins`',
+  plugins: '`PATCH /api/projects/:id/plugins`',
 };
 
 /**

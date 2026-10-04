@@ -12,7 +12,7 @@ import {
   runners,
   runnerTypes,
 } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -26,15 +26,13 @@ import { setRunnerStatus } from './runner-events.js';
 import { defaultRunnerCapabilities } from './select.js';
 import { insertRunner, RunnerAlreadyBoundError } from './service.js';
 import type { Runner } from './types.js';
+import { requireHeld } from '../permissions/index.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 const notFound = () =>
   new HTTPException(404, { message: 'runner not found', cause: { code: 'NOT_FOUND' } });
-
-const forbidden = (msg: string) =>
-  new HTTPException(403, { message: msg, cause: { code: 'FORBIDDEN' } });
 
 function rowToRunner(r: typeof runners.$inferSelect): Runner {
   return {
@@ -117,7 +115,7 @@ runnerRoutes.get(
     const filters = [];
     if (q.projectId) {
       const access = await loadProjectAccess(q.projectId, userId);
-      if (!access.role) throw forbidden('not a project member');
+      requireHeld(access, 'project.read');
       filters.push(eq(runners.projectId, q.projectId));
     } else {
       return c.json({ runners: [] });
@@ -143,7 +141,7 @@ runnerRoutes.get(
     const userId = c.get('userId');
     const { projectId } = c.req.valid('query');
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const rows = await db.execute<{
       runner_id: string;
@@ -224,7 +222,7 @@ runnerRoutes.get(
     const [row] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
     if (!row) throw notFound();
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
     return c.json({ runner: publicRunner(rowToRunner(row)) });
   },
 );
@@ -255,7 +253,7 @@ runnerRoutes.get(
     const [row] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
     if (!row) throw notFound();
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const events = await db
       .select({
@@ -319,7 +317,7 @@ runnerRoutes.post(
     const userId = c.get('userId');
     const input = c.req.valid('json');
     const access = await loadProjectAccess(input.projectId, userId);
-    assertProjectRole(access, 'admin', 'project admin only');
+    requireHeld(access, 'project.admin');
 
     const adapter = getRunnerAdapter(input.type);
     if (!adapter) throw badRequest({ type: 'no adapter registered for type' });
@@ -372,7 +370,7 @@ runnerRoutes.patch(
     const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
-    assertProjectRole(access, 'admin', 'project admin only');
+    requireHeld(access, 'project.admin');
 
     let nextConfig = existing.config as Record<string, unknown>;
     if (input.config) {
@@ -426,7 +424,7 @@ runnerRoutes.delete(
     const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
-    assertProjectRole(access, 'admin', 'project admin only');
+    requireHeld(access, 'project.admin');
     await db.delete(runners).where(eq(runners.id, id));
     roomManager.publish(projectRoom(existing.projectId), {
       event: 'runner.deleted',
@@ -447,7 +445,7 @@ runnerRoutes.post(
     const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
     const adapter = getRunnerAdapter(existing.type);
     if (!adapter) throw badRequest({ type: 'no adapter registered' });
     return c.json(await runnerHealthWithBuild(adapter, rowToRunner(existing), existing.deviceId));
@@ -465,7 +463,7 @@ runnerRoutes.post(
     const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
     const adapter = getRunnerAdapter(existing.type);
     if (!adapter?.refreshQuota) {
       return c.json({ remaining: null, limit: null });
@@ -502,7 +500,7 @@ runnerRoutes.post(
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
     // Same gate as PATCH `status` — exclude/include are status mutations.
-    assertProjectRole(access, 'admin', 'project admin only');
+    requireHeld(access, 'project.admin');
     await setRunnerStatus({
       runnerId: id,
       newStatus: 'disabled',
@@ -524,7 +522,7 @@ runnerRoutes.post(
     const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
-    assertProjectRole(access, 'admin', 'project admin only');
+    requireHeld(access, 'project.admin');
     await setRunnerStatus({
       runnerId: id,
       newStatus: 'offline',
@@ -546,7 +544,7 @@ runnerRoutes.post(
     const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
-    assertProjectRole(access, 'admin', 'project admin only');
+    requireHeld(access, 'project.admin');
     await clearRunnerQuarantine(id, existing.projectId);
     return c.json({ ok: true });
   },

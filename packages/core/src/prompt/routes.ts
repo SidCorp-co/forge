@@ -15,11 +15,10 @@ import {
 } from '../project-config/dispatch-policy.js';
 import { loadIssueSnapshot } from './issue-snapshot.js';
 import { buildJobPromptString } from './user.js';
+import { requireHeld } from '../permissions/index.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-const forbidden = (m: string) =>
-  new HTTPException(403, { message: m, cause: { code: 'FORBIDDEN' } });
 const notFound = (m: string) =>
   new HTTPException(404, { message: m, cause: { code: 'NOT_FOUND' } });
 
@@ -55,9 +54,7 @@ promptRoutes.post(
     // Project-member auth — same as jobRoutes.get('/:id').
     // loadProjectAccess throws 404 if the project does not exist.
     const access = await loadProjectAccess(body.projectId, userId);
-    if (!access.role) {
-      throw forbidden('not a project member');
-    }
+    requireHeld(access, 'project.read');
 
     if (!PREVIEWABLE_STATES.includes(body.state)) {
       throw new HTTPException(400, {

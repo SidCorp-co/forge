@@ -4,7 +4,6 @@ import { appConfig, knowledgeEntries, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/index.js';
 import { knowledgeEmbedInput } from '../knowledge/service.js';
 import { logger } from '../logger.js';
-import { boss } from '../queue/boss.js';
 import { chunkAndPublish, loadChunkParent } from './chunk-writer.js';
 import { CHUNKED_SOURCES } from './chunker.js';
 
@@ -19,7 +18,6 @@ import { CHUNKED_SOURCES } from './chunker.js';
  * the service is still down, retry next tick.
  */
 
-export const MEMORY_EMBED_BACKFILL_QUEUE = 'memory-embedding-backfill';
 const BATCH_SIZE = 50;
 const MAX_EMBED_CHARS = 8192;
 
@@ -161,38 +159,4 @@ export async function runChunkBackfill(): Promise<{
     }
   }
   return { chunked, aborted, durationMs: Date.now() - t0 };
-}
-
-let registered = false;
-
-export async function registerEmbeddingBackfill(): Promise<void> {
-  if (registered) return;
-  // pg-boss v10 requires explicit createQueue before schedule/work can reference it.
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(MEMORY_EMBED_BACKFILL_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(MEMORY_EMBED_BACKFILL_QUEUE, async () => {
-    try {
-      const result = await runEmbeddingBackfill();
-      if (result.reembedded > 0 || result.knowledgeReembedded > 0 || result.aborted) {
-        logger.info(result, 'memory.backfill: sweep complete');
-      }
-      if (!result.aborted) {
-        const chunks = await runChunkBackfill();
-        if (chunks.chunked > 0 || chunks.aborted) {
-          logger.info(chunks, 'memory.backfill: chunk sweep complete');
-        }
-      }
-    } catch (err) {
-      logger.error({ err }, 'memory.backfill: sweep failed');
-      throw err;
-    }
-  });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(MEMORY_EMBED_BACKFILL_QUEUE, '*/5 * * * *');
-  registered = true;
-}
-
-export function resetEmbeddingBackfillForTest(): void {
-  registered = false;
 }

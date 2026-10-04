@@ -4,12 +4,13 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { skills } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { globalEffectiveMd } from './effective.js';
 import { MetaSkillReservedError } from './meta-skills.js';
 import { applyGlobalSkillDefault, SkillAlreadyShadowedError } from './service.js';
+import { requireHeld } from '../permissions/index.js';
 
 /**
  * Skill Studio listing + apply-default (ISS-388). Global skills are immutable
@@ -30,9 +31,6 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
 export const skillStudioRoutes = new Hono<{ Variables: AuthVars }>();
 skillStudioRoutes.use('/:projectId/skills/effective', requireAuth(), assertEmailVerified());
 skillStudioRoutes.use('/:projectId/skills/apply-default', requireAuth(), assertEmailVerified());
@@ -47,7 +45,7 @@ skillStudioRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const globals = await db
       .select()
@@ -102,7 +100,7 @@ skillStudioRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'only a project admin can apply a default skill');
+    requireHeld(access, 'project.admin');
 
     const [global] = await db.select().from(skills).where(eq(skills.id, globalSkillId)).limit(1);
     if (!global) throw notFound('skill not found');

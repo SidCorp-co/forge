@@ -62,7 +62,7 @@ export { MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 import type { DecisionFields } from '@forge/contracts/comments';
 import { MACHINE_ENTITIES } from '@forge/contracts/machines';
 import { MASTER_JOB_PANES_MAX } from '@forge/contracts/master-standing';
-import { SCHEDULE_KINDS, SCHEDULE_RUN_STATUSES } from '@forge/contracts/schedules';
+import { SCHEDULE_KINDS } from '@forge/contracts/schedules';
 import { BODY_FORMATS } from '../body/formats.js';
 import type { IssueBranchOverride } from '../branches/resolve.js';
 import { COMMENT_INTENTS } from '@forge/contracts/record-events';
@@ -1760,9 +1760,6 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
   assignee: one(users, { fields: [tasks.assigneeId], references: [users.id] }),
 }));
 
-export const scheduleStatuses = SCHEDULE_RUN_STATUSES;
-export type ScheduleStatus = (typeof scheduleStatuses)[number];
-
 export const scheduleModes = ['propose', 'auto'] as const;
 export type ScheduleMode = (typeof scheduleModes)[number];
 
@@ -1784,9 +1781,7 @@ export const schedules = pgTable(
     prompt: text('prompt'),
     enabled: boolean('enabled').notNull().default(true),
     targetProjectSlug: text('target_project_slug'),
-    lastRunAt: timestamp('last_run_at', { withTimezone: true }),
     nextRunAt: timestamp('next_run_at', { withTimezone: true }),
-    lastSessionId: text('last_session_id'),
     metadata: jsonb('metadata'),
     templateKey: text('template_key'),
     params: jsonb('params'),
@@ -1918,9 +1913,6 @@ export const chatLogs = pgTable(
 
 export * from './schema-notifications.js';
 
-export const agentSchedules = ['off', 'weekly', 'biweekly', 'monthly'] as const;
-export type AgentSchedule = (typeof agentSchedules)[number];
-
 export const agentApprovalModes = ['preview', 'auto-create'] as const;
 export type AgentApprovalMode = (typeof agentApprovalModes)[number];
 
@@ -1943,7 +1935,6 @@ export const agents = pgTable(
         sql`'["feature-gaps","journey-completeness","polish","accessibility","ux-improvements"]'::jsonb`,
       ),
     customInstructions: text('custom_instructions'),
-    schedule: text('schedule', { enum: agentSchedules }).notNull().default('off'),
     approvalMode: text('approval_mode', { enum: agentApprovalModes }).notNull().default('preview'),
     maxProposals: integer('max_proposals').notNull().default(10),
     excludeCategories: jsonb('exclude_categories').notNull().default(sql`'[]'::jsonb`),
@@ -2301,8 +2292,6 @@ export const pmConfig = pgTable('pm_config', {
     .unique()
     .references(() => projects.id, { onDelete: 'cascade' }),
   enabled: boolean('enabled').notNull().default(false),
-  // null = event-only, no cron tick
-  cadenceCron: text('cadence_cron'),
   eventTriggers: jsonb('event_triggers')
     .notNull()
     .default(
@@ -2634,8 +2623,8 @@ export const integrationBindingsRelations = relations(integrationBindings, ({ on
 
 /**
  * Short-lived, single-use capability tickets for out-of-band attachment uploads
- * (the presigned-URL pattern). `forge_uploads` mints a row; the holder PUTs file
- * bytes to /api/uploads/:id with no bearer — possession of the unguessable id +
+ * (the presigned-URL pattern). `POST /api/conversations/:id/attachments` mints
+ * a row; the holder PUTs file bytes to /api/uploads/:id with no bearer — possession of the unguessable id +
  * not-expired + not-consumed IS the authorization. All upload params are stored
  * server-side here so the URL cannot be tampered with.
  */

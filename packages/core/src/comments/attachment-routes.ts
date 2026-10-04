@@ -14,13 +14,14 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issues } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { requireAnyAuth } from '../middleware/require-any-auth.js';
 import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import { AttachmentError, persistCommentAttachment } from './attachment-service.js';
+import { requireHeld } from '../permissions/index.js';
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
@@ -95,7 +96,7 @@ commentAttachmentRoutes.post(
     if (!comment) throw notFound('comment not found');
 
     const access = await loadProjectAccess(comment.projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
 
     const body = await c.req.parseBody();
     const file = body.file;

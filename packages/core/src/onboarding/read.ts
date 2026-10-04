@@ -19,9 +19,9 @@ import { onboardings, questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
-import { assertProjectAccess } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import type { LiveJob } from './rules.js';
+import { requireCan } from '../permissions/index.js';
 
 export type Executor = typeof db | Tx;
 export type OnboardingRow = typeof onboardings.$inferSelect;
@@ -282,7 +282,7 @@ export async function readOnboardingState(
   projectId: string,
   userId: string,
 ): Promise<OnboardingStateResponse> {
-  await assertProjectAccess(projectId, userId, 'viewer');
+  await requireCan({ userId }, 'project.read', projectId);
   const row = await onboardingOf(db, projectId);
   const view = row ? await onboardingView(db, row) : null;
   return {

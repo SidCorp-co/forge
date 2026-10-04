@@ -1,10 +1,10 @@
-// cm:why the one application writer of schedule_runs (design automation rev 1, steps tick, route,
-// skipped, agent_runs and settle; ISS-112): every fire of every kind is opened here and a fire that
-// ran no session is settled here once, each move through the kernel transition on the schedule-run
-// machine. A schedule's last status is its newest fire's, read (`lastFireStatus`) and never stored.
-// A fire that started a session settles when that session stops, whoever stops it, in the session
-// move's own transaction (`agent-sessions/session-transition.ts:transitionSessions`); a session row
-// deleted under a running fire is settled by trigger `forge_session_delete_settles_its_fire`.
+// The one application writer of schedule_runs (design automation, steps tick, route, skipped,
+// agent_runs and settle): every fire of every kind is opened here and a fire that ran no session is
+// settled here once, each move through the kernel transition on the schedule-run machine. A fire
+// that started a session settles when that session stops, whoever stops it, in the session move's
+// own transaction (`agent-sessions/session-transition.ts:transitionSessions`); a session row deleted
+// under a running fire is settled by trigger `forge_session_delete_settles_its_fire`. Nothing is
+// copied onto the schedule; its last status is its newest fire (`lastFires`).
 
 import type {
   ScheduleRunSkipReason,
@@ -12,9 +12,9 @@ import type {
   ScheduleRunTrigger,
 } from '@forge/contracts/schedules';
 import { SCHEDULE_RUN_MACHINE } from '@forge/contracts/schedule-run-machine';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { scheduleRuns, schedules } from '../db/schema.js';
+import { scheduleRuns } from '../db/schema.js';
 import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/transition.js';
 
 export type FireSettlement =
@@ -32,42 +32,25 @@ export interface FireSession {
   pipelineRunId: string;
 }
 
-/** A schedule's last status: the status of its newest fire, or null before its first. */
-export const lastFireStatus = sql<ScheduleRunStatus | null>`(
-  SELECT r.status FROM ${scheduleRuns} r
-   WHERE r.schedule_id = ${schedules.id}
-   ORDER BY r.created_at DESC
-   LIMIT 1
-)`;
-
 export async function openFire(args: {
   scheduleId: string;
   projectId: string;
   trigger: ScheduleRunTrigger;
 }): Promise<string> {
-  const startedAt = new Date();
-  return db.transaction(async (tx) => {
-    const [fire] = await tx
-      .insert(scheduleRuns)
-      .values({
-        scheduleId: args.scheduleId,
-        projectId: args.projectId,
-        trigger: args.trigger,
-        status: 'running',
-        startedAt,
-      })
-      .returning({ id: scheduleRuns.id });
-    if (!fire) {
-      throw new Error(
-        `schedule_runs: opening a fire of schedule ${args.scheduleId} returned no row`,
-      );
-    }
-    await tx
-      .update(schedules)
-      .set({ lastRunAt: startedAt })
-      .where(eq(schedules.id, args.scheduleId));
-    return fire.id;
-  });
+  const [fire] = await db
+    .insert(scheduleRuns)
+    .values({
+      scheduleId: args.scheduleId,
+      projectId: args.projectId,
+      trigger: args.trigger,
+      status: 'running',
+      startedAt: new Date(),
+    })
+    .returning({ id: scheduleRuns.id });
+  if (!fire) {
+    throw new Error(`schedule_runs: opening a fire of schedule ${args.scheduleId} returned no row`);
+  }
+  return fire.id;
 }
 
 export async function attachFireSession(fireId: string, session: FireSession): Promise<void> {
@@ -143,6 +126,45 @@ export async function recordFireDisposition(args: {
     .where(eq(scheduleRuns.sessionId, args.failedSessionId))
     .returning({ id: scheduleRuns.id });
   return rows.length > 0;
+}
+
+export interface LastFire {
+  id: string;
+  status: ScheduleRunStatus;
+  trigger: ScheduleRunTrigger;
+  startedAt: Date;
+  finishedAt: Date | null;
+  reason: ScheduleRunSkipReason | null;
+  refusal: string | null;
+  sessionId: string | null;
+}
+
+/** Each schedule's newest fire, by schedule id: what a schedule's last status, run and session are. */
+export async function lastFires(
+  projectId: string,
+  scheduleIds?: readonly string[],
+): Promise<Map<string, LastFire>> {
+  const where = [eq(scheduleRuns.projectId, projectId)];
+  if (scheduleIds) {
+    if (scheduleIds.length === 0) return new Map();
+    where.push(inArray(scheduleRuns.scheduleId, [...scheduleIds]));
+  }
+  const rows = await db
+    .selectDistinctOn([scheduleRuns.scheduleId], {
+      scheduleId: scheduleRuns.scheduleId,
+      id: scheduleRuns.id,
+      status: scheduleRuns.status,
+      trigger: scheduleRuns.trigger,
+      startedAt: scheduleRuns.startedAt,
+      finishedAt: scheduleRuns.finishedAt,
+      reason: scheduleRuns.reason,
+      refusal: scheduleRuns.refusal,
+      sessionId: scheduleRuns.sessionId,
+    })
+    .from(scheduleRuns)
+    .where(and(...where))
+    .orderBy(scheduleRuns.scheduleId, desc(scheduleRuns.createdAt), desc(scheduleRuns.id));
+  return new Map(rows.map(({ scheduleId, ...f }) => [scheduleId, f]));
 }
 
 /** The fires these sessions started, settled as their sessions ended: `success` for a completion,

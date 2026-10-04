@@ -238,7 +238,7 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
  * GitHub's declaration.
  *
  * `core-mediated` since ISS-1074: Forge holds the App credential and makes the call, and an agent
- * asks for it through `forge_source` (`forge_github` before ISS-50). It said `none` before
+ * asks for it through `forge_source`. It said `none` before
  * ISS-1074, and the sentence beside it — "the agent works the repository with the runner box's
  * own git credentials" — was true of the TREE and wrong about the repository: reading a diff,
  * reading a failing job's log and writing a review are not git, and every one of them was being

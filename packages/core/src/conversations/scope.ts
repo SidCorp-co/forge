@@ -1,9 +1,9 @@
 import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../db/client.js';
-import type { ProjectMemberRole } from '../db/schema.js';
 import { conversationParticipants } from '../db/schema-conversations.js';
-import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
+import { type ProjectPermission, requireHeld } from '../permissions/index.js';
 import type { Executor } from './db-executor.js';
 
 const forbidden = (message: string, code: string) =>
@@ -40,7 +40,7 @@ export async function assertConversationReadable(
   userId: string | null | undefined,
   tx: Executor = defaultDb,
 ): Promise<string[]> {
-  return assertConversationRole(conversationId, userId, 'viewer', tx);
+  return assertConversationHeld(conversationId, userId, 'project.read', tx);
 }
 
 /**
@@ -51,13 +51,13 @@ export async function assertConversationWritable(
   userId: string | null | undefined,
   tx: Executor = defaultDb,
 ): Promise<string[]> {
-  return assertConversationRole(conversationId, userId, 'member', tx);
+  return assertConversationHeld(conversationId, userId, 'project.write', tx);
 }
 
-async function assertConversationRole(
+async function assertConversationHeld(
   conversationId: string,
   userId: string | null | undefined,
-  min: ProjectMemberRole,
+  permission: ProjectPermission,
   tx: Executor = defaultDb,
 ): Promise<string[]> {
   if (!userId) {
@@ -75,12 +75,13 @@ async function assertConversationRole(
   }
   for (const projectId of scope) {
     const access = await effectiveProjectRole(userId, projectId);
-    if (!projectRoleAtLeast(access?.role ?? null, min)) {
+    if (!access?.role) {
       throw forbidden(
-        `conversation ${conversationId} is about project ${projectId} and you hold no ${min} role on it; a room is reached only by someone who holds one on every project in it`,
+        `conversation ${conversationId} is about project ${projectId} and you hold no role on it; a room is reached only by someone who holds ${permission} on every project in it`,
         'CONVERSATION_OUT_OF_SCOPE',
       );
     }
+    requireHeld(access, permission, `conversation ${conversationId}`);
   }
   return scope;
 }

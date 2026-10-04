@@ -15,12 +15,12 @@ arguments: "documentId"
 <1–2 sentences: which transition this owns (`<from> → <to>`) and the ONE thing it must get right for this project.>
 
 ## Tools
-- forge_issues, forge_comments  (+ the project-specific tools: e.g. a vendor MCP, forge_coolify_deploy, Bash)
+- `forge-runner api` for the issue and its comments (+ the project-specific tools: e.g. a vendor MCP, forge_coolify_deploy, Bash)
 
 ## Workflow
 
 ### Step 1: Check in & read context
-Call forge_step_start with the `stage` you are checking in as; read the issue + comments/handoff. (Don't restate the status vocabulary — the preamble carries it.)
+Read the issue, its comments and prior handoffs (`forge-runner api issues/<id>`, `issues/<id>/comments`). (Don't restate the status vocabulary — the preamble carries it.)
 
 ### Step 2…N: <intent-level steps>
 - Write WHAT to do, not the exact commands. Infer build/test/deploy from the repo or the project's deploy model.
@@ -32,6 +32,6 @@ Post the comment, then transition status as the LAST action.
 ```
 
 ## Notes
-- **Per-project values** (branch, URLs, creds, domain facts) → `forge_knowledge` / `environments`, NOT the body.
-- **Adding `references/` via MCP:** pass each file with `encoding:"utf8"` (or `base64` for binaries).
+- **Per-project values** (branch, URLs, creds, domain facts) → a knowledge entry / `environments`, NOT the body.
+- **Adding `references/`:** pass each file in `files[]` with `encoding:"utf8"` (or `base64` for binaries).
 - **Non-standard build/deploy** (MCP-driven, docs-only): replace the build/test/deploy steps with the project's real model; keep durable invariants inline, defer tool mechanics to the live MCP playbook.

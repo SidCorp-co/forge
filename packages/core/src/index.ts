@@ -16,15 +16,12 @@ import { agentReportRoutes, feedbackReportsAliasRoutes } from './agent-reports/r
 import { agentSessionAttachmentRoutes } from './agent-sessions/attachment-routes.js';
 import { agentSessionProjectReadRoutes } from './agent-sessions/project-read-routes.js';
 import { agentSessionRoutes } from './agent-sessions/routes.js';
-import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cron.js';
 import { agentRoutes } from './agents/routes.js';
 import { memoryModelRoutes } from './app-config/memory-model-routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
 import { registerWebConversationAdapter } from './assistant/conversation-drain.js';
-import { registerTranscriptIndexSweeper } from './assistant/conversation-index-drain.js';
 import { conversationRoutes } from './assistant/conversation-routes.js';
 import { speakerLinkMeRoutes, speakerLinkProjectRoutes } from './assistant/identity/routes.js';
-import { registerAssistantWeekly, unregisterAssistantWeekly } from './assistant/weekly/register.js';
 import { assistantWeeklyRoutes } from './assistant/weekly/routes.js';
 import { devForceVerifyRoutes } from './auth/dev-force-verify.js';
 import { loginRoutes } from './auth/login.js';
@@ -42,10 +39,8 @@ import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { deviceLoginRoutes } from './devices/login-routes.js';
-import { registerMasterReaper } from './devices/master-reaper.js';
 import { deviceMcpServerRoutes } from './devices/mcp-servers-routes.js';
 import { devicePoolRoutes } from './devices/pool-routes.js';
-import { registerDevicePrune } from './devices/prune.js';
 import {
   deviceAuthRoutes,
   deviceOwnerRoutes,
@@ -53,9 +48,7 @@ import {
   deviceUserRoutes,
 } from './devices/routes.js';
 import { runLedgerRoutes } from './devices/run-ledger-routes.js';
-import { registerRunSessionReaper } from './devices/run-session-reaper.js';
 import { deviceSkillRoutes, deviceSkillStatusRoutes } from './devices/skills-routes.js';
-import { registerDeviceStaleDetector } from './devices/stale-detector.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
 import { registerEagerSubscribers } from './eager-subscribers.js';
@@ -66,9 +59,9 @@ import { opsHealthMeRoutes, opsHealthProjectRoutes, publicHealthRoutes } from '.
 import { improvementMessageRoutes } from './improvement-messages/routes.js';
 import { installRoutes } from './install/routes.js';
 import { githubCallbackRoutes, githubConnectRoutes } from './integrations/github/connect-routes.js';
-import { registerRunnerReleaseRefetch } from './integrations/github/fetch-release.js';
+import { servesRunnerReleases } from './integrations/github/fetch-release.js';
+import { refreshMainRunnerHead } from './integrations/github/main-runner-head.js';
 import { runnerReleaseRoutes } from './integrations/github/runner-release-routes.js';
-import { registerIntegrationsHealthSweep } from './integrations/health-sweep.js';
 import { bootstrapChatProviders } from './integrations/llm/bootstrap.js';
 import { registerOutboundDeliveryWorker } from './integrations/outbound-webhooks/delivery.js';
 import { integrationTargetRoutes } from './integrations/postman/target-routes.js';
@@ -91,9 +84,7 @@ import { mountIssueProjectRoutes, mountIssueRoutes } from './issues/mount.js';
 import { bodyRoutes } from './issues/routes.js';
 import { jobEventsListRoutes, jobEventsRoutes } from './jobs/events-routes.js';
 import { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './jobs/lifecycle-routes.js';
-import { registerPgBossHealthProbe } from './jobs/pgboss-health.js';
 import { jobProjectRoutes, jobRoutes, jobTestingSecretsRoutes } from './jobs/routes.js';
-import { registerStaleDetector } from './jobs/stale-detector.js';
 import { knowledgeIngestRoutes } from './knowledge/ingest-routes.js';
 import { knowledgeRoutes } from './knowledge/routes.js';
 import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
@@ -107,12 +98,7 @@ import { meAttentionRoutes } from './me/attention-routes.js';
 import { mePulseRoutes } from './me/pulse-routes.js';
 import { meRecentChangesRoutes } from './me/recent-changes-routes.js';
 import { registerChunkReindex } from './memory/chunk-reindex.js';
-import {
-  registerMemoryConsolidation,
-  registerMemoryReconcileWorker,
-} from './memory/consolidation.js';
-import { registerMemoryDecay } from './memory/decay.js';
-import { registerEmbeddingBackfill } from './memory/embedding-backfill.js';
+import { registerMemoryReconcileWorker } from './memory/consolidation.js';
 import { memoryListRoutes } from './memory/list-routes.js';
 import { memoryMineRoutes } from './memory/mine-routes.js';
 import { memorySearchRoutes } from './memory/search-routes.js';
@@ -137,22 +123,12 @@ import { hooks } from './pipeline/hooks.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
 import { registerOutboxWorker, stopOutboxWorker } from './pipeline/outbox-worker.js';
 import { registerPausedRunWedgeResolve } from './pipeline/paused-run-wedge-resolve.js';
-import { registerPhaseJournalBackfill } from './pipeline/phase-journal-backfill.js';
 import { registerPhaseJournalClose } from './pipeline/phase-journal-close.js';
 import { phaseRoutes } from './pipeline/phase-routes.js';
-import { registerReconciler } from './pipeline/reconciler.js';
 import { pipelineRegistryRoutes } from './pipeline/registry-routes.js';
-import { registerRetentionSweeper } from './pipeline/retention/sweep.js';
 import { pipelineRunProjectRoutes, pipelineRunReadRoutes } from './pipeline/runs-read-routes.js';
 import { pipelineRunRoutes } from './pipeline/runs-routes.js';
 import { stepHandoffRoutes } from './pipeline/step-handoff-routes.js';
-import { registerPipelineSweeper } from './pipeline/sweeper.js';
-import { registerPmCadenceTicker, unregisterPmCadenceTicker } from './pm/cadence.js';
-import {
-  registerPmEscalationSweeper,
-  unregisterPmEscalationSweeper,
-} from './pm/escalation-sweeper.js';
-import { registerPmQueuePressureSweeper } from './pm/queue-pressure.js';
 import { pmReadRoutes } from './pm/read-routes.js';
 import { pmRoutes } from './pm/routes.js';
 import { mountProjectConfig } from './project-config/mount.js';
@@ -167,14 +143,12 @@ import { promptRoutes } from './prompt/routes.js';
 import { questionRoutes } from './questions/routes.js';
 import { startBoss, stopBoss } from './queue/boss.js';
 import { releaseBatchRoutes } from './release-batch/routes.js';
-import { registerReleaseUnstartedRecovery } from './release-batch/unstarted-recovery.js';
+import { registerReleaseBatchFinish } from './release-batch/finish-job.js';
 import { mcpMessageBody, mcpNoBody, rootRoutes } from './root-routes.js';
 import { bootstrapRunnerAdapters } from './runners/bootstrap.js';
-import { registerGhostRunnerReaper } from './runners/ghost-reaper.js';
 import { runnerRoutes } from './runners/routes.js';
-import { registerRunnerStaleDetector } from './runners/stale-detector.js';
 import { scheduleRoutes } from './schedules/routes.js';
-import { registerScheduleTicker, unregisterScheduleTicker } from './schedules/runner.js';
+import { startTimers, stopTimers } from './schedules/timers.js';
 import { skillFactsRoutes } from './skill-facts/routes.js';
 import { skillActivityRoutes } from './skills/activity-routes.js';
 import { seedBuiltinSkills } from './skills/builtin-seed.js';
@@ -188,6 +162,7 @@ import { skillRegisterRoutes, skillSyncRoutes } from './skills/routes.js';
 import { skillSmokeVerifyRoutes } from './skills/smoke-verify-routes.js';
 import { skillStudioRoutes } from './skills/studio-routes.js';
 import { taskIssueRoutes, taskRoutes } from './tasks/routes.js';
+import { coreTimers } from './timer-registry.js';
 import { updatePacketRoutes } from './update-packets/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
 import { usageRecordRoutes } from './usage-records/routes.js';
@@ -246,11 +221,7 @@ export async function runShutdown(
     await closeWs();
     await closeBacklogStreams();
     await stopRocketChatManager();
-    await unregisterScheduleTicker();
-    await unregisterPmCadenceTicker();
-    await unregisterAgentCronTicker();
-    await unregisterPmEscalationSweeper();
-    await unregisterAssistantWeekly();
+    await stopTimers();
     await stopOutboxWorker();
     await stopBoss();
     await httpClosed;
@@ -440,33 +411,11 @@ if (isMain) {
   bootstrapChatProviders();
   registerWebConversationAdapter();
   bootstrapRunnerAdapters();
-  await registerStaleDetector();
-  await registerIntegrationsHealthSweep();
-  await registerDeviceStaleDetector();
-  await registerEmbeddingBackfill();
   await registerChunkReindex();
-  await registerMemoryDecay();
-  await registerMemoryConsolidation();
-  await registerAssistantWeekly();
   await registerMemoryReconcileWorker();
-  await registerDevicePrune();
-  await registerMasterReaper();
-  await registerRunSessionReaper();
-  await registerRunnerStaleDetector();
-  await registerGhostRunnerReaper();
   await registerContractMeasureWorker();
-  await registerRetentionSweeper();
-  await registerPipelineSweeper();
-  await registerReleaseUnstartedRecovery();
-  await registerPhaseJournalBackfill();
-  await registerPgBossHealthProbe();
+  await registerReleaseBatchFinish();
   await registerOutboundDeliveryWorker();
-  await registerScheduleTicker();
-  await registerPmCadenceTicker();
-  await registerAgentCronTicker();
-  await registerPmQueuePressureSweeper();
-  await registerTranscriptIndexSweeper();
-  await registerPmEscalationSweeper();
   registerWebhookSubscribers(hooks);
   registerPipelineOrchestrator(hooks);
   registerAnswerResume(hooks);
@@ -474,8 +423,6 @@ if (isMain) {
   registerPhaseJournalClose(hooks);
   registerPausedRunWedgeResolve(hooks);
   registerOutboxWorker();
-  await registerReconciler();
-  registerRunnerReleaseRefetch();
 
   const server = serve({ fetch: app.fetch, port }, (info) => {
     logger.info({ port: info.port }, '@forge/core listening');
@@ -486,6 +433,9 @@ if (isMain) {
   void startRocketChatManager().catch((err) =>
     logger.error({ err }, 'rocketchat: manager start failed'),
   );
+
+  await startTimers(coreTimers());
+  if (servesRunnerReleases()) void refreshMainRunnerHead();
 
   let shuttingDown = false;
   const shutdown = async (signal: string) => {

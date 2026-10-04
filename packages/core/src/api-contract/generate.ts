@@ -39,7 +39,7 @@ const api = buildApiContract(app.routes, {
   'x-forge-generator': GENERATOR,
 });
 
-const ctx = { principal: { userId: 'api-contract' }, deprecations: new Set<string>() };
+const ctx = { principal: { userId: 'api-contract' } };
 const mcp = buildMcpContract(toolListing(mcpTools(ctx as never)), {
   contract: 'forge-mcp',
   description: 'The MCP tools POST /mcp serves, as tools/list answers them, sorted by name.',

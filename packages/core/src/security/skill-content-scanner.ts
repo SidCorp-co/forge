@@ -32,7 +32,8 @@ export const INJECTION_MARKERS: Array<{ rule: string; marker: string }> = [
 
 const TERMINAL_AUTO_ADVANCE = {
   rule: 'dangerous.terminal-auto-advance',
-  pattern: /forge_issues?[._]update[\s\S]{0,80}status['"\s:]+(?:released|closed)/g,
+  pattern:
+    /(?:forge_issues?[._]update|issues\/\S+(?:\/transition)?['"]?\s+-X\s+(?:PATCH|POST))[\s\S]{0,80}(?:status|toStatus)['"\s:]+(?:released|closed)/g,
 };
 
 function maskSecret(match: string, prefixLen: number): string {

@@ -13,7 +13,8 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../../lib/authz.js';
+import { loadProjectAccess } from '../../lib/authz.js';
+import { egressForRequest } from '../../lib/data-egress.js';
 import {
   type AuthVars,
   assertEmailVerified,
@@ -25,6 +26,7 @@ import { zValidator } from '../../middleware/zod-validator.js';
 import { criteriaPutSchema, verdictPostSchema } from './input-schemas.js';
 import { listCriteria, putCriteria, recordVerdict } from './store.js';
 import { withCurrentDrafts } from './storefront-draft.js';
+import { requireHeld } from '../../permissions/index.js';
 
 const readCriteria = async (issue: { id: string; projectId: string }) =>
   withCurrentDrafts(issue.projectId, await listCriteria(db, issue.id));
@@ -38,14 +40,18 @@ const badInput = (r: { success: boolean; error?: z.core.$ZodError }) => {
   }
 };
 
-async function issueFor(id: string, userId: string, role: 'viewer' | 'member') {
+async function issueFor(
+  id: string,
+  userId: string,
+  permission: 'project.read' | 'project.write',
+) {
   const [issue] = await db
     .select({ id: issues.id, projectId: issues.projectId })
     .from(issues)
     .where(eq(issues.id, id))
     .limit(1);
   if (!issue) throw new HTTPException(404, { message: 'issue not found' });
-  assertProjectRole(await loadProjectAccess(issue.projectId, userId), role);
+  requireHeld(await loadProjectAccess(issue.projectId, userId), permission);
   return issue;
 }
 
@@ -59,8 +65,15 @@ issueCriteriaRoutes.get(
   zValidator('param', idParamSchema, badInput),
   async (c) => {
     const { id } = c.req.valid('param');
-    const issue = await issueFor(id, c.get('userId'), 'viewer');
-    return c.json({ criteria: await readCriteria(issue) });
+    const issue = await issueFor(id, c.get('userId'), 'project.read');
+    const criteria = await egressForRequest(
+      c.get('agency'),
+      issue.projectId,
+      'issue.criteria',
+      await readCriteria(issue),
+      `the criteria of ${issue.id}`,
+    );
+    return c.json({ criteria });
   },
 );
 
@@ -71,7 +84,7 @@ issueCriteriaRoutes.put(
   async (c) => {
     const { id } = c.req.valid('param');
     const { criteria } = c.req.valid('json');
-    const issue = await issueFor(id, c.get('userId'), 'member');
+    const issue = await issueFor(id, c.get('userId'), 'project.write');
     await db.transaction((tx) => putCriteria(tx, id, criteria));
     return c.json({ criteria: await readCriteria(issue) });
   },
@@ -84,7 +97,7 @@ issueCriteriaRoutes.post(
   async (c) => {
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
-    const issue = await issueFor(id, c.get('userId'), 'member');
+    const issue = await issueFor(id, c.get('userId'), 'project.write');
     const written = await db.transaction((tx) =>
       recordVerdict(tx, {
         issue,

@@ -246,16 +246,21 @@ A write a rule refuses answers **422** with one body, and nothing is written:
 
 ## Permissions (BC-20)
 
-- **One check**: `can(actor, permission, scope)` over the actor's project role and token grant.
-  Each route and tool action declares its permission in contracts, and REST and MCP read the same
-  declaration.
+- **One check**: `packages/core/src/permissions/can.ts:can(actor, permission, scope)` and its forms
+  (`holds` for a read flag, `requireHeld` / `requireCan` for a route, `permissionRefusal` for a rule
+  that returns its refusal). Nothing else reads a role, a grant or a token to decide who may act.
+- **One vocabulary**: `<resource>.<verb>` in `packages/contracts/src/permissions.ts:PERMISSIONS`.
+  A role is a permission set declared there as data (`ROLE_PERMISSIONS`, `ORG_ROLE_PERMISSIONS`);
+  a membership's grant (`project_members.grants`) adds permissions on its project beyond the role;
+  a token narrows what its holder reaches, and holds a permission in `TOKEN_EXPLICIT_PERMISSIONS`
+  only where its own grant names it.
 - **Approval is a permission**
-  ([ADR 0007](../adr/0007-approval-is-a-permission.md)): every approve-type act asks
-  `packages/core/src/lib/approval.ts:mayApprove` and refuses with
-  `packages/core/src/lib/approval.ts:approvalRefusal`. No rule refuses an actor for being an agent,
-  for being a person or for being the author; whoever holds the permission acts. The other
-  who-may-act checks (project roles in `lib/authz`, token grants, the MCP principal checks) move
-  onto the same `can()`.
+  ([ADR 0007](../adr/0007-approval-is-a-permission.md)): every approve-type act asks for
+  `<resource>.approve`. No rule refuses an actor for being an agent, for being a person or for being
+  the author; whoever holds the permission acts.
+- **One refusal**: a caller with a role that lacks the permission is refused `PERMISSION_FORBIDDEN`
+  in the 422 envelope, naming `permission` and `scope`; a caller with no role on the project is a
+  403 (transport).
 - **A slice never compares `agency`.** Agency is recorded on the row and read by no rule.
 
 ## External systems (BC-22)

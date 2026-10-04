@@ -279,10 +279,10 @@ each type owes, the lines each type owes, the edge kinds and what each carries, 
 project's other designs, and the template's rules. The canvas draws it from the template too, so the right
 template is also how the approver sees it right.
 
-${code('forge_workflows action=templates')} lists what this project may draw in (the built-ins, then its own);
-${code('action=template { templateId, templateVersion }')} returns one with a small example design that passes.
-Public, no credential: ${code('GET /api/workflow-templates')}, ${code('GET /api/workflow-templates/<id>/<version>')},
-the meta-schema ${code('GET /api/schemas/workflow-template-v1.json')}. A project's own: ${code('GET /api/projects/<id>/workflow-templates')}.
+${code('GET /api/projects/<id>/workflow-templates')} lists what this project may draw in (the built-ins, then its own);
+${code('GET /api/projects/<id>/workflow-templates/<templateId>/<version>')} returns one with a small example design that passes.
+The built-ins, public and with no credential: ${code('GET /api/workflow-templates')}, ${code('GET /api/workflow-templates/<id>/<version>')},
+and the meta-schema ${code('GET /api/schemas/workflow-template-v1.json')}.
 
 ### Which template
 

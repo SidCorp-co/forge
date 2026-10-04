@@ -27,24 +27,6 @@ export interface SeedResult {
   changes: SeedChange[];
 }
 
-/**
- * Snapshot of the most recent {@link seedBuiltinSkills} run, exposed via
- * `forge_health` (ISS-7). Excludes `changes` because the per-skill detail is
- * verbose and only meaningful to the boot wiring that just consumed it.
- */
-export interface LastSeedSnapshot {
-  inserted: number;
-  updated: number;
-  unchanged: number;
-  at: Date;
-}
-
-let lastSeedResult: LastSeedSnapshot | null = null;
-
-export function getLastSeedResult(): LastSeedSnapshot | null {
-  return lastSeedResult;
-}
-
 export interface SeedOptions {
   /**
    * Override the directory scanned for `forge-*` subdirectories. Defaults to
@@ -269,13 +251,6 @@ export async function seedBuiltinSkills(db: Db, options: SeedOptions = {}): Prom
   } else {
     logger.debug({ ...result }, 'seedBuiltinSkills: all built-in skills up to date');
   }
-
-  lastSeedResult = {
-    inserted: result.inserted,
-    updated: result.updated,
-    unchanged: result.unchanged,
-    at: new Date(),
-  };
 
   return result;
 }

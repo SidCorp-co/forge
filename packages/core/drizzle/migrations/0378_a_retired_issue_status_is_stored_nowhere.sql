@@ -61,8 +61,7 @@ ALTER TABLE "issue_work_state" DROP COLUMN "legacy_status";
 
 -- A schedule fire settles in its session's own kernel move (`agent-sessions/session-transition.ts`),
 -- so the trigger that wrote `schedule_runs.status` behind it is dropped. A session row deleted under
--- a running fire is no move of any machine, so that case keeps a trigger, which no longer writes
--- `schedules.last_status`: a schedule's last status is read from its newest fire and never stored.
+-- a running fire is no move of any machine, so that case alone keeps a trigger.
 DROP TRIGGER IF EXISTS trg_agent_sessions_stop_settles_its_fire ON agent_sessions;--> statement-breakpoint
 DROP TRIGGER IF EXISTS trg_agent_sessions_delete_settles_its_fire ON agent_sessions;--> statement-breakpoint
 DROP FUNCTION IF EXISTS forge_session_stop_settles_its_fire();--> statement-breakpoint
@@ -78,5 +77,4 @@ $$ LANGUAGE plpgsql;--> statement-breakpoint
 CREATE TRIGGER trg_agent_sessions_delete_settles_its_fire
   BEFORE DELETE ON agent_sessions
   FOR EACH ROW
-  EXECUTE FUNCTION forge_session_delete_settles_its_fire();--> statement-breakpoint
-ALTER TABLE "schedules" DROP COLUMN "last_status";
+  EXECUTE FUNCTION forge_session_delete_settles_its_fire();

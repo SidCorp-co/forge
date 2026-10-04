@@ -48,9 +48,9 @@ change notice owes nothing and is not listed; read it in \`inbox\` when the pass
    it waits, and comes back if the admin returns it — then \`edit\` it as the note asks and \`submit\`
    again.
 4. If a change notice moves a contract this project consumes, keep the link true:
-   \`forge_ecosystem action=links\`, then \`link_update\` with the \`baseRevision\` you read. A link is
-   written only by the consuming project's own agent; any other credential is refused
-   \`LINK_WRITER_NOT_CONSUMER\`, and a person never writes one.
+   \`forge_ecosystem action=links\`, then \`link_update\` with the \`baseRevision\` you read. A link takes
+   \`ecosystem-links.write\` on the consuming project (member or above); without it the write is
+   \`PERMISSION_FORBIDDEN\`.
 
 ### Working a builder run
 Joining an ecosystem opens a builder run for the joining project (trigger \`joined\`), and a push to its
@@ -89,17 +89,17 @@ The box sees an open run in the same sweep (\`builderRuns\` beside the channel's
    interface — it is never left standing silently.
 
 A project works one run per ecosystem at a time: opening another while one is open is refused
-\`BUILDER_RUN_ALREADY_OPEN\`; update the open one instead. Only this project's own agent writes its
-runs; a person, a viewer or another project's master is refused \`BUILDER_RUN_WRITER_NOT_PROJECT\`.
+\`BUILDER_RUN_ALREADY_OPEN\`; update the open one instead. Writing a run takes
+\`ecosystem-links.write\` on this project; without it the write is \`PERMISSION_FORBIDDEN\`.
 
 A run whose steps no longer match its project's source type (the bus shows it \`stepsStale: true\`),
 or one that can never finish truly, is replaced, not worked: \`forge_ecosystem
 action=builder_run_supersede { run, reason }\` (REST \`POST
 /api/ecosystems/:id/builder-runs/:runId/supersede { reason }\`). It closes the open run (its unfinished
 steps \`superseded\`, the run naming \`supersededBy { run, reason }\`) and opens a fresh one, trigger
-\`manual\`, with the steps the current source type derives, and wakes this project's master. It is
-the project's own master's, or an org admin's of the steward or of the project's org; anyone else is
-refused \`BUILDER_RUN_SUPERSEDE_NOT_AUTHORISED\`, a run already finished \`BUILDER_RUN_NOT_OPEN\`, no
+\`manual\`, with the steps the current source type derives, and wakes this project's master. It takes
+\`project.write\` on the project, or org admin of the steward org; anyone else is refused
+\`PERMISSION_FORBIDDEN\`, a run already finished \`BUILDER_RUN_NOT_OPEN\`, no
 reason \`BUILDER_RUN_SUPERSEDE_WITHOUT_REASON\`. A superseded run is closed: a write to it is refused
 \`BUILDER_RUN_SUPERSEDED\`.
 
@@ -113,11 +113,10 @@ publishes and the versions of its contracts, and a person is not handed that wor
    from the deployed branch at each land, and an upload to it is refused \`ARTIFACT_MEASURED_FROM_GIT\`).
 2. \`commitments\` are this project's promise to its consumers: the versioning scheme, the days of notice
    before a breaking change takes effect (\`deprecationNoticeDays\`), and the days it answers an RFI or a
-   change request in (\`responseDays\`). Propose the windows the project can keep; they are stored as you
-   wrote them and the API page shows them as set by the agent. A person holding admin may overwrite them,
-   and from then on an interface write of yours that moves them is refused
-   \`COMMITMENTS_SET_BY_PERSON\` — send them back as they stand. The read answers
-   \`commitmentsSetBy { agency, revision }\`.
+   change request in (\`responseDays\`). Propose the windows the project can keep; the first ones are stored as you
+   wrote them. Moving commitments that are already set takes \`commitments.write\`, which a token holds
+   only where its own grant names it, so without it send them back as they stand
+   (\`PERMISSION_FORBIDDEN\` otherwise). The read answers \`commitmentsSetBy { agency, revision }\`.
 3. Upload each version: \`contract_version_publish { contract, version, kind, source, sourceRef }\`
    (REST: \`POST /api/projects/:id/contracts/:contract/versions { version, kind, artifact, sourceRef }\`).
    - \`kind\` is the publication's type: \`graphql\` takes the SDL text; \`mcp-tools\` takes
@@ -132,7 +131,7 @@ publishes and the versions of its contracts, and a person is not handed that wor
    member is a warning; and a breaking type change is also named under each operation reaching it
    (\`Query.products.variants.price\`), which is what a consumer's link names in \`fieldsUsed\`
    (\`products.variants.price\`). A tools contract's elements are each tool and its input properties
-   (\`forge_issues.get/properties/id\`).
+   (\`<tool>/properties/<input>\`).
    Refused by name, nothing recorded: \`CONTRACT_KIND_UNKNOWN\` (a kind core does not index),
    \`CONTRACT_KIND_MISMATCH\` (not the publication's type), \`ARTIFACT_UNREADABLE\` (the source does not
    parse; the detail names the line and column), \`VERSION_BUMP_TOO_SMALL\` or \`VERSION_NOT_IN_SCHEME\`,
@@ -146,15 +145,14 @@ publishes and the versions of its contracts, and a person is not handed that wor
    in-project: the project's own modules consume it (a \`consumes\` entry or a link naming no
    ecosystem), and naming an ecosystem for it is refused \`SELF_CONSUMPTION\`.
 
-Only this project's own agent (member or above) or a person holding admin on it writes either; another
-project's agent is refused \`INTERFACE_WRITER_NOT_PROJECT\` for the interface and
-\`CONTRACT_WRITER_NOT_PROVIDER\` for a version.
+Writing either takes \`contracts.write\` on this project (member or above); without it the write is
+\`PERMISSION_FORBIDDEN\`.
 
 ### Issue comments
 A comment a person writes on one of this project's issues is owed a reply until an agent comments on
 that issue after it — a master's reply, or a run's. It is owed at every status but \`closed\` and
 \`dropped\`, so it reaches you on an issue at \`in_progress\` or \`awaiting_release\` that no admissible
-read lists. The nudge names those issues. Read each thread (\`forge_comments action=list\`), answer
+read lists. The nudge names those issues. Read each thread (\`GET /api/issues/:id/comments\`), answer
 on the issue, and move the issue when the comment asks for it. Your reply is what takes it off the
 list: a comment read and left unanswered is still owed on the next pass. An agent's own comment is
 never owed.

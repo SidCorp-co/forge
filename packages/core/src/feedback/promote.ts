@@ -10,7 +10,7 @@ import { db, type Tx } from '../db/client.js';
 import { agentReports, issues, projects } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { assertProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
+import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import type { NamedRefusal } from '../project-config/respond.js';
@@ -18,6 +18,7 @@ import { embedFeedbackLater } from './embeddings.js';
 import { detailAs, type FeedbackActor, feedbackKey, notFound, rowIn } from './read.js';
 import { promoteRefusal } from './rules.js';
 import { decide, insertFeedbackIn, inTx, lockFeedback, preparedFeedback } from './service.js';
+import { requireCan } from '../permissions/index.js';
 
 export type PromoteOutcome =
   | { ok: true; feedback: FeedbackView; effect: FeedbackPromoteEffect }
@@ -86,7 +87,7 @@ export async function promoteAgentReport(input: {
   request: PromoteAgentReportRequest;
 }): Promise<PromoteOutcome> {
   const { projectId, actor, request } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const [report] = await db
     .select()
     .from(agentReports)

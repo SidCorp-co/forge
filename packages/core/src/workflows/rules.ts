@@ -1,8 +1,5 @@
 import type { WorkflowTemplate } from '@forge/contracts/workflow-templates';
-import type { ProjectMemberRole } from '../db/schema.js';
 import { REPO_PATH_MESSAGE } from '../ecosystem/link-schema.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
-import { actMiss, PROJECT_AGENT_WRITE } from '../lib/person-act.js';
 import {
   type ApiRefusal,
   isRecord,
@@ -19,7 +16,6 @@ import {
 import { type ProjectDesigns, templateOf, templateRefusals } from './template-check.js';
 
 export type WorkflowRefusalCode =
-  | 'WORKFLOW_WRITER_NOT_PROJECT'
   | 'WORKFLOW_KIND_UNKNOWN'
   | 'WORKFLOW_STEP_DUPLICATE'
   | 'WORKFLOW_AFTER_DANGLING'
@@ -84,7 +80,7 @@ const ENUM_RENAMES: readonly [RegExp, WorkflowRefusalCode, string][] = [
   [
     /^\/template$/,
     'WORKFLOW_TEMPLATE_MISSING',
-    'a version 2 design names the diagram template it is drawn in, `template: { id, version }` — e.g. { id: "operational-flow", version: 1 }; GET /api/workflow-templates lists the built-ins and forge_guide get workflow-templates says how to pick one',
+    'a version 2 design names the diagram template it is drawn in, `template: { id, version }` — e.g. { id: "operational-flow", version: 1 }; GET /api/workflow-templates lists the built-ins and GET /api/guides/workflow-templates.md says how to pick one',
   ],
 ];
 
@@ -121,30 +117,6 @@ export function parseWorkflow(raw: unknown, projectId: string): CheckedWorkflow 
   if (!parsed.ok)
     return { ok: false, refusals: [...owner, ...renameParseRefusals(parsed.refusals)] };
   return owner.length > 0 ? { ok: false, refusals: owner } : parsed;
-}
-
-export interface WorkflowWriterFacts {
-  userId: string;
-  agency: ActorAgency;
-  role: ProjectMemberRole | null;
-}
-
-// cm:why a diagram is the project's own reading of its own code, like an ecosystem link: only that project's agent (its master or a run it dispatched) writes it, never a person and never another project's agent
-export function workflowWriterRefusal(
-  facts: WorkflowWriterFacts,
-  projectId: string,
-): WorkflowRefusal | null {
-  const miss = actMiss(facts, PROJECT_AGENT_WRITE);
-  if (!miss) return null;
-  const held =
-    miss.kind === 'person-not-allowed'
-      ? `${facts.userId} acts as a person`
-      : `agent ${facts.userId} holds ${facts.role ?? 'no role'} on project ${projectId}`;
-  return {
-    code: 'WORKFLOW_WRITER_NOT_PROJECT',
-    path: '',
-    detail: `${held}; a workflow is written only by project ${projectId}'s own agent holding member or above, through a token that reaches the project. Nothing generates it and no person edits it.`,
-  };
 }
 
 function duplicateSteps(steps: readonly AnyWorkflowStep[]): WorkflowRefusal[] {

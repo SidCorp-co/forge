@@ -2430,6 +2430,13 @@
       "when": 1815609600000,
       "tag": "0378_a_membership_carries_a_grant_of_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 379,
+      "version": "7",
+      "when": 1815696000000,
+      "tag": "0379_one_scheduler_and_a_schedules_last_fire_is_read",
+      "breakpoints": true
     }
   ]
 }

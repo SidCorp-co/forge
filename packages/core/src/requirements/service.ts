@@ -22,7 +22,6 @@ import {
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { staleOnTargetRevised } from '../suggestions/stale.js';
@@ -68,6 +67,7 @@ import {
   staleBaseRefusal,
   stateRefusal,
 } from './rules.js';
+import { requireCan } from '../permissions/index.js';
 
 async function readinessGateOf(projectId: string): Promise<RequirementReadinessGate> {
   const doc = await readProjectDocument(projectId);
@@ -132,7 +132,7 @@ export async function createRequirement(input: {
   write: RevisionWrite;
 }): Promise<RequirementOutcome> {
   const { projectId, actor, write } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const early = reasonRefusal(write.reason);
   if (early) return { ok: false, refusals: [early] };
   let id = '';
@@ -158,7 +158,7 @@ export async function writeRevision(input: {
   write: RevisionWrite;
 }): Promise<RequirementOutcome> {
   const { projectId, actor, write } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const early = reasonRefusal(write.reason);
   if (early) return { ok: false, refusals: [early] };
   const row = await rowIn(db, projectId, input.ref);
@@ -245,7 +245,7 @@ export async function proposeRevision(input: {
   revision: number;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const row = await rowIn(db, projectId, input.ref);
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);

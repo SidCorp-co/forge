@@ -146,17 +146,13 @@ through Forge and merged through the kernel door leaves a row and stamps the com
 `LANDINGS_ACCEPTED.git` narrows to `['observed']`. Narrowing the constant is the whole change;
 every door is gated on membership of it, so nothing else moves.
 
-## Why the tests run at the route and at the handler
+## Why a test runs at the route
 
 ISS-1126's criterion 14 names the surfaces of criteria 3 to 7: `POST|DELETE
-/api/issues/:id/merge`, and `forge_issues`'s `get`, `list` and `mark_merged`. A test that
-called `applyMergeMarker` or a serializer directly proves those helpers and nothing about
-the runtime the criterion names — a route that dropped `mark` from its `c.json`, or a
-handler that mapped every row through one reading, would stay green through it. So
-`packages/core/src/issues/merge-mark-route.test.ts` mounts the Hono routes and
-`packages/core/src/mcp/tools/forge-issues-merge-mark.test.ts` calls the tool factory's own
-handler. `packages/core/src/issues/merge-mark-surfaces.test.ts` keeps the helpers' own
-property, which is a different claim.
+/api/issues/:id/merge` and the issue reads that answer the mark. A test that called
+`applyMergeMarker` or a serializer directly proves those helpers and nothing about the runtime
+the criterion names — a route that dropped `mark` from its `c.json` would stay green through
+it. So a test of the mark mounts the Hono routes; one of the helpers alone is a different claim.
 
 The observed branch is only ever exercised under a mocked projection: on any database
 here `repo_pull_requests` is empty, so the branch is unreachable in the field.

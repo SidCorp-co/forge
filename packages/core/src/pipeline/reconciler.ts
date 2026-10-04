@@ -24,7 +24,6 @@ import {
   wedgeLeaseUnderLock,
 } from './wedge-lease.js';
 
-const RECONCILER_QUEUE = 'pipeline-reconciler';
 const STALE_OUTBOX_INTERVAL = '5 minutes';
 const STUCK_ISSUE_INTERVAL = '60 seconds';
 const STUCK_ISSUE_LIMIT = 100;
@@ -32,8 +31,6 @@ const STUCK_ISSUE_LIMIT = 100;
 const WEDGE_GRACE = '10 minutes';
 const WEDGE_RESET_LIMIT = 50;
 const WEDGE_SCAN_PAGE = 200;
-
-let registered = false;
 
 export async function runReconcilerOnce(): Promise<{
   rescued: number;
@@ -306,28 +303,4 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
     );
     return false;
   }
-}
-
-/**
- * Register the pg-boss `* * * * *` schedule. Idempotent. Lazy-imports
- * pg-boss so test loaders that don't touch the queue can still resolve
- * this module.
- */
-export async function registerReconciler(): Promise<void> {
-  if (registered) return;
-  const { boss } = await import('../queue/boss.js');
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).createQueue(RECONCILER_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).work(RECONCILER_QUEUE, async () => {
-    try {
-      await runReconcilerOnce();
-    } catch (err) {
-      logger.error({ err }, 'reconciler: tick failed');
-      throw err;
-    }
-  });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).schedule(RECONCILER_QUEUE, '* * * * *');
-  registered = true;
 }

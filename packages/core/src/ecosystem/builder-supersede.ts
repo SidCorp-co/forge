@@ -2,7 +2,7 @@
 
 import { db } from '../db/client.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { effectiveProjectRole } from '../lib/authz.js';
+import { permissionFactsOf } from '../permissions/index.js';
 import { wakeMastersForBuild } from '../ws/master-wake.js';
 import { notFound, stewardRole } from './access.js';
 import { owedTrigger } from './builder-head.js';
@@ -53,15 +53,9 @@ export async function supersedeBuilderRun(input: {
   }
   const projectId = row.projectId;
   const eco = await loadEcosystem(row.ecosystemId);
-  const access = await effectiveProjectRole(actor.userId, projectId);
   const denied = supersederRefusal(
-    {
-      ...actor,
-      projectRole: access?.role ?? null,
-      projectOrgRole: access?.orgRole ?? null,
-      stewardRole: await stewardRole(eco.stewardOrgId, actor.userId),
-    },
-    projectId,
+    await permissionFactsOf(actor.userId, projectId),
+    await stewardRole(eco.stewardOrgId, actor.userId),
   );
   if (denied) return refusedWith(denied);
   const closed = notOpenRefusal(runId, storedBuilderRun(row));

@@ -3101,15 +3101,6 @@
                       }
                     ]
                   },
-                  "schedule": {
-                    "enum": [
-                      "off",
-                      "weekly",
-                      "biweekly",
-                      "monthly"
-                    ],
-                    "type": "string"
-                  },
                   "type": {
                     "maxLength": 200,
                     "minLength": 1,
@@ -3314,15 +3305,6 @@
                         "type": "null"
                       }
                     ]
-                  },
-                  "schedule": {
-                    "enum": [
-                      "off",
-                      "weekly",
-                      "biweekly",
-                      "monthly"
-                    ],
-                    "type": "string"
                   },
                   "type": {
                     "maxLength": 200,
@@ -16952,6 +16934,12 @@
                             "tasks:write",
                             "update-packets:read",
                             "update-packets:write",
+                            "questionnaires.answer",
+                            "onboarding.request",
+                            "charter.write",
+                            "commitments.write",
+                            "feedback.redact",
+                            "comments.moderate",
                             "*"
                           ],
                           "type": "string"
@@ -22226,6 +22214,37 @@
           "json",
           "param"
         ]
+      }
+    },
+    "/api/projects/{id}/guides/{slug}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth"
+        ],
+        "x-forge-validated": []
       }
     },
     "/api/projects/{id}/interface": {
@@ -32579,6 +32598,12 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "grants": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "role": {
                     "enum": [
                       "admin",
@@ -32588,10 +32613,10 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "role"
-                ],
-                "type": "object"
+                "type": "object",
+                "x-forge-refinements": [
+                  "send role, grants or both"
+                ]
               }
             }
           },
@@ -32658,18 +32683,6 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
-                  "cadenceCron": {
-                    "anyOf": [
-                      {
-                        "maxLength": 120,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
                   "customInstructions": {
                     "anyOf": [
                       {
@@ -33363,6 +33376,164 @@
                   }
                 },
                 "required": [
+                  "reason"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/reconcile-runs/{runId}/verdict": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "candidateBody": {
+                    "type": "string"
+                  },
+                  "gate": {
+                    "enum": [
+                      "auto",
+                      "human"
+                    ],
+                    "type": "string"
+                  },
+                  "rationale": {
+                    "maxLength": 5000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "verdict": {
+                    "enum": [
+                      "no-op",
+                      "apply",
+                      "apply-with-adaptation",
+                      "escalate"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "verdict",
+                  "rationale",
+                  "gate"
+                ],
+                "type": "object",
+                "x-forge-refinements": [
+                  "candidateBody is required when verdict is apply or apply-with-adaptation"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/reconcile-runs/{runId}/votes": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "jobId": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "maxLength": 2000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "vote": {
+                    "enum": [
+                      "pass",
+                      "fail"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "jobId",
+                  "vote",
                   "reason"
                 ],
                 "type": "object"
@@ -36773,6 +36944,9 @@
                     },
                     "type": "array"
                   },
+                  "installOnly": {
+                    "type": "boolean"
+                  },
                   "localGuide": {
                     "anyOf": [
                       {
@@ -38096,6 +38270,37 @@
         "x-forge-validated": [
           "query"
         ]
+      }
+    },
+    "/projects/{id}/guides/{slug}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth"
+        ],
+        "x-forge-validated": []
       }
     },
     "/version": {
