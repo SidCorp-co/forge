@@ -71,7 +71,16 @@ The choices inside that, and why:
   contracts can be checked against its approved state-machine design; a status written in one
   engine, with one record and one event in one transaction, cannot drift between a record, an
   activity row, an outbox row and a push. 26 of 27 in-memory hook topics were lost on a crash; the
-  outbox makes every reaction durable, and an event nobody consumes is not emitted.
+  outbox makes every reaction durable, and an event nobody consumes is not emitted. Durable is not
+  enough on its own: a single row with one shared attempt counter let one failing consumer spend the
+  retries of every other, gave up after three quick attempts, and left the row unprocessed for ever
+  with nobody told, which breaks `VISION: state-never-lies`. So each consumer has its own delivery
+  row, which is also its inbox, retries back off over hours, and a delivery that runs out ends
+  `dead`, listed, alerted and replayable. pg-boss, already a core dependency, was weighed for this
+  and covers roughly 60% of it: it sends in a transaction, keeps queues independent, backs off and
+  prunes, but it keeps no order per issue through a retry, renews no lease, and archives a failed
+  job out of sight after a retention window, so a dead delivery would stop being visible before
+  anyone replayed it.
 - **Refusals stay one envelope**, and the error-class and `HTTPException` shapes are retired rather
   than mapped, because a client that has to read four shapes reads none of them reliably.
 - **Permission is [ADR 0007](0007-approval-is-a-permission.md)'s**, not restated here: approval

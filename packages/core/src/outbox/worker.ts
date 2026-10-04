@@ -96,7 +96,7 @@ async function markDelivered(tx: Tx, row: ClaimedRow): Promise<boolean> {
   return marked.length > 0;
 }
 
-export function retryDelayMs(attempt: number, random: () => number = Math.random): number {
+function retryDelayMs(attempt: number, random: () => number = Math.random): number {
   const base = Math.min(OUTBOX_RETRY_BASE_MS * 2 ** Math.max(0, attempt - 1), OUTBOX_RETRY_CAP_MS);
   return Math.round(base * (0.75 + random() * 0.5));
 }
@@ -119,6 +119,8 @@ async function recordFailure(row: ClaimedRow, error: string): Promise<boolean> {
 }
 
 async function runDelivery(row: ClaimedRow): Promise<'delivered' | 'failed' | 'dead' | 'lost'> {
+  // A row claimed in a batch may wait for a lane past its lease; it starts only while still held.
+  if (!(await renewLease(row))) return 'lost';
   let marked = false;
   const delivery: Delivery = {
     id: row.id,
@@ -151,8 +153,8 @@ async function runDelivery(row: ClaimedRow): Promise<'delivered' | 'failed' | 'd
   }, HEARTBEAT_MS);
   heartbeat.unref?.();
 
+  const consumer = consumerOf(row.type, row.consumer);
   try {
-    const consumer = consumerOf(row.type, row.consumer);
     if (!consumer) throw new Error(`no consumer \`${row.consumer}\` is registered for \`${row.type}\``);
     await consumer.handle(row.payload, delivery);
     if (marked) return 'delivered';
@@ -173,6 +175,11 @@ async function runDelivery(row: ClaimedRow): Promise<'delivered' | 'failed' | 'd
       level: died ? 'error' : 'warning',
       data: { deliveryId: row.id, type: row.type, consumer: row.consumer, attempt: row.attempts, error },
     });
+    if (died && consumer?.onDeadLetter) {
+      await consumer.onDeadLetter(row.payload, error, delivery).catch((hookErr: unknown) =>
+        logger.error({ err: hookErr, deliveryId: row.id }, 'outbox: dead-letter handler failed'),
+      );
+    }
     return died ? 'dead' : 'failed';
   } finally {
     clearInterval(heartbeat);

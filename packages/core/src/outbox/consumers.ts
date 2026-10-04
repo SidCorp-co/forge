@@ -31,11 +31,17 @@ export interface Delivery {
 export interface Consumer<T extends OutboxEventType> {
   name: OutboxConsumerOf<T>;
   handle: (payload: OutboxEventPayload<T>, delivery: Delivery) => Promise<void> | void;
+  /**
+   * Runs once when this consumer's delivery goes `dead`, to settle a row of the consumer's own that
+   * would otherwise wait on it for ever. The alert is the outbox's, not this hook's.
+   */
+  onDeadLetter?: (payload: OutboxEventPayload<T>, error: string, delivery: Delivery) => Promise<void>;
 }
 
 type AnyConsumer = {
   name: string;
   handle: (payload: unknown, delivery: Delivery) => Promise<void> | void;
+  onDeadLetter?: (payload: unknown, error: string, delivery: Delivery) => Promise<void>;
 };
 
 const registry = new Map<OutboxEventType, Map<string, AnyConsumer>>();
