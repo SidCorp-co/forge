@@ -36,18 +36,12 @@ export type DockDoor = () => Promise<ChatTarget | null>;
 
 const ChatDockContext = createContext<ChatDockApi | null>(null);
 
-export function useChatDockState(projectId: string | null): ChatDockApi {
+// cm:why the dock remembers the page it was opened on, so a new page — reached in the app or loaded
+// afresh — finds it closed unless pinned (REQ-11 BC-8); a query change (a peek opening) is the same page
+function useDockOpen() {
   const [openOn, setOpenOn] = usePersistedState<string | null>(DOCK_OPEN_ON_KEY, null, { syncTabs: false });
-  const [storedWidth, setStoredWidth] = usePersistedState(DOCK_WIDTH_KEY, defaultDockWidth(), { syncTabs: false });
   const [pinned, setPinnedState] = usePersistedState(DOCK_PINNED_KEY, false, { syncTabs: false });
   const pathname = usePathname() ?? "";
-  const [picked, setPicked] = useState<ChatTarget | null>(null);
-  const [generation, setGeneration] = useState(0);
-  const door = useRef<DockDoor | null>(null);
-  const target = targetInScope(picked, projectId);
-
-  // cm:why the dock remembers the page it was opened on, so a new page — reached in the app or loaded
-  // afresh — finds it closed unless pinned (REQ-11 BC-8); a query change (a peek opening) is the same page
   const open = openOn !== null && (pinned || openOn === pathname);
   useEffect(() => {
     if (openOn !== null && !pinned && openOn !== pathname) setOpenOn(null);
@@ -63,6 +57,16 @@ export function useChatDockState(projectId: string | null): ChatDockApi {
     },
     [open, pathname, setOpenOn, setPinnedState],
   );
+  return { open, pinned, setOpen, setPinned };
+}
+
+export function useChatDockState(projectId: string | null): ChatDockApi {
+  const { open, pinned, setOpen, setPinned } = useDockOpen();
+  const [storedWidth, setStoredWidth] = usePersistedState(DOCK_WIDTH_KEY, defaultDockWidth(), { syncTabs: false });
+  const [picked, setPicked] = useState<ChatTarget | null>(null);
+  const [generation, setGeneration] = useState(0);
+  const door = useRef<DockDoor | null>(null);
+  const target = targetInScope(picked, projectId);
 
   const select = useCallback((t: ChatTarget) => {
     setPicked(t);

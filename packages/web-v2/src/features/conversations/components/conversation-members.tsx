@@ -23,8 +23,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useRemoveParticipant } from "../hooks";
 import { agentsOf, initialsOf, peopleOf, removalClaim, scopeDerivation } from "../membership";
 import type { ConversationMembership, ConversationParticipant } from "../types";
-import { AddAgentDialog } from "./add-agent-dialog";
-import { AddPersonDialog } from "./add-person-dialog";
+import { AddAgentDialog, AddPersonDialog } from "./add-member-dialog";
 
 export function ConversationMembers({
   conversationId,
@@ -61,51 +60,38 @@ export function ConversationMembers({
             </div>
           )}
 
-          <Section
-            title="Agents"
-            hint="What this room can see comes from these."
-            action={
-              canChange ? (
-                <Button size="sm" variant="secondary" icon="plus" onClick={() => setAddingAgent(true)}>
-                  Add agent
-                </Button>
-              ) : null
-            }
-          >
-            {agents.map((agent) => (
-              <MemberRow
-                key={agent.id}
-                member={agent}
-                room={room}
-                canChange={canChange}
-                busy={remove.isPending}
-                onRemove={() => remove.mutate({ participantId: agent.id })}
-              />
-            ))}
-          </Section>
-
-          <Section
-            title="People"
-            hint="Who can read this room."
-            action={
-              canChange ? (
-                <Button size="sm" variant="secondary" icon="plus" onClick={() => setAddingPerson(true)}>
-                  Add person
-                </Button>
-              ) : null
-            }
-          >
-            {people.map((person) => (
-              <MemberRow
-                key={person.id}
-                member={person}
-                room={room}
-                canChange={canChange}
-                busy={remove.isPending}
-                onRemove={() => remove.mutate({ participantId: person.id })}
-              />
-            ))}
-          </Section>
+          {(
+            [
+              ["Agents", "What this room can see comes from these.", "Add agent", agents, () => setAddingAgent(true)],
+              ["People", "Who can read this room.", "Add person", people, () => setAddingPerson(true)],
+            ] as const
+          ).map(([title, hint, addLabel, members, onAdd]) => (
+            <section key={title} className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <SectionTitle className="fg-overline text-subtle">{title}</SectionTitle>
+                  <p className="fg-caption text-subtle">{hint}</p>
+                </div>
+                {canChange && (
+                  <Button size="sm" variant="secondary" icon="plus" onClick={onAdd}>
+                    {addLabel}
+                  </Button>
+                )}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {members.map((member) => (
+                  <MemberRow
+                    key={member.id}
+                    member={member}
+                    room={room}
+                    canChange={canChange}
+                    busy={remove.isPending}
+                    onRemove={() => remove.mutate({ participantId: member.id })}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
         </div>
       </SlideOver>
 
@@ -125,34 +111,7 @@ export function ConversationMembers({
   );
 }
 
-function Section({
-  title,
-  hint,
-  action,
-  children,
-}: {
-  title: string;
-  hint: string;
-  action: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1">
-          <SectionTitle className="fg-overline text-subtle">{title}</SectionTitle>
-          <p className="fg-caption text-subtle">{hint}</p>
-        </div>
-        {action}
-      </div>
-      <div className="flex flex-col gap-1.5">{children}</div>
-    </section>
-  );
-}
-
-/**
- * One member, in the shape its kind gets.
- */
+/** One member, in the shape its kind gets. */
 function MemberRow({
   member,
   room,

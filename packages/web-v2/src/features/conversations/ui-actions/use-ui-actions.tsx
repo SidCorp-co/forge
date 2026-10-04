@@ -87,6 +87,14 @@ export function useUiSnapshot(slug: string | undefined) {
  * Applies each ui_* call the assistant makes in this room, once, as it arrives — from the live turn or
  * the settled row, whichever lands first — and keeps what each did so its card can undo it.
  */
+/** Every UI call the thread holds, the running turn's included. */
+function callsIn(messages: readonly ConversationMessage[], progress: ConversationProgressEntry | null | undefined) {
+  return [
+    ...messages.flatMap((m) => uiCallsOf(m.id, m.blocks)),
+    ...(progress ? uiCallsOf(progress.entry.id ?? "live", progress.entry.blocks as CanonicalBlock[]) : []),
+  ];
+}
+
 export function useUiActions(args: {
   slug: string;
   ready: boolean;
@@ -115,10 +123,7 @@ export function useUiActions(args: {
 
   useEffect(() => {
     if (!args.ready) return;
-    const calls = [
-      ...args.messages.flatMap((m) => uiCallsOf(m.id, m.blocks)),
-      ...(args.progress ? uiCallsOf(args.progress.entry.id ?? "live", args.progress.entry.blocks as CanonicalBlock[]) : []),
-    ];
+    const calls = callsIn(args.messages, args.progress);
     if (history.current === null) history.current = new Set(calls.map((c) => c.callId));
     const seen = history.current;
     const fresh = calls.filter((c) => !records[c.callId] && !applied.current.has(c.callId));
