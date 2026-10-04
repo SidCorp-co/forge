@@ -55,6 +55,7 @@ import { identSearchColumn, MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './s
 export { MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
 import type { DecisionFields } from '@forge/contracts/comments';
+import { MASTER_JOB_PANES_MAX } from '@forge/contracts/master-standing';
 import { BODY_FORMATS } from '../body/formats.js';
 import type { IssueBranchOverride } from '../branches/resolve.js';
 import { COMMENT_INTENTS } from '../issues/record-events/kinds.js';
@@ -467,6 +468,9 @@ export const devices = pgTable(
      */
     gateReport: jsonb('gate_report'),
     maxConcurrent: integer('max_concurrent').notNull().default(1),
+    // cm:why the runner declares its job-pane ceiling and core holds no default (design agent-run-standing):
+    // NULL is undeclared, served as such by masters/standing, never a guessed number
+    maxJobPanes: integer('max_job_panes'),
     gitCredentialRef: text('git_credential_ref'),
     machineId: text('machine_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -474,6 +478,10 @@ export const devices = pgTable(
   (t) => ({
     ownerIdIdx: index('devices_owner_id_idx').on(t.ownerId),
     ownerMachineIdx: index('devices_owner_machine_idx').on(t.ownerId, t.machineId),
+    maxJobPanesChk: check(
+      'devices_max_job_panes_chk',
+      sql`${t.maxJobPanes} IS NULL OR ${t.maxJobPanes} BETWEEN 1 AND ${sql.raw(String(MASTER_JOB_PANES_MAX))}`,
+    ),
   }),
 );
 

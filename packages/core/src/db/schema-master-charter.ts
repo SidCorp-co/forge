@@ -12,10 +12,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { projects, users } from './schema.js';
 
-/** The acts a master performs (dispatch/qa/release-flow phases, plus `park`), the closed set a
- *  knowledge condition's `verbs` may name (ISS-1313). */
-export const masterVerbs = ['triage', 'dispatch', 'fold', 'judge', 'release', 'park'] as const;
-export type MasterVerb = (typeof masterVerbs)[number];
+export { MASTER_VERBS as masterVerbs, type MasterVerb } from '@forge/contracts/master-standing';
 
 /** A project's standing goal and rules, append-only by `version` so every declaration a project
  *  was ever given stays readable (ISS-1313). No row here means none declared. */

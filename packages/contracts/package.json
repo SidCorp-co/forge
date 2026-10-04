@@ -58,6 +58,10 @@
       "types": "./dist/needs-you.d.ts",
       "default": "./dist/needs-you.js"
     },
+    "./master-standing": {
+      "types": "./dist/master-standing.d.ts",
+      "default": "./dist/master-standing.js"
+    },
     "./issue-standing": {
       "types": "./dist/issue-standing.d.ts",
       "default": "./dist/issue-standing.js"

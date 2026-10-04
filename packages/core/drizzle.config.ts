@@ -8,6 +8,7 @@ export default defineConfig({
     './src/db/schema-admin-thresholds.ts',
     './src/db/schema-journal.ts',
     './src/db/schema-master-charter.ts',
+    './src/db/schema-master-passes.ts',
     './src/db/schema-project-config.ts',
     './src/db/schema-ecosystem.ts',
     './src/db/schema-ecosystem-links.ts',
