@@ -1,11 +1,8 @@
 /**
- * ISS-604 (P2a) — non-streaming chat entrypoint for external channels (Rocket.Chat, Telegram, …):
- * the same resolution the SSE `/api/chat` route used before ISS-1030 removed it, but the shared turn loop is drained to one
- * reply string. The caller supplies the toolset (it owns the principal); none means a tool-less
- * completion.
- *
- * A turn either belongs to a conversation — named by its id, or by the venue it
- * happens in — or belongs to none, which is what a one-shot relay is.
+ * One assistant-mode chat turn drained to a reply string: the project's prompt, the room's window,
+ * the model through the shared turn loop. The caller supplies the toolset (it owns the principal);
+ * none means a tool-less completion. A turn belongs to a conversation named by its id, or to none,
+ * which is what a one-shot relay is.
  */
 
 import { contentLanguageBlock } from '@forge/contracts/content-language';
@@ -13,11 +10,11 @@ import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import { eq } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { readContentLanguage } from '../content-language/index.js';
-import { db as defaultDb } from '../db/client.js';
+import { db } from '../db/client.js';
 import { appConfig, projects } from '../db/schema.js';
-import type { ConversationAdapter, ConversationShape } from '../db/schema-conversations.js';
+import type { ConversationAdapter } from '../db/schema-conversations.js';
 import {
-  type ChatResponseFormat,
+  type ChatMessage,
   type ChatStreamEvent,
   type ChatTurnKind,
   defaultChatProviderId,
@@ -34,7 +31,6 @@ import { detectStateConfab } from './confab.js';
 import { PROVIDER_HISTORY_WINDOW } from './context-budget.js';
 import { STOPPED_BY_A_PERSON } from './conversation-stops.js';
 import {
-  appendAssistantMessage,
   appendSilence,
   appendUserMessage,
   type ConversationTurn,
@@ -56,17 +52,8 @@ export interface ExternalChatTurnArgs {
   message: string;
   /** The Forge user this turn runs as. A turn that names a room REQUIRES one; an ephemeral turn, which names none, does not. */
   userId?: string | null;
-  /**
-   * The role `userId` needs on the room this turn continues: `member` (default) where the turn
-   * appends the person's words; `viewer` where it appends only the handle's reply, the person's
-   * writes being refused per tool by the role each takes (ISS-17).
-   */
-  readerRole?: 'viewer' | 'member' | undefined;
   /** Continue this conversation. */
   conversationId?: string | undefined;
-  /** Or open/resume the venue it happens in, in the transport's own terms. */
-  externalId?: string | undefined;
-  shape?: ConversationShape | undefined;
   /** Read-only toolset (caller builds it with the right principal); omit for tool-less. */
   tools?: ChatToolset | undefined;
   /** The external speaker's key (e.g. the external user id), the author label when no speaker label is given. */
@@ -94,25 +81,19 @@ export interface ExternalChatTurnArgs {
    * Called for each event the turn loop yields, as it yields it.
    */
   onTurnEvent?: ((event: ChatStreamEvent) => void) | undefined;
-  responseFormat?: ChatResponseFormat | undefined;
   /** Picks `app_config.chat_model_by_kind[kind]`; defaults to `'agentic'`. */
   turnKind?: ChatTurnKind | undefined;
-  /**
-   * What this turn WRITES to the room it reads. Default: the question and the answer.
-   */
-  record?: 'question-and-answer' | 'question-only' | 'silence-only' | 'nothing';
+  /** What this turn WRITES to the room it reads; the screened answer is recorded by its deliverer. Default: nothing. */
+  record?: 'question-only' | 'silence-only' | 'nothing';
   /**
    * The question is already a row of this conversation, so it is not appended again.
    */
   questionInHistory?: boolean;
-  db?: typeof defaultDb;
 }
 
 export interface ExternalChatTurnResult {
   /** The conversation this turn joined, or null when it belonged to none. */
   conversationId: string | null;
-  /** The row this turn's answer became, for the caller to stamp with its delivery receipt. */
-  assistantMessageId: string | null;
   reply: string;
   terminal: 'done' | 'error';
   error: string | null;
@@ -151,54 +132,37 @@ function egressedTools(level: SensitiveDataLevel, tools: ChatToolset, what: stri
   };
 }
 
-export async function runExternalChatTurn(
-  args: ExternalChatTurnArgs,
-): Promise<ExternalChatTurnResult> {
-  const dbi = args.db ?? defaultDb;
+interface TurnSetup {
+  turn: ConversationTurn | null;
+  messages: ChatMessage[];
+  progress: ProjectProgress | null;
+  what: string;
+}
 
-  const [project] = await dbi
-    .select({
-      id: projects.id,
-      slug: projects.slug,
-      name: projects.name,
-    })
+/** The prompt, the room's window and this message, egressed for the model. */
+async function setUpTurn(
+  args: ExternalChatTurnArgs,
+): Promise<TurnSetup & { level: SensitiveDataLevel }> {
+  const [project] = await db
+    .select({ name: projects.name, systemPromptOverride: appConfig.systemPromptOverride })
     .from(projects)
+    .leftJoin(appConfig, eq(appConfig.projectId, projects.id))
     .where(eq(projects.id, args.projectId))
     .limit(1);
   if (!project) throw new Error(`project not found: ${args.projectId}`);
-
-  const [appCfg] = await dbi
-    .select({ systemPromptOverride: appConfig.systemPromptOverride })
-    .from(appConfig)
-    .where(eq(appConfig.projectId, args.projectId))
-    .limit(1);
-
-  const progress = await computeProjectProgress(args.projectId, dbi);
+  const progress = await computeProjectProgress(args.projectId, db);
   const language = await readContentLanguage(args.projectId);
 
-  const resolved = await resolveForProject(args.projectId, {
-    fallbackProviderId: defaultChatProviderId(),
-    kind: args.turnKind,
-    db: dbi,
-  });
-
-  const turn: ConversationTurn | null =
-    args.conversationId || args.externalId
-      ? await openTurn({
-          projectId: args.projectId,
-          adapter: args.adapter,
-          conversationId: args.conversationId,
-          externalId: args.externalId,
-          shape: args.shape ?? 'direct',
-          readerUserId: args.userId ?? null,
-          ...(args.readerRole ? { readerRole: args.readerRole } : {}),
-          db: dbi,
-        })
-      : null;
-
-  const record = args.record ?? 'question-and-answer';
+  const turn = args.conversationId
+    ? await openTurn({
+        projectId: args.projectId,
+        adapter: args.adapter,
+        conversationId: args.conversationId,
+        readerUserId: args.userId ?? null,
+      })
+    : null;
   const images = args.images ?? [];
-  if (turn && record !== 'silence-only' && !args.questionInHistory) {
+  if (turn && !args.questionInHistory) {
     appendUserMessage(turn, args.message, {
       images,
       authorUserId: args.userId ?? null,
@@ -206,30 +170,23 @@ export async function runExternalChatTurn(
     });
   }
 
-  const speakerUserId =
-    args.speakerUserId === undefined ? (args.userId ?? null) : args.speakerUserId;
   const { self, speakerContext } = await loadTurnSelf({
     handleUserId: turn?.handleUserId ?? null,
-    speakerUserId,
+    speakerUserId: args.speakerUserId === undefined ? (args.userId ?? null) : args.speakerUserId,
     speakerLabel: args.speakerLabel ?? args.userKey ?? null,
-    db: dbi,
+    db,
   });
-
   const systemPrompt = buildSystemPrompt({
     project: { name: project.name },
     self,
-    appConfig: appCfg ?? null,
+    appConfig: { systemPromptOverride: project.systemPromptOverride },
     persona: args.persona ?? null,
     progressFacts: progress ? buildProgressFactsBlock(progress) : null,
     contentLanguage: contentLanguageBlock(language, 'chat'),
   });
-  const historyWindow = turn
-    ? [...turn.history, ...turn.pending]
-        .slice(-PROVIDER_HISTORY_WINDOW)
-        .map((m) => ({ role: m.role, content: m.content, images: m.images }))
-    : [];
-  const resolvedImages = await resolveVisionImages(historyWindow, images, args.resolveImage);
-  const providerMessages = applyTurnContext(
+  const history = turn ? [...turn.history, ...turn.pending].slice(-PROVIDER_HISTORY_WINDOW) : [];
+  const resolvedImages = await resolveVisionImages(history, images, args.resolveImage);
+  const [system, ...spoken] = applyTurnContext(
     [
       { role: 'system' as const, content: systemPrompt },
       ...(turn
@@ -242,77 +199,76 @@ export async function runExternalChatTurn(
       speakerContext,
     },
   );
-
   const level = await dataPolicyOf(args.projectId);
   const what = `conversation ${turn?.conversationId ?? 'turn'}`;
-  const [system, ...spoken] = providerMessages;
   const sent = egressAt(level, 'conversation', spoken, what);
   if (!sent.ok) throw new EgressRefused(sent.refusal);
+  return { turn, messages: system ? [system, ...sent.value] : sent.value, progress, what, level };
+}
 
+export async function runExternalChatTurn(
+  args: ExternalChatTurnArgs,
+): Promise<ExternalChatTurnResult> {
+  const { turn, messages, progress, what, level } = await setUpTurn(args);
+  const resolved = await resolveForProject(args.projectId, {
+    fallbackProviderId: defaultChatProviderId(),
+    kind: args.turnKind,
+    db,
+  });
   const gen = runTurnEvents({
     provider: resolved.provider,
     model: resolved.model,
-    messages: system ? [system, ...sent.value] : sent.value,
+    messages,
     tools: args.tools && egressedTools(level, args.tools, what),
     preCall: memoryNoteGateFor(args.projectId),
     temperature: 0.2,
     requireInitialToolUse: args.tools !== undefined,
     contextBudgetTokens: env.CHAT_CONTEXT_BUDGET_TOKENS,
     reasoningEffort: env.CHAT_REASONING_EFFORT,
-    responseFormat: args.responseFormat,
     signal: args.signal,
   });
   let step = await gen.next();
   while (!step.done) {
-    if (args.onTurnEvent) {
-      try {
-        args.onTurnEvent(step.value);
-      } catch (err) {
-        await gen.return(undefined as never).catch(() => undefined);
-        throw err;
-      }
+    try {
+      args.onTurnEvent?.(step.value);
+    } catch (err) {
+      await gen.return(undefined as never).catch(() => undefined);
+      throw err;
     }
     step = await gen.next();
   }
   const result = step.value;
+  const conversationId = turn?.conversationId ?? null;
   if (result.elided.overBudget) {
     logger.warn(
-      { conversationId: turn?.conversationId ?? null, elided: result.elided },
+      { conversationId, elided: result.elided },
       'chat: request exceeds the context budget even after elision',
     );
   }
-
   const confab = detectStateConfab(result.finalText, result.toolCalls);
   if (confab.suspected) {
     logger.warn(
-      { conversationId: turn?.conversationId ?? null, claims: confab.claims },
+      { conversationId, claims: confab.claims },
       "chat: the reply claims a write this turn's own tool result refused",
     );
   }
 
-  let assistantMessageId: string | null = null;
-  if (turn && record !== 'nothing') {
-    // A person who stopped this turn gets no silence row: "the agent had
-    // nothing to add" is a different thing from "you ended this", and a
-    // provider that answers a cancelled call with an error result rather than
-    // raising would otherwise write the first (ISS-1146).
+  if (turn && (args.record ?? 'nothing') !== 'nothing') {
+    // A person who stopped this turn gets no silence row: "nothing to add" is not "you ended this",
+    // and a provider that answers a cancelled call with an error result would write the first (ISS-1146).
     const stoppedByAPerson = args.signal?.aborted && args.signal.reason === STOPPED_BY_A_PERSON;
-    if (result.terminal === 'done' && result.finalText.length > 0) {
-      if (record === 'question-and-answer') appendAssistantMessage(turn, result.finalText);
-    } else if (!stoppedByAPerson) {
+    const answered = result.terminal === 'done' && result.finalText.length > 0;
+    if (!answered && !stoppedByAPerson) {
       appendSilence(
         turn,
         result.errorMessage ?? (result.terminal === 'done' ? 'empty-reply' : result.terminal),
       );
     }
-    const written = await persistMessages(turn, { db: dbi });
-    assistantMessageId =
-      written.find((m) => m.role === 'assistant' && !m.silenceReason)?.id ?? null;
+    await persistMessages(turn);
   }
 
   return {
-    conversationId: turn?.conversationId ?? null,
-    assistantMessageId,
+    conversationId,
     reply: result.finalText,
     terminal: result.terminal,
     error: result.errorMessage,

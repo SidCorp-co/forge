@@ -1,5 +1,4 @@
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { readableConversation, refuseConversation } from '../conversations/index.js';
 import type { AuthVars } from '../middleware/auth.js';
@@ -36,13 +35,7 @@ export const scopeIsFixed = (id: string) =>
 
 export const conversationPinRoutes = new Hono<{ Variables: AuthVars }>();
 
-const idParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
-  if (!r.success)
-    throw new HTTPException(400, {
-      message: 'Invalid input',
-      cause: { code: 'BAD_REQUEST', details: r.error },
-    });
-});
+const idParam = zValidator('param', z.object({ id: z.uuid() }));
 
 conversationPinRoutes.put('/:id/pin', idParam, async (c) => {
   const { id } = c.req.valid('param');

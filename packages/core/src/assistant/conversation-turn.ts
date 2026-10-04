@@ -3,51 +3,31 @@ import { HTTPException } from 'hono/http-exception';
 import {
   appendMessages,
   assertConversationReadable,
-  assertConversationWritable,
   type ConversationImage,
   handleForProject,
-  openConversation,
   readMessages,
   refuseConversation,
   type StoredConversationMessage,
-  toCanonicalEntry,
 } from '../conversations/index.js';
-import { db as defaultDb } from '../db/client.js';
-import type {
-  ConversationAdapter,
-  ConversationMessageRole,
-  ConversationShape,
-} from '../db/schema-conversations.js';
+import { db } from '../db/client.js';
+import type { ConversationAdapter, ConversationMessageRole } from '../db/schema-conversations.js';
 import { conversations } from '../db/schema-conversations.js';
 import type { ChatContentPart, ChatMessage } from '../integrations/llm/index.js';
-import type { ContentBlock } from '../lib/agent-stream-parser.js';
-import { effectiveProjectRole } from '../lib/authz.js';
-import { forbidden } from '../middleware/route-errors.js';
-import { requireHeld } from '../permissions/index.js';
-
-export type { ConversationImage };
-export { toCanonicalEntry };
 
 /** How many stored turns a turn is allowed to read back. Storage is unbounded; the window is not. */
 const CONVERSATION_READ_WINDOW = 200;
 
-export interface PendingMessage {
+interface PendingMessage {
   role: ConversationMessageRole;
-  /** The row id, where the caller minted it before the write; null lets the column default. */
-  id: string | null;
   content: string;
   authorUserId: string | null;
   authorLabel: string | null;
   images: ConversationImage[];
-  /** Ordered canonical blocks for this turn, or null where the caller has only text. */
-  blocks: ContentBlock[] | null;
-  deliveryProof: unknown;
   silenceReason: string | null;
 }
 
 export interface ConversationTurn {
   conversationId: string;
-  adapter: ConversationAdapter;
   /** The handle speaking here — the one carrying this turn's project. An assistant row is BY it. */
   handleUserId: string | null;
   /** The window read back at load, oldest first. */
@@ -56,110 +36,49 @@ export interface ConversationTurn {
   pending: PendingMessage[];
 }
 
-export interface OpenTurnOptions {
-  /** The project whose handle speaks here. */
+/**
+ * The conversation this turn continues, with its window read back. The turn appends only the
+ * handle's reply, so `readerUserId` needs to see the room; each tool takes the role its write takes
+ * (ISS-17).
+ */
+export async function openTurn(opts: {
   projectId: string;
   adapter: ConversationAdapter;
-  /** Continue this conversation; omit with `externalId` to open or resume a venue. */
-  conversationId?: string | undefined;
-  /** The transport's own id for the venue; omit with `conversationId`. */
-  externalId?: string | undefined;
-  shape?: ConversationShape;
-  title?: string | null;
-  /**
-   * The authority this turn runs as. A persisted turn APPENDS, so it takes `member` on every
-   * project the room is about — not `viewer`, which is permission to look at one.
-   */
-  readerUserId?: string | null;
-  /**
-   * What `readerUserId` must hold on a room this turn CONTINUES; see `ExternalChatTurnArgs`.
-   * Opening a venue always takes `member`.
-   */
-  readerRole?: 'viewer' | 'member';
-  db?: typeof defaultDb;
-}
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-/**
- * The conversation this turn belongs to, with its window read back.
- */
-export async function openTurn(opts: OpenTurnOptions): Promise<ConversationTurn> {
-  const dbi = opts.db ?? defaultDb;
-
-  if (opts.conversationId) {
-    const [row] = await dbi
-      .select({
-        id: conversations.id,
-        adapter: conversations.adapter,
-        externalId: conversations.externalId,
-      })
-      .from(conversations)
-      .where(eq(conversations.id, opts.conversationId))
-      .limit(1);
-    if (!row) throw notFound('conversation not found');
-    const scope =
-      opts.readerRole === 'viewer'
-        ? await assertConversationReadable(row.id, opts.readerUserId ?? null)
-        : await assertConversationWritable(row.id, opts.readerUserId ?? null);
-    if (!scope.includes(opts.projectId)) {
-      throw refuseConversation(
-        'CONVERSATION_PROJECT_CONFLICT',
-        `conversation ${row.id} is about ${scope.join(', ')} and this turn arrives under project ${opts.projectId}; a turn runs in a room its own project is in`,
-      );
-    }
-    if (row.adapter !== opts.adapter) {
-      throw refuseConversation(
-        'CONVERSATION_ADAPTER_CONFLICT',
-        `conversation ${row.id} (${row.adapter} ${row.externalId}) is a ${row.adapter} room and this turn arrives as ${opts.adapter}; a venue's adapter is settled when it is first seen`,
-      );
-    }
-    return {
-      conversationId: row.id,
-      adapter: row.adapter,
-      handleUserId: await handleForProject(row.id, opts.projectId, dbi),
-      history: await readMessages(row.id, CONVERSATION_READ_WINDOW, dbi),
-      pending: [],
-    };
+  conversationId: string;
+  readerUserId: string | null;
+}): Promise<ConversationTurn> {
+  const [row] = await db
+    .select({
+      id: conversations.id,
+      adapter: conversations.adapter,
+      externalId: conversations.externalId,
+    })
+    .from(conversations)
+    .where(eq(conversations.id, opts.conversationId))
+    .limit(1);
+  if (!row) {
+    throw new HTTPException(404, {
+      message: 'conversation not found',
+      cause: { code: 'NOT_FOUND' },
+    });
   }
-
-  if (!opts.externalId) {
+  const scope = await assertConversationReadable(row.id, opts.readerUserId);
+  if (!scope.includes(opts.projectId)) {
     throw refuseConversation(
-      'CONVERSATION_UNADDRESSED',
-      'a turn needs the conversation it continues or the venue it happens in; with neither there is no room to speak in',
+      'CONVERSATION_PROJECT_CONFLICT',
+      `conversation ${row.id} is about ${scope.join(', ')} and this turn arrives under project ${opts.projectId}; a turn runs in a room its own project is in`,
     );
   }
-
-  if (!opts.readerUserId) {
-    throw forbidden(
-      `a turn in ${opts.adapter} venue ${opts.externalId} was opened with no authority named; a turn writes to the room it runs in, and nothing here is anonymous`,
+  if (row.adapter !== opts.adapter) {
+    throw refuseConversation(
+      'CONVERSATION_ADAPTER_CONFLICT',
+      `conversation ${row.id} (${row.adapter} ${row.externalId}) is a ${row.adapter} room and this turn arrives as ${opts.adapter}; a venue's adapter is settled when it is first seen`,
     );
   }
-  const access = await effectiveProjectRole(opts.readerUserId, opts.projectId);
-  if (!access?.role) {
-    throw forbidden(
-      `a turn in ${opts.adapter} venue ${opts.externalId} arrives under project ${opts.projectId} and you hold no role on it; a turn writes to the room it runs in, so it takes the role that writing takes`,
-    );
-  }
-  requireHeld(access, 'project.write', `a turn in ${opts.adapter} venue ${opts.externalId}`);
-
-  const conversation = await openConversation(
-    {
-      adapter: opts.adapter,
-      externalId: opts.externalId,
-      shape: opts.shape ?? 'direct',
-      projectId: opts.projectId,
-      title: opts.title ?? null,
-    },
-    { db: dbi },
-  );
-  await assertConversationWritable(conversation.id, opts.readerUserId);
   return {
-    conversationId: conversation.id,
-    adapter: conversation.adapter,
-    handleUserId: await handleForProject(conversation.id, opts.projectId, dbi),
-    history: await readMessages(conversation.id, CONVERSATION_READ_WINDOW, dbi),
+    conversationId: row.id,
+    handleUserId: await handleForProject(row.id, opts.projectId),
+    history: await readMessages(row.id, CONVERSATION_READ_WINDOW),
     pending: [],
   };
 }
@@ -167,93 +86,42 @@ export async function openTurn(opts: OpenTurnOptions): Promise<ConversationTurn>
 export function appendUserMessage(
   turn: ConversationTurn,
   content: string,
-  opts: {
-    images?: readonly ConversationImage[];
-    authorUserId?: string | null;
-    authorLabel?: string | null;
-  } = {},
+  author: {
+    images: readonly ConversationImage[];
+    authorUserId: string | null;
+    authorLabel: string | null;
+  },
 ): void {
   turn.pending.push({
     role: 'user',
-    id: null,
     content,
-    authorUserId: opts.authorUserId ?? null,
-    authorLabel: opts.authorLabel ?? null,
-    images: opts.images ? [...opts.images] : [],
-    blocks: null,
-    deliveryProof: null,
-    silenceReason: null,
-  });
-}
-
-export function appendAssistantMessage(
-  turn: ConversationTurn,
-  content: string,
-  opts: {
-    authorUserId?: string | null;
-    deliveryProof?: unknown;
-    /** The canonical blocks this turn produced (ISS-1029); omit on a text-only caller. */
-    blocks?: ContentBlock[] | null;
-    /** The id the turn already streamed this entry under; omit to let the column mint one. */
-    id?: string | null;
-  } = {},
-): void {
-  turn.pending.push({
-    role: 'assistant',
-    id: opts.id ?? null,
-    content,
-    authorUserId: opts.authorUserId ?? turn.handleUserId,
-    authorLabel: null,
-    images: [],
-    blocks: opts.blocks ?? null,
-    deliveryProof: opts.deliveryProof ?? null,
+    ...author,
+    images: [...author.images],
     silenceReason: null,
   });
 }
 
 /** A turn that produced no text, recorded as the reason rather than as nothing. */
-export function appendSilence(
-  turn: ConversationTurn,
-  reason: string,
-  opts: { blocks?: ContentBlock[] | null; id?: string | null } = {},
-): void {
+export function appendSilence(turn: ConversationTurn, reason: string): void {
   turn.pending.push({
     role: 'assistant',
-    id: opts.id ?? null,
     content: '',
-    blocks: opts.blocks ?? null,
     authorUserId: turn.handleUserId,
     authorLabel: null,
     images: [],
-    deliveryProof: null,
     silenceReason: reason,
   });
 }
 
-/** Write everything this turn appended, in order, clear the queue, and hand back the rows. */
-export async function persistMessages(
-  turn: ConversationTurn,
-  opts: { db?: typeof defaultDb } = {},
-): Promise<StoredConversationMessage[]> {
-  if (turn.pending.length === 0) return [];
+/** Write everything this turn appended, in order, and clear the queue. */
+export async function persistMessages(turn: ConversationTurn): Promise<void> {
+  if (turn.pending.length === 0) return;
   const written = await appendMessages({
     conversationId: turn.conversationId,
-    messages: turn.pending.map((m) => ({
-      role: m.role,
-      ...(m.id ? { id: m.id } : {}),
-      content: m.content,
-      authorUserId: m.authorUserId,
-      authorLabel: m.authorLabel,
-      images: m.images,
-      blocks: m.blocks,
-      deliveryProof: m.deliveryProof,
-      silenceReason: m.silenceReason,
-    })),
-    ...(opts.db ? { db: opts.db } : {}),
+    messages: turn.pending.map((m) => ({ ...m, blocks: null, deliveryProof: null })),
   });
   turn.pending.length = 0;
   turn.history.push(...written);
-  return written;
 }
 
 /**
@@ -266,29 +134,16 @@ export function toProviderMessages(
 ): ChatMessage[] {
   const resolve = (images: ConversationImage[]) =>
     images.map((i) => resolvedImages?.get(i.ref)).filter((u): u is string => !!u);
-  const carried = (m: {
-    silenceReason: string | null;
-    content: string;
-    images: ConversationImage[];
-  }) => m.silenceReason === null && (m.content.length > 0 || resolve(m.images).length > 0);
-  const all: Array<{
-    role: ConversationMessageRole;
-    content: string;
-    images: ConversationImage[];
-  }> = [
-    ...turn.history
-      .filter(carried)
-      .map((m) => ({ role: m.role, content: m.content, images: m.images })),
-    ...turn.pending
-      .filter(carried)
-      .map((m) => ({ role: m.role, content: m.content, images: m.images })),
-  ];
-  return all.map(({ role, content, images }) => {
-    const urls = resolve(images);
-    if (urls.length === 0) return { role, content };
-    const parts: ChatContentPart[] = [];
-    if (content.length > 0) parts.push({ type: 'text', text: content });
-    for (const url of urls) parts.push({ type: 'image_url', image_url: { url } });
-    return { role, content: parts };
-  });
+  return [...turn.history, ...turn.pending]
+    .filter(
+      (m) => m.silenceReason === null && (m.content.length > 0 || resolve(m.images).length > 0),
+    )
+    .map(({ role, content, images }) => {
+      const urls = resolve(images);
+      if (urls.length === 0) return { role, content };
+      const parts: ChatContentPart[] = [];
+      if (content.length > 0) parts.push({ type: 'text', text: content });
+      for (const url of urls) parts.push({ type: 'image_url', image_url: { url } });
+      return { role, content: parts };
+    });
 }

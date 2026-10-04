@@ -93,19 +93,16 @@ function stripProperty(schema: Record<string, unknown>, key: string): Record<str
 }
 
 /** Instantiate each allowed factory once, convert to OpenAI tools, close over a dispatch map. */
+interface BoundTool {
+  spec: ChatToolSpec;
+  tool: McpTool;
+  hasProjectId: boolean;
+}
+
 export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolset {
   const tools: ChatTool[] = [];
   const boundProjectId = ctx.boundProjectId ?? null;
-  const bySanitized = new Map<
-    string,
-    {
-      spec: ChatToolSpec;
-      tool: McpTool;
-      handler: (a: Record<string, unknown>) => Promise<unknown>;
-      hasProjectId: boolean;
-      declared: Record<string, unknown>;
-    }
-  >();
+  const bySanitized = new Map<string, BoundTool>();
 
   for (const spec of specs) {
     const tool = spec.factory(ctx);
@@ -114,15 +111,7 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
     if (bySanitized.has(name)) continue;
     const props = (tool.inputSchema as { properties?: Record<string, unknown> }).properties;
     const hasProjectId = !!props && 'projectId' in props;
-    const willInject = hasProjectId && boundProjectId !== null;
-    const parameters = willInject ? stripProperty(tool.inputSchema, 'projectId') : tool.inputSchema;
-    bySanitized.set(name, {
-      spec,
-      tool,
-      handler: tool.handler,
-      hasProjectId,
-      declared: tool.inputSchema,
-    });
+    bySanitized.set(name, { spec, tool, hasProjectId });
     const readNote = spec.allowedActions
       ? ` (in chat only actions ${spec.allowedActions.join('/')} are permitted)`
       : '';
@@ -134,66 +123,71 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
           tool.description + readNote + (spec.describe ? ` ${spec.describe}` : ''),
           DESCRIPTION_CAP,
         ),
-        parameters,
+        parameters:
+          hasProjectId && boundProjectId !== null
+            ? stripProperty(tool.inputSchema, 'projectId')
+            : tool.inputSchema,
       },
     });
   }
 
-  async function execute(name: string, argsJson: string): Promise<CallToolResult> {
+  const execute = (name: string, argsJson: string): Promise<CallToolResult> => {
     const entry = bySanitized.get(name);
-    if (!entry) return toolError(`unknown tool "${name}"`);
-
-    let args: Record<string, unknown>;
-    try {
-      args = argsJson.trim() ? (JSON.parse(argsJson) as Record<string, unknown>) : {};
-    } catch {
-      return toolError('arguments were not valid JSON');
-    }
-
-    dropUndeclaredKeys(args, entry.declared);
-    const { principal } = ctx;
-    const refusal = toolCallRefusal(
-      entry.tool,
-      args,
-      {
-        grant: ctx.grant !== undefined ? ctx.grant : principal.permissions,
-        fence: ctx.fence !== undefined ? ctx.fence : patEffectiveProjectIds(principal),
-        grantEpoch: principal.grantEpoch,
-        tokenId: principal.tokenId,
-      },
-      'the access token the person asking reached Forge with',
-    );
-    if (refusal) return toolError(`${refusal} Tell them so.`);
-
-    if (entry.spec.allowedActions) {
-      const action = args.action;
-      if (typeof action !== 'string' || !entry.spec.allowedActions.includes(action)) {
-        return toolError(
-          `action "${String(action)}" is not permitted in chat. Allowed: ${entry.spec.allowedActions.join(', ')}`,
-        );
-      }
-    }
-
-    if (entry.spec.guard) {
-      const rejection = await entry.spec.guard(args, { projectId: boundProjectId });
-      if (rejection) return toolError(rejection);
-    }
-
-    if (entry.hasProjectId && boundProjectId) {
-      args.projectId = boundProjectId;
-    }
-
-    try {
-      return toToolCallContent(await entry.handler(args));
-    } catch (err) {
-      if (err instanceof RefusalError) {
-        return toToolCallContent(refusedAnswer(err.refusals, err.fallbackCode));
-      }
-      return toolError(thrownMessage(err));
-    }
-  }
-
+    if (!entry) return Promise.resolve(toolError(`unknown tool "${name}"`));
+    return callTool(ctx, entry, argsJson);
+  };
   return { tools, execute, ranAs: () => ctx.principal.userId };
+}
+
+/** One call, through the token's grant, the chat's action allow-list and the spec's own guard. */
+async function callTool(
+  ctx: McpContext,
+  { spec, tool, hasProjectId }: BoundTool,
+  argsJson: string,
+): Promise<CallToolResult> {
+  let args: Record<string, unknown>;
+  try {
+    args = argsJson.trim() ? (JSON.parse(argsJson) as Record<string, unknown>) : {};
+  } catch {
+    return toolError('arguments were not valid JSON');
+  }
+  dropUndeclaredKeys(args, tool.inputSchema);
+  const { principal } = ctx;
+  const refusal = toolCallRefusal(
+    tool,
+    args,
+    {
+      grant: ctx.grant !== undefined ? ctx.grant : principal.permissions,
+      fence: ctx.fence !== undefined ? ctx.fence : patEffectiveProjectIds(principal),
+      grantEpoch: principal.grantEpoch,
+      tokenId: principal.tokenId,
+    },
+    'the access token the person asking reached Forge with',
+  );
+  if (refusal) return toolError(`${refusal} Tell them so.`);
+
+  const action = args.action;
+  if (
+    spec.allowedActions &&
+    (typeof action !== 'string' || !spec.allowedActions.includes(action))
+  ) {
+    return toolError(
+      `action "${String(action)}" is not permitted in chat. Allowed: ${spec.allowedActions.join(', ')}`,
+    );
+  }
+  const boundProjectId = ctx.boundProjectId ?? null;
+  const rejection = await spec.guard?.(args, { projectId: boundProjectId });
+  if (rejection) return toolError(rejection);
+  if (hasProjectId && boundProjectId) args.projectId = boundProjectId;
+
+  try {
+    return toToolCallContent(await tool.handler(args));
+  } catch (err) {
+    if (err instanceof RefusalError) {
+      return toToolCallContent(refusedAnswer(err.refusals, err.fallbackCode));
+    }
+    return toolError(thrownMessage(err));
+  }
 }
 
 /** Compose toolsets; dispatch routes by tool name, the first owner of a name wins. */
