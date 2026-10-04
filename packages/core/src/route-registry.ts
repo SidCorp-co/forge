@@ -33,7 +33,6 @@ import {
   entityCommentRoutes,
   registerIssueCommentRoutes,
 } from './comments/routes.js';
-import { contentLanguageRoutes } from './content-language/routes.js';
 import { developmentOverviewRoutes, needsYouRoutes } from './development/routes.js';
 import {
   deviceAuthRoutes,
@@ -132,6 +131,7 @@ import {
   stepHandoffRoutes,
 } from './pipeline/routes.js';
 import { preferenceRoutes } from './preferences/routes.js';
+import { contentLanguageRoutes } from './project-config/content-language-routes.js';
 import {
   environmentStateRoutes,
   jobTestingSecretsRoutes,

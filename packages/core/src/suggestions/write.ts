@@ -49,7 +49,7 @@ export async function answer(id: string, extra: { effect?: Effect; created?: boo
   return { ok: true as const, suggestion: viewOf(row), ...extra };
 }
 
-// cm:why a decision on an issue's suggestion is a typed record event (ISS-56) in the decision's own
+// A decision on an issue's suggestion is a typed record event (ISS-56) in the decision's own
 // transaction; a requirement has no event stream yet (activity_log is keyed by issue), so there the
 // row's status, decided_by, decided_at and reason are the record
 export async function recordDecision(

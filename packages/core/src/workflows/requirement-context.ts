@@ -27,7 +27,7 @@ export interface MockupContextRow {
   caption: string | null;
 }
 
-// cm:why a job is given each accepted mockup as a manifest line and a fetch, never its bytes: an
+// A job is given each accepted mockup as a manifest line and a fetch, never its bytes: an
 // image or a board read on demand costs only the run that needs it, and at no_egress the bytes are
 // withheld (surface `mockup.content`), so the line says so instead of offering a fetch that refuses
 function mockupLines(rows: readonly MockupContextRow[], withheld: boolean): string[] {
@@ -89,7 +89,7 @@ export interface LoadedRequirement {
   estTokens: number;
 }
 
-// cm:why one requirement's revision, criteria and pins; a requirement past it is refused whole, never cut, since a criterion left out is one the run would not build to
+// One requirement's revision, criteria and pins; a requirement past it is refused whole, never cut, since a criterion left out is one the run would not build to
 const REQUIREMENT_CONTEXT_CAP_CHARS = 12_000;
 
 /** A requirement the job cannot be given at its current revision, refused by name. */
@@ -99,7 +99,50 @@ const requirementRefusal = (code: ArtifactContextRefusalCode, key: string, reaso
     'ARTIFACT_CONTEXT_UNLOADABLE',
   );
 
-// cm:guard a job loads only the current revision and the baseline agreed at it: a head that is not current, or a latest baseline pinning another revision, is refused REQUIREMENT_REVISION_NOT_CURRENT
+function contextLines(
+  row: RequirementContextRow,
+  baseline: NonNullable<RequirementContextRow['baseline']>,
+  currentRevision: number,
+  changed: boolean,
+  mockupsWithheld: boolean,
+): string[] {
+  const lines = [
+    `## The requirement this issue delivers`,
+    `${row.key} · ${row.title} — current revision ${currentRevision}, agreed (baseline r${baseline.revision}, ${baseline.agreedAt}).`,
+  ];
+  if (row.tldr) lines.push(row.tldr);
+  if (row.goal) lines.push(`Goal: ${row.goal}`);
+  lines.push(planLine(changed, row.plannedRevision, currentRevision));
+  lines.push(
+    '',
+    'Business criteria (each issue criterion traces to one of these codes):',
+    ...row.criteria.map(
+      (c) =>
+        `- ${c.code}${c.form === 'scenario' ? ' (scenario)' : ''}: ${c.body.replace(/\n/g, '\n  ')}`,
+    ),
+  );
+  if (baseline.pins.length) {
+    lines.push(
+      '',
+      'Pinned in the latest baseline (build to these revisions):',
+      ...baseline.pins.map((p) =>
+        p.workflowId
+          ? `- design \`${p.flow ?? p.workflowId}\` at revision ${p.designRevision} — ${fetchLine(p.workflowId, p.designRevision)}`
+          : `- contract \`${p.contractSlug}\`@${p.contractVersion} (provider ${p.providerProjectId})`,
+      ),
+    );
+  }
+  if (baseline.mockups.length) {
+    lines.push(
+      '',
+      'Mockups pinned in the latest baseline (what the screens and calls should look like):',
+      ...mockupLines(baseline.mockups, mockupsWithheld),
+    );
+  }
+  return lines;
+}
+
+// A job loads only the current revision and the baseline agreed at it: a head that is not current, or a latest baseline pinning another revision, is refused REQUIREMENT_REVISION_NOT_CURRENT
 export function requirementContext(
   row: RequirementContextRow | null,
   mockupsWithheld = false,
@@ -127,40 +170,9 @@ export function requirementContext(
     );
   }
   const changed = changedSincePlan({ ...row, latestBaselineSeq: row.baseline.seq });
-  const lines = [
-    `## The requirement this issue delivers`,
-    `${row.key} · ${row.title} — current revision ${row.currentRevision}, agreed (baseline r${row.baseline.revision}, ${row.baseline.agreedAt}).`,
-  ];
-  if (row.tldr) lines.push(row.tldr);
-  if (row.goal) lines.push(`Goal: ${row.goal}`);
-  lines.push(planLine(changed, row.plannedRevision, row.currentRevision));
-  lines.push(
-    '',
-    'Business criteria (each issue criterion traces to one of these codes):',
-    ...row.criteria.map(
-      (c) =>
-        `- ${c.code}${c.form === 'scenario' ? ' (scenario)' : ''}: ${c.body.replace(/\n/g, '\n  ')}`,
-    ),
+  const text = contextLines(row, row.baseline, row.currentRevision, changed, mockupsWithheld).join(
+    '\n',
   );
-  if (row.baseline.pins.length) {
-    lines.push(
-      '',
-      'Pinned in the latest baseline (build to these revisions):',
-      ...row.baseline.pins.map((p) =>
-        p.workflowId
-          ? `- design \`${p.flow ?? p.workflowId}\` at revision ${p.designRevision} — ${fetchLine(p.workflowId, p.designRevision)}`
-          : `- contract \`${p.contractSlug}\`@${p.contractVersion} (provider ${p.providerProjectId})`,
-      ),
-    );
-  }
-  if (row.baseline.mockups.length) {
-    lines.push(
-      '',
-      'Mockups pinned in the latest baseline (what the screens and calls should look like):',
-      ...mockupLines(row.baseline.mockups, mockupsWithheld),
-    );
-  }
-  const text = lines.join('\n');
   if (text.length > REQUIREMENT_CONTEXT_CAP_CHARS) {
     throw requirementRefusal(
       'ARTIFACT_CONTEXT_OVER_BUDGET',

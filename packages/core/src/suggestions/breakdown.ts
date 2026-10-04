@@ -169,21 +169,92 @@ async function pinnedDesignsIn(tx: Tx, workflowIds: readonly string[]): Promise<
     .orderBy(projectWorkflows.flow);
 }
 
-/** A stored breakdown that no longer parses (one proposed before complexity was required) is
- *  refused at accept by its path, never thrown; a reviewer revises it with the field added. */
+/** A stored breakdown that no longer parses is refused at accept by its path, never thrown. */
 function storedBreakdownRefusal(row: Row): Refusal | null {
   const refusal = payloadRefusal('breakdown', 'requirement', row.payload);
   if (!refusal) return null;
   return {
     ...refusal,
-    detail: `${refusal.detail} The stored payload predates this shape; revise the suggestion (POST /suggestions/${row.id}/revise) with the field added.`,
+    detail: `${refusal.detail} The stored payload does not match this shape; revise the suggestion (POST /suggestions/${row.id}/revise) to it.`,
   };
 }
 
-// cm:why workflow requirement-to-delivery step `approve`: core creates every issue with
+// Workflow requirement-to-delivery step `approve`: core creates every issue with
 // requirement_id, planned_revision, issue_criteria and blocks edges in one transaction; they are
 // filed at draft, so nothing dispatches before a person promotes them. Each is sized as its item
 // says and linked as the build of the pinned design it builds, so the build gate holds it (ISS-117)
+type Guarded = Awaited<ReturnType<typeof breakdownGuardIn>>;
+
+/** One item filed as a draft issue pinned at the head, linked as the build of its design, with its criteria. */
+async function fileItemIn(
+  tx: Tx,
+  ctx: {
+    projectId: string;
+    row: Row;
+    requirementId: string;
+    head: number;
+    actor: SuggestionActor;
+    channel: AcceptChannel;
+    guard: Guarded;
+  },
+  item: Breakdown['issues'][number],
+  design: PinnedDesign | null,
+): Promise<Omit<SuggestionBreakdownIssue, 'key'> & { seq: number }> {
+  const { projectId, actor, guard } = ctx;
+  const priority = item.priority ?? BREAKDOWN_ISSUE_DEFAULTS.priority;
+  const category = item.category ?? BREAKDOWN_ISSUE_DEFAULTS.category;
+  const issue = await insertIssueRow(
+    tx,
+    {
+      projectId,
+      title: item.title,
+      description: item.description ?? null,
+      descriptionFormat: 'markdown',
+      status: 'draft',
+      priority,
+      category,
+      complexity: item.complexity,
+      createdById: actor.userId,
+      createdByDeviceId: null,
+      createdVia: ctx.channel,
+      requirementId: ctx.requirementId,
+      plannedRevision: ctx.head,
+      plannedBaselineSeq: guard.baselineSeq,
+      fromSuggestionId: ctx.row.id,
+    },
+    { actor: { type: 'user', id: actor.userId, agency: actor.agency } },
+  );
+  if (design) {
+    await linkBuild(tx, {
+      issueId: issue.id,
+      workflowId: design.workflowId,
+      projectId,
+      userId: actor.userId,
+    });
+  }
+  await putCriteria(
+    tx,
+    issue.id,
+    item.criteria.map((c, j) => ({
+      n: j + 1,
+      statement: c.body,
+      requirementCriterionId: guard.codes.get(c.tracesTo) ?? null,
+    })),
+  );
+  return {
+    issueId: issue.id,
+    seq: issue.issSeq,
+    priority,
+    category,
+    complexity: item.complexity,
+    builds: design?.flow ?? null,
+    defaulted: [
+      ...(item.priority === undefined ? (['priority'] as const) : []),
+      ...(item.category === undefined ? (['category'] as const) : []),
+    ],
+  };
+}
+
 export async function breakdownEffect(
   tx: Tx,
   projectId: string,
@@ -198,62 +269,13 @@ export async function breakdownEffect(
   const p = SUGGESTION_PAYLOADS.breakdown.schema.parse(row.payload);
   const guard = await breakdownGuardIn(tx, projectId, target.id, head, p);
   if (guard.refusals.length || head === null) return { refusals: guard.refusals };
-  const { codes, blockers, builds } = guard;
   const req = await rowIn(tx, projectId, target.id);
-  const ids: string[] = [];
-  const filed: Omit<SuggestionBreakdownIssue, 'key'>[] = [];
+  const ctx = { projectId, row, requirementId: req.id, head, actor, channel, guard };
+  const filed: Awaited<ReturnType<typeof fileItemIn>>[] = [];
   for (const [i, item] of p.issues.entries()) {
-    const priority = item.priority ?? BREAKDOWN_ISSUE_DEFAULTS.priority;
-    const category = item.category ?? BREAKDOWN_ISSUE_DEFAULTS.category;
-    const issue = await insertIssueRow(
-      tx,
-      {
-        projectId,
-        title: item.title,
-        description: item.description ?? null,
-        descriptionFormat: 'markdown',
-        status: 'draft',
-        priority,
-        category,
-        complexity: item.complexity,
-        createdById: actor.userId,
-        createdByDeviceId: null,
-        createdVia: channel,
-        requirementId: req.id,
-        plannedRevision: head,
-        plannedBaselineSeq: guard.baselineSeq,
-        fromSuggestionId: row.id,
-      },
-      { actor: { type: 'user', id: actor.userId, agency: actor.agency } },
-    );
-    ids.push(issue.id);
-    const design = builds[i] ?? null;
-    if (design) {
-      await linkBuild(tx, {
-        issueId: issue.id,
-        workflowId: design.workflowId,
-        projectId,
-        userId: actor.userId,
-      });
-    }
-    filed.push({
-      issueId: issue.id,
-      priority,
-      category,
-      complexity: item.complexity,
-      builds: design?.flow ?? null,
-      defaulted: [
-        ...(item.priority === undefined ? (['priority'] as const) : []),
-        ...(item.category === undefined ? (['category'] as const) : []),
-      ],
-    });
-    const criteria = item.criteria.map((c, j) => ({
-      n: j + 1,
-      statement: c.body,
-      requirementCriterionId: codes.get(c.tracesTo) ?? null,
-    }));
-    await putCriteria(tx, issue.id, criteria);
+    filed.push(await fileItemIn(tx, ctx, item, guard.builds[i] ?? null));
   }
+  const ids = filed.map((f) => f.issueId);
   const writer = {
     actor: { type: 'user' as const, id: actor.userId, agency: actor.agency },
     createdById: actor.userId,
@@ -262,22 +284,12 @@ export async function breakdownEffect(
   for (const [i, item] of p.issues.entries()) {
     const edges = (item.blockedBy ?? []).map((k) => ({
       kind: 'blocks' as const,
-      dependsOnId: (typeof k === 'number' ? ids[k] : blockers.get(k)) as string,
+      dependsOnId: (typeof k === 'number' ? ids[k] : guard.blockers.get(k)) as string,
       reason: `breakdown of ${requirementKey(req.reqSeq)} (suggestion ${row.id})`,
     }));
     relations.push(...(await writeIssueRelations(writer, projectId, ids[i] as string, edges, tx)));
   }
   const prefix = await activeIssuePrefix(projectId);
-  const seqs = await tx
-    .select({ id: issues.id, seq: issues.issSeq })
-    .from(issues)
-    .where(
-      sql`${issues.id} IN (${sql.join(
-        ids.map((id) => sql`${id}`),
-        sql`, `,
-      )})`,
-    );
-  const seqOf = new Map(seqs.map((s) => [s.id, s.seq]));
   return {
     refusals: null,
     relations,
@@ -285,10 +297,7 @@ export async function breakdownEffect(
       requirementId: req.id,
       requirement: requirementKey(req.reqSeq),
       revision: head,
-      issues: filed.map((f) => ({
-        ...f,
-        key: formatIssueRef(prefix, seqOf.get(f.issueId) ?? 0),
-      })),
+      issues: filed.map(({ seq, ...f }) => ({ ...f, key: formatIssueRef(prefix, seq) })),
     },
   };
 }

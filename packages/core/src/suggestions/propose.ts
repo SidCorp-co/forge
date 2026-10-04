@@ -47,6 +47,7 @@ import {
   rejectReasonRefusal,
   unchangedRevisionRefusal,
 } from './rules.js';
+import { markMovedStale } from './stale.js';
 import {
   answer,
   inTx,
@@ -200,9 +201,24 @@ export async function createSuggestion(input: {
   return answer(id, { created: true });
 }
 
-// cm:why decision on design suggestion-lifecycle (ISS-117): a reviewer's edit is a new suggestion
+// Decision on design suggestion-lifecycle (ISS-117): a reviewer's edit is a new suggestion
 // the reviewer produced, naming the original, which is rejected with the reviewer's reason in the
 // same transaction; no state is added. Revising rejects the original, so it takes
+async function rejectAsRevisedIn(tx: Tx, row: Row, actor: SuggestionActor, rejected: string) {
+  const decidedRejected = await transition(tx, SUGGESTION_MACHINE, {
+    to: 'rejected',
+    expect: 'proposed',
+    set: { decidedBy: actor.userId, decidedAt: new Date(), reason: rejected },
+    where: eq(suggestions.id, row.id),
+    reason: rejected,
+    actor: suggestionKernelActor(actor),
+    source: 'suggestions-revise',
+    returning: ['id'],
+  });
+  movedRow(decidedRejected);
+  await recordDecision(tx, row, actor, 'rejected', rejected);
+}
+
 // suggestions.approve like any decision (ADR 0007)
 export async function reviseSuggestion(input: {
   projectId: string;
@@ -266,33 +282,15 @@ export async function reviseSuggestion(input: {
     );
     if ('refusals' in proposed) return proposed.refusals;
     id = proposed.id;
-    const rejected = `${reason} (revised by its reviewer as suggestion ${id})`;
-    const decidedRejected = await transition(tx, SUGGESTION_MACHINE, {
-      to: 'rejected',
-      expect: 'proposed',
-      set: { decidedBy: actor.userId, decidedAt: new Date(), reason: rejected },
-      where: eq(suggestions.id, row.id),
-      reason: rejected,
-      actor: suggestionKernelActor(actor),
-      source: 'suggestions-revise',
-      returning: ['id'],
-    });
-    movedRow(decidedRejected);
-    await recordDecision(tx, row, actor, 'rejected', rejected);
+    await rejectAsRevisedIn(
+      tx,
+      row,
+      actor,
+      `${reason} (revised by its reviewer as suggestion ${id})`,
+    );
     return null;
   });
-  if (stale.reason) {
-    await transition(db, SUGGESTION_MACHINE, {
-      to: 'stale',
-      from: 'proposed',
-      set: { decidedAt: new Date(), reason: stale.reason },
-      where: eq(suggestions.id, first.id),
-      reason: stale.reason,
-      actor: suggestionKernelActor(actor),
-      source: 'suggestions-stale',
-      returning: ['id'],
-    });
-  }
+  if (stale.reason) await markMovedStale(first.id, stale.reason, suggestionKernelActor(actor));
   if (refusals) return { ok: false, refusals };
   return answer(id, { created: true });
 }

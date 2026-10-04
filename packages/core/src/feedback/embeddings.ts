@@ -6,6 +6,7 @@
  */
 
 import type { FeedbackDedup, SimilarFeedbackResponse } from '@forge/contracts/feedback';
+import { feedbackKey } from '@forge/contracts/feedback';
 import { and, eq, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
@@ -16,7 +17,8 @@ import { dataPolicyOf } from '../lib/data-egress.js';
 import { logger } from '../observability/logger.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { feedbackEgress, type ReadDoor } from './egress.js';
-import { type FeedbackActor, feedbackKey, phaseOfRow, rowIn } from './read.js';
+import { type FeedbackActor, rowIn } from './read.js';
+import { phaseOfRow } from './summary.js';
 
 /** Embeds the item's text, replacing whatever row it held; a redacted item holds none. */
 async function embedFeedback(feedbackId: string) {
@@ -98,7 +100,7 @@ export async function similarFeedbackAs(
   const row = await rowIn(db, projectId, ref);
   const [own] = await db.select().from(itemEmbeddings).where(eq(itemEmbeddings.feedbackId, row.id));
   if (own?.status !== 'embedded' || !own.embedding || !own.model) {
-    // cm:guard the item's own row status is answered as it is: withheld_by_policy (a no_egress
+    // The item's own row status is answered as it is: withheld_by_policy (a no_egress
     // project), provider_not_configured or failed each say why, and only a missing row reads not_embedded
     const status = own && own.status !== 'embedded' ? own.status : 'not_embedded';
     return {

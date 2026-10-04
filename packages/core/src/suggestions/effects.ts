@@ -49,12 +49,12 @@ const undecided = (kind: string, path: string, what: string): Refusal => ({
   detail: `the approved designs name no effect for ${what}, so accepting this ${kind} suggestion would write nothing; reject it with a reason, or have its producer propose it without that part.`,
 });
 
-// cm:why a revision an accepted suggestion carries was written by its producer, not by the person
+// A revision an accepted suggestion carries was written by its producer, not by the person
 // who accepted it; the accept is recorded on the suggestion row (decided_by)
 const authorOf = (row: Row, actor: SuggestionActor): SuggestionActor =>
   row.producerId ? { userId: row.producerId, agency: actor.agency } : actor;
 
-// cm:why workflow requirement-to-delivery step `ready`: readiness is a suggestion kind with no table
+// Workflow requirement-to-delivery step `ready`: readiness is a suggestion kind with no table
 // of its own, so the accepted row at its base revision IS the readiness result an agree reads
 async function readinessEffect(tx: Tx, projectId: string, row: Row): Promise<EffectWritten> {
   const req = await rowIn(tx, projectId, targetOfRow(row).id);
@@ -84,7 +84,7 @@ async function issueRowOf(tx: Tx, projectId: string, issueId: string) {
 
 type IssueTriage = ReturnType<(typeof SUGGESTION_PAYLOADS)['triage']['schema']['parse']>;
 
-// cm:why decision on ISS-58 (2026-10-04): a triage suggestion on an issue applies only the fields the
+// Decision on ISS-58 (2026-10-04): a triage suggestion on an issue applies only the fields the
 // feedback-triage design names, priority, category and complexity; its free-text `route` is not an
 // effect, so it is kept as a note comment on the issue rather than refused or dropped
 function issueTriageOf(p: IssueTriage, suggestionId: string) {
@@ -152,6 +152,95 @@ async function issueTriageEffect(
   };
 }
 
+async function feedbackTriageEffect(
+  tx: Tx,
+  projectId: string,
+  row: Row,
+  actor: SuggestionActor,
+  channel: AcceptChannel,
+): Promise<EffectWritten> {
+  const target = targetOfRow(row);
+  const { dedup: _dedup, ...triage } = SUGGESTION_PAYLOADS.feedback_triage.schema.parse(
+    row.payload,
+  );
+  const written = await triageIn(tx, {
+    projectId,
+    row: await feedbackRowIn(tx, projectId, target.id, true),
+    triage,
+    actor,
+    channel,
+    fromSuggestionId: row.id,
+  });
+  if (written.refusals?.length) return { refusals: written.refusals };
+  return { refusals: null, ...(written.effect ? { effect: written.effect } : {}) };
+}
+
+async function revisionDiffEffect(
+  tx: Tx,
+  projectId: string,
+  row: Row,
+  head: number | null,
+  actor: SuggestionActor,
+): Promise<EffectWritten> {
+  const target = targetOfRow(row);
+  const write = SUGGESTION_PAYLOADS.revision_diff.schema.parse(row.payload) as RevisionWrite;
+  const refusals = await newDraftRevisionIn(tx, {
+    requirementId: target.id,
+    head,
+    open: await openRevisionOf(tx, target.id),
+    baseRevision: row.baseRevision,
+    actor: authorOf(row, actor),
+    write: { ...write, fromSuggestionId: row.id },
+  });
+  if (refusals?.length) return { refusals };
+  const [written] = await tx
+    .select({ revision: requirementRevisions.revision })
+    .from(requirementRevisions)
+    .where(eq(requirementRevisions.fromSuggestionId, row.id));
+  const req = await rowIn(tx, projectId, target.id);
+  const supersededBy = `suggestion ${row.id} was accepted as a new draft revision of this requirement`;
+  await transition(tx, SUGGESTION_MACHINE, {
+    to: 'stale',
+    from: 'proposed',
+    set: { decidedAt: new Date(), reason: supersededBy },
+    where: and(eq(suggestions.requirementId, target.id), sql`${suggestions.id} <> ${row.id}`),
+    reason: supersededBy,
+    actor: suggestionKernelActor(actor),
+    source: 'suggestions-effect',
+    returning: ['id'],
+  });
+  return {
+    refusals: null,
+    effect: {
+      requirementId: target.id,
+      requirement: requirementKey(req.reqSeq),
+      revision: written?.revision ?? 0,
+    },
+  };
+}
+
+async function requirementDraftEffect(
+  tx: Tx,
+  projectId: string,
+  row: Row,
+  actor: SuggestionActor,
+): Promise<EffectWritten> {
+  const { title, ...write } = SUGGESTION_PAYLOADS.requirement_draft.schema.parse(row.payload);
+  const created = await createRequirementIn(tx, {
+    projectId,
+    actor,
+    authorId: authorOf(row, actor).userId,
+    title,
+    write: { ...(write as RevisionWrite), fromSuggestionId: row.id },
+  });
+  if (created.refusals?.length) return { refusals: created.refusals };
+  const req = await rowIn(tx, projectId, created.id);
+  return {
+    refusals: null,
+    effect: { requirementId: created.id, requirement: requirementKey(req.reqSeq), revision: 1 },
+  };
+}
+
 export async function writeEffect(
   tx: Tx,
   projectId: string,
@@ -162,72 +251,12 @@ export async function writeEffect(
 ): Promise<EffectWritten> {
   const target = targetOfRow(row);
   if (row.kind === 'feedback_triage' && target.type === 'feedback') {
-    const { dedup: _dedup, ...triage } = SUGGESTION_PAYLOADS.feedback_triage.schema.parse(
-      row.payload,
-    );
-    const written = await triageIn(tx, {
-      projectId,
-      row: await feedbackRowIn(tx, projectId, target.id, true),
-      triage,
-      actor,
-      channel,
-      fromSuggestionId: row.id,
-    });
-    if (written.refusals?.length) return { refusals: written.refusals };
-    return { refusals: null, ...(written.effect ? { effect: written.effect } : {}) };
+    return feedbackTriageEffect(tx, projectId, row, actor, channel);
   }
   if (row.kind === 'revision_diff' && target.type === 'requirement') {
-    const write = SUGGESTION_PAYLOADS.revision_diff.schema.parse(row.payload) as RevisionWrite;
-    const refusals = await newDraftRevisionIn(tx, {
-      requirementId: target.id,
-      head,
-      open: await openRevisionOf(tx, target.id),
-      baseRevision: row.baseRevision,
-      actor: authorOf(row, actor),
-      write: { ...write, fromSuggestionId: row.id },
-    });
-    if (refusals?.length) return { refusals };
-    const [written] = await tx
-      .select({ revision: requirementRevisions.revision })
-      .from(requirementRevisions)
-      .where(eq(requirementRevisions.fromSuggestionId, row.id));
-    const req = await rowIn(tx, projectId, target.id);
-    const supersededBy = `suggestion ${row.id} was accepted as a new draft revision of this requirement`;
-    await transition(tx, SUGGESTION_MACHINE, {
-      to: 'stale',
-      from: 'proposed',
-      set: { decidedAt: new Date(), reason: supersededBy },
-      where: and(eq(suggestions.requirementId, target.id), sql`${suggestions.id} <> ${row.id}`),
-      reason: supersededBy,
-      actor: suggestionKernelActor(actor),
-      source: 'suggestions-effect',
-      returning: ['id'],
-    });
-    return {
-      refusals: null,
-      effect: {
-        requirementId: target.id,
-        requirement: requirementKey(req.reqSeq),
-        revision: written?.revision ?? 0,
-      },
-    };
+    return revisionDiffEffect(tx, projectId, row, head, actor);
   }
-  if (row.kind === 'requirement_draft') {
-    const { title, ...write } = SUGGESTION_PAYLOADS.requirement_draft.schema.parse(row.payload);
-    const created = await createRequirementIn(tx, {
-      projectId,
-      actor,
-      authorId: authorOf(row, actor).userId,
-      title,
-      write: { ...(write as RevisionWrite), fromSuggestionId: row.id },
-    });
-    if (created.refusals?.length) return { refusals: created.refusals };
-    const req = await rowIn(tx, projectId, created.id);
-    return {
-      refusals: null,
-      effect: { requirementId: created.id, requirement: requirementKey(req.reqSeq), revision: 1 },
-    };
-  }
+  if (row.kind === 'requirement_draft') return requirementDraftEffect(tx, projectId, row, actor);
   if (row.kind === 'breakdown' && target.type === 'requirement') {
     return breakdownEffect(tx, projectId, row, head, actor, channel);
   }

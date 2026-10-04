@@ -191,11 +191,6 @@
         "via:uploads"
       ]
     },
-    "content-language": {
-      "kind": "domain",
-      "context": "design",
-      "serves": ["REQ-13"]
-    },
     "conversations": {
       "kind": "domain",
       "context": "conversations",
@@ -568,7 +563,6 @@
         "via:auth",
         "via:automation",
         "via:comments",
-        "via:content-language",
         "via:credentials",
         "via:development",
         "via:devices",
@@ -689,7 +683,6 @@
         "via:auth",
         "via:automation",
         "via:comments",
-        "via:content-language",
         "via:credentials",
         "via:development",
         "via:devices",
@@ -1022,9 +1015,6 @@
     "comments": {
       "serves": ["REQ-3"]
     },
-    "content-language": {
-      "serves": ["REQ-13"]
-    },
     "contracts": {
       "serves": ["REQ-5", "REQ-11"]
     },
@@ -1086,7 +1076,7 @@
       "serves": ["REQ-11", "project-onboarding#running"]
     },
     "project-settings": {
-      "serves": ["issue-delivery#policy"]
+      "serves": ["issue-delivery#policy", "REQ-13"]
     },
     "projects": {
       "serves": ["project-onboarding#created"]

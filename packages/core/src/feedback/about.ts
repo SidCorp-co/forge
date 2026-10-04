@@ -1,20 +1,15 @@
 import type { AgentReportFeedbackLink } from '@forge/contracts/agent-reports';
 import type { FeedbackSummary } from '@forge/contracts/feedback';
+import { feedbackKey } from '@forge/contracts/feedback';
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { feedbackEgress, type ReadDoor } from './egress.js';
-import {
-  type FeedbackActor,
-  feedbackKey,
-  linkedOf,
-  phaseIn,
-  routeView,
-  summaryOf,
-} from './read.js';
+import type { FeedbackActor } from './read.js';
+import { linkedOf, phaseIn, routeView, summaryOf } from './summary.js';
 
-// cm:guard feedback read from another entity's page (a requirement's rail) passes the same egress
+// Feedback read from another entity's page (a requirement's rail) passes the same egress
 // rule as the Feedback list: a provider-bound reader gets metadata only at no_egress and scrubbed
 // text at redact, whatever surface carries it, so a product read never leaks operational content
 export async function summariesAs(

@@ -17,7 +17,7 @@ import {
 } from '@forge/contracts/suggestions';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
-// cm:guard kind is one of the 6 and the payload parses for it (SUGGESTION_PAYLOAD_INVALID), on a target
+// Kind is one of the 6 and the payload parses for it (SUGGESTION_PAYLOAD_INVALID), on a target
 // the kind takes (SUGGESTION_TARGET_INVALID)
 export function payloadRefusal(
   kind: SuggestionKind,
@@ -62,7 +62,7 @@ export function fingerprintOf(kind: SuggestionKind, payload: unknown): string {
     .slice(0, 32);
 }
 
-// cm:guard the base a suggestion names is the target's head when it is written and when it is
+// The base a suggestion names is the target's head when it is written and when it is
 // accepted (compare-and-set); otherwise SUGGESTION_BASE_STALE naming both revisions
 export function baseStaleRefusal(
   base: number | null,
@@ -86,7 +86,7 @@ export function duplicateRefusal(twinId: string | null): SuggestionRefusal | nul
   };
 }
 
-// cm:guard at most 5 proposed suggestions wait on one target; a 6th is SUGGESTION_QUEUE_FULL
+// At most 5 proposed suggestions wait on one target; a 6th is SUGGESTION_QUEUE_FULL
 export function queueFullRefusal(openOnTarget: number): SuggestionRefusal | null {
   if (openOnTarget < SUGGESTION_MAX_OPEN_PER_TARGET) return null;
   return {
@@ -113,7 +113,7 @@ export function breakdownOpenRefusal(
   };
 }
 
-// cm:guard a rejection carries its reason, which feeds the next suggestion on that target
+// A rejection carries its reason, which feeds the next suggestion on that target
 export function rejectReasonRefusal(reason: string | null | undefined): SuggestionRefusal | null {
   if (reason?.trim()) return null;
   return {
@@ -123,7 +123,7 @@ export function rejectReasonRefusal(reason: string | null | undefined): Suggesti
   };
 }
 
-// cm:guard a decided suggestion stays decided: accept, reject or withdraw after it is SUGGESTION_DECIDED
+// A decided suggestion stays decided: accept, reject or withdraw after it is SUGGESTION_DECIDED
 export function decidedRefusal(status: SuggestionStatus): SuggestionRefusal | null {
   if (status === 'proposed') return null;
   return {
@@ -166,7 +166,7 @@ export interface PinnedDesign {
   flow: string;
 }
 
-// cm:guard each breakdown issue builds a design its baseline pins: `builds` names a pinned flow or
+// Each breakdown issue builds a design its baseline pins: `builds` names a pinned flow or
 // null for none; left out, the one pinned design is taken, none links nothing, and several are
 // SUGGESTION_BUILD_UNNAMED; a flow the baseline does not pin is SUGGESTION_BUILD_UNPINNED (ISS-117)
 export function breakdownBuilds(
@@ -220,7 +220,7 @@ function cycleAt(p: Breakdown): [number, number] | null {
   return null;
 }
 
-// cm:guard a breakdown's traces name BCs live at its base revision and its blockedBy edges name
+// A breakdown's traces name BCs live at its base revision and its blockedBy edges name
 // other proposed issues without a cycle, at propose and at accept (SUGGESTION_PAYLOAD_INVALID by path)
 export function breakdownFaults(
   p: Breakdown,
@@ -268,7 +268,7 @@ interface BlockerFound {
   archived: boolean;
 }
 
-// cm:guard a blocker named by key or uuid is a live issue of this project: one that does not
+// A blocker named by key or uuid is a live issue of this project: one that does not
 // resolve here is SUGGESTION_BLOCKER_UNKNOWN (another project's included), a closed, dropped or
 // archived one SUGGESTION_BLOCKER_TERMINAL, since a blocks edge on it holds nothing back (ISS-89)
 export function blockerRefusal(

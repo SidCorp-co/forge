@@ -4,7 +4,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { FEEDBACK_LIMITS } from '@forge/contracts/feedback';
+import { FEEDBACK_LIMITS, feedbackKey } from '@forge/contracts/feedback';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -13,13 +13,15 @@ import { agentQuestions } from '../db/schema-questions.js';
 import { allowedSetForTarget, resolveAttachmentMime, safeName } from '../lib/attachment-mime.js';
 import { dataPolicyOf, egressAs } from '../lib/data-egress.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
+import type { Refusal } from '../lib/refusal.js';
 import { logger } from '../observability/logger.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { askQuestion } from '../questions/index.js';
 import { getStorage } from '../storage/index.js';
-import { type FeedbackActor, feedbackKey, phaseOfRow, rowIn } from './read.js';
+import { type FeedbackActor, rowIn } from './read.js';
 import { clarificationRefusal, redactedRefusal } from './rules.js';
 import { answer, type FeedbackOutcome, inTx, lockFeedback } from './service.js';
+import { phaseOfRow } from './summary.js';
 
 /** The BA assistant asks the reporter one clarification (Q5); the answer becomes a suggestion, never an edit. */
 export async function askClarification(input: {
@@ -55,6 +57,42 @@ export async function askClarification(input: {
   return answer(projectId, row.id, actor);
 }
 
+/** The decoded bytes and their resolved type, or the refusal naming what is wrong with them. */
+function uploadOf(input: {
+  name: string;
+  mime: string;
+  contentBase64: string;
+}): { bytes: Buffer; mime: string } | { refusal: Refusal } {
+  const invalid = (path: string, detail: string) => ({
+    refusal: { code: 'FEEDBACK_ATTACHMENT_INVALID', path, detail },
+  });
+  const bytes = Buffer.from(input.contentBase64, 'base64');
+  if (bytes.length === 0)
+    return invalid(
+      '/contentBase64',
+      'the attachment decodes to no bytes; send its content as base64.',
+    );
+  if (bytes.length > FEEDBACK_LIMITS.attachmentBytes) {
+    return invalid(
+      '/contentBase64',
+      `the attachment is ${bytes.length} bytes; at most ${FEEDBACK_LIMITS.attachmentBytes} are stored.`,
+    );
+  }
+  const mime = resolveAttachmentMime({
+    target: 'issue',
+    name: input.name,
+    declaredMime: input.mime,
+    bytes,
+  });
+  if (!mime.ok) {
+    return invalid(
+      '/mime',
+      `${mime.mime || 'this type'} is not stored here; allowed: ${allowedSetForTarget('issue').mimes.join(', ')}.`,
+    );
+  }
+  return { bytes, mime: mime.mime };
+}
+
 /** A reporter's attachment, flagged when the project's data policy is on (Q8). */
 export async function addAttachment(input: {
   projectId: string;
@@ -67,42 +105,15 @@ export async function addAttachment(input: {
   const { projectId, actor } = input;
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const row = await rowIn(db, projectId, input.ref);
-  const invalid = (detail: string): FeedbackOutcome => ({
-    ok: false,
-    refusals: [{ code: 'FEEDBACK_ATTACHMENT_INVALID', path: '/contentBase64', detail }],
-  });
   const done = redactedRefusal(row.redactedAt);
   if (done) return { ok: false, refusals: [done] };
-  const bytes = Buffer.from(input.contentBase64, 'base64');
-  if (bytes.length === 0)
-    return invalid('the attachment decodes to no bytes; send its content as base64.');
-  if (bytes.length > FEEDBACK_LIMITS.attachmentBytes) {
-    return invalid(
-      `the attachment is ${bytes.length} bytes; at most ${FEEDBACK_LIMITS.attachmentBytes} are stored.`,
-    );
-  }
-  const mime = resolveAttachmentMime({
-    target: 'issue',
-    name: input.name,
-    declaredMime: input.mime,
-    bytes,
-  });
-  if (!mime.ok) {
-    return {
-      ok: false,
-      refusals: [
-        {
-          code: 'FEEDBACK_ATTACHMENT_INVALID',
-          path: '/mime',
-          detail: `${mime.mime || 'this type'} is not stored here; allowed: ${allowedSetForTarget('issue').mimes.join(', ')}.`,
-        },
-      ],
-    };
-  }
+  const upload = uploadOf(input);
+  if ('refusal' in upload) return { ok: false, refusals: [upload.refusal] };
+  const { bytes, mime } = upload;
   const level = await dataPolicyOf(projectId);
   const name = safeName(input.name);
   const key = `feedback/${projectId}/${row.id}/${randomUUID()}-${name}`;
-  const stored = await getStorage().put(key, bytes, mime.mime);
+  const stored = await getStorage().put(key, bytes, mime);
   const refusals = await inTx(async (tx) => {
     await lockFeedback(tx, projectId);
     const held = await tx
@@ -122,7 +133,7 @@ export async function addAttachment(input: {
       projectId,
       feedbackId: row.id,
       name,
-      mime: mime.mime,
+      mime,
       size: bytes.length,
       storagePath: stored.path,
       flagged: level !== 'off',

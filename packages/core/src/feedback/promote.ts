@@ -2,6 +2,7 @@ import {
   FEEDBACK_LIMITS,
   type FeedbackPromoteEffect,
   type FeedbackView,
+  feedbackKey,
   type PromoteAgentReportRequest,
 } from '@forge/contracts/feedback';
 import { eq, inArray } from 'drizzle-orm';
@@ -19,8 +20,9 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import type { Refusal } from '../lib/refusal.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { detailAs } from './detail.js';
 import { embedFeedbackLater } from './embeddings.js';
-import { detailAs, type FeedbackActor, feedbackKey, notFound, rowIn } from './read.js';
+import { type FeedbackActor, notFound, rowIn } from './read.js';
 import { promoteRefusal } from './rules.js';
 import { decide, insertFeedbackIn, inTx, lockFeedback, preparedFeedback } from './service.js';
 
@@ -80,7 +82,7 @@ function promoteRefusals(
   return promoteRefusal({ ...facts, ...held }) ?? alreadyTriagedRefusal(held);
 }
 
-// cm:why ISS-93 (feedback-triage decision, 2026-10-04): promoting an agent report files feedback, so
+// ISS-93 (feedback-triage decision, 2026-10-04): promoting an agent report files feedback, so
 // any member may do it, person or agent; the promoter is the item's reporter and verifies the fix.
 // It is the report's triage (ISS-113, design automation's filed-target decision): the report becomes
 // filed, with the feedback item as its one target and the promoter as triagedBy, in the write that

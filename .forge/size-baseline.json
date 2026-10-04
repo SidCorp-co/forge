@@ -13,10 +13,6 @@
       "fileLines": 2298,
       "maxFunctionLines": 0
     },
-    "packages/core/src/feedback/read.ts": {
-      "fileLines": 527,
-      "maxFunctionLines": 0
-    },
     "packages/core/src/issues/criteria/store.ts": {
       "fileLines": 502,
       "maxFunctionLines": 0

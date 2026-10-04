@@ -1,7 +1,7 @@
+import type { DesignStatus } from '@forge/contracts/design-status';
 import { sql } from 'drizzle-orm';
 import { mergeSessionMetadata } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
-import type { DesignStatus } from './design.js';
 import type { LoadedPinnedContract } from './pinned-contracts.js';
 import {
   type LoadedRequirement,

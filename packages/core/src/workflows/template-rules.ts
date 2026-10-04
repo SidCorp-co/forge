@@ -4,7 +4,11 @@
  * rules it switches on. Each refusal names the type or rule and the template that declares it.
  */
 
-import { bandOfNode, type WorkflowTemplate } from '@forge/contracts/workflow-templates';
+import {
+  bandOfNode,
+  type TemplateRule,
+  type WorkflowTemplate,
+} from '@forge/contracts/workflow-templates';
 import { jsonPointer as pointer } from '../lib/refusal.js';
 import { designLines, nodeOf } from './edges.js';
 import type { WorkflowRefusal } from './rules.js';
@@ -83,93 +87,99 @@ export function structureRefusals(doc: WorkflowWriteV2, t: WorkflowTemplate): Wo
 const SCREEN_STATES = ['empty', 'loading', 'error'] as const;
 
 /** The rules the template switches on, each implemented here once. */
+interface RuleCtx {
+  doc: WorkflowWriteV2;
+  t: WorkflowTemplate;
+  nodes: ReturnType<typeof nodeOf>[];
+  broken: (path: string, detail: string) => void;
+}
+
+const RULE_CHECKS: Partial<Record<TemplateRule, (c: RuleCtx) => void>> = {
+  'single-entry': ({ doc, broken }) => {
+    const roots = doc.steps.filter((s) => s.after.length === 0).map((s) => s.id);
+    if (roots.length !== 1)
+      broken(
+        '/steps',
+        `exactly one step comes after nothing, and ${roots.length === 0 ? 'none does' : `${roots.join(', ')} do`}.`,
+      );
+  },
+  tree: ({ doc, broken }) => {
+    doc.steps.forEach((s, i) => {
+      if (s.after.length > 1)
+        broken(
+          pointer(['steps', i, 'after']),
+          `"${s.id}" comes after ${s.after.join(', ')}; in a tree every step has one parent.`,
+        );
+    });
+  },
+  'screen-states': ({ doc, t, nodes, broken }) => {
+    const lines = designLines(doc, t);
+    doc.steps.forEach((s, i) => {
+      const node = nodes[i];
+      if (node?.type !== 'SCREEN' || !node.dataShown?.length) return;
+      const shown = new Set(
+        lines
+          .filter((l) => l.from === s.id && l.kind === 'shows')
+          .map((l) => nodes[doc.steps.findIndex((x) => x.id === l.to)]?.variant),
+      );
+      const lacking = SCREEN_STATES.filter((v) => !shown.has(v));
+      if (lacking.length > 0)
+        broken(
+          pointer(['steps', i]),
+          `screen "${s.id}" shows data (${node.dataShown.join(', ')}) and draws no ${lacking.join(', ')} state; add a UI_STATE of each variant and a \`shows\` line to it from "${s.id}".`,
+        );
+    });
+  },
+  'personas-declared': ({ doc, nodes, broken }) => {
+    const declared = new Set((doc.personas ?? []).map((p) => p.id));
+    doc.steps.forEach((s, i) => {
+      const persona = nodes[i]?.persona;
+      if (persona !== undefined && !declared.has(persona))
+        broken(
+          pointer(['steps', i, 'node', 'persona']),
+          `step "${s.id}" is for persona "${persona}", which the design does not declare; its personas are ${[...declared].join(', ') || 'none'} — declare it in \`personas: [{ id, label }]\`.`,
+        );
+    });
+  },
+  'band-order': ({ doc, t, nodes, broken }) => {
+    if (t.lanes.from !== 'template') return;
+    const order = new Map(t.lanes.bands.map((b, i) => [b.id, i]));
+    const bandAt = new Map(
+      doc.steps.map((s, i) => {
+        const n = nodes[i];
+        return [s.id, n ? bandOfNode(t, n) : null] as const;
+      }),
+    );
+    const returns =
+      t.edgeKinds
+        .filter((k) => k.direction === 'return')
+        .map((k) => k.id)
+        .join(' / ') || 'return';
+    doc.steps.forEach((s, i) => {
+      s.after.forEach((a, j) => {
+        const from = order.get(bandAt.get(a) ?? '');
+        const to = order.get(bandAt.get(s.id) ?? '');
+        if (from !== undefined && to !== undefined && from > to)
+          broken(
+            pointer(['steps', i, 'after', j]),
+            `the line ${a} → ${s.id} runs back up from band "${bandAt.get(a)}" to "${bandAt.get(s.id)}"; a forward line never climbs the bands. Move "${s.id}" to a later band (\`node.band\`), or draw the return as a ${returns} edge.`,
+          );
+      });
+    });
+  },
+};
+
 export function ruleRefusals(doc: WorkflowWriteV2, t: WorkflowTemplate): WorkflowRefusal[] {
   const out: WorkflowRefusal[] = [];
-  const broken = (path: string, rule: string, detail: string) =>
-    out.push({
-      code: 'WORKFLOW_TEMPLATE_RULE',
-      path,
-      detail: `${name(t)} rule ${rule}: ${detail}`,
-    });
-  const steps = doc.steps;
-  const nodes = steps.map((s) => nodeOf(s, t));
+  const nodes = doc.steps.map((s) => nodeOf(s, t));
   for (const rule of t.rules) {
-    if (rule === 'single-entry') {
-      const roots = steps.filter((s) => s.after.length === 0).map((s) => s.id);
-      if (roots.length !== 1)
-        broken(
-          '/steps',
-          rule,
-          `exactly one step comes after nothing, and ${roots.length === 0 ? 'none does' : `${roots.join(', ')} do`}.`,
-        );
-    }
-    if (rule === 'tree') {
-      steps.forEach((s, i) => {
-        if (s.after.length > 1)
-          broken(
-            pointer(['steps', i, 'after']),
-            rule,
-            `"${s.id}" comes after ${s.after.join(', ')}; in a tree every step has one parent.`,
-          );
+    const broken = (path: string, detail: string) =>
+      out.push({
+        code: 'WORKFLOW_TEMPLATE_RULE',
+        path,
+        detail: `${name(t)} rule ${rule}: ${detail}`,
       });
-    }
-    if (rule === 'screen-states') {
-      const lines = designLines(doc, t);
-      steps.forEach((s, i) => {
-        const node = nodes[i];
-        if (node?.type !== 'SCREEN' || !node.dataShown?.length) return;
-        const shown = new Set(
-          lines
-            .filter((l) => l.from === s.id && l.kind === 'shows')
-            .map((l) => nodes[steps.findIndex((x) => x.id === l.to)]?.variant),
-        );
-        const lacking = SCREEN_STATES.filter((v) => !shown.has(v));
-        if (lacking.length > 0)
-          broken(
-            pointer(['steps', i]),
-            rule,
-            `screen "${s.id}" shows data (${node.dataShown.join(', ')}) and draws no ${lacking.join(', ')} state; add a UI_STATE of each variant and a \`shows\` line to it from "${s.id}".`,
-          );
-      });
-    }
-    if (rule === 'personas-declared') {
-      const declared = new Set((doc.personas ?? []).map((p) => p.id));
-      steps.forEach((s, i) => {
-        const persona = nodes[i]?.persona;
-        if (persona !== undefined && !declared.has(persona))
-          broken(
-            pointer(['steps', i, 'node', 'persona']),
-            rule,
-            `step "${s.id}" is for persona "${persona}", which the design does not declare; its personas are ${[...declared].join(', ') || 'none'} — declare it in \`personas: [{ id, label }]\`.`,
-          );
-      });
-    }
-    if (rule === 'band-order' && t.lanes.from === 'template') {
-      const order = new Map(t.lanes.bands.map((b, i) => [b.id, i]));
-      const bandAt = new Map(
-        steps.map((s, i) => {
-          const n = nodes[i];
-          return [s.id, n ? bandOfNode(t, n) : null] as const;
-        }),
-      );
-      const returns =
-        t.edgeKinds
-          .filter((k) => k.direction === 'return')
-          .map((k) => k.id)
-          .join(' / ') || 'return';
-      steps.forEach((s, i) => {
-        s.after.forEach((a, j) => {
-          const from = order.get(bandAt.get(a) ?? '');
-          const to = order.get(bandAt.get(s.id) ?? '');
-          if (from !== undefined && to !== undefined && from > to)
-            broken(
-              pointer(['steps', i, 'after', j]),
-              rule,
-              `the line ${a} → ${s.id} runs back up from band "${bandAt.get(a)}" to "${bandAt.get(s.id)}"; a forward line never climbs the bands. Move "${s.id}" to a later band (\`node.band\`), or draw the return as a ${returns} edge.`,
-            );
-        });
-      });
-    }
+    RULE_CHECKS[rule]?.({ doc, t, nodes, broken });
   }
   return out;
 }
