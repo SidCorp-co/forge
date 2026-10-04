@@ -11,8 +11,8 @@ without a release. How the code works is not shipped at all.
 | Home | Describes | `audience` | Ships | Declared by | Checked by |
 |---|---|---|---|---|---|
 | `packages/web-v2/content/help/` | how to use Forge, on its screens | `user`, `assistant-setup` | the web build | each page's front-matter | `readPage` and `readAudience` in `packages/web-v2/scripts/help-frontmatter.mjs`, at `pnpm gen:help` |
-| `packages/core/src/guides/registry.ts`, served at `/api/guides` | a rule of the system agents are held to | `agent` | core | `audience` on each `ForgeGuide` in `packages/core/src/guides/types.ts` | the type, and `packages/core/src/guides/registry.test.ts` |
-| the `integration_guides` table | an external service, per organisation | `agent` | the database | the home: `resolveGuide` and `resolveGuideIndex` in `packages/core/src/guides/integration-guides.ts` set it on every row they return | `packages/core/src/guides/integration-guides.test.ts` |
+| `packages/core/src/guides/registry.ts`, served at `/api/guides` | a rule of the system agents are held to | `agent` | core | `audience` on each `ForgeGuide` in `packages/core/src/guides/types.ts` | the type |
+| the `integration_guides` table | an external service, per organisation | `agent` | the database | the home: `resolveGuide` and `resolveGuideIndex` in `packages/core/src/guides/integration-guides.ts` set it on every row they return | — |
 | `docs/` | how the code works | none | never | — | — |
 
 ## Why each home is where it is
@@ -48,8 +48,8 @@ value core declared for each guide, in `fromGuide` in
 
 | `audience` | The rule | Checked by |
 |---|---|---|
-| `user` | Names nothing the screen does not show: no file path, no table or column name, no MCP tool name, no status in its stored form, and no promise of how long anything takes. `forge-runner` is allowed — it is the program a runner's owner installs and types. | `packages/web-v2/src/features/docs/help-user-vocabulary.test.ts`, over every page declaring it |
-| `assistant-setup` | Every numbered step ends in something the reader can see, written as a `**Check:**` line. | `packages/web-v2/src/features/docs/help-assistant-setup.test.ts`, over every page declaring it; `STEP_RULE_EXEMPT` there names a page that does not meet it yet, and refuses the entry once it does |
+| `user` | Names nothing the screen does not show: no file path, no table or column name, no MCP tool name, no status in its stored form, and no promise of how long anything takes. `forge-runner` is allowed — it is the program a runner's owner installs and types. | review |
+| `assistant-setup` | Every numbered step ends in something the reader can see, written as a `**Check:**` line. | review |
 | `agent` | Every page names what it forbids or requires. A page that only describes belongs to one of the other two. | review — a script looking for rule words passes every guide on the word "only", which grades nothing |
 
 A page that cannot pass its own audience's rule is in the wrong home or is written for the wrong

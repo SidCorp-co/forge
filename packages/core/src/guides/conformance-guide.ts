@@ -40,27 +40,17 @@ If verify or CI is red on something you did not cause:
 1. **In reach and inside your ownership line** — fix it, whoever caused it, whether or not it is in your acceptance criteria.
 2. **Out of reach** — it leaves as someone's work: an issue at \`draft\`, a \`blocks\` edge, or a comment carrying the evidence.
 
-What is never acceptable is disclosing it and moving on. Measured on this repo: five test-stage runs wrote *"lint remains red only on pre-existing, untouched diagnostics"* and merged — while a required check was red and an integration suite had five failures, one of them a regression suite that had never run anywhere. Nobody lied and nobody fixed it. "Already red" only means earlier steps dodged too.
+What is never acceptable is disclosing it and moving on. "Already red" only means earlier steps dodged too.
 
 ### Re-baselining is allowed, silently re-baselining is not
 
-Most checkers freeze today's debt in a baseline and fail only on growth. When growth is legitimate — a file you deliberately extended, a flow you just declared — re-freeze it:
+Most checkers freeze today's debt in a baseline and fail only on growth. When growth is legitimate — a file you deliberately extended — re-freeze it:
 
 \`\`\`
-node scripts/check-<axis>.mjs --update-baseline
+node scripts/check-<gate>.mjs --update-baseline
 \`\`\`
 
 Then **say so in the commit message and name what moved**. The changed numbers in the diff are the record; a re-baseline mentioned nowhere reads as a cleanup that never happened. Never re-baseline to make an unexplained red go away — find out why it went red first.
-
-Ask **before** you edit rather than after, and ask the map rather than reading files:
-
-| Want to know | Ask |
-|---|---|
-| what this file is coupled to, both directions | \`cm impact <path>\` |
-| the ordered steps of a named runtime flow | \`cm flow <name>\` |
-| the whole declared graph, for your own reasoning | \`cm graph --json\` |
-
-These answer in one call what would otherwise cost a dozen file reads, and they carry edges no language server can see — a \`lockstep\` pair usually has no import between its two sides. They are also only as complete as what somebody declared: an empty \`cm impact\` means *nothing was declared here*, never *nothing depends on this*. Confirm with references either way.
 
 ### Cardinal rules
 

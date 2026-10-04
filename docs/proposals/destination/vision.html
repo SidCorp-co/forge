@@ -450,7 +450,7 @@ asymmetry is what let a complete chain be empty.</p>
 
 <h3>6.2 · The deterministic floor no judge may override</h3>
 <p>An LLM verdict is <b>one input</b>. The merge is gated by checks that run no model. If any LLM
-verdict can move an issue to <code>tested</code>, principal separation has relocated the problem, not
+verdict can move an issue past its verdict gate (<code>in_progress</code> → <code>awaiting_release</code>), principal separation has relocated the problem, not
 closed it.</p>
 
 <h3>6.3 · Four anti-cheat mechanisms, all measured</h3>

@@ -43,20 +43,16 @@ export interface ImprovementMessage {
 export const RETIRED_STRATEGY_INPUTS = {
   MERGED_AT_ON_PASS: {
     key: 'merged-at-on-pass',
-    title: 'Stamp merged_at on PASS to unblock dependencies',
+    title: 'Record the merge on PASS before moving to awaiting_release',
     message:
-      'When forge-test reaches an overall PASS verdict, call ' +
-      '`forge-runner api issues/<id>/merge -X POST -d \'{"target":"base"}\'` immediately ' +
-      'after updating the status. This stamps merged_at on the issue so any ' +
-      'downstream issues connected by blocks edges are ' +
-      'automatically dispatched. Without this stamp, dependent issues queue ' +
-      'indefinitely even though their blocker has merged — the pipeline ' +
-      'cannot detect the merge from status alone.',
+      'When forge-test reaches an overall PASS verdict, record the merge with ' +
+      '`forge-runner api issues/<id>/merge -X POST -d \'{"target":"base"}\'` before ' +
+      'moving the issue to awaiting_release. The move is refused MERGE_NOT_RECORDED ' +
+      'without it, and a blocks dependent is released only once its blocker reaches ' +
+      'awaiting_release — the merge record alone moves no status and releases nothing.',
     appliesWhen:
-      'The project uses blocks issue relations AND the base-merge ' +
-      'state is a manual gate (a pipeline status the system does not ' +
-      'auto-advance, such as "awaiting_release"), meaning merged_at is ' +
-      'not stamped automatically on status transition.',
+      'A skill moves issues to awaiting_release and its runs are refused ' +
+      'MERGE_NOT_RECORDED, or leave the issue at in_progress after a PASS.',
     appliesToSkills: ['forge-test'],
   },
   RELEASE_CONFLICT_2TIER: {

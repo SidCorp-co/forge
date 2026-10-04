@@ -30,12 +30,11 @@ Common issues and how to clear them.
 Codes are valid for a few minutes. Generate a fresh one and run
 `forge-runner login` again.
 
-## An issue won't advance past a stage
+## An issue won't move
 
-- Some stages **wait for your click** rather than running automatically — open
-  the issue and look for the action button.
-- A stage can be turned off for the project in **Project → Settings → Pipeline**.
-- If a stage has no agent configured for it, it's skipped.
+Read its status. **Needs info**, **On hold** and **Awaiting release** each wait
+for a person — see [Read an issue's status](?path=issue-statuses) for what each
+one asks of you.
 
 ## I can't see a project / I get "not a member"
 
@@ -45,5 +44,5 @@ organization with the sidebar switcher.
 
 ## Still stuck?
 
-Capture what you see (the issue, the stage, any error) and reach out to your
+Capture what you see (the issue, its status, any error) and reach out to your
 Forge administrator.

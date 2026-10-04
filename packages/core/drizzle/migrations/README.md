@@ -39,14 +39,11 @@ emits a snapshot under `meta/`.
    journal's existing `max(when)` (those are hand-picked, spaced a day apart).
    Drizzle reads the single highest `created_at` in the target DB and skips
    lower entries silently, forever — the container then serves new code against
-   an old schema. Raise the generated `when` by hand to a whole number of days
-   above the journal's `max(when)` — `+ 86400000` where yours is the only
-   migration open, and enough to clear the highest `when` any unmerged sibling
-   holds where it is not. Read the siblings immediately before the push that
-   lands it: every branch deriving `+ 86400000` from one `main` lands on the
-   same number, and the gate reads only your own journal, so it is green on a
-   value a sibling is about to take. `db/migrations-journal.test.ts` holds the
-   shape — whole days, strictly above, at most 30 ahead — not the collision.
+   an old schema. Replace the generated `when` by hand with the value the
+   `Next free:` line of `node scripts/check-migration-order.mjs` prints — it
+   reads the floor off the branch you land on and every open branch's journal.
+   Run it immediately before the push that lands it: every branch deriving
+   `+ 86400000` from one base lands on the same number.
 2. It does not re-emit an index that Postgres dropped with the column. If your
    change drops and re-adds a column (the only way to alter a generated
    column's expression), every index on that column goes with it and drizzle's
@@ -65,25 +62,21 @@ lands, not once per branch.
 
 Renaming the files and raising the `when` is not enough, because a snapshot records the schema it
 was diffed FROM: yours chains off the snapshot `main` held when you generated it, and `main` now
-carries another one. The chain gate fails it by name, and the first `pnpm db:generate` after that
-re-emits DDL the database already has. So after `git merge origin/main`:
+carries another one, and the first `pnpm db:generate` after that re-emits DDL the database already
+has. So after `git merge origin/main`:
 
 1. Delete your `.sql` files, your `meta/<idx>_snapshot.json` files, and your entries from
    `meta/_journal.json` (`git checkout origin/main -- meta/_journal.json` restores it whole).
 2. `pnpm db:generate` once. It emits ONE `.sql` carrying every table your branch adds, plus one
    snapshot chained off whatever `main`'s head snapshot now is — which is the only thing you are
    keeping. Splitting the modules across several passes is not needed: only the HEAD entry owes a
-   snapshot, and `migrations-journal.test.ts` allows an entry that carries none.
+   snapshot.
 3. Diff the emitted SQL against what you had; it should be the union of your files, statement for
    statement. Anything else is a real schema change you did not mean to make. Restore your own
    `.sql` files under their new `idx`, discard the emitted one, and rename the emitted snapshot to
    `meta/<head idx>_snapshot.json`.
-4. Set the `when` values by hand — `generate` writes `Date.now()`, which is months below the floor.
-
-**Neither `when` test can see this.** With the stale numbering sitting BELOW a higher-`idx` entry
-from `main`, the journal still reads strictly increasing in `idx` order and the head entry is still
-a whole day above the previous maximum, so both go green; only the snapshot chain reds. Read the
-floor off `main` and off every unmerged sibling yourself — the gate reads your journal alone.
+4. Set the `when` values by hand from `node scripts/check-migration-order.mjs` — `generate` writes
+   `Date.now()`, which is months below the floor.
 
 ### Hand-written SQL (rare)
 
@@ -93,7 +86,8 @@ expression indexes, partial indexes, stored functions).
 When you hand-write a `NNNN_name.sql`, you **must also**:
 
 1. Append an entry to `meta/_journal.json` with the next `idx`,
-   matching `tag`, and a unique `when` timestamp:
+   matching `tag`, and the `when` that `node scripts/check-migration-order.mjs`
+   prints as `Next free:`:
 
    ```jsonc
    {
@@ -118,14 +112,11 @@ When you hand-write a `NNNN_name.sql`, you **must also**:
    so a `BEGIN;`/`COMMIT;` in a file ends drizzle's and every migration after
    it in the chain auto-commits statement by statement — free to half-apply
    and still be recorded as applied. `0067_unify_runners.sql` did exactly that
-   for 171 migrations until ISS-1001 removed it;
-   `db/migrations-journal.test.ts` is now the gate.
+   for 171 migrations until ISS-1001 removed it.
 
-**A hand-written migration that changes the SCHEMA still owes a snapshot**, and
-`db/migrations-journal.test.ts` fails it by name if it does not have one: a head
-snapshot that lags is a `pnpm db:generate` that re-emits DDL the database
-already has. A data-only migration owes nothing — the classifier in that test
-says which is which.
+**A hand-written migration that changes the SCHEMA still owes a snapshot**: a
+head snapshot that lags is a `pnpm db:generate` that re-emits DDL the database
+already has. A data-only migration owes nothing.
 
 The way to produce one for a hand-written migration is `pnpm db:generate` on the
 merged tree, keeping `meta/<idx>_snapshot.json` and discarding the `.sql` it

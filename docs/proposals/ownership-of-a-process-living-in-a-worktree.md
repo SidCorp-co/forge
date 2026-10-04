@@ -69,16 +69,18 @@ a second issue asking for the quarantine on its own terms.
 
 ## Nine copies of the log-capture helper
 
-`forge-runner-core` held eight copies of the same `logged_while` test helper — in
+`forge-runner-core` held nine copies of the same `logged_while` test helper — in
 `workspace::worktree`, `runner::close_loop`, `daemon::headroom`, `daemon::pool_jobs`,
 `daemon::session_tokens`, `daemon::recovery`, `daemon::mod` and twice in `daemon::master` — several
-of them noting in a comment that the shared one was out of reach from where it was needed, and one
-counting itself as the third when it was the sixth.
+of them noting in a comment that the shared one was out of reach from where it was needed.
 
 ISS-1271 put one where every unit test in the crate can reach it, `crate::log_capture`, and folded
-`workspace::worktree`'s copy into it, leaving seven. The rest were not folded: `daemon::master` was
-held by another change's branch at the time, and none of the other files was in the declared file
-scope of a batched change, where an undeclared file makes a red gate unattributable. Each is a `use
+`workspace::worktree`'s copy into it. The rest were not folded: `daemon::master` was held by another
+change's branch at the time, and none of the other files was in the declared file scope of a batched
+change, where an undeclared file makes a red gate unattributable. A later change added one more, in
+`transport::provision`, so nine private copies stand today across eight files: `runner::close_loop`,
+`transport::provision`, `daemon::headroom`, `daemon::pool_jobs`, `daemon::session_tokens`,
+`daemon::recovery`, `daemon::mod` and two in `daemon::master`. Each is a `use
 crate::log_capture::logged_while;` and a deletion, and `crate::log_capture` also carries a guard
 form, `capturing()`, that an `async` test needs and that none of the copies has.
 
@@ -93,4 +95,4 @@ form, `capturing()`, that an `async` test needs and that none of the copies has.
 | Leaving the window between the last reading and the removal open | A removal can still succeed over a process that entered the checkout in the milliseconds after the final scan, and the only thing that reports one is the next sweep, up to six hours later. |
 | Closing that window with a quarantine | `git worktree move` per removal: a second git call on every reap, a refusal on any worktree holding submodules, a path in the journal that is no longer the path an operator knows, and a fallback route that has to follow the move. |
 | Counting rather than refusing a working directory the kernel will not show | A process of another user living in the checkout is neither ended nor refused over; the removal proceeds and the line says how many pids it was not allowed to ask about, which on this box is most of them — 804 of 1074. |
-| Folding the remaining seven log-capture copies | Seven files are touched for no behaviour change, each one a file some other change may hold, so the fold has to be taken when no branch is open across them or it buys a merge conflict per file. |
+| Folding the remaining nine log-capture copies | Eight files are touched for no behaviour change, each one a file some other change may hold, so the fold has to be taken when no branch is open across them or it buys a merge conflict per file. |

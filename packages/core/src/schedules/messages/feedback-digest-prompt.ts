@@ -86,8 +86,7 @@ Once a digest is already open, your create writes nothing and returns
 
 **That is your signal to comment on \`existingIssueId\` instead** (\`forge-runner api issues/<existingIssueId>/comments -X POST -d '{"body":"..."}'\`),
 with this run's counts and any cluster that is new or has grown since the last comment. The standing
-digest issue is a living rollup: one issue, one comment per run, closed by a human when the backlog
-is triaged.
+digest issue is a living rollup: one issue, one comment per run.
 
 Do NOT mint a variant key, add a date to the key, or file under a different category to get a fresh
 issue. A later week's backlog is the SAME finding with new numbers — that is exactly what a comment

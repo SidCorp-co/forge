@@ -35,7 +35,10 @@ pull-request review: `required_pull_request_reviews` is off. This means
 notification, not a gate. That file says so itself rather than leaving a reader to infer it.
 
 The judgement that actually holds a change is the independent judge's verdict per acceptance
-criterion, which is recorded on the issue rather than on the pull request.
+criterion, which is recorded on the issue rather than on the pull request. It holds where the
+project document's `delivery.verdictsRequired` is true, the default; where it is false,
+`awaiting_release` and the release cut take an issue without passing verdicts and the move records
+`verdicts-waived`.
 
 ## Release authority
 

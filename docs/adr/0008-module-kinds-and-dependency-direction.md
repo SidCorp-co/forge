@@ -65,7 +65,7 @@ The choices inside that, and why:
   và nên dùng API hơn và CLI hơn thì không cần MCP"). Of the 78 registered tools, 40 were dotted
   one-verb wrappers and 38 action-enum tools; the question of which naming scheme wins dissolves
   once the wrappers go. The few that stay take the one-tool-per-resource form with an `action`
-  enum, live in their module (`tool.ts`), and are mounted, like every module's routes, by one
+  enum, live in their module (**tool.ts**), and are mounted, like every module's routes, by one
   registry per door.
 - **Status machines as data, one kernel transition, one durable outbox.** A machine declared in
   contracts can be checked against its approved state-machine design; a status written in one
@@ -84,7 +84,8 @@ writes outside the kernel transition; `--markers` writes its findings as the Wro
 reconciliation checklist, a JSON document the REQ-17/18 observation store can import. The owner
 ruled on 2026-10-04 that dev is code only and QA comes later ("build trước đi đã test gọi QA test
 sau"), so the orchestrator or QA runs it; it is wired into neither `pnpm verify` nor a hook, ships
-without unit tests, and the only check before a push on dev is `tsc` on the touched packages.
+without unit tests, and the only check before a push on dev is `pnpm tc:changed`
+(`scripts/tc-changed.mjs`), a typecheck of the touched packages and their importers.
 Whether a rule later becomes a gate is a QA-phase decision.
 
 Two rules have no script yet: read models (web derivations) and permission. They are judged by the
@@ -104,10 +105,11 @@ reconciliation decision on each module until a check exists.
   issue blocks record.
 - **archmap keeps its own contracts.** Its purity and fan-out contracts in `.arch.json` stay; the
   kinds are not restated as archmap `layers`, because that would declare every kind twice.
-- **`project-config/mount.ts`, `issues/mount.ts` and `project-config/respond.ts` stop being hubs**:
+- **`packages/core/src/project-config/mount.ts`, `packages/core/src/issues/mount.ts` and
+  `packages/core/src/project-config/respond.ts` stop being hubs**:
   mounting moves to the door registries and `refused` moves into platform beside the envelope.
 - **Two adapter shapes remain legal** (registry-bound and deployment-bound, ADR 0006); a caller
-  imports the port's `index.ts` either way.
+  imports the port's **index.ts** either way.
 - **The cost** is in pattern v2's Honest costs: most of core fails on day one, and because the
   checker runs on demand, a change can break a rule and land until someone next runs it.
 
@@ -124,7 +126,7 @@ under the owner's dev delegation.
   (`packages/core/src/permissions/memberships.ts`).
 - **Sign-in belongs to the auth door.** Signing a person in through the identity adapter is a door's
   work, not a platform leaf's: `auth` is declared a door, and a door may reach an adapter through
-  its port's `index.ts` (`packages/core/src/integrations/identity/index.ts`), as a domain may.
+  its port's **index.ts** (`packages/core/src/integrations/identity/index.ts`), as a domain may.
   The credential helpers every kind uses (the PAT helpers, `jwt`, `cookie`, the device and turn
   credentials, the MCP audit writer) live in the platform module `packages/core/src/credentials/`,
   which owns `personalAccessTokens` and `mcpAuditLog`. Whether a turn may act as a person asks
