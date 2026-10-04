@@ -199,7 +199,7 @@ function stepAfter(
 
 /**
  * THE issue state-machine writer. Every surface — REST `/transition`,
- * REST `PATCH /batch`, MCP `forge_issues`, the reconciler, the release batch — routes through here so
+ * REST `PATCH /batch`, the reconciler, the release batch — routes through here so
  * the lifecycle's edges and guards (`transition-guards.ts`), the conditional UPDATE, the work state,
  * WS broadcast, pipeline-health refresh and run close cannot drift apart.
  *
@@ -303,7 +303,7 @@ export async function transitionIssueStatus(
       await db.insert(comments).values({
         issueId: issue.id,
         authorId: authorOf(actor),
-        body: `Held at the release gate — merged, not shipped. Every \`blocks\`-dependent can dispatch now, because a dependent is held by this issue's STATUS and \`awaiting_release\` is one that releases it; nothing here writes \`merged_at\`. The issue closes when a release ships it, and that close is refused until the shipped-work claim is on the row — \`forge_issues\` \`mark_merged\` naming where it landed.`,
+        body: `Held at the release gate — merged, not shipped. Every \`blocks\`-dependent can dispatch now, because a dependent is held by this issue's STATUS and \`awaiting_release\` is one that releases it; nothing here writes \`merged_at\`. The issue closes when a release ships it, and that close is refused until the shipped-work claim is on the row — \`POST /api/issues/:id/merge\` naming where it landed.`,
         parentId: null,
       });
     } catch (err) {

@@ -10,9 +10,8 @@ import { resolveActor } from './activity.js';
 import { deleteIssueContext, getIssueContexts, writeIssueContext } from './issue-context-store.js';
 
 /**
- * REST surface for step-handoff persistence (proposal Y). 1-to-1 with the
- * `forge_step_handoff.*` MCP tools; both call the same service so behaviour
- * is identical regardless of caller.
+ * REST surface for step-handoff persistence (proposal Y), over the one
+ * service in `./issue-context-store.ts`.
  */
 
 const writeBodySchema = z.object({

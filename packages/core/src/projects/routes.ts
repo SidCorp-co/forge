@@ -437,7 +437,7 @@ projectRoutes.route('/', projectFactsRoutes);
 // ─── Branch config (ISS-135 PR-A) ───────────────────────────────────────────
 //
 // Resolved branch config for one issue: the per-issue override, read by
-// `extractIssueBranchOverride` as `forge_config` reads it, layered on the
+// `extractIssueBranchOverride`, layered on the
 // project defaults. The endpoint returns the *resolved* shape only.
 
 const branchConfigParamSchema = z.object({

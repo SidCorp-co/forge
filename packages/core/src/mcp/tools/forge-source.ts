@@ -2,9 +2,7 @@
  * ISS-50 — `forge_source`, the way an agent reads and writes a change request on the project's
  * source host, whichever host that is: a GitHub pull request or a GitLab merge request.
  *
- * ISS-1074 built it for GitHub as `forge_github`. Before it, an agent that needed a diff or a
- * failing job's log shelled out to `gh` under a person's account and wrote its verdict into the
- * tracker only. The point of the tool is what it does NOT hand back: the host credential is resolved
+ * The point of the tool is what it does NOT hand back: the host credential is resolved
  * server-side and the call is made from core, through `integrations/source-host/resolve.ts`.
  *
  * The action list and what each one returns live in the `description` below — it is what a model

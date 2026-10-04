@@ -39,7 +39,7 @@ the person's share of the thread was 98 and 123 characters against 26,000 and 46
 | A transcript, a tool result, what the agent said | \`agent_session_turns\` | written by the session; never copied into a comment |
 | A log, a diff, an evidence file | an attachment | the file, uploaded. A comment names it, does not paste it |
 | Who moved this issue and when, and why it parked | \`kernel_transitions\`, and \`record.transition\` / \`record.park\` on \`GET /api/issues/:id/events\` | written by core in the move's own transaction, never posted: a posted transition, park or verdict is refused \`EVENT_KIND_KERNEL_ONLY\` |
-| A lesson a *different* issue would reuse | \`forge_memory\` | one entry, natural key, refined not duplicated |
+| A lesson a *different* issue would reuse | project memory (\`POST /api/memory\`) | one entry, natural key, refined not duplicated |
 | Project prose — a rule, a build command, a guide | \`knowledge_entries\` | one slug, \`injection\` decides reach |
 
 ### What core has no store for, said plainly
@@ -128,7 +128,7 @@ block names what that criterion was judged against before the next \`criterion\`
 - \`runtime: <workflow id>@draft:<draft version>\` with \`environment: <key>\` — an unpublished
   storefront draft (an Autoflow workflow), judged on a non-production environment the project
   document declares. The id and version are the ones \`forge_storefront_target\` reports in
-  \`workflows[]\`; \`forge_criteria\` takes the same as \`{ kind: storefront_draft, workflowId,
+  \`workflows[]\`; \`POST /api/issues/:id/verdicts\` takes the same as the \`identity\` \`{ kind: storefront_draft, workflowId,
   draftVersion, environment }\`. Forge reads the draft back from the project's storefront source
   each time the verdict is read or weighed, never trusting what it read when the verdict was
   written: corroborated while the source holds that draft version, superseded once the draft has
@@ -187,10 +187,5 @@ The \`record-in-comment\` refusal is reachable only through a capability the cal
 somewhere else to write, so a fence from it is a bug and is refused 400. A client that declares
 nothing is written and answered with a warning carrying the same sentence. That is deliberate — the
 writer lives in a second repo on a different release clock, and a refusal that landed before its
-callers could obey would break every one of them on a deploy they did not ask for.
-
-The MCP comment door declares nothing and cannot: a tool handler is given its arguments and no
-request context, so a fence written through \`forge_comments\` that parses is warned and never
-refused. It is still the wrong place to put a record. A fence that parses as nothing is refused
-there too — that refusal reads no header.`,
+callers could obey would break every one of them on a deploy they did not ask for.`,
 };

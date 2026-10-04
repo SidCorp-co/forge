@@ -23,7 +23,7 @@ without a release. How the code works is not shipped at all.
   atomically with that code and is reviewed with it; it needs no per-environment seeder that can
   silently diverge; it has no project, so there is nothing to gate and no membership bypass to bolt
   onto project knowledge. Runtime-editable, per-project guidance already exists one tier down, as
-  `forge_knowledge` entries, and the registry does not duplicate it.
+  project knowledge entries (`/api/projects/:id/knowledge`), and the registry does not duplicate it.
 - **An external service changes on someone else's schedule.** A guide about it is corrected by an
   organisation admin without waiting for a Forge release. It shares the registry's slug space as
   `integration-<provider>`, and a row shadows the code default of the same slug.

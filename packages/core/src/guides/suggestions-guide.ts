@@ -17,10 +17,11 @@ export const SUGGESTIONS_GUIDE: CoreGuide = {
   version: 1,
   body: `## Suggestions: propose, and let a person decide
 
-A suggestion is a proposed change that waits on a person instead of changing anything. An agent (or the
-BA assistant, or a person through REST) writes one; a person of the project accepts or rejects it; its
-effect is written in the accept's own transaction and points back at it. \`forge_suggestions\` is the
-door; the REST routes are the same services.
+A suggestion is a proposed change that waits on a person instead of changing anything. An agent, the
+BA assistant or a person writes one; a person of the project accepts or rejects it; its
+effect is written in the accept's own transaction and points back at it. The door is
+\`/api/projects/:id/suggestions\` (\`POST\` writes, \`GET\` lists) and
+\`…/suggestions/:sid/accept|reject|revise|withdraw\`.
 
 ### The kinds, and what each targets
 | Kind | Target | Accepting it writes |

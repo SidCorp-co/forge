@@ -86,20 +86,20 @@ export function landingRoute(shape: LandingShape | null, held: MergeMarkKind = '
   }
   if (shape === 'git') {
     return (
-      'Where the work DID land outside the pipeline, claim it first with `forge_issues` ' +
-      '`mark_merged` naming where it landed, then close.'
+      'Where the work DID land outside the pipeline, claim it first with `POST /api/issues/:id/merge` ' +
+      'naming where it landed, then close.'
     );
   }
   const clear =
     held === 'asserted'
       ? 'This issue already carries a mark naming no landing, and the first stamp wins, so `unmark` ' +
-        'it first (`forge_issues` `unmark`, or Unmark on the rail). '
+        'it first (`DELETE /api/issues/:id/merge`, or Unmark on the rail). '
       : '';
   return (
     clear +
-    "This project's work lands outside git (`source.type` is not `git`), so claim it with `forge_issues` " +
-    '`mark_merged` carrying `data.landing` — the live URL, CMS entry or storefront resource the ' +
-    'work now is (`landing` on `POST /api/issues/:id/merge`, or "Where it landed" on the issue\'s ' +
+    "This project's work lands outside git (`source.type` is not `git`), so claim it with " +
+    '`POST /api/issues/:id/merge` carrying `landing` — the live URL, CMS entry or storefront resource the ' +
+    'work now is (or "Where it landed" on the issue\'s ' +
     'Mark merged rail) — then close. A mark naming no landing is not evidence here, and a commit ' +
     'is not asked for.'
   );

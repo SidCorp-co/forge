@@ -49,6 +49,8 @@ const skillUpdateSchema = z
     target: z.enum(skillTargets).optional(),
     files: z.array(fileSchema).optional(),
     localGuide: z.string().max(20_000).nullable().optional(),
+    /** Synced to runners without binding it to a pipeline stage: a manual or user-invocable skill. */
+    installOnly: z.boolean().optional(),
   })
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });

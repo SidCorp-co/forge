@@ -74,7 +74,7 @@ function parseStatusQuery(raw: string | undefined): (typeof issueStatuses)[numbe
 }
 const badSlug = (slug: string) =>
   badRequest(
-    `"${slug}" is not a knowledge slug: a slug is kebab-case — lower-case letters and digits separated by hyphens, starting with a letter or digit, at most 512 characters — and carries no slash, so there are no nested slugs. A path like "convention/my-rule" is not an entry that is hard to reach, it is a name this store cannot hold; write it as "convention-my-rule". Memory documents DO carry slash-separated source refs and are a different store, reached through forge_memory rather than forge_knowledge.`,
+    `"${slug}" is not a knowledge slug: a slug is kebab-case — lower-case letters and digits separated by hyphens, starting with a letter or digit, at most 512 characters — and carries no slash, so there are no nested slugs. A path like "convention/my-rule" is not an entry that is hard to reach, it is a name this store cannot hold; write it as "convention-my-rule". Memory documents DO carry slash-separated source refs and are a different store, reached through /api/memory rather than /api/projects/:id/knowledge.`,
   );
 const notFound = () => new HTTPException(404, { message: 'knowledge entry not found' });
 

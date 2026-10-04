@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../../lib/authz.js';
+import { egressForRequest } from '../../lib/data-egress.js';
 import {
   type AuthVars,
   assertEmailVerified,
@@ -60,7 +61,14 @@ issueCriteriaRoutes.get(
   async (c) => {
     const { id } = c.req.valid('param');
     const issue = await issueFor(id, c.get('userId'), 'viewer');
-    return c.json({ criteria: await readCriteria(issue) });
+    const criteria = await egressForRequest(
+      c.get('agency'),
+      issue.projectId,
+      'issue.criteria',
+      await readCriteria(issue),
+      `the criteria of ${issue.id}`,
+    );
+    return c.json({ criteria });
   },
 );
 

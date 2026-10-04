@@ -31,7 +31,7 @@ export interface MockupContextRow {
 export function mockupLines(rows: readonly MockupContextRow[], withheld: boolean): string[] {
   return rows.map(
     (m) =>
-      `- ${m.key} ${m.kind} \`${m.name}\`${m.caption ? ` — ${m.caption}` : ''} — ${withheld ? 'bytes withheld: this project is no_egress' : `\`forge_mockups action=content ref=${m.key}\``}`,
+      `- ${m.key} ${m.kind} \`${m.name}\`${m.caption ? ` — ${m.caption}` : ''} — ${withheld ? 'bytes withheld: this project is no_egress' : `\`GET /api/projects/:id/mockups/${m.key}/content\``}`,
   );
 }
 

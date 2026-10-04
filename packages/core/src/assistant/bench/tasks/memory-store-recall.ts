@@ -23,7 +23,7 @@ export const memoryStoreRecall: Task = {
       room: 'new',
       message: 'What is this project’s release code name?',
       checks: [
-        { kind: 'toolsRequired', tools: ['forge_memory_search'] },
+        { kind: 'toolsRequired', tools: ['forge_memory'] },
         { kind: 'mustMatch', patterns: ['{nonce}'] },
         { kind: 'notFallback' },
         { kind: 'noHelp' },

@@ -84,7 +84,7 @@ const ENUM_RENAMES: readonly [RegExp, WorkflowRefusalCode, string][] = [
   [
     /^\/template$/,
     'WORKFLOW_TEMPLATE_MISSING',
-    'a version 2 design names the diagram template it is drawn in, `template: { id, version }` — e.g. { id: "operational-flow", version: 1 }; GET /api/workflow-templates lists the built-ins and forge_guide get workflow-templates says how to pick one',
+    'a version 2 design names the diagram template it is drawn in, `template: { id, version }` — e.g. { id: "operational-flow", version: 1 }; GET /api/workflow-templates lists the built-ins and GET /api/guides/workflow-templates.md says how to pick one',
   ],
 ];
 

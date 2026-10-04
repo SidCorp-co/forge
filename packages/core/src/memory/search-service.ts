@@ -19,7 +19,7 @@ import {
 
 /**
  * Run a memory search. Shared between the `POST /api/memory/search` REST
- * route and the `forge_memory.search` MCP tool (ISS-202) so both surfaces
+ * route and the in-app assistant's memory search (ISS-202) so both surfaces
  * return the exact same shape.
  *
  * Strategies (memory-v2 phase 1):

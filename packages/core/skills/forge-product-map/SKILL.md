@@ -7,7 +7,7 @@ arguments: "[bootstrap|refresh|gap] [projectId|scenarioName]"
 
 # forge-product-map
 
-Maintains a project's curated product knowledge as Mermaid visual entries. Writes `overview`, `scenario`, `workflow`, and `rule` entries via `forge_knowledge action=upsert`. All diagrams represent **user-facing product behaviour** — never internal implementation.
+Maintains a project's curated product knowledge as Mermaid visual entries. Writes `overview`, `scenario`, `workflow`, and `rule` entries via `forge-runner api projects/$FORGE_PROJECT_ID/knowledge/<slug> -X PUT`. All diagrams represent **user-facing product behaviour** — never internal implementation.
 
 ## Modes
 
@@ -32,9 +32,9 @@ Violating this gate produces diagrams that rot when the code changes. Product di
 
 Read sources in this order; later sources are used only when earlier ones are insufficient:
 
-1. **Existing knowledge entries** — `forge_knowledge action=list` (then `action=get` for full bodies). These are already curated; update rather than replace.
-2. **Shipped issues** — `forge_issues action=list` with `status=closed` or `status=released`. Read `acceptanceCriteria`, `description`, and comments for evidence of real user flows.
-3. **Semantic search** — `forge_knowledge action=search scope=all query="<topic>"` for context not in the entry list.
+1. **Existing knowledge entries** — `forge-runner api projects/$FORGE_PROJECT_ID/knowledge` (then `…/knowledge/<slug>` for full bodies). These are already curated; update rather than replace.
+2. **Shipped issues** — `forge-runner api 'projects/$FORGE_PROJECT_ID/issues?status=closed'`. Read `acceptanceCriteria`, `description`, and comments for evidence of real user flows.
+3. **Semantic search** — `forge-runner api projects/$FORGE_PROJECT_ID/knowledge/search -X POST -d '{"scope":"all","query":"<topic>"}'` for context not in the entry list.
 4. **The human** — ask ONLY for gaps that none of the above sources can fill. Batch all gap questions into a single message.
 
 ## Entry kinds and Mermaid syntax
@@ -55,8 +55,8 @@ Each entry body is a Markdown document containing:
 
 ### bootstrap mode
 
-1. `forge_knowledge action=list projectId=<id>` — read all existing entries.
-2. `forge_issues action=list projectId=<id> status=released` and `status=closed` — read shipped issues (up to 50, newest first). For each, read `acceptanceCriteria` + comments to extract user flows.
+1. `forge-runner api projects/$FORGE_PROJECT_ID/knowledge` — read all existing entries.
+2. `forge-runner api 'projects/$FORGE_PROJECT_ID/issues?status=closed'` — read shipped issues (up to 50, newest first). For each, read `acceptanceCriteria` + comments to extract user flows.
 3. Build a map: feature area → user journeys → nodes. Apply verification gate.
 4. Identify gaps (feature areas with no scenario entry, unclear workflows).
 5. If gaps remain, ask the human: "I found the following gaps I can't infer from shipped issues: [list]. Can you describe [gap1]? [gap2]?" — batch all questions.
@@ -69,7 +69,7 @@ Each entry body is a Markdown document containing:
 
 ### refresh mode
 
-1. Read existing entries (`forge_knowledge action=list`).
+1. Read existing entries (`forge-runner api projects/$FORGE_PROJECT_ID/knowledge`).
 2. Read issues closed/released since last entry `updatedAt` (approximate: last 30 days).
 3. For changed feature areas: update the relevant scenario/workflow entries.
 4. Upsert only changed entries. Log which were updated vs unchanged.

@@ -27,4 +27,4 @@ export const GUIDE_SLUGS = [
 
 export type GuideSlug = (typeof GUIDE_SLUGS)[number];
 
-export const guideRef = (slug: GuideSlug): string => `forge_guide get ${slug}`;
+export const guideRef = (slug: GuideSlug): string => `GET /api/guides/${slug}.md`;

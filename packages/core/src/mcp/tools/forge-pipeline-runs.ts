@@ -1,13 +1,7 @@
 /**
- * ISS-102 / ISS-145 — the pipeline-run actions, and the one legacy tool name
- * still answering for them.
- *
- * The five action functions (list/get/pause/resume/cancel) carry the logic —
- * auth check, db read, control call — and `forge_project_pipeline_runs`
- * dispatches into all five. Only `forge_pipeline_runs.get` is still
- * registered under its own name, because `forge-skill-audit` calls it that
- * way; it emits `X-MCP-Deprecation` via `handler.ts`. The other four shim
- * factories were deleted once nothing named them.
+ * ISS-102 / ISS-145 — the pipeline-run actions. The five action functions
+ * (list/get/pause/resume/cancel) carry the logic — auth check, db read, control
+ * call — and `forge_project_pipeline_runs` dispatches into all five.
  */
 
 import { z } from 'zod';

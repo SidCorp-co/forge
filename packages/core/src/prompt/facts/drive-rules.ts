@@ -28,14 +28,31 @@ Only when you hit a reusable lesson — a project convention, a non-obvious gotc
 - Never repeat file contents after reading — just edit.
 - Comments go to \`forge-runner api issues/<id>/comments -X POST\`, not to chat output.`;
 
-export const DRIVE_TOOL_REFERENCE_TEXT = `## Reaching Forge
-Reach Forge through \`forge-runner api <path>\`, which supplies the \`/api/\` prefix and the \`$FORGE_PAT\` the runner already exported. A path with no handler answers 404 — it never falls back. Use this and not a \`forge_*\` tool: the two reach the same data, and one transport named in one place is what keeps this document and your skill from contradicting each other mid-session.
+const REACHING_FORGE_HEAD = `## Reaching Forge
+Reach Forge through \`forge-runner api <path>\`, which supplies the \`/api/\` prefix and the \`$FORGE_PAT\` the runner already exported. A path with no handler answers 404 — it never falls back. REST is the one door: the Forge MCP server carries only the few tools named at the bottom of this section.`;
 
-- **the issue** — \`issues/<id>\` to read · \`issues/<id> -X PATCH\` writes the FIELDS (\`plan\`, \`acceptanceCriteria\`, \`sessionContext\`, \`releaseNotes\`) and nothing else; the status is a state-machine move and goes through \`issues/<id>/transition -X POST -d '{"toStatus":"in_progress"}'\`. The project's list is \`projects/$FORGE_PROJECT_ID/issues\`; there is no \`GET /api/issues\`.
-- **comments** — \`issues/<id>/comments\` to read, \`issues/<id>/comments -X POST -d '{"body":"..."}'\` to write. Replies and edits are \`comments/<commentId>\`.
-- **your run and its phase journal** — \`projects/$FORGE_PROJECT_ID/pipeline-runs?issueId=<id>&status=running\` finds the run; \`pipeline-runs/<run>/phases -X POST\` declares a phase and \`pipeline-runs/<run>/phases/end -X POST\` closes it. \`pipeline-runs/<run>/resume-point\` answers the one phase you are to restart at, or \`null\`; \`GET pipeline-runs/<run>/phases\` lists the whole journal in order, which is what a session reads to see what the ones before it did.
-- **project settings** — \`projects/$FORGE_PROJECT_ID\` carries the branch config, and \`projects/$FORGE_PROJECT_ID/policy\` the policy your run is dispatched under: \`qa\`, intake, and each status's model and denied tools. The project's own prose — build and test commands, its release procedure, whatever else its owner wrote — is NOT there: it is \`projects/$FORGE_PROJECT_ID/knowledge\`, one entry per slug, on the line below.
-- **knowledge and memory** — \`projects/$FORGE_PROJECT_ID/knowledge\` for curated entries, \`memory/search\` and \`memory\` for the semantic store, \`memory/feedback\` to report a hit verified or stale, \`memory/revisions?projectId=<id>&sourceRef=<ref>\` to read a body some later write replaced.
+const ISSUE_AND_COMMENTS = `- **the issue** — \`issues/<id>\` to read (its edges at \`issues/<id>/dependencies\`) · \`issues/<id> -X PATCH\` writes the FIELDS (\`plan\`, \`acceptanceCriteria\`, \`sessionContext\`, \`releaseNotes\`, \`labels\`, \`workState\`) and nothing else; the status is a state-machine move and goes through \`issues/<id>/transition -X POST -d '{"toStatus":"in_progress"}'\` (with \`reason\`, \`waitingKind\` and \`needs\` for a park). The project's list is \`projects/$FORGE_PROJECT_ID/issues\`; there is no \`GET /api/issues\`. A \`blocks\` edge is \`issues/<dependent>/dependencies -X POST\`.
+- **comments** — \`issues/<id>/comments\` to read, \`issues/<id>/comments -X POST -d '{"body":"..."}'\` to write. Replies and edits are \`comments/<commentId>\`.`;
+
+const SETTINGS_KNOWLEDGE_MERGE = `- **project settings** — \`projects/$FORGE_PROJECT_ID\` carries the branch config, \`projects/$FORGE_PROJECT_ID/config\` the project document (environments, promotions, testing), and \`projects/$FORGE_PROJECT_ID/policy\` the policy your run is dispatched under: \`qa\`, intake, and each status's model and denied tools. The project's own prose — build and test commands, its release procedure, whatever else its owner wrote — is NOT there: it is \`projects/$FORGE_PROJECT_ID/knowledge\`, one entry per slug, on the line below.
+- **knowledge and memory** — \`projects/$FORGE_PROJECT_ID/knowledge\` for curated entries (\`/<slug>\` to read one, \`-X PUT\` to write it, \`knowledge/search -X POST\`), \`memory/search\` and \`memory\` for the semantic store, \`memory/feedback\` to report a hit verified or stale, \`memory/revisions?projectId=<id>&sourceRef=<ref>\` to read a body some later write replaced.
 - **the merge marker** — \`issues/<id>/merge\` (\`-X POST\` to stamp, \`-X DELETE\` to retract). On a project whose \`source.type\` is not \`git\` the stamp carries \`landing\`, where the work landed, and no \`target\`.
+- **guides** — \`guides\` lists them and \`guides/<slug>.md\` reads one.`;
 
-Attachments are the exception: reading an image or file attached to an issue needs a multimodal fetch no shell command can perform, so use \`forge_uploads\` for that one job. Connected integrations are the other — their block below names the tools they need, and those are correct as written.`;
+const MCP_TAIL = `What stays on the Forge MCP server is what no shell command can do: \`forge_uploads\` reads an attachment as a viewable image block, \`forge_agent_report\` files friction against your live job, and a connected integration's block below names the tools it needs — those are correct as written.`;
+
+export const DRIVE_TOOL_REFERENCE_TEXT = `${REACHING_FORGE_HEAD}
+
+${ISSUE_AND_COMMENTS}
+- **your run and its phase journal** — \`projects/$FORGE_PROJECT_ID/pipeline-runs?issueId=<id>&status=running\` finds the run; \`pipeline-runs/<run>/phases -X POST\` declares a phase and \`pipeline-runs/<run>/phases/end -X POST\` closes it. \`pipeline-runs/<run>/resume-point\` answers the one phase you are to restart at, or \`null\`; \`GET pipeline-runs/<run>/phases\` lists the whole journal in order, which is what a session reads to see what the ones before it did.
+${SETTINGS_KNOWLEDGE_MERGE}
+
+${MCP_TAIL}`;
+
+export const STEP_TOOL_REFERENCE_TEXT = `${REACHING_FORGE_HEAD}
+
+${ISSUE_AND_COMMENTS}
+- **step handoffs** — \`issue-step-contexts?projectId=<projectId>&issueId=<id>\` reads the prior steps' handoffs; \`issue-step-contexts -X POST\` writes yours.
+${SETTINGS_KNOWLEDGE_MERGE}
+
+${MCP_TAIL}`;

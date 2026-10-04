@@ -119,7 +119,7 @@ export function sourceProjectRefusal(
     return refusal(
       'MOCKUP_SOURCE_NOT_FOUND',
       '/source/attachmentId',
-      `no ${from} attachment ${attachmentId} exists; upload it first (forge_uploads request) or send the bytes as contentBase64.`,
+      `no ${from} attachment ${attachmentId} exists; upload it first (POST /api/issues/:id/attachments) or send the bytes as contentBase64.`,
     );
   }
   return refusal(

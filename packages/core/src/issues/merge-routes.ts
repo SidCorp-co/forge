@@ -3,8 +3,7 @@
  *
  * `merged_at` is not a field like the others: `jobs/queued-gates.ts` reads it
  * to release every `blocks` dependent, so writing it says work shipped. These
- * two routes exist so an agent on the CLI can say that over REST instead of
- * through `forge_issues.mark_merged`.
+ * two routes are the one door that says it.
  *
  * ISS-959 — the mark also records the commit it was made at, so the claim is
  * checkable rather than a judgement call read out of the note's prose.

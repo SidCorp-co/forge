@@ -90,7 +90,7 @@ export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = (ctx) => (
     'AUTOFLOW returns { configured, provider, label, stores[], shop, orgId, storeId, storeSlug, storeName, ' +
     'themeId, commerceEnabled, siteUrl, endpoint, mcpUrl, backendResolvedLive, workflows[], routes[], shopTools }: ' +
     '`workflows[]` (id, draftVersion, code, name, version, publishedAt — null = never published) and `routes[]` are the ' +
-    'Backend Builder graph read live; `id` and `draftVersion` are what a storefront_draft verdict names (`forge_criteria`). ' +
+    'Backend Builder graph read live; `id` and `draftVersion` are what a storefront_draft verdict names (`POST /api/issues/:id/verdicts`). ' +
     'Backend Builder graph read live; when `backendResolvedLive` is false they are UNKNOWN, ' +
     '`backendUnresolvedBecause` says why, and the answer is the binding facts only. Writes land on a ' +
     'draft; `publish_backend_workflow` goes live and `revert_backend_workflow` rolls back. ' +

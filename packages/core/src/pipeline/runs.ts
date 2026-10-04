@@ -424,16 +424,6 @@ async function emitCloseHookPerRow(
   }
 }
 
-/** The project a pipeline run belongs to, or `null` when there is no such run. */
-export async function findRunProjectId(runId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ projectId: pipelineRuns.projectId })
-    .from(pipelineRuns)
-    .where(eq(pipelineRuns.id, runId))
-    .limit(1);
-  return row?.projectId ?? null;
-}
-
 /** One run, whole. Authorisation belongs to the caller, which knows the credential. */
 export async function readPipelineRun(runId: string) {
   const [row] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1);

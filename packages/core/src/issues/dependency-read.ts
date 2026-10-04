@@ -1,6 +1,6 @@
 /**
  * ISS-868 — the one read of `issue_dependencies` for a single issue, shared by
- * REST `GET /api/issues/:id/dependencies` and MCP `forge_issues get`. Both
+ * REST `GET /api/issues/:id/dependencies` and the issue read. Both
  * endpoints of every edge are joined so a caller can render the OTHER side as
  * `ISS-<seq>` without N extra round-trips (ISS-331).
  */

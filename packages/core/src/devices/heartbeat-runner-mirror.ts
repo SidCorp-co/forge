@@ -21,7 +21,7 @@ export async function mirrorHeartbeatToRunners(
         UPDATE runners
         SET last_seen_at = now(), updated_at = now(),
             -- an operator's withdrawal MUST survive a beat: this column was set
-            -- unconditionally, so "forge_runners retire" was undone within one
+            -- unconditionally, so a retire was undone within one
             -- heartbeat (2026-08-14: retired 08:19:29, online again 08:19:59).
             -- "disabled" was spared then and "draining" was not, so drain had the
             -- same 30-second life until the pool learned to read either.

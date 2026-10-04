@@ -69,7 +69,7 @@ export function templateOf(
       detail:
         versions.length > 0
           ? `template ${doc.template.id} has no version ${doc.template.version}; it is at ${versions.join(', ')}.`
-          : `"${doc.template.id}" is no template this project can draw in; the templates are ${templates.map((t) => `${t.id}@${t.version}`).join(', ')} (GET /api/projects/<id>/workflow-templates, or forge_workflows action=templates).`,
+          : `"${doc.template.id}" is no template this project can draw in; the templates are ${templates.map((t) => `${t.id}@${t.version}`).join(', ')} (GET /api/projects/<id>/workflow-templates).`,
     },
   };
 }

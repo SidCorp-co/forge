@@ -1,9 +1,6 @@
 /**
- * The three PM reads that `forge_project_pm` served and no route did:
- * snapshot, graph and runner load.
- *
- * The write half of that tool already has routes under `pm/routes.ts`
- * (config, policies, decisions, escalations, run). These are the reads.
+ * The three PM reads: snapshot, graph and runner load. The writes (config,
+ * policies, decisions, escalations, run) are in `pm/routes.ts`.
  */
 
 import { Hono } from 'hono';

@@ -132,7 +132,7 @@ publishes and the versions of its contracts, and a person is not handed that wor
    member is a warning; and a breaking type change is also named under each operation reaching it
    (\`Query.products.variants.price\`), which is what a consumer's link names in \`fieldsUsed\`
    (\`products.variants.price\`). A tools contract's elements are each tool and its input properties
-   (\`forge_issues.get/properties/id\`).
+   (\`<tool>/properties/<input>\`).
    Refused by name, nothing recorded: \`CONTRACT_KIND_UNKNOWN\` (a kind core does not index),
    \`CONTRACT_KIND_MISMATCH\` (not the publication's type), \`ARTIFACT_UNREADABLE\` (the source does not
    parse; the detail names the line and column), \`VERSION_BUMP_TOO_SMALL\` or \`VERSION_NOT_IN_SCHEME\`,
@@ -154,7 +154,7 @@ project's agent is refused \`INTERFACE_WRITER_NOT_PROJECT\` for the interface an
 A comment a person writes on one of this project's issues is owed a reply until an agent comments on
 that issue after it — a master's reply, or a run's. It is owed at every status but \`closed\` and
 \`dropped\`, so it reaches you on an issue at \`in_progress\` or \`awaiting_release\` that no admissible
-read lists. The nudge names those issues. Read each thread (\`forge_comments action=list\`), answer
+read lists. The nudge names those issues. Read each thread (\`GET /api/issues/:id/comments\`), answer
 on the issue, and move the issue when the comment asks for it. Your reply is what takes it off the
 list: a comment read and left unanswered is still owed on the next pass. An agent's own comment is
 never owed.

@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { env } from '../config/env.js';
 import { INTEGRATION_PROVIDERS } from '../integrations/types.js';
-import { loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
+import { loadOrgRole, loadProjectAccess, orgRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import {
@@ -13,12 +13,13 @@ import {
   resolveGuideIndex,
   upsertIntegrationGuide,
 } from './integration-guides.js';
+import { findProjectOrgId } from '../projects/service.js';
 import { getGuide, listGuides } from './registry.js';
 
 /**
  * Public, read-only surface for Forge capability guides (D2 in the plan —
  * no tenant data, no secrets, deliberately unauthenticated so `WebFetch` /
- * browser / docs-site clients can read the same bytes `forge_guide` returns).
+ * browser / docs-site clients and agents all read the same bytes).
  * No `requireAuth`, no project-membership check — by design.
  *
  * Mounted at BOTH the core root and `/api` in `index.ts`, mirroring
@@ -112,6 +113,30 @@ orgGuideRoutes.delete('/:orgId/integration-guides/:provider', async (c) => {
 
 guideRoutes.route('/orgs', orgGuideRoutes);
 
+/** A project member reads a guide as its org shadows it: an org's integration guide over the code default. */
+const projectGuideRoutes = new Hono<{ Variables: AuthVars }>();
+projectGuideRoutes.use('*', requireAuth());
+
+projectGuideRoutes.get('/:id/guides/:slug', async (c) => {
+  const projectId = c.req.param('id');
+  const access = await loadProjectAccess(projectId, c.get('userId'));
+  if (!access.role) {
+    throw new HTTPException(403, { message: 'not a project member', cause: { code: 'FORBIDDEN' } });
+  }
+  const raw = c.req.param('slug');
+  const isMarkdown = raw.endsWith('.md');
+  const guide = await resolveGuide(isMarkdown ? raw.slice(0, -3) : raw, await findProjectOrgId(projectId));
+  if (!guide) {
+    throw new HTTPException(404, { message: validSlugsMessage(), cause: { code: 'NOT_FOUND' } });
+  }
+  if (isMarkdown) {
+    return c.body(guide.body, 200, { 'content-type': 'text/markdown; charset=utf-8' });
+  }
+  return c.json({ guide });
+});
+
+guideRoutes.route('/projects', projectGuideRoutes);
+
 /** The readable rendering of this same corpus, on the web host. */
 function humanGuidesUrl(): string {
   return `${env.APP_BASE_URL.replace(/\/+$/, '')}/guides`;
@@ -139,8 +164,8 @@ guideRoutes.get('/llms.txt', (c) => {
     '',
     '> Open-source control plane for Claude Code: full-stack project management plus an agent',
     '> pipeline that drives Claude end to end (triage → clarify → plan → code → review → test →',
-    '> release). These guides are the same bytes the `forge_guide` MCP tool serves. Every URL below',
-    '> is unauthenticated and returns raw markdown — fetch what you need, when you need it.',
+    '> release). Every URL below is unauthenticated and returns raw markdown — fetch what you',
+    '> need, when you need it.',
     '>',
     `> A person reads the same corpus as web pages at ${humanGuidesUrl()} — also no credential.`,
     '',

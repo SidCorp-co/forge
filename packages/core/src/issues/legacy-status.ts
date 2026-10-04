@@ -75,14 +75,6 @@ export function legacyWarning(named: LegacyStatus): string {
   return `STATUS_RETIRED: \`${named}\` is retired (${LIFECYCLE_GUIDE}); it was stored as \`${target.status}\`${step}. A client on the ten-status model names \`${target.status}\`, and writes the step through \`workState\`.`;
 }
 
-/** How MCP, which never spoke the seventeen, refuses a retired name: what it became, how to say it. */
-export function legacyRefusal(named: LegacyStatus): string {
-  const target = LEGACY_TARGETS[named];
-  const step = target.step ? ` and write \`workState.step: ${target.step}\`` : '';
-  const kind = named === 'waiting' ? ' with a `waitingKind`' : '';
-  return `STATUS_RETIRED: \`${named}\` is retired (${LIFECYCLE_GUIDE}). Name \`${target.status}\`${kind}${step}.`;
-}
-
 export function tenStatusRefusal(named: LegacyStatus): string {
   const target = LEGACY_TARGETS[named];
   const step = target.step ? ` at step \`${target.step}\`` : '';

@@ -10,7 +10,7 @@
  * it is what a model actually reads, and a second copy here is one that goes
  * stale.
  *
- * Authorization is membership-level like `forge_issues`, raised to writer for
+ * Authorization is membership-level, raised to writer for
  * the two actions that change a sheet. No DEVICE_REQUIRED entry — the tool has
  * no runner dependency.
  */

@@ -66,9 +66,9 @@ const BRANCH_SENTINEL = '<detect-from-git>';
 export { PIPELINE_RULES, TOOL_REFERENCE } from './facts/mandatory-blocks.js';
 
 const CHAT_ORIENTATION = `## Project Orientation
-You are working in a Forge-managed project. Forge MCP tools are available for project management — \`forge_issues\`, \`forge_comments\`, \`forge_config\`, \`forge_memory\`, \`forge_pm_*\`. Use them when the request relates to issues, tasks, status, or project memory.
+You are working in a Forge-managed project. Its issues, comments, status and project memory are reached through the Forge REST API (\`forge-runner api <path>\` or the \`forge\` CLI): \`issues/<id>\`, \`issues/<id>/comments\`, \`projects/<id>/config\`, \`memory/search\`. Use them when the request relates to issues, tasks, status, or project memory.
 
-For codebase & project knowledge, call \`forge_knowledge\` (list/get/search) — no local file. Follow any always-applied Project rules in this preamble, then explore with search tools.`;
+For codebase & project knowledge, read \`projects/<id>/knowledge\` (or \`forge knowledge\`) — no local file. Follow any always-applied Project rules in this preamble, then explore with search tools.`;
 
 const CHAT_ISSUE_RULES = `## Turning a request into issues — consolidate, do NOT pre-split
 When the conversation produces work to track, capture **one coherent request as ONE issue** whose body holds the full spec the user gave — all the parts, sub-features, acceptance criteria, and context, kept together. Do NOT shatter a multi-part request into many atomic tickets yourself. **Splitting is the pipeline's call, not yours**: whoever works the issue decides whether it is one change or several, and orders them itself. Your job is to gather and clarify; theirs is to break down. One feature-set the user described together = one issue, not N. If the user explicitly asks for separate issues, follow them — but the default is consolidate.`;
@@ -143,11 +143,8 @@ async function resolveMemberLenses(
   }
 }
 
-function formatProjectContext(projectId: string, step: JobType | null): string {
-  const fetch =
-    step === 'drive'
-      ? `Read repo paths and branches with \`forge-runner api projects/${projectId}\`, and environments, promotions and the testing profile each environment names with \`forge-runner api projects/${projectId}/config\`.`
-      : 'Call `forge_projects.get` with this id for repo paths and branches, and `forge_config` (action `get`) for the project document: environments, promotions and the testing profile each environment names.';
+function formatProjectContext(projectId: string): string {
+  const fetch = `Read repo paths and branches with \`forge-runner api projects/${projectId}\`, and environments, promotions and the testing profile each environment names with \`forge-runner api projects/${projectId}/config\`.`;
   return `## Project Context
 - projectId: ${projectId}
 
@@ -157,7 +154,6 @@ ${fetch} A testing profile names \`secret://\` references, never values. Do NOT 
 export function formatProjectConfig(
   baseBranch: string | null,
   deploysFrom: string | null,
-  step: JobType | null = null,
 ): string {
   const b = baseBranch ?? BRANCH_SENTINEL;
   const park = 'needs_info';
@@ -167,11 +163,7 @@ export function formatProjectConfig(
       : '';
   let out = `## Project Config\n- baseBranch: ${b}${liveLine}\n- noProgressRounds: ${NO_PROGRESS_ROUNDS} — a stop signal, NOT a cap. Nothing limits how many times an issue may be reopened. If you have fixed the same problem this many times and NOTHING changed (same failure, same symptom, no new information), stop and set \`${park}\` with what you tried and what you need. Rounds that each move something forward are normal work.`;
   if (!baseBranch) {
-    const ask =
-      step === 'drive'
-        ? 'abort and say so in a comment'
-        : 'abort and ask the user via `forge_config`';
-    out += `\n\nBranch detection: any value shown as \`${BRANCH_SENTINEL}\` is not configured. Before any git operation, run \`git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@'\` and use the result instead. If detection fails, ${ask}.`;
+    out += `\n\nBranch detection: any value shown as \`${BRANCH_SENTINEL}\` is not configured. Before any git operation, run \`git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@'\` and use the result instead. If detection fails, abort and say so in a comment.`;
   }
   return out;
 }
@@ -287,17 +279,17 @@ export async function buildPipelinePreambleStructured(
   if (project) {
     sections.push({
       id: 'project-config',
-      body: formatProjectConfig(project.baseBranch, project.deploysFrom, step),
+      body: formatProjectConfig(project.baseBranch, project.deploysFrom),
     });
   }
   if (opts?.policy) sections.push({ id: 'policy', body: formatPolicy(opts.policy) });
-  // ISS-225 — inline the projectId so agents can call forge_projects.get
+  // ISS-225 — inline the projectId so agents can read the project
   // without having to re-discover it. Placed AFTER project-config so the
   // cache-friendly static prefix is unaffected; BEFORE the state block so the
   // shared prefix stays the longest common cacheable span.
   sections.push({
     id: 'project-context',
-    body: formatProjectContext(projectId, step),
+    body: formatProjectContext(projectId),
   });
   if (step && factInputs) {
     const factsBlock = renderStageFactsText(factInputs, projectId, step);

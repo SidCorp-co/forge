@@ -2,10 +2,10 @@
  * `sessionContext` — the opaque JSON the pipeline carries between sessions,
  * and the ISS-820 rule that keeps a `verified*` key from being a bare claim.
  *
- * It lives here rather than at a call site because BOTH write surfaces accept
- * the field: MCP `forge_issues.update`, and REST `PATCH /api/issues/:id`, which
- * is how an agent on the CLI records the branch that `pipeline/work-evidence.ts`
- * later reads as proof that work exists.
+ * It lives here rather than at a call site because every write of the field goes
+ * through it: REST `PATCH /api/issues/:id` is how an agent on the CLI records
+ * the branch that `pipeline/work-evidence.ts` later reads as proof that work
+ * exists.
  */
 
 import { z } from 'zod';

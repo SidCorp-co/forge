@@ -399,6 +399,4 @@ deviceSkillStatusRoutes.get(
 );
 
 // NOTE: the skill-major freshness aggregation (`loadProjectSkillSyncStatus`,
-// ISS-279) is served over MCP (`forge_skills.sync_status`) and consumed by
-// smoke-verify — it never had a REST wrapper with a client, so no GET route is
-// exposed here. Add one back if a web Studio by-skill panel ever needs it.
+// ISS-279) is consumed by smoke-verify only, so no GET route is exposed here.

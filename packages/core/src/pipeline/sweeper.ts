@@ -438,7 +438,7 @@ async function alarmLoopMiss(
       entityId: row.id,
       reason: `loop-miss: the ${hop} hop should have handled this ${entity} and did not (alarm pass match)`,
       action:
-        'Inspect core logs around this tick for a thrown miss-handler; if the row is genuinely wedged, use the single-job cancel escape hatch (forge_jobs cancel).',
+        'Inspect core logs around this tick for a thrown miss-handler; if the row is genuinely wedged, use the single-job cancel escape hatch (POST /api/jobs/:id/cancel).',
     });
   }
 }

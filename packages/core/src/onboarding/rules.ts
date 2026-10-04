@@ -123,7 +123,7 @@ export function designUnknownRefusals(missing: readonly string[]): OnboardingRef
   return missing.map((id) => ({
     code: 'ONBOARDING_DESIGN_UNKNOWN' as const,
     path: '/designs/workflowIds',
-    detail: `workflow ${id} is not a workflow of this project; write the design first (forge_workflows write), then name it.`,
+    detail: `workflow ${id} is not a workflow of this project; write the design first (POST /api/projects/:id/workflows), then name it.`,
   }));
 }
 

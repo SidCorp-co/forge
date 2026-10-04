@@ -4,7 +4,7 @@
 
 import { describeCrossings, type ReleasePath } from '../project-config/release-path.js';
 import { markUntrusted } from '../prompt/sanitize.js';
-import { RELEASE_BATCH_SKILL, RELEASE_BATCH_TOOL, type ReleasePlan } from './plan.js';
+import { RELEASE_BATCH_SKILL, type ReleasePlan, releaseBatchPath } from './plan.js';
 
 interface IssueSummary {
   id: string;
@@ -60,22 +60,22 @@ ${channelLines}
 ### Issues in this batch (${issues.length})
 ${roster}
 ${renderReach(runId)}${renderMethod()}${renderProcedure(plan)}
-Start by reading the batch context: \`${RELEASE_BATCH_TOOL}\` action \`get\` with runId \`${runId}\`.
+Start by reading the batch context: \`forge-runner api ${releaseBatchPath(runId)}\`.
 `;
 }
 
 /**
- * Every call this job makes to Forge goes through one tool, on the credential
- * its pane was opened with — the one \`forge_coolify_deploy\` deploys on. A run
- * that cannot reach it cannot record a release, so it is told to stop before
- * the release rather than discover that at \`finish\` (ISS-1211).
+ * Every call this job makes to Forge goes through one REST path, on the credential its pane was
+ * opened with. A run that cannot reach it cannot record a release, so it is told to stop before the
+ * release rather than discover that at `finish` (ISS-1211).
  */
 function renderReach(runId: string): string {
+  const path = releaseBatchPath(runId);
   return `
 ### How you reach Forge
-Every call below goes through the \`${RELEASE_BATCH_TOOL}\` MCP tool with runId \`${runId}\`: \`get\` reads the batch, \`method\` announces your method, \`finish\` records the release, \`abort\` gives the batch back. It runs on the credential this session was started with, the same one a deploy through Forge uses.
+Every call below is \`forge-runner api ${path}[/...]\`: \`${path}\` reads the batch, \`${path}/method -X POST\` announces your method, \`${path}/finish -X POST\` records the release, \`${path}/state\` reads its outcome, \`${path}/abort -X POST\` gives the batch back. It runs on the credential this session was started with.
 
-If \`${RELEASE_BATCH_TOOL}\` is not in your tool list, or refuses your first call, STOP before you touch any branch, tag or deployment: nothing you did could be recorded. End the turn saying which of the two happened and the refusal's text. Do not look for another credential on this machine.
+If the first call is refused, STOP before you touch any branch, tag or deployment: nothing you did could be recorded. End the turn saying so, with the refusal's text. Do not look for another credential on this machine.
 `;
 }
 
@@ -90,9 +90,9 @@ If \`${RELEASE_BATCH_TOOL}\` is not in your tool list, or refuses your first cal
 function renderMethod(): string {
   return `
 ### Your method
-Load it if this session has it: run the \`${RELEASE_BATCH_SKILL}\` skill, then announce what you loaded with \`${RELEASE_BATCH_TOOL}\` action \`method\` (\`skill\`, \`loaded\`).
+Load it if this session has it: run the \`${RELEASE_BATCH_SKILL}\` skill, then announce what you loaded with \`method\` (\`{"skill":"<name>","loaded":true}\`).
 
-If it will not load, announce THAT — \`loaded: false\` with a detail saying why — and carry on under the release procedure below, which is this project's own method. \`finish\` does not read the announcement and does not refuse a run that made none. What does depend on it: a deploy through \`forge_coolify_deploy\` is refused until this run has recorded SOMETHING through \`${RELEASE_BATCH_TOOL}\`, because until then nothing shows the credential this session holds can record what the deploy did.
+If it will not load, announce THAT — \`loaded: false\` with a detail saying why — and carry on under the release procedure below, which is this project's own method. \`finish\` does not read the announcement and does not refuse a run that made none. What does depend on it: a deploy through \`forge_coolify_deploy\` is refused until this run has recorded SOMETHING on its release batch, because until then nothing shows the credential this session holds can record what the deploy did.
 `;
 }
 
@@ -122,7 +122,7 @@ function renderProcedure(plan: ReleasePlan): string {
   if (probeUrls.length > 0) {
     const urls = probeUrls.map((u) => `- ${u}`).join('\n');
     blocks.push(
-      `### Proof (the server checks this, you do not)\nWhen you call \`finish\`, pass \`commit\` — the SHA you pushed. \`finish\` answers at once with the attempt at \`accepted\`; the server then reads these probes itself:\n${urls}\nIt goes green when the live build matches your \`commit\` — a finish naming no commit goes green only when the live build CHANGED from what was serving when this batch opened, and is refused where nothing was recorded serving then — and then closes the roster on its own. Read the verdict with \`${RELEASE_BATCH_TOOL}\` action \`state\`: \`finish.state\` ends at \`finished\` or \`failed\`, and a \`failed\` one carries its \`refusal\`. A healthy site still serving the old build is a RED: at that reading the deploy had not landed, and nothing you can pass to \`finish\` works around it. A \`failed\` attempt is not the end of the batch. Once the deploy has landed — it was still coming up when the window closed, or you repaired forward and deployed again — call \`finish\` again with the commit you last pushed, which starts a new attempt. Where it will not land inside this run, the next section says what to do.`,
+      `### Proof (the server checks this, you do not)\nWhen you call \`finish\`, pass \`commit\` — the SHA you pushed. \`finish\` answers at once with the attempt at \`accepted\`; the server then reads these probes itself:\n${urls}\nIt goes green when the live build matches your \`commit\` — a finish naming no commit goes green only when the live build CHANGED from what was serving when this batch opened, and is refused where nothing was recorded serving then — and then closes the roster on its own. Read the verdict with \`state\`: \`finish.state\` ends at \`finished\` or \`failed\`, and a \`failed\` one carries its \`refusal\`. A healthy site still serving the old build is a RED: at that reading the deploy had not landed, and nothing you can pass to \`finish\` works around it. A \`failed\` attempt is not the end of the batch. Once the deploy has landed — it was still coming up when the window closed, or you repaired forward and deployed again — call \`finish\` again with the commit you last pushed, which starts a new attempt. Where it will not land inside this run, the next section says what to do.`,
     );
   } else if (plan.channels.length > 0) {
     blocks.push(UNVERIFIED_PROOF);
@@ -132,7 +132,7 @@ function renderProcedure(plan: ReleasePlan): string {
 }
 
 const UNVERIFIED_PROOF = `### Proof (this project declares none)
-The production environment declares no runtime probe identifying the source, so the server reads nothing when you call \`finish\`: it closes the roster on your call alone, and every issue it closes carries a note that this release was NOT verified. That makes your own check the only one there is. Call \`finish\` only once you have seen the deploy come up serving what you pushed, pass \`commit\` — the SHA you pushed — so the record names it, and say in what you record how you saw it. Read the outcome with \`${RELEASE_BATCH_TOOL}\` action \`state\`: \`finish.verification\` reads \`unverified\`.`;
+The production environment declares no runtime probe identifying the source, so the server reads nothing when you call \`finish\`: it closes the roster on your call alone, and every issue it closes carries a note that this release was NOT verified. That makes your own check the only one there is. Call \`finish\` only once you have seen the deploy come up serving what you pushed, pass \`commit\` — the SHA you pushed — so the record names it, and say in what you record how you saw it. Read the outcome with \`state\`: \`finish.verification\` reads \`unverified\`.`;
 
 const UNDECLARED_PROCEDURE = `### This project's release procedure
 This project has declared none to Forge.

@@ -1,4 +1,4 @@
-import { asc, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { tasks } from '../db/schema.js';
 import type { Actor } from '../pipeline/activity.js';
@@ -6,42 +6,9 @@ import { hooks } from '../pipeline/hooks.js';
 
 export type TaskRow = typeof tasks.$inferSelect;
 
-/** Light projection for browse surfaces — omits `description` (up to 50KB each). */
-export type TaskListRow = Omit<TaskRow, 'description' | 'agentLog' | 'sortOrder'>;
-
 export async function findTaskById(taskId: string): Promise<TaskRow | null> {
   const [row] = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
   return row ?? null;
-}
-
-export async function listTasksForIssue(
-  issueId: string,
-  opts: { status?: TaskRow['status'] | undefined; limit?: number | undefined } = {},
-): Promise<TaskListRow[]> {
-  const where = opts.status
-    ? sql`${tasks.issueId} = ${issueId} and ${tasks.status} = ${opts.status}`
-    : eq(tasks.issueId, issueId);
-
-  const q = db
-    .select({
-      id: tasks.id,
-      issueId: tasks.issueId,
-      projectId: tasks.projectId,
-      title: tasks.title,
-      status: tasks.status,
-      priority: tasks.priority,
-      assigneeId: tasks.assigneeId,
-      isAgentTask: tasks.isAgentTask,
-      agentStatus: tasks.agentStatus,
-      acceptanceCriteria: tasks.acceptanceCriteria,
-      createdAt: tasks.createdAt,
-      updatedAt: tasks.updatedAt,
-    })
-    .from(tasks)
-    .where(where)
-    .orderBy(asc(tasks.sortOrder), asc(tasks.createdAt));
-
-  return opts.limit === undefined ? q : q.limit(opts.limit);
 }
 
 export type TaskCreateInput = {
@@ -61,12 +28,9 @@ export type TaskCreateInput = {
 };
 
 /**
- * The single task writer behind REST `/api/issues/:id/tasks` and MCP
- * `forge_issues.createTask`. The MCP copy this replaces set neither of the two
- * things that make a task visible: `sortOrder` (so every agent-created task
- * landed at the column default 0, ahead of the human's ordering) and the
- * `taskCreated` hook (so no WebSocket frame reached the board and the task
- * appeared only on the next full reload).
+ * The single task writer behind REST `/api/issues/:id/tasks`. It sets the two
+ * things that make a task visible: `sortOrder` (after the human's ordering)
+ * and the `taskCreated` hook (the WebSocket frame that reaches the board).
  */
 export async function createTask(input: TaskCreateInput): Promise<TaskRow> {
   let sortOrder = input.sortOrder;

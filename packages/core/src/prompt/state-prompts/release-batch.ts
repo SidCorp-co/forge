@@ -1,30 +1,29 @@
 /**
  * Default system-prompt block for the `release_batch` step (ISS-764).
- * This is an ISSUE-LESS job on a `kind='system'` run — never call
- * `forge_step_start` (there is no issue). Every call goes through
- * `forge_release_batch`, on the credential the pane already holds (ISS-1211).
+ * This is an ISSUE-LESS job on a `kind='system'` run. Every call goes through
+ * `/api/projects/:projectId/release-batches/:runId`, on the credential the pane already holds.
  */
 export const releaseBatchStatePrompt = `## This State — Batch Release (release_batch job)
 
 You are running a headless batch release. There is NO issue attached to this job.
-Do NOT call \`forge_step_start\`. Every call to Forge below goes through the \`forge_release_batch\`
-MCP tool with the job's runId, on the credential this session started with. Read the batch FIRST:
-\`forge_release_batch\` action \`get\`.
+Every call to Forge below is \`forge-runner api projects/$FORGE_PROJECT_ID/release-batches/<runId>[/...]\`
+with the job's runId, on the credential this session started with. Read the batch FIRST:
+\`forge-runner api projects/$FORGE_PROJECT_ID/release-batches/<runId>\`.
 
-If that tool is not in your tool list, or refuses the first call, STOP before you touch any branch,
+If that call is refused, STOP before you touch any branch,
 tag or deployment — nothing you did could be recorded. End the turn saying which, with the refusal's
 text. Do not look for another credential on this machine.
 
 ### Ordering contract (load-bearing — follow exactly)
-1. \`forge_release_batch\` action \`get\` → roster, releaseNotes per issue, deployPlanned, and the
+1. \`release-batches/<runId>\` → roster, releaseNotes per issue, deployPlanned, and the
    branches where the project declares any.
 2. Carry out the release procedure printed in your task prompt. That text is the authority
    on branches, versioning, changelog and deploy — this block is not, and you must not
    substitute a step it does not name.
-3. \`forge_release_batch\` action \`finish\` with \`commit\` → answers at once with the attempt at
+3. \`release-batches/<runId>/finish -X POST -d '{"commit":"<sha>"}'\` → answers at once with the attempt at
    \`accepted\`; the server verifies and closes every claimed issue on its own. \`commit\` is the
    SHA you pushed to the production branch.
-4. \`forge_release_batch\` action \`state\` → \`finish.state\` ends at \`finished\` (report its
+4. \`release-batches/<runId>/state\` → \`finish.state\` ends at \`finished\` (report its
    closed/failed) or \`failed\` (report its \`refusal\`). Read it again while it says
    \`accepted\`, \`verifying\` or \`closing\`.
 
@@ -43,7 +42,7 @@ this run is a failure, below.
 
 On a failure you cannot repair forward inside this run — a conflict, a deploy that will not land,
 a step you could not complete, a procedure that does not fit what you actually found:
-→ \`forge_release_batch\` action \`abort\` with \`reason\`. The abort closes nothing, and an issue a
+→ \`release-batches/<runId>/abort -X POST -d '{"reason":"<why>"}'\`. The abort closes nothing, and an issue a
   finish already closed stays closed (\`alreadyClosed\`). Where this run recorded no promotion, it
   releases every claim and takes the issues still at their \`release\` step back to the release gate for
   a later batch (\`recovered\`). Where this run recorded a promotion, the code may already be on

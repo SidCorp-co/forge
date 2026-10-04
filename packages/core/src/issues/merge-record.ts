@@ -44,20 +44,6 @@ export function mergeMarkKindOf(row: MergeMarkColumns): MergeMarkKind {
   return (row.mergedLanding ?? '').trim() === '' ? 'asserted' : 'landed';
 }
 
-/** The pair every projection reporting a mark carries, as one spread: the sha travels with
- *  the word, so no projection can carry one without the other. */
-export function mergeMarkFields(row: MergeMarkColumns): {
-  mergedCommitSha: string | null;
-  mergedLanding: string | null;
-  mergeMark: MergeMarkKind;
-} {
-  return {
-    mergedCommitSha: row.mergedCommitSha,
-    mergedLanding: row.mergedLanding,
-    mergeMark: mergeMarkKindOf(row),
-  };
-}
-
 /** The sentence saying which kind this is, written once: the audit comment and the caller's
  *  answer are both built from it. `claimedCommit` is the caller's word, not the column. */
 export function describeMergeMark(args: {

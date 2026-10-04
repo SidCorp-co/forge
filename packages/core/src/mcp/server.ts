@@ -18,15 +18,10 @@ import { forgeAgentReportTool } from './tools/forge-agent-report.js';
 import { forgeCoolifyDeployTool } from './tools/forge-coolify-deploy.js';
 import { forgeEcosystemTool } from './tools/forge-ecosystem.js';
 import { forgeGoogleSheetsTool } from './tools/forge-google-sheets.js';
-import { forgeKnowledgeTool } from './tools/forge-knowledge.js';
-import { forgeMemoryTool } from './tools/forge-memory.js';
-import { forgeOnboardingTool } from './tools/forge-onboarding.js';
-import { forgeReleaseBatchTool } from './tools/forge-release-batch.js';
 import { forgeSentryTool } from './tools/forge-sentry.js';
 import { forgeSourceTool } from './tools/forge-source.js';
 import { forgeStorefrontTargetTool } from './tools/forge-storefront-target.js';
-import { forgeSuggestionsTool } from './tools/forge-suggestions.js';
-import { forgeWorkflowsTool } from './tools/forge-workflows.js';
+import { forgeUploadsTool } from './tools/forge-uploads.js';
 import type { McpContext, McpTool } from './tools/lib.js';
 import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/project-scope.js';
 
@@ -52,17 +47,16 @@ export function mcpTools(ctx: McpContext): McpTool[] {
   // The REST API is the primary door and the forge CLI sits on it; a tool is served here only
   // where an agent Forge runs needs it and neither covers it for that agent.
   const tools: McpTool[] = [
-    forgeMemoryTool(ctx),
-    forgeKnowledgeTool(ctx),
-    forgeReleaseBatchTool(ctx),
+    // submit reads the caller's live job or session context, which no REST route resolves.
     forgeAgentReportTool(ctx),
-    forgeOnboardingTool(ctx),
-    forgeWorkflowsTool(ctx),
-    forgeSuggestionsTool(ctx),
+    // An image attachment comes back as a viewable block; `forge-runner api` prints text only.
+    forgeUploadsTool(ctx),
+    // The channel's unanswered read is device-only over REST and its gate answers across the
+    // ecosystem fence; the ecosystem's contract context has no REST route.
     forgeChannelTool(ctx),
     forgeEcosystemTool(ctx),
     // A core-mediated integration's agent path: the provider credential stays in core, and no REST
-    // route serves these reads and writes yet.
+    // route serves these reads and writes (for Coolify, its deployment and runtime logs).
     forgeSourceTool(ctx),
     forgeCoolifyDeployTool(ctx),
     forgeSentryTool(ctx),

@@ -2,8 +2,8 @@
 // Mounted at /api/projects/:projectId/reconcile-runs (and /api/reconcile for
 // cross-project admin views) in packages/core/src/index.ts.
 //
-// All mutating endpoints require project admin role. Read endpoints require
-// project membership.
+// Mutating endpoints require project admin role, except a verifier's vote, which takes
+// membership. Read endpoints require project membership.
 
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -16,6 +16,8 @@ import {
   applyReconcileRun,
   getReconcileRun,
   listReconcileRunsForProject,
+  recordReconcileVerdict,
+  recordVerifierVote,
   rejectReconcileRun,
   spawnReconcileRun,
 } from './reconcile-service.js';
@@ -107,6 +109,92 @@ reconcileRoutes.get(
     if (!run || run.projectId !== projectId) throw notFound(`reconcile run ${runId} not found`);
 
     return c.json({ run });
+  },
+);
+
+const verdictBodySchema = z
+  .object({
+    verdict: z.enum(['no-op', 'apply', 'apply-with-adaptation', 'escalate']),
+    candidateBody: z.string().optional(),
+    rationale: z.string().min(1).max(5000),
+    gate: z.enum(['auto', 'human']),
+  })
+  .strict()
+  .refine(
+    (b) => !(b.verdict === 'apply' || b.verdict === 'apply-with-adaptation') || !!b.candidateBody,
+    { message: 'candidateBody is required when verdict is apply or apply-with-adaptation' },
+  );
+
+/** The master agent's verdict and candidate body for an in-flight run. */
+reconcileRoutes.post(
+  '/:projectId/reconcile-runs/:runId/verdict',
+  zValidator('param', runParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', verdictBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId, runId } = c.req.valid('param');
+    const body = c.req.valid('json');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, userId);
+    assertProjectRole(access, 'admin', 'only a project admin can record a reconcile verdict');
+
+    const run = await getReconcileRun(runId);
+    if (!run || run.projectId !== projectId) throw notFound(`reconcile run ${runId} not found`);
+    if (run.status !== 'pending' && run.status !== 'running') {
+      throw conflict(`reconcile run ${runId} is ${run.status}; a verdict is recorded on a pending or running run`);
+    }
+
+    await recordReconcileVerdict({
+      runId,
+      verdict: body.verdict,
+      candidateBody: body.candidateBody ?? null,
+      rationale: body.rationale,
+      gate: body.gate,
+      actor: 'agent:master',
+    });
+    return c.json({ ok: true });
+  },
+);
+
+/** A verifier agent's pass/fail vote on a run in `verifying`. */
+reconcileRoutes.post(
+  '/:projectId/reconcile-runs/:runId/votes',
+  zValidator('param', runParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator(
+    'json',
+    z
+      .object({
+        jobId: z.string().uuid(),
+        vote: z.enum(['pass', 'fail']),
+        reason: z.string().min(1).max(2000),
+      })
+      .strict(),
+    (r) => {
+      if (!r.success) throw badRequest(z.flattenError(r.error));
+    },
+  ),
+  async (c) => {
+    const { projectId, runId } = c.req.valid('param');
+    const { jobId, vote, reason } = c.req.valid('json');
+    const userId = c.get('userId');
+
+    const access = await loadProjectAccess(projectId, userId);
+    if (!access.role) throw forbidden('not a project member');
+
+    const run = await getReconcileRun(runId);
+    if (!run || run.projectId !== projectId) throw notFound(`reconcile run ${runId} not found`);
+    if (run.status !== 'verifying') {
+      throw conflict(`reconcile run ${runId} is ${run.status}; a vote is recorded on a verifying run`);
+    }
+
+    await recordVerifierVote({ runId, jobId, vote, reason });
+    return c.json({ ok: true });
   },
 );
 

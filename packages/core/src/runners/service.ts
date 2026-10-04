@@ -5,45 +5,10 @@
  * about jobs, not about runners, and four surfaces had grown their own.
  */
 
-import { and, eq, inArray, type SQL } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type RunnerStatus, type RunnerType, runners } from '../db/schema.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
-
-export type RunnerQuery = {
-  visibleProjectIds: string[];
-  projectId?: string | undefined;
-  status?: RunnerStatus | undefined;
-  type?: RunnerType | undefined;
-};
-
-export async function listRunners(q: RunnerQuery) {
-  const filters: SQL[] = [inArray(runners.projectId, q.visibleProjectIds)];
-  if (q.projectId) filters.push(eq(runners.projectId, q.projectId));
-  if (q.status) filters.push(eq(runners.status, q.status));
-  if (q.type) filters.push(eq(runners.type, q.type));
-
-  return db
-    .select()
-    .from(runners)
-    .where(and(...filters));
-}
-
-/** One runner row by id, for a caller that has just written it through an audited writer. */
-export async function findRunnerById(runnerId: string) {
-  const [row] = await db.select().from(runners).where(eq(runners.id, runnerId)).limit(1);
-  return row ?? null;
-}
-
-/** Which project a runner belongs to, for a gate that runs before anything else. */
-export async function findRunnerProjectId(runnerId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ projectId: runners.projectId })
-    .from(runners)
-    .where(eq(runners.id, runnerId))
-    .limit(1);
-  return row?.projectId ?? null;
-}
 
 export type NewRunner = {
   projectId: string;
@@ -125,17 +90,5 @@ async function readBinding(input: NewRunner) {
       ),
     )
     .limit(1);
-  return row ?? null;
-}
-
-export async function setRunnerCapabilities(
-  runnerId: string,
-  capabilities: Record<string, unknown>,
-) {
-  const [row] = await db
-    .update(runners)
-    .set({ capabilities, updatedAt: new Date() })
-    .where(eq(runners.id, runnerId))
-    .returning();
   return row ?? null;
 }

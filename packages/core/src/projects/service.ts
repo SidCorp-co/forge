@@ -156,40 +156,6 @@ export async function listVisibleProjectsWithRole(
     .where(and(...visibleProjectsWhere()));
 }
 
-/** The scalar view of one project, without its config blobs. */
-export async function readProjectSummary(projectId: string) {
-  const [row] = await db
-    .select({
-      id: projects.id,
-      slug: projects.slug,
-      name: projects.name,
-      orgId: projects.orgId,
-      createdBy: projects.createdBy,
-      createdAt: projects.createdAt,
-    })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!row) return null;
-  return { ...row, baseBranch: (await readDeclaredSource(projectId)).defaultBranch };
-}
-
-/** The project's identity and branches plus its whole agentConfig blob. */
-export async function readProjectWithConfig(projectId: string) {
-  const [row] = await db
-    .select({
-      id: projects.id,
-      slug: projects.slug,
-      name: projects.name,
-      agentConfig: projects.agentConfig,
-    })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!row) return null;
-  return { ...row, baseBranch: (await readDeclaredSource(projectId)).defaultBranch };
-}
-
 /** The two jsonb fields a per-issue branch override can live on, scoped to a project so an id from elsewhere reads as absent. */
 export async function readIssueBranchInputs(issueId: string, projectId: string) {
   const [row] = await db

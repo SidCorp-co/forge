@@ -944,7 +944,7 @@ gets it is the next one this box starts.\n";
 /// six passes (ISS-1114).
 const ABSENT_FORGE: &str = "\nThe `forge` MCP server is in NEITHER half, so every `forge_*` tool \
 is ABSENT from this pane — `forge_source`, which is the only route to a pull or merge request, \
-along with `forge_issues`, `forge_comments` and the rest.\n\nAbsent is not refused. A tool you cannot see has \
+along with `forge_uploads`, `forge_agent_report` and the rest.\n\nAbsent is not refused. A tool you cannot see has \
 told you nothing about whether its route is open, so do not report a route as shut on the strength \
 of not seeing it, and do not reach for `gh` or `glab` instead: it runs as whoever configured this box, which \
 is neither attributable nor revocable. Say the capability is unreachable FROM THIS PANE, and name \

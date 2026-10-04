@@ -3,8 +3,7 @@
  *
  * Three POST endpoints (`/:id/pause`, `/:id/resume`, `/:id/cancel`) mounted
  * under `/api/pipeline-runs`. Auth-gated to project members + owner. The
- * actual transition semantics live in `./runs-control.ts` so the same code
- * path is shared with the matching `forge_pipeline_runs.*` MCP tools.
+ * actual transition semantics live in `./runs-control.ts`.
  */
 
 import { Hono } from 'hono';

@@ -22,13 +22,13 @@ export interface OnboardingPromptContext {
   reason?: string | null;
 }
 
-const TOOLS = `Tools (Forge MCP; every write is refused by name with what is valid — read the refusal and fix, never work around it):
-- forge_onboarding: { action: post_questionnaire | read_answers | post_update | mark_done, projectId }.
-- forge_workflows: templates / template (read a template's node types and required fields first), write (create: no workflowId, baseRevision null), propose { workflowId, revision }.
-- forge_knowledge: upsert { projectId, slug, title, body, kind: reference, injection: on_demand, authoredBy: agent, confidence: inferred }.`;
+const TOOLS = `Forge, through \`forge-runner api <path>\` (every write is refused by name with what is valid — read the refusal and fix, never work around it). P is projects/<projectId>:
+- onboarding: \`P/onboarding/questionnaires -X POST\` (post a questionnaire), \`P/onboarding/answers\` (read the answers), \`P/onboarding/updates -X POST\` (post an update), \`P/onboarding/done -X POST\` (mark done).
+- workflows: \`P/workflow-templates\` and \`P/workflow-templates/<templateId>/<version>\` (read a template's node types and required fields first), \`P/workflows -X POST\` (create; baseRevision null) or \`P/workflows/<workflowId> -X PUT\` (a new revision), \`P/workflows/<workflowId>/design/propose -X POST\` { revision }.
+- knowledge: \`P/knowledge/<slug> -X PUT\` { title, body, kind: reference, injection: on_demand, authoredBy: agent, confidence: inferred }.`;
 
 const FINDINGS = `What the hand-run trials found — follow it:
-1. A design you create lands at DRAFT. It reaches proposed only through forge_workflows propose { workflowId, revision }. Create, then propose, every design. Never approve: the user decides the picture you drew of their code.
+1. A design you create lands at DRAFT. It reaches proposed only through P/workflows/<workflowId>/design/propose { revision }. Create, then propose, every design. Never approve: the user decides the picture you drew of their code.
 2. Write system-context FIRST: the integration sequence, the data flow and the journey reference its SYSTEM and CONTAINER steps, and a ref to a design that does not exist yet is WORKFLOW_REF_DANGLING.
 3. ux-flow needs a wireframe on every SCREEN, and onboarding has none: draw the core business journey in operational-flow (or service-blueprint), not ux-flow.
 4. In system-context, a line into a SYSTEM needs an explicit kind (uses / reads-from / writes-to), or it is WORKFLOW_EDGE_KIND_AMBIGUOUS. Lines go forward only (after): a two-way integration is one line whose label says both ways.
@@ -51,7 +51,7 @@ const CODE_MAP = `The code map (knowledge entries, one per section, kebab-case s
 9. Competing implementations and dead code.`;
 
 function questionnaireRules(roundsSent: number) {
-  return `The questionnaire (forge_onboarding post_questionnaire { title, intro?, items }):
+  return `The questionnaire (P/onboarding/questionnaires -X POST { title, intro?, items }):
 - One batch, at most ${QUESTIONNAIRE_MAX_ITEMS} items, grouped question / clarification / recommendation. This is round ${roundsSent + 1} of at most ${QUESTIONNAIRE_MAX_ROUNDS}.
 - Each item: id (stable, e.g. q-central-entity), group, control (choice | multi | text | accept_reject — a recommendation is always accept_reject), prompt (in the language the project's people write in), options with ids for choice and multi, inferredDefault (the option the code suggests: it is marked, never chosen for them), why (one or two sentences), evidence (file:symbol, or a record citation), affects (the workflow ids it shapes).
 - Ask only what the code and the records cannot settle. Prefer a choice with an inferred default over an open text.
@@ -72,9 +72,9 @@ export function analysePrompt(ctx: OnboardingPromptContext): string {
     `Do, in order, then stop:
 1. Analyse ${ctx.repository ? `${landedTree(ctx.defaultBranch, ctx.onboardingId)} (stack, entry points, routes, data models, integrations, docs, personal-data signals)` : 'the project through Forge — it names no repository: its config, policy, knowledge, workflows, requirements and their criteria, issues and comments'}. Read before you write.
 2. Write the code map as knowledge entries (below).
-3. Draft the key designs as-built and propose each: system context, the core business journey, the central entity state machine — always; an integration sequence when the code calls an outside system (webhook, API client, queue); a data flow ${ctx.sensitiveData ? "— MANDATORY: this project holds sensitive data (its data policy is on), so draw the product's own trust boundaries and where the product redacts; mark_done is refused ONBOARDING_DATA_FLOW_MISSING without it" : "when the code holds personal or health data (mandatory then, with the product's own trust boundaries and where the product redacts)"}. A design of a flow that already exists gets a new revision, never a second design.
-4. forge_onboarding post_update { text, designs: { heading: "Designs drafted", workflowIds } }: a short summary of what you read (stack, modules, routes, models, integrations with counts) — this registers the designs with the onboarding.
-5. forge_onboarding post_questionnaire with everything you could not settle.
+3. Draft the key designs as-built and propose each: system context, the core business journey, the central entity state machine — always; an integration sequence when the code calls an outside system (webhook, API client, queue); a data flow ${ctx.sensitiveData ? "— MANDATORY: this project holds sensitive data (its data policy is on), so draw the product's own trust boundaries and where the product redacts; marking done is refused ONBOARDING_DATA_FLOW_MISSING without it" : "when the code holds personal or health data (mandatory then, with the product's own trust boundaries and where the product redacts)"}. A design of a flow that already exists gets a new revision, never a second design.
+4. P/onboarding/updates -X POST { text, designs: { heading: "Designs drafted", workflowIds } }: a short summary of what you read (stack, modules, routes, models, integrations with counts) — this registers the designs with the onboarding.
+5. P/onboarding/questionnaires -X POST with everything you could not settle.
 6. Stop. The person answers in the chat; a new job reads the answers.`,
     FINDINGS,
     CODE_MAP,
@@ -87,12 +87,12 @@ export function revisePrompt(ctx: OnboardingPromptContext & { batchId: string })
     `Onboarding ${ctx.onboardingId} of project "${ctx.projectName}" (${ctx.projectId}): the person answered questionnaire ${ctx.batchId} in conversation ${ctx.conversationId}. Turn the answers into revisions, then stop.`,
     TOOLS,
     `Do, in order, then stop:
-1. forge_onboarding read_answers: each item with its state (answered / open / void) and the answer.${ctx.repository ? ` Any code you read is ${landedTree(ctx.defaultBranch, ctx.onboardingId)}.` : ''}
-2. For each answered question or clarification, write a new revision of the design it affects that cites the item (in the step's does or the revision reason) and propose it. An accepted recommendation becomes a proposed design revision or a suggestion (forge_suggestions create) — never current. A rejected one is recorded: do not suggest it again (a repeat is refused QUESTIONNAIRE_RECOMMENDATION_REJECTED).
-3. forge_onboarding post_update { text, designs: { heading: "Updated designs", workflowIds } } naming what changed.
+1. P/onboarding/answers: each item with its state (answered / open / void) and the answer.${ctx.repository ? ` Any code you read is ${landedTree(ctx.defaultBranch, ctx.onboardingId)}.` : ''}
+2. For each answered question or clarification, write a new revision of the design it affects that cites the item (in the step's does or the revision reason) and propose it. An accepted recommendation becomes a proposed design revision or a suggestion (P/suggestions -X POST) — never current. A rejected one is recorded: do not suggest it again (a repeat is refused QUESTIONNAIRE_RECOMMENDATION_REJECTED).
+3. P/onboarding/updates -X POST { text, designs: { heading: "Updated designs", workflowIds } } naming what changed.
 4. Then exactly one of:
-   - items stayed open (or the answers raised new questions) and fewer than ${QUESTIONNAIRE_MAX_ROUNDS} rounds were sent: post_questionnaire with ONLY the open items (same ids) and the new ones (isNew: true);
-   - otherwise: post_update { text, designs: { heading: "Designs ready for your approval", workflowIds: every onboarding design, approve: true } }, list what stays open on its design as an open question, then mark_done.`,
+   - items stayed open (or the answers raised new questions) and fewer than ${QUESTIONNAIRE_MAX_ROUNDS} rounds were sent: post a questionnaire with ONLY the open items (same ids) and the new ones (isNew: true);
+   - otherwise: post an update { text, designs: { heading: "Designs ready for your approval", workflowIds: every onboarding design, approve: true } }, list what stays open on its design as an open question, then mark done.`,
     FINDINGS,
     questionnaireRules(ctx.roundsSent),
   ].join('\n\n');

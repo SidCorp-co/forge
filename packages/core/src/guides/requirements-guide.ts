@@ -12,8 +12,10 @@ export const REQUIREMENT_LIFECYCLE_GUIDE: CoreGuide = {
 
 A requirement (REQ-n) is the business intent a set of issues delivers. Its text never changes in place:
 it lives in numbered revisions, and each revision carries business criteria under stable codes
-(BC-1, BC-2, …) that issues trace their own criteria to. \`forge_requirements\` is the door; the REST
-routes under \`/api/projects/:id/requirements\` are the same services.
+(BC-1, BC-2, …) that issues trace their own criteria to. The door is
+\`/api/projects/:id/requirements\`: each act below is a route under \`…/requirements/:req\`
+(\`revisions\`, \`revisions/:n/propose|accept|return\`, \`agree\`, \`repin\`, \`defer\`, \`undefer\`,
+\`issues\`, \`workflows\`, \`contracts\`).
 
 ### Three things move, and they are not one field
 - **The requirement's status**: \`draft\` (being written; nothing is built against it), \`agreed\` (a
@@ -64,7 +66,7 @@ routes under \`/api/projects/:id/requirements\` are the same services.
   issue serves one requirement: linking one held elsewhere is \`REQUIREMENT_ISSUE_LINKED_ELSEWHERE\`.
 - An issue's plan records the revision and the baseline it was written against. A plan written while
   the requirement has no current revision is refused \`REQUIREMENT_REVISION_NOT_CURRENT\`.
-- \`forge_issues get\` then shows \`requirement.changedSincePlan\`: true when the head is now another
+- \`GET /api/issues/:id\` then shows \`requirement.changedSincePlan\`: true when the head is now another
   revision, or when the head was re-pinned onto newly approved designs after the plan. Re-plan
   against the current head; do not build against a plan that reads changed.
 - A plan written before the link reads changed-since-plan, unless a **person** passes

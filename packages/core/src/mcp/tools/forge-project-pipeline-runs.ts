@@ -1,7 +1,6 @@
 /**
- * ISS-145 — Action-dispatcher consolidating the five
- * `forge_pipeline_runs.<action>` tools into a single `forge_project_pipeline_runs`
- * tool, mirroring the shape of `forge_issues` / `forge_comments`.
+ * ISS-145 — `forge_project_pipeline_runs`, one action-dispatching tool over
+ * the five pipeline-run actions.
  *
  * Implementation lives in the per-action pure handlers exported by
  * `./forge-pipeline-runs.ts`. This file owns input validation, required-field

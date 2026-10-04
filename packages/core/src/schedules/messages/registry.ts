@@ -46,7 +46,7 @@ export const RETIRED_STRATEGY_INPUTS = {
     title: 'Stamp merged_at on PASS to unblock dependencies',
     message:
       'When forge-test reaches an overall PASS verdict, call ' +
-      'forge_issues.mark_merged({ issueId, target: "base" }) immediately ' +
+      '`forge-runner api issues/<id>/merge -X POST -d \'{"target":"base"}\'` immediately ' +
       'after updating the status. This stamps merged_at on the issue so any ' +
       'downstream issues connected by blocks edges are ' +
       'automatically dispatched. Without this stamp, dependent issues queue ' +

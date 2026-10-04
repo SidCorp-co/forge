@@ -209,7 +209,7 @@ summary of it:
 | this cannot proceed without a person | `human_required` |
 | guessing wrong here is irreversible because… | `irreversible_if_wrong` |
 
-Write them with `forge_issues action=setAttributes`. An `obligation` sent with
+Write them with `forge-runner api issues/<id>/attributes -X POST`. An `obligation` sent with
 neither an owner nor a carrier is refused by name — an obligation nobody owns is
 not recorded, it is lost, which is how steps 2-5 of ISS-1002 left without anyone
 noticing.

@@ -53,43 +53,6 @@ export async function listSchedules(projectId: string, actorUserId: string, enab
     .orderBy(asc(schedules.createdAt));
 }
 
-export async function listSchedulesForMcp(projectId: string, enabled?: boolean) {
-  const conditions = [eq(schedules.projectId, projectId)];
-  if (enabled !== undefined) conditions.push(eq(schedules.enabled, enabled));
-
-  return db
-    .select({
-      id: schedules.id,
-      projectId: schedules.projectId,
-      name: schedules.name,
-      cron: schedules.cron,
-      enabled: schedules.enabled,
-      targetProjectSlug: schedules.targetProjectSlug,
-      lastRunAt: schedules.lastRunAt,
-      nextRunAt: schedules.nextRunAt,
-      lastStatus: schedules.lastStatus,
-      templateKey: schedules.templateKey,
-      mode: schedules.mode,
-      kind: schedules.kind,
-      createdAt: schedules.createdAt,
-      updatedAt: schedules.updatedAt,
-    })
-    .from(schedules)
-    .where(and(...conditions))
-    .orderBy(asc(schedules.createdAt));
-}
-
-/** A schedule's project, for a gate that must fire before any row is returned. */
-export async function readScheduleProjectId(scheduleId: string): Promise<string> {
-  const [row] = await db
-    .select({ projectId: schedules.projectId })
-    .from(schedules)
-    .where(eq(schedules.id, scheduleId))
-    .limit(1);
-  if (!row) throw notFound('schedule not found');
-  return row.projectId;
-}
-
 export async function getSchedule(id: string, actorUserId: string) {
   const [row] = await db.select().from(schedules).where(eq(schedules.id, id)).limit(1);
   if (!row) throw notFound('schedule not found');

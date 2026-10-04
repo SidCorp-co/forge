@@ -9,8 +9,8 @@
  * that goes stale. ISS-925 added the controls beside deploy: `cancel`,
  * `rollback-images`, `rollback`, `applications`, `targets`.
  *
- * Authorization is membership-level (`assertPrincipalIsMember`) like
- * `forge_issues`, raised to writer for the three actions that change something;
+ * Authorization is membership-level (`assertPrincipalIsMember`), raised to
+ * writer for the three actions that change something;
  * prod safety is the human-confirm gate inside `tryDispatchCoolifyRelease` and
  * `prodActionNeedsHumanConfirm`, not RBAC. No DEVICE_REQUIRED entry — the tool
  * has no runner dependency.

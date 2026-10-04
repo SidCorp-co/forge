@@ -202,14 +202,6 @@ export function preparedBody(raw: string, format: 'markdown' | 'html' | undefine
   }
 }
 
-export function recordKeptRefusal(commentId: string, scope: CommentScope): CommentRefusal {
-  return {
-    code: 'COMMENT_RECORD_KEPT',
-    path: '/documentId',
-    detail: `comment ${commentId} sits on a ${scope}; a comment there is a record and is never deleted. Edit it instead, or post a decision that supersedes it`,
-  };
-}
-
 // cm:guard decision.node names a node of a workflow, so it sits on a workflow decision only (REQ-17 BC-26)
 export function nodeDecisionScopeRefusal(
   scope: string,
