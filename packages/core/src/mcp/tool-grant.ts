@@ -1,10 +1,11 @@
 import {
   PAT_GRANT_PREDATES_ROUTE,
+  PAT_NESTED_SURFACES,
   PAT_PERMISSION_ALL,
   PAT_PERMISSION_GROUPS,
   PAT_PERMISSION_NAMES,
   type PatPermission,
-  type PatPrefix,
+  type PatRoute,
   patEpochRefusal,
   patGrantCovers,
   patPrefixForPath,
@@ -35,7 +36,7 @@ export type ToolReach =
 
 // cm:why a tool is dated by the REST mount serving its rows, one per resource its grants name,
 // not by its resource's oldest prefix, so a token is refused a tool exactly where REST refuses it the route.
-export type ToolRoute = PatPrefix | readonly PatPrefix[];
+export type ToolRoute = PatRoute | readonly PatRoute[];
 
 export interface GrantedTool {
   readonly name: string;
@@ -264,7 +265,9 @@ export function assertToolDeclaresRoute(tool: GrantedTool): void {
   const byResource = new Map<string, string>();
   for (const route of routes) {
     const match = patPrefixForPath(route);
-    if (!match || match.prefix !== route) refuse(`route '${route}' is not a prefix on the menu`);
+    if (!match || (match.prefix !== route && !(route in PAT_NESTED_SURFACES))) {
+      refuse(`route '${route}' is neither a prefix on the menu nor a nested surface it dates`);
+    }
     const resource = match?.resource ?? '';
     const taken = byResource.get(resource);
     if (taken) refuse(`routes '${taken}' and '${route}' are both under '${resource}'`);

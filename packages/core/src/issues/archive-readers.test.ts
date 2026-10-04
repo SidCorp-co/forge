@@ -24,7 +24,6 @@ const NOT_DISCOVERY: Record<string, string> = {
   'admin/metric-series.ts': 'bucketed lead-time sums and counts, no issue identity',
   'admin/pipeline-health-routes.ts':
     'reads only `needs_info`, a park an archived issue never holds',
-  'agent-reports/routes.ts': 'the issue an agent report links',
   'agent-reports/service.ts': 'by issue id',
   'agent-sessions/interactive-routes.ts': "titles of the session's own issue ids",
   'agent-sessions/routes.ts': 'the one issue a session names',
@@ -47,6 +46,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'devices/run-evidence.ts': 'the seqs a run names',
   'devices/run-issue-return.ts': 'the seqs a run names',
   'devices/run-session.ts': 'the seqs a run names',
+  'feedback/promote.ts': 'the one issue an agent report already links, joined by id',
   'feedback/read.ts': 'the issues a feedback item targets or is routed to, by id',
   'feedback/triage.ts': 'by issue id: the issue a route links, or the draft it filed',
   'issues/record-events/collapse.ts': 'retention: an archived issue collapses its narration too',
@@ -63,6 +63,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/attachment-routes.ts': 'by issue or attachment id',
   'issues/attributes/read.ts': 'the ids attribute values reference',
   'issues/attributes/routes.ts': 'by issue id',
+  'issues/blocked-by.ts':
+    'the issue a door is taking, by id or seq, and the blockers over its live edges',
   'issues/commit-landing.ts': 'by issue id, the issue a mark names',
   'issues/create-service.ts': 'the existing row a dedup names',
   'issues/issue-lease.ts':
@@ -173,6 +175,10 @@ const NOT_DISCOVERY: Record<string, string> = {
   'release-batch/service.ts': 'the ids passed in, or rows of one release run',
   'requirements/deferral.ts':
     'reads only issues in work (not draft, closed or dropped), which an archived issue never is',
+  'requirements/feedback-links.ts':
+    "feedback joined to the issue it targets or was routed to, by id: a feedback item is a record that outlives its issue's archive",
+  'requirements/history-read.ts':
+    "a requirement's history includes the activity of its archived issues: a record outlives the archive",
   'requirements/issue-links.ts':
     'by issue id: the requirement an issue names, and the issue a link or a plan write names',
   'requirements/read.ts':

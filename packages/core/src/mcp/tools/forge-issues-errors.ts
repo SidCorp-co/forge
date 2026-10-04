@@ -9,6 +9,7 @@
 
 import { BodyInvalidError } from '../../body/errors.js';
 import { AttachmentError } from '../../issues/attachment-service.js';
+import { heldTakeRefusal } from '../../issues/blocked-by.js';
 import { IssueCreateError } from '../../issues/create-service.js';
 import { LabelResolutionError, PrimaryModuleError } from '../../issues/label-service.js';
 import {
@@ -27,6 +28,8 @@ export function toMcpIssueError(err: unknown): unknown {
     );
   }
   if (err instanceof AttachmentError) return new Error(`${err.code}: ${err.message}`);
+  const held = heldTakeRefusal(err);
+  if (held) return new Error(held.message);
   if (err instanceof SessionContextDropsUnreadKeys) {
     return new Error(
       `SESSION_CONTEXT_DROPS_UNREAD_KEYS: this write replaces \`sessionContext\` whole and would remove ${err.dropped.join(', ')}, which it never read. ` +

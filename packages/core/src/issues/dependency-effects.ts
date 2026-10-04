@@ -22,7 +22,9 @@ export const DISPATCH_GATING_KIND: IssueDependencyKind = 'blocks';
 export const BLOCKER_SETTLED_STATUSES: readonly IssueStatus[] = ISSUE_RESOLVED_STATUSES;
 
 export const GATES_DISPATCH_NOTE =
-  'B is held out of the admissible set a master reads while a live `blocks` edge points at it ' +
+  'B is held out of the admissible set a master reads, and refused ISSUE_BLOCKED to every claim of ' +
+  'it while it has not started (a lease, a run session, a pool job, a move to `in_progress`), while a ' +
+  'live `blocks` edge points at it ' +
   `from an A that has not reached \`${BLOCKER_SETTLED_STATUSES[0]}\` — the statuses that release ` +
   `it are ${BLOCKER_SETTLED_STATUSES.map((s) => `\`${s}\``).join(', ')}. A reopened A blocks ` +
   "again. A blocker that delivers a design revision (it is that revision's design issue, or the " +

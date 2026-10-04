@@ -283,16 +283,58 @@ describe('a token minted before its grant joined the menu', () => {
     expect(failures.text).toContain('PAT_GRANT_PREDATES_ROUTE');
   });
 
-  it('keeps the pipeline and usage reads whose REST route it was minted with', async () => {
+  it('keeps the pipeline reads whose REST route it was minted with', async () => {
     const jobs = await call(tokens.preEpoch, 'forge_jobs.list', { projectId });
     expect(jobs.isError, jobs.text).toBe(false);
+  });
+
+  it('is refused every nested twin of a later surface on REST, and the timeseries tool on /mcp, by the surface it serves (ISS-105)', async () => {
     const usage = await call(tokens.preEpoch, 'forge_metrics.project_timeseries', {
       projectId,
       metric: 'cost',
     });
+    expect(usage.isError, usage.text).toBe(true);
+    expect(usage.text).toContain(
+      'PAT_GRANT_PREDATES_ROUTE: forge_metrics.project_timeseries is served at /api/projects/:id/metrics/timeseries, and /api/projects/:id/metrics/timeseries serves the rows of /api/usage-records',
+    );
+    for (const [path, surface] of [
+      [`/api/projects/${projectId}/agent-sessions`, '/api/agent-sessions'],
+      [`/api/projects/${projectId}/agent-sessions/${randomUUID()}`, '/api/agent-sessions'],
+      [`/api/projects/${projectId}/run-sessions`, '/api/agent-sessions'],
+      [`/api/projects/${projectId}/metrics/session-failures`, '/api/agent-sessions'],
+      [`/api/projects/${projectId}/metrics/step-durations`, '/api/pipeline'],
+      [`/api/projects/${projectId}/metrics/retry-rescues`, '/api/pipeline'],
+      [`/api/projects/${projectId}/metrics/interventions`, '/api/pipeline'],
+      [`/api/projects/${projectId}/analytics/cost-summary`, '/api/pipeline'],
+      [`/api/projects/${projectId}/metrics/timeseries?metric=cost`, '/api/usage-records'],
+      [`/api/projects/${projectId}/runners`, '/api/runners'],
+      [`/api/issues/${issueId}/cost-summary`, '/api/usage-records'],
+    ] as const) {
+      const answer = await rest(path);
+      expect(answer.status, `${path}: ${answer.text}`).toBe(403);
+      expect(answer.text).toContain('PAT_GRANT_PREDATES_ROUTE');
+      expect(answer.text).toContain(`"surface":"${surface}"`);
+    }
+  });
+
+  it('lets a token minted at the surface epoch read the same nested routes and the timeseries tool', async () => {
+    for (const path of [
+      `/api/projects/${projectId}/agent-sessions`,
+      `/api/projects/${projectId}/metrics/timeseries?metric=cost`,
+    ]) {
+      const res = await app.request(path, { headers: { authorization: `Bearer ${tokens.whole}` } });
+      expect(res.status, `${path}: ${await res.clone().text()}`).toBe(200);
+    }
+    const usage = await call(tokens.whole, 'forge_metrics.project_timeseries', {
+      projectId,
+      metric: 'cost',
+    });
     expect(usage.isError, usage.text).toBe(false);
-    const twin = await rest(`/api/projects/${projectId}/metrics/timeseries?metric=cost`);
-    expect(twin.status, twin.text).toBe(200);
+  });
+
+  it('keeps runner load at its mount epoch on REST, the amnesty forge-plugin 3.36.542 holds', async () => {
+    const load = await rest(`/api/projects/${projectId}/pm/runner-load`);
+    expect(load.status, load.text).toBe(200);
   });
 
   it('keeps every tool whose grant it was minted with', async () => {
@@ -377,9 +419,14 @@ describe('a chat turn, through the same check as /mcp', () => {
     );
     expect(out.isError, textOf(out)).toBe(true);
     expect(textOf(out)).toContain('PAT_GRANT_PREDATES_ROUTE');
-    const kept = await set.execute(
+    const usage = await set.execute(
       'forge_metrics_project_timeseries',
       JSON.stringify({ projectId, metric: 'cost' }),
+    );
+    expect(textOf(usage)).toContain('serves the rows of /api/usage-records');
+    const kept = await set.execute(
+      'forge_project_pipeline_runs',
+      JSON.stringify({ action: 'list', projectId }),
     );
     expect(kept.isError, textOf(kept)).toBeFalsy();
   });

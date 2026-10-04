@@ -260,8 +260,10 @@ means `off`).
   `BAD_REQUEST: <action> needs <key>`.
 - **Refusals** come back through `packages/core/src/mcp/tools/lib.ts:refusedAnswer`, never as thrown text.
 - **Access.** A tool declares `grant` (the permission), `reach` (`project`, `public` or `{ account }`)
-  and `route` (the REST mount its rows are served at, one per resource its grants name). The route
-  dates the tool for the grant epoch. Registration on `/mcp` and in chat refuses a tool missing any
+  and `route` (the REST mount its rows are served at, one per resource its grants name, or the nested
+  route it shares with REST where that route serves a newer prefix's rows). The route dates the tool
+  for the grant epoch, by the data it serves rather than the mount it sits under
+  (`packages/core/src/auth/pat-permissions.ts:PAT_NESTED_SURFACES`). Registration on `/mcp` and in chat refuses a tool missing any
   of them (`packages/core/src/mcp/tool-grant.ts:assertToolDeclaresAccess`). Both doors refuse a
   call through `packages/core/src/mcp/tool-call-guard.ts:toolCallRefusal`, which reads the same epoch
   rule as REST (`packages/core/src/auth/pat-permissions.ts:patEpochRefusal`).

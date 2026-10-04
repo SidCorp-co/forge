@@ -93,7 +93,7 @@ const timeseriesInputSchema = z
 export const forgeMetricsProjectTimeseriesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_metrics.project_timeseries',
   reach: 'project',
-  route: '/api/projects',
+  route: '/api/projects/:id/metrics/timeseries',
   grant: 'projects:read',
   description:
     'Project time-series trend for the v2 dashboard charts (ISS-380). Returns a dense (gap-filled) bucketed series for one `metric` of cost | throughput | cycle_time | queue_wait | runner_utilization | cache_hit_rate, derived entirely from existing tables. Requires project membership. Params: `projectId`, `metric`, `days` (1..90, default 30), `bucket` (day|hour, default day), and `groupBy=step` (cost only). Returns `{ metric, bucket, days, groupBy, series }`.',

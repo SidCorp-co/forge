@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../config/env.js', () => ({
@@ -9,6 +10,7 @@ import { scopeForMethod } from '../middleware/pat-rest-surface.js';
 import {
   PAT_ACCOUNT_ONLY_PERMISSIONS,
   PAT_GRANT_EPOCH,
+  PAT_NESTED_SURFACES,
   PAT_PERMISSION_GROUPS,
   PAT_PERMISSION_LEVELS,
   PAT_PERMISSION_NAMES,
@@ -16,7 +18,9 @@ import {
   PAT_UNGRANTABLE,
   type PatPermissionLevel,
   type PatPermissionResource,
+  patEpochRefusal,
   patGrantCovers,
+  patNestedSurfaceFor,
   patPermissionPrefixes,
   patPermissionWanted,
   patPrefixForPath,
@@ -412,5 +416,66 @@ describe('a permission is as coarse as its mount', () => {
     for (const prefix of prefixesOf('issues')) {
       expect(covers(['issues:read'], prefix, 'read'), prefix).toBe(true);
     }
+  });
+});
+
+describe('a nested route is dated by the data surface it serves, not its mount (ISS-105)', () => {
+  const served = Object.keys(
+    JSON.parse(
+      readFileSync(new URL('../../contracts/forge-api.openapi.json', import.meta.url), 'utf8'),
+    ).paths as Record<string, unknown>,
+  ).map((p) => p.replace(/\{[^}]+\}/g, ':x'));
+  const shape = (route: string) => route.replace(/:[^/]+/g, ':x');
+
+  it('names a served route under an older mount, and a surface on the menu at a later epoch', () => {
+    for (const [route, surface] of Object.entries(PAT_NESTED_SURFACES)) {
+      const mount = patPrefixForPath(route);
+      const dated = patPrefixForPath(surface);
+      expect(mount, route).not.toBeNull();
+      expect(dated?.prefix, route).toBe(surface);
+      expect(dated?.epoch ?? 0, route).toBeGreaterThan(mount?.epoch ?? 0);
+      expect(
+        served.some((p) => p === shape(route) || p.startsWith(`${shape(route)}/`)),
+        `${route} is served`,
+      ).toBe(true);
+    }
+  });
+
+  it('refuses an epoch-1 token the agent sessions of a project, naming the surface, as /api/agent-sessions', () => {
+    const nested = patEpochRefusal('/api/projects/p1/agent-sessions', 1);
+    const twin = patEpochRefusal('/api/agent-sessions', 1);
+    expect(nested).toMatchObject({
+      prefix: '/api/projects',
+      surface: '/api/agent-sessions',
+      routeEpoch: 2,
+      tokenEpoch: 1,
+    });
+    expect(nested?.message).toMatch(
+      /^\/api\/projects\/:id\/agent-sessions serves the rows of \/api\/agent-sessions, which joined the menu at grant epoch 2/,
+    );
+    expect(twin?.routeEpoch).toBe(nested?.routeEpoch);
+    expect(patEpochRefusal('/api/projects/p1/agent-sessions/s1', 1)?.surface).toBe(
+      '/api/agent-sessions',
+    );
+  });
+
+  it('passes a token minted at the surface epoch, and an absent epoch reads as 1', () => {
+    expect(patEpochRefusal('/api/projects/p1/agent-sessions', 2)).toBeNull();
+    expect(patEpochRefusal('/api/projects/p1/metrics/timeseries', undefined)?.surface).toBe(
+      '/api/usage-records',
+    );
+    expect(patEpochRefusal('/api/issues/i1/cost-summary', 1)?.surface).toBe('/api/usage-records');
+  });
+
+  it('leaves the mount itself and its other sub-routes at the mount epoch', () => {
+    expect(patEpochRefusal('/api/projects/p1', 1)).toBeNull();
+    expect(patEpochRefusal('/api/projects/p1/issues', 1)).toBeNull();
+    expect(patEpochRefusal('/api/projects/p1/agent-sessions-elsewhere', 1)).toBeNull();
+    expect(patNestedSurfaceFor('/api/projects/agent-sessions')).toBeNull();
+  });
+
+  it('keeps runner load at its mount epoch, the priced amnesty forge-plugin 3.36.542 holds', () => {
+    expect(Object.keys(PAT_NESTED_SURFACES)).not.toContain('/api/projects/:id/pm/runner-load');
+    expect(patEpochRefusal('/api/projects/p1/pm/runner-load', 1)).toBeNull();
   });
 });
