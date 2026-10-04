@@ -1,5 +1,5 @@
 /**
- * `forge_feedback_items` — product feedback FB-n (workflows feedback-lifecycle and feedback-triage).
+ * `forge_feedback_items` — product feedback FB-n (guide `feedback-triage`).
  * Not `forge_feedback`, which is the deprecated alias of `forge_agent_report` (ISS-56). The REST
  * routes in `feedback/routes.ts` are the same services. Every answer of this door reaches a model,
  * so on a no_egress project it carries metadata only.
@@ -29,6 +29,7 @@ import {
   verifyFeedback,
 } from '../../feedback/service.js';
 import { triageFeedback } from '../../feedback/triage.js';
+import { guideRef } from '../../guides/guide-ref.js';
 import { MCP_DOOR } from '../../lib/data-egress.js';
 import type { NamedRefusal } from '../../project-config/respond.js';
 import { createSuggestion } from '../../suggestions/service.js';
@@ -108,7 +109,7 @@ const GRANTS = {
 } as const;
 
 const DESCRIPTION =
-  'Product feedback FB-n (workflows feedback-lifecycle, feedback-triage). Not forge_feedback, which is the ' +
+  `Product feedback FB-n (${guideRef('feedback-triage')}). Not forge_feedback, which is the ` +
   `deprecated name of forge_agent_report. Actions: ${ACTIONS.join(' | ')}. ` +
   `create: { kind: ${FEEDBACK_KINDS.join(' | ')}, title, body?, severity?, whereSeen?, exactly one of requirement | issue | release | workflow | screen }; ` +
   'a target outside the project is FEEDBACK_TARGET_UNKNOWN / FEEDBACK_TARGET_NOT_IN_PROJECT, two targets FEEDBACK_TARGET_NOT_ONE. ' +

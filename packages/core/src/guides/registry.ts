@@ -20,14 +20,17 @@ import {
 import { ASSISTANT_METHOD_GUIDE } from './assistant-method-guide.js';
 import { CONFORMANCE_GUIDE } from './conformance-guide.js';
 import { ECOSYSTEM_INBOX_GUIDE } from './ecosystem-inbox-guide.js';
+import { FEEDBACK_TRIAGE_GUIDE } from './feedback-guide.js';
 import { RECORDS_GUIDE } from './records-guide.js';
-import type { ForgeGuide } from './types.js';
+import { REQUIREMENT_LIFECYCLE_GUIDE } from './requirements-guide.js';
+import { SUGGESTIONS_GUIDE } from './suggestions-guide.js';
+import type { CoreGuide, ForgeGuide } from './types.js';
 import { WORKFLOW_DESIGN_GUIDE } from './workflow-design-guide.js';
 import { WORKFLOW_TEMPLATES_GUIDE } from './workflow-templates-guide.js';
 
 export type { ForgeGuide };
 
-export const FORGE_GUIDES: readonly ForgeGuide[] = [
+export const FORGE_GUIDES: readonly CoreGuide[] = [
   {
     slug: 'project-settings-and-test-credentials',
     audience: 'agent',
@@ -304,8 +307,8 @@ Same discipline, shorter. Lead with the outcome, put the trace underneath. A com
     audience: 'agent',
     title: 'Pipeline & issue lifecycle',
     summary:
-      "What belongs in a description, the ten statuses of workflow issue-lifecycle and the guard each move carries, why a run's progress is its step and not a status, status-last discipline, why a park returns to the status it left, the three kinds of `needs_info`, and who owns which derived fields.",
-    version: 11,
+      "What belongs in a description, the ten statuses an issue moves through and the guard each move carries, why a run's progress is its step and not a status, status-last discipline, why a park returns to the status it left, the three kinds of `needs_info`, and who owns which derived fields.",
+    version: 12,
     body: `## Pipeline & issue lifecycle
 
 ### An issue is a unit of WORK — draft vs open
@@ -327,7 +330,7 @@ But \`draft\` is not a notepad either. Apply the test before you create anything
 How far the work got is never a status: it is \`workState\` — the run's \`step\` (triage, clarify, plan, build, test, release), the \`branch\` it builds on and the \`headSha\` it pushed. Write those with \`forge_issues\` \`update\` \`data.workState\` (REST \`PATCH /api/issues/:id\` \`workState\`).
 
 ### A status says WHO the issue waits on, never WHAT exists
-Every status answers one question — whose move is next (workflow \`issue-lifecycle\`, ISS-54). It is declared per status in \`pipeline/status-assertions.ts\`, and a run's progress inside \`in_progress\` is its step on \`issue_work_state\`, not a rung of its own. So do not read a status as a promise that code was written, pushed or merged.
+Every status answers one question — whose move is next. It is declared per status in \`pipeline/status-assertions.ts\`, and a run's progress inside \`in_progress\` is its step on \`issue_work_state\`, not a rung of its own. So do not read a status as a promise that code was written, pushed or merged.
 
 The evidence questions are answered by row fields instead, and you read them directly: \`merged_at\` (it landed), \`workState.branch\` (a branch exists), \`workState.headSha\` and the implementation handoff's \`commitSha\`. \`merged_at\` is caller-asserted rather than verified — \`mark_merged\` writes what the caller says landed, and no transition writes it at all — so it is evidence of a claim, which is what an evidence field is.
 
@@ -337,7 +340,7 @@ One thing about \`dropped\` is worth knowing before you reach for it: **it relea
 
 ### The status set, and it is closed
 
-Ten statuses (workflow \`issue-lifecycle\`, approved revision 3). Every move below is enforced by \`issues/apply-transition.ts\`, and every guard refuses by name (\`issues/transition-guards.ts\`).
+Ten statuses. Every move below is enforced by \`issues/apply-transition.ts\`, and every guard refuses by name (\`issues/transition-guards.ts\`).
 
 \`\`\`
 draft ─▶ open ─▶ in_progress ─▶ approved ─▶ in_progress ─▶ awaiting_release ─▶ closed
@@ -697,6 +700,9 @@ section, which is why this migration is what turns the feature on.`,
   ECOSYSTEM_INBOX_GUIDE,
   WORKFLOW_DESIGN_GUIDE,
   WORKFLOW_TEMPLATES_GUIDE,
+  REQUIREMENT_LIFECYCLE_GUIDE,
+  SUGGESTIONS_GUIDE,
+  FEEDBACK_TRIAGE_GUIDE,
 ] as const;
 
 const GUIDE_BY_SLUG = new Map<string, ForgeGuide>(FORGE_GUIDES.map((g) => [g.slug, g]));
