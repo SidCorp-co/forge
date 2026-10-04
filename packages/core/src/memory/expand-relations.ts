@@ -6,7 +6,6 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { memories } from '../db/schema.js';
-import { memoryOfLiveIssue } from '../issues/archive.js';
 import {
   allRelationDigests,
   emptyIssueRelations,
@@ -14,6 +13,7 @@ import {
   loadIssueRelationsForIssues,
 } from '../issues/dependency-read.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
+import { memoryOfLiveIssue } from './live-issue.js';
 import { deriveMemoryStaleness, type MemoryHit, type MemoryVia } from './search.js';
 
 export const EXPAND_SEED_LIMIT = 5;

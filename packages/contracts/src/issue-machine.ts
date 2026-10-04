@@ -113,6 +113,9 @@ export const PARKABLE_STATUSES: readonly IssueStatus[] = [
 /** The issue is over, whichever exit it took. */
 export const ISSUE_TERMINAL_STATUSES: readonly IssueStatus[] = ["closed", "dropped"];
 
+/** The status an issue stands at while its release is waiting to be pressed. */
+export const BASE_MERGE_STATE: IssueStatus = "awaiting_release";
+
 /** What a master may start work from: the backlog, the plan checkpoint, a reopen. */
 export const TAKEABLE_STATUSES: readonly IssueStatus[] = ["open", "approved", "reopen"];
 
@@ -278,3 +281,14 @@ export function issueMovesFrom(
 	}
 	return out;
 }
+
+/** The dependency kind whose live edge out of an issue waives that issue's work-evidence gate. */
+export const WORK_EVIDENCE_WAIVER_KIND = "decomposes" as const;
+
+export const WORK_EVIDENCE_WAIVER_NOTE =
+	`It does not gate dispatch, but it is NOT inert: one live \`${WORK_EVIDENCE_WAIVER_KIND}\` edge ` +
+	"OUT of an issue waives that issue's work-evidence gate, so it can be marked merged and moved " +
+	"to a test step with no branch, no commit and no code handoff of its own. That " +
+	"exemption exists for grouping parents whose children carry the code; wiring one onto an issue " +
+	"that is meant to prove its own work removes the check that would have caught a fabricated " +
+	"merge.";

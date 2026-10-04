@@ -6,7 +6,12 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { readThresholds } from './admin-thresholds/index.js';
-import { registerRoomBridges, registerWebConversationAdapter } from './assistant/index.js';
+import {
+  composeLayers,
+  METHOD_LAYERS,
+  registerRoomBridges,
+  registerWebConversationAdapter,
+} from './assistant/index.js';
 import { runOnceBackfills } from './boot-backfills.js';
 import { env } from './config/env.js';
 import { registerRoomChat } from './conversations/index.js';
@@ -15,6 +20,7 @@ import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { seedDomainTemplates } from './domain-templates/index.js';
 import { provideEcosystemSignals, registerContractMeasureWorker } from './ecosystem/index.js';
 import { provideAdmissionThresholds } from './error-intake/index.js';
+import { provideAssistantMethod } from './guides/index.js';
 import {
   assertVaultBootSafety,
   provideForgeReads,
@@ -59,6 +65,7 @@ import { coreTimers } from './timer-registry.js';
 import { attachWs, closeWs, wakeMastersForBuild, wakeMastersForChannel } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
+provideAssistantMethod(composeLayers(METHOD_LAYERS));
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,
   issueForHeadRef: (projectId, headRef) => resolveIssueForHeadRef({ projectId, headRef }),

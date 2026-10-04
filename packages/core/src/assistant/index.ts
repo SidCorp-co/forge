@@ -24,6 +24,8 @@ export {
 } from './conversation-drain.js';
 export { runTranscriptIndexSweepOnce } from './conversation-index-drain.js';
 export { resolveSpeaker, type SpeakerResolution } from './identity/speaker-link.js';
+export { composeLayers } from './prompt/layer.js';
+export { METHOD_LAYERS } from './prompt/layers.js';
 export { buildEscalationToolset } from './tools/escalate.js';
 export { type ChatToolset, mergeToolsets } from './tools/mcp-adapter.js';
 export { buildChatToolContext } from './tools/principal.js';

@@ -1,13 +1,12 @@
 import crypto from 'node:crypto';
+import { BASE_MERGE_STATE } from '@forge/contracts/issue-machine';
 import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activityLog, comments, issues, memories, projects } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/index.js';
 import { callFastModel, fastModelConfigured } from '../integrations/llm/index.js';
-import { memoryOfLiveIssue } from '../issues/archive.js';
-import { canonicalIssueKey, issueRefFormatter } from '../issues/issue-prefix-read.js';
-import { BASE_MERGE_STATE } from '../issues/merged-at.js';
 import { searchKnowledge } from '../knowledge/search.js';
+import { canonicalIssueKey, formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
 import { boss } from '../queue/boss.js';
@@ -18,6 +17,7 @@ import {
   MAX_EMBED_CHARS,
   NEAR_DUPLICATE_THRESHOLD,
 } from './indexer.js';
+import { memoryOfLiveIssue } from './live-issue.js';
 import { foreignScriptChars } from './script-guard.js';
 import { type MemoryHit, searchMemories } from './search.js';
 
@@ -543,6 +543,7 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
   const [issueRow] = await db
     .select({
       issSeq: issues.issSeq,
+      issuePrefix: projects.issuePrefix,
       title: issues.title,
       description: issues.description,
       plan: issues.plan,
@@ -550,13 +551,14 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
       mergedAt: issues.mergedAt,
     })
     .from(issues)
+    .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(and(eq(issues.id, issueId), eq(issues.projectId, projectId), isNull(issues.archivedAt)))
     .limit(1);
   if (!issueRow) {
     return emptyReconcileResult('issue-not-found', 'issue not found in this project, or archived');
   }
 
-  const issRef = (await issueRefFormatter(projectId))(issueRow.issSeq);
+  const issRef = formatIssueRef(issueRow.issuePrefix, issueRow.issSeq);
   const decisionRef = `reconcile:${canonicalIssueKey(issueRow.issSeq)}`;
 
   // Idempotency: skip if this issue was already reconciled (reopen → re-release

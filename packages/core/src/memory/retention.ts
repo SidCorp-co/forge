@@ -1,12 +1,15 @@
-import { sql } from 'drizzle-orm';
-import { olderThan, type TableStatements } from '../pipeline/retention/shape.js';
+import { type SQL, sql } from 'drizzle-orm';
 
-export const retrievalAnalyticsRetention: TableStatements = {
+/** retrieval_analytics' rule for the retention sweep, in the sweep's `TableStatements` shape: past the window it goes, and nothing is held back. */
+export const retrievalAnalyticsRetention: {
+  deleteBatch: (days: number, limit: number) => SQL;
+  heldBack: null;
+} = {
   deleteBatch: (days, limit) => sql`
     DELETE FROM retrieval_analytics
     WHERE id IN (
       SELECT id FROM retrieval_analytics
-      WHERE ${olderThan(sql`created_at`, days)}
+      WHERE created_at < now() - make_interval(days => ${days})
       LIMIT ${limit}
     )
     RETURNING id
