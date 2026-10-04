@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { memorySources } from '../db/schema.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { runMemoryGet } from './get-service.js';
@@ -32,98 +32,69 @@ const deleteQuerySchema = z.object({
   sourceRef: z.string().min(1).max(512),
 });
 
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
 export const memoryListRoutes = new Hono<{ Variables: AuthVars }>();
 memoryListRoutes.use('*', requireAuth(), assertEmailVerified());
 
-memoryListRoutes.get(
-  '/',
-  zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { projectId, source, sourceRef, limit, offset, includeArchived } = c.req.valid('query');
-    const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
+memoryListRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
+  const { projectId, source, sourceRef, limit, offset, includeArchived } = c.req.valid('query');
+  const userId = c.get('userId');
+  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
 
-    const { rows, total } = await runMemoryGet({
-      projectId,
-      ...(source ? { source } : {}),
-      ...(sourceRef ? { sourceRef } : {}),
-      includeArchived,
-      limit,
-      offset,
-      orderBy: 'createdAt',
-      orderDir: 'desc',
-    });
+  const { rows, total } = await runMemoryGet({
+    projectId,
+    ...(source ? { source } : {}),
+    ...(sourceRef ? { sourceRef } : {}),
+    includeArchived,
+    limit,
+    offset,
+    orderBy: 'createdAt',
+    orderDir: 'desc',
+  });
 
-    return c.json(listResponse(c, rows, total, { limit, offset }));
-  },
-);
+  return c.json(listResponse(c, rows, total, { limit, offset }));
+});
 
-memoryListRoutes.get(
-  '/revisions',
-  zValidator('query', revisionsQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { projectId, memoryId, source, sourceRef, limit, offset } = c.req.valid('query');
-    const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
+memoryListRoutes.get('/revisions', zValidator('query', revisionsQuerySchema), async (c) => {
+  const { projectId, memoryId, source, sourceRef, limit, offset } = c.req.valid('query');
+  const userId = c.get('userId');
+  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
 
-    const { rows, total } = await runMemoryRevisions({
-      projectId,
-      ...(memoryId ? { memoryId } : {}),
-      ...(source ? { source } : {}),
-      ...(sourceRef ? { sourceRef } : {}),
-      limit,
-      offset,
-    });
+  const { rows, total } = await runMemoryRevisions({
+    projectId,
+    ...(memoryId ? { memoryId } : {}),
+    ...(source ? { source } : {}),
+    ...(sourceRef ? { sourceRef } : {}),
+    limit,
+    offset,
+  });
 
-    return c.json(listResponse(c, rows, total, { limit, offset }));
-  },
-);
+  return c.json(listResponse(c, rows, total, { limit, offset }));
+});
 
-memoryListRoutes.delete(
-  '/by-source',
-  zValidator('query', deleteQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { projectId, source, sourceRef } = c.req.valid('query');
-    const userId = c.get('userId');
+memoryListRoutes.delete('/by-source', zValidator('query', deleteQuerySchema), async (c) => {
+  const { projectId, source, sourceRef } = c.req.valid('query');
+  const userId = c.get('userId');
+  await requireCan(actorFor(userId), 'project.write', projectResource(projectId));
+
+  return c.json({ deleted: await deleteMemory(projectId, source, sourceRef) });
+});
+
+memoryListRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const userId = c.get('userId');
+
+  // Idempotent delete. Always return 204 for any (id, caller) pair where the
+  // caller is not authorised — never reveal whether a memory id exists in a
+  // project the caller cannot see. Only members observe an actual delete.
+  const projectId = await memoryProject(id);
+  if (!projectId) return c.body(null, 204);
+
+  try {
     await requireCan(actorFor(userId), 'project.write', projectResource(projectId));
-
-    return c.json({ deleted: await deleteMemory(projectId, source, sourceRef) });
-  },
-);
-
-const idParamSchema = z.object({ id: z.uuid() });
-
-memoryListRoutes.delete(
-  '/:id',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    // Idempotent delete. Always return 204 for any (id, caller) pair where the
-    // caller is not authorised — never reveal whether a memory id exists in a
-    // project the caller cannot see. Only members observe an actual delete.
-    const projectId = await memoryProject(id);
-    if (!projectId) return c.body(null, 204);
-
-    try {
-      await requireCan(actorFor(userId), 'project.write', projectResource(projectId));
-    } catch {
-      return c.body(null, 204);
-    }
-
-    await deleteMemoryById(id);
+  } catch {
     return c.body(null, 204);
-  },
-);
+  }
+
+  await deleteMemoryById(id);
+  return c.body(null, 204);
+});

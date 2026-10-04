@@ -6,8 +6,12 @@
 import { useEffect, useId, useState } from "react";
 import { Banner, Button, Field, Icon, Input, NativeSelect, Tooltip } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { useContentLanguage, useWriteContentLanguage } from "../hooks";
-import { CONTENT_LANGUAGE_CHOICES, contentLanguageName, contentLanguageProblem } from "../types";
+import {
+	CONTENT_LANGUAGE_CHOICES,
+	contentLanguageName,
+	contentLanguageProblem,
+} from "@forge/contracts/content-language";
+import { useContentLanguage, useWriteContentLanguage } from "../content-language-hooks";
 
 const OTHER = "other";
 

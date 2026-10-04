@@ -40,7 +40,7 @@ async function readJson(url: string, what: string): Promise<unknown> {
 
 /** Every guide Forge publishes, in registry order. Throws by name when core is
  *  unreachable: an empty index would read as "Forge has no guides". */
-export const fetchGuideIndex = cache(async (): Promise<GuideSummary[]> => {
+const fetchGuideIndex = cache(async (): Promise<GuideSummary[]> => {
   const url = `${resolveServerApiBase()}/guides`;
   const body = await readJson(url, "reading the guide index");
   const guides = (body as { guides?: unknown } | null)?.guides;

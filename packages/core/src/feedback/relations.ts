@@ -11,7 +11,7 @@ export async function feedbackIdsOfRequirement(projectId: string, ref: string): 
   return (await feedbackLinksOf(projectId, [req.id])).map((l) => l.feedbackId);
 }
 
-// cm:why ISS-93: the reference is stored once, on the report (`agent_reports.feedback_id`), and read
+// ISS-93: the reference is stored once, on the report (`agent_reports.feedback_id`), and read
 // back here for the item; it carries the report's metadata only, never its text, so it reads the
 // same at every data policy
 export async function sourceOf(feedbackId: string): Promise<FeedbackSourceView | null> {

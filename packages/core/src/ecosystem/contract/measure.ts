@@ -4,9 +4,10 @@ import { type MeasuredChange, type MeasuredDiff, measured } from './diff.js';
 import { elementsOf, isIndexed } from './elements.js';
 import { diffGraphql, GRAPHQL_RULES_VERSION } from './graphql-diff.js';
 import { parseSdl, type SdlSchema } from './graphql-sdl.js';
+import { diffMcpTools, toolsOf } from './mcp-tools-diff.js';
 import { requireOasdiff } from './oasdiff.js';
 import { diffOpenApi } from './openapi-diff.js';
-import { diffJsonSchema, diffMcpTools, SCHEMA_RULES_VERSION, toolsOf } from './schema-diff.js';
+import { diffJsonSchema, SCHEMA_RULES_VERSION } from './schema-diff.js';
 
 export const MAX_ARTIFACT_BYTES = 8 * 1024 * 1024;
 

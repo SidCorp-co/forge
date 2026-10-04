@@ -14,7 +14,7 @@ export const WORKFLOW_V2_SCHEMA_ID = `${SCHEMA_BASE}/workflow-v2.json`;
 
 export const WORKFLOW_KINDS = ['flow', 'state'] as const;
 
-// cm:why a node's type and an edge's kind are no longer one global list: the template a design names
+// A node's type and an edge's kind are no longer one global list: the template a design names
 // declares them (`@forge/contracts/workflow-templates`), so the schema holds only their shape and
 // `template-check.ts` refuses one its template does not declare
 const NODE_TYPE = NODE_TYPE_ID;
@@ -58,7 +58,7 @@ export const WORKFLOW_LIMITS = {
   protocol: 60,
 } as const;
 
-// cm:why a step id is a status name as often as a verb, so it takes `_` (`in_progress`) where a flow slug does not
+// A step id is a status name as often as a verb, so it takes `_` (`in_progress`) where a flow slug does not
 export const STEP_ID = /^[a-z][a-z0-9_-]{0,62}$/;
 const SHA = /^[0-9a-f]{40}$/;
 

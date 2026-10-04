@@ -37,7 +37,7 @@ export async function issueCriteriaOf(
        AND c.retired_at IS NULL
        AND c.requirement_criterion_id IS NOT NULL
      ORDER BY c.issue_id, c.position, c.n`)) as unknown as CriterionVerdictRow[];
-  // cm:why a verdict recorded at or before the issue's latest reopen is evidence about a build the
+  // A verdict recorded at or before the issue's latest reopen is evidence about a build the
   // reopen rejected (`issues/release-evidence.ts:reopenedAtOf`), so coverage reads it as not judged
   const reopened = await reopenedAtOf(db, issueIds);
   return [...rows].map((r) => {

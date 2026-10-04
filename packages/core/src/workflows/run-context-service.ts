@@ -1,7 +1,8 @@
+import type { DesignStatus } from '@forge/contracts/design-status';
+import { requirementKey } from '@forge/contracts/requirements';
 import { sql } from 'drizzle-orm';
 import { mergeSessionMetadata } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
-import type { DesignStatus } from './design.js';
 import type { LoadedPinnedContract } from './pinned-contracts.js';
 import {
   type LoadedRequirement,
@@ -60,7 +61,7 @@ async function tracedDesignsOf(issueId: string): Promise<TracedDesignRow[]> {
 
 async function pinnedDesignsOf(issue: Record<string, unknown>): Promise<TracedDesignRow[]> {
   const requirementId = String(issue.requirement_id);
-  const key = `REQ-${Number(issue.req_seq)}`;
+  const key = requirementKey(Number(issue.req_seq));
   const rows = (await db.execute(sql`
     SELECT w.id, w.flow, w.design_status, w.revision, w.approved_revision,
            p.design_revision AS given_revision,
@@ -162,7 +163,7 @@ async function requirementRowOf(issueId: string): Promise<RequirementContextRow 
   const str = (v: unknown) => (v == null ? null : String(v));
   return {
     requirementId: id,
-    key: `REQ-${Number(r.req_seq)}`,
+    key: requirementKey(Number(r.req_seq)),
     title: String(r.title),
     status: String(r.status),
     currentRevision: current,

@@ -19,17 +19,12 @@ import { loadContractFacts } from './contract/element-rules.js';
 import { heldEcosystem, storedAs } from './ecosystem-service.js';
 import { versionKey } from './interface-rules.js';
 import { heldInterface } from './interface-service.js';
+import { edgesIn, readInterfaces } from './interface-store.js';
 import { impactLink } from './link-service.js';
 import { linksWhere } from './link-store.js';
+import { activeMembersOf } from './membership-store.js';
 import type { InterfaceDocument } from './schema.js';
-import {
-  activeMembersOf,
-  edgesIn,
-  projectsWhere,
-  readEcosystem,
-  readInterfaces,
-  recordedVersions,
-} from './store.js';
+import { projectsWhere, readEcosystem, recordedVersions } from './store.js';
 
 export interface ServedDocument {
   id: string;

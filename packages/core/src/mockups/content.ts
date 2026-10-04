@@ -120,7 +120,7 @@ function bytesRefusal(kind: MockupKind, mime: string, bytes: Buffer): MockupRefu
   return null;
 }
 
-// cm:guard the caption and the file name are the mockup's only text an agent reads in a manifest, so
+// The caption and the file name are the mockup's only text an agent reads in a manifest, so
 // on a redact or no_egress project both are scrubbed on write (`storedText`); the bytes are never
 // scrubbed and are withheld from agents instead (surface `mockup.content`, operational)
 export async function mockupContent(

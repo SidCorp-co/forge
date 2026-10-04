@@ -24,7 +24,7 @@ import { plannedBaselineSeqIn } from './baselines.js';
 import { planDriftOf } from './plan-drift.js';
 import { notFound, type RequirementActor, rowIn, signerRefusal } from './read.js';
 import { linkIssueRefusal, refuseRequirement } from './rules.js';
-import { answer, inTx, lockRequirements, type RequirementOutcome } from './service.js';
+import { answer, inTx, lockRequirements, type RequirementOutcome } from './write-tx.js';
 
 async function issueIn(projectId: string, ref: string, userId: string) {
   const issue = await resolveIssueRouteRef(ref, projectId, userId);
@@ -72,7 +72,7 @@ export async function linkIssue(input: {
         },
       ];
     }
-    // cm:guard without adoptPlan a pre-existing plan stays planned against no revision and reads changed-since-plan;
+    // Without adoptPlan a pre-existing plan stays planned against no revision and reads changed-since-plan;
     // only a person attesting the plan already satisfies the current revision may record it (D1, requirements-walkthrough)
     const plannedRevision = input.adoptPlan ? (current.currentRevision ?? null) : null;
     const plannedBaselineSeq = input.adoptPlan
@@ -187,7 +187,7 @@ export async function requirementOfIssue(issueId: string) {
   };
 }
 
-// cm:guard a plan is written against the requirement's current revision and records it as
+// A plan is written against the requirement's current revision and records it as
 // planned_revision; a requirement with no current revision refuses it (REQUIREMENT_REVISION_NOT_CURRENT)
 export async function plannedRevisionFor(
   tx: Tx,

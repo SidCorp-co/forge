@@ -7,6 +7,7 @@
  * and every decision wakes the project's master, which is what makes the issue admissible work again.
  */
 
+import type { DesignStatus } from '@forge/contracts/design-status';
 import { ISSUE_MACHINE, TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import { exitsOf } from '@forge/contracts/state-machine';
 import { sql } from 'drizzle-orm';
@@ -16,7 +17,7 @@ import type { IssueStatus } from '../db/schema.js';
 import { transitionIssueStatus } from '../issues/index.js';
 import { logger } from '../observability/logger.js';
 import { emitEvent } from '../outbox/index.js';
-import type { DesignDecision, DesignStatus } from './design.js';
+import type { DesignDecision } from './design.js';
 import type { WorkflowWriter } from './service.js';
 
 /** What happened to the design issue, so the decision's answer says it rather than leaving it to a guess. */

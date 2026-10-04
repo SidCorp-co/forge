@@ -2,7 +2,7 @@
 
 import type { OrgMemberRole } from '../db/schema.js';
 import { holdsOrg, type PermissionFacts, permissionRefusal } from '../permissions/index.js';
-import { isOpenRun } from './link-rules.js';
+import { isOpenRun } from './builder-run-rules.js';
 import { type BuilderRunWrite, LIMITS } from './link-schema.js';
 import type { Checked, EcosystemRefusal } from './refusals.js';
 

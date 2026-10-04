@@ -3,13 +3,15 @@ import { EmbeddingUnavailableError } from '../integrations/embeddings/index.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import {
-  deleteKnowledgeEntry,
-  getKnowledgeEntry,
-  listKnowledgeEntries,
-  upsertKnowledgeEntry,
+  knowledgeAuthoredByEnum,
+  knowledgeConfidenceEnum,
+  knowledgeInjectionEnum,
+  knowledgeKindEnum,
   upsertKnowledgeInputSchema,
-} from './service.js';
+} from './entry-input.js';
+import { deleteKnowledgeEntry, getKnowledgeEntry, listKnowledgeEntries } from './service.js';
 import { runUnifiedSearch } from './unified-search.js';
+import { upsertKnowledgeEntry } from './upsert.js';
 
 const inputSchema = z
   .object({
@@ -18,24 +20,80 @@ const inputSchema = z
     slug: z.string().min(1).max(512).optional(),
     title: z.string().min(1).max(500).optional(),
     body: z.string().min(1).max(100_000).optional(),
-    kind: z
-      .enum(['overview', 'scenario', 'workflow', 'rule', 'guide', 'reference', 'glossary'])
-      .optional(),
-    injection: z.enum(['always', 'on_demand', 'none']).optional(),
-    confidence: z.enum(['verified', 'inferred', 'deprecated']).optional(),
-    authoredBy: z.enum(['human', 'agent', 'imported']).optional(),
+    kind: z.enum(knowledgeKindEnum).optional(),
+    injection: z.enum(knowledgeInjectionEnum).optional(),
+    confidence: z.enum(knowledgeConfidenceEnum).optional(),
+    authoredBy: z.enum(knowledgeAuthoredByEnum).optional(),
     orderIndex: z.number().int().optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
-    kindFilter: z
-      .enum(['overview', 'scenario', 'workflow', 'rule', 'guide', 'reference', 'glossary'])
-      .optional(),
-    injectionFilter: z.enum(['always', 'on_demand', 'none']).optional(),
+    kindFilter: z.enum(knowledgeKindEnum).optional(),
+    injectionFilter: z.enum(knowledgeInjectionEnum).optional(),
     query: z.string().min(1).max(4000).optional(),
     scope: z.enum(['knowledge', 'memory', 'all']).default('knowledge'),
     topK: z.number().int().min(1).max(50).default(10),
     strategy: z.enum(['semantic', 'keyword', 'hybrid']).default('semantic'),
   })
   .strict();
+
+type Input = z.infer<typeof inputSchema>;
+
+const required = (value: string | undefined, field: string, action: Input['action']): string => {
+  if (!value) throw new Error(`BAD_REQUEST: ${field} is required for action=${action}`);
+  return value;
+};
+
+const can = (userId: string, permission: Parameters<typeof requireCan>[1], projectId: string) =>
+  requireCan(actorFor(userId), permission, projectResource(projectId));
+
+const actions: Record<Input['action'], (userId: string, input: Input) => Promise<unknown>> = {
+  list: async (userId, { projectId, kindFilter, injectionFilter }) => {
+    await can(userId, 'project.read', projectId);
+    return listKnowledgeEntries({ projectId, kind: kindFilter, injection: injectionFilter });
+  },
+  get: async (userId, input) => {
+    const slug = required(input.slug, 'slug', 'get');
+    await can(userId, 'project.read', input.projectId);
+    const entry = await getKnowledgeEntry(input.projectId, slug);
+    if (!entry) throw new Error('NOT_FOUND: knowledge entry not found');
+    return entry;
+  },
+  upsert: async (userId, input) => {
+    const slug = required(input.slug, 'slug', 'upsert');
+    const title = required(input.title, 'title', 'upsert');
+    const body = required(input.body, 'body', 'upsert');
+    await can(userId, 'project.write', input.projectId);
+    const { projectId, kind, injection, confidence, authoredBy, orderIndex, metadata } = input;
+    return upsertKnowledgeEntry(
+      upsertKnowledgeInputSchema.parse({
+        projectId,
+        slug,
+        title,
+        body,
+        kind,
+        injection,
+        confidence,
+        authoredBy,
+        orderIndex,
+        metadata,
+      }),
+    );
+  },
+  delete: async (userId, input) => {
+    const slug = required(input.slug, 'slug', 'delete');
+    await can(userId, 'project.write', input.projectId);
+    return { deleted: (await deleteKnowledgeEntry(input.projectId, slug)) > 0 };
+  },
+  search: async (userId, { projectId, query, scope, topK, strategy }) => {
+    const text = required(query, 'query', 'search');
+    await can(userId, 'project.read', projectId);
+    try {
+      return await runUnifiedSearch({ projectId, query: text, scope, topK, strategy });
+    } catch (err) {
+      if (err instanceof EmbeddingUnavailableError) throw new Error(`UNAVAILABLE: ${err.message}`);
+      throw err;
+    }
+  },
+};
 
 export const forgeKnowledgeTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_knowledge',
@@ -62,78 +120,6 @@ export const forgeKnowledgeTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    const { action, projectId } = input;
-
-    if (action === 'list') {
-      await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(projectId));
-      return listKnowledgeEntries({
-        projectId,
-        kind: input.kindFilter,
-        injection: input.injectionFilter,
-      });
-    }
-
-    if (action === 'get') {
-      if (!input.slug) throw new Error('BAD_REQUEST: slug is required for action=get');
-      await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(projectId));
-      const entry = await getKnowledgeEntry(projectId, input.slug);
-      if (!entry) throw new Error('NOT_FOUND: knowledge entry not found');
-      return entry;
-    }
-
-    if (action === 'upsert') {
-      if (!input.slug) throw new Error('BAD_REQUEST: slug is required for action=upsert');
-      if (!input.title) throw new Error('BAD_REQUEST: title is required for action=upsert');
-      if (!input.body) throw new Error('BAD_REQUEST: body is required for action=upsert');
-      await requireCan(actorFor(ctx.principal.userId), 'project.write', projectResource(projectId));
-      try {
-        const parsed = upsertKnowledgeInputSchema.parse({
-          projectId,
-          slug: input.slug,
-          title: input.title,
-          body: input.body,
-          kind: input.kind,
-          injection: input.injection,
-          confidence: input.confidence,
-          authoredBy: input.authoredBy,
-          orderIndex: input.orderIndex,
-          metadata: input.metadata,
-        });
-        return await upsertKnowledgeEntry(parsed);
-      } catch (err) {
-        if (err instanceof EmbeddingUnavailableError) {
-          throw new Error(`UNAVAILABLE: ${err.message}`);
-        }
-        throw err;
-      }
-    }
-
-    if (action === 'delete') {
-      if (!input.slug) throw new Error('BAD_REQUEST: slug is required for action=delete');
-      await requireCan(actorFor(ctx.principal.userId), 'project.write', projectResource(projectId));
-      const removed = await deleteKnowledgeEntry(projectId, input.slug);
-      return { deleted: removed > 0 };
-    }
-
-    if (action === 'search') {
-      if (!input.query) throw new Error('BAD_REQUEST: query is required for action=search');
-      await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(projectId));
-      try {
-        return await runUnifiedSearch({
-          projectId,
-          query: input.query,
-          scope: input.scope,
-          topK: input.topK,
-          strategy: input.strategy,
-        });
-      } catch (err) {
-        if (err instanceof EmbeddingUnavailableError) {
-          throw new Error(`UNAVAILABLE: ${err.message}`);
-        }
-        throw err;
-      }
-    }
-
-    throw new Error(`BAD_REQUEST: unknown action: ${action}`);
+    return actions[input.action](ctx.principal.userId, input);
   },
 });

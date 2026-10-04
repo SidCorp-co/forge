@@ -14,6 +14,7 @@ import {
   initials,
   STATE_MEANING,
   STATE_TONE,
+  slugsOf,
   triggerRef,
   type Tone,
   VERDICT_TONE,
@@ -193,15 +194,15 @@ function linkTip(l: BusLink, names: Map<string, string>) {
   return `${names.get(l.consumer) ?? "a member"} → ${l.contract.slug} from ${l.module} · on ${l.pinnedVersion} · ${l.state}: ${STATE_MEANING[l.state]}${out}`;
 }
 
-function Row({
-  row,
-  r,
-  bus,
-  lens,
-  sel,
-  names,
-  onSelect,
-}: {
+function rowTip(row: BusRow, names: Map<string, string>) {
+  const c = row.contract;
+  const provider = names.get(row.ref.provider) ?? "its provider";
+  return c
+    ? `${c.title} · ${c.type} · ${c.lifecycle} · by ${provider} · ${c.currentVersion ? `current ${c.currentVersion}` : "no version recorded"}`
+    : `${row.ref.slug} is not published to this ecosystem by ${provider}, yet a link points at it`;
+}
+
+interface RowProps {
   row: BusRow;
   r: number;
   bus: Bus;
@@ -209,25 +210,63 @@ function Row({
   sel: Selection;
   names: Map<string, string>;
   onSelect: (s: Selection) => void;
-}) {
-  const col = new Map(bus.projects.map((p, i) => [p.id, i + 2]));
+}
+
+function ConsumerCells({
+  row,
+  r,
+  bus,
+  lens,
+  sel,
+  names,
+  onSelect,
+  col,
+  isSel,
+  fade,
+}: RowProps & { col: Map<string, number>; isSel: boolean; fade: boolean }) {
+  const byConsumer = new Map<string, BusLink[]>();
+  for (const l of row.links) byConsumer.set(l.consumer, [...(byConsumer.get(l.consumer) ?? []), l]);
+  const builders = new Map(bus.projects.map((p) => [p.id, builderActive(p.builder)]));
+  return [...byConsumer].map(([consumer, links]) => (
+    <div
+      key={consumer}
+      className={cn("relative z-[1] flex flex-wrap place-content-center items-center gap-1", fade && "eco-fade")}
+      style={{ gridRow: r, gridColumn: col.get(consumer), minHeight: ROW_H }}
+    >
+      {links.map((l) => {
+        const verdict = isSel ? impactOf(l) : null;
+        return (
+          <Chip
+            key={l.id}
+            label={verdict ? VERDICT_LABEL[verdict](l) : l.pinnedVersion}
+            tone={verdict ? VERDICT_TONE[verdict] : STATE_TONE[l.state]}
+            tip={verdict ? `${linkTip(l, names)} · ${impactLine(l)}` : linkTip(l, names)}
+            selected={sel.kind === "link" && sel.id === l.id}
+            work={lens === "live" && builders.get(l.consumer)}
+            outside={l.outsideContract}
+            onClick={() => onSelect({ kind: "link", id: l.id })}
+          />
+        );
+      })}
+    </div>
+  ));
+}
+
+function Row(props: RowProps) {
+  const { row, r, bus, lens, sel, names, onSelect } = props;
   const focused = lens === "impact" && sel.kind === "contract";
   const isSel = focused && sel.key === row.key;
   const fade = focused && !isSel;
   const [a, z] = row.span;
   const span = z - a + 1;
+  const col = new Map(bus.projects.map((p, i) => [p.id, i + 2]));
   const providerCol = col.get(row.ref.provider);
-  const byConsumer = new Map<string, BusLink[]>();
-  for (const l of row.links) byConsumer.set(l.consumer, [...(byConsumer.get(l.consumer) ?? []), l]);
   const c = row.contract;
-  const rowTip = c
-    ? `${c.title} · ${c.type} · ${c.lifecycle} · by ${names.get(row.ref.provider) ?? "its provider"} · ${c.currentVersion ? `current ${c.currentVersion}` : "no version recorded"}`
-    : `${row.ref.slug} is not published to this ecosystem by ${names.get(row.ref.provider) ?? "its provider"}, yet a link points at it`;
-  const builders = new Map(bus.projects.map((p) => [p.id, builderActive(p.builder)]));
+  const tip = rowTip(row, names);
   return (
     <>
       <div className={cn("relative z-[1] flex items-center", fade && "eco-fade")} style={{ gridRow: r, gridColumn: 1, height: ROW_H }}>
-        <Tooltip label={rowTip} multiline>
+        <Tooltip label={tip} multiline>
           <button
             type="button"
             onClick={() => onSelect({ kind: "contract", key: row.key })}
@@ -254,35 +293,13 @@ function Row({
           <Chip
             label={c?.currentVersion ?? (c ? "no version" : "unpublished")}
             tone="own"
-            tip={`Provided by ${names.get(row.ref.provider) ?? "its provider"} · ${rowTip}`}
+            tip={`Provided by ${names.get(row.ref.provider) ?? "its provider"} · ${tip}`}
             selected={sel.kind === "contract" && sel.key === row.key}
             onClick={() => onSelect({ kind: "contract", key: row.key })}
           />
         </div>
       ) : null}
-      {[...byConsumer].map(([consumer, links]) => (
-        <div
-          key={consumer}
-          className={cn("relative z-[1] flex flex-wrap place-content-center items-center gap-1", fade && "eco-fade")}
-          style={{ gridRow: r, gridColumn: col.get(consumer), minHeight: ROW_H }}
-        >
-          {links.map((l) => {
-            const verdict = isSel ? impactOf(l) : null;
-            return (
-              <Chip
-                key={l.id}
-                label={verdict ? VERDICT_LABEL[verdict](l) : l.pinnedVersion}
-                tone={verdict ? VERDICT_TONE[verdict] : STATE_TONE[l.state]}
-                tip={verdict ? `${linkTip(l, names)} · ${impactLine(l)}` : linkTip(l, names)}
-                selected={sel.kind === "link" && sel.id === l.id}
-                work={lens === "live" && builders.get(l.consumer)}
-                outside={l.outsideContract}
-                onClick={() => onSelect({ kind: "link", id: l.id })}
-              />
-            );
-          })}
-        </div>
-      ))}
+      <ConsumerCells {...props} col={col} isSel={isSel} fade={fade} />
     </>
   );
 }
@@ -302,7 +319,7 @@ export function BusDiagram({
   readers: ReadonlySet<string>;
   onSelect: (s: Selection) => void;
 }) {
-  const names = new Map(bus.projects.map((p) => [p.id, p.slug]));
+  const names = slugsOf(bus);
   const R = Math.max(rows.length, 1);
   const selectedColumn =
     sel.kind === "project" || sel.kind === "builder"

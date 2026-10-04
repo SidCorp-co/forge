@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
 import { type MemorySource, memories } from '../db/schema.js';
 import { identifierTsQuery } from '../db/schema-types.js';
+import { clampTopK, fuseHybrid } from '../knowledge/index.js';
 import { memoryOfLiveIssue } from './live-issue.js';
 
 interface BaseSearchInput {
@@ -46,24 +47,39 @@ export interface MemoryVia {
   from: string;
 }
 
-/**
- * Derive the read-side staleness badge from a row's `metadata` jsonb.
- * Pure so both search strategies (and their tests) share one source of truth.
- */
-export function deriveMemoryStaleness(metadata: unknown): {
-  stale: boolean;
-  supersededBy?: string;
-} {
-  const md = (metadata ?? {}) as Record<string, unknown>;
+/** The columns every memory read that answers hits selects. */
+export const MEMORY_HIT_COLUMNS = {
+  id: memories.id,
+  source: memories.source,
+  sourceRef: memories.sourceRef,
+  text: memories.textContent,
+  metadata: memories.metadata,
+  embeddedAt: memories.embeddedAt,
+};
+
+type MemoryHitRow = {
+  id: string;
+  source: string;
+  sourceRef: string;
+  text: string;
+  metadata: unknown;
+  embeddedAt: Date;
+};
+
+/** A selected row as a hit, with the read-side staleness badge derived from its `metadata`. */
+export function toMemoryHit(r: MemoryHitRow, score: number): MemoryHit {
+  const md = (r.metadata ?? {}) as Record<string, unknown>;
   const stale = Boolean(md.staleSince);
-  return typeof md.supersededBy === 'string' ? { stale, supersededBy: md.supersededBy } : { stale };
-}
-
-const MIN_TOP_K = 1;
-const MAX_TOP_K = 50;
-
-export function clampTopK(topK: number | undefined): number {
-  return Math.min(Math.max(topK ?? 10, MIN_TOP_K), MAX_TOP_K);
+  return {
+    id: r.id,
+    source: r.source as MemorySource,
+    sourceRef: r.sourceRef,
+    text: r.text,
+    metadata: r.metadata,
+    score,
+    embeddedAt: r.embeddedAt,
+    ...(typeof md.supersededBy === 'string' ? { stale, supersededBy: md.supersededBy } : { stale }),
+  };
 }
 
 function baseWhereClauses(input: BaseSearchInput) {
@@ -93,12 +109,7 @@ export async function searchMemories(input: SearchInput): Promise<MemoryHit[]> {
 
   const rows = await db
     .select({
-      id: memories.id,
-      source: memories.source,
-      sourceRef: memories.sourceRef,
-      text: memories.textContent,
-      metadata: memories.metadata,
-      embeddedAt: memories.embeddedAt,
+      ...MEMORY_HIT_COLUMNS,
       distance: cosineDistance(memories.embedding, input.queryVec).as('distance'),
     })
     .from(memories)
@@ -106,16 +117,7 @@ export async function searchMemories(input: SearchInput): Promise<MemoryHit[]> {
     .orderBy(asc(sql`distance`))
     .limit(topK);
 
-  return rows.map((r) => ({
-    id: r.id,
-    source: r.source as MemorySource,
-    sourceRef: r.sourceRef,
-    text: r.text,
-    metadata: r.metadata,
-    score: 1 - Number(r.distance),
-    embeddedAt: r.embeddedAt,
-    ...deriveMemoryStaleness(r.metadata),
-  }));
+  return rows.map((r) => toMemoryHit(r, 1 - Number(r.distance)));
 }
 
 /**
@@ -143,12 +145,7 @@ export async function keywordSearchMemories(input: KeywordSearchInput): Promise<
 
   const rows = await db
     .select({
-      id: memories.id,
-      source: memories.source,
-      sourceRef: memories.sourceRef,
-      text: memories.textContent,
-      metadata: memories.metadata,
-      embeddedAt: memories.embeddedAt,
+      ...MEMORY_HIT_COLUMNS,
       rank: sql<number>`ts_rank(${memories.textSearch}, ${tsQuery}) + ts_rank(${memories.identSearch}, ${identQuery})`.as(
         'rank',
       ),
@@ -158,52 +155,7 @@ export async function keywordSearchMemories(input: KeywordSearchInput): Promise<
     .orderBy(desc(sql`rank`))
     .limit(topK);
 
-  return rows.map((r) => ({
-    id: r.id,
-    source: r.source as MemorySource,
-    sourceRef: r.sourceRef,
-    text: r.text,
-    metadata: r.metadata,
-    score: Number(r.rank),
-    embeddedAt: r.embeddedAt,
-    ...deriveMemoryStaleness(r.metadata),
-  }));
-}
-
-/** Standard RRF constant — higher k flattens the advantage of top ranks. */
-const RRF_K = 60;
-/** Dense-vector weight in hybrid fusion (keyword gets `1 - alpha`). */
-export const HYBRID_ALPHA = 0.5;
-
-function reciprocalRankFusion(
-  rankedLists: MemoryHit[][],
-  weights: number[],
-  limit: number,
-  k = RRF_K,
-): MemoryHit[] {
-  const scoreMap = new Map<string, { score: number; hit: MemoryHit }>();
-
-  for (let listIdx = 0; listIdx < rankedLists.length; listIdx++) {
-    const list = rankedLists[listIdx] ?? [];
-    const weight = weights[listIdx] ?? 1.0;
-
-    for (let rank = 0; rank < list.length; rank++) {
-      const hit = list[rank];
-      if (!hit) continue;
-      const rrfScore = weight / (k + rank + 1); // rank is 0-based, RRF uses 1-based
-      const existing = scoreMap.get(hit.id);
-      if (existing) {
-        existing.score += rrfScore;
-      } else {
-        scoreMap.set(hit.id, { score: rrfScore, hit });
-      }
-    }
-  }
-
-  return Array.from(scoreMap.values())
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map(({ score, hit }) => ({ ...hit, score }));
+  return rows.map((r) => toMemoryHit(r, Number(r.rank)));
 }
 
 /**
@@ -227,7 +179,7 @@ export type HybridBreakdown = { semanticHits: number; keywordHits: number; overl
 
 /**
  * Hybrid strategy — dense + keyword in parallel, fused with weighted RRF
- * (alpha 0.7 dense / 0.3 keyword). Returned `score` is the fused RRF value
+ * (`fuseHybrid`). Returned `score` is the fused RRF value
  * (≈0.005–0.03), NOT a cosine similarity — callers that threshold on
  * similarity (e.g. the knowledge dedup fact) must use `strategy:'semantic'`.
  */
@@ -242,7 +194,7 @@ export async function hybridSearchMemories(
   const keywordIds = new Set(keyword.map((h) => h.id));
   const overlap = semantic.filter((h) => keywordIds.has(h.id)).length;
   return {
-    hits: reciprocalRankFusion([semantic, keyword], [HYBRID_ALPHA, 1 - HYBRID_ALPHA], topK),
+    hits: fuseHybrid(semantic, keyword, topK),
     breakdown: { semanticHits: semantic.length, keywordHits: keyword.length, overlap },
   };
 }

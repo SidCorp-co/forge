@@ -7,7 +7,7 @@ import { consumeRateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
 import { requireHeld } from '../permissions/index.js';
-import { upsertKnowledgeEntries } from './service.js';
+import { upsertKnowledgeEntries } from './upsert.js';
 
 function toKebabSlug(id: string): string {
   return (

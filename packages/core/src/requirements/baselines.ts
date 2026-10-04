@@ -10,7 +10,7 @@ import {
 } from '../db/schema-requirements.js';
 import type { LinkedContract, LinkedDesign } from './rules.js';
 
-// cm:why an agree writes seq 1 and each re-pin a further seq of the same revision, so the latest
+// An agree writes seq 1 and each re-pin a further seq of the same revision, so the latest
 // baseline of a revision is the highest seq there (ISS-86)
 export async function latestBaselineIn(tx: Tx, requirementId: string, revision: number) {
   const [b] = await tx
@@ -47,7 +47,7 @@ export async function plannedBaselineSeqIn(
   return (await latestBaselineIn(tx, requirementId, revision))?.seq ?? null;
 }
 
-// cm:why a baseline pins every accepted mockup proposed against its revision or an earlier one,
+// A baseline pins every accepted mockup proposed against its revision or an earlier one,
 // beside the designs (ISS-78): a mockup's bytes never change, so the pin is the row
 export async function acceptedMockupIds(
   tx: Tx,

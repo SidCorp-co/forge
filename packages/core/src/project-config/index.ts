@@ -1,4 +1,5 @@
 export { setBindingInboundSecret } from './binding-store.js';
+export { readContentLanguage } from './content-language.js';
 export {
   dispatchStateOf,
   policyRefusal,

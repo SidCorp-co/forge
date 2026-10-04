@@ -22,7 +22,7 @@ function basesOf(doc: WorkflowWrite | null): readonly DesignBase[] {
 export const basesOfStored = (raw: unknown): readonly DesignBase[] =>
   basesOf(readStoredWorkflow(raw));
 
-// cm:guard a declared base is a design of the same project at a revision it holds, never itself
+// A declared base is a design of the same project at a revision it holds, never itself
 // and never twice; a base naming anything else is refused by name at write, never dropped (FB-51)
 export function baseRefusals(
   doc: WorkflowWrite,
@@ -96,7 +96,7 @@ function stateOf(b: BaseReading): string {
   return `is ${b.designStatus ?? 'not in a design lifecycle'}, with ${approved}`;
 }
 
-// cm:guard a design is approved only while every base it declares stands approved at the revision
+// A design is approved only while every base it declares stands approved at the revision
 // it names: a base returned, proposed, never approved or approved at another revision refuses the
 // approval by name, each base with its state; returning a design reads no base (FB-51)
 export function baseApprovalRefusal(

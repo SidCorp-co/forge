@@ -1,25 +1,23 @@
 import crypto from 'node:crypto';
-import { BASE_MERGE_STATE } from '@forge/contracts/issue-machine';
 import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activityLog, comments, issues, memories, projects } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/index.js';
 import { callFastModel, fastModelConfigured } from '../integrations/llm/index.js';
 import { searchKnowledge } from '../knowledge/index.js';
-import { canonicalIssueKey, formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../observability/logger.js';
-import { consume } from '../outbox/index.js';
-import { boss } from '../queue/boss.js';
-import { runMemoryFeedback } from './feedback-service.js';
-import {
-  indexMemory,
-  indexMemoryBestEffort,
-  MAX_EMBED_CHARS,
-  NEAR_DUPLICATE_THRESHOLD,
-} from './indexer.js';
+import { indexMemory, indexMemoryBestEffort, MAX_EMBED_CHARS } from './indexer.js';
 import { memoryOfLiveIssue } from './live-issue.js';
-import { foreignScriptChars } from './script-guard.js';
-import { type MemoryHit, searchMemories } from './search.js';
+import {
+  factCategory,
+  firstItems,
+  parseFencedJson,
+  type ScriptRefuser,
+  scriptRefuser,
+  shortHash,
+} from './model-output.js';
+import { searchMemories } from './search.js';
+import { NEAR_DUPLICATE_THRESHOLD } from './thresholds.js';
 
 /**
  * Nightly consolidation, adapted from forge-agents' "dream" (`services/memory-dream/`). Differences:
@@ -112,38 +110,6 @@ interface ConsolidationResult {
   skipped?: 'disabled' | 'running' | 'no-signal' | 'llm-failed' | 'parse-failed';
 }
 
-const VALID_CATEGORIES = new Set(['preference', 'correction', 'convention', 'tool_pattern']);
-
-interface ScriptRefuser {
-  refuse(text: string, what: string): boolean;
-  readonly count: number;
-}
-
-/**
- * The ISS-962 script check, bound to one run's prompt and its log name.
- *
- * Both writers here rewrite prose that is already stored rather than admitting
- * new prose, so both compute the allowance the same way and share this.
- */
-function scriptRefuser(projectId: string, promptSource: string, logName: string): ScriptRefuser {
-  let refused = 0;
-  return {
-    refuse(text: string, what: string): boolean {
-      const chars = foreignScriptChars(text, promptSource);
-      if (chars.length === 0) return false;
-      refused++;
-      logger.warn(
-        { projectId, what, chars, text: text.slice(0, 60) },
-        `${logName}: refused output in a script its prompt never showed it`,
-      );
-      return true;
-    },
-    get count(): number {
-      return refused;
-    },
-  };
-}
-
 function emptyResult(
   skipped: NonNullable<ConsolidationResult['skipped']>,
   summary: string,
@@ -151,7 +117,7 @@ function emptyResult(
   return { created: 0, updated: 0, archived: 0, refused: 0, summary, skipped };
 }
 
-export async function runConsolidationForProject(projectId: string): Promise<ConsolidationResult> {
+async function runConsolidationForProject(projectId: string): Promise<ConsolidationResult> {
   if (!fastModelConfigured()) return emptyResult('disabled', 'LLM not configured');
   if (runningProjects.has(projectId)) {
     return emptyResult('running', 'consolidation already running for this project');
@@ -185,14 +151,12 @@ async function applyCreates(
 ): Promise<{ created: number; skipped: string[] }> {
   let created = 0;
   const skipped: string[] = [];
-  for (const item of (Array.isArray(items) ? items : []).slice(0, MAX_CREATES)) {
+  for (const item of firstItems(items, MAX_CREATES)) {
     if (typeof item.content !== 'string' || item.content.trim().length < 5) continue;
     if (guard.refuse(item.content, 'create')) continue;
-    const category = VALID_CATEGORIES.has(item.category as string)
-      ? (item.category as string)
-      : 'convention';
+    const category = factCategory(item.category);
     const text = item.content.trim();
-    const refHash = crypto.createHash('sha1').update(item.content).digest('hex').slice(0, 12);
+    const refHash = shortHash(item.content);
     try {
       const vector = await embed({ surface: 'memory' }, text.slice(0, MAX_EMBED_CHARS));
       const covered = await alreadyRecorded(projectId, vector);
@@ -219,109 +183,14 @@ async function applyCreates(
   return { created, skipped };
 }
 
-/** One `- ` line per row, or `None` — the shape every prompt section takes. */
-function bullets<T>(rows: readonly T[], line: (row: T) => string): string {
-  return rows.length > 0 ? rows.map((r) => `- ${line(r)}`).join('\n') : 'None';
-}
-
-async function consolidate(projectId: string): Promise<ConsolidationResult> {
-  const since = new Date(Date.now() - SIGNAL_WINDOW_MS);
-
-  const recentComments = await db
-    .select({ body: comments.body, issueTitle: issues.title })
-    .from(comments)
-    .innerJoin(issues, and(eq(comments.issueId, issues.id), isNull(issues.archivedAt)))
-    .where(and(eq(issues.projectId, projectId), gte(comments.createdAt, since)))
-    .orderBy(desc(comments.createdAt))
-    .limit(MAX_SIGNAL_COMMENTS);
-
-  const statusChanges = await db
-    .select({ payload: activityLog.payload, issueTitle: issues.title })
-    .from(activityLog)
-    .innerJoin(issues, and(eq(activityLog.issueId, issues.id), isNull(issues.archivedAt)))
-    .where(
-      and(
-        eq(issues.projectId, projectId),
-        eq(activityLog.action, 'issue.statusChanged'),
-        gte(activityLog.createdAt, since),
-      ),
-    )
-    .orderBy(desc(activityLog.createdAt))
-    .limit(MAX_SIGNAL_STATUS_CHANGES);
-
-  if (recentComments.length === 0 && statusChanges.length === 0) {
-    return emptyResult('no-signal', 'no recent signal to consolidate');
-  }
-
-  const changes = statusChanges.map((sc) => {
-    const p = (sc.payload ?? {}) as { from?: string; to?: string };
-    return { issueTitle: sc.issueTitle, from: p.from ?? '', to: p.to ?? '' };
-  });
-  const reopens = changes.filter((c) => c.to === 'reopen');
-
-  const memoryRows = await db
-    .select({
-      id: memories.id,
-      source: memories.source,
-      sourceRef: memories.sourceRef,
-      textContent: memories.textContent,
-      metadata: memories.metadata,
-      retrievalCount: memories.retrievalCount,
-    })
-    .from(memories)
-    .where(
-      and(
-        eq(memories.projectId, projectId),
-        inArray(memories.source, [...CONSOLIDATABLE_SOURCES]),
-        isNull(memories.archivedAt),
-        memoryOfLiveIssue(projectId),
-      ),
-    )
-    .orderBy(desc(memories.updatedAt))
-    .limit(MAX_MEMORIES_FOR_PROMPT);
-  const byId = new Map(memoryRows.map((m) => [m.id, m]));
-
-  const memoriesStr = bullets(
-    memoryRows,
-    (m) =>
-      `[${m.id}] [${m.source}] ${m.textContent.slice(0, 300)} (retrievals: ${m.retrievalCount})`,
-  );
-  const commentsStr = bullets(recentComments, (c) => `${c.issueTitle}: ${c.body.slice(0, 400)}`);
-  const statusStr = bullets(changes, (c) => `${c.issueTitle}: ${c.from} -> ${c.to}`);
-  const reopenStr = bullets(reopens, (r) => r.issueTitle);
-
-  const prompt = CONSOLIDATION_PROMPT.replace('{memories}', memoriesStr)
-    .replace('{recent_comments}', commentsStr)
-    .replace('{status_changes}', statusStr)
-    .replace('{reopen_cycles}', reopenStr);
-
-  const raw = await callFastModel({ surface: 'issue' }, prompt, 2000);
-  if (!raw) return emptyResult('llm-failed', 'LLM call failed');
-
-  let actions: ConsolidationActions;
-  try {
-    actions = JSON.parse(
-      raw.replace(/^```json?\s*/, '').replace(/\s*```$/, ''),
-    ) as ConsolidationActions;
-  } catch {
-    logger.warn({ projectId, raw: raw.slice(0, 200) }, 'memory.consolidation: parse failed');
-    return emptyResult('parse-failed', 'failed to parse LLM response');
-  }
-
-  const guard = scriptRefuser(
-    projectId,
-    `${memoriesStr}\n${commentsStr}\n${statusStr}\n${reopenStr}`,
-    'memory.consolidation',
-  );
-
-  const { created, skipped: skippedAsRecorded } = await applyCreates(
-    projectId,
-    actions.create,
-    guard,
-  );
-
+async function applyUpdates(
+  projectId: string,
+  items: ConsolidationActions['update'],
+  byId: Map<string, ConsolidatableRow>,
+  guard: ScriptRefuser,
+): Promise<number> {
   let updated = 0;
-  for (const item of (Array.isArray(actions.update) ? actions.update : []).slice(0, MAX_UPDATES)) {
+  for (const item of firstItems(items, MAX_UPDATES)) {
     if (typeof item.id !== 'string' || typeof item.newContent !== 'string') continue;
     if (guard.refuse(item.newContent, 'update')) continue;
     const row = byId.get(item.id);
@@ -348,27 +217,168 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
       );
     }
   }
+  return updated;
+}
 
-  const archiveIds = (Array.isArray(actions.archive) ? actions.archive : [])
+/** Archive the ids the model named that it was shown; the archived rows' refs. */
+async function applyArchives(
+  projectId: string,
+  items: ConsolidationActions['archive'],
+  byId: Map<string, ConsolidatableRow>,
+): Promise<string[]> {
+  const archiveIds = (Array.isArray(items) ? items : [])
     .filter((id): id is string => typeof id === 'string' && byId.has(id))
     .slice(0, MAX_ARCHIVES);
-  let archived = 0;
-  let archivedRefs: string[] = [];
-  if (archiveIds.length > 0) {
-    const rows = await db
-      .update(memories)
-      .set({ archivedAt: sql`now()` })
-      .where(
-        and(
-          eq(memories.projectId, projectId),
-          inArray(memories.id, archiveIds),
-          inArray(memories.source, [...CONSOLIDATABLE_SOURCES]),
-        ),
-      )
-      .returning({ sourceRef: memories.sourceRef });
-    archived = rows.length;
-    archivedRefs = rows.map((r) => r.sourceRef);
+  if (archiveIds.length === 0) return [];
+  const rows = await db
+    .update(memories)
+    .set({ archivedAt: sql`now()` })
+    .where(
+      and(
+        eq(memories.projectId, projectId),
+        inArray(memories.id, archiveIds),
+        inArray(memories.source, [...CONSOLIDATABLE_SOURCES]),
+      ),
+    )
+    .returning({ sourceRef: memories.sourceRef });
+  return rows.map((r) => r.sourceRef);
+}
+
+/** One `- ` line per row, or `None` — the shape every prompt section takes. */
+function bullets<T>(rows: readonly T[], line: (row: T) => string): string {
+  return rows.length > 0 ? rows.map((r) => `- ${line(r)}`).join('\n') : 'None';
+}
+
+/** The last day's pipeline comments and status changes, archived issues left out. */
+async function readSignal(projectId: string) {
+  const since = new Date(Date.now() - SIGNAL_WINDOW_MS);
+
+  const recentComments = await db
+    .select({ body: comments.body, issueTitle: issues.title })
+    .from(comments)
+    .innerJoin(issues, and(eq(comments.issueId, issues.id), isNull(issues.archivedAt)))
+    .where(and(eq(issues.projectId, projectId), gte(comments.createdAt, since)))
+    .orderBy(desc(comments.createdAt))
+    .limit(MAX_SIGNAL_COMMENTS);
+
+  const statusChanges = await db
+    .select({ payload: activityLog.payload, issueTitle: issues.title })
+    .from(activityLog)
+    .innerJoin(issues, and(eq(activityLog.issueId, issues.id), isNull(issues.archivedAt)))
+    .where(
+      and(
+        eq(issues.projectId, projectId),
+        eq(activityLog.action, 'issue.statusChanged'),
+        gte(activityLog.createdAt, since),
+      ),
+    )
+    .orderBy(desc(activityLog.createdAt))
+    .limit(MAX_SIGNAL_STATUS_CHANGES);
+
+  return { recentComments, statusChanges };
+}
+
+function readConsolidatable(projectId: string) {
+  return db
+    .select({
+      id: memories.id,
+      source: memories.source,
+      sourceRef: memories.sourceRef,
+      textContent: memories.textContent,
+      metadata: memories.metadata,
+      retrievalCount: memories.retrievalCount,
+    })
+    .from(memories)
+    .where(
+      and(
+        eq(memories.projectId, projectId),
+        inArray(memories.source, [...CONSOLIDATABLE_SOURCES]),
+        isNull(memories.archivedAt),
+        memoryOfLiveIssue(projectId),
+      ),
+    )
+    .orderBy(desc(memories.updatedAt))
+    .limit(MAX_MEMORIES_FOR_PROMPT);
+}
+
+type ConsolidatableRow = Awaited<ReturnType<typeof readConsolidatable>>[number];
+type Signal = Awaited<ReturnType<typeof readSignal>>;
+
+/** The four prompt sections, in prompt order. */
+function promptSections(
+  memoryRows: ConsolidatableRow[],
+  signal: Signal,
+): [string, string, string, string] {
+  const changes = signal.statusChanges.map((sc) => {
+    const p = (sc.payload ?? {}) as { from?: string; to?: string };
+    return { issueTitle: sc.issueTitle, from: p.from ?? '', to: p.to ?? '' };
+  });
+  const reopens = changes.filter((c) => c.to === 'reopen');
+  return [
+    bullets(
+      memoryRows,
+      (m) =>
+        `[${m.id}] [${m.source}] ${m.textContent.slice(0, 300)} (retrievals: ${m.retrievalCount})`,
+    ),
+    bullets(signal.recentComments, (c) => `${c.issueTitle}: ${c.body.slice(0, 400)}`),
+    bullets(changes, (c) => `${c.issueTitle}: ${c.from} -> ${c.to}`),
+    bullets(reopens, (r) => r.issueTitle),
+  ];
+}
+
+async function recordConsolidation(
+  projectId: string,
+  counts: string,
+  summary: string,
+  archivedRefs: string[],
+  skippedAsRecorded: string[],
+): Promise<void> {
+  await indexMemoryBestEffort({
+    projectId,
+    source: 'decision',
+    sourceRef: `consolidation:${new Date().toISOString().slice(0, 10)}-${crypto.randomBytes(4).toString('hex')}`,
+    text: `Memory consolidation: ${counts}${summary === counts ? '' : ` — ${summary}`}${archivedRefs.length > 0 ? `\narchived: ${archivedRefs.join(', ')}` : ''}${skippedAsRecorded.length > 0 ? `\nskipped, already recorded by: ${skippedAsRecorded.join(', ')}` : ''}`,
+    metadata: { cause: 'memory-consolidation', archivedRefs, skippedAsRecorded },
+  });
+}
+
+async function consolidate(projectId: string): Promise<ConsolidationResult> {
+  const signal = await readSignal(projectId);
+  if (signal.recentComments.length === 0 && signal.statusChanges.length === 0) {
+    return emptyResult('no-signal', 'no recent signal to consolidate');
   }
+
+  const memoryRows = await readConsolidatable(projectId);
+  const byId = new Map(memoryRows.map((m) => [m.id, m]));
+  const [memoriesStr, commentsStr, statusStr, reopenStr] = promptSections(memoryRows, signal);
+
+  const prompt = CONSOLIDATION_PROMPT.replace('{memories}', memoriesStr)
+    .replace('{recent_comments}', commentsStr)
+    .replace('{status_changes}', statusStr)
+    .replace('{reopen_cycles}', reopenStr);
+
+  const raw = await callFastModel({ surface: 'issue' }, prompt, 2000);
+  if (!raw) return emptyResult('llm-failed', 'LLM call failed');
+
+  const actions = parseFencedJson<ConsolidationActions>(raw);
+  if (actions === undefined) {
+    logger.warn({ projectId, raw: raw.slice(0, 200) }, 'memory.consolidation: parse failed');
+    return emptyResult('parse-failed', 'failed to parse LLM response');
+  }
+
+  const guard = scriptRefuser(
+    projectId,
+    `${memoriesStr}\n${commentsStr}\n${statusStr}\n${reopenStr}`,
+    'memory.consolidation',
+  );
+  const { created, skipped: skippedAsRecorded } = await applyCreates(
+    projectId,
+    actions.create,
+    guard,
+  );
+  const updated = await applyUpdates(projectId, actions.update, byId, guard);
+  const archivedRefs = await applyArchives(projectId, actions.archive, byId);
+  const archived = archivedRefs.length;
 
   const counts = `created ${created}, updated ${updated}, archived ${archived}${skippedAsRecorded.length > 0 ? `, skipped ${skippedAsRecorded.length} already recorded` : ''}`;
   const proposed =
@@ -376,13 +386,7 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
   const summary = guard.refuse(proposed, 'summary') ? counts : proposed;
 
   if (created + updated + archived + skippedAsRecorded.length > 0) {
-    await indexMemoryBestEffort({
-      projectId,
-      source: 'decision',
-      sourceRef: `consolidation:${new Date().toISOString().slice(0, 10)}-${crypto.randomBytes(4).toString('hex')}`,
-      text: `Memory consolidation: ${counts}${summary === counts ? '' : ` — ${summary}`}${archivedRefs.length > 0 ? `\narchived: ${archivedRefs.join(', ')}` : ''}${skippedAsRecorded.length > 0 ? `\nskipped, already recorded by: ${skippedAsRecorded.join(', ')}` : ''}`,
-      metadata: { cause: 'memory-consolidation', archivedRefs, skippedAsRecorded },
-    });
+    await recordConsolidation(projectId, counts, summary, archivedRefs, skippedAsRecorded);
   }
 
   return { created, updated, archived, refused: guard.count, summary };
@@ -423,357 +427,4 @@ export async function runConsolidationSweep(): Promise<{
     }
   }
   return { projects: projectRows.length, durationMs: Date.now() - t0 };
-}
-
-// Closes the code→memory loop that the nightly consolidation above cannot:
-// that pass only reacts to comments/status-changes/reopens from the last
-// 24h and never reads `releaseNotes`. This one fires once per issue, when
-// `merged_at` lands (see `registerMemoryReconcileTrigger`), and asks "which
-// existing note/knowledge memories does THIS release's text contradict?"
-//
-// Two-tier, conservative-biased action (mirrors the archive-with-evidence
-// bar already enforced by `feedback-service.ts`):
-//  - CONTRADICTED  → hard-archive via the evidence-gated `runMemoryFeedback`.
-//  - POSSIBLY_STALE → non-destructive: stamp `metadata.staleSince` +
-//    `supersededBy` only. Surfaces as the `search.ts` read-side badge and
-//    becomes decay-eligible after the `STALE_UNCONFIRMED_DAYS` grace period
-//    if nobody re-confirms it (see `decay.ts`).
-//  - UNAFFECTED    → skip.
-//
-// No git diff is persisted anywhere in core (confirmed at clarify) — the
-// signal is release text only (`releaseNotes` + title + description/plan).
-// A thin/`Skip`-section release yields a weak sweep; acceptable per the
-// plan's known-limitations call.
-
-const MEMORY_RECONCILE_QUEUE = 'memory-reconcile';
-
-/** Only memories scoring at/above this cosine floor are considered — bounds
- *  the LLM prompt to genuinely related candidates. */
-const RECONCILE_SCORE_FLOOR = 0.6;
-const RECONCILE_TOP_K = 15;
-const RECONCILE_MAX_CANDIDATES = 10;
-const RECONCILE_SOURCES = ['note', 'knowledge'] as const;
-
-const runningReconciles = new Set<string>();
-
-const RECONCILE_PROMPT = `You are a memory reconciliation agent for a software project management AI pipeline.
-
-An issue just released. Decide which existing memories the release text CONTRADICTS.
-
-## Release ({issue_ref})
-{release_summary}
-
-{release_text}
-
-## Candidate memories (semantically related, pre-dating this release)
-{candidates}
-
-## Classify EACH candidate id into exactly one bucket
-- **contradicted** — the release text DIRECTLY invalidates this memory (e.g. it describes a
-  structure/flow/field the release removed or replaced). Include one-sentence \`evidence\`
-  quoting or paraphrasing the specific release fact that disproves it.
-- **possiblyStale** — the release plausibly affects this memory's area, but you cannot be sure
-  it is actually wrong now (default here when uncertain).
-- **unaffected** — the release does not bear on this memory at all.
-
-Be conservative: only use \`contradicted\` when you are confident the release text disproves the
-memory outright. When unsure, prefer \`possiblyStale\` over \`contradicted\`.
-
-## Output JSON only (no markdown, no explanation):
-{
-  "contradicted": [{ "id": "<memory id>", "evidence": "..." }],
-  "possiblyStale": [{ "id": "<memory id>" }],
-  "unaffected": ["<memory id>", "..."]
-}`;
-
-interface ReconcileActions {
-  contradicted?: Array<{ id?: unknown; evidence?: unknown }>;
-  possiblyStale?: Array<{ id?: unknown }>;
-  unaffected?: unknown[];
-}
-
-interface ReconcileResult {
-  contradicted: number;
-  possiblyStale: number;
-  refused: number;
-  summary: string;
-  skipped?:
-    | 'disabled'
-    | 'running'
-    | 'already-reconciled'
-    | 'issue-not-found'
-    | 'no-signal'
-    | 'embeddings-unavailable'
-    | 'llm-failed'
-    | 'parse-failed';
-}
-
-function emptyReconcileResult(
-  skipped: NonNullable<ReconcileResult['skipped']>,
-  summary: string,
-): ReconcileResult {
-  return { contradicted: 0, possiblyStale: 0, refused: 0, summary, skipped };
-}
-
-/**
- * Entry point called from the `transition` hook subscriber (via a durable
- * pg-boss job, see `registerMemoryReconcileTrigger`/`registerMemoryReconcileWorker`)
- * whenever an issue's `merged_at` lands. Best-effort: every failure mode
- * returns a `skipped` result rather than throwing, so a flaky reconcile never
- * blocks the release flow that triggered it.
- */
-export async function reconcileForReleasedIssue(
-  projectId: string,
-  issueId: string,
-): Promise<ReconcileResult> {
-  if (!fastModelConfigured()) return emptyReconcileResult('disabled', 'LLM not configured');
-  const key = `${projectId}:${issueId}`;
-  if (runningReconciles.has(key)) {
-    return emptyReconcileResult('running', 'reconcile already running for this issue');
-  }
-  runningReconciles.add(key);
-  try {
-    return await reconcile(projectId, issueId);
-  } finally {
-    runningReconciles.delete(key);
-  }
-}
-
-async function reconcile(projectId: string, issueId: string): Promise<ReconcileResult> {
-  const [issueRow] = await db
-    .select({
-      issSeq: issues.issSeq,
-      issuePrefix: projects.issuePrefix,
-      title: issues.title,
-      description: issues.description,
-      plan: issues.plan,
-      releaseNotes: issues.releaseNotes,
-      mergedAt: issues.mergedAt,
-    })
-    .from(issues)
-    .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(and(eq(issues.id, issueId), eq(issues.projectId, projectId), isNull(issues.archivedAt)))
-    .limit(1);
-  if (!issueRow) {
-    return emptyReconcileResult('issue-not-found', 'issue not found in this project, or archived');
-  }
-
-  const issRef = formatIssueRef(issueRow.issuePrefix, issueRow.issSeq);
-  const decisionRef = `reconcile:${canonicalIssueKey(issueRow.issSeq)}`;
-
-  // Idempotency: skip if this issue was already reconciled (reopen → re-release
-  // re-fires the transition hook; don't double-spend LLM cost or re-archive).
-  const [existing] = await db
-    .select({ id: memories.id })
-    .from(memories)
-    .where(
-      and(
-        eq(memories.projectId, projectId),
-        eq(memories.source, 'decision'),
-        eq(memories.sourceRef, decisionRef),
-      ),
-    )
-    .limit(1);
-  if (existing) {
-    return emptyReconcileResult('already-reconciled', `reconcile already recorded for ${issRef}`);
-  }
-
-  const releaseNotes = issueRow.releaseNotes;
-  const releaseText = [
-    releaseNotes?.userFacing,
-    releaseNotes?.technical,
-    issueRow.title,
-    issueRow.description,
-    issueRow.plan,
-  ]
-    .filter((s): s is string => Boolean(s?.trim()))
-    .join('\n\n');
-  if (!releaseText.trim()) return emptyReconcileResult('no-signal', 'no usable release text');
-
-  let queryVec: number[];
-  try {
-    queryVec = await embed({ surface: 'memory' }, releaseText.slice(0, MAX_EMBED_CHARS));
-  } catch (err) {
-    if (!(err instanceof EmbeddingUnavailableError)) throw err;
-    return emptyReconcileResult('embeddings-unavailable', 'embeddings unavailable');
-  }
-
-  const hits = await searchMemories({
-    projectId,
-    queryVec,
-    topK: RECONCILE_TOP_K,
-    sourceFilter: [...RECONCILE_SOURCES],
-  });
-
-  const mergedAt = issueRow.mergedAt ?? new Date();
-  const candidates = hits
-    .filter((h) => h.score >= RECONCILE_SCORE_FLOOR && h.embeddedAt < mergedAt)
-    .slice(0, RECONCILE_MAX_CANDIDATES);
-  if (candidates.length === 0) {
-    return emptyReconcileResult('no-signal', 'no candidate memories pre-date the release');
-  }
-
-  const byId = new Map<string, MemoryHit>(candidates.map((c) => [c.id, c]));
-  const candidatesStr = candidates
-    .map((c) => `- [${c.id}] [${c.source}] ${c.text.slice(0, 300)}`)
-    .join('\n');
-  const releaseSummary =
-    [releaseNotes?.userFacing, releaseNotes?.technical].filter(Boolean).join(' — ') ||
-    issueRow.title;
-
-  const prompt = RECONCILE_PROMPT.replace('{issue_ref}', issRef)
-    .replace('{release_summary}', releaseSummary)
-    .replace('{release_text}', releaseText.slice(0, 4000))
-    .replace('{candidates}', candidatesStr);
-
-  const raw = await callFastModel({ surface: 'memory' }, prompt, 1500);
-  if (!raw) return emptyReconcileResult('llm-failed', 'LLM call failed');
-
-  let actions: ReconcileActions;
-  try {
-    actions = JSON.parse(
-      raw.replace(/^```json?\s*/, '').replace(/\s*```$/, ''),
-    ) as ReconcileActions;
-  } catch {
-    logger.warn({ projectId, issueId, raw: raw.slice(0, 200) }, 'memory.reconcile: parse failed');
-    return emptyReconcileResult('parse-failed', 'failed to parse LLM response');
-  }
-
-  const guard = scriptRefuser(
-    projectId,
-    `${releaseText.slice(0, 4000)}\n${candidatesStr}`,
-    'memory.reconcile',
-  );
-
-  const contradictedRefs: string[] = [];
-  for (const item of (Array.isArray(actions.contradicted) ? actions.contradicted : []).slice(
-    0,
-    RECONCILE_MAX_CANDIDATES,
-  )) {
-    if (typeof item.id !== 'string' || typeof item.evidence !== 'string') continue;
-    if (guard.refuse(item.evidence, 'evidence')) continue;
-    const candidate = byId.get(item.id);
-    if (!candidate) continue;
-    try {
-      await runMemoryFeedback({
-        projectId,
-        source: candidate.source as 'note' | 'knowledge',
-        sourceRef: candidate.sourceRef,
-        verdict: 'outdated',
-        evidence: `superseded by ${issRef}: ${item.evidence}`.slice(0, 2000),
-      });
-      contradictedRefs.push(candidate.sourceRef);
-    } catch (err) {
-      logger.warn(
-        { err: (err as Error).message, projectId, issueId, memoryId: item.id },
-        'memory.reconcile: contradicted archive failed',
-      );
-    }
-  }
-
-  const staleRefs: string[] = [];
-  const staleSinceIso = mergedAt.toISOString();
-  for (const item of (Array.isArray(actions.possiblyStale) ? actions.possiblyStale : []).slice(
-    0,
-    RECONCILE_MAX_CANDIDATES,
-  )) {
-    if (typeof item.id !== 'string') continue;
-    const candidate = byId.get(item.id);
-    if (!candidate) continue;
-    try {
-      const md = (candidate.metadata ?? {}) as Record<string, unknown>;
-      const updated = await db
-        .update(memories)
-        .set({
-          metadata: { ...md, staleSince: staleSinceIso, supersededBy: issRef },
-          updatedAt: sql`now()`,
-        })
-        .where(eq(memories.id, candidate.id))
-        .returning({ id: memories.id });
-      if (updated.length > 0) staleRefs.push(candidate.sourceRef);
-    } catch (err) {
-      logger.warn(
-        { err: (err as Error).message, projectId, issueId, memoryId: item.id },
-        'memory.reconcile: possibly-stale stamp failed',
-      );
-    }
-  }
-
-  const contradicted = contradictedRefs.length;
-  const possiblyStale = staleRefs.length;
-  const summary = `reconcile ${issRef}: ${contradicted} contradicted, ${possiblyStale} possibly-stale of ${candidates.length} candidates`;
-
-  await indexMemoryBestEffort({
-    projectId,
-    source: 'decision',
-    sourceRef: decisionRef,
-    text: `${summary}${contradictedRefs.length > 0 ? `\ncontradicted: ${contradictedRefs.join(', ')}` : ''}${staleRefs.length > 0 ? `\nstale-stamped: ${staleRefs.join(', ')}` : ''}`,
-    metadata: {
-      cause: 'memory-reconcile',
-      issueId,
-      contradicted,
-      possiblyStale,
-      contradictedRefs,
-      staleRefs,
-    },
-  });
-
-  return { contradicted, possiblyStale, refused: guard.count, summary };
-}
-
-/**
- * Whenever an issue move lands its `merged_at` (leaving {@link BASE_MERGE_STATE}, or reaching
- * `closed` — the "code landed" predicate `merged-at.ts` uses), enqueue a durable pg-boss reconcile
- * job, once per issue by its singleton key.
- */
-export function registerMemoryReconcileTrigger(): void {
-  consume('issue.transitioned', {
-    name: 'memory-reconcile',
-    handle: async (p) => {
-      const mergeLanded =
-        (p.from === BASE_MERGE_STATE && p.to !== BASE_MERGE_STATE) || p.to === 'closed';
-      if (!mergeLanded) return;
-      await boss.send(
-        MEMORY_RECONCILE_QUEUE,
-        { projectId: p.projectId, issueId: p.id },
-        { singletonKey: `${p.id}:reconcile` },
-      );
-    },
-  });
-}
-
-type ReconcileJob = { projectId?: string; issueId?: string };
-
-let reconcileWorkerRegistered = false;
-
-/** Event-driven worker for `MEMORY_RECONCILE_QUEUE` — no schedule, unlike the
- *  nightly consolidation/decay sweeps; this runs once per merge-landed
- *  transition (enqueued by `registerMemoryReconcileTrigger`). */
-export async function registerMemoryReconcileWorker(): Promise<void> {
-  if (reconcileWorkerRegistered) return;
-  await boss.createQueue(MEMORY_RECONCILE_QUEUE);
-  await boss.work<ReconcileJob>(MEMORY_RECONCILE_QUEUE, { batchSize: 1 }, async (jobs) => {
-    for (const entry of jobs) {
-      const data = entry.data;
-      if (!data?.projectId || !data.issueId) continue;
-      try {
-        const result = await reconcileForReleasedIssue(data.projectId, data.issueId);
-        logger.info(
-          { projectId: data.projectId, issueId: data.issueId, ...result },
-          'memory.reconcile: complete',
-        );
-      } catch (err) {
-        logger.error(
-          { err, projectId: data.projectId, issueId: data.issueId },
-          'memory.reconcile: failed',
-        );
-        throw err;
-      }
-    }
-  });
-  reconcileWorkerRegistered = true;
-}
-
-export function resetMemoryReconcileWorkerForTest(): void {
-  reconcileWorkerRegistered = false;
 }

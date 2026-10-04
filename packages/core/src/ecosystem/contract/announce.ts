@@ -4,8 +4,8 @@ import { embedFeedbackLater, fileContractChangeIn } from '../../feedback/index.j
 import { dataPolicyOf } from '../../lib/data-egress.js';
 import { logger } from '../../observability/logger.js';
 import { tellEachSide } from '../channel-signals.js';
+import { consumersOf } from '../interface-store.js';
 import { ecosystemSignals } from '../ports.js';
-import { consumersOf } from '../store.js';
 import type { StoredVersion } from './store.js';
 
 const DAY_MS = 86_400_000;

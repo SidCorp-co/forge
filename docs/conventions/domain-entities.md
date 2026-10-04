@@ -586,7 +586,7 @@ means `off`).
   `no_egress` (`CONTENT_EGRESS_FORBIDDEN`).
 - **On write.** At `redact` and `no_egress`, stored free text is scrubbed first
   (`packages/core/src/lib/data-egress.ts:storedText`).
-- **Embeddings.** `packages/core/src/embeddings/item-writer.ts:writeItemEmbedding` is the one
+- **Embeddings.** `packages/core/src/knowledge/item-embeddings.ts:writeItemEmbedding` is the one
   writer; a withheld item is recorded as `withheld_by_policy`.
 - **LLM and embedding ports gate inside the adapter**, taking a
   `packages/core/src/lib/data-egress.ts:EgressScope`.
@@ -621,7 +621,8 @@ contracts/src/feedback.ts         FEEDBACK_STATUSES, FEEDBACK_REFUSAL_CODES, lim
 core/src/db/schema-feedback.ts    the tables; each listed under feedback's `owns` in modules.json
 core/src/modules.json             "feedback": { "kind": "domain", "context": "design", "owns": [...] }
 core/src/feedback/rules.ts        pure guards → FeedbackRefusal | null
-core/src/feedback/read.ts         rowIn (uuid | FB-n | n), feedbackKey, list and detail views
+core/src/feedback/read.ts         rowIn (uuid | FB-n | n); the list and detail views sit beside it
+                                  (list-read.ts, detail-read.ts) once one file would pass 400 lines
 core/src/feedback/service.ts      lockFeedback; createFeedback / declineFeedback → Outcome
 core/src/feedback/standing.ts     its derived facts, if any, in the contracts standing shape
 core/src/feedback/events.ts       the outbox events it emits, each with a consumer

@@ -126,7 +126,7 @@ function revisionEntries(r: RevisionRow, n: Namer): RequirementHistoryEntry[] {
   return out;
 }
 
-// cm:why each return is its own row (requirement_returns), stamped by whoever returned it when they
+// Each return is its own row (requirement_returns), stamped by whoever returned it when they
 // did; a later accept never re-dates it
 const returnEntry = (r: ReturnRow, n: Namer) =>
   entry({
@@ -282,7 +282,7 @@ async function historyRows(requirementId: string, projectId: string) {
   return { revisions, baselines, returns, deferrals, suggested, activity, keyOf };
 }
 
-// cm:why the history is assembled from the rows that already record each act — revisions (written,
+// The history is assembled from the rows that already record each act — revisions (written,
 // proposed, accepted, returned), baselines (agreed), suggestions (proposed, decided) and the linked
 // issues' activity (decisions, questions, answers, status moves) — because requirement writes emit
 // no events of their own; feedback (FB-n, ISS-59) does not exist yet and is not faked

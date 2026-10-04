@@ -18,9 +18,19 @@ export interface KnowledgeHit {
 const MIN_TOP_K = 1;
 const MAX_TOP_K = 50;
 
-function clampTopK(topK: number | undefined): number {
+export function clampTopK(topK: number | undefined): number {
   return Math.min(Math.max(topK ?? 10, MIN_TOP_K), MAX_TOP_K);
 }
+
+const HIT_COLUMNS = {
+  id: knowledgeEntries.id,
+  slug: knowledgeEntries.slug,
+  kind: knowledgeEntries.kind,
+  title: knowledgeEntries.title,
+  body: knowledgeEntries.body,
+  injection: knowledgeEntries.injection,
+  confidence: knowledgeEntries.confidence,
+};
 
 function baseWhere(projectId: string) {
   return [eq(knowledgeEntries.projectId, projectId), isNull(knowledgeEntries.archivedAt)];
@@ -35,13 +45,7 @@ export async function searchKnowledge(
   const k = clampTopK(topK);
   const rows = await db
     .select({
-      id: knowledgeEntries.id,
-      slug: knowledgeEntries.slug,
-      kind: knowledgeEntries.kind,
-      title: knowledgeEntries.title,
-      body: knowledgeEntries.body,
-      injection: knowledgeEntries.injection,
-      confidence: knowledgeEntries.confidence,
+      ...HIT_COLUMNS,
       distance: cosineDistance(knowledgeEntries.embedding, queryVec).as('distance'),
     })
     .from(knowledgeEntries)
@@ -65,13 +69,7 @@ export async function keywordSearchKnowledge(
   const identQuery = identifierTsQuery(trimmed);
   const rows = await db
     .select({
-      id: knowledgeEntries.id,
-      slug: knowledgeEntries.slug,
-      kind: knowledgeEntries.kind,
-      title: knowledgeEntries.title,
-      body: knowledgeEntries.body,
-      injection: knowledgeEntries.injection,
-      confidence: knowledgeEntries.confidence,
+      ...HIT_COLUMNS,
       rank: sql<number>`ts_rank(${knowledgeEntries.textSearch}, ${tsQuery}) + ts_rank(${knowledgeEntries.identSearch}, ${identQuery})`.as(
         'rank',
       ),
@@ -88,22 +86,32 @@ export async function keywordSearchKnowledge(
   return rows.map((r) => ({ ...r, score: Number(r.rank) }));
 }
 
+/** Standard RRF constant — higher k flattens the advantage of top ranks. */
 const RRF_K = 60;
-export const HYBRID_ALPHA = 0.5;
+/** Dense-vector weight in hybrid fusion (keyword gets `1 - alpha`). */
+const HYBRID_ALPHA = 0.5;
 
-function rrfFuse(lists: KnowledgeHit[][], weights: number[], limit: number): KnowledgeHit[] {
-  const scoreMap = new Map<string, { score: number; hit: KnowledgeHit }>();
-  for (let li = 0; li < lists.length; li++) {
-    const list = lists[li] ?? [];
-    const weight = weights[li] ?? 1.0;
-    for (let rank = 0; rank < list.length; rank++) {
-      const hit = list[rank];
-      if (!hit) continue;
-      const rrfScore = weight / (RRF_K + rank + 1);
+/**
+ * Weighted reciprocal-rank fusion of a dense and a keyword list, the one fusion memory and
+ * knowledge hybrid search share. The returned `score` is the fused RRF value.
+ */
+export function fuseHybrid<T extends { id: string; score: number }>(
+  semantic: T[],
+  keyword: T[],
+  limit: number,
+): T[] {
+  const scoreMap = new Map<string, { score: number; hit: T }>();
+  const weighted: Array<[T[], number]> = [
+    [semantic, HYBRID_ALPHA],
+    [keyword, 1 - HYBRID_ALPHA],
+  ];
+  for (const [list, weight] of weighted) {
+    list.forEach((hit, rank) => {
+      const rrfScore = weight / (RRF_K + rank + 1); // rank is 0-based, RRF uses 1-based
       const existing = scoreMap.get(hit.id);
       if (existing) existing.score += rrfScore;
       else scoreMap.set(hit.id, { score: rrfScore, hit });
-    }
+    });
   }
   return Array.from(scoreMap.values())
     .sort((a, b) => b.score - a.score)
@@ -123,5 +131,5 @@ export async function hybridSearchKnowledge(
     searchKnowledge(projectId, queryVec, k),
     keywordSearchKnowledge(projectId, query, k),
   ]);
-  return rrfFuse([semantic, keyword], [HYBRID_ALPHA, 1 - HYBRID_ALPHA], k);
+  return fuseHybrid(semantic, keyword, k);
 }

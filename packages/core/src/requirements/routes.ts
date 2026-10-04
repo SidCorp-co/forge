@@ -1,104 +1,38 @@
-import { ANSWER_VIEWS } from '@forge/contracts/projection';
 import {
-  ACCEPT_REVISION_SHAPE,
-  acceptRevisionRequestSchema,
   DEFER_REQUIREMENT_SHAPE,
   deferRequirementRequestSchema,
-  LINK_REQUIREMENT_CONTRACT_SHAPE,
-  linkRequirementContractRequestSchema,
   REPIN_REQUIREMENT_SHAPE,
   repinRequirementRequestSchema,
   UNDEFER_REQUIREMENT_SHAPE,
   undeferRequirementRequestSchema,
 } from '@forge/contracts/requirements';
-import {
-  PUT_CRITERION_STEPS_SHAPE,
-  putCriterionStepsRequestSchema,
-} from '@forge/contracts/workflow-health';
-import { type Context, Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
+import { Hono } from 'hono';
 import { z } from 'zod';
 import { egressForRequest } from '../lib/data-egress.js';
-import { refused } from '../lib/refusal.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { linkContract, unlinkContract } from './contract-links.js';
-import { putCriterionSteps } from './criterion-steps.js';
+import { assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { strictBody } from '../middleware/zod-validator.js';
+import { agreeRequirement } from './agree.js';
 import { deferRequirement, undeferRequirement } from './deferral.js';
-import { linkIssue, linkWorkflow, unlinkIssue, unlinkWorkflow } from './issue-links.js';
+import { requirementLinkRoutes } from './link-routes.js';
 import { requirementSummaryOf } from './projection.js';
-import { listRequirementsAs, type RequirementActor, readRequirementAs } from './read.js';
+import { listRequirementsAs, readRequirementAs } from './read.js';
 import { repinRequirement } from './repin.js';
-import { criterionSchema, specSchema } from './schemas.js';
+import { revisionRoutes } from './revision-routes.js';
 import {
-  acceptRevision,
-  agreeRequirement,
-  createRequirement,
-  proposeRevision,
-  type RequirementOutcome,
-  returnRevision,
-  writeRevision,
-} from './service.js';
+  actorOf,
+  answer,
+  projectParam,
+  type RequirementEnv,
+  reqParam,
+  revisionFields,
+  viewQuery,
+} from './route-kit.js';
+import { createRequirement } from './service.js';
 
-export const requirementRoutes = new Hono<{ Variables: AuthVars }>();
+export const requirementRoutes = new Hono<RequirementEnv>();
 
 for (const path of ['/:id/requirements', '/:id/requirements/*']) {
   requirementRoutes.use(path, requireAuth(), assertEmailVerified());
-}
-
-const badRequest = (message: string) =>
-  new HTTPException(400, { message, cause: { code: 'BAD_REQUEST' } });
-
-const projectParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
-  if (!r.success) throw badRequest('invalid path: the project id is a uuid');
-});
-
-const reqParam = zValidator(
-  'param',
-  z.object({ id: z.uuid(), req: z.string().trim().min(1).max(64) }),
-  (r) => {
-    if (!r.success) throw badRequest('invalid path: a project uuid and a requirement uuid or key');
-  },
-);
-
-const revisionParam = zValidator(
-  'param',
-  z.object({
-    id: z.uuid(),
-    req: z.string().trim().min(1).max(64),
-    n: z.coerce.number().int().min(1),
-  }),
-  (r) => {
-    if (!r.success)
-      throw badRequest('invalid path: a project uuid, a requirement and a revision number');
-  },
-);
-
-const viewQuery = zValidator(
-  'query',
-  z.strictObject({ view: z.enum(ANSWER_VIEWS).optional() }),
-  (r) => {
-    if (!r.success) throw badRequest('invalid query: view? (summary | full, full by default)');
-  },
-);
-
-const revisionFields = {
-  reason: z.string().max(4_000),
-  spec: specSchema.optional(),
-  tldr: z.string().max(4_000).nullable().optional(),
-  changeSummary: z.string().max(4_000).nullable().optional(),
-  criteria: z.array(criterionSchema).max(200),
-};
-
-function actorOf(c: Context<{ Variables: AuthVars }>): RequirementActor {
-  const agency = c.get('agency');
-  if (!agency) throw new Error('requirements: a request reached its handler without an auth gate');
-  return { userId: c.get('userId'), agency };
-}
-
-function answer(c: Context, outcome: RequirementOutcome) {
-  if (!outcome.ok) return refused(c, outcome.refusals, 'REQUIREMENT_REFUSED');
-  return c.json(outcome.requirement, outcome.created ? 201 : 200);
 }
 
 requirementRoutes.get('/:id/requirements', projectParam, viewQuery, async (c) => {
@@ -149,97 +83,7 @@ requirementRoutes.get('/:id/requirements/:req', reqParam, async (c) => {
   );
 });
 
-requirementRoutes.post(
-  '/:id/requirements/:req/revisions',
-  reqParam,
-  strictBody(
-    z.strictObject({ baseRevision: z.number().int().min(1).nullable(), ...revisionFields }),
-    '{ baseRevision, reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } — baseRevision is the head you read',
-  ),
-  async (c) => {
-    const { id, req } = c.req.valid('param');
-    const { baseRevision, ...write } = c.req.valid('json');
-    return answer(
-      c,
-      await writeRevision({ projectId: id, ref: req, actor: actorOf(c), baseRevision, write }),
-    );
-  },
-);
-
-requirementRoutes.put(
-  '/:id/requirements/:req/revisions/:n',
-  revisionParam,
-  strictBody(
-    z.strictObject(revisionFields),
-    '{ reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } rewrites a draft revision whole; a code the draft or its base holds keeps that code, no code takes the next one',
-  ),
-  async (c) => {
-    const { id, req, n } = c.req.valid('param');
-    return answer(
-      c,
-      await writeRevision({
-        projectId: id,
-        ref: req,
-        actor: actorOf(c),
-        revision: n,
-        write: c.req.valid('json'),
-      }),
-    );
-  },
-);
-
-const emptyBody = strictBody(z.strictObject({}), 'this action takes an empty object');
-
-requirementRoutes.post(
-  '/:id/requirements/:req/revisions/:n/propose',
-  revisionParam,
-  emptyBody,
-  async (c) => {
-    const { id, req, n } = c.req.valid('param');
-    return answer(
-      c,
-      await proposeRevision({ projectId: id, ref: req, actor: actorOf(c), revision: n }),
-    );
-  },
-);
-
-requirementRoutes.post(
-  '/:id/requirements/:req/revisions/:n/accept',
-  revisionParam,
-  strictBody(acceptRevisionRequestSchema, ACCEPT_REVISION_SHAPE),
-  async (c) => {
-    const { id, req, n } = c.req.valid('param');
-    return answer(
-      c,
-      await acceptRevision({
-        projectId: id,
-        ref: req,
-        actor: actorOf(c),
-        revision: n,
-        reason: c.req.valid('json').reason,
-      }),
-    );
-  },
-);
-
-requirementRoutes.post(
-  '/:id/requirements/:req/revisions/:n/return',
-  revisionParam,
-  strictBody(z.strictObject({ reason: z.string().max(4_000) }), '{ reason } says why it went back'),
-  async (c) => {
-    const { id, req, n } = c.req.valid('param');
-    return answer(
-      c,
-      await returnRevision({
-        projectId: id,
-        ref: req,
-        actor: actorOf(c),
-        revision: n,
-        reason: c.req.valid('json').reason,
-      }),
-    );
-  },
-);
+requirementRoutes.route('/', revisionRoutes);
 
 requirementRoutes.post(
   '/:id/requirements/:req/agree',
@@ -325,162 +169,4 @@ requirementRoutes.post(
   },
 );
 
-requirementRoutes.post(
-  '/:id/requirements/:req/issues',
-  reqParam,
-  strictBody(
-    z.strictObject({ issue: z.string().trim().min(1).max(200), adoptPlan: z.boolean().optional() }),
-    '{ issue, adoptPlan? } names the issue, by key or uuid; adoptPlan (needs requirements.approve) records its existing plan as written against the current revision',
-  ),
-  async (c) => {
-    const { id, req } = c.req.valid('param');
-    return answer(
-      c,
-      await linkIssue({
-        projectId: id,
-        ref: req,
-        actor: actorOf(c),
-        issue: c.req.valid('json').issue,
-        adoptPlan: c.req.valid('json').adoptPlan,
-      }),
-    );
-  },
-);
-
-requirementRoutes.delete(
-  '/:id/requirements/:req/issues/:issue',
-  zValidator(
-    'param',
-    z.object({
-      id: z.uuid(),
-      req: z.string().trim().min(1).max(64),
-      issue: z.string().trim().min(1).max(200),
-    }),
-    (r) => {
-      if (!r.success) throw badRequest('invalid path: a project uuid, a requirement and an issue');
-    },
-  ),
-  async (c) => {
-    const { id, req, issue } = c.req.valid('param');
-    return answer(c, await unlinkIssue({ projectId: id, ref: req, actor: actorOf(c), issue }));
-  },
-);
-
-requirementRoutes.post(
-  '/:id/requirements/:req/workflows',
-  reqParam,
-  strictBody(
-    z.strictObject({ workflowId: z.uuid() }),
-    '{ workflowId } names a workflow of this project',
-  ),
-  async (c) => {
-    const { id, req } = c.req.valid('param');
-    return answer(
-      c,
-      await linkWorkflow({
-        projectId: id,
-        ref: req,
-        actor: actorOf(c),
-        workflowId: c.req.valid('json').workflowId,
-      }),
-    );
-  },
-);
-
-requirementRoutes.post(
-  '/:id/requirements/:req/contracts',
-  reqParam,
-  strictBody(linkRequirementContractRequestSchema, LINK_REQUIREMENT_CONTRACT_SHAPE),
-  async (c) => {
-    const { id, req } = c.req.valid('param');
-    return answer(
-      c,
-      await linkContract({
-        projectId: id,
-        ref: req,
-        actor: actorOf(c),
-        contract: c.req.valid('json').contract,
-      }),
-    );
-  },
-);
-
-requirementRoutes.delete(
-  '/:id/requirements/:req/contracts/:project/:contract',
-  zValidator(
-    'param',
-    z.object({
-      id: z.uuid(),
-      req: z.string().trim().min(1).max(64),
-      project: z.string().trim().min(1).max(63),
-      contract: z.string().trim().min(1).max(63),
-    }),
-    (r) => {
-      if (!r.success)
-        throw badRequest(
-          'invalid path: a project uuid, a requirement, and the contract as <project>/<contract>',
-        );
-    },
-  ),
-  async (c) => {
-    const { id, req, project, contract } = c.req.valid('param');
-    return answer(
-      c,
-      await unlinkContract({
-        projectId: id,
-        ref: req,
-        actor: actorOf(c),
-        contract: `${project}/${contract}`,
-      }),
-    );
-  },
-);
-
-requirementRoutes.delete(
-  '/:id/requirements/:req/workflows/:workflowId',
-  zValidator(
-    'param',
-    z.object({ id: z.uuid(), req: z.string().trim().min(1).max(64), workflowId: z.uuid() }),
-    (r) => {
-      if (!r.success)
-        throw badRequest('invalid path: a project uuid, a requirement and a workflow uuid');
-    },
-  ),
-  async (c) => {
-    const { id, req, workflowId } = c.req.valid('param');
-    return answer(
-      c,
-      await unlinkWorkflow({ projectId: id, ref: req, actor: actorOf(c), workflowId }),
-    );
-  },
-);
-
-requirementRoutes.put(
-  '/:id/requirements/:req/criteria/:code/steps',
-  zValidator(
-    'param',
-    z.object({
-      id: z.uuid(),
-      req: z.string().trim().min(1).max(64),
-      code: z.string().regex(/^BC-[1-9][0-9]*$/),
-    }),
-    (r) => {
-      if (!r.success)
-        throw badRequest('invalid path: a project uuid, a requirement and a criterion code (BC-n)');
-    },
-  ),
-  strictBody(putCriterionStepsRequestSchema, PUT_CRITERION_STEPS_SHAPE),
-  async (c) => {
-    const { id, req, code } = c.req.valid('param');
-    return answer(
-      c,
-      await putCriterionSteps({
-        projectId: id,
-        ref: req,
-        code,
-        actor: actorOf(c),
-        request: c.req.valid('json'),
-      }),
-    );
-  },
-);
+requirementRoutes.route('/', requirementLinkRoutes);

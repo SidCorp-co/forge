@@ -27,7 +27,7 @@ export interface MockupContextRow {
   caption: string | null;
 }
 
-// cm:why a job is given each accepted mockup as a manifest line and a fetch, never its bytes: an
+// A job is given each accepted mockup as a manifest line and a fetch, never its bytes: an
 // image or a board read on demand costs only the run that needs it, and at no_egress the bytes are
 // withheld (surface `mockup.content`), so the line says so instead of offering a fetch that refuses
 function mockupLines(rows: readonly MockupContextRow[], withheld: boolean): string[] {
@@ -89,7 +89,7 @@ export interface LoadedRequirement {
   estTokens: number;
 }
 
-// cm:why one requirement's revision, criteria and pins; a requirement past it is refused whole, never cut, since a criterion left out is one the run would not build to
+// One requirement's revision, criteria and pins; a requirement past it is refused whole, never cut, since a criterion left out is one the run would not build to
 const REQUIREMENT_CONTEXT_CAP_CHARS = 12_000;
 
 /** A requirement the job cannot be given at its current revision, refused by name. */
@@ -99,7 +99,7 @@ const requirementRefusal = (code: ArtifactContextRefusalCode, key: string, reaso
     'ARTIFACT_CONTEXT_UNLOADABLE',
   );
 
-// cm:guard a job loads only the current revision and the baseline agreed at it: a head that is not current, or a latest baseline pinning another revision, is refused REQUIREMENT_REVISION_NOT_CURRENT
+// A job loads only the current revision and the baseline agreed at it: a head that is not current, or a latest baseline pinning another revision, is refused REQUIREMENT_REVISION_NOT_CURRENT
 export function requirementContext(
   row: RequirementContextRow | null,
   mockupsWithheld = false,

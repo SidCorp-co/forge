@@ -1,17 +1,23 @@
-/**
- * The content language write: one field pair of the project document, written whole at the
- * revision the caller read through `writeProjectConfig`, so the document's own checks (including
- * CONTENT_LANGUAGE_INVALID) and its compare-and-set decide it. REST and MCP both call this.
- */
-
-import type { ContentLanguageWrite } from '@forge/contracts/content-language';
-import type { ApiRefusal, ProjectDocument } from '../project-config/index.js';
+import {
+  type ContentLanguageView,
+  type ContentLanguageWrite,
+  contentLanguageViewOf,
+} from '@forge/contracts/content-language';
+import type { ApiRefusal } from './documents.js';
+import type { ProjectDocument } from './schema.js';
 import {
   readProjectConfig,
+  readProjectDocument,
   type WriteOutcome,
   writeProjectConfig,
-} from '../project-config/index.js';
+} from './service.js';
 
+/** The project's setting at the document revision read; a project with no document writes `en`. */
+export async function readContentLanguage(projectId: string): Promise<ContentLanguageView> {
+  return contentLanguageViewOf(await readProjectDocument(projectId));
+}
+
+/** One field pair of the project document, written whole at the revision read, so the document's own checks and compare-and-set decide it. */
 export async function writeContentLanguage(input: {
   projectId: string;
   userId: string;

@@ -13,7 +13,8 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { integrationGuides } from '../db/schema.js';
 import type { IntegrationProvider } from '../integrations/index.js';
-import { type ForgeGuide, getGuide as getCodeGuide, listGuides } from './registry.js';
+import { getGuide as getCodeGuide, listGuides } from './registry.js';
+import type { ForgeGuide } from './types.js';
 
 const INTEGRATION_GUIDE_SLUG_PREFIX = 'integration-';
 
@@ -84,11 +85,8 @@ export async function resolveGuide(
  * org has authored. An org row for a provider that also has a code default
  * replaces that entry rather than appearing twice.
  */
-export async function resolveGuideIndex(
-  orgId: string | null,
-): Promise<Array<Omit<ForgeGuide, 'body'>>> {
+export async function resolveGuideIndex(orgId: string): Promise<Array<Omit<ForgeGuide, 'body'>>> {
   const code = listGuides();
-  if (!orgId) return code;
 
   const rows = await db
     .select({
@@ -137,15 +135,13 @@ interface UpsertIntegrationGuideArgs {
   summary: string;
   body: string;
   updatedBy: string | null;
-  /** Omit to auto-increment the stored version (or start at 1). */
-  version?: number;
 }
 
 export async function upsertIntegrationGuide(
   args: UpsertIntegrationGuideArgs,
 ): Promise<IntegrationGuideRow> {
   const existing = await loadOrgGuide(args.orgId, args.provider);
-  const version = args.version ?? (existing ? existing.version + 1 : 1);
+  const version = existing ? existing.version + 1 : 1;
   const now = new Date();
 
   const [row] = await db

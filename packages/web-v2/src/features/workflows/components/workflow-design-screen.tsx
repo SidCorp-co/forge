@@ -12,7 +12,7 @@ import { DesignPill } from "./workflow-parts";
 
 const centred = (node: React.ReactNode) => <div className="grid min-h-[40vh] place-items-center">{node}</div>;
 
-// cm:why the shell's top bar is the page's sticky header (the shared DetailHeader): the named back control to Workflows, the flow, the title and the design's status; its one primary act is Approve while the design waits on the viewer
+// The shell's top bar is the page's sticky header (the shared DetailHeader): the named back control to Workflows, the flow, the title and the design's status; its one primary act is Approve while the design waits on the viewer
 export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: string; slug: string; flow: string }) {
   const list = useWorkflows(projectId);
   const templates = useWorkflowTemplates(projectId);

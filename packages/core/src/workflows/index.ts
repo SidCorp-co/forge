@@ -17,5 +17,4 @@ export {
   loadRequirementContext,
   recordArtifactContext,
 } from './run-context-service.js';
-export { userNames } from './service.js';
 export { linkBuild } from './store.js';

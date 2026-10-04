@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { coreFileUrl } from "@/lib/utils/core-url";
-import { INDEX_PATH } from "../corpus";
+import { INDEX_HREF } from "../missing";
 
 /** Chrome for the public documentation. Deliberately not the workspace shell:
  *  these routes are read by people with no Forge account and by agents with no
@@ -10,7 +10,7 @@ export function GuideShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-dvh bg-app">
       <header className="border-b border-line">
         <div className="mx-auto flex max-w-6xl flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-5 sm:px-6">
-          <Link href={INDEX_PATH} className="fg-h3 font-semibold text-fg">
+          <Link href={INDEX_HREF} className="fg-h3 font-semibold text-fg">
             Forge documentation
           </Link>
           <span className="fg-caption text-subtle">

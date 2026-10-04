@@ -340,7 +340,7 @@ export function DetailPanel(p: PanelProps) {
       </>
     ) : null;
   }
-  // cm:why with nothing selected the panel is closed: the page's facts rail carries the design's summary and counts, and the canvas toolbar its walk-through
+  // With nothing selected the panel is closed: the page's facts rail carries the design's summary and counts, and the canvas toolbar its walk-through
   if (!body) return null;
   return (
     <aside className="w-[370px] flex-none overflow-y-auto border-l border-line-subtle bg-surface px-4.5 pb-7 pt-4 max-lg:w-full max-lg:border-l-0 max-lg:border-t" aria-live="polite" data-testid="workflow-panel">

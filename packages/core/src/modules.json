@@ -180,11 +180,6 @@
         "via:uploads"
       ]
     },
-    "content-language": {
-      "kind": "domain",
-      "context": "design",
-      "serves": ["REQ-13"]
-    },
     "conversations": {
       "kind": "domain",
       "context": "conversations",
@@ -232,7 +227,6 @@
         "via:development",
         "via:devices",
         "via:ecosystem",
-        "via:embeddings",
         "via:error-intake",
         "via:feedback",
         "via:git",
@@ -333,16 +327,6 @@
         "requirement-to-delivery#contract-first",
         "requirement-to-delivery#release-gate",
         "feedback-triage#breaking"
-      ]
-    },
-    "embeddings": {
-      "kind": "domain",
-      "context": "knowledge",
-      "owns": ["itemEmbeddings"],
-      "serves": [
-        "feedback-triage#vectors",
-        "feedback-triage#dedup",
-        "requirement-to-delivery#similar"
       ]
     },
     "error-intake": {
@@ -535,12 +519,15 @@
     "knowledge": {
       "kind": "domain",
       "context": "knowledge",
-      "owns": ["knowledgeEntries"],
+      "owns": ["itemEmbeddings", "knowledgeEntries"],
       "serves": [
         "REQ-13",
         "project-onboarding#mapped",
         "project-onboarding#code-map",
-        "personal-data-flow#ds-memory"
+        "personal-data-flow#ds-memory",
+        "feedback-triage#vectors",
+        "feedback-triage#dedup",
+        "requirement-to-delivery#similar"
       ]
     },
     "labels": {
@@ -561,12 +548,10 @@
         "via:auth",
         "via:automation",
         "via:comments",
-        "via:content-language",
         "via:credentials",
         "via:development",
         "via:devices",
         "via:ecosystem",
-        "via:embeddings",
         "via:feedback",
         "via:git",
         "via:integration-door",
@@ -681,7 +666,6 @@
         "via:auth",
         "via:automation",
         "via:comments",
-        "via:content-language",
         "via:credentials",
         "via:development",
         "via:devices",
@@ -997,9 +981,6 @@
     "comments": {
       "serves": ["REQ-3"]
     },
-    "content-language": {
-      "serves": ["REQ-13"]
-    },
     "contracts": {
       "serves": ["REQ-5", "REQ-11"]
     },
@@ -1061,7 +1042,7 @@
       "serves": ["REQ-11", "project-onboarding#running"]
     },
     "project-settings": {
-      "serves": ["issue-delivery#policy"]
+      "serves": ["issue-delivery#policy", "REQ-13"]
     },
     "projects": {
       "serves": ["project-onboarding#created"]

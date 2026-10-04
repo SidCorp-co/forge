@@ -33,7 +33,6 @@ import {
   entityCommentRoutes,
   registerIssueCommentRoutes,
 } from './comments/routes.js';
-import { contentLanguageRoutes } from './content-language/routes.js';
 import { patRoutes } from './credentials/pat-routes.js';
 import { developmentOverviewRoutes, needsYouRoutes } from './development/routes.js';
 import {
@@ -133,6 +132,7 @@ import {
 } from './pipeline/routes.js';
 import { preferenceRoutes } from './preferences/routes.js';
 import {
+  contentLanguageRoutes,
   environmentStateRoutes,
   jobTestingSecretsRoutes,
   projectConfigRoutes,

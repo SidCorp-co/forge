@@ -28,8 +28,9 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { addAttachment, askClarification, attachmentBytes } from './attachments.js';
 import { similarFeedbackAs } from './embeddings.js';
+import { listFeedbackAs } from './list-read.js';
 import { promoteAgentReport } from './promote.js';
-import { detailAs, type FeedbackActor, listFeedbackAs } from './read.js';
+import { detailAs, type FeedbackActor } from './read.js';
 import {
   createFeedback,
   type FeedbackOutcome,
