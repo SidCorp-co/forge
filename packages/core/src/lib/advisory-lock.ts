@@ -1,6 +1,9 @@
 import { sql } from 'drizzle-orm';
 import type pg from 'pg';
-import type { Tx } from '../db/client.js';
+import type { Db } from '../db/client.js';
+
+/** A transaction, or the pool for a caller already inside one; only `execute` is used. */
+type LockExecutor = Pick<Db, 'execute'>;
 
 /**
  * Every advisory-lock namespace and its int4 id, picked once. A lock is the two-key form
@@ -44,7 +47,7 @@ export const LOCK_NAMESPACES = {
 export type LockNamespace = keyof typeof LOCK_NAMESPACES;
 
 /** Wait for the transaction-scoped lock on `key` in `namespace`; it releases at commit or rollback. */
-export async function lockXact(tx: Tx, namespace: LockNamespace, key: string): Promise<void> {
+export async function lockXact(tx: LockExecutor, namespace: LockNamespace, key: string): Promise<void> {
   await tx.execute(
     sql`SELECT pg_advisory_xact_lock(${LOCK_NAMESPACES[namespace]}::int4, hashtext(${key}))`,
   );
@@ -52,7 +55,7 @@ export async function lockXact(tx: Tx, namespace: LockNamespace, key: string): P
 
 /** Take the transaction-scoped lock if it is free; answers whether this transaction now holds it. */
 export async function tryLockXact(
-  tx: Tx,
+  tx: LockExecutor,
   namespace: LockNamespace,
   key: string,
 ): Promise<boolean> {
