@@ -1,5 +1,13 @@
 import type { MachineEntity } from '@forge/contracts/machines';
-import { agentSessions, devices, issues, jobs, pipelineRuns, reconcileRuns, runners } from '../db/schema.js';
+import {
+  agentSessions,
+  devices,
+  issues,
+  jobs,
+  pipelineRuns,
+  reconcileRuns,
+  runners,
+} from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { mockups } from '../db/schema-mockups.js';
 import { onboardings, questionnaireBatches } from '../db/schema-onboarding.js';

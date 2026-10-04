@@ -42,22 +42,29 @@ const NO_PROMPT_SQL = sql`NOT COALESCE(
  * The CAS re-checks the missing prompt, so `false` when the row moved or gained one.
  */
 export async function settleNoPromptJob(job: { id: string; type: string }): Promise<boolean> {
-  const [settled] = (await transition(db, JOB_MACHINE, {
-    to: 'failed',
-    set: {
-      finishedAt: new Date(),
-      error: noPromptMessage(job.type),
-      failureKind: 'code',
-      failureAction: 'terminal',
-      failureReason: POOL_JOB_NO_PROMPT,
-      classifierVersion: CLASSIFIER_VERSION,
-    },
-    where: and(eq(jobs.id, job.id), eq(jobs.status, 'queued'), isNull(jobs.heldBy), NO_PROMPT_SQL),
-    reason: POOL_JOB_NO_PROMPT,
-    actor: { type: 'system' },
-    source: 'claim',
-    returning: ['id', 'type', 'payload'],
-  })).rows;
+  const [settled] = (
+    await transition(db, JOB_MACHINE, {
+      to: 'failed',
+      set: {
+        finishedAt: new Date(),
+        error: noPromptMessage(job.type),
+        failureKind: 'code',
+        failureAction: 'terminal',
+        failureReason: POOL_JOB_NO_PROMPT,
+        classifierVersion: CLASSIFIER_VERSION,
+      },
+      where: and(
+        eq(jobs.id, job.id),
+        eq(jobs.status, 'queued'),
+        isNull(jobs.heldBy),
+        NO_PROMPT_SQL,
+      ),
+      reason: POOL_JOB_NO_PROMPT,
+      actor: { type: 'system' },
+      source: 'claim',
+      returning: ['id', 'type', 'payload'],
+    })
+  ).rows;
   if (!settled) return false;
   logger.error(
     { jobId: job.id, jobType: job.type, code: POOL_JOB_NO_PROMPT },

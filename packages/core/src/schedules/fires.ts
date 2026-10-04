@@ -171,7 +171,12 @@ export async function lastFires(
  *  `failed` with the session's failure for anything else. */
 export async function settleSessionFires(
   exec: KernelExecutor,
-  args: { sessionIds: readonly string[]; sessionStatus: string; actor: KernelActor; source: string },
+  args: {
+    sessionIds: readonly string[];
+    sessionStatus: string;
+    actor: KernelActor;
+    source: string;
+  },
 ): Promise<void> {
   if (args.sessionIds.length === 0) return;
   const succeeded =

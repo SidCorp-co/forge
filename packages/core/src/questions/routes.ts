@@ -143,9 +143,18 @@ type ShownQuestion = {
 
 /** A question as the project's data policy lets this reader see it; withheld text keeps its ids. */
 async function shown<Q extends ShownQuestion>(agency: ActorAgency | undefined, q: Q) {
-  if (!agency) throw new Error('questions: a question read reached its handler without an auth gate');
-  const out = await egressAs({ agency }, q.projectId, await questionSurface(q), q, `question ${q.id}`);
-  return out.ok ? out.value : { id: q.id, status: q.status, issueId: q.issueId, withheld: out.refusal };
+  if (!agency)
+    throw new Error('questions: a question read reached its handler without an auth gate');
+  const out = await egressAs(
+    { agency },
+    q.projectId,
+    await questionSurface(q),
+    q,
+    `question ${q.id}`,
+  );
+  return out.ok
+    ? out.value
+    : { id: q.id, status: q.status, issueId: q.issueId, withheld: out.refusal };
 }
 
 function questionId(c: { req: { param: (k: string) => string } }): string {

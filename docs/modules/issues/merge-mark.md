@@ -84,7 +84,7 @@ like any other repeat.
 
 Nothing beyond the record. Recording a landing — a mark on either door, or the source host's merge
 webhook — writes the merge columns and moves no status and no hold (owner decision 2026-10-04,
-workflow `issue-lifecycle` rev 7). The run that holds the issue moves it `in_progress` →
+workflow `issue-lifecycle` rev 8). The run that holds the issue moves it `in_progress` →
 `awaiting_release` itself, an edge that asks for the recorded merge (`MERGE_NOT_RECORDED`) and the
 verdicts the project's `delivery.verdictsRequired` asks for; when the run ends without doing so, the
 kernel hands the issue back to the status the run took it from. `awaiting_release` → `closed` is

@@ -62,3 +62,8 @@ export const FAILURE_CAUSE_ORIGIN: Record<FailureCause, FailureOrigin> = {
   user_cancelled: 'user',
   unclassified: 'unknown',
 };
+
+export function isRealFailureCause(cause: FailureCause): boolean {
+  const origin = FAILURE_CAUSE_ORIGIN[cause];
+  return origin !== 'lifecycle' && origin !== 'user';
+}

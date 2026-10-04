@@ -17,7 +17,11 @@ import type {
   IssueWaitingOn,
 } from '@forge/contracts/issue-standing';
 import type { IssueStatus } from '@forge/contracts/issue-machine';
-import { type IssueStatusTone, issueStatusToneOn, type WorkStep } from '@forge/contracts/issue-vocabulary';
+import {
+  type IssueStatusTone,
+  issueStatusToneOn,
+  type WorkStep,
+} from '@forge/contracts/issue-vocabulary';
 import { landedWait } from '../pipeline/strand-rules.js';
 
 /** Settled blockers release their dependents (`dependency-effects.ts:BLOCKER_SETTLED_STATUSES`). */

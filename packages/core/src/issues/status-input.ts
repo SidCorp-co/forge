@@ -1,4 +1,4 @@
-import { isLegacyIssueStatus, issueStatusLegacyRefusal } from '@forge/contracts/issue-vocabulary';
+import { isLegacyIssueStatus, issueStatusLegacyRefusal } from '@forge/contracts/issue-machine';
 import { RefusalError } from '../lib/refusal.js';
 
 /**

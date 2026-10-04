@@ -64,19 +64,21 @@ async function fenceOrResume(jobId: string): Promise<typeof jobs.$inferSelect | 
  * Make the job unstartable, or answer that somebody else got there first.
  */
 async function fenceJob(jobId: string): Promise<typeof jobs.$inferSelect | null> {
-  const [row] = (await transition(db, JOB_MACHINE, {
-    to: 'cancelled',
-    set: { finishedAt: new Date(), error: REASON },
-    where: and(
-      eq(jobs.id, jobId),
-      eq(jobs.status, 'queued'),
-      isNull(jobs.heldBy),
-      isNull(jobs.dispatchedAt),
-    ),
-    reason: REASON,
-    actor: { type: 'system' },
-    source: 'sweeper',
-  })).rows;
+  const [row] = (
+    await transition(db, JOB_MACHINE, {
+      to: 'cancelled',
+      set: { finishedAt: new Date(), error: REASON },
+      where: and(
+        eq(jobs.id, jobId),
+        eq(jobs.status, 'queued'),
+        isNull(jobs.heldBy),
+        isNull(jobs.dispatchedAt),
+      ),
+      reason: REASON,
+      actor: { type: 'system' },
+      source: 'sweeper',
+    })
+  ).rows;
   return row ?? null;
 }
 

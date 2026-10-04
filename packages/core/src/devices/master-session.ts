@@ -145,18 +145,20 @@ export async function closeMasterSession(args: {
   sessionId: string;
   reason: string;
 }): Promise<boolean> {
-  const rows = (await transitionSessions(db, {
-    to: 'completed',
-    set: { failureDetail: args.reason, updatedAt: new Date() },
-    where: and(
-      eq(agentSessions.id, args.sessionId),
-      eq(agentSessions.deviceId, args.deviceId),
-      notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
-    ),
-    reason: 'master_session_ended',
-    actor: { type: 'system' },
-    source: 'master-session',
-  })).rows;
+  const rows = (
+    await transitionSessions(db, {
+      to: 'completed',
+      set: { failureDetail: args.reason, updatedAt: new Date() },
+      where: and(
+        eq(agentSessions.id, args.sessionId),
+        eq(agentSessions.deviceId, args.deviceId),
+        notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
+      ),
+      reason: 'master_session_ended',
+      actor: { type: 'system' },
+      source: 'master-session',
+    })
+  ).rows;
   return rows.length > 0;
 }
 

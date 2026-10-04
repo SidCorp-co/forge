@@ -35,4 +35,7 @@ export const memoryChunks = pgTable(
   }),
 );
 
-export { MEMORY_REINDEX_STATES as memoryReindexStates, type MemoryReindexState } from '@forge/contracts/status-sets';
+export {
+  MEMORY_REINDEX_STATES as memoryReindexStates,
+  type MemoryReindexState,
+} from '@forge/contracts/status-sets';

@@ -261,7 +261,12 @@ agentSessionTurnsRoutes.post(
         source: 'session-regenerate',
         afterWrite: async (tx) => {
           await truncateTurnsAfter(id, priorMessages.length - 1, tx);
-          await recordReportedTranscript(tx, id, priorMessages as Record<string, unknown>[], regenNow);
+          await recordReportedTranscript(
+            tx,
+            id,
+            priorMessages as Record<string, unknown>[],
+            regenNow,
+          );
         },
       })
     ).rows;

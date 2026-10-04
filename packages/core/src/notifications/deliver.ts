@@ -11,13 +11,7 @@ import {
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
 import { emissionAllowed, noteSuppressed } from './emission-switch.js';
-import {
-  INITIAL_STATE,
-  inhibitorsOf,
-  kindOf,
-  pendingEvaluationsFor,
-  tierOf,
-} from '@forge/contracts/record-events';
+import { INITIAL_STATE, inhibitorsOf, kindOf, pendingEvaluationsFor, tierOf } from './kinds.js';
 
 /**
  * How long one evaluation of a periodic detector is.

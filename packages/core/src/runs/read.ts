@@ -198,7 +198,9 @@ async function eventsOf(run: RunStanding): Promise<{ events: RunEvent[]; hasMore
        ORDER BY created_at, id
        LIMIT ${RUN_EVENTS_MAX + 1}`),
   );
-  const users = rows.flatMap((r) => (r.actor_type === 'user' && r.actor_id ? [String(r.actor_id)] : []));
+  const users = rows.flatMap((r) =>
+    r.actor_type === 'user' && r.actor_id ? [String(r.actor_id)] : [],
+  );
   const names = await peopleOf(users);
   const events = rows.slice(0, RUN_EVENTS_MAX).map(
     (r): RunEvent => ({

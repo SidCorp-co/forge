@@ -10,7 +10,6 @@ import type { DocumentType } from './schema.js';
 
 export { REGISTER_STATUSES, type RegisterStatus };
 
-
 export type RecipientStatus = 'awaiting' | 'answered' | 'overdue' | 'not-owed';
 
 export interface RegisterRow {

@@ -197,14 +197,16 @@ export async function closeRun(
   const resolved = await gatedOutcome(runId, outcome);
   if (resolved === null) return 'deferred';
   const { rows, cascade } = await db.transaction(async (tx) => {
-    const updated = (await transition(tx, RUN_MACHINE, {
-      to: resolved,
-      set: { finishedAt: new Date(), updatedAt: new Date() },
-      where: and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])),
-      reason: reasonForOutcome(resolved),
-      actor: { type: 'system' },
-      source: 'runs',
-    })).rows;
+    const updated = (
+      await transition(tx, RUN_MACHINE, {
+        to: resolved,
+        set: { finishedAt: new Date(), updatedAt: new Date() },
+        where: and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])),
+        reason: reasonForOutcome(resolved),
+        actor: { type: 'system' },
+        source: 'runs',
+      })
+    ).rows;
     const c =
       updated.length > 0
         ? await cascadeCancelChildJobs(tx, runId, reasonForOutcome(resolved))
@@ -250,18 +252,20 @@ export async function closeRunIfOneShot(
   outcome: 'completed' | 'failed' | 'cancelled',
 ): Promise<void> {
   const { rows, cascade } = await db.transaction(async (tx) => {
-    const updated = (await transition(tx, RUN_MACHINE, {
-      to: outcome,
-      set: { finishedAt: new Date(), updatedAt: new Date() },
-      where: and(
-        eq(pipelineRuns.id, runId),
-        inArray(pipelineRuns.kind, ['pm', 'interactive', 'system']),
-        inArray(pipelineRuns.status, ['running', 'paused']),
-      ),
-      reason: reasonForOutcome(outcome),
-      actor: { type: 'system' },
-      source: 'runs',
-    })).rows;
+    const updated = (
+      await transition(tx, RUN_MACHINE, {
+        to: outcome,
+        set: { finishedAt: new Date(), updatedAt: new Date() },
+        where: and(
+          eq(pipelineRuns.id, runId),
+          inArray(pipelineRuns.kind, ['pm', 'interactive', 'system']),
+          inArray(pipelineRuns.status, ['running', 'paused']),
+        ),
+        reason: reasonForOutcome(outcome),
+        actor: { type: 'system' },
+        source: 'runs',
+      })
+    ).rows;
     const c =
       updated.length > 0
         ? await cascadeCancelChildJobs(tx, runId, reasonForOutcome(outcome))
@@ -288,24 +292,26 @@ export async function cancelConcludedRun(runId: string): Promise<CancelConcluded
   if (!before) return { cancelled: false, was: null };
 
   const { rows, cascade } = await db.transaction(async (tx) => {
-    const updated = (await transition(tx, RUN_MACHINE, {
-      to: 'cancelled',
-      set: {
-        finishedAt: new Date(),
-        updatedAt: new Date(),
-        metadata: sql`coalesce(${pipelineRuns.metadata}, '{}'::jsonb) || ${JSON.stringify({
-          cancelledFrom: before.status,
-        })}::jsonb`,
-      },
-      where: and(
-        eq(pipelineRuns.id, runId),
-        inArray(pipelineRuns.kind, ['pm', 'interactive', 'system']),
-        inArray(pipelineRuns.status, ['completed', 'failed']),
-      ),
-      reason: reasonForOutcome('cancelled'),
-      actor: { type: 'system' },
-      source: 'runs',
-    })).rows;
+    const updated = (
+      await transition(tx, RUN_MACHINE, {
+        to: 'cancelled',
+        set: {
+          finishedAt: new Date(),
+          updatedAt: new Date(),
+          metadata: sql`coalesce(${pipelineRuns.metadata}, '{}'::jsonb) || ${JSON.stringify({
+            cancelledFrom: before.status,
+          })}::jsonb`,
+        },
+        where: and(
+          eq(pipelineRuns.id, runId),
+          inArray(pipelineRuns.kind, ['pm', 'interactive', 'system']),
+          inArray(pipelineRuns.status, ['completed', 'failed']),
+        ),
+        reason: reasonForOutcome('cancelled'),
+        actor: { type: 'system' },
+        source: 'runs',
+      })
+    ).rows;
     const c =
       updated.length > 0
         ? await cascadeCancelChildJobs(tx, runId, reasonForOutcome('cancelled'))
@@ -332,18 +338,20 @@ export async function closeOpenRunForIssue(
   const resolved = await gatedOutcome(open.id, outcome);
   if (resolved === null) return 'deferred';
   const { rows, cascades } = await db.transaction(async (tx) => {
-    const updatedRows = (await transition(tx, RUN_MACHINE, {
-      to: resolved,
-      set: { finishedAt: new Date(), updatedAt: new Date() },
-      where: and(
-        eq(pipelineRuns.kind, 'issue'),
-        eq(pipelineRuns.issueId, issueId),
-        inArray(pipelineRuns.status, ['running', 'paused']),
-      ),
-      reason: reasonForOutcome(resolved),
-      actor: { type: 'system' },
-      source: 'runs',
-    })).rows;
+    const updatedRows = (
+      await transition(tx, RUN_MACHINE, {
+        to: resolved,
+        set: { finishedAt: new Date(), updatedAt: new Date() },
+        where: and(
+          eq(pipelineRuns.kind, 'issue'),
+          eq(pipelineRuns.issueId, issueId),
+          inArray(pipelineRuns.status, ['running', 'paused']),
+        ),
+        reason: reasonForOutcome(resolved),
+        actor: { type: 'system' },
+        source: 'runs',
+      })
+    ).rows;
     const cs = await Promise.all(
       updatedRows.map(async (r) => ({
         runId: r.id,

@@ -120,7 +120,7 @@ export function heldReleaseWait(
   };
 }
 
-// cm:why a recorded landing moves no status (issue-lifecycle rev 7), so a landed row a run may take waits on
+// cm:why a recorded landing moves no status (issue-lifecycle rev 8), so a landed row a run may take waits on
 // the run that claims it and judges what landed, never on the expired claim of the run that landed
 // it. The sweep's reason and the board's standing (`issues/standing.ts`) both read it here.
 export function landedWait(

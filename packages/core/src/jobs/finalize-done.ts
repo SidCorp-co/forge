@@ -38,14 +38,16 @@ export async function hasTerminalHandoffForAttempt(job: JobRow): Promise<boolean
  * of double-finalizing.
  */
 export async function finalizeJobDone(job: JobRow, reason: string): Promise<boolean> {
-  const [updated] = (await transition(db, JOB_MACHINE, {
-    to: 'done',
-    set: { exitCode: 0, error: null, finishedAt: new Date() },
-    where: and(eq(jobs.id, job.id), eq(jobs.status, job.status)),
-    reason,
-    actor: { type: 'system' },
-    source: 'finalize-done',
-  })).rows;
+  const [updated] = (
+    await transition(db, JOB_MACHINE, {
+      to: 'done',
+      set: { exitCode: 0, error: null, finishedAt: new Date() },
+      where: and(eq(jobs.id, job.id), eq(jobs.status, job.status)),
+      reason,
+      actor: { type: 'system' },
+      source: 'finalize-done',
+    })
+  ).rows;
   if (!updated) return false; // lost the race; another writer owns the terminal state
 
   logger.warn(

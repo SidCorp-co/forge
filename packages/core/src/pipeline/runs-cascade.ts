@@ -37,21 +37,23 @@ export async function cascadeCancelChildJobs(
   // cancelled). Genuine cancel/fail closes still cancel their active children.
   const completedSuccess = reason === 'pipeline_completed';
   const jobTarget: 'done' | 'cancelled' = completedSuccess ? 'done' : 'cancelled';
-  const cancelledJobs = (await transition(tx, JOB_MACHINE, {
-    to: jobTarget,
-    set: completedSuccess
-      ? { finishedAt: now, exitCode: 0, error: null, failureKind: null, failureReason: null }
-      : {
-          finishedAt: now,
-          cancellationRequested: true,
-          failureKind: 'infra',
-          failureReason: reason,
-        },
-    where: and(eq(jobs.pipelineRunId, runId), inArray(jobs.status, [...LIVE_JOB_STATUSES])),
-    reason,
-    actor: { type: 'system' },
-    source: 'cascade',
-  })).rows;
+  const cancelledJobs = (
+    await transition(tx, JOB_MACHINE, {
+      to: jobTarget,
+      set: completedSuccess
+        ? { finishedAt: now, exitCode: 0, error: null, failureKind: null, failureReason: null }
+        : {
+            finishedAt: now,
+            cancellationRequested: true,
+            failureKind: 'infra',
+            failureReason: reason,
+          },
+      where: and(eq(jobs.pipelineRunId, runId), inArray(jobs.status, [...LIVE_JOB_STATUSES])),
+      reason,
+      actor: { type: 'system' },
+      source: 'cascade',
+    })
+  ).rows;
 
   const cancelledJobIds = cancelledJobs.map((j) => j.id);
   const abortedSessionIds = cancelledJobs

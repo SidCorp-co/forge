@@ -58,8 +58,8 @@ export interface TransitionArgs<E extends MachineEntity, K extends keyof Machine
   from?: StateOf<E> | readonly StateOf<E>[];
   /** Take the machine's recovery edge rather than its lifecycle edge. */
   recovery?: boolean;
-  /** Further columns written with the status. */
-  set?: Partial<Omit<MachineRow<E>, 'id'>>;
+  /** Further columns written with the status; an `undefined` value leaves its column as it is. */
+  set?: { [C in keyof Omit<MachineRow<E>, 'id'>]?: MachineRow<E>[C] | SQL | undefined };
   /** Columns handed back; omit for the whole row. The id is always among them. */
   returning?: readonly K[];
   reason?: string | null;
@@ -168,7 +168,10 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
   const refusals: Refusal[] = [];
   for (const row of prior) {
     const edge = edgeBetween<StateOf<E>>(machine, row.status, args.to, recovery);
-    if (!edge) throw new Error(`transition: ${machine.entity} \`${row.status}\` has no edge to \`${args.to}\``);
+    if (!edge)
+      throw new Error(
+        `transition: ${machine.entity} \`${row.status}\` has no edge to \`${args.to}\``,
+      );
     for (const name of edge.guards) {
       const guard = args.guards?.[name];
       if (!guard) {
@@ -194,7 +197,15 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
   const write = tx
     .update(table as PgTable)
     .set({ ...(args.set ?? {}), [statusKey]: args.to } as Record<string, unknown>)
-    .where(and(inArray(idColumn, prior.map((r) => r.id)), inArray(statusColumn, from as string[])));
+    .where(
+      and(
+        inArray(
+          idColumn,
+          prior.map((r) => r.id),
+        ),
+        inArray(statusColumn, from as string[]),
+      ),
+    );
   const rows = (projection ? await write.returning(projection) : await write.returning()) as Array<
     Pick<MachineRow<E>, K | 'id'> & { id: string }
   >;

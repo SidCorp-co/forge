@@ -61,14 +61,16 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
 
   if (NO_DEVICE_STATUSES.has(job.status)) {
     const updated = await db.transaction(async (tx) => {
-      const [row] = (await transition(tx, JOB_MACHINE, {
-        to: 'cancelled',
-        set: { finishedAt: new Date(), cancellationRequested: true },
-        where: and(eq(jobs.id, jobId), eq(jobs.status, previousStatus)),
-        reason: opts.reason,
-        actor: { type: 'user', id: opts.actorUserId, agency: opts.actorAgency },
-        source: 'cancel',
-      })).rows;
+      const [row] = (
+        await transition(tx, JOB_MACHINE, {
+          to: 'cancelled',
+          set: { finishedAt: new Date(), cancellationRequested: true },
+          where: and(eq(jobs.id, jobId), eq(jobs.status, previousStatus)),
+          reason: opts.reason,
+          actor: { type: 'user', id: opts.actorUserId, agency: opts.actorAgency },
+          source: 'cancel',
+        })
+      ).rows;
       if (!row) return null;
       await insertInterventionEvent(tx, { ...opts, ...auditFor(row, previousStatus) });
       return row;

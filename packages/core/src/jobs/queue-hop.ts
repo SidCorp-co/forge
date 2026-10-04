@@ -67,24 +67,26 @@ export interface QueueHopResult {
 export async function reapQueueHop(input: QueueHopInput): Promise<QueueHopResult> {
   const { now, queueCutoff, quietCutoff, projectFilter } = input;
 
-  const queuedFailed = (await transitionSessions(db, {
-    returning: SWEEP_SESSION_COLUMNS,
-    to: 'failed',
-    set: { failureReason: 'queue_timeout', updatedAt: now },
-    where: and(
-      eq(agentSessions.status, 'queued'),
-      sql`${agentSessions.lastHeartbeatAt} IS NULL`,
-      or(
-        and(isNotNull(agentSessions.dispatchedAt), lt(agentSessions.dispatchedAt, queueCutoff)),
-        and(sql`${agentSessions.dispatchedAt} IS NULL`, lt(agentSessions.createdAt, queueCutoff)),
+  const queuedFailed = (
+    await transitionSessions(db, {
+      returning: SWEEP_SESSION_COLUMNS,
+      to: 'failed',
+      set: { failureReason: 'queue_timeout', updatedAt: now },
+      where: and(
+        eq(agentSessions.status, 'queued'),
+        sql`${agentSessions.lastHeartbeatAt} IS NULL`,
+        or(
+          and(isNotNull(agentSessions.dispatchedAt), lt(agentSessions.dispatchedAt, queueCutoff)),
+          and(sql`${agentSessions.dispatchedAt} IS NULL`, lt(agentSessions.createdAt, queueCutoff)),
+        ),
+        inArray(agentSessions.kind, PIPELINE_SESSION_KINDS),
+        ...(projectFilter ? [projectFilter] : []),
       ),
-      inArray(agentSessions.kind, PIPELINE_SESSION_KINDS),
-      ...(projectFilter ? [projectFilter] : []),
-    ),
-    reason: 'queue_timeout',
-    actor: { type: 'sweeper' },
-    source: 'loop-monitor',
-  })).rows;
+      reason: 'queue_timeout',
+      actor: { type: 'sweeper' },
+      source: 'loop-monitor',
+    })
+  ).rows;
 
   for (const z of queuedFailed) {
     broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'queue_timeout');
@@ -100,21 +102,23 @@ export async function reapQueueHop(input: QueueHopInput): Promise<QueueHopResult
     });
   }
 
-  const neverReportedFailed = (await transitionSessions(db, {
-    returning: SWEEP_SESSION_COLUMNS,
-    to: 'failed',
-    set: { failureReason: 'turn_never_reported', updatedAt: now },
-    where: and(
-      eq(agentSessions.status, 'queued'),
-      isNotNull(agentSessions.lastHeartbeatAt),
-      lt(agentSessions.lastHeartbeatAt, quietCutoff),
-      inArray(agentSessions.kind, PIPELINE_SESSION_KINDS),
-      ...(projectFilter ? [projectFilter] : []),
-    ),
-    reason: 'turn_never_reported',
-    actor: { type: 'sweeper' },
-    source: 'loop-monitor',
-  })).rows;
+  const neverReportedFailed = (
+    await transitionSessions(db, {
+      returning: SWEEP_SESSION_COLUMNS,
+      to: 'failed',
+      set: { failureReason: 'turn_never_reported', updatedAt: now },
+      where: and(
+        eq(agentSessions.status, 'queued'),
+        isNotNull(agentSessions.lastHeartbeatAt),
+        lt(agentSessions.lastHeartbeatAt, quietCutoff),
+        inArray(agentSessions.kind, PIPELINE_SESSION_KINDS),
+        ...(projectFilter ? [projectFilter] : []),
+      ),
+      reason: 'turn_never_reported',
+      actor: { type: 'sweeper' },
+      source: 'loop-monitor',
+    })
+  ).rows;
 
   for (const z of neverReportedFailed) {
     broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'turn_never_reported');

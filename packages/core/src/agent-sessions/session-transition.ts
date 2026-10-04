@@ -74,7 +74,7 @@ export async function transitionSessions<K extends keyof SessionRow = keyof Sess
 }
 
 /**
- * The kernel's hand-back (workflow `issue-lifecycle` rev 7): a run that ended, whatever its outcome,
+ * The kernel's hand-back (workflow `issue-lifecycle` rev 8): a run that ended, whatever its outcome,
  * returns each issue it still has at `in_progress`, held by nothing else, to the status it took it
  * from, along the issue machine's recovery edges. A failure is logged and never thrown: the session
  * has ended either way. Answers the keys of the issues handed back.

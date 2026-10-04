@@ -4,7 +4,6 @@ import { db } from '../db/client.js';
 import { runners } from '../db/schema.js';
 import { transition } from '../lifecycle/transition.js';
 
-
 function pruneDays(): number {
   const raw = Number.parseInt(process.env.DEVICE_PRUNE_DAYS ?? '', 10);
   return Number.isFinite(raw) && raw >= 7 ? raw : 30;

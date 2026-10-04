@@ -177,14 +177,16 @@ async function resolveKillGateDecision(
   if (confirmed) set.killConfirmedAt = new Date();
   if (outcome) set.killOutcome = outcome;
 
-  const [updated] = (await transition(db, JOB_MACHINE, {
-    to: 'failed',
-    set,
-    where: cfg.where,
-    reason: cfg.error,
-    actor: { type: 'sweeper' },
-    source: 'loop-monitor',
-  })).rows;
+  const [updated] = (
+    await transition(db, JOB_MACHINE, {
+      to: 'failed',
+      set,
+      where: cfg.where,
+      reason: cfg.error,
+      actor: { type: 'sweeper' },
+      source: 'loop-monitor',
+    })
+  ).rows;
   if (!updated) return { phase: 'lost_race' };
 
   return { phase: 'reaped', updated, confirmed };
@@ -315,42 +317,44 @@ export async function reapZombieSessions(
     projectFilter,
   });
 
-  const heartbeatFailed = (await transitionSessions(db, {
-    returning: SWEEP_SESSION_COLUMNS,
-    to: 'failed',
-    set: { failureReason: 'heartbeat_timeout', updatedAt: now },
-    where: and(
-      eq(agentSessions.status, 'running'),
-      sql`${agentSessions.runtimeState} IS DISTINCT FROM 'awaiting_input'`,
-      or(
-        and(
-          isNotNull(agentSessions.lastHeartbeatAt),
-          lt(agentSessions.lastHeartbeatAt, heartbeatCutoff),
+  const heartbeatFailed = (
+    await transitionSessions(db, {
+      returning: SWEEP_SESSION_COLUMNS,
+      to: 'failed',
+      set: { failureReason: 'heartbeat_timeout', updatedAt: now },
+      where: and(
+        eq(agentSessions.status, 'running'),
+        sql`${agentSessions.runtimeState} IS DISTINCT FROM 'awaiting_input'`,
+        or(
+          and(
+            isNotNull(agentSessions.lastHeartbeatAt),
+            lt(agentSessions.lastHeartbeatAt, heartbeatCutoff),
+          ),
+          and(
+            sql`${agentSessions.lastHeartbeatAt} IS NULL`,
+            isNotNull(agentSessions.startedAt),
+            lt(agentSessions.startedAt, heartbeatCutoff),
+            lt(agentSessions.updatedAt, heartbeatCutoff),
+          ),
+          and(
+            sql`${agentSessions.lastHeartbeatAt} IS NULL`,
+            sql`${agentSessions.startedAt} IS NULL`,
+            lt(agentSessions.updatedAt, heartbeatCutoff),
+            lt(agentSessions.createdAt, heartbeatCutoff),
+          ),
         ),
-        and(
-          sql`${agentSessions.lastHeartbeatAt} IS NULL`,
-          isNotNull(agentSessions.startedAt),
-          lt(agentSessions.startedAt, heartbeatCutoff),
-          lt(agentSessions.updatedAt, heartbeatCutoff),
+        or(
+          inArray(agentSessions.kind, PIPELINE_SESSION_KINDS),
+          sql`${agentSessions.metadata} -> 'escalation' IS NOT NULL`,
+          sql`${agentSessions.metadata} -> 'agentChat' IS NOT NULL`,
         ),
-        and(
-          sql`${agentSessions.lastHeartbeatAt} IS NULL`,
-          sql`${agentSessions.startedAt} IS NULL`,
-          lt(agentSessions.updatedAt, heartbeatCutoff),
-          lt(agentSessions.createdAt, heartbeatCutoff),
-        ),
+        ...(projectFilter ? [projectFilter] : []),
       ),
-      or(
-        inArray(agentSessions.kind, PIPELINE_SESSION_KINDS),
-        sql`${agentSessions.metadata} -> 'escalation' IS NOT NULL`,
-        sql`${agentSessions.metadata} -> 'agentChat' IS NOT NULL`,
-      ),
-      ...(projectFilter ? [projectFilter] : []),
-    ),
-    reason: 'heartbeat_timeout',
-    actor: { type: 'sweeper' },
-    source: 'loop-monitor',
-  })).rows;
+      reason: 'heartbeat_timeout',
+      actor: { type: 'sweeper' },
+      source: 'loop-monitor',
+    })
+  ).rows;
 
   for (const z of heartbeatFailed) {
     broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'heartbeat_timeout');
@@ -370,34 +374,36 @@ export async function reapZombieSessions(
   // that never got a working client — claudeSessionId still NULL and the
   // heartbeat never advanced past creation. The arm is `kind IN
   // CLIENT_SESSION_KINDS`, so a species a pipeline step drives is outside it.
-  const noClientFailed = (await transitionSessions(db, {
-    returning: SWEEP_SESSION_COLUMNS,
-    to: 'failed',
-    set: { failureReason: 'no_client_ack', updatedAt: now },
-    where: and(
-      eq(agentSessions.status, 'running'),
-      sql`${agentSessions.claudeSessionId} IS NULL`,
-      inArray(agentSessions.kind, CLIENT_SESSION_KINDS),
-      or(
-        and(
-          sql`${agentSessions.metadata}->>'acked' = 'true'`,
-          sql`COALESCE(${agentSessions.dispatchedAt}, ${agentSessions.createdAt}) < ${ackFastCutoffIso}`,
+  const noClientFailed = (
+    await transitionSessions(db, {
+      returning: SWEEP_SESSION_COLUMNS,
+      to: 'failed',
+      set: { failureReason: 'no_client_ack', updatedAt: now },
+      where: and(
+        eq(agentSessions.status, 'running'),
+        sql`${agentSessions.claudeSessionId} IS NULL`,
+        inArray(agentSessions.kind, CLIENT_SESSION_KINDS),
+        or(
+          and(
+            sql`${agentSessions.metadata}->>'acked' = 'true'`,
+            sql`COALESCE(${agentSessions.dispatchedAt}, ${agentSessions.createdAt}) < ${ackFastCutoffIso}`,
+          ),
+          and(
+            isNotNull(agentSessions.lastHeartbeatAt),
+            lt(agentSessions.lastHeartbeatAt, heartbeatCutoff),
+          ),
+          and(
+            sql`${agentSessions.lastHeartbeatAt} IS NULL`,
+            lt(agentSessions.createdAt, heartbeatCutoff),
+          ),
         ),
-        and(
-          isNotNull(agentSessions.lastHeartbeatAt),
-          lt(agentSessions.lastHeartbeatAt, heartbeatCutoff),
-        ),
-        and(
-          sql`${agentSessions.lastHeartbeatAt} IS NULL`,
-          lt(agentSessions.createdAt, heartbeatCutoff),
-        ),
+        ...(projectFilter ? [projectFilter] : []),
       ),
-      ...(projectFilter ? [projectFilter] : []),
-    ),
-    reason: 'no_client_ack',
-    actor: { type: 'sweeper' },
-    source: 'loop-monitor',
-  })).rows;
+      reason: 'no_client_ack',
+      actor: { type: 'sweeper' },
+      source: 'loop-monitor',
+    })
+  ).rows;
 
   for (const z of noClientFailed) {
     broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'no_client_ack');

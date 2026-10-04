@@ -437,10 +437,7 @@ export async function triageFeedback(input: {
 }): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
   await requireCan({ userId: actor.userId }, 'project.read', projectId);
-  const forbidden = decideActRefusal(
-    await roleFacts(actor, projectId),
-    'picking a feedback route',
-  );
+  const forbidden = decideActRefusal(await roleFacts(actor, projectId), 'picking a feedback route');
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const first = await rowIn(db, projectId, input.ref);
   let written: TriageWritten = { refusals: null };
