@@ -13,16 +13,15 @@ export {
   persistConversationAttachment,
 } from './attachment-service.js';
 export { collectInboundMessage } from './collect-inbound.js';
+export { startConversationAgentTurn } from './conversation-agent.js';
+export { registerConversationAgentBridge } from './conversation-agent-bridge.js';
+export { CONVERSATION_AGENT_MARKER, readConversationAgentMeta } from './conversation-agent-meta.js';
 export {
-  CONVERSATION_AGENT_MARKER,
   conversationAgentTurnForWindow,
   conversationAgentUnavailableReason,
-  readConversationAgentMeta,
   readConversationAgentTurns,
-  startConversationAgentTurn,
   turnState,
-} from './conversation-agent.js';
-export { registerConversationAgentBridge } from './conversation-agent-bridge.js';
+} from './conversation-agent-read.js';
 export type { TxOnly } from './db-executor.js';
 export {
   CORRECTIVE_PREFIX,

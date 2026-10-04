@@ -165,7 +165,7 @@ export async function resolveQuestionDestination(
 
   if (input.origin.kind === 'channel_gate') {
     throw new Error(
-      `rocketchat.question-destination: ${input.origin.number} waits at a channel approve gate, which is decided signed in to Forge; question-delivery.ts:owedRounds never owes it to a room, so reaching here is a defect`,
+      `rocketchat.question-destination: ${input.origin.number} waits at a channel approve gate, which is decided signed in to Forge; question-ledger.ts:owedRounds never owes it to a room, so reaching here is a defect`,
     );
   }
 

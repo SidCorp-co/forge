@@ -19,14 +19,13 @@ import {
 import { db } from '../db/client.js';
 import { type agentSessions, type MemberLens, projects } from '../db/schema.js';
 import { logger } from '../observability/logger.js';
+import { markSessionFailed, TITLE_MAX } from './conversation-agent.js';
+import { scheduleAck } from './conversation-agent-ack.js';
 import {
   CONVERSATION_AGENT_MARKER,
   type ConversationAgentMeta,
-  markSessionFailed,
   readConversationAgentMeta,
-  TITLE_MAX,
-} from './conversation-agent.js';
-import { scheduleAck } from './conversation-agent-ack.js';
+} from './conversation-agent-meta.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
 
