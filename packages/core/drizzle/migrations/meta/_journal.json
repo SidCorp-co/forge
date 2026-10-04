@@ -2346,6 +2346,13 @@
       "when": 1814572800000,
       "tag": "0366_a_master_pass_is_a_row",
       "breakpoints": true
+    },
+    {
+      "idx": 367,
+      "version": "7",
+      "when": 1814659200000,
+      "tag": "0367_a_fire_is_one_row_for_every_kind",
+      "breakpoints": true
     }
   ]
 }
