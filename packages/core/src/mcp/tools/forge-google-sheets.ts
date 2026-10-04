@@ -54,6 +54,7 @@ type Input = z.infer<typeof inputSchema>;
 export const forgeGoogleSheetsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_google_sheets',
   reach: 'project',
+  route: '/api/projects',
   grant: {
     byAction: {
       list: 'projects:read',

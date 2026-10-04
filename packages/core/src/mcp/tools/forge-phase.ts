@@ -38,6 +38,7 @@ async function assertRunInProject(runId: string, projectId: string): Promise<voi
 export const forgePhaseTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_phase',
   reach: 'project',
+  route: '/api/pipeline-runs',
   grant: {
     byAction: { start: 'pipeline:write', end: 'pipeline:write', resume_point: 'pipeline:read' },
   },

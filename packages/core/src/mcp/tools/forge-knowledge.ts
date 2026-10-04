@@ -44,6 +44,7 @@ const inputSchema = z
 export const forgeKnowledgeTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_knowledge',
   reach: 'project',
+  route: '/api/knowledge',
   grant: {
     byAction: {
       list: 'knowledge:read',

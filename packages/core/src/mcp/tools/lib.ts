@@ -8,7 +8,7 @@ import {
   listVisibleProjectsWithRole,
   type VisibleProjectWithRole,
 } from '../../projects/service.js';
-import type { ToolGrant, ToolReach } from '../tool-grant.js';
+import type { ToolGrant, ToolReach, ToolRoute } from '../tool-grant.js';
 import { loadUserProjectRoleFlags } from './project-authz.js';
 import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './project-scope.js';
 
@@ -18,8 +18,8 @@ export interface McpTool {
   description: string;
   inputSchema: Record<string, unknown>;
   grant: ToolGrant;
-  /** Required on the `/mcp` transport, where `mcpTools` refuses a tool that states none. */
-  reach?: ToolReach;
+  reach: ToolReach;
+  route?: ToolRoute;
   handler: (args: Record<string, unknown>) => Promise<unknown>;
 }
 
@@ -59,6 +59,7 @@ export type McpContext = {
    * `principal.permissions` is the grant each tool's declared `grant` is read against.
    */
   grant?: readonly string[] | null;
+  fence?: readonly string[] | null;
   /** ISS-150 audit-log fields, threaded through for `writeMcpAudit`. */
   requestId?: string;
   ip?: string | null;

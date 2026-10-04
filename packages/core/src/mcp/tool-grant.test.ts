@@ -14,13 +14,15 @@ vi.mock('../config/env.js', () => ({
 vi.mock('../db/client.js', () => ({ db: {} }));
 
 const {
+  assertToolDeclaresAccess,
   assertToolDeclaresGrant,
   assertToolDeclaresReach,
-  permissionEpoch,
+  assertToolDeclaresRoute,
   toolAccountWork,
   toolEpochRefusal,
   toolGrantRefusal,
 } = await import('./tool-grant.js');
+const { patEpochRefusal } = await import('../auth/pat-permissions.js');
 const { mcpTools } = await import('./server.js');
 const { REGISTERED_TOOLS } = await import('./registered-tools.js');
 
@@ -68,10 +70,7 @@ describe('registering a tool', () => {
 
   it('holds for every tool the server registers, and the list matches what it serves', () => {
     const tools = mcpTools({ principal: { userId: 'u1' }, deprecations: new Set() } as never);
-    for (const tool of tools) {
-      expect(() => assertToolDeclaresGrant(tool)).not.toThrow();
-      expect(() => assertToolDeclaresReach(tool)).not.toThrow();
-    }
+    for (const tool of tools) expect(() => assertToolDeclaresAccess(tool)).not.toThrow();
     expect(tools.map((t) => t.name).sort()).toEqual([...REGISTERED_TOOLS].sort());
   });
 });
@@ -193,28 +192,126 @@ describe('declaring where a tool reaches', () => {
   });
 });
 
+const unrouted = ({
+  route: _route,
+  ...tool
+}: {
+  route?: unknown;
+  name: string;
+  inputSchema: Record<string, unknown>;
+  grant: 'pipeline:read';
+}) => tool;
+
+describe('declaring the route a tool is served at', () => {
+  const sessions = {
+    name: 'forge_sessions_like',
+    inputSchema: {},
+    grant: 'pipeline:read' as const,
+    route: '/api/agent-sessions' as const,
+  };
+
+  it('refuses one that names a permission and declares no route, naming it', () => {
+    expect(() => assertToolDeclaresRoute(unrouted(sessions))).toThrow(
+      /forge_sessions_like is not registered: it declares no `route`/,
+    );
+  });
+
+  it('refuses a route off the menu, and a path below a prefix', () => {
+    expect(() => assertToolDeclaresRoute({ ...sessions, route: '/api/nowhere' as never })).toThrow(
+      /route '\/api\/nowhere' is not a prefix on the menu/,
+    );
+    expect(() =>
+      assertToolDeclaresRoute({ ...sessions, route: '/api/agent-sessions/x' as never }),
+    ).toThrow(/route '\/api\/agent-sessions\/x' is not a prefix on the menu/);
+  });
+
+  it("refuses a route under another resource than the tool's grant", () => {
+    expect(() => assertToolDeclaresRoute({ ...sessions, route: '/api/projects' })).toThrow(
+      /granted 'pipeline:read', and no route it declares is under 'pipeline'/,
+    );
+  });
+
+  it('refuses two routes under one resource, and a route no grant names', () => {
+    expect(() =>
+      assertToolDeclaresRoute({ ...sessions, route: ['/api/agent-sessions', '/api/jobs'] }),
+    ).toThrow(/routes '\/api\/agent-sessions' and '\/api\/jobs' are both under 'pipeline'/);
+    expect(() =>
+      assertToolDeclaresRoute({ ...sessions, route: ['/api/agent-sessions', '/api/issues'] }),
+    ).toThrow(/route '\/api\/issues' is under 'issues', which none of its grants names/);
+  });
+
+  it('refuses a route on a tool that needs no grant', () => {
+    expect(() =>
+      assertToolDeclaresRoute({
+        name: 'h',
+        inputSchema: {},
+        grant: { none: 'public' },
+        route: '/api/issues',
+      }),
+    ).toThrow(/it needs no grant, so no `route` dates it/);
+  });
+
+  it('takes one route per resource across per-action grants', () => {
+    const issues = {
+      ...issuesTool,
+      inputSchema: withActions(['list', 'create', 'listTasks']),
+      grant: {
+        byAction: { list: 'issues:read', create: 'issues:write', listTasks: 'tasks:read' },
+      } as const,
+      route: ['/api/issues', '/api/tasks'] as const,
+    };
+    expect(() => assertToolDeclaresRoute(issues)).not.toThrow();
+    expect(() => assertToolDeclaresRoute({ ...issues, route: '/api/issues' })).toThrow(
+      /granted 'tasks:read', and no route it declares is under 'tasks'/,
+    );
+  });
+});
+
 describe('a call against the epoch its token was minted at', () => {
+  const sessions = {
+    name: 'forge_sessions_like',
+    inputSchema: {},
+    grant: 'pipeline:read' as const,
+    route: '/api/agent-sessions' as const,
+  };
+  const runs = { ...sessions, name: 'forge_runs_like', route: '/api/pipeline-runs' as const };
   const runners = {
     name: 'forge_runners_like',
     inputSchema: withActions(['list']),
     grant: { byAction: { list: 'runners:read' } } as const,
+    route: '/api/runners' as const,
   };
 
-  it('dates each grant by when its resource joined the menu', () => {
-    expect(permissionEpoch('issues:write')).toBe(1);
-    expect(permissionEpoch('runners:read')).toBe(2);
-    expect(permissionEpoch('ecosystems:read')).toBe(3);
-  });
-
-  it('refuses a tool whose grant joined after the token, by name', () => {
-    expect(toolEpochRefusal(runners, { action: 'list' }, 1)).toMatch(
-      /^FORBIDDEN: PAT_GRANT_PREDATES_ROUTE: forge_runners_like action 'list' needs 'runners:read', which joined the menu at grant epoch 2, after this token was minted \(epoch 1\)/,
+  it("dates a tool by its route, not by its grant's oldest prefix", () => {
+    expect(toolEpochRefusal(sessions, {}, 1)).toMatch(
+      /^FORBIDDEN: PAT_GRANT_PREDATES_ROUTE: forge_sessions_like is served at \/api\/agent-sessions, and \/api\/agent-sessions joined 'pipeline' at grant epoch 2, after this token was minted \(epoch 1\)/,
     );
+    expect(toolEpochRefusal(runs, {}, 1)).toBeNull();
   });
 
-  it('passes the same tool at the epoch it joined, and a grant older than the token', () => {
+  it('answers with the message REST answers for the same route', () => {
+    const rest = patEpochRefusal('/api/agent-sessions', 1);
+    expect(rest?.message).toBeTruthy();
+    expect(toolEpochRefusal(sessions, {}, 1)).toContain(rest?.message ?? '-');
+    expect(patEpochRefusal('/api/agent-sessions/abc/cost', 1)?.prefix).toBe('/api/agent-sessions');
+  });
+
+  it('refuses a per-action grant by name, and reads a missing epoch as the first', () => {
+    expect(toolEpochRefusal(runners, { action: 'list' }, 1)).toMatch(
+      /^FORBIDDEN: PAT_GRANT_PREDATES_ROUTE: forge_runners_like action 'list' is served at \/api\/runners/,
+    );
+    expect(toolEpochRefusal(sessions, {}, undefined)).toMatch(/PAT_GRANT_PREDATES_ROUTE/);
+  });
+
+  it('passes the same tool at the epoch its route joined', () => {
+    expect(toolEpochRefusal(sessions, {}, 2)).toBeNull();
     expect(toolEpochRefusal(runners, { action: 'list' }, 2)).toBeNull();
-    expect(toolEpochRefusal(issuesTool, { action: 'create' }, 1)).toBeNull();
+  });
+
+  it('refuses a permission whose resource has no declared route, never letting it through', () => {
+    expect(toolEpochRefusal(unrouted(sessions), {}, 99)).toMatch(
+      /^FORBIDDEN: forge_sessions_like needs 'pipeline:read' and declares no route under its resource/,
+    );
   });
 
   it('passes a `none` declaration and leaves an undeclared action to the grant check', () => {
@@ -222,5 +319,47 @@ describe('a call against the epoch its token was minted at', () => {
       toolEpochRefusal({ name: 'h', inputSchema: {}, grant: { none: 'public' } }, {}, 1),
     ).toBeNull();
     expect(toolEpochRefusal(runners, { action: 'purge' }, 1)).toBeNull();
+  });
+
+  it('refuses an epoch-1 token exactly the registered tools whose route joined later', () => {
+    const tools = mcpTools({ principal: { userId: 'u1' }, deprecations: new Set() } as never);
+    const refused: string[] = [];
+    for (const tool of tools) {
+      const actions = (tool.inputSchema.properties as { action?: { enum?: string[] } } | undefined)
+        ?.action?.enum ?? [undefined];
+      for (const action of actions) {
+        const args = action === undefined ? {} : { action };
+        if (toolEpochRefusal(tool, args, 1))
+          refused.push(action ? `${tool.name} ${action}` : tool.name);
+      }
+    }
+    expect(refused.sort()).toEqual(
+      [
+        'forge_agent_report get',
+        'forge_agent_report list',
+        'forge_agent_report review',
+        'forge_agent_report submit',
+        'forge_agent_sessions.get',
+        'forge_agent_sessions.list',
+        'forge_ecosystem bus',
+        'forge_feedback get',
+        'forge_feedback list',
+        'forge_feedback review',
+        'forge_feedback submit',
+        'forge_guide delete',
+        'forge_guide upsert',
+        'forge_metrics.project_retry_rescues',
+        'forge_metrics.project_step_durations',
+        'forge_metrics.session_failures',
+        'forge_orgs.list',
+        'forge_orgs.members',
+        'forge_project_pm runner_load',
+        'forge_runners list',
+        'forge_runners register',
+        'forge_runners restore',
+        'forge_runners retire',
+        'forge_runners update_capabilities',
+      ].sort(),
+    );
   });
 });

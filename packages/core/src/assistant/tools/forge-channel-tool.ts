@@ -311,6 +311,7 @@ export const forgeChannelTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_channel',
   description: DESCRIPTION,
   inputSchema: CHANNEL_INPUT_SCHEMA,
+  route: '/api/projects',
   grant: {
     byAction: Object.fromEntries(CHANNEL_ACTIONS.map((a) => [a, grantOf(a)])) as Record<
       ChannelAction,

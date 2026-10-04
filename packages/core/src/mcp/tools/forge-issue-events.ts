@@ -49,6 +49,7 @@ function framed(event: RecordEvent) {
 export const forgeIssueEventsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_issue_events',
   reach: 'project',
+  route: '/api/issues',
   grant: { byAction: { write: 'issues:write', list: 'issues:read' } },
   description:
     "Write or list an issue's typed record events — the store a `forge-record` belongs in instead of a comment (ISS-56). " +

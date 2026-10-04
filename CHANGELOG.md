@@ -15,6 +15,10 @@
   now refused by name. Full-access tokens are unchanged.
 - **Over MCP, a token limited to some projects can no longer create projects or read
   organisations**, and an older token reaches only what existed when it was made, as on the API.
+- **An older token is refused the same MCP tools it is refused on the API.** Agent sessions and the
+  step-duration, retry and session-failure reports now answer a token made before they could be
+  granted as their API routes do. Assistant chat applies the same checks, so a person's token
+  limited to projects can no longer change their reply preferences from a room.
 
 - **An agent session you start from the web acts as you, not as whoever paired the box.** Each
   turn carries a short-lived token for its sender, never wider than the box owner's. Viewers and

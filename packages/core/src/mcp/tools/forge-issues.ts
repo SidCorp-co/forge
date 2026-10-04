@@ -48,7 +48,6 @@ import {
   deleteTask as deleteTaskRow,
   findTaskById,
   listTasksForIssue,
-  type TaskListRow,
   type TaskRow,
   updateTask as updateTaskRow,
 } from '../../tasks/task-service.js';
@@ -56,6 +55,7 @@ import { proposesWorkflowOf } from '../../workflows/design-issue.js';
 import { refuseStrayArchiveFields, runArchiveAction } from './forge-issues-archive.js';
 import { forgeIssuesDescription } from './forge-issues-description.js';
 import { toMcpIssueError } from './forge-issues-errors.js';
+import { serializeTask, serializeTaskListRow } from './forge-issues-tasks.js';
 import { ISSUE_REF_CLAUSE, issueRefSchema, refsFor } from './issue-ref-input.js';
 import { issueStatusInput, WORK_STATE_FIELD } from './issue-status-input.js';
 import {
@@ -423,47 +423,6 @@ export async function serializeManifestWithAttachments(
   return { ...serializeManifest(row, prefix), attachments, labels: issueLabelsList };
 }
 
-function serializeTask(row: TaskRow): Record<string, unknown> {
-  return {
-    documentId: row.id,
-    issueId: row.issueId,
-    projectId: row.projectId,
-    title: row.title,
-    description: row.description,
-    status: row.status,
-    priority: row.priority,
-    assigneeId: row.assigneeId,
-    isAgentTask: row.isAgentTask,
-    agentStatus: row.agentStatus,
-    acceptanceCriteria: row.acceptanceCriteria,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  };
-}
-
-/**
- * Body-free projection for the `listTasks` surface — omits `description`
- * (up to 50KB each) so a list over many tasks never overflows the MCP token
- * cap. Full task body stays reachable via `action=updateTask` / `getTask`.
- * Do NOT widen this back to `serializeTask()` for the list path.
- */
-function serializeTaskListRow(row: TaskListRow): Record<string, unknown> {
-  return {
-    documentId: row.id,
-    issueId: row.issueId,
-    projectId: row.projectId,
-    title: row.title,
-    status: row.status,
-    priority: row.priority,
-    assigneeId: row.assigneeId,
-    isAgentTask: row.isAgentTask,
-    agentStatus: row.agentStatus,
-    acceptanceCriteria: row.acceptanceCriteria,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  };
-}
-
 async function loadIssueProjectId(issueId: string): Promise<string> {
   const projectId = await findIssueProjectId(issueId);
   if (!projectId) throw new Error('NOT_FOUND: issue not found');
@@ -494,6 +453,7 @@ function parseDate(value: string, field: string): Date {
 export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_issues',
   reach: 'project',
+  route: ['/api/issues', '/api/tasks'],
   grant: {
     byAction: {
       list: 'issues:read',

@@ -62,6 +62,7 @@ export const forgeGuideTool: ContextScopedMcpToolFactory = (ctx) => ({
       },
     },
   },
+  route: '/api/orgs',
   grant: {
     byAction: {
       list: { none: 'the guide corpus GET /api/guides serves to anyone' },
