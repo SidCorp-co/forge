@@ -30,7 +30,7 @@ import {
   resolveLatestIssueRunId,
   tryDispatchCoolifyRelease,
 } from './release-coolify.js';
-import { isOpenReleaseBatchRun } from './service.js';
+import { isOpenReleaseBatchRun } from './queries.js';
 
 /** A Coolify rule refused by name, in the one refusal envelope. */
 export const refuseCoolify = refuser<CoolifyRefusalCode>('COOLIFY_REFUSED');

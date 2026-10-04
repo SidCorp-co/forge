@@ -38,7 +38,7 @@ import {
   reasonOf,
   refuseRelease,
 } from './refuse.js';
-import { assertFinishable, finishReleaseBatch, readReleaseRun } from './service.js';
+import { assertFinishable, finishReleaseBatch, readReleaseRun } from './finish.js';
 import { claimedCommit, NOTHING_TO_COMPARE, notAWholeCommit } from './verify.js';
 
 /** How long a worker's claim on an attempt stands without a renewal. */
