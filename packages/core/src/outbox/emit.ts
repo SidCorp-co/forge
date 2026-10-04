@@ -13,7 +13,7 @@ function idOf(payload: object, key: 'issueId' | 'projectId'): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-export type OutboxEvent = {
+type OutboxEvent = {
   [T in OutboxEventType]: { type: T; payload: OutboxEventPayload<T> };
 }[OutboxEventType];
 

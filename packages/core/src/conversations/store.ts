@@ -333,18 +333,6 @@ export async function assistantSentExternalIds(
     );
   return new Set(rows.flatMap((r) => (r.externalId ? [r.externalId] : [])));
 }
-
-/**
- * Has this conversation already been shown the reply for this delivery key?
- */
-export async function deliveredUnderKey(
-  conversationId: string,
-  deliveryKey: string,
-  tx: Executor = defaultDb,
-): Promise<boolean> {
-  return (await deliveredDecisionUnderKey(conversationId, deliveryKey, tx)) !== null;
-}
-
 /**
  * What was already delivered under this key, in the words of the decision that sent it.
  */
@@ -369,18 +357,6 @@ export async function deliveredDecisionUnderKey(
     ? (proof.decision as ConversationWindowDecision)
     : 'answered';
 }
-
-export async function countMessages(
-  conversationId: string,
-  tx: Executor = defaultDb,
-): Promise<number> {
-  const [row] = await tx
-    .select({ n: sql<number>`count(*)::int` })
-    .from(conversationMessages)
-    .where(eq(conversationMessages.conversationId, conversationId));
-  return row?.n ?? 0;
-}
-
 /**
  * The conversations one project's handle speaks in, newest first.
  *
@@ -407,7 +383,7 @@ function toStored(row: typeof conversationMessages.$inferSelect): StoredConversa
   };
 }
 
-export function asImages(value: unknown): ConversationImage[] {
+function asImages(value: unknown): ConversationImage[] {
   if (!Array.isArray(value)) return [];
   const out: ConversationImage[] = [];
   for (const i of value) {

@@ -73,7 +73,7 @@ async function readFileAt(
  * The GitHub host over one binding's repository client, with the agent client built only when an
  * agent verb asks — a kernel read never needs it.
  */
-export function githubSourceHostOf(
+function githubSourceHostOf(
   client: GitHubRepoClient,
   agent: () => GitHubAgentClient,
   host = 'github.com',

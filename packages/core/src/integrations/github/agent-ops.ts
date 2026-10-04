@@ -11,7 +11,7 @@ import type { GitHubAgentClient } from './agent-client.js';
 import { GitHubAgentCallError } from './agent-client.js';
 
 /** A diff over this is sliced from the top, and the whole length is reported beside the slice. */
-export const DIFF_CAP_BYTES = 256 * 1024;
+const DIFF_CAP_BYTES = 256 * 1024;
 
 /** A job log is read up to this FROM ITS END, then tailed to the lines asked for. */
 const LOG_CAP_BYTES = 2 * 1024 * 1024;
@@ -61,14 +61,14 @@ interface CheckRunBody {
  * for an Actions job today, and a tool that relies on that is relying on an identity GitHub has
  * never documented; `details_url` is `…/actions/runs/<runId>/job/<jobId>` and says which job it is.
  */
-export function actionsJobId(detailsUrl: string | null | undefined): number | null {
+function actionsJobId(detailsUrl: string | null | undefined): number | null {
   const hit = /\/actions\/runs\/\d+\/job\/(\d+)/.exec(detailsUrl ?? '');
   const id = hit?.[1];
   return id ? Number(id) : null;
 }
 
 /** The last `lines` lines of `text`, and whether anything was dropped. */
-export function tailLines(text: string, lines: number): { text: string; truncated: boolean } {
+function tailLines(text: string, lines: number): { text: string; truncated: boolean } {
   const all = text.split('\n');
   if (all.length <= lines) return { text, truncated: false };
   return { text: all.slice(all.length - lines).join('\n'), truncated: true };

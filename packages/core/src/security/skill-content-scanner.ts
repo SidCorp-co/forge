@@ -7,7 +7,7 @@ interface SecretRule {
   prefixLen: number;
 }
 
-export const SECRET_RULES: SecretRule[] = [
+const SECRET_RULES: SecretRule[] = [
   { rule: 'secret.anthropic-key', pattern: /sk-ant-[A-Za-z0-9_-]{20,}/g, prefixLen: 7 },
   { rule: 'secret.epodsystem-key', pattern: /crmk_[A-Za-z0-9]{20,}/g, prefixLen: 5 },
   { rule: 'secret.autoflow-token', pattern: /\b(?:sat|srt)_[A-Za-z0-9_-]{40,}/g, prefixLen: 4 },
@@ -21,7 +21,7 @@ export const SECRET_RULES: SecretRule[] = [
   },
 ];
 
-export const INJECTION_MARKERS: Array<{ rule: string; marker: string }> = [
+const INJECTION_MARKERS: Array<{ rule: string; marker: string }> = [
   { rule: 'injection.command-name-tag', marker: '<command-name>' },
   { rule: 'injection.command-args-tag', marker: '<command-args>' },
   { rule: 'injection.system-reminder-tag', marker: '<system-reminder>' },
@@ -99,7 +99,7 @@ function scanField(text: string, field: string): Finding[] {
   return findings;
 }
 
-export interface ScanSkillContentInput {
+interface ScanSkillContentInput {
   name?: string;
   description?: string;
   skillMd: string;

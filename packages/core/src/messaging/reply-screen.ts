@@ -5,7 +5,7 @@ import type { ProgressFacts } from './facts.js';
 import { gatherFacts } from './gather.js';
 import { screenMessage } from './screen.js';
 
-export interface ReplyScreenInput {
+interface ReplyScreenInput {
   readonly projectId: string;
   /** The message as its reader will see it; more than one where it renders as parts. */
   readonly segments: readonly string[];

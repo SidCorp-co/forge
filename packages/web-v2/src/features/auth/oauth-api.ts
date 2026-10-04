@@ -1,6 +1,6 @@
 import { apiClient } from '@/lib/api/client';
 
-export type OAuthProviderId = 'github' | 'google' | 'oidc';
+type OAuthProviderId = 'github' | 'google' | 'oidc';
 
 export interface OAuthProviderPublic {
   id: OAuthProviderId;

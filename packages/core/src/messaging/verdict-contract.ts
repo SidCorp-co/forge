@@ -38,7 +38,7 @@ const EXAMPLE = [
 const VERSIONS_LISTED = 10;
 
 /** What the issue's project holds for a named contract: its slug, and the versions it recorded. */
-export interface ContractHolding {
+interface ContractHolding {
   readonly projectSlug: string;
   /** Newest first, at most `VERSIONS_LISTED` beyond the one named. */
   readonly versions: readonly string[];
@@ -84,7 +84,7 @@ function refusal(why: string, quote: string): MessageRefusal {
 }
 
 /** The refusal one block earns for the contract version it names, or null where it was recorded here. */
-export function contractRefusal(
+function contractRefusal(
   block: CriterionBlock,
   named: ContractIdentity,
   held: ContractHolding,

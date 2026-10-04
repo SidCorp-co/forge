@@ -19,7 +19,7 @@ export interface RuntimeProbeTarget {
  * One probe's answer, kept as the shape it had: `unreachable` and `http-error` are a failure to
  * answer; `no-value`, `unparseable` and `oversized` are an answer that names nothing.
  */
-export type ProbeReading =
+type ProbeReading =
   | { kind: 'value'; value: string }
   | { kind: 'no-value' }
   | { kind: 'unparseable' }
@@ -28,7 +28,7 @@ export type ProbeReading =
   | { kind: 'unreachable'; detail: string };
 
 export const PROBE_TIMEOUT_MS = 5_000;
-export const PROBE_VALUE_MAX = 200;
+const PROBE_VALUE_MAX = 200;
 
 /** Whether this reading says the application answered at all. */
 export function probeAnswered(r: ProbeReading): boolean {

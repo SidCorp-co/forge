@@ -17,7 +17,7 @@ import { BodyInvalidError } from './errors.js';
 import type { BodyNode } from './parse.js';
 import { DROPPED_ELEMENTS, PLAIN_TAGS, plainAttrAllowed, urlAllowed } from './plain-tags.js';
 
-export interface ValidatedBody {
+interface ValidatedBody {
   nodes: BodyNode[];
   warnings: string[];
 }

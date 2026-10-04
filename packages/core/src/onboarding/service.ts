@@ -17,32 +17,38 @@ import type {
 } from '@forge/contracts/onboarding';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import type { TxOnly } from '../conversations/db-executor.js';
-import { settleShape } from '../conversations/membership.js';
-import { addPerson } from '../conversations/participants.js';
-import { appendMessagesIn, openConversationIn } from '../conversations/store.js';
+import type { TxOnly } from '../conversations/index.js';
+import {
+  addPerson,
+  appendMessagesIn,
+  openConversationIn,
+  settleShape,
+} from '../conversations/index.js';
 import { db } from '../db/client.js';
 import { jobs, projects } from '../db/schema.js';
 import { conversationParticipants } from '../db/schema-conversations.js';
 import { onboardings } from '../db/schema-onboarding.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
-import { finalizeJobDone } from '../jobs/finalize-done.js';
+import { finalizeJobDone } from '../jobs/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import type { EgressReader } from '../lib/data-egress.js';
 import { peopleOf } from '../lib/people.js';
 import type { Refusal } from '../lib/refusal.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
-import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
-import { openOneShotRun } from '../pipeline/runs.js';
+import { insertAndEnqueueJob, openOneShotRun } from '../pipeline/index.js';
 import { readDeclaredSource } from '../project-config/index.js';
 import {
+  announce,
   type BatchRow,
   batchesOfConversation,
   batchView,
+  inTx,
+  posterRefusal,
+  postQuestionnaireIn,
   questionnairesAs,
-} from '../questionnaires/read.js';
-import { posterRefusal, roundsRefusal } from '../questionnaires/rules.js';
-import { announce, inTx, postQuestionnaireIn, supersedeOpenIn } from '../questionnaires/service.js';
+  roundsRefusal,
+  supersedeOpenIn,
+} from '../questionnaires/index.js';
 import { analysePrompt, type OnboardingPromptContext, revisePrompt } from './prompt.js';
 import {
   designsOf,

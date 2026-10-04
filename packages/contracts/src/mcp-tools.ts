@@ -11,7 +11,6 @@ export const MCP_TOOL_NAMES = [
 	"forge_source",
 	"forge_coolify_deploy",
 	"forge_sentry",
-	"forge_google_sheets",
 	"forge_storefront_target",
 ] as const;
 

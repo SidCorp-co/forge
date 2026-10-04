@@ -8,7 +8,7 @@ import { operatorApi } from "./api";
 import type { OperatorWhoami, OperatorWindow, OperatorWorkspaceSort } from "./types";
 
 /** Weeks of signup history the adoption curve draws. */
-export const ADOPTION_WEEKS = 12;
+const ADOPTION_WEEKS = 12;
 
 const opsKey = (...rest: (string | number)[]) => ["admin", "ops", ...rest] as const;
 

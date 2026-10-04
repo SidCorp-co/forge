@@ -37,7 +37,7 @@ export class GitHubAgentCallError extends SourceHostCallError {
 }
 
 /** What `list` answers, and what a refusal is built from. Holds no credential. */
-export interface GitHubAgentBindingReport {
+interface GitHubAgentBindingReport {
   bindingId: string;
   /** `owner/repo` as the binding spells it, or null where it names neither. */
   repository: string | null;

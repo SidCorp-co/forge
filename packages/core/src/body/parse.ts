@@ -17,7 +17,7 @@
 import { BodyInvalidError } from './errors.js';
 import { VOID_TAGS } from './plain-tags.js';
 
-export type BodyAttrs = Record<string, string>;
+type BodyAttrs = Record<string, string>;
 
 export type BodyNode =
   | { type: 'text'; value: string; raw?: boolean }
@@ -32,7 +32,7 @@ export type BodyNode =
  * at the opening tag — rather than in a pre-pass with placeholders — is the
  * same guarantee with no placeholder that author text could collide with.
  */
-export const RAW_TEXT_ELEMENTS = new Set(['forge-diagram']);
+const RAW_TEXT_ELEMENTS = new Set(['forge-diagram']);
 
 const NAME_START = /[A-Za-z]/;
 const NAME_CHAR = /[A-Za-z0-9-]/;
@@ -47,7 +47,7 @@ const NAMED_ENTITIES: Record<string, string> = {
   nbsp: ' ',
 };
 
-export function decodeEntities(input: string): string {
+function decodeEntities(input: string): string {
   return input.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (whole, body: string) => {
     if (body.startsWith('#')) {
       const code =

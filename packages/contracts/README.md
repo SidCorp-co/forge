@@ -46,7 +46,6 @@ const isJobType = (t: string) => (REGISTRY_JOB_TYPES as readonly string[]).inclu
 | [`src/pipeline-registry.ts`](./src/pipeline-registry.ts) | Pipeline-registry enum tuples (job types, priorities, complexities, run kinds) |
 | [`src/workflow-templates.ts`](./src/workflow-templates.ts) | workflow-template-v1: the diagram-template meta-schema, the built-in registry (`BUILTIN_WORKFLOW_TEMPLATES`) and project-template resolution — runtime, read by core to check designs and by the web to draw them |
 | [`src/issues.ts`](./src/issues.ts) | Release-notes types (`ReleaseNotes`, `ReleaseNotesSection`) re-exported from `src/release-notes.ts` |
-| [`src/ssh-keys.ts`](./src/ssh-keys.ts) | Org Private Keys pool + per-project git-credential types |
 | [`src/index.ts`](./src/index.ts) | Aggregated barrel |
 
 ## Why "type-only"

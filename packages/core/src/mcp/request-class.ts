@@ -38,7 +38,7 @@ const READ_ACTIONS: ReadonlySet<string> = new Set([
 const READ_ONLY_TOOLS: ReadonlySet<string> = new Set(['forge_storefront_target']);
 
 /** The class of one JSON-RPC envelope, whatever shape it turned out to be. */
-export function classifyMcpEnvelope(envelope: unknown): PatRequestClass {
+function classifyMcpEnvelope(envelope: unknown): PatRequestClass {
   if (!envelope || typeof envelope !== 'object') return 'write';
   if (Array.isArray(envelope)) {
     if (envelope.length === 0) return 'write';

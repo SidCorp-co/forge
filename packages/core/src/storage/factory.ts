@@ -9,8 +9,3 @@ export function getStorage(): StorageAdapter {
   cached = new LocalFsStorage(env.UPLOADS_DIR);
   return cached;
 }
-
-/** Test-only: drop the cached adapter so a fresh env can take effect. */
-export function resetStorageForTests(): void {
-  cached = null;
-}

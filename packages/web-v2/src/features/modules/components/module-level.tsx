@@ -23,7 +23,8 @@ import {
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 import { MODULES_LIST, moduleHref } from "../routes";
-import type { ModuleRollupResponse, ModuleRollupRow } from "../types";
+import { useCodeTrace } from "../hooks";
+import type { CodeTraceResponse, ModuleRollupResponse, ModuleRollupRow } from "../types";
 import { moduleWaitingView, OpenBar } from "./module-bits";
 import { ModuleMap } from "./module-map";
 import { ModulePeek } from "./module-peek";
@@ -32,15 +33,36 @@ const COLUMNS = { key: "Module", title: "Name", state: "Open issues", meta: "Las
 
 const keyOf = (r: ModuleRollupRow) => r.slug ?? r.id;
 
-function factsOf(r: ModuleRollupRow): string[] {
+type Trace = Map<string, string[]>;
+
+/** The core modules of the build's trace, by name; a module label named after one shows its trace. */
+export function traceByModule(data: CodeTraceResponse | undefined): Trace | null {
+  return data ? new Map(data.units.filter((u) => u.scope === "core").map((u) => [u.unit, u.serves])) : null;
+}
+
+const refLabel = (ref: string) => (ref.startsWith("via:") ? `through ${ref.slice(4)}` : ref);
+
+function traceFact(r: ModuleRollupRow, trace: Trace | null, all: ModuleRollupRow[]): string | null {
+  if (!trace) return null;
+  const own = trace.get(r.name);
+  if (own) return own.length ? `Serves ${own.map(refLabel).join(", ")}` : "Untraced: serves no requirement or workflow step";
+  const traced = all.filter((c) => c.parentId === r.id && trace.has(c.name));
+  if (traced.length === 0) return null;
+  const untraced = traced.filter((c) => trace.get(c.name)?.length === 0).length;
+  return untraced ? `${untraced} of ${traced.length} code modules untraced` : `All ${traced.length} code modules traced`;
+}
+
+function factsOf(r: ModuleRollupRow, trace: Trace | null, all: ModuleRollupRow[]): string[] {
   const s = r.standing;
   const parts = [`Open ${s.open}`, s.childCount ? `${s.childCount} child modules` : "No child modules", `Requirements ${s.requirements.length}`];
+  const traced = traceFact(r, trace, all);
+  if (traced) parts.push(traced);
   if (r.description) parts.push(r.description);
   return parts;
 }
 
 const rowOf =
-  (slug: string, max: number) =>
+  (slug: string, max: number, trace: Trace | null, all: ModuleRollupRow[]) =>
   (r: ModuleRollupRow): ListRowView => {
     const land = r.standing.lastLanding;
     return {
@@ -48,7 +70,7 @@ const rowOf =
       keyLabel: <span className="whitespace-normal break-all">{r.slug ?? r.id}</span>,
       href: moduleHref(slug, keyOf(r)),
       title: r.name,
-      facts: factsOf(r),
+      facts: factsOf(r, trace, all),
       state: <OpenBar standing={r.standing} max={max} />,
       waitingOn: <WaitingOn w={moduleWaitingView(r.standing)} />,
       owner: land ? <span className="font-mono text-11-5">{land.issueKey}</span> : <span className="text-subtle">None yet</span>,
@@ -93,7 +115,9 @@ export function ModuleLevel({
   const fold = useGroupFold("web-v2:modules-fold");
   const keys = useMemo(() => rows.map(keyOf), [rows]);
   const peek = usePeek(keys);
-  const row = useMemo(() => rowOf(slug, max), [slug, max]);
+  const traceQ = useCodeTrace();
+  const trace = useMemo(() => traceByModule(traceQ.data), [traceQ.data]);
+  const row = useMemo(() => rowOf(slug, max, trace, data.modules), [slug, max, trace, data.modules]);
 
   const open = useCallback(
     (key: string) => {

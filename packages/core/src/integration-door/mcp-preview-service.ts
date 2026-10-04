@@ -17,7 +17,7 @@ import { refuser } from '../lib/refusal.js';
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 
-export type McpServerPreviewReason =
+type McpServerPreviewReason =
   | 'ok'
   | 'not_configured'
   | 'disabled'
@@ -27,7 +27,7 @@ export type McpServerPreviewReason =
   | 'not_resolved';
 
 /** One MCP server entry in the preview (mirrors contracts type). */
-export interface McpServerPreviewEntry {
+interface McpServerPreviewEntry {
   provider: IntegrationProvider;
   serverName: string;
   /** Binding id backing this entry — null for the synthetic not_configured one. */
@@ -43,7 +43,7 @@ export interface McpServerPreviewEntry {
   lastHealthAt: string | null;
 }
 
-export interface McpPreview {
+interface McpPreview {
   servers: McpServerPreviewEntry[];
 }
 

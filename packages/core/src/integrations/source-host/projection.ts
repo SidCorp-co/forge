@@ -96,7 +96,7 @@ export function stateOf(pr: NonNullable<PullRequestPayload['pull_request']>) {
  * `creation` is the answer to `POST /pulls` — the FIRST state that pull request ever had, which is
  * why it has an ordering rule of its own rather than the same one.
  */
-export type PullRequestWriteMode = 'delivery' | 'creation';
+type PullRequestWriteMode = 'delivery' | 'creation';
 
 /**
  * Store what a `pull_request` delivery said.
@@ -365,7 +365,7 @@ export async function markPullRequestMerged(
 
 export const BASE_PUSH_REFRESH_CAP = 25;
 
-export const CAP_REACHED_REASON = `not refreshed: this base push moved more than ${BASE_PUSH_REFRESH_CAP} open pull requests, and this one is past the cap — its behind-by is from before the push`;
+const CAP_REACHED_REASON = `not refreshed: this base push moved more than ${BASE_PUSH_REFRESH_CAP} open pull requests, and this one is past the cap — its behind-by is from before the push`;
 
 /** What a re-read of one stored change request answered, or why it could not. */
 export type RefreshOutcome =

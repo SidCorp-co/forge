@@ -12,7 +12,7 @@ import { fetchUserProfile, type RocketChatRestAuth } from './rest-client.js';
 /**
  * The direct room, or why there is none, in the words the operator is shown.
  */
-export type DirectRoomResult = { ok: true; rid: string } | { ok: false; reason: string };
+type DirectRoomResult = { ok: true; rid: string } | { ok: false; reason: string };
 
 const IM_CREATE_TIMEOUT_MS = 10_000;
 

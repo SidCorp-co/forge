@@ -11,22 +11,22 @@ import type { MessageRefusal } from './contract.js';
 import type { ForgeRecord } from './forge-record.js';
 
 /** The field a criterion block names the runtime it held in, and the one it names its source in. */
-export const RUNTIME_FIELD = 'runtime';
-export const SOURCE_FIELD = 'commit';
+const RUNTIME_FIELD = 'runtime';
+const SOURCE_FIELD = 'commit';
 /** The field a criterion block names the stored workflow design revision it was judged against:
  *  the identity of work that lands as a design rather than as commits (an issue outside git). */
 export const DESIGN_FIELD = 'design';
 /** `contract: <project slug>/<contract slug>@<version>`, a version the issue's project recorded. */
 export const CONTRACT_FIELD = 'contract';
 
-export const ENVIRONMENT_FIELD = 'environment';
+const ENVIRONMENT_FIELD = 'environment';
 
 /** The field a criterion block cites what its verdict was taken from in. */
 export const EVIDENCE_FIELD = 'evidence';
 
 /** Seven is the shortest abbreviation git mints; forty is a whole object id. */
-export const SHORTEST_ABBREVIATION = 7;
-export const SHORTEST_WHOLE_IDENTITY = 40;
+const SHORTEST_ABBREVIATION = 7;
+const SHORTEST_WHOLE_IDENTITY = 40;
 
 const HEXADECIMAL = /^[0-9a-f]+$/iu;
 
@@ -37,7 +37,7 @@ const SHAPE =
 
 const STOREFRONT_DRAFT_RUNTIME = /^(\S+)@draft:(\S+)$/u;
 
-export interface StorefrontDraftRuntime {
+interface StorefrontDraftRuntime {
   readonly workflowId: string;
   readonly draftVersion: string;
 }
@@ -98,13 +98,13 @@ const EXAMPLE = [
 ].join('\n');
 
 /** Whether a value is written as an identity at all. Every door asks this one question. */
-export function recognisableIdentity(value: string | null | undefined): boolean {
+function recognisableIdentity(value: string | null | undefined): boolean {
   const trimmed = String(value ?? '').trim();
   return trimmed.length >= SHORTEST_ABBREVIATION && HEXADECIMAL.test(trimmed);
 }
 
 /** Whether a value is a whole object id rather than an abbreviation of one. */
-export function wholeIdentity(value: string | null | undefined): boolean {
+function wholeIdentity(value: string | null | undefined): boolean {
   const trimmed = String(value ?? '').trim();
   return trimmed.length >= SHORTEST_WHOLE_IDENTITY && HEXADECIMAL.test(trimmed);
 }

@@ -10,7 +10,7 @@ export type AuditResultCode =
   | 'revoked'
   | 'rate_limited';
 
-export interface AuditRow {
+interface AuditRow {
   userId: string | null;
   tokenId: string | null;
   deviceId: string | null;

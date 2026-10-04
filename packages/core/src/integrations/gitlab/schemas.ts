@@ -2,8 +2,7 @@ import { z } from 'zod';
 import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../index.js';
 
 /** `group/sub/project`: at least two segments, GitLab's own path characters. */
-export const GITLAB_PROJECT_PATH =
-  /^[A-Za-z0-9_.][A-Za-z0-9_.-]*(\/[A-Za-z0-9_.][A-Za-z0-9_.-]*)+$/;
+const GITLAB_PROJECT_PATH = /^[A-Za-z0-9_.][A-Za-z0-9_.-]*(\/[A-Za-z0-9_.][A-Za-z0-9_.-]*)+$/;
 
 export const gitlabConfigBase = z.object({
   baseUrl: z.string().url().max(500).optional(),

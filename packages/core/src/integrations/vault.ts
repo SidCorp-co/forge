@@ -17,7 +17,9 @@ function decodeKey(raw: string): Buffer {
   if (/^[0-9a-fA-F]{64}$/.test(raw)) {
     const buf = Buffer.from(raw, 'hex');
     if (buf.length !== KEY_LEN) {
-      throw new Error('the integration master key (env INTEGRATION_MASTER_KEY) in hex must decode to 32 bytes');
+      throw new Error(
+        'the integration master key (env INTEGRATION_MASTER_KEY) in hex must decode to 32 bytes',
+      );
     }
     return buf;
   }
@@ -127,5 +129,3 @@ export async function assertVaultBootSafety(): Promise<void> {
     'vault: INTEGRATION_MASTER_KEY not set; encryption disabled until first active integration is created',
   );
 }
-
-export const __testing = { decodeKey };

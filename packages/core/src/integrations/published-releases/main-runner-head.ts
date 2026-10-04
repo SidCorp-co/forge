@@ -16,10 +16,6 @@ export function mainRunnerHead(): string | null {
   return cached;
 }
 
-export function setMainRunnerHead(sha: string | null): void {
-  cached = sha;
-}
-
 /**
  * Answers null rather than throwing, and the cache keeps what it last knew: one bad
  * response is not evidence that the branch moved.

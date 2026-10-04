@@ -8,7 +8,7 @@ import type { Route } from './room-routing.js';
 import type { RoomShape } from './room-shape.js';
 import type { ThreadSubject } from './thread-registry.js';
 
-export interface RoomHandlers {
+interface RoomHandlers {
   /** A reply in a thread Forge opened, for the question that owns it. Never throws. */
   threadReply(input: {
     subject: ThreadSubject;

@@ -28,6 +28,7 @@ import {
   verifyRoutes,
 } from './auth/routes.js';
 import { automationRoutes } from './automation/routes.js';
+import { codeTraceRoutes } from './code-trace.js';
 import {
   commentRoutes,
   entityCommentRoutes,
@@ -109,7 +110,7 @@ import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
 import { labelProjectRoutes, labelRoutes, moduleDiagramRoutes } from './labels/routes.js';
 import { deviceMasterRoutes, masterStandingRoutes } from './masters/routes.js';
 import { mcpHandler, mcpRequestClass } from './mcp/index.js';
-import { meAttentionRoutes, mePulseRoutes, meRecentChangesRoutes } from './me/routes.js';
+import { meAttentionRoutes, mePulseRoutes } from './me/routes.js';
 import {
   memoryListRoutes,
   memoryMineRoutes,
@@ -123,7 +124,7 @@ import { requirePat } from './middleware/require-pat.js';
 import { mockupRoutes } from './mockups/routes.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { onboardingRoutes } from './onboarding/routes.js';
-import { orgInvitationRoutes, orgRoutes, sshKeyRoutes } from './orgs/routes.js';
+import { orgInvitationRoutes, orgRoutes } from './orgs/routes.js';
 import { outboxAdminRoutes, outboxRoutes } from './outbox/routes.js';
 import { patRoutes } from './pat/routes.js';
 import {
@@ -145,8 +146,6 @@ import {
   projectConfigSchemaRoutes,
 } from './project-config/routes.js';
 import {
-  collaboratorsMeRoutes,
-  gitCredentialRoutes,
   invitationRoutes,
   masterCharterRoutes,
   memberRoutes,
@@ -192,7 +191,7 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   mountRemainingRoutes(app);
 }
 
-/** The unauthenticated surfaces: health, the MCP endpoint, install, guides and the root. */
+/** The unauthenticated surfaces: health, the MCP endpoint, install, guides, the build's trace and the root. */
 function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
   for (const at of ['/', '/api']) app.route(at, publicHealthRoutes);
 
@@ -202,6 +201,7 @@ function mountPublicDoors(app: Hono<{ Variables: RequestIdVars }>): void {
 
   for (const at of ['/', '/api']) app.route(at, installRoutes);
   for (const at of ['/', '/api']) app.route(at, guideRoutes);
+  app.route('/api', codeTraceRoutes);
 
   app.route('/', rootRoutes);
 }
@@ -220,9 +220,7 @@ function mountAccountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/auth', oauthRoutes);
   app.route('/api/projects', projectHealthRoutes);
   app.route('/api/projects', opsHealthProjectRoutes);
-  app.route('/api/me', collaboratorsMeRoutes);
   app.route('/api/projects', projectMetricsRoutes);
-  app.route('/api/projects', gitCredentialRoutes);
   app.route('/api/projects', runLedgerRoutes);
   app.route('/api/projects', masterCharterRoutes);
 }
@@ -270,7 +268,6 @@ function mountProjectAndOrgRoutes(app: Hono<{ Variables: RequestIdVars }>): void
   // No auth of their own: they answer under orgRoutes' gate, mounted just above on the same prefix.
   app.route('/api/orgs', deviceOrgRoutes);
   app.route('/api/orgs', orgMemberPreferenceRoutes);
-  app.route('/api/orgs', sshKeyRoutes);
   app.route('/api/org-invitations', orgInvitationRoutes);
   app.route('/api/projects', integrationsRoutes);
   app.route('/api/projects', githubConnectRoutes);
@@ -343,7 +340,6 @@ function mountAgentRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/questions', questionRoutes);
   app.route('/api', speakerLinkProjectRoutes);
   app.route('/api', speakerLinkMeRoutes);
-  app.route('/api/me', meRecentChangesRoutes);
   app.route('/api/conversations', conversationRoutes);
   app.route('/api/agent-sessions', agentSessionAttachmentRoutes);
   app.route('/api/agent-sessions', agentSessionRoutes);

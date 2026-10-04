@@ -3,7 +3,7 @@ import type { MiddlewareHandler } from 'hono';
 
 export type RequestIdVars = { requestId: string };
 
-export const REQUEST_ID_HEADER = 'x-request-id';
+const REQUEST_ID_HEADER = 'x-request-id';
 
 export const requestId = (): MiddlewareHandler<{ Variables: RequestIdVars }> => {
   return async (c, next) => {

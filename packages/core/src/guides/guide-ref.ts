@@ -5,7 +5,6 @@ export const GUIDE_SLUGS = [
   'issue-dependencies',
   'memory-and-knowledge',
   'deploy-safety',
-  'google-sheets',
   'what-is-an-issue',
   'writing-an-issue',
   'pipeline-and-issue-lifecycle',

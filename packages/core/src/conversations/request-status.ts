@@ -69,7 +69,7 @@ const DELIBERATE_SILENCES: ReadonlySet<string> = new Set([
 /**
  * Which status, if any, a routed decision owes the person who asked.
  */
-export function terminalStatusFor(routed: {
+function terminalStatusFor(routed: {
   decision: ConversationWindowDecision;
   detail?: unknown;
 }): TerminalStatus | null {
@@ -117,7 +117,7 @@ export interface PostStatusArgs {
 /**
  * Post the one status an explicit request is owed, and record it under the window's key.
  */
-export async function postStatus(args: PostStatusArgs): Promise<PostedStatus> {
+async function postStatus(args: PostStatusArgs): Promise<PostedStatus> {
   const base = { status: args.status, anchor: args.anchor.messageId };
   if (!args.transport) {
     return { ...base, delivered: false, reason: 'no transport is registered for this venue' };

@@ -224,3 +224,24 @@ export interface ModuleDetail {
 	owner: ModuleUnavailable;
 	issuesRead: ModuleIssuesRead;
 }
+
+/** Where a traced unit lives: a core module, a web-v2 feature directory or a runner crate. */
+export const CODE_TRACE_SCOPES = ["core", "web", "runner"] as const;
+export type CodeTraceScope = (typeof CODE_TRACE_SCOPES)[number];
+
+/**
+ * One unit of the build's requirement trace (packages/core/src/modules.json `serves`): the
+ * requirement keys, workflow steps (`<workflow>#<step>`) and `via:<unit>` it serves.
+ */
+export interface CodeTraceUnit {
+	scope: CodeTraceScope;
+	unit: string;
+	serves: string[];
+}
+
+export interface CodeTraceResponse {
+	units: CodeTraceUnit[];
+	total: number;
+	/** Units whose `serves` is empty. */
+	untraced: number;
+}

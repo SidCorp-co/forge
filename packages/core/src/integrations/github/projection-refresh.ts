@@ -19,7 +19,7 @@ interface CompareRead {
 }
 
 /** The row this refresh is an answer about — both halves, because either can move. */
-export interface RefreshTarget {
+interface RefreshTarget {
   number: number;
   baseRef: string;
   headSha: string;
@@ -34,7 +34,7 @@ export interface RefreshTarget {
  * the next delivery about this pull request asks again anyway. `unknown` on the
  * row is the honest answer and reads as one.
  */
-export async function readRefreshFacts(
+async function readRefreshFacts(
   client: GitHubRepoClient,
   args: RefreshTarget,
 ): Promise<RefreshOutcome> {

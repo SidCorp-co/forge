@@ -68,7 +68,7 @@ export function listAllDeadDeliveries(limit: number, offset: number) {
   return readDead(null, limit, offset);
 }
 
-export interface DeadDeliveryTally {
+interface DeadDeliveryTally {
   count: number;
   oldestDeadAt: string | null;
   sample: DeadOutboxDelivery[];

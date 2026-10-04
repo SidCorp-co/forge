@@ -16,7 +16,7 @@ import { logger } from '../observability/logger.js';
 import { computeAlerts, opsAlertResolutionKey } from './alert-queries.js';
 import type { AdminAlert } from './types.js';
 
-export interface AlertSweepResult {
+interface AlertSweepResult {
   evaluated: number;
   notified: number;
   resolved: number;

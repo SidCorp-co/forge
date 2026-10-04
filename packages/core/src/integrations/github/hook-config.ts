@@ -10,7 +10,7 @@ import { appOctokit, responseOf } from './octokit.js';
 const HOOK_CONFIG_TIMEOUT_MS = 8000;
 
 /** What GitHub answered about this App's webhook, or why it could not be asked. */
-export type AppHookConfig =
+type AppHookConfig =
   | { readonly read: true; readonly url: string | null; readonly active: boolean | null }
   | { readonly read: false; readonly reason: string };
 

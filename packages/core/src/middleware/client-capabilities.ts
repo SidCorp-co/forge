@@ -6,17 +6,14 @@
 
 import type { Context } from 'hono';
 
-export const CLIENT_CAPABILITIES_HEADER = 'x-forge-capabilities';
+const CLIENT_CAPABILITIES_HEADER = 'x-forge-capabilities';
 
 export const RECORD_ROUTE_CAPABILITY = 'record-route';
+type ClientCapabilities = ReadonlySet<string>;
 
-export const CLIENT_CAPABILITIES: readonly string[] = [RECORD_ROUTE_CAPABILITY];
+const NO_CAPABILITIES: ClientCapabilities = new Set<string>();
 
-export type ClientCapabilities = ReadonlySet<string>;
-
-export const NO_CAPABILITIES: ClientCapabilities = new Set<string>();
-
-export function parseClientCapabilities(raw: string | null | undefined): ClientCapabilities {
+function parseClientCapabilities(raw: string | null | undefined): ClientCapabilities {
   if (!raw) return NO_CAPABILITIES;
   const declared = raw
     .split(/[\s,]+/u)

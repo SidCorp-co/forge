@@ -80,6 +80,17 @@ Every directory under `packages/core/src` is exactly one kind, declared in
 (each `integrations/<port>`). The root files (**index.ts** and its siblings) are the module `(root)`,
 a door.
 
+**Every module serves a requirement or a workflow step** (ISS-221; owner, 2026-10-05: code that
+serves neither is dead). Its entry's `serves` lists `REQ-<n>`, `<workflow>` or
+`<workflow>#<step>`, or `via:<module>` for platform, kernel and adapter code that serves only
+through a module that serves one directly. The same file declares `serves` for each web-v2 feature
+directory (`web`) and each runner crate (`runner`). `scripts/check-module-shape.mjs` refuses an
+empty `serves`, a reference `.forge/design-index.json` does not hold, and a `via:` to a unit that
+serves nothing directly, against the shrink-only `.forge/module-trace-baseline.json`; the snapshot
+is rewritten by `scripts/refresh-design-index.mjs`, so verify reads no network. `GET
+/api/code-trace` serves the build's trace (`packages/core/src/code-trace.ts:codeTrace`), and the
+Modules screen shows it beside each module named after a core module.
+
 | Kind | Holds | Must not |
 |---|---|---|
 | **kernel** | The job, session, run and issue machines, the transition engine, leases, evidence and records (a job's usage records among them), retry, escalation, the outbox, and memberships with their roles and grants (the permission kernel's own data) | Hold a product rule; call an adapter |

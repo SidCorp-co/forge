@@ -16,17 +16,17 @@ import {
   projectMembers,
 } from '../db/schema.js';
 
-export type ProjectMembershipRow = typeof projectMembers.$inferSelect;
-export type OrgMembershipRow = typeof organizationMembers.$inferSelect;
+type ProjectMembershipRow = typeof projectMembers.$inferSelect;
+type OrgMembershipRow = typeof organizationMembers.$inferSelect;
 
-export interface NewProjectMembership {
+interface NewProjectMembership {
   projectId: string;
   userId: string;
   role: ProjectMemberRole;
   grants?: string[];
 }
 
-export interface NewOrgMembership {
+interface NewOrgMembership {
   orgId: string;
   userId: string;
   role: OrgMemberRole;
@@ -77,12 +77,6 @@ export async function removeProjectMember(tx: Tx, projectId: string, userId: str
     .delete(projectMembers)
     .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)));
 }
-
-/** Drop every project membership `userId` holds. */
-export async function removeProjectMembershipsOf(tx: Tx, userId: string) {
-  await tx.delete(projectMembers).where(eq(projectMembers.userId, userId));
-}
-
 /** Add an org membership; `ifAbsent` as for {@link addProjectMembers}, null when one existed. */
 export async function addOrgMember(
   tx: Tx,

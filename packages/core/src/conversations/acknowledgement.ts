@@ -14,17 +14,17 @@ import type { ConversationTransport, ConversationVenue } from './ports.js';
 /**
  * How old a request must be before it is marked received.
  */
-export const RECEIVED_FLOOR_MS = 5000;
+const RECEIVED_FLOOR_MS = 5000;
 
 /**
  * How often `working` is renewed while the turn runs.
  */
-export const WORKING_RENEW_MS = 5000;
+const WORKING_RENEW_MS = 5000;
 
 /**
  * How long one acknowledgement call may take before the lifecycle moves on without it.
  */
-export const ACK_TIMEOUT_MS = 5000;
+const ACK_TIMEOUT_MS = 5000;
 
 /** Settles `late` once `ms` passes with the call still out, so the caller can take it back later. */
 function withDeadline(p: Promise<unknown>, ms: number): Promise<'done' | 'late'> {

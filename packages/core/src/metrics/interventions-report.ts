@@ -9,7 +9,7 @@ type EventRow = {
   detail: string | null;
 };
 
-export interface InterventionEvent {
+interface InterventionEvent {
   source: EventRow['source'];
   projectId: string;
   issueId: string | null;
@@ -17,7 +17,7 @@ export interface InterventionEvent {
   detail: string | null;
 }
 
-export interface InterventionsByIssue {
+interface InterventionsByIssue {
   issueId: string | null;
   projectId: string;
   wedges: number;
@@ -28,7 +28,7 @@ export interface InterventionsByIssue {
   lastAt: string;
 }
 
-export interface InterventionsReport {
+interface InterventionsReport {
   total: number;
   byIssue: InterventionsByIssue[];
   events: InterventionEvent[];

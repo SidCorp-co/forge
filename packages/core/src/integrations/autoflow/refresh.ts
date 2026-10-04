@@ -39,7 +39,7 @@ type RefreshAnswer =
   | { kind: 'transient'; reason: string };
 
 /** The platform's token endpoint, on the origin that serves `/oauth/*`. */
-export function autoflowTokenUrl(config: { baseUrl?: unknown }): string {
+function autoflowTokenUrl(config: { baseUrl?: unknown }): string {
   return `${autoflowBaseUrl(config).replace(/\/graphql$/, '')}/oauth/token`;
 }
 

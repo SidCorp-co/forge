@@ -14,7 +14,7 @@ import { SourceHostUnavailable } from './errors.js';
 import type { SourceHost, SourceHostFactory } from './types.js';
 
 /** `kernel` reads and merges for Forge itself; `agent` is an agent's verb and needs the grant. */
-export type SourceHostPurpose = 'kernel' | 'agent';
+type SourceHostPurpose = 'kernel' | 'agent';
 
 /** The host name `source.git.repository` is served from, or null where none is declared. */
 export function hostOfRepository(repository: string | null): string | null {
