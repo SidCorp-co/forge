@@ -559,16 +559,6 @@ mod tests {
                  which no test runs",
             ),
             (
-                "forge-runner/src/cmd/top/cli_slug.rs",
-                3,
-                "cli_config_dir, the forge CLI's own dir by its own rule, a read; and its test",
-            ),
-            (
-                "forge-runner/src/cmd/top/gather.rs",
-                2,
-                "prints the path, and hands home to cli_config_dir",
-            ),
-            (
                 "forge-runner/tests/dispatch_gate_door.rs",
                 3,
                 "config_home_at, the config home it hands a child it spawns, inside the test's \

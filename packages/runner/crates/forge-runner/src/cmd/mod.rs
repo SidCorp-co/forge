@@ -16,7 +16,6 @@ pub mod setup;
 pub mod start;
 pub mod status;
 pub mod sync;
-pub mod top;
 pub mod update;
 
 use forge_runner_core::config::Config;
