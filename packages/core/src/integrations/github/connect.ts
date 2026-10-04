@@ -8,6 +8,7 @@
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { inboundWebhookUrl } from '../index.js';
+import { APP_EVENTS, APP_PERMISSIONS } from './app-permissions.js';
 import { anonymousOctokit, responseOf } from './octokit.js';
 
 const STATE_TTL_MS = 10 * 60_000;
@@ -59,7 +60,6 @@ export function verifyConnectState(
  * The manifest GitHub renders as the App it is about to create. `redirect_url`
  * receives the conversion code; `hook_attributes.url` is where deliveries land.
  */
-// cm:edge lockstep -> packages/core/src/integrations/github/app-permissions.ts — what needs them
 export function buildAppManifest(args: {
   appName: string;
   webBaseUrl: string;
@@ -76,16 +76,8 @@ export function buildAppManifest(args: {
     setup_url: `${api}/api/integrations/github/installed`,
     setup_on_update: true,
     public: false,
-    default_permissions: {
-      actions: 'read',
-      administration: 'read',
-      checks: 'read',
-      contents: 'write',
-      issues: 'write',
-      metadata: 'read',
-      pull_requests: 'write',
-    },
-    default_events: ['pull_request', 'pull_request_review', 'check_run', 'push'],
+    default_permissions: APP_PERMISSIONS,
+    default_events: APP_EVENTS,
   };
 }
 
