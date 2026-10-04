@@ -7,6 +7,7 @@ import { projects, type ScheduleKind, schedules } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { nextRunFor, validateCron } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';
+import { type LastFire, lastFires } from './fires.js';
 import { getImprovementMessage } from './messages/registry.js';
 import { requireHeld } from '../permissions/index.js';
 
@@ -40,6 +41,21 @@ export async function assertTargetProjectAccess(
   return target;
 }
 
+/** A schedule's last status, run and session, read from its newest fire. */
+function withLastFire<T extends { id: string }>(row: T, fire: LastFire | undefined) {
+  return {
+    ...row,
+    lastStatus: fire?.status ?? null,
+    lastRunAt: fire?.startedAt ?? null,
+    lastSessionId: fire?.sessionId ?? null,
+  };
+}
+
+async function withLastFires<T extends { id: string }>(projectId: string, rows: T[]) {
+  const last = await lastFires(projectId);
+  return rows.map((r) => withLastFire(r, last.get(r.id)));
+}
+
 export async function listSchedules(projectId: string, actorUserId: string, enabled?: boolean) {
   const access = await loadProjectAccess(projectId, actorUserId);
   requireHeld(access, 'project.read');
@@ -47,11 +63,12 @@ export async function listSchedules(projectId: string, actorUserId: string, enab
   const conditions = [eq(schedules.projectId, projectId)];
   if (enabled !== undefined) conditions.push(eq(schedules.enabled, enabled));
 
-  return db
+  const rows = await db
     .select()
     .from(schedules)
     .where(and(...conditions))
     .orderBy(asc(schedules.createdAt));
+  return withLastFires(projectId, rows);
 }
 
 export async function getSchedule(id: string, actorUserId: string) {
@@ -61,7 +78,8 @@ export async function getSchedule(id: string, actorUserId: string) {
   const access = await loadProjectAccess(row.projectId, actorUserId);
   requireHeld(access, 'project.read');
 
-  return row;
+  const last = await lastFires(row.projectId, [row.id]);
+  return withLastFire(row, last.get(row.id));
 }
 
 export interface CreateScheduleInput {

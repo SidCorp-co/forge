@@ -6,7 +6,7 @@ import {
 } from '../agent-sessions/interactive-credential.js';
 import { db } from '../db/client.js';
 import type { ScheduleMode } from '../db/schema.js';
-import { type agentSessions, projects, schedules } from '../db/schema.js';
+import { type agentSessions, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
 import type {
@@ -258,18 +258,6 @@ async function routePromptFire(input: DispatchScheduleInput, fireId: string): Pr
       result: { ok: false, reason: 'session-failed', status: 'failed', sessionId: session.id },
       settle: null,
     };
-  }
-
-  try {
-    await db
-      .update(schedules)
-      .set({ lastSessionId: inserted.id })
-      .where(eq(schedules.id, schedule.id));
-  } catch (err) {
-    logger.error(
-      { err, scheduleId: schedule.id, sessionId: inserted.id },
-      'schedule.dispatch: lastSessionId update failed',
-    );
   }
 
   try {

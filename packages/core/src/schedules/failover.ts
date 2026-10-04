@@ -14,7 +14,7 @@ import { dispatchInteractiveTurn } from '../agent-sessions/interactive-credentia
 import { readSessionAsker } from '../agent-sessions/session-credential.js';
 import { firstUserMessageText } from '../agent-sessions/turns-helpers.js';
 import { db } from '../db/client.js';
-import { agentSessions, projects, schedules } from '../db/schema.js';
+import { agentSessions, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { handFireToRetry, recordFireDisposition, scheduleRunIdOf } from './fires.js';
@@ -289,17 +289,6 @@ async function attemptScheduleFailover(
       message: firstUser,
       broadcastEvent: 'agent-session.created',
     });
-    try {
-      await db
-        .update(schedules)
-        .set({ lastSessionId: dispatched.id })
-        .where(eq(schedules.id, meta.scheduleId as string));
-    } catch (err) {
-      logger.error(
-        { err, scheduleId: meta.scheduleId, sessionId: dispatched.id },
-        'schedule.failover: lastSessionId update failed',
-      );
-    }
     return {
       ok: true,
       status: 'redispatched',

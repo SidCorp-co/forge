@@ -3101,15 +3101,6 @@
                       }
                     ]
                   },
-                  "schedule": {
-                    "enum": [
-                      "off",
-                      "weekly",
-                      "biweekly",
-                      "monthly"
-                    ],
-                    "type": "string"
-                  },
                   "type": {
                     "maxLength": 200,
                     "minLength": 1,
@@ -3314,15 +3305,6 @@
                         "type": "null"
                       }
                     ]
-                  },
-                  "schedule": {
-                    "enum": [
-                      "off",
-                      "weekly",
-                      "biweekly",
-                      "monthly"
-                    ],
-                    "type": "string"
                   },
                   "type": {
                     "maxLength": 200,
@@ -32701,18 +32683,6 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
-                  "cadenceCron": {
-                    "anyOf": [
-                      {
-                        "maxLength": 120,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
                   "customInstructions": {
                     "anyOf": [
                       {

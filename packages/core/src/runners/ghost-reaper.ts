@@ -2,10 +2,7 @@ import { sql } from 'drizzle-orm';
 import { readThresholds } from '../admin/thresholds.js';
 import { db } from '../db/client.js';
 import { logger } from '../logger.js';
-import { boss } from '../queue/boss.js';
 import { setRunnerStatus } from './runner-events.js';
-
-export const GHOST_RUNNER_REAPER_QUEUE = 'runner-ghost-reaper';
 
 export interface GhostRunnerReapResult {
   flagged: number;
@@ -68,21 +65,4 @@ export async function reapGhostRunners(): Promise<GhostRunnerReapResult> {
     logger.error({ err }, 'ghost-reaper: sweep failed');
     return { flagged: 0 };
   }
-}
-
-let registered = false;
-
-export async function registerGhostRunnerReaper(): Promise<void> {
-  if (registered) return;
-  await boss.createQueue(GHOST_RUNNER_REAPER_QUEUE);
-  await boss.work(GHOST_RUNNER_REAPER_QUEUE, async () => {
-    const result = await reapGhostRunners();
-    if (result.flagged > 0) logger.info(result, 'ghost-reaper: sweep complete');
-  });
-  await boss.schedule(GHOST_RUNNER_REAPER_QUEUE, '17 * * * *');
-  registered = true;
-}
-
-export function resetGhostRunnerReaperForTest(): void {
-  registered = false;
 }

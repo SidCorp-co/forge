@@ -1,16 +1,11 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { logger } from '../logger.js';
-import { boss } from '../queue/boss.js';
 import { spawnPmSession } from './spawner.js';
 
-const PM_QUEUE_PRESSURE_QUEUE = 'pm.queue-pressure';
-const PM_QUEUE_PRESSURE_CRON = '* * * * *';
 // v1: hardcoded threshold per ISS-20 acceptance criteria. A configurable
 // `pm_config.queue_pressure_threshold` is explicitly out of scope.
 const QUEUE_PRESSURE_THRESHOLD = 5;
-
-let registered = false;
 
 /**
  * Run one queue-pressure sweep: spawn a PM session for each project whose
@@ -103,26 +98,4 @@ async function loadInFlightRunPressure(): Promise<
     });
   }
   return map;
-}
-
-export async function registerPmQueuePressureSweeper(): Promise<void> {
-  if (registered) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(PM_QUEUE_PRESSURE_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(PM_QUEUE_PRESSURE_QUEUE, async () => {
-    try {
-      await runPmQueuePressureSweepOnce();
-    } catch (err) {
-      logger.error({ err }, 'pm.queue-pressure: tick failed');
-      throw err;
-    }
-  });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(PM_QUEUE_PRESSURE_QUEUE, PM_QUEUE_PRESSURE_CRON, {});
-  registered = true;
-}
-
-export function _resetPmQueuePressureForTest(): void {
-  registered = false;
 }

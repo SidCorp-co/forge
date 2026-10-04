@@ -1,6 +1,5 @@
 import { SESSION_SILENCE_REAP_MS } from '@forge/contracts/run-standing';
 import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
-import { type AlertSweepResult, runAlertSweep } from '../admin/alert-sweeper.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
@@ -63,8 +62,6 @@ import {
 } from './stranded-issues.js';
 import { emitPipelineWedge } from './wedge.js';
 
-export const PIPELINE_SWEEPER_QUEUE = 'pipeline-sweeper';
-
 export interface ZombieSweepResult {
   queueTimedOut: number;
   turnNeverReported: number;
@@ -126,8 +123,6 @@ export interface SweepResult {
   overdueRunnerReleases: RunnerReleaseDeadlineResult;
   /** ISS-1063 — conditions re-derived: resolved, inhibited children released, stale pending dropped. */
   reevaluated: ReevaluateResult;
-  /** ISS-652 — Tier 1 ops alert engine push pass. */
-  alerts: AlertSweepResult;
   queueSnapshots: number;
 }
 
@@ -193,7 +188,6 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     detectRetryRescueThresholds(now),
   );
   const reevaluated = await runPass('reevaluateConditions', () => reevaluateConditions(now));
-  const alerts = await runPass('alertSweep', () => runAlertSweep(now));
   const queueSnapshots = await runPass('recordQueueSnapshots', () => recordQueueSnapshots());
 
   // Preserve the ISS-449 missed-tick contract: if ANY pass failed, do NOT
@@ -233,7 +227,6 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     retryRescueThresholds: retryRescueThresholds as RetryRescueAlertResult,
     overdueRunnerReleases: overdueRunnerReleases as RunnerReleaseDeadlineResult,
     reevaluated: reevaluated as ReevaluateResult,
-    alerts: alerts as AlertSweepResult,
     queueSnapshots: queueSnapshots as number,
   };
 }
@@ -651,24 +644,4 @@ export async function reapOrphanedIssueRuns(
   }
 
   return { reaped };
-}
-
-let registered = false;
-
-export async function registerPipelineSweeper(): Promise<void> {
-  if (registered) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).createQueue(PIPELINE_SWEEPER_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).work(PIPELINE_SWEEPER_QUEUE, async () => {
-    try {
-      await runPipelineSweep();
-    } catch (err) {
-      logger.error({ err }, 'pipeline-sweeper: tick failed');
-      throw err;
-    }
-  });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).schedule(PIPELINE_SWEEPER_QUEUE, '* * * * *');
-  registered = true;
 }
