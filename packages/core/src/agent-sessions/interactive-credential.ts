@@ -10,8 +10,13 @@ import { effectiveProjectRole } from '../lib/authz.js';
 import { RefusalError } from '../lib/refusal.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { type PermissionFacts, permissionRefusal, requireHeld } from '../permissions/index.js';
-import { type DispatchChatTurnArgs, dispatchChatTurn } from './chat-dispatch.js';
-import { type ChatClient, noClaudeClient, resolveChatDevice } from './chat-turn.js';
+import {
+  type ChatClient,
+  type DispatchChatTurnArgs,
+  dispatchChatTurn,
+  noClaudeClient,
+  resolveChatDevice,
+} from './chat-turn.js';
 import {
   mintSessionCredential,
   resolveSessionAuthority,

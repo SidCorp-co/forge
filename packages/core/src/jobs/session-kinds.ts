@@ -25,7 +25,7 @@ export function isAgentSessionKind(value: unknown): value is AgentSessionKind {
 export const AGENT_SESSION_KIND_LIST = agentSessionKinds.join(', ');
 
 /**
- * The sessions the loop monitor fails on a silent heartbeat (`session-reap.ts:reapZombieSessions`):
+ * The sessions the loop monitor fails on a silent heartbeat (`loop-monitor.ts:reapZombieSessions`):
  * a pipeline step's or an escalation's. The run standing's heartbeat clock asks the
  * same, so it promises a reap only where one happens.
  */

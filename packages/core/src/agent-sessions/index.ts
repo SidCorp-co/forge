@@ -1,6 +1,5 @@
 export { persistSessionAttachment } from './attachment-service.js';
-export { dispatchChatTurn } from './chat-dispatch.js';
-export { createChatSessionRow, noClaudeClient } from './chat-turn.js';
+export { createChatSessionRow, dispatchChatTurn, noClaudeClient } from './chat-turn.js';
 export {
   authorizeInteractiveTurn,
   dispatchInteractiveTurn,

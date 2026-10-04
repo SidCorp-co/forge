@@ -23,7 +23,7 @@ export const FAILURE_CAUSES = [
   'agent_exited_without_result',
   /** killed by a signal. 1 job/60d (`[SIGNAL_KILLED]`). */
   'agent_killed',
-  /** the chat lane's skill-sync race. Writer: agent-sessions/session-patch.ts. */
+  /** the chat lane's skill-sync race. Writer: agent-sessions/routes.ts. */
   'skill_not_synced',
   /** repo_path / work_tree / origin_remote preflight. 1,073 jobs/60d. */
   'workspace_preflight_failed',

@@ -1,5 +1,6 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { logger } from '../observability/logger.js';
 import { claimCapableSql } from './device-cap.js';
 import { runnerLive } from './liveness-sql.js';
 
@@ -74,25 +75,20 @@ export function runnerMayTakeJob(labels: SQL = sql`r.labels`): SQL {
   )`;
 }
 
-type ReleaseLabelVerdict =
-  | { allowed: true; label: string | null; preferenceMet: boolean }
-  | { allowed: false; label: string | null; carried: string[] };
-
 /**
  * The same question at claim time, for one job and one device.
  *
  * A job that does not exist is NOT a verdict — `prepareJobForMaster` owns
  * `not_found` and must stay the one that says it.
  *
- * `preferenceMet` is false where this box was admitted because nothing
- * eligible carries the label. The caller says so rather than letting a
- * declared preference go unhonoured in silence. A project that declared no
- * preference has none to leave unhonoured, so it reads true there.
+ * A box admitted only because nothing eligible carries the label is logged,
+ * so a declared preference never goes unhonoured in silence. A project that
+ * declared no preference has none to leave unhonoured.
  */
-export async function releaseLabelVerdict(args: {
+export async function releaseLabelAllows(args: {
   jobId: string;
   deviceId: string;
-}): Promise<ReleaseLabelVerdict> {
+}): Promise<boolean> {
   const rows = (await db.execute(sql`
     SELECT j.type,
            ${RELEASE_LABEL_FOR_JOB} AS label,
@@ -105,13 +101,20 @@ export async function releaseLabelVerdict(args: {
   `)) as unknown as Array<Record<string, unknown>>;
 
   const row = rows[0];
-  if (!row) return { allowed: true, label: null, preferenceMet: true };
-  if (row.type !== 'release_batch') return { allowed: true, label: null, preferenceMet: true };
-
-  const label = (row.label as string | null) ?? null;
+  const label = (row?.label as string | null) ?? null;
+  if (row?.type !== 'release_batch' || label === null) return true;
   const carried = Array.isArray(row.labels) ? (row.labels as string[]) : [];
-  if (label === null) return { allowed: true, label: null, preferenceMet: true };
-  if (carried.includes(label)) return { allowed: true, label, preferenceMet: true };
-  if (row.preferred_available !== true) return { allowed: true, label, preferenceMet: false };
-  return { allowed: false, label, carried };
+  if (carried.includes(label)) return true;
+  if (row.preferred_available !== true) {
+    logger.warn(
+      { ...args, releaseRunnerLabel: label },
+      'claim: release job taken by a box that does not carry the declared release label, because no eligible box does',
+    );
+    return true;
+  }
+  logger.warn(
+    { ...args, allowed: false, label, carried },
+    'claim: release job refused, a box carrying the project release label is available',
+  );
+  return false;
 }

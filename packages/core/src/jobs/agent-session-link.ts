@@ -5,13 +5,7 @@ import {
   transitionSessions,
 } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
-import {
-  type AgentSessionKind,
-  type AgentSessionStatus,
-  agentSessions,
-  issues,
-  jobs,
-} from '../db/schema.js';
+import { type AgentSessionStatus, agentSessions, issues, jobs } from '../db/schema.js';
 import { deviceRoom, projectRoom, roomManager } from '../lib/rooms.js';
 import { logger } from '../observability/logger.js';
 import type { FailureCause } from '../pipeline/index.js';
@@ -63,87 +57,89 @@ async function resolveHoldingMaster(job: JobRow): Promise<string | null> {
   return owned;
 }
 
+type ParentSession = { id: string; metadata: unknown; pipelineHealth: unknown };
+
+/** The session of the job this one retries, whose health and root the retry inherits. */
+async function loadRetryParentSession(job: JobRow): Promise<ParentSession | null> {
+  if (!job.retryOf) return null;
+  const [parentJob] = await db
+    .select({ agentSessionId: jobs.agentSessionId })
+    .from(jobs)
+    .where(eq(jobs.id, job.retryOf))
+    .limit(1);
+  if (!parentJob?.agentSessionId) return null;
+  const [row] = await db
+    .select({
+      id: agentSessions.id,
+      metadata: agentSessions.metadata,
+      pipelineHealth: agentSessions.pipelineHealth,
+    })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, parentJob.agentSessionId))
+    .limit(1);
+  return row ?? null;
+}
+
+async function loadIssueFacts(
+  job: JobRow,
+): Promise<{ title: string | null; ownerId: string | null; issSeq: number | null }> {
+  if (!job.issueId) return { title: null, ownerId: null, issSeq: null };
+  const [row] = await db
+    .select({ title: issues.title, createdById: issues.createdById, issSeq: issues.issSeq })
+    .from(issues)
+    .where(eq(issues.id, job.issueId))
+    .limit(1);
+  return {
+    title: row?.title ?? null,
+    ownerId: row?.createdById ?? null,
+    issSeq: row?.issSeq ?? null,
+  };
+}
+
+function sessionMetadata(
+  job: JobRow,
+  resume: ResumeRecord,
+  skillName: string | null,
+  issSeq: number | null,
+  parentSession: ParentSession | null,
+): Record<string, unknown> {
+  const metadata: Record<string, unknown> = { jobId: job.id, jobType: job.type };
+  if (job.issueId) metadata.issueId = job.issueId;
+  // Stamp the human-readable issue sequence so the sidebar can render
+  // "ISS-N" sub-text without an extra issue lookup. Frozen at session
+  // creation time — issSeq is immutable per project anyway.
+  if (issSeq !== null) metadata.issSeq = issSeq;
+  if (skillName) metadata.skillName = skillName;
+  if (job.deviceId) metadata.deviceId = job.deviceId;
+  metadata.resume = resume;
+  const payloadStageStatus = deriveStageStatus(job.payload);
+  if (payloadStageStatus) metadata.stageStatus = payloadStageStatus;
+  if (job.retryOf) {
+    metadata.attempt = job.attempts;
+    metadata.retryOfJobId = job.retryOf;
+    if (parentSession) {
+      metadata.retryOfSessionId = parentSession.id;
+      const parentMetadata = (parentSession.metadata ?? {}) as Record<string, unknown>;
+      metadata.rootSessionId =
+        typeof parentMetadata.rootSessionId === 'string'
+          ? parentMetadata.rootSessionId
+          : parentSession.id;
+    }
+  }
+  return metadata;
+}
+
 export async function ensureAgentSessionForJob(
   job: JobRow,
   context: { repoPath: string | null; resume: ResumeRecord },
 ): Promise<string | null> {
   try {
     if (job.agentSessionId) return job.agentSessionId;
-
-    let parentSession: {
-      id: string;
-      metadata: unknown;
-      pipelineHealth: unknown;
-    } | null = null;
-    if (job.retryOf) {
-      const [parentJob] = await db
-        .select({ agentSessionId: jobs.agentSessionId })
-        .from(jobs)
-        .where(eq(jobs.id, job.retryOf))
-        .limit(1);
-      if (parentJob?.agentSessionId) {
-        const [row] = await db
-          .select({
-            id: agentSessions.id,
-            metadata: agentSessions.metadata,
-            pipelineHealth: agentSessions.pipelineHealth,
-          })
-          .from(agentSessions)
-          .where(eq(agentSessions.id, parentJob.agentSessionId))
-          .limit(1);
-        parentSession = row ?? null;
-      }
-    }
-
-    let issueTitle: string | null = null;
-    let issueOwnerId: string | null = null;
-    let issueIssSeq: number | null = null;
-    if (job.issueId) {
-      const [row] = await db
-        .select({
-          title: issues.title,
-          createdById: issues.createdById,
-          issSeq: issues.issSeq,
-        })
-        .from(issues)
-        .where(eq(issues.id, job.issueId))
-        .limit(1);
-      issueTitle = row?.title ?? null;
-      issueOwnerId = row?.createdById ?? null;
-      issueIssSeq = row?.issSeq ?? null;
-    }
-
+    const parentSession = await loadRetryParentSession(job);
+    const issue = await loadIssueFacts(job);
     const skillName = deriveSkillName(job.payload);
-    const title = buildTitle(skillName, job.type, issueTitle);
-
-    const kind: AgentSessionKind = 'pipeline';
-    const metadata: Record<string, unknown> = {
-      jobId: job.id,
-      jobType: job.type,
-    };
-    if (job.issueId) metadata.issueId = job.issueId;
-    // Stamp the human-readable issue sequence so the sidebar can render
-    // "ISS-N" sub-text without an extra issue lookup. Frozen at session
-    // creation time — issSeq is immutable per project anyway.
-    if (issueIssSeq !== null) metadata.issSeq = issueIssSeq;
-    if (skillName) metadata.skillName = skillName;
-    if (job.deviceId) metadata.deviceId = job.deviceId;
-    metadata.resume = context.resume;
-    const payloadStageStatus = deriveStageStatus(job.payload);
-    if (payloadStageStatus) metadata.stageStatus = payloadStageStatus;
-
-    if (job.retryOf) {
-      metadata.attempt = job.attempts;
-      metadata.retryOfJobId = job.retryOf;
-      if (parentSession) {
-        metadata.retryOfSessionId = parentSession.id;
-        const parentMetadata = (parentSession.metadata ?? {}) as Record<string, unknown>;
-        metadata.rootSessionId =
-          typeof parentMetadata.rootSessionId === 'string'
-            ? parentMetadata.rootSessionId
-            : parentSession.id;
-      }
-    }
+    const title = buildTitle(skillName, job.type, issue.title);
+    const metadata = sessionMetadata(job, context.resume, skillName, issue.issSeq, parentSession);
 
     // Pipeline sessions enter `queued`; worker CAS flips to `running` on
     // first write (routes.ts PATCH/send). Separates "waiting for worker"
@@ -152,11 +148,11 @@ export async function ensureAgentSessionForJob(
     const parentSessionId = await resolveHoldingMaster(job);
     const inserted = await insertSessionRow(db, {
       projectId: job.projectId,
-      userId: issueOwnerId,
+      userId: issue.ownerId,
       deviceId: job.deviceId,
       pipelineRunId: job.pipelineRunId,
       title,
-      kind,
+      kind: 'pipeline',
       parentSessionId,
       status: 'queued',
       dispatchedAt: new Date(),

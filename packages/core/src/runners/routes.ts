@@ -17,7 +17,6 @@ import {
 } from './read.js';
 import { getRunnerAdapter } from './registry.js';
 import { setRunnerStatus } from './runner-events.js';
-import { defaultRunnerCapabilities } from './select.js';
 import { deleteRunner, insertRunner, updateRunner } from './service.js';
 import type { Runner } from './types.js';
 
@@ -202,7 +201,7 @@ runnerRoutes.post(
       deviceId: input.deviceId,
       name: input.name,
       labels: input.labels ?? [],
-      capabilities: defaultRunnerCapabilities(input.type, input.capabilities),
+      capabilities: input.capabilities ?? {},
       config: result.config,
     });
 

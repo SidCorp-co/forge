@@ -15,26 +15,67 @@
  * after it.
  */
 
-import { JOB_MACHINE } from '@forge/contracts/job-machine';
+import type { DispatchState, PolicyRefusalCode } from '@forge/contracts/project-config';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
-import { activeIssuePrefix } from '../issues/index.js';
+import {
+  activeIssuePrefix,
+  assertDispatchGatesForIssue,
+  type DispatchGateCode,
+  heldTakeRefusal,
+  refuseBlockedTake,
+} from '../issues/index.js';
 import {
   canNameItsAgent,
+  checkoutUnboundMessage,
+  dispatchHeldJob,
   holdQueuedJob,
   type PreparedJob,
+  poolPrompt,
   prepareClaimedJob,
   releaseJobHold,
+  resolveJobPolicy,
   resolveRunnerForDevice,
+  settleNoPromptJob,
 } from '../jobs/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { transition } from '../lifecycle/index.js';
-import { gateJobForMaster, type PrepareRefusal } from './claim-gates.js';
+import { refusalCodeOf } from '../lib/refusal.js';
+import { logger } from '../observability/logger.js';
+import { releaseLabelAllows } from '../runners/index.js';
+import { runnerAdmission } from './pool-admission.js';
+import { devicesPorts } from './ports.js';
+
+type JobRow = typeof jobs.$inferSelect;
 
 type PrepareResult =
-  | { ok: true; jobId: string; issueKey: string | null; prepared: PreparedJob }
-  | PrepareRefusal;
+  | {
+      ok: true;
+      jobId: string;
+      issueKey: string | null;
+      prepared: PreparedJob;
+    }
+  | {
+      ok: false;
+      reason:
+        | 'not_found'
+        | 'already_held'
+        | 'issue_busy'
+        | 'hold_lost'
+        | 'runner_too_old'
+        | 'runner_withdrawn'
+        | 'device_disabled'
+        | 'runner_unbound'
+        | 'release_label_missing'
+        | 'no_prompt';
+    }
+  | {
+      ok: false;
+      reason: 'policy_refused';
+      code: PolicyRefusalCode | DispatchGateCode | 'ISSUE_BLOCKED';
+      detail: string;
+    }
+  | { ok: false; reason: 'checkout_unbound'; detail: string };
 
 type StartResult = { ok: true } | { ok: false; reason: 'hold_lost' | 'runner_too_old' };
 
@@ -51,8 +92,33 @@ export async function prepareJobForMaster(args: {
   deviceId: string;
   sessionId: string;
 }): Promise<PrepareResult> {
-  const gate = await gateJobForMaster(args);
-  if (!gate.ok) return gate;
+  if (!(await canNameItsAgent(args.deviceId))) {
+    return { ok: false, reason: 'runner_too_old' };
+  }
+
+  const admission = await runnerAdmission({ jobId: args.jobId, deviceId: args.deviceId });
+  if (!admission.admitted) {
+    return { ok: false, reason: admission.reason };
+  }
+
+  if (!(await releaseLabelAllows(args))) return { ok: false, reason: 'release_label_missing' };
+
+  const [job] = await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1);
+  if (!job) return { ok: false, reason: 'not_found' };
+
+  const binding = await resolveRunnerForDevice(job.projectId, args.deviceId);
+  if (!binding.repoPath) {
+    const detail = checkoutUnboundMessage(job.projectId, args.deviceId, binding.id);
+    return { ok: false, reason: 'checkout_unbound', detail };
+  }
+
+  if (await refusedForNoPrompt(job)) return { ok: false, reason: 'no_prompt' };
+
+  const policy = await policyStateFor(job);
+  if (!policy.ok) return policy.refusal;
+
+  const design = await designGateFor(job);
+  if (design) return design;
 
   const claimed = await db.transaction(async (tx) => {
     const row = await holdQueuedJob(tx, args.jobId, args.sessionId);
@@ -89,7 +155,7 @@ export async function prepareJobForMaster(args: {
     prepared = await prepareClaimedJob({
       jobId: claimed.job.id,
       deviceId: args.deviceId,
-      policy: gate.policy,
+      policy: policy.state,
     });
   } catch (err) {
     await releaseJobHold(claimed.job.id, args.sessionId);
@@ -105,6 +171,60 @@ export async function prepareJobForMaster(args: {
         : formatIssueRef(await activeIssuePrefix(claimed.job.projectId), claimed.issSeq),
     prepared,
   };
+}
+
+/**
+ * The policy state a job runs under, read before it is held: a job its project's policy cannot
+ * place is refused by name and stays queued, so the refusal repeats until the policy says how.
+ */
+async function policyStateFor(
+  job: JobRow,
+): Promise<
+  { ok: true; state: DispatchState } | { ok: false; refusal: Extract<PrepareResult, { ok: false }> }
+> {
+  try {
+    return { ok: true, state: await resolveJobPolicy(job) };
+  } catch (err) {
+    const refused = devicesPorts().policyRefusalOf(err);
+    if (!refused) throw err;
+    logger.warn({ jobId: job.id, projectId: job.projectId, code: refused.code }, refused.detail);
+    return {
+      ok: false,
+      refusal: { ok: false, reason: 'policy_refused', code: refused.code, detail: refused.detail },
+    };
+  }
+}
+
+/**
+ * A job for an unstarted issue a live blocks edge holds, one that builds a workflow whose design is
+ * not approved, or one that waits on a contract version not yet published, is refused by the policy-refusal shape the box already reads, and stays
+ * queued until the design is approved or the version is.
+ */
+async function designGateFor(job: JobRow): Promise<Extract<PrepareResult, { ok: false }> | null> {
+  if (!job.issueId) return null;
+  try {
+    await refuseBlockedTake(db, job.issueId, 'a pool job for it');
+    await assertDispatchGatesForIssue(job.projectId, job.issueId);
+    return null;
+  } catch (err) {
+    const refused = heldTakeRefusal(err);
+    if (!refused) throw err;
+    const code = refusalCodeOf(refused) as DispatchGateCode | 'ISSUE_BLOCKED';
+    const detail = refused.refusals.map((r) => r.detail).join(' ');
+    logger.warn({ jobId: job.id, projectId: job.projectId, code }, detail);
+    return { ok: false, reason: 'policy_refused', code, detail };
+  }
+}
+
+/**
+ * A queued, unheld job the pool cannot brief is refused before it is held, and
+ * settled where it stands — given back instead, it would head its project's
+ * pool on every pass and nothing behind it would be reached.
+ */
+async function refusedForNoPrompt(job: JobRow): Promise<boolean> {
+  if (job.status !== 'queued' || job.heldBy !== null || poolPrompt(job.payload) !== null)
+    return false;
+  return settleNoPromptJob(job);
 }
 
 /**
@@ -130,24 +250,8 @@ export async function startJobForMaster(args: {
   if (!job) return { ok: false, reason: 'hold_lost' };
   const runner = await resolveRunnerForDevice(job.projectId, args.deviceId);
 
-  const stamped = (
-    await transition(db, JOB_MACHINE, {
-      to: 'dispatched',
-      from: 'queued',
-      set: {
-        deviceId: args.deviceId,
-        runnerId: runner.id,
-        dispatchedAt: new Date(),
-        heldBy: null,
-        heldAt: null,
-      },
-      where: and(eq(jobs.id, args.jobId), eq(jobs.heldBy, args.sessionId)),
-      actor: { type: 'runner', id: args.deviceId },
-      source: 'claim',
-      returning: ['id'],
-    })
-  ).rows;
-  if (!stamped.length) {
+  const stamped = await dispatchHeldJob({ ...args, runnerId: runner.id });
+  if (!stamped) {
     await releaseJobHold(args.jobId, args.sessionId);
     return { ok: false, reason: 'hold_lost' };
   }

@@ -1,7 +1,12 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { agentSessionStatuses } from '../db/schema.js';
+import {
+  type AgentSessionStatus,
+  agentSessionStatuses,
+  sessionRuntimeStates,
+  terminalAgentSessionStatuses,
+} from '../db/schema.js';
 import { isPipelineSessionKind } from '../jobs/index.js';
 import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
@@ -13,13 +18,16 @@ import {
 } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { logger } from '../observability/logger.js';
 import { requireHeld } from '../permissions/index.js';
-import { broadcastSession } from './broadcast.js';
+import { broadcastSession, broadcastTurnSync } from './broadcast.js';
+import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
 import { agentSessionEventsRoutes } from './events-routes.js';
 import { agentSessionInboxRoutes } from './inbox-routes.js';
 import { agentSessionInteractiveRoutes } from './interactive-routes.js';
 import { kindFromQuery } from './kind-query.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
+import { applyTranscriptPatch } from './patch-transcript.js';
 import { agentSessionPipelineControlRoutes } from './pipeline-control-routes.js';
 import {
   type AgentSessionListFilter,
@@ -28,7 +36,13 @@ import {
   sessionCost,
   sessionQueueDepth,
 } from './read.js';
-import { deleteSession, markSessionAcked } from './service.js';
+import { refuseSession } from './refusals.js';
+import {
+  BLIND_SCHEDULE_RUN_REASON,
+  countTranscriptToolCalls,
+  isBlindScheduleRun,
+} from './schedule-evidence.js';
+import { deleteSession, markSessionAcked, writeSessionPatch } from './service.js';
 import {
   assertAgentChatOwner,
   assertDeviceOwnsSession,
@@ -40,7 +54,11 @@ import {
   idParamSchema,
   loadSessionOr404,
 } from './session-access.js';
-import { applySessionPatch, sessionPatchSchema } from './session-patch.js';
+import {
+  type AgentSessionPatch,
+  detectUnexpandedSkillFailure,
+  finalizeScheduleSessionFailure,
+} from './session-failure.js';
 import { agentSessionTurnsRoutes } from './turns-routes.js';
 
 const listQuerySchema = z
@@ -56,12 +74,33 @@ const listQuerySchema = z
   })
   .strict();
 
+const patchSchema = z
+  .object({
+    title: z.string().max(500).nullable().optional(),
+    status: z.enum(agentSessionStatuses).optional(),
+    claudeSessionId: z.string().max(500).nullable().optional(),
+    repoPath: z.string().max(2000).nullable().optional(),
+    messages: z.array(z.unknown()).optional(),
+    usage: z.unknown().optional(),
+    metadata: z.unknown().optional(),
+    diff: z.unknown().optional(),
+    toolCallCount: z.number().int().min(0).optional(),
+    turnError: z.string().max(4000).optional(),
+    runtimeState: z.enum(sessionRuntimeStates).nullable().optional(),
+  })
+  .strict()
+  .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
+
 const relayBodySchema = z
   .object({
     event: z.string().min(1).max(200),
     data: z.unknown(),
   })
   .strict();
+
+const TERMINAL_SESSION_STATUSES: ReadonlySet<AgentSessionStatus> = new Set(
+  terminalAgentSessionStatuses,
+);
 
 export const agentSessionRoutes = new Hono<{ Variables: AuthVars }>();
 agentSessionRoutes.use('*', requireUserOrDevice(), assertEmailVerified());
@@ -298,13 +337,16 @@ agentSessionRoutes.patch(
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(r.error);
   }),
-  zValidator('json', sessionPatchSchema, (r) => {
+  zValidator('json', patchSchema, (r) => {
     if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
+    const patch = c.req.valid('json');
     const userId = c.get('userId');
-    const existing = await loadSessionOr404(id);
+
+    let existing = await loadSessionOr404(id);
+
     // A CLI runner streams its chat reply back here with a device token. Scope
     // it tightly: a device may write ONLY the session that was dispatched to it.
     // Users (web/desktop) keep the project-membership check.
@@ -315,12 +357,194 @@ agentSessionRoutes.patch(
       requireHeld(access, 'project.write');
       assertSessionOwnerOrAdmin(existing, access, userId);
     }
-    const updated = await applySessionPatch({
-      existing,
-      patch: c.req.valid('json'),
-      principal: c.get('principal'),
-      userActor: restActor(c),
+
+    const transcript = await applyTranscriptPatch({
+      sessionId: id,
+      isDevice: c.get('principal') === 'device',
+      isTerminal: patch.status !== undefined && TERMINAL_SESSION_STATUSES.has(patch.status),
+      patch,
     });
+    const patchedMessages = transcript.messages;
+    const derivedTranscript = transcript.derived;
+    if (derivedTranscript) existing = await loadSessionOr404(id);
+
+    const patchNow = new Date();
+    const updates: AgentSessionPatch = { updatedAt: patchNow };
+    if (patch.title !== undefined) updates.title = patch.title;
+    if (patch.status !== undefined) updates.status = patch.status;
+    if (patch.claudeSessionId !== undefined) updates.claudeSessionId = patch.claudeSessionId;
+    if (patch.runtimeState !== undefined && c.get('principal') === 'device') {
+      updates.runtimeState = patch.runtimeState;
+    }
+    if (patch.repoPath !== undefined) updates.repoPath = patch.repoPath;
+    if (patch.usage !== undefined) updates.usage = patch.usage;
+    if (patch.metadata !== undefined) updates.metadata = patch.metadata;
+    if (patch.diff !== undefined) updates.diff = patch.diff;
+    if (patchedMessages !== undefined) updates.messages = patchedMessages;
+
+    const isWorkerActivity =
+      (patch.runtimeState !== undefined && patch.runtimeState !== 'awaiting_input') ||
+      patch.messages !== undefined ||
+      patch.claudeSessionId !== undefined ||
+      patch.usage !== undefined ||
+      patch.status !== undefined ||
+      patch.diff !== undefined;
+    // A user_cancelled session must never silently revive — once cancelled,
+    // a worker stream that arrives late should be dropped, not re-attached.
+    const isUserCancelled =
+      existing.status === 'failed' && existing.failureReason === 'user_cancelled';
+    if (isUserCancelled && (patch.status === 'running' || patch.status === 'queued')) {
+      throw refuseSession('SESSION_CANCELLED', 'session was cancelled by user');
+    }
+    if (isWorkerActivity && !isUserCancelled) {
+      updates.lastHeartbeatAt = patchNow;
+    }
+    if (patch.status === undefined && isWorkerActivity && existing.status === 'queued') {
+      updates.status = 'running';
+      updates.startedAt = patchNow;
+    } else if (patch.status === 'running' && existing.startedAt == null) {
+      updates.startedAt = patchNow;
+    }
+    // Revival clears stale reason — but never overrides user_cancelled (guarded above).
+    if (
+      (updates.status === 'running' || updates.status === 'queued') &&
+      existing.failureReason &&
+      existing.failureReason !== 'user_cancelled'
+    ) {
+      updates.failureReason = null;
+      updates.failureDetail = null;
+    }
+
+    const existingMetaForSkillCheck = (existing.metadata as Record<string, unknown> | null) ?? null;
+    const pendingSkillName =
+      typeof existingMetaForSkillCheck?.pendingSkillName === 'string'
+        ? existingMetaForSkillCheck.pendingSkillName
+        : null;
+    if (pendingSkillName && (patch.status === 'completed' || patch.status === 'failed')) {
+      if (patch.status === 'completed') {
+        // Prefer the pre-turn baseline stamped in chat-turn.ts (the message
+        // count right after the user turn, before any assistant reply) over
+        // `existing.messages.length` — an interim `running` PATCH may have
+        // already persisted this turn's assistant messages before this
+        // terminal PATCH lands, which would make a freshly-recomputed count
+        // include them and slice them out of the scan.
+        const priorCount =
+          typeof existingMetaForSkillCheck?.pendingSkillBaselineCount === 'number'
+            ? existingMetaForSkillCheck.pendingSkillBaselineCount
+            : Array.isArray(existing.messages)
+              ? existing.messages.length
+              : 0;
+        const unexpanded = detectUnexpandedSkillFailure(
+          patchedMessages ?? existing.messages,
+          pendingSkillName,
+          priorCount,
+        );
+        if (unexpanded) {
+          updates.status = 'failed';
+          updates.failureReason = 'skill_not_synced';
+        }
+      }
+      const metaBase =
+        (updates.metadata as Record<string, unknown> | undefined) ??
+        existingMetaForSkillCheck ??
+        {};
+      const {
+        pendingSkillName: _droppedPendingSkillName,
+        pendingSkillBaselineCount: _droppedPendingSkillBaselineCount,
+        ...restMeta
+      } = metaBase;
+      updates.metadata = restMeta;
+    }
+
+    const reportedToolCalls = derivedTranscript
+      ? countTranscriptToolCalls(existing.messages)
+      : patch.toolCallCount;
+    if (reportedToolCalls !== undefined && c.get('principal') === 'device') {
+      const metaBase =
+        (updates.metadata as Record<string, unknown> | undefined) ??
+        existingMetaForSkillCheck ??
+        {};
+      updates.metadata = { ...metaBase, toolCallCount: reportedToolCalls };
+    }
+    if (
+      isBlindScheduleRun({
+        resolvedStatus: (updates.status as AgentSessionStatus | undefined) ?? patch.status,
+        metadata:
+          (updates.metadata as Record<string, unknown> | undefined) ?? existingMetaForSkillCheck,
+        toolCallCount: reportedToolCalls,
+        principal: c.get('principal'),
+      })
+    ) {
+      updates.status = 'failed';
+      updates.failureReason = BLIND_SCHEDULE_RUN_REASON;
+      logger.warn(
+        { sessionId: id, scheduleId: existingMetaForSkillCheck?.scheduleId },
+        'agent-sessions: scheduled run reported completed having called no tool — recording it blind',
+      );
+    }
+
+    const classification =
+      patch.status === 'failed' && !isUserCancelled && existing.failureReason !== 'user_cancelled'
+        ? await finalizeScheduleSessionFailure({
+            sessionId: id,
+            messages: patchedMessages ?? existing.messages,
+            note: null,
+            baseMetadata:
+              (updates.metadata as Record<string, unknown> | undefined) ??
+              (existing.metadata as Record<string, unknown> | null) ??
+              {},
+            set: updates,
+          })
+        : null;
+
+    if (
+      (updates.status ?? existing.status) === 'completed' &&
+      existing.failureReason &&
+      existing.failureReason !== 'user_cancelled'
+    ) {
+      updates.failureReason = null;
+      updates.failureDetail = null;
+    }
+
+    // Dual-write: the messages array and agent_session_turns are written in one
+    // transaction so the legacy blob and turn rows can never diverge.
+    const { status: nextStatus, ...columns } = updates;
+    const { updated: written, sync } = await writeSessionPatch({
+      sessionId: id,
+      existing,
+      columns,
+      to: nextStatus,
+      actor:
+        c.get('principal') === 'device' ? { type: 'runner', id: existing.deviceId } : restActor(c),
+      snapshot: transcript.snapshot && patchedMessages ? patchedMessages : null,
+      messages: patch.messages !== undefined ? (patchedMessages ?? []) : null,
+      at: patchNow,
+    });
+    const updated = written;
+
+    if (sync) broadcastTurnSync(updated, sync);
+
+    if (patch.status !== undefined && patch.status !== existing.status) {
+      broadcastSession(updated, 'agent-session.status');
+    } else {
+      broadcastSession(updated, 'agent-session.updated');
+    }
+
+    if (classification) {
+      await classification.recoverAfterWrite(updated.metadata ?? existing.metadata);
+    }
+
+    await syncRunnerHealthFromChatTerminal({
+      sessionId: id,
+      projectId: updated.projectId,
+      deviceId: updated.deviceId,
+      principal: c.get('principal'),
+      reportedStatus: patch.status,
+      persistedStatus: updated.status,
+      isUserCancelled,
+      messages: patchedMessages ?? existing.messages,
+    });
+
     return c.json(updated);
   },
 );

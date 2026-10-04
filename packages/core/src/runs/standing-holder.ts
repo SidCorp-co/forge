@@ -78,7 +78,7 @@ function ackClock(job: NonNullable<RunFacts['job']>, ctx: StandingContext): Cloc
   );
 }
 
-// cm: mirrors jobs/session-reap.ts reapZombieSessions: only a running session of a reaped kind, not awaiting input, is failed for silence, and its beat falls back as the reaper's does.
+// cm: mirrors jobs/loop-monitor.ts reapZombieSessions: only a running session of a reaped kind, not awaiting input, is failed for silence, and its beat falls back as the reaper's does.
 function heartbeatClock(job: NonNullable<RunFacts['job']>, ctx: StandingContext): Clock {
   if (job.sessionStatus !== 'running') {
     return {

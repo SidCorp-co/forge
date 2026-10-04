@@ -8,7 +8,7 @@ import {
   type DeriveState,
 } from '../lib/agent-stream-parser.js';
 import { logger } from '../observability/logger.js';
-import { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } from './broadcast.js';
+import { broadcastSession, broadcastTurnSync } from './broadcast.js';
 import {
   applyCarrierRows,
   carrierLog,
@@ -140,6 +140,27 @@ function resumeFrom(
 
 type DeriveOutcome = 'written' | 'nothing-to-write' | 'lost-race';
 
+/** A CAS that lost: a cancel under the derive writes nothing, anything else is a race to retry. */
+async function lostWriteOutcome(
+  agentSessionId: string,
+  log: ReturnType<typeof carrierLog>,
+): Promise<DeriveOutcome> {
+  const [now] = await db
+    .select({ status: agentSessions.status, failureReason: agentSessions.failureReason })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, agentSessionId))
+    .limit(1);
+  if (!now) return 'nothing-to-write';
+  if (now.status === 'failed' && now.failureReason === 'user_cancelled') {
+    logger.debug(
+      log,
+      'session-transcript: the session was cancelled under this derive — nothing written',
+    );
+    return 'nothing-to-write';
+  }
+  return 'lost-race';
+}
+
 /**
  * One derive attempt: read the row, decide fold-or-rebuild, read the events it
  * needs, fold, and write under a compare-and-swap. Never sets `status` — the
@@ -202,22 +223,7 @@ async function deriveOnce(
       claudeSessionId && existing.claudeSessionId !== claudeSessionId ? claudeSessionId : null,
     finalizedAt,
   });
-  if (!written) {
-    const [now] = await db
-      .select({ status: agentSessions.status, failureReason: agentSessions.failureReason })
-      .from(agentSessions)
-      .where(eq(agentSessions.id, agentSessionId))
-      .limit(1);
-    if (!now) return 'nothing-to-write';
-    if (now.status === 'failed' && now.failureReason === 'user_cancelled') {
-      logger.debug(
-        log,
-        'session-transcript: the session was cancelled under this derive — nothing written',
-      );
-      return 'nothing-to-write';
-    }
-    return 'lost-race';
-  }
+  if (!written) return lostWriteOutcome(agentSessionId, log);
 
   if (st) {
     st.checkpoint = {
@@ -229,12 +235,7 @@ async function deriveOnce(
     };
   }
 
-  written.sync.appended.forEach((t, i) => {
-    broadcastTurnAppended(written.updated, t, { isStreamingTail: i > 0 });
-  });
-  if (written.sync.truncatedFromTurnIndex !== null) {
-    broadcastTurnTruncated(written.updated, written.sync.truncatedFromTurnIndex);
-  }
+  broadcastTurnSync(written.updated, written.sync);
   broadcastSession(written.updated, 'agent-session.updated');
   return 'written';
 }

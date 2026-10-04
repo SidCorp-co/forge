@@ -1,6 +1,10 @@
 {
   "generatedAt": "2026-10-04T22:54:16.297Z",
   "files": {
+    "packages/core/src/agent-sessions/routes.ts": {
+      "fileLines": 598,
+      "maxFunctionLines": 0
+    },
     "packages/core/src/db/schema.ts": {
       "fileLines": 2298,
       "maxFunctionLines": 0

@@ -45,7 +45,6 @@ export interface DeviceRow {
 	 * the box itself (ISS-1192).
 	 */
 	gate: DeviceGate | null;
-	/** Non-secret label set when a git push credential was provisioned (ISS-305). */
 	createdAt: string;
 }
 
@@ -97,7 +96,6 @@ export type ProvisionStatus =
 	| "needs_manual_setup"
 	| "failed";
 
-/** One row of `GET /api/projects/:id/runners` (project-centric, member-scoped). */
 /**
  * The resident master session core holds for one (device, project), or `null`.
  *
@@ -111,6 +109,7 @@ export interface ResidentMaster {
 	lastHeartbeatAt: string | null;
 }
 
+/** One row of `GET /api/projects/:id/runners` (project-centric, member-scoped). */
 export interface ProjectRunner {
 	runnerId: string;
 	deviceId: string | null;
@@ -360,7 +359,6 @@ export function formatElapsed(startedAt: string | null, now: number = Date.now()
 	return `${hr}h ${min % 60}m`;
 }
 
-/** Ordered provision steps for rendering a stepper. */
 export const PROVISION_STEPS: ProvisionStatus[] = [
 	"queued",
 	"cloning",
@@ -369,7 +367,6 @@ export const PROVISION_STEPS: ProvisionStatus[] = [
 	"ready",
 ];
 
-/** Human label per provision status. */
 export const PROVISION_LABEL: Record<ProvisionStatus, string> = {
 	queued: "Queued",
 	cloning: "Cloning repo",
@@ -380,7 +377,6 @@ export const PROVISION_LABEL: Record<ProvisionStatus, string> = {
 	failed: "Failed",
 };
 
-/** Map a provision status to a kit health key for dots/badges. */
 export function provisionHealth(status: ProvisionStatus | null): HealthKey {
 	switch (status) {
 		case "ready":
@@ -389,26 +385,14 @@ export function provisionHealth(status: ProvisionStatus | null): HealthKey {
 			return "down";
 		case "needs_manual_setup":
 			return "attention";
-		case null:
-			return "idle";
 		default:
 			return "idle";
 	}
 }
 
-/** Map a device's online/offline/revoked status to a kit health key. */
-export function deviceHealth(status: DeviceRow["status"]): HealthKey {
-	switch (status) {
-		case "online":
-			return "healthy";
-		case "revoked":
-			return "down";
-		default:
-			return "idle";
-	}
-}
+/** A device's status is a runner status that is never `disabled`. */
+export const deviceHealth: (status: DeviceRow["status"]) => HealthKey = runnerHealth;
 
-/** Map a runner's free-form status string to a kit health key. */
 export function runnerHealth(status: string): HealthKey {
 	switch (status) {
 		case "online":
@@ -424,7 +408,6 @@ export function runnerHealth(status: string): HealthKey {
 /** Why a runner is limited — mirrors `runnerLimitReasons` on the core schema. */
 export type RunnerLimitReason = "usage_limit" | "rate_limit" | "auth";
 
-/** Short badge label per limit reason. */
 const LIMIT_LABEL: Record<RunnerLimitReason, string> = {
 	usage_limit: "Usage limit",
 	rate_limit: "Rate limited",

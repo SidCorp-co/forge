@@ -22,12 +22,6 @@ import {
   type SessionRow,
 } from "../types";
 
-const PLATFORM_LABEL: Record<string, string> = {
-  macos: "macOS",
-  linux: "Linux",
-  windows: "Windows",
-};
-
 /** Pull a friendly `ISS-<seq>` token from a session title (the session row only
  *  carries the issue UUID, but titles are stamped `ISS-<seq> <title>`). */
 function issueRefFromTitle(title: string | null): string | null {
@@ -116,9 +110,7 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
                 </div>
 
                 <div className="mt-1.5 flex items-center gap-1.5">
-                  <span className="fg-caption text-subtle">
-                    {PLATFORM_LABEL[d.platform] ?? d.platform}
-                  </span>
+                  <span className="fg-caption text-subtle">{enumLabel("platform", d.platform)}</span>
                 </div>
 
                 <div className="mt-2 flex items-center justify-between gap-2">

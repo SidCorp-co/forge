@@ -3,9 +3,6 @@
  * (ISS-875) where it had grown past the file budget beside the unrelated
  * dispatch path. Async and sweeper-driven, mirroring the pipeline job
  * reaper→retry model.
- *
- * Re-exported from `./dispatch.js` because `jobs/loop-monitor.ts` reaches this
- * function through a dynamic `import('../schedules/dispatch.js')`.
  */
 
 import { eq } from 'drizzle-orm';

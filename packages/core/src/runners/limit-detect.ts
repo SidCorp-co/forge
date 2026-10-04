@@ -1,8 +1,6 @@
 import { isSpendLimitError, isUsageLimitError } from '@forge/contracts/runners';
 import type { RunnerLimitReason } from '../db/schema.js';
 
-export { isSpendLimitError, isUsageLimitError };
-
 export interface RunnerLimit {
   reason: RunnerLimitReason;
   /** Absolute reset time for time-based limits; null for `auth`. */
@@ -59,6 +57,30 @@ function isAuthError(text: string): boolean {
   );
 }
 
+/** The wall clock in `tz` at `at`; throws on an unknown zone. */
+function zonedClock(
+  tz: string,
+  at: Date,
+): { year: number; month: number; day: number; hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(at);
+  const part = (type: string) => Number.parseInt(parts.find((p) => p.type === type)!.value, 10);
+  return {
+    year: part('year'),
+    month: part('month'),
+    day: part('day'),
+    hour: part('hour') === 24 ? 0 : part('hour'),
+    minute: part('minute'),
+  };
+}
+
 /**
  * Parse the reset time from a usage-limit message.
  * Formats: "resets 4am (America/Los_Angeles)", "resets 5:59pm (Asia/Bangkok)",
@@ -85,27 +107,11 @@ export function parseUsageLimitReset(text: string): Date | null {
 
   try {
     const now = new Date();
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: tz,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
-    const parts = formatter.formatToParts(now);
-    const getPart = (type: string) =>
-      Number.parseInt(parts.find((p) => p.type === type)!.value, 10);
-    const tzYear = getPart('year');
-    const tzNowMonth = getPart('month');
-    const tzNowDay = getPart('day');
-    const tzHour = getPart('hour') === 24 ? 0 : getPart('hour');
-    const tzMinute = getPart('minute');
+    const tzNow = zonedClock(tz, now);
 
     let targetMonth: number;
     let targetDay: number;
-    let targetYear = tzYear;
+    let targetYear = tzNow.year;
     if (monthStr && dayStr && MONTH_MAP[monthStr]) {
       targetMonth = MONTH_MAP[monthStr];
       targetDay = dayStr;
@@ -113,30 +119,17 @@ export function parseUsageLimitReset(text: string): Date | null {
       // month (e.g. "resets Jan 2" seen in December) refers to next year.
       // >6 months behind is the unambiguous wrap (limits reset in hours/days,
       // never months), so it can't be a stale in-year date.
-      if (tzNowMonth - targetMonth > 6) targetYear += 1;
+      if (tzNow.month - targetMonth > 6) targetYear += 1;
     } else {
-      targetMonth = tzNowMonth;
-      const nowMinutes = tzHour * 60 + tzMinute;
+      targetMonth = tzNow.month;
+      const nowMinutes = tzNow.hour * 60 + tzNow.minute;
       const resetMinutes = hour * 60 + minute;
-      targetDay = tzNowDay + (resetMinutes > nowMinutes ? 0 : 1);
+      targetDay = tzNow.day + (resetMinutes > nowMinutes ? 0 : 1);
     }
 
     const guessUtc = new Date(Date.UTC(targetYear, targetMonth - 1, targetDay, hour, minute, 0));
-    const guessParts = new Intl.DateTimeFormat('en-US', {
-      timeZone: tz,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).formatToParts(guessUtc);
-    const getGuessPart = (type: string) =>
-      Number.parseInt(guessParts.find((p) => p.type === type)!.value, 10);
-    const guessLocalHour = getGuessPart('hour') === 24 ? 0 : getGuessPart('hour');
-    const guessLocalMinute = getGuessPart('minute');
-
-    const offsetMinutes = guessLocalHour * 60 + guessLocalMinute - (hour * 60 + minute);
+    const guess = zonedClock(tz, guessUtc);
+    const offsetMinutes = guess.hour * 60 + guess.minute - (hour * 60 + minute);
     const correctedOffset =
       offsetMinutes > 720
         ? offsetMinutes - 1440

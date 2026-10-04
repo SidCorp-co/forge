@@ -1,4 +1,3 @@
-
 import type { SessionRow } from "@/features/sessions/types";
 import type { ConversationItem, MessageEntry, RunTotals, ToolCallData, ToolKind } from "./types";
 import { getToolLabel, toolKind } from "./types";
@@ -128,7 +127,6 @@ export function toolOutcome(tc: ToolCallData): ToolOutcome {
   }
 }
 
-
 export type ActivityKind = "errors" | "ran" | "edited" | "forge" | "explored";
 
 export interface ActivityChild {
@@ -244,7 +242,6 @@ export function deriveActivityGroups(items: ConversationItem[]): ActivityGroup[]
   return groups;
 }
 
-
 export interface TranscriptRow {
   id: string;
   timestamp?: number;
@@ -283,10 +280,6 @@ function transcriptArg(tc: ToolCallData): string {
  * 10 are the verdicts. Drop them and the record still lists what ran, but no
  * longer says what the agent thought it was doing.
  */
-function wroteIt(item: ConversationItem): boolean {
-  return item.role === "assistant";
-}
-
 export function deriveTranscriptRows(items: ConversationItem[]): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
   let saidCount = 0;
@@ -294,7 +287,7 @@ export function deriveTranscriptRows(items: ConversationItem[]): TranscriptRow[]
     if (item.kind !== "agent") continue;
     for (const block of item.blocks) {
       if (block.type === "text") {
-        if (!block.text.trim() || !wroteIt(item)) continue;
+        if (!block.text.trim() || item.role !== "assistant") continue;
         saidCount += 1;
         rows.push({
           id: `${item.id}-said-${saidCount}`,
@@ -341,7 +334,7 @@ export interface Narration {
 export function deriveNarration(items: ConversationItem[]): Narration {
   const texts: string[] = [];
   for (const item of items) {
-    if (item.kind !== "agent" || !wroteIt(item)) continue;
+    if (item.kind !== "agent" || item.role !== "assistant") continue;
     for (const block of item.blocks) {
       if (block.type === "text" && block.text.trim()) texts.push(block.text.trim());
     }
@@ -350,7 +343,6 @@ export function deriveNarration(items: ConversationItem[]): Narration {
   const closing = substantive[substantive.length - 1] ?? texts[texts.length - 1] ?? null;
   return { closing, count: texts.length };
 }
-
 
 export type TapeTick = "prose" | "tool" | "edit" | "err" | "think";
 
@@ -365,7 +357,7 @@ export function deriveTape(items: ConversationItem[]): TapeTick[] {
     for (let i = 0; i < item.thinkingCount; i++) ticks.push("think");
     for (const block of item.blocks) {
       if (block.type === "text") {
-        if (wroteIt(item)) ticks.push("prose");
+        if (item.role === "assistant") ticks.push("prose");
       } else if (block.type === "tool") {
         ticks.push(
           block.tool.isError ? "err" : toolKind(block.tool.name) === "edit" ? "edit" : "tool",
@@ -375,7 +367,6 @@ export function deriveTape(items: ConversationItem[]): TapeTick[] {
   }
   return ticks;
 }
-
 
 export interface RunBlocker {
   /** Human label of the call that failed, e.g. `Ran pnpm test`. */
@@ -400,7 +391,6 @@ export function deriveBlocker(items: ConversationItem[]): RunBlocker | null {
     errorCount: failures.length,
   };
 }
-
 
 export interface TranscriptMeta {
   totals: RunTotals | null;
@@ -431,7 +421,6 @@ export function readTranscriptMeta(
   }
   return { totals, thinkingPauses };
 }
-
 
 export type TimeSpanKey = "queued" | "startup" | "agent";
 

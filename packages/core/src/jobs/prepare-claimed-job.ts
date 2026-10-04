@@ -86,12 +86,6 @@ export interface PreparedJob {
 }
 
 /**
- * Prepare a job a master has just claimed on `deviceId`.
- *
- * Throws if the box has no runner bound to the job's project — that box cannot
- * run this work and saying so is the whole point.
- */
-/**
  * Can this box name the agent's worktree, or would it run in the repo root?
  */
 export async function canNameItsAgent(deviceId: string): Promise<boolean> {
@@ -103,76 +97,28 @@ export async function canNameItsAgent(deviceId: string): Promise<boolean> {
   return atLeastVersion(device?.v ?? null, AGENT_NAMING_MIN_RUNNER);
 }
 
-export async function prepareClaimedJob(args: {
-  jobId: string;
-  deviceId: string;
-  /** The policy state the claim resolved before it held the job (`devices/claim.ts`). */
-  policy: DispatchState;
-}): Promise<PreparedJob> {
-  const [job] = await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1);
-  if (!job) throw new Error(`prepare: job ${args.jobId} not found`);
+type JobRow = typeof jobs.$inferSelect;
 
-  const runner = await resolveRunnerForDevice(job.projectId, args.deviceId);
-  const repoPath = runner.repoPath;
-  if (!repoPath) {
-    throw new Error(checkoutUnboundMessage(job.projectId, args.deviceId, runner.id));
-  }
+/** The job's prompt string, carrying the turn rules on a resume and the prior attempts on a retry. */
+async function promptStringFor(
+  job: JobRow,
+  resume: ReturnType<typeof finalizeResumeForDevice>,
+  systemPrompt: string,
+): Promise<string | null> {
+  const base = (job.payload as { promptString?: unknown } | null)?.promptString;
+  if (typeof base !== 'string') return null;
+  const resumed =
+    resume.priorClaudeSessionId && base ? injectTurnLevelRules(base, systemPrompt) : base;
+  if (!resume.isRetry || !resumed) return resumed;
+  const prior = renderPriorAttemptsBlock(await loadPriorAttempts(job), job.attempts);
+  return injectAfterInvocation(resumed, prior);
+}
 
-  const proposedResume = await resolveResumePolicy({ job });
-  const resume = finalizeResumeForDevice(proposedResume, args.deviceId);
-
-  const [issueRow, issuePrefix] = await Promise.all([
-    job.issueId
-      ? db.select({ issSeq: issues.issSeq }).from(issues).where(eq(issues.id, job.issueId)).limit(1)
-      : Promise.resolve([]),
-    activeIssuePrefix(job.projectId),
-  ]);
-  const built = await buildJobSystemPrompt({
-    projectId: job.projectId,
-    issueId: job.issueId,
-    step: job.type,
-    policy: args.policy,
-    subject: `prepare refused job ${job.id}`,
-  });
-  const { systemPrompt, blocks, deniedTools, designs, requirement, contracts, pinnedContracts } =
-    built;
-
-  const payloadIn = (job.payload ?? {}) as { promptString?: unknown } & Record<string, unknown>;
-  const basePromptString =
-    typeof payloadIn.promptString === 'string' ? payloadIn.promptString : null;
-
-  const resumedPromptString =
-    resume.priorClaudeSessionId && basePromptString
-      ? injectTurnLevelRules(basePromptString, systemPrompt)
-      : basePromptString;
-
-  const promptString =
-    resume.isRetry && resumedPromptString
-      ? injectAfterInvocation(
-          resumedPromptString,
-          renderPriorAttemptsBlock(await loadPriorAttempts(job), job.attempts),
-        )
-      : resumedPromptString;
-
-  const model = args.policy.model;
-
-  const issueKey =
-    issueRow[0]?.issSeq == null ? null : formatIssueRef(issuePrefix, issueRow[0].issSeq);
-  await persistPromptSnapshot({
-    jobId: job.id,
-    systemPrompt,
-    userPrompt: promptString ?? '',
-    blocks,
-    model,
-  });
-
-  const agentSessionId = await ensureAgentSessionForJob(
-    { ...job, runnerId: runner.id, deviceId: args.deviceId },
-    { repoPath, resume: resume.record },
-  );
-  if (!agentSessionId) {
-    throw new Error(`prepare: no agent session could be created for job ${job.id}`);
-  }
+async function recordSessionContext(
+  agentSessionId: string,
+  built: Awaited<ReturnType<typeof buildJobSystemPrompt>>,
+): Promise<void> {
+  const { designs, requirement, contracts, pinnedContracts } = built;
   const context = jobsPorts().jobContext;
   if (designs.length || requirement) {
     await context.recordArtifactContext(
@@ -190,6 +136,66 @@ export async function prepareClaimedJob(args: {
   }
   if (contracts.length)
     await context.recordContractContext(agentSessionId, contracts, 'issue-paths');
+}
+
+/**
+ * Prepare a job a master has just claimed on `deviceId`.
+ *
+ * Throws if the box has no runner bound to the job's project — that box cannot
+ * run this work and saying so is the whole point.
+ */
+export async function prepareClaimedJob(args: {
+  jobId: string;
+  deviceId: string;
+  /** The policy state the claim resolved before it held the job (`devices/claim.ts`). */
+  policy: DispatchState;
+}): Promise<PreparedJob> {
+  const [job] = await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1);
+  if (!job) throw new Error(`prepare: job ${args.jobId} not found`);
+
+  const runner = await resolveRunnerForDevice(job.projectId, args.deviceId);
+  const repoPath = runner.repoPath;
+  if (!repoPath) {
+    throw new Error(checkoutUnboundMessage(job.projectId, args.deviceId, runner.id));
+  }
+
+  const resume = finalizeResumeForDevice(await resolveResumePolicy({ job }), args.deviceId);
+
+  const [issueRow, issuePrefix] = await Promise.all([
+    job.issueId
+      ? db.select({ issSeq: issues.issSeq }).from(issues).where(eq(issues.id, job.issueId)).limit(1)
+      : Promise.resolve([]),
+    activeIssuePrefix(job.projectId),
+  ]);
+  const built = await buildJobSystemPrompt({
+    projectId: job.projectId,
+    issueId: job.issueId,
+    step: job.type,
+    policy: args.policy,
+    subject: `prepare refused job ${job.id}`,
+  });
+  const { systemPrompt, blocks, deniedTools } = built;
+
+  const promptString = await promptStringFor(job, resume, systemPrompt);
+  const { model, revision, status, from, profile, qa } = args.policy;
+  const issueKey =
+    issueRow[0]?.issSeq == null ? null : formatIssueRef(issuePrefix, issueRow[0].issSeq);
+  await persistPromptSnapshot({
+    jobId: job.id,
+    systemPrompt,
+    userPrompt: promptString ?? '',
+    blocks,
+    model,
+  });
+
+  const agentSessionId = await ensureAgentSessionForJob(
+    { ...job, runnerId: runner.id, deviceId: args.deviceId },
+    { repoPath, resume: resume.record },
+  );
+  if (!agentSessionId) {
+    throw new Error(`prepare: no agent session could be created for job ${job.id}`);
+  }
+  await recordSessionContext(agentSessionId, built);
 
   return {
     jobId: job.id,
@@ -211,12 +217,6 @@ export async function prepareClaimedJob(args: {
     runnerType: runner.type,
     attempts: job.attempts,
     deniedTools,
-    policy: {
-      revision: args.policy.revision,
-      status: args.policy.status,
-      from: args.policy.from,
-      profile: args.policy.profile,
-      qa: args.policy.qa,
-    },
+    policy: { revision, status, from, profile, qa },
   };
 }

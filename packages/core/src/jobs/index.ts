@@ -12,7 +12,7 @@ export {
   scrubJobOutput,
 } from './job-secret-scrub.js';
 export { killGraceMs, requestJobKill } from './kill-gate.js';
-export { type LoopMonitorResult, runLoopMonitor } from './loop-monitor.js';
+export { type LoopMonitorResult, reapZombieSessions, runLoopMonitor } from './loop-monitor.js';
 export {
   countClaimHeldIssuesByProject,
   type LoopMonitorCoverage,
@@ -20,6 +20,7 @@ export {
 } from './loop-monitor-axis.js';
 export { getLoopThresholds } from './loop-monitor-thresholds.js';
 export {
+  dispatchHeldJob,
   holdQueuedJob,
   releaseHoldsOf,
   releaseHoldsOfDeadMasters,
@@ -54,6 +55,5 @@ export {
   isAgentSessionKind,
   isPipelineSessionKind,
 } from './session-kinds.js';
-export { reapZombieSessions } from './session-reap.js';
 export { runStaleSweep } from './stale-detector.js';
 export { insertJobRow } from './writes.js';
