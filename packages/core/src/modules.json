@@ -235,7 +235,6 @@
         "via:development",
         "via:devices",
         "via:ecosystem",
-        "via:embeddings",
         "via:error-intake",
         "via:feedback",
         "via:git",
@@ -337,16 +336,6 @@
         "requirement-to-delivery#contract-first",
         "requirement-to-delivery#release-gate",
         "feedback-triage#breaking"
-      ]
-    },
-    "embeddings": {
-      "kind": "domain",
-      "context": "knowledge",
-      "owns": ["itemEmbeddings"],
-      "serves": [
-        "feedback-triage#vectors",
-        "feedback-triage#dedup",
-        "requirement-to-delivery#similar"
       ]
     },
     "error-intake": {
@@ -539,12 +528,15 @@
     "knowledge": {
       "kind": "domain",
       "context": "knowledge",
-      "owns": ["knowledgeEntries"],
+      "owns": ["itemEmbeddings", "knowledgeEntries"],
       "serves": [
         "REQ-13",
         "project-onboarding#mapped",
         "project-onboarding#code-map",
-        "personal-data-flow#ds-memory"
+        "personal-data-flow#ds-memory",
+        "feedback-triage#vectors",
+        "feedback-triage#dedup",
+        "requirement-to-delivery#similar"
       ]
     },
     "labels": {
@@ -567,7 +559,6 @@
         "via:development",
         "via:devices",
         "via:ecosystem",
-        "via:embeddings",
         "via:feedback",
         "via:git",
         "via:integration-door",

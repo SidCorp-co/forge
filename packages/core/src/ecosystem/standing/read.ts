@@ -9,8 +9,10 @@ import { db } from '../../db/client.js';
 import { notFound } from '../../middleware/route-errors.js';
 import { loadGraph } from '../graph.js';
 import { type HeldInterface, loadInterface } from '../interface-service.js';
+import type { EdgeRow } from '../interface-store.js';
+import { activeEcosystemIdsOf } from '../membership-store.js';
 import { edgeVisible, liveEdges, type PartyGraph } from '../party.js';
-import { activeEcosystemIdsOf, type EdgeRow, projectsWhere } from '../store.js';
+import { projectsWhere } from '../store.js';
 import {
   type ChangeRow,
   changeItems,

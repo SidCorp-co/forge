@@ -15,7 +15,7 @@ import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
 import { feedback } from '../db/schema-feedback.js';
 import { itemEmbeddings } from '../db/schema-item-embeddings.js';
-import { writeItemEmbedding } from '../embeddings/index.js';
+import { writeItemEmbedding } from '../knowledge/index.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { logger } from '../observability/logger.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';

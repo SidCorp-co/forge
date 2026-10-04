@@ -12,7 +12,7 @@ import { Loading, RefusalNotice, UnreadNotice } from "./notices";
  * (`POST /api/questions/:id/answer`), which is the only door core keeps for it.
  */
 export function GatePanel({ projectId, slug, documentId }: { projectId: string; slug: string; documentId: string }) {
-  const reading = readingOf(useGateQuestion(projectId, documentId, true));
+  const reading = readingOf(useGateQuestion(projectId, documentId));
   const answer = useAnswerGate(projectId);
   const [note, setNote] = useState("");
   const [chosen, setChosen] = useState<string | null>(null);
