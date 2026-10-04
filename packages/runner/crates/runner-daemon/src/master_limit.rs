@@ -22,6 +22,7 @@ use std::time::Duration;
 use serde_json::Value;
 
 use crate::master::{LIMITED_POLL_INTERVAL, NUDGE_REFRESH};
+pub(crate) use runner_platform::git::{days_from_civil, now_secs as now_unix};
 
 pub(crate) const FRESH_WITHIN: Duration =
     Duration::from_secs(2 * (LIMITED_POLL_INTERVAL.as_secs() + NUDGE_REFRESH.as_secs()));
@@ -366,26 +367,4 @@ fn days_in_month(y: i64, m: i64) -> i64 {
         2 => 28,
         _ => 0,
     }
-}
-
-/// Days between 1970-01-01 and a proleptic-Gregorian date.
-///
-/// Howard Hinnant's `days_from_civil`, which is exact for every year this will
-/// ever see and needs no table.
-fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = if y >= 0 { y } else { y - 399 } / 400;
-    let yoe = y - era * 400;
-    let mp = (m + 9) % 12;
-    let doy = (153 * mp + 2) / 5 + d - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146_097 + doe - 719_468
-}
-
-/// This box's clock, as the records are written against.
-pub(crate) fn now_unix() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or_default()
 }

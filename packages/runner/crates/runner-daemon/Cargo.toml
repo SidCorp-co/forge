@@ -23,3 +23,6 @@ rusqlite = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", features = ["signal", "process", "fs"] }
+
+[lints]
+workspace = true

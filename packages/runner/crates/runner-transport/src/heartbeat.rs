@@ -10,7 +10,7 @@
 //! one measured (ISS-1234).
 
 use super::{status, CoreClient, CALL_DEADLINE};
-use runner_platform::error::{Error, Result};
+use runner_platform::error::Result;
 use serde::Deserialize;
 
 pub const INTERVAL_SECS: u64 = 30;
@@ -84,7 +84,6 @@ pub async fn beat_verbose(client: &CoreClient) -> Result<String> {
 }
 
 async fn beat_with(client: &CoreClient, conditions: &Conditions) -> Result<(String, Refused)> {
-    let url = client.url("/api/devices/heartbeat");
     // The RELEASED identity, not Cargo's — core compares a box against both halves,
     // and a box that answered with Cargo's number reported the same 0.17.0 as the
     // release while running seven commits of different code (ISS-1165).
@@ -93,32 +92,8 @@ async fn beat_with(client: &CoreClient, conditions: &Conditions) -> Result<(Stri
         runner_update::build_commit(),
         conditions,
     );
-    let resp = client
-        .http()
-        .post(&url)
-        .bearer_auth(client.device_token())
-        .json(&body)
-        .timeout(CALL_DEADLINE)
-        .send()
-        .await
-        .map_err(|e| {
-            Error::Other(format!(
-                "heartbeat request: {}",
-                status::unanswered(&e, CALL_DEADLINE)
-            ))
-        })?;
-    if resp.status().as_u16() == 401 {
-        return Err(Error::Unauthorized);
-    }
-    if !resp.status().is_success() {
-        let code = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(status::refused("heartbeat", code, &text)));
-    }
-    let parsed = resp
-        .json::<HeartbeatResponse>()
-        .await
-        .map_err(|e| Error::Other(format!("heartbeat decode: {e}")))?;
+    let req = client.post("/api/devices/heartbeat").json(&body);
+    let parsed: HeartbeatResponse = status::fetch_within(req, "heartbeat", CALL_DEADLINE).await?;
     Ok((
         parsed.server_time.unwrap_or_default(),
         Refused {

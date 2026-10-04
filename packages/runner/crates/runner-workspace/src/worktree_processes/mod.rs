@@ -34,6 +34,7 @@
 mod ending;
 pub use ending::*;
 
+use crate::worktree::resolved_for_compare as resolved;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -182,22 +183,6 @@ fn link_target(raw: &Path) -> (PathBuf, bool) {
         Some(base) => (PathBuf::from(base), true),
         None => (raw.to_path_buf(), false),
     }
-}
-
-/// The one spelling every path in this module is compared by.
-///
-/// A live checkout's own path canonicalises outright. A `(deleted)` one
-/// cannot — the directory it names is exactly what is gone — so this is
-/// [`worktree::resolved_for_compare`], which canonicalises the longest
-/// ancestor that still exists and reattaches the rest unchanged. Calling
-/// `resolved` on only one side of a comparison is the bug this module was
-/// filed to fix from the other direction: on a box where an ancestor
-/// canonicalises to a different spelling — `/var` to `/private/var` on
-/// macOS is ISS-1193's own case — a root read straight off disk and a
-/// `(deleted)` path built from the same root would stop comparing equal the
-/// moment only one of them was resolved.
-fn resolved(p: &Path) -> PathBuf {
-    crate::worktree::resolved_for_compare(p)
 }
 
 /// Whether `at` is `root` or lies beneath it.

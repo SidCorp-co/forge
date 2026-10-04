@@ -75,4 +75,27 @@ impl CoreClient {
     pub fn url(&self, path: &str) -> String {
         format!("{}{}", self.base, path)
     }
+
+    /// A call to `path` on core, carrying the device token.
+    pub fn request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
+        self.http
+            .request(method, self.url(path))
+            .bearer_auth(&self.device_token)
+    }
+
+    pub fn get(&self, path: &str) -> reqwest::RequestBuilder {
+        self.request(reqwest::Method::GET, path)
+    }
+
+    pub fn post(&self, path: &str) -> reqwest::RequestBuilder {
+        self.request(reqwest::Method::POST, path)
+    }
+
+    pub fn patch(&self, path: &str) -> reqwest::RequestBuilder {
+        self.request(reqwest::Method::PATCH, path)
+    }
+
+    pub fn delete(&self, path: &str) -> reqwest::RequestBuilder {
+        self.request(reqwest::Method::DELETE, path)
+    }
 }

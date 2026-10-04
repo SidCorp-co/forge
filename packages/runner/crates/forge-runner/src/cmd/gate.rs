@@ -21,6 +21,7 @@ use clap::Args as ClapArgs;
 use runner_core::degraded::{mark, Kind, Mark, Run, Source};
 use runner_core::dispatch_gate::Dispatch;
 use runner_daemon::{control, session_tokens};
+use runner_platform::config::config_dir;
 
 const ANSWER_WITHIN: std::time::Duration = std::time::Duration::from_secs(2);
 
@@ -89,11 +90,6 @@ fn deny(reason: &str) -> String {
 }
 
 const ALLOW: &str = "{}";
-
-/// Where this box's config, socket and marks live.
-fn config_dir() -> Option<PathBuf> {
-    runner_platform::config::config_dir()
-}
 
 /// Why a mark this process writes never names a run: the registry of declared
 /// runs is the daemon's, and every path through here is one where the daemon

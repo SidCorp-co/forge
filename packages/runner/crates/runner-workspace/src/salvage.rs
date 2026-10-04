@@ -23,6 +23,7 @@ use std::time::Duration;
 use tokio::process::Command;
 
 use crate::repo_cred::RepoCred;
+use runner_platform::git::git;
 
 const PICK_BUDGET: Duration = Duration::from_secs(10);
 const LOCAL_BUDGET: Duration = Duration::from_secs(15);
@@ -387,17 +388,6 @@ async fn git_over_network(
         .kill_on_drop(true);
     cred.apply(&mut cmd);
     cmd.output().await.ok()
-}
-
-async fn git(dir: &Path, args: &[&str]) -> Option<std::process::Output> {
-    Command::new("git")
-        .args(args)
-        .current_dir(dir)
-        .stdin(Stdio::null())
-        .kill_on_drop(true)
-        .output()
-        .await
-        .ok()
 }
 
 fn stdout_trim(out: &std::process::Output) -> String {

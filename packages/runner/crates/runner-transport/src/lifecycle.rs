@@ -8,13 +8,13 @@ pub async fn ack(
     job_id: &str,
     skills_ran_with: Option<serde_json::Value>,
 ) -> Result<()> {
-    let url = client.url(&format!("/api/jobs/{job_id}/ack"));
+    let path = format!("/api/jobs/{job_id}/ack");
     let body = if let Some(srw) = skills_ran_with {
         serde_json::json!({ "skillsRanWith": srw })
     } else {
         serde_json::json!({})
     };
-    send(client, &url, body).await
+    send(client, &path, body).await
 }
 
 /// Force-fail a job with an error message.
@@ -28,12 +28,12 @@ pub async fn fail_with_salvage(
     error: &str,
     salvage: Option<serde_json::Value>,
 ) -> Result<()> {
-    let url = client.url(&format!("/api/jobs/{job_id}/fail"));
+    let path = format!("/api/jobs/{job_id}/fail");
     let mut body = serde_json::json!({ "error": error });
     if let Some(s) = salvage {
         body["salvage"] = s;
     }
-    send(client, &url, body).await
+    send(client, &path, body).await
 }
 
 /// ISS-785 — answer a `job.cancel` frame with the real outcome (`"killed"` or
@@ -44,20 +44,13 @@ pub async fn fail_with_salvage(
 /// asks `runner::inflight` before saying it, so an empty session map after a
 /// restart no longer passes for a dead process.
 pub async fn kill_ack(client: &CoreClient, job_id: &str, outcome: &str) -> Result<()> {
-    let url = client.url(&format!("/api/jobs/{job_id}/kill-ack"));
+    let path = format!("/api/jobs/{job_id}/kill-ack");
     let body = serde_json::json!({ "outcome": outcome });
-    send(client, &url, body).await
+    send(client, &path, body).await
 }
 
-async fn send(client: &CoreClient, url: &str, body: serde_json::Value) -> Result<()> {
-    let resp = client
-        .http()
-        .post(url)
-        .bearer_auth(client.device_token())
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("lifecycle request: {e}")))?;
+async fn send(client: &CoreClient, path: &str, body: serde_json::Value) -> Result<()> {
+    let resp = crate::status::sent(client.post(path).json(&body), "lifecycle request").await?;
     if !resp.status().is_success() {
         let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();

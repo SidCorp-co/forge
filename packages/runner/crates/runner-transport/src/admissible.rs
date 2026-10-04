@@ -8,7 +8,7 @@
 //! worth carrying and when there is something new to say to it.
 
 use crate::CoreClient;
-use runner_platform::error::{Error, Result};
+use runner_platform::error::Result;
 use serde::{Deserialize, Serialize};
 
 pub const DISPATCH_GATING_KIND: &str = "blocks";
@@ -61,32 +61,10 @@ pub async fn admissible(
     client: &CoreClient,
     project_id: Option<&str>,
 ) -> Result<Vec<AdmissibleIssue>> {
-    let mut url = client.url("/api/devices/me/issues/admissible");
+    let mut path = "/api/devices/me/issues/admissible".to_string();
     if let Some(p) = project_id {
-        url.push_str(&format!("?projectId={p}"));
+        path.push_str(&format!("?projectId={p}"));
     }
-    let resp = client
-        .http()
-        .get(&url)
-        .bearer_auth(client.device_token())
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("admissible request: {e}")))?;
-    if resp.status().as_u16() == 401 {
-        return Err(Error::Unauthorized);
-    }
-    if !resp.status().is_success() {
-        let code = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(crate::status::refused(
-            "admissible",
-            code,
-            &text,
-        )));
-    }
-    let parsed: AdmissibleResponse = resp
-        .json()
-        .await
-        .map_err(|e| Error::Other(format!("admissible decode: {e}")))?;
+    let parsed: AdmissibleResponse = crate::status::fetch(client.get(&path), "admissible").await?;
     Ok(parsed.items)
 }

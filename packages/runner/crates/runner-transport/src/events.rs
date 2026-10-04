@@ -54,18 +54,12 @@ pub async fn post_job_events(
 }
 
 async fn post_batch(client: &CoreClient, job_id: &str, events: &[JobEventInput]) -> Result<usize> {
-    let url = client.url(&format!("/api/jobs/{job_id}/events"));
+    let path = format!("/api/jobs/{job_id}/events");
     let body = Batch { events };
 
     let mut delay_ms: u64 = 1000;
     for attempt in 1..=MAX_ATTEMPTS {
-        let resp = client
-            .http()
-            .post(&url)
-            .bearer_auth(client.device_token())
-            .json(&body)
-            .send()
-            .await;
+        let resp = client.post(&path).json(&body).send().await;
 
         match resp {
             Ok(r) => {

@@ -6,7 +6,7 @@
 //! answers it from `ecosystem/device-channel-inbox-routes.ts`.
 
 use crate::CoreClient;
-use runner_platform::error::{Error, Result};
+use runner_platform::error::Result;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -58,31 +58,8 @@ impl UnansweredResponse {
 }
 
 pub async fn unanswered(client: &CoreClient, project_id: &str) -> Result<Vec<UnansweredDocument>> {
-    let url = client.url(&format!(
-        "/api/devices/me/channel/unanswered?projectId={project_id}"
-    ));
-    let resp = client
-        .http()
-        .get(&url)
-        .bearer_auth(client.device_token())
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("channel inbox request: {e}")))?;
-    if resp.status().as_u16() == 401 {
-        return Err(Error::Unauthorized);
-    }
-    if !resp.status().is_success() {
-        let code = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(crate::status::refused(
-            "channel inbox",
-            code,
-            &text,
-        )));
-    }
-    let parsed: UnansweredResponse = resp
-        .json()
-        .await
-        .map_err(|e| Error::Other(format!("channel inbox decode: {e}")))?;
+    let path = format!("/api/devices/me/channel/unanswered?projectId={project_id}");
+    let parsed: UnansweredResponse =
+        crate::status::fetch(client.get(&path), "channel inbox").await?;
     Ok(parsed.into_work())
 }

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { dirname, resolve } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { baseRef } from './lib/base-branch.mjs';
 
@@ -89,6 +90,31 @@ if (cargo.error || cargo.status !== 0) {
   process.exit(2);
 }
 console.log(`runner-gates: ${count} crate file(s) in scope`);
+
+// ADR 0009's size rule: no file's production section (everything above its first
+// `#[cfg(test)]`) passes FILE_LIMIT lines. Functions are held to 100 by clippy.toml.
+const FILE_LIMIT = 800;
+const oversize = [];
+(function walk(dir) {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) {
+      if (e.name !== 'target') walk(p);
+    } else if (e.name.endsWith('.rs')) {
+      const lines = readFileSync(p, 'utf8').split('\n');
+      const cut = lines.findIndex((l) => l.startsWith('#[cfg(test)]'));
+      const n = cut === -1 ? lines.length - (lines.at(-1) === '' ? 1 : 0) : cut;
+      if (n > FILE_LIMIT) oversize.push(`${relative(ROOT, p)}: ${n} lines`);
+    }
+  }
+})(resolve(CRATE_DIR, 'crates'));
+if (oversize.length) {
+  console.error(oversize.join('\n'));
+  console.error(
+    `runner-gates: ${oversize.length} file(s) hold more than ${FILE_LIMIT} production lines — split by responsibility`,
+  );
+  process.exit(1);
+}
 
 for (const gate of GATES) {
   const r = spawnSync(gate.argv[0], gate.argv.slice(1), {

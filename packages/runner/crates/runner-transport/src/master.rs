@@ -9,7 +9,7 @@ use std::time::Duration;
 use serde::Deserialize;
 
 use super::{status, CoreClient, CALL_DEADLINE};
-use runner_platform::error::{Error, Result};
+use runner_platform::error::Result;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,24 +35,22 @@ pub async fn register_within(
     max_job_panes: u32,
     deadline: Duration,
 ) -> Result<MasterSession> {
-    let url = client.url("/api/devices/me/master-session");
     let body = serde_json::json!({
         "projectId": project_id,
         "name": name,
         "maxJobPanes": max_job_panes,
     });
-    let resp = post(client, "master-session", &url, body, deadline).await?;
-    resp.json()
-        .await
-        .map_err(|e| Error::Other(format!("master-session decode: {e}")))
+    let req = client.post("/api/devices/me/master-session").json(&body);
+    status::fetch_within(req, "master-session", deadline).await
 }
 
 pub async fn close(client: &CoreClient, session_id: &str, reason: &str) -> Result<()> {
-    let url = client.url("/api/devices/me/master-session/close");
     let body = serde_json::json!({ "sessionId": session_id, "reason": reason });
-    post(client, "master-session", &url, body, CALL_DEADLINE)
-        .await
-        .map(|_| ())
+    let req = client
+        .post("/api/devices/me/master-session/close")
+        .json(&body);
+    status::send_within(req, "master-session", CALL_DEADLINE).await?;
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -118,9 +116,7 @@ async fn pass_call(
 ) -> std::result::Result<String, PassError> {
     const WHAT: &str = "master-session/pass";
     let resp = client
-        .http()
-        .post(client.url("/api/devices/me/master-session/pass"))
-        .bearer_auth(client.device_token())
+        .post("/api/devices/me/master-session/pass")
         .json(&body)
         .timeout(CALL_DEADLINE)
         .send()
@@ -170,74 +166,17 @@ pub async fn report_limit(
     if let Some(secs) = resets_in_seconds {
         body["resetsInSeconds"] = serde_json::json!(secs);
     }
-    let url = client.url("/api/devices/me/limit");
-    post(client, "me/limit", &url, body, CALL_DEADLINE)
-        .await
-        .map(|_| ())
-}
-
-pub async fn clear_limit(client: &CoreClient) -> Result<()> {
-    let url = client.url("/api/devices/me/limit");
-    let resp = client
-        .http()
-        .delete(&url)
-        .bearer_auth(client.device_token())
-        .timeout(CALL_DEADLINE)
-        .send()
-        .await
-        .map_err(|e| {
-            Error::Other(format!(
-                "me/limit request: {}",
-                status::unanswered(&e, CALL_DEADLINE)
-            ))
-        })?;
-    if resp.status().as_u16() == 401 {
-        return Err(Error::Unauthorized);
-    }
-    if !resp.status().is_success() {
-        let code = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(status::refused("me/limit", code, &text)));
-    }
+    let req = client.post("/api/devices/me/limit").json(&body);
+    status::send_within(req, "me/limit", CALL_DEADLINE).await?;
     Ok(())
 }
 
-/// One call to core, said the way a refusal has to read.
-///
-/// What comes back here is the `{e}` in the master sweep's warning AND the
-/// `detail` of `Unplaced::RegisterFailed`, which is the reason an operator gets
-/// from `forge-runner master status` when a project has no pane. It used to be
-/// `reqwest::StatusCode`'s `Display` plus the body verbatim, so a gateway's 520
-/// read as `<unknown status code>` and its whole HTML page was printed twice
-/// (ISS-1233). Both halves are [`status`]'s to say now.
-async fn post(
-    client: &CoreClient,
-    what: &str,
-    url: &str,
-    body: serde_json::Value,
-    deadline: Duration,
-) -> Result<reqwest::Response> {
-    let resp = client
-        .http()
-        .post(url)
-        .bearer_auth(client.device_token())
-        .json(&body)
-        .timeout(deadline)
-        .send()
-        .await
-        .map_err(|e| {
-            Error::Other(format!(
-                "{what} request: {}",
-                status::unanswered(&e, deadline)
-            ))
-        })?;
-    if resp.status().as_u16() == 401 {
-        return Err(Error::Unauthorized);
-    }
-    if !resp.status().is_success() {
-        let code = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(status::refused(what, code, &text)));
-    }
-    Ok(resp)
+pub async fn clear_limit(client: &CoreClient) -> Result<()> {
+    status::send_within(
+        client.delete("/api/devices/me/limit"),
+        "me/limit",
+        CALL_DEADLINE,
+    )
+    .await?;
+    Ok(())
 }

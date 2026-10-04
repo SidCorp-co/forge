@@ -21,15 +21,13 @@
 //! criteria 25, 36).
 
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use std::time::{Duration, SystemTime};
-
-use tokio::process::Command;
 
 use crate::worktree::{kind_at, Kind};
 use crate::worktree_processes::{residents_of, Clearing, Loud, Reading, Resident, Say, Verdict};
 use runner_core::ledger::Ledger;
 use runner_platform::error::Result;
+use runner_platform::git::git;
 
 pub const MIN_AGE: Duration = Duration::from_secs(14 * 24 * 3600);
 
@@ -97,16 +95,6 @@ impl SweepClock {
         let outage = self.outage.take()?;
         Some(now.duration_since(outage.began_at))
     }
-}
-
-async fn git(dir: &Path, args: &[&str]) -> Option<std::process::Output> {
-    Command::new("git")
-        .args(args)
-        .current_dir(dir)
-        .stdin(Stdio::null())
-        .output()
-        .await
-        .ok()
 }
 
 pub async fn holds_work(wt: &Path) -> bool {
@@ -345,6 +333,10 @@ fn forget_strays(repo: &Path, still: &[PathBuf]) {
 }
 
 /// [`reap_repo`], with the reading and the signalling supplied.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one reap pass over a checkout; the steps share its census (ISS-218 amnesty)"
+)]
 pub async fn reap_repo_clearing(
     repo: &Path,
     min_age: Duration,

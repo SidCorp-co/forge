@@ -245,7 +245,7 @@ function nonEmpty<T>(values: readonly T[]): [T, ...T[]] {
 
 const profileName = () => z.string().regex(SHORT_NAME);
 
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/terminal.rs:job_argv — the grammar of
+// cm:edge contract -> packages/runner/crates/runner-workspace/src/terminal.rs:job_argv — the grammar of
 // one `--disallowed-tools` entry a job pane is started with: a built-in tool, optionally with a
 // specifier (`Bash(git push:*)`), or an MCP server or tool (`mcp__forge__forge_coolify_deploy`, `mcp__x__*`).
 export const TOOL_PATTERN =

@@ -193,6 +193,10 @@ pub(crate) fn standing_notice(standing: Standing, state: &CloseState) -> &'stati
 /// it. Answers whether it has been said, now or on an earlier sweep, so the
 /// sweep's own per-sweep line can stand down; a notice that could not be
 /// recorded answers `false` and leaves that line to speak.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one notice per recovery outcome, in order (ISS-218 amnesty)"
+)]
 pub(crate) fn say_standing(
     ledger: &Ledger,
     run: &Run,

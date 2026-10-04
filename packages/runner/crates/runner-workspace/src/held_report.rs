@@ -25,6 +25,7 @@ use crate::repo_cred::RepoCred;
 use crate::salvage::{self, Fate, Publication};
 use crate::worktree::Kind;
 use runner_core::ledger::{Incarnation, Ledger, Run};
+use runner_platform::git::git_line;
 use runner_transport::{run_sessions, CoreClient};
 
 /// What the box says about a checkout an exited run left behind.
@@ -202,26 +203,6 @@ fn why(
         }
     };
     format!("{work} — {directory}")
-}
-
-async fn git_line(dir: &std::path::Path, args: &[&str]) -> Option<String> {
-    let out = tokio::process::Command::new("git")
-        .args(args)
-        .current_dir(dir)
-        .stdin(std::process::Stdio::null())
-        .kill_on_drop(true)
-        .output()
-        .await
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if s.is_empty() {
-        None
-    } else {
-        Some(s)
-    }
 }
 
 pub async fn report_held_worktrees(

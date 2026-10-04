@@ -10,7 +10,7 @@
 //! is a candidate for a wave and carries no `job_id` by its own guard, while a
 //! pool row IS the work and carries nothing else.
 
-use crate::CoreClient;
+use crate::{status, CoreClient};
 use runner_platform::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -195,25 +195,23 @@ pub async fn list_within(
     limit: u32,
     deadline: Duration,
 ) -> std::result::Result<Vec<PoolEntry>, ReadFailure> {
-    let mut url = client.url(&format!("/api/devices/me/pool?limit={limit}"));
+    let mut path = format!("/api/devices/me/pool?limit={limit}");
     if let Some(p) = project_id {
-        url.push_str(&format!("&projectId={p}"));
+        path.push_str(&format!("&projectId={p}"));
     }
     let resp = client
-        .http()
-        .get(&url)
-        .bearer_auth(client.device_token())
+        .get(&path)
         .timeout(deadline)
         .send()
         .await
         .map_err(|e| ReadFailure {
             status: None,
-            reason: format!("pool request: {}", crate::status::unanswered(&e, deadline)),
+            reason: format!("pool request: {}", status::unanswered(&e, deadline)),
         })?;
     let status = resp.status().as_u16();
     if !resp.status().is_success() {
         let text = resp.text().await.unwrap_or_default();
-        let mut reason = crate::status::refused("pool", status, &text);
+        let mut reason = status::refused("pool", status, &text);
         if status == 401 {
             reason.push_str(" — the device token was refused; `forge-runner login`");
         }
@@ -224,7 +222,7 @@ pub async fn list_within(
     }
     let parsed: PoolResponse = resp.json().await.map_err(|e| ReadFailure {
         status: None,
-        reason: format!("pool response: {}", crate::status::unanswered(&e, deadline)),
+        reason: format!("pool response: {}", status::unanswered(&e, deadline)),
     })?;
     Ok(parsed.items)
 }
@@ -280,37 +278,18 @@ async fn post(
     body: serde_json::Value,
     deadline: Duration,
 ) -> Result<ClaimResponse> {
-    let url = client.url(path);
     let resp = client
-        .http()
-        .post(&url)
-        .bearer_auth(client.device_token())
+        .post(path)
         .json(&body)
         .timeout(deadline)
         .send()
         .await
-        .map_err(|e| {
-            Error::Other(format!(
-                "pool {path}: {}",
-                crate::status::unanswered(&e, deadline)
-            ))
-        })?;
-    if resp.status().as_u16() == 401 {
-        return Err(Error::Unauthorized);
-    }
-    if !resp.status().is_success() {
-        let status = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(crate::status::refused(
-            &format!("pool {path}"),
-            status,
-            &text,
-        )));
-    }
+        .map_err(|e| Error::Other(format!("pool {path}: {}", status::unanswered(&e, deadline))))?;
+    let resp = status::checked(resp, &format!("pool {path}")).await?;
     resp.json().await.map_err(|e| {
         Error::Other(format!(
             "pool {path} response: {}",
-            crate::status::unanswered(&e, deadline)
+            status::unanswered(&e, deadline)
         ))
     })
 }

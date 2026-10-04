@@ -51,6 +51,7 @@ use runner_transport::ws::{self, WsConfig};
 use runner_transport::{heartbeat, lifecycle, CoreClient};
 
 use dispatch::resolve_repo;
+use runner_platform::proc::pid_alive;
 
 pub(crate) const POOL_SUPERVISE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 
@@ -190,16 +191,6 @@ fn live_runs<'a>(
             !matches!(Ledger::liveness(r, this_boot, pid_refuted), Liveness::Dead)
         })
         .collect()
-}
-
-#[cfg(unix)]
-fn pid_alive(pid: u32) -> bool {
-    runner_platform::proc::pid_alive(pid)
-}
-
-#[cfg(not(unix))]
-fn pid_alive(_pid: u32) -> bool {
-    false
 }
 
 /// Rewrite the hook commands of every project bound on this box that name a
@@ -352,7 +343,67 @@ async fn close_parked_sessions(runner: &Arc<ClaudeCodeRunner>) -> usize {
     runner.checkpoint_and_close(CHECKPOINT_BUDGET).await.len()
 }
 
+/// What a daemon reconciles before it starts anything: which projects route here, the hooks the
+/// daemon it replaced installed, and the forge-master skill in every checkout.
+async fn boot(cfg: &Config, client: &CoreClient) {
+    // Discover server-side assignments (`/me/runners`). This is the source of
+    // truth for which projects route to this device and for their repo paths;
+    // config.toml is only a local fallback now (ISS-271). Best-effort: an old
+    // server or transient failure falls back to config-only behaviour.
+    let server: Option<Vec<MeRunner>> = match runners::list_me(client).await {
+        Ok(rows) => Some(rows),
+        Err(e) => {
+            tracing::warn!(
+                "[me/runners] discovery failed ({e}) — using local config bindings only"
+            );
+            None
+        }
+    };
+    let assigned: &[MeRunner] = server.as_deref().unwrap_or_default();
+
+    for r in assigned {
+        // AC 5 — warn when assigned on the server but no usable repo path
+        // (neither server nor local), with the exact command to fix it.
+        if resolve_repo(assigned, cfg, &r.project_id).is_err() {
+            tracing::warn!(
+                "[me/runners] project '{}' is assigned but has no local repo path — run `forge-runner bind {} --path <dir>`",
+                r.slug,
+                r.slug
+            );
+        }
+    }
+    if assigned.is_empty() && cfg.bindings.values().all(|b| b.project_id.is_none()) {
+        tracing::warn!(
+            "no project assignments — jobs cannot be routed. Bind a device in the web UI, then run `forge-runner bind <slug> --path <dir>`."
+        );
+    }
+
+    // Before any pane is prepared: whatever the daemon this one replaced wrote
+    // into these checkouts is still there, and this process CAN name itself.
+    repair_installed_hooks(server.as_deref(), cfg, "boot");
+    let census_from = agent_activity::now_ms();
+    let (fresh, census_from) = match Config::load() {
+        Ok(fresh) => (fresh, Some(census_from)),
+        Err(e) => {
+            tracing::warn!(
+                "[skill] config.toml could not be read again ({e}), so the forge-master install covers the bindings read at start and prunes no line of its record"
+            );
+            (cfg.clone(), None)
+        }
+    };
+    install_master_skills(
+        server.as_deref(),
+        &fresh,
+        census_from,
+        runner_platform::config::config_dir().as_deref(),
+    );
+}
+
 /// Run the daemon until Ctrl-C. `device_token` comes from the cred store.
+#[expect(
+    clippy::too_many_lines,
+    reason = "the daemon wiring: one spawn per actor, in start order (ISS-218 amnesty)"
+)]
 pub async fn run(
     cfg: Config,
     core_url: String,
@@ -373,57 +424,7 @@ pub async fn run(
         (cfg.runner.duplex_max_sessions as usize).max(1),
     ));
 
-    // Discover server-side assignments (`/me/runners`). This is the source of
-    // truth for which projects route to this device and for their repo paths;
-    // config.toml is only a local fallback now (ISS-271). Best-effort: an old
-    // server or transient failure falls back to config-only behaviour.
-    let server: Option<Vec<MeRunner>> = match runners::list_me(&client).await {
-        Ok(rows) => Some(rows),
-        Err(e) => {
-            tracing::warn!(
-                "[me/runners] discovery failed ({e}) — using local config bindings only"
-            );
-            None
-        }
-    };
-    let assigned: &[MeRunner] = server.as_deref().unwrap_or_default();
-
-    for r in assigned {
-        // AC 5 — warn when assigned on the server but no usable repo path
-        // (neither server nor local), with the exact command to fix it.
-        if resolve_repo(assigned, &cfg, &r.project_id).is_err() {
-            tracing::warn!(
-                "[me/runners] project '{}' is assigned but has no local repo path — run `forge-runner bind {} --path <dir>`",
-                r.slug,
-                r.slug
-            );
-        }
-    }
-    if assigned.is_empty() && cfg.bindings.values().all(|b| b.project_id.is_none()) {
-        tracing::warn!(
-            "no project assignments — jobs cannot be routed. Bind a device in the web UI, then run `forge-runner bind <slug> --path <dir>`."
-        );
-    }
-
-    // Before any pane is prepared: whatever the daemon this one replaced wrote
-    // into these checkouts is still there, and this process CAN name itself.
-    repair_installed_hooks(server.as_deref(), &cfg, "boot");
-    let census_from = agent_activity::now_ms();
-    let (fresh, census_from) = match Config::load() {
-        Ok(fresh) => (fresh, Some(census_from)),
-        Err(e) => {
-            tracing::warn!(
-                "[skill] config.toml could not be read again ({e}), so the forge-master install covers the bindings read at start and prunes no line of its record"
-            );
-            (cfg.clone(), None)
-        }
-    };
-    install_master_skills(
-        server.as_deref(),
-        &fresh,
-        census_from,
-        runner_platform::config::config_dir().as_deref(),
-    );
+    boot(&cfg, &client).await;
 
     let (cancel_tx, cancel_rx) = watch::channel(false);
     let (frame_tx, mut frame_rx) = mpsc::channel::<Frame>(256);
@@ -552,33 +553,20 @@ pub async fn run(
     #[cfg(unix)]
     actors::control(&activity, &masters, &drain, cancel_rx.clone())?;
     let (wake_tx, wake_rx) = master::wake_channel();
-    {
-        let (client, cfg) = ((*client).clone(), (*cfg).clone());
-        let cancel_rx = cancel_rx.clone();
-        let masters = masters.clone();
-        let activity = activity.clone();
-        let job_panes = job_panes.clone();
-        let job_records = job_records.clone();
-        let adopted_rx = adopted_rx.clone();
-        let drain = drain.clone();
-        tokio::spawn(async move {
-            master::run(
-                client,
-                cfg,
-                master::Shared {
-                    masters,
-                    activity,
-                    job_panes,
-                    job_records,
-                    drain,
-                },
-                adopted_rx,
-                cancel_rx,
-                wake_rx,
-            )
-            .await
-        });
-    }
+    tokio::spawn(master::run(
+        (*client).clone(),
+        (*cfg).clone(),
+        master::Shared {
+            masters: masters.clone(),
+            activity: activity.clone(),
+            job_panes,
+            job_records,
+            drain,
+        },
+        adopted_rx,
+        cancel_rx.clone(),
+        wake_rx,
+    ));
 
     let ctx = actors::FrameCtx {
         client,

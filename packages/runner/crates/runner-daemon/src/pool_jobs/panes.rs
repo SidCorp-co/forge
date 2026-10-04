@@ -36,25 +36,6 @@ pub struct Live {
     pub opened_at: Option<i64>,
 }
 
-/// One held slot, and since when this daemon has been counting it.
-#[derive(Debug, Clone)]
-pub(crate) struct Held {
-    pub(crate) pane: String,
-    pub(crate) watch: Watch,
-    pub(crate) seen: Option<job_exit::Reported>,
-    pub(crate) transcript: Option<String>,
-    /// When this daemon began counting the pane — the adoption, for one it
-    /// adopted, and never the pane's own start. It is the only instant this
-    /// box's own silence can be measured from, which is what `job_unheard`
-    /// reads it for: a pane's delivery belongs to whichever daemon briefed it
-    /// and is persisted nowhere. A reading that wants the slot's age ACROSS a
-    /// restart wants a second value rather than this one, which carried across
-    /// would conclude an adopted pane the instant it was adopted.
-    pub(crate) noted_at: i64,
-    /// That second value: when this box opened the pane, off its record.
-    pub(crate) opened_at: Option<i64>,
-}
-
 /// A slot this box is holding, for the one line an operator reads when it can
 /// take no more work.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,8 +53,12 @@ pub struct Holding {
     /// Where the pane's conversation is written, which the line reads the
     /// last write of exactly as the sweep does.
     pub transcript: Option<String>,
-    /// When this daemon began counting the pane, which for one it adopted is
-    /// the adoption and not the pane's own start.
+    /// When this daemon began counting the pane — the adoption, for one it
+    /// adopted, and never the pane's own start. It is the only instant this
+    /// box's own silence can be measured from, which is what `job_unheard`
+    /// reads it for. A reading that wants the slot's age ACROSS a restart
+    /// wants `opened_at`, since this carried across would conclude an adopted
+    /// pane the instant it was adopted.
     pub noted_at: i64,
     /// When this box opened the pane, where its record says; the age of the
     /// slot across any restart.
@@ -81,7 +66,7 @@ pub struct Holding {
 }
 
 pub struct JobPanes {
-    pub(crate) inner: Mutex<HashMap<String, Held>>,
+    pub(crate) inner: Mutex<HashMap<String, Holding>>,
     pub(crate) session_id: String,
     pub(crate) swept_at: Mutex<Option<i64>>,
     /// Which set of jobs this box has already said is holding every slot, so
@@ -135,7 +120,8 @@ impl JobPanes {
                 h.transcript = transcript.clone();
                 h.opened_at = h.opened_at.or(opened_at);
             })
-            .or_insert_with(|| Held {
+            .or_insert_with(|| Holding {
+                job_id: job_id.to_string(),
                 pane: pane.to_string(),
                 watch,
                 seen,
@@ -172,18 +158,7 @@ impl JobPanes {
         let Ok(map) = self.inner.lock() else {
             return Vec::new();
         };
-        let mut out: Vec<Holding> = map
-            .iter()
-            .map(|(job_id, h)| Holding {
-                job_id: job_id.clone(),
-                pane: h.pane.clone(),
-                watch: h.watch.clone(),
-                seen: h.seen,
-                transcript: h.transcript.clone(),
-                noted_at: h.noted_at,
-                opened_at: h.opened_at,
-            })
-            .collect();
+        let mut out: Vec<Holding> = map.values().cloned().collect();
         out.sort_by(|a, b| a.job_id.cmp(&b.job_id));
         out
     }
@@ -199,9 +174,9 @@ impl JobPanes {
             return Vec::new();
         };
         let mut out: Vec<Live> = map
-            .iter()
-            .map(|(job_id, h)| Live {
-                job_id: job_id.clone(),
+            .values()
+            .map(|h| Live {
+                job_id: h.job_id.clone(),
                 pane: h.pane.clone(),
                 watch: h.watch.clone(),
                 seen: h.seen,

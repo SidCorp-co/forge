@@ -270,6 +270,10 @@ impl ClaudeCodeRunner {
 
 #[async_trait]
 impl Runner for ClaudeCodeRunner {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "the turn loop of one Claude Code session; its arms share the session state (ISS-218 amnesty, ends when idle verdicts move to core per ADR 0009 moveToCore)"
+    )]
     async fn start(&self, spec: JobSpec, tx: mpsc::Sender<RunnerEvent>) -> Result<SessionId> {
         let job_id = spec.job_id.clone();
 

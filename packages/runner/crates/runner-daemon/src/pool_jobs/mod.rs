@@ -77,6 +77,10 @@ pub struct ServedProject<'a> {
     pub slug: &'a str,
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "taking one pool job from claim to an open pane; the steps share the claim (ISS-218 amnesty)"
+)]
 pub async fn take_one(
     ports: &JobPorts<'_>,
     registry: &JobPanes,

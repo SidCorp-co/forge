@@ -16,6 +16,7 @@ use std::path::Path;
 use crate::worktree::Residence;
 use runner_core::ledger::{CheckoutReturn, Ledger};
 use runner_platform::error::Result;
+use runner_platform::git::now_secs;
 pub use runner_transport::run_sessions::Outcome;
 
 /// Reads back the authoritative session row. Never the ack of a write.
@@ -155,18 +156,6 @@ async fn checkout_returned(
             None
         }
     }
-}
-
-/// Wall-clock seconds, for the one stamp this module writes.
-///
-/// The settle below is a record of when an observation was made, not a
-/// deadline anything is measured against, so a clock that moves cannot hold it
-/// off or bring it on the way `note_release_refusal`'s window can.
-fn now_secs() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
 }
 
 pub async fn close(

@@ -9,7 +9,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::time::Duration;
 
-use crate::CoreClient;
+use crate::{status, CoreClient};
 use runner_platform::error::{Error, Result};
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -52,26 +52,23 @@ pub async fn fetch_within(
     project_id: &str,
     deadline: Duration,
 ) -> Result<ProjectMcpServers> {
-    let url = client.url(&format!(
-        "/api/devices/me/mcp-servers?projectId={project_id}"
-    ));
     let resp = client
-        .http()
-        .get(&url)
-        .bearer_auth(client.device_token())
+        .get(&format!(
+            "/api/devices/me/mcp-servers?projectId={project_id}"
+        ))
         .timeout(deadline)
         .send()
         .await
         .map_err(|e| {
             Error::Other(format!(
                 "{ROUTE} request: {}",
-                crate::status::unanswered(&e, deadline)
+                status::unanswered(&e, deadline)
             ))
         })?;
     let status = resp.status().as_u16();
     if !resp.status().is_success() {
         let text = resp.text().await.unwrap_or_default();
-        let mut reason = crate::status::refused(ROUTE, status, &text);
+        let mut reason = status::refused(ROUTE, status, &text);
         if status == 401 {
             reason.push_str(" — the device token was refused; `forge-runner login`");
         }
@@ -80,7 +77,7 @@ pub async fn fetch_within(
     resp.json::<ProjectMcpServers>().await.map_err(|e| {
         Error::Other(format!(
             "{ROUTE} response: {}",
-            crate::status::unanswered(&e, deadline)
+            status::unanswered(&e, deadline)
         ))
     })
 }

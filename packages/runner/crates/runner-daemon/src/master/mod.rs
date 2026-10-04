@@ -35,6 +35,8 @@ mod inherit;
 pub use inherit::*;
 mod deaf;
 use deaf::*;
+mod mcp;
+use mcp::*;
 mod place;
 use place::*;
 mod exit;

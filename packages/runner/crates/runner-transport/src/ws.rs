@@ -59,94 +59,7 @@ pub async fn connect(
             Ok((ws_stream, _)) => {
                 retry_delay = 1;
                 tracing::info!("[ws] connected");
-                let (mut write, mut read) = ws_stream.split();
-
-                // Subscribe to the device room.
-                let sub = serde_json::json!({
-                    "type": "subscribe",
-                    "room": format!("device:{}", cfg.device_id)
-                })
-                .to_string();
-                let _ = write.send(Message::Text(sub.into())).await;
-
-                if frame_tx
-                    .send(Frame {
-                        event: "ws.connected".into(),
-                        data: serde_json::Value::Null,
-                    })
-                    .await
-                    .is_err()
-                {
-                    return; // consumer gone — stop entirely
-                }
-
-                outbound.mark_unchanged();
-                let current = outbound.borrow_and_update().clone();
-                if let Some(text) = current {
-                    let _ = write.send(Message::Text(text.into())).await;
-                }
-
-                let mut ping_interval = tokio::time::interval(PING_INTERVAL);
-                ping_interval.tick().await; // skip immediate tick
-
-                let mut publishing = true;
-                let mut awaiting_pong = false;
-                let mut pong_deadline = tokio::time::Instant::now() + PONG_TIMEOUT;
-
-                loop {
-                    let timeout = if awaiting_pong {
-                        tokio::time::sleep_until(pong_deadline)
-                    } else {
-                        tokio::time::sleep_until(
-                            tokio::time::Instant::now() + Duration::from_secs(86400),
-                        )
-                    };
-
-                    tokio::select! {
-                        msg = read.next() => match msg {
-                            Some(Ok(Message::Text(text))) => {
-                                awaiting_pong = false;
-                                if let Ok(frame) = serde_json::from_str::<Frame>(&text) {
-                                    if frame_tx.send(frame).await.is_err() {
-                                        return; // consumer gone — stop entirely
-                                    }
-                                }
-                            }
-                            Some(Ok(Message::Ping(data))) => {
-                                awaiting_pong = false;
-                                let _ = write.send(Message::Pong(data)).await;
-                            }
-                            Some(Ok(Message::Pong(_))) => { awaiting_pong = false; }
-                            Some(Ok(Message::Close(_))) | None => break,
-                            Some(Err(_)) => break,
-                            _ => {}
-                        },
-                        res = outbound.changed(), if publishing => {
-                            if res.is_err() {
-                                publishing = false;
-                            } else {
-                                let next = outbound.borrow_and_update().clone();
-                                if let Some(text) = next {
-                                    if write.send(Message::Text(text.into())).await.is_err() { break; }
-                                }
-                            }
-                        }
-                        _ = ping_interval.tick() => {
-                            if write.send(Message::Ping(vec![].into())).await.is_err() { break; }
-                            awaiting_pong = true;
-                            pong_deadline = tokio::time::Instant::now() + PONG_TIMEOUT;
-                        }
-                        _ = timeout => {
-                            tracing::warn!("[ws] pong timeout — reconnecting");
-                            break;
-                        }
-                        _ = cancel.changed() => {
-                            if *cancel.borrow() { return; }
-                        }
-                    }
-                }
-
-                if *cancel.borrow() {
+                if serve(ws_stream, &cfg, &frame_tx, &mut outbound, &mut cancel).await {
                     break;
                 }
                 tracing::warn!("[ws] disconnected");
@@ -184,4 +97,103 @@ pub async fn connect(
         }
         retry_delay = (retry_delay * 2).min(30);
     }
+}
+
+/// One connected session, until it drops (`false`: reconnect) or the
+/// consumer is gone or `cancel` flips (`true`: stop entirely).
+async fn serve(
+    ws_stream: tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
+    cfg: &WsConfig,
+    frame_tx: &mpsc::Sender<Frame>,
+    outbound: &mut Outbound,
+    cancel: &mut watch::Receiver<bool>,
+) -> bool {
+    let (mut write, mut read) = ws_stream.split();
+
+    // Subscribe to the device room.
+    let sub = serde_json::json!({
+        "type": "subscribe",
+        "room": format!("device:{}", cfg.device_id)
+    })
+    .to_string();
+    let _ = write.send(Message::Text(sub.into())).await;
+
+    if frame_tx
+        .send(Frame {
+            event: "ws.connected".into(),
+            data: serde_json::Value::Null,
+        })
+        .await
+        .is_err()
+    {
+        return true; // consumer gone — stop entirely
+    }
+
+    outbound.mark_unchanged();
+    let current = outbound.borrow_and_update().clone();
+    if let Some(text) = current {
+        let _ = write.send(Message::Text(text.into())).await;
+    }
+
+    let mut ping_interval = tokio::time::interval(PING_INTERVAL);
+    ping_interval.tick().await; // skip immediate tick
+
+    let mut publishing = true;
+    let mut awaiting_pong = false;
+    let mut pong_deadline = tokio::time::Instant::now() + PONG_TIMEOUT;
+
+    loop {
+        let timeout = if awaiting_pong {
+            tokio::time::sleep_until(pong_deadline)
+        } else {
+            tokio::time::sleep_until(tokio::time::Instant::now() + Duration::from_secs(86400))
+        };
+
+        tokio::select! {
+            msg = read.next() => match msg {
+                Some(Ok(Message::Text(text))) => {
+                    awaiting_pong = false;
+                    if let Ok(frame) = serde_json::from_str::<Frame>(&text) {
+                        if frame_tx.send(frame).await.is_err() {
+                            return true; // consumer gone — stop entirely
+                        }
+                    }
+                }
+                Some(Ok(Message::Ping(data))) => {
+                    awaiting_pong = false;
+                    let _ = write.send(Message::Pong(data)).await;
+                }
+                Some(Ok(Message::Pong(_))) => { awaiting_pong = false; }
+                Some(Ok(Message::Close(_))) | None => break,
+                Some(Err(_)) => break,
+                _ => {}
+            },
+            res = outbound.changed(), if publishing => {
+                if res.is_err() {
+                    publishing = false;
+                } else {
+                    let next = outbound.borrow_and_update().clone();
+                    if let Some(text) = next {
+                        if write.send(Message::Text(text.into())).await.is_err() { break; }
+                    }
+                }
+            }
+            _ = ping_interval.tick() => {
+                if write.send(Message::Ping(vec![].into())).await.is_err() { break; }
+                awaiting_pong = true;
+                pong_deadline = tokio::time::Instant::now() + PONG_TIMEOUT;
+            }
+            _ = timeout => {
+                tracing::warn!("[ws] pong timeout — reconnecting");
+                break;
+            }
+            _ = cancel.changed() => {
+                if *cancel.borrow() { return true; }
+            }
+        }
+    }
+
+    *cancel.borrow()
 }

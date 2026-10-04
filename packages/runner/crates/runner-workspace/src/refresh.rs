@@ -13,6 +13,7 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 
+use runner_platform::git::{git, git_line};
 use tokio::process::Command;
 
 /// Cap for the network hop: a slow remote must not hold a job or a chat turn
@@ -39,31 +40,6 @@ pub struct WorkspaceGit {
     /// not Forge's. Distinct from every other `!refreshed` reason: nothing is
     /// broken here and there is nothing to repair.
     pub foreign_work: bool,
-}
-
-async fn git(repo: &Path, args: &[&str]) -> Option<std::process::Output> {
-    Command::new("git")
-        .args(["-C"])
-        .arg(repo)
-        .args(args)
-        .stdin(Stdio::null())
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .output()
-        .await
-        .ok()
-}
-
-async fn git_line(repo: &Path, args: &[&str]) -> Option<String> {
-    let out = git(repo, args).await?;
-    if !out.status.success() {
-        return None;
-    }
-    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if s.is_empty() {
-        None
-    } else {
-        Some(s)
-    }
 }
 
 fn stderr_brief(out: &std::process::Output) -> String {

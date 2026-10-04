@@ -5,7 +5,7 @@ own that takes the row out of `ended_with_open_session`, which dev ISS-139 carri
 lands it deletes this file.
 
 ISS-1284 stopped one of the two forever-loops in
-`forge-runner-core::daemon::run_record`. This is the other one, left standing on purpose and
+`runner_daemon::run_record`. This is the other one, left standing on purpose and
 written down rather than worked around.
 
 ## What stands

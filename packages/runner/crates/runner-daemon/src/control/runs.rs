@@ -53,6 +53,10 @@ pub(crate) fn run_choice(
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "one match over the run-declaration verbs (ISS-218 amnesty)"
+)]
 pub(crate) fn run_declare_as(
     ctl: &Arc<Control>,
     holder: &Holder,

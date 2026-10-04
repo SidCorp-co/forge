@@ -1,4 +1,5 @@
 use super::*;
+pub(crate) use runner_platform::git::now_secs;
 
 pub(crate) struct Reclaim<'a> {
     pub(crate) served: &'a [runners::MeRunner],
@@ -117,13 +118,6 @@ pub(crate) async fn release_held_tree(
             false
         }
     }
-}
-
-pub(crate) fn now_secs() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
 }
 
 pub(crate) async fn report_run_death(

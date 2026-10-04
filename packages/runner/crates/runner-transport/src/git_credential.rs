@@ -8,7 +8,7 @@
 //! installed, connection gone), so a non-2xx carries its message through to the
 //! caller verbatim rather than being flattened into a status code.
 
-use crate::CoreClient;
+use crate::{status, CoreClient};
 use runner_platform::error::{Error, Result};
 use serde::Deserialize;
 
@@ -22,15 +22,10 @@ pub struct GitCredentialGrant {
 }
 
 pub async fn ask(client: &CoreClient, host: &str, path: &str) -> Result<GitCredentialGrant> {
-    let url = client.url("/api/devices/me/git-credential");
-    let resp = client
-        .http()
-        .post(&url)
-        .bearer_auth(client.device_token())
-        .json(&serde_json::json!({ "protocol": "https", "host": host, "path": path }))
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("git-credential request: {e}")))?;
+    let req = client
+        .post("/api/devices/me/git-credential")
+        .json(&serde_json::json!({ "protocol": "https", "host": host, "path": path }));
+    let resp = status::sent(req, "git-credential request").await?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
@@ -46,13 +41,11 @@ pub async fn ask(client: &CoreClient, host: &str, path: &str) -> Result<GitCrede
                     .map(str::to_string)
             })
             .unwrap_or(text);
-        return Err(Error::Other(crate::status::refused(
+        return Err(Error::Other(status::refused(
             "core refused git-credential",
             code,
             &message,
         )));
     }
-    resp.json::<GitCredentialGrant>()
-        .await
-        .map_err(|e| Error::Other(format!("git-credential decode: {e}")))
+    status::decode(resp, "git-credential").await
 }

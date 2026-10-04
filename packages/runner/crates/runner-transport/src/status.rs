@@ -7,6 +7,10 @@
 //! failed — and all three printed under that one phrase, which labels as
 //! unknown a code the message is already carrying (ISS-1234).
 
+use reqwest::{RequestBuilder, Response};
+use runner_platform::error::{Error, Result};
+use serde::de::DeserializeOwned;
+
 /// The number, then what it means: the registered reason phrase where there is
 /// one, the gateway's meaning for the 52x family, and the bare number where
 /// neither is known — never a phrase standing in for the number.
@@ -112,6 +116,64 @@ pub(crate) fn refused(what: &str, status: u16, text: &str) -> String {
     }
 }
 
+/// `req` sent; a call that got no answer is `<what>: <the transport's words>`.
+pub(crate) async fn sent(req: RequestBuilder, what: &str) -> Result<Response> {
+    req.send()
+        .await
+        .map_err(|e| Error::Other(format!("{what}: {e}")))
+}
+
+/// `req` sent within `deadline` and [`checked`]; one that got no answer is
+/// `<what> request: <what went wrong>`, as [`unanswered`] names it.
+pub(crate) async fn send_within(
+    req: RequestBuilder,
+    what: &str,
+    deadline: std::time::Duration,
+) -> Result<Response> {
+    let resp = req
+        .timeout(deadline)
+        .send()
+        .await
+        .map_err(|e| Error::Other(format!("{what} request: {}", unanswered(&e, deadline))))?;
+    checked(resp, what).await
+}
+
+/// A `401` as [`Error::Unauthorized`], any other non-2xx as the sentence
+/// [`refused`] composes, and a 2xx handed back to be read.
+pub(crate) async fn checked(resp: Response, what: &str) -> Result<Response> {
+    let code = resp.status().as_u16();
+    if code == 401 {
+        return Err(Error::Unauthorized);
+    }
+    if !resp.status().is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(Error::Other(refused(what, code, &text)));
+    }
+    Ok(resp)
+}
+
+/// A 2xx body read as `T`, or `<what> decode: <why not>`.
+pub(crate) async fn decode<T: DeserializeOwned>(resp: Response, what: &str) -> Result<T> {
+    resp.json()
+        .await
+        .map_err(|e| Error::Other(format!("{what} decode: {e}")))
+}
+
+/// Send, check and decode, every failure named by `what`.
+pub(crate) async fn fetch<T: DeserializeOwned>(req: RequestBuilder, what: &str) -> Result<T> {
+    let resp = checked(sent(req, &format!("{what} request")).await?, what).await?;
+    decode(resp, what).await
+}
+
+/// [`fetch`] within `deadline`.
+pub(crate) async fn fetch_within<T: DeserializeOwned>(
+    req: RequestBuilder,
+    what: &str,
+    deadline: std::time::Duration,
+) -> Result<T> {
+    decode(send_within(req, what, deadline).await?, what).await
+}
+
 /// The constraints a refusal names, where it names any.
 ///
 /// Core answers a body no validator accepts with `400` in the refusal envelope,
@@ -178,11 +240,11 @@ pub(crate) fn constraints(status: u16, body: &str) -> Option<Vec<String>> {
 /// names a constraint the same bytes can never satisfy, `Other` otherwise.
 /// Both print the sentence `refused` composes, so a caller that only prints it
 /// reads the same line either way.
-pub(crate) fn refusal(what: &str, status: u16, text: &str) -> runner_platform::error::Error {
+pub(crate) fn refusal(what: &str, status: u16, text: &str) -> Error {
     let said = refused(what, status, text);
     match constraints(status, text) {
-        Some(named) => runner_platform::error::Error::Malformed { said, named },
-        None => runner_platform::error::Error::Other(said),
+        Some(named) => Error::Malformed { said, named },
+        None => Error::Other(said),
     }
 }
 

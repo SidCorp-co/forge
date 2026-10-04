@@ -80,11 +80,9 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
         }
     };
 
-    let url = client.url(&normalize_path(&req.path));
-    let mut rb = client
-        .http()
-        .request(method, &url)
-        .bearer_auth(client.device_token());
+    let path = normalize_path(&req.path);
+    let url = client.url(&path);
+    let mut rb = client.request(method, &path);
 
     if let Some(slug) = &req.project_slug {
         rb = rb.header("X-Forge-Project-Slug", slug.as_str());

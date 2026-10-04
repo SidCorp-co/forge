@@ -53,6 +53,7 @@ use runner_transport::{runners, CoreClient};
 use runner_workspace::terminal;
 
 use super::Ctx;
+use runner_platform::git::now_secs as now_unix;
 
 #[derive(ClapArgs)]
 pub struct Args {
@@ -247,13 +248,6 @@ this device {}. Nothing was recorded.",
             }
         ),
     }
-}
-
-fn now_unix() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
 }
 
 fn whoami() -> String {

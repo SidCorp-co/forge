@@ -5,7 +5,7 @@
 use serde::Deserialize;
 
 use crate::agent_sessions::{patch_session, SessionPatch};
-use crate::CoreClient;
+use crate::{status, CoreClient};
 use runner_platform::error::{Error, Result};
 
 /// What core's run-session routes accept, as `run-session-routes.ts`'s
@@ -125,7 +125,6 @@ pub async fn open(
     name: &str,
     gate: Option<&runner_proto::gate::Condition>,
 ) -> Result<(String, String)> {
-    let url = client.url("/api/devices/me/run-sessions");
     let mut body = serde_json::json!({
         "projectId": project_id,
         "runId": run_id,
@@ -138,14 +137,8 @@ pub async fn open(
     if let Some(gate) = gate {
         body["gate"] = serde_json::to_value(gate).unwrap_or(serde_json::Value::Null);
     }
-    let resp = client
-        .http()
-        .post(&url)
-        .bearer_auth(client.device_token())
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("run-session open: {e}")))?;
+    let req = client.post("/api/devices/me/run-sessions").json(&body);
+    let resp = status::sent(req, "run-session open").await?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
@@ -155,12 +148,9 @@ pub async fn open(
         // Classified rather than flattened: the sweep behind this call re-sends
         // a payload nothing between attempts changes, so it has to be able to
         // tell a refusal of the bytes from a refusal of the moment (ISS-1284).
-        return Err(crate::status::refusal("run-session open", code, &text));
+        return Err(status::refusal("run-session open", code, &text));
     }
-    let parsed: OpenReply = resp
-        .json()
-        .await
-        .map_err(|e| Error::Other(format!("run-session open decode: {e}")))?;
+    let parsed: OpenReply = status::decode(resp, "run-session open").await?;
     Ok((parsed.session_id, parsed.run_id))
 }
 
@@ -200,7 +190,7 @@ pub async fn close(
     detail: Option<&str>,
     checkpoint: Option<serde_json::Value>,
 ) -> Result<()> {
-    let url = client.url(&format!("/api/devices/me/run-sessions/{session_id}/close"));
+    let path = format!("/api/devices/me/run-sessions/{session_id}/close");
     let mut body = serde_json::json!({ "outcome": outcome.wire() });
     if let Some(d) = detail {
         body["detail"] = serde_json::Value::String(d.to_string());
@@ -208,29 +198,11 @@ pub async fn close(
     if let Some(cp) = checkpoint {
         body["checkpoint"] = cp;
     }
-    let resp = client
-        .http()
-        .post(&url)
-        .bearer_auth(client.device_token())
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("run-session close: {e}")))?;
-    if resp.status().as_u16() == 401 {
-        return Err(Error::Unauthorized);
-    }
+    let resp = status::sent(client.post(&path).json(&body), "run-session close").await?;
     if resp.status().as_u16() == 404 {
         return Ok(());
     }
-    if !resp.status().is_success() {
-        let code = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(crate::status::refused(
-            "run-session close",
-            code,
-            &text,
-        )));
-    }
+    status::checked(resp, "run-session close").await?;
     Ok(())
 }
 
@@ -239,29 +211,9 @@ pub async fn report_resume_choice(
     session_id: &str,
     choice: serde_json::Value,
 ) -> Result<()> {
-    let url = client.url(&format!(
-        "/api/devices/me/run-sessions/{session_id}/resume-choice"
-    ));
-    let resp = client
-        .http()
-        .post(&url)
-        .bearer_auth(client.device_token())
-        .json(&choice)
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("resume-choice report: {e}")))?;
-    if resp.status().as_u16() == 401 {
-        return Err(Error::Unauthorized);
-    }
-    if !resp.status().is_success() {
-        let code = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(crate::status::refused(
-            "resume-choice report",
-            code,
-            &text,
-        )));
-    }
+    let path = format!("/api/devices/me/run-sessions/{session_id}/resume-choice");
+    let resp = status::sent(client.post(&path).json(&choice), "resume-choice report").await?;
+    status::checked(resp, "resume-choice report").await?;
     Ok(())
 }
 
@@ -270,29 +222,9 @@ pub async fn report_held_worktree(
     session_id: &str,
     held: serde_json::Value,
 ) -> Result<()> {
-    let url = client.url(&format!(
-        "/api/devices/me/run-sessions/{session_id}/held-worktree"
-    ));
-    let resp = client
-        .http()
-        .post(&url)
-        .bearer_auth(client.device_token())
-        .json(&held)
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("held-worktree report: {e}")))?;
-    if resp.status().as_u16() == 401 {
-        return Err(Error::Unauthorized);
-    }
-    if !resp.status().is_success() {
-        let code = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(crate::status::refused(
-            "held-worktree report",
-            code,
-            &text,
-        )));
-    }
+    let path = format!("/api/devices/me/run-sessions/{session_id}/held-worktree");
+    let resp = status::sent(client.post(&path).json(&held), "held-worktree report").await?;
+    status::checked(resp, "held-worktree report").await?;
     Ok(())
 }
 
@@ -302,33 +234,13 @@ pub async fn is_terminal(client: &CoreClient, session_id: &str) -> Result<bool> 
     struct Reply {
         session_terminal: bool,
     }
-    let url = client.url(&format!("/api/devices/me/run-sessions/{session_id}"));
-    let resp = client
-        .http()
-        .get(&url)
-        .bearer_auth(client.device_token())
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("run-session state: {e}")))?;
-    if resp.status().as_u16() == 401 {
-        return Err(Error::Unauthorized);
-    }
+    let path = format!("/api/devices/me/run-sessions/{session_id}");
+    let resp = status::sent(client.get(&path), "run-session state").await?;
     if resp.status().as_u16() == 404 {
         return Ok(true);
     }
-    if !resp.status().is_success() {
-        let code = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(crate::status::refused(
-            "run-session state",
-            code,
-            &text,
-        )));
-    }
-    let parsed: Reply = resp
-        .json()
-        .await
-        .map_err(|e| Error::Other(format!("run-session state decode: {e}")))?;
+    let resp = status::checked(resp, "run-session state").await?;
+    let parsed: Reply = status::decode(resp, "run-session state").await?;
     Ok(parsed.session_terminal)
 }
 
@@ -405,14 +317,8 @@ pub async fn lease_state(
     project_id: Option<&str>,
     issue_key: &str,
 ) -> Result<LeaseState> {
-    let url = client.url(&lease_path(project_id, issue_key));
-    let resp = client
-        .http()
-        .get(&url)
-        .bearer_auth(client.device_token())
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("issue-lease read: {e}")))?;
+    let req = client.get(&lease_path(project_id, issue_key));
+    let resp = status::sent(req, "issue-lease read").await?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
@@ -428,17 +334,13 @@ pub async fn lease_state(
                 issue_over: None,
             });
         }
-        return Err(Error::Other(crate::status::refused(
+        return Err(Error::Other(status::refused(
             "issue-lease read",
             status_code,
             &text,
         )));
     }
-    let parsed: LeaseState = resp
-        .json()
-        .await
-        .map_err(|e| Error::Other(format!("issue-lease decode: {e}")))?;
-    Ok(parsed)
+    status::decode(resp, "issue-lease").await
 }
 
 pub async fn release_lease(
@@ -446,29 +348,14 @@ pub async fn release_lease(
     project_id: Option<&str>,
     issue_key: &str,
 ) -> Result<()> {
-    let url = client.url(&lease_path(project_id, issue_key));
-    let resp = client
-        .http()
-        .delete(&url)
-        .bearer_auth(client.device_token())
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("issue-lease release: {e}")))?;
-    if resp.status().as_u16() == 401 {
-        return Err(Error::Unauthorized);
-    }
+    let req = client.delete(&lease_path(project_id, issue_key));
+    let resp = status::sent(req, "issue-lease release").await?;
     // A 404 is core saying this box holds no such lease, which is the state the
     // release was asking for; `is_returned` reads it back either way. Anything
     // else — a 409 core could not narrow to one project among them — is an
     // error, because retrying it unchanged never resolves (ISS-1139).
-    if !resp.status().is_success() && resp.status().as_u16() != 404 {
-        let code = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(crate::status::refused(
-            "issue-lease release",
-            code,
-            &text,
-        )));
+    if resp.status().as_u16() != 404 {
+        status::checked(resp, "issue-lease release").await?;
     }
     Ok(())
 }

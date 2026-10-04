@@ -9,6 +9,7 @@ use runner_workspace::git_cred;
 use runner_workspace::provision;
 
 use super::Ctx;
+use runner_platform::config::config_dir;
 
 #[derive(ClapArgs)]
 pub struct Args {
@@ -152,10 +153,6 @@ fn checkout_credential_host(
         return Ok(None);
     }
     Ok(Some(declared))
-}
-
-fn config_dir() -> Option<PathBuf> {
-    runner_platform::config::config_dir()
 }
 
 /// The master skill is written at bind, so a bound project carries it whether

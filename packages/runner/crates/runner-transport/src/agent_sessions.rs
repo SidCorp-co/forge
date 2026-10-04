@@ -16,7 +16,7 @@
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::CoreClient;
+use crate::{status, CoreClient};
 use runner_platform::error::{Error, Result};
 
 /// One raw stream-json line on its way to core, with the number that is its
@@ -50,17 +50,11 @@ pub fn is_refused(e: &Error) -> bool {
 }
 
 async fn post_chunk(client: &CoreClient, session_id: &str, events: &[LineEvent]) -> Result<()> {
-    let url = client.url(&format!("/api/agent-sessions/{session_id}/events"));
+    let path = format!("/api/agent-sessions/{session_id}/events");
     let body = serde_json::json!({ "events": events });
     let mut delay_ms: u64 = 1000;
     for attempt in 1..=MAX_ATTEMPTS {
-        let resp = client
-            .http()
-            .post(&url)
-            .bearer_auth(client.device_token())
-            .json(&body)
-            .send()
-            .await;
+        let resp = client.post(&path).json(&body).send().await;
         match resp {
             Ok(r) => {
                 let status = r.status();
@@ -72,13 +66,13 @@ async fn post_chunk(client: &CoreClient, session_id: &str, events: &[LineEvent])
                 }
                 if status.is_client_error() {
                     let text = r.text().await.unwrap_or_default();
-                    let said = crate::status::refused(REFUSED, status.as_u16(), &text);
+                    let said = status::refused(REFUSED, status.as_u16(), &text);
                     return Err(Error::Other(said));
                 }
                 if attempt == MAX_ATTEMPTS {
                     return Err(Error::Other(format!(
                         "post_events failed after {attempt} attempts: {}",
-                        crate::status::named(status.as_u16())
+                        status::named(status.as_u16())
                     )));
                 }
             }
@@ -151,23 +145,17 @@ const MAX_ATTEMPTS: u32 = 4;
 /// heartbeat timeout. Best-effort: a small retry budget, and callers ignore the
 /// error (the heartbeat reaper is the backstop if the ack never lands).
 pub async fn ack_session(client: &CoreClient, session_id: &str) -> Result<()> {
-    let url = client.url(&format!("/api/agent-sessions/{session_id}/ack"));
+    let path = format!("/api/agent-sessions/{session_id}/ack");
     let mut delay_ms: u64 = 500;
     for attempt in 1..=2u32 {
-        match client
-            .http()
-            .post(&url)
-            .bearer_auth(client.device_token())
-            .send()
-            .await
-        {
+        match client.post(&path).send().await {
             Ok(r) => {
                 if r.status().is_success() {
                     return Ok(());
                 }
                 // 4xx (terminal/forbidden/not-found) is not worth retrying.
                 if r.status().is_client_error() {
-                    let said = crate::status::named(r.status().as_u16());
+                    let said = status::named(r.status().as_u16());
                     return Err(Error::Other(format!("ack session {said}")));
                 }
             }
@@ -191,16 +179,10 @@ pub async fn patch_session(
     session_id: &str,
     patch: &SessionPatch,
 ) -> Result<()> {
-    let url = client.url(&format!("/api/agent-sessions/{session_id}"));
+    let path = format!("/api/agent-sessions/{session_id}");
     let mut delay_ms: u64 = 1000;
     for attempt in 1..=MAX_ATTEMPTS {
-        let resp = client
-            .http()
-            .patch(&url)
-            .bearer_auth(client.device_token())
-            .json(patch)
-            .send()
-            .await;
+        let resp = client.patch(&path).json(patch).send().await;
         match resp {
             Ok(r) => {
                 let status = r.status();
@@ -212,13 +194,13 @@ pub async fn patch_session(
                 }
                 if status.is_client_error() {
                     let text = r.text().await.unwrap_or_default();
-                    let said = crate::status::refused("patch session", status.as_u16(), &text);
+                    let said = status::refused("patch session", status.as_u16(), &text);
                     return Err(Error::Other(said));
                 }
                 if attempt == MAX_ATTEMPTS {
                     return Err(Error::Other(format!(
                         "patch_session failed after {attempt} attempts: {}",
-                        crate::status::named(status.as_u16())
+                        status::named(status.as_u16())
                     )));
                 }
             }

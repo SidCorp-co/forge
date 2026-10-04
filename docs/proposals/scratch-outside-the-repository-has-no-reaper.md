@@ -11,12 +11,12 @@ enough that an agent lost its shell: `/tmp` on `sid-xeon-1` — a 61G tmpfs, so 
 acts that would have freed space, and nothing anywhere named the disk (ISS-1260).
 
 The daemon now reads that filesystem and says so before the ceiling —
-`packages/runner/crates/forge-runner-core/src/daemon/headroom.rs`, on both axes, at a level that
+`packages/runner/crates/runner-workspace/src/headroom.rs`, on both axes, at a level that
 rises. **It reclaims nothing.** This page is what the next change in this area has to start from.
 
 ## The two properties of the reaper that keep it out of reach
 
-`packages/runner/crates/forge-runner-core/src/workspace/worktree_reap.rs` is the only thing on a box
+`packages/runner/crates/runner-workspace/src/worktree_reap.rs` is the only thing on a box
 that removes a finished run's checkout, and two of its properties put every tree that filled
 `sid-xeon-1` outside it.
 
@@ -59,7 +59,7 @@ actually fills is the one nobody is looking at.
 
 A reaper needs an owner and a condition, and outside a repository this box has neither. Nothing in
 either runner crate creates a run scratch tree and leaves it: the one site that makes one,
-`stage_attachments` in `packages/runner/crates/forge-runner-core/src/daemon/chat.rs`, removes it on
+`stage_attachments` in `packages/runner/crates/runner-agent/src/chat.rs`, removes it on
 every exit, and `/tmp` held no `forge-attach-*` directory when this was measured.
 
 The trees that do accumulate are minted by hand by the runs themselves, because they are told to be.

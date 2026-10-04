@@ -17,12 +17,10 @@
 //! recommendation stops reading the evidence.
 
 use std::path::Path;
-use std::process::Stdio;
 use std::time::Duration;
 
-use tokio::process::Command;
-
 use crate::ledger::Run;
+use runner_platform::git::{git, git_line};
 
 pub const RECONSTRUCT_BUDGET: Duration = Duration::from_secs(20);
 
@@ -59,31 +57,6 @@ impl Reconstructed {
             "endedReason": self.ended_reason,
             "unread": self.unread,
         })
-    }
-}
-
-async fn git(dir: &Path, args: &[&str]) -> Option<std::process::Output> {
-    Command::new("git")
-        .args(args)
-        .current_dir(dir)
-        .stdin(Stdio::null())
-        .kill_on_drop(true)
-        .output()
-        .await
-        .ok()
-}
-
-/// stdout when the command succeeded, `None` when it did not run or failed.
-async fn git_line(dir: &Path, args: &[&str]) -> Option<String> {
-    let out = git(dir, args).await?;
-    if !out.status.success() {
-        return None;
-    }
-    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    if s.is_empty() {
-        None
-    } else {
-        Some(s)
     }
 }
 

@@ -159,6 +159,10 @@ pub(crate) fn next_poll_delay(served: &[runners::MeRunner]) -> Duration {
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "the master sweep, whose verdicts core should take (ADR 0009 moveToCore); deleted rather than split once core owns them (ISS-218 amnesty)"
+)]
 pub(crate) async fn sweep(
     client: &CoreClient,
     cfg: &Config,

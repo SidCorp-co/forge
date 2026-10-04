@@ -1132,23 +1132,29 @@
     "crates/forge-runner": {
       "serves": ["personal-data-flow#ds-box-creds"]
     },
-    "crates/forge-runner-core": {
-      "serves": [
-        "REQ-15",
-        "agent-run-standing#master",
-        "issue-delivery#rule-dispatch",
-        "requirement-to-delivery#stalled",
-        "issue-delivery#rule-return",
-        "issue-delivery#rule-wedge",
-        "issue-delivery#ev-run-ended",
-        "agent-run-standing#handed_back",
-        "agent-run-standing#claimed",
-        "issue-delivery#task-release",
-        "project-onboarding#checkout",
-        "issue-delivery#act-build",
-        "design-reconciliation#build",
-        "personal-data-flow#ds-box-creds"
-      ]
+    "crates/runner-platform": {
+      "serves": ["personal-data-flow#ds-box-creds"]
+    },
+    "crates/runner-proto": {
+      "serves": ["REQ-15", "agent-run-standing#master"]
+    },
+    "crates/runner-update": {
+      "serves": ["via:crates/runner-daemon"]
+    },
+    "crates/runner-transport": {
+      "serves": ["REQ-15", "issue-delivery#rule-dispatch", "issue-delivery#ev-run-ended", "agent-run-standing#claimed"]
+    },
+    "crates/runner-core": {
+      "serves": ["REQ-15", "agent-run-standing#handed_back", "issue-delivery#rule-return", "issue-delivery#rule-wedge", "requirement-to-delivery#stalled"]
+    },
+    "crates/runner-workspace": {
+      "serves": ["project-onboarding#checkout", "issue-delivery#task-release", "personal-data-flow#ds-box-creds"]
+    },
+    "crates/runner-agent": {
+      "serves": ["issue-delivery#act-build", "design-reconciliation#build"]
+    },
+    "crates/runner-daemon": {
+      "serves": ["REQ-15", "agent-run-standing#master", "issue-delivery#rule-dispatch"]
     }
   }
 }

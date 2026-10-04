@@ -59,6 +59,10 @@ pub(crate) fn agent_event(
     }
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "one match over the hook events a pane reports (ISS-218 amnesty)"
+)]
 pub(crate) fn dispatch_gate_reply(
     ctl: &Arc<Control>,
     d: runner_core::dispatch_gate::Dispatch,

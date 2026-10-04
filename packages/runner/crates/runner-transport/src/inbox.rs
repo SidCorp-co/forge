@@ -43,13 +43,7 @@ pub async fn applied(client: &CoreClient, session_id: &str, seq: u64, turn: u64)
 }
 
 async fn post(client: &CoreClient, path: &str, body: &serde_json::Value) {
-    let res = client
-        .http()
-        .post(client.url(path))
-        .bearer_auth(client.device_token())
-        .json(body)
-        .send()
-        .await;
+    let res = client.post(path).json(body).send().await;
     match res {
         Ok(r) if r.status().is_success() => {}
         Ok(r) => tracing::warn!("[inbox] {path}: http {}", r.status()),

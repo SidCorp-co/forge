@@ -24,3 +24,6 @@ keyring = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { workspace = true }
+
+[lints]
+workspace = true

@@ -125,11 +125,10 @@ pub(crate) fn parse_failures(raw: Option<&str>) -> Reported {
 /// log line is attributable without reading this file: the refusal an operator
 /// meets says `GET <url> answered <status>` and carries the body core sent.
 pub async fn pull_pending(client: &CoreClient) -> std::result::Result<Pending, PullRefusal> {
-    let url = client.url("/api/devices/me/provisions");
+    let path = "/api/devices/me/provisions";
+    let url = client.url(path);
     let resp = client
-        .http()
-        .get(&url)
-        .bearer_auth(client.device_token())
+        .get(path)
         .send()
         .await
         .map_err(|e| PullRefusal::unanswered(&url, &format!("never got an answer: {e}")))?;
@@ -418,17 +417,9 @@ pub async fn report_status(
     status: &str,
     detail: Option<&str>,
 ) -> Result<()> {
-    let url = client.url(&format!(
-        "/api/devices/me/runners/{runner_id}/provision-status"
-    ));
-    let resp = client
-        .http()
-        .post(&url)
-        .bearer_auth(client.device_token())
-        .json(&ReportBody { status, detail })
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("provision-status request: {e}")))?;
+    let path = format!("/api/devices/me/runners/{runner_id}/provision-status");
+    let req = client.post(&path).json(&ReportBody { status, detail });
+    let resp = crate::status::sent(req, "provision-status request").await?;
     if !resp.status().is_success() {
         let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();

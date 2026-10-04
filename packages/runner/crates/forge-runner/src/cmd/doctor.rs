@@ -22,6 +22,10 @@ pub struct Args {
     pub offline: bool,
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "a flat list of diagnostic rows printed in order; split per row it only grows (ISS-218 amnesty)"
+)]
 pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     println!("Forge Runner — doctor\n");
     println!(
@@ -243,6 +247,10 @@ fn access_token_row(
 /// Run the network section. Returns `true` if any check failed. Missing
 /// core_url/token is non-fatal (mirrors `cmd/runners.rs`) — we skip online
 /// checks and let the local verdict stand.
+#[expect(
+    clippy::too_many_lines,
+    reason = "a flat list of diagnostic rows printed in order; split per row it only grows (ISS-218 amnesty)"
+)]
 async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
     // A store this box cannot parse is not a box that never paired. Read as
     // absent, this row told an operator to re-pair while the row above it

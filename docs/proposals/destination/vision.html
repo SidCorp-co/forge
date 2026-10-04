@@ -622,7 +622,7 @@ and state is derived from evidence rather than from someone's hand.</div>
 
 <div class="price"><b>One defect found in today's code, not in this design.</b>
 <code>packages/core/src/plugins/designation.ts</code> nulls <code>pinnedRef</code> when two projects pin
-different refs; <code>packages/runner/crates/forge-runner-core/src/daemon/mod.rs</code> logs a warning
+different refs; <code>packages/runner/crates/runner-daemon/src/actors.rs</code> logs a warning
 and proceeds unpinned, floating the box to plugin HEAD. A disagreement between two projects silently
 unpins a machine. That is the policy-widens-its-own-authority attack with no attacker — and a warning
 log is disclosure, which this project's own rules say is not a discharge.</div>

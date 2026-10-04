@@ -9,7 +9,7 @@
 use std::time::Duration;
 
 use super::{status, CoreClient, CALL_DEADLINE};
-use runner_platform::error::{Error, Result};
+use runner_platform::error::Result;
 use serde::{Deserialize, Deserializer};
 
 /// One `(device × project)` assignment as returned by `/me/runners`. Field
@@ -54,31 +54,12 @@ pub async fn list_me(client: &CoreClient) -> Result<Vec<MeRunner>> {
 
 /// [`list_me`], with the deadline a test can shorten.
 pub async fn list_me_within(client: &CoreClient, deadline: Duration) -> Result<Vec<MeRunner>> {
-    let url = client.url("/api/devices/me/runners");
-    let resp = client
-        .http()
-        .get(&url)
-        .bearer_auth(client.device_token())
-        .timeout(deadline)
-        .send()
-        .await
-        .map_err(|e| {
-            Error::Other(format!(
-                "me/runners request: {}",
-                status::unanswered(&e, deadline)
-            ))
-        })?;
-    if resp.status().as_u16() == 401 {
-        return Err(Error::Unauthorized);
-    }
-    if !resp.status().is_success() {
-        let code = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(status::refused("me/runners", code, &text)));
-    }
-    resp.json::<Vec<MeRunner>>()
-        .await
-        .map_err(|e| Error::Other(format!("me/runners decode: {e}")))
+    status::fetch_within(
+        client.get("/api/devices/me/runners"),
+        "me/runners",
+        deadline,
+    )
+    .await
 }
 
 /// Push this device's repo path/branch for one runner row up to the server.
@@ -89,7 +70,7 @@ pub async fn patch_runner(
     repo_path: Option<&str>,
     branch: Option<&str>,
 ) -> Result<()> {
-    let url = client.url(&format!("/api/devices/me/runners/{runner_id}"));
+    let path = format!("/api/devices/me/runners/{runner_id}");
     let mut body = serde_json::Map::new();
     if let Some(p) = repo_path {
         body.insert("repoPath".into(), serde_json::Value::String(p.to_string()));
@@ -97,28 +78,8 @@ pub async fn patch_runner(
     if let Some(b) = branch {
         body.insert("branch".into(), serde_json::Value::String(b.to_string()));
     }
-    let resp = client
-        .http()
-        .patch(&url)
-        .bearer_auth(client.device_token())
-        .json(&serde_json::Value::Object(body))
-        .timeout(CALL_DEADLINE)
-        .send()
-        .await
-        .map_err(|e| {
-            Error::Other(format!(
-                "patch runner request: {}",
-                status::unanswered(&e, CALL_DEADLINE)
-            ))
-        })?;
-    if resp.status().as_u16() == 401 {
-        return Err(Error::Unauthorized);
-    }
-    if !resp.status().is_success() {
-        let code = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(status::refused("patch runner", code, &text)));
-    }
+    let req = client.patch(&path).json(&serde_json::Value::Object(body));
+    status::send_within(req, "patch runner", CALL_DEADLINE).await?;
     Ok(())
 }
 

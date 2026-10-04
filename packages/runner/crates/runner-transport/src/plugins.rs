@@ -9,7 +9,7 @@
 use serde::Deserialize;
 
 use crate::CoreClient;
-use runner_platform::error::{Error, Result};
+use runner_platform::error::Result;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,28 +35,7 @@ struct MePluginsResponse {
 }
 
 pub async fn list_designated(client: &CoreClient) -> Result<Vec<DesignatedPlugin>> {
-    let url = client.url("/api/devices/me/plugins");
-    let resp = client
-        .http()
-        .get(&url)
-        .bearer_auth(client.device_token())
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("me/plugins request: {e}")))?;
-    if resp.status().as_u16() == 401 {
-        return Err(Error::Unauthorized);
-    }
-    if !resp.status().is_success() {
-        let code = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(crate::status::refused(
-            "me/plugins",
-            code,
-            &text,
-        )));
-    }
-    resp.json::<MePluginsResponse>()
-        .await
-        .map(|r| r.plugins)
-        .map_err(|e| Error::Other(format!("me/plugins decode: {e}")))
+    let parsed: MePluginsResponse =
+        crate::status::fetch(client.get("/api/devices/me/plugins"), "me/plugins").await?;
+    Ok(parsed.plugins)
 }

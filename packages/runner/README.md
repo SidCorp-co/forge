@@ -12,9 +12,19 @@ events, reap processes, self-update); every decision belongs to core.
 
 ## Layout
 
-- `crates/forge-runner-core` — the lib: transport, auth, runner abstraction, workspace,
-  mcp, daemon orchestration. No CLI/GUI knowledge → a thin GUI/tray can reuse it later.
-- `crates/forge-runner` — the `clap` binary that drives the lib.
+ADR 0009's crates, each depending only on those above it — the order is the dependency rule:
+
+- `crates/runner-platform` — OS seams: config dir, credential store, process groups, `/proc`, git.
+- `crates/runner-proto` — the frames core sends and the heartbeat conditions the box reports.
+- `crates/runner-update` — self-update: fetch, verify and swap the binary.
+- `crates/runner-transport` — `CoreClient` (REST) and the WebSocket.
+- `crates/runner-core` — the box ledger (ISS-933) and the run/pane state it derives verdicts from.
+- `crates/runner-workspace` — checkouts, worktrees, tmux panes, MCP config, reaping.
+- `crates/runner-agent` — the `Runner` trait and its Claude Code implementation.
+- `crates/runner-daemon` — the daemon: actors over a `watch` cancel, masters, pool jobs, recovery.
+- `crates/forge-runner` — the `clap` binary.
+
+Size: functions stay under 100 lines (`clippy.toml`), files under 800 (`scripts/check-runner-gates.mjs`).
 
 ## Subcommands
 

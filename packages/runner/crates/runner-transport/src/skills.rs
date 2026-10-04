@@ -8,7 +8,7 @@
 //! Field casing mirrors the core JSON (camelCase) — keep in lockstep with the
 //! `DeviceSkill*` contract DTOs in `packages/contracts`.
 
-use crate::CoreClient;
+use crate::{status, CoreClient};
 use runner_platform::error::{Error, Result};
 use serde::Deserialize;
 
@@ -58,7 +58,7 @@ fn map_status(label: &str, status: reqwest::StatusCode) -> Error {
     } else {
         Error::Other(format!(
             "{label} failed: {}",
-            crate::status::named(status.as_u16())
+            status::named(status.as_u16())
         ))
     }
 }
@@ -68,21 +68,12 @@ pub async fn pull_manifest(
     client: &CoreClient,
     project_id: &str,
 ) -> Result<Vec<SkillManifestEntry>> {
-    let url = client.url(&format!("/api/devices/me/skills?projectId={project_id}"));
-    let resp = client
-        .http()
-        .get(&url)
-        .bearer_auth(client.device_token())
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("skills manifest request: {e}")))?;
+    let path = format!("/api/devices/me/skills?projectId={project_id}");
+    let resp = status::sent(client.get(&path), "skills manifest request").await?;
     if !resp.status().is_success() {
         return Err(map_status("skills manifest", resp.status()));
     }
-    let body = resp
-        .json::<SkillManifestResponse>()
-        .await
-        .map_err(|e| Error::Other(format!("skills manifest decode: {e}")))?;
+    let body: SkillManifestResponse = status::decode(resp, "skills manifest").await?;
     Ok(body.skills)
 }
 
@@ -92,20 +83,10 @@ pub async fn pull_content(
     project_id: &str,
     skill_id: &str,
 ) -> Result<SkillContent> {
-    let url = client.url(&format!(
-        "/api/devices/me/skills/{skill_id}/content?projectId={project_id}"
-    ));
-    let resp = client
-        .http()
-        .get(&url)
-        .bearer_auth(client.device_token())
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("skill content request: {e}")))?;
+    let path = format!("/api/devices/me/skills/{skill_id}/content?projectId={project_id}");
+    let resp = status::sent(client.get(&path), "skill content request").await?;
     if !resp.status().is_success() {
         return Err(map_status("skill content", resp.status()));
     }
-    resp.json::<SkillContent>()
-        .await
-        .map_err(|e| Error::Other(format!("skill content decode: {e}")))
+    status::decode(resp, "skill content").await
 }

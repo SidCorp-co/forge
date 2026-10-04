@@ -8,7 +8,7 @@
 
 use serde::Deserialize;
 
-use crate::CoreClient;
+use crate::{status, CoreClient};
 use runner_platform::error::{Error, Result};
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -58,7 +58,6 @@ pub struct Ask<'a> {
 }
 
 pub async fn ask(client: &CoreClient, req: Ask<'_>) -> Result<String> {
-    let url = client.url("/api/devices/me/questions");
     let mut body = serde_json::json!({
         "id": req.id,
         "projectId": req.project_id,
@@ -89,30 +88,13 @@ pub async fn ask(client: &CoreClient, req: Ask<'_>) -> Result<String> {
     if req.sensitive == Some(true) {
         body["sensitive"] = serde_json::json!(true);
     }
-    let resp = client
-        .http()
-        .post(&url)
-        .bearer_auth(client.device_token())
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("question ask: {e}")))?;
-    if resp.status().as_u16() == 401 {
-        return Err(Error::Unauthorized);
-    }
-    if !resp.status().is_success() {
-        let code = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(crate::status::refused(
-            "question ask",
-            code,
-            &text,
-        )));
-    }
-    let parsed: AskReply = resp
-        .json()
-        .await
-        .map_err(|e| Error::Other(format!("question ask decode: {e}")))?;
+    let resp = status::sent(
+        client.post("/api/devices/me/questions").json(&body),
+        "question ask",
+    )
+    .await?;
+    let resp = status::checked(resp, "question ask").await?;
+    let parsed: AskReply = status::decode(resp, "question ask").await?;
     Ok(parsed.question_id)
 }
 
@@ -127,35 +109,15 @@ pub async fn answer(
     question_id: &str,
     run_id: &str,
 ) -> Result<Option<Answer>> {
-    let url = client.url(&format!("/api/devices/me/questions/{question_id}"));
-    let resp = client
-        .http()
-        .get(&url)
-        .query(&[("runId", run_id)])
-        .bearer_auth(client.device_token())
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("question read: {e}")))?;
-    if resp.status().as_u16() == 401 {
-        return Err(Error::Unauthorized);
-    }
+    let path = format!("/api/devices/me/questions/{question_id}");
+    let req = client.get(&path).query(&[("runId", run_id)]);
+    let resp = status::sent(req, "question read").await?;
     if resp.status().as_u16() == 404 {
         return Err(Error::Other(format!(
             "question read: {question_id} is not registered to this box for run {run_id}"
         )));
     }
-    if !resp.status().is_success() {
-        let code = resp.status().as_u16();
-        let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(crate::status::refused(
-            "question read",
-            code,
-            &text,
-        )));
-    }
-    let parsed: AnswerReply = resp
-        .json()
-        .await
-        .map_err(|e| Error::Other(format!("question read decode: {e}")))?;
+    let resp = status::checked(resp, "question read").await?;
+    let parsed: AnswerReply = status::decode(resp, "question read").await?;
     Ok(parsed.answer)
 }

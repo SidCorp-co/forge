@@ -74,11 +74,9 @@ reaches `POST /api/questions`, are forge-plugin's to fix and are reported there.
 
 ## What binds the halves that ARE here
 
-The runner and core do not import each other, so the body the box puts on the device door is pinned
-as a file: `packages/runner/crates/forge-runner-core/assets/question-ask-wire.jsonl`. The runner
-asserts it sends exactly those bodies (`cmd/question.rs`). Core's half — that the door takes them
-and stores what they carry — has no test on dev, where the TypeScript tests were deleted; nothing in
-core reads the file until they are restored.
+The runner and core do not import each other, and nothing pins the body the box puts on the device
+door: the wire fixture that did (`question-ask-wire.jsonl`) and the runner test asserting it went
+with the runner's tests (ISS-216), and core's TypeScript tests are deleted on dev.
 
 ## What is still true and was not fixed
 
