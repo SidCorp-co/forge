@@ -8,8 +8,8 @@ import { issues } from '../db/schema.js';
 import type { TransitionActor } from '../issues/index.js';
 import { issueArchiveSide } from '../issues/index.js';
 import { logger } from '../observability/logger.js';
+import { writeRunMetadata } from '../pipeline/index.js';
 import type { ReleaseVerification } from './plan.js';
-import { releaseBatchPorts } from './ports.js';
 
 /** The line a reader, or a query, finds an unverified close by. One per issue per release run. */
 function unverifiedMarker(runId: string): string {
@@ -78,7 +78,7 @@ export async function stampRunVerification(
   runId: string,
   kind: ReleaseVerification,
 ): Promise<void> {
-  await releaseBatchPorts().writeRunMetadata(runId, {
+  await writeRunMetadata(runId, {
     merge: { verification: kind },
     touch: false,
   });

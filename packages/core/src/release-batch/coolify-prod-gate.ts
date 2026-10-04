@@ -13,8 +13,8 @@ import {
   RELEASE_DEPLOY_IN_FLIGHT_STEP,
   releaseDeployLocksForRun,
   setCurrentStep,
+  writeRunMetadata,
 } from '../pipeline/index.js';
-import { releaseBatchPorts } from './ports.js';
 import type { DeployLockIntent } from './release-coolify-hold.js';
 
 const RELEASE_DEPLOY_PENDING = 'release.deploy.pending_human';
@@ -67,7 +67,7 @@ export async function markPendingHumanConfirm(input: {
     confirmedAt: null,
     ...(input.lock ? { lock: input.lock } : {}),
   };
-  await releaseBatchPorts().writeRunMetadata(input.runId, {
+  await writeRunMetadata(input.runId, {
     merge: { [GATE_METADATA_KEY]: gates },
     touch: true,
   });
@@ -163,7 +163,7 @@ export async function confirmPendingProdDeploy(
       confirmedAt: new Date().toISOString(),
       ...(confirmedByUserId ? { confirmedByUserId } : {}),
     };
-    await releaseBatchPorts().writeRunMetadata(run.id, {
+    await writeRunMetadata(run.id, {
       merge: { [GATE_METADATA_KEY]: gates },
       touch: true,
     });

@@ -66,7 +66,6 @@ import {
   stopOutboxWorker,
 } from './outbox/index.js';
 import { registerOutboxConsumers } from './outbox-consumers.js';
-import { stampReleaseShipped, stampReleaseVersion, writeRunMetadata } from './pipeline/index.js';
 import {
   provideProjectConfigPorts,
   readDeclaredSource,
@@ -74,11 +73,7 @@ import {
 } from './project-config/index.js';
 import { findProjectOrgId, projectDocumentNames, provideProjectsPorts } from './projects/index.js';
 import { startBoss, stopBoss } from './queue/boss.js';
-import {
-  provideReleaseBatchPorts,
-  registerDeployWorker,
-  registerReleaseBatchFinish,
-} from './release-batch/index.js';
+import { registerDeployWorker, registerReleaseBatchFinish } from './release-batch/index.js';
 import { provideInterfaceContracts, provideRequirementDependents } from './requirements/index.js';
 import { mountRoutes } from './route-registry.js';
 import { bootstrapRunnerAdapters } from './runners/index.js';
@@ -111,11 +106,6 @@ provideProjectConfigPorts({
   jobOfCredential: resolvePipelineContext,
   recordSecretResolve,
   rememberHandedOut,
-});
-provideReleaseBatchPorts({
-  writeRunMetadata,
-  stampReleaseVersion,
-  stampReleaseShipped,
 });
 provideChatTools(CHAT_READ_MODEL_TOOLS);
 provideDataPolicy(

@@ -14,8 +14,8 @@ import {
 } from '../issues/index.js';
 import { isRefusal } from '../lib/refusal.js';
 import { logger } from '../observability/logger.js';
+import { writeRunMetadata } from '../pipeline/index.js';
 import { resolveReleaseGate } from './gate.js';
-import { releaseBatchPorts } from './ports.js';
 import { FENCE_LOST } from './refuse.js';
 
 export interface RecoverStrandedReleasingResult {
@@ -239,7 +239,7 @@ async function releaseClaims(
   }
   const closed = rows.filter((r) => r.status === 'closed').map((r) => r.id);
   if (closed.length > 0) {
-    await releaseBatchPorts().writeRunMetadata(
+    await writeRunMetadata(
       runId,
       {
         value: sql`jsonb_set(coalesce(metadata, '{}'::jsonb), '{rosterClosed}', (
