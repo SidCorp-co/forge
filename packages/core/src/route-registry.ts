@@ -131,7 +131,7 @@ import {
   projectCostAnalyticsRoutes,
   stepHandoffRoutes,
 } from './pipeline/routes.js';
-import { pmReadRoutes } from './pm/read-routes.js';
+import { pmReadRoutes } from './pm/routes.js';
 import { orgMemberPreferenceRoutes, preferenceRoutes } from './preferences/routes.js';
 import {
   environmentStateRoutes,

@@ -23,7 +23,7 @@ call sits now.
 | embeddings/client.ts, embeddings/index.ts | `packages/core/src/integrations/embeddings/` | the embeddings endpoint |
 | the transports in auth/email.ts and projects/invitation-email.ts | `packages/core/src/integrations/mail/smtp.ts` | two `nodemailer` transports, built twice from the same `SMTP_*` |
 | auth/oauth/github.ts, oidc-discovery.ts, oidc-provider.ts | `packages/core/src/integrations/identity/` | GitHub OAuth, Google and generic OIDC |
-| webhooks/outbound.ts | `packages/core/src/integrations/outbound-webhooks/delivery.ts` | a customer's webhook URL |
+| webhooks/outbound.ts | deleted in ISS-220, with no subscriber left | a customer's webhook URL |
 | install/fetch-release.ts, install/main-runner-head.ts | `packages/core/src/integrations/published-releases/fetch-release.ts`, `packages/core/src/integrations/published-releases/main-runner-head.ts`, over `packages/core/src/integrations/published-releases/public-releases.ts` | `api.github.com` releases and commits |
 | the download in ecosystem/contract/oasdiff.ts | `packages/core/src/integrations/published-releases/public-releases.ts` | a pinned binary download from `github.com` — not a remote spec |
 | lib/runtime-probe.ts, and the global `fetch` project-config/environment-state-read.ts handed it | `packages/core/src/integrations/deploy/runtime-probe.ts` | a project's deployed app, through its declared runtime probe — found by the rule below, not by the hand list |

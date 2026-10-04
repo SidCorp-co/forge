@@ -48,9 +48,6 @@
     "packages/core/src/integrations/postman/resolver.test.ts": {
       "lint/correctness/noUnsafeOptionalChaining": 1
     },
-    "packages/core/src/integrations/postman/resolver.ts": {
-      "lint/complexity/useOptionalChain": 1
-    },
     "packages/core/src/integrations/queue.ts": {
       "lint/complexity/useOptionalChain": 3,
       "lint/suspicious/noExplicitAny": 1
@@ -137,9 +134,6 @@
     "packages/core/src/pipeline/subscribers.test.ts": {
       "lint/correctness/noUnsafeOptionalChaining": 1
     },
-    "packages/core/src/pm/spawner.ts": {
-      "lint/complexity/useOptionalChain": 1
-    },
     "packages/core/src/projects/routes.test.ts": {
       "lint/style/noNonNullAssertion": 2
     },
@@ -177,9 +171,6 @@
     "packages/core/src/skills/builtin-seed.test.ts": {
       "lint/style/noNonNullAssertion": 10
     },
-    "packages/core/src/skills/divergence-charters.ts": {
-      "lint/style/noNonNullAssertion": 1
-    },
     "packages/core/src/skills/effective.test.ts": {
       "lint/style/noNonNullAssertion": 3
     },
@@ -189,9 +180,6 @@
     "packages/core/src/skills/lock.ts": {
       "lint/complexity/useLiteralKeys": 1
     },
-    "packages/core/src/skills/reconcile-service.ts": {
-      "lint/style/noNonNullAssertion": 1
-    },
     "packages/core/src/skills/service.test.ts": {
       "lint/style/noNonNullAssertion": 4
     },
@@ -200,12 +188,6 @@
     },
     "packages/core/src/skills/studio-routes.test.ts": {
       "lint/style/noNonNullAssertion": 3
-    },
-    "packages/core/src/update-packets/routes.ts": {
-      "lint/correctness/noUnusedFunctionParameters": 1
-    },
-    "packages/core/src/integrations/outbound-webhooks/delivery.ts": {
-      "lint/complexity/useOptionalChain": 1
     },
     "packages/core/src/ws/broadcast-subscribers.test.ts": {
       "lint/correctness/noUnsafeOptionalChaining": 1
@@ -248,10 +230,6 @@
     },
     "packages/web-v2/src/app/(workspace)/layout.tsx": {
       "lint/correctness/useExhaustiveDependencies": 2
-    },
-    "packages/web-v2/src/app/kit/page.tsx": {
-      "lint/a11y/noLabelWithoutControl": 1,
-      "lint/correctness/useExhaustiveDependencies": 1
     },
     "packages/web-v2/src/design/hooks/use-animated-number.ts": {
       "lint/style/useExponentiationOperator": 1

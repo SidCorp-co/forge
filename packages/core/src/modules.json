@@ -67,12 +67,10 @@
         "issues",
         "jobs",
         "labels",
-        "mcpAuditLog",
         "organizations",
         "pipelineRuns",
         "projectMembers",
         "projects",
-        "retrievalAnalytics",
         "runners",
         "schedules",
         "usageRecords",
@@ -196,8 +194,7 @@
       "kind": "platform",
       "context": "platform",
       "owns": [
-        "backfillMarkers",
-        "projectFactsMigrationBackup"
+        "backfillMarkers"
       ]
     },
     "development": {

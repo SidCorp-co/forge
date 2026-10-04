@@ -215,7 +215,8 @@ excluded.
   it reaches the identity adapter through the port as any domain may. `usage-records`, a read
   model, wrote `usage_records` when a job finished and four kernels read it: it is the job's cost
   evidence, so it is a kernel module in execution. `admin`, a read model, wrote `admin_thresholds`:
-  the thresholds move to the domain `admin-thresholds`, and `admin` keeps only derived views.
+  the thresholds moved to the domain `admin-thresholds` (since ISS-220 fixed defaults, with no
+  table), and `admin` keeps only derived views.
   `app-config`, declared platform, holds a project's assistant settings behind routes and a
   permission check: it is a domain in project-config. **Who owns tables:** kernel, domain, adapter
   and platform modules; an adapter only its own bookkeeping with the vendor (connections,
