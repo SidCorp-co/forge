@@ -562,7 +562,7 @@ only direction the manifest allows.
 
 ### Adding a check
 
-Append to `CHECKS` with a `scanned` regex matching that checker's own success line. Without one the
+Append to `CHECKS` in `lib/verify-checks.mjs` (the table `verify.mjs` runs; `CI_COVERAGE` sits beside it) with a `scanned` regex matching that checker's own success line. Without one the
 fail-closed contract cannot hold for it. If you add the step to CI too, add it to `CI_COVERAGE` in
 the same commit — `--ci-parity` fails otherwise, which is the point.
 
