@@ -28,7 +28,7 @@ moduleDiagramRoutes.get(
     if (!r.success) {
       throw new HTTPException(400, {
         message: 'Invalid input',
-        cause: { code: 'BAD_REQUEST', details: z.flattenError(r.error) },
+        cause: { code: 'BAD_REQUEST', details: r.error },
       });
     }
   }),

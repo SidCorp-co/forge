@@ -46,7 +46,7 @@ issueAttachmentRoutes.post(
     throw badRequest('file too large', 'FILE_TOO_LARGE');
   }),
   zValidator('param', issueIdParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', z.flattenError(r.error));
+    if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', r.error);
   }),
   rawBody(
     'multipart/form-data',
@@ -81,10 +81,10 @@ issueAttachmentRoutes.post(
 issueAttachmentRoutes.get(
   '/:id/attachments',
   zValidator('param', issueRouteIdParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', z.flattenError(r.error));
+    if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', r.error);
   }),
   zValidator('query', projectScopeQuerySchema, (r) => {
-    if (!r.success) throw badRequest('invalid query', 'BAD_REQUEST', z.flattenError(r.error));
+    if (!r.success) throw badRequest('invalid query', 'BAD_REQUEST', r.error);
   }),
   async (c) => {
     const { id: rawId } = c.req.valid('param');
@@ -111,7 +111,7 @@ attachmentRoutes.use('*', requireAnyAuth());
 attachmentRoutes.get(
   '/:id/download',
   zValidator('param', attachmentIdParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', z.flattenError(r.error));
+    if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -143,7 +143,7 @@ attachmentRoutes.get(
 attachmentRoutes.delete(
   '/:id',
   zValidator('param', attachmentIdParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', z.flattenError(r.error));
+    if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

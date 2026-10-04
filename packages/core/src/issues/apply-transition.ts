@@ -2,6 +2,7 @@ import {
   ISSUE_DISPATCH_TERMINAL_STATUSES,
   ISSUE_MACHINE,
   ISSUE_TERMINAL_STATUSES,
+  type IssueTransitionRefusalCode,
   PARK_STATUSES,
 } from '@forge/contracts/issue-machine';
 import { edgeBetween } from '@forge/contracts/state-machine';
@@ -30,13 +31,7 @@ import { readWorkState, setLeftStatus, setWorkStep } from './work-state.js';
 
 export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(ISSUE_DISPATCH_TERMINAL_STATUSES);
 
-export type TransitionErrorCode =
-  | GuardCode
-  | 'NO_OP'
-  | 'STALE_TRANSITION'
-  | 'WAITING_KIND_NOT_APPLICABLE'
-  | 'ISSUE_ARCHIVED'
-  | 'OPEN_QUESTIONS';
+export type TransitionErrorCode = IssueTransitionRefusalCode;
 
 /**
  * Typed transition failure. `message` keeps the legacy `CODE: detail` shape

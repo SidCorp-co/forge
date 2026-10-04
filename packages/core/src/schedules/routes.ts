@@ -134,7 +134,7 @@ scheduleRoutes.use('*', requireAuth(), assertEmailVerified());
 scheduleRoutes.get(
   '/',
   zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, enabled } = c.req.valid('query');
@@ -150,7 +150,7 @@ scheduleRoutes.get(
 scheduleRoutes.get(
   '/:id',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -162,7 +162,7 @@ scheduleRoutes.get(
 scheduleRoutes.post(
   '/',
   zValidator('json', createSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const input = c.req.valid('json');
@@ -174,10 +174,10 @@ scheduleRoutes.post(
 scheduleRoutes.put(
   '/:id',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', updateSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -190,7 +190,7 @@ scheduleRoutes.put(
 scheduleRoutes.delete(
   '/:id',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -202,7 +202,7 @@ scheduleRoutes.delete(
 scheduleRoutes.post(
   '/:id/run',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

@@ -22,10 +22,10 @@ async function assertOwnsSession(sessionId: string, c: { get: (k: 'deviceId') =>
 agentSessionInboxRoutes.post(
   '/:id/inbox/:seq/ack',
   zValidator('param', paramSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', z.object({ outcome: z.enum(['delivered', 'gone']) }), (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id, seq } = c.req.valid('param');
@@ -38,10 +38,10 @@ agentSessionInboxRoutes.post(
 agentSessionInboxRoutes.post(
   '/:id/inbox/:seq/applied',
   zValidator('param', paramSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', z.object({ turn: z.number().int().nonnegative() }), (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id, seq } = c.req.valid('param');

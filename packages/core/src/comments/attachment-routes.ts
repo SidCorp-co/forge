@@ -49,7 +49,7 @@ commentAttachmentRoutes.post(
   }),
   zValidator('param', commentIdParamSchema, (r) => {
     if (!r.success)
-      throw attachmentBadRequest('invalid commentId', 'BAD_REQUEST', z.flattenError(r.error));
+      throw attachmentBadRequest('invalid commentId', 'BAD_REQUEST', r.error);
   }),
   rawBody(
     'multipart/form-data',
@@ -89,7 +89,7 @@ commentAttachmentRoutes.get(
   requireAnyAuth(),
   zValidator('param', idParamSchema, (r) => {
     if (!r.success)
-      throw attachmentBadRequest('invalid id', 'BAD_REQUEST', z.flattenError(r.error));
+      throw attachmentBadRequest('invalid id', 'BAD_REQUEST', r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

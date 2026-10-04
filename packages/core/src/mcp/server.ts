@@ -160,8 +160,11 @@ export function createMcpServer(ctx: McpContext): Server {
         return toToolCallContent(result);
       } catch (err) {
         if (err instanceof RefusalError) {
-          writeMcpAudit({ ...auditBase, resultCode: 'forbidden' });
-          return toToolCallContent(refusedAnswer(err.refusals, err.fallbackCode));
+          const answer = refusedAnswer(err.refusals, err.fallbackCode);
+          const resultCode =
+            answer.status === 403 ? 'forbidden' : answer.status === 404 ? 'not_found' : 'error';
+          writeMcpAudit({ ...auditBase, resultCode });
+          return toToolCallContent(answer);
         }
         const { code, message } = classifyError(err);
         writeMcpAudit({ ...auditBase, resultCode: code });

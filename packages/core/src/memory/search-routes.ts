@@ -37,7 +37,7 @@ memorySearchRoutes.use(
 memorySearchRoutes.post(
   '/search',
   zValidator('json', searchBodySchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const body = c.req.valid('json');

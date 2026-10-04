@@ -1,12 +1,29 @@
+import { PROBLEM_CONTENT_TYPE, refusalTitle, refusalType } from '@forge/contracts';
 import type { Context, ErrorHandler, NotFoundHandler } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { HTTPException } from 'hono/http-exception';
 import { withoutQueryParams } from '../lib/db-errors.js';
-import { RefusalError, refusalEnvelope } from '../lib/refusal.js';
+import { RefusalError, problem, refusalEnvelope, requestRefusals } from '../lib/refusal.js';
 import { getLogger } from '../observability/logger.js';
 import { reportFailure } from '../observability/sentry.js';
 import type { RequestIdVars } from './request-id.js';
 
 type ErrorBody = { code: string; message: string; details?: unknown };
+
+/** An error that is not a refusal keeps `code`/`message`/`details`, with the RFC 9457 members beside them. */
+function httpProblem(c: Context, status: ContentfulStatusCode, body: ErrorBody) {
+  return c.json(
+    {
+      type: refusalType(body.code),
+      title: refusalTitle(body.code),
+      status,
+      detail: body.message,
+      ...body,
+    },
+    status,
+    { 'Content-Type': PROBLEM_CONTENT_TYPE },
+  );
+}
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -57,17 +74,26 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
 
   if (err instanceof RefusalError) {
     const envelope = refusalEnvelope(err.refusals, err.fallbackCode);
-    log.warn({ status: 422, code: envelope.error.code, err: err.message }, 'http.error');
-    return c.json(envelope, 422);
+    log.warn({ status: envelope.status, code: envelope.error.code, err: err.message }, 'http.error');
+    return problem(c, envelope);
   }
 
   if (err instanceof HTTPException) {
     const status = err.status;
     const { code: causeCode, details, wwwAuthenticate } = extractCause(err.cause);
-    const body: ErrorBody = {
-      code: causeCode ?? statusToCode(status),
-      message: err.message || statusToCode(status),
-    };
+    const code = causeCode ?? statusToCode(status);
+    const message = err.message || statusToCode(status);
+
+    if (status === 400) {
+      const envelope = refusalEnvelope(requestRefusals(code, message, details), code, {
+        status: 400,
+        ...(message === 'Invalid input' ? {} : { detail: message }),
+      });
+      log.warn({ status, code, err: err.message }, 'http.error');
+      return problem(c, envelope);
+    }
+
+    const body: ErrorBody = { code, message };
     if (details !== undefined) body.details = details;
 
     const logPayload = { status, code: body.code, err: err.message };
@@ -82,7 +108,7 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
       c.header('WWW-Authenticate', wwwAuthenticate);
     }
 
-    return c.json(body, status);
+    return httpProblem(c, status, body);
   }
 
   const body: ErrorBody = {
@@ -98,7 +124,7 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
 
   log.error({ err }, 'http.unhandled');
   reportRequestFailure(err, c, 'INTERNAL_ERROR');
-  return c.json(body, 500);
+  return httpProblem(c, 500, body);
 };
 
 function reportRequestFailure(
@@ -118,8 +144,8 @@ function reportRequestFailure(
 }
 
 export const notFoundHandler: NotFoundHandler<{ Variables: RequestIdVars }> = (c: Context) => {
-  return c.json<ErrorBody>(
-    { code: 'NOT_FOUND', message: `Not Found: ${c.req.method} ${c.req.path}` },
-    404,
-  );
+  return httpProblem(c, 404, {
+    code: 'NOT_FOUND',
+    message: `Not Found: ${c.req.method} ${c.req.path}`,
+  });
 };

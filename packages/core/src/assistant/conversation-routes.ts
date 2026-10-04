@@ -187,7 +187,7 @@ function soleProject(row: ConversationRow, scope: string[]): string {
 conversationRoutes.get(
   '/',
   zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, page, pageSize, archived } = c.req.valid('query');
@@ -245,7 +245,7 @@ conversationRoutes.get(
 conversationRoutes.get(
   '/agent-mode',
   zValidator('query', z.object({ projectId: z.uuid() }).strict(), (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('query');
@@ -259,7 +259,7 @@ conversationRoutes.get(
 conversationRoutes.post(
   '/',
   zValidator('json', createSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const input = c.req.valid('json');
@@ -288,7 +288,7 @@ conversationRoutes.post(
 conversationRoutes.get(
   '/:id',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -326,10 +326,10 @@ conversationRoutes.get(
 conversationRoutes.patch(
   '/:id',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', patchSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -353,7 +353,7 @@ conversationRoutes.patch(
 conversationRoutes.delete(
   '/:id',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -370,10 +370,10 @@ conversationRoutes.delete(
 conversationRoutes.post(
   '/:id/messages',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', sendSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

@@ -13,7 +13,7 @@ import { egressForRequest } from '../lib/data-egress.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
-import { refusalEnvelope, refuser } from '../lib/refusal.js';
+import { refused, refuser } from '../lib/refusal.js';
 import { deleteMemory } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -92,10 +92,10 @@ issueProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 issueProjectRoutes.post(
   '/:id/issues',
   zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', issueCreateSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
@@ -154,7 +154,7 @@ const displayIdParamSchema = z.object({
 issueProjectRoutes.get(
   '/:id/issues/by-display/:displayId',
   zValidator('param', displayIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: projectId, displayId } = c.req.valid('param');
@@ -167,7 +167,7 @@ issueProjectRoutes.get(
       displayId,
       issueRefNeedsHeldPrefixes(displayId) ? await heldIssuePrefixes(projectId) : [],
     );
-    if (!parsed.ok) throw badRequest({ formErrors: [parsed.message], fieldErrors: {} });
+    if (!parsed.ok) throw badRequest(parsed.message);
     const found = await findIssueByDisplaySeq(projectId, parsed.issSeq);
     if (!found) throw notFound('issue not found');
     const issue = await egressForRequest(restActor(c).agency, projectId, 'issue', found, displayId);
@@ -199,7 +199,7 @@ issueProjectRoutes.get(
 issueProjectRoutes.get(
   '/:id/issues',
   zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', issueFiltersSchema, (r) => {
     if (!r.success) {
@@ -218,7 +218,7 @@ issueProjectRoutes.get(
     const listed = await listIssues(projectId, q, q);
     if (!listed.ok) {
       throw listed.field === 'key'
-        ? badRequest({ formErrors: [listed.message], fieldErrors: {} })
+        ? badRequest(listed.message)
         : badRequest({ [listed.field]: listed.message });
     }
     const rows = await egressForRequest(
@@ -291,10 +291,10 @@ async function loadIssue(issueId: string): Promise<IssueRow> {
 issueRoutes.get(
   '/:id',
   zValidator('param', issueRouteIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', projectScopeQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: rawId } = c.req.valid('param');
@@ -346,10 +346,10 @@ const jobHistoryQuerySchema = z.object({
 issueRoutes.get(
   '/:id/job-history',
   zValidator('param', issueIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', jobHistoryQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -367,10 +367,10 @@ issueRoutes.get(
 issueRoutes.patch(
   '/:id',
   zValidator('param', issueIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', issuePatchSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -458,7 +458,7 @@ issueRoutes.patch(
 issueRoutes.delete(
   '/:id',
   zValidator('param', issueIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -469,7 +469,7 @@ issueRoutes.delete(
     requireHeld(access, 'project.admin');
 
     const carried = await issueDeleteRefusal(issue);
-    if (carried) return c.json(refusalEnvelope([carried], carried.code), 422);
+    if (carried) return refused(c, [carried], carried.code);
 
     await deleteIssue(id);
 

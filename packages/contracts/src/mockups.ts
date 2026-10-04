@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
+import type { RefusalStatuses } from "./refusal.js";
 
 export const MOCKUP_KINDS = [
 	"wireframe",
@@ -112,6 +113,9 @@ export const MOCKUP_REFUSAL_CODES = [
 	"MOCKUP_REASON_REQUIRED",
 ] as const;
 export type MockupRefusalCode = (typeof MOCKUP_REFUSAL_CODES)[number];
+export const MOCKUP_REFUSAL_STATUSES = {
+	MOCKUP_REVISION_SUPERSEDED: 409,
+} as const satisfies RefusalStatuses<MockupRefusalCode>;
 
 /** Exactly one target, as feedback names exactly one: a requirement at one revision, a feedback item, or an issue. */
 export const mockupTargetSchema = z.union([

@@ -373,6 +373,10 @@
     "./pm": {
       "types": "./dist/pm.d.ts",
       "default": "./dist/pm.js"
+    },
+    "./refusal-statuses": {
+      "types": "./dist/refusal-statuses.d.ts",
+      "default": "./dist/refusal-statuses.js"
     }
   },
   "types": "./src/index.ts",

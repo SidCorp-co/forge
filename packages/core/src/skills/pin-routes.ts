@@ -32,10 +32,10 @@ skillPinRoutes.use('/:projectId/skills/:skillId/pin', requireAuth(), assertEmail
 skillPinRoutes.put(
   '/:projectId/skills/:skillId/pin',
   zValidator('param', paramSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', bodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, skillId } = c.req.valid('param');

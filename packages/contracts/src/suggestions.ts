@@ -16,6 +16,7 @@ import {
 } from "./pipeline-registry.js";
 import { ANSWER_VIEWS, pickFields } from "./projection.js";
 import { designChangePayloadSchema } from "./workflow-health.js";
+import type { RefusalStatuses } from "./refusal.js";
 
 /** The six kinds rev 2 names, feedback_triage (workflow feedback-triage, ISS-59) and design_change (workflow step-health, REQ-17 BC-12); cluster, stale_requirement, conflict, verify and ask_reporter are deferred. */
 export const SUGGESTION_KINDS = [
@@ -125,6 +126,9 @@ export const SUGGESTION_REFUSAL_CODES = [
 	"SUGGESTION_REFUSED",
 ] as const;
 export type SuggestionRefusalCode = (typeof SUGGESTION_REFUSAL_CODES)[number];
+export const SUGGESTION_REFUSAL_STATUSES = {
+	SUGGESTION_BASE_STALE: 409,
+} as const satisfies RefusalStatuses<SuggestionRefusalCode>;
 
 export interface SuggestionRefusal {
 	code: SuggestionRefusalCode;

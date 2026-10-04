@@ -45,7 +45,7 @@ import { requireCan, requireOrgHeld } from '../permissions/index.js';
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 
 const invalidQuery = (result: { success: boolean; error?: z.core.$ZodError }) => {
-  if (!result.success && result.error) throw badRequest(z.flattenError(result.error));
+  if (!result.success && result.error) throw badRequest(result.error);
 };
 
 const connectQuerySchema = z.object({ org: z.string().optional(), orgId: z.string().optional() });

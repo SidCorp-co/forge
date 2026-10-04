@@ -46,7 +46,7 @@ skillActivityRoutes.use('*', requireAuth(), assertEmailVerified());
  * -> by-skill.
  */
 const validQuery = zValidator('query', querySchema, (result) => {
-  if (!result.success) throw badRequest(z.flattenError(result.error));
+  if (!result.success) throw badRequest(result.error);
 });
 
 skillActivityRoutes.get('/', validQuery, async (c) => {

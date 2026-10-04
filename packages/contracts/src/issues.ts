@@ -1,8 +1,9 @@
 import { STOREFRONT_DRAFT_REFUSAL_CODES } from "./verdict-identity.js";
+import type { RefusalStatuses } from "./refusal.js";
 
 export type { ReleaseNotes, ReleaseNotesSection } from "./release-notes.js";
 
-// Rule refusals an issue write answers in the 422 envelope (packages/contracts/src/refusal.ts).
+// Rule refusals an issue write answers in the refusal envelope (packages/contracts/src/refusal.ts).
 
 export const CRITERIA_REFUSAL_CODES = [
 	"CRITERIA_REFUSED",
@@ -117,6 +118,9 @@ export const ISSUE_TAKE_REFUSAL_CODES = [
 	"ISSUE_LEASE_HELD",
 ] as const;
 export type IssueTakeRefusalCode = (typeof ISSUE_TAKE_REFUSAL_CODES)[number];
+export const ISSUE_TAKE_REFUSAL_STATUSES = {
+	ISSUE_LEASE_HELD: 409,
+} as const satisfies RefusalStatuses<IssueTakeRefusalCode>;
 
 export const ISSUE_UPDATE_REFUSAL_CODES = [
 	"ISSUE_UPDATE_REFUSED",

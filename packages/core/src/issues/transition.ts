@@ -36,9 +36,15 @@ const transitionBodySchema = z
   })
   .strict();
 
-/** A refused move answers 422 in the one envelope, under the guard's own code. */
+/**
+ * A refused move answers in the one envelope under the guard's own code and declared status, its
+ * structured facts (`openQuestionIds`, `requires`, …) on the refusal row.
+ */
 function transitionRefusal(err: TransitionError): RefusalError {
-  return new RefusalError([{ code: err.code, path: '', detail: err.detail }], err.code);
+  return new RefusalError(
+    [{ ...err.details, code: err.code, path: '', detail: err.detail }],
+    err.code,
+  );
 }
 
 /** Cap on the number of dependents named in a single `issue.unblockCascade`
@@ -170,12 +176,12 @@ transitionRoutes.route('/', recordEventRoutes);
 transitionRoutes.post(
   '/:id/transition',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', transitionBodySchema, (result) => {
     if (!result.success) {
       refuseLegacyStatusFields(result.data, 'json', ['toStatus']);
-      throw badRequest(z.flattenError(result.error));
+      throw badRequest(result.error);
     }
   }),
   async (c) => {

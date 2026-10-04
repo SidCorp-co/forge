@@ -65,7 +65,7 @@ type BatchResult = {
 issueExtrasRoutes.patch(
   '/batch',
   zValidator('json', batchPatchBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { ids, data } = c.req.valid('json');
@@ -157,7 +157,7 @@ issueExtrasRoutes.patch(
             }
           } catch (err) {
             if (!(err instanceof TransitionError)) throw err;
-            // Single-issue `/transition` 409s/422s on these. The batch
+            // Single-issue `/transition` refuses these in the envelope. The batch
             // surfaces them via skipReason instead so callers can see that
             // the status request was rejected even when other fields
             // succeeded.
@@ -227,7 +227,7 @@ issueExtrasRoutes.patch(
 issueExtrasRoutes.post(
   '/:id/enrich',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: issueId } = c.req.valid('param');
@@ -251,10 +251,10 @@ issueExtrasRoutes.post(
 issueExtrasRoutes.post(
   '/:id/run-pipeline-step',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', runPipelineStepBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: issueId } = c.req.valid('param');
@@ -284,7 +284,7 @@ issueExtrasRoutes.post(
 issueExtrasRoutes.get(
   '/pipeline-timing',
   zValidator('query', pipelineTimingQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, from, to, limit } = c.req.valid('query');
@@ -352,10 +352,10 @@ issueExtrasRoutes.get(
 issueExtrasRoutes.get(
   '/:id/cost-summary',
   zValidator('param', issueRouteIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', projectScopeQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: rawId } = c.req.valid('param');

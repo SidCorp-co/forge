@@ -80,7 +80,7 @@ usageRecordRoutes.use('*', requireAuth(), assertEmailVerified());
 usageRecordRoutes.get(
   '/',
   zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, source, model, from, to, page, pageSize } = c.req.valid('query');
@@ -106,7 +106,7 @@ usageRecordRoutes.get(
 usageRecordRoutes.get(
   '/summary',
   zValidator('query', summaryQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, days } = c.req.valid('query');
@@ -122,7 +122,7 @@ usageRecordRoutes.get(
 usageRecordRoutes.get(
   '/:id',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -143,7 +143,7 @@ usageRecordRoutes.get(
 usageRecordRoutes.post(
   '/',
   zValidator('json', recordCreateSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const input = c.req.valid('json');
@@ -162,7 +162,7 @@ usageRecordRoutes.post(
 usageRecordRoutes.post(
   '/bulk',
   zValidator('json', bulkSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { records } = c.req.valid('json');
@@ -183,7 +183,7 @@ usageRecordRoutes.post(
 usageRecordRoutes.post(
   '/ingest-cli',
   zValidator('json', bulkSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { records } = c.req.valid('json');

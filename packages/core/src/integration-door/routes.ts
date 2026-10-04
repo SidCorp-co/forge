@@ -86,7 +86,7 @@ integrationsRoutes.post('/:projectId/integrations', () => {
 integrationsRoutes.patch(
   '/:projectId/integrations/:id',
   zValidator('json', updateSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const projectId = c.req.param('projectId');
@@ -107,7 +107,7 @@ integrationsRoutes.patch(
     let mergedConfig: Record<string, unknown> | undefined;
     if (patch.config) {
       const parsed = configSchemaForProvider(binding.provider).safeParse(patch.config);
-      if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+      if (!parsed.success) throw badRequest(parsed.error);
       const tiers = splitProviderConfig(binding.provider, parsed.data as Record<string, unknown>);
       const bindingKeys = Object.keys(tiers.binding);
       if (bindingKeys.length > 0) {
@@ -196,7 +196,7 @@ const rocketchatRoomsSchema = z
 integrationsRoutes.post(
   '/:projectId/integrations/rocketchat/rooms',
   zValidator('json', rocketchatRoomsSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const projectId = c.req.param('projectId');

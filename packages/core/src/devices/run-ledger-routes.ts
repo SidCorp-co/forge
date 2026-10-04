@@ -20,7 +20,7 @@ runLedgerRoutes.use('/:id/run-sessions', requireAuth(), assertEmailVerified());
 runLedgerRoutes.get(
   '/:id/run-sessions',
   zValidator('param', paramsSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

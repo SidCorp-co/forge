@@ -58,7 +58,7 @@ const setAgentProjectsSchema = z.object({ projectIds: agentProjectsSchema }).str
 agentAccountRoutes.get(
   '/:orgId/agents',
   zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');
@@ -70,10 +70,10 @@ agentAccountRoutes.get(
 agentAccountRoutes.post(
   '/:orgId/agents',
   zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', createAgentSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');
@@ -95,10 +95,10 @@ agentAccountRoutes.post(
 agentAccountRoutes.put(
   '/:orgId/agents/:agentUserId/projects',
   zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', setAgentProjectsSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
@@ -112,7 +112,7 @@ agentAccountRoutes.put(
 agentAccountRoutes.delete(
   '/:orgId/agents/:agentUserId',
   zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
@@ -125,7 +125,7 @@ agentAccountRoutes.delete(
 agentAccountRoutes.post(
   '/:orgId/agents/:agentUserId/tokens',
   zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
@@ -140,7 +140,7 @@ agentAccountRoutes.post(
 agentAccountRoutes.delete(
   '/:orgId/agents/:agentUserId/tokens',
   zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
@@ -154,10 +154,10 @@ agentAccountRoutes.delete(
 agentAccountRoutes.patch(
   '/:orgId/agents/:agentUserId',
   zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', displayNameSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
@@ -179,7 +179,7 @@ agentAccountRoutes.patch(
 agentAccountRoutes.get(
   '/:orgId/agents/:agentUserId/self',
   zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
@@ -193,10 +193,10 @@ agentAccountRoutes.get(
 agentAccountRoutes.patch(
   '/:orgId/agents/:agentUserId/self',
   zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', agentSelfPatchSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
@@ -223,10 +223,10 @@ const memberAssistantPrefsSchema = z
 agentAccountRoutes.patch(
   '/:orgId/members/:userId/assistant-preferences',
   zValidator('param', memberParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', memberAssistantPrefsSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId, userId } = c.req.valid('param');

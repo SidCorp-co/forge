@@ -55,7 +55,7 @@ notificationRoutes.route('/silences', silenceRoutes);
 notificationRoutes.get(
   '/open-count',
   zValidator('query', openCountQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('query');
@@ -68,7 +68,7 @@ notificationRoutes.get(
 notificationRoutes.post(
   '/mark-all-read',
   zValidator('json', markAllReadBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const userId = c.get('userId');
@@ -79,7 +79,7 @@ notificationRoutes.post(
 notificationRoutes.get(
   '/',
   zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, openOnly, page, pageSize } = c.req.valid('query');
@@ -100,10 +100,10 @@ notificationRoutes.get(
 notificationRoutes.patch(
   '/:id',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', patchBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -127,7 +127,7 @@ notificationRoutes.patch(
 notificationRoutes.get(
   '/:id/members',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -153,7 +153,7 @@ for (const [path, state] of [
   notificationRoutes.post(
     path,
     zValidator('param', idParamSchema, (r) => {
-      if (!r.success) throw badRequest(z.flattenError(r.error));
+      if (!r.success) throw badRequest(r.error);
     }),
     async (c) => c.json(await closeTasks(c.req.valid('param').id, c.get('userId'), state)),
   );
@@ -162,7 +162,7 @@ for (const [path, state] of [
 notificationRoutes.delete(
   '/:id',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

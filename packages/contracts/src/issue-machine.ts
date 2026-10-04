@@ -2,7 +2,7 @@
 // it waiting on"; a run's step is progress inside `in_progress`, kept in `issue_work_state`. A
 // landing moves no status: it records the merge, and an issue closes only through a release.
 
-import type { Refusal } from "./refusal.js";
+import type { Refusal, RefusalStatuses } from "./refusal.js";
 import { defineMachine, type MachineEdge } from "./state-machine.js";
 
 export const ISSUE_STATUSES = [
@@ -34,6 +34,40 @@ export type LegacyIssueStatus = (typeof LEGACY_ISSUE_STATUSES)[number];
 
 export const ISSUE_STATUS_REFUSAL_CODES = ["ISSUE_STATUS_LEGACY"] as const;
 export type IssueStatusRefusalCode = (typeof ISSUE_STATUS_REFUSAL_CODES)[number];
+
+/** What a status move is refused with: the guards' codes, then the kernel's own. */
+export const ISSUE_TRANSITION_REFUSAL_CODES = [
+	"ILLEGAL_TRANSITION",
+	"NO_HOLDER",
+	"ISSUE_BLOCKED",
+	"WORKFLOW_DESIGN_NOT_APPROVED",
+	"CONTRACT_WAIT_UNSETTLED",
+	"PLAN_REQUIRED",
+	"PERMISSION_FORBIDDEN",
+	"NO_WORK_EVIDENCE",
+	"VERDICT_IDENTITY_REQUIRED",
+	"VERDICT_PREDATES_REOPEN",
+	"VERDICT_IDENTITY_NOT_ADMISSIBLE",
+	"VERDICT_UNCORROBORATED",
+	"VERDICT_DRAFT_SUPERSEDED",
+	"REQUIREMENT_CHANGED_SINCE_PLAN",
+	"MERGE_NOT_RECORDED",
+	"CLOSE_REQUIRES_SHIPPED",
+	"CLOSE_ONLY_BY_RELEASE",
+	"TRANSITION_REASON_REQUIRED",
+	"WAITING_KIND_REQUIRED",
+	"VOID_REASON_REQUIRED",
+	"NO_OP",
+	"STALE_TRANSITION",
+	"WAITING_KIND_NOT_APPLICABLE",
+	"ISSUE_ARCHIVED",
+	"OPEN_QUESTIONS",
+] as const;
+export type IssueTransitionRefusalCode = (typeof ISSUE_TRANSITION_REFUSAL_CODES)[number];
+export const ISSUE_TRANSITION_REFUSAL_STATUSES = {
+	NO_HOLDER: 409,
+	STALE_TRANSITION: 409,
+} as const satisfies RefusalStatuses<IssueTransitionRefusalCode>;
 
 export type IssueStatusLegacyRefusal = Refusal & {
 	code: "ISSUE_STATUS_LEGACY";

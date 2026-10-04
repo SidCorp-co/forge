@@ -44,7 +44,7 @@ promptRoutes.post(
   requireAuth(),
   assertEmailVerified(),
   zValidator('json', previewBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const body = c.req.valid('json');

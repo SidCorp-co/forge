@@ -37,7 +37,7 @@ async function assertMember(projectId: string, userId: string): Promise<void> {
 pmReadRoutes.get(
   '/:id/pm/snapshot',
   zValidator('param', paramSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -49,10 +49,10 @@ pmReadRoutes.get(
 pmReadRoutes.get(
   '/:id/pm/graph',
   zValidator('param', paramSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', graphQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -65,7 +65,7 @@ pmReadRoutes.get(
 pmReadRoutes.get(
   '/:id/pm/runner-load',
   zValidator('param', paramSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

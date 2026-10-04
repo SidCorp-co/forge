@@ -57,7 +57,7 @@ stepHandoffRoutes.use('*', requireAuth(), assertEmailVerified());
 stepHandoffRoutes.post(
   '/',
   zValidator('json', writeBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const body = c.req.valid('json');
@@ -71,7 +71,7 @@ stepHandoffRoutes.post(
 stepHandoffRoutes.get(
   '/',
   zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const q = c.req.valid('query');
@@ -94,7 +94,7 @@ stepHandoffRoutes.get(
 stepHandoffRoutes.delete(
   '/',
   zValidator('query', deleteQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const q = c.req.valid('query');

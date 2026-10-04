@@ -1,7 +1,6 @@
 import type { IssueParkResponse } from '@forge/contracts';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
@@ -21,7 +20,7 @@ issueParkRoutes.get(
     if (!result.success) {
       throw new HTTPException(400, {
         message: 'Invalid input',
-        cause: { code: 'BAD_REQUEST', details: z.flattenError(result.error) },
+        cause: { code: 'BAD_REQUEST', details: result.error },
       });
     }
   }),

@@ -51,7 +51,7 @@ knowledgeIngestRoutes.use('*', requireAuth(), assertEmailVerified());
 knowledgeIngestRoutes.post(
   '/ingest',
   zValidator('json', ingestSchema, (r) => {
-    if (!r.success) throw badRequest('Invalid input', z.flattenError(r.error));
+    if (!r.success) throw badRequest('Invalid input', r.error);
   }),
   async (c) => {
     const { projectId, documents } = c.req.valid('json');

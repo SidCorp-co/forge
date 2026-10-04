@@ -1,6 +1,6 @@
 // A parked decision over HTTP: ask one, list a project's or an issue's, read one, answer one, void one.
 //
-// A rule refusal leaves as the 422 envelope `middleware/error.ts` answers a thrown refusal with.
+// A rule refusal leaves as the refusal envelope `middleware/error.ts` answers a thrown refusal with.
 
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';

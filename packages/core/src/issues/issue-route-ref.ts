@@ -50,14 +50,14 @@ export async function resolveIssueRouteRef(
 
   const shapeOnly = parseIssueRef(rawId, []);
   if (!shapeOnly.ok && shapeOnly.code !== 'FOREIGN_PREFIX') {
-    throw badRequest({ formErrors: [malformedRefMessage(shapeOnly)], fieldErrors: {} });
+    throw badRequest(malformedRefMessage(shapeOnly));
   }
 
   if (!projectIdQuery) {
-    throw badRequest({ formErrors: [needsProjectScopeMessage(rawId)], fieldErrors: {} });
+    throw badRequest(needsProjectScopeMessage(rawId));
   }
   if (!isUuid(projectIdQuery)) {
-    throw badRequest({ formErrors: ['`projectId` must be a uuid'], fieldErrors: {} });
+    throw badRequest('`projectId` must be a uuid');
   }
 
   const access = await loadProjectAccess(projectIdQuery, userId);
@@ -67,7 +67,7 @@ export async function resolveIssueRouteRef(
     rawId,
     issueRefNeedsHeldPrefixes(rawId) ? await heldIssuePrefixes(projectIdQuery) : [],
   );
-  if (!parsed.ok) throw badRequest({ formErrors: [malformedRefMessage(parsed)], fieldErrors: {} });
+  if (!parsed.ok) throw badRequest(malformedRefMessage(parsed));
 
   const issue = await findIssueByDisplaySeq(projectIdQuery, parsed.issSeq);
   if (!issue) throw notFound(`\`${rawId}\` names no issue in this project`);
@@ -81,7 +81,7 @@ export async function resolveIssueKeyInProject(rawId: string, projectId: string)
     rawId,
     issueRefNeedsHeldPrefixes(rawId) ? await heldIssuePrefixes(projectId) : [],
   );
-  if (!parsed.ok) throw badRequest({ formErrors: [malformedRefMessage(parsed)], fieldErrors: {} });
+  if (!parsed.ok) throw badRequest(malformedRefMessage(parsed));
   const issue = await findIssueByDisplaySeq(projectId, parsed.issSeq);
   if (!issue) throw notFound(`\`${rawId}\` names no issue in this project`);
   return issue.id;

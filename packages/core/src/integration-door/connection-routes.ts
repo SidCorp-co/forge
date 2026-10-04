@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { z } from 'zod';
 import {
   adapterOrRefuse,
   applySecretsPatch,
@@ -71,7 +70,7 @@ integrationConnectionsRoutes.get('/', async (c) => {
 integrationConnectionsRoutes.post(
   '/',
   zValidator('json', connectionCreateSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const userId = c.get('userId');
@@ -144,7 +143,7 @@ integrationConnectionsRoutes.post('/:id/test', async (c) => {
 integrationConnectionsRoutes.patch(
   '/:id',
   zValidator('json', connectionUpdateSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const id = c.req.param('id');
@@ -157,7 +156,7 @@ integrationConnectionsRoutes.patch(
     if (patch.active !== undefined) connPatch.active = patch.active;
     if (patch.config) {
       const parsed = connectionConfigSchemaForProvider(existing.provider).safeParse(patch.config);
-      if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+      if (!parsed.success) throw badRequest(parsed.error);
       // `withdrawNulls` as the binding PATCH does: a key sent as null is REMOVED. Storing one
       // left a withdrawn `releaseRunnerLabel` on the row as a null forever (ISS-1127, ISS-1275).
       connPatch.config = withdrawNulls({

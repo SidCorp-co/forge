@@ -37,7 +37,7 @@ appConfigRoutes.use('*', requireAuth(), assertEmailVerified());
 appConfigRoutes.get(
   '/:projectId',
   zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -54,10 +54,10 @@ appConfigRoutes.get(
 appConfigRoutes.put(
   '/:projectId',
   zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', upsertSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');

@@ -1,4 +1,5 @@
 import { ApiError } from './client';
+import { refusalFact } from './refusals';
 
 const FRIENDLY_CODES: Record<string, string> = {
   UNAUTHENTICATED: 'Your session has expired. Please sign in again.',
@@ -42,20 +43,20 @@ export function isRetryableApiError(err: unknown): boolean {
 /**
  * ISS-1327 — the merge-mark refusals in the web's own words. Core's sentence is written for
  * agents and names every door there is; a person here has one, the issue's Mark merged control.
- * Read off `details`, never parsed out of the prose.
+ * Read off the refusal's own facts, never parsed out of the prose.
  */
-function detailStr(details: unknown, key: string): string | null {
-  const value = details && typeof details === 'object' ? (details as Record<string, unknown>)[key] : null;
+function detailStr(err: ApiError, key: string): string | null {
+  const value = refusalFact(err, key);
   return typeof value === 'string' ? value : null;
 }
 
 function mergeMarkSentence(err: ApiError): string | null {
   if (err.code === 'CLOSE_REQUIRES_SHIPPED') {
-    if (detailStr(err.details, 'requires') !== 'mergedLanding') {
+    if (detailStr(err, 'requires') !== 'mergedLanding') {
       return 'Nothing on this issue says the work shipped, so it cannot close. Once it has, use Mark merged in the issue’s properties, then close. Use Dropped for work that turned out not to be work.';
     }
     const unmarkFirst =
-      detailStr(err.details, 'held') === 'asserted'
+      detailStr(err, 'held') === 'asserted'
         ? 'Its mark names no landing, so press Unmark first, then '
         : 'Use ';
     return `Nothing on this issue says where the work landed, so it cannot close. ${unmarkFirst}Mark merged in the issue’s properties and fill in “Where it landed” — the live URL, CMS entry or storefront resource — then close. Use Dropped if it never landed.`;

@@ -21,7 +21,7 @@ export const deviceOrgRoutes = new Hono<{ Variables: AuthVars }>();
 deviceOrgRoutes.get(
   '/:orgId/devices',
   zValidator('param', orgIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');

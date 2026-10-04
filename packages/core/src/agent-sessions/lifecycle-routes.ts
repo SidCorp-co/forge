@@ -45,7 +45,7 @@ export const agentSessionLifecycleRoutes = new Hono<{ Variables: AuthVars }>();
 agentSessionLifecycleRoutes.post(
   '/abort',
   zValidator('json', abortBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const input = c.req.valid('json');
@@ -84,7 +84,7 @@ agentSessionLifecycleRoutes.post(
 agentSessionLifecycleRoutes.post(
   '/:id/cancel',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -124,10 +124,10 @@ agentSessionLifecycleRoutes.post(
 agentSessionLifecycleRoutes.post(
   '/:id/runner',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', setRunnerBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -179,7 +179,7 @@ agentSessionLifecycleRoutes.post(
 agentSessionLifecycleRoutes.post(
   '/desktop/status',
   zValidator('json', desktopStatusSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { sessionId, status, note } = c.req.valid('json');
@@ -282,7 +282,7 @@ const desktopStatusQuerySchema = z
 agentSessionLifecycleRoutes.get(
   '/desktop/status',
   zValidator('query', desktopStatusQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { deviceId, projectSlug } = c.req.valid('query');

@@ -1,7 +1,6 @@
 import type { AuthRefusalCode } from '@forge/contracts/auth';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { refuser } from '../lib/refusal.js';
@@ -30,7 +29,7 @@ authRoutes.post(
     if (!result.success) {
       throw new HTTPException(400, {
         message: 'Invalid registration input',
-        cause: { code: 'BAD_REQUEST', details: z.flattenError(result.error) },
+        cause: { code: 'BAD_REQUEST', details: result.error },
       });
     }
   }),
@@ -48,13 +47,15 @@ authRoutes.post(
         message: 'Password is too weak',
         cause: {
           code: 'WEAK_PASSWORD',
-          details: {
-            fieldErrors: {
-              password: [strength.warning || 'Password is too easy to guess'],
+          details: [
+            {
+              code: 'WEAK_PASSWORD',
+              path: '/password',
+              detail: [strength.warning || 'Password is too easy to guess', ...strength.suggestions]
+                .filter(Boolean)
+                .join(' '),
             },
-            score: strength.score,
-            suggestions: strength.suggestions,
-          },
+          ],
         },
       });
     }

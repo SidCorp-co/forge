@@ -40,7 +40,7 @@ export const projectOnboardRoutes = new Hono<{ Variables: AuthVars }>();
 projectOnboardRoutes.post(
   '/:id/onboard',
   zValidator('param', onboardParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

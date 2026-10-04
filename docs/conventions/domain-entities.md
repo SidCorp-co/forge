@@ -227,20 +227,39 @@ và CLI hơn thì không cần MCP".
 - **Body.** `packages/core/src/middleware/zod-validator.ts:strictBody(schema, SHAPE)`. The schema is
   a `z.strictObject` from contracts, and `SHAPE` is the valid shape as a string declared beside it
   (`packages/contracts/src/suggestions.ts:CREATE_SUGGESTION_SHAPE`).
-- **What a bad body gets.** `400 BAD_REQUEST` with message `invalid body: <SHAPE>` and
-  `details: { formErrors, fieldErrors }`.
+- **What a bad body gets.** `400 BAD_REQUEST` in the refusal envelope: `detail` is
+  `invalid body: <SHAPE>` and each zod issue is a refusal at its JSON pointer
+  (`packages/core/src/lib/refusal.ts:requestRefusals`).
 - **Path and query.** `zValidator('param' | 'query', schema, hook)`, whose hook throws 400 naming
-  what the path or query holds.
+  what the path or query holds; a validator with no hook answers the same 400 envelope
+  (`packages/core/src/middleware/zod-validator.ts:zValidator`).
 
 ## Refusals (BC-16)
 
-A write a rule refuses answers **422** with one body, and nothing is written:
+A refused write answers one body, served as `application/problem+json` (RFC 9457), and nothing is
+written:
 
 ```json
-{ "error": { "code": "<the code, or <MODULE>_REFUSED when several differ>",
+{ "type": "urn:forge:refusal:<code>", "title": "<Code in words>", "status": 422,
+  "detail": "<the leading refusal's detail>",
+  "error": { "code": "<the code, or <MODULE>_REFUSED when several differ>",
              "message": "refused, nothing written: <CODE> at <path>; …",
              "refusals": [{ "code": "…", "path": "/json/pointer or ''", "detail": "…" }] } }
 ```
+
+- **The status says what the client should do**, and each code's status is declared once, in
+  contracts beside the code (`packages/contracts/src/refusal.ts:RefusalStatuses`, collected by
+  `packages/contracts/src/refusal-statuses.ts:refusalStatusOf`): **400** the request shape (fix
+  the request); **403** every `_FORBIDDEN` code without listing it, and a permission refusal
+  named otherwise (stop); **404** a row the caller cannot see; **409** a lost compare-and-set or
+  lease, such as `STALE_TRANSITION`, `STALE_BASE`, `*_REVISION_STALE`, `NO_HOLDER`,
+  `ISSUE_LEASE_HELD` (re-read and retry); **422** every other rule.
+- **`refusals[]` is ordered most relevant first**: by status in the order 403, 404, 400, 409,
+  422, and in the service's own order within one status. The envelope's `status` and `detail`
+  are the leading refusal's.
+- **`error.code` and `refusals[]` stay the contract.** `type`, `title`, `status` and `detail` are
+  the RFC 9457 members beside them; an error that is not a refusal (401, a 404 from `rowIn`, a
+  5xx) carries the same four members beside its `code`, `message` and `details`.
 
 - **Both doors** build it with `packages/core/src/lib/refusal.ts:refusalEnvelope`: REST through
   `packages/core/src/lib/refusal.ts:refused`, under the module's `<MODULE>_REFUSED` fallback code,
@@ -249,12 +268,14 @@ A write a rule refuses answers **422** with one body, and nothing is written:
   throws `packages/core/src/lib/refusal.ts:RefusalError`, built by the module's typed
   `packages/core/src/lib/refusal.ts:refuser`, which `packages/core/src/middleware/error.ts`
   answers with the same body.
-- **A rule refusal is never an error class, an `HTTPException` or thrown text.** 400 (request
-  shape), 401 and 403 (no session, no membership, a fenced token) and 404 (a row the caller cannot
-  see, named by its ref) are transport and come from validators, middleware and `rowIn`. Release
-  blockers, criteria, verdicts, record events, questions and permission refusals are the envelope.
+- **A rule refusal is never an error class, an `HTTPException` or thrown text.** 401 and 403 (no
+  session, no membership, a fenced token) and 404 (a row the caller cannot see, named by its ref)
+  are transport and come from middleware and `rowIn`; a 400 from a validator is answered in the
+  envelope. Release blockers, criteria, verdicts, record events, questions and permission
+  refusals are the envelope.
 - **Codes.** `<MODULE>_<WHAT>`, upper snake case, declared as an `as const` array in contracts and
-  never in core. A permission refusal ends `_FORBIDDEN`.
+  never in core, with a `<MODULE>_REFUSAL_STATUSES` map beside it when any code answers other than
+  422. A permission refusal ends `_FORBIDDEN`.
 - **Detail** names what was wrong and what is valid, and names another entity by its key (`REQ-3`),
   never by uuid.
 
@@ -361,8 +382,8 @@ A write a rule refuses answers **422** with one body, and nothing is written:
   `<resource>.approve`. No rule refuses an actor for being an agent, for being a person or for being
   the author; whoever holds the permission acts.
 - **One refusal**: a caller with a role that lacks the permission is refused `PERMISSION_FORBIDDEN`
-  in the 422 envelope, naming `permission` and `scope`; a caller with no role on the project is a
-  403 (transport).
+  with 403 in the envelope, naming `permission` and `scope`; a caller with no role on the project
+  is a 403 (transport).
 - **A slice never compares `agency`.** Agency is recorded on the row and read by no rule.
 - **Memberships are the kernel's data** (orchestrator under dev delegation, 2026-10-04; ADR 0008
   Amendment). `permissions` owns `project_members` and `organization_members`, so `can()` reads
@@ -502,6 +523,6 @@ web-v2/src/features/feedback/     api.ts, hooks.ts, types.ts, routes.ts, compone
 | One owner per table | A cross-module write becomes a call into the owner's service, one more function and one more transaction boundary to get right |
 | The machine as data and one kernel transition | Every status write in core moves into one engine, and a slice can no longer set its own status in a one-line update |
 | One durable outbox | Every reaction is asynchronous and survives a crash, at the price of a table write per event plus one per consumer, and a consumer whose effect leaves the database must be idempotent |
-| One 422 for every rule refusal | A client reads `error.code` and never branches on 403 or 409 |
+| The status chosen by what the client should do | Each code that is not 422 is declared in a status map beside it; a code thrown in core but declared in no contracts array answers 422, whatever it means |
 | The semantic rules run on demand, not before a push | New code can break a table-writer, route-query, refusal or status-write rule and land; the break shows only when the orchestrator or QA next runs the script |
 | A shrink-only baseline for the import rules | A file move rewrites its baseline keys, so the move carries `--update-baseline` with it; a violation can never be admitted by re-freezing, only fixed |

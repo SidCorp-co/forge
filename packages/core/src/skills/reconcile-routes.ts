@@ -38,7 +38,7 @@ reconcileRoutes.use('/:projectId/reconcile-runs*', requireAuth(), assertEmailVer
 reconcileRoutes.post(
   '/:projectId/reconcile-runs',
   zValidator('param', projectParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator(
     'json',
@@ -49,7 +49,7 @@ reconcileRoutes.post(
       })
       .strict(),
     (r) => {
-      if (!r.success) throw badRequest(z.flattenError(r.error));
+      if (!r.success) throw badRequest(r.error);
     },
   ),
   async (c) => {
@@ -76,7 +76,7 @@ reconcileRoutes.post(
 reconcileRoutes.get(
   '/:projectId/reconcile-runs',
   zValidator('param', projectParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -93,7 +93,7 @@ reconcileRoutes.get(
 reconcileRoutes.get(
   '/:projectId/reconcile-runs/:runId',
   zValidator('param', runParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
@@ -126,10 +126,10 @@ const verdictBodySchema = z
 reconcileRoutes.post(
   '/:projectId/reconcile-runs/:runId/verdict',
   zValidator('param', runParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', verdictBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
@@ -164,7 +164,7 @@ reconcileRoutes.post(
 reconcileRoutes.post(
   '/:projectId/reconcile-runs/:runId/votes',
   zValidator('param', runParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator(
     'json',
@@ -176,7 +176,7 @@ reconcileRoutes.post(
       })
       .strict(),
     (r) => {
-      if (!r.success) throw badRequest(z.flattenError(r.error));
+      if (!r.success) throw badRequest(r.error);
     },
   ),
   async (c) => {
@@ -204,7 +204,7 @@ reconcileRoutes.post(
 reconcileRoutes.post(
   '/:projectId/reconcile-runs/:runId/apply',
   zValidator('param', runParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
@@ -231,10 +231,10 @@ reconcileRoutes.post(
 reconcileRoutes.post(
   '/:projectId/reconcile-runs/:runId/reject',
   zValidator('param', runParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', z.object({ reason: z.string().min(1).max(1000) }).strict(), (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
@@ -262,10 +262,10 @@ reconcileRoutes.post(
 reconcileRoutes.post(
   '/:projectId/reconcile-runs/:runId/acknowledge',
   zValidator('param', runParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', z.object({ reason: z.string().max(1000).optional() }).strict(), (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');

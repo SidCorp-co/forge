@@ -22,7 +22,7 @@ pipelineRunReadRoutes.use('*', requireAuth(), assertEmailVerified());
 pipelineRunReadRoutes.get(
   '/:id',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -47,10 +47,10 @@ pipelineRunProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 pipelineRunProjectRoutes.get(
   '/:id/pipeline-runs',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', listFiltersSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: projectId } = c.req.valid('param');

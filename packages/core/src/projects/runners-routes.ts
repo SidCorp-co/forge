@@ -39,7 +39,7 @@ export const projectRunnerRoutes = new Hono<{ Variables: AuthVars }>();
 projectRunnerRoutes.get(
   '/:id/runners',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -56,10 +56,10 @@ projectRunnerRoutes.get(
 projectRunnerRoutes.post(
   '/:id/runners',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', createRunnerBodySchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -114,10 +114,10 @@ const patchRunnerBodySchema = z
 projectRunnerRoutes.patch(
   '/:id/runners/:runnerId',
   zValidator('param', runnerParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', patchRunnerBodySchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { id, runnerId } = c.req.valid('param');
@@ -148,7 +148,7 @@ projectRunnerRoutes.patch(
 projectRunnerRoutes.post(
   '/:id/runners/:runnerId/clear-error',
   zValidator('param', runnerParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { id, runnerId } = c.req.valid('param');
@@ -172,7 +172,7 @@ projectRunnerRoutes.post(
 projectRunnerRoutes.delete(
   '/:id/runners/:runnerId',
   zValidator('param', runnerParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { id, runnerId } = c.req.valid('param');

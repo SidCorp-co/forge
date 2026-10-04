@@ -18,7 +18,7 @@ deviceMcpServerRoutes.get(
   '/me/mcp-servers',
   requireDevice(),
   zValidator('query', projectQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const device = c.get('device');

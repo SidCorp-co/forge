@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import {
   EMBEDDING_UNAVAILABLE,
@@ -28,7 +27,7 @@ memoryWriteRoutes.use(
 memoryWriteRoutes.post(
   '/',
   zValidator('json', writeMemoryInputSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const body = c.req.valid('json');
@@ -56,7 +55,7 @@ memoryWriteRoutes.post(
 memoryWriteRoutes.post(
   '/feedback',
   zValidator('json', memoryFeedbackInputSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const body = c.req.valid('json');

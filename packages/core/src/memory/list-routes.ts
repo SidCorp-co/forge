@@ -41,7 +41,7 @@ memoryListRoutes.use('*', requireAuth(), assertEmailVerified());
 memoryListRoutes.get(
   '/',
   zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, source, sourceRef, limit, offset, includeArchived } = c.req.valid('query');
@@ -66,7 +66,7 @@ memoryListRoutes.get(
 memoryListRoutes.get(
   '/revisions',
   zValidator('query', revisionsQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, memoryId, source, sourceRef, limit, offset } = c.req.valid('query');
@@ -89,7 +89,7 @@ memoryListRoutes.get(
 memoryListRoutes.delete(
   '/by-source',
   zValidator('query', deleteQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, source, sourceRef } = c.req.valid('query');
@@ -105,7 +105,7 @@ const idParamSchema = z.object({ id: z.uuid() });
 memoryListRoutes.delete(
   '/:id',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

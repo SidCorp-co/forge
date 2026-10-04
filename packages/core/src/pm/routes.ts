@@ -133,7 +133,7 @@ pmRoutes.post(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', projectIdParam, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -163,10 +163,10 @@ pmRoutes.post(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', respondParam, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', respondBody, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, decisionId } = c.req.valid('param');
@@ -219,7 +219,7 @@ pmRoutes.get(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', projectIdParam, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -238,10 +238,10 @@ pmRoutes.put(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', projectIdParam, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', configPatchSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -261,7 +261,7 @@ pmRoutes.get(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', projectIdParam, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -278,10 +278,10 @@ pmRoutes.post(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', projectIdParam, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', policyCreateSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -312,10 +312,10 @@ pmRoutes.patch(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', projectAndIdParam, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', policyPatchSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, id } = c.req.valid('param');
@@ -348,7 +348,7 @@ pmRoutes.delete(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', projectAndIdParam, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, id } = c.req.valid('param');
@@ -370,10 +370,10 @@ pmRoutes.get(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', projectIdParam, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', decisionsQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');

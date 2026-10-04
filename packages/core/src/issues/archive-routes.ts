@@ -47,11 +47,11 @@ function archiveHandler(direction: ArchiveDirection) {
 }
 
 const validProjectId = zValidator('param', projectIdParamSchema, (r) => {
-  if (!r.success) throw badRequest(z.flattenError(r.error));
+  if (!r.success) throw badRequest(r.error);
 });
 
 const validRequest = zValidator('json', issueArchiveRequestSchema, (r) => {
-  if (!r.success) throw badRequest(z.flattenError(r.error));
+  if (!r.success) throw badRequest(r.error);
 });
 
 issueArchiveRoutes.post(
