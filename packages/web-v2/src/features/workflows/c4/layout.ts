@@ -148,6 +148,65 @@ function labelBox(e: ViewEdge): ElkLabel | null {
 }
 
 /**
+ * With no outside boundary open, the outside boxes stack in one column when every line between two of
+ * them can join neighbours there: the order puts each chain of such lines next to each other. ELK's
+ * layered algorithm routes no line between two boxes of one layer, so those lines are left out of its
+ * graph and drawn straight down the column (`columnLine`). A cycle, or a box with lines to three
+ * others in the column, keeps the outside boxes in layers of their own.
+ */
+function stackOf(v: SystemView): { order: string[]; lines: ViewEdge[] } | null {
+  if (v.frames.some((f) => f.column === 2)) return null;
+  const col = v.nodes.filter((n) => n.column === 2 && n.frame === null).map((n) => n.id);
+  const inCol = new Set(col);
+  const lines = v.edges.filter((e) => inCol.has(e.from) && inCol.has(e.to));
+  if (lines.length === 0) return null;
+  const next = new Map<string, string[]>(col.map((id) => [id, []]));
+  for (const e of lines) {
+    next.get(e.from)?.push(e.to);
+    next.get(e.to)?.push(e.from);
+  }
+  if ([...next.values()].some((ns) => ns.length > 2)) return null;
+  const order: string[] = [];
+  const seen = new Set<string>();
+  for (const start of col) {
+    if (seen.has(start) || (next.get(start)?.length ?? 0) > 1) continue;
+    let prev: string | null = null;
+    let at: string | undefined = start;
+    while (at && !seen.has(at)) {
+      order.push(at);
+      seen.add(at);
+      const from: string | null = prev;
+      prev = at;
+      at = next.get(at)?.find((n) => n !== from);
+    }
+  }
+  // What no chain end reached sits on a cycle.
+  if (order.length < col.length) return null;
+  return { order, lines };
+}
+
+/** A line between two neighbours of the stacked column: straight from the upper's bottom to the lower's top, its words across it. */
+function columnLine(e: ViewEdge, a: Rect, b: Rect): Omit<DLine, "edge" | "id" | "dash" | "colour"> {
+  const [up, down, upId, downId] = a.y <= b.y ? [a, b, e.from, e.to] : [b, a, e.to, e.from];
+  const x = (Math.max(up.x, down.x) + Math.min(up.x + up.w, down.x + down.w)) / 2;
+  const points = [
+    { x, y: up.y + up.h },
+    { x, y: down.y },
+  ];
+  const box = labelBox(e);
+  const mid = (up.y + up.h + down.y) / 2;
+  const forward = upId === e.from;
+  return {
+    d: rounded(points, 8),
+    points,
+    label: box ? { x: x - (box.width ?? 0) / 2, y: mid - (box.height ?? 0) / 2, w: box.width ?? 0, h: box.height ?? 0, ...labelOf(e) } : null,
+    ends: [upId, downId],
+    arrowEnd: forward ? e.forward : e.back,
+    arrowStart: forward ? e.back : e.forward,
+  };
+}
+
+/**
  * The view laid out by ELK's layered algorithm, left to right: people, the system, everything outside
  * it, each a partition, with as many layers inside each as its own lines need. Lines are routed
  * orthogonally around the boxes and their labels placed by the engine, so none overlaps another. The
@@ -163,8 +222,14 @@ export async function layoutView(v: SystemView): Promise<Diagram> {
     height: sizeOf(n).h,
     ...(root ? { layoutOptions: partition(n.column) } : {}),
   });
+  const stack = stackOf(v);
+  const inColumn = new Set(stack?.lines.map((e) => e.id) ?? []);
+  const stacked = new Map((stack?.order ?? []).map((id, i) => [id, i]));
+  const roots = v.nodes.filter((n) => n.frame === null);
   const children: ElkNode[] = [];
-  for (const n of v.nodes) if (n.frame === null) children.push(leaf(n, true));
+  for (const n of [...roots.filter((r) => !stacked.has(r.id)), ...roots.filter((r) => stacked.has(r.id)).sort((a, b) => (stacked.get(a.id) ?? 0) - (stacked.get(b.id) ?? 0))]) {
+    children.push(leaf(n, true));
+  }
   for (const f of v.frames) {
     children.push({
       id: f.id,
@@ -175,7 +240,7 @@ export async function layoutView(v: SystemView): Promise<Diagram> {
   // ELK lays a line out from its source, and partitions only run left to right, so every line is laid
   // out from its leftmost end; the arrowheads keep the direction the design gave it.
   const ends = new Map<string, [string, string]>();
-  const edges: ElkExtendedEdge[] = v.edges.map((e) => {
+  const edges: ElkExtendedEdge[] = v.edges.filter((e) => !inColumn.has(e.id)).map((e) => {
     const flip = column(e.from) > column(e.to);
     const pair: [string, string] = flip ? [e.to, e.from] : [e.from, e.to];
     ends.set(e.id, pair);
@@ -200,6 +265,13 @@ export async function layoutView(v: SystemView): Promise<Diagram> {
       "elk.layered.spacing.edgeNodeBetweenLayers": "8",
       "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
       "elk.padding": "[top=8,left=8,bottom=8,right=8]",
+      // A stacked column holds its own order, spaced so a line's words fit between two boxes.
+      ...(stack
+        ? {
+            "elk.layered.crossingMinimization.forceNodeModelOrder": "true",
+            "elk.spacing.nodeNode": String(Math.max(24, ...stack.lines.map((e) => (labelBox(e)?.height ?? 0) + 16))),
+          }
+        : {}),
     },
     children,
     edges,
@@ -251,6 +323,11 @@ export async function layoutView(v: SystemView): Promise<Diagram> {
       arrowStart: forward ? e.back : e.forward,
       ...lineStyle(e.rels),
     });
+  }
+  for (const e of stack?.lines ?? []) {
+    const a = rect.get(e.from);
+    const b = rect.get(e.to);
+    if (a && b) lines.push({ id: e.id, edge: e, ...columnLine(e, a, b), ...lineStyle(e.rels) });
   }
   settleLabels(lines, boxes);
   return { width: out.width ?? 0, height: out.height ?? 0, boxes, frames, lines };
