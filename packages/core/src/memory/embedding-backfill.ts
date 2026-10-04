@@ -1,11 +1,9 @@
-import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { appConfig, knowledgeEntries, memories } from '../db/schema.js';
+import { knowledgeEntries, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/index.js';
 import { fillKnowledgeEmbedding, knowledgeEmbedInput } from '../knowledge/index.js';
 import { logger } from '../observability/logger.js';
-import { chunkAndPublish, loadChunkParent } from './chunk-writer.js';
-import { CHUNKED_SOURCES } from './chunker.js';
 
 /**
  * memory-v2 phase 1 — re-embed rows written while the embeddings service was
@@ -108,52 +106,4 @@ async function backfillKnowledge(): Promise<{ reembedded: number; aborted: boole
     }
   }
   return { reembedded, aborted };
-}
-
-/** The chunked-project rows whose current generation has no published passage set, oldest first — a degraded write, a failed re-embed or a flip that has not reached them yet. */
-export async function selectUnchunked(limit: number, projectId?: string) {
-  const where = [
-    eq(appConfig.memoryModel, 'chunked'),
-    isNull(memories.chunkedAt),
-    isNull(memories.archivedAt),
-    isNotNull(memories.embedding),
-    inArray(memories.source, [...CHUNKED_SOURCES]),
-  ];
-  if (projectId) where.push(eq(memories.projectId, projectId));
-  return db
-    .select({ id: memories.id })
-    .from(memories)
-    .innerJoin(appConfig, eq(appConfig.projectId, memories.projectId))
-    .where(and(...where))
-    .orderBy(asc(memories.updatedAt))
-    .limit(limit);
-}
-
-export async function runChunkBackfill(): Promise<{
-  chunked: number;
-  aborted: boolean;
-  durationMs: number;
-}> {
-  const t0 = Date.now();
-  const rows = await selectUnchunked(BATCH_SIZE);
-  let chunked = 0;
-  let aborted = false;
-  for (const row of rows) {
-    const parent = await loadChunkParent(row.id);
-    if (!parent) continue;
-    try {
-      const result = await chunkAndPublish(parent);
-      if (result.published) chunked++;
-    } catch (err) {
-      if (err instanceof EmbeddingUnavailableError) {
-        aborted = true;
-        break;
-      }
-      logger.error(
-        { err: (err as Error).message, memoryId: row.id },
-        'memory.backfill: chunk publish failed for row, skipping',
-      );
-    }
-  }
-  return { chunked, aborted, durationMs: Date.now() - t0 };
 }

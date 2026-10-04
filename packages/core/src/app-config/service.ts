@@ -35,33 +35,3 @@ export async function saveAppConfig(projectId: string, values: AppConfigValues) 
   if (!row) throw new Error('app_config: upsert returned no row');
   return row;
 }
-
-/** A project's memory model, and with it a fresh reindex progress when one is queued. */
-export async function setMemoryModel(
-  projectId: string,
-  values: Pick<AppConfigValues, 'memoryModel' | 'memoryReindex'>,
-): Promise<void> {
-  await upsertAppConfig(db, projectId, values);
-}
-
-/** Merge keys into the project's memory reindex progress. */
-export async function mergeMemoryReindex(
-  projectId: string,
-  patch: Record<string, unknown>,
-): Promise<void> {
-  await db
-    .update(appConfig)
-    .set({
-      memoryReindex: sql`${appConfig.memoryReindex} || ${JSON.stringify(patch)}::jsonb`,
-      updatedAt: sql`now()`,
-    })
-    .where(eq(appConfig.projectId, projectId));
-}
-
-/** When the project's memory was last backfilled. */
-export async function stampLastBackfill(projectId: string): Promise<void> {
-  await db
-    .update(appConfig)
-    .set({ lastBackfillAt: sql`now()` })
-    .where(eq(appConfig.projectId, projectId));
-}

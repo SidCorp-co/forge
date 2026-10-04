@@ -1,32 +1,24 @@
-import {
-  CONTRACT_MEASUREMENTS_SHOWN,
-  type ContractDirection,
-  type ContractProjectRef,
-  type ContractRequestRow,
-  type ContractStandingDetail,
-  type ContractStandingList,
-  type ContractStandingRow,
+import type {
+  ContractDirection,
+  ContractProjectRef,
+  ContractStandingDetail,
+  ContractStandingList,
+  ContractStandingRow,
 } from '@forge/contracts/contract-standing';
-import type { ContractRequestView } from '@forge/contracts/contract-waits';
 import { db } from '../../db/client.js';
 import { notFound } from '../../middleware/route-errors.js';
-import { measurementsOf } from '../contract/store.js';
 import { loadGraph } from '../graph.js';
 import { type HeldInterface, loadInterface } from '../interface-service.js';
 import { edgeVisible, liveEdges, type PartyGraph } from '../party.js';
-import { listContractRequests } from '../requests/read.js';
 import { activeEcosystemIdsOf, type EdgeRow, projectsWhere } from '../store.js';
 import {
   type ChangeRow,
   changeItems,
-  consumerDemand,
-  issueWaits,
   OPEN_CHANGE,
   refOf,
   type VersionRow,
   versionFacts,
   viewerOf,
-  type WaitRow,
   windowDues,
 } from './facts-read.js';
 import {
@@ -38,7 +30,7 @@ import {
   versionRef,
 } from './standing.js';
 
-export const MODULE_UNAVAILABLE =
+const MODULE_UNAVAILABLE =
   'The interface document names no module for a publication, so nothing records which module provides or consumes it.';
 
 interface World {
@@ -51,8 +43,6 @@ interface World {
   versions: Map<string, VersionRow[]>;
   dues: Map<string, Date>;
   changes: ChangeRow[];
-  requests: ContractRequestView[];
-  waits: WaitRow[];
   viewer: StandingViewer;
   now: Date;
 }
@@ -63,16 +53,12 @@ interface Entry {
   direction: ContractDirection;
 }
 
-const contractSlugOf = (ref: string) => ref.slice(ref.indexOf('/') + 1);
-
 async function worldOf(projectId: string, userId: string | null, now: Date): Promise<World> {
-  const [[self], held, memberships, changes, requests, waits, viewer, dues] = await Promise.all([
+  const [[self], held, memberships, changes, viewer, dues] = await Promise.all([
     projectsWhere(db, { ids: [projectId] }),
     loadInterface(projectId),
     activeEcosystemIdsOf(db, [projectId]),
     changeItems(projectId),
-    listContractRequests(projectId),
-    issueWaits(projectId),
     viewerOf(projectId, userId),
     windowDues(projectId),
   ]);
@@ -82,8 +68,6 @@ async function worldOf(projectId: string, userId: string | null, now: Date): Pro
   const providers = new Set<string>([
     ...edges.filter((e) => e.consumerProjectId === projectId).map((e) => e.providerProjectId),
     ...changes.map((c) => c.providerId),
-    ...waits.map((w) => w.providerId),
-    ...requests.filter((r) => r.direction === 'outgoing').map((r) => r.provider.id),
   ]);
   providers.delete(projectId);
   const touching = edges.filter(
@@ -112,8 +96,6 @@ async function worldOf(projectId: string, userId: string | null, now: Date): Pro
     versions,
     dues,
     changes,
-    requests,
-    waits,
     viewer,
     now,
   };
@@ -132,10 +114,7 @@ function entriesOf(w: World): Entry[] {
   };
   for (const e of w.edges)
     if (e.consumerProjectId === own) add(e.providerProjectId, e.contractSlug);
-  for (const x of w.waits) add(x.providerId, x.slug);
   for (const c of w.changes) add(c.providerId, c.slug);
-  for (const r of w.requests)
-    if (r.direction === 'outgoing') add(r.provider.id, contractSlugOf(r.contract));
   const byRef = (a: Entry, b: Entry) => refKey(w, a).localeCompare(refKey(w, b));
   return [...provided.sort(byRef), ...[...consumed.values()].sort(byRef)];
 }
@@ -156,26 +135,6 @@ function consumersOf(w: World, e: Entry): ConsumerFact[] {
   return [...seen.values()];
 }
 
-function requestsOn(w: World, ref: string): ContractRequestRow[] {
-  return w.requests
-    .filter((r) => r.contract === ref)
-    .map((r) => {
-      const counterpart = r.direction === 'incoming' ? r.consumer : r.provider;
-      return {
-        number: r.number,
-        direction: r.direction,
-        counterpart: w.named.get(counterpart.id) ?? {
-          id: counterpart.id,
-          slug: counterpart.slug,
-          name: counterpart.slug,
-        },
-        requirement: { ...r.requirement, project: r.provider.slug },
-        open: r.requirement.status === 'draft',
-        createdAt: r.createdAt,
-      };
-    });
-}
-
 function changesOn(w: World, e: Entry): ChangeRow[] {
   return w.changes.filter((c) => c.providerId === e.providerId && c.slug === e.slug);
 }
@@ -186,7 +145,6 @@ interface Read {
   standing: Standing;
   versions: VersionRow[];
   consumers: ConsumerFact[];
-  requests: ContractRequestRow[];
 }
 
 function readOf(w: World, e: Entry): Read {
@@ -201,7 +159,6 @@ function readOf(w: World, e: Entry): Read {
   const all = w.versions.get(`${e.providerId}/${e.slug}`) ?? [];
   const versions = e.direction === 'provided' ? all : all.filter((v) => v.approval === 'approved');
   const consumers = consumersOf(w, e);
-  const requests = requestsOn(w, ref);
   const items = changesOn(w, e).filter((c) => c.dueAt !== null);
   const change = items.find((c) => OPEN_CHANGE.includes(c.status)) ?? items[0] ?? null;
   const dues = new Map<string, Date>();
@@ -212,9 +169,6 @@ function readOf(w: World, e: Entry): Read {
       x.consumerProjectId === w.project.id &&
       x.providerProjectId === e.providerId &&
       x.contractSlug === e.slug,
-  );
-  const open = w.waits.filter(
-    (x) => x.providerId === e.providerId && x.slug === e.slug && !x.settled,
   );
   const facts: ContractFacts = {
     direction: e.direction,
@@ -232,14 +186,6 @@ function readOf(w: World, e: Entry): Read {
         }
       : null,
     consumers,
-    requests: requests.map((r) => ({
-      number: r.number,
-      direction: r.direction,
-      counterpart: r.counterpart.slug,
-      requirementKey: r.requirement.key,
-      open: r.open,
-    })),
-    waits: open.map((x) => ({ issue: x.issue, minVersion: x.minVersion })),
   };
   const s = standingOf(facts, w.viewer, w.now);
   const row: ContractStandingRow = {
@@ -261,14 +207,12 @@ function readOf(w: World, e: Entry): Read {
       current: s.adoption.filter((a) => a === 'current').length,
       behind: s.adoption.filter((a) => a !== 'current').length,
     },
-    waits: open.length,
-    openRequests: requests.filter((r) => r.open).length,
     state: s.state,
     attentionGroup: s.attentionGroup,
     waitingOn: s.waitingOn,
     touchedAt: all[0]?.recordedAt.toISOString() ?? null,
   };
-  return { entry: e, row, standing: s, versions, consumers, requests };
+  return { entry: e, row, standing: s, versions, consumers };
 }
 
 export async function readContractStanding(
@@ -295,18 +239,10 @@ export async function readContractDetail(
   const entry = entriesOf(w).find((e) => refKey(w, e) === refOf(ref.provider, ref.contract));
   if (!entry) {
     throw notFound(
-      `project ${w.project.slug} neither provides nor consumes ${refOf(ref.provider, ref.contract)}, and none of its issues waits on it`,
+      `project ${w.project.slug} neither provides nor consumes ${refOf(ref.provider, ref.contract)}`,
     );
   }
   const r = readOf(w, entry);
-  const provided = entry.direction === 'provided';
-  const consumerIds = new Set(r.consumers.map((c) => c.project.id));
-  const [demand, measured] = await Promise.all([
-    provided ? consumerDemand(projectId) : Promise.resolve([]),
-    provided
-      ? measurementsOf(projectId, entry.slug, CONTRACT_MEASUREMENTS_SHOWN)
-      : Promise.resolve(null),
-  ]);
   return {
     generatedAt: now.toISOString(),
     project: w.project,
@@ -323,23 +259,6 @@ export async function readContractDetail(
       adoption: r.standing.adoption[i] ?? 'unpublished',
       self: c.project.id === projectId,
     })),
-    waits: w.waits
-      .filter((x) => x.providerId === entry.providerId && x.slug === entry.slug)
-      .map((x) => ({
-        issue: x.issue,
-        title: x.title,
-        status: x.status,
-        minVersion: x.minVersion,
-        reason: x.reason,
-        settled: x.settled,
-      })),
-    demand: demand
-      .filter((d) => d.slug === entry.slug && consumerIds.has(d.consumerId))
-      .flatMap((d) => {
-        const project = w.named.get(d.consumerId);
-        return project ? [{ project, issues: d.issues, minVersions: d.minVersions }] : [];
-      }),
-    requests: r.requests,
     feedback: changesOn(w, entry).map((c) => ({
       key: c.key,
       title: c.title,
@@ -347,17 +266,6 @@ export async function readContractDetail(
       version: c.version,
       dueAt: c.dueAt?.toISOString() ?? null,
     })),
-    measurements: measured
-      ? measured.map((m) => ({
-          outcome: m.outcome,
-          version: m.version,
-          environments: m.environments,
-          branch: m.branch,
-          commit: m.commitSha,
-          observedAt: m.observedAt.toISOString(),
-          reason: m.reason,
-        }))
-      : null,
     module: { available: false, reason: MODULE_UNAVAILABLE },
   };
 }

@@ -87,14 +87,6 @@ export const STATE_READINGS = {
 		warning: ["Warning", "you", "!"],
 		info: ["Info", "neutral", "○"],
 	},
-	/** A recorded measurement of a contract (core `ecosystem/contract/store.ts`). */
-	measurement: {
-		pending: ["Pending", "neutral", "○"],
-		recorded: ["Recorded", "ready", "✓"],
-		unchanged: ["Unchanged", "done", "–"],
-		stale: ["Stale", "neutral", "↻"],
-		refused: ["Refused", "err", "×"],
-	},
 	/** A channel document (core `ecosystem/channel-schema.ts`). */
 	document: {
 		draft: ["Draft", "neutral", "○"],
@@ -119,14 +111,6 @@ export const STATE_READINGS = {
 		ok: ["OK", "ready", "✓"],
 		warn: ["Warning", "you", "!"],
 		crit: ["Critical", "err", "!"],
-	},
-	/** A memory reindex (contracts `status-sets.ts:MEMORY_REINDEX_STATES`). */
-	reindex: {
-		queued: ["Queued", "neutral", "○"],
-		running: ["Running", "run", "●"],
-		completed: ["Completed", "ready", "✓"],
-		failed: ["Failed", "err", "×"],
-		cancelled: ["Cancelled", "done", "–"],
 	},
 	/** An environment's deployment reading (web `project-settings/config-types.ts`). */
 	deployment: {
@@ -235,9 +219,6 @@ export const STATE_READINGS = {
 		pending: ["Awaiting approval", "you", "●"],
 		approved: ["Approved", "ready", "✓"],
 		returned: ["Returned", "err", "↺"],
-	},
-	contractWait: {
-		unsettled: ["Waiting for a version", "blocked", "○"],
 	},
 	buildGate: {
 		open: ["Open", "ready", "✓"],

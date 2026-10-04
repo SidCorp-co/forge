@@ -34,8 +34,3 @@ export const memoryChunks = pgTable(
     identSearchIdx: index('memory_chunks_ident_search_idx').using('gin', t.identSearch),
   }),
 );
-
-export {
-  MEMORY_REINDEX_STATES as memoryReindexStates,
-  type MemoryReindexState,
-} from '@forge/contracts/status-sets';

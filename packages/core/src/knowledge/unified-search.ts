@@ -5,18 +5,18 @@ import { logger } from '../observability/logger.js';
 import type { KnowledgeHit } from './search.js';
 import { hybridSearchKnowledge, keywordSearchKnowledge, searchKnowledge } from './search.js';
 
-export type UnifiedScope = 'knowledge' | 'memory' | 'all';
-export type UnifiedStrategy = 'semantic' | 'keyword' | 'hybrid';
+type UnifiedScope = 'knowledge' | 'memory' | 'all';
+type UnifiedStrategy = 'semantic' | 'keyword' | 'hybrid';
 
-export interface KnowledgeHitLabeled extends KnowledgeHit {
+interface KnowledgeHitLabeled extends KnowledgeHit {
   origin: 'knowledge';
 }
 
-export interface MemoryHitLabeled extends MemoryHit {
+interface MemoryHitLabeled extends MemoryHit {
   origin: 'memory';
 }
 
-export interface UnifiedSearchResult {
+interface UnifiedSearchResult {
   knowledge: KnowledgeHitLabeled[];
   memory: MemoryHitLabeled[];
   degraded?: boolean;

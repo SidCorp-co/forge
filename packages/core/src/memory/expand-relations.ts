@@ -10,10 +10,10 @@ import { memoryOfLiveIssue } from './live-issue.js';
 import { type IssueRelationEdge, memoryIssueReads } from './ports.js';
 import { deriveMemoryStaleness, type MemoryHit, type MemoryVia } from './search.js';
 
-export const EXPAND_SEED_LIMIT = 5;
-export const EXPAND_RELATION_KINDS: ReadonlyArray<MemoryVia['relation']> = ['blocks', 'relates'];
+const EXPAND_SEED_LIMIT = 5;
+const EXPAND_RELATION_KINDS: ReadonlyArray<MemoryVia['relation']> = ['blocks', 'relates'];
 
-export interface ExpandRelationsInput {
+interface ExpandRelationsInput {
   projectId: string;
   hits: MemoryHit[];
   topK: number;

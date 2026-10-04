@@ -169,7 +169,7 @@ export async function openRunSession(args: {
     );
   }
   const canonical = await canonicaliseIssueKeys(args.projectId, args.issueKeys);
-  // cm:guard an unstarted issue a live blocks edge holds (ISSUE_BLOCKED), a flow's build without its approved design (ISS-53) and a contract wait before its version (E1) are refused as the job claim refuses them
+  // cm:guard an unstarted issue a live blocks edge holds (ISSUE_BLOCKED), and a flow's build without its approved design (ISS-53) are refused as the job claim refuses them
   await refuseHeldTakeForSeqs(args.projectId, canonical.seqs);
   const openingStatuses = await readIssueStatuses(args.projectId, canonical.seqs);
   const spec: OneShotRunSpec = {

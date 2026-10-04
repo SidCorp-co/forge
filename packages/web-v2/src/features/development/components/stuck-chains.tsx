@@ -3,21 +3,18 @@
 import Link from "next/link";
 import { Fragment } from "react";
 import { StatusBadge } from "@/design";
-import { contractHref } from "@/features/contracts/routes";
 import { issueHref } from "@/features/issues/routes";
 import type { OverviewChain, OverviewChainNode, OverviewStuck } from "../types";
 
 function Node({ node, slug }: { node: OverviewChainNode; slug: string }) {
-  const href = node.kind === "issue" ? issueHref(slug, node.key) : contractHref(slug, node.key);
+  const href = issueHref(slug, node.key);
   return (
     <div className="min-w-0" data-testid="chain-node" data-key={node.key} data-held={node.held}>
       <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
         <Link href={href} className="break-all font-mono text-11-5 font-semibold text-link no-underline hover:underline">
           {node.key}
         </Link>
-        {node.kind === "contract" ? (
-          <StatusBadge family="contractWait" value="unsettled" />
-        ) : node.status ? (
+        {node.status ? (
           <StatusBadge family="issue" value={node.status} step={node.step} {...(node.tone ? { tone: node.tone } : {})} />
         ) : null}
       </div>

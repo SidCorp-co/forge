@@ -6,7 +6,7 @@ import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import { memories } from '../db/schema.js';
 
-export interface MineRow {
+interface MineRow {
   id: string;
   projectId: string;
   textContent: string;
@@ -15,7 +15,7 @@ export interface MineRow {
   updatedAt: Date;
 }
 
-export const MINE_LIMIT = 200;
+const MINE_LIMIT = 200;
 
 const authoredBy = (userId: string) =>
   sql`${memories.metadata} @> ${JSON.stringify({ authorUserId: userId })}::jsonb`;

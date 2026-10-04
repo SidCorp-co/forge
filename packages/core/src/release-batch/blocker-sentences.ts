@@ -3,7 +3,6 @@
  * explains it. Every door reads these, so none carries its own copy (ISS-1127).
  */
 
-import { type LiveShortfall, notLiveSentence } from '@forge/contracts/contract-waits';
 import {
   RELEASE_RECORD_REMEDY,
   RELEASE_ROSTER_LIMIT,
@@ -85,8 +84,6 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     `nobody wrote anything about. ${RELEASE_RECORD_REMEDY}`,
   RELEASE_WORK_UNMERGED:
     '{named} {have} no merge Forge watched land, so nothing says {their} work is on the branch this release deployed. Mark the merge on {each} first — a release records what shipped, and an issue nobody merged did not.',
-  CONTRACT_PROVIDER_NOT_LIVE:
-    "{named} {wait} on another project's contract version that its production does not serve yet, so this release would ship a consumer ahead of its provider. Release once the provider serves it, or take {those} out of this release.",
   RELEASE_PROBES_UNREADABLE:
     'Every runtime probe the production environment declares identifies an artifact, so no reading can say which commit production serves and the release could never be proved. Declare a probe that identifies the source on the production environment.',
   RELEASE_POOL_EMPTY:
@@ -125,7 +122,6 @@ export const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   RELEASE_ROSTER_OVERSIZE: [],
   RELEASE_RECORD_MISSING: [],
   RELEASE_WORK_UNMERGED: [],
-  CONTRACT_PROVIDER_NOT_LIVE: [],
   RELEASE_PROBES_UNREADABLE: [],
   RELEASE_POOL_EMPTY: [],
   NO_RUNNER_ONLINE: [],
@@ -276,9 +272,6 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
     return fillNamed('{named} {have} no mark saying where {their} work landed.', details).concat(
       ` This project's work lands outside git, so mark each one merged with its \`landing\` — the live URL, CMS entry or storefront resource the work now is — first: a release records what shipped, and a mark naming nothing does not say that anything did.`,
     );
-  }
-  if (code === 'CONTRACT_PROVIDER_NOT_LIVE' && Array.isArray(details?.waits)) {
-    return notLiveSentence(details.waits as LiveShortfall[]);
   }
   if (code === 'RELEASE_TARGET_UNDECLARED' && typeof details?.reason === 'string') {
     return `Nowhere is declared for a release to land: ${details.reason}.`;

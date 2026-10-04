@@ -35,7 +35,6 @@ export const PAT_PERMISSION_RESOURCES = {
       '/api/body': 2,
     },
   },
-  tasks: { reach: 'project', prefixes: { '/api/tasks': 1 } },
   pipeline: {
     reach: 'project',
     prefixes: {
@@ -48,7 +47,7 @@ export const PAT_PERMISSION_RESOURCES = {
   },
   knowledge: {
     reach: 'project',
-    prefixes: { '/api/knowledge': 1, '/api/knowledge-edges': 1, '/api/memory': 1 },
+    prefixes: { '/api/knowledge': 1, '/api/memory': 1 },
   },
   skills: {
     reach: 'project',

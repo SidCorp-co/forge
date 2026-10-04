@@ -178,10 +178,6 @@
       "types": "./dist/releases.d.ts",
       "default": "./dist/releases.js"
     },
-    "./contract-waits": {
-      "types": "./dist/contract-waits.d.ts",
-      "default": "./dist/contract-waits.js"
-    },
     "./contract-standing": {
       "types": "./dist/contract-standing.d.ts",
       "default": "./dist/contract-standing.js"
@@ -273,10 +269,6 @@
     "./agent-sessions": {
       "types": "./dist/agent-sessions.d.ts",
       "default": "./dist/agent-sessions.js"
-    },
-    "./app-config": {
-      "types": "./dist/app-config.d.ts",
-      "default": "./dist/app-config.js"
     },
     "./assistant": {
       "types": "./dist/assistant.d.ts",

@@ -24,7 +24,7 @@ const NOT_PROSE = new Set([
   'requestedBy',
 ]);
 
-export interface ProseAt {
+interface ProseAt {
   path: string;
   text: string;
 }
@@ -59,7 +59,7 @@ export function internalNamesOf(iface: InterfaceDocument): string[] {
 
 const escapeRe = (s: string) => s.replace(/[/.\\^$*+?()[\]{}|-]/g, '\\$&');
 
-export interface ContentContext {
+interface ContentContext {
   channelCode: string;
   internalNames: readonly string[] | null;
 }

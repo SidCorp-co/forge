@@ -22,7 +22,7 @@ export const linearRegExp = Object.assign(
   { code: 'linearRegExp' },
 );
 
-export function unsafePattern(pattern: string): string | null {
+function unsafePattern(pattern: string): string | null {
   try {
     RE2JS.compile(pattern);
     return null;
@@ -37,7 +37,7 @@ const esc = (k: string) => k.replace(/~/g, '~0').replace(/\//g, '~1');
 
 const DATA_KEYWORDS = new Set(['enum', 'const', 'default', 'examples', 'example']);
 
-export interface UnsafePattern {
+interface UnsafePattern {
   path: string;
   pattern: string;
   why: string;

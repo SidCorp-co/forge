@@ -19,9 +19,9 @@ export const writeMemoryInputSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
-export type WriteMemoryInput = z.infer<typeof writeMemoryInputSchema>;
+type WriteMemoryInput = z.infer<typeof writeMemoryInputSchema>;
 
-export type WriteMemoryResult = IndexResult;
+type WriteMemoryResult = IndexResult;
 
 /**
  * Sources where agents author free-form content, so a near-duplicate is worth

@@ -17,7 +17,7 @@ export interface Writer {
 }
 
 /** The credential a channel act arrived with: a browser session, or a token by its id. */
-export interface ChannelCredential {
+interface ChannelCredential {
   userId: string;
   agency: ActorAgency;
   tokenId: string | null;
@@ -35,7 +35,7 @@ export async function doorOf(tokenId: string | null): Promise<PersonVia> {
 }
 
 // cm:why the credential decides the author, never the body: an agent's token writes via master, a session via web, a turn token via assistant, any other personal token via cli
-export async function writerFor(cred: ChannelCredential): Promise<Writer> {
+async function writerFor(cred: ChannelCredential): Promise<Writer> {
   const { userId } = cred;
   if (cred.agency === 'agent') {
     return { userId, author: { kind: 'agent', id: userId, via: 'master' } };

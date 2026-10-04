@@ -13,7 +13,7 @@ export interface NamedRefusal {
   detail: string;
 }
 
-export type GateOutcome =
+type GateOutcome =
   | { ok: true; value: Record<string, unknown> }
   | { ok: false; refusals: NamedRefusal[] };
 

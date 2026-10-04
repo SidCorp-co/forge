@@ -4,11 +4,6 @@
       "count": 1
     }
   },
-  "packages/core/src/ecosystem/waits/gate.ts": {
-    "module-shape/refusal": {
-      "count": 1
-    }
-  },
   "packages/core/src/issues/apply-transition.ts": {
     "module-shape/refusal": {
       "count": 1

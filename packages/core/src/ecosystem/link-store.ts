@@ -16,7 +16,7 @@ export interface StoredRecord {
 }
 
 /** A builder run, which is always read against one ecosystem (`ecosystem_builder_runs.ecosystem_id` is NOT NULL). */
-export interface StoredRun extends StoredRecord {
+interface StoredRun extends StoredRecord {
   ecosystemId: string;
 }
 

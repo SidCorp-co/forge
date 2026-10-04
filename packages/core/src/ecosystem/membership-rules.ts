@@ -4,7 +4,7 @@ import type { MembershipDocument, MembershipState } from './schema.js';
 export const MEMBERSHIP_VERBS = ['accept', 'decline', 'leave', 'remove'] as const;
 export type MembershipVerb = (typeof MEMBERSHIP_VERBS)[number];
 
-export type MembershipSide = 'project' | 'steward';
+type MembershipSide = 'project' | 'steward';
 
 export const TRANSITIONS: Readonly<
   Record<

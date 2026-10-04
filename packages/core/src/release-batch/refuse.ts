@@ -1,11 +1,6 @@
 import type { ReleaseBlockerCode, ReleaseRefusalCode } from '@forge/contracts/releases';
-import { type LiveShortfall, notLiveSentence } from '@forge/contracts/contract-waits';
 import { type Refusal, RefusalError, refuser } from '../lib/refusal.js';
-import {
-  type ReleaseBlocker,
-  type ReleaseBlockerReport,
-  releaseBlockerSentence,
-} from './blocker-sentences.js';
+import { type ReleaseBlockerReport, releaseBlockerSentence } from './blocker-sentences.js';
 
 /** Every release refusal, at every door, in the one refusal envelope. */
 export const refuseRelease = refuser<ReleaseRefusalCode>('RELEASE_REFUSED');
@@ -46,53 +41,15 @@ export const fenceLost = () =>
   );
 
 /**
- * A provider not yet serving a contract version holds back the issue that waits on it, so it
- * answers once per waiting issue, pointed at that issue in the call's `issueIds`.
- */
-function asRefusals(b: ReleaseBlocker, named: readonly string[]): Refusal[] {
-  const waits = b.code === 'CONTRACT_PROVIDER_NOT_LIVE' ? b.details?.waits : undefined;
-  if (!Array.isArray(waits) || waits.length === 0) {
-    return [{ code: b.code, path: '', detail: b.message }];
-  }
-  const byIssue = new Map<string, LiveShortfall[]>();
-  for (const w of waits as LiveShortfall[]) {
-    byIssue.set(w.issueId, [...(byIssue.get(w.issueId) ?? []), w]);
-  }
-  return [...byIssue].map(([issueId, own]) => {
-    const at = named.findIndex((id) => id.toLowerCase() === issueId.toLowerCase());
-    return { code: b.code, path: at >= 0 ? `/issueIds/${at}` : '', detail: notLiveSentence(own) };
-  });
-}
-
-/**
  * Every reason standing in the report, the first first: an operator clearing one already knows
  * what else stands (ISS-1127). Null when nothing does.
  */
-export function releaseBlockedRefusal(
-  report: ReleaseBlockerReport,
-  named: readonly string[] = [],
-): RefusalError | null {
+export function releaseBlockedRefusal(report: ReleaseBlockerReport): RefusalError | null {
   if (report.blockers.length === 0) return null;
   return new RefusalError(
-    report.blockers.flatMap((b) => asRefusals(b, named)),
+    report.blockers.map((b) => ({ code: b.code, path: '', detail: b.message })),
     'RELEASE_REFUSED',
   );
-}
-
-/**
- * The named issues a refusal holds back on their own, where every row is a provider not live: the
- * rest of the roster may still release without them. Null where any other reason stands.
- */
-export function heldBackByProviders(err: unknown, named: readonly string[]): string[] | null {
-  if (!(err instanceof RefusalError)) return null;
-  const held: string[] = [];
-  for (const r of err.refusals) {
-    const at = /^\/issueIds\/(\d+)$/.exec(r.path);
-    const id = at ? named[Number(at[1])] : undefined;
-    if (r.code !== 'CONTRACT_PROVIDER_NOT_LIVE' || !id) return null;
-    held.push(id);
-  }
-  return held.length > 0 ? held : null;
 }
 
 /** The first code a thrown release refusal names, or null for anything else. */

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import {
   Button,
@@ -16,7 +15,6 @@ import {
   useUrlTab,
   ViewHeading,
 } from "@/design";
-import { requirementHref } from "@/features/requirements/routes";
 import { formatApiError } from "@/lib/api/error";
 import { formatStamp } from "@/lib/utils/format";
 import { useDecideVersion } from "../hooks";
@@ -25,7 +23,7 @@ import { AdoptionStrip, ContractBanner, ContractStateBadge } from "./contract-bi
 import { ContractFacts } from "./contract-facts";
 import { VersionTimeline } from "./version-timeline";
 
-export const CONTRACT_TABS = ["overview", "versions", "adoption", "measurements"] as const;
+export const CONTRACT_TABS = ["overview", "versions", "adoption"] as const;
 export type ContractTab = (typeof CONTRACT_TABS)[number];
 
 export const useContractTab = () => useUrlTab(CONTRACT_TABS);
@@ -181,7 +179,7 @@ function Versions({ d, projectId }: { d: ContractStandingDetail; projectId: stri
   );
 }
 
-function Adoption({ d, slug }: { d: ContractStandingDetail; slug: string }) {
+function Adoption({ d }: { d: ContractStandingDetail }) {
   const c = d.contract;
   return (
     <div className="grid gap-8" data-testid="view-adoption">
@@ -204,63 +202,6 @@ function Adoption({ d, slug }: { d: ContractStandingDetail; slug: string }) {
           </ul>
         )}
       </section>
-      <section>
-        <ViewHeading>Requests</ViewHeading>
-        {d.requests.length === 0 ? (
-          <p className="text-13 text-subtle">No change request names this contract.</p>
-        ) : (
-          <ul className="border-t border-line-subtle">
-            {d.requests.map((r) => (
-              <li key={r.number} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line-subtle px-3 py-2.5 text-13" data-testid="request-row">
-                <span className="font-mono text-11-5 font-semibold text-subtle">{r.direction === "incoming" ? "In" : "Out"}</span>
-                <span className="min-w-0 flex-1">
-                  {r.direction === "incoming" ? (
-                    <>
-                      <b className="font-semibold">{r.counterpart.slug}</b> asks: {r.requirement.title}
-                    </>
-                  ) : (
-                    <>
-                      To <b className="font-semibold">{r.counterpart.slug}</b>: {r.requirement.title}
-                    </>
-                  )}
-                </span>
-                {r.direction === "incoming" && r.open && c.waitingOn.ref !== r.requirement.key ? (
-                  <Link href={requirementHref(slug, r.requirement.key)} className="text-12-5 font-medium text-link hover:underline" data-testid="request-reply">
-                    Reply on {r.requirement.key}
-                  </Link>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
-  );
-}
-
-function Measurements({ d }: { d: ContractStandingDetail }) {
-  const rows = d.measurements ?? [];
-  return (
-    <div data-testid="view-measurements">
-      <ViewHeading right={<span className="text-12 text-subtle">Measured on each deployed branch</span>}>Measurements</ViewHeading>
-      {rows.length === 0 ? (
-        <p className="text-13 text-subtle">Nothing has been measured on a deployed branch yet.</p>
-      ) : (
-        <ul className="border-t border-line-subtle">
-          {rows.map((m) => (
-            <li key={`${m.observedAt}${m.commit}`} className="grid grid-cols-[120px_90px_minmax(0,1fr)_110px] items-baseline gap-x-3 border-b border-line-subtle px-3 py-2.5 text-13" data-testid="measurement-row">
-              <StatusBadge family="measurement" value={m.outcome} />
-              <span className="font-mono text-12-5">{m.version ?? "—"}</span>
-              <span className="min-w-0 truncate text-12-5 text-muted" title={m.reason ?? `${m.branch} @ ${m.commit}`}>
-                {m.environments.join(", ") || "No environment"} · <span className="font-mono">{m.branch}</span>
-              </span>
-              <span className="text-12 text-subtle" title={formatStamp(m.observedAt)}>
-                {m.observedAt.slice(0, 10)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   );
 }
@@ -271,7 +212,6 @@ export function ContractPage({ d, slug, projectId, tab, onTab }: { d: ContractSt
     { value: "overview" as const, label: "Overview" },
     { value: "versions" as const, label: "Versions", count: d.versions.length },
     { value: "adoption" as const, label: "Adoption", count: d.consumers.length },
-    ...(d.measurements ? [{ value: "measurements" as const, label: "Measurements", count: d.measurements.length }] : []),
   ];
   const shown = tabs.some((t) => t.value === tab) ? tab : "overview";
   return (
@@ -290,8 +230,7 @@ export function ContractPage({ d, slug, projectId, tab, onTab }: { d: ContractSt
       <DetailPane label={tabs.find((t) => t.value === shown)?.label ?? "Overview"}>
         {shown === "overview" ? <Overview d={d} /> : null}
         {shown === "versions" ? <Versions d={d} projectId={projectId} /> : null}
-        {shown === "adoption" ? <Adoption d={d} slug={slug} /> : null}
-        {shown === "measurements" ? <Measurements d={d} /> : null}
+        {shown === "adoption" ? <Adoption d={d} /> : null}
       </DetailPane>
     </DetailLayout>
   );

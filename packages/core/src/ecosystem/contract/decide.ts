@@ -5,12 +5,11 @@ import { notFound } from '../access.js';
 import { loadInterface } from '../interface-service.js';
 import type { EcosystemRefusal } from '../refusals.js';
 import { lockKeys, projectsWhere } from '../store.js';
-import { settleContractWaitsIn } from '../waits/service.js';
 import { type Approved, announceApproved, fileBreakingIn } from './announce.js';
 import { approverRefusal, type ContractDecision, decisionRefusals } from './approval.js';
 import { decideVersion, type StoredVersion, versionsOf } from './store.js';
 
-export interface DecideInput {
+interface DecideInput {
   projectId: string;
   contract: string;
   version: string;
@@ -19,8 +18,8 @@ export interface DecideInput {
   actor: { userId: string; agency: ActorAgency };
 }
 
-export type DecideOutcome =
-  | { ok: true; version: StoredVersion; settled: string[]; filed: string[] }
+type DecideOutcome =
+  | { ok: true; version: StoredVersion; filed: string[] }
   | { ok: false; refusals: EcosystemRefusal[] };
 
 // cm:why the REST decision and forge_ecosystem contract_version_decide are one service, so who may decide and what may be decided are the same at both doors
@@ -62,7 +61,7 @@ export async function decideContractVersion(input: DecideInput): Promise<DecideO
       );
       if (!decided) throw new Error(`ecosystem: ${ref} vanished under its own lock`);
       if (decision !== 'approve' || !iface) {
-        return [{ ok: true, version: decided, settled: [], filed: [] }, null];
+        return [{ ok: true, version: decided, filed: [] }, null];
       }
       const approved: Approved = {
         provider: { id: project.id, slug: project.slug },
@@ -70,14 +69,8 @@ export async function decideContractVersion(input: DecideInput): Promise<DecideO
         noticeDays: iface.document.commitments.deprecationNoticeDays,
         filer: actor,
       };
-      const settled = await settleContractWaitsIn(tx, {
-        providerId: projectId,
-        contractSlug: contract,
-        version,
-        versioning: iface.document.commitments.versioning,
-      });
       const filed = await fileBreakingIn(tx, approved);
-      return [{ ok: true, version: decided, settled, filed }, approved];
+      return [{ ok: true, version: decided, filed }, approved];
     },
   );
   if (outcome.ok && approved) await announceApproved(db, approved, outcome.filed);

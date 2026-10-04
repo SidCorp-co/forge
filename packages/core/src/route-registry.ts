@@ -51,10 +51,8 @@ import { ecosystemJsonSchemas } from './ecosystem/index.js';
 import {
   busRoutes,
   channelProjectRoutes,
-  contractRequestRoutes,
   contractRoutes,
   contractStandingRoutes,
-  contractWaitRoutes,
   deviceChannelInboxRoutes,
   ecosystemProjectRoutes,
   ecosystemRoutes,
@@ -105,7 +103,6 @@ import {
   jobRoutes,
 } from './jobs/routes.js';
 import { knowledgeIngestRoutes, knowledgeRoutes } from './knowledge/routes.js';
-import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
 import { labelProjectRoutes, labelRoutes, moduleDiagramRoutes } from './labels/routes.js';
 import { deviceMasterRoutes, masterStandingRoutes } from './masters/routes.js';
 import { mcpHandler, mcpRequestClass } from './mcp/index.js';
@@ -113,7 +110,6 @@ import { meAttentionRoutes, mePulseRoutes } from './me/routes.js';
 import {
   memoryListRoutes,
   memoryMineRoutes,
-  memoryModelRoutes,
   memorySearchRoutes,
   memoryWriteRoutes,
 } from './memory/routes.js';
@@ -166,7 +162,6 @@ import {
   skillStudioRoutes,
 } from './skills/routes.js';
 import { suggestionRoutes } from './suggestions/routes.js';
-import { taskIssueRoutes, taskRoutes } from './tasks/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
 import { webhookInboundRoutes } from './webhooks/routes.js';
 import { workflowJsonSchemas } from './workflows/index.js';
@@ -248,7 +243,6 @@ function mountEcosystemRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', channelProjectRoutes);
   app.route('/api/projects', contractRoutes);
   app.route('/api/projects', linkProjectRoutes);
-  app.route('/api/projects', contractRequestRoutes);
   app.route('/api/projects', contractStandingRoutes);
   app.route('/api/ecosystems', ecosystemRoutes);
   app.route('/api/ecosystems', busRoutes);
@@ -306,9 +300,6 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issues', issueDependencyRoutes);
   app.route('/api/issues', issueSteerRoutes);
   app.route('/api/issues', issueCriteriaRoutes);
-  app.route('/api/issues', contractWaitRoutes);
-  app.route('/api/issues', taskIssueRoutes);
-  app.route('/api/tasks', taskRoutes);
   app.route('/api/body', bodyRoutes);
   app.route('/api/comments', commentRoutes);
   app.route('/api/attachments', attachmentRoutes);
@@ -373,9 +364,7 @@ function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/agent-reports', agentReportRoutes);
   app.route('/api/knowledge', knowledgeIngestRoutes);
   app.route('/api/projects', knowledgeRoutes);
-  app.route('/api/knowledge-edges', knowledgeEdgeRoutes);
   app.route('/api/skills', skillCrudRoutes);
-  app.route('/api/app-config', memoryModelRoutes);
   app.route('/api/app-config', appConfigRoutes);
   app.route('/api/runners', runnerRoutes);
 
