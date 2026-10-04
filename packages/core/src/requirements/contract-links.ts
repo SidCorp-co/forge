@@ -10,8 +10,8 @@ import { requirementContracts } from '../db/schema-requirements.js';
 import { heldInterface } from '../ecosystem/interface-service.js';
 import { projectsWhere, readInterfaces } from '../ecosystem/store.js';
 import { assertProjectAccess } from '../lib/authz.js';
-import { notFound, type RequirementActor, rowIn } from './read.js';
 import { linkedContracts } from './baselines.js';
+import { notFound, type RequirementActor, rowIn } from './read.js';
 import { contractLinkRefusal } from './rules.js';
 import { answer, type RequirementOutcome } from './service.js';
 

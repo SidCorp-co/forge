@@ -23,8 +23,8 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { approvalRequired } from '../release-batch/approvals.js';
-import { feedbackCountsOf, feedbackLinksOf } from './feedback-links.js';
 import { linkedContractsOf } from './baselines.js';
+import { feedbackCountsOf, feedbackLinksOf } from './feedback-links.js';
 import { changedSincePlan, staleContractPinsOf, stalePinsOf } from './rules.js';
 import { deriveStanding } from './standing.js';
 import { issueCriteriaOf, latestContractPinsOf, latestPinsOf } from './standing-facts.js';
@@ -86,65 +86,65 @@ export async function standingsOf(
     contracts,
     contractPins,
   ] = await Promise.all([
-      db
-        .select({
-          requirementId: requirementRevisions.requirementId,
-          revision: requirementRevisions.revision,
-          state: requirementRevisions.state,
-          authorId: requirementRevisions.authorId,
-          createdAt: requirementRevisions.createdAt,
-          proposedAt: requirementRevisions.proposedAt,
-          decidedAt: requirementRevisions.decidedAt,
-        })
-        .from(requirementRevisions)
-        .where(inArray(requirementRevisions.requirementId, ids))
-        .orderBy(desc(requirementRevisions.revision)),
-      db
-        .select({
-          requirementId: requirementCriteria.requirementId,
-          id: requirementCriteria.id,
-          code: requirementCriteria.code,
-          body: requirementCriteria.body,
-          sinceRevision: requirementCriteria.sinceRevision,
-          retiredRevision: requirementCriteria.retiredRevision,
-        })
-        .from(requirementCriteria)
-        .where(inArray(requirementCriteria.requirementId, ids)),
-      db.select().from(requirementDelivery).where(inArray(requirementDelivery.requirementId, ids)),
-      db
-        .select({
-          requirementId: issues.requirementId,
-          id: issues.id,
-          issSeq: issues.issSeq,
-          title: issues.title,
-          status: issues.status,
-          updatedAt: issues.updatedAt,
-          plan: issues.plan,
-          plannedRevision: issues.plannedRevision,
-          plannedBaselineSeq: issues.plannedBaselineSeq,
-        })
-        .from(issues)
-        .where(inArray(issues.requirementId, ids))
-        .orderBy(issues.issSeq),
-      db
-        .select({ requirementId: suggestions.requirementId, kind: suggestions.kind })
-        .from(suggestions)
-        .where(and(inArray(suggestions.requirementId, ids), eq(suggestions.status, 'proposed'))),
-      activeIssuePrefix(projectId),
-      latestPinsOf(ids),
-      db
-        .select({
-          requirementId: requirementBaselines.requirementId,
-          revision: requirementBaselines.revision,
-          seq: requirementBaselines.seq,
-          agreedAt: requirementBaselines.agreedAt,
-        })
-        .from(requirementBaselines)
-        .where(inArray(requirementBaselines.requirementId, ids)),
-      approvalRequired(projectId),
-      linkedContractsOf(db, ids),
-      latestContractPinsOf(ids),
-    ]);
+    db
+      .select({
+        requirementId: requirementRevisions.requirementId,
+        revision: requirementRevisions.revision,
+        state: requirementRevisions.state,
+        authorId: requirementRevisions.authorId,
+        createdAt: requirementRevisions.createdAt,
+        proposedAt: requirementRevisions.proposedAt,
+        decidedAt: requirementRevisions.decidedAt,
+      })
+      .from(requirementRevisions)
+      .where(inArray(requirementRevisions.requirementId, ids))
+      .orderBy(desc(requirementRevisions.revision)),
+    db
+      .select({
+        requirementId: requirementCriteria.requirementId,
+        id: requirementCriteria.id,
+        code: requirementCriteria.code,
+        body: requirementCriteria.body,
+        sinceRevision: requirementCriteria.sinceRevision,
+        retiredRevision: requirementCriteria.retiredRevision,
+      })
+      .from(requirementCriteria)
+      .where(inArray(requirementCriteria.requirementId, ids)),
+    db.select().from(requirementDelivery).where(inArray(requirementDelivery.requirementId, ids)),
+    db
+      .select({
+        requirementId: issues.requirementId,
+        id: issues.id,
+        issSeq: issues.issSeq,
+        title: issues.title,
+        status: issues.status,
+        updatedAt: issues.updatedAt,
+        plan: issues.plan,
+        plannedRevision: issues.plannedRevision,
+        plannedBaselineSeq: issues.plannedBaselineSeq,
+      })
+      .from(issues)
+      .where(inArray(issues.requirementId, ids))
+      .orderBy(issues.issSeq),
+    db
+      .select({ requirementId: suggestions.requirementId, kind: suggestions.kind })
+      .from(suggestions)
+      .where(and(inArray(suggestions.requirementId, ids), eq(suggestions.status, 'proposed'))),
+    activeIssuePrefix(projectId),
+    latestPinsOf(ids),
+    db
+      .select({
+        requirementId: requirementBaselines.requirementId,
+        revision: requirementBaselines.revision,
+        seq: requirementBaselines.seq,
+        agreedAt: requirementBaselines.agreedAt,
+      })
+      .from(requirementBaselines)
+      .where(inArray(requirementBaselines.requirementId, ids)),
+    approvalRequired(projectId),
+    linkedContractsOf(db, ids),
+    latestContractPinsOf(ids),
+  ]);
   const [people, issueCriteria, feedbackLinks] = await Promise.all([
     peopleOf([...revisions.map((r) => r.authorId), ...rows.map((r) => r.ownerId)]),
     issueCriteriaOf(linked.map((i) => i.id)),
