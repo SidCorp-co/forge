@@ -42,17 +42,24 @@ import {
 import { startRocketChatManager, stopRocketChatManager } from './integrations/rocketchat/index.js';
 import {
   activeIssuePrefix,
+  allRelationDigests,
   claimIssuePrefix,
   closeBacklogStreams,
   computeProjectProgress,
   heldIssuePrefixes,
+  issueDisplayIds,
+  loadIssueRelationsForIssues,
   resolveIssueForHeadRef,
 } from './issues/index.js';
 import { recordSecretResolve, rememberHandedOut, resolvePipelineContext } from './jobs/index.js';
 import { provideProjectOrg } from './lib/authz.js';
 import { provideDataPolicy } from './lib/data-egress.js';
 import { CHAT_READ_MODEL_TOOLS } from './mcp/index.js';
-import { registerChunkReindex, registerMemoryReconcileWorker } from './memory/index.js';
+import {
+  provideMemoryIssueReads,
+  registerChunkReindex,
+  registerMemoryReconcileWorker,
+} from './memory/index.js';
 import { provideIssueFactReads } from './messaging/gather.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
@@ -99,6 +106,13 @@ import { attachWs, closeWs, wakeMastersForBuild, wakeMastersForChannel } from '.
 provideProjectOrg(findProjectOrgId);
 provideExecutionPorts();
 provideAssistantMethod(composeLayers(METHOD_LAYERS));
+provideMemoryIssueReads({
+  displayIds: (issueIds) => issueDisplayIds(issueIds),
+  relationEdges: async (issueIds, projectId) => {
+    const relations = await loadIssueRelationsForIssues(issueIds, projectId);
+    return new Map([...relations].map(([id, r]) => [id, allRelationDigests(r)]));
+  },
+});
 provideProjectsPorts({
   claimIssuePrefix,
   notifyInvitee: async (notice) => {

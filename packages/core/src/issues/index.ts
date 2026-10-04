@@ -20,6 +20,7 @@ export { insertIssueRow } from './create-service.js';
 export { runCriteriaBackfillOnce } from './criteria/backfill.js';
 export { type CriterionWithVerdict, listCriteriaOf, putCriteria } from './criteria/store.js';
 export { type IssueCriteriaReport, unearnedCriteriaReports } from './criteria-verdicts.js';
+export { allRelationDigests, loadIssueRelationsForIssues } from './dependency-read.js';
 export { isValidDetectorKey } from './detector-key.js';
 export type { DispatchGateCode } from './dispatch-gates.js';
 export {
