@@ -1,45 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import {
-  Button,
-  ConfirmDialog,
-  EmptyState,
-  ErrorState,
-  Icon,
-  IconButton,
-  Input,
-  Menu,
-  type MenuItem,
-  SessionRowSkeleton,
-} from "@/design";
-import { useProjects } from "@/features/projects/hooks";
+import { EmptyState, ErrorState, SessionRowSkeleton } from "@/design";
 import { useProjectEcosystems } from "@/features/ecosystem/hooks";
+import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
-import { cn } from "@/lib/utils/cn";
-import { dockSections } from "../grouping";
-import {
-  type ListedConversation,
-  useArchiveConversation,
-  useConversationsAcrossProjects,
-  useDeleteConversation,
-  usePinConversation,
-  useRenameConversation,
-} from "../hooks";
 import type { ChatTarget } from "../dock-target";
+import { type ListedConversation, useConversationsAcrossProjects } from "../hooks";
 import { conversationTitle } from "../types";
-import { ConversationRow } from "./conversation-row";
+import { ConversationSections } from "./conversation-sections";
+import { type ConversationFilter, EVERY_PROJECT, ListFilterBar, NewChatButton } from "./conversation-list-bar";
 
 const SKELETON_ROWS = ["s1", "s2", "s3", "s4"];
 
-type EcosystemScope = { projectId: string; ecosystemId: string; name: string };
-
-export type ConversationFilter =
-  | { kind: "all" }
-  | { kind: "project"; id: string; name: string }
-  | { kind: "ecosystem"; id: string; name: string };
-
-const EVERY_PROJECT: ConversationFilter = { kind: "all" };
 
 export function filterConversations(
   rows: ListedConversation[],
@@ -83,173 +56,38 @@ export function ConversationList({
   const projectIds = useMemo(() => projects.map((p) => p.id).sort(), [projects]);
   const current = projects.find((p) => p.id === projectId);
   const ecosystemsQ = useProjectEcosystems(current?.id ?? "");
-  const { ecosystems, note: ecosystemsNote } = ecosystemsReading(ecosystemsQ, current !== undefined);
+  const reading = ecosystemsReading(ecosystemsQ, current !== undefined);
 
   const [archived, setArchived] = useState(false);
   const list = useConversationsAcrossProjects(projectIds, archived);
-  const [ecosystemScope, setEcosystemScope] = useState<EcosystemScope | null>(null);
   const [search, setSearch] = useState("");
   // cm:why the list opens on the project the dock is in; every project is one pick away in the filter
   const [picked, setPicked] = useState<ConversationFilter | null>(null);
   const filter: ConversationFilter =
     picked ?? (current ? { kind: "project", id: current.id, name: current.name } : EVERY_PROJECT);
-  const [confirming, setConfirming] = useState<ListedConversation | null>(null);
-  const rename = useRenameConversation();
-  const archive = useArchiveConversation();
-  const remove = useDeleteConversation();
-  const pin = usePinConversation();
-
-  const byId = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
   const rows = filterConversations(list.rows, { filter, search });
-  const filtered = picked !== null || archived;
-  const leave = (id: string) => {
-    if (id === conversationId) onSelect(current ? { kind: "draft", projectId: current.id } : { kind: "people" });
-  };
-
-  const startProject = (id: string) => {
-    setEcosystemScope(null);
-    onSelect({ kind: "draft", projectId: id });
-  };
-  const startEcosystem = (scope: EcosystemScope) => {
-    setEcosystemScope(scope);
-    onSelect({ kind: "draft", projectId: scope.projectId, ecosystemId: scope.ecosystemId });
-  };
-  const scopeName = ecosystemScope?.name ?? current?.name;
-  const startInScope = () =>
-    ecosystemScope ? startEcosystem(ecosystemScope) : current ? startProject(current.id) : onSelect({ kind: "people" });
-
-  const scopeItems: MenuItem[] = [
-    ...projects.map((p) => ({
-      group: "Project",
-      label: p.name,
-      checked: ecosystemScope === null && p.id === projectId,
-      onSelect: () => startProject(p.id),
-    })),
-    ...(ecosystemsNote ? [{ group: "Ecosystem", label: ecosystemsNote, disabled: true }] : []),
-    ...ecosystems.map((e) => ({
-      group: "Ecosystem",
-      label: e.name,
-      checked: ecosystemScope?.ecosystemId === e.id,
-      onSelect: () => current && startEcosystem({ projectId: current.id, ecosystemId: e.id, name: e.name }),
-    })),
-    {
-      group: "With other people",
-      label: "Start a room with other people…",
-      icon: "users",
-      onSelect: () => {
-        setEcosystemScope(null);
-        onSelect({ kind: "people" });
-      },
-    },
-  ];
-
-  const filterItems: MenuItem[] = [
-    {
-      group: "Show conversations from",
-      label: "Every project",
-      checked: filter.kind === "all",
-      onSelect: () => setPicked(EVERY_PROJECT),
-    },
-    ...projects.map((p) => ({
-      group: "Show conversations from",
-      label: p.name,
-      checked: filter.kind === "project" && filter.id === p.id,
-      onSelect: () => setPicked({ kind: "project", id: p.id, name: p.name }),
-    })),
-    ...ecosystems.map((e) => ({
-      group: "Ecosystem",
-      label: e.name,
-      checked: filter.kind === "ecosystem" && filter.id === e.id,
-      onSelect: () => setPicked({ kind: "ecosystem", id: e.id, name: e.name }),
-    })),
-    { group: "Other", label: "Archived", icon: "archive", checked: archived, onSelect: () => setArchived((v) => !v) },
-  ];
-  const filterLabel = [filter.kind === "all" ? "every project" : filter.name, archived ? "archived" : null]
-    .filter(Boolean)
-    .join(" · ");
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col" data-testid="conversation-list">
       <div className="flex flex-none flex-col gap-2 border-b border-line-subtle bg-surface px-3 py-2.5">
-        <div className="flex" data-testid="new-chat">
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="plus"
-            className="min-w-0 flex-1 rounded-r-none"
-            onClick={startInScope}
-          >
-            <span className="truncate">{scopeName ? `New chat · ${scopeName}` : "New chat"}</span>
-          </Button>
-          <Menu
-            align="right"
-            trigger={
-              <Button
-                variant="secondary"
-                size="sm"
-                aria-label="Choose where the new chat starts"
-                className="h-full rounded-l-none border-l-0 px-2"
-              >
-                <Icon name="chevronDown" size={15} />
-              </Button>
-            }
-            items={scopeItems}
-            triggerClassName="flex h-full"
-          />
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <Input
-            aria-label="Search conversations"
-            icon="search"
-            placeholder="Search chats"
-            className="min-w-0 flex-1"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <Menu
-            align="right"
-            trigger={
-              <span className="relative inline-flex">
-                <IconButton
-                  icon="filter"
-                  variant="secondary"
-                  aria-label={filtered ? `Filter conversations, showing ${filterLabel}` : "Filter conversations"}
-                  aria-pressed={filtered}
-                  className={cn(filtered && "border-accent bg-accent-tint text-accent-text")}
-                />
-                {filtered && (
-                  <span aria-hidden className="absolute -right-0.5 -top-0.5 size-2 rounded-pill bg-accent" />
-                )}
-              </span>
-            }
-            items={filterItems}
-          />
-        </div>
-        {filtered && (
-          <div className="flex items-center gap-1.5" data-testid="active-filter">
-            <span className="fg-caption min-w-0 flex-1 truncate text-muted">Showing {filterLabel}</span>
-            <button
-              type="button"
-              className="fg-caption flex-none font-semibold text-link hover:underline"
-              onClick={() => {
-                setPicked(null);
-                setArchived(false);
-              }}
-            >
-              {current ? `Back to ${current.name}` : "Show all"}
-            </button>
-          </div>
-        )}
+        <NewChatButton projects={projects} current={current} ecosystems={reading.ecosystems} ecosystemsNote={reading.note} onSelect={onSelect} />
+        <ListFilterBar
+          projects={projects}
+          ecosystems={reading.ecosystems}
+          current={current}
+          search={search}
+          onSearch={setSearch}
+          filter={filter}
+          picked={picked}
+          onPick={setPicked}
+          archived={archived}
+          onArchived={setArchived}
+        />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto bg-app">
         {list.error != null && (
-          <ErrorState
-            title="Conversations could not be read"
-            message={formatApiError(list.error)}
-            onRetry={list.refetch}
-          />
+          <ErrorState title="Conversations could not be read" message={formatApiError(list.error)} onRetry={list.refetch} />
         )}
         {list.isLoading && SKELETON_ROWS.map((k) => <SessionRowSkeleton key={k} />)}
         {!list.isLoading && list.error == null && rows.length === 0 && (
@@ -258,54 +96,15 @@ export function ConversationList({
             message={archived ? "Archived chats wait here." : "Start a chat and it shows up here."}
           />
         )}
-        {dockSections(rows, {
-          projectId: current?.id ?? null,
-          pageKey,
-          projectName: (id) => byId.get(id)?.name ?? "A project you cannot open",
-        }).map((section) => (
-          <section key={section.key} aria-label={section.label}>
-            <h3 className="bg-sunken px-3 py-1 text-11-5 font-bold text-muted">{section.label}</h3>
-            {section.rows.map((row) => {
-              const p = byId.get(row.projectId);
-              return (
-                <ConversationRow
-                  key={row.id}
-                  row={row}
-                  project={p}
-                  open={row.id === conversationId}
-                  onOpen={() => onSelect({ kind: "room", projectId: row.projectId, conversationId: row.id })}
-                  onRename={(title) => rename.mutate({ id: row.id, title })}
-                  onArchive={(a) =>
-                    archive.mutate({ id: row.id, archived: a }, { onSuccess: () => leave(row.id) })
-                  }
-                  onDelete={() => setConfirming(row)}
-                  onPin={(pinned) => pin.mutate({ id: row.id, pinned })}
-                />
-              );
-            })}
-          </section>
-        ))}
+        <ConversationSections
+          rows={rows}
+          projects={projects}
+          current={current}
+          pageKey={pageKey}
+          conversationId={conversationId}
+          onSelect={onSelect}
+        />
       </div>
-
-      <ConfirmDialog
-        open={confirming !== null}
-        title="Delete this conversation?"
-        message={
-          confirming
-            ? `“${conversationTitle(confirming)}” and everything said in it will be gone. Archive it instead to keep it out of the way.`
-            : ""
-        }
-        confirmLabel="Delete"
-        tone="danger"
-        loading={remove.isPending}
-        onConfirm={() => {
-          if (!confirming) return;
-          const id = confirming.id;
-          remove.mutate(id, { onSuccess: () => leave(id) });
-          setConfirming(null);
-        }}
-        onClose={() => setConfirming(null)}
-      />
     </div>
   );
 }

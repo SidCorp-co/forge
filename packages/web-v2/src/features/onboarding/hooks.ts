@@ -28,10 +28,6 @@ export function useStartOnboarding(projectId: string) {
   });
 }
 
-export function useJoinOnboarding(projectId: string) {
-  return useMutation({ mutationFn: () => onboardingApi.join(projectId) });
-}
-
 export function useReanalyze(projectId: string, conversationId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
