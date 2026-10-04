@@ -12,7 +12,7 @@ import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
 import type { ActorAgency, TransitionActor } from '../issues/actor-agency.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
-import { transition } from '../lifecycle/transition.js';
+import { type KernelActor, transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -100,8 +100,8 @@ function broadcastRunStatus(run: PipelineRunRow): void {
  * `cancelled`). Write + side effects via the shared pause writer
  * (`run-pause.ts`).
  */
-export async function pausePipelineRun(runId: string): Promise<PipelineRunRow> {
-  const updated = await pauseRun({ runId });
+export async function pausePipelineRun(runId: string, actor: KernelActor): Promise<PipelineRunRow> {
+  const updated = await pauseRun({ runId, actor });
   if (updated) return updated;
   const current = await selectRun(runId);
   if (!current) throw notFound();
@@ -109,8 +109,11 @@ export async function pausePipelineRun(runId: string): Promise<PipelineRunRow> {
   throw conflict(current.status);
 }
 
-export async function resumePipelineRun(runId: string): Promise<PipelineRunRow> {
-  const updated = await resumeRun({ runId });
+export async function resumePipelineRun(
+  runId: string,
+  actor: KernelActor,
+): Promise<PipelineRunRow> {
+  const updated = await resumeRun({ runId, actor });
   if (updated) return updated;
   const current = await selectRun(runId);
   if (!current) throw notFound();
@@ -173,18 +176,20 @@ export async function cancelPipelineRun(
   const cancelNow = new Date();
 
   const result = await db.transaction(async (tx) => {
-    const [updatedRun] = (await transition(tx, RUN_MACHINE, {
-      to: 'cancelled',
-      set: { finishedAt: cancelNow, updatedAt: cancelNow },
-      where: and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])),
-      reason: FAILURE_REASON_PIPELINE_CANCELLED,
-      actor: {
-        type: 'user',
-        agency: opts.actorAgency,
-        ...(opts.actorUserId ? { id: opts.actorUserId } : {}),
-      },
-      source: 'runs-control',
-    })).rows;
+    const [updatedRun] = (
+      await transition(tx, RUN_MACHINE, {
+        to: 'cancelled',
+        set: { finishedAt: cancelNow, updatedAt: cancelNow },
+        where: and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])),
+        reason: FAILURE_REASON_PIPELINE_CANCELLED,
+        actor: {
+          type: 'user',
+          agency: opts.actorAgency,
+          ...(opts.actorUserId ? { id: opts.actorUserId } : {}),
+        },
+        source: 'runs-control',
+      })
+    ).rows;
 
     if (!updatedRun) {
       const [current] = await tx

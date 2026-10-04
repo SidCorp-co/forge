@@ -1,7 +1,8 @@
+import { JOB_MACHINE } from '@forge/contracts/job-machine';
 import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { withKernelMarker } from '../db/kernel-marker.js';
 import { type JobType, jobs } from '../db/schema.js';
+import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { resolvePipelineWedge } from '../pipeline/wedge.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
@@ -142,16 +143,35 @@ async function conditionCleared(job: JobRow, reason: string): Promise<boolean> {
 }
 
 /**
- * The CAS patch that turns a held row back into a queued one.
- *
- * Shared by the automatic release below and the operator resume in
- * `resume-job.ts` — the two must produce an IDENTICAL row.
+ * Turn a held row back into a queued one: the kernel's `held → queued` move, with the columns a
+ * requeue resets. Shared by the automatic release below and the operator resume in
+ * `resume-job.ts`, so the two produce an IDENTICAL row.
  */
-export function buildRequeueUpdate(
+export async function requeueHeldJob(
+  exec: KernelExecutor,
+  job: JobRow,
+  now: Date,
+  move: { actor: KernelActor; reason: string; source: string },
+): Promise<{ id: string; type: JobType; issueId: string | null } | null> {
+  const [row] = (
+    await transition(exec, JOB_MACHINE, {
+      to: 'queued',
+      from: 'held',
+      set: requeueColumns(job, now),
+      where: eq(jobs.id, job.id),
+      reason: move.reason,
+      actor: move.actor,
+      source: move.source,
+      returning: ['id', 'type', 'issueId'],
+    })
+  ).rows;
+  return row ?? null;
+}
+
+function requeueColumns(
   job: JobRow,
   now: Date,
 ): {
-  status: 'queued';
   queuedAt: Date;
   retryAfterAt: null;
   failureKind: null;
@@ -161,7 +181,6 @@ export function buildRequeueUpdate(
   const { [AUTO_RETRY_PAYLOAD_KEY]: _spentRotation, ...freshPayload } = (job.payload ??
     {}) as Record<string, unknown>;
   return {
-    status: 'queued' as const,
     queuedAt: now,
     retryAfterAt: null,
     failureKind: null,
@@ -216,13 +235,11 @@ export async function releaseHeldJobs(projectId: string): Promise<number> {
     }
     if (!cleared) continue;
 
-    const [updated] = await withKernelMarker(db, async (tx) =>
-      tx
-        .update(jobs)
-        .set(buildRequeueUpdate(job, now))
-        .where(and(eq(jobs.id, job.id), eq(jobs.status, 'held')))
-        .returning({ id: jobs.id, type: jobs.type, issueId: jobs.issueId }),
-    );
+    const updated = await requeueHeldJob(db, job, now, {
+      actor: { type: 'system' },
+      reason: `hold condition cleared: ${reason}`,
+      source: 'hold-release',
+    });
     if (!updated) continue;
 
     released += 1;

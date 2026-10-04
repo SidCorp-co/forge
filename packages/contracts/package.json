@@ -11,8 +11,8 @@
       "default": "./src/index.ts"
     },
     "./failure-causes": {
-      "types": "./src/failure-causes.ts",
-      "default": "./src/failure-causes.ts"
+      "types": "./dist/failure-causes.d.ts",
+      "default": "./dist/failure-causes.js"
     },
     "./pipeline-registry": {
       "types": "./src/pipeline-registry.ts",
@@ -38,9 +38,13 @@
       "types": "./dist/status-sets.d.ts",
       "default": "./dist/status-sets.js"
     },
+    "./release-notes": {
+      "types": "./dist/release-notes.d.ts",
+      "default": "./dist/release-notes.js"
+    },
     "./record-events": {
-      "types": "./src/record-events.ts",
-      "default": "./src/record-events.ts"
+      "types": "./dist/record-events.d.ts",
+      "default": "./dist/record-events.js"
     },
     "./design-status": {
       "types": "./dist/design-status.d.ts",

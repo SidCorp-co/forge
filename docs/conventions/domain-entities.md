@@ -194,18 +194,20 @@ A write a rule refuses answers **422** with one body, and nothing is written:
 ## Status machines (BC-17)
 
 - **A status machine is data**: `packages/contracts/src/<x>-machine.ts` declares
-  `{ states, edges: [{ from, to, act, permission, guard }] }`, checked against the approved
-  state-machine design of the same name. The status column's CHECK is built from its `states`.
-- **Only the kernel transition writes a status**, for every machine: compare-and-set on the row,
-  one record, and one outbox event, in one transaction. Today that engine is
-  `packages/core/src/lifecycle/transition.ts:applyKernelTransition`, for jobs, sessions and runs; a
-  status set anywhere else is a finding.
+  `{ states, edges: [{ from, to, act, permission, guards }] }`, checked against the approved
+  state-machine design of the same name, and every machine is listed in
+  `packages/contracts/src/machines.ts:MACHINES`. The status column's CHECK holds its `states`.
+- **Only the kernel transition writes a status**, for every machine: the edge's guards, a
+  compare-and-set on the row, and one `kernel_transitions` record, in one transaction
+  (`packages/core/src/lifecycle/transition.ts:transition`); the outbox event is written at its
+  `emitTransitionEvents` hook. A status set anywhere else is a finding; an adapter's own delivery
+  status is the one exception, because an adapter imports no kernel module.
 - **A derived phase is a read-model value**: computed in one function, never stored, never a SQL
   view plus a TypeScript override.
 - **A retired value is refused by name.** The kernel never maps an old status onto a new one; the
   17-to-10 legacy issue status map is deleted (owner, 2026-10-04), and kernel input naming a
   legacy status is refused `ISSUE_STATUS_LEGACY`
-  (`packages/contracts/src/issue-vocabulary.ts:issueStatusLegacyRefusal`).
+  (`packages/contracts/src/issue-machine.ts:issueStatusLegacyRefusal`).
 
 ## Records and events (BC-18)
 

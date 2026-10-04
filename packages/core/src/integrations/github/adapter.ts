@@ -1,8 +1,7 @@
 import type { BindingRole } from '../../db/schema.js';
 import { handleGitHubEvent } from '../../webhooks/github-adapter.js';
-import { recordDelivery } from '../deliveries.js';
+import { recordDelivery, updateDelivery } from '../deliveries.js';
 import { sourceHostMismatch } from '../source-host/bind.js';
-import { dispatchMergeVerb } from '../source-host/dispatch.js';
 import { type IntegrationConnectionRow, updateConnection } from '../store.js';
 import {
   type AdapterContext,
@@ -203,34 +202,36 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
       throw new Error(`github webhook: delivery is for ${arrived}, this binding is ${expected}`);
     }
     const guid = input.headers['x-github-delivery'];
-    const deliveryId = await recordDelivery({
+    const logged = {
       bindingId: ctx.bindingId,
-      direction: 'inbound',
+      direction: 'inbound' as const,
       eventName: `${eventType}.${payload?.action ?? 'unknown'}`,
       payload,
       ...(guid ? { requestId: guid } : {}),
-      status: 'ok',
-    });
-
-    const result = await handleGitHubEvent(
-      {
-        projectId: ctx.projectId,
-        bindingId: ctx.bindingId,
-        config: ctx.config ?? {},
-        secrets: ctx.secrets ?? {},
-      },
-      eventType,
-      payload,
-    );
+    };
+    let result: Awaited<ReturnType<typeof handleGitHubEvent>>;
+    try {
+      result = await handleGitHubEvent(
+        {
+          projectId: ctx.projectId,
+          bindingId: ctx.bindingId,
+          config: ctx.config ?? {},
+          secrets: ctx.secrets ?? {},
+        },
+        eventType,
+        payload,
+      );
+    } catch (err) {
+      const deliveryId = await recordDelivery({ ...logged, status: 'failed' });
+      await updateDelivery(deliveryId, {
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+    // Logged once the event is applied, so an `ok` row says what happened rather than what arrived.
+    const deliveryId = await recordDelivery({ ...logged, status: 'ok' });
     return { deliveryId, actions: result.actions };
   },
-
-  dispatchOutbound: (ctx, input) =>
-    dispatchMergeVerb(ctx, input, {
-      provider: 'github',
-      label: 'GitHub',
-      judgementTool: 'forge_source',
-    }),
 };
 
 /**
@@ -247,7 +248,9 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
 export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>({
   provider: 'github',
   capabilities: {
-    canDispatch: true,
+    // Merging is `POST /api/issues/:id/merge-pull-request` (`source-host/merge.ts`), never an
+    // outbound verb, so nothing dispatches through this adapter.
+    canDispatch: false,
     canReceiveWebhook: true,
     // GitHub calls on every push and pull request against a repository this App is installed on.
     // A live binding that has recorded nothing is a pipe that is not carrying, not a quiet repo.

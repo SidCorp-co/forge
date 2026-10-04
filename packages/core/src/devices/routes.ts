@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { DEVICE_MACHINE, RUNNER_PROVISION_MACHINE } from '@forge/contracts/runner-machine';
 import { and, desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -15,7 +16,8 @@ import {
 } from '../db/schema.js';
 import { assertOrgAccess, assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { transition } from '../lifecycle/transition.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
@@ -249,7 +251,13 @@ deviceOwnerRoutes.delete(
     await ownedDevice(id, userId);
 
     await db.transaction(async (tx) => {
-      await tx.update(devices).set({ status: 'revoked' }).where(eq(devices.id, id));
+      await transition(tx, DEVICE_MACHINE, {
+        to: 'revoked',
+        where: eq(devices.id, id),
+        actor: restActor(c),
+        source: 'device-revoke',
+        returning: ['id'],
+      });
       await tx.delete(runners).where(eq(runners.deviceId, id));
     });
     await revokeDeviceCredentials(id);
@@ -374,6 +382,14 @@ deviceAuthRoutes.post(
       .returning({ id: devices.id });
 
     if (!updated) throw unauth();
+    await transition(db, DEVICE_MACHINE, {
+      to: 'online',
+      from: 'offline',
+      where: eq(devices.id, device.id),
+      actor: { type: 'runner', id: device.id },
+      source: 'device-heartbeat',
+      returning: ['id'],
+    });
     const pool = await heartbeatPool(input.pool, device.id);
 
     const transitioned = await mirrorHeartbeatToRunners(device.id);
@@ -510,21 +526,32 @@ deviceAuthRoutes.post(
     const { runnerId } = c.req.valid('param');
     const { status, detail } = c.req.valid('json');
 
-    const [runner] = await db
-      .update(runners)
-      .set({
-        provisionStatus: status,
-        provisionDetail: detail ?? null,
-        updatedAt: new Date(),
-        ...(status === 'ready' ? { provisionedAt: new Date() } : {}),
-      })
-      .where(and(eq(runners.id, runnerId), eq(runners.deviceId, device.id)))
-      .returning({
-        id: runners.id,
-        projectId: runners.projectId,
-        deviceId: runners.deviceId,
-        provisionStatus: runners.provisionStatus,
+    const mine = and(eq(runners.id, runnerId), eq(runners.deviceId, device.id));
+    const runner = await db.transaction(async (tx) => {
+      await transition(tx, RUNNER_PROVISION_MACHINE, {
+        to: status,
+        where: mine,
+        reason: detail ?? null,
+        actor: { type: 'runner', id: device.id },
+        source: 'provision-status',
+        returning: ['id'],
       });
+      const [row] = await tx
+        .update(runners)
+        .set({
+          provisionDetail: detail ?? null,
+          updatedAt: new Date(),
+          ...(status === 'ready' ? { provisionedAt: new Date() } : {}),
+        })
+        .where(mine)
+        .returning({
+          id: runners.id,
+          projectId: runners.projectId,
+          deviceId: runners.deviceId,
+          provisionStatus: runners.provisionStatus,
+        });
+      return row;
+    });
 
     if (!runner) {
       throw new HTTPException(404, {

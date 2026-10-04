@@ -37,7 +37,6 @@ import { requirePolicy } from '../project-config/dispatch-policy.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { liveMasterSessionId } from './master-owner.js';
 import { projectAdmission, RunnerNotAdmittedError } from './pool-admission.js';
-import { returnIssuesForRun } from './run-issue-return.js';
 import {
   RUN_GROUP_METADATA_KEY,
   RUN_ISSUE_STATUSES_METADATA_KEY,
@@ -426,34 +425,15 @@ export interface ClosedRunSession {
   returned: string[];
 }
 
-/**
- * Finish the half of a failed close that does not depend on flipping the session.
- */
-async function finishFailedClose(
-  runId: string | null,
-  args: { sessionId: string; outcome: RunSessionOutcome; detail?: string },
-  failing: boolean,
-): Promise<string[]> {
-  if (!failing || !runId) return [];
-  const returned = await returnIssuesForRun(runId, {
-    reason: args.detail ?? `run ${args.outcome}`,
-  });
-  await closeRunIfOneShot(runId, 'failed');
-  if (returned.length > 0) {
-    logger.warn(
-      {
-        runSessionId: args.sessionId,
-        runId,
-        returned: returned.map((r) => r.issueKey),
-      },
-      'run-session: a close that had already flipped the session had not returned its issues — finishing it',
-    );
-  }
-  return returned.map((r) => r.issueKey);
+/** A close over a session already terminal: its flip handed the issues back, and a one-shot run it
+ *  failed is closed here if the first close did not get that far. */
+async function finishFailedClose(runId: string | null, failing: boolean): Promise<string[]> {
+  if (failing && runId) await closeRunIfOneShot(runId, 'failed');
+  return [];
 }
 
 /**
- * Record that a run session ended, and give its issues back if it failed.
+ * Record that a run session ended. Its flip hands back what it left `in_progress`, whatever the outcome.
  */
 export async function closeRunSession(args: {
   deviceId: string;
@@ -474,10 +454,10 @@ export async function closeRunSession(args: {
   if (!row) return null;
   const failing = FAILING_OUTCOMES.includes(args.outcome);
   if ((terminalAgentSessionStatuses as readonly string[]).includes(row.status)) {
-    return { alreadyTerminal: true, returned: await finishFailedClose(row.runId, args, failing) };
+    return { alreadyTerminal: true, returned: await finishFailedClose(row.runId, failing) };
   }
 
-  const flipped = (await transitionSessions(db, {
+  const closed = await transitionSessions(db, {
     to: failing ? 'failed' : 'completed',
     set: {
       failureReason: failing ? 'agent_exited_without_result' : null,
@@ -488,18 +468,16 @@ export async function closeRunSession(args: {
     reason: `run_session_${args.outcome}`,
     actor: { type: 'system' },
     source: 'run-session-close',
-  })).rows;
-  if (flipped.length === 0) {
-    return { alreadyTerminal: true, returned: await finishFailedClose(row.runId, args, failing) };
+  });
+  if (closed.rows.length === 0) {
+    return { alreadyTerminal: true, returned: await finishFailedClose(row.runId, failing) };
   }
 
-  const returned = failing
-    ? await returnIssuesForRun(row.runId ?? '', { reason: args.detail ?? `run ${args.outcome}` })
-    : [];
+  const { returned } = closed;
   if (row.runId) await closeRunIfOneShot(row.runId, failing ? 'failed' : 'completed');
   logger.info(
-    { runSessionId: args.sessionId, outcome: args.outcome, returned: returned.length },
+    { runSessionId: args.sessionId, outcome: args.outcome },
     'run-session: closed by the box',
   );
-  return { alreadyTerminal: false, returned: returned.map((r) => r.issueKey) };
+  return { alreadyTerminal: false, returned };
 }

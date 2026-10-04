@@ -16,7 +16,7 @@ import {
   RECORD_EVENT_KINDS,
   type RecordEventKind,
   recordAction,
-} from './kinds.js';
+} from '@forge/contracts/record-events';
 
 /** The key shape a record field takes, the same one the comment fence reads (`forge-record.ts`). */
 const FIELD_KEY = /^[a-z][a-z0-9-]*$/u;

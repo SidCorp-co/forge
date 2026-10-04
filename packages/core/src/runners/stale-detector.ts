@@ -1,5 +1,7 @@
+import { RUNNER_MACHINE } from '@forge/contracts/runner-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
 import { projectRoom, runnerRoom } from '../ws/rooms.js';
@@ -9,33 +11,27 @@ import { insertRunnerEvent } from './runner-events.js';
 export const RUNNER_STALE_DETECTOR_QUEUE = 'runner-status-detector';
 const RUNNER_STALE_THRESHOLD = "interval '30 seconds'";
 
-type StaleRunnerRow = {
-  id: string;
-  project_id: string;
-};
-
 export async function runRunnerStaleSweep(): Promise<{
   markedOffline: number;
   durationMs: number;
 }> {
   const t0 = Date.now();
-  const rows = await db.execute<StaleRunnerRow>(
-    sql.raw(`
-      UPDATE runners
-      SET status = 'offline', updated_at = now()
-      WHERE status = 'online'
-        AND (last_seen_at IS NULL OR last_seen_at < now() - ${RUNNER_STALE_THRESHOLD})
-      RETURNING id, project_id
-    `),
-  );
+  const { rows } = await transition(db, RUNNER_MACHINE, {
+    to: 'offline',
+    from: 'online',
+    set: { updatedAt: new Date() },
+    where: sql.raw(`(last_seen_at IS NULL OR last_seen_at < now() - ${RUNNER_STALE_THRESHOLD})`),
+    reason: 'stale',
+    actor: { type: 'sweeper' },
+    source: 'runner-stale-detector',
+    returning: ['id', 'projectId'],
+  });
 
   for (const row of rows) {
-    // ISS-381 (2.3) — audit the online→offline transition. The WHERE clause
-    // gates on status='online', so every returned row is a real transition
-    // (old_status is always 'online') — no extra change-check needed.
+    // every returned row left `online`, the one state the move was taken from
     await insertRunnerEvent(db, {
       runnerId: row.id,
-      projectId: row.project_id,
+      projectId: row.projectId,
       oldStatus: 'online',
       newStatus: 'offline',
       reason: 'stale',
@@ -44,7 +40,7 @@ export async function runRunnerStaleSweep(): Promise<{
       event: 'runner.status',
       data: { runnerId: row.id, status: 'offline', reason: 'stale' },
     });
-    roomManager.publish(projectRoom(row.project_id), {
+    roomManager.publish(projectRoom(row.projectId), {
       event: 'runner.status',
       data: { runnerId: row.id, status: 'offline', reason: 'stale' },
     });

@@ -7,7 +7,7 @@ import type { Audience, MessageRefusal, MessageVerdict } from './contract.js';
 /** Which reading a project's own members are screened and drawn under. */
 export type RecordLens = 'product' | 'technical';
 
-import { RECORD_EVENT_KINDS } from '../issues/record-events/kinds.js';
+import { RECORD_EVENT_KINDS } from '@forge/contracts/record-events';
 import { verdictEvidenceRefusals } from './evidence-citation.js';
 import {
   FORGE_RECORD_FIELD_BUDGET,

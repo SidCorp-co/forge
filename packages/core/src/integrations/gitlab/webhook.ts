@@ -6,10 +6,7 @@
  * not something to swallow.
  */
 
-import { db } from '../../db/client.js';
-import { recordIssueMerge } from '../../issues/merge-record.js';
 import { logger } from '../../logger.js';
-import { resolveIssueForHeadRef } from '../github/issue-link.js';
 import {
   applyCheckRunEvent,
   applyPullRequestEvent,
@@ -17,6 +14,7 @@ import {
   type ProjectionContext,
 } from '../github/projection.js';
 import { SourceHostCallError, SourceHostUnavailable } from '../source-host/errors.js';
+import { stampHostMerge } from '../source-host/merge.js';
 import { applyPushedBranch } from '../source-host/push.js';
 import { buildGitLabClient } from './client.js';
 import { landingOf, type MergeRequestBody } from './merge.js';
@@ -118,9 +116,9 @@ async function onPush(ctx: GitLabDeliveryContext, payload: PushHook): Promise<Gi
 }
 
 /**
- * The merge a hook reports, stamped through the one writer every landing goes through. The commit is
- * GitLab's landing (merge commit, else squash, else the fast-forwarded head); the time is `merged_at`
- * where the hook carries it, else the `updated_at` of the `merge` action itself.
+ * The merge a hook reports, through the one host-merge stamp. The commit is GitLab's landing (merge
+ * commit, else squash, else the fast-forwarded head); the time is `merged_at` where the hook carries
+ * it, else the `updated_at` of the `merge` action itself.
  */
 async function stampMerged(
   ctx: GitLabDeliveryContext,
@@ -134,16 +132,13 @@ async function stampMerged(
   });
   const at = gitlabTime(mr.merged_at) ?? (mr.action === 'merge' ? gitlabTime(mr.updated_at) : null);
   if (!commitSha || !at) return 0;
-  const issueId = await resolveIssueForHeadRef({
+  const wrote = await stampHostMerge({
     projectId: ctx.projectId,
     headRef: mr.source_branch,
+    commitSha,
+    mergedAt: new Date(at),
   });
-  if (!issueId) return 0;
-  const stamp = await recordIssueMerge(db, {
-    issueId,
-    evidence: { kind: 'observed', commitSha, mergedAt: new Date(at), via: 'event' },
-  });
-  return stamp.wrote ? 1 : 0;
+  return wrote ? 1 : 0;
 }
 
 /** The merge request's base sha, which the hook does not carry, read from GitLab. */

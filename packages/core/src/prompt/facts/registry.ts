@@ -194,7 +194,7 @@ ${
   ctx?.stage === 'drive'
     ? 'In this mode nothing dispatches after you, so **no later stage appends it** — if this project keeps a changelog, that line is yours, in the commit that carries the change.'
     : 'forge-release appends this to the changelog at close.'
-} **An agent close is REFUSED while this field is null** (\`RELEASE_RECORD_REQUIRED\`) — \`closed\` is what every reader takes as shipped, so write the line before you close, or \`{ section: 'Skip', userFacing: '-' }\` when the change has no user-facing half. Use \`dropped\` for work that turned out not to be work. A batch release is refused earlier, when it CLAIMS the issues (\`RELEASE_RECORD_MISSING\`), so seed every issue in the batch before cutting it.`,
+} An issue closes only through a release, and **a release batch refuses to claim an issue while this field is null** (\`RELEASE_RECORD_MISSING\`), so write the line before you move the issue to \`awaiting_release\`, or \`{ section: 'Skip', userFacing: '-' }\` when the change has no user-facing half. Use \`dropped\` for work that turned out not to be work.`,
   },
   {
     id: 'handoff',

@@ -23,7 +23,7 @@ import {
   postEntityComment,
 } from '../../comments/entity-service.js';
 import { db } from '../../db/client.js';
-import { COMMENT_INTENTS } from '../../issues/record-events/kinds.js';
+import { COMMENT_INTENTS } from '@forge/contracts/record-events';
 import {
   assertPrincipalIsMember,
   assertPrincipalIsWriter,

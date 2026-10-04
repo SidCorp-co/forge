@@ -1,5 +1,6 @@
-// The issue machine: workflow `issue-lifecycle`, approved revision 3. A status answers only "who is
-// it waiting on"; a run's step is progress inside `in_progress`, kept in `issue_work_state`.
+// The issue machine: workflow `issue-lifecycle`, approved revision 7. A status answers only "who is
+// it waiting on"; a run's step is progress inside `in_progress`, kept in `issue_work_state`. A
+// landing moves no status: it records the merge, and an issue closes only through a release.
 
 import type { Refusal } from "./refusal.js";
 import { defineMachine, type MachineEdge } from "./state-machine.js";
@@ -57,6 +58,9 @@ export function issueStatusLegacyRefusal(
 	};
 }
 
+/** The statuses an issue is born at: `open` for an actor holding `issues.admit`, else `draft`. */
+export const ISSUE_INITIAL_STATUSES = ["draft", "open"] as const satisfies readonly IssueStatus[];
+
 /** Entering one of these carries the actor's reason. */
 export const REASON_REQUIRED_STATUSES = ["reopen", "needs_info", "on_hold", "dropped"] as const;
 
@@ -105,15 +109,22 @@ export const ISSUE_DISPATCH_TERMINAL_STATUSES: readonly IssueStatus[] = [
 
 /** The guards the issue machine names; core implements each in `issues/transition-guards.ts`. */
 export const ISSUE_GUARDS = [
+	"admit",
 	"holder",
 	"plan_checkpoint",
+	"merged",
 	"verdicts",
+	"released",
 	"left_status",
 	"unheld",
 ] as const;
 export type IssueGuard = (typeof ISSUE_GUARDS)[number];
 
-const MOVE = "issues.transition";
+/** Filing an issue at `open`, and promoting a `draft` there, need this; without it an issue is
+ *  born at `draft`. */
+export const ISSUE_ADMIT_PERMISSION = "issues.admit";
+
+const MOVE = "project.write";
 
 type IssueEdge = MachineEdge<IssueStatus> & { readonly guards: readonly IssueGuard[] };
 
@@ -138,13 +149,13 @@ const recovery = (to: IssueStatus, guards: readonly IssueGuard[]): IssueEdge => 
 
 export const ISSUE_MACHINE = defineMachine({
 	entity: "issue",
-	design: { flow: "issue-lifecycle", revision: 3 },
+	design: { flow: "issue-lifecycle", revision: 7 },
 	states: ISSUE_STATUSES,
-	initial: ["draft", "open"],
+	initial: ISSUE_INITIAL_STATUSES,
 	terminal: ISSUE_TERMINAL_STATUSES,
 	reasonRequired: REASON_REQUIRED_STATUSES,
 	edges: [
-		{ from: "draft", to: "open", act: "admitted", permission: MOVE, guards: [] },
+		{ from: "draft", to: "open", act: "admitted", permission: ISSUE_ADMIT_PERMISSION, guards: ["admit"] },
 		{ from: "draft", to: "dropped", act: "not.work", permission: MOVE, guards: [] },
 
 		{ from: "open", to: "in_progress", act: "run.claimed", permission: MOVE, guards: ["holder"] },
@@ -154,14 +165,13 @@ export const ISSUE_MACHINE = defineMachine({
 		...sideExits("reopen"),
 
 		{ from: "in_progress", to: "approved", act: "plan.recorded", permission: MOVE, guards: ["plan_checkpoint"] },
-		{ from: "in_progress", to: "awaiting_release", act: "verdicts.passed", permission: MOVE, guards: ["verdicts"] },
-		{ from: "in_progress", to: "closed", act: "shipped", permission: MOVE, guards: ["verdicts"] },
+		{ from: "in_progress", to: "awaiting_release", act: "merged.and.proven", permission: MOVE, guards: ["merged", "verdicts"] },
 		...sideExits("in_progress"),
 
 		{ from: "approved", to: "in_progress", act: "run.claimed", permission: MOVE, guards: ["holder"] },
 		...sideExits("approved"),
 
-		{ from: "awaiting_release", to: "closed", act: "release.recorded", permission: MOVE, guards: [] },
+		{ from: "awaiting_release", to: "closed", act: "release.recorded", permission: MOVE, guards: ["released", "merged"] },
 		{ from: "awaiting_release", to: "reopen", act: "release.failed", permission: MOVE, guards: [] },
 		...sideExits("awaiting_release"),
 

@@ -15,7 +15,7 @@ import {
   RECORD_ACTION_PREFIX,
   RECORD_DIGEST_KIND,
   recordAction,
-} from './kinds.js';
+} from '@forge/contracts/record-events';
 
 /** How many issues one pass collapses, so a first run over years of history is bounded. */
 const ISSUES_PER_PASS = 500;

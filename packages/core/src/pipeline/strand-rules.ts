@@ -120,33 +120,21 @@ export function heldReleaseWait(
   };
 }
 
-// cm:why a landed row nothing holds waits on whoever judges what landed (ISS-80): at `in_progress`
-// step `test` a judge recording verdicts, at `open` the run that claims it, and the expired claim of
-// the run that landed it is not what it waits for. The sweep's reason and the board's standing
-// (`issues/standing.ts`) both read it here, so the two cannot name different owners.
+// cm:why a recorded landing moves no status (issue-lifecycle rev 7), so a landed row a run may take waits on
+// the run that claims it and judges what landed, never on the expired claim of the run that landed
+// it. The sweep's reason and the board's standing (`issues/standing.ts`) both read it here.
 export function landedWait(
   status: string,
   evidence: Pick<StrandEvidence, 'merged' | 'step'>,
 ): { waitingFor: string; owes: StrandOwner; reason: string; who: string; act: string } | null {
   if (!evidence.merged) return null;
-  if (status === 'in_progress' && evidence.step === 'test') {
-    return {
-      who: 'Judge',
-      act: 'landed · a verdict on each criterion',
-      waitingFor: 'a judge to record a verdict on each criterion',
-      owes: 'agent',
-      reason:
-        'the change landed and no run holds it: it waits at step `test` for a judge, and moves to `awaiting_release` once every criterion passes',
-    };
-  }
-  if (status === 'open') {
+  if (status === 'open' || status === 'approved' || status === 'reopen') {
     return {
       who: 'Next run',
       act: 'landed · claim it and judge what landed',
       waitingFor: 'a run to claim it and judge what landed',
       owes: 'agent',
-      reason:
-        'the change landed while the issue sat at `open`: the run that claims it next judges what landed rather than building it',
+      reason: `the change landed and the issue stands at \`${status}\`: the run that claims it next judges what landed and moves it to \`awaiting_release\` rather than building it`,
     };
   }
   return null;

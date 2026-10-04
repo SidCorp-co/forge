@@ -13,6 +13,9 @@ import type {
   FeedbackView,
 } from '@forge/contracts/feedback';
 import type { NodeRef } from '@forge/contracts/workflow-health';
+import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
+import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
+import { SUGGESTION_MACHINE } from '@forge/contracts/suggestion-machine';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-feedback.js';
@@ -23,6 +26,7 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { permissionFactsOf } from '../permissions/index.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
+import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import { getStorage } from '../storage/index.js';
@@ -117,19 +121,23 @@ export async function decide(
 
 // a route picked closes the assistant's open clarification (feedback-lifecycle new -> triaged)
 export async function closeClarification(tx: Tx, feedbackId: string, why: string) {
-  await tx
-    .update(agentQuestions)
-    .set({
-      status: 'void',
-      voidReason: why,
-      endedBy: 'feedback',
-      endedReason: why,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(agentQuestions.feedbackId, feedbackId), eq(agentQuestions.status, 'open')));
+  await transition(tx, QUESTION_MACHINE, {
+    to: 'void',
+    from: 'open',
+    set: { voidReason: why, endedBy: 'feedback', endedReason: why, updatedAt: new Date() },
+    where: eq(agentQuestions.feedbackId, feedbackId),
+    reason: why,
+    actor: { type: 'system' },
+    source: 'feedback',
+    returning: ['id'],
+  });
 }
 
 export type NewFeedback = Omit<typeof feedback.$inferInsert, 'fbSeq'>;
+
+export function feedbackKernelActor(actor: FeedbackActor): KernelActor {
+  return { type: 'user', id: actor.userId, agency: actor.agency };
+}
 
 export async function insertFeedbackIn(tx: Tx, values: NewFeedback): Promise<string> {
   const [{ next } = { next: 1 }] = await tx
@@ -252,10 +260,16 @@ export async function declineIn(
 ): Promise<NamedRefusal | null> {
   const refused = declineRefusal(row.status, reason);
   if (refused) return refused;
-  await tx
-    .update(feedback)
-    .set({ status: 'declined', updatedAt: new Date() })
-    .where(eq(feedback.id, row.id));
+  const moved = await transition(tx, FEEDBACK_MACHINE, {
+    to: 'declined',
+    set: { updatedAt: new Date() },
+    where: eq(feedback.id, row.id),
+    reason: reason ?? null,
+    actor: feedbackKernelActor(actor),
+    source: 'feedback',
+    returning: ['id'],
+  });
+  if (moved.rows.length === 0) throw notAnEdgeError(FEEDBACK_MACHINE, row.status, 'declined');
   await decide(tx, row, actor, { decision: 'declined', reason: reason ?? null });
   await closeClarification(tx, row.id, 'declined');
   return null;
@@ -279,10 +293,16 @@ async function personalAct(
     const phase = await phaseOfRow(projectId, row);
     const refused = act === 'verified' ? verifyRefusal(phase) : reopenRefusal(phase, input.note);
     if (refused) return [refused];
-    await tx
-      .update(feedback)
-      .set({ status: act, updatedAt: new Date() })
-      .where(eq(feedback.id, row.id));
+    const moved = await transition(tx, FEEDBACK_MACHINE, {
+      to: act,
+      set: { updatedAt: new Date() },
+      where: eq(feedback.id, row.id),
+      reason: input.note?.trim() || null,
+      actor: feedbackKernelActor(actor),
+      source: 'feedback',
+      returning: ['id'],
+    });
+    if (moved.rows.length === 0) throw notAnEdgeError(FEEDBACK_MACHINE, row.status, act);
     const onBehalf = actor.userId === row.reportedBy ? null : 'on behalf of the reporter';
     await decide(tx, row, actor, {
       decision: act,
@@ -342,10 +362,16 @@ export async function redactReporterData(input: {
     await tx.delete(agentQuestions).where(eq(agentQuestions.feedbackId, row.id));
     const now = new Date();
     const why = `reporter data of ${feedbackKey(row.fbSeq)} deleted`;
-    await tx
-      .update(suggestions)
-      .set({ status: 'withdrawn', decidedAt: now, reason: why })
-      .where(and(eq(suggestions.feedbackId, row.id), eq(suggestions.status, 'proposed')));
+    await transition(tx, SUGGESTION_MACHINE, {
+      to: 'withdrawn',
+      from: 'proposed',
+      set: { decidedAt: now, reason: why },
+      where: eq(suggestions.feedbackId, row.id),
+      reason: why,
+      actor: feedbackKernelActor(actor),
+      source: 'feedback-redact',
+      returning: ['id'],
+    });
     await tx
       .update(suggestions)
       .set({ payload: null, payloadPurgedAt: now })

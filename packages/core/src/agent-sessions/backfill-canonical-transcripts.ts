@@ -1,9 +1,5 @@
 import type postgres from 'postgres';
-import {
-  legacyEntryOf,
-  toCanonicalEntry,
-  toCanonicalMessages,
-} from '../agent-sessions/canonical-legacy.js';
+import { legacyEntryOf, toCanonicalEntry, toCanonicalMessages } from './canonical-legacy.js';
 
 /** What one pass rewrote. */
 export interface BackfillReport {

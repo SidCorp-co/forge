@@ -13,7 +13,6 @@ export interface MoveRecord {
   readonly actor: Actor;
   readonly from: IssueStatus;
   readonly to: IssueStatus;
-  readonly requested: IssueStatus;
   readonly reopenCount: number;
   readonly step: WorkStep | null;
   readonly reason: string | null;
@@ -36,7 +35,6 @@ export function moveOf(
     actor: { type: actor.type, id: actor.id, agency: actorAgency(actor) },
     from: fromStatus,
     to: toStatus,
-    requested: input.requestedStatus,
     reopenCount,
     step: input.step,
     reason: options.transitionReason?.trim() || options.reason || null,
@@ -55,7 +53,6 @@ export function transitionRecordFields(move: MoveRecord): RecordEventField[] {
   return [
     { key: 'from', value: move.from },
     { key: 'to', value: move.to },
-    ...field('requested', move.requested === move.to ? null : move.requested),
     { key: 'reopen-count', value: String(move.reopenCount) },
     ...field('step', move.step),
     ...field('reason', move.reason),

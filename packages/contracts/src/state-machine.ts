@@ -1,6 +1,6 @@
 // A status machine as data (pattern v2, BC-17): the states a status column holds and the moves
 // between them. Core's one kernel transition (`packages/core/src/lifecycle/transition.ts:transition`)
-// writes a status only along an edge declared here, and the column's CHECK is built from `states`.
+// writes a status only along an edge declared here; the column's CHECK holds the same `states`.
 
 import type { Refusal } from "./refusal.js";
 

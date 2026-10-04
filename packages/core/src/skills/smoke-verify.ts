@@ -343,7 +343,7 @@ export function planSmokeCanaries(args: {
  * `stages`). Each canary rides the NORMAL pipeline machinery end to end:
  * one-shot `kind='system'` run (`openOneShotRun`) → `insertAndEnqueueJob` →
  * pg-boss → the job pool → a master's claim → runner → lifecycle routes.
- * Terminal status therefore flips only via `applyKernelTransition` (I2), and
+ * Terminal status therefore flips only via `lifecycle/transition.ts:transition` (I2), and
  * the one-shot run auto-closes via `closeRunIfOneShot` when the job ends.
  * Skip rules live in `planSmokeCanaries`.
  */

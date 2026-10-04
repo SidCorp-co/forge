@@ -1,5 +1,6 @@
 /**
- * Giving a run's issues back when the run ended by failing.
+ * Giving a run's issues back when its run session ends, whatever the outcome
+ * (`agent-sessions/session-transition.ts:transitionSessions` calls it on every end).
  *
  * The lease needs nothing here — it is derived from a live run session naming
  * the issue, so it lapses the moment the session goes terminal. What does NOT
@@ -8,13 +9,14 @@
  * Measured on sidpeak 2026-09-12: ISS-457 stood at `in_progress` for 18 hours
  * with no process behind it, and ISS-410 queued behind it the whole time.
  *
- * So a failed run returns each issue to the status it held when the run
- * opened. That floor bounds what this module can do, in both directions: it
+ * So an ended run returns each issue it left there to the status it held when
+ * the run opened. A landing the run recorded does not keep it: recording a merge
+ * moves no status, and the run that claims it next moves it to `awaiting_release`. That floor bounds what this module can do, in both directions: it
  * can never put an issue behind the status it was standing on at claim time,
  * and it can never lift one off a status that was already stuck — a master may
  * open a run over an issue already `in_progress`, and the floor is then the defect.
  * That case is counted here and healed where run sessions are admitted. The move is the kernel's
- * recovery edge (`pipeline/state-machine.ts:RECOVERY_EDGES`), refused while anything holds it.
+ * recovery edge (a `recovery` edge of `@forge/contracts/issue-machine:ISSUE_MACHINE`), refused while anything holds it.
  */
 
 import { ASSERTS_WORK_IN_PROGRESS, PARK_STATUSES } from '@forge/contracts/issue-machine';
@@ -45,7 +47,6 @@ export interface ReturnedIssue {
 interface RunRow {
   projectId: string;
   projectCreatedBy: string | null;
-  startedAt: Date;
   keys: string[];
   statuses: Record<string, string>;
 }
@@ -54,7 +55,6 @@ async function readRun(runId: string): Promise<RunRow | null> {
   const rows = (await db.execute(sql`
     SELECT r.project_id,
            p.created_by,
-           r.started_at,
            COALESCE(r.metadata -> ${RUN_ISSUES_METADATA_KEY}, '[]'::jsonb) AS keys,
            COALESCE(r.metadata -> ${RUN_ISSUE_STATUSES_METADATA_KEY}, '{}'::jsonb) AS statuses
       FROM pipeline_runs r
@@ -66,7 +66,6 @@ async function readRun(runId: string): Promise<RunRow | null> {
   return {
     projectId: String(row.project_id),
     projectCreatedBy: row.created_by == null ? null : String(row.created_by),
-    startedAt: new Date(String(row.started_at)),
     keys: (row.keys ?? []) as string[],
     statuses: (row.statuses ?? {}) as Record<string, string>,
   };
@@ -118,7 +117,6 @@ export async function returnIssuesForRun(
       issSeq: issues.issSeq,
       status: issues.status,
       reopenCount: issues.reopenCount,
-      mergedAt: issues.mergedAt,
     })
     .from(issues)
     .where(and(eq(issues.projectId, run.projectId), inArray(issues.issSeq, seqs)));
@@ -132,7 +130,15 @@ export async function returnIssuesForRun(
   for (const issue of rows) {
     const key = canonicalIssueKey(issue.issSeq);
     const named = run.statuses[key];
-    if (!named) continue;
+    if (!named) {
+      if (ASSERTS_WORK_IN_PROGRESS.includes(issue.status as IssueStatus)) {
+        logger.warn(
+          { runId, issueKey: key, status: issue.status },
+          'run-issue-return: the run recorded no opening status for this issue, so no recovery edge names where it goes back and it stays',
+        );
+      }
+      continue;
+    }
     if (!(issueStatuses as readonly string[]).includes(named)) {
       throw new Error(
         `run-issue-return: run ${runId} stored \`${named}\` as ${key}'s opening status, which is not one of ${issueStatuses.join(', ')}`,
@@ -153,13 +159,6 @@ export async function returnIssuesForRun(
           'run-issue-return: the run opened over an in-flight status, so the floor is the stuck rung and no return can move it',
         );
       }
-      continue;
-    }
-    if (issue.mergedAt !== null && issue.mergedAt >= run.startedAt) {
-      logger.info(
-        { runId, issueKey: key, status: issue.status, mergedAt: issue.mergedAt },
-        'run-issue-return: left an issue whose run had already landed its code',
-      );
       continue;
     }
     if (!ASSERTS_WORK_IN_PROGRESS.includes(issue.status as IssueStatus)) {

@@ -5,7 +5,6 @@ import { recordDelivery, updateDelivery } from '../deliveries.js';
 import { inboundWebhookUrl, resolveApiBaseUrl } from '../inbound-door.js';
 import { isPreviousCredentialValid } from '../rotation.js';
 import { sourceHostMismatch } from '../source-host/bind.js';
-import { dispatchMergeVerb } from '../source-host/dispatch.js';
 import { updateConnection } from '../store.js';
 import {
   type AdapterContext,
@@ -189,22 +188,34 @@ const gitlabAdapterMethods: IntegrationAdapterMethods<GitLabConfig, GitLabSecret
       throw new Error(`gitlab webhook: delivery is for ${arrived}, this binding is ${expected}`);
     }
     const uuid = input.headers['x-gitlab-event-uuid'] ?? input.headers['x-gitlab-webhook-uuid'];
-    const result = await handleGitLabEvent(
-      {
-        projectId: ctx.projectId,
-        bindingId: ctx.bindingId,
-        config: ctx.config ?? {},
-        secrets: ctx.secrets ?? {},
-      },
-      eventType,
-      payload,
-    );
-    const deliveryId = await recordDelivery({
+    const logged = {
       bindingId: ctx.bindingId,
-      direction: 'inbound',
+      direction: 'inbound' as const,
       eventName: eventType,
       payload,
       ...(uuid ? { requestId: uuid } : {}),
+    };
+    let result: Awaited<ReturnType<typeof handleGitLabEvent>>;
+    try {
+      result = await handleGitLabEvent(
+        {
+          projectId: ctx.projectId,
+          bindingId: ctx.bindingId,
+          config: ctx.config ?? {},
+          secrets: ctx.secrets ?? {},
+        },
+        eventType,
+        payload,
+      );
+    } catch (err) {
+      const failedId = await recordDelivery({ ...logged, status: 'failed' });
+      await updateDelivery(failedId, {
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+    const deliveryId = await recordDelivery({
+      ...logged,
       status: result.refusal ? 'failed' : 'ok',
     });
     if (result.refusal) await updateDelivery(deliveryId, { errorMessage: result.refusal });
@@ -214,13 +225,6 @@ const gitlabAdapterMethods: IntegrationAdapterMethods<GitLabConfig, GitLabSecret
       ...(result.refusal ? { refusal: result.refusal } : {}),
     };
   },
-
-  dispatchOutbound: (ctx, input) =>
-    dispatchMergeVerb(ctx, input, {
-      provider: 'gitlab',
-      label: 'GitLab',
-      judgementTool: 'forge_source',
-    }),
 };
 
 /**
@@ -231,7 +235,9 @@ const gitlabAdapterMethods: IntegrationAdapterMethods<GitLabConfig, GitLabSecret
 export const gitlabIntegration = declareIntegration<GitLabConfig, GitLabSecrets>({
   provider: 'gitlab',
   capabilities: {
-    canDispatch: true,
+    // Merging is `POST /api/issues/:id/merge-pull-request` (`source-host/merge.ts`), never an
+    // outbound verb, so nothing dispatches through this adapter.
+    canDispatch: false,
     canReceiveWebhook: true,
     // A GitLab project hook calls on every push, merge request and pipeline: a live binding that has
     // recorded nothing is a pipe that is not carrying.

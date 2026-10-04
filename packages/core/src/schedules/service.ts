@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, getTableColumns } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { refusalError } from '../agent-sessions/interactive-credential.js';
 import type { SessionAsker } from '../agent-sessions/session-credential.js';
@@ -7,6 +7,7 @@ import { projects, type ScheduleKind, schedules } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { nextRunFor, validateCron } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';
+import { lastFireStatus } from './fires.js';
 import { getImprovementMessage } from './messages/registry.js';
 
 const badRequest = (details: unknown) =>
@@ -39,6 +40,9 @@ export async function assertTargetProjectAccess(
   return target;
 }
 
+/** A schedule as it is read: its columns, with its last status taken from its newest fire. */
+const SCHEDULE_VIEW = { ...getTableColumns(schedules), lastStatus: lastFireStatus };
+
 export async function listSchedules(projectId: string, actorUserId: string, enabled?: boolean) {
   const access = await loadProjectAccess(projectId, actorUserId);
   assertProjectRole(access, 'viewer', 'not a project member');
@@ -47,7 +51,7 @@ export async function listSchedules(projectId: string, actorUserId: string, enab
   if (enabled !== undefined) conditions.push(eq(schedules.enabled, enabled));
 
   return db
-    .select()
+    .select(SCHEDULE_VIEW)
     .from(schedules)
     .where(and(...conditions))
     .orderBy(asc(schedules.createdAt));
@@ -67,7 +71,7 @@ export async function listSchedulesForMcp(projectId: string, enabled?: boolean) 
       targetProjectSlug: schedules.targetProjectSlug,
       lastRunAt: schedules.lastRunAt,
       nextRunAt: schedules.nextRunAt,
-      lastStatus: schedules.lastStatus,
+      lastStatus: lastFireStatus,
       templateKey: schedules.templateKey,
       mode: schedules.mode,
       kind: schedules.kind,
@@ -91,7 +95,7 @@ export async function readScheduleProjectId(scheduleId: string): Promise<string>
 }
 
 export async function getSchedule(id: string, actorUserId: string) {
-  const [row] = await db.select().from(schedules).where(eq(schedules.id, id)).limit(1);
+  const [row] = await db.select(SCHEDULE_VIEW).from(schedules).where(eq(schedules.id, id)).limit(1);
   if (!row) throw notFound('schedule not found');
 
   const access = await loadProjectAccess(row.projectId, actorUserId);
@@ -261,7 +265,11 @@ export async function updateSchedule(id: string, patch: UpdateSchedulePatch, act
     updates.nextRunAt = enabled ? nextRunFor(cron) : null;
   }
 
-  const [updated] = await db.update(schedules).set(updates).where(eq(schedules.id, id)).returning();
+  const [updated] = await db
+    .update(schedules)
+    .set(updates)
+    .where(eq(schedules.id, id))
+    .returning(SCHEDULE_VIEW);
   if (!updated) throw notFound('schedule not found');
 
   return updated;

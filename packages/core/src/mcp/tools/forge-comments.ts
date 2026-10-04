@@ -26,7 +26,7 @@ import {
 } from '../../comments/service.js';
 import type { CommentAttachmentLite } from '../../comments/tree.js';
 import { env } from '../../config/env.js';
-import { isCommentIntent } from '../../issues/record-events/kinds.js';
+import { isCommentIntent } from '@forge/contracts/record-events';
 import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
 import { egressShown } from '../../lib/data-egress.js';
 import { hooks } from '../../pipeline/hooks.js';

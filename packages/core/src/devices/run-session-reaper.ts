@@ -13,7 +13,6 @@ import { agentSessions } from '../db/schema.js';
 import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { logger } from '../logger.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
-import { returnIssuesForRun } from './run-issue-return.js';
 import { RUN_ISSUES_METADATA_KEY, RUN_SESSION_KIND } from './run-session.js';
 import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 
@@ -44,25 +43,24 @@ export async function reapDeadRunSessions(): Promise<ReapedRunSession[]> {
     const sessionId = String(row.id);
     const runId = String(row.pipeline_run_id);
     const issueKeys = (row.issue_keys ?? []) as string[];
-    const flipped = (await transitionSessions(db, {
-      to: 'failed',
-      set: {
-        failureReason: 'runner_unreachable',
-        failureDetail: 'run-session-reaper: heartbeat stopped',
-        updatedAt: new Date(),
-      },
-      where: and(eq(agentSessions.id, sessionId), eq(agentSessions.status, 'running')),
-      reason: 'run_session_box_silent',
-      actor: { type: 'system' },
-      source: 'run-session-reaper',
-    })).rows;
+    const flipped = (
+      await transitionSessions(db, {
+        to: 'failed',
+        set: {
+          failureReason: 'runner_unreachable',
+          failureDetail: 'run-session-reaper: heartbeat stopped',
+          updatedAt: new Date(),
+        },
+        where: and(eq(agentSessions.id, sessionId), eq(agentSessions.status, 'running')),
+        reason: 'run_session_box_silent',
+        actor: { type: 'system' },
+        source: 'run-session-reaper',
+      })
+    ).rows;
     if (flipped.length === 0) continue;
-    const returned = await returnIssuesForRun(runId, {
-      reason: 'the box running this issue stopped answering',
-    });
     await closeRunIfOneShot(runId, 'failed');
     logger.warn(
-      { runSessionId: sessionId, runId, issues: issueKeys, returned: returned.length },
+      { runSessionId: sessionId, runId, issues: issueKeys },
       'run-session-reaper: released a run whose box stopped answering',
     );
     reaped.push({ sessionId, runId, issueKeys });

@@ -12,6 +12,7 @@ import type {
   FeedbackTriageEffect,
   FeedbackTriageRoute,
 } from '@forge/contracts/feedback';
+import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
@@ -21,6 +22,7 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { findIssueById } from '../issues/read-service.js';
 import { writeRecordEvent } from '../issues/record-events/store.js';
 import { assertProjectAccess } from '../lib/authz.js';
+import { transition } from '../lifecycle/transition.js';
 import { dataPolicyOf, egressAt, storedText } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { NamedRefusal } from '../project-config/respond.js';
@@ -61,6 +63,7 @@ import {
   declineIn,
   type FeedbackChannel,
   type FeedbackOutcome,
+  feedbackKernelActor,
   inTx,
   lockFeedback,
   roleFacts,
@@ -176,7 +179,10 @@ async function namedCarrierIn(
     return {
       columns: { ...NO_ROUTE, routedSuggestionId: s.id },
       key: s.id,
-      facts: { suggestion: { kind: s.kind, requirementId: s.requirementId }, routedRequirement: null },
+      facts: {
+        suggestion: { kind: s.kind, requirementId: s.requirementId },
+        routedRequirement: null,
+      },
     };
   }
   if (route === 'new_requirement' && w.requirement) {
@@ -366,7 +372,6 @@ export async function triageIn(
   await tx
     .update(feedback)
     .set({
-      status: 'triaged',
       kind: row.kind,
       severity: row.severity,
       route: null,
@@ -374,6 +379,13 @@ export async function triageIn(
       updatedAt: new Date(),
     })
     .where(eq(feedback.id, row.id));
+  await transition(tx, FEEDBACK_MACHINE, {
+    to: 'triaged',
+    where: eq(feedback.id, row.id),
+    actor: feedbackKernelActor(actor),
+    source: 'feedback-triage',
+    returning: ['id'],
+  });
   const kase = await openCaseIn(tx, row, t.route, actor);
   let carrier: string | null = null;
   let createdIssueId: string | undefined;
@@ -425,10 +437,7 @@ export async function triageFeedback(input: {
 }): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
   await assertProjectAccess(projectId, actor.userId, 'viewer');
-  const forbidden = decideActRefusal(
-    await roleFacts(actor, projectId),
-    'picking a feedback route',
-  );
+  const forbidden = decideActRefusal(await roleFacts(actor, projectId), 'picking a feedback route');
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const first = await rowIn(db, projectId, input.ref);
   let written: TriageWritten = { refusals: null };

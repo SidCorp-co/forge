@@ -5,7 +5,7 @@
  * says "what job may I claim"; this says "what is sitting here that no run and
  * no job has been opened for". A master reads both and decides.
  *
- * A project admits every takeable status (`issues/status-sets.ts:TAKEABLE_STATUSES`, the set
+ * A project admits every takeable status (`@forge/contracts/issue-machine:TAKEABLE_STATUSES`, the set
  * `forge next` ranks), so a reopened issue is admissible exactly where `forge next` lists it. Its
  * entry status is admitted when the policy's intake is `auto`, and only the issues a human released
  * there when it is `manual`; a `reopen` is already a person's word and waits on no release. A project

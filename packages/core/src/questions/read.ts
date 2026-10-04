@@ -20,6 +20,7 @@ import {
   questionWaiters,
 } from '../db/schema-questions.js';
 import type { PersonVia } from '../ecosystem/channel-schema.js';
+import type { ActorAgency } from '../issues/actor-agency.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import type { EgressSurface } from '../lib/data-egress.js';
 import { questionnaireSurface } from '../questionnaires/read.js';
@@ -283,6 +284,8 @@ export async function answerAs(args: {
   answer: GivenAnswer;
   round: number;
   userId: string;
+  /** A person door unless the caller names an agent. */
+  agency?: ActorAgency;
   note?: string;
   via: PersonVia;
 }) {
@@ -301,6 +304,7 @@ export async function answerAs(args: {
     answer: args.answer,
     round: args.round,
     by: args.userId,
+    agency: args.agency ?? 'human',
     via: args.via,
     role,
     ...(args.note === undefined ? {} : { note: args.note }),

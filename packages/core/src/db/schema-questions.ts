@@ -1,3 +1,4 @@
+import { QUESTION_STATUSES } from '@forge/contracts/question-machine';
 // The question a blocked run asks, and the thread it becomes.
 //
 // One row per DECISION, never one per round: a chain of follow-ups is `steps`
@@ -31,7 +32,7 @@ import { feedback } from './schema-feedback.js';
 import { questionnaireBatches } from './schema-onboarding.js';
 import { requirements } from './schema-requirements.js';
 
-export const questionStatuses = ['open', 'answered', 'void', 'expired', 'needs_info'] as const;
+export const questionStatuses = QUESTION_STATUSES;
 export type QuestionStatus = (typeof questionStatuses)[number];
 
 export const questionBlockerKinds = ['machine', 'master_or_peer', 'human'] as const;

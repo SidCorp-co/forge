@@ -11,7 +11,7 @@ const TERMINAL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(
 
 /**
  * Close the master sessions whose box has stopped answering, and say how many.
- * Flipping the row terminal invokes the descent in `applyKernelTransition`,
+ * Flipping the row terminal invokes the descent in `agent-sessions/session-transition.ts:transitionSessions`,
  * which returns the children's issue leases.
  */
 export async function reapSilentMasters(): Promise<number> {
@@ -26,22 +26,24 @@ export async function reapSilentMasters(): Promise<number> {
   let closed = 0;
   for (const row of silent) {
     const sessionId = String(row.id);
-    const flipped = (await transitionSessions(db, {
-      to: 'failed',
-      set: {
-        failureReason: 'runner_unreachable',
-        failureDetail: 'master-reaper: heartbeat stopped',
-        updatedAt: new Date(),
-      },
-      where: and(
-        eq(agentSessions.id, sessionId),
-        notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
-      ),
-      returning: ['id'],
-      reason: 'master_session_box_silent',
-      actor: { type: 'system' },
-      source: 'master-reaper',
-    })).rows;
+    const flipped = (
+      await transitionSessions(db, {
+        to: 'failed',
+        set: {
+          failureReason: 'runner_unreachable',
+          failureDetail: 'master-reaper: heartbeat stopped',
+          updatedAt: new Date(),
+        },
+        where: and(
+          eq(agentSessions.id, sessionId),
+          notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
+        ),
+        returning: ['id'],
+        reason: 'master_session_box_silent',
+        actor: { type: 'system' },
+        source: 'master-reaper',
+      })
+    ).rows;
     if (flipped.length === 0) continue;
     closed += 1;
     await releaseHoldsForSession(sessionId);

@@ -16,39 +16,56 @@ export interface ShippedRuleRefusal {
   details: Record<string, unknown>;
 }
 
-/** The sentence every close refusal carries, naming the route this project's shape has. */
+/** What every refusal under the merge rule ends with: `dropped` for what was not work, and the
+ *  route this project's shape has for recording where the work landed. */
 export function closedMeansShipped(shape: LandingShape | null, held?: MergeMarkKind): string {
   return (
-    '`closed` means the work shipped. Use `dropped` for work that turned out not to be work — ' +
-    'a note, a question, a duplicate, something already done — which is terminal without the claim ' +
-    `and releases every \`blocks\` dependent the same way. ${landingRoute(shape, held)}`
+    '`closed` means the work shipped, and `awaiting_release` that it is merged and waits for its ' +
+    'release. Use `dropped` for work that turned out not to be work — a note, a question, a ' +
+    'duplicate, something already done — which is terminal without the claim and releases every ' +
+    `\`blocks\` dependent the same way. ${landingRoute(shape, held)}`
   );
 }
 
-// cm:flow release/close after:stamp — the close reads the stamp and the project's shape and refuses unless landing-evidence.ts accepts the mark; it no longer writes one, so an issue that never shipped cannot wear the status that says it did
-export async function refuseUnshippedClose(
+/**
+ * The `merged` guard (`@forge/contracts/issue-machine:ISSUE_MACHINE`): `awaiting_release` and
+ * `closed` are entered only by an issue whose merge is recorded, as this project's shape records
+ * one. Recording it moves no status. Null where the merge stands.
+ */
+export async function mergeNotRecorded(
   executor: MergeRecordExecutor,
-  args: { issueId: string; toStatus: IssueStatus },
-): Promise<ShippedRuleRefusal | null> {
-  if (args.toStatus !== 'closed') return null;
+  args: { issueId: string; to: IssueStatus },
+): Promise<
+  (ShippedRuleRefusal & { code: 'CLOSE_REQUIRES_SHIPPED' | 'MERGE_NOT_RECORDED' }) | null
+> {
+  const code = args.to === 'closed' ? 'CLOSE_REQUIRES_SHIPPED' : 'MERGE_NOT_RECORDED';
   const evidence = await readLandingEvidence(executor, args.issueId);
   if (evidence && !landingShortfall(evidence.columns, evidence.shape)) return null;
   if (!evidence || evidence.shape === 'git') {
     return {
-      detail: `this issue carries no \`merged_at\`, so nothing on it shows the work shipped. ${closedMeansShipped('git')}`,
-      details: { requires: 'mergedAt', useInstead: 'dropped' },
+      code,
+      detail: `\`${args.to}\` needs a recorded merge, and this issue carries no \`merged_at\`. ${closedMeansShipped('git')}`,
+      details: { to: args.to, requires: 'mergedAt', useInstead: 'dropped' },
     };
   }
   const { columns, shape } = evidence;
   if (shape === null) {
     return {
+      code,
       detail: `${landingShortfall(columns, shape)}. ${closedMeansShipped(shape)}`,
-      details: { requires: 'sourceType', held: mergeMarkKindOf(columns), useInstead: 'dropped' },
+      details: {
+        to: args.to,
+        requires: 'sourceType',
+        held: mergeMarkKindOf(columns),
+        useInstead: 'dropped',
+      },
     };
   }
   return {
+    code,
     detail: `${landingShortfall(columns, shape)}, so nothing on it shows where the work landed. ${closedMeansShipped(shape, mergeMarkKindOf(columns))}`,
     details: {
+      to: args.to,
       requires: 'mergedLanding',
       shape,
       held: mergeMarkKindOf(columns),

@@ -15,6 +15,7 @@ import type {
   PostUpdateRequest,
   QuestionnaireView,
 } from '@forge/contracts/onboarding';
+import { ONBOARDING_MACHINE } from '@forge/contracts/onboarding-machine';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { TxOnly } from '../conversations/db-executor.js';
 import { settleShape } from '../conversations/membership.js';
@@ -28,6 +29,7 @@ import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { finalizeJobDone } from '../jobs/finalize-done.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
+import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
 import type { EgressReader } from '../lib/data-egress.js';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { openOneShotRun } from '../pipeline/runs.js';
@@ -63,6 +65,10 @@ import {
   settlesPhaseJob,
   startRefusal,
 } from './rules.js';
+
+function onboardingKernelActor(actor: OnboardingActor): KernelActor {
+  return { type: 'user', id: actor.userId, agency: actor.agency };
+}
 
 export interface OnboardingActor {
   userId: string;
@@ -249,7 +255,6 @@ export async function reanalyzeOnboarding(input: {
     await tx
       .update(onboardings)
       .set({
-        status: 'in_progress',
         roundsSent: 0,
         reanalyzedBy: actor.userId,
         reanalyzedAt: new Date(),
@@ -259,6 +264,15 @@ export async function reanalyzeOnboarding(input: {
         updatedAt: new Date(),
       })
       .where(eq(onboardings.id, row.id));
+    await transition(tx, ONBOARDING_MACHINE, {
+      to: 'in_progress',
+      from: ['done', 'waiting_on_you'],
+      where: eq(onboardings.id, row.id),
+      reason: input.reason ?? null,
+      actor: onboardingKernelActor(actor),
+      source: 'onboarding-reanalyze',
+      returning: ['id'],
+    });
     await systemLine(
       tx,
       row.conversationId,
@@ -342,8 +356,16 @@ export async function postOnboardingQuestionnaire(input: {
     messageId = posted.messageId;
     await tx
       .update(onboardings)
-      .set({ roundsSent: row.roundsSent + 1, status: 'waiting_on_you', updatedAt: new Date() })
+      .set({ roundsSent: row.roundsSent + 1, updatedAt: new Date() })
       .where(eq(onboardings.id, row.id));
+    await transition(tx, ONBOARDING_MACHINE, {
+      to: 'waiting_on_you',
+      from: 'in_progress',
+      where: eq(onboardings.id, row.id),
+      actor: onboardingKernelActor(actor),
+      source: 'onboarding-round',
+      returning: ['id'],
+    });
     return null;
   });
   if (refused) return { ok: false, refusals: refused };
@@ -437,16 +459,20 @@ export async function markOnboardingDone(input: {
       designs.map((d) => d.template),
     );
     if (flow) return [flow];
-    await tx
-      .update(onboardings)
-      .set({
-        status: 'done',
+    const closed = await transition(tx, ONBOARDING_MACHINE, {
+      to: 'done',
+      set: {
         doneBy: actor.userId,
         doneAgency: actor.agency,
         doneAt: new Date(),
         updatedAt: new Date(),
-      })
-      .where(eq(onboardings.id, row.id));
+      },
+      where: eq(onboardings.id, row.id),
+      actor: onboardingKernelActor(actor),
+      source: 'onboarding-close',
+      returning: ['id'],
+    });
+    if (closed.rows.length === 0) throw notAnEdgeError(ONBOARDING_MACHINE, row.status, 'done');
     if (input.text) {
       await appendMessagesIn(tx, {
         conversationId: row.conversationId,
@@ -473,8 +499,15 @@ export async function onboardingSubmittedIn(tx: TxOnly, batch: BatchRow, skipped
   if (!batch.onboardingId) return;
   await tx
     .update(onboardings)
-    .set({ status: skipped ? 'waiting_on_you' : 'in_progress', updatedAt: new Date() })
+    .set({ updatedAt: new Date() })
     .where(eq(onboardings.id, batch.onboardingId));
+  await transition(tx, ONBOARDING_MACHINE, {
+    to: skipped ? 'waiting_on_you' : 'in_progress',
+    where: eq(onboardings.id, batch.onboardingId),
+    actor: { type: 'system' },
+    source: 'questionnaire-submit',
+    returning: ['id'],
+  });
 }
 
 /** After a submit commits: one revise job reads the answers, unless an onboarding job already runs. */

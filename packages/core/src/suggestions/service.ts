@@ -9,6 +9,7 @@
  */
 
 import { SUGGESTION_PAYLOADS } from '@forge/contracts/suggestions';
+import { SUGGESTION_MACHINE } from '@forge/contracts/suggestion-machine';
 import { and, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
@@ -28,10 +29,18 @@ import { emitIssueFieldUpdate } from '../issues/update-hook.js';
 import { permissionRefusalFor } from '../permissions/index.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { notAnEdgeError, transition } from '../lifecycle/transition.js';
 import { hooks } from '../pipeline/hooks.js';
 import { lockRequirements } from '../requirements/service.js';
 import { type AcceptChannel, type Effect, type EffectWritten, writeEffect } from './effects.js';
-import { headOf, type Row, rowOf, type SuggestionActor, targetOfRow } from './read.js';
+import {
+  headOf,
+  type Row,
+  rowOf,
+  type SuggestionActor,
+  suggestionKernelActor,
+  targetOfRow,
+} from './read.js';
 import { decidedRefusal, rejectReasonRefusal, withdrawRefusal } from './rules.js';
 import {
   answer,
@@ -159,10 +168,19 @@ async function acceptDuplicateOfIssue(
             [{ kind: 'relates', dependsOnId: root.id, reason: `duplicate of ${rootKey}` }],
             tx,
           );
-          await tx
-            .update(suggestions)
-            .set({ status: 'accepted', decidedBy: actor.userId, decidedAt: new Date(), reason })
-            .where(eq(suggestions.id, row.id));
+          const decidedAccepted = await transition(tx, SUGGESTION_MACHINE, {
+            to: 'accepted',
+            from: 'proposed',
+            set: { decidedBy: actor.userId, decidedAt: new Date(), reason },
+            where: eq(suggestions.id, row.id),
+            reason: reason,
+            actor: suggestionKernelActor(actor),
+            source: 'suggestions',
+            returning: ['id'],
+          });
+          if (decidedAccepted.rows.length === 0) {
+            throw notAnEdgeError(SUGGESTION_MACHINE, row.status, 'accepted');
+          }
           await recordDecision(tx, row, actor, 'accepted', reason);
         },
       },
@@ -225,18 +243,33 @@ export async function acceptSuggestion(input: {
     }
     written = await writeEffect(tx, projectId, row, head, actor, input.channel ?? 'web');
     if (written.refusals) return written.refusals;
-    await tx
-      .update(suggestions)
-      .set({ status: 'accepted', decidedBy: actor.userId, decidedAt: new Date(), reason })
-      .where(eq(suggestions.id, row.id));
+    const decidedAccepted = await transition(tx, SUGGESTION_MACHINE, {
+      to: 'accepted',
+      from: 'proposed',
+      set: { decidedBy: actor.userId, decidedAt: new Date(), reason },
+      where: eq(suggestions.id, row.id),
+      reason: reason,
+      actor: suggestionKernelActor(actor),
+      source: 'suggestions',
+      returning: ['id'],
+    });
+    if (decidedAccepted.rows.length === 0) {
+      throw notAnEdgeError(SUGGESTION_MACHINE, row.status, 'accepted');
+    }
     await recordDecision(tx, row, actor, 'accepted', reason);
     return null;
   });
   if (stale.reason) {
-    await db
-      .update(suggestions)
-      .set({ status: 'stale', decidedAt: new Date(), reason: stale.reason })
-      .where(and(eq(suggestions.id, first.id), eq(suggestions.status, 'proposed')));
+    await transition(db, SUGGESTION_MACHINE, {
+      to: 'stale',
+      from: 'proposed',
+      set: { decidedAt: new Date(), reason: stale.reason },
+      where: eq(suggestions.id, first.id),
+      reason: stale.reason,
+      actor: suggestionKernelActor(actor),
+      source: 'suggestions-stale',
+      returning: ['id'],
+    });
   }
   if (refusals) return { ok: false, refusals };
   await announceEffect(written, projectId, actor);
@@ -265,10 +298,19 @@ export async function rejectSuggestion(input: {
     const row = await rowOf(tx, projectId, input.id, true);
     const decided = decidedRefusal(row.status);
     if (decided) return [decided];
-    await tx
-      .update(suggestions)
-      .set({ status: 'rejected', decidedBy: actor.userId, decidedAt: new Date(), reason })
-      .where(eq(suggestions.id, row.id));
+    const decidedRejected = await transition(tx, SUGGESTION_MACHINE, {
+      to: 'rejected',
+      from: 'proposed',
+      set: { decidedBy: actor.userId, decidedAt: new Date(), reason },
+      where: eq(suggestions.id, row.id),
+      reason: reason,
+      actor: suggestionKernelActor(actor),
+      source: 'suggestions',
+      returning: ['id'],
+    });
+    if (decidedRejected.rows.length === 0) {
+      throw notAnEdgeError(SUGGESTION_MACHINE, row.status, 'rejected');
+    }
     await recordDecision(tx, row, actor, 'rejected', reason);
     return null;
   });
@@ -287,10 +329,19 @@ export async function withdrawSuggestion(input: {
     const row = await rowOf(tx, projectId, input.id, true);
     const refusal = withdrawRefusal(actor.userId, row.producerId) ?? decidedRefusal(row.status);
     if (refusal) return [refusal];
-    await tx
-      .update(suggestions)
-      .set({ status: 'withdrawn', decidedAt: new Date(), reason: 'withdrawn by its producer' })
-      .where(eq(suggestions.id, row.id));
+    const decidedWithdrawn = await transition(tx, SUGGESTION_MACHINE, {
+      to: 'withdrawn',
+      from: 'proposed',
+      set: { decidedAt: new Date(), reason: 'withdrawn by its producer' },
+      where: eq(suggestions.id, row.id),
+      reason: 'withdrawn by its producer',
+      actor: suggestionKernelActor(actor),
+      source: 'suggestions',
+      returning: ['id'],
+    });
+    if (decidedWithdrawn.rows.length === 0) {
+      throw notAnEdgeError(SUGGESTION_MACHINE, row.status, 'withdrawn');
+    }
     await recordDecision(tx, row, actor, 'withdrawn');
     return null;
   });

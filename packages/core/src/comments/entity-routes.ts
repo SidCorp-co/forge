@@ -11,7 +11,7 @@ import {
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { COMMENT_INTENTS } from '../issues/record-events/kinds.js';
+import { COMMENT_INTENTS } from '@forge/contracts/record-events';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { refused } from '../project-config/respond.js';

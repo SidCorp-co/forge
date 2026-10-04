@@ -19,7 +19,7 @@ export {
   type ReleaseNotesSection,
   ReleaseNotesSectionSchema,
   releaseNotesSections,
-} from './issues/release-notes.js';
+} from '@forge/contracts/release-notes';
 export {
   type IssueCreateInput,
   type IssueFilters,

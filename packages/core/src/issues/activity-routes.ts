@@ -17,7 +17,7 @@ import {
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
-import { KERNEL_RECORD_KINDS, recordAction } from './record-events/kinds.js';
+import { KERNEL_RECORD_KINDS, recordAction } from '@forge/contracts/record-events';
 
 const ACTIVITY_TYPES = ['issue', 'comment', 'member'] as const;
 

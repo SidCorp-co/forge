@@ -9,7 +9,6 @@ export interface HeartbeatReport {
 
 export interface DevicePatch {
   lastSeenAt: Date;
-  status: 'online';
   agentVersion?: string;
   agentCommit?: string | null;
   capabilities?: Record<string, unknown>;
@@ -24,7 +23,6 @@ export interface DevicePatch {
 export function heartbeatPatch(report: HeartbeatReport, now: Date): DevicePatch {
   return {
     lastSeenAt: now,
-    status: 'online',
     ...(report.agentVersion !== undefined
       ? { agentVersion: report.agentVersion, agentCommit: report.agentCommit ?? null }
       : {}),

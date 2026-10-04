@@ -15,9 +15,9 @@
  * after it.
  */
 
+import { JOB_MACHINE } from '@forge/contracts/job-machine';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { withKernelMarker } from '../db/kernel-marker.js';
 import { jobs } from '../db/schema.js';
 import { IssueBlockedError, refuseBlockedTake } from '../issues/blocked-by.js';
 import {
@@ -36,6 +36,7 @@ import {
   resolveRunnerForDevice,
 } from '../jobs/prepare-claimed-job.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import {
   type DispatchState,
@@ -298,22 +299,23 @@ export async function startJobForMaster(args: {
   if (!job) return { ok: false, reason: 'hold_lost' };
   const runner = await resolveRunnerForDevice(job.projectId, args.deviceId);
 
-  const stamped = await withKernelMarker(db, async (tx) =>
-    tx
-      .update(jobs)
-      .set({
-        status: 'dispatched',
+  const stamped = (
+    await transition(db, JOB_MACHINE, {
+      to: 'dispatched',
+      from: 'queued',
+      set: {
         deviceId: args.deviceId,
         runnerId: runner.id,
         dispatchedAt: new Date(),
         heldBy: null,
         heldAt: null,
-      })
-      .where(
-        and(eq(jobs.id, args.jobId), eq(jobs.status, 'queued'), eq(jobs.heldBy, args.sessionId)),
-      )
-      .returning({ id: jobs.id }),
-  );
+      },
+      where: and(eq(jobs.id, args.jobId), eq(jobs.heldBy, args.sessionId)),
+      actor: { type: 'runner', id: args.deviceId },
+      source: 'claim',
+      returning: ['id'],
+    })
+  ).rows;
   if (!stamped.length) {
     await releaseJobFromMaster({ jobId: args.jobId, sessionId: args.sessionId });
     return { ok: false, reason: 'hold_lost' };

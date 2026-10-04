@@ -7,7 +7,7 @@ import {
   COMMENT_INTENTS,
   type CommentIntent,
   isCommentIntent,
-} from '../issues/record-events/kinds.js';
+} from '@forge/contracts/record-events';
 import {
   dropCommentMirror,
   mirrorCommentRecord,

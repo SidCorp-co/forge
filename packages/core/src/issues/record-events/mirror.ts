@@ -10,7 +10,7 @@ import { activityLog } from '../../db/schema-activity.js';
 import { parseForgeRecord } from '../../messaging/forge-record.js';
 import type { Actor } from '../../pipeline/activity.js';
 import { recordEventVerdicts } from '../criteria/event-verdicts.js';
-import { isKernelOnlyRecordKind, isRecordEventKind } from './kinds.js';
+import { isKernelOnlyRecordKind, isRecordEventKind } from '@forge/contracts/record-events';
 import { commentMirrorKey, writeRecordEvent } from './store.js';
 
 export interface MirroredComment {

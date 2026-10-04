@@ -6,10 +6,12 @@
 
 import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import { and, eq, inArray, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import type { IssueStatus } from '../db/schema.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
+import { type KernelActor, transition } from '../lifecycle/transition.js';
 
 type Executor = IssueDependencyExecutor;
 
@@ -83,6 +85,8 @@ export async function settleOpenQuestions(
     voidQuestions?: string | undefined;
     requireNoOpenQuestions?: boolean | undefined;
     by: string;
+    /** Who made the issue move the questions die with. */
+    actor: KernelActor;
   },
 ): Promise<TerminalQuestionFault | null> {
   const terminal = ISSUE_TERMINAL_STATUSES.includes(args.toStatus);
@@ -118,15 +122,20 @@ export async function settleOpenQuestions(
       details: { to: args.toStatus, openQuestionIds: ids },
     };
   }
-  await tx
-    .update(agentQuestions)
-    .set({
-      status: 'void',
+  await transition(tx, QUESTION_MACHINE, {
+    to: 'void',
+    from: 'open',
+    set: {
       voidReason: `the issue went to ${ISSUE_STATUS_LABELS[args.toStatus]} with this question open: ${reason}`,
       endedBy: args.by,
       endedReason: terminal ? QUESTION_ENDED_WITH_ISSUE : QUESTION_NOT_NEEDED,
       updatedAt: new Date(),
-    })
-    .where(and(inArray(agentQuestions.id, ids), eq(agentQuestions.status, 'open')));
+    },
+    where: inArray(agentQuestions.id, ids),
+    reason,
+    actor: args.actor,
+    source: 'issues',
+    returning: ['id'],
+  });
   return null;
 }

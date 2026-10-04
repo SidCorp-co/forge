@@ -13,6 +13,8 @@ import {
 } from '../lifecycle/transition.js';
 import type { MachineRow } from '../lifecycle/machine-tables.js';
 import { logger } from '../logger.js';
+import { settleSessionFires } from '../schedules/fires.js';
+import { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 import { fireTerminalSessionBridges, sessionCarriesBridgeMarker } from './terminal-effects.js';
 
 type SessionRow = MachineRow<'session'>;
@@ -31,28 +33,78 @@ const ENDED: readonly AgentSessionStatus[] = TERMINAL_AGENT_SESSION_STATUSES;
 
 /**
  * A session's status move: the kernel transition on the session machine, and, once a session has
- * ended, what its end owes: a bridge-marked session delivers its completion, and a session closes
- * what it owns.
+ * ended, what its end owes: the schedule fire it started settles in the same transaction, a run
+ * session hands back every issue it left `in_progress` with nothing holding it, a bridge-marked
+ * session delivers its completion, and a session closes what it owns.
  */
 export async function transitionSessions<K extends keyof SessionRow = keyof SessionRow>(
   exec: KernelExecutor,
   args: TransitionArgs<'session', K>,
-): Promise<TransitionResult<Pick<SessionRow, K | 'id'>>> {
+): Promise<TransitionResult<Pick<SessionRow, K | 'id'>> & { returned: string[] }> {
   const ending = ENDED.includes(args.to);
   const returning =
-    ending && args.returning ? ([...args.returning, 'metadata'] as K[]) : args.returning;
+    ending && args.returning
+      ? ([...args.returning, 'metadata', 'kind', 'pipelineRunId'] as K[])
+      : args.returning;
   const result = await transition(exec, SESSION_MACHINE, {
     ...args,
     ...(returning ? { returning } : {}),
+    afterWrite: async (tx, rows) => {
+      await args.afterWrite?.(tx, rows);
+      if (ending) {
+        await settleSessionFires(tx, {
+          sessionIds: rows.map((r) => r.id),
+          sessionStatus: args.to,
+          actor: args.actor,
+          source: args.source,
+        });
+      }
+    },
   });
+  let returned: string[] = [];
   if (ending && result.rows.length > 0) {
+    returned = await handBackRunIssues(result.rows, args);
     await fireSessionBridges(exec, result.rows, args.returning === undefined);
     await descendFrom(
       result.rows.map((r) => r.id),
       args,
     );
   }
-  return result;
+  return { ...result, returned };
+}
+
+/**
+ * The kernel's hand-back (workflow `issue-lifecycle` rev 7): a run that ended, whatever its outcome,
+ * returns each issue it still has at `in_progress`, held by nothing else, to the status it took it
+ * from, along the issue machine's recovery edges. A failure is logged and never thrown: the session
+ * has ended either way. Answers the keys of the issues handed back.
+ */
+async function handBackRunIssues(
+  rows: ReadonlyArray<{ id: string }>,
+  args: { to: string; source: string; reason?: string | null | undefined },
+): Promise<string[]> {
+  const runs = new Set<string>();
+  for (const row of rows) {
+    const { kind, pipelineRunId } = row as Partial<Pick<SessionRow, 'kind' | 'pipelineRunId'>>;
+    if (kind === RUN_SESSION_KIND && pipelineRunId) runs.add(pipelineRunId);
+  }
+  if (runs.size === 0) return [];
+  const { returnIssuesForRun } = await import('../devices/run-issue-return.js');
+  const returned: string[] = [];
+  for (const runId of runs) {
+    try {
+      const back = await returnIssuesForRun(runId, {
+        reason: `its run session ended ${args.to} (${args.reason ?? args.source})`,
+      });
+      returned.push(...back.map((r) => r.issueKey));
+    } catch (err) {
+      logger.error(
+        { err, runId, source: args.source },
+        'session-transition: an ended run session could not hand its issues back; they stay at in_progress until the next end of a session over them',
+      );
+    }
+  }
+  return returned;
 }
 
 /** A flip the descent itself wrote is skipped: the walk owns its depth bound. */

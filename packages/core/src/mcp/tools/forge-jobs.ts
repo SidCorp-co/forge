@@ -212,6 +212,11 @@ export const forgeJobsResumeTool: ContextScopedMcpToolFactory = ({ principal }) 
     try {
       return await resumeHeldJob(jobId, {
         actorUserId: principalUserId(principal),
+        actor: {
+          type: 'user',
+          id: principalUserId(principal),
+          agency: principalAgency(principal),
+        },
         reason: reason ?? 'manual resume (MCP)',
         source: 'mcp',
       });

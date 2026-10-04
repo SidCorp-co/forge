@@ -241,14 +241,16 @@ jobLifecycleDeviceRoutes.post(
         )
         .limit(1);
       if (activeRetry.length === 0) {
-        const [reclaimed] = (await transition(db, JOB_MACHINE, {
-          to: 'done',
-          set: { exitCode: 0, error: null, finishedAt: new Date() },
-          where: and(eq(jobs.id, id), eq(jobs.status, 'failed'), eq(jobs.error, job.error)),
-          reason: 'reconciled_late_complete',
-          actor: { type: 'runner', id: device.id },
-          source: 'lifecycle',
-        })).rows;
+        const [reclaimed] = (
+          await transition(db, JOB_MACHINE, {
+            to: 'done',
+            set: { exitCode: 0, error: null, finishedAt: new Date() },
+            where: and(eq(jobs.id, id), eq(jobs.status, 'failed'), eq(jobs.error, job.error)),
+            reason: 'reconciled_late_complete',
+            actor: { type: 'runner', id: device.id },
+            source: 'lifecycle',
+          })
+        ).rows;
         if (reclaimed) {
           logger.warn(
             { jobId: reclaimed.id, reapedError: job.error },
@@ -293,18 +295,20 @@ jobLifecycleDeviceRoutes.post(
       input.exitCode === 0 ? 'done' : input.exitCode === -1 ? 'cancelled' : 'failed';
     const effectiveError: string | null = input.error ?? null;
 
-    let [updated] = (await transition(db, JOB_MACHINE, {
-      to: status,
-      set: {
-        exitCode: input.exitCode,
-        error: effectiveError,
-        finishedAt: new Date(),
-      },
-      where: and(eq(jobs.id, id), eq(jobs.status, job.status)),
-      reason: status === 'failed' ? (effectiveError ?? 'exit nonzero') : `lifecycle_${status}`,
-      actor: { type: 'runner', id: device.id },
-      source: 'lifecycle',
-    })).rows;
+    let [updated] = (
+      await transition(db, JOB_MACHINE, {
+        to: status,
+        set: {
+          exitCode: input.exitCode,
+          error: effectiveError,
+          finishedAt: new Date(),
+        },
+        where: and(eq(jobs.id, id), eq(jobs.status, job.status)),
+        reason: status === 'failed' ? (effectiveError ?? 'exit nonzero') : `lifecycle_${status}`,
+        actor: { type: 'runner', id: device.id },
+        source: 'lifecycle',
+      })
+    ).rows;
 
     if (!updated) throw conflict('job state changed mid-request', 'INVALID_STATE');
 
@@ -402,14 +406,16 @@ jobLifecycleDeviceRoutes.post(
       throw conflict('job is not in a runnable state', 'INVALID_STATE');
     }
 
-    let [updated] = (await transition(db, JOB_MACHINE, {
-      to: 'failed',
-      set: { error: input.error, finishedAt: new Date(), ...salvageSet(input.salvage) },
-      where: and(eq(jobs.id, id), eq(jobs.status, job.status)),
-      reason: input.error,
-      actor: { type: 'runner', id: device.id },
-      source: 'lifecycle',
-    })).rows;
+    let [updated] = (
+      await transition(db, JOB_MACHINE, {
+        to: 'failed',
+        set: { error: input.error, finishedAt: new Date(), ...salvageSet(input.salvage) },
+        where: and(eq(jobs.id, id), eq(jobs.status, job.status)),
+        reason: input.error,
+        actor: { type: 'runner', id: device.id },
+        source: 'lifecycle',
+      })
+    ).rows;
 
     if (!updated) throw conflict('job state changed mid-request', 'INVALID_STATE');
 
@@ -574,6 +580,7 @@ jobLifecycleUserRoutes.post(
     try {
       const result = await resumeHeldJob(id, {
         actorUserId: userId,
+        actor: restActor(c),
         reason: body.reason ?? 'manual resume (REST)',
         source: 'rest',
       });

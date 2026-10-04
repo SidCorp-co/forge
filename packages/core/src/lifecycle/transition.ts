@@ -186,6 +186,9 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
   if (refusals.length > 0) return { rows: [], refusals };
 
   await args.beforeWrite?.(tx, prior);
+  // A move nested inside `beforeWrite` set its own actor and reason; this move's are put back before
+  // its UPDATE, which the issues outbox trigger reads them from.
+  await setActorContext(tx, args.actor, args.reason ?? null);
 
   const projection = projectionOf(table as PgTable, idKey, args.returning);
   const write = tx

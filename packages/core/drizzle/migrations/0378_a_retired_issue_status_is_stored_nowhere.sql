@@ -57,3 +57,26 @@ UPDATE pipeline_runs r
 
 ALTER TABLE "issue_work_state" DROP CONSTRAINT "issue_work_state_legacy_status_chk";--> statement-breakpoint
 ALTER TABLE "issue_work_state" DROP COLUMN "legacy_status";
+--> statement-breakpoint
+
+-- A schedule fire settles in its session's own kernel move (`agent-sessions/session-transition.ts`),
+-- so the trigger that wrote `schedule_runs.status` behind it is dropped. A session row deleted under
+-- a running fire is no move of any machine, so that case keeps a trigger, which no longer writes
+-- `schedules.last_status`: a schedule's last status is read from its newest fire and never stored.
+DROP TRIGGER IF EXISTS trg_agent_sessions_stop_settles_its_fire ON agent_sessions;--> statement-breakpoint
+DROP TRIGGER IF EXISTS trg_agent_sessions_delete_settles_its_fire ON agent_sessions;--> statement-breakpoint
+DROP FUNCTION IF EXISTS forge_session_stop_settles_its_fire();--> statement-breakpoint
+CREATE OR REPLACE FUNCTION forge_session_delete_settles_its_fire() RETURNS trigger AS $$
+BEGIN
+  UPDATE schedule_runs
+     SET status = 'failed', finished_at = now(), error = 'session deleted'
+   WHERE session_id = OLD.id
+     AND status = 'running';
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;--> statement-breakpoint
+CREATE TRIGGER trg_agent_sessions_delete_settles_its_fire
+  BEFORE DELETE ON agent_sessions
+  FOR EACH ROW
+  EXECUTE FUNCTION forge_session_delete_settles_its_fire();--> statement-breakpoint
+ALTER TABLE "schedules" DROP COLUMN "last_status";

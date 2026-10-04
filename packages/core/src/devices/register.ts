@@ -1,6 +1,8 @@
+import { DEVICE_MACHINE } from '@forge/contracts/runner-machine';
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type Device, type DevicePlatform, devices } from '../db/schema.js';
+import { transition } from '../lifecycle/transition.js';
 import { hashMachineId } from './credential.js';
 
 export interface RegisterDeviceInput {
@@ -37,17 +39,28 @@ export async function registerDevice(input: RegisterDeviceInput): Promise<Device
       .limit(1);
 
     if (existing) {
-      const [rotated] = await db
-        .update(devices)
-        .set({
-          name: input.name,
-          platform: input.platform,
-          status: 'offline',
-          ...(input.agentVersion !== undefined ? { agentVersion: input.agentVersion } : {}),
-          ...(input.capabilities !== undefined ? { capabilities: input.capabilities } : {}),
-        })
-        .where(eq(devices.id, existing.id))
-        .returning();
+      const rotated = await db.transaction(async (tx) => {
+        await transition(tx, DEVICE_MACHINE, {
+          to: 'offline',
+          from: 'online',
+          where: eq(devices.id, existing.id),
+          reason: 'device re-paired',
+          actor: { type: 'runner', id: existing.id },
+          source: 'device-register',
+          returning: ['id'],
+        });
+        const [row] = await tx
+          .update(devices)
+          .set({
+            name: input.name,
+            platform: input.platform,
+            ...(input.agentVersion !== undefined ? { agentVersion: input.agentVersion } : {}),
+            ...(input.capabilities !== undefined ? { capabilities: input.capabilities } : {}),
+          })
+          .where(eq(devices.id, existing.id))
+          .returning();
+        return row;
+      });
       if (!rotated) throw new Error('registerDevice: rotate returned no row');
       return rotated;
     }

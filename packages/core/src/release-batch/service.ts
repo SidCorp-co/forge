@@ -400,7 +400,6 @@ export async function finishReleaseBatch(
         'closed',
         actor,
         {
-          viaReleasePath: true,
           beforeStatusWrite: async (tx) => {
             await fence?.(tx);
             await refuseLostReleaseClaim(tx, issue.id, runId);

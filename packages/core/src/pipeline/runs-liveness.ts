@@ -31,7 +31,7 @@ export interface RunLiveness {
 
 /**
  * Run liveness for many runs, in ONE statement. `live_jobs` asks
- * {@link UNHELD_LIVE_JOB_STATUSES} rather than `jobs/status-sets.ts`'s
+ * {@link UNHELD_LIVE_JOB_STATUSES} rather than the job machine's
  * `LIVE_JOB_STATUSES`: a run whose only job is parked on a person is not work
  * in flight, and counting it would keep that run out of the stalled band.
  * `last_beat` is any live session's; the master columns are a live master's

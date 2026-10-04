@@ -182,6 +182,7 @@ import { skillCrudRoutes } from './skills/crud-routes.js';
 import { divergenceCharterRoutes } from './skills/divergence-charter-routes.js';
 import { skillPinRoutes } from './skills/pin-routes.js';
 import { sweepPolicyLanded } from './skills/policy-landed.js';
+import { runOnceBackfills } from './boot-backfills.js';
 import { reconcileRoutes } from './skills/reconcile-routes.js';
 import { skillRegisterRoutes, skillSyncRoutes } from './skills/routes.js';
 import { skillSmokeVerifyRoutes } from './skills/smoke-verify-routes.js';
@@ -433,6 +434,7 @@ if (isMain) {
       contentHash: change.contentHash,
     });
   }
+  await runOnceBackfills();
   await sweepPolicyLanded();
   await seedDomainTemplates(db);
   bootstrapChatProviders();

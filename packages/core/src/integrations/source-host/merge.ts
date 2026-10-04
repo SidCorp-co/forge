@@ -5,6 +5,7 @@ import { repoPullRequests } from '../../db/schema-repo-projection.js';
 import { recordIssueMerge } from '../../issues/merge-record.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
 import { SourceHostUnavailable } from './errors.js';
+import { resolveIssueForHeadRef } from '../github/issue-link.js';
 import { sourceHostForBinding } from './resolve.js';
 import type { SourceHost } from './types.js';
 
@@ -229,4 +230,35 @@ export async function mergeStoredChangeRequest(
     mergedAt: result.mergedAt,
     stamped,
   };
+}
+
+/**
+ * The merge a source host reports by webhook, on the row the kernel's own merge writes: the one stamp
+ * for GitHub and GitLab alike. Somebody pressing Merge on the host and Forge merging are one landing
+ * arriving by two routes, and they produce one record because both write through `recordIssueMerge`
+ * under `merged_commit_sha IS NULL`. It records the merge and moves no status. Answers whether this
+ * call wrote the stamp.
+ */
+export async function stampHostMerge(args: {
+  projectId: string;
+  headRef: string;
+  commitSha: string;
+  mergedAt: Date;
+}): Promise<boolean> {
+  if (Number.isNaN(args.mergedAt.getTime())) return false;
+  const issueId = await resolveIssueForHeadRef({
+    projectId: args.projectId,
+    headRef: args.headRef,
+  });
+  if (!issueId) return false;
+  const stamp = await recordIssueMerge(db, {
+    issueId,
+    evidence: {
+      kind: 'observed',
+      commitSha: args.commitSha,
+      mergedAt: args.mergedAt,
+      via: 'event',
+    },
+  });
+  return stamp.wrote;
 }

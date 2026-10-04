@@ -1,7 +1,8 @@
+import { RUN_MACHINE } from '@forge/contracts/run-machine';
 import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { withKernelMarker } from '../db/kernel-marker.js';
 import { pipelineRuns } from '../db/schema.js';
+import { type KernelActor, transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -112,23 +113,28 @@ export async function pauseRun(args: {
   /** Machine pause reason merged into `metadata.pauseReason`; omit for
    *  operator pauses (matchers must not auto-resume those). */
   pauseReason?: string | undefined;
+  /** Who paused it; a machine pause is the system's. */
+  actor?: KernelActor | undefined;
   bus?: HooksBus | undefined;
 }): Promise<PipelineRunRow | null> {
-  const [row] = await withKernelMarker(db, async (tx) =>
-    tx
-      .update(pipelineRuns)
-      .set({
-        status: 'paused',
+  const [row] = (
+    await transition(db, RUN_MACHINE, {
+      to: 'paused',
+      from: 'running',
+      set: {
         updatedAt: new Date(),
         ...(args.pauseReason
           ? {
               metadata: sql`COALESCE(${pipelineRuns.metadata}, '{}'::jsonb) || jsonb_build_object('pauseReason', ${args.pauseReason}::text)`,
             }
           : {}),
-      })
-      .where(and(eq(pipelineRuns.id, args.runId), eq(pipelineRuns.status, 'running')))
-      .returning(),
-  );
+      },
+      where: eq(pipelineRuns.id, args.runId),
+      reason: args.pauseReason ?? null,
+      actor: args.actor ?? { type: 'system' },
+      source: 'run-pause',
+    })
+  ).rows;
   if (!row) return null;
   await emitRunPauseTransition(row, 'running', 'paused', args.bus ?? hooks);
   return row;
@@ -136,19 +142,19 @@ export async function pauseRun(args: {
 
 export async function resumeRunsWhere(
   where: SQL | undefined,
-  opts: { bus?: HooksBus | undefined } = {},
+  opts: { bus?: HooksBus | undefined; actor?: KernelActor | undefined } = {},
 ): Promise<PipelineRunRow[]> {
-  const rows = await withKernelMarker(db, async (tx) =>
-    tx
-      .update(pipelineRuns)
-      .set({
-        status: 'running',
-        updatedAt: new Date(),
-        metadata: sql`COALESCE(${pipelineRuns.metadata}, '{}'::jsonb) - 'pauseReason'`,
-      })
-      .where(and(eq(pipelineRuns.status, 'paused'), where))
-      .returning(),
-  );
+  const { rows } = await transition(db, RUN_MACHINE, {
+    to: 'running',
+    from: 'paused',
+    set: {
+      updatedAt: new Date(),
+      metadata: sql`COALESCE(${pipelineRuns.metadata}, '{}'::jsonb) - 'pauseReason'`,
+    },
+    where,
+    actor: opts.actor ?? { type: 'system' },
+    source: 'run-resume',
+  });
   for (const row of rows) {
     await emitRunPauseTransition(row, 'paused', 'running', opts.bus ?? hooks);
   }
@@ -158,9 +164,13 @@ export async function resumeRunsWhere(
 /** CAS `paused → running` for one run. Null when the run was not paused. */
 export async function resumeRun(args: {
   runId: string;
+  actor?: KernelActor | undefined;
   bus?: HooksBus | undefined;
 }): Promise<PipelineRunRow | null> {
-  const rows = await resumeRunsWhere(eq(pipelineRuns.id, args.runId), { bus: args.bus });
+  const rows = await resumeRunsWhere(eq(pipelineRuns.id, args.runId), {
+    bus: args.bus,
+    actor: args.actor,
+  });
   return rows[0] ?? null;
 }
 

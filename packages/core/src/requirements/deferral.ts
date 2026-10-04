@@ -4,6 +4,7 @@
  * until the undefer puts back the status the defer left. A deferred requirement waits on nobody.
  */
 
+import { REQUIREMENT_MACHINE } from '@forge/contracts/requirement-machine';
 import { and, eq, notInArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -14,10 +15,17 @@ import {
 } from '../db/schema-requirements.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { notAnEdgeError, transition } from '../lifecycle/transition.js';
 import { latestDeferOf } from './deferral-read.js';
 import { type RequirementActor, rowIn, signerRefusal } from './read.js';
 import { deferRefusals, undeferRefusal } from './rules.js';
-import { answer, inTx, lockRequirements, type RequirementOutcome } from './service.js';
+import {
+  answer,
+  inTx,
+  lockRequirements,
+  type RequirementOutcome,
+  requirementKernelActor,
+} from './service.js';
 
 async function workingIssuesOf(tx: Tx, projectId: string, requirementId: string) {
   const rows = await tx
@@ -63,10 +71,16 @@ export async function deferRequirement(input: {
       reason: input.reason.trim(),
       decidedBy: actor.userId,
     });
-    await tx
-      .update(requirements)
-      .set({ status: 'deferred', updatedAt: new Date() })
-      .where(eq(requirements.id, row.id));
+    const deferred = await transition(tx, REQUIREMENT_MACHINE, {
+      to: 'deferred',
+      set: { updatedAt: new Date() },
+      where: eq(requirements.id, row.id),
+      reason: input.reason.trim(),
+      actor: requirementKernelActor(actor),
+      source: 'requirement-deferral',
+      returning: ['id'],
+    });
+    if (deferred.rows.length === 0) throw notAnEdgeError(REQUIREMENT_MACHINE, status, 'deferred');
     return null;
   });
   return answer(projectId, row.id, actor, refusals);
@@ -98,10 +112,23 @@ export async function undeferRequirement(input: {
       reason: input.reason?.trim() || null,
       decidedBy: actor.userId,
     });
-    await tx
-      .update(requirements)
-      .set({ status: defer.fromStatus, updatedAt: new Date() })
-      .where(eq(requirements.id, row.id));
+    const undeferred = await transition(tx, REQUIREMENT_MACHINE, {
+      to: defer.fromStatus,
+      from: 'deferred',
+      set: { updatedAt: new Date() },
+      where: eq(requirements.id, row.id),
+      reason: input.reason?.trim() || null,
+      actor: requirementKernelActor(actor),
+      source: 'requirement-deferral',
+      returning: ['id'],
+    });
+    if (undeferred.rows.length === 0) {
+      throw notAnEdgeError(
+        REQUIREMENT_MACHINE,
+        current.status as RequirementStatus,
+        defer.fromStatus,
+      );
+    }
     return null;
   });
   return answer(projectId, row.id, actor, refusals);

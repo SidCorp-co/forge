@@ -106,7 +106,11 @@ export async function pipelineRunsPauseHandler(
 ) {
   const loaded = await loadRunForPrincipal(principal, input.runId);
   await assertPrincipalIsWriter(principal, loaded.projectId);
-  const run = await pausePipelineRun(input.runId);
+  const run = await pausePipelineRun(input.runId, {
+    type: 'user',
+    id: principalUserId(principal),
+    agency: principalAgency(principal),
+  });
   return { run };
 }
 
@@ -116,7 +120,11 @@ export async function pipelineRunsResumeHandler(
 ) {
   const loaded = await loadRunForPrincipal(principal, input.runId);
   await assertPrincipalIsWriter(principal, loaded.projectId);
-  const run = await resumePipelineRun(input.runId);
+  const run = await resumePipelineRun(input.runId, {
+    type: 'user',
+    id: principalUserId(principal),
+    agency: principalAgency(principal),
+  });
   return { run };
 }
 

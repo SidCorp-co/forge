@@ -1,3 +1,4 @@
+import { RUNNER_MACHINE, RUNNER_PROVISION_MACHINE } from '@forge/contracts/runner-machine';
 import { and, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -7,7 +8,8 @@ import { devices, runners } from '../db/schema.js';
 import { residentMasterSql } from '../devices/master-session.js';
 import { readRunnerPoolRead } from '../devices/pool-read-report.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import type { AuthVars } from '../middleware/auth.js';
+import { transition } from '../lifecycle/transition.js';
+import { type AuthVars, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -132,46 +134,67 @@ projectRunnerRoutes.post(
       device.status === 'online' && device.lastSeenAt ? 'online' : 'offline';
 
     const now = new Date();
-    const [runner] = await db
-      .insert(runners)
-      .values({
-        projectId: id,
-        type: 'claude-code',
-        deviceId,
-        name: device.name,
-        capabilities: defaultRunnerCapabilities('claude-code', capabilities),
-        ...(repoPath !== undefined ? { repoPath } : {}),
-        ...(branch !== undefined ? { branch } : {}),
-        status,
-        // Queue workspace provisioning — the device picks this up on its next
-        // GET /api/devices/me/provisions (online or whenever it reconnects).
-        provisionStatus: 'queued',
-        provisionRequestedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [runners.projectId, runners.deviceId, runners.type],
-        targetWhere: sql`device_id IS NOT NULL`,
-        set: {
-          status,
-          updatedAt: now,
-          ...(capabilities ? { capabilities } : {}),
+    const bound = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(runners)
+        .values({
+          projectId: id,
+          type: 'claude-code',
+          deviceId,
+          name: device.name,
+          capabilities: defaultRunnerCapabilities('claude-code', capabilities),
           ...(repoPath !== undefined ? { repoPath } : {}),
           ...(branch !== undefined ? { branch } : {}),
-          // Re-bind re-queues provisioning (path/url may have changed).
+          status,
+          // Queue workspace provisioning — the device picks this up on its next
+          // GET /api/devices/me/provisions (online or whenever it reconnects).
           provisionStatus: 'queued',
-          provisionDetail: null,
           provisionRequestedAt: now,
-        },
-      })
-      .returning({
-        id: runners.id,
-        projectId: runners.projectId,
-        deviceId: runners.deviceId,
-        repoPath: runners.repoPath,
-        branch: runners.branch,
-        labels: runners.labels,
-        status: runners.status,
+        })
+        .onConflictDoUpdate({
+          target: [runners.projectId, runners.deviceId, runners.type],
+          targetWhere: sql`device_id IS NOT NULL`,
+          set: {
+            updatedAt: now,
+            ...(capabilities ? { capabilities } : {}),
+            ...(repoPath !== undefined ? { repoPath } : {}),
+            ...(branch !== undefined ? { branch } : {}),
+            provisionDetail: null,
+            provisionRequestedAt: now,
+          },
+        })
+        .returning({
+          id: runners.id,
+          projectId: runners.projectId,
+          deviceId: runners.deviceId,
+          repoPath: runners.repoPath,
+          branch: runners.branch,
+          labels: runners.labels,
+          status: runners.status,
+        });
+      if (!row) return null;
+      // Re-bind re-queues provisioning (path/url may have changed), and the runner takes its device's
+      // liveness; an operator's drain or disable is left standing.
+      await transition(tx, RUNNER_PROVISION_MACHINE, {
+        to: 'queued',
+        where: eq(runners.id, row.id),
+        reason: 'bind',
+        actor: restActor(c),
+        source: 'runner-bind',
+        returning: ['id'],
       });
+      const live = await transition(tx, RUNNER_MACHINE, {
+        to: status,
+        from: status === 'online' ? 'offline' : 'online',
+        where: eq(runners.id, row.id),
+        reason: 'bind',
+        actor: restActor(c),
+        source: 'runner-bind',
+        returning: ['id'],
+      });
+      return live.rows.length > 0 ? { ...row, status } : row;
+    });
+    const runner = bound;
 
     if (!runner) {
       throw new HTTPException(500, {

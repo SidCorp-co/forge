@@ -9,7 +9,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { RECORD_ACTIONS } from '../issues/record-events/kinds.js';
+import { RECORD_ACTIONS } from '@forge/contracts/record-events';
 import { issues } from './schema.js';
 
 export const actorTypes = ['user', 'device'] as const;

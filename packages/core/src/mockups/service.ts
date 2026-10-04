@@ -8,6 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import type { MockupTargetInput, MockupView, ProposeMockupRequest } from '@forge/contracts/mockups';
 import type { RevisionState } from '@forge/contracts/requirements';
+import { MOCKUP_MACHINE } from '@forge/contracts/mockup-machine';
 import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { mockups } from '../db/schema-mockups.js';
@@ -17,6 +18,7 @@ import { issueRefIn, requirementRefIn } from '../feedback/refs.js';
 import { permissionFactsOf } from '../permissions/index.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
+import { notAnEdgeError, transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { getStorage } from '../storage/index.js';
 import { mockupContent } from './content.js';
@@ -211,15 +213,16 @@ async function decide(
     const key = mockupKey(row.mockupSeq);
     const refused = decidedRefusal(key, row.status) ?? (await check(row, key));
     if (refused) return [refused];
-    await tx
-      .update(mockups)
-      .set({
-        status: set.status,
-        reason: set.reason,
-        decidedBy: actor.userId,
-        decidedAt: new Date(),
-      })
-      .where(eq(mockups.id, row.id));
+    const moved = await transition(tx, MOCKUP_MACHINE, {
+      to: set.status,
+      set: { reason: set.reason, decidedBy: actor.userId, decidedAt: new Date() },
+      where: eq(mockups.id, row.id),
+      reason: set.reason,
+      actor: { type: 'user', id: actor.userId, agency: actor.agency },
+      source: 'mockups',
+      returning: ['id'],
+    });
+    if (moved.rows.length === 0) throw notAnEdgeError(MOCKUP_MACHINE, row.status, set.status);
     return null;
   });
   if (refusals) return { ok: false, refusals };

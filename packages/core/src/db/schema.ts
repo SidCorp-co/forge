@@ -1,4 +1,8 @@
-import { ISSUE_STATUSES } from '@forge/contracts/issue-vocabulary';
+import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
+import { JOB_STATUSES } from '@forge/contracts/job-machine';
+import { RECONCILE_RUN_STATUSES } from '@forge/contracts/reconcile-run-machine';
+import { PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
+import { RUNNER_PROVISION_STATUSES, RUNNER_STATUSES } from '@forge/contracts/runner-machine';
 import { type InferSelectModel, isNull, relations, type SQL, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
@@ -61,8 +65,8 @@ import { MASTER_JOB_PANES_MAX } from '@forge/contracts/master-standing';
 import { SCHEDULE_KINDS, SCHEDULE_RUN_STATUSES } from '@forge/contracts/schedules';
 import { BODY_FORMATS } from '../body/formats.js';
 import type { IssueBranchOverride } from '../branches/resolve.js';
-import { COMMENT_INTENTS } from '../issues/record-events/kinds.js';
-import type { ReleaseNotes } from '../issues/release-notes.js';
+import { COMMENT_INTENTS } from '@forge/contracts/record-events';
+import type { ReleaseNotes } from '@forge/contracts/release-notes';
 import { activityLog, actorAgencies } from './schema-activity.js';
 import { feedback } from './schema-feedback.js';
 import { requirementRevisions, requirements } from './schema-requirements.js';
@@ -569,15 +573,7 @@ export const pairingCodes = pgTable(
   }),
 );
 
-export const jobStatuses = [
-  'queued',
-  'dispatched',
-  'running',
-  'held',
-  'done',
-  'failed',
-  'cancelled',
-] as const;
+export const jobStatuses = JOB_STATUSES;
 export type JobStatus = (typeof jobStatuses)[number];
 
 export const jobTypes = [
@@ -609,13 +605,7 @@ export type ModelTier = (typeof modelTiers)[number];
 export const pipelineRunKinds = ['issue', 'pm', 'interactive', 'system'] as const;
 export type PipelineRunKind = (typeof pipelineRunKinds)[number];
 
-export const pipelineRunStatuses = [
-  'running',
-  'paused',
-  'completed',
-  'failed',
-  'cancelled',
-] as const;
+export const pipelineRunStatuses = PIPELINE_RUN_STATUSES;
 export type PipelineRunStatus = (typeof pipelineRunStatuses)[number];
 
 export const pipelineRuns = pgTable(
@@ -795,14 +785,10 @@ export const jobEvents = pgTable(
   }),
 );
 
-// ISS-447 (ISS-442 C1, I2) — append-only audit of every TERMINAL status flip on
-// the three kernel tables (jobs / agent_sessions / pipeline_runs). Written by
-// the single chokepoint `lifecycle/transition.ts:applyKernelTransition`; one row
-// per flipped entity per transition. Queryable so the C6 interventions /
-// throughput metrics can count transitions by entity/reason/source without
-// scraping logs. `from_status` is the declared prior status (the CAS guard's
-// expected value); `actor_id` is a bare uuid (no FK) so a system/sweeper actor
-// with no principal records NULL without a join target.
+// Append-only record of every status move on every machine (`@forge/contracts/machines`), written
+// by the one kernel transition `lifecycle/transition.ts:transition` in the move's own transaction:
+// one row per moved entity. `from_status` is the status the row actually left (read under the row
+// lock); `actor_id` is a bare uuid (no FK), so a system actor records NULL.
 export const kernelTransitionEntities = MACHINE_ENTITIES;
 export type KernelTransitionEntity = (typeof kernelTransitionEntities)[number];
 
@@ -874,24 +860,13 @@ export const jobEventsRelations = relations(jobEvents, ({ one }) => ({
 export const runnerTypes = ['claude-code'] as const;
 export type RunnerType = (typeof runnerTypes)[number];
 
-export const runnerStatuses = ['online', 'offline', 'draining', 'disabled'] as const;
+export const runnerStatuses = RUNNER_STATUSES;
 
 export const runnerLimitReasons = ['usage_limit', 'rate_limit', 'auth'] as const;
 export type RunnerLimitReason = (typeof runnerLimitReasons)[number];
 
-// Per (device × project) workspace provisioning lifecycle. `queued` waits for an
-// offline device; the runner walks cloning → syncing_skills → writing_mcp →
-// ready. `needs_manual_setup` is the graceful degrade when there's no clone URL/
-// key and the folder is missing (user sets it up by hand); `failed` is an error.
-export const runnerProvisionStatuses = [
-  'queued',
-  'cloning',
-  'syncing_skills',
-  'writing_mcp',
-  'ready',
-  'needs_manual_setup',
-  'failed',
-] as const;
+// Per (device × project) workspace provisioning lifecycle: `@forge/contracts/runner-machine:RUNNER_PROVISION_MACHINE`.
+export const runnerProvisionStatuses = RUNNER_PROVISION_STATUSES;
 export type RunnerProvisionStatus = (typeof runnerProvisionStatuses)[number];
 export type RunnerStatus = (typeof runnerStatuses)[number];
 
@@ -1811,7 +1786,6 @@ export const schedules = pgTable(
     targetProjectSlug: text('target_project_slug'),
     lastRunAt: timestamp('last_run_at', { withTimezone: true }),
     nextRunAt: timestamp('next_run_at', { withTimezone: true }),
-    lastStatus: text('last_status', { enum: scheduleStatuses }),
     lastSessionId: text('last_session_id'),
     metadata: jsonb('metadata'),
     templateKey: text('template_key'),
@@ -2874,15 +2848,7 @@ export const divergenceChartersRelations = relations(divergenceCharters, ({ one 
 export const reconcileVerdicts = ['no-op', 'apply', 'apply-with-adaptation', 'escalate'] as const;
 export type ReconcileVerdict = (typeof reconcileVerdicts)[number];
 
-export const reconcileRunStatuses = [
-  'pending',
-  'running',
-  'verifying',
-  'decided',
-  'applied',
-  'escalated',
-  'failed',
-] as const;
+export const reconcileRunStatuses = RECONCILE_RUN_STATUSES;
 export type ReconcileRunStatus = (typeof reconcileRunStatuses)[number];
 
 export const reconcileGates = ['auto', 'human'] as const;

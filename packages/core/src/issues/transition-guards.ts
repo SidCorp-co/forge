@@ -5,15 +5,18 @@
  *
  *   into               condition                                                code
  *   any (edge)         the move is an edge of the lifecycle                      ILLEGAL_TRANSITION
+ *   open, from draft   the actor holds `issues.admit`                            PERMISSION_FORBIDDEN
  *   in_progress        a run or lease holds it; nothing admissible holds out     NO_HOLDER, ISSUE_BLOCKED, WORKFLOW_DESIGN_NOT_APPROVED, CONTRACT_WAIT_UNSETTLED
  *   approved           plan and criteria written; a person made the move where   PLAN_REQUIRED
  *                      the project document sets `plan.approval.required`
- *   awaiting_release   every criterion's latest verdict passes, with an          NO_WORK_EVIDENCE,
+ *   awaiting_release   the merge is recorded (a landing moves no status)          MERGE_NOT_RECORDED
+ *                      every criterion's latest verdict passes, with an          NO_WORK_EVIDENCE,
  *                      admissible identity, recorded after the latest reopen     VERDICT_IDENTITY_REQUIRED, VERDICT_PREDATES_REOPEN, VERDICT_IDENTITY_NOT_ADMISSIBLE, VERDICT_DRAFT_SUPERSEDED, VERDICT_UNCORROBORATED
  *                      (a project document with `delivery.verdictsRequired: false` passes the move
  *                      and the move's record says `verdicts-waived`), and its     REQUIREMENT_CHANGED_SINCE_PLAN
  *                      requirement has not changed since its plan
- *   closed             shipped; from in_progress, as awaiting_release           CLOSE_REQUIRES_SHIPPED + the codes above
+ *   closed             only from awaiting_release, by a release that claimed it  CLOSE_ONLY_BY_RELEASE
+ *                      (a release batch or a recorded release), merge recorded   CLOSE_REQUIRES_SHIPPED
  *
  *   needs_info         a question (the reason) and its kind                      TRANSITION_REASON_REQUIRED,
  *                                                                                WAITING_KIND_REQUIRED
@@ -23,6 +26,7 @@
 
 import { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
 import {
+  ISSUE_ADMIT_PERMISSION,
   ISSUE_MACHINE,
   type IssueGuard,
   PARK_STATUSES,
@@ -41,6 +45,7 @@ import { IssueBlockedError, refuseHeldTake } from './blocked-by.js';
 import type { DraftReader } from './criteria/storefront-draft.js';
 import { isDispatchGateError } from './dispatch-gates.js';
 import { type CriteriaEvidence, type SourceType, unpassedCriteria } from './release-evidence.js';
+import { mergeNotRecorded } from './merged-at.js';
 import { isBlankPlan } from './transition-evidence.js';
 import { issueHolder } from './work-state.js';
 
@@ -59,6 +64,9 @@ export type GuardCode =
   | 'VERDICT_UNCORROBORATED'
   | 'VERDICT_DRAFT_SUPERSEDED'
   | 'REQUIREMENT_CHANGED_SINCE_PLAN'
+  | 'MERGE_NOT_RECORDED'
+  | 'CLOSE_REQUIRES_SHIPPED'
+  | 'CLOSE_ONLY_BY_RELEASE'
   | 'TRANSITION_REASON_REQUIRED'
   | 'WAITING_KIND_REQUIRED'
   | 'VOID_REASON_REQUIRED';
@@ -283,7 +291,7 @@ async function planDriftGuard(ctx: GuardContext): Promise<GuardFault | null> {
 }
 
 /**
- * awaiting_release, and in_progress → closed: every criterion's latest verdict passes, says what it
+ * awaiting_release: every criterion's latest verdict passes, says what it
  * held in, and was recorded after the issue's latest reopen. A project document with
  * `delivery.verdictsRequired: false` lets the move through and reports what it would have refused,
  * so the move's record says the verdicts were waived and not that they held.
@@ -371,10 +379,28 @@ export function storefrontDraftFault(
   return null;
 }
 
+/** closed: a release closes what it claimed (`issues.release_batch_run_id`), and nothing else does. */
+async function releaseGuard(ctx: GuardContext): Promise<GuardFault | null> {
+  const rows = (await ctx.executor.execute(
+    sql`SELECT release_batch_run_id FROM issues WHERE id = ${ctx.issue.id}`,
+  )) as unknown as Array<{ release_batch_run_id: string | null }>;
+  if (rows[0]?.release_batch_run_id) return null;
+  return {
+    code: 'CLOSE_ONLY_BY_RELEASE',
+    detail: `an issue closes only through a release, and no release has claimed this one. Finish a release batch carrying it (\`POST /api/projects/${ctx.issue.projectId}/release-batches\`), or record the release that already happened (\`POST /api/projects/${ctx.issue.projectId}/release-records\`); either closes every issue it carries.`,
+    details: { from: ctx.from, to: ctx.to },
+  };
+}
+
 /** A guard's fault as the kernel transition carries it: the refusal, with its details beside it. */
 function refusalOf(fault: GuardFault | null): Refusal | null {
   if (!fault) return null;
-  return { code: fault.code, path: '/status', detail: fault.detail, details: fault.details } as Refusal;
+  return {
+    code: fault.code,
+    path: '/status',
+    detail: fault.detail,
+    details: fault.details,
+  } as Refusal;
 }
 
 /** The guards the issue machine's edges into a status name, read off its first lifecycle edge
@@ -400,11 +426,32 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
     executor: input.tx,
   });
   const guards: Record<IssueGuard, Guard<'issue'>> = {
+    admit: async () => {
+      const denied = await permissionRefusalFor(
+        { userId: base.actorUserId },
+        base.issue.projectId,
+        ISSUE_ADMIT_PERMISSION,
+        'promoting a `draft` to `open`',
+      );
+      return denied ? ({ ...denied, path: '/status' } as Refusal) : null;
+    },
     holder: async (input) => {
       const ctx = ctxOf(input);
       return refusalOf((await heldTakeGuard(ctx)) ?? (await holderGuard(ctx)));
     },
     plan_checkpoint: async (input) => refusalOf(await planGuard(ctxOf(input))),
+    merged: async (input) => {
+      const missing = await mergeNotRecorded(input.tx, { issueId: input.row.id, to: input.to });
+      return missing
+        ? ({
+            code: missing.code,
+            path: '/status',
+            detail: missing.detail,
+            details: missing.details,
+          } as Refusal)
+        : null;
+    },
+    released: async (input) => refusalOf(await releaseGuard(ctxOf(input))),
     verdicts: async (input) => {
       const ctx = ctxOf(input);
       return refusalOf((await planDriftGuard(ctx)) ?? (await verdictGuard(ctx)));

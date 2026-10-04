@@ -1,4 +1,4 @@
-import { article, type CliSection, listed } from './kinds.js';
+import { article, type CliSection, listed } from '@forge/contracts/record-events';
 import type { CliGap, CliShape } from './shape.js';
 
 export const SHAPE_HEAD =

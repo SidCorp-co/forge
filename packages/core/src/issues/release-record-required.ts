@@ -1,7 +1,6 @@
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, issues } from '../db/schema.js';
-import { type ActorAgency, actorAgency } from './actor-agency.js';
+import { issues } from '../db/schema.js';
 
 export interface ReleaseRecordRefusal {
   detail: string;
@@ -24,26 +23,4 @@ export async function issuesMissingReleaseRecord(issueIds: string[]): Promise<st
     .where(inArray(issues.id, issueIds))
     .limit(issueIds.length);
   return rows.filter((r) => !r.releaseNotes).map((r) => r.id);
-}
-
-export async function refuseUnrecordedClose(
-  issueId: string,
-  toStatus: IssueStatus,
-  actor: { type: 'user' | 'device'; agency?: ActorAgency | undefined },
-  options: { viaReleasePath?: boolean },
-): Promise<ReleaseRecordRefusal | null> {
-  if (toStatus !== 'closed') return null;
-  if (actorAgency(actor) !== 'agent') return null;
-  if (options.viaReleasePath === true) return null;
-
-  const missing = await issuesMissingReleaseRecord([issueId]);
-  if (missing.length === 0) return null;
-
-  return {
-    detail:
-      '`closed` is what every reader takes as "this shipped", so an issue cannot close with ' +
-      `nothing written about what shipped. ${RELEASE_RECORD_REMEDY} ` +
-      'Use `dropped` instead if this turned out not to be work — that closes it without the claim.',
-    details: { requires: 'releaseNotes' },
-  };
 }

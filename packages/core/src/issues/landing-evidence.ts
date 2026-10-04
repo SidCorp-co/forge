@@ -82,12 +82,12 @@ export const mergedLandingSchema = z
  *  `held` is the mark already on the row: the first stamp wins, so a bare one is cleared first. */
 export function landingRoute(shape: LandingShape | null, held: MergeMarkKind = 'unmarked'): string {
   if (shape === null) {
-    return `Declare the project's \`source.type\` first with PUT /api/projects/:id/config, then mark it merged where the work landed and close.`;
+    return `Declare the project's \`source.type\` first with PUT /api/projects/:id/config, then mark it merged where the work landed.`;
   }
   if (shape === 'git') {
     return (
       'Where the work DID land outside the pipeline, claim it first with `forge_issues` ' +
-      '`mark_merged` naming where it landed, then close.'
+      '`mark_merged` naming where it landed.'
     );
   }
   const clear =
@@ -100,7 +100,7 @@ export function landingRoute(shape: LandingShape | null, held: MergeMarkKind = '
     "This project's work lands outside git (`source.type` is not `git`), so claim it with `forge_issues` " +
     '`mark_merged` carrying `data.landing` — the live URL, CMS entry or storefront resource the ' +
     'work now is (`landing` on `POST /api/issues/:id/merge`, or "Where it landed" on the issue\'s ' +
-    'Mark merged rail) — then close. A mark naming no landing is not evidence here, and a commit ' +
+    'Mark merged rail). A mark naming no landing is not evidence here, and a commit ' +
     'is not asked for.'
   );
 }

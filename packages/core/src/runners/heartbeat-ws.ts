@@ -1,8 +1,10 @@
+import { RUNNER_MACHINE } from '@forge/contracts/runner-machine';
 import { and, eq } from 'drizzle-orm';
 import type { WebSocket } from 'ws';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { runners, runnerTypes } from '../db/schema.js';
+import { type RunnerStatus, runners, runnerTypes } from '../db/schema.js';
+import { transition } from '../lifecycle/transition.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -74,8 +76,20 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
     )
     .limit(1);
 
-  const wasOffline = existing?.status !== 'online';
+  // An operator's drain or disable survives the box registering again, as it survives a heartbeat
+  // (`devices/heartbeat-runner-mirror.ts`): only an offline runner comes online here.
+  const comeOnline = (id: string) =>
+    transition(db, RUNNER_MACHINE, {
+      to: 'online',
+      from: 'offline',
+      where: eq(runners.id, id),
+      actor: { type: 'runner', id: principal.deviceId },
+      source: 'runner-register',
+      returning: ['id'],
+    });
   let runnerId: string;
+  let status: RunnerStatus = 'online';
+  let cameOnline = false;
   if (existing) {
     const [updated] = await db
       .update(runners)
@@ -85,15 +99,16 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
         labels: input.labels ?? (existing.labels as string[]),
         capabilities: input.capabilities ?? (existing.capabilities as Record<string, unknown>),
         ...(input.config ? { config: input.config } : {}),
-        status: 'online',
         lastSeenAt: new Date(),
         lastError: null,
         updatedAt: new Date(),
       })
       .where(eq(runners.id, existing.id))
-      .returning({ id: runners.id });
+      .returning({ id: runners.id, status: runners.status });
     if (!updated) return;
     runnerId = updated.id;
+    cameOnline = (await comeOnline(runnerId)).rows.length > 0;
+    status = cameOnline ? 'online' : updated.status;
   } else {
     try {
       const [inserted] = await db
@@ -112,6 +127,7 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
         .returning({ id: runners.id });
       if (!inserted) return;
       runnerId = inserted.id;
+      cameOnline = true;
     } catch (err) {
       if (isUniqueViolation(err)) {
         const [retry] = await db
@@ -129,8 +145,10 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
         runnerId = retry.id;
         await db
           .update(runners)
-          .set({ status: 'online', lastSeenAt: new Date(), updatedAt: new Date() })
+          .set({ lastSeenAt: new Date(), updatedAt: new Date() })
           .where(eq(runners.id, retry.id));
+        cameOnline = (await comeOnline(runnerId)).rows.length > 0;
+        status = cameOnline ? 'online' : retry.status;
       } else {
         logger.error({ err }, 'runner:register insert threw');
         return;
@@ -140,13 +158,13 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
 
   roomManager.publish(projectRoom(input.projectId), {
     event: 'runner.status',
-    data: { runnerId, status: 'online', deviceId: principal.deviceId, type: input.type },
+    data: { runnerId, status, deviceId: principal.deviceId, type: input.type },
   });
   roomManager.publish(runnerRoom(runnerId), {
     event: 'runner.status',
-    data: { runnerId, status: 'online' },
+    data: { runnerId, status },
   });
-  if (wasOffline) {
+  if (cameOnline) {
     void hooks.emit('runnerOnline', { projectId: input.projectId, runnerId });
   }
   try {
@@ -173,11 +191,15 @@ export async function handleRunnerUnregister(ws: RunnerWs, msg: unknown): Promis
   const filters = [eq(runners.deviceId, principal.deviceId)];
   if (input.runnerId) filters.push(eq(runners.id, input.runnerId));
   if (input.type) filters.push(eq(runners.type, input.type));
-  const matched = await db
-    .update(runners)
-    .set({ status: 'offline', updatedAt: new Date() })
-    .where(and(...filters))
-    .returning({ id: runners.id, projectId: runners.projectId });
+  const { rows: matched } = await transition(db, RUNNER_MACHINE, {
+    to: 'offline',
+    from: 'online',
+    set: { updatedAt: new Date() },
+    where: and(...filters),
+    actor: { type: 'runner', id: principal.deviceId },
+    source: 'runner-unregister',
+    returning: ['id', 'projectId'],
+  });
   for (const m of matched) {
     roomManager.publish(projectRoom(m.projectId), {
       event: 'runner.status',

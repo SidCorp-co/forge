@@ -1,90 +1,16 @@
-export const FAILURE_CAUSES = [
-  /** org/account monthly spend cap. 4,412 jobs/60d; 7 of the 8 ISS-871 sessions. */
-  'provider_spend_cap',
-  /** weekly / session / 5-hour usage window. 153 jobs/60d; 20 sessions all-time. */
-  'provider_usage_limit',
-  /** "Your organization has disabled Claude subscription access". 283 jobs/60d. */
-  'provider_subscription_disabled',
-  /** OAuth expired, "Not logged in · Please run /login". 2,503 jobs/60d. */
-  'provider_auth_expired',
-  /** 429/5xx/529, connection closed or stalled mid-response. 54 jobs/60d. */
-  'provider_overloaded',
-  /** provider rejected the request itself — unrecognized model, content policy.
-   *  2 jobs/60d, one of them session 1a950b18 (`[claude-code:unrecognized_model]`). */
-  'provider_refused_request',
-  'agent_startup_failed',
-  /** zero turns because the skill never reached the device. 72 jobs/60d (`[NO_WORK]`). */
-  'agent_skill_missing',
-  /** exited before emitting a result event. 1,249 jobs/90d — 18 as `[NO_RESULT_*]`
-   *  and 1,231 in the runner's older wording, `Agent completed with errors`. */
-  'agent_exited_without_result',
-  /** killed by a signal. 1 job/60d (`[SIGNAL_KILLED]`). */
-  'agent_killed',
-  /** the chat lane's skill-sync race. Writer: agent-sessions/routes.ts. */
-  'skill_not_synced',
-  /** repo_path / work_tree / origin_remote preflight. 1,073 jobs/60d. */
-  'workspace_preflight_failed',
-  /** ENOSPC. 57 jobs/60d. */
-  'workspace_disk_full',
-  /** a sibling job held the runner's repo root past `REPO_LOCK_WAIT`. Writer:
-   *  runner `daemon/dispatch.rs` (`repo_lock_timeout`); 7 rows in 30 minutes on
-   *  forge-vm 2026-09-05, all read `unclassified` before ISS-920. */
-  'repo_root_contention',
-  'box_session_saturated',
-  /** dispatch never delivered or never claimed. 54 jobs/60d. */
-  'runner_unreachable',
-  /** duplex send/ack/checkpoint failure (RFC 0003). Writer: pipeline/failure-classifier.ts. */
-  'duplex_channel_failed',
-  /** the session died without the job reporting. 160 jobs/60d. */
-  'session_lost',
-  /** heartbeat hop reaped it. 91 sessions all-time. */
-  'heartbeat_timeout',
-  /** nobody picked it up. 20 sessions all-time. */
-  'queue_timeout',
-  'turn_never_reported',
-  /** the ack hop reaped it. 7 sessions all-time. */
-  'no_client_ack',
-  /** the websocket publish that carries a chat turn failed. Writers:
-   *  schedules/dispatch.ts, agent-sessions/conversation-agent.ts, rocketchat/escalation.ts. */
-  'ws_publish_failed',
-  /** project monthly budget. Writer: jobs/dispatcher.ts. */
-  'forge_budget_exhausted',
-  /** the runner cannot run this job type. 21 jobs all-time. */
-  'runner_unsupported_type',
-  /** a resume attempt failed, incl. the CLI having no such conversation to
-   *  resume. Writer: jobs/lifecycle-routes.ts; 10 jobs/90d from the CLI side. */
-  'resume_failed',
-  /** duplex residency window elapsed. Writer: jobs/park-deadline.ts. */
-  'residency_expired',
-  /** a processless park hit the deadline its asker set and nobody answered.
-   *  Writer: jobs/park-deadline.ts (ISS-964 criterion 34); the days waited are
-   *  on the question's `ended_reason`, not here. */
-  'park_unanswered',
-  /** a schedule run produced no evidence. Writer: agent-sessions/schedule-evidence.ts. */
-  'audit_ran_blind',
-  /** a schedule run would have acted as someone it may not act as — the owner lost their role or
-   *  is gone, or no free box can carry their token — so it never started. The refusal's code
-   *  leads `failure_detail`. Writer: schedules/scheduled-session.ts (ISS-30). */
-  'session_authority_refused',
-  /** the I1 trigger reaped an active child under a terminal run. 101 sessions. */
-  'orphan_under_terminal_run',
-  /** run cancelled. 19 sessions, 98 jobs. */
-  'pipeline_cancelled',
-  /** run completed while a child was still active. 15 sessions, 172 jobs. */
-  'pipeline_completed',
-  /** run failed while a child was still active. 3 jobs. */
-  'pipeline_failed',
-  /** a migration swept a zombie row. 23 sessions. */
-  'migration_zombie_cleanup',
-  /** an operator cleared a stale chat/schedule session by hand. 16 sessions. */
-  'manual_ops_stale_chat_schedule',
-  /** a person cancelled it. 7 sessions. */
-  'user_cancelled',
-  /** nothing matched. First-class and counted, never a silent fallback. */
-  'unclassified',
-] as const;
+// The failure-cause vocabulary is `@forge/contracts/failure-causes`; core adds where each cause
+// comes from.
+import type { FailureCause } from '@forge/contracts/failure-causes';
 
-export type FailureCause = (typeof FAILURE_CAUSES)[number];
+export {
+  FAILURE_CAUSE_PRESENTATION,
+  FAILURE_CAUSES,
+  type FailureCause,
+  type FailureCausePresentation,
+  LEGACY_CAUSE_ALIAS,
+  LEGACY_NEUTRAL_REASONS,
+  resolveFailureCause,
+} from '@forge/contracts/failure-causes';
 
 export type FailureOrigin =
   | 'provider'
@@ -136,23 +62,3 @@ export const FAILURE_CAUSE_ORIGIN: Record<FailureCause, FailureOrigin> = {
   user_cancelled: 'user',
   unclassified: 'unknown',
 };
-
-export const LEGACY_CAUSE_ALIAS: Readonly<Record<string, FailureCause>> = {
-  job_failed: 'unclassified',
-  usage_limit: 'provider_usage_limit',
-  'ws-publish-failed': 'ws_publish_failed',
-};
-
-const CAUSE_SET: ReadonlySet<string> = new Set(FAILURE_CAUSES);
-const ALIAS_LOOKUP: ReadonlyMap<string, FailureCause> = new Map(Object.entries(LEGACY_CAUSE_ALIAS));
-
-export function resolveFailureCause(raw: string | null | undefined): FailureCause {
-  if (!raw) return 'unclassified';
-  if (CAUSE_SET.has(raw)) return raw as FailureCause;
-  return ALIAS_LOOKUP.get(raw) ?? 'unclassified';
-}
-
-export function isRealFailureCause(cause: FailureCause): boolean {
-  const origin = FAILURE_CAUSE_ORIGIN[cause];
-  return origin !== 'lifecycle' && origin !== 'user';
-}

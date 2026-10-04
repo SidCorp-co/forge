@@ -14,7 +14,8 @@
 //      time, enforced by the partial unique index `reconcile_runs_active_project_uq`.
 
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { RECONCILE_RUN_MACHINE } from '@forge/contracts/reconcile-run-machine';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   deviceSkills,
@@ -34,6 +35,7 @@ import {
 } from '../db/schema.js';
 import { selectKnowledgeBodies } from '../knowledge/service.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
+import { transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { emitNotification } from '../notifications/emit.js';
@@ -510,15 +512,16 @@ async function failActiveReconcileRun(runId: string, reason: string): Promise<vo
     if (!runRow) return;
     if (!['pending', 'running', 'verifying'].includes(runRow.status)) return;
 
-    await tx
-      .update(reconcileRuns)
-      .set({ status: 'failed', error: reason.slice(0, 500), updatedAt: new Date() })
-      .where(
-        and(
-          eq(reconcileRuns.id, runId),
-          inArray(reconcileRuns.status, ['pending', 'running', 'verifying']),
-        ),
-      );
+    await transition(tx, RECONCILE_RUN_MACHINE, {
+      to: 'failed',
+      from: ['pending', 'running', 'verifying'],
+      set: { error: reason.slice(0, 500), updatedAt: new Date() },
+      where: eq(reconcileRuns.id, runId),
+      reason: reason.slice(0, 500),
+      actor: { type: 'system' },
+      source: 'reconcile',
+      returning: ['id'],
+    });
 
     await logActivity(tx, {
       eventType: 'reconcile.failed',
@@ -844,23 +847,22 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
 
     if (input.verdict === 'escalate' || input.verdict === 'no-op') {
       const nextStatus: ReconcileRunStatus = input.verdict === 'escalate' ? 'escalated' : 'applied';
-      const updated = await tx
-        .update(reconcileRuns)
-        .set({
-          status: nextStatus,
+      const { rows: updated } = await transition(tx, RECONCILE_RUN_MACHINE, {
+        to: nextStatus,
+        from: ['pending', 'running'],
+        set: {
           verdict: input.verdict,
           gate,
           rationale: input.rationale,
           decidedAt: new Date(),
           updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(reconcileRuns.id, input.runId),
-            inArray(reconcileRuns.status, ['pending', 'running']),
-          ),
-        )
-        .returning({ id: reconcileRuns.id });
+        },
+        where: eq(reconcileRuns.id, input.runId),
+        reason: input.rationale.slice(0, 500),
+        actor: { type: 'system' },
+        source: 'reconcile-verdict',
+        returning: ['id'],
+      });
 
       const eventType = input.verdict === 'escalate' ? 'reconcile.escalated' : 'reconcile.decided';
       await logActivity(tx, {
@@ -882,23 +884,23 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
     const candidateBody = input.candidateBody ?? '';
     const candidateHash = hashSkillBody(candidateBody, null);
 
-    await tx
-      .update(reconcileRuns)
-      .set({
-        status: 'verifying',
+    await transition(tx, RECONCILE_RUN_MACHINE, {
+      to: 'verifying',
+      from: ['pending', 'running'],
+      set: {
         verdict: input.verdict,
         gate,
         candidateBody,
         candidateHash,
         rationale: input.rationale,
         updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(reconcileRuns.id, input.runId),
-          inArray(reconcileRuns.status, ['pending', 'running']),
-        ),
-      );
+      },
+      where: eq(reconcileRuns.id, input.runId),
+      reason: input.rationale.slice(0, 500),
+      actor: { type: 'system' },
+      source: 'reconcile-verdict',
+      returning: ['id'],
+    });
 
     await logActivity(tx, {
       eventType: 'reconcile.decided',
@@ -1031,10 +1033,16 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
     }
 
     if (majorityFail || (!majorityPass && allVoted)) {
-      await tx
-        .update(reconcileRuns)
-        .set({ status: 'escalated', updatedAt: new Date() })
-        .where(and(eq(reconcileRuns.id, input.runId), eq(reconcileRuns.status, 'verifying')));
+      await transition(tx, RECONCILE_RUN_MACHINE, {
+        to: 'escalated',
+        from: 'verifying',
+        set: { updatedAt: new Date() },
+        where: eq(reconcileRuns.id, input.runId),
+        reason: `verifier majority fail: ${failCount}/${allVotes.length}`,
+        actor: { type: 'system' },
+        source: 'reconcile-verify',
+        returning: ['id'],
+      });
 
       await logActivity(tx, {
         eventType: 'verify.failed',
@@ -1051,11 +1059,15 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
     if (majorityPass) {
       const gate = runRow.gate ?? 'human';
       if (gate === 'human') {
-        const updated = await tx
-          .update(reconcileRuns)
-          .set({ status: 'decided', decidedAt: new Date(), updatedAt: new Date() })
-          .where(and(eq(reconcileRuns.id, input.runId), eq(reconcileRuns.status, 'verifying')))
-          .returning({ id: reconcileRuns.id });
+        const { rows: updated } = await transition(tx, RECONCILE_RUN_MACHINE, {
+          to: 'decided',
+          from: 'verifying',
+          set: { decidedAt: new Date(), updatedAt: new Date() },
+          where: eq(reconcileRuns.id, input.runId),
+          actor: { type: 'system' },
+          source: 'reconcile-verify',
+          returning: ['id'],
+        });
 
         await logActivity(tx, {
           eventType: 'reconcile.decided',
@@ -1071,14 +1083,16 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
 
       if (!runRow.skillId) {
         logger.error({ runId: input.runId }, 'reconcile: cannot auto-publish, skillId is null');
-        await tx
-          .update(reconcileRuns)
-          .set({
-            status: 'escalated',
-            error: 'skillId is null, cannot auto-publish',
-            updatedAt: new Date(),
-          })
-          .where(and(eq(reconcileRuns.id, input.runId), eq(reconcileRuns.status, 'verifying')));
+        await transition(tx, RECONCILE_RUN_MACHINE, {
+          to: 'escalated',
+          from: 'verifying',
+          set: { error: 'skillId is null, cannot auto-publish', updatedAt: new Date() },
+          where: eq(reconcileRuns.id, input.runId),
+          reason: 'skillId is null, cannot auto-publish',
+          actor: { type: 'system' },
+          source: 'reconcile-verify',
+          returning: ['id'],
+        });
         return { notify: null, projectId: runRow.projectId };
       }
 
@@ -1104,10 +1118,15 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
         })
         .where(eq(skills.id, runRow.skillId));
 
-      await tx
-        .update(reconcileRuns)
-        .set({ status: 'applied', decidedAt: new Date(), updatedAt: new Date() })
-        .where(and(eq(reconcileRuns.id, input.runId), eq(reconcileRuns.status, 'verifying')));
+      await transition(tx, RECONCILE_RUN_MACHINE, {
+        to: 'applied',
+        from: 'verifying',
+        set: { decidedAt: new Date(), updatedAt: new Date() },
+        where: eq(reconcileRuns.id, input.runId),
+        actor: { type: 'system' },
+        source: 'reconcile-verify',
+        returning: ['id'],
+      });
 
       await logActivity(tx, {
         eventType: 'skill.body.changed',
@@ -1176,10 +1195,15 @@ export async function applyReconcileRun(runId: string, actorUserId: string): Pro
       })
       .where(eq(skills.id, skillIdForPublish));
 
-    await tx
-      .update(reconcileRuns)
-      .set({ status: 'applied', decidedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(reconcileRuns.id, runId), eq(reconcileRuns.status, 'decided')));
+    await transition(tx, RECONCILE_RUN_MACHINE, {
+      to: 'applied',
+      from: 'decided',
+      set: { decidedAt: new Date(), updatedAt: new Date() },
+      where: eq(reconcileRuns.id, runId),
+      actor: { type: 'user', id: actorUserId, agency: 'human' },
+      source: 'reconcile-approve',
+      returning: ['id'],
+    });
 
     await logActivity(tx, {
       eventType: 'skill.body.changed',
@@ -1196,8 +1220,6 @@ export async function applyReconcileRun(runId: string, actorUserId: string): Pro
 
   await resolveNotifications(`reconcile_run:${runId}:gate`);
 }
-
-const RECONCILE_RUN_TERMINAL_STATUSES = ['applied', 'escalated', 'failed'];
 
 /**
  * Human rejects a run — escalates it, preserving the last-good body. Accepts
@@ -1222,16 +1244,22 @@ export async function rejectReconcileRun(
       .limit(1);
 
     if (!runRow) throw new Error(`NOT_FOUND: reconcile run ${runId}`);
-    if (RECONCILE_RUN_TERMINAL_STATUSES.includes(runRow.status)) {
+    if (RECONCILE_RUN_MACHINE.terminal.includes(runRow.status)) {
       throw new Error(
         `BAD_REQUEST: run is in terminal status '${runRow.status}', nothing to reject`,
       );
     }
 
-    await tx
-      .update(reconcileRuns)
-      .set({ status: 'escalated', updatedAt: new Date() })
-      .where(and(eq(reconcileRuns.id, runId), eq(reconcileRuns.status, runRow.status)));
+    await transition(tx, RECONCILE_RUN_MACHINE, {
+      to: 'escalated',
+      from: runRow.status,
+      set: { updatedAt: new Date() },
+      where: eq(reconcileRuns.id, runId),
+      reason: reason || 'human rejected',
+      actor: { type: 'user', id: actorUserId, agency: 'human' },
+      source: 'reconcile-reject',
+      returning: ['id'],
+    });
 
     await logActivity(tx, {
       eventType: 'reconcile.escalated',

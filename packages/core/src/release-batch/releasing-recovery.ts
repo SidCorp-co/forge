@@ -157,7 +157,6 @@ export async function recoverStrandedReleasing(
         actor,
         {
           transitionReason: options.reason,
-          viaReleasePath: true,
           ...(options.fence ? { beforeStatusWrite: options.fence } : {}),
         },
       );

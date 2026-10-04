@@ -1,6 +1,5 @@
-// The browser's copy of the comment-intent and record-event vocabulary core owns (ISS-56). Neither
-// package may import a runtime value from the other, so these constants are a second declaration on
-// purpose, and `packages/core/src/issues/record-events/kinds.test.ts` keeps them identical.
+// The comment-intent and record-event vocabulary (ISS-56): one declaration, read by core (its
+// writes and `activity_log_record_kind_chk`) and by the browser.
 
 /** What a person or agent means a comment to do. Three values, never more (data-model review). */
 export const COMMENT_INTENTS = ["question", "decision", "note"] as const;
@@ -89,6 +88,30 @@ export const RECORD_DIGEST_KIND = "digest";
 export const RECORD_ACTION_PREFIX = "record.";
 
 export const NARRATION_COLLAPSE_DAYS = 180;
+
+/** Every `activity_log.action` a record event is stored under. */
+export const RECORD_ACTIONS: readonly string[] = [
+	...RECORD_EVENT_KINDS.map((kind) => `${RECORD_ACTION_PREFIX}${kind}`),
+	`${RECORD_ACTION_PREFIX}${RECORD_DIGEST_KIND}`,
+];
+
+export function isRecordEventKind(kind: string | null | undefined): kind is RecordEventKind {
+	return kind != null && (RECORD_EVENT_KINDS as readonly string[]).includes(kind);
+}
+
+export function isKernelOnlyRecordKind(
+	kind: string | null | undefined,
+): kind is KernelOnlyRecordKind {
+	return kind != null && (KERNEL_ONLY_RECORD_KINDS as readonly string[]).includes(kind);
+}
+
+export function isCommentIntent(intent: unknown): intent is CommentIntent {
+	return typeof intent === "string" && (COMMENT_INTENTS as readonly string[]).includes(intent);
+}
+
+export function recordAction(kind: RecordEventKind | typeof RECORD_DIGEST_KIND): string {
+	return `${RECORD_ACTION_PREFIX}${kind}`;
+}
 
 export interface RecordEventFieldView {
 	readonly key: string;

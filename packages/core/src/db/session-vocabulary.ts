@@ -1,32 +1,17 @@
-import { FAILURE_CAUSES, type FailureCause } from '../pipeline/failure-causes.js';
+import { FAILURE_CAUSES, type FailureCause } from '@forge/contracts/failure-causes';
+import {
+  AGENT_SESSION_STATUSES,
+  TERMINAL_AGENT_SESSION_STATUSES,
+} from '@forge/contracts/session-machine';
 
 export const agentSessionKinds = ['master', 'run_session', 'pipeline', 'pm', 'chat'] as const;
 
 export type AgentSessionKind = (typeof agentSessionKinds)[number];
 
-// ISS-197 — `completed_via_recovery` / `cancelled_stale` are non-failure
-// terminal markers written by the recovery-by-verification path in
-// `jobs/retry.ts`. UI filters / analytics that partition on
-// agent_sessions.status treat them as success states, not failures.
-export const agentSessionStatuses = [
-  'idle',
-  'queued',
-  'running',
-  'completed',
-  'failed',
-  'completed_via_recovery',
-  'cancelled_stale',
-  'cancelled',
-] as const;
+export const agentSessionStatuses = AGENT_SESSION_STATUSES;
 export type AgentSessionStatus = (typeof agentSessionStatuses)[number];
 
-export const terminalAgentSessionStatuses = [
-  'completed',
-  'failed',
-  'completed_via_recovery',
-  'cancelled_stale',
-  'cancelled',
-] as const satisfies readonly AgentSessionStatus[];
+export const terminalAgentSessionStatuses = TERMINAL_AGENT_SESSION_STATUSES;
 
 export const sessionRuntimeStates = [
   'starting',

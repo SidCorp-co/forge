@@ -1,8 +1,10 @@
+import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { transitionSessions } from '../agent-sessions/session-transition.js';
+import { transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import type { LoopScope } from './loop-monitor.js';
 import { kindTuple, NEVER_PARKED_SESSION_KINDS } from './session-kinds.js';
@@ -39,20 +41,22 @@ export async function reapExpiredParks(
   now: Date = new Date(),
   scope: LoopScope = {},
 ): Promise<number> {
-  const reaped = (await transitionSessions(db, {
-    to: 'failed',
-    set: { failureReason: 'residency_expired', updatedAt: now },
-    where: and(
-      eq(agentSessions.status, 'running'),
-      eq(agentSessions.runtimeState, 'awaiting_input'),
-      RESIDENCY_DEADLINE,
-      NOT_A_PROCESSLESS_PARK,
-      ...(scope.projectId ? [eq(agentSessions.projectId, scope.projectId)] : []),
-    ),
-    reason: 'residency_expired',
-    actor: { type: 'sweeper' },
-    source: 'loop-monitor',
-  })).rows;
+  const reaped = (
+    await transitionSessions(db, {
+      to: 'failed',
+      set: { failureReason: 'residency_expired', updatedAt: now },
+      where: and(
+        eq(agentSessions.status, 'running'),
+        eq(agentSessions.runtimeState, 'awaiting_input'),
+        RESIDENCY_DEADLINE,
+        NOT_A_PROCESSLESS_PARK,
+        ...(scope.projectId ? [eq(agentSessions.projectId, scope.projectId)] : []),
+      ),
+      reason: 'residency_expired',
+      actor: { type: 'sweeper' },
+      source: 'loop-monitor',
+    })
+  ).rows;
 
   if (reaped.length > 0) {
     logger.info({ reaped: reaped.length }, 'loop-monitor: parks past their residency deadline');
@@ -108,20 +112,28 @@ export async function reapUnansweredParks(
 
   for (const park of parks) {
     const endedReason = `unanswered_${park.days}d`;
-    const moved = (await transitionSessions(db, {
-      to: 'failed',
-      set: { failureReason: 'park_unanswered', updatedAt: now },
-      where: and(eq(agentSessions.id, park.sessionId), eq(agentSessions.status, 'running')),
+    const moved = (
+      await transitionSessions(db, {
+        to: 'failed',
+        set: { failureReason: 'park_unanswered', updatedAt: now },
+        where: and(eq(agentSessions.id, park.sessionId), eq(agentSessions.status, 'running')),
+        reason: endedReason,
+        actor: { type: 'sweeper' },
+        source: 'loop-monitor',
+      })
+    ).rows;
+    if (moved.length === 0) continue;
+
+    await transition(db, QUESTION_MACHINE, {
+      to: 'expired',
+      from: 'open',
+      set: { endedReason, endedBy: 'sweeper', updatedAt: now },
+      where: eq(agentQuestions.id, park.questionId),
       reason: endedReason,
       actor: { type: 'sweeper' },
       source: 'loop-monitor',
-    })).rows;
-    if (moved.length === 0) continue;
-
-    await db
-      .update(agentQuestions)
-      .set({ status: 'expired', endedReason, endedBy: 'sweeper', updatedAt: now })
-      .where(and(eq(agentQuestions.id, park.questionId), eq(agentQuestions.status, 'open')));
+      returning: ['id'],
+    });
     closed += 1;
   }
 

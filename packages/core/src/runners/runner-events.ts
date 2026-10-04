@@ -1,6 +1,8 @@
+import { RUNNER_MACHINE } from '@forge/contracts/runner-machine';
 import { eq } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import { type RunnerStatus, runnerEvents, runners } from '../db/schema.js';
+import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
 
 /** A drizzle executor: the base `db` or a transaction handle. */
 export type Executor = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -36,15 +38,15 @@ export interface SetRunnerStatusResult {
 }
 
 /**
- * Single-row status mutation with audit. Reads the current status under a row
- * lock, writes the new status + bumps updated_at, and appends a `runner_events`
- * row ONLY when the value changed. Always bumps updated_at so the stale-detector
- * heartbeat semantics are preserved even on a no-op status write.
+ * Single-row status move with audit: the move goes through the kernel transition on the runner
+ * machine, a move it does not draw is refused by name, and a `runner_events` row is appended only
+ * when the status changed. `updated_at` is bumped even on a no-op, as the stale detector reads it.
  */
 export async function setRunnerStatus(input: {
   runnerId: string;
   newStatus: RunnerStatus;
   reason: string;
+  actor: KernelActor;
 }): Promise<SetRunnerStatusResult> {
   return db.transaction(async (tx) => {
     const [existing] = await tx
@@ -57,23 +59,26 @@ export async function setRunnerStatus(input: {
     if (!existing) return { found: false, changed: false, oldStatus: null };
 
     const oldStatus = existing.status;
-    const changed = oldStatus !== input.newStatus;
+    await tx.update(runners).set({ updatedAt: new Date() }).where(eq(runners.id, input.runnerId));
+    if (oldStatus === input.newStatus) return { found: true, changed: false, oldStatus };
 
-    await tx
-      .update(runners)
-      .set({ status: input.newStatus, updatedAt: new Date() })
-      .where(eq(runners.id, input.runnerId));
+    const moved = await transition(tx, RUNNER_MACHINE, {
+      to: input.newStatus,
+      where: eq(runners.id, input.runnerId),
+      reason: input.reason,
+      actor: input.actor,
+      source: 'runners',
+      returning: ['id'],
+    });
+    if (moved.rows.length === 0) throw notAnEdgeError(RUNNER_MACHINE, oldStatus, input.newStatus);
 
-    if (changed) {
-      await insertRunnerEvent(tx, {
-        runnerId: input.runnerId,
-        projectId: existing.projectId,
-        oldStatus,
-        newStatus: input.newStatus,
-        reason: input.reason,
-      });
-    }
-
-    return { found: true, changed, oldStatus };
+    await insertRunnerEvent(tx, {
+      runnerId: input.runnerId,
+      projectId: existing.projectId,
+      oldStatus,
+      newStatus: input.newStatus,
+      reason: input.reason,
+    });
+    return { found: true, changed: true, oldStatus };
   });
 }

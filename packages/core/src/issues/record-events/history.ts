@@ -5,7 +5,7 @@ import { and, asc, eq, gt, like } from 'drizzle-orm';
 import { db, type Tx } from '../../db/client.js';
 import { comments } from '../../db/schema.js';
 import { type ForgeRecord, parseForgeRecord } from '../../messaging/forge-record.js';
-import { isKernelOnlyRecordKind, type RecordEventKind } from './kinds.js';
+import { isKernelOnlyRecordKind, type RecordEventKind } from '@forge/contracts/record-events';
 import { listRecordEvents, mirroredCommentIds, recordOfEvent } from './store.js';
 
 export interface RecordEntry {

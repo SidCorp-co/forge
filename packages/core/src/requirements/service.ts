@@ -11,6 +11,7 @@ import {
   REQUIREMENT_READINESS_GATE_DEFAULT,
   type RequirementReadinessGate,
 } from '@forge/contracts/requirements';
+import { REQUIREMENT_MACHINE } from '@forge/contracts/requirement-machine';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import {
@@ -22,6 +23,7 @@ import {
   requirements,
 } from '../db/schema-requirements.js';
 import { assertProjectAccess } from '../lib/authz.js';
+import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { staleOnTargetRevised } from '../suggestions/stale.js';
 import { linkedContracts, writePinsIn } from './baselines.js';
@@ -104,6 +106,10 @@ class Refused extends Error {
 }
 
 /** Runs `body` in a transaction; a `Refused` rolls everything back and comes out as refusals. */
+export function requirementKernelActor(actor: RequirementActor): KernelActor {
+  return { type: 'user', id: actor.userId, agency: actor.agency };
+}
+
 export async function inTx(
   body: (tx: Tx) => Promise<RequirementRefusal[] | null | undefined>,
 ): Promise<RequirementRefusal[] | null> {
@@ -376,12 +382,20 @@ export async function acceptRevision(input: {
       .where(revisionWhere(row.id, target.revision));
     await tx
       .update(requirements)
-      .set({
-        currentRevision: target.revision,
-        updatedAt: new Date(),
-        ...(rebaseline ? { status: 'agreed' as const, acceptedAt: null } : {}),
-      })
+      .set({ currentRevision: target.revision, updatedAt: new Date() })
       .where(eq(requirements.id, row.id));
+    if (rebaseline) {
+      await transition(tx, REQUIREMENT_MACHINE, {
+        to: 'agreed',
+        from: 'accepted',
+        set: { acceptedAt: null },
+        where: eq(requirements.id, row.id),
+        reason: acceptReason,
+        actor: requirementKernelActor(actor),
+        source: 'requirements',
+        returning: ['id'],
+      });
+    }
     if (rebaseline) {
       // cm:why the baseline records who re-agreed and in their own words; the revision's reason is
       // its author's, already on the revision row
@@ -447,10 +461,19 @@ export async function agreeRequirement(input: {
       input.reason?.trim() || null,
       readiness,
     );
-    await tx
-      .update(requirements)
-      .set({ status: 'agreed', updatedAt: new Date() })
-      .where(eq(requirements.id, row.id));
+    const agreed = await transition(tx, REQUIREMENT_MACHINE, {
+      to: 'agreed',
+      from: 'draft',
+      set: { updatedAt: new Date() },
+      where: eq(requirements.id, row.id),
+      reason: input.reason?.trim() || null,
+      actor: requirementKernelActor(actor),
+      source: 'requirements',
+      returning: ['id'],
+    });
+    if (agreed.rows.length === 0) {
+      throw notAnEdgeError(REQUIREMENT_MACHINE, current.status as RequirementStatus, 'agreed');
+    }
     return null;
   });
   return answer(projectId, row.id, actor, refusals);

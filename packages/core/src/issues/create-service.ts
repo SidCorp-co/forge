@@ -1,9 +1,12 @@
+import { ISSUE_ADMIT_PERMISSION, ISSUE_INITIAL_STATUSES } from '@forge/contracts/issue-machine';
 import { eq } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issueLabels, issues } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { RefusalError } from '../lib/refusal.js';
+import { permissionRefusalFor } from '../permissions/index.js';
 import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { leaseWriteTakes } from '../pipeline/session-claim.js';
@@ -46,12 +49,11 @@ export class IssueCreateError extends Error {
 }
 
 /**
- * ISS-130 / ISS-236 — the only statuses an issue may be born at. `open` is the
- * normal triage entry, `on_hold` parks it before triage, `draft` holds an
- * AI-generated proposal for human promote/discard. Every other status change
- * goes through the transition surface so the state machine and activity log run.
+ * The only statuses an issue may be born at (`ISSUE_MACHINE.initial`): `open` for an actor holding
+ * `issues.admit`, `draft` otherwise. Every other status change goes through the transition surface
+ * so the state machine and activity log run.
  */
-export const CREATE_ENTRY_STATUSES = ['open', 'on_hold', 'draft'] as const;
+export const CREATE_ENTRY_STATUSES = ISSUE_INITIAL_STATUSES;
 
 export type CreateEntryStatus = (typeof CREATE_ENTRY_STATUSES)[number];
 
@@ -152,14 +154,47 @@ export async function announceIssueCreated(
   });
 }
 
+/** `open` needs `issues.admit`: named, it is refused without it; unnamed, the issue is born at `draft`. */
+async function birthStatus(
+  projectId: string,
+  userId: string,
+  named: CreateEntryStatus | undefined,
+): Promise<CreateEntryStatus> {
+  if (named === 'draft') return 'draft';
+  const denied = await permissionRefusalFor(
+    { userId },
+    projectId,
+    ISSUE_ADMIT_PERMISSION,
+    'filing an issue at `open`',
+  );
+  if (!denied) return 'open';
+  if (named === undefined) return 'draft';
+  throw new RefusalError(
+    [
+      {
+        ...denied,
+        detail: `${denied.detail} File it at \`draft\` instead; a holder of ${ISSUE_ADMIT_PERMISSION} promotes it.`,
+      },
+    ],
+    denied.code,
+  );
+}
+
 export async function createIssue(
   input: CreateIssueInput,
   writer: IssueCreateWriter,
 ): Promise<CreateIssueResult> {
-  const requestedStatus = (input.status ?? 'open') as CreateEntryStatus;
-  if (!(CREATE_ENTRY_STATUSES as readonly string[]).includes(requestedStatus)) {
-    throw new IssueCreateError('INVALID_STATUS', requestedStatus);
+  if (
+    input.status !== undefined &&
+    !(CREATE_ENTRY_STATUSES as readonly string[]).includes(input.status)
+  ) {
+    throw new IssueCreateError('INVALID_STATUS', input.status);
   }
+  const requestedStatus = await birthStatus(
+    input.projectId,
+    writer.createdById,
+    input.status as CreateEntryStatus | undefined,
+  );
 
   let decodedAttachments: DecodedAttachment[] = [];
   if (input.attachments && input.attachments.length > 0) {

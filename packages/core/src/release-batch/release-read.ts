@@ -18,7 +18,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
-import { releaseNotesSections } from '../issues/release-notes.js';
+import { releaseNotesSections } from '@forge/contracts/release-notes';
 import { peopleOf } from '../lib/people.js';
 import { readReleasePath } from '../project-config/release-path.js';
 import {

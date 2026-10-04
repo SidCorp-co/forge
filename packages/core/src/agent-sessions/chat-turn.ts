@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { SESSION_MACHINE } from '@forge/contracts/session-machine';
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import {
@@ -8,7 +9,6 @@ import {
 } from '../content-language/block.js';
 import { readContentLanguage } from '../content-language/read.js';
 import { db } from '../db/client.js';
-import { withKernelMarker } from '../db/kernel-marker.js';
 import {
   agentSessions,
   devices,
@@ -23,6 +23,7 @@ import {
   findChatCapableDeviceForProject,
   resolveSessionRepoPathForDevice,
 } from '../lib/device-pool.js';
+import { type KernelActor, notAnEdgeError } from '../lifecycle/transition.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import { isSlashCommandSkillName } from '../skills/skill-name.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
@@ -38,6 +39,7 @@ import {
   samePageContext,
 } from './page-context.js';
 import { seedTurn } from './session-events.js';
+import { transitionSessions } from './session-transition.js';
 import type { AgentSessionPatch } from './session-failure.js';
 import { readSessionModel } from './session-model.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
@@ -280,6 +282,8 @@ export interface DispatchChatTurnArgs {
    * that turn stopped, so the runner respawns the session under this one.
    */
   credential?: string | undefined;
+  /** Who sent the turn, as the kernel records the session's move to `running`; absent, core. */
+  actor?: KernelActor | undefined;
 }
 
 /** A remote turn runs in its device binding's checkout; a binding that names none is refused by name. */
@@ -353,7 +357,6 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
 
   const updates: AgentSessionPatch = {
     messages,
-    status: 'running',
     lastHeartbeatAt: now,
     updatedAt: now,
     startedAt: session.startedAt ?? now,
@@ -383,13 +386,24 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     if (fallbackTitle) updates.title = fallbackTitle;
   }
 
-  const { updated, sync, eventSeqBase } = await withKernelMarker(db, async (tx) => {
-    const [row] = await tx
+  const { updated, sync, eventSeqBase } = await db.transaction(async (tx) => {
+    const [written] = await tx
       .update(agentSessions)
       .set(updates)
       .where(eq(agentSessions.id, session.id))
       .returning();
-    if (!row) throw new Error('agent_sessions: update returned no row');
+    if (!written) throw new Error('agent_sessions: update returned no row');
+    const moved = await transitionSessions(tx, {
+      to: 'running',
+      where: eq(agentSessions.id, session.id),
+      actor: args.actor ?? { type: 'system' },
+      source: 'chat-turn',
+      returning: ['id'],
+    });
+    if (moved.rows.length === 0 && written.status !== 'running') {
+      throw notAnEdgeError(SESSION_MACHINE, written.status, 'running');
+    }
+    const row = { ...written, status: 'running' as const };
     // Materialize the appended user turn in the same transaction so the legacy
     // blob and per-turn rows can never diverge if the turn insert throws.
     const s = await syncTurnsWithMessages(row.id, prevMessages, messages, tx);

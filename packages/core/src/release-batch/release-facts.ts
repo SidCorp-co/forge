@@ -8,7 +8,7 @@ import { requirements } from '../db/schema-requirements.js';
 import { type CriterionWithVerdict, listCriteriaOf } from '../issues/criteria/store.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { reopenedAtOf } from '../issues/release-evidence.js';
-import type { ReleaseNotes } from '../issues/release-notes.js';
+import type { ReleaseNotes } from '@forge/contracts/release-notes';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { requirementKey } from '../requirements/read.js';

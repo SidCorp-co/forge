@@ -17,7 +17,11 @@ import {
 import { badRequest, idParamSchema, notFound } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import type { Actor } from '../../pipeline/activity.js';
-import { isRecordEventKind, RECORD_DIGEST_KIND, RECORD_EVENT_KINDS } from './kinds.js';
+import {
+  isRecordEventKind,
+  RECORD_DIGEST_KIND,
+  RECORD_EVENT_KINDS,
+} from '@forge/contracts/record-events';
 import { listRecordEvents, type RecordEvent, RecordEventRefused } from './store.js';
 import { writeScreenedRecordEvent } from './write.js';
 

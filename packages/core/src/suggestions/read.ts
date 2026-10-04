@@ -19,10 +19,15 @@ import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { rowIn } from '../requirements/read.js';
 import { designNodesIn } from '../workflows/node-refs.js';
+import type { KernelActor } from '../lifecycle/transition.js';
 
 export interface SuggestionActor {
   userId: string;
   agency: ActorAgency;
+}
+
+export function suggestionKernelActor(actor: SuggestionActor): KernelActor {
+  return { type: 'user', id: actor.userId, agency: actor.agency };
 }
 
 export type SuggestionTargetRef =

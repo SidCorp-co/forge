@@ -59,7 +59,7 @@ pipelineRunRoutes.post(
     const userId = c.get('userId');
     await loadRunWithAccess(id, userId);
     try {
-      const run = await pausePipelineRun(id);
+      const run = await pausePipelineRun(id, restActor(c));
       return c.json(run);
     } catch (err) {
       rethrowControlError(err);
@@ -77,7 +77,7 @@ pipelineRunRoutes.post(
     const userId = c.get('userId');
     await loadRunWithAccess(id, userId);
     try {
-      const run = await resumePipelineRun(id);
+      const run = await resumePipelineRun(id, restActor(c));
       return c.json(run);
     } catch (err) {
       rethrowControlError(err);

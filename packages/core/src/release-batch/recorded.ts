@@ -188,7 +188,7 @@ export async function recordPerformedRelease(
         { id: issue.id, projectId, status: gateStatus, reopenCount: 0 },
         'closed',
         await accountActor(userId),
-        { viaReleasePath: true, reason: account },
+        { reason: account },
       );
       closed.push(issue.id);
     } catch (err) {

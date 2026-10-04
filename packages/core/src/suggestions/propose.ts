@@ -8,12 +8,14 @@ import {
   type SuggestionKind,
   type SuggestionProducer,
 } from '@forge/contracts/suggestions';
+import { SUGGESTION_MACHINE } from '@forge/contracts/suggestion-machine';
 import { and, eq, ne } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { nearestFeedbackOf } from '../feedback/embeddings.js';
 import { permissionRefusalFor } from '../permissions/index.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
+import { notAnEdgeError, transition } from '../lifecycle/transition.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import { designNodesIn, nodeSetRefusals } from '../workflows/node-refs.js';
 import { breakdownGuardIn } from './breakdown.js';
@@ -25,6 +27,7 @@ import {
   type SuggestionActor,
   type SuggestionTarget,
   type SuggestionTargetRef,
+  suggestionKernelActor,
   targetOfRow,
 } from './read.js';
 import {
@@ -265,18 +268,33 @@ export async function reviseSuggestion(input: {
     if ('refusals' in proposed) return proposed.refusals;
     id = proposed.id;
     const rejected = `${reason} (revised by its reviewer as suggestion ${id})`;
-    await tx
-      .update(suggestions)
-      .set({ status: 'rejected', decidedBy: actor.userId, decidedAt: new Date(), reason: rejected })
-      .where(eq(suggestions.id, row.id));
+    const decidedRejected = await transition(tx, SUGGESTION_MACHINE, {
+      to: 'rejected',
+      from: 'proposed',
+      set: { decidedBy: actor.userId, decidedAt: new Date(), reason: rejected },
+      where: eq(suggestions.id, row.id),
+      reason: rejected,
+      actor: suggestionKernelActor(actor),
+      source: 'suggestions-revise',
+      returning: ['id'],
+    });
+    if (decidedRejected.rows.length === 0) {
+      throw notAnEdgeError(SUGGESTION_MACHINE, row.status, 'rejected');
+    }
     await recordDecision(tx, row, actor, 'rejected', rejected);
     return null;
   });
   if (stale.reason) {
-    await db
-      .update(suggestions)
-      .set({ status: 'stale', decidedAt: new Date(), reason: stale.reason })
-      .where(and(eq(suggestions.id, first.id), eq(suggestions.status, 'proposed')));
+    await transition(db, SUGGESTION_MACHINE, {
+      to: 'stale',
+      from: 'proposed',
+      set: { decidedAt: new Date(), reason: stale.reason },
+      where: eq(suggestions.id, first.id),
+      reason: stale.reason,
+      actor: suggestionKernelActor(actor),
+      source: 'suggestions-stale',
+      returning: ['id'],
+    });
   }
   if (refusals) return { ok: false, refusals };
   return answer(id, { created: true });

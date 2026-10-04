@@ -3,7 +3,6 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { withKernelMarker } from '../db/kernel-marker.js';
 import type { JobStatus } from '../db/schema.js';
 import {
   agentSessions,
@@ -21,6 +20,7 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { zValidator } from '../middleware/zod-validator.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { readJobGate } from './job-queries.js';
 import { scrubJobOutput } from './job-secret-scrub.js';
@@ -234,50 +234,36 @@ jobEventsRoutes.post(
       try {
         const heartbeatNow = new Date();
         const sawTurn = events.some(isTurnEvidence);
-        const previous = db.$with('prev').as(
-          db
-            .select({ id: agentSessions.id, status: agentSessions.status })
-            .from(agentSessions)
+        const started = await db.transaction(async (tx) => {
+          const beat = await tx
+            .update(agentSessions)
+            .set({ lastHeartbeatAt: heartbeatNow, updatedAt: heartbeatNow })
             .where(
               and(
                 eq(agentSessions.id, linkedSessionId),
                 inArray(agentSessions.status, ['queued', 'running']),
               ),
             )
-            .for('update'),
-        );
-        const flip = sawTurn
-          ? {
-              status: 'running' as const,
-              startedAt: sql`CASE WHEN ${previous.status} = 'queued' THEN ${heartbeatNow.toISOString()}::timestamptz ELSE ${agentSessions.startedAt} END`,
-            }
-          : {};
-        const beat = await withKernelMarker(db, async (tx) =>
-          tx
-            .with(previous)
-            .update(agentSessions)
-            .set({
-              ...flip,
-              lastHeartbeatAt: heartbeatNow,
-              updatedAt: heartbeatNow,
+            .returning({ id: agentSessions.id });
+          if (!sawTurn || beat.length === 0) return null;
+          const [row] = (
+            await transitionSessions(tx, {
+              to: 'running',
+              from: 'queued',
+              set: { startedAt: heartbeatNow },
+              where: eq(agentSessions.id, linkedSessionId),
+              actor: { type: 'runner', id: device.id },
+              source: 'job-events',
+              returning: ['id', 'projectId', 'deviceId'],
             })
-            .from(previous)
-            .where(eq(agentSessions.id, previous.id))
-            .returning({
-              id: agentSessions.id,
-              projectId: agentSessions.projectId,
-              deviceId: agentSessions.deviceId,
-              startedRunning: sawTurn
-                ? sql<boolean>`${previous.status} = 'queued'`
-                : sql<boolean>`false`,
-            }),
-        );
-        const beaten = beat[0];
-        if (beaten?.startedRunning) {
+          ).rows;
+          return row ?? null;
+        });
+        if (started) {
           broadcastSessionEvent(
-            beaten.id,
-            beaten.projectId,
-            beaten.deviceId,
+            started.id,
+            started.projectId,
+            started.deviceId,
             'agent-session.status',
             { status: 'running' },
           );

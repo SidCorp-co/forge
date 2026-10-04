@@ -45,6 +45,7 @@ export async function reapGhostRunners(): Promise<GhostRunnerReapResult> {
           runnerId: ghost.id,
           newStatus: 'disabled',
           reason: 'ghost',
+          actor: { type: 'sweeper' },
         });
         if (result.changed) {
           flagged++;

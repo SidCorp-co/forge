@@ -5,6 +5,7 @@
 // only by TypeScript is a shape held nowhere (ISS-964 criteria 14, 16, 21).
 
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, type ProjectMemberRole } from '../db/schema.js';
@@ -20,7 +21,9 @@ import {
 } from '../db/schema-questions.js';
 import { decideChannelGate } from '../ecosystem/channel-gate.js';
 import type { PersonVia } from '../ecosystem/channel-schema.js';
+import type { ActorAgency } from '../issues/actor-agency.js';
 import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
+import { type KernelActor, transition } from '../lifecycle/transition.js';
 import { hooks } from '../pipeline/hooks.js';
 import { wakeMastersForAnswer } from '../ws/master-wake.js';
 import { batchItemRefusal } from './batch-item.js';
@@ -282,6 +285,7 @@ export type AnswerInput = {
   /** The round the answerer was looking at. Never defaulted to the current one. */
   round: number;
   by: string;
+  agency: ActorAgency;
   role: ProjectMemberRole | null;
   note?: string;
   /** The door the answerer came through, which a channel gate records as the decider's via. */
@@ -403,10 +407,15 @@ export async function answerQuestion(args: AnswerInput) {
       );
     }
     const steps = row.steps.map((s, i) => (i === row.steps.length - 1 ? answered : s));
-    await tx
-      .update(agentQuestions)
-      .set({ steps, status: 'answered', updatedAt: now })
-      .where(eq(agentQuestions.id, args.questionId));
+    await transition(tx, QUESTION_MACHINE, {
+      to: 'answered',
+      from: 'open',
+      set: { steps, updatedAt: now },
+      where: eq(agentQuestions.id, args.questionId),
+      actor: { type: 'user', id: args.by, agency: args.agency },
+      source: 'questions',
+      returning: ['id'],
+    });
     return { committed: { ...row, steps, status: 'answered' as const }, effect };
   });
   await hooks.emit('questionAnswered', {
@@ -421,46 +430,27 @@ export async function answerQuestion(args: AnswerInput) {
   return view(committed);
 }
 
-export async function askFollowUp(args: {
+export async function voidQuestion(args: {
   questionId: string;
-  prompt: string;
-  answer: AskAnswer;
-  sensitive?: boolean;
+  reason: string;
+  actor: KernelActor;
 }) {
-  const row = await load(args.questionId);
-  checkAnswer(args.answer);
-  if (row.steps.length >= row.maxRounds) {
-    await db
-      .update(agentQuestions)
-      .set({ status: 'needs_info', updatedAt: new Date() })
-      .where(eq(agentQuestions.id, args.questionId));
-    throw new QuestionRefused(
-      `max_rounds ${row.maxRounds} reached — the thread is the record now, and this question is needs_info`,
-    );
-  }
-  const steps = [
-    ...row.steps,
-    step(row.steps.length + 1, args.prompt, args.answer, args.sensitive),
-  ];
-  await db
-    .update(agentQuestions)
-    .set({ steps, status: 'open', updatedAt: new Date() })
-    .where(eq(agentQuestions.id, args.questionId));
-  return view({ ...row, steps, status: 'open' as const });
-}
-
-export async function voidQuestion(args: { questionId: string; reason: string }) {
   if (!args.reason?.trim()) {
     throw new QuestionRefused(
       'a question is voided WITH a reason — removed silently it is indistinguishable from one nobody answered',
       'QUESTION_REASON_REQUIRED',
     );
   }
-  const voided = await db
-    .update(agentQuestions)
-    .set({ status: 'void', voidReason: args.reason, updatedAt: new Date() })
-    .where(and(eq(agentQuestions.id, args.questionId), eq(agentQuestions.status, 'open')))
-    .returning({ id: agentQuestions.id });
+  const { rows: voided } = await transition(db, QUESTION_MACHINE, {
+    to: 'void',
+    from: 'open',
+    set: { voidReason: args.reason, updatedAt: new Date() },
+    where: eq(agentQuestions.id, args.questionId),
+    reason: args.reason,
+    actor: args.actor,
+    source: 'questions',
+    returning: ['id'],
+  });
   if (voided.length > 0) return;
   const row = await load(args.questionId, 'QUESTION_NOT_FOUND');
   throw new QuestionRefused(

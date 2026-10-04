@@ -51,7 +51,7 @@ export function toMcpIssueError(err: unknown): unknown {
       );
     }
     return new Error(
-      `BAD_REQUEST: status at create must be 'open', 'on_hold', or 'draft' (got '${err.value}'); use the transition action for other statuses`,
+      `BAD_REQUEST: status at create must be 'open' or 'draft' (got '${err.value}'); use the transition action for other statuses`,
     );
   }
   return err;

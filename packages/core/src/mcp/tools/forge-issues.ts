@@ -36,7 +36,7 @@ import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from '../../issue
 import { findIssueById, findIssueProjectId, type IssueRow } from '../../issues/read-service.js';
 import { recoveryField, transitionNamingRecovery } from '../../issues/recovery-move.js';
 import { applyIssueRelations, issueRelationInputSchema } from '../../issues/relations-service.js';
-import { ReleaseNotesSchema } from '../../issues/release-notes.js';
+import { ReleaseNotesSchema } from '@forge/contracts/release-notes';
 import { sessionContextExpectSchema, sessionContextSchema } from '../../issues/session-context.js';
 import { emitIssueFieldUpdate } from '../../issues/update-hook.js';
 import { updateIssueFields } from '../../issues/update-service.js';

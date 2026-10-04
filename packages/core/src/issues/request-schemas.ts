@@ -9,7 +9,7 @@ import { issueComplexities, issuePriorities, issueStatuses } from '../db/schema.
 import { paginationSchema } from '../lib/pagination.js';
 import { labelAttachItemSchema, workStatePatchSchema } from './input-schemas.js';
 import { issueMetadataSchema } from './metadata.js';
-import { ReleaseNotesSchema } from './release-notes.js';
+import { ReleaseNotesSchema } from '@forge/contracts/release-notes';
 import { sessionContextExpectSchema, sessionContextSchema } from './session-context.js';
 import { issueSortValues } from './sort.js';
 

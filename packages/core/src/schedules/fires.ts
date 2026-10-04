@@ -1,19 +1,21 @@
 // cm:why the one application writer of schedule_runs (design automation rev 1, steps tick, route,
-// skipped, agent_runs and settle; ISS-112): every fire of every kind is opened here, a fire that ran
-// no session is settled here once, and schedules.last_status is written from the fire, never beside
-// it. A fire that started a session settles when that session stops, whoever stops it: trigger
-// `forge_session_stop_settles_its_fire` (migration 0367).
+// skipped, agent_runs and settle; ISS-112): every fire of every kind is opened here and a fire that
+// ran no session is settled here once, each move through the kernel transition on the schedule-run
+// machine. A schedule's last status is its newest fire's, read (`lastFireStatus`) and never stored.
+// A fire that started a session settles when that session stops, whoever stops it, in the session
+// move's own transaction (`agent-sessions/session-transition.ts:transitionSessions`); a session row
+// deleted under a running fire is settled by trigger `forge_session_delete_settles_its_fire`.
 
 import type {
   ScheduleRunSkipReason,
   ScheduleRunStatus,
   ScheduleRunTrigger,
 } from '@forge/contracts/schedules';
-import { and, eq, sql } from 'drizzle-orm';
+import { SCHEDULE_RUN_MACHINE } from '@forge/contracts/schedule-run-machine';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { scheduleRuns, schedules } from '../db/schema.js';
-
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/transition.js';
 
 export type FireSettlement =
   | { status: 'success'; output?: string | null; pipelineRunId?: string | null }
@@ -30,30 +32,13 @@ export interface FireSession {
   pipelineRunId: string;
 }
 
-// cm:guard only the schedule's newest fire writes schedules.last_status, so a late settle of an
-// older fire never overwrites the status of one that started after it.
-async function writeLastStatusFromFire(
-  tx: Tx,
-  fire: { id: string; scheduleId: string },
-  status: ScheduleRunStatus,
-): Promise<void> {
-  await tx
-    .update(schedules)
-    .set({ lastStatus: status })
-    .where(
-      and(
-        eq(schedules.id, fire.scheduleId),
-        sql`NOT EXISTS (
-          SELECT 1 FROM ${scheduleRuns} newer, ${scheduleRuns} this_fire
-          WHERE this_fire.id = ${fire.id}
-            AND newer.schedule_id = this_fire.schedule_id
-            AND newer.created_at > this_fire.created_at
-        )`,
-      ),
-    );
-}
-
-const SETTLED_FIRE = { id: scheduleRuns.id, scheduleId: scheduleRuns.scheduleId };
+/** A schedule's last status: the status of its newest fire, or null before its first. */
+export const lastFireStatus = sql<ScheduleRunStatus | null>`(
+  SELECT r.status FROM ${scheduleRuns} r
+   WHERE r.schedule_id = ${schedules.id}
+   ORDER BY r.created_at DESC
+   LIMIT 1
+)`;
 
 export async function openFire(args: {
   scheduleId: string;
@@ -79,7 +64,7 @@ export async function openFire(args: {
     }
     await tx
       .update(schedules)
-      .set({ lastStatus: 'running', lastRunAt: startedAt })
+      .set({ lastRunAt: startedAt })
       .where(eq(schedules.id, args.scheduleId));
     return fire.id;
   });
@@ -96,7 +81,6 @@ export async function attachFireSession(fireId: string, session: FireSession): P
 // session, so it never overrides the end the fire's own session records.
 export async function settleFire(fireId: string, settlement: FireSettlement): Promise<boolean> {
   const set: Partial<typeof scheduleRuns.$inferInsert> = {
-    status: settlement.status,
     finishedAt: new Date(),
     reason: settlement.status === 'skipped' ? settlement.reason : null,
     refusal: settlement.status === 'skipped' ? (settlement.refusal ?? null) : null,
@@ -106,22 +90,17 @@ export async function settleFire(fireId: string, settlement: FireSettlement): Pr
   if (settlement.status === 'success' && settlement.pipelineRunId) {
     set.pipelineRunId = settlement.pipelineRunId;
   }
-  return db.transaction(async (tx) => {
-    const [fire] = await tx
-      .update(scheduleRuns)
-      .set(set)
-      .where(
-        and(
-          eq(scheduleRuns.id, fireId),
-          eq(scheduleRuns.status, 'running'),
-          sql`${scheduleRuns.sessionId} IS NULL`,
-        ),
-      )
-      .returning(SETTLED_FIRE);
-    if (!fire) return false;
-    await writeLastStatusFromFire(tx, fire, settlement.status);
-    return true;
+  const { rows } = await transition(db, SCHEDULE_RUN_MACHINE, {
+    to: settlement.status,
+    from: 'running',
+    set,
+    where: and(eq(scheduleRuns.id, fireId), sql`${scheduleRuns.sessionId} IS NULL`),
+    reason: settlement.status === 'skipped' ? settlement.reason : null,
+    actor: { type: 'system' },
+    source: 'schedule-fire',
+    returning: ['id'],
   });
+  return rows.length > 0;
 }
 
 export function scheduleRunIdOf(metadata: unknown): string | null {
@@ -134,24 +113,24 @@ export async function handFireToRetry(args: {
   retry: FireSession;
   disposition: string;
 }): Promise<boolean> {
-  return db.transaction(async (tx) => {
-    const [fire] = await tx
-      .update(scheduleRuns)
-      .set({
-        sessionId: args.retry.id,
-        pipelineRunId: args.retry.pipelineRunId,
-        status: 'running',
-        finishedAt: null,
-        error: null,
-        refusal: null,
-        disposition: args.disposition,
-      })
-      .where(eq(scheduleRuns.sessionId, args.failedSessionId))
-      .returning(SETTLED_FIRE);
-    if (!fire) return false;
-    await writeLastStatusFromFire(tx, fire, 'running');
-    return true;
+  const { rows } = await transition(db, SCHEDULE_RUN_MACHINE, {
+    to: 'running',
+    from: 'failed',
+    set: {
+      sessionId: args.retry.id,
+      pipelineRunId: args.retry.pipelineRunId,
+      finishedAt: null,
+      error: null,
+      refusal: null,
+      disposition: args.disposition,
+    },
+    where: eq(scheduleRuns.sessionId, args.failedSessionId),
+    reason: args.disposition,
+    actor: { type: 'system' },
+    source: 'schedule-fire-retry',
+    returning: ['id'],
   });
+  return rows.length > 0;
 }
 
 export async function recordFireDisposition(args: {
@@ -164,4 +143,33 @@ export async function recordFireDisposition(args: {
     .where(eq(scheduleRuns.sessionId, args.failedSessionId))
     .returning({ id: scheduleRuns.id });
   return rows.length > 0;
+}
+
+/** The fires these sessions started, settled as their sessions ended: `success` for a completion,
+ *  `failed` with the session's failure for anything else. */
+export async function settleSessionFires(
+  exec: KernelExecutor,
+  args: { sessionIds: readonly string[]; sessionStatus: string; actor: KernelActor; source: string },
+): Promise<void> {
+  if (args.sessionIds.length === 0) return;
+  const succeeded =
+    args.sessionStatus === 'completed' || args.sessionStatus === 'completed_via_recovery';
+  await transition(exec, SCHEDULE_RUN_MACHINE, {
+    to: succeeded ? 'success' : 'failed',
+    from: 'running',
+    where: inArray(scheduleRuns.sessionId, [...args.sessionIds]),
+    set: {
+      finishedAt: new Date(),
+      error: succeeded
+        ? null
+        : sql`(SELECT coalesce(a.failure_reason, 'session ' || a.status) || coalesce(': ' || a.failure_detail, '') FROM agent_sessions a WHERE a.id = ${scheduleRuns.sessionId})`,
+      refusal: succeeded
+        ? null
+        : sql`(SELECT CASE WHEN a.failure_reason = 'session_authority_refused' AND split_part(a.failure_detail, ':', 1) ~ '^[A-Z][A-Z0-9_]*$' THEN split_part(a.failure_detail, ':', 1) END FROM agent_sessions a WHERE a.id = ${scheduleRuns.sessionId})`,
+    } as never,
+    returning: ['id'],
+    reason: `its session ended ${args.sessionStatus}`,
+    actor: args.actor,
+    source: args.source,
+  });
 }

@@ -7,7 +7,7 @@ import {
 import { edgeBetween } from '@forge/contracts/state-machine';
 import { eq, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
-import { comments, type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
+import { type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
 import type { WorkStep } from '../db/schema-issue-work-state.js';
 import { type KernelActor, transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
@@ -18,15 +18,11 @@ import { roomManager } from '../ws/server.js';
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
 import type { Refusal } from '../lib/refusal.js';
 import { archivedAmong, archiveRefusalForTransition } from './archive.js';
-import { noOpSentence } from './close-substitution.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { recordDropUnblock } from './drop-unblock.js';
-import { refuseUnshippedClose } from './merged-at.js';
 import { mintParkQuestion } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { moveOf, recordMove } from './record-events/kernel-records.js';
-import { resolveAgentCloseTarget } from './release-gate-hold.js';
-import { refuseUnrecordedClose } from './release-record-required.js';
 import { edgeFault, type GuardCode, issueGuards, reasonFault } from './transition-guards.js';
 import {
   postLeaveComment,
@@ -41,8 +37,6 @@ export type TransitionErrorCode =
   | GuardCode
   | 'NO_OP'
   | 'STALE_TRANSITION'
-  | 'RELEASE_RECORD_REQUIRED'
-  | 'CLOSE_REQUIRES_SHIPPED'
   | 'WAITING_KIND_NOT_APPLICABLE'
   | 'ISSUE_ARCHIVED'
   | 'OPEN_QUESTIONS';
@@ -103,10 +97,6 @@ export interface ApplyStatusTransitionOptions {
   requireNoOpenQuestions?: boolean;
   /** What a `needs_info` park is stopped on. REQUIRED entering `needs_info`. */
   waitingKind?: WaitingKind | undefined;
-  /**
-   * This close is the release itself, so it may write `closed` past the gate.
-   */
-  viaReleasePath?: boolean;
 }
 
 export interface StatusTransitionResult {
@@ -174,7 +164,7 @@ function stepAfter(from: IssueStatus, to: IssueStatus, held: WorkStep | null): W
  */
 export async function transitionIssueStatus(
   issue: TransitionIssueRow,
-  requestedStatus: IssueStatus,
+  toStatus: IssueStatus,
   actor: TransitionActor,
   options: ApplyStatusTransitionOptions = {},
 ): Promise<StatusTransitionResult> {
@@ -184,30 +174,30 @@ export async function transitionIssueStatus(
   const work = await readWorkState(db, issue.id);
   const leftStatus = (work?.leftStatus ?? null) as IssueStatus | null;
 
-  if (fromStatus === requestedStatus) {
-    throw new TransitionError('NO_OP', `issue already in status ${requestedStatus}`, {
+  if (fromStatus === toStatus) {
+    throw new TransitionError('NO_OP', `issue already in status ${toStatus}`, {
       status: fromStatus,
     });
   }
 
   const recovering =
-    options.recovery === true && edgeBetween(ISSUE_MACHINE, fromStatus, requestedStatus, true) !== null;
+    options.recovery === true && edgeBetween(ISSUE_MACHINE, fromStatus, toStatus, true) !== null;
   if (!recovering) {
-    const edge = edgeFault({ from: fromStatus, to: requestedStatus, leftStatus });
+    const edge = edgeFault({ from: fromStatus, to: toStatus, leftStatus });
     if (edge) throw new TransitionError(edge.code, edge.detail, edge.details);
   }
 
-  if (options.waitingKind && requestedStatus !== 'needs_info') {
+  if (options.waitingKind && toStatus !== 'needs_info') {
     throw new TransitionError(
       'WAITING_KIND_NOT_APPLICABLE',
-      `\`waitingKind\` is stored only for a \`needs_info\` park, and \`${requestedStatus}\` cannot hold it. Say what the issue is waiting for in \`reason\` instead — that is posted as a comment before the status flips and is kept.`,
-      { from: fromStatus, to: requestedStatus, waitingKind: options.waitingKind },
+      `\`waitingKind\` is stored only for a \`needs_info\` park, and \`${toStatus}\` cannot hold it. Say what the issue is waiting for in \`reason\` instead — that is posted as a comment before the status flips and is kept.`,
+      { from: fromStatus, to: toStatus, waitingKind: options.waitingKind },
     );
   }
 
   const reasonMissing = reasonFault({
     from: fromStatus,
-    to: requestedStatus,
+    to: toStatus,
     agency: actorAgency(actor),
     transitionReason: options.transitionReason,
     waitingKind: options.waitingKind,
@@ -216,30 +206,10 @@ export async function transitionIssueStatus(
     throw new TransitionError(reasonMissing.code, reasonMissing.detail, reasonMissing.details);
   }
 
-  const { status: toStatus, held } = await resolveAgentCloseTarget({
-    projectId: issue.projectId,
-    requested: requestedStatus,
-    agency: actorAgency(actor),
-    viaReleasePath: options.viaReleasePath === true,
-  });
-  if (fromStatus === toStatus) {
-    throw new TransitionError(
-      'NO_OP',
-      noOpSentence({ projectId: issue.projectId, requested: requestedStatus, final: toStatus }),
-      { status: fromStatus, requested: requestedStatus, substituted: toStatus },
-    );
-  }
-
-  const unrecorded = await refuseUnrecordedClose(issue.id, toStatus, actor, options);
-  if (unrecorded) {
-    throw new TransitionError('RELEASE_RECORD_REQUIRED', unrecorded.detail, unrecorded.details);
-  }
-
   const step = stepAfter(fromStatus, toStatus, work?.step ?? null);
   const txResult = await executeTransitionWrite({
     issue,
     fromStatus,
-    requestedStatus,
     toStatus,
     actor,
     options,
@@ -259,22 +229,6 @@ export async function transitionIssueStatus(
     at: updated.updatedAt,
   });
 
-  if (held) {
-    try {
-      await db.insert(comments).values({
-        issueId: issue.id,
-        authorId: authorOf(actor),
-        body: `Held at the release gate — merged, not shipped. Every \`blocks\`-dependent can dispatch now, because a dependent is held by this issue's STATUS and \`awaiting_release\` is one that releases it; nothing here writes \`merged_at\`. The issue closes when a release ships it, and that close is refused until the shipped-work claim is on the row — \`forge_issues\` \`mark_merged\` naming where it landed.`,
-        parentId: null,
-      });
-    } catch (err) {
-      logger.warn(
-        { err, issueId: issue.id },
-        'transition: release-gate hold comment failed (transition already committed)',
-      );
-    }
-  }
-
   if (txResult.unblockedDependents.length > 0) {
     await recordDropUnblock(issue, txResult.unblockedDependents, actor);
   }
@@ -282,8 +236,8 @@ export async function transitionIssueStatus(
   await publishPipelineHealthChanged(issue.projectId, [updated.id]);
 
   await setCurrentStepForOpenIssueRun(issue.id, toStatus);
-  const terminal = TERMINAL_FOR_DISPATCH.has(toStatus) || held;
-  if (ISSUE_TERMINAL_STATUSES.includes(toStatus) || held) {
+  const terminal = TERMINAL_FOR_DISPATCH.has(toStatus);
+  if (ISSUE_TERMINAL_STATUSES.includes(toStatus)) {
     await closeOpenRunForIssue(issue.id, 'completed');
   }
 
@@ -302,7 +256,6 @@ export async function transitionIssueStatus(
 export type TransitionWriteInput = {
   issue: TransitionIssueRow;
   fromStatus: IssueStatus;
-  requestedStatus: IssueStatus;
   toStatus: IssueStatus;
   actor: TransitionActor;
   options: ApplyStatusTransitionOptions;
@@ -344,7 +297,7 @@ async function writeWorkStateOfMove(tx: TransitionTx, input: TransitionWriteInpu
 }
 
 async function executeTransitionWrite(input: TransitionWriteInput): Promise<TransitionWriteResult> {
-  const { issue, fromStatus, requestedStatus, toStatus, actor, options, recovering } = input;
+  const { issue, fromStatus, toStatus, actor, options, recovering } = input;
   const by = authorOf(actor);
   const waiver = { waived: false };
   let unblockedDependents: UnblockedDependent[] = [];
@@ -380,13 +333,13 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         throw new TransitionError('ISSUE_ARCHIVED', archiveRefusal, { to: toStatus });
       }
       await options.beforeStatusWrite?.(tx);
-      if (requiresAuthoredReason(fromStatus, requestedStatus)) {
+      if (requiresAuthoredReason(fromStatus, toStatus)) {
         await postTransitionReasonComment(
           {
             issueId: issue.id,
             authorId: by,
             fromStatus,
-            toStatus: requestedStatus,
+            toStatus,
             reason: options.transitionReason?.trim() ?? '',
             waitingKind: options.waitingKind ?? null,
           },
@@ -395,13 +348,13 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
       }
       await postLeaveComment({ issue, fromStatus, toStatus, actor, options }, tx);
       await mintParkQuestion({ issue, toStatus, actor, options }, tx);
-      // Judged on the status the issue LANDS at, and asked before the write: a close diverted to
-      // the release gate lands at `awaiting_release` and is no close.
-      const unshipped = await refuseUnshippedClose(tx, { issueId: issue.id, toStatus });
-      if (unshipped) {
-        throw new TransitionError('CLOSE_REQUIRES_SHIPPED', unshipped.detail, unshipped.details);
-      }
-      const asked = await settleOpenQuestions(tx, { ...options, issueId: issue.id, toStatus, by });
+      const asked = await settleOpenQuestions(tx, {
+        ...options,
+        issueId: issue.id,
+        toStatus,
+        by,
+        actor: kernelActorFor(actor),
+      });
       if (asked) throw new TransitionError(asked.code, asked.detail, asked.details);
     },
     afterWrite: async (tx, rows) => {

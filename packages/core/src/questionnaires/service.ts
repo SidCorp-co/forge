@@ -11,6 +11,8 @@ import type {
   QuestionnaireItem,
   QuestionnaireView,
 } from '@forge/contracts/onboarding';
+import { QUESTIONNAIRE_MACHINE } from '@forge/contracts/onboarding-machine';
+import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import {
   publishToConversationReaders,
@@ -26,6 +28,7 @@ import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions, type QuestionOrigin, type QuestionStep } from '../db/schema-questions.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { effectiveProjectRole } from '../lib/authz.js';
+import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
 import { dataPolicyOf, storedAnswers } from '../lib/data-egress.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import {
@@ -47,6 +50,10 @@ import {
   submitterRefusal,
 } from './rules.js';
 import { answersText, questionnaireText } from './text.js';
+
+function questionnaireKernelActor(actor: QuestionnaireActor): KernelActor {
+  return { type: 'user', id: actor.userId, agency: actor.agency };
+}
 
 export interface QuestionnaireActor {
   userId: string;
@@ -242,22 +249,20 @@ export async function postQuestionnaireIn(
       ),
     );
   if (answeredBefore.length) {
-    await tx
-      .update(agentQuestions)
-      .set({
-        status: 'void',
-        voidReason: `carried into questionnaire ${batch.id}`,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          inArray(
-            agentQuestions.batchId,
-            answeredBefore.map((b) => b.id),
-          ),
-          eq(agentQuestions.status, 'open'),
-        ),
-      );
+    const why = `carried into questionnaire ${batch.id}`;
+    await transition(tx, QUESTION_MACHINE, {
+      to: 'void',
+      from: 'open',
+      set: { voidReason: why, updatedAt: new Date() },
+      where: inArray(
+        agentQuestions.batchId,
+        answeredBefore.map((b) => b.id),
+      ),
+      reason: why,
+      actor: questionnaireKernelActor(input.actor),
+      source: 'questionnaire',
+      returning: ['id'],
+    });
   }
   // cm:why an answer to a superseded batch is refused naming the batch that replaced it: the next
   // batch posted in the thread is that replacement
@@ -276,29 +281,30 @@ export async function postQuestionnaireIn(
 
 /** Supersedes every open or skipped batch of an onboarding, voiding their open items. */
 export async function supersedeOpenIn(tx: TxOnly, onboardingId: string, reason: string) {
-  const open = await tx
-    .update(questionnaireBatches)
-    .set({ status: 'superseded', supersededAt: new Date(), supersededReason: reason })
-    .where(
-      and(
-        eq(questionnaireBatches.onboardingId, onboardingId),
-        inArray(questionnaireBatches.status, ['open', 'skipped']),
-      ),
-    )
-    .returning({ id: questionnaireBatches.id });
+  const { rows: open } = await transition(tx, QUESTIONNAIRE_MACHINE, {
+    to: 'superseded',
+    from: ['open', 'skipped'],
+    set: { supersededAt: new Date(), supersededReason: reason },
+    where: eq(questionnaireBatches.onboardingId, onboardingId),
+    reason,
+    actor: { type: 'system' },
+    source: 'questionnaire-supersede',
+    returning: ['id'],
+  });
   if (open.length === 0) return [];
-  await tx
-    .update(agentQuestions)
-    .set({ status: 'void', voidReason: reason, updatedAt: new Date() })
-    .where(
-      and(
-        inArray(
-          agentQuestions.batchId,
-          open.map((b) => b.id),
-        ),
-        eq(agentQuestions.status, 'open'),
-      ),
-    );
+  await transition(tx, QUESTION_MACHINE, {
+    to: 'void',
+    from: 'open',
+    set: { voidReason: reason, updatedAt: new Date() },
+    where: inArray(
+      agentQuestions.batchId,
+      open.map((b) => b.id),
+    ),
+    reason,
+    actor: { type: 'system' },
+    source: 'questionnaire-supersede',
+    returning: ['id'],
+  });
   return open.map((b) => b.id);
 }
 
@@ -370,10 +376,17 @@ export async function submitAnswers(input: SubmitInput): Promise<QuestionnaireOu
     if (refusals.length) return refusals;
     const now = new Date();
     if (skip) {
-      await tx
-        .update(questionnaireBatches)
-        .set({ status: 'skipped', skippedBy: input.actor.userId, skippedAt: now })
-        .where(eq(questionnaireBatches.id, batch.id));
+      const skipped = await transition(tx, QUESTIONNAIRE_MACHINE, {
+        to: 'skipped',
+        set: { skippedBy: input.actor.userId, skippedAt: now },
+        where: eq(questionnaireBatches.id, batch.id),
+        actor: questionnaireKernelActor(input.actor),
+        source: 'questionnaire-submit',
+        returning: ['id'],
+      });
+      if (skipped.rows.length === 0) {
+        throw notAnEdgeError(QUESTIONNAIRE_MACHINE, batch.status, 'skipped');
+      }
       await input.onSubmittedIn?.(tx, batch, true);
       return null;
     }
@@ -387,14 +400,20 @@ export async function submitAnswers(input: SubmitInput): Promise<QuestionnaireOu
       const steps = entry.row.steps;
       const last = steps.at(-1);
       if (!last) throw new Error(`questionnaires: item ${a.itemId} has no step`);
-      await tx
-        .update(agentQuestions)
-        .set({
-          status: 'answered',
+      const answered = await transition(tx, QUESTION_MACHINE, {
+        to: 'answered',
+        set: {
           steps: [...steps.slice(0, -1), answeredStep(last, entry.item, a, input.actor.userId, at)],
           updatedAt: now,
-        })
-        .where(eq(agentQuestions.id, entry.row.id));
+        },
+        where: eq(agentQuestions.id, entry.row.id),
+        actor: questionnaireKernelActor(input.actor),
+        source: 'questionnaire-submit',
+        returning: ['id'],
+      });
+      if (answered.rows.length === 0) {
+        throw notAnEdgeError(QUESTION_MACHINE, entry.row.status, 'answered');
+      }
     }
     const items = [...byId.values()]
       .filter((e) => e.open)
@@ -425,15 +444,17 @@ export async function submitAnswers(input: SubmitInput): Promise<QuestionnaireOu
         tx as never,
       );
     }
-    await tx
-      .update(questionnaireBatches)
-      .set({
-        status: 'submitted',
-        submittedBy: input.actor.userId,
-        submittedAt: now,
-        answersMessageId: messageId,
-      })
-      .where(eq(questionnaireBatches.id, batch.id));
+    const submitted = await transition(tx, QUESTIONNAIRE_MACHINE, {
+      to: 'submitted',
+      set: { submittedBy: input.actor.userId, submittedAt: now, answersMessageId: messageId },
+      where: eq(questionnaireBatches.id, batch.id),
+      actor: questionnaireKernelActor(input.actor),
+      source: 'questionnaire-submit',
+      returning: ['id'],
+    });
+    if (submitted.rows.length === 0) {
+      throw notAnEdgeError(QUESTIONNAIRE_MACHINE, batch.status, 'submitted');
+    }
     await input.onSubmittedIn?.(tx, batch, false);
     return null;
   });

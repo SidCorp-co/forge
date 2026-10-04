@@ -1,12 +1,12 @@
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { withKernelMarker } from '../db/kernel-marker.js';
 import { jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
+import type { KernelActor } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
-import { buildRequeueUpdate, dispatchRequeuedJob, readHoldState } from './hold.js';
+import { dispatchRequeuedJob, readHoldState, requeueHeldJob } from './hold.js';
 import { insertInterventionEvent } from './intervention-event.js';
 
 export class JobResumeError extends Error {
@@ -22,6 +22,8 @@ export class JobResumeError extends Error {
 export interface ResumeJobOptions {
   /** User id of the acting principal — recorded in the audit event. */
   actorUserId: string;
+  /** The acting principal, as the kernel records the move. */
+  actor: KernelActor;
   /** Human-supplied reason — recorded in the audit event. */
   reason: string;
   /** Which surface invoked the resume. */
@@ -56,15 +58,17 @@ export async function resumeHeldJob(
 
   const heldReason = readHoldState(job.payload)?.reason ?? job.failureReason ?? null;
 
-  const updated = await withKernelMarker(db, async (tx) => {
-    const [row] = await tx
-      .update(jobs)
-      .set(buildRequeueUpdate(job, new Date()))
-      .where(and(eq(jobs.id, jobId), eq(jobs.status, 'held')))
-      .returning({ id: jobs.id, type: jobs.type, issueId: jobs.issueId });
+  const updated = await db.transaction(async (tx) => {
+    const row = await requeueHeldJob(tx, job, new Date(), {
+      actor: opts.actor,
+      reason: opts.reason,
+      source: `job-resume-${opts.source}`,
+    });
     if (!row) return null;
     await insertInterventionEvent(tx, {
-      ...opts,
+      actorUserId: opts.actorUserId,
+      reason: opts.reason,
+      source: opts.source,
       jobId: row.id,
       issueId: row.issueId,
       previousStatus: 'held',

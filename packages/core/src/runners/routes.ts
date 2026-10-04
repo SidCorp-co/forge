@@ -14,7 +14,7 @@ import {
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { resolvedWindowDaysFor } from '../pipeline/retention/policy.js';
 import { projectRoom } from '../ws/rooms.js';
@@ -397,7 +397,12 @@ runnerRoutes.patch(
     // writer (appends a runner_events row only on an actual transition).
     let row = updated;
     if (input.status !== undefined) {
-      await setRunnerStatus({ runnerId: id, newStatus: input.status, reason: 'operator_patch' });
+      await setRunnerStatus({
+        runnerId: id,
+        newStatus: input.status,
+        reason: 'operator_patch',
+        actor: restActor(c),
+      });
       row = { ...updated, status: input.status };
     }
 
@@ -498,7 +503,12 @@ runnerRoutes.post(
     const access = await loadProjectAccess(existing.projectId, userId);
     // Same gate as PATCH `status` — exclude/include are status mutations.
     assertProjectRole(access, 'admin', 'project admin only');
-    await setRunnerStatus({ runnerId: id, newStatus: 'disabled', reason: 'operator_exclude' });
+    await setRunnerStatus({
+      runnerId: id,
+      newStatus: 'disabled',
+      reason: 'operator_exclude',
+      actor: restActor(c),
+    });
     return c.json({ ok: true });
   },
 );
@@ -515,7 +525,12 @@ runnerRoutes.post(
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
     assertProjectRole(access, 'admin', 'project admin only');
-    await setRunnerStatus({ runnerId: id, newStatus: 'offline', reason: 'operator_include' });
+    await setRunnerStatus({
+      runnerId: id,
+      newStatus: 'offline',
+      reason: 'operator_include',
+      actor: restActor(c),
+    });
     return c.json({ ok: true });
   },
 );

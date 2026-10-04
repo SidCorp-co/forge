@@ -1,10 +1,8 @@
-import { db } from '../../db/client.js';
-import { recordIssueMerge } from '../../issues/merge-record.js';
 import { logger } from '../../logger.js';
 import { forgetLiveReading } from '../../projects/live-reading.js';
+import { stampHostMerge } from '../source-host/merge.js';
 import { applyPushedBranch } from '../source-host/push.js';
 import { buildRepoClient, GitHubClientError, type GitHubRepoClient } from './client.js';
-import { resolveIssueForHeadRef } from './issue-link.js';
 import {
   applyCheckRunEvent,
   applyPullRequestEvent,
@@ -82,28 +80,16 @@ const REFRESHING_PR_ACTIONS = new Set([
   'ready_for_review',
 ]);
 
-/**
- * Record a merge a person made, on the same row the kernel's own merge writes.
- *
- * ISS-1073's outcome 3. Somebody pressing Merge on GitHub and Forge merging
- * through `merge.ts` are one landing arriving by two routes, and they produce
- * ONE record because both write through `issues/merge-record.ts` under
- * `merged_commit_sha IS NULL` — whichever gets there first holds the row, and
- * the second reads it back rather than overwriting it.
- */
+/** A merge a person made on GitHub, stamped through the one host-merge stamp. */
 async function stampMergedIssue(ctx: DeliveryContext, payload: PullRequestPayload): Promise<void> {
   const pr = payload.pull_request;
   if (!pr || stateOf(pr) !== 'merged') return;
-  const commitSha = pr.merge_commit_sha;
-  const mergedAt = pr.merged_at ? new Date(pr.merged_at) : null;
-  if (!commitSha || !mergedAt || Number.isNaN(mergedAt.getTime())) return;
-  const headRef = pr.head?.ref;
-  if (!headRef) return;
-  const issueId = await resolveIssueForHeadRef({ projectId: ctx.projectId, headRef });
-  if (!issueId) return;
-  await recordIssueMerge(db, {
-    issueId,
-    evidence: { kind: 'observed', commitSha, mergedAt, via: 'event' },
+  if (!pr.merge_commit_sha || !pr.merged_at || !pr.head?.ref) return;
+  await stampHostMerge({
+    projectId: ctx.projectId,
+    headRef: pr.head.ref,
+    commitSha: pr.merge_commit_sha,
+    mergedAt: new Date(pr.merged_at),
   });
 }
 

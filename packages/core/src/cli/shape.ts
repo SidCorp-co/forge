@@ -19,7 +19,7 @@ import {
   listed,
   SUBSTANTIAL,
   shapeFor,
-} from './kinds.js';
+} from '@forge/contracts/record-events';
 import { hasLine, headingsOf, sectionIn } from './sections.js';
 
 /** Which rule refused, beside the text a person reads: a caller branching on the prose is matching a paragraph written for somebody else. */

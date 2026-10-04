@@ -6,7 +6,7 @@ import {
   KERNEL_ONLY_RECORD_KINDS,
   RECORD_DIGEST_KIND,
   RECORD_EVENT_KINDS,
-} from '../../issues/record-events/kinds.js';
+} from '@forge/contracts/record-events';
 import { serializeRecordEvent } from '../../issues/record-events/routes.js';
 import {
   listRecordEvents,

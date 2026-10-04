@@ -58,57 +58,35 @@ export async function closeSessionsOwnedBy(
       seen.add(child.id);
       next.push(child.id);
 
-      // Issues go back BEFORE the flip: nothing revisits a terminal run
-      // session, so a return that threw after one stranded its issue for good.
-      let returnedCount = 0;
-      if (child.kind === RUN_SESSION_KIND) {
-        try {
-          const { returnIssuesForRun } = await import('../devices/run-issue-return.js');
-          const { closeRunIfOneShot } = await import('../pipeline/runs.js');
-          returnedCount = (
-            await returnIssuesForRun(child.pipelineRunId, {
-              reason: 'the session that started this run closed',
-            })
-          ).length;
-          await closeRunIfOneShot(child.pipelineRunId, 'failed');
-        } catch (err) {
-          logger.error(
-            { err, sessionId: child.id, runId: child.pipelineRunId, reason: cause.reason },
-            'session-descent: a run session kept its issues because the return failed, so it was left open rather than closed over them',
-          );
-          continue;
-        }
-      }
-
       const { transitionSessions } = await import('./session-transition.js');
-      const flipped = (await transitionSessions(db, {
-        to: 'failed',
-        set: {
-          failureReason: 'session_lost',
-          failureDetail: cause.detail,
-          updatedAt: new Date(),
-        },
-        where: and(
-          eq(agentSessions.id, child.id),
-          notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
-        ),
-        returning: ['id'],
-        reason: cause.reason,
-        actor: { type: 'system' },
-        source: DESCENT_SOURCE,
-      })).rows;
+      const flipped = (
+        await transitionSessions(db, {
+          to: 'failed',
+          set: {
+            failureReason: 'session_lost',
+            failureDetail: cause.detail,
+            updatedAt: new Date(),
+          },
+          where: and(
+            eq(agentSessions.id, child.id),
+            notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
+          ),
+          returning: ['id'],
+          reason: cause.reason,
+          actor: { type: 'system' },
+          source: DESCENT_SOURCE,
+        })
+      ).rows;
       if (flipped.length === 0) continue;
       result.closed.push(child.id);
 
       if (child.kind === RUN_SESSION_KIND) {
+        // The flip handed its issues back (`session-transition.ts:transitionSessions`).
+        const { closeRunIfOneShot } = await import('../pipeline/runs.js');
+        await closeRunIfOneShot(child.pipelineRunId, 'failed');
         result.runsReturned.push(child.pipelineRunId);
         logger.warn(
-          {
-            sessionId: child.id,
-            runId: child.pipelineRunId,
-            returned: returnedCount,
-            reason: cause.reason,
-          },
+          { sessionId: child.id, runId: child.pipelineRunId, reason: cause.reason },
           'session-descent: a run session closed with its owner, and its issues went back',
         );
       }

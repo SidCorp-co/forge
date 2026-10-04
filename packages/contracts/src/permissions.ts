@@ -49,10 +49,21 @@ const PERSONAL = [
 	"commitments.write",
 ] as const;
 
+/** Admit an issue: file it at `open`, or promote a `draft` there (workflow `issue-lifecycle`). A
+ *  token holds it only where its grant names it, so an agent files at `draft` unless granted. */
+const ADMIT = ["issues.admit"] as const;
+
 /** Configure the project, manage its members, and the admin acts that once refused an agent. */
 const ADMIN = ["project.admin", "members.admin", "feedback.redact", "comments.moderate"] as const;
 
-export const PROJECT_PERMISSIONS = [...READ, ...WRITE, ...PERSONAL, ...APPROVE, ...ADMIN] as const;
+export const PROJECT_PERMISSIONS = [
+	...READ,
+	...WRITE,
+	...PERSONAL,
+	...ADMIT,
+	...APPROVE,
+	...ADMIN,
+] as const;
 export type ProjectPermission = (typeof PROJECT_PERMISSIONS)[number];
 
 /** An organization's own acts; an org owner or admin also holds project `admin` on every project of the org. */
@@ -78,8 +89,8 @@ export type ProjectRole = (typeof PROJECT_ROLES)[number];
  */
 export const ROLE_PERMISSIONS: Readonly<Record<ProjectRole, readonly ProjectPermission[]>> = {
 	viewer: [...READ],
-	member: [...READ, ...WRITE, ...PERSONAL],
-	admin: [...READ, ...WRITE, ...PERSONAL, ...APPROVE, ...ADMIN],
+	member: [...READ, ...WRITE, ...PERSONAL, ...ADMIT],
+	admin: [...READ, ...WRITE, ...PERSONAL, ...ADMIT, ...APPROVE, ...ADMIN],
 };
 
 export const ORG_ROLES = ["member", "admin", "owner"] as const;
@@ -96,6 +107,7 @@ export const ORG_ROLE_PERMISSIONS: Readonly<Record<OrgRole, readonly OrgPermissi
  * minted before grants existed reaches them. A session holds them by its role.
  */
 export const TOKEN_EXPLICIT_PERMISSIONS: readonly Permission[] = [
+	"issues.admit",
 	"questionnaires.answer",
 	"onboarding.request",
 	"charter.write",

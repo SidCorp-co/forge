@@ -8,6 +8,7 @@
 
 import type { FeedbackTriageEffect } from '@forge/contracts/feedback';
 import { SUGGESTION_PAYLOADS, type SuggestionEffect } from '@forge/contracts/suggestions';
+import { SUGGESTION_MACHINE } from '@forge/contracts/suggestion-machine';
 import { and, eq, sql } from 'drizzle-orm';
 import { insertComment, type WrittenComment } from '../comments/service.js';
 import type { Tx } from '../db/client.js';
@@ -19,6 +20,7 @@ import { type TriageWritten, triageIn } from '../feedback/triage.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import type { PendingIssueRelation } from '../issues/relations-service.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { transition } from '../lifecycle/transition.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import { requirementKey, rowIn } from '../requirements/read.js';
 import {
@@ -28,7 +30,7 @@ import {
   type RevisionWrite,
 } from '../requirements/service.js';
 import { breakdownEffect } from './breakdown.js';
-import { type Row, type SuggestionActor, targetOfRow } from './read.js';
+import { type Row, type SuggestionActor, suggestionKernelActor, targetOfRow } from './read.js';
 
 export type Effect = SuggestionEffect | FeedbackTriageEffect;
 export type AcceptChannel = 'web' | 'mcp';
@@ -200,20 +202,17 @@ export async function writeEffect(
       .from(requirementRevisions)
       .where(eq(requirementRevisions.fromSuggestionId, row.id));
     const req = await rowIn(tx, projectId, target.id);
-    await tx
-      .update(suggestions)
-      .set({
-        status: 'stale',
-        decidedAt: new Date(),
-        reason: `suggestion ${row.id} was accepted as a new draft revision of this requirement`,
-      })
-      .where(
-        and(
-          eq(suggestions.requirementId, target.id),
-          eq(suggestions.status, 'proposed'),
-          sql`${suggestions.id} <> ${row.id}`,
-        ),
-      );
+    const supersededBy = `suggestion ${row.id} was accepted as a new draft revision of this requirement`;
+    await transition(tx, SUGGESTION_MACHINE, {
+      to: 'stale',
+      from: 'proposed',
+      set: { decidedAt: new Date(), reason: supersededBy },
+      where: and(eq(suggestions.requirementId, target.id), sql`${suggestions.id} <> ${row.id}`),
+      reason: supersededBy,
+      actor: suggestionKernelActor(actor),
+      source: 'suggestions-effect',
+      returning: ['id'],
+    });
     return {
       refusals: null,
       effect: {

@@ -28,7 +28,7 @@ export const QUESTIONNAIRE_MACHINE = defineMachine({
 	terminal: ["submitted", "superseded"],
 	reasonRequired: ["superseded"],
 	edges: [
-		{ from: "open", to: "submitted", act: "questionnaire.submitted", permission: null, guards: [] },
+		...fromEach(["open", "skipped"] as const, "submitted", { act: "questionnaire.submitted", permission: null, guards: [] }),
 		{ from: "open", to: "skipped", act: "questionnaire.skipped", permission: null, guards: [] },
 		...fromEach(["open", "skipped"] as const, "superseded", { act: "questionnaire.superseded", permission: null, guards: [] }),
 	],

@@ -1,1 +1,1 @@
-export type { ReleaseNotes, ReleaseNotesSection } from '@forge/core/public';
+export type { ReleaseNotes, ReleaseNotesSection } from "./release-notes.js";

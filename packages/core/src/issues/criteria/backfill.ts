@@ -239,7 +239,7 @@ export async function backfillCriteria(tx: Tx): Promise<CriteriaBackfillReport> 
   return report;
 }
 
-/** Run the backfill once per database; `db/migrate.ts` prints the report, every refusal by name. */
+/** Run the backfill once per database; boot (`boot-backfills.ts`) logs the report, every refusal by name. */
 export async function runCriteriaBackfillOnce(): Promise<CriteriaBackfillReport | null> {
   return db.transaction(async (tx) => {
     const marked = await rows<{ n: number }>(

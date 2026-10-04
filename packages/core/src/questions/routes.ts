@@ -18,7 +18,7 @@ import {
 } from '../db/schema-questions.js';
 import { Refused } from '../ecosystem/channel-act.js';
 import { doorOf, tokenIdOf } from '../ecosystem/channel-author.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { refused as refusedByName } from '../project-config/respond.js';
 import {
@@ -275,6 +275,7 @@ questionRoutes.post(
             : { kind: 'text', text: body.text as string },
           round: body.round,
           userId: c.get('userId'),
+          agency: restActor(c).agency,
           via: await doorOf(tokenIdOf(c)),
           ...(body.note === undefined ? {} : { note: body.note }),
         }),
@@ -300,7 +301,7 @@ questionRoutes.post(
     const seen = await readQuestionFor(id, c.get('userId'));
     if (!seen) throw notFound();
     try {
-      await voidQuestion({ questionId: id, reason: body.reason ?? '' });
+      await voidQuestion({ questionId: id, reason: body.reason ?? '', actor: restActor(c) });
       return c.json({ ok: true });
     } catch (e) {
       if (e instanceof QuestionRefused) throw refused(e);

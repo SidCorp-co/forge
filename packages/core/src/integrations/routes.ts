@@ -279,7 +279,7 @@ integrationsRoutes.post('/:projectId/integrations/:id/deliveries/:deliveryId/ret
   const projectId = c.req.param('projectId');
   const id = c.req.param('id');
   const deliveryId = c.req.param('deliveryId');
-  const _existing = await projectBinding(projectId, id, c.get('userId'), 'admin');
+  const existing = await projectBinding(projectId, id, c.get('userId'), 'admin');
 
   const delivery = await findDeliveryById(deliveryId);
   if (!delivery || delivery.bindingId !== id) throw notFound('delivery');
@@ -287,6 +287,12 @@ integrationsRoutes.post('/:projectId/integrations/:id/deliveries/:deliveryId/ret
   if (delivery.direction !== 'outbound' || delivery.status !== 'failed') {
     throw new HTTPException(409, {
       message: 'only failed outbound deliveries can be retried',
+      cause: { code: 'NOT_RETRYABLE' },
+    });
+  }
+  if (!adapterOrRefuse(existing.binding.provider).dispatchOutbound) {
+    throw new HTTPException(409, {
+      message: `${existing.binding.provider} dispatches nothing outbound, so delivery ${deliveryId} (\`${delivery.eventName}\`) cannot be re-sent; a merge is asked again on POST /api/issues/:id/merge-pull-request`,
       cause: { code: 'NOT_RETRYABLE' },
     });
   }

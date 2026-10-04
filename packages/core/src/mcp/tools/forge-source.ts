@@ -58,10 +58,9 @@ export const KERNEL_VERBS: ReadonlySet<string> = new Set([
 export function kernelVerbRefusal(action: string): string {
   return (
     `\`${action}\` is not one of this tool's actions and will not become one. Merging a pull or ` +
-    'merge request is a kernel transition on the DISPATCH face, where the same operation that merges ' +
-    'also stamps `merged_at` and the commit it landed at — one writer for one truth — so it happens ' +
-    'without an agent present and is recorded whether or not one was. It is served there as the ' +
-    'outbound verb `pull_request.merge` and as POST /api/issues/:id/merge-pull-request, not here. ' +
+    'merge request is POST /api/issues/:id/merge-pull-request, where the same operation that merges ' +
+    'also records the merge and the commit it landed at — one writer for one truth — and moves no ' +
+    'status. It is served there, not here. ' +
     "What this face carries is the judgement: read the diff, read a failing check's log, comment, " +
     'open a change request, request a review, submit a verdict. Opening one does reach a writer, the ' +
     "same one a webhook delivery reaches: it is stored on Forge's projection of the repository as it " +
@@ -134,9 +133,8 @@ const DESCRIPTION =
   "core resolves the project's binding and makes the call itself, so there is no token to fetch and " +
   'none is returned. Do NOT shell out to `gh` or `glab`: that runs under whoever configured the box, ' +
   "which is unattributable and unrevocable. Cloning, committing and pushing are still git's job. " +
-  'NOTHING HERE MERGES. Merging is a kernel transition on the dispatch face (the outbound verb ' +
-  '`pull_request.merge`, or POST /api/issues/:id/merge-pull-request), where the same operation that ' +
-  'merges also stamps the issue as landed with the commit it landed at; naming `merge`, `close` or ' +
+  'NOTHING HERE MERGES. Merging is POST /api/issues/:id/merge-pull-request, where the same ' +
+  'operation that merges also records the merge with the commit it landed at; naming `merge`, `close` or ' +
   '`delete-branch` is refused with that sentence. ' +
   '`pullRequest` is the number the host shows: a pull request number on GitHub, a merge request IID ' +
   '(the `!12`) on GitLab. ' +

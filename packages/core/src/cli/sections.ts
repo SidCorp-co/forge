@@ -1,4 +1,4 @@
-import { SUBSTANTIAL } from './kinds.js';
+import { SUBSTANTIAL } from '@forge/contracts/record-events';
 
 const HEADING = /^(#{1,6})[ \t]+(.*)$/gmu;
 

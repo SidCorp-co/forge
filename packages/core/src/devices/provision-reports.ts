@@ -6,9 +6,11 @@
  * never terminal, nothing having left the queue.
  */
 
+import { RUNNER_PROVISION_MACHINE } from '@forge/contracts/runner-machine';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { runners } from '../db/schema.js';
+import { transition } from '../lifecycle/transition.js';
 import type { ProvisionReport } from './provision-row.js';
 
 const DETAIL_MAX = 2000;
@@ -31,14 +33,22 @@ export async function recordProvisionReports(
       .slice(0, DETAIL_MAX);
     const terminal = group.some((r) => r.terminal);
     try {
-      await db
-        .update(runners)
-        .set({
-          provisionDetail: detail,
-          updatedAt: new Date(),
-          ...(terminal ? { provisionStatus: 'failed' as const } : {}),
-        })
-        .where(eq(runners.id, runnerId));
+      await db.transaction(async (tx) => {
+        await tx
+          .update(runners)
+          .set({ provisionDetail: detail, updatedAt: new Date() })
+          .where(eq(runners.id, runnerId));
+        if (terminal) {
+          await transition(tx, RUNNER_PROVISION_MACHINE, {
+            to: 'failed',
+            where: eq(runners.id, runnerId),
+            reason: detail,
+            actor: { type: 'system' },
+            source: 'provision-report',
+            returning: ['id'],
+          });
+        }
+      });
       out.push(...group);
     } catch (err) {
       const why = err instanceof Error ? err.message : String(err);

@@ -43,13 +43,8 @@ const transitionBodySchema = z
 
 /**
  * Map a core `TransitionError` onto the REST error contract. Status codes are
- * part of the public API — keep them stable.
- *
- * Every arm answers with `err.detail`, the sentence the thrower built, because
- * a `NO_OP` is two different facts: the issue is at the status asked for, or
- * the release gate rewrote that status to where it already stands. Only
- * `noOpSentence` can tell them apart, and it names the endpoints that reach
- * `closed`. A fixed message here reports the first when it means the second.
+ * part of the public API — keep them stable. Every arm answers with `err.detail`,
+ * the sentence the thrower built.
  */
 function transitionErrorToHttp(err: TransitionError): HTTPException {
   const cause = { code: err.code, details: err.details };
@@ -57,8 +52,8 @@ function transitionErrorToHttp(err: TransitionError): HTTPException {
     case 'TRANSITION_REASON_REQUIRED':
     case 'WAITING_KIND_REQUIRED':
     case 'WAITING_KIND_NOT_APPLICABLE':
-    case 'RELEASE_RECORD_REQUIRED':
     case 'CLOSE_REQUIRES_SHIPPED':
+    case 'MERGE_NOT_RECORDED':
     case 'VOID_REASON_REQUIRED':
     case 'PLAN_REQUIRED':
     case 'PERMISSION_FORBIDDEN':
@@ -70,6 +65,7 @@ function transitionErrorToHttp(err: TransitionError): HTTPException {
     case 'VERDICT_UNCORROBORATED':
     case 'VERDICT_DRAFT_SUPERSEDED':
     case 'NO_HOLDER':
+    case 'CLOSE_ONLY_BY_RELEASE':
     case 'ILLEGAL_TRANSITION':
       return new HTTPException(409, { message: err.detail, cause });
     default:

@@ -82,37 +82,19 @@ like any other repeat.
 
 ## What a mark does to the issue
 
-A mark is the last act of the work it records, so it moves the issue where workflow
-`issue-lifecycle` (rev 3) puts landed work (`packages/core/src/issues/landing-advance.ts:advanceLandedIssue`,
-ISS-80). Before ISS-80 it stamped the columns and nothing else, and an issue landed by hand kept the
-status and the lease its run had when it stopped: `in_progress` read as a run working on code that
-had shipped.
-
-- A run in flight on the issue (a live job, pipeline run or fleet lease) owns its own moves: the mark
-  leaves the status and every hold to it (`left_to_run`).
-- Otherwise the claim on `issue_work_state.lease` is ended: `stopped` is stamped and a `landed` entry
-  joins its history, as the strand sweep's release writes `swept`.
-- From `in_progress`, where every criterion already holds a passing verdict, the issue takes edge
-  `verdicts.passed` to `awaiting_release` through `transitionIssueStatus`, every guard asked.
-- From `in_progress` otherwise it stays `in_progress` at step `test`, the step a judge records the
-  verdicts at, with the retired rung `developed` beside it for a reader on forge-plugin's seventeen
-  statuses (`judge_owed`).
-- It never takes edge `shipped` to `closed`: closing is the release step, and a close needs the
-  verdicts (ISS-96).
-- Any other status is left where it is and the answer says why (`unmoved`): `open`, `reopen` and
-  `approved` enter `in_progress` only by a claim, `draft` only by a person admitting it, a park returns
-  to the status it left. A move the lifecycle refuses for a reason other than its verdicts is
-  answered with its code, never absorbed.
-
-Both doors answer what happened as `lifecycle`, and the audit comment carries the same sentence. The
-strand sweep reads a landed `in_progress` row at step `test` as waiting on a judge, and a landed `open`
-row as waiting on the run that claims it (`packages/core/src/pipeline/strand-rules.ts:landedWait`), rather than on the
-claim of the run that landed it.
+Nothing beyond the record. Recording a landing — a mark on either door, or the source host's merge
+webhook — writes the merge columns and moves no status and no hold (owner decision 2026-10-04,
+workflow `issue-lifecycle` rev 7). The run that holds the issue moves it `in_progress` →
+`awaiting_release` itself, an edge that asks for the recorded merge (`MERGE_NOT_RECORDED`) and the
+verdicts the project's `delivery.verdictsRequired` asks for; when the run ends without doing so, the
+kernel hands the issue back to the status the run took it from. `awaiting_release` → `closed` is
+written only by a release that claimed the issue (`CLOSE_ONLY_BY_RELEASE`), and needs the merge too
+(`CLOSE_REQUIRES_SHIPPED`).
 
 ## What counts as landed depends on the project's shape
 
 `packages/core/src/issues/landing-evidence.ts` is the one answer, and every door that decides
-whether a mark is enough calls it: the close gate (`refuseUnshippedClose`), the release-record
+whether a mark is enough calls it: the `merged` guard (`packages/core/src/issues/merged-at.ts:mergeNotRecorded`), the release-record
 door's `RELEASE_WORK_UNMERGED`, and the mark writer. The release
 batch's finish closes through the same transition, so it reads the same answer.
 
