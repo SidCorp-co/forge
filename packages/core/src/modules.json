@@ -1506,11 +1506,6 @@
         "REQ-12"
       ]
     },
-    "skills": {
-      "serves": [
-        "REQ-13"
-      ]
-    },
     "suggestions": {
       "serves": [
         "REQ-8"
