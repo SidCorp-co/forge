@@ -17,44 +17,18 @@ import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import type { AuthVars } from '../middleware/auth.js';
+import { forbidden } from '../middleware/route-errors.js';
 import { requireAnyAuth } from '../middleware/require-any-auth.js';
 import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { getStorage, isEnoent } from '../storage/index.js';
-import { AttachmentError, persistCommentAttachment } from './attachment-service.js';
+import { persistCommentAttachment } from './attachment-service.js';
 import { requireHeld } from '../permissions/index.js';
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
 const attachmentBadRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
   new HTTPException(400, { message, cause: { code, details } });
-
-function attachmentErrorToHttp(err: AttachmentError): HTTPException {
-  switch (err.code) {
-    case 'FILE_TOO_LARGE':
-      return new HTTPException(400, {
-        message: 'file too large',
-        cause: { code: 'FILE_TOO_LARGE' },
-      });
-    case 'MIME_NOT_ALLOWED':
-      return new HTTPException(400, {
-        message: err.message,
-        cause: { code: 'MIME_NOT_ALLOWED', details: err.details },
-      });
-    case 'EMPTY_FILE':
-      return new HTTPException(400, { message: 'empty file', cause: { code: 'BAD_REQUEST' } });
-    case 'INVALID_NAME':
-      return new HTTPException(400, { message: err.message, cause: { code: 'BAD_REQUEST' } });
-    case 'ATTACHMENT_NAME_TAKEN':
-      return new HTTPException(400, {
-        message: err.message,
-        cause: { code: 'ATTACHMENT_NAME_TAKEN', details: err.details },
-      });
-  }
-}
 
 const commentIdParamSchema = z.object({ commentId: z.uuid() });
 const idParamSchema = z.object({ id: z.uuid() });
@@ -104,20 +78,14 @@ commentAttachmentRoutes.post(
     const mime = file.type || 'application/octet-stream';
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    let persisted: Awaited<ReturnType<typeof persistCommentAttachment>>;
-    try {
-      persisted = await persistCommentAttachment({
-        commentId: comment.id,
-        name: file.name || 'file',
-        mime,
-        bytes: buffer,
-        uploaderId: userId,
-        uploaderDeviceId: null,
-      });
-    } catch (err) {
-      if (err instanceof AttachmentError) throw attachmentErrorToHttp(err);
-      throw err;
-    }
+    const persisted = await persistCommentAttachment({
+      commentId: comment.id,
+      name: file.name || 'file',
+      mime,
+      bytes: buffer,
+      uploaderId: userId,
+      uploaderDeviceId: null,
+    });
 
     return c.json(persisted, 201);
   },

@@ -1,5 +1,5 @@
 services:
-  # === Database (pgvector for embeddings — ADR 0011) ===
+  # === Database (pgvector for embeddings) ===
   postgres:
     image: pgvector/pgvector:pg17
     restart: unless-stopped

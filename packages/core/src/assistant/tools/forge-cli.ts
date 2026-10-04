@@ -32,7 +32,7 @@ export interface ForgeCliRun {
   readonly argv: readonly string[];
   /** Written to a file the argv may name as `-`, for a verb that takes a body. */
   readonly body?: string | undefined;
-  /** The turn's own token, minted for the person the turn answers (`auth/turn-credential.ts`). */
+  /** The turn's own token, minted for the person the turn answers (`credentials/turn-credential.ts`). */
   readonly token: string;
   readonly projectId: string;
   readonly projectSlug: string;

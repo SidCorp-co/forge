@@ -9,13 +9,14 @@
  */
 
 import { randomBytes } from 'node:crypto';
+import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
 import { desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { integrationDeliveries } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -50,6 +51,8 @@ import {
 } from './store.js';
 import { setBindingInboundSecret } from '../project-config/binding-store.js';
 import { requireCan, requireOrgHeld } from '../permissions/index.js';
+
+const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 
 // Owner-scoped connection CRUD lives in its own module; re-exported so
 // `src/index.ts` keeps importing both routers from `./integrations/routes.js`.
@@ -217,10 +220,11 @@ integrationsRoutes.post(
       const cfg = ctx.config as { serverUrl?: string } | null;
       const secrets = ctx.secrets as { authToken?: string; userId?: string } | null;
       if (!cfg?.serverUrl || !secrets?.authToken || !secrets?.userId) {
-        throw new HTTPException(409, {
-          message: 'rocketchat connection is missing serverUrl/credentials',
-          cause: { code: 'MISSING_CREDENTIALS' },
-        });
+        throw refuse(
+          'MISSING_CREDENTIALS',
+          'this rocketchat connection holds no serverUrl or no credentials; complete the connection first',
+          '/integrationId',
+        );
       }
       auth = { serverUrl: cfg.serverUrl, authToken: secrets.authToken, userId: secrets.userId };
     } else {
@@ -282,16 +286,16 @@ integrationsRoutes.post('/:projectId/integrations/:id/deliveries/:deliveryId/ret
   if (!delivery || delivery.bindingId !== id) throw notFound('delivery');
 
   if (delivery.direction !== 'outbound' || delivery.status !== 'failed') {
-    throw new HTTPException(409, {
-      message: 'only failed outbound deliveries can be retried',
-      cause: { code: 'NOT_RETRYABLE' },
-    });
+    throw refuse(
+      'NOT_RETRYABLE',
+      `delivery ${deliveryId} is ${delivery.direction} and ${delivery.status}; only a failed outbound delivery is retried`,
+    );
   }
   if (!adapterOrRefuse(existing.binding.provider).dispatchOutbound) {
-    throw new HTTPException(409, {
-      message: `${existing.binding.provider} dispatches nothing outbound, so delivery ${deliveryId} (\`${delivery.eventName}\`) cannot be re-sent; a merge is asked again on POST /api/issues/:id/merge-pull-request`,
-      cause: { code: 'NOT_RETRYABLE' },
-    });
+    throw refuse(
+      'NOT_RETRYABLE',
+      `${existing.binding.provider} dispatches nothing outbound, so delivery ${deliveryId} (\`${delivery.eventName}\`) cannot be re-sent; a merge is asked again on POST /api/issues/:id/merge-pull-request`,
+    );
   }
 
   const p = (delivery.payload ?? {}) as { runId?: string | null; issueId?: string | null };

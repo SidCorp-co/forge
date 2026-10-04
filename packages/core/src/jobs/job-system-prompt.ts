@@ -17,24 +17,19 @@ import {
 import { loadContractContext } from '../ecosystem/contract/run-context-service.js';
 import { buildPipelinePreambleStructured, type PreambleBlock } from '../lib/chat-preamble.js';
 import { dataPolicyOf, type EgressSurface, egressText, withheldAt } from '../lib/data-egress.js';
+import { isRefusal, RefusalError, refusalCodeOf } from '../lib/refusal.js';
 import { estimateTokens } from '../lib/token-estimator.js';
 import type { DispatchState } from '../project-config/dispatch-policy.js';
 import {
   type LoadedPinnedContract,
   loadPinnedContracts,
-  PinnedContractError,
   renderPinnedContracts,
 } from '../workflows/pinned-contracts.js';
 import {
   type LoadedRequirement,
-  RequirementContextError,
   renderIssueMockups,
 } from '../workflows/requirement-context.js';
-import {
-  ArtifactContextError,
-  type LoadedArtifact,
-  renderArtifactContext,
-} from '../workflows/run-context.js';
+import { type LoadedArtifact, renderArtifactContext } from '../workflows/run-context.js';
 import {
   issueMockupsOf,
   loadArtifactContext,
@@ -42,15 +37,8 @@ import {
 } from '../workflows/run-context-service.js';
 
 /** A context the job's issue reaches that cannot be given; the job is refused, never built blind. */
-export class JobContextRefused extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-    options?: { cause?: unknown },
-  ) {
-    super(message, options);
-  }
-}
+const contextRefused = (code: string, detail: string) =>
+  new RefusalError([{ code, path: '', detail }], 'JOB_CONTEXT_REFUSED');
 
 export interface JobSystemPrompt {
   systemPrompt: string;
@@ -69,7 +57,12 @@ type IssueText = {
   acceptanceCriteria: string | null;
 };
 
-const errText = (err: unknown) => (err instanceof Error ? err.message : String(err));
+const errText = (err: unknown) =>
+  isRefusal(err)
+    ? err.refusals.map((r) => r.detail).join('; ')
+    : err instanceof Error
+      ? err.message
+      : String(err);
 
 // cm:why a run is given the contracts its issue's named paths reach before it starts, since the paths it will change are not known yet; it asks forge_ecosystem action=context for paths it finds later
 async function contractsNamedBy(
@@ -83,10 +76,9 @@ async function contractsNamedBy(
     return await loadContractContext(projectId, pathsNamedIn(text));
   } catch (err) {
     // cm:guard a run whose contract context cannot be read is refused, never prepared without it — it would edit a call site blind (owner, 2026-10-02)
-    throw new JobContextRefused(
+    throw contextRefused(
       'CONTRACT_CONTEXT_UNLOADABLE',
-      `CONTRACT_CONTEXT_UNLOADABLE: ${subject}: the contracts its issue's paths reach could not be read (${errText(err)})`,
-      { cause: err },
+      `${subject}: the contracts its issue's paths reach could not be read (${errText(err)})`,
     );
   }
 }
@@ -102,11 +94,10 @@ async function contractsPinnedFor(
   try {
     return await loadPinnedContracts(requirement.key, requirement.pins);
   } catch (err) {
-    const code = err instanceof PinnedContractError ? err.code : 'ARTIFACT_CONTEXT_UNLOADABLE';
-    throw new JobContextRefused(
+    const code = refusalCodeOf(err) ?? 'ARTIFACT_CONTEXT_UNLOADABLE';
+    throw contextRefused(
       code,
-      `${code}: ${subject}: the contract versions its requirement pins could not be given (${errText(err)})`,
-      { cause: err },
+      `${subject}: the contract versions its requirement pins could not be given (${errText(err)})`,
     );
   }
 }
@@ -118,11 +109,10 @@ async function designsBuiltBy(issueId: string | null, subject: string): Promise<
     return await loadArtifactContext(issueId);
   } catch (err) {
     // cm:guard an unreadable approved revision stops the job as `ARTIFACT_CONTEXT_UNLOADABLE`: an agent given no design would build the journey blind
-    const code = err instanceof ArtifactContextError ? err.code : 'ARTIFACT_CONTEXT_UNLOADABLE';
-    throw new JobContextRefused(
+    const code = refusalCodeOf(err) ?? 'ARTIFACT_CONTEXT_UNLOADABLE';
+    throw contextRefused(
       code,
-      `${code}: ${subject}: the approved design its issue builds could not be given (${errText(err)})`,
-      { cause: err },
+      `${subject}: the approved design its issue builds could not be given (${errText(err)})`,
     );
   }
 }
@@ -138,11 +128,10 @@ async function requirementServedBy(
     return await loadRequirementContext(issueId, mockupsWithheld);
   } catch (err) {
     // cm:guard a requirement that cannot be given at its current revision stops the job by name: a run given a superseded or unagreed revision would build the wrong intent
-    const code = err instanceof RequirementContextError ? err.code : 'ARTIFACT_CONTEXT_UNLOADABLE';
-    throw new JobContextRefused(
+    const code = refusalCodeOf(err) ?? 'ARTIFACT_CONTEXT_UNLOADABLE';
+    throw contextRefused(
       code,
-      `${code}: ${subject}: the requirement its issue delivers could not be given (${errText(err)})`,
-      { cause: err },
+      `${subject}: the requirement its issue delivers could not be given (${errText(err)})`,
     );
   }
 }
@@ -158,10 +147,7 @@ async function givenToAgent(
   if (!text) return null;
   const out = egressText(await dataPolicyOf(projectId), surface, text, subject);
   if (!out.ok) {
-    throw new JobContextRefused(
-      out.refusal.code,
-      `${out.refusal.code}: ${subject}: ${out.refusal.detail}`,
-    );
+    throw contextRefused(out.refusal.code, `${subject}: ${out.refusal.detail}`);
   }
   return out.text;
 }

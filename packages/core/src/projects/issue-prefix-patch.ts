@@ -13,6 +13,8 @@ import {
   retireIssuePrefix,
 } from '../issues/issue-prefix-service.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import type { RefusalError } from '../lib/refusal.js';
+import { refuse } from './refuse.js';
 
 async function readProjectName(projectId: string): Promise<string | null> {
   const [row] = await db
@@ -26,7 +28,7 @@ async function readProjectName(projectId: string): Promise<string | null> {
 async function issuePrefixRefusal(
   refusal: Exclude<AssignPrefixResult, { ok: true }>,
   userId: string,
-): Promise<HTTPException> {
+): Promise<HTTPException | RefusalError> {
   if (refusal.reason !== 'taken') {
     return new HTTPException(400, {
       message: refusal.message,
@@ -37,12 +39,13 @@ async function issuePrefixRefusal(
     ? await loadProjectAccess(refusal.holderProjectId, userId)
     : null;
   const visible = holder?.role ? await readProjectName(refusal.holderProjectId as string) : null;
-  return new HTTPException(409, {
-    message: visible
+  return refuse(
+    'ISSUE_PREFIX_TAKEN',
+    visible
       ? `that issue prefix is already held by the project \`${visible}\`. A prefix names one project for good, so it is never handed on.`
       : 'that issue prefix is already held by another project. A prefix names one project for good, so it is never handed on.',
-    cause: { code: 'ISSUE_PREFIX_TAKEN' },
-  });
+    '/issuePrefix',
+  );
 }
 
 export async function applyIssuePrefixPatch(

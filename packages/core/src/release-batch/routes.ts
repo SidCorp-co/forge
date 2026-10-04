@@ -1,10 +1,9 @@
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RELEASE_ATTEMPT_STAGES } from '../db/schema-release-ledger.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { badRequest, conflict, notFound } from '../middleware/route-errors.js';
+import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { assertApprovalAllowsAttempt } from './approvals.js';
 import { resolveReleaseChannels } from './channel.js';
@@ -19,34 +18,17 @@ import {
 import { announceMethod } from './method.js';
 import { loadReleaseReadiness } from './readiness.js';
 import { readReleaseRecord, recordPerformedRelease } from './recorded.js';
-import {
-  declarationRefusal,
-  finishRefusal,
-  holding,
-  issuesUnnamed,
-  recordRefusal,
-  refuseMachineKeys,
-  releaseBlockerHttp,
-  reportedRefusal,
-} from './refusals.js';
+import { refuseMachineKeys, refuseRelease } from './refuse.js';
 import {
   abortReleaseBatch,
-  BatchInFlightError,
-  ClaimConflictError,
   createReleaseBatch,
   findReleaseBatchRun,
   getActiveReleaseBatch,
   loadReleaseBatchContext,
   loadReleaseRoster,
-  NoReleaseGateError,
-  ReleaseIssuesUnnamedError,
-  ReleaseRecutRefusedError,
-  ReleaseVersionConflictError,
-  ReleaseVersionExhaustedError,
-  ReleaseVersionLineBehindError,
 } from './service.js';
 import { readServingDeployment } from './serving.js';
-import { assertRunNotHolding, ReleaseRunHoldingError, readReleaseRunState } from './state.js';
+import { assertRunNotHolding, readReleaseRunState } from './state.js';
 import { releaseVersionRoutes } from './version-routes.js';
 import { requireHeld } from '../permissions/index.js';
 
@@ -104,37 +86,8 @@ releaseBatchRoutes.post(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.admin');
 
-    try {
-      const result = await createReleaseBatch({ projectId, issueIds, userId, recutOf });
-      return c.json(result, 201);
-    } catch (err) {
-      // Every reason the enumerator found answers from its own entry, so the
-      // arms below are only for what is thrown after it: a race at the claim or
-      // the enqueue, a plan read, an empty list beside a gate that holds work.
-      const reported = reportedRefusal(err);
-      if (reported) throw reported;
-      const declined = declarationRefusal(err);
-      if (declined) throw declined;
-      if (err instanceof NoReleaseGateError) throw releaseBlockerHttp(err, 'NO_RELEASE_GATE');
-      if (err instanceof ClaimConflictError) {
-        throw releaseBlockerHttp(err, 'CLAIM_CONFLICT', err.details ?? { issueIds: err.issueIds });
-      }
-      if (err instanceof BatchInFlightError) throw releaseBlockerHttp(err, 'BATCH_IN_FLIGHT');
-      if (err instanceof ReleaseIssuesUnnamedError) throw issuesUnnamed(projectId);
-      if (err instanceof ReleaseRecutRefusedError) {
-        throw conflict('RELEASE_RECUT_REFUSED', err.message);
-      }
-      if (err instanceof ReleaseVersionConflictError) {
-        throw conflict('RELEASE_VERSION_CONFLICT', err.message);
-      }
-      if (err instanceof ReleaseVersionExhaustedError) {
-        throw conflict('RELEASE_VERSION_EXHAUSTED', err.message);
-      }
-      if (err instanceof ReleaseVersionLineBehindError) {
-        throw conflict('RELEASE_VERSION_LINE_BEHIND', err.message);
-      }
-      throw err;
-    }
+    const result = await createReleaseBatch({ projectId, issueIds, userId, recutOf });
+    return c.json(result, 201);
   },
 );
 
@@ -167,13 +120,7 @@ releaseBatchRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.write');
 
-    try {
-      return c.json(await loadReleaseRoster(projectId));
-    } catch (err) {
-      const declined = declarationRefusal(err);
-      if (declined) throw declined;
-      throw err;
-    }
+    return c.json(await loadReleaseRoster(projectId));
   },
 );
 
@@ -208,7 +155,7 @@ releaseBatchRoutes.get(
     const read = await readServingDeployment(projectId);
     if (!read.ok) {
       if (read.code === 'NO_PROJECT') throw notFound('project not found');
-      throw new HTTPException(409, { message: read.detail, cause: { code: read.code } });
+      throw refuseRelease(read.code, read.detail);
     }
     return c.json(read.deployment);
   },
@@ -277,17 +224,11 @@ releaseBatchRoutes.post(
     const userId = c.get('userId');
     await loadRunForProject(runId, projectId, userId);
 
-    try {
-      const accepted = await acceptReleaseBatchFinish(runId, restActor(c), c.req.valid('json'));
-      return c.json(
-        { runId, finish: accepted.finish },
-        accepted.finish.state === 'finished' ? 200 : 202,
-      );
-    } catch (err) {
-      const refused = finishRefusal(err);
-      if (refused) throw refused;
-      throw err;
-    }
+    const accepted = await acceptReleaseBatchFinish(runId, restActor(c), c.req.valid('json'));
+    return c.json(
+      { runId, finish: accepted.finish },
+      accepted.finish.state === 'finished' ? 200 : 202,
+    );
   },
 );
 
@@ -384,12 +325,7 @@ releaseBatchRoutes.post(
     await loadRunForProject(runId, projectId, c.get('userId'));
     const body = c.req.valid('json') as Record<string, unknown>;
     refuseMachineKeys(body);
-    try {
-      await assertRunNotHolding(runId);
-    } catch (err) {
-      if (err instanceof ReleaseRunHoldingError) throw holding(err);
-      throw err;
-    }
+    await assertRunNotHolding(runId);
     await assertApprovalAllowsAttempt(runId, projectId);
     const row = await openAttempt({
       runId,
@@ -456,12 +392,8 @@ releaseBatchRoutes.post(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.admin');
 
-    try {
-      const result = await recordPerformedRelease({ projectId, userId, ...c.req.valid('json') });
-      return c.json(result, 201);
-    } catch (err) {
-      throw recordRefusal(err);
-    }
+    const result = await recordPerformedRelease({ projectId, userId, ...c.req.valid('json') });
+    return c.json(result, 201);
   },
 );
 

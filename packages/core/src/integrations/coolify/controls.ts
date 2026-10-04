@@ -22,6 +22,7 @@ import { CoolifyApiError, CoolifyClient } from './client.js';
 import {
   activeCoolifyIntegrations,
   CoolifyCommandError,
+  refuseCoolify,
   type CoolifyIntegrationRow,
   resolveIntegrationRow,
 } from './commands.js';
@@ -226,12 +227,14 @@ export function assertRollbackTagListed(
   targetLabel: string,
 ): void {
   if (images.length === 0) {
-    throw new CoolifyCommandError(
+    throw refuseCoolify(
+      'COOLIFY_ROLLBACK_IMAGE_UNLISTED',
       `Coolify listed no rollback images for ${targetLabel}, so "${commit}" cannot be confirmed to exist — refusing. An empty list also means the application's server was unreachable; check it before rolling back.`,
     );
   }
   if (images.some((i) => i.tag === commit)) return;
-  throw new CoolifyCommandError(
+  throw refuseCoolify(
+    'COOLIFY_ROLLBACK_IMAGE_UNLISTED',
     `rollback image "${commit}" is not listed by Coolify for ${targetLabel} — refusing. Coolify lists: ${images.map((i) => i.tag).join(', ')}`,
   );
 }

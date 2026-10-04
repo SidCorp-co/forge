@@ -5,7 +5,7 @@ import type { DocumentType } from './schema.js';
 export const DOCUMENT_SCHEMA_ID = `${SCHEMA_BASE}/document-v1.json`;
 export const HOLD_SCHEMA_ID = `${SCHEMA_BASE}/hold-v1.json`;
 
-export const TYPE_CODES: Readonly<Record<DocumentType, string>> = {
+export const TYPE_ABBREVIATIONS: Readonly<Record<DocumentType, string>> = {
   'change-notice': 'CN',
   acknowledgement: 'ACK',
   rfi: 'RFI',

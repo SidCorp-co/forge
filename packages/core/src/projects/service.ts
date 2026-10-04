@@ -24,6 +24,7 @@ import { addProjectMembers } from '../permissions/index.js';
 import { DEFAULT_POLICY } from '../project-config/default-policy.js';
 import { seedProjectPolicy } from '../project-config/store.js';
 import { readDeclaredSource } from '../project-config/source.js';
+import { refuse } from './refuse.js';
 
 /** The project's id, or `null` when no project carries that slug. */
 export async function findProjectIdBySlug(slug: string): Promise<string | null> {
@@ -59,14 +60,6 @@ export async function readProjectBranches(projectId: string): Promise<ProjectBra
     .limit(1);
   if (!row) return null;
   return { baseBranch: (await readDeclaredSource(projectId)).defaultBranch };
-}
-
-/** A project slug already in use. Each transport maps this to its own status. */
-export class ProjectSlugTakenError extends Error {
-  constructor() {
-    super('slug already in use');
-    this.name = 'ProjectSlugTakenError';
-  }
 }
 
 export type NewProject = {
@@ -105,7 +98,11 @@ export async function createProject(input: NewProject) {
     });
   } catch (err) {
     if (isUniqueViolation(err) && uniqueViolationConstraint(err) === 'projects_slug_unique') {
-      throw new ProjectSlugTakenError();
+      throw refuse(
+        'SLUG_TAKEN',
+        `the slug \`${input.slug}\` is already in use; pick another`,
+        '/slug',
+      );
     }
     throw err;
   }

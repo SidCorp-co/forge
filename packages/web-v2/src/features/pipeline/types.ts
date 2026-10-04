@@ -1,3 +1,4 @@
+import type { IssueMove } from "@forge/contracts/issue-machine";
 
 import type { IssueWorkStateRow, PipelineHealth } from "@/features/issues/types";
 import {
@@ -153,6 +154,8 @@ export interface PipelineIssueRow {
   pipelineHealth?: PipelineHealth;
   /** ISS-54 — the run's step inside `in_progress`, which the card's chip names. */
   workState?: IssueWorkStateRow | null;
+  /** The moves a person may offer from its status, from core's list read. */
+  moves: IssueMove[];
   metadata?: ({ branchConfig?: { branch?: string } | null } & Record<string, unknown>) | null;
 }
 

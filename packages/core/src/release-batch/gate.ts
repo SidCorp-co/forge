@@ -12,21 +12,10 @@ import {
   type ReleasePath,
   readReleasePath,
 } from '../project-config/release-path.js';
+import { blockerRefusal } from './refuse.js';
 
 /** The one status an issue waits at for release. */
 export const RELEASE_GATE_STATUS: IssueStatus = 'awaiting_release';
-
-/** Thrown where nothing says where a release lands, so an issue cannot be parked for one. */
-export class ReleaseTargetUndeclaredError extends Error {
-  readonly code = 'RELEASE_TARGET_UNDECLARED';
-  constructor(
-    readonly projectId: string,
-    readonly reason: string,
-  ) {
-    super(`RELEASE_TARGET_UNDECLARED: ${reason}`);
-    this.name = 'ReleaseTargetUndeclaredError';
-  }
-}
 
 export type ReleaseDeclaration =
   | { kind: 'no-release'; defaultBranch: string | null }
@@ -94,14 +83,14 @@ export async function resolveReleaseDeclaration(
  * The status issues must be at to join a batch release, or `null` when the project
  * declares no production environment and the driver's `closed` means what it says.
  *
- * THROWS on `undeclared-target`. The caller 409s with `RELEASE_TARGET_UNDECLARED`; answering
+ * THROWS on `undeclared-target`, refused `RELEASE_TARGET_UNDECLARED`; answering
  * `null` there reads to every caller as a project that declared it ships nothing.
  */
 export async function resolveReleaseGate(projectId: string): Promise<IssueStatus | null> {
   const decl = await resolveReleaseDeclaration(projectId);
   if (!decl) return null;
   if (decl.kind === 'undeclared-target') {
-    throw new ReleaseTargetUndeclaredError(projectId, decl.reason);
+    throw blockerRefusal('RELEASE_TARGET_UNDECLARED', { reason: decl.reason });
   }
   return decl.kind === 'gated' ? RELEASE_GATE_STATUS : null;
 }

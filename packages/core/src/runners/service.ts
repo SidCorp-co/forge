@@ -5,10 +5,12 @@
  * about jobs, not about runners, and four surfaces had grown their own.
  */
 
+import type { RunnerRefusalCode } from '@forge/contracts/runners';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type RunnerStatus, type RunnerType, runners } from '../db/schema.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
+import { type RefusalError, refuser } from '../lib/refusal.js';
 
 export type NewRunner = {
   projectId: string;
@@ -20,23 +22,20 @@ export type NewRunner = {
   config: Record<string, unknown>;
 };
 
-/**
- * One device already binds this project on this type. Each transport maps this
- * to its own status; `collided` is the row that holds the binding, or null when
- * the binding outlived two reads and could not be named.
- */
-export class RunnerAlreadyBoundError extends Error {
-  constructor(
-    readonly collided: { id: string; name: string; status: RunnerStatus } | null,
-    readonly wayBack: string,
-  ) {
-    super(
-      collided
-        ? `runner ${collided.id} (${collided.name}) already binds this device to this project as this type, status ${collided.status}. ${wayBack}`
-        : `this device already binds this project as this type, and the runner holding it could not be read back. ${wayBack}`,
-    );
-    this.name = 'RunnerAlreadyBoundError';
-  }
+const refuse = refuser<RunnerRefusalCode>('RUNNER_REFUSED');
+
+/** One device already binds this project on this type; `collided` is the row holding the binding, when it could be read. */
+function alreadyBound(
+  collided: { id: string; name: string; status: RunnerStatus } | null,
+  wayBack: string,
+): RefusalError {
+  return refuse(
+    'RUNNER_ALREADY_BOUND',
+    collided
+      ? `runner ${collided.id} (${collided.name}) already binds this device to this project as this type, status ${collided.status}. ${wayBack}`
+      : `this device already binds this project as this type, and the runner holding it could not be read back. ${wayBack}`,
+    '/deviceId',
+  );
 }
 
 const PROJECT_DEVICE_TYPE_UQ = 'runners_project_device_type_uq';
@@ -60,7 +59,7 @@ export async function insertRunner(input: NewRunner) {
     if (!isBindingCollision(err)) throw err;
     const collided = await readBinding(input);
     if (!collided) return await retryAfterVanishedBinding(input);
-    throw new RunnerAlreadyBoundError(
+    throw alreadyBound(
       collided,
       collided.status === 'disabled'
         ? 'It was retired, not removed: restore it rather than registering a second row.'
@@ -74,7 +73,7 @@ async function retryAfterVanishedBinding(input: NewRunner) {
     return await insertRunnerRow(input);
   } catch (err) {
     if (!isBindingCollision(err)) throw err;
-    throw new RunnerAlreadyBoundError(null, "Read the project's runners to find it.");
+    throw alreadyBound(null, "Read the project's runners to find it.");
   }
 }
 

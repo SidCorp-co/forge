@@ -1,11 +1,12 @@
 import { ISSUE_ADMIT_PERMISSION, ISSUE_INITIAL_STATUSES } from '@forge/contracts/issue-machine';
+import type { IssueCreateRefusalCode } from '@forge/contracts/issues';
 import { eq } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issueLabels, issues } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { RefusalError } from '../lib/refusal.js';
+import { RefusalError, refuser } from '../lib/refusal.js';
 import { permissionRefusalFor } from '../permissions/index.js';
 import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -36,17 +37,7 @@ import {
 } from './relations-service.js';
 import { splitSessionContext, writeSplitSessionContext } from './work-state.js';
 
-export type IssueCreateErrorCode = 'INVALID_STATUS' | 'INVALID_DETECTOR_KEY';
-
-export class IssueCreateError extends Error {
-  constructor(
-    readonly code: IssueCreateErrorCode,
-    readonly value: string,
-  ) {
-    super(code);
-    this.name = 'IssueCreateError';
-  }
-}
+const refuse = refuser<IssueCreateRefusalCode>('ISSUE_CREATE_REFUSED');
 
 /**
  * The only statuses an issue may be born at (`ISSUE_MACHINE.initial`): `open` for an actor holding
@@ -188,7 +179,11 @@ export async function createIssue(
     input.status !== undefined &&
     !(CREATE_ENTRY_STATUSES as readonly string[]).includes(input.status)
   ) {
-    throw new IssueCreateError('INVALID_STATUS', input.status);
+    throw refuse(
+      'INVALID_STATUS',
+      `an issue is born at ${CREATE_ENTRY_STATUSES.map((st) => `\`${st}\``).join(' or ')}, not \`${input.status}\`; every other status is reached by a transition`,
+      '/status',
+    );
   }
   const requestedStatus = await birthStatus(
     input.projectId,
@@ -214,7 +209,11 @@ export async function createIssue(
   const detectorKey = input.detectorKey ?? null;
   if (detectorKey) {
     if (!isValidDetectorKey(detectorKey)) {
-      throw new IssueCreateError('INVALID_DETECTOR_KEY', detectorKey);
+      throw refuse(
+        'INVALID_DETECTOR_KEY',
+        `detectorKey \`${detectorKey}\` is not a detector key: lowercase slash-separated slugs, at most 120 characters (e.g. \`doc-drift/architecture\`)`,
+        '/detectorKey',
+      );
     }
     const { existingIssueId } = await claimDetectorKey(input.projectId, detectorKey);
     if (existingIssueId) {

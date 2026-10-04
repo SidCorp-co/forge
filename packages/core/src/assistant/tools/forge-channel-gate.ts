@@ -1,12 +1,11 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { agentQuestions } from '../../db/schema-questions.js';
-import { Refused } from '../../ecosystem/channel-act.js';
+import { RefusalError } from '../../lib/refusal.js';
 import type { Writer } from '../../ecosystem/channel-author.js';
 import { readAs } from '../../ecosystem/channel-read.js';
 import { viewOf } from '../../ecosystem/channel-view.js';
 import { answerAs } from '../../questions/read.js';
-import { QuestionRefused } from '../../questions/write.js';
 
 export interface NamedRefusal {
   code: string;
@@ -65,8 +64,7 @@ export async function decideGateAs(args: {
       ...(args.note === undefined ? {} : { note: args.note }),
     });
   } catch (err) {
-    if (err instanceof QuestionRefused) return no(err.code, '/decision', err.message);
-    if (err instanceof Refused) return { ok: false, refusals: err.refusals };
+    if (err instanceof RefusalError) return { ok: false, refusals: [...err.refusals] };
     throw err;
   }
   return {

@@ -3,7 +3,8 @@ import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { type BoundsReading, readBounds } from './bounds.js';
 import { closeVerification, type ReleaseChannel, resolveReleaseChannels } from './channel.js';
-import { ReleaseProbesUnreadableError } from './errors.js';
+import { isRefusal } from '../lib/refusal.js';
+import { refuseRelease } from './refuse.js';
 import { type ReleaseFinishRecord, readFinishRecord } from './finish-job.js';
 import { listAttempts, type ReleaseAttemptRow } from './ledger.js';
 import { type ReleaseMethod, readMethod } from './method.js';
@@ -41,7 +42,7 @@ function liveProbes(channels: ReleaseChannel[]): VerifyConfig | null {
     const verification = closeVerification(channels);
     return verification.kind === 'probed' ? verification.cfg : null;
   } catch (err) {
-    if (err instanceof ReleaseProbesUnreadableError) return null;
+    if (isRefusal(err, 'RELEASE_PROBES_UNREADABLE')) return null;
     throw err;
   }
 }
@@ -55,7 +56,7 @@ export function recordedVerification(
   if (value === undefined || value === null) return null;
   if (value === 'probed' || value === 'unverified') return value;
   throw new Error(
-    `RELEASE_VERIFICATION_UNREADABLE: release run ${runId} records verification ${JSON.stringify(value)}, which is neither "probed" nor "unverified"`,
+    `release run ${runId} records verification ${JSON.stringify(value)}, which is neither "probed" nor "unverified"`,
   );
 }
 
@@ -110,18 +111,15 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
   };
 }
 
-/** The run is past a bound and a person should look before it does more. */
-export class ReleaseRunHoldingError extends Error {
-  constructor(public readonly crossed: string[]) {
-    super('RELEASE_RUN_HOLDING');
-    this.name = 'ReleaseRunHoldingError';
-  }
-}
-
 /**
  * Refuse a further attempt on a run that is already past a bound.
  */
 export async function assertRunNotHolding(runId: string): Promise<void> {
   const bounds = readBounds(await listAttempts(runId));
-  if (bounds.holding) throw new ReleaseRunHoldingError(bounds.crossedNames);
+  if (bounds.holding) {
+    throw refuseRelease(
+      'RELEASE_RUN_HOLDING',
+      `This release run is past its ${bounds.crossedNames.join(' and ')} bound, so it records no further attempts. Read GET .../state, then either finish it or abort it with what you found.`,
+    );
+  }
 }

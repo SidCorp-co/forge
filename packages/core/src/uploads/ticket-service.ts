@@ -1,3 +1,4 @@
+import type { AttachmentRefusalCode } from '@forge/contracts/attachments';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { findCommentAttachmentByName } from '../comments/attachment-service.js';
 import { env } from '../config/env.js';
@@ -11,24 +12,14 @@ import {
   safeName,
 } from '../lib/attachment-mime.js';
 import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
+import { refuser } from '../lib/refusal.js';
 
 /** How long a minted upload ticket stays valid. Short by design (replay window). */
 export const UPLOAD_TICKET_TTL_MS = 5 * 60 * 1000;
 
 export type UploadTargetType = 'issue' | 'comment' | 'session' | 'conversation';
 
-export type UploadTicketErrorCode = 'MIME_NOT_ALLOWED' | 'ATTACHMENT_NAME_TAKEN' | 'INVALID_NAME';
-
-export class UploadTicketError extends Error {
-  readonly code: UploadTicketErrorCode;
-  readonly details: unknown;
-  constructor(code: UploadTicketErrorCode, message: string, details?: unknown) {
-    super(message);
-    this.code = code;
-    this.details = details;
-    this.name = 'UploadTicketError';
-  }
-}
+const refuse = refuser<AttachmentRefusalCode>('ATTACHMENT_REFUSED');
 
 export interface UploadTicket {
   id: string;
@@ -82,27 +73,29 @@ export async function createUploadTicket(
 ): Promise<{ id: string; expiresAt: Date; maxBytes: number }> {
   const allowed = allowedSetForTarget(input.targetType);
   if (!allowed.mimes.includes(input.mime)) {
-    throw new UploadTicketError('MIME_NOT_ALLOWED', `mime not allowed: ${input.mime}`, {
-      reason: 'not-allowed',
-      allowed,
-    });
+    throw refuse(
+      'MIME_NOT_ALLOWED',
+      `mime not allowed: ${input.mime}; this ${input.targetType} takes ${allowed.mimes.join(', ')}`,
+      '/mime',
+    );
   }
   if (nameExceedsByteBudget(safeName(input.name))) {
-    throw new UploadTicketError(
+    throw refuse(
       'INVALID_NAME',
       `name is longer than ${NAME_MAX_BYTES} bytes of UTF-8 — rename the file and mint again`,
+      '/name',
     );
   }
   const taken = await takenNameOn(input.targetType, input.targetId, input.name);
   if (taken) {
-    throw new UploadTicketError(
+    throw refuse(
       'ATTACHMENT_NAME_TAKEN',
       `an attachment named "${taken.name}" is already on this ${input.targetType} (id ${taken.id}, ${taken.url}) — ${
         input.targetType === 'issue'
           ? 'cite it, delete it, or mint under a different name'
           : 'cite it, or mint under a different name'
       }`,
-      { existing: taken },
+      '/name',
     );
   }
   const expiresAt = new Date(Date.now() + UPLOAD_TICKET_TTL_MS);

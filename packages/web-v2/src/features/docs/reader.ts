@@ -34,7 +34,6 @@ export function deriveToc(markdown: string): TocEntry[] {
 export const HELP_SECTION_ORDER: readonly string[] = [
   "Getting started",
   "Guides",
-  "Connect an assistant",
   "Concepts",
   "Reference",
   "Troubleshooting",

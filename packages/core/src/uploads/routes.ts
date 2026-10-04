@@ -1,13 +1,15 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import type { AttachmentRefusalCode } from '@forge/contracts/attachments';
 import { z } from 'zod';
 import { contentDisposition } from '../lib/attachment-headers.js';
+import { refuser } from '../lib/refusal.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { getStorage } from '../storage/index.js';
 import { loadAttachmentBytesTarget } from './attachment-bytes.js';
 import { resolveDownloadTicket } from './download-ticket-service.js';
-import { attachmentRefusal, persistUpload } from './persist-upload.js';
+import { persistUpload } from './persist-upload.js';
 import { claimUploadTicket, releaseUploadTicket } from './ticket-service.js';
 
 const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
@@ -17,6 +19,8 @@ const goneOrNotFound = () =>
     message: 'upload ticket not found, expired, or already used',
     cause: { code: 'UPLOAD_TICKET_INVALID' },
   });
+
+const refuse = refuser<AttachmentRefusalCode>('ATTACHMENT_REFUSED');
 
 const uploadIdParamSchema = z.object({ uploadId: z.uuid() });
 
@@ -54,14 +58,12 @@ uploadRoutes.put(
 
     try {
       const bytes = Buffer.from(await c.req.arrayBuffer());
-      if (bytes.length === 0) throw badRequest('empty file', 'EMPTY_FILE');
+      if (bytes.length === 0) throw refuse('EMPTY_FILE', 'the body holds no bytes; PUT the file itself');
 
       const persisted = await persistUpload(ticket, bytes);
       return c.json(persisted, 201);
     } catch (err) {
       await releaseUploadTicket(uploadId);
-      const refusal = attachmentRefusal(err);
-      if (refusal) throw badRequest(refusal.message, refusal.code, refusal.details);
       throw err;
     }
   },

@@ -9,8 +9,14 @@ import type { ActorAgency } from '../issues/actor-agency.js';
 import { peopleOf } from '../lib/people.js';
 import { staleBase } from '../project-config/documents.js';
 import { readProjectDocument } from '../project-config/service.js';
-import { designFingerprint, designStatusAfterWrite, designStatusAtCreate } from './design.js';
+import {
+  designApproverRefusal,
+  designFingerprint,
+  designStatusAfterWrite,
+  designStatusAtCreate,
+} from './design.js';
 import { baseRefusals } from './design-bases.js';
+import { designListReadingOf } from './design-standing.js';
 import {
   checkWorkflow,
   duplicateWorkflowRefusal,
@@ -32,7 +38,7 @@ import {
   workflowsOf,
 } from './store.js';
 import { type ProjectDesign, type ProjectDesigns, projectDesignOf } from './template-check.js';
-import { requireCan } from '../permissions/index.js';
+import { permissionFactsOf, requireCan } from '../permissions/index.js';
 
 export interface WorkflowWriter {
   userId: string;
@@ -235,18 +241,43 @@ export function workflowView(
   };
 }
 
+async function mayDecideDesigns(userId: string, projectId: string): Promise<boolean> {
+  return designApproverRefusal(await permissionFactsOf(userId, projectId)) === null;
+}
+
+function listedView(
+  row: StoredWorkflow,
+  canDecide: boolean,
+  writerName: string | undefined,
+  returnReason?: string | null,
+) {
+  const view = workflowView(row, storedWorkflow(row), writerName, returnReason);
+  const reading = designListReadingOf(
+    {
+      status: row.designStatus,
+      proposedRevision: row.designStatus === 'proposed' ? row.revision : null,
+      approvedRevision: row.approvedRevision,
+      latest: { revision: row.revision, author: view.writerName },
+      canDecide,
+    },
+    row.revision,
+  );
+  return { ...view, design: { ...view.design, ...reading } };
+}
+
 export async function listWorkflowsAs(userId: string, projectId: string) {
   await requireCan({ userId }, 'project.read', projectId);
   const rows = await workflowsOf(db, projectId);
-  const [names, reasons] = await Promise.all([
+  const [names, reasons, canDecide] = await Promise.all([
     writerNames(rows),
     returnReasonsOf(
       db,
       rows.filter((r) => r.designStatus === 'returned').map((r) => r.id),
     ),
+    mayDecideDesigns(userId, projectId),
   ]);
   return rows.map((row) =>
-    workflowView(row, storedWorkflow(row), names.get(row.writtenByUser), reasons.get(row.id)),
+    listedView(row, canDecide, names.get(row.writtenByUser), reasons.get(row.id)),
   );
 }
 
@@ -256,8 +287,11 @@ export async function readWorkflowAs(userId: string, projectId: string, id: stri
   if (!row || row.projectId !== projectId) {
     throw notFound(`project ${projectId} holds no workflow ${id}`);
   }
-  const names = await writerNames([row]);
-  return workflowView(row, storedWorkflow(row), names.get(row.writtenByUser));
+  const [names, canDecide] = await Promise.all([
+    writerNames([row]),
+    mayDecideDesigns(userId, projectId),
+  ]);
+  return listedView(row, canDecide, names.get(row.writtenByUser));
 }
 
 async function writerNames(rows: readonly StoredWorkflow[]): Promise<Map<string, string>> {

@@ -20,23 +20,7 @@ import {
   safeName,
 } from '../lib/attachment-mime.js';
 import { getStorage } from '../storage/index.js';
-
-export type ConversationAttachmentErrorCode =
-  | 'MIME_NOT_ALLOWED'
-  | 'FILE_TOO_LARGE'
-  | 'EMPTY_FILE'
-  | 'INVALID_NAME';
-
-export class ConversationAttachmentError extends Error {
-  readonly code: ConversationAttachmentErrorCode;
-  readonly details: unknown;
-  constructor(code: ConversationAttachmentErrorCode, message: string, details?: unknown) {
-    super(message);
-    this.code = code;
-    this.details = details;
-    this.name = 'ConversationAttachmentError';
-  }
-}
+import { refuseConversation } from './refusals.js';
 
 export interface PersistConversationAttachmentInput {
   conversationId: string;
@@ -84,16 +68,20 @@ export async function persistConversationAttachment(
 ): Promise<ConversationAttachmentRef & { createdAt: Date }> {
   const name = safeName(input.name || 'file');
   if (nameExceedsByteBudget(name)) {
-    throw new ConversationAttachmentError(
+    throw refuseConversation(
       'INVALID_NAME',
       `name is longer than ${NAME_MAX_BYTES} bytes of UTF-8 — rename the file and upload it again`,
+      '/name',
     );
   }
   if (input.bytes.byteLength <= 0) {
-    throw new ConversationAttachmentError('EMPTY_FILE', 'empty file');
+    throw refuseConversation('EMPTY_FILE', 'empty file: an attachment carries at least one byte');
   }
   if (input.bytes.byteLength > env.UPLOADS_MAX_BYTES) {
-    throw new ConversationAttachmentError('FILE_TOO_LARGE', 'file too large');
+    throw refuseConversation(
+      'FILE_TOO_LARGE',
+      `file too large: ${input.bytes.byteLength} bytes, and an attachment is at most ${env.UPLOADS_MAX_BYTES}`,
+    );
   }
   const resolved = resolveAttachmentMime({
     target: 'conversation',
@@ -102,10 +90,11 @@ export async function persistConversationAttachment(
     bytes: input.bytes,
   });
   if (!resolved.ok) {
-    throw new ConversationAttachmentError('MIME_NOT_ALLOWED', mimeRefusalMessage(resolved), {
-      reason: resolved.reason,
-      allowed: allowedSetForTarget('conversation'),
-    });
+    throw refuseConversation(
+      'MIME_NOT_ALLOWED',
+      `${mimeRefusalMessage(resolved)}; a conversation takes ${allowedSetForTarget('conversation').mimes.join(', ')}`,
+      '/mime',
+    );
   }
 
   const key = `conversations/${input.conversationId}/${Date.now()}-${name}`;

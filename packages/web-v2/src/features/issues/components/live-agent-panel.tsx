@@ -13,7 +13,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, Icon, MonoTag } from "@/design";
 import { useElapsed } from "@/design/hooks/use-elapsed";
-import { heartbeatState } from "../derive";
 import type { QueuedStepView } from "../waiting";
 import type { IssueAgentSession } from "../types";
 
@@ -30,10 +29,7 @@ interface LiveAgentPanelProps {
   issueId: string;
 }
 
-const HEARTBEAT_META: Record<
-  ReturnType<typeof heartbeatState>,
-  { dot: string; label: string }
-> = {
+const HEARTBEAT_META: Record<IssueAgentSession["heartbeat"], { dot: string; label: string }> = {
   alive: { dot: "var(--green-500)", label: "Heartbeat alive" },
   stale: { dot: "var(--red-500)", label: "Heartbeat stale" },
   unknown: { dot: "var(--ink-400)", label: "No heartbeat" },
@@ -71,9 +67,7 @@ function LiveRow({
   const startMs = startIso ? Date.parse(startIso) : undefined;
   const elapsed = useElapsed(Number.isNaN(startMs) ? undefined : startMs, running);
 
-  // Heartbeat from the session field when present; fall back to `updatedAt` for
-  // an older server that doesn't surface lastHeartbeatAt yet.
-  const hb = heartbeatState(session.lastHeartbeatAt ?? session.updatedAt);
+  const hb = session.heartbeat;
   const hbMeta = HEARTBEAT_META[hb];
 
   const device = session.deviceId ? session.deviceId.slice(0, 8) : null;

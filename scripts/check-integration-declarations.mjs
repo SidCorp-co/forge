@@ -68,6 +68,7 @@ for (const decl of listIntegrations()) {
         kind: path && path.kind,
         toolsType: path && typeOf(path.tools),
         serverName: path && path.serverName,
+        permission: path && path.permission,
         justification: path && path.justification,
         buildEntryType: path && typeOf(path.buildEntry),
       },

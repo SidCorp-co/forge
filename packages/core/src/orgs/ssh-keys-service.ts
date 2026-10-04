@@ -26,7 +26,9 @@ import { assertSafeSshRepoUrl } from '../git/ssh-host-guard.js';
 import { derivePublicFromPrivate, generateSshKeypair, testSshConnection } from '../git/ssh-keys.js';
 import { decryptSecret, encryptSecret, isVaultConfigured } from '../integrations/vault.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
+import { RefusalError } from '../lib/refusal.js';
 import { logger } from '../logger.js';
+import { refuse } from './refuse.js';
 
 const vaultUnavailable = () =>
   new HTTPException(503, {
@@ -196,17 +198,17 @@ export async function createOrgSshKey(
     return toView(row, []);
   } catch (err) {
     if (isUniqueViolation(err)) {
-      throw new HTTPException(409, {
-        message: 'this key already exists in the org pool (matching fingerprint)',
-        cause: { code: 'DUPLICATE_FINGERPRINT' },
-      });
+      throw refuse(
+        'DUPLICATE_FINGERPRINT',
+        'this key already exists in the org pool (matching fingerprint)',
+      );
     }
     throw err;
   }
 }
 
 /**
- * Safe-delete: throws 409 with the referencing-project list when the key is
+ * Safe-delete: refuses KEY_IN_USE, one refusal per referencing project, when the key is
  * still in use by any project. Deleting an unreferenced key is a hard delete
  * (the FK's ON DELETE RESTRICT would also block an in-use delete at the DB
  * level — this pre-check exists only to surface a friendly structured error
@@ -223,10 +225,14 @@ export async function deleteOrgSshKey(orgId: string, keyId: string): Promise<voi
   const usedBy = await usedByForKeys([keyId]);
   const referencedBy = usedBy.get(keyId) ?? [];
   if (referencedBy.length > 0) {
-    throw new HTTPException(409, {
-      message: 'this key is in use by one or more projects',
-      cause: { code: 'KEY_IN_USE', details: { referencedBy } },
-    });
+    throw new RefusalError(
+      referencedBy.map((p) => ({
+        code: 'KEY_IN_USE',
+        path: '',
+        detail: `in use by project ${p.name} (${p.slug}); detach it there first`,
+      })),
+      'KEY_IN_USE',
+    );
   }
 
   await db.delete(workspaceSshKeys).where(eq(workspaceSshKeys.id, keyId));

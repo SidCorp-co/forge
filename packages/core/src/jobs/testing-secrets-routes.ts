@@ -2,12 +2,14 @@ import { type Context, Hono } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { AUTH_COOKIE_NAME } from '../auth/cookie-names.js';
-import { verifyUserToken } from '../auth/jwt.js';
-import { isPatLike } from '../auth/pat-format.js';
+import { AUTH_COOKIE_NAME } from '../credentials/cookie-names.js';
+import { verifyUserToken } from '../credentials/jwt.js';
+import { isPatLike } from '../credentials/pat-format.js';
 import { parseBearerHeader } from '../middleware/bearer.js';
 import { authenticatePat, type PatPrincipal } from '../middleware/require-pat.js';
+import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { RefusalError } from '../lib/refusal.js';
 import { resolveTestingSecrets, SELF_JOB } from '../project-config/testing-secrets.js';
 
 export const jobTestingSecretsRoutes = new Hono();
@@ -23,11 +25,9 @@ const unauthenticated = (message: string, code = 'UNAUTHENTICATED') =>
   new HTTPException(401, { message, cause: { code } });
 
 const sessionRefused = () =>
-  new HTTPException(403, {
-    message:
-      'a browser or desktop session is a person signed in, and this route hands a testing secret only to the running job whose credential asks for it. A person reads a secret’s name at GET /api/projects/:id/secrets and its value nowhere.',
-    cause: { code: 'TESTING_SECRETS_SESSION_REFUSED' },
-  });
+  forbidden(
+    'a browser or desktop session is a person signed in, and this route hands a testing secret only to the running job whose credential asks for it. A person reads a secret’s name at GET /api/projects/:id/secrets and its value nowhere.',
+  );
 
 async function isSession(token: string): Promise<boolean> {
   try {
@@ -95,6 +95,7 @@ jobTestingSecretsRoutes.get(
     });
     if (!outcome.ok) {
       const { status, code, message, details } = outcome.refusal;
+      if (status === 422) throw new RefusalError([{ code, path: '', detail: message }], code);
       throw new HTTPException(status, {
         message,
         cause: { code, ...(details ? { details } : {}) },

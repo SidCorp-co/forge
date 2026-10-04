@@ -1,4 +1,5 @@
 import type { Tx } from '../db/client.js';
+import { RefusalError } from '../lib/refusal.js';
 import { notFound } from './access.js';
 import { type DocumentRow, readDocument, type StoredState } from './channel-store.js';
 import { type ServedDocument, serveAll } from './channel-world.js';
@@ -9,21 +10,20 @@ export type ChannelOutcome =
   | { ok: true; served: ServedDocument }
   | { ok: false; refusals: EcosystemRefusal[] };
 
-export class Refused extends Error {
-  constructor(readonly refusals: EcosystemRefusal[]) {
-    super('channel: refused');
-  }
-}
+export const refusedWith = (refusals: EcosystemRefusal[]) =>
+  new RefusalError(refusals, 'ECOSYSTEM_REFUSED');
 
 export const refuse = (code: EcosystemRefusal['code'], path: string, detail: string): never => {
-  throw new Refused([{ code, path, detail }]);
+  throw refusedWith([{ code, path, detail }]);
 };
 
 export async function settle(work: () => Promise<ServedDocument>): Promise<ChannelOutcome> {
   try {
     return { ok: true, served: await work() };
   } catch (err) {
-    if (err instanceof Refused) return { ok: false, refusals: err.refusals };
+    if (err instanceof RefusalError) {
+      return { ok: false, refusals: err.refusals as EcosystemRefusal[] };
+    }
     throw err;
   }
 }

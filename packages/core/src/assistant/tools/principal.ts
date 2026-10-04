@@ -1,4 +1,4 @@
-import type { TurnCredential } from '../../auth/turn-credential.js';
+import type { TurnCredential } from '../../credentials/turn-credential.js';
 import type { ChatTurnFacts, McpContext } from '../../mcp/tools/lib.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 

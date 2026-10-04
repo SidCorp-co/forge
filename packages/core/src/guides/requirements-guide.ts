@@ -6,7 +6,7 @@ export const REQUIREMENT_LIFECYCLE_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'Requirements: revisions, agreement, baselines and delivery',
   summary:
-    'How a requirement (REQ-n) is written in immutable revisions with stable business criteria (BC-n), proposed, accepted and agreed by a person under a baseline pinning its designs, re-pinned, deferred, and read as delivered; and why an issue planned against it reads changed-since-plan.',
+    'How a requirement (REQ-n) is written in immutable revisions with stable business criteria (BC-n), proposed, accepted and agreed by a holder of requirements.approve under a baseline pinning its designs, re-pinned, deferred, and read as delivered; and why an issue planned against it reads changed-since-plan.',
   version: 1,
   body: `## Requirements: revisions, agreement, baselines and delivery
 
@@ -19,7 +19,7 @@ it lives in numbered revisions, and each revision carries business criteria unde
 
 ### Three things move, and they are not one field
 - **The requirement's status**: \`draft\` (being written; nothing is built against it), \`agreed\` (a
-  person signed a revision off under a baseline), \`deferred\` (out of the current release),
+  revision was signed off under a baseline), \`deferred\` (out of the current release),
   \`accepted\` (delivered and accepted) and \`dropped\` (no longer wanted). Nothing an agent sends moves
   a requirement to \`accepted\` or \`dropped\`.
 - **Each revision's state**: \`draft → proposed → current → superseded\`. \`current\` is the head, the
@@ -44,10 +44,10 @@ it lives in numbered revisions, and each revision carries business criteria unde
    **edit** rewrites a draft in place, whole: send the criteria list you read back, codes included,
    and a code the draft itself gave keeps that code, as a live code of its base does. Anything past
    draft is \`REQUIREMENT_REVISION_NOT_DRAFT\`.
-3. **propose** puts the draft in front of a person. Proposing also checks the base is still the head.
-4. A person **accepts** it (it becomes current, the previous current is superseded) or **returns** it
+3. **propose** puts the draft in front of whoever approves it. Proposing also checks the base is still the head.
+4. A holder of \`requirements.approve\` **accepts** it (it becomes current, the previous current is superseded) or **returns** it
    with a reason (it goes back to draft, and each return is kept as its own record).
-5. A person **agrees** the head: the requirement becomes \`agreed\` and a **baseline** is written that
+5. A holder of \`requirements.approve\` **agrees** the head: the requirement becomes \`agreed\` and a **baseline** is written that
    pins each linked design at its approved revision. Refused by name: \`REQUIREMENT_REVISION_NOT_CURRENT\`
    (no current head, or the head is not current), \`REQUIREMENT_DESIGN_UNAPPROVED\` naming every linked
    design with no approved revision, \`REQUIREMENT_ALREADY_AGREED\`. When the project document sets
@@ -69,10 +69,10 @@ it lives in numbered revisions, and each revision carries business criteria unde
 - \`GET /api/issues/:id\` then shows \`requirement.changedSincePlan\`: true when the head is now another
   revision, or when the head was re-pinned onto newly approved designs or contracts after the plan.
   Re-plan against the current head; do not build against a plan that reads changed. An issue that
-  reads changed is refused \`awaiting_release\` (and a close from \`in_progress\`) as
+  reads changed is refused \`awaiting_release\` as
   \`REQUIREMENT_CHANGED_SINCE_PLAN\` until its plan is rewritten.
-- A plan written before the link reads changed-since-plan, unless a **person** passes
-  \`adoptPlan: true\`, attesting the plan already satisfies the current revision
+- A plan written before the link reads changed-since-plan, unless a holder of \`requirements.approve\`
+  passes \`adoptPlan: true\`, attesting the plan already satisfies the current revision
   (\`REQUIREMENT_NO_PLAN_TO_ADOPT\` when the issue has no plan).
 - **link_workflow** names a design the next agree or repin pins.
 - **link_contract** \`{ contract: "<project>/<contract>" }\` names a contract this project publishes or

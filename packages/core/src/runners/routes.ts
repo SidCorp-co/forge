@@ -24,7 +24,7 @@ import { clearRunnerQuarantine } from './quarantine.js';
 import { getRunnerAdapter, listRunnerTypes } from './registry.js';
 import { setRunnerStatus } from './runner-events.js';
 import { defaultRunnerCapabilities } from './select.js';
-import { insertRunner, RunnerAlreadyBoundError } from './service.js';
+import { insertRunner } from './service.js';
 import type { Runner } from './types.js';
 import { requireHeld } from '../permissions/index.js';
 
@@ -325,26 +325,15 @@ runnerRoutes.post(
     const result = adapter.validateConfig(input.config);
     if (!result.ok) throw badRequest({ config: result.error });
 
-    let row: Awaited<ReturnType<typeof insertRunner>>;
-    try {
-      row = await insertRunner({
-        projectId: input.projectId,
-        type: input.type,
-        deviceId: input.deviceId,
-        name: input.name,
-        labels: input.labels ?? [],
-        capabilities: defaultRunnerCapabilities(input.type, input.capabilities),
-        config: result.config,
-      });
-    } catch (err) {
-      if (err instanceof RunnerAlreadyBoundError) {
-        throw new HTTPException(409, {
-          message: err.message,
-          cause: { code: 'RUNNER_ALREADY_BOUND', details: { runner: err.collided } },
-        });
-      }
-      throw err;
-    }
+    const row = await insertRunner({
+      projectId: input.projectId,
+      type: input.type,
+      deviceId: input.deviceId,
+      name: input.name,
+      labels: input.labels ?? [],
+      capabilities: defaultRunnerCapabilities(input.type, input.capabilities),
+      config: result.config,
+    });
 
     roomManager.publish(projectRoom(input.projectId), {
       event: 'runner.created',

@@ -14,10 +14,11 @@ and whatever sentence `agent-sessions/session-failure.ts` had to hand. That sent
 agent's reply, a runner error or a fragment of the session's own prompt. ISS-877 moved the sentence to
 `failure_detail`, and since then every writer in core writes a `FailureCause` (the producer audit is in
 ISS-1157's plan). Migration 0192 chose not to backfill: a legacy value reads as `unclassified` through
-`pipeline/failure-causes.ts:resolveFailureCause`.
+`resolveFailureCause` (`packages/contracts/src/failure-causes.ts`, re-exported by
+`pipeline/failure-causes.ts`).
 
-Two readers resolve that way today: `metrics/session-failures-report.ts` and, since ISS-1157,
-`me/pulse-folds.ts:foldSessionFailures`. Every other reader of the column still gets the raw value:
+Three readers resolve that way today: `metrics/session-failures-report.ts`,
+`me/pulse-folds.ts:foldSessionFailures` (since ISS-1157) and `runs/standing-final.ts`. Every other reader of the column still gets the raw value:
 `pipeline/runs-rollup.ts`, `runners/routes.ts`,
 `devices/run-ledger.ts` and the agent-session list. Each of those is scoped to one project, so the
 prose stays inside the project that wrote it. A new reader that forgets to resolve would get the
@@ -40,8 +41,8 @@ only the cause set.
 ## Why ISS-1157 did not do it
 
 Every migration edits `packages/core/drizzle/migrations/meta/_journal.json`. While ISS-1157 was
-worked, the ISS-1146 run held that file with its own migration 0309 committed and unlanded. This is
-free to build once ISS-1146 lands. Take the number from `node scripts/check-migration-order.mjs`.
+worked, the ISS-1146 run held that file with its own migration 0309 committed and unlanded. 0309 has
+since landed, so nothing holds this back. Take the number from `node scripts/check-migration-order.mjs`.
 
 ## Honest costs
 

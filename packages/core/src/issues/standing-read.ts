@@ -5,6 +5,7 @@
  * it and its last activity. One query per fact over the whole page, never one per row.
  */
 
+import { getIssueContexts } from '../pipeline/issue-context-store.js';
 import type {
   IssueAttentionGroup,
   IssueLeaseView,
@@ -12,6 +13,7 @@ import type {
   IssueStandingList,
   IssueStandingRow,
   IssueStandingScope,
+  IssueStepHandoff,
 } from '@forge/contracts/issue-standing';
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import type { WorkStep } from '@forge/contracts/issue-vocabulary';
@@ -29,9 +31,14 @@ import { readCurrentDrafts } from './criteria/storefront-draft.js';
 import { designHoldPhrase, designHoldsOf } from './design-delivery.js';
 import { issueWorkMovingSql } from './issue-lease.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
+import { loadIssuePark } from './park-view.js';
+import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import {
   deriveIssueStanding,
   type IssueStandingInput,
+  issueBlockerOf,
+  type StepDurationFact,
+  stepOutcomesOf,
   type StandingEdge,
   wavesOf,
 } from './standing.js';
@@ -66,6 +73,7 @@ interface IssueRowRaw {
   lease: unknown;
   branch: string | null;
   head_sha: string | null;
+  left_status: IssueStatus | null;
   ws_updated_at: string | null;
   last_activity: string | null;
   moving: boolean;
@@ -94,7 +102,8 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
              i.planned_baseline_seq,
              CASE WHEN btrim(coalesce(i.plan, '')) <> '' THEN 'written' END AS plan,
              i.created_at, i.updated_at,
-             w.step, w.step_started_at, w.steps, w.lease, w.branch, w.head_sha, w.updated_at AS ws_updated_at,
+             w.step, w.step_started_at, w.steps, w.lease, w.branch, w.head_sha, w.left_status,
+             w.updated_at AS ws_updated_at,
              (SELECT max(a.created_at) FROM activity_log a WHERE a.issue_id = i.id) AS last_activity,
              ${holdsOpenHumanQuestion(sql`i.id`)} AS owes_answer,
              ${issueWorkMovingSql({
@@ -358,6 +367,7 @@ async function standingRows(
       r,
       {
         status: r.status,
+        leftStatus: r.left_status,
         designHold: designHold(r.id),
         waitingKind: r.waiting_kind,
         merged: r.merged_at !== null,
@@ -499,10 +509,74 @@ export async function readIssueStanding(
   const raws = await issueRows(projectId, scopeSql('one', issSeq), 1);
   const raw = raws[0];
   if (!raw) return null;
-  const [[row], releaseApproval] = await Promise.all([
+  const [[row], releaseApproval, health, park, steps] = await Promise.all([
     standingRows(projectId, raws, viewer, now),
     approvalRequired(projectId),
+    safeHydratePipelineHealthForIssues(projectId, [raw.id]),
+    loadIssuePark(raw.id),
+    stepFactsOf(projectId, raw.id),
   ]);
   if (!row) return null;
-  return { ...row, steps: raw.steps ?? [], releaseApproval };
+  const h = health.get(raw.id);
+  const blocker = issueBlockerOf({
+    status: raw.status,
+    leftStatus: raw.left_status,
+    pausedRun: h?.pausedRun ?? null,
+    gate: h?.waitingOn ?? null,
+    park,
+    blockedBy: row.standing.blockedBy,
+  });
+  const active = h?.activeSession?.status === 'running' ? h.activeSession.skill : null;
+  return {
+    ...row,
+    steps: raw.steps ?? [],
+    releaseApproval,
+    blocker,
+    stepOutcomes: stepOutcomesOf({ ...steps, activeStep: active }),
+  };
+}
+
+/** The handoffs, step durations and newest failed job one issue's step outcomes are read from. */
+async function stepFactsOf(projectId: string, issueId: string) {
+  const [contexts, durations, failed] = await Promise.all([
+    getIssueContexts({ projectId, issueId, kind: 'handoff', limit: 200, orderDir: 'asc' }),
+    db.execute(sql`
+      SELECT run_id, step, duration_seconds, cost_usd, coalesce(finished_at, started_at) AS at
+        FROM pipeline_run_step_durations
+       WHERE project_id = ${projectId} AND issue_id = ${issueId} AND duration_seconds IS NOT NULL`),
+    db.execute(sql`
+      SELECT type FROM jobs WHERE issue_id = ${issueId} AND status = 'failed'
+       ORDER BY finished_at DESC NULLS LAST LIMIT 1`),
+  ]);
+  const handoffs: IssueStepHandoff[] = contexts.flatMap((c) =>
+    c.step
+      ? [
+          {
+            id: c.id,
+            step: c.step,
+            attempt: c.attempt,
+            pipelineRunId: c.pipelineRunId,
+            payload:
+              c.payload && typeof c.payload === 'object' ? (c.payload as Record<string, unknown>) : null,
+            createdAt: c.createdAt.toISOString(),
+            updatedAt: c.updatedAt.toISOString(),
+          },
+        ]
+      : [],
+  );
+  const facts: StepDurationFact[] = rowsOf<{
+    run_id: string;
+    step: string;
+    duration_seconds: number;
+    cost_usd: number | null;
+    at: string | Date;
+  }>(durations).map((d) => ({
+    runId: d.run_id,
+    step: d.step,
+    durationSeconds: Number(d.duration_seconds),
+    costUsd: Number(d.cost_usd ?? 0),
+    at: new Date(d.at).toISOString(),
+  }));
+  const [last] = rowsOf<{ type: string }>(failed);
+  return { handoffs, durations: facts, failedStep: last?.type ?? null };
 }

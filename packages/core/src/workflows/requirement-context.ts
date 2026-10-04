@@ -4,6 +4,8 @@
  * refused by name when it cannot be given at its current revision.
  */
 
+import type { ArtifactContextRefusalCode } from '@forge/contracts/workflows';
+import { RefusalError } from '../lib/refusal.js';
 import { estimateTokens } from '../lib/token-estimator.js';
 import { changedSincePlan } from '../requirements/rules.js';
 import { fetchLine, planLine } from './run-context-plan.js';
@@ -91,17 +93,11 @@ export interface LoadedRequirement {
 export const REQUIREMENT_CONTEXT_CAP_CHARS = 12_000;
 
 /** A requirement the job cannot be given at its current revision, refused by name. */
-export class RequirementContextError extends Error {
-  readonly code:
-    | 'REQUIREMENT_REVISION_NOT_CURRENT'
-    | 'REQUIREMENT_NOT_AGREED'
-    | 'ARTIFACT_CONTEXT_OVER_BUDGET';
-  constructor(code: RequirementContextError['code'], key: string, reason: string) {
-    super(`${code}: requirement ${key}: ${reason}`);
-    this.name = 'RequirementContextError';
-    this.code = code;
-  }
-}
+const requirementRefusal = (code: ArtifactContextRefusalCode, key: string, reason: string) =>
+  new RefusalError(
+    [{ code, path: '', detail: `requirement ${key}: ${reason}` }],
+    'ARTIFACT_CONTEXT_UNLOADABLE',
+  );
 
 // cm:guard a job loads only the current revision and the baseline agreed at it: a head that is not current, or a latest baseline pinning another revision, is refused REQUIREMENT_REVISION_NOT_CURRENT
 export function requirementContext(
@@ -110,21 +106,21 @@ export function requirementContext(
 ): LoadedRequirement | null {
   if (!row) return null;
   if (row.currentRevision === null || row.headState !== 'current') {
-    throw new RequirementContextError(
+    throw requirementRefusal(
       'REQUIREMENT_REVISION_NOT_CURRENT',
       row.key,
       `its head is ${row.currentRevision === null ? 'not set' : `revision ${row.currentRevision} in state ${row.headState ?? 'unknown'}`}; a job is given only a current revision`,
     );
   }
   if (!row.baseline) {
-    throw new RequirementContextError(
+    throw requirementRefusal(
       'REQUIREMENT_NOT_AGREED',
       row.key,
       `it is ${row.status} with no baseline; a job builds an agreed requirement`,
     );
   }
   if (row.baseline.revision !== row.currentRevision) {
-    throw new RequirementContextError(
+    throw requirementRefusal(
       'REQUIREMENT_REVISION_NOT_CURRENT',
       row.key,
       `its latest baseline pins revision ${row.baseline.revision}, but the current revision is ${row.currentRevision}; the current revision is re-agreed before a job is given it`,
@@ -166,7 +162,7 @@ export function requirementContext(
   }
   const text = lines.join('\n');
   if (text.length > REQUIREMENT_CONTEXT_CAP_CHARS) {
-    throw new RequirementContextError(
+    throw requirementRefusal(
       'ARTIFACT_CONTEXT_OVER_BUDGET',
       row.key,
       `its revision, criteria and pins take ${text.length} chars, over the ${REQUIREMENT_CONTEXT_CAP_CHARS}-char requirement budget`,

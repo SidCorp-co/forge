@@ -5,6 +5,7 @@ import { db } from '../db/client.js';
 import { organizations, orgInvitations, users } from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { consumeOrgInvitationToken } from './invitations.js';
+import { refuse } from './refuse.js';
 
 // Mirror of projects/invitations-routes.ts for the org tier. Mounted at
 // /api/org-invitations; the shared /invite/accept web page picks this
@@ -83,10 +84,10 @@ orgInvitationRoutes.post('/:token/accept', requireAuth(), async (c) => {
     case 'already_accepted':
       throw gone('ALREADY_ACCEPTED', 'invitation already accepted');
     case 'email_mismatch':
-      throw new HTTPException(403, {
-        message: 'invitation was sent to a different email address',
-        cause: { code: 'INVITATION_EMAIL_MISMATCH' },
-      });
+      throw refuse(
+        'INVITATION_EMAIL_MISMATCH',
+        'this invitation was sent to a different email address; sign in with the address it was sent to',
+      );
     case 'ok':
       return c.json({ orgId: result.orgId, role: result.role });
   }

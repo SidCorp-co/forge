@@ -1,6 +1,5 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import {
@@ -12,6 +11,7 @@ import {
 } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { RefusalError } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -42,36 +42,9 @@ const transitionBodySchema = z
   })
   .strict();
 
-/**
- * Map a core `TransitionError` onto the REST error contract. Status codes are
- * part of the public API — keep them stable. Every arm answers with `err.detail`,
- * the sentence the thrower built.
- */
-function transitionErrorToHttp(err: TransitionError): HTTPException {
-  const cause = { code: err.code, details: err.details };
-  switch (err.code) {
-    case 'TRANSITION_REASON_REQUIRED':
-    case 'WAITING_KIND_REQUIRED':
-    case 'WAITING_KIND_NOT_APPLICABLE':
-    case 'CLOSE_REQUIRES_SHIPPED':
-    case 'MERGE_NOT_RECORDED':
-    case 'VOID_REASON_REQUIRED':
-    case 'PLAN_REQUIRED':
-    case 'PERMISSION_FORBIDDEN':
-    case 'VERDICT_IDENTITY_REQUIRED':
-    case 'VERDICT_IDENTITY_NOT_ADMISSIBLE':
-      return new HTTPException(422, { message: err.detail, cause });
-    case 'NO_WORK_EVIDENCE':
-    case 'VERDICT_PREDATES_REOPEN':
-    case 'VERDICT_UNCORROBORATED':
-    case 'VERDICT_DRAFT_SUPERSEDED':
-    case 'NO_HOLDER':
-    case 'CLOSE_ONLY_BY_RELEASE':
-    case 'ILLEGAL_TRANSITION':
-      return new HTTPException(409, { message: err.detail, cause });
-    default:
-      return new HTTPException(409, { message: err.detail, cause });
-  }
+/** A refused move answers 422 in the one envelope, under the guard's own code. */
+function transitionRefusal(err: TransitionError): RefusalError {
+  return new RefusalError([{ code: err.code, path: '', detail: err.detail }], err.code);
 }
 
 /** Cap on the number of dependents named in a single `issue.unblockCascade`
@@ -274,7 +247,7 @@ transitionRoutes.post(
       );
     } catch (err) {
       if (err instanceof TransitionError) {
-        throw transitionErrorToHttp(withRecoveryHint(err, fromStatus, toStatus, recovery));
+        throw transitionRefusal(withRecoveryHint(err, fromStatus, toStatus, recovery));
       }
       throw err;
     }

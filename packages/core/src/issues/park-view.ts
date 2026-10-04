@@ -2,7 +2,7 @@
 // the status, the park record in the thread and the open question rows (ISS-1310).
 
 import { AWAITING_INPUT_STATUSES, PARK_STATUSES } from '@forge/contracts/issue-machine';
-import type { IssuePark, ParkOwes, ParkResume } from '@forge/contracts';
+import type { IssuePark, ParkOwes, ParkResume, ParkThreadQuestion } from '@forge/contracts';
 import { and, desc, eq, gt, isNull, notInArray, notLike, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -116,7 +116,7 @@ export function readPark(input: ParkInput): IssuePark | null {
     const question = fieldsOf(c, 'question');
     if (question) readings = question.filter((f) => f.key === 'reading').map((f) => f.value);
   }
-  return {
+  const view: Omit<IssuePark, 'asks' | 'threadQuestion'> = {
     shape: parked ? 'park' : 'question',
     status: input.status,
     owes: parked ? owesOf(input.waitingKind) : 'information',
@@ -133,6 +133,29 @@ export function readPark(input: ParkInput): IssuePark | null {
     answer: parked && record ? answerAfter(input.replies ?? [], record.postedAt) : null,
     openQuestionIds: [...input.openHumanQuestionIds],
   };
+  const threadQuestion = threadQuestionOf(view);
+  return {
+    ...view,
+    asks: view.openQuestionIds.length > 0 || (threadQuestion !== null && threadQuestion.answer === null),
+    threadQuestion,
+  };
+}
+
+function readingOf(raw: string): ParkThreadQuestion['readings'][number] {
+  const at = raw.indexOf('->');
+  if (at < 0) return { choice: raw.trim(), outcome: null };
+  return { choice: raw.slice(0, at).trim(), outcome: raw.slice(at + 2).trim() || null };
+}
+
+function threadQuestionOf(
+  park: Omit<IssuePark, 'asks' | 'threadQuestion'>,
+): ParkThreadQuestion | null {
+  if (park.shape !== 'park' || park.status !== 'needs_info') return null;
+  if (park.openQuestionIds.length > 0) return null;
+  const prompt = park.reason ?? park.record?.why ?? null;
+  if (!prompt && park.readings.length === 0) return null;
+  const why = park.record?.why && park.record.why !== prompt ? park.record.why : null;
+  return { prompt, why, readings: park.readings.map(readingOf), answer: park.answer };
 }
 
 /**

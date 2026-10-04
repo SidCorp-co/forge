@@ -1,22 +1,15 @@
 /**
- * The one edge-write path for `issue_dependencies`.
- *
- * ISS-889 — REST (`dependency-routes.ts`) and MCP (`forge-pm-set-dependency.ts`)
- * each carried their own insert. The REST copy was the weaker of the two: no
- * `validUntil`/`reason` on the conflict path (so an edge declared over REST
- * could not be retracted), no `dependencyChanged` emit on update, and no
- * `publishPipelineHealthChanged` at all — a web-declared blocker left the
- * dependent's waiting banner stale until some other event woke the dispatcher.
- *
- * Authorization stays at the transport edge: REST resolves a project role,
- * MCP asserts device-owner membership. This module takes inputs already
- * authorized and owns only the domain rules, so neither transport's error
- * vocabulary leaks into the other's.
+ * The one edge-write path for `issue_dependencies`: the dependency routes and a create's
+ * `relations` both write through it. Authorization stays at the route; this module owns the domain
+ * rules and refuses them in the envelope.
  */
 
+import type { DependencyRefusalCode } from '@forge/contracts/issues';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueDependencies, type issueDependencyKinds, issues } from '../db/schema.js';
+import { refuser } from '../lib/refusal.js';
+import { notFound } from '../middleware/route-errors.js';
 import { type Actor, safeRecordActivity } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { archivedAmong } from './archive.js';
@@ -27,24 +20,7 @@ import { publishPipelineHealthChanged } from './pipeline-health.js';
 
 export type IssueDependencyKind = (typeof issueDependencyKinds)[number];
 
-export type IssueDependencyErrorCode =
-  | 'SELF_DEP'
-  | 'NOT_FOUND'
-  | 'CROSS_PROJECT'
-  | 'CYCLE_DETECTED'
-  | 'CYCLE_DEPTH_EXCEEDED'
-  | 'ISSUE_ARCHIVED'
-  | 'INTERNAL';
-
-export class IssueDependencyError extends Error {
-  constructor(
-    readonly code: IssueDependencyErrorCode,
-    readonly detail?: string,
-  ) {
-    super(detail ? `${code}: ${detail}` : code);
-    this.name = 'IssueDependencyError';
-  }
-}
+const refuse = refuser<DependencyRefusalCode>('DEPENDENCY_REFUSED');
 
 export type SetIssueDependencyInput = {
   projectId: string;
@@ -134,29 +110,38 @@ export async function writeIssueDependency(
   ex: IssueDependencyExecutor = db,
 ): Promise<IssueDependencyWrite> {
   if (input.fromIssueId === input.toIssueId) {
-    throw new IssueDependencyError('SELF_DEP');
+    throw refuse('SELF_DEP', 'an issue cannot depend on itself: name two different issues');
   }
 
   const sides = await ex
     .select({ id: issues.id, projectId: issues.projectId })
     .from(issues)
     .where(inArray(issues.id, [input.fromIssueId, input.toIssueId]));
-  if (sides.length !== 2) throw new IssueDependencyError('NOT_FOUND');
+  if (sides.length !== 2) throw notFound('one or both issues not found');
   for (const s of sides) {
-    if (s.projectId !== input.projectId) throw new IssueDependencyError('CROSS_PROJECT');
+    if (s.projectId !== input.projectId)
+      throw refuse(
+        'CROSS_PROJECT',
+        'both issues of an edge are in this project; cross-project edges are not supported',
+      );
   }
   // ISS-1237 — an edge naming an archived issue would point at a row no reader can find. The
   // `FOR SHARE` read waits on an archive holding either side, then reads what it committed. Only
   // retiring an edge that already exists passes; an edge first written already expired is new.
   const [archived] = await archivedAmong(ex, [input.fromIssueId, input.toIssueId], 'share');
   if (archived && !(expiresEdge(input.validUntil) && (await findEdge(ex, input)))) {
-    throw new IssueDependencyError('ISSUE_ARCHIVED', archived.message);
+    throw refuse('ISSUE_ARCHIVED', archived.message);
   }
 
   if (input.kind === 'blocks' && !expiresEdge(input.validUntil)) {
     const cycle = await detectCycle(input.toIssueId, input.fromIssueId, ex);
-    if (cycle === 'cycle') throw new IssueDependencyError('CYCLE_DETECTED');
-    if (cycle === 'depth_exceeded') throw new IssueDependencyError('CYCLE_DEPTH_EXCEEDED');
+    if (cycle === 'cycle')
+      throw refuse('CYCLE_DETECTED', 'cycle detected — adding this edge would form a loop');
+    if (cycle === 'depth_exceeded')
+      throw refuse(
+        'CYCLE_DEPTH_EXCEEDED',
+        'cycle detection depth exceeded; the chain behind this edge is too deep to check',
+      );
   }
 
   const inserted = await ex
@@ -182,12 +167,12 @@ export async function writeIssueDependency(
 
   if (inserted.length > 0) {
     const id = inserted[0]?.id;
-    if (!id) throw new IssueDependencyError('INTERNAL');
+    if (!id) throw new Error('issue dependency insert returned no id');
     return { id, created: true, updated: false, effect: 'added' };
   }
 
   const existing = await findEdge(ex, input);
-  if (!existing) throw new IssueDependencyError('INTERNAL');
+  if (!existing) throw new Error('issue dependency conflicted on insert but no edge was found');
 
   const patch: { validUntil?: Date; reason?: string } = {};
   if (input.validUntil) patch.validUntil = new Date(input.validUntil);

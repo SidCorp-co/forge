@@ -1,12 +1,12 @@
 "use client";
 
+import type { IssueBlocker } from "@forge/contracts/issue-standing";
 import { Banner, Button } from "@/design";
-import type { BlockerState } from "../derive";
 import type { IssueStatus } from "../types";
 import { IssueRefBadge } from "./issue-ref-badge";
 
 interface BlockerBannerProps {
-  blocker: BlockerState;
+  blocker: IssueBlocker;
   slug: string;
   pending: boolean;
   /** Move the issue back to the status its park left — `needs_info` or `on_hold` (ISS-1310, ISS-54). */
@@ -23,10 +23,10 @@ export function BlockerBanner({
   onResumeRun,
   onProvideInfo,
 }: BlockerBannerProps) {
-  const { cta, runId, resumeAt } = blocker;
+  const { act: cta, runId, resumeAt } = blocker;
 
   let action: React.ReactNode = null;
-  if (cta.kind === "resume-park" && resumeAt) {
+  if (cta.kind === "resume_park" && resumeAt) {
     action = (
       <Button
         variant="primary"
@@ -38,13 +38,13 @@ export function BlockerBanner({
         {cta.label}
       </Button>
     );
-  } else if (cta.kind === "provide-info") {
+  } else if (cta.kind === "provide_info") {
     action = (
       <Button variant="primary" size="sm" icon="mail" onClick={onProvideInfo}>
         {cta.label}
       </Button>
     );
-  } else if (cta.kind === "resume-run" && runId) {
+  } else if (cta.kind === "resume_run" && runId) {
     action = (
       <Button
         variant="primary"
@@ -64,18 +64,11 @@ export function BlockerBanner({
         <p className="font-medium">{blocker.reason}</p>
         <p className="opacity-90">{blocker.whoMustAct}</p>
         {blocker.detail && <p className="opacity-80">{blocker.detail}</p>}
-        {blocker.blockingRefs && blocker.blockingRefs.length > 0 && (
+        {blocker.blockingRefs.length > 0 && (
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <span className="opacity-80">Blocked by:</span>
             {blocker.blockingRefs.map((ref) => (
-              <IssueRefBadge
-                key={ref.id}
-                id={ref.id}
-                slug={slug}
-                displayId={ref.displayId}
-                title={ref.title}
-                status={ref.status}
-              />
+              <IssueRefBadge key={ref.key} id={ref.key} slug={slug} displayId={ref.key} title={ref.title} status={ref.status} />
             ))}
           </div>
         )}

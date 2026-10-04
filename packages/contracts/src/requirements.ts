@@ -11,6 +11,7 @@ import type {
 	FeedbackSeverity,
 } from "./feedback.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
+import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import type {
 	Standing,
 	StandingGroup,
@@ -265,7 +266,11 @@ export interface RequirementFacts {
 	/** Linked designs the latest baseline leaves unpinned (pinned null) or pins below their approved revision. */
 	stalePins: { flow: string; pinned: number | null; approved: number }[];
 	/** Linked contracts whose current version is not the one the latest baseline pins. */
-	staleContractPins: { contract: string; pinned: string | null; current: string }[];
+	staleContractPins: {
+		contract: string;
+		pinned: string | null;
+		current: string;
+	}[];
 	feedbackOpen: number;
 	feedbackUntriaged: number;
 }
@@ -397,7 +402,8 @@ export const repinRequirementRequestSchema = z.strictObject({
 export const REPIN_REQUIREMENT_SHAPE =
 	"{ revision, reason? } — names the head revision; writes a baseline pinning each linked design's approved revision and each linked contract's current version";
 
-export const REQUIREMENT_CONTRACT_REF = /^[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9-]{0,62}$/;
+export const REQUIREMENT_CONTRACT_REF =
+	/^[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9-]{0,62}$/;
 
 export const linkRequirementContractRequestSchema = z.strictObject({
 	contract: z.string().regex(REQUIREMENT_CONTRACT_REF),
@@ -533,3 +539,34 @@ export interface RequirementActAnswer {
 	workflows?: RequirementLinkedDesign[];
 	contracts?: RequirementLinkedContract[];
 }
+
+export const REQUIREMENT_REFUSAL_CODES = [
+	"REQUIREMENT_REVISION_STALE",
+	"REQUIREMENT_REVISION_NOT_CURRENT",
+	"REQUIREMENT_REVISION_NOT_DRAFT",
+	"REQUIREMENT_REVISION_NOT_PROPOSED",
+	"REQUIREMENT_REVISION_OPEN",
+	"REQUIREMENT_DESIGN_UNAPPROVED",
+	"REQUIREMENT_NOT_AGREED",
+	"REQUIREMENT_ALREADY_AGREED",
+	"REQUIREMENT_NOT_READY",
+	"REQUIREMENT_ISSUE_LINKED_ELSEWHERE",
+	"REQUIREMENT_NO_PLAN_TO_ADOPT",
+	"REQUIREMENT_DEFERRED",
+	"REQUIREMENT_DEFER_REASON_REQUIRED",
+	"REQUIREMENT_NOT_DEFERRABLE",
+	"REQUIREMENT_NOT_DEFERRED",
+	"REQUIREMENT_HAS_LIVE_ISSUES",
+	"REQUIREMENT_PINS_CURRENT",
+	"REQUIREMENT_CONTRACT_UNKNOWN",
+	"REQUIREMENT_DESIGN_UNLINKED",
+	"WORKFLOW_NODE_UNKNOWN",
+	"WORKFLOW_NODE_AMBIGUOUS",
+	"REVISION_REASON_REQUIRED",
+	"CRITERION_CODE_UNKNOWN",
+	"CRITERION_CODE_DUPLICATE",
+	"CRITERION_SCENARIO_UNPARSEABLE",
+	"REQUIREMENT_REFUSED",
+	...PERMISSION_REFUSAL_CODES,
+] as const;
+export type RequirementRefusalCode = (typeof REQUIREMENT_REFUSAL_CODES)[number];

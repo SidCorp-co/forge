@@ -3,6 +3,7 @@
 // IssueQuickActions (ISS-390) — a compact, always-visible quick-action row for
 // the board quick-open drawer (the pipeline `RunDetail` SlideOver, the live
 
+import type { IssueMove } from "@forge/contracts/issue-machine";
 import type { WorkStep } from "@forge/contracts/issue-vocabulary";
 import { Button, StatusChip } from "@/design";
 import { runStatusChip } from "../derive";
@@ -17,8 +18,8 @@ interface IssueQuickActionsProps {
   status: IssueStatus;
   /** The run's step inside `in_progress`, named on the status chip. */
   step?: WorkStep | null;
-  /** The status a park left, which the status menu offers to return to. */
-  leftStatus?: IssueStatus | null;
+  /** Core's moves from this status. */
+  moves: readonly IssueMove[];
   agentStatus?: IssueAgentStatus;
   /** The issue's pipeline health — a job queued before any runner claims it is a queued run. */
   pipelineHealth?: PipelineHealth;
@@ -33,7 +34,7 @@ export function IssueQuickActions({
   issueId,
   status,
   step,
-  leftStatus,
+  moves,
   agentStatus,
   pipelineHealth,
   priority,
@@ -51,7 +52,7 @@ export function IssueQuickActions({
       <StatusEdit
         status={status}
         step={step}
-        leftStatus={leftStatus ?? null}
+        moves={moves}
         agentStatus={agentStatus}
         disabled={pending}
         size="sm"

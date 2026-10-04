@@ -1,6 +1,6 @@
 import type { PatFence, PatFenceChangeView } from '@forge/contracts/pat-fence';
 import { and, desc, eq } from 'drizzle-orm';
-import { lockPatName, type Pat, setTokenFence } from '../auth/pat.js';
+import { lockPatName, type Pat, setTokenFence } from '../credentials/pat.js';
 import { db, type Tx } from '../db/client.js';
 import { personalAccessTokens } from '../db/schema.js';
 import { type PatFenceChangeRow, patFenceChanges } from '../db/schema-pat-fence-changes.js';

@@ -1,3 +1,4 @@
+import type { AttachmentRefusalCode } from '@forge/contracts/attachments';
 import { eq, inArray } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
@@ -10,26 +11,12 @@ import {
   resolveAttachmentMime,
   safeName,
 } from '../lib/attachment-mime.js';
+import { refuser } from '../lib/refusal.js';
 import { getStorage } from '../storage/index.js';
 
 export { safeName };
 
-export type SessionAttachmentErrorCode =
-  | 'MIME_NOT_ALLOWED'
-  | 'FILE_TOO_LARGE'
-  | 'EMPTY_FILE'
-  | 'INVALID_NAME';
-
-export class SessionAttachmentError extends Error {
-  readonly code: SessionAttachmentErrorCode;
-  readonly details: unknown;
-  constructor(code: SessionAttachmentErrorCode, message: string, details?: unknown) {
-    super(message);
-    this.code = code;
-    this.details = details;
-    this.name = 'SessionAttachmentError';
-  }
-}
+const refuse = refuser<AttachmentRefusalCode>('ATTACHMENT_REFUSED');
 
 export interface PersistSessionAttachmentInput {
   sessionId: string;
@@ -64,16 +51,16 @@ export async function persistSessionAttachment(
   const { sessionId, bytes, uploaderId, uploaderDeviceId } = input;
   const name = safeName(input.name || 'file');
   if (nameExceedsByteBudget(name)) {
-    throw new SessionAttachmentError(
+    throw refuse(
       'INVALID_NAME',
       `name is longer than ${NAME_MAX_BYTES} bytes of UTF-8 — rename the file and upload it again`,
     );
   }
   if (bytes.byteLength <= 0) {
-    throw new SessionAttachmentError('EMPTY_FILE', 'empty file');
+    throw refuse('EMPTY_FILE', 'empty file');
   }
   if (bytes.byteLength > env.UPLOADS_MAX_BYTES) {
-    throw new SessionAttachmentError('FILE_TOO_LARGE', 'file too large');
+    throw refuse('FILE_TOO_LARGE', `file too large: ${bytes.byteLength} bytes, at most ${env.UPLOADS_MAX_BYTES}`);
   }
   const resolved = resolveAttachmentMime({
     target: 'session',
@@ -82,10 +69,10 @@ export async function persistSessionAttachment(
     bytes,
   });
   if (!resolved.ok) {
-    throw new SessionAttachmentError('MIME_NOT_ALLOWED', mimeRefusalMessage(resolved), {
-      reason: resolved.reason,
-      allowed: allowedSetForTarget('session'),
-    });
+    throw refuse(
+      'MIME_NOT_ALLOWED',
+      `${mimeRefusalMessage(resolved)}; a session takes ${allowedSetForTarget('session').mimes.join(', ')}`,
+    );
   }
   const mime = resolved.mime;
 

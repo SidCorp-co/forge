@@ -41,6 +41,7 @@ import {
 import { deviceProvisionRoutes } from './me-provisions.js';
 import { listDeviceAssignments } from './me-runners.js';
 import { redeemPairingCode } from './pair.js';
+import { refuseDevice } from './refusals.js';
 import { heartbeatPool } from './pool-read-report.js';
 import { requireHeld, requireOrgCan } from '../permissions/index.js';
 
@@ -207,7 +208,7 @@ deviceOwnerRoutes.patch(
     // A revoked device is gone for good — its token is dead and its runners were
     // deleted; "turn on" can't bring it back (re-pair instead).
     if (disabled === false && device.status === 'revoked') {
-      throw forbidden('device is revoked — re-pair it instead of re-enabling');
+      throw refuseDevice('DEVICE_REVOKED', 'device is revoked — re-pair it instead of re-enabling', '/disabled');
     }
 
     const patch: { name?: string; disabledAt?: Date | null } = {};

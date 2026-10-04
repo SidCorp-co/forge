@@ -1,6 +1,6 @@
 "use client";
 
-// The public documentation at `/guides`: a landing with the three doors and a search over every
+// The public documentation at `/guides`: a landing with the two doors and a search over every
 // page, and a reader built from the same furniture as the in-app `/docs` screen.
 import Link from "next/link";
 import { useMemo, useState } from "react";
@@ -191,7 +191,7 @@ export function PublicReader({ corpus, view }: { corpus: readonly PublicDoc[]; v
             </Link>
           ))}
           <Link href={INDEX_PATH} className="rounded-md px-2 py-1 text-13 text-muted hover:bg-hover hover:text-fg">
-            All three ways in
+            Both ways in
           </Link>
         </nav>
       }
@@ -240,7 +240,7 @@ export function PublicRefusal({ refusal }: { refusal: Refusal }) {
           </Link>
         ))}
         <Link href={INDEX_PATH} className={LINK_CLASS}>
-          All three ways in
+          Both ways in
         </Link>
       </nav>
     </div>

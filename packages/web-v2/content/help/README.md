@@ -2,7 +2,7 @@
 
 This folder is the **product documentation shown to end users** in the app at
 `/docs`, and to anyone, signed in or not, on the public documentation at `/guides`
-(behind the doors "I use Forge" and "I'm connecting an AI assistant"). It is bundled
+(behind the door "I use Forge"). It is bundled
 into the **web build** (Hướng A — embedded MDX/Markdown), so it ships with the
 frontend and is **never** read off a backend filesystem.
 
@@ -25,13 +25,7 @@ code works never does.
 - **Links:** only to other pages in this folder, or to public external URLs.
   Never link into `docs/` or the source tree. A link to another page is written
   `[Its title](?path=<slug>)`, the slug being the page's path under this folder
-  without `.md` — `pair-a-runner`, or `connect-an-assistant/cursor` for a page in
-  a subfolder; `help-links.test.tsx` refuses any other form and any slug no page has.
-- **Subfolders** group a set of pages that answer one reader's questions together.
-  `content/help/connect-an-assistant/` is the one there is: connecting Claude
-  Desktop, Claude Code, Cursor or another app to Forge, written for someone who
-  has never heard the word "MCP".
-  `src/features/docs/help-assistant-setup.test.ts` holds its rules.
+  without `.md` — `pair-a-runner`, or `<folder>/<page>` for a page in a subfolder.
 
 ## Frontmatter
 
@@ -42,7 +36,7 @@ Every page starts with:
 title: Pair a runner
 section: Getting started   # sidebar group
 order: 20                  # sort within the section (ascending)
-audience: user             # user | assistant-setup
+audience: user             # user
 ---
 ```
 
@@ -52,19 +46,17 @@ lists them, and any section it does not list falls to the end alphabetically —
 a new section is added there.
 
 `audience` says who the page is written for, and decides which door of the public
-documentation it sits behind: `user` for someone using Forge, `assistant-setup` for
-someone connecting an AI assistant. It is required; `pnpm gen:help` refuses a page
-with no front-matter, no `audience` or any other value, naming the file. Why `agent` is
-not a value here, and the voice rule each value is held to:
+documentation it sits behind: `user`, for someone using Forge. It is required;
+`pnpm gen:help` refuses a page with no front-matter, no `audience` or any other value,
+naming the file. Why `agent` is not a value here, and the voice rule each value is held to:
 [where-a-page-lives.md](../../../../docs/modules/guides/where-a-page-lives.md).
 
 ## Structure (Diátaxis, for the product)
 
 | Section | Purpose | Example pages |
 |---|---|---|
-| Getting started | one end-to-end first run | Create a project · Pair a runner · Run your first issue |
-| Guides | one task each | Manage your org & members · Configure the pipeline · Connect an integration · Move a project to another org |
-| Connect an assistant | use Forge from an assistant the reader already has | What connecting does · Claude Desktop · Claude Code · Cursor · Another app · What you can ask · When it does not work |
-| Concepts | product-level mental model | Project · Device & runner · Pipeline · Organization |
-| Reference | look-ups | Pipeline stages · Roles & permissions · Settings |
-| Troubleshooting | when stuck | Device offline · Job stuck in queue · Pairing code expired |
+| Getting started | one end-to-end first run | Getting started · Pair a runner |
+| Guides | one task each | Ask for a change · Tell when an issue is done · Manage your organization |
+| Concepts | product-level mental model | none yet |
+| Reference | look-ups | Read an issue's status |
+| Troubleshooting | when stuck | Troubleshooting |

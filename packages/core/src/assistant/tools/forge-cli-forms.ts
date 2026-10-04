@@ -1,7 +1,6 @@
 /**
  * ISS-1041 — the read forms the model repeats on every turn, carried in the
- * `forge` tool's description so a question costs no `-h` round, and held to the
- * bundled CLI's own help by `forge-cli-forms.test.ts` so the two cannot disagree.
+ * `forge` tool's description so a question costs no `-h` round.
  */
 
 export interface CliForm {

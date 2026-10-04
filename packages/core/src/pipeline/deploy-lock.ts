@@ -10,8 +10,7 @@ import {
   type DeployHolds,
   type DeployLockRef,
 } from './deploy-confirmations.js';
-
-export const DEPLOY_ENVIRONMENT_LOCKED = 'DEPLOY_ENVIRONMENT_LOCKED';
+import { refusePipeline } from './refuse.js';
 
 /** Expiry frees no transaction's row lock, so an acquire waiting on one needs its own bound. */
 export const DEPLOY_LOCK_WAIT_MS = 3_000;
@@ -35,32 +34,21 @@ export interface DeployLockHolder {
 }
 
 /** `holder` is null only where nothing could be read: a concurrent acquire not yet committed. */
-export class DeployEnvironmentLockedError extends Error {
-  readonly code = DEPLOY_ENVIRONMENT_LOCKED;
-
-  constructor(
-    readonly environment: string,
-    readonly holder: DeployLockHolder | null,
-  ) {
-    super(deployEnvironmentLockedMessage(environment, holder));
-    this.name = 'DeployEnvironmentLockedError';
-  }
+export function environmentLocked(environment: string, holder: DeployLockHolder | null) {
+  return refusePipeline('DEPLOY_ENVIRONMENT_LOCKED', lockedSentence(environment, holder));
 }
 
-export function deployEnvironmentLockedMessage(
-  environment: string,
-  holder: DeployLockHolder | null,
-): string {
+function lockedSentence(environment: string, holder: DeployLockHolder | null): string {
   if (!holder) {
     return (
-      `${DEPLOY_ENVIRONMENT_LOCKED}: an acquisition of the \`${environment}\` environment is in ` +
+      `an acquisition of the \`${environment}\` environment is in ` +
       `flight and has not committed, so after ${DEPLOY_LOCK_WAIT_MS}ms this deploy could take ` +
       'neither the hold nor a reading of who holds it. Nothing was dispatched and nothing was ' +
       'queued for later. Deploy again once that acquisition has settled.'
     );
   }
   return (
-    `${DEPLOY_ENVIRONMENT_LOCKED}: the \`${environment}\` environment is already being deployed ` +
+    `the \`${environment}\` environment is already being deployed ` +
     `to. Pipeline run ${holder.runId} took the hold at ${holder.acquiredAt} and is deploying ` +
     `${holder.subject}. One deploy reaches one environment at a time, so nothing was dispatched ` +
     'and nothing was queued for later. The hold ends when that deploy ends, success or failure, ' +
@@ -142,14 +130,14 @@ export async function acquireDeployLocks(
           taken.push({ environment: row.environment, acquiredAt: row.acquired_at });
           continue;
         }
-        throw new DeployEnvironmentLockedError(
+        throw environmentLocked(
           environment,
           await readLockWith(tx, request.projectId, environment),
         );
       }
     });
   } catch (err) {
-    if (isLockWaitTimeout(err)) throw new DeployEnvironmentLockedError(waitedOn, null);
+    if (isLockWaitTimeout(err)) throw environmentLocked(waitedOn, null);
     throw err;
   }
   return taken;

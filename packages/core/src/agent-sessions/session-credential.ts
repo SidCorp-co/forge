@@ -4,21 +4,25 @@
  * revoked when the session goes terminal. The runner puts it where the box's own would have gone.
  */
 
-import { revokeLiveTokens } from '../auth/pat.js';
-import { turnTokenNameFor } from '../auth/pat-format.js';
-import type { PatPermission } from '../auth/pat-permissions.js';
+import { revokeLiveTokens } from '../credentials/pat.js';
+import { turnTokenNameFor } from '../credentials/pat-format.js';
+import type { PatPermission } from '../credentials/pat-permissions.js';
 import {
   AGENT_TURN_MENU,
   mintTurnCredential,
-  resolveTurnAuthority,
   type TurnAuthority,
   type TurnAuthorityRefusal,
-} from '../auth/turn-credential.js';
+} from '../credentials/turn-credential.js';
 import { deviceHolderUserId } from '../devices/workspace-credential.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { findAvailableDeviceForProject } from '../lib/device-pool.js';
 import { logger } from '../logger.js';
-import { heldPermissions, holds, type PermissionFacts } from '../permissions/index.js';
+import {
+  heldPermissions,
+  holds,
+  type PermissionFacts,
+  resolveTurnAuthority,
+} from '../permissions/index.js';
 
 /** The capability a runner declares on its heartbeat when it runs a session under the token it is handed. */
 export const TURN_CREDENTIAL_CAPABILITY = 'turnCredential';

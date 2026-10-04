@@ -19,8 +19,8 @@ requirements and workflow designs.
 - **The API comes first.** The CLI wraps the routes, and MCP keeps only what neither covers
   ([api-first.md](../proposals/destination/api-first.md)), so every rule below is stated for the
   route first.
-- **Code only on dev, QA later.** On dev the only check before a push is `tsc --noEmit` on the
-  packages a change touched. Tests, verify, checkers and CI are not run while building; QA is a
+- **Code only on dev, QA later.** On dev the only check before a push is `pnpm tc:changed`
+  (`scripts/tc-changed.mjs`), which typechecks the packages a change touched and their importers. Tests, verify, checkers and CI are not run while building; QA is a
   later phase (owner, 2026-10-04: "build trước đi đã test gọi QA test sau").
 
 ## Module kinds (BC-11)
@@ -36,8 +36,8 @@ a door.
 | **domain** | One product entity family: requirements, feedback, release, chat, and so on | Compute a fact another module also computes |
 | **read-model** | Derived facts only: standing, waiting-on, needs-you, coverage, counts, the system graph | Write any table |
 | **adapter** | One external system behind a role-named port ([ADR 0006](../adr/0006-every-external-system-is-reached-through-one-adapter-port.md)) | Import a domain, a kernel module or a read model |
-| **door** | The route-mount registry, the MCP registry, WebSocket, inbound webhooks, the CLI shapes, and the auth door (sign-in, which reaches the identity adapter through its port) | Hold a rule or a query |
-| **platform** | The db client and schema, `lib`, middleware, queue, config, observability | Import any other kind |
+| **door** | The route-mount registry, the MCP registry, WebSocket, inbound webhooks, and the auth door (sign-in, which reaches the identity adapter through its port) | Hold a rule or a query |
+| **platform** | The db client and schema, `lib`, middleware, queue, config, observability, the credential helpers (`credentials`) | Import any other kind |
 
 ## Dependency direction (BC-12)
 
@@ -91,7 +91,7 @@ One file per responsibility, under `packages/core/src/<module>/`. The references
 
 - **Routes hold no queries (BC-15).** A route file validates, calls one service or read function,
   and answers. A `db` or `tx` call in a route file is a finding.
-- A route's prefix is in `packages/core/src/auth/pat-permissions.ts:PAT_PERMISSION_RESOURCES`, so a
+- A route's prefix is in `packages/core/src/credentials/pat-permissions.ts:PAT_PERMISSION_RESOURCES`, so a
   token can be granted it.
 
 ## Doors: REST first, the CLI over it, MCP only where neither serves (BC-21)
@@ -180,7 +180,8 @@ A write a rule refuses answers **422** with one body, and nothing is written:
   `packages/core/src/project-config/respond.ts:refused` (moving into platform beside the envelope),
   MCP through `packages/core/src/mcp/tools/lib.ts:refusedAnswer`, flagged `isError`.
 - **A service returns its refusals; it never throws them.** A guard that runs before the service
-  throws `packages/core/src/lib/refusal.ts:RefusalError`, which `packages/core/src/middleware/error.ts`
+  throws `packages/core/src/lib/refusal.ts:RefusalError`, built by the module's typed
+  `packages/core/src/lib/refusal.ts:refuser`, which `packages/core/src/middleware/error.ts`
   answers with the same body.
 - **A rule refusal is never an error class, an `HTTPException` or thrown text.** 400 (request
   shape), 401 and 403 (no session, no membership, a fenced token) and 404 (a row the caller cannot
@@ -223,7 +224,8 @@ A write a rule refuses answers **422** with one body, and nothing is written:
   history.
 - **A fact another module reacts to is an outbox event**, written in the act's transaction to the
   one durable outbox (`packages/core/src/db/schema.ts:pipelineOutbox`) and typed in contracts. The
-  in-memory bus (`packages/core/src/pipeline/hooks.ts:HooksBus`) is retired.
+  in-memory bus (`packages/core/src/pipeline/hooks.ts:HooksBus`) is not that outbox, and a new
+  reaction is not built on it.
 - **An event nobody consumes is not emitted**, and a subscription to an event nobody emits is
   removed. Each event node of an approved design maps to an event kind or to "the row is the
   record".
@@ -270,6 +272,9 @@ A write a rule refuses answers **422** with one body, and nothing is written:
   Amendment). `permissions` owns `project_members` and `organization_members`, so `can()` reads
   only its own tables. A domain that adds, changes or drops a membership (projects, orgs,
   conversations) calls the kernel's writer, `packages/core/src/permissions/memberships.ts`.
+- **Where a project sits is handed in.** The projects domain provides the project's org at boot
+  (`packages/core/src/lib/authz.ts:provideProjectOrg`); the check reads no `projects` or
+  `organizations` row.
 
 ## External systems (BC-22)
 

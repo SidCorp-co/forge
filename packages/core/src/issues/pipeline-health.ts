@@ -33,6 +33,7 @@ import { projectRoom } from '../ws/rooms.js';
 import { classifyIssueWorker, type SessionWorkerLane, unreadableWorker } from './issue-worker.js';
 import { loadActiveJobsByIssue, loadPausedRunsByIssue } from './pipeline-health-loaders.js';
 import {
+  gateOf,
   heldWaitingOn,
   queuedStepOf,
   retryCooldownWaitingOn,
@@ -116,11 +117,10 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
   const sinceIso = candidate.queuedAt.toISOString();
 
   if (candidate.pipelineRunStatus && candidate.pipelineRunStatus !== 'running') {
-    out.waitingOn = {
-      reason: 'run_not_running',
-      since: sinceIso,
-      details: { runStatus: candidate.pipelineRunStatus, queuedJobId: candidate.id },
-    };
+    out.waitingOn = gateOf('run_not_running', sinceIso, {
+      runStatus: candidate.pipelineRunStatus,
+      queuedJobId: candidate.id,
+    });
     return out;
   }
 
@@ -138,7 +138,7 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
     ? { blockingSessionId: blockingSession.id }
     : blockingJob && { blockingJobId: blockingJob.id, blockingJobType: blockingJob.type };
   if (busy) {
-    out.waitingOn = { reason: 'issue_busy', since: sinceIso, details: busy };
+    out.waitingOn = gateOf('issue_busy', sinceIso, busy);
     return out;
   }
 

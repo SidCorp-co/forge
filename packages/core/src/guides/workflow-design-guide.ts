@@ -10,7 +10,7 @@ export const WORKFLOW_DESIGN_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'Design a workflow first, build it once it is approved',
   summary:
-    'A flow that does not exist yet is drawn as a workflow-v2 design, proposed, and approved by the project owner (or, once the owner says so, by the master) before any issue that builds it is dispatched.',
+    'A flow that does not exist yet is drawn as a workflow-v2 design, proposed, and approved by a holder of workflow-designs.approve before any issue that builds it is dispatched.',
   version: 5,
   body: `## Design a workflow first, build it once it is approved
 

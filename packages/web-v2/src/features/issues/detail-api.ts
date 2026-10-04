@@ -7,8 +7,6 @@ import type {
   CommentNode,
   IssueDetail,
   IssueParkResponse,
-  StepDurationRow,
-  StepHandoffRow,
   TaskRow,
 } from "./types";
 
@@ -65,12 +63,4 @@ export const issueDetailApi = {
   /** `GET /api/issues/:id/attachments` — rows with download `url`. */
   listAttachments: (id: string, projectId?: string) =>
     apiClient<AttachmentRow[]>(withProject(`/issues/${id}/attachments`, projectId)),
-
-  listHandoffs: (projectId: string, id: string) =>
-    apiClient<{ rows: StepHandoffRow[] }>(
-      `/issue-step-contexts?projectId=${projectId}&issueId=${id}&orderDir=asc&limit=200`,
-    ),
-
-  stepDurations: (projectId: string) =>
-    apiClient<StepDurationRow[]>(`/pipeline/step-durations?projectId=${projectId}&days=90`),
 };

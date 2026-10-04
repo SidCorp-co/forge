@@ -18,20 +18,13 @@ export interface Window {
   source?: string;
 }
 
-export class WindowError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'WindowError';
-  }
-}
-
 /** Refuse a window that is not a window. */
 export function assertWindow(w: Window): void {
   const from = Date.parse(w.from);
   const to = Date.parse(w.to);
-  if (Number.isNaN(from)) throw new WindowError(`--from ${w.from} is not a date`);
-  if (Number.isNaN(to)) throw new WindowError(`--to ${w.to} is not a date`);
-  if (from >= to) throw new WindowError(`--from ${w.from} is not before --to ${w.to}`);
+  if (Number.isNaN(from)) throw new Error(`--from ${w.from} is not a date`);
+  if (Number.isNaN(to)) throw new Error(`--to ${w.to} is not a date`);
+  if (from >= to) throw new Error(`--from ${w.from} is not before --to ${w.to}`);
 }
 
 /** Every row of the window, oldest first. */

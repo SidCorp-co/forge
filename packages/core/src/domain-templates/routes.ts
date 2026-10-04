@@ -7,7 +7,7 @@ import { domainTemplates } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { applyTemplate, TemplateInvalidManifestError, TemplateNotFoundError } from './apply.js';
+import { applyTemplate } from './apply.js';
 import { requireHeld } from '../permissions/index.js';
 
 const keyParamSchema = z.object({ key: z.string().trim().min(1).max(200) });
@@ -62,20 +62,6 @@ domainTemplateRoutes.post(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.admin');
 
-    try {
-      const result = await applyTemplate({ projectId, templateKey, actorUserId: userId });
-      return c.json(result);
-    } catch (err) {
-      if (err instanceof TemplateNotFoundError) {
-        throw notFound(err.message);
-      }
-      if (err instanceof TemplateInvalidManifestError) {
-        throw new HTTPException(500, {
-          message: 'template manifest is invalid; contact an administrator',
-          cause: { code: 'TEMPLATE_INVALID' },
-        });
-      }
-      throw err;
-    }
+    return c.json(await applyTemplate({ projectId, templateKey, actorUserId: userId }));
   },
 );

@@ -132,3 +132,12 @@ export interface RecordEventView {
 	readonly actorId: string;
 	readonly createdAt: string;
 }
+
+export const RECORD_EVENT_REFUSAL_CODES = [
+	"EVENT_REFUSED",
+	"EVENT_KIND_UNKNOWN",
+	"EVENT_KIND_KERNEL_ONLY",
+	"EVENT_PAYLOAD_INVALID",
+	"KERNEL_RECORD_IMMUTABLE",
+] as const;
+export type RecordEventRefusalCode = (typeof RECORD_EVENT_REFUSAL_CODES)[number];

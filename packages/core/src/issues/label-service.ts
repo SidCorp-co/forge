@@ -1,6 +1,8 @@
+import type { LabelAttachRefusalCode } from '@forge/contracts/issues';
 import { and, eq, inArray, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, type LabelKind, labels } from '../db/schema.js';
+import { refuser } from '../lib/refusal.js';
 
 export type IssueLabelLite = {
   id: string;
@@ -39,12 +41,7 @@ export async function listIssueLabels(issueId: string): Promise<IssueLabelLite[]
     .where(eq(issueLabels.issueId, issueId));
 }
 
-export class LabelResolutionError extends Error {
-  constructor(readonly missing: string[]) {
-    super('INVALID_LABELS');
-    this.name = 'LabelResolutionError';
-  }
-}
+const refuse = refuser<LabelAttachRefusalCode>('LABELS_REFUSED');
 
 export const LABEL_UUID_PATTERN =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
@@ -71,9 +68,10 @@ export async function resolveLabelIdsForWrite(
 
   const primaries = items.filter((i) => i.isPrimary);
   if (primaries.length > 1) {
-    throw new PrimaryModuleError(
+    throw refuse(
       'MULTIPLE_PRIMARY',
       `an issue has at most one primary module; this set marks ${primaries.length}`,
+      '/labels',
     );
   }
 
@@ -101,31 +99,28 @@ export async function resolveLabelIdsForWrite(
     ...uuidValues.filter((v) => !byId.has(v)),
     ...nameValues.filter((v) => !byName.has(v)),
   ];
-  if (missing.length > 0) throw new LabelResolutionError(missing);
+  if (missing.length > 0) {
+    throw refuse(
+      'INVALID_LABELS',
+      `one or more labels do not exist in this project: ${missing.map((m) => `\`${m}\``).join(', ')}`,
+      '/labels',
+    );
+  }
 
   const resolved = new Map<string, boolean>();
   for (const item of items) {
     const row = byId.get(item.labelId) ?? byName.get(item.labelId);
     if (!row) continue;
     if (item.isPrimary && row.kind !== 'module') {
-      throw new PrimaryModuleError(
+      throw refuse(
         'PRIMARY_NOT_MODULE',
         `only a module can be an issue's primary: ${row.name} is a label`,
+        '/labels',
       );
     }
     resolved.set(row.id, (resolved.get(row.id) ?? false) || item.isPrimary);
   }
   return [...resolved].map(([labelId, isPrimary]) => ({ labelId, isPrimary }));
-}
-
-export class PrimaryModuleError extends Error {
-  constructor(
-    readonly code: 'PRIMARY_NOT_MODULE' | 'MULTIPLE_PRIMARY',
-    message: string,
-  ) {
-    super(message);
-    this.name = 'PrimaryModuleError';
-  }
 }
 
 /**

@@ -20,10 +20,10 @@ import { issues } from '../db/schema.js';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import { releaseNotesSections } from '@forge/contracts/release-notes';
 import { peopleOf } from '../lib/people.js';
+import { notFound } from '../middleware/route-errors.js';
 import { readReleasePath } from '../project-config/release-path.js';
 import {
   type ApprovalView,
-  approvalRefusal,
   approvalRequired,
   approvalsOfRuns,
   approvalViews,
@@ -31,6 +31,7 @@ import {
 import { collectReleaseBlockers } from './blockers.js';
 import { type BoundsReading, readBounds } from './bounds.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
+import { refuseRelease } from './refuse.js';
 import { approversOf, loadReleaseFacts, type ReleaseFacts } from './release-facts.js';
 import { gateViews } from './release-gates.js';
 import {
@@ -430,9 +431,7 @@ export async function readRelease(
   viewer: ViewerFacts | null,
 ): Promise<ReleaseDetail> {
   if (!parseReleaseVersion(version)) {
-    throw approvalRefusal(
-      422,
-      'RELEASE_VERSION_SHAPE',
+    throw refuseRelease('RELEASE_VERSION_SHAPE',
       `${JSON.stringify(version)} is not a release version: ${RELEASE_VERSION_SHAPE}`,
     );
   }
@@ -443,7 +442,7 @@ export async function readRelease(
   const [run] = await runParts(projectId, version, required);
   const part = run ?? (await draftPart(projectId));
   if (!part || part.version !== version) {
-    throw approvalRefusal(404, 'NOT_FOUND', `project ${projectId} has cut no version ${version}`);
+    throw notFound(`project ${projectId} has cut no version ${version}`);
   }
   const [shared, read, readers] = await Promise.all([
     sharedFor(projectId, [part], viewer, current, required),

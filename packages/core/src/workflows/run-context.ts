@@ -12,6 +12,8 @@
  * alone exceed its share is refused (`ARTIFACT_CONTEXT_OVER_BUDGET`), never truncated.
  */
 
+import type { ArtifactContextRefusalCode } from '@forge/contracts/workflows';
+import { RefusalError } from '../lib/refusal.js';
 import { estimateTokens } from '../lib/token-estimator.js';
 import type { DesignStatus } from './design.js';
 import { type LoadedPinnedContract, pinnedContractsRecord } from './pinned-contracts.js';
@@ -71,33 +73,22 @@ export interface LoadedArtifact {
   cut: ArtifactCut;
 }
 
-export type ArtifactRefusalCode =
-  | 'ARTIFACT_CONTEXT_UNLOADABLE'
-  | 'ARTIFACT_CONTEXT_OVER_BUDGET'
-  | 'REQUIREMENT_REVISION_NOT_CURRENT';
-
 /** A traced artefact the job cannot be given, named `<kind> <ref>@<revision>`. */
-export class ArtifactContextError extends Error {
-  readonly code: ArtifactRefusalCode;
-  readonly artifact: {
-    kind: ArtifactKind;
-    ref: string;
-    workflowId: string;
-    revision: number | null;
-  };
-
-  constructor(
-    code: ArtifactRefusalCode,
-    artifact: { kind: ArtifactKind; ref: string; workflowId: string; revision: number | null },
-    reason: string,
-  ) {
-    super(
-      `${code}: ${artifact.kind} ${artifact.ref}@${artifact.revision ?? 'none'} (workflow ${artifact.workflowId}): ${reason}`,
-    );
-    this.name = 'ArtifactContextError';
-    this.code = code;
-    this.artifact = artifact;
-  }
+export function artifactContextRefusal(
+  code: ArtifactContextRefusalCode,
+  artifact: { kind: ArtifactKind; ref: string; workflowId: string; revision: number | null },
+  reason: string,
+): RefusalError {
+  return new RefusalError(
+    [
+      {
+        code,
+        path: '',
+        detail: `${artifact.kind} ${artifact.ref}@${artifact.revision ?? 'none'} (workflow ${artifact.workflowId}): ${reason}`,
+      },
+    ],
+    'ARTIFACT_CONTEXT_UNLOADABLE',
+  );
 }
 
 type Doc = Record<string, unknown>;
@@ -135,7 +126,7 @@ function readApproved(row: TracedDesignRow): { revision: number; doc: WorkflowWr
     revision: row.approvedRevision,
   };
   const refuse = (reason: string) =>
-    new ArtifactContextError('ARTIFACT_CONTEXT_UNLOADABLE', artifact, reason);
+    artifactContextRefusal('ARTIFACT_CONTEXT_UNLOADABLE', artifact, reason);
   if (row.approvedRevision === null) {
     throw refuse(
       `the design is ${row.designStatus ?? 'not in a design lifecycle'} and names no approved revision, so there is no approved design to give the job`,
@@ -145,7 +136,7 @@ function readApproved(row: TracedDesignRow): { revision: number; doc: WorkflowWr
     throw refuse(`no design revision row holds revision ${row.approvedRevision}`);
   }
   if (row.pinnedBy && row.pinnedBy.currentApproved !== row.approvedRevision) {
-    throw new ArtifactContextError(
+    throw artifactContextRefusal(
       'REQUIREMENT_REVISION_NOT_CURRENT',
       artifact,
       `${row.pinnedBy.key}'s latest baseline pins revision ${row.approvedRevision}, and the design is approved at revision ${row.pinnedBy.currentApproved ?? 'none'} now; a superseded revision is never given, so a person re-pins ${row.pinnedBy.key} first`,
@@ -308,7 +299,7 @@ function fitToShare(row: TracedDesignRow, revision: number, full: Slice, capChar
     const t = renderDesign(row, revision, trimmed, dropped, trial);
     if (t.length <= capChars) return { slice: trimmed, text: t, cut: trial };
   }
-  throw new ArtifactContextError(
+  throw artifactContextRefusal(
     'ARTIFACT_CONTEXT_OVER_BUDGET',
     { kind: 'workflow-design', ref: row.flow, workflowId: row.workflowId, revision },
     `even with every step cut, its header and cut manifest exceed its ${capChars}-char share of the ${ARTIFACT_CONTEXT_CAP_CHARS}-char artefact budget`,
@@ -317,7 +308,7 @@ function fitToShare(row: TracedDesignRow, revision: number, full: Slice, capChar
 
 /**
  * What a build job is given of the designs its issue builds: each approved revision's slice, fitted
- * to its share of `capChars`. Throws `ArtifactContextError` naming the first design it cannot give.
+ * to its share of `capChars`. Throws `artifactContextRefusal` naming the first design it cannot give.
  */
 export function artifactContext(
   rows: readonly TracedDesignRow[],

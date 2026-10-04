@@ -15,6 +15,7 @@
  */
 
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import type { ArchiveRefusalCode } from '@forge/contracts/issues';
 import {
   and,
   eq,
@@ -39,6 +40,7 @@ import {
   memories,
 } from '../db/schema.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
+import { RefusalError } from '../lib/refusal.js';
 import type { Actor } from '../pipeline/activity.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
 
@@ -131,18 +133,29 @@ export type IssueArchiveReport = {
   refusals: IssueArchiveRefusal[];
 };
 
-export class IssueArchiveRefusedError extends Error {
-  readonly code = 'ARCHIVE_REFUSED';
-  constructor(readonly report: IssueArchiveReport) {
-    super(
-      `${report.direction} refused, nothing was written: ${report.refusals
-        .slice(0, 5)
-        .map((r) => r.message)
-        .join(
-          '; ',
-        )}${report.refusals.length > 5 ? `; and ${report.refusals.length - 5} more` : ''}`,
-    );
-  }
+const ARCHIVE_CODES: Record<IssueArchiveRefusal['kind'], ArchiveRefusalCode> = {
+  unknown_key: 'ARCHIVE_KEY_UNKNOWN',
+  status_not_terminal: 'ARCHIVE_STATUS_NOT_TERMINAL',
+  not_terminal: 'ARCHIVE_ISSUE_NOT_TERMINAL',
+  load_bearing_edge: 'ARCHIVE_EDGE_LOAD_BEARING',
+};
+
+function archivePath(r: IssueArchiveRefusal): string {
+  if (r.kind === 'unknown_key') return `/filter/${r.field}`;
+  if (r.kind === 'status_not_terminal') return '/filter/statuses';
+  return '/filter';
+}
+
+/** Every refusal a run met, in the envelope; nothing was written. */
+function archiveRefused(report: IssueArchiveReport): RefusalError {
+  return new RefusalError(
+    report.refusals.map((r) => ({
+      code: ARCHIVE_CODES[r.kind],
+      path: archivePath(r),
+      detail: r.message,
+    })),
+    'ARCHIVE_REFUSED',
+  );
 }
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -296,7 +309,7 @@ async function writeSide(
 
 /**
  * Archive or unarchive the issues a filter matches. A dry run answers the same report and writes
- * nothing. A run with any refusal throws `IssueArchiveRefusedError` carrying every refusal, and
+ * nothing. A run with any refusal throws every refusal in the envelope, and
  * writes nothing either. The matched rows are locked `FOR UPDATE`, which serialises this against a
  * status transition and an edge write naming the same rows.
  */
@@ -356,7 +369,7 @@ export async function runIssueArchive(input: {
         refusals,
       };
       if (dryRun) return report;
-      if (refusals.length > 0) throw new IssueArchiveRefusedError(report);
+      if (refusals.length > 0) throw archiveRefused(report);
       await writeSide(tx, { direction, projectId, filter, actor }, toMove);
       return report;
     }),

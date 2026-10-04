@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { runners } from '../db/schema.js';
+import { forbidden } from '../middleware/route-errors.js';
 
 export async function assertDeviceBoundToProject(
   deviceId: string,
@@ -19,9 +19,6 @@ export async function assertDeviceBoundToProject(
     )
     .limit(1);
   if (!row) {
-    throw new HTTPException(403, {
-      message: 'device not bound to project',
-      cause: { code: 'FORBIDDEN' },
-    });
+    throw forbidden('device not bound to project');
   }
 }

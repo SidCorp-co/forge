@@ -60,8 +60,8 @@ passed, because the external record of what shipped belonged to none of them.
 | provider literals | `check-provider-literals` — `conformance` | whether a provider's name (`coolify`, `postman`, …) is written outside the locations `.forge/conformance.json` allows WITH a reason: that provider's own directory, the registry, the schema and contracts vocabularies; and whether core reaches an external system — a global `fetch`, or an import of a vendor SDK `egress.vendorSdks` lists — outside `packages/core/src/integrations/`, beyond the exceptions `egress.exceptions` names with a reason (ADR 0006) | whether a name allowed there is USED correctly; and `agent`, which this repo also spells as an actor, an author and a principal — excluded by name, with its reason and its retirement condition printed on every run; and a file that binds its own `fetch`, which the egress scan reads as not using the global one |
 | declarations | `check-integration-declarations` — `conformance` | whether every provider in the live registry carries the capability, schema and agent-path fields the generic paths read — including a non-empty `justification` on a `direct-mcp` arm, since that arm puts a project's credential on a runner box | which archetype a provider SHOULD be — that is the declaration's author's, and review's |
 | injected docs | `check-injected-doc-modes` — `injected-docs` | that a status transition in a guide body or a mandatory fact names the pipeline mode it belongs to | whether the prose around a qualified transition is true; a project's own knowledge entries, which live in the DB |
-| PAT surface | `check-pat-surface` — `conformance` | whether every route the running app serves under a project-reach permission reaches the PAT fence, `packages/core/src/auth/pat-scope.ts:fencedProjectIds`, one route at a time: the routes come from `app.routes` under the contract generator's hermetic environment, each is matched to a registration the TypeScript checker finds from `packages/core/src/index.ts` (through `.route()` nesting and a router handed to a registering function), and it is fenced only when that registration's own handlers, or a middleware its router registered before it on a covering pattern, call the fence through calls the checker resolves to declarations in `packages/core/src`. Reachability is per FUNCTION: a module holding one fenced function lends nothing to the functions beside it, which is how ISS-28's planted route passed the file-level check this replaced. A served route no registration spells is refused, never skipped; a path in `PAT_UNGRANTABLE`, or on the gate's short EXEMPT list of routes that read no project's data, is not walked | whether a given fence is correct — a handler that reads the fence for one project and then serves another passes; a call through a value the checker cannot resolve reaches nothing, so that gap errs red, never green |
-| status tuples | `check-status-tuples` — `lang-check` | whether one question has more than one answer: two declarations holding the same status tuple, or a status-literal array written inline where a named constant for that tuple already exists. Compares by VALUE, not by name, in either quote style, and reads the three vocabularies out of their machines (`packages/contracts/src/issue-machine.ts`, `job-machine.ts`, `session-machine.ts`) rather than carrying a copy. It scans `packages/core/src`, `packages/core/tests`, `packages/contracts/src` and `packages/web-v2/src`: a browser file answering a question core already answers is the same defect as a core file doing it. A declaration reaches it by three routes — an array literal, a `new Set(...)` of one, and a `Record<…Status, boolean>`, whose `true` keys are a tuple written as a classification. A `status-tuple: differs` marker excuses a declaration only against a peer it NAMES, because a reason written about one neighbour is no excuse against a different one. And one NAME answers one question: a name holding two different tuples is refused whatever the markers say, because two answers under one name never collide by value — which is exactly how `packages/core/src/pipeline/runs-rollup.ts` held a three-member `LIVE_JOB_STATUSES` beside the four-member one with this gate green | whether a tuple's MEMBERSHIP is right; SQL string literals including `ARRAY[…]`, type unions, a tuple written as an object-literal value, which is a table row rather than a named question, and a `Record<…Status, T>` for any `T` but boolean, which is a lookup table rather than a yes/no question. In a test file it reads `.each` case lists ONLY: that list is the domain the test claims to cover, while every other tuple there is the assertion itself, which importing the constant would make vacuous. **Nor a copy that has already drifted**: two answers to one question whose members no longer match do not collide, so this catches a second declaration before it rots and never after; one declaration per vocabulary, its machine in `packages/contracts/src/machines.ts`, is what keeps a pair from forming |
+| PAT surface | `check-pat-surface` — `conformance` | whether every route the running app serves under a project-reach permission reaches the PAT fence, `packages/core/src/credentials/pat-scope.ts:fencedProjectIds`, one route at a time: the routes come from `app.routes` under the contract generator's hermetic environment, each is matched to a registration the TypeScript checker finds from `packages/core/src/index.ts` (through `.route()` nesting and a router handed to a registering function), and it is fenced only when that registration's own handlers, or a middleware its router registered before it on a covering pattern, call the fence through calls the checker resolves to declarations in `packages/core/src`. Reachability is per FUNCTION: a module holding one fenced function lends nothing to the functions beside it, which is how ISS-28's planted route passed the file-level check this replaced. A served route no registration spells is refused, never skipped; a path in `PAT_UNGRANTABLE`, or on the gate's short EXEMPT list of routes that read no project's data, is not walked | whether a given fence is correct — a handler that reads the fence for one project and then serves another passes; a call through a value the checker cannot resolve reaches nothing, so that gap errs red, never green |
+| status tuples | `check-status-tuples` — `lang-check` | whether one question has more than one answer: two declarations holding the same status tuple, or a status-literal array written inline where a named constant for that tuple already exists. Compares by VALUE, not by name, in either quote style, and reads the three vocabularies out of their machines (`packages/contracts/src/issue-machine.ts`, `packages/contracts/src/job-machine.ts`, `packages/contracts/src/session-machine.ts`) rather than carrying a copy. It scans `packages/core/src`, `packages/contracts/src` and `packages/web-v2/src`: a browser file answering a question core already answers is the same defect as a core file doing it. A declaration reaches it by three routes — an array literal, a `new Set(...)` of one, and a `Record<…Status, boolean>`, whose `true` keys are a tuple written as a classification. A `status-tuple: differs` marker excuses a declaration only against a peer it NAMES, because a reason written about one neighbour is no excuse against a different one. And one NAME answers one question: a name holding two different tuples is refused whatever the markers say, because two answers under one name never collide by value — which is exactly how `packages/core/src/pipeline/runs-rollup.ts` held a three-member `LIVE_JOB_STATUSES` beside the four-member one with this gate green | whether a tuple's MEMBERSHIP is right; SQL string literals including `ARRAY[…]`, type unions, a tuple written as an object-literal value, which is a table row rather than a named question, and a `Record<…Status, T>` for any `T` but boolean, which is a lookup table rather than a yes/no question. In a test file it reads `.each` case lists ONLY: that list is the domain the test claims to cover, while every other tuple there is the assertion itself, which importing the constant would make vacuous. **Nor a copy that has already drifted**: two answers to one question whose members no longer match do not collide, so this catches a second declaration before it rots and never after; one declaration per vocabulary, its machine in `packages/contracts/src/machines.ts`, is what keeps a pair from forming |
 | doc citations | `check-doc-citations` — `lang-check` | whether a document's citation of a file in this repo is still true: a path no tracked file carries and an anchor whose file does not hold that symbol each fail, a line-number citation fails because `CLAUDE.md` already forbids one, and a live citation whose target was changed after the document was comes back on the worklist without failing. Resolves in two scopes and no third — the document's own directory and its package — with a root-written path resolved exactly or not at all, so no namesake can stand in for a deleted file and no part of resolution reads whether the target is present. An excusal names the tokens it excuses | a document's PROSE, which no machine can check; a count or a number in a document; whether a symbol that still exists still means what the sentence says; `CHANGELOG.md` and `docs/proposals/`, each excluded with its reason in `.forge/conformance.json` |
 | API contracts | `check-api-contracts` — `conformance` | whether `packages/core/contracts/forge-api.openapi.json` and `forge-mcp.tools.json` are byte for byte what the generator writes from the running app, naming each route (`METHOD /path`) or tool that was added, removed or changed and the JSON pointer where it differs; and whether every mounted route and served tool is describable at all — one the generator cannot describe is its refusal, never an omission | whether a route's contract is GOOD — a response schema, a missing validator, a description; and whether a change is breaking, which is the differ's (oasdiff, and a JSON Schema differ for the tools) |
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs; and whether every file directly under `docs/proposals/` opens with a `**Removed when:**` line naming at least one issue key, the issue whose landing change deletes the file (`docs/proposals/destination/` is exempt) | whether the price stated is honest, or whether the named issue really carries the condition — that is review's |
@@ -79,7 +79,7 @@ failure and one that names a bystander. biome truncates at 20 by default and ord
 severity, so with 399 baselined warnings in `packages/core` the one ERROR that fails the build is
 simply not printed. Measured 2026-08-31: a planted format error in `packages/core/src/ws/server.ts` produced
 `Found 2 errors.` and **zero** mentions of that file, while the visible diagnostics all pointed at
-`packages/core/src/agent-sessions/chat-turn.test.ts`, which was clean and untouched.
+a test file that was clean and untouched.
 
 `check-lint-budget` already defended against exactly this — it invokes biome with
 `--max-diagnostics=5000` because truncation would silently empty its input. The blocking lint step
@@ -89,7 +89,7 @@ had no such guard. The two now agree.
 
 `.forge/conformance.json` declares each axis's level — `0` no checker · `1` measures, does not
 block · `2` baseline the old, block the new · `3` zero violations. Today: form 2 · knowledge 3 ·
-relations 2 · behaviour 2 · language 3 · record 3 · comment 2. `conformance-status.mjs` prints
+relations 2 · behaviour 2 · language 3 · record 3. `conformance-status.mjs` prints
 them beside what it measured, so this line is a convenience and that command is the answer.
 
 Level 2 is the claim *"old debt frozen, new debt blocked"*, so each such axis must also name where
@@ -156,7 +156,7 @@ thresholds.
 
 ### Declared severity downgrades
 
-`packages/core/biome.json` carries one `overrides` block, scoped to `**/*.test.ts` and
+`packages/core/biome.json`'s first `overrides` block is scoped to `**/*.test.ts` and
 `**/tests/**`: `correctness/noUnsafeOptionalChaining` drops to `warn` (41 sites) and
 `suspicious/noThenProperty` goes `off`. The first is the `expect(call).toBeDefined()` then
 `call?.[1]` idiom, where the optional chain is asserted safe one line above; the second is Drizzle's
@@ -253,15 +253,9 @@ Four contracts:
    zero exits `2`, not `0`. A checker whose scope matched nothing reports "clean"; forwarding that as
    a pass is the failure mode this guards.
 3. **Report everything** — no early exit. One fix cycle instead of six.
-4. **Bounded width** — the checks run at a concurrency of 6 rather than all 20 at once, overridable
+4. **Bounded width** — the checks run at a concurrency of 6 rather than all at once, overridable
    with `VERIFY_CONCURRENCY`. Why 6 and not more was measured, and the measurement lives at the
    thing it decided: the rationale on `verify.mjs:runAll`.
-
-   This contract read **"Advisory — `cm impact` on every file changed against `origin/main` …
-   the pull-side stand-in for the PreToolUse hook"** until 2026-09-17. `verify.mjs` has never run
-   `cm impact`, in any version — the string appears nowhere in the file — so the sentence described
-   an intention, and a reader who skipped the hook because the pull side "had it covered" was
-   covered by nothing.
 
 ### One proposition per verdict
 
@@ -471,7 +465,7 @@ frozen in `.forge/size-baseline.json` may stay over budget, they may not get wor
 (its length and its longest function), so a reflow or a moved function is not a violation.
 
 **A frozen file has no headroom, and `--update-baseline` does not buy any.** One line added to a file
-already at its number — a `cm:` annotation, a column on `packages/core/src/db/schema.ts` — trips this,
+already at its number — a comment, a column on `packages/core/src/db/schema.ts` — trips this,
 and re-freezing above it is then refused by `conformance-status`: the form axis declares
 `improves: down`, and `compareBaseline` in `scripts/lib/baseline-ratchet.mjs` faults on ANY per-key
 rise and on any per-area total rise. There is no waiver to buy and no amnesty to price. The way
@@ -582,8 +576,7 @@ linting report identical numbers:
   over a full 459 scanned files, so no guard here fires and the next `--update-baseline` drops 9 files
   and 24 frozen diagnostics at exit 0 — accepted by `improves: down`, which only faults on a rise.
   Closing it needs a per-file "was this linted" signal biome's JSON reporter does not expose, and
-  refusing `overrides` outright would false-fail the legitimate don't-lint-generated-code block. A test
-  in `lib/lint-budget.test.mjs` pins it as declared rather than left to be rediscovered.
+  refusing `overrides` outright would false-fail the legitimate don't-lint-generated-code block.
 - **files scanned** — biome's own `summary` says how many files it looked at, and zero means the scope
   matched nothing. A narrowed `files.includes` lands here.
 - **the linter is on** — the scope's resolved config, following `extends` to the end of the chain, must
@@ -597,8 +590,8 @@ three — a guard that explains a failure is worth having even once another guar
 Modes: `--all` (CI, in the always-on `conformance` job; also `pnpm --filter web-v2 lint`) ·
 `--staged` (**freeze-only** — the payment is due against the branch, not a half-staged tree) ·
 `--update-baseline` (`--accept-emptied-scope` to confirm a scope really did drain to zero).
-`--staged` exists for a pre-commit hook but **no hook runs it today**: `.githooks/pre-commit` runs
-`check-source-language` and `check-test-signal` and nothing else. The gate is the `conformance` job.
+`--staged` exists for a pre-commit hook but **no hook runs it today**: on `dev`, `.githooks/pre-commit`
+runs nothing. The gate is the `conformance` job.
 
 ## check-lockfile-transport.mjs — no dependency that only SSH can fetch
 
@@ -633,9 +626,8 @@ spot: the parity parser reads the workflow and never the action it calls, so del
 moving it below `pnpm install` would cost nothing and say nothing, while the `CHECKS` entry stayed
 green on a clean lockfile. Both shapes now fail by name — measured by planting each one.
 
-`scripts/lib/lockfile-transport.mjs` holds the classification, so the verdict has a test
-(`lockfile-transport.test.mjs`, collected by `packages/core/vitest.config.ts`); the CLI reads the
-tree and exits. Exit `0` clean · `1` an entry resolves over SSH · `2` no lockfile, or a lockfile
+`scripts/lib/lockfile-transport.mjs` holds the classification; the CLI reads the tree and exits.
+Exit `0` clean · `1` an entry resolves over SSH · `2` no lockfile, or a lockfile
 holding no `resolution:` at all — an empty scope is refused rather than forwarded as a pass.
 
 It reads the text line by line rather than parsing YAML, because it runs before anything is
@@ -724,10 +716,9 @@ proved. The three must name one set, and the merge target must be in it.
 
 ## check-migration-order.mjs — a migration is ordered against the set, not against `main`
 
-`packages/core/src/db/migrations-journal.test.ts` reads one journal: its own. Its head-entry
-assertion is that the head `when` clears the maximum in that same file. Every branch therefore
-passes alone, while the SET of open branches — the thing that actually has to be applicable — is
-measured by nothing.
+A journal read alone proves only that its head `when` clears the maximum in that same file. Every
+branch passes that alone, while the SET of open branches — the thing that actually has to be
+applicable — is measured by nothing else.
 
 <!-- doc-citation: unchecked `drizzle-orm/pg-core/dialect.js` — a file inside the drizzle-orm dependency, not this tree. -->
 Drizzle's migrator reads the single highest `created_at` in `drizzle.__drizzle_migrations` once and
@@ -950,9 +941,9 @@ Fails if any `.ts`/`.tsx`/`.md` file under `packages/web-v2/src/` or `packages/c
 
 ### Modes
 
-- `--staged` (default): scans STAGED content of files in `git diff --cached --diff-filter=ACM`. Used by `.githooks/pre-commit`.
+- `--staged` (default): scans STAGED content of files in `git diff --cached --diff-filter=ACM`. No hook runs it on `dev`: `.githooks/pre-commit` is empty there.
 <!-- doc-citation: unchecked `src/` — the plural: each package's own source tree, not one directory. -->
-- `--all`: walks the working tree across all three `src/` trees. Used by CI (`.github/workflows/ci.yml` `lang-check` job).
+- `--all`: walks the working tree across both `src/` trees. Used by CI (`.github/workflows/ci.yml` `lang-check` job).
 
 Exit codes: `0` clean, `1` violations found, `2` invalid invocation.
 
@@ -964,7 +955,7 @@ Exit codes: `0` clean, `1` violations found, `2` invalid invocation.
 
 ### Bypass
 
-`SKIP_LANG_CHECK=1 git commit ...` skips the pre-commit hook locally. CI cannot be bypassed — translate the offending strings or add an `i18n-allow:` directive with a reason.
+CI cannot be bypassed — translate the offending strings or add an `i18n-allow:` directive with a reason.
 
 ## check-lazy-module-init.mjs — importing a core module does no work
 
@@ -1000,8 +991,7 @@ wherever `env` is in scope, which is what an import is for — so the rule is a 
 TypeScript AST.
 
 **The rule is "does this read run when the file is imported", which is not "is this read outside a
-function".** Three consequences, each with its own fixture in
-`check-lazy-module-init.test.mjs`:
+function".** Its consequences:
 
 | Shape | Caught | Why |
 |---|---|---|
@@ -1017,7 +1007,7 @@ function".** Three consequences, each with its own fixture in
 | a read outside that guard in a module's index file | yes | the guard is a block, never a whole-file exemption |
 
 The last four rows were holes this checker had on its first version, found by the whole-set review
-of the change that added it and each now carrying a fixture that goes red when its fix is removed.
+of the change that added it.
 
 **What it cannot hold**, stated here because a gate whose limit is unwritten gets read as holding
 more than it does: a NAMED function called at module scope runs at import, and a syntactic walk does
@@ -1025,7 +1015,7 @@ not follow that call. Nothing in core does this today.
 
 `--all` is the only mode, and the checker refuses anything else by name. A run that can narrow its
 own scope reports clean on a tree that is not — which is also why the checker exports
-`importTimeReads` for its test to call with fixture text rather than taking a `--scan-root` flag.
+`importTimeReads`, to be called with fixture text, rather than taking a `--scan-root` flag.
 
 ## check-test-signal.mjs — low-signal test guard
 
@@ -1034,7 +1024,7 @@ declaration-shape assertions (`.columnType` / `.notNull` / `.hasDefault` / `.pri
 `.isUnique` / `.dataType`) — assertions that restate what the declaration already says and
 so can only fail on an intended change. FK `.onDelete` is deliberately not flagged.
 Baseline-frozen in `.forge/test-signal-baseline.json`, same contract as the other frozen
-baselines. Wired into the commit path.
+baselines.
 
 The freeze comparison, the registry read, the baseline I/O and the staged-file collection are
 `lib/debt-ratchet.mjs`, shared with the two biome budgets; what lives in this script is the
@@ -1061,11 +1051,11 @@ only a biome scope declares one.
 `scopeConfig` refuses an absent manifest and `tunedConfig` degrades to defaults, which is not an
 inconsistency: a scope list has no meaningful default, so inventing one measures directories the
 manifest never declared, while `.forge/conformance.json`'s own `$comment` promises that deleting a
-threshold block degrades to built-in behaviour. Both are pinned in `lib/debt-ratchet.test.mjs`.
+threshold block degrades to built-in behaviour.
 
 `scripts/**/*.test.mjs` is collected by `packages/core/vitest.config.ts` and by nothing else, so
-these run under the `core` job — which `ci.yml`'s `changes` filter triggers on `scripts` as well as
-on `packages/core`. Locally they need `turbo.json`'s `test.inputs`: without
+a test of a script runs under the `core` job — which `ci.yml`'s `changes` filter triggers on `scripts` as well as
+on `packages/core`. Locally such a test needs `turbo.json`'s `test.inputs`: without
 `$TURBO_ROOT$/scripts/**` a scripts-only change is outside `packages/core`, so `pnpm test` replays
 a cached log and reports green over tests it never ran. Measured 2026-08-30 on the same touched
 tree: cache HIT without that input, cache MISS with it.
@@ -1110,7 +1100,7 @@ Exit `2` on an unreadable manifest, an unknown profile name, or a manifest with 
 With no `profile` declared it reports the highest one the repo would meet and exits on the rules
 alone.
 
-It audits shape, not worth: a repo can pass all ten with an axis measuring something pointless. That
+It audits shape, not worth: a repo can pass all twelve with an axis measuring something pointless. That
 is deliberate — choosing what to measure is the repo's call, and a tool that ruled on it would start
 dictating stacks.
 

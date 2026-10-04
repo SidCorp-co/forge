@@ -110,8 +110,7 @@ migration whose new schema cannot hold a row. Rewriting it to `merge-branch` wou
 project releases, in silence, on the strength of a value nobody ever gave it a meaning for.
 
 **The chain is never derived from `live_branch`.** 25 of 32 projects carry a `live_branch` that
-nothing promotes to — measured, and recorded in
-`packages/core/src/schedules/messages/skill-improve-prompt.ts`. Deriving the chain from the branch
+nothing promotes to — measured. Deriving the chain from the branch
 pair would move those 25 projects to a two-step release nobody asked for, silently. The migration
 reads `release_model` and writes the chain from the table above; a later change that "simplifies" it
 into a branch-name inference reintroduces this defect.

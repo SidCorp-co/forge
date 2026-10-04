@@ -1,7 +1,9 @@
+import type { MemoryRefusalCode } from '@forge/contracts/memory';
 import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { memories } from '../db/schema.js';
+import { refuser } from '../lib/refusal.js';
 import { logger } from '../logger.js';
 
 export const FEEDBACK_SOURCES = ['note', 'knowledge'] as const;
@@ -22,7 +24,7 @@ export const memoryFeedbackInputSchema = z.object({
 
 export type MemoryFeedbackInput = z.infer<typeof memoryFeedbackInputSchema>;
 
-export class MemoryFeedbackValidationError extends Error {}
+const refuse = refuser<MemoryRefusalCode>('MEMORY_REFUSED');
 
 export interface MemoryFeedbackResult {
   found: boolean;
@@ -32,8 +34,10 @@ export interface MemoryFeedbackResult {
 
 export async function runMemoryFeedback(input: MemoryFeedbackInput): Promise<MemoryFeedbackResult> {
   if (input.verdict === 'outdated' && !input.evidence) {
-    throw new MemoryFeedbackValidationError(
+    throw refuse(
+      'MEMORY_EVIDENCE_REQUIRED',
       'evidence is required for verdict=outdated — state what disproved the row',
+      '/evidence',
     );
   }
 

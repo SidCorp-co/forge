@@ -2,13 +2,12 @@
  * The record store, over REST. `issue_attributes` holds typed assertions with a
  * `source_comment_id` pointing back at the comment that made them. This route is their one door
  * and calls the service, so there is one writer and one set of refusals about what is written:
- * `setIssueAttributes` raises all of them and this route only says which status carries which code.
+ * `setIssueAttributes` raises all of them, and the envelope answers them.
  * What a door still owns is its own shape — the body schema, the issue, the caller's role.
  */
 
 import { eq } from 'drizzle-orm';
 import type { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
@@ -16,10 +15,9 @@ import { loadProjectAccess } from '../../lib/authz.js';
 import type { AuthVars } from '../../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
+import { requireHeld } from '../../permissions/index.js';
 import { loadIssueAttributes } from './read.js';
 import { setIssueAttributes } from './service.js';
-import { AttributeRefusal, type AttributeRefusalCode } from './write.js';
-import { requireHeld } from '../../permissions/index.js';
 
 const attributeSchema = z
   .object({
@@ -30,28 +28,6 @@ const attributeSchema = z
   .strict();
 
 const writeBodySchema = z.object({ attributes: z.array(attributeSchema).min(1).max(50) }).strict();
-
-/**
- * The status each refusal is rendered at. A drifted registry is the server's
- * own two lists disagreeing, which is a conflict and not the caller's input;
- * every other refusal names something the caller sent.
- */
-const REFUSAL_STATUS: Record<AttributeRefusalCode, 400 | 409> = {
-  UNREGISTERED_KEY: 400,
-  WRONG_TYPE: 400,
-  OBLIGATION_UNOWNED: 400,
-  EMPTY_TEXT: 400,
-  SOURCE_COMMENT_NOT_FOUND: 400,
-  SOURCE_COMMENT_OFF_ISSUE: 400,
-  ATTRIBUTE_DEF_MISSING: 409,
-};
-
-/** The HTTP an attribute refusal becomes, carrying its own code by name. */
-function refusalHttp(err: AttributeRefusal): HTTPException {
-  const cause: { code: string; details?: unknown } = { code: err.code };
-  if (err.details !== undefined) cause.details = err.details;
-  return new HTTPException(REFUSAL_STATUS[err.code], { message: err.message, cause });
-}
 
 export function registerIssueAttributeRoutes(router: Hono<{ Variables: AuthVars }>): void {
   router.post(
@@ -69,21 +45,16 @@ export function registerIssueAttributeRoutes(router: Hono<{ Variables: AuthVars 
       const access = await loadProjectAccess(issue.projectId, c.get('userId'));
       requireHeld(access, 'project.write');
 
-      try {
-        const result = await setIssueAttributes(
-          attributes.map((a) => ({
-            issueId: issue.id,
-            key: a.key,
-            value: a.value,
-            sourceCommentId: a.sourceCommentId ?? null,
-            assertedByUserId: c.get('userId'),
-          })),
-        );
-        return c.json(result, 201);
-      } catch (err) {
-        if (err instanceof AttributeRefusal) throw refusalHttp(err);
-        throw err;
-      }
+      const result = await setIssueAttributes(
+        attributes.map((a) => ({
+          issueId: issue.id,
+          key: a.key,
+          value: a.value,
+          sourceCommentId: a.sourceCommentId ?? null,
+          assertedByUserId: c.get('userId'),
+        })),
+      );
+      return c.json(result, 201);
     },
   );
 

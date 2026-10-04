@@ -190,3 +190,56 @@ export const ISSUE_MACHINE = defineMachine({
 		recovery("reopen", []),
 	],
 });
+
+/** How a move reads against the status it is offered from. */
+export const ISSUE_MOVE_KINDS = ["forward", "bounce", "discard"] as const;
+export type IssueMoveKind = (typeof ISSUE_MOVE_KINDS)[number];
+
+export interface IssueMove {
+	to: IssueStatus;
+	kind: IssueMoveKind;
+	/** First of its kind after another kind: a menu draws a rule above it. */
+	startsGroup: boolean;
+	/** The machine refuses this move without a reason. */
+	needsReason: boolean;
+}
+
+const BOUNCE_TARGETS: readonly IssueStatus[] = ["needs_info", "on_hold", "reopen"];
+const DISCARD_TARGETS: readonly IssueStatus[] = ["closed", "dropped"];
+
+/**
+ * The moves a person may offer from a status, read off the machine in the order it declares them:
+ * a park's return to the status it left first (every parkable status when none is recorded), then
+ * the status's own exits. The first move is the forward one, then the bounces, then the discards.
+ */
+export function issueMovesFrom(
+	from: IssueStatus,
+	leftStatus: IssueStatus | null,
+): IssueMove[] {
+	const returns = ISSUE_MACHINE.edges
+		.filter((e) => e.from === from && e.guards.includes("left_status"))
+		.map((e) => e.to);
+	const back = leftStatus ? returns.filter((to) => to === leftStatus) : returns;
+	const rest = ISSUE_MACHINE.edges
+		.filter((e) => e.from === from && !e.recovery && !e.guards.includes("left_status"))
+		.map((e) => e.to);
+	const targets = [...new Set([...back, ...rest])];
+	const kindOf = (to: IssueStatus, i: number): IssueMoveKind => {
+		if (i === 0 || back.includes(to)) return "forward";
+		if (BOUNCE_TARGETS.includes(to)) return "bounce";
+		if (DISCARD_TARGETS.includes(to)) return "discard";
+		return "forward";
+	};
+	const typed = targets.map((to, i) => ({ to, kind: kindOf(to, i) }));
+	const reason: readonly string[] = ISSUE_MACHINE.reasonRequired;
+	const out: IssueMove[] = [];
+	for (const kind of ISSUE_MOVE_KINDS) {
+		let first = true;
+		for (const t of typed) {
+			if (t.kind !== kind) continue;
+			out.push({ ...t, startsGroup: first && out.length > 0, needsReason: reason.includes(t.to) });
+			first = false;
+		}
+	}
+	return out;
+}

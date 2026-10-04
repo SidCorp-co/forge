@@ -1,7 +1,7 @@
 /**
  * The reads of feedback: the list the Feedback page opens with its derived facts (phase, who it
  * waits on, the carrier's own status), the detail, and the helpers every write resolves an item, a
- * target or a carrier with. Phases come from `rules.ts:phaseOf`; nothing here stores one.
+ * target or a carrier with. Phases come from `standing.ts:phaseOf`; nothing here stores one.
  */
 
 import {
@@ -43,8 +43,8 @@ import { deliveredAmong } from '../requirements/standing-read.js';
 import { userNames } from '../workflows/service.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
 import { feedbackIdsOfRequirement, NO_FEEDBACK, sourceOf } from './relations.js';
-import { type FeedbackRefusal, type PhaseFacts, phaseOf, searchWithheldRefusal } from './rules.js';
-import { feedbackStandingOf } from './standing.js';
+import { type FeedbackRefusal, searchWithheldRefusal } from './rules.js';
+import { feedbackStandingOf, type PhaseFacts, phaseOf } from './standing.js';
 import { targetView } from './target-view.js';
 
 export interface FeedbackActor {

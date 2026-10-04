@@ -20,9 +20,9 @@ import {
   CHAT_TURN_MENU,
   mintTurnCredential,
   type TurnAuthority,
-  TurnAuthorityRefused,
+  turnAuthorityRefusalOf,
   type TurnCredential,
-} from '../auth/turn-credential.js';
+} from '../credentials/turn-credential.js';
 import type { ChatStreamEvent } from '../integrations/llm/types.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { egressDeep } from '../lib/data-egress.js';
@@ -51,16 +51,12 @@ const HANDLE_TIMEOUT_MS = 120_000;
 /** The turn's token outlives the turn's own ceiling and a CLI call begun at its edge; it is revoked when the turn ends. */
 const CREDENTIAL_TTL_MS = 10 * 60 * 1000;
 
-class TurnTimeoutError extends Error {
-  constructor(readonly ms: number) {
-    super(`conversation turn timed out after ${ms}ms`);
-    this.name = 'TurnTimeoutError';
-  }
-}
-
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: () => void): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new TurnTimeoutError(ms)), ms);
+    const t = setTimeout(() => {
+      onTimeout();
+      reject(new Error(`conversation turn timed out after ${ms}ms`));
+    }, ms);
     t.unref?.();
     p.then(
       (v) => {
@@ -95,7 +91,7 @@ export interface TurnHookContext {
   principalUserId: string;
   /**
    * The token minted for that person for this turn, minted on first call and revoked when the
-   * turn ends; throws `TurnAuthorityRefused` where their grant leaves the tools nothing.
+   * turn ends; throws a turn-authority refusal where their grant leaves the tools nothing.
    */
   credential: () => Promise<TurnCredential>;
   /** The linked author of the newest person message, or null when nobody Forge knows (ISS-1034). */
@@ -271,8 +267,9 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
   try {
     inputs = (await req.prepare?.(hook)) ?? {};
   } catch (err) {
-    if (!(err instanceof TurnAuthorityRefused)) throw err;
-    return { send: true, message: codeAuthored(err.message), screenReplaced: false };
+    const refused = turnAuthorityRefusalOf(err);
+    if (!refused) throw err;
+    return { send: true, message: codeAuthored(refused.message), screenReplaced: false };
   }
   const capture = req.sendMode === 'tool' ? roomSendCapture() : null;
   const tools = capture
@@ -432,6 +429,7 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
   req.externalStop?.addEventListener('abort', onExternalStop, { once: true });
   let phase = 'start';
   let reply: TurnReply;
+  let timedOut = false;
   try {
     // Already stopped before the turn began: the person pressed Stop while the
     // window was still being claimed, and composing anything now is work whose
@@ -451,6 +449,9 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
         credential: credential.get,
       }),
       HANDLE_TIMEOUT_MS,
+      () => {
+        timedOut = true;
+      },
     );
     // Composition can END on a cancellation rather than throw on it — a
     // provider that answers with an error result instead of raising. The reply
@@ -467,7 +468,6 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
       logger.info({ ...req.log, phase }, 'conversations: a person stopped this turn');
       return { kind: 'stopped', reason: STOPPED_BY_A_PERSON };
     }
-    const timedOut = err instanceof TurnTimeoutError;
     logger.error({ err, ...req.log, phase, timedOut }, 'conversations: turn failed');
     Sentry.captureException(err, {
       tags: { area: 'conversations', phase, timed_out: String(timedOut) },

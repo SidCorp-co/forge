@@ -12,9 +12,9 @@ import type {
   FeedbackTriageEffect,
   FeedbackView,
 } from '@forge/contracts/feedback';
-import type { NodeRef } from '@forge/contracts/workflow-health';
 import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
+import type { NodeRef } from '@forge/contracts/workflow-health';
 import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-feedback.js';
@@ -23,10 +23,11 @@ import { deleteFeedbackMockups } from '../mockups/index.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { deleteFeedbackQuestions } from '../questions/index.js';
 import { redactFeedbackSuggestions } from '../suggestions/index.js';
-import { permissionFactsOf, requireCan } from '../permissions/index.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
+import { RefusalError } from '../lib/refusal.js';
 import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
+import { permissionFactsOf, requireCan } from '../permissions/index.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import { getStorage } from '../storage/index.js';
 import { designNodesIn, nodeRefRefusal } from '../workflows/node-refs.js';
@@ -50,23 +51,17 @@ export type FeedbackOutcome =
 /** The transport a write came through, recorded on an issue a triage files. */
 export type FeedbackChannel = 'web' | 'mcp';
 
-export class Refused extends Error {
-  constructor(readonly refusals: NamedRefusal[]) {
-    super(refusals.map((r) => r.code).join(', '));
-  }
-}
-
 export async function inTx(
   body: (tx: Tx) => Promise<NamedRefusal[] | null | undefined>,
 ): Promise<NamedRefusal[] | null> {
   try {
     return await db.transaction(async (tx) => {
       const refusals = await body(tx);
-      if (refusals?.length) throw new Refused(refusals);
+      if (refusals?.length) throw new RefusalError(refusals, 'FEEDBACK_REFUSED');
       return null;
     });
   } catch (err) {
-    if (err instanceof Refused) return err.refusals;
+    if (err instanceof RefusalError) return [...err.refusals];
     throw err;
   }
 }

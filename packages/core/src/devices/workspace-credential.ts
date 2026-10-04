@@ -21,14 +21,15 @@
  */
 
 import { and, eq, isNull } from 'drizzle-orm';
-import { lockPatName, mintPat, supersedeNamedToken } from '../auth/pat.js';
-import { deviceTokenNameFor, workspaceTokenNameFor } from '../auth/pat-format.js';
-import { PAT_GRANT_ALL } from '../auth/pat-permissions.js';
+import { lockPatName, mintPat, supersedeNamedToken } from '../credentials/pat.js';
+import { deviceTokenNameFor, workspaceTokenNameFor } from '../credentials/pat-format.js';
+import { PAT_GRANT_ALL } from '../credentials/pat-permissions.js';
 import { resolveProjectHandle } from '../conversations/handles.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens, users } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { holds } from '../permissions/index.js';
+import { refuseDevice } from './refusals.js';
 
 /**
  * Who the box acts as: the holder of its live device credential, which is the
@@ -99,10 +100,6 @@ export async function issueWorkspaceCredential(args: {
   });
 }
 
-/** A checkout whose credential no agent can hold, refused by name rather than minted as the person. */
-export class WorkspaceHolderRefused extends Error {
-  readonly code = 'WORKSPACE_HOLDER_REFUSED';
-}
 
 // A master pane is its project's agent, so the checkout carries the agent's identity; a person hands it only holding project.write.
 /**
@@ -119,14 +116,16 @@ export async function workspaceHolderFor(args: {
     .where(eq(users.id, args.deviceHolderUserId))
     .limit(1);
   if (!holder) {
-    throw new WorkspaceHolderRefused(
+    throw refuseDevice(
+      'WORKSPACE_HOLDER_REFUSED',
       `the device's holder ${args.deviceHolderUserId} is not a user, so no credential is minted for project ${args.projectId}'s checkout`,
     );
   }
   if (holder.kind === 'agent') return args.deviceHolderUserId;
   const access = await effectiveProjectRole(args.deviceHolderUserId, args.projectId);
   if (!access || !holds(access, 'project.write')) {
-    throw new WorkspaceHolderRefused(
+    throw refuseDevice(
+      'WORKSPACE_HOLDER_REFUSED',
       `person ${args.deviceHolderUserId} paired this box and holds ${access?.role ?? 'no role'} on project ${args.projectId}; its checkout's credential acts as the project's own agent, which only a holder of project.write hands a box. A project admin raises their role, or the box is paired as an agent of the project`,
     );
   }

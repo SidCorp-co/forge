@@ -5,9 +5,10 @@
  * holder may do there — and it is revoked when the turn stops (migration 0324).
  */
 
-import { HTTPException } from 'hono/http-exception';
 import type { agentSessions } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
+import { RefusalError } from '../lib/refusal.js';
+import { forbidden } from '../middleware/route-errors.js';
 import { type PermissionFacts, permissionRefusal, requireHeld } from '../permissions/index.js';
 import {
   type ChatClient,
@@ -32,18 +33,25 @@ export const FOLLOW_UP_CREDENTIAL_CAPABILITY = 'followUpCredential';
 /** Bounds a turn whose stop is never written; a turn is revoked when it stops, and may run for hours. */
 const INTERACTIVE_TURN_CREDENTIAL_TTL_MS = 8 * 60 * 60 * 1000;
 
-/** Why a session will not run as the person it would act as, with the status a door answers it with. */
+/**
+ * Why a session will not run as the person it would act as. `noRole` marks the one that is
+ * transport: a person with no role on the project is answered 403, every other refusal 422.
+ */
 export interface SessionRefusal {
-  status: 403 | 409;
   code: string;
   message: string;
+  noRole?: true;
 }
 
 export const refusalError = (refusal: SessionRefusal) =>
-  new HTTPException(refusal.status, { message: refusal.message, cause: { code: refusal.code } });
+  refusal.noRole
+    ? forbidden(refusal.message)
+    : new RefusalError(
+        [{ code: refusal.code, path: '', detail: refusal.message }],
+        'AGENT_SESSION_REFUSED',
+      );
 
 export const RUNNER_OUTDATED_REFUSAL: SessionRefusal = {
-  status: 409,
   code: 'RUNNER_OUTDATED',
   message:
     "The runner free to take this runs a forge-runner too old to act as you — it would act with its own owner's access instead, so nothing was dispatched. Update forge-runner on the box (`forge-runner update`) and try again.",
@@ -56,14 +64,14 @@ export const RUNNER_OUTDATED_REFUSAL: SessionRefusal = {
 export function sessionRoleRefusal(facts: PermissionFacts | null | undefined): SessionRefusal | null {
   if (!facts?.role) {
     return {
-      status: 403,
+      noRole: true,
       code: 'SESSION_NO_ROLE',
       message:
         'You hold no role on this project, so no agent session can run here as you. A project admin can add you.',
     };
   }
   const refusal = permissionRefusal(facts, 'project.write', 'running an agent session');
-  return refusal ? { status: 403, code: refusal.code, message: refusal.detail } : null;
+  return refusal ? { code: refusal.code, message: refusal.detail } : null;
 }
 
 export function assertMayRunSession(facts: PermissionFacts): void {
@@ -111,7 +119,7 @@ export async function readBoxAuthority(args: {
   );
   if (roleRefusal) return { ok: false, refusal: roleRefusal };
   const got = await resolveSessionAuthority(args);
-  if (!got.ok) return { ok: false, refusal: { status: 403, ...got.refusal } };
+  if (!got.ok) return { ok: false, refusal: got.refusal };
   return { ok: true, authority: { deviceId: args.deviceId, value: got.value } };
 }
 

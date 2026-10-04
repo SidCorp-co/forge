@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { verifyDeviceCredential } from '../auth/device-credential.js';
+import { verifyDeviceCredential } from '../credentials/device-credential.js';
 import type { Device } from '../db/schema.js';
 import { parseBearerHeader } from './bearer.js';
 import { declareGate } from './declared-gate.js';

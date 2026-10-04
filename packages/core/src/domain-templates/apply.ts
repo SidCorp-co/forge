@@ -4,6 +4,7 @@ import { agents, domainTemplates, projects } from '../db/schema.js';
 import { insertAgent, updateAgent } from '../agents/service.js';
 import { upsertAppConfig } from '../app-config/service.js';
 import { logger } from '../logger.js';
+import { notFound } from '../middleware/route-errors.js';
 import { registerSkillForProject } from '../skills/registration-service.js';
 import { resolveOrAdoptProjectSkill } from '../skills/service.js';
 import type { DomainTemplateManifest } from './manifest.js';
@@ -23,23 +24,6 @@ export interface ApplyTemplateResult {
   skippedSkillNames: string[];
 }
 
-export class TemplateNotFoundError extends Error {
-  constructor(public readonly templateKey: string) {
-    super(`domain template not found: ${templateKey}`);
-    this.name = 'TemplateNotFoundError';
-  }
-}
-
-export class TemplateInvalidManifestError extends Error {
-  constructor(
-    public readonly templateKey: string,
-    public override readonly cause: unknown,
-  ) {
-    super(`domain template manifest invalid: ${templateKey}`);
-    this.name = 'TemplateInvalidManifestError';
-  }
-}
-
 export async function applyTemplate(input: ApplyTemplateInput): Promise<ApplyTemplateResult> {
   const { projectId, templateKey, actorUserId } = input;
 
@@ -48,13 +32,15 @@ export async function applyTemplate(input: ApplyTemplateInput): Promise<ApplyTem
     .from(domainTemplates)
     .where(eq(domainTemplates.key, templateKey))
     .limit(1);
-  if (!template) throw new TemplateNotFoundError(templateKey);
+  if (!template) throw notFound(`domain template not found: ${templateKey}`);
 
   // Re-parse the stored manifest. Builtin manifests pass at seed time, but a
   // manually-edited row could be malformed — fail loudly rather than silently
   // applying a half-shaped agent.
   const parsed = domainTemplateManifestSchema.safeParse(template.manifest);
-  if (!parsed.success) throw new TemplateInvalidManifestError(templateKey, parsed.error);
+  if (!parsed.success) {
+    throw new Error(`domain template manifest invalid: ${templateKey}`, { cause: parsed.error });
+  }
   const manifest: DomainTemplateManifest = parsed.data;
 
   const result = await db.transaction(async (tx) => {

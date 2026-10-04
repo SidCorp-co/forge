@@ -11,14 +11,11 @@
 import { randomBytes } from 'node:crypto';
 import { and, count, desc, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import {
-  insertAgentAccount,
-  isAgentHandle,
-  setUserDisplayName,
-} from '../auth/agent-account.js';
-import { mintPat, refenceLiveTokens, revokeLiveTokens } from '../auth/pat.js';
-import { patIsLive } from '../auth/pat-live.js';
-import { PAT_GRANT_ALL } from '../auth/pat-permissions.js';
+import { insertAgentAccount, setUserDisplayName } from '../auth/agent-users.js';
+import { isAgentHandle } from '../credentials/agent-account.js';
+import { mintPat, refenceLiveTokens, revokeLiveTokens } from '../credentials/pat.js';
+import { patIsLive } from '../credentials/pat-live.js';
+import { PAT_GRANT_ALL } from '../credentials/pat-permissions.js';
 import { handleNameForProject } from '../conversations/handles.js';
 import { db, type Tx } from '../db/client.js';
 import {
@@ -43,6 +40,7 @@ import {
   fenceFor,
   withAgentFenceLock,
 } from './agent-fence.js';
+import { refuse } from './refuse.js';
 
 export interface CreateAgentAccountInput {
   orgId: string;
@@ -92,10 +90,11 @@ async function mapHandleCollision<T>(
       isUniqueViolation(err) &&
       uniqueViolationConstraint(err) === 'organization_members_org_handle_uniq'
     ) {
-      throw new HTTPException(409, {
-        message: `@${input.handle} is already an agent of organization ${input.orgId}; a handle is the address typed after @ and one org holds one of each, so give this agent a different handle or rename the one that has it`,
-        cause: { code: 'AGENT_HANDLE_TAKEN' },
-      });
+      throw refuse(
+        'AGENT_HANDLE_TAKEN',
+        `@${input.handle} is already an agent of organization ${input.orgId}; a handle is the address typed after @ and one org holds one of each, so give this agent a different handle or rename the one that has it`,
+        '/handle',
+      );
     }
     throw err;
   }
@@ -376,10 +375,10 @@ export async function setAgentProjects(
       .where(eq(organizationMembers.userId, agentUserId))
       .limit(1);
     if (p && me?.handle === handleNameForProject(p.slug, p.id)) {
-      throw new HTTPException(409, {
-        message: `agent ${agentUserId} carries the name project ${only}'s conversational handle is minted under (@${me.handle}) — widening it would leave that project unable to mint a replacement, so its rooms would stop opening; create a separate agent for the projects you want covered and leave this one where it is`,
-        cause: { code: 'AGENT_IS_A_PROJECT_HANDLE' },
-      });
+      throw refuse(
+        'AGENT_IS_A_PROJECT_HANDLE',
+        `agent ${agentUserId} carries the name project ${only}'s conversational handle is minted under (@${me.handle}) — widening it would leave that project unable to mint a replacement, so its rooms would stop opening; create a separate agent for the projects you want covered and leave this one where it is`,
+      );
     }
   }
 

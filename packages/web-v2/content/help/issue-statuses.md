@@ -83,8 +83,8 @@ own. An issue that reads *In progress · Test* is still with the agent.
 ## Dropped is final
 
 Dropping an issue records that the work is not going to happen. *Dropped* is its
-own ending rather than a kind of close: closing is refused unless the work
-shipped, so *Closed* is no way to record something you decided against. There is
+own ending rather than a kind of close: an issue closes only through the release
+that shipped it, so *Closed* is no way to record something you decided against. There is
 no path back out of *Dropped* — if the work turns out to be wanted after all,
 file a new issue.
 Dropped issues are kept, and appear alongside closed ones under **Finished** on
@@ -127,5 +127,4 @@ discarded out from under you.
 | You cannot edit a field | An agent is running the issue and would overwrite what you set. Wait for it to pause or finish — or answer it, if it is at *Needs info*. |
 | A dropped issue needs doing after all | File a new issue. Dropped is terminal by design. |
 
-See also [Ask for a change](?path=file-a-request), [Tell when an issue is done](?path=what-done-means)
-and [Configure the pipeline & approvals](?path=configure-the-pipeline).
+See also [Ask for a change](?path=file-a-request) and [Tell when an issue is done](?path=what-done-means).

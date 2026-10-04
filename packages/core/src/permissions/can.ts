@@ -15,17 +15,15 @@ import {
   type Permission,
   type PermissionRefusal,
   type PermissionScope,
-  type ProjectPermission,
   PROJECT_ROLES,
+  type ProjectPermission,
   permissionVerb,
   ROLE_PERMISSIONS,
   TOKEN_EXPLICIT_PERMISSIONS,
 } from '@forge/contracts/permissions';
-import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { currentPatScope } from '../auth/pat-scope.js';
-import { db } from '../db/client.js';
-import { type OrgMemberRole, organizations } from '../db/schema.js';
+import { currentPatScope } from '../credentials/pat-scope.js';
+import type { OrgMemberRole } from '../db/schema.js';
 import {
   effectiveProjectRole,
   loadOrgRole,
@@ -33,6 +31,7 @@ import {
   type ProjectAccess,
 } from '../lib/authz.js';
 import { RefusalError } from '../lib/refusal.js';
+import { forbidden } from '../middleware/route-errors.js';
 
 /** What a project decision reads: the effective role and the membership's grant. */
 export type PermissionFacts = Pick<ProjectAccess, 'projectId' | 'role' | 'grants'>;
@@ -113,8 +112,7 @@ function orgRefusal(
   };
 }
 
-const noAccess = (what: string) =>
-  new HTTPException(403, { message: `not a member of this ${what}`, cause: { code: 'FORBIDDEN' } });
+const noAccess = (what: string) => forbidden(`not a member of this ${what}`);
 
 /** Throw unless the resolved access holds the permission: 403 with no role at all, else the 422 refusal. */
 export function requireHeld(
@@ -151,26 +149,18 @@ export function requireOrgHeld(
   }
 }
 
-/** Resolve the org (404 when it does not exist) and require the permission there. */
+/**
+ * Require the permission on the org. Only the caller's own org membership is read: an org the caller
+ * is not in, or one that does not exist, is the same 403.
+ */
 export async function requireOrgCan(
   actor: PermissionActor,
   permission: OrgPermission,
   orgId: string,
-): Promise<{ orgId: string; role: OrgMemberRole; isPersonal: boolean }> {
-  const [org] = await db
-    .select({ id: organizations.id, isPersonal: organizations.isPersonal })
-    .from(organizations)
-    .where(eq(organizations.id, orgId))
-    .limit(1);
-  if (!org) {
-    throw new HTTPException(404, {
-      message: 'organization not found',
-      cause: { code: 'NOT_FOUND' },
-    });
-  }
+): Promise<{ orgId: string; role: OrgMemberRole }> {
   const role = await loadOrgRole(orgId, actor.userId);
   requireOrgHeld(orgId, role, permission);
-  return { orgId, role, isPersonal: org.isPersonal };
+  return { orgId, role };
 }
 
 /** The question itself, for a caller that only needs the answer. */

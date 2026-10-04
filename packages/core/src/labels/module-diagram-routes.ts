@@ -14,11 +14,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { loadModuleDiagramSnapshot } from './module-diagram-source.js';
-import {
-  generateModuleDiagram,
-  ModuleDiagramError,
-  moduleDiagramKinds,
-} from './module-diagrams.js';
+import { generateModuleDiagram, moduleDiagramKinds } from './module-diagrams.js';
 import { requireHeld } from '../permissions/index.js';
 
 const paramSchema = z.object({ id: z.uuid(), kind: z.enum(moduleDiagramKinds) });
@@ -42,18 +38,11 @@ moduleDiagramRoutes.get(
     requireHeld(access, 'project.read');
 
     const snapshot = await loadModuleDiagramSnapshot(projectId);
-    try {
-      return c.json({
-        kind,
-        mermaid: generateModuleDiagram(kind, snapshot),
-        moduleCount: snapshot.modules.length,
-        generatedAt: new Date().toISOString(),
-      });
-    } catch (err) {
-      if (err instanceof ModuleDiagramError) {
-        throw new HTTPException(409, { message: err.message, cause: { code: err.code } });
-      }
-      throw err;
-    }
+    return c.json({
+      kind,
+      mermaid: generateModuleDiagram(kind, snapshot),
+      moduleCount: snapshot.modules.length,
+      generatedAt: new Date().toISOString(),
+    });
   },
 );

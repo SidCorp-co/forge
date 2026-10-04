@@ -15,12 +15,13 @@ import {
 import { noPromptMessage, POOL_JOB_NO_PROMPT } from '../jobs/pool-served.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { RefusalError } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { holds, requireHeld } from '../permissions/index.js';
 import { hooks } from '../pipeline/hooks.js';
-import { StartRefusedError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
-import { PolicyRefusedError } from '../project-config/dispatch-policy.js';
+import { triggerPipelineStepManual } from '../pipeline/orchestrator.js';
 import {
   EMPTY_USAGE_TOTALS,
   usageSessionMatch,
@@ -35,7 +36,6 @@ import {
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
 import { triggerTerminalDispatch } from './transition.js';
-import { holds, requireHeld } from '../permissions/index.js';
 
 const runPipelineStepBodySchema = z.object({}).strict();
 
@@ -276,10 +276,10 @@ issueExtrasRoutes.post(
 
     // No enrich prompt is built anywhere, and the job pool runs only the prompt a
     // job is minted with (ISS-1135).
-    throw new HTTPException(422, {
-      message: noPromptMessage('custom'),
-      cause: { code: POOL_JOB_NO_PROMPT, lane: 'enrich' },
-    });
+    throw new RefusalError(
+      [{ code: POOL_JOB_NO_PROMPT, path: '', detail: noPromptMessage('custom') }],
+      POOL_JOB_NO_PROMPT,
+    );
   },
 );
 
@@ -305,30 +305,14 @@ issueExtrasRoutes.post(
     const access = await loadProjectAccess(issue.projectId, userId);
     requireHeld(access, 'project.write', "starting an issue's pipeline");
 
-    try {
-      const { startedAt } = await triggerPipelineStepManual({
-        projectId: issue.projectId,
-        issueId: issue.id,
-        status: issue.status,
-        actor: restActor(c),
-        reason: { manual: true },
-      });
-      return c.json({ issueId: issue.id, status: issue.status, startedAt }, 202);
-    } catch (err) {
-      if (err instanceof StartRefusedError) {
-        throw new HTTPException(409, { message: err.message, cause: { code: err.code } });
-      }
-      if (err instanceof PolicyRefusedError) {
-        throw new HTTPException(409, { message: err.message, cause: { code: err.code } });
-      }
-      if (err instanceof Error && err.message.startsWith('AUTONOMOUS_NOT_AT_ENTRY')) {
-        throw new HTTPException(409, {
-          message: err.message,
-          cause: { code: 'NOT_AT_ENTRY_STATUS', status: issue.status },
-        });
-      }
-      throw err;
-    }
+    const { startedAt } = await triggerPipelineStepManual({
+      projectId: issue.projectId,
+      issueId: issue.id,
+      status: issue.status,
+      actor: restActor(c),
+      reason: { manual: true },
+    });
+    return c.json({ issueId: issue.id, status: issue.status, startedAt }, 202);
   },
 );
 

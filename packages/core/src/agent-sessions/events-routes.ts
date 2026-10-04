@@ -24,10 +24,11 @@ import { jobsOfSession, scrubJobOutput } from '../jobs/job-secret-scrub.js';
 import { maybeDeriveIncrementalFor } from './session-transcript.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { forbidden } from '../middleware/route-errors.js';
+import { refuseSession } from './refusals.js';
 import {
   assertDeviceOwnsSession,
   badRequest,
-  forbidden,
   idParamSchema,
   loadSessionOr404,
 } from './session-access.js';
@@ -51,9 +52,6 @@ const eventBatchSchema = z
   .strict();
 
 type LineEvent = z.infer<typeof eventInputSchema>;
-
-const conflict = (message: string, code: string) =>
-  new HTTPException(409, { message, cause: { code } });
 
 /**
  * Why core cannot represent this line, or null when it can.
@@ -118,7 +116,7 @@ agentSessionEventsRoutes.post(
     const session = await loadSessionOr404(sessionId);
     assertDeviceOwnsSession(c, session);
     if ((terminalAgentSessionStatuses as readonly string[]).includes(session.status)) {
-      throw conflict('agent session is in a terminal state', 'SESSION_TERMINATED');
+      throw refuseSession('SESSION_TERMINATED', 'agent session is in a terminal state');
     }
 
     const refusal = refusalFor(events);
@@ -147,9 +145,9 @@ agentSessionEventsRoutes.post(
         );
       const taken = claimed.find((row) => row.kind !== 'stdout');
       if (taken) {
-        throw conflict(
-          `seq ${taken.seq} is already held by a \`${taken.kind}\` row core wrote; this turn's lines were numbered from a base that is no longer free`,
+        throw refuseSession(
           'SEQ_TAKEN_BY_CORE',
+          `seq ${taken.seq} is already held by a \`${taken.kind}\` row core wrote; this turn's lines were numbered from a base that is no longer free`,
         );
       }
       return tx
