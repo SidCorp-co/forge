@@ -9,7 +9,6 @@ import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { issues } from '../db/schema.js';
 import { projectConfigDocuments } from '../db/schema-project-config.js';
-import { contractProviderShortfalls } from '../ecosystem/waits/live.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
 import {
   landingShapeOf,
@@ -21,6 +20,7 @@ import { logger } from '../observability/logger.js';
 import { releaseIneligibleRunners } from '../runners/ineligible.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import { attempt, blocker, evaluate } from './blocker-kit.js';
+import { releaseBatchPorts } from './ports.js';
 import {
   type CollectReleaseBlockersOptions,
   RELEASE_ROSTER_LIMIT,
@@ -168,7 +168,7 @@ async function rosterBlockers(
   }
   const notLive = await evaluate(
     'contract-provider-live',
-    async () => await contractProviderShortfalls(issueIds),
+    async () => await releaseBatchPorts().contractProviderShortfalls(issueIds),
     out,
   );
   if (notLive && notLive.length > 0) {

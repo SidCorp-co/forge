@@ -4,7 +4,7 @@
  */
 
 import type { ReleaseBlockerCode } from '@forge/contracts/releases';
-import { type LiveShortfall, notLiveSentence } from '../ecosystem/waits/rules.js';
+import { type LiveShortfall, notLiveSentence } from '@forge/contracts/contract-waits';
 import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
 import { agrees, counted } from '../lib/plural.js';
 import { AGENT_NAMING_MIN_RUNNER } from '../runners/device-cap.js';

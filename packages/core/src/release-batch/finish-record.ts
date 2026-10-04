@@ -6,6 +6,7 @@ import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { logger } from '../observability/logger.js';
+import { mergedMetadata, writeRunMetadata } from '../pipeline/index.js';
 import { RUN_NOT_ABORTED } from './abort-stamp.js';
 import type { ReleaseVerification } from './plan.js';
 
@@ -130,14 +131,11 @@ export async function compareAndSet(
       ? sql`${pipelineRuns.metadata} -> 'finish' IS NULL`
       : sql`(${pipelineRuns.metadata} -> 'finish' ->> 'version')::int = ${expected}`;
   const guard = runOpen ? and(version, RUN_NOT_ABORTED) : version;
-  const rows = await db
-    .update(pipelineRuns)
-    .set({
-      metadata: sql`coalesce(${pipelineRuns.metadata}, '{}'::jsonb) || ${JSON.stringify({ finish: next })}::jsonb`,
-    })
-    .where(and(eq(pipelineRuns.id, runId), guard))
-    .returning({ id: pipelineRuns.id });
-  return rows.length > 0;
+  return writeRunMetadata(runId, {
+    value: mergedMetadata({ finish: next }),
+    when: guard,
+    touch: false,
+  });
 }
 
 export function stamp(

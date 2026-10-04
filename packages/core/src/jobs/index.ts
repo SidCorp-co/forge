@@ -9,3 +9,9 @@ export {
 export { probePgBossBackstop } from './pgboss-health.js';
 export { runStaleSweep } from './stale-detector.js';
 export { insertJobRow } from './writes.js';
+export { recordSecretResolve, rememberHandedOut } from './job-secret-scrub.js';
+export {
+  countClaimHeldIssuesByProject,
+  type LoopMonitorCoverage,
+  loopMonitorCoverage,
+} from './loop-monitor-axis.js';

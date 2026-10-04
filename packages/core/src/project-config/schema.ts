@@ -1,4 +1,4 @@
-import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import { AUTONOMOUS_DRIVER_STATUSES, ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import {
   CONTENT_LANGUAGE_LIMITS,
   keepTermsInEnglishSchema,
@@ -13,7 +13,6 @@ import {
 import { z } from 'zod';
 import { agentAccessValues } from '../db/release-axes.js';
 import type { IssueStatus } from '../db/schema.js';
-import { AUTONOMOUS_DRIVER_STATUSES } from '../pipeline/autonomous-mode.js';
 import { releaseRuleSchema } from './release-rule-schema.js';
 
 export const SCHEMA_BASE = 'https://forge.sidcorp.co/schemas';
@@ -226,8 +225,8 @@ export const projectDocumentSchema = z.strictObject({
 export type ProjectDocument = z.infer<typeof projectDocumentSchema>;
 export type EnvironmentDeclaration = ProjectDocument['environments'][string];
 
-// cm:edge naming -> packages/core/src/pipeline/autonomous-mode.ts — the driver statuses minus the
-// terminal ones, not every status: nothing dispatches at `awaiting_release` or past it.
+// The driver statuses minus the terminal ones, not every status: nothing dispatches at
+// `awaiting_release` or past it.
 export const POLICY_STATE_STATUSES: readonly IssueStatus[] = AUTONOMOUS_DRIVER_STATUSES.filter(
   (s) => !ISSUE_TERMINAL_STATUSES.includes(s),
 );

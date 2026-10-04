@@ -7,3 +7,11 @@ export { runReconcilerOnce } from './reconciler.js';
 export { runRetentionSweep } from './retention/sweep.js';
 export { registerActivitySubscribers } from './subscribers.js';
 export { runPipelineSweep } from './sweeper.js';
+export { firstShipped } from './shipped-at.js';
+export {
+  mergedMetadata,
+  type RunMetadataWrite,
+  stampReleaseShipped,
+  stampReleaseVersion,
+  writeRunMetadata,
+} from './run-records.js';

@@ -1,4 +1,4 @@
-import type { BranchRefs } from '../git/remote-divergence.js';
+import type { BranchRefs } from '../git/index.js';
 import type { LiveDivergence } from '../integrations/source-host/index.js';
 import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';

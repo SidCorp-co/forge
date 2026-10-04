@@ -10,6 +10,7 @@ import { releaseRunClaims } from '../issues/index.js';
 import { readWorkState, setWorkStep } from '../issues/work-state.js';
 import { isRefusal } from '../lib/refusal.js';
 import { logger } from '../observability/logger.js';
+import { writeRunMetadata } from '../pipeline/index.js';
 import { resolveReleaseGate } from './gate.js';
 import { FENCE_LOST } from './refuse.js';
 
@@ -213,15 +214,17 @@ async function releaseClaims(
   }
   const closed = rows.filter((r) => r.status === 'closed').map((r) => r.id);
   if (closed.length > 0) {
-    await tx.execute(sql`
-      UPDATE pipeline_runs
-      SET metadata = jsonb_set(coalesce(metadata, '{}'::jsonb), '{rosterClosed}', (
-            SELECT jsonb_agg(DISTINCT id) FROM jsonb_array_elements_text(
-              coalesce(metadata -> 'rosterClosed', '[]'::jsonb) || ${JSON.stringify(closed)}::jsonb
-            ) AS t(id))),
-          updated_at = now()
-      WHERE id = ${runId}
-    `);
+    await writeRunMetadata(
+      runId,
+      {
+        value: sql`jsonb_set(coalesce(metadata, '{}'::jsonb), '{rosterClosed}', (
+          SELECT jsonb_agg(DISTINCT id) FROM jsonb_array_elements_text(
+            coalesce(metadata -> 'rosterClosed', '[]'::jsonb) || ${JSON.stringify(closed)}::jsonb
+          ) AS t(id)))`,
+        touch: true,
+      },
+      tx,
+    );
   }
   return { cleared: rows.map((r) => r.id), closed };
 }

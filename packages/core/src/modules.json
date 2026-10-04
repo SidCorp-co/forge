@@ -318,10 +318,15 @@
       "kind": "read-model",
       "context": "operations",
       "reads": [
+        "activityLog",
         "agentSessions",
+        "issues",
         "jobs",
+        "pipelineRuns",
+        "projectMembers",
         "projects",
-        "runners"
+        "runners",
+        "users"
       ]
     },
     "improvement-messages": {

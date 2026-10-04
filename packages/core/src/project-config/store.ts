@@ -11,8 +11,8 @@ import {
 } from '../db/schema-project-config.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
-import { projectDocumentNames } from '../projects/index.js';
 import { type ApiRefusal, parseSecretRef, secretRefOf } from './documents.js';
+import { projectConfigPorts } from './ports.js';
 import type { ProjectDocument } from './schema.js';
 
 export interface StoredDocument {
@@ -161,7 +161,7 @@ export const drizzleConfigStore: ConfigStore = {
           .insert(projectConfigRevisions)
           .values({ projectId, revision, document, writtenBy: userId, writtenAt: now });
         if (!row) throw new Error('project-config: document upsert returned no row');
-        if (!(await projectDocumentNames(tx, projectId, { slug, name }))) {
+        if (!(await projectConfigPorts().projectDocumentNames(tx, projectId, { slug, name }))) {
           throw new Error(
             `project-config: project ${projectId} has a document and no projects row`,
           );

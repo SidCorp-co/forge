@@ -16,11 +16,9 @@ import { actorFor, orgResource, requireHeld, requireOrgCan, requireOrgHeld } fro
 import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
 import { readDeclaredSource } from '../project-config/source.js';
 import { type AgentConfigKeyPatch, patchAgentConfigKeys, readAgentConfig } from './agent-config.js';
-import { projectOnboardRoutes } from './onboard-routes.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
 import { listVisibleProjectRows, projectDetail } from './read.js';
 import { createProjectBodySchema, updateProjectPatchSchema } from './request-schemas.js';
-import { projectRunnerRoutes } from './runners-routes.js';
 import {
   archiveProject,
   createProject,
@@ -170,12 +168,6 @@ projectRoutes.patch(
   },
 );
 
-// ISS-172 Slice A — runner-shaped binding endpoints (GET/POST /:id/runners,
-// PATCH/DELETE /:id/runners/:runnerId) live in ./runners-routes.ts. Mounted
-// here (not in index.ts) so they inherit this router's requireAuth +
-// assertEmailVerified middleware exactly as before the split.
-projectRoutes.route('/', projectRunnerRoutes);
-
 projectRoutes.delete(
   '/:id',
   zValidator('param', idParamSchema, (result) => {
@@ -310,13 +302,9 @@ projectRoutes.get(
   },
 );
 
-// ISS-733 — POST /:id/onboard. The "Build Project Brain" trigger; the thin
-// HTTP delegate lives in ./onboard-routes.ts.
-projectRoutes.route('/', projectOnboardRoutes);
 
 export { collaboratorsMeRoutes } from './collaborators-routes.js';
 export { gitCredentialRoutes } from './git-credential-routes.js';
-export { projectHealthRoutes } from './health-routes.js';
 export { invitationRoutes } from './invitations-routes.js';
 export { masterCharterRoutes } from './master-charter-routes.js';
 export { memberRoutes } from './members-routes.js';

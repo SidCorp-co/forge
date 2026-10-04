@@ -9,6 +9,7 @@
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { lockXact } from '../lib/advisory-lock.js';
+import { stampReleaseShipped, stampReleaseVersion } from '../pipeline/index.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { refuseRelease } from './refuse.js';
 import {
@@ -215,14 +216,7 @@ export async function cutReleaseVersion(tx: Tx, args: CutReleaseVersionArgs): Pr
   ruleAboveHighest(projectId, next, highest);
   const version = formatReleaseVersion(next);
 
-  const written = await tx.execute<{ id: string }>(sql`
-    UPDATE pipeline_runs
-    SET release_version = ${version}, updated_at = now()
-    WHERE id = ${runId}
-      AND release_version IS NULL
-    RETURNING id
-  `);
-  if (written.length !== 1) throw versionConflict(projectId, version);
+  if (!(await stampReleaseVersion(runId, version, tx))) throw versionConflict(projectId, version);
   return version;
 }
 
@@ -231,11 +225,5 @@ export async function cutReleaseVersion(tx: Tx, args: CutReleaseVersionArgs): Pr
  * Idempotent by the `IS NULL` guard: the moment a release shipped is not a thing a retry may move.
  */
 export async function markReleaseShipped(runId: string, executor: Tx = db): Promise<void> {
-  await executor.execute(sql`
-    UPDATE pipeline_runs
-    SET release_released_at = now(), updated_at = now()
-    WHERE id = ${runId}
-      AND release_version IS NOT NULL
-      AND release_released_at IS NULL
-  `);
+  await stampReleaseShipped(runId, executor);
 }

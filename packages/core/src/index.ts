@@ -13,7 +13,7 @@ import { registerRoomChat } from './conversations/index.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { seedDomainTemplates } from './domain-templates/index.js';
-import { registerContractMeasureWorker } from './ecosystem/index.js';
+import { contractProviderShortfalls, registerContractMeasureWorker } from './ecosystem/index.js';
 import { provideAdmissionThresholds } from './error-intake/index.js';
 import {
   assertVaultBootSafety,
@@ -27,13 +27,15 @@ import {
   servesRunnerReleases,
 } from './integrations/published-releases/index.js';
 import { startRocketChatManager, stopRocketChatManager } from './integrations/rocketchat/index.js';
-import { closeBacklogStreams, resolveIssueForHeadRef } from './issues/index.js';
+import { claimIssuePrefix, closeBacklogStreams, resolveIssueForHeadRef } from './issues/index.js';
+import { recordSecretResolve, rememberHandedOut, resolvePipelineContext } from './jobs/index.js';
 import { provideProjectOrg } from './lib/authz.js';
 import { registerChunkReindex, registerMemoryReconcileWorker } from './memory/index.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
+import { emitNotification } from './notifications/index.js';
 import { logger } from './observability/logger.js';
 import {
   declareOutboxQueues,
@@ -42,10 +44,14 @@ import {
   stopOutboxWorker,
 } from './outbox/index.js';
 import { registerOutboxConsumers } from './outbox-consumers.js';
-import { readDeclaredSource } from './project-config/index.js';
-import { findProjectOrgId } from './projects/index.js';
+import { provideProjectConfigPorts, readDeclaredSource } from './project-config/index.js';
+import { findProjectOrgId, projectDocumentNames, provideProjectsPorts } from './projects/index.js';
 import { startBoss, stopBoss } from './queue/boss.js';
-import { registerDeployWorker, registerReleaseBatchFinish } from './release-batch/index.js';
+import {
+  provideReleaseBatchPorts,
+  registerDeployWorker,
+  registerReleaseBatchFinish,
+} from './release-batch/index.js';
 import { mountRoutes } from './route-registry.js';
 import { bootstrapRunnerAdapters } from './runners/index.js';
 import { startTimers, stopTimers } from './schedules/index.js';
@@ -54,6 +60,19 @@ import { coreTimers } from './timer-registry.js';
 import { attachWs, closeWs } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
+provideProjectsPorts({
+  claimIssuePrefix,
+  notifyInvitee: async (notice) => {
+    await emitNotification({ ...notice, type: 'invitation_received' });
+  },
+});
+provideProjectConfigPorts({
+  projectDocumentNames,
+  jobOfCredential: resolvePipelineContext,
+  recordSecretResolve,
+  rememberHandedOut,
+});
+provideReleaseBatchPorts({ contractProviderShortfalls });
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,
   issueForHeadRef: (projectId, headRef) => resolveIssueForHeadRef({ projectId, headRef }),

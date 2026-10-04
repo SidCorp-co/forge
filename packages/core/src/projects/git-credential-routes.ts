@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { testSshConnection } from '../git/ssh-keys.js';
+import { testSshConnection } from '../git/index.js';
 import { decryptSecret, isVaultConfigured } from '../integrations/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';

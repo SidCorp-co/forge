@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projectGitCredentials, workspaceSshKeys } from '../db/schema.js';
-import { type BranchRefs, GIT_ACCESS, readRemoteDivergence } from '../git/remote-divergence.js';
+import { type BranchRefs, GIT_ACCESS, readRemoteDivergence } from '../git/index.js';
 import { decryptSecret, isVaultConfigured } from '../integrations/index.js';
 import {
   type LiveDivergence,

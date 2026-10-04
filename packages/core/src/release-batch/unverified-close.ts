@@ -8,6 +8,7 @@ import { issues, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { issueArchiveSide } from '../issues/archive.js';
 import { logger } from '../observability/logger.js';
+import { mergedMetadata, writeRunMetadata } from '../pipeline/index.js';
 import type { ReleaseVerification } from './plan.js';
 
 /** The line a reader, or a query, finds an unverified close by. One per issue per release run. */
@@ -77,10 +78,5 @@ export async function stampRunVerification(
   runId: string,
   kind: ReleaseVerification,
 ): Promise<void> {
-  await db
-    .update(pipelineRuns)
-    .set({
-      metadata: sql`coalesce(${pipelineRuns.metadata}, '{}'::jsonb) || ${JSON.stringify({ verification: kind })}::jsonb`,
-    })
-    .where(eq(pipelineRuns.id, runId));
+  await writeRunMetadata(runId, { value: mergedMetadata({ verification: kind }), touch: false });
 }

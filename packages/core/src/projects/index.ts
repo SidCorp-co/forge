@@ -11,6 +11,11 @@ export {
   findProjectOrgId,
   listVisibleProjectsWithRole,
   projectDocumentNames,
-  setProjectIssuePrefix,
   type VisibleProjectWithRole,
 } from './service.js';
+export {
+  type AssignPrefixResult,
+  type PrefixWriter,
+  provideProjectsPorts,
+} from './ports.js';
+export { listProjectHeads, projectHead } from './read.js';

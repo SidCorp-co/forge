@@ -15,6 +15,7 @@ export { referenceInHeadRef, resolveIssueForHeadRef } from './head-ref-link.js';
 export { registerHostMergeStamp, stampHostMerge } from './host-merge.js';
 export { issueWorkInFlightSql } from './issue-lease.js';
 export { activeIssuePrefix } from './issue-prefix-read.js';
+export { claimIssuePrefix } from './issue-prefix-service.js';
 export { resolveIssueRouteRef } from './issue-route-ref.js';
 export { recordIssueMerge } from './merge-record.js';
 export { claimIssuesForRelease, releaseEndedRunClaims, releaseRunClaims } from './release-claim.js';
