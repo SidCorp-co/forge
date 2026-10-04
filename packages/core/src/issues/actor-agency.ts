@@ -1,6 +1,5 @@
+import type { ActorAgency } from '@forge/contracts/permissions';
 import type { McpPrincipal } from '../middleware/require-pat.js';
-
-export type ActorAgency = 'human' | 'agent';
 
 /** The agency an audit row records: a device's is `agent`, a user's is its door's, and none is refused. */
 export function actorAgency(actor: {

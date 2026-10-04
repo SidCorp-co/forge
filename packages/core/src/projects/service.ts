@@ -16,9 +16,9 @@ import {
   issues,
   type OrgMemberRole,
   organizationMembers,
+  type ProjectMemberRole,
   projectGitCredentials,
   projectInvitations,
-  type ProjectMemberRole,
   projectMembers,
   projects,
   runners,
@@ -26,20 +26,20 @@ import {
 import { visibleProjectsWhere } from '../lib/authz.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
 import { type KernelActor, transition } from '../lifecycle/transition.js';
+import { emitEvent } from '../outbox/index.js';
 import {
   addProjectMembers,
+  regrantAgentCredentials,
   removeProjectMember,
   updateProjectMember,
 } from '../permissions/index.js';
-import { regrantAgentCredentials } from '../orgs/agent-fence.js';
-import { emitEvent } from '../outbox/index.js';
 import { DEFAULT_POLICY } from '../project-config/default-policy.js';
 import { readDeclaredSource } from '../project-config/source.js';
+import { seedProjectPolicy } from '../project-config/store.js';
 import { upsertDeviceRunner } from '../runners/index.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
 import { defaultRunnerCapabilities } from '../runners/select.js';
 import { type AgentConfigKeyPatch, patchAgentConfigKeys } from './agent-config.js';
-import { seedProjectPolicy } from '../project-config/store.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { PATCHED_PROJECT } from './projections.js';
 import { refuse } from './refuse.js';

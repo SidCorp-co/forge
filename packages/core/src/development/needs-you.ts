@@ -16,18 +16,18 @@ import {
   type NeedsYouProjectItem,
   type NeedsYouResponse,
 } from '@forge/contracts/needs-you';
-import { inArray } from 'drizzle-orm';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { needsViewer, type Standing } from '@forge/contracts/standing';
+import { inArray } from 'drizzle-orm';
 import { automationViewerOf, readAutomationStanding } from '../automation/read.js';
-import { readContractStanding } from '../ecosystem/standing/read.js';
-import { listFeedbackAs } from '../feedback/read.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
-import { listIssueStanding } from '../issues/standing-read.js';
-import { listReleases } from '../release-batch/release-read.js';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
+import { readContractStanding } from '../ecosystem/standing/read.js';
+import { listFeedbackAs } from '../feedback/read.js';
+import { listIssueStanding } from '../issues/standing-read.js';
 import { effectiveProjectRole, loadVisibleProjectIds, type ProjectAccess } from '../lib/authz.js';
 import { holds } from '../permissions/index.js';
+import { listReleases } from '../release-batch/release-read.js';
 import { listRequirementsAs } from '../requirements/read.js';
 
 export interface NeedsYouViewer {

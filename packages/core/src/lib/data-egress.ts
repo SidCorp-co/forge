@@ -4,8 +4,8 @@ import {
   SENSITIVE_DATA_DEFAULT,
   type SensitiveDataLevel,
 } from '@forge/contracts/data-policy';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { redactionCount, scrubPersonalData } from '@forge/observability';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { RefusalError } from './refusal.js';
 

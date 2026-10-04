@@ -1,14 +1,14 @@
 import { createHash } from 'node:crypto';
+import { env } from '../config/env.js';
 import { lockPatName, mintPat, revokeLiveTokens, supersedeNamedToken } from '../credentials/pat.js';
 import { deviceTokenNameFor } from '../credentials/pat-format.js';
 import { PAT_GRANT_ALL } from '../credentials/pat-permissions.js';
-import { env } from '../config/env.js';
 import { db, type Tx } from '../db/client.js';
 import {
   agentCredentialFence,
   agentCredentialGrant,
   withAgentFenceLock,
-} from '../orgs/agent-fence.js';
+} from '../permissions/index.js';
 
 const DEVICE_TOKEN_RATE_LIMIT_PER_MINUTE = 600;
 

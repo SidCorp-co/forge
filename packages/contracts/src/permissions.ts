@@ -98,6 +98,9 @@ export const isPermission = (value: string): value is Permission =>
 export const isProjectPermission = (value: string): value is ProjectPermission =>
 	(PROJECT_PERMISSIONS as readonly string[]).includes(value);
 
+/** Whether a person or an agent is at the keyboard of an act: what an actor carries and an audit row records. */
+export type ActorAgency = "human" | "agent";
+
 /** The project roles, weakest first. */
 export const PROJECT_ROLES = ["viewer", "member", "admin"] as const;
 export type ProjectRole = (typeof PROJECT_ROLES)[number];

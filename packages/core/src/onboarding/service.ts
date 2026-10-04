@@ -15,6 +15,7 @@ import type {
   PostUpdateRequest,
   QuestionnaireView,
 } from '@forge/contracts/onboarding';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { TxOnly } from '../conversations/db-executor.js';
 import { settleShape } from '../conversations/membership.js';
@@ -25,8 +26,8 @@ import { jobs, projects } from '../db/schema.js';
 import { conversationParticipants } from '../db/schema-conversations.js';
 import { onboardings } from '../db/schema-onboarding.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import { finalizeJobDone } from '../jobs/finalize-done.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import type { EgressReader } from '../lib/data-egress.js';
 import type { Refusal } from '../lib/refusal.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
@@ -63,7 +64,6 @@ import {
   settlesPhaseJob,
   startRefusal,
 } from './rules.js';
-import { lockXact } from '../lib/advisory-lock.js';
 
 export interface OnboardingActor {
   userId: string;

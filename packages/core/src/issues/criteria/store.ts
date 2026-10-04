@@ -8,6 +8,7 @@
  */
 
 import type { CriteriaRefusalCode } from '@forge/contracts/issues';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import type { VerdictCorroboration, VerdictDraftReading } from '@forge/contracts/verdict-identity';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
@@ -23,7 +24,6 @@ import { RefusalError, refuser } from '../../lib/refusal.js';
 import { dbContractLookup } from '../../messaging/verdict-contract.js';
 import { dbDesignLookup } from '../../messaging/verdict-design.js';
 import { readProjectDocument } from '../../project-config/service.js';
-import type { ActorAgency } from '../actor-agency.js';
 import { writeKernelRecord } from '../record-events/store.js';
 import {
   normalizeStatement,

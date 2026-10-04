@@ -12,10 +12,10 @@ import { randomBytes } from 'node:crypto';
 import { and, count, desc, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { insertAgentAccount, setUserDisplayName } from '../auth/agent-users.js';
+import { handleNameForProject } from '../conversations/handles.js';
 import { isAgentHandle } from '../credentials/agent-account.js';
 import { mintPat, refenceLiveTokens, revokeLiveTokens } from '../credentials/pat.js';
 import { patIsLive } from '../credentials/pat-live.js';
-import { handleNameForProject } from '../conversations/handles.js';
 import { db, type Tx } from '../db/client.js';
 import {
   organizationMembers,
@@ -27,21 +27,21 @@ import {
 } from '../db/schema.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
 import {
+  type AgentCredentialFence,
   addOrgMember,
   addProjectMembers,
-  removeOrgMember,
-  removeProjectMembershipsOf,
-} from '../permissions/index.js';
-import {
-  type AgentCredentialFence,
   agentCredentialFence,
   agentCredentialGrant,
-  badRequest,
-  regrantAgentCredentials,
   fenceFor,
+  regrantAgentCredentials,
+  removeOrgMember,
+  removeProjectMembershipsOf,
   withAgentFenceLock,
-} from './agent-fence.js';
+} from '../permissions/index.js';
 import { refuse } from './refuse.js';
+
+const badRequest = (message: string, code: string) =>
+  new HTTPException(400, { message, cause: { code } });
 
 /**
  * How long an agent account's credential lives: a year, the longest a fine-grained personal token

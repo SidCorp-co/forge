@@ -215,7 +215,7 @@ và CLI hơn thì không cần MCP".
   act gets `<act>_at`, nullable with no default.
 - **Actors.** `<act>_by uuid` references `users` `on delete restrict`. An act either a person or an
   agent may take also records `<act>_agency text`, CHECK `('human','agent')`, the values of
-  `packages/core/src/issues/actor-agency.ts:ActorAgency`. The word is `human`, never `person`. No
+  `packages/contracts/src/permissions.ts:ActorAgency`. The word is `human`, never `person`. No
   rule reads it (BC-20).
 - **Immutability.** A trigger enforces it and raises a named error. A revision row is deleted only
   with its owning entity's cascade, and its content is editable only while it is `draft`
@@ -476,7 +476,7 @@ written:
   a token narrows what its holder reaches, and holds a permission in `TOKEN_EXPLICIT_PERMISSIONS`
   (every `<resource>.approve` among them) only where its own grant names it. A credential core
   mints for an agent names the explicit permissions the agent's memberships grant
-  (`packages/core/src/orgs/agent-fence.ts:agentCredentialGrant`), and an agent account's credential
+  (`packages/core/src/permissions/agent-fence.ts:agentCredentialGrant`), and an agent account's credential
   expires after a year.
 - **Approval is a permission**
   ([ADR 0007](../adr/0007-approval-is-a-permission.md)): every approve-type act asks for

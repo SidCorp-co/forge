@@ -5,6 +5,7 @@
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import type { RequirementStanding } from '@forge/contracts/requirements';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -24,11 +25,10 @@ import {
 import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ReadDoor } from '../feedback/egress.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
+import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { approvalRequired } from '../release-batch/approvals.js';
 import { linkedContracts } from './baselines.js';
 import { tracesOf } from './criterion-traces.js';
