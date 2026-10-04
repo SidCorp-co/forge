@@ -3,28 +3,22 @@
  * breakdown, writes instead of changing anything. A person accepts or rejects; the accept writes the
  * effect in the same transaction, compare-and-set on the target head, and the effect points back
  * (requirement_revisions.from_suggestion_id). A suggestion never makes anything current: a revision
- * it carries lands as a draft. The guards are `rules.ts`, the reads `read.ts`; each write here runs
- * in one transaction and answers an outcome, refusals named and nothing written.
+ * it carries lands as a draft. Proposing and revising are `propose.ts`, the guards `rules.ts`, the
+ * reads `read.ts`; each write runs in one transaction and answers an outcome, refusals named and
+ * nothing written.
  */
 
-import {
-  SUGGESTION_PAYLOADS,
-  type SuggestionKind,
-  type SuggestionProducer,
-  type SuggestionView,
-} from '@forge/contracts/suggestions';
-import { and, eq, sql } from 'drizzle-orm';
+import { SUGGESTION_PAYLOADS } from '@forge/contracts/suggestions';
+import { and, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { db, type Tx } from '../db/client.js';
+import { db } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { lockFeedback } from '../feedback/service.js';
 import { announceTriage } from '../feedback/triage.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { announceIssueCreated } from '../issues/create-service.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
-import { writeRecordEvent } from '../issues/record-events/store.js';
 import {
   flushIssueRelationEffects,
   type PendingIssueRelation,
@@ -35,174 +29,22 @@ import { assertProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { personActRefusalFor } from '../lib/person-act.js';
 import { hooks } from '../pipeline/hooks.js';
-import type { NamedRefusal } from '../project-config/respond.js';
 import { lockRequirements } from '../requirements/service.js';
+import { type AcceptChannel, type Effect, type EffectWritten, writeEffect } from './effects.js';
+import { headOf, type Row, rowOf, type SuggestionActor, targetOfRow } from './read.js';
+import { decidedRefusal, producerRefusal, rejectReasonRefusal, withdrawRefusal } from './rules.js';
 import {
-  type AcceptChannel,
-  breakdownGuardIn,
-  type Effect,
-  type EffectWritten,
-  writeEffect,
-} from './effects.js';
-import {
-  headOf,
-  onTarget,
-  type Row,
-  resolveTarget,
-  rowOf,
-  type SuggestionActor,
-  type SuggestionTarget,
-  type SuggestionTargetRef,
-  targetOfRow,
-  viewOf,
-} from './read.js';
-import {
-  baseStaleRefusal,
-  decidedRefusal,
-  duplicateRefusal,
-  fingerprintOf,
-  payloadRefusal,
-  producerRefusal,
-  queueFullRefusal,
-  rejectReasonRefusal,
-  withdrawRefusal,
-} from './rules.js';
+  answer,
+  inTx,
+  lockTarget,
+  movedBase,
+  Refused,
+  recordDecision,
+  type SuggestionOutcome,
+} from './write.js';
 
-export type SuggestionOutcome =
-  | { ok: true; suggestion: SuggestionView; effect?: Effect; created?: boolean }
-  | { ok: false; refusals: NamedRefusal[] };
-
-class Refused extends Error {
-  constructor(readonly refusals: NamedRefusal[]) {
-    super(refusals.map((r) => r.code).join(', '));
-  }
-}
-
-/** Runs `body` in a transaction; refusals it returns or throws roll everything back and come out. */
-async function inTx(
-  body: (tx: Tx) => Promise<NamedRefusal[] | null | undefined>,
-): Promise<NamedRefusal[] | null> {
-  try {
-    return await db.transaction(async (tx) => {
-      const refusals = await body(tx);
-      if (refusals?.length) throw new Refused(refusals);
-      return null;
-    });
-  } catch (err) {
-    if (err instanceof Refused) return err.refusals;
-    throw err;
-  }
-}
-
-/** Serialises every write on one target: a requirement's under its project's requirement lock, a feedback item's under its feedback lock. */
-async function lockTarget(tx: Tx, projectId: string, t: SuggestionTarget) {
-  if (t.type === 'requirement') return lockRequirements(tx, projectId);
-  if (t.type === 'feedback') return lockFeedback(tx, projectId);
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`suggestions:${t.id}`}, 0))`,
-  );
-}
-
-async function answer(id: string, extra: { effect?: Effect; created?: boolean } = {}) {
-  const [row] = await db.select().from(suggestions).where(eq(suggestions.id, id));
-  if (!row) throw new Error(`suggestions: ${id} vanished after its write`);
-  return { ok: true as const, suggestion: viewOf(row), ...extra };
-}
-
-// cm:why a decision on an issue's suggestion is a typed record event (ISS-56) in the decision's own
-// transaction; a requirement has no event stream yet (activity_log is keyed by issue), so there the
-// row's status, decided_by, decided_at and reason are the record
-async function recordDecision(
-  tx: Tx,
-  row: Row,
-  actor: SuggestionActor,
-  outcome: string,
-  reason?: string | null,
-) {
-  if (!row.issueId) return;
-  await writeRecordEvent(
-    {
-      issueId: row.issueId,
-      actor: { type: 'user', id: actor.userId, agency: actor.agency },
-      kind: 'decision',
-      contract: 1,
-      fields: [
-        { key: 'lead', value: `${row.kind} suggestion ${outcome}` },
-        { key: 'suggestion', value: row.id },
-        { key: 'outcome', value: outcome },
-        ...(reason ? [{ key: 'reason', value: reason }] : []),
-      ],
-    },
-    tx,
-  );
-}
-
-export async function createSuggestion(input: {
-  projectId: string;
-  actor: SuggestionActor;
-  producerKind: SuggestionProducer;
-  producerId: string | null;
-  kind: SuggestionKind;
-  target: SuggestionTargetRef;
-  baseRevision: number | null;
-  payload: unknown;
-  model?: string | null | undefined;
-  conversationMessageId?: string | null | undefined;
-}): Promise<SuggestionOutcome> {
-  const { projectId, kind } = input;
-  await assertProjectAccess(projectId, input.actor.userId, 'member');
-  const target = await resolveTarget(projectId, input.target, input.actor.userId);
-  const invalid = payloadRefusal(kind, target.type, input.payload);
-  if (invalid) return { ok: false, refusals: [invalid] };
-  const payload = SUGGESTION_PAYLOADS[kind].schema.parse(input.payload);
-  const fingerprint = fingerprintOf(kind, payload);
-  let id = '';
-  const refusals = await inTx(async (tx) => {
-    await lockTarget(tx, projectId, target);
-    const head = await headOf(tx, projectId, target);
-    const stale = baseStaleRefusal(input.baseRevision, head);
-    if (stale) return [stale];
-    if (kind === 'breakdown' && target.type === 'requirement') {
-      const guard = await breakdownGuardIn(
-        tx,
-        projectId,
-        target.id,
-        head,
-        SUGGESTION_PAYLOADS.breakdown.schema.parse(payload),
-      );
-      if (guard.refusals.length) return guard.refusals;
-    }
-    const open = await tx
-      .select({ id: suggestions.id, kind: suggestions.kind, fingerprint: suggestions.fingerprint })
-      .from(suggestions)
-      .where(and(onTarget(target), eq(suggestions.status, 'proposed')));
-    const twin = open.find((s) => s.kind === kind && s.fingerprint === fingerprint);
-    const refusal = duplicateRefusal(twin?.id ?? null) ?? queueFullRefusal(open.length);
-    if (refusal) return [refusal];
-    const [row] = await tx
-      .insert(suggestions)
-      .values({
-        projectId,
-        kind,
-        requirementId: target.type === 'requirement' ? target.id : null,
-        issueId: target.type === 'issue' ? target.id : null,
-        feedbackId: target.type === 'feedback' ? target.id : null,
-        baseRevision: input.baseRevision,
-        payload,
-        fingerprint,
-        producerKind: input.producerKind,
-        producerId: input.producerId,
-        model: input.model ?? null,
-        conversationMessageId: input.conversationMessageId ?? null,
-      })
-      .returning({ id: suggestions.id });
-    if (!row) throw new Error('suggestions: the insert returned no row');
-    id = row.id;
-    return null;
-  });
-  if (refusals) return { ok: false, refusals };
-  return answer(id, { created: true });
-}
+export { createSuggestion, reviseSuggestion } from './propose.js';
+export type { SuggestionOutcome } from './write.js';
 
 /** After the accept committed: the hooks every issue create and field write emit, and the edges' effects. */
 async function announceEffect(written: EffectWritten, projectId: string, actor: SuggestionActor) {
@@ -243,11 +85,6 @@ async function announceEffect(written: EffectWritten, projectId: string, actor: 
       });
     }
   }
-}
-
-/** A suggestion's base names a revision the head has moved past: the refusal names both. */
-function movedBase(row: Row, target: SuggestionTarget, head: number | null) {
-  return target.type === 'requirement' ? baseStaleRefusal(row.baseRevision, head) : null;
 }
 
 // cm:why workflow issue-lifecycle step `dropped` ("not work: … a duplicate"): accepting a duplicate

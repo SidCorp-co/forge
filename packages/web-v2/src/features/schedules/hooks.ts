@@ -4,7 +4,7 @@
 // `['schedules', projectId]`; mutations invalidate the subtree on success.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
-import { formatApiError } from "@/lib/api/error";
+import { formatRefusal } from "@/lib/api/error";
 import { automationKey } from "@/features/automation/hooks";
 import { schedulesApi } from "./api";
 
@@ -31,7 +31,7 @@ function useScheduleMutation<TArgs>(
       toast({ title: successMessage, tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "Action failed", description: formatApiError(err), tone: "error" });
+      toast({ title: "Refused", description: formatRefusal(err), tone: "error" });
     },
   });
 }

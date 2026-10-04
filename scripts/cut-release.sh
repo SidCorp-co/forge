@@ -2,10 +2,17 @@
 # Cuts the CLOUD release: bumps the version files in lockstep, promotes the
 # changelog's `[Unreleased]` section, commits, tags and pushes.
 #
+# Two lines, told apart by the version alone. X.Y.Z and X.Y.Z-rc.N are cut on
+# main and tagged vX.Y.Z here. X.Y.Z-dev.N is a dev release: cut on dev, its
+# number the one the forge project's Forge release allocated (project document
+# `release.prerelease`), and NOT tagged here — dev-vX.Y.Z-dev.N goes on the
+# commit only once forge-dev serves it (docs/adr/0002), so main's v* namespace
+# never sees a dev release and no tag names a build nobody served.
+#
 # The runner is NOT cloud. It sits at 0.9.x against cloud's 0.3.x and is cut with
 # `runner-vX.Y.Z` by its own workflow; bumping the two together walks it backwards.
 #
-# Usage: scripts/cut-release.sh X.Y.Z --headline "plain-language summary" [--no-push]
+# Usage: scripts/cut-release.sh X.Y.Z[-rc.N|-dev.N] --headline "plain-language summary" [--no-push]
 set -euo pipefail
 
 # The file list lives here and nowhere else. A new cloud package is one line.
@@ -27,7 +34,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --headline) [ $# -ge 2 ] || die "--headline needs a value"; HEADLINE="$2"; shift 2;;
     --no-push)  PUSH=0; shift;;
-    -h|--help)  sed -n '1,8p' "$0"; exit 0;;
+    -h|--help)  sed -n '1,15p' "$0"; exit 0;;
     -*)         die "unknown flag $1";;
     *)          [ -z "$NEW" ] || die "version given twice ($NEW, then $1)"; NEW="$1"; shift;;
   esac
@@ -38,7 +45,8 @@ done
 # tidies its own preconditions is a cut nobody can reconstruct afterwards.
 [ -n "$NEW" ] || die "no version. Usage: scripts/cut-release.sh X.Y.Z --headline \"...\" [--no-push]"
 [ -n "$HEADLINE" ] || die "--headline is mandatory: it opens the version section and the in-app What's New feed renders it for every signed-in user"
-[[ "$NEW" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]] || die "version '$NEW' is not X.Y.Z or X.Y.Z-rc.N"
+[[ "$NEW" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+|-dev\.[0-9]+)?$ ]] || die "version '$NEW' is not X.Y.Z, X.Y.Z-rc.N or X.Y.Z-dev.N"
+if [[ "$NEW" == *-dev.* ]]; then RELEASE_BRANCH=dev; TAG="dev-v$NEW"; else RELEASE_BRANCH=main; TAG="v$NEW"; fi
 
 # The headline opens the section and the What's New feed renders it to every signed-in user,
 # above every bullet. It is the one line most readers see, so it is the one line held tightest.
@@ -51,13 +59,12 @@ release is for, not what is in it \u2014 the bullets carry that."
 
 cd "$(git rev-parse --show-toplevel)"
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
-[ "$BRANCH" = main ] || die "on branch '$BRANCH', not main"
+[ "$BRANCH" = "$RELEASE_BRANCH" ] || die "on branch '$BRANCH', and $NEW is cut on $RELEASE_BRANCH"
 [ -z "$(git status --porcelain)" ] || die "working tree is not clean — commit or stash first:
 $(git status --short | head -10)"
-git fetch -q origin main
-LOCAL=$(git rev-parse main); REMOTE=$(git rev-parse origin/main)
-[ "$LOCAL" = "$REMOTE" ] || die "main ($(git rev-parse --short main)) is not in sync with origin/main ($(git rev-parse --short origin/main))"
-TAG="v$NEW"
+git fetch -q origin "$RELEASE_BRANCH"
+LOCAL=$(git rev-parse "$RELEASE_BRANCH"); REMOTE=$(git rev-parse "origin/$RELEASE_BRANCH")
+[ "$LOCAL" = "$REMOTE" ] || die "$RELEASE_BRANCH ($(git rev-parse --short "$RELEASE_BRANCH")) is not in sync with origin/$RELEASE_BRANCH ($(git rev-parse --short "origin/$RELEASE_BRANCH"))"
 git rev-parse -q --verify "refs/tags/$TAG" >/dev/null && die "tag $TAG already exists locally"
 [ -z "$(git ls-remote --tags origin "refs/tags/$TAG")" ] || die "tag $TAG already exists on origin"
 for f in "${VERSION_JSON_FILES[@]}"; do [ -f "$f" ] || die "version file missing: $f"; done
@@ -105,16 +112,26 @@ PY
 # ---- step 4: commit and tag -----------------------------------------------
 git add -- "${VERSION_JSON_FILES[@]}" "$RECORD"
 git commit -q -m "Release $TAG" -m "$HEADLINE"
-git tag "$TAG"
-[ "$(git rev-parse "$TAG^{commit}")" = "$(git rev-parse HEAD)" ] || die "tag $TAG does not point at HEAD"
+if [ "$RELEASE_BRANCH" = main ]; then
+  git tag "$TAG"
+  [ "$(git rev-parse "$TAG^{commit}")" = "$(git rev-parse HEAD)" ] || die "tag $TAG does not point at HEAD"
+fi
 
 # ---- step 5: push ---------------------------------------------------------
 if [ "$PUSH" -eq 1 ]; then
-  git push -q origin main
-  git push -q origin "$TAG"
+  git push -q origin "$RELEASE_BRANCH"
+  [ "$RELEASE_BRANCH" = dev ] || git push -q origin "$TAG"
   PUSHED="pushed to origin"
 else
-  PUSHED="NOT pushed — run: git push origin main && git push origin $TAG"
+  PUSHED="NOT pushed — run: git push origin $RELEASE_BRANCH$([ "$RELEASE_BRANCH" = dev ] || printf ' && git push origin %s' "$TAG")"
+fi
+if [ "$RELEASE_BRANCH" = dev ]; then
+  DEPLOYS="Not tagged yet. Deploy this commit through the Forge release that cut $NEW;
+  once https://forge-dev-api.sidcorp.co/api/version serves $(git rev-parse HEAD):
+    git tag $TAG $(git rev-parse HEAD) && git push origin $TAG"
+else
+  DEPLOYS="No workflow builds from this tag. core and web reach forge-beta through their
+  own Coolify deploy, which this script does not trigger."
 fi
 
 # ---- step 6: say what happened --------------------------------------------
@@ -125,6 +142,5 @@ cat <<EOF
   $(printf '%s' "${#VERSION_JSON_FILES[@]}") version file(s) at $NEW
   $PUSHED
 
-  No workflow builds from this tag. core and web reach forge-beta through their
-  own Coolify deploy, which this script does not trigger.
+  $DEPLOYS
 EOF

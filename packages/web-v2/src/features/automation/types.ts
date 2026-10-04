@@ -74,6 +74,7 @@ export type {
   FireProduced,
   FireProposal,
   FireStanding,
+  ReportDetailResponse,
   ReportStanding,
   ScheduleDetailResponse,
   ScheduleStanding,

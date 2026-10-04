@@ -3,6 +3,7 @@
 // the web, MCP and the needs-you count read it, so no screen derives a schedule state of its own
 
 import type { AgentReportTriage, AgentReportView } from "./agent-reports.js";
+import type { IssueStatusTone } from "./issue-vocabulary.js";
 import type {
 	ScheduleRunSkipReason,
 	ScheduleRunStatus,
@@ -78,6 +79,88 @@ export const REPORT_GROUPS = [
 	"closed",
 ] as const;
 export type ReportGroup = (typeof REPORT_GROUPS)[number];
+
+export interface AutomationGroupLabel {
+	label: string;
+	hint: string;
+	tone: IssueStatusTone;
+	collapsed: boolean;
+}
+
+export const SCHEDULE_GROUP_LABELS: Record<
+	ScheduleGroup,
+	AutomationGroupLabel
+> = {
+	needs_you: {
+		label: "Needs you",
+		hint: "Failing, or the account it runs as is gone",
+		tone: "you",
+		collapsed: false,
+	},
+	waiting: {
+		label: "Waiting on someone else",
+		hint: "Its owner or an admin owes the fix",
+		tone: "blocked",
+		collapsed: false,
+	},
+	on: { label: "On", hint: "", tone: "ready", collapsed: false },
+	off: {
+		label: "Off",
+		hint: "Paused; never claimed",
+		tone: "done",
+		collapsed: true,
+	},
+};
+
+export const FIRE_GROUP_LABELS: Record<FireGroup, AutomationGroupLabel> = {
+	needs_you: {
+		label: "Needs you",
+		hint: "Its reports wait for triage, or its schedule is failing",
+		tone: "you",
+		collapsed: false,
+	},
+	running: { label: "Running", hint: "", tone: "run", collapsed: false },
+	produced: {
+		label: "Produced something",
+		hint: "",
+		tone: "ready",
+		collapsed: false,
+	},
+	nothing_produced: {
+		label: "Nothing produced",
+		hint: "",
+		tone: "neutral",
+		collapsed: false,
+	},
+	failed_or_skipped: {
+		label: "Failed or skipped",
+		hint: "",
+		tone: "err",
+		collapsed: true,
+	},
+};
+
+export const REPORT_GROUP_LABELS: Record<ReportGroup, AutomationGroupLabel> = {
+	needs_you: {
+		label: "Needs you",
+		hint: "New, high severity first, then oldest",
+		tone: "you",
+		collapsed: false,
+	},
+	waiting: {
+		label: "Waiting on someone else",
+		hint: "New, owed by its schedule owner",
+		tone: "blocked",
+		collapsed: false,
+	},
+	filed: { label: "Filed", hint: "", tone: "ready", collapsed: false },
+	closed: {
+		label: "Dismissed or duplicate",
+		hint: "",
+		tone: "done",
+		collapsed: true,
+	},
+};
 
 export const AUTOMATION_FIRES_DEFAULT = 50;
 export const AUTOMATION_FIRES_MAX = 200;
@@ -219,6 +302,10 @@ export interface FireDetailResponse {
 	fire: FireStanding & { output: string | null };
 	schedule: ScheduleStanding;
 	produced: FireProducedItems;
+}
+
+export interface ReportDetailResponse {
+	report: ReportStanding;
 }
 
 export interface ScheduleDetailResponse {

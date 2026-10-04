@@ -1,6 +1,6 @@
 /**
  * The BA door's tool set (ISS-58): read the room's requirement, an issue and similar requirements;
- * write a suggestion; ask one clarification. It is the whole catalog a BA turn is offered — no
+ * write a suggestion; ask one clarification; propose a wireframe mockup (ISS-78). It is the whole catalog a BA turn is offered — no
  * forge CLI, no requirement or issue write — so the role's bound is what the model can call, not
  * what its prompt asks of it. The requirement is bound when the toolset is built, from the room.
  */
@@ -37,6 +37,7 @@ import { listSuggestions } from '../../suggestions/read.js';
 import { createSuggestion } from '../../suggestions/service.js';
 import { defaultChatProviderId } from '../providers/bootstrap.js';
 import { resolveForProject } from '../providers/registry.js';
+import { drawMockup } from './ba-mockup-tool.js';
 import { buildToolset, type ChatToolset } from './mcp-adapter.js';
 
 export interface BaRoom {
@@ -233,7 +234,7 @@ const suggest =
     route: '/api/projects',
     grant: 'projects:write',
     description:
-      'Propose a change for a person to accept or reject. kind revision_diff: payload { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } — the whole criteria list of the new revision (a live code keeps it, no code takes the next, one left out is retired). readiness: { checks: [{ check, passed, detail? }] }. breakdown: { issues: [{ title, description?, criteria?: [{ body, tracesTo? }], blockedBy?: [index | issue key] }], uncovered? } — a blockedBy number is another issue of the breakdown, a string an existing live issue (ISS-12). duplicate: { duplicateOf, similarity?, note? }. requirement_draft / triage target an issue (pass `issue`). baseRevision is the currentRevision you read (null when there is none).',
+      'Propose a change for a person to accept or reject. kind revision_diff: payload { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } — the whole criteria list of the new revision (a live code keeps it, no code takes the next, one left out is retired). readiness: { checks: [{ check, passed, detail? }] }. breakdown: { issues: [{ title, description?, complexity: xs | s | m | l | xl, priority?, category?, builds?: flow | null, criteria?: [{ body, tracesTo? }], blockedBy?: [index | issue key] }], uncovered? } — complexity is required (priority defaults to medium, category to feature); builds names the pinned design the issue builds, left out when the baseline pins exactly one; a blockedBy number is another issue of the breakdown, a string an existing live issue (ISS-12). duplicate: { duplicateOf, similarity?, note? }. requirement_draft / triage target an issue (pass `issue`). baseRevision is the currentRevision you read (null when there is none).',
     inputSchema: schema(suggestInput),
     handler: async (args) => {
       const input = suggestInput.parse(args);
@@ -388,6 +389,7 @@ export function buildBaToolset(ctx: McpContext, room: BaRoom): ChatToolset {
     { factory: suggest(room) },
     { factory: askClarification(room) },
     { factory: sendQuestionnaire(room) },
+    { factory: drawMockup(room) },
   ]);
 }
 
@@ -398,4 +400,5 @@ export const BA_TOOL_NAMES = [
   'ba_suggest',
   'ba_ask_clarification',
   'ba_send_questionnaire',
+  'ba_draw_mockup',
 ] as const;

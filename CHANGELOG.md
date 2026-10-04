@@ -152,9 +152,28 @@
 
 ### Added
 
+- **Releases can be numbered as prereleases.** With `release.prerelease` in the project document,
+  each release is `0.4.0-dev.1`, `0.4.0-dev.2` and so on. Dev releases carry such a version in
+  `/api/version` and the sidebar, tagged `dev-v…`.
+
+- **A reviewer can revise a proposed suggestion instead of rejecting it whole (ISS-117).**
+  `POST /api/projects/:id/suggestions/:sid/revise { payload, reason }` (and `forge_suggestions`
+  `revise`) rejects the original with the reason and proposes the edited payload as the reviewer's
+  own suggestion, naming the one it revises; the reviewer cannot then accept it, somebody else does.
+
+- **A breakdown files its issues sized and held by their design (ISS-117).** Each item carries a
+  complexity, and may carry a priority, a category and the pinned design it builds; accepting it
+  writes them and links each issue as that design's build, so the build gate holds it. A missing
+  complexity, a design the baseline does not pin, or none named when several are pinned is refused
+  by name; priority and category default, and the answer says which did.
+
 - **Guides for requirements, suggestions and feedback triage (ISS-90).** The tools for them cite
   these public guides instead of designs only Forge's own project could read, as do the issue
   status refusals.
+
+- **Automation is one area with Schedules, Fires and Reports (ISS-116).** Each tab lists what needs
+  you first and opens a peek and a page; members run schedules and triage reports there, and a
+  refusal shows its code.
 
 - **Every schedule kind and fire reads as words (ISS-115).** `forge_schedules` creates release
   batch and Sentry pull schedules, and schedule state, fire status, fire trigger and report triage
@@ -2713,6 +2732,9 @@
   (ISS-1313)
 
 ### Removed
+- **Comments are no longer gated, and codemap is gone.** The comment-budget check, its
+  baseline and the `comment` conformance axis are removed, and no rule asks for `cm:` annotations;
+  existing ones stay as plain comments.
 - **`GET /api/schedules/:id/runs` is gone (ISS-114).** A schedule's fires are read at
   `GET /api/projects/:id/automation/schedules/:scheduleId`.
 - **An agent report has no reviewed flag (ISS-113).** `POST /api/agent-reports/:id/reviewed`,
@@ -3368,6 +3390,9 @@
   set is now 59.
 
 ### Fixed
+
+- **Rewriting a draft requirement revision keeps the BC codes the draft already holds (ISS-117).**
+  Sending back the criteria read from the draft used to be refused `CRITERION_CODE_UNKNOWN`.
 
 - **A prompt schedule naming a message that no longer exists now fails, and says so (ISS-112).** It
   used to read as already applied. A release batch skipped for want of a release gate now names

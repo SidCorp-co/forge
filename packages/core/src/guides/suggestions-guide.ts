@@ -1,4 +1,5 @@
 import {
+  BREAKDOWN_ISSUE_DEFAULTS,
   SUGGESTION_MAX_OPEN_PER_TARGET,
   SUGGESTION_PURGE_PAYLOAD_AFTER_DAYS,
   SUGGESTION_STALE_AFTER_DAYS,
@@ -26,7 +27,7 @@ door; the REST routes are the same services.
 | \`revision_diff\` | a requirement | a new **draft** revision on that requirement, authored by the producer; never a current one, so the requirement's own propose and accept still follow |
 | \`requirement_draft\` | an issue | a new requirement at revision 1, a draft |
 | \`readiness\` | a requirement | the readiness result at its base revision, which an agree reads when the project gates on readiness |
-| \`breakdown\` | a requirement | every proposed issue, filed at **draft**, linked to the requirement, traced to its BCs and edged by \`blockedBy\`, in one transaction; nothing dispatches until a person promotes them |
+| \`breakdown\` | a requirement | every proposed issue, filed at **draft** with its complexity, priority and category, linked to the requirement, traced to its BCs, edged by \`blockedBy\` and linked as the build of the pinned design it builds, in one transaction; nothing dispatches until a person promotes them, and the build gate holds each until its design is approved |
 | \`triage\` | an issue | the issue's priority, category and complexity; a free-text \`route\` is kept as a note comment on the issue |
 | \`duplicate\` | an issue or a requirement | on an issue, drops it naming the root, with a relates edge to it; on a requirement it is refused \`SUGGESTION_EFFECT_UNDECIDED\`, because no effect is defined for it |
 | \`feedback_triage\` | a feedback item | the route on the item (${guideRef('feedback-triage')}) |
@@ -53,6 +54,13 @@ the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
   string \`blockedBy\` names an existing issue of this project by key or uuid, and one that resolves to
   nothing here is \`SUGGESTION_BLOCKER_UNKNOWN\`, a closed, dropped or archived one
   \`SUGGESTION_BLOCKER_TERMINAL\`.
+- Each breakdown issue carries \`complexity\` (\`xs\` to \`xl\`): an empty one would pick the heaviest run
+  rung, so a missing one is \`SUGGESTION_PAYLOAD_INVALID\` at its path. \`priority\` defaults to
+  \`${BREAKDOWN_ISSUE_DEFAULTS.priority}\` and \`category\` to \`${BREAKDOWN_ISSUE_DEFAULTS.category}\`; the accept's effect names, per
+  issue, what was written and which fields took the default.
+- \`builds\` names the design the issue builds, one the requirement's latest baseline pins (\`null\`:
+  none). Left out, the one pinned design is taken and none links nothing; with several pinned it is
+  \`SUGGESTION_BUILD_UNNAMED\`, and a flow the baseline does not pin \`SUGGESTION_BUILD_UNPINNED\`.
 
 ### Deciding
 - **accept** \`{ suggestionId, reason? }\` and **reject** \`{ suggestionId, reason }\` are a person's acts,
@@ -60,8 +68,15 @@ the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
   who produced a suggestion never accepts it (the same code): somebody else does. An accept's reason is kept on the suggestion and is where the authority
   behind it is named. A rejection must say why (\`SUGGESTION_REJECT_REASON_REQUIRED\`), and that reason
   is what keeps the next suggestion on the target from repeating it.
+- **revise** \`{ suggestionId, payload, reason }\` is a reviewer's edit. The original is rejected with
+  the reason, and a new suggestion carrying the whole new payload is proposed by the reviewer in the
+  same write, naming the original in \`revises\`; every check a new suggestion takes applies to it.
+  The reviewer produced the revision, so they cannot accept it (\`SUGGESTION_ACCEPT_FORBIDDEN\`):
+  the original producer, when a person, or another person does. Revising is a person's act, never
+  the producer's own (\`SUGGESTION_REVISE_FORBIDDEN\`: withdraw and propose again), and a payload that
+  changes nothing is \`SUGGESTION_REVISION_UNCHANGED\`.
 - **withdraw** is the producer retracting its own (\`SUGGESTION_WITHDRAW_FORBIDDEN\` for anybody else,
-  who rejects it with a reason instead).
+  who rejects or revises it instead).
 - A decided suggestion stays decided: accepting, rejecting or withdrawing it again is
   \`SUGGESTION_DECIDED\`.
 - A suggestion nobody decides within ${SUGGESTION_STALE_AFTER_DAYS} days goes \`stale\`; a rejected,

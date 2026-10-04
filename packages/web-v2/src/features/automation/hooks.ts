@@ -70,3 +70,19 @@ export function useScheduleDetail(projectId: string | undefined, scheduleId: str
     enabled: enabled && !!projectId && !!scheduleId,
   });
 }
+
+export function useFireDetail(projectId: string | undefined, fireId: string) {
+  return useQuery({
+    queryKey: [...automationKey(projectId), "fire", fireId],
+    queryFn: () => automationApi.fire(projectId as string, fireId),
+    enabled: !!projectId && !!fireId,
+  });
+}
+
+export function useReportDetail(projectId: string | undefined, reportId: string) {
+  return useQuery({
+    queryKey: [...automationKey(projectId), "report", reportId],
+    queryFn: () => automationApi.report(projectId as string, reportId),
+    enabled: !!projectId && !!reportId,
+  });
+}

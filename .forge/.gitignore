@@ -12,15 +12,3 @@ knowledge.json
 
 # Anything a tool writes per machine.
 *.local.*
-
-# The archmap checker's per-machine graph cache and its refresh lock, written
-# here on every `pnpm verify`. It is untracked litter that leaves every
-# contributor's `git status` dirty and is one `git add -A` away from being
-# committed as another machine's cache. The name is archmap's own and predates
-# this repo dropping the codemap checker that shipped it.
-.codemap-archmap-cache/
-
-# The metrics file the same plugin writes beside that cache, for the same
-# reason: it is per-machine, and untracked litter in every worktree's
-# `git status` until it is declared here.
-.codemap-metrics/

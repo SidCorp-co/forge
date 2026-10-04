@@ -25,6 +25,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { projects, users } from './schema.js';
 import { contractVersions } from './schema-ecosystem.js';
+import { mockups } from './schema-mockups.js';
 import { suggestions } from './schema-suggestions.js';
 import { projectWorkflowDesigns, projectWorkflows } from './schema-workflows.js';
 
@@ -310,6 +311,11 @@ export const requirementBaselinePins = pgTable(
     providerProjectId: uuid('provider_project_id'),
     contractSlug: text('contract_slug'),
     contractVersion: text('contract_version'),
+    // cm:why an accepted mockup is pinned beside the designs (ISS-78): the baseline names the rows it
+    // was agreed with, and a mockup's bytes never change, so the pin is the row itself
+    mockupId: uuid('mockup_id').references((): AnyPgColumn => mockups.id, {
+      onDelete: 'no action',
+    }),
   },
   (t) => ({
     baselineFk: foreignKey({
@@ -342,7 +348,7 @@ export const requirementBaselinePins = pgTable(
     ),
     arcChk: check(
       'requirement_baseline_pins_arc_chk',
-      sql`(num_nonnulls(${t.workflowId}, ${t.designRevision}) = 2 AND num_nonnulls(${t.providerProjectId}, ${t.contractSlug}, ${t.contractVersion}) = 0) OR (num_nonnulls(${t.workflowId}, ${t.designRevision}) = 0 AND num_nonnulls(${t.providerProjectId}, ${t.contractSlug}, ${t.contractVersion}) = 3)`,
+      sql`(num_nonnulls(${t.workflowId}, ${t.designRevision}) = 2 AND num_nonnulls(${t.providerProjectId}, ${t.contractSlug}, ${t.contractVersion}, ${t.mockupId}) = 0) OR (num_nonnulls(${t.workflowId}, ${t.designRevision}, ${t.mockupId}) = 0 AND num_nonnulls(${t.providerProjectId}, ${t.contractSlug}, ${t.contractVersion}) = 3) OR (num_nonnulls(${t.workflowId}, ${t.designRevision}, ${t.providerProjectId}, ${t.contractSlug}, ${t.contractVersion}) = 0 AND ${t.mockupId} IS NOT NULL)`,
     ),
   }),
 );

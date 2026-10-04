@@ -1,0 +1,3 @@
+ALTER TABLE "suggestions" ADD COLUMN "revises_id" uuid;--> statement-breakpoint
+ALTER TABLE "suggestions" ADD CONSTRAINT "suggestions_revises_id_suggestions_id_fk" FOREIGN KEY ("revises_id") REFERENCES "public"."suggestions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "suggestions_revises_uq" ON "suggestions" USING btree ("revises_id") WHERE revises_id IS NOT NULL;

@@ -144,7 +144,73 @@ export function withdrawRefusal(
   };
 }
 
+// cm:guard a reviewer's edit is a person's act of somebody other than the producer, who withdraws
+// and proposes again instead; the edit is a new suggestion the editor then produced (ISS-117)
+export function reviseProducerRefusal(
+  userId: string,
+  producerId: string | null,
+): SuggestionRefusal | null {
+  if (producerId === null || producerId !== userId) return null;
+  return {
+    code: 'SUGGESTION_REVISE_FORBIDDEN',
+    path: '',
+    detail: `${userId} produced this suggestion; its producer withdraws it and proposes again, a reviewer revises it.`,
+  };
+}
+
+export function unchangedRevisionRefusal(
+  before: string,
+  after: string,
+  id: string,
+): SuggestionRefusal | null {
+  if (before !== after) return null;
+  return {
+    code: 'SUGGESTION_REVISION_UNCHANGED',
+    path: '/payload',
+    detail: `the payload proposes exactly what suggestion ${id} proposes; accept it as it stands, or change the payload.`,
+  };
+}
+
 type Breakdown = ReturnType<(typeof SUGGESTION_PAYLOADS)['breakdown']['schema']['parse']>;
+
+/** A design the requirement's latest baseline pins, which a breakdown issue may build. */
+export interface PinnedDesign {
+  workflowId: string;
+  flow: string;
+}
+
+// cm:guard each breakdown issue builds a design its baseline pins: `builds` names a pinned flow or
+// null for none; left out, the one pinned design is taken, none links nothing, and several are
+// SUGGESTION_BUILD_UNNAMED; a flow the baseline does not pin is SUGGESTION_BUILD_UNPINNED (ISS-117)
+export function breakdownBuilds(
+  p: Breakdown,
+  pins: readonly PinnedDesign[],
+): { builds: (PinnedDesign | null)[]; refusals: SuggestionRefusal[] } {
+  const refusals: SuggestionRefusal[] = [];
+  const pinned = pins.map((d) => d.flow).join(', ') || 'none';
+  const builds = p.issues.map((issue, i): PinnedDesign | null => {
+    const path = `/payload/issues/${i}/builds`;
+    if (issue.builds === null) return null;
+    if (issue.builds === undefined) {
+      if (pins.length <= 1) return pins[0] ?? null;
+      refusals.push({
+        code: 'SUGGESTION_BUILD_UNNAMED',
+        path,
+        detail: `the baseline pins several designs (${pinned}); name the one this issue builds in builds, or builds: null when it builds none.`,
+      });
+      return null;
+    }
+    const found = pins.find((d) => d.flow === issue.builds);
+    if (found) return found;
+    refusals.push({
+      code: 'SUGGESTION_BUILD_UNPINNED',
+      path,
+      detail: `${issue.builds} is not a design the requirement's latest baseline pins (${pinned}); an issue builds a pinned design, or builds: null.`,
+    });
+    return null;
+  });
+  return { builds, refusals };
+}
 
 /** The first blockedBy entry that closes a cycle among the proposed issues, as [issue, entry]. */
 function cycleAt(p: Breakdown): [number, number] | null {

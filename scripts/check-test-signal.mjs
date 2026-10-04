@@ -1,9 +1,6 @@
 #!/usr/bin/env node
-// Test-signal guard — the test-side counterpart to codemap's comment rule.
-//
-// codemap stops an agent restating in a comment what the compiler already
-// says. This stops the same reflex in tests: asserting what the DECLARATION
-// already says. Such a test never fails for a bug, only for an intended
+// Test-signal guard: stops a test asserting what the DECLARATION already
+// says. Such a test never fails for a bug, only for an intended
 // change — it costs CI time and review attention and returns nothing.
 //
 // Flags a FILE (not a line) that is mostly either:
@@ -12,7 +9,7 @@
 //      flagged: cascade-vs-restrict is a consequence, not a restatement.
 //   2. mock-interaction assertions — only that a mock was called.
 //
-// Baselined like codemap: today's offenders are frozen, a file fails only
+// Baselined: today's offenders are frozen, a file fails only
 // when it gets worse or a new one appears. The ratchet around that is
 // lib/debt-ratchet.mjs; what stays here is the analyzer.
 //

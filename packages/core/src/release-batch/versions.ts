@@ -4,6 +4,7 @@ import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { type ReleaseAttemptRow, releaseAttempts } from '../db/schema-release-ledger.js';
 import type { ApprovalView } from './approvals.js';
+import { compareReleaseVersions, parseReleaseVersion } from './version.js';
 
 export interface RunRow {
   id: string;
@@ -32,13 +33,22 @@ export async function versionRuns(projectId: string, version?: string): Promise<
         sql`${pipelineRuns.metadata}->>'source' = 'release-batch'`,
         ...(version ? [eq(pipelineRuns.releaseVersion, version)] : []),
       ),
-    )
-    .orderBy(sql`string_to_array(${pipelineRuns.releaseVersion}, '.')::int[] DESC`);
-  return rows.map((r) => ({
-    ...r,
-    version: r.version as string,
-    metadata: (r.metadata ?? {}) as Record<string, unknown>,
-  }));
+    );
+  return rows
+    .map((r) => ({
+      ...r,
+      version: r.version as string,
+      metadata: (r.metadata ?? {}) as Record<string, unknown>,
+    }))
+    .sort((a, b) => byVersionDescending(a.version, b.version));
+}
+
+// cm:why the column CHECK makes every stored version parse; one that did not would sort last rather
+// than throw out of a read that lists releases.
+function byVersionDescending(a: string, b: string): number {
+  const [va, vb] = [parseReleaseVersion(a), parseReleaseVersion(b)];
+  if (!va || !vb) return (va ? -1 : 0) + (vb ? 1 : 0);
+  return compareReleaseVersions(vb, va);
 }
 
 export async function attemptsOf(runIds: readonly string[]): Promise<ReleaseAttemptRow[]> {

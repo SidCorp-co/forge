@@ -43,8 +43,13 @@ import {
   turnOf,
   type ViewerFacts,
 } from './release-view.js';
-import { formatReleaseVersion, nextReleaseVersion, parseReleaseVersion } from './version.js';
-import { currentReleaseVersion, highestCutVersion } from './version-store.js';
+import {
+  formatReleaseVersion,
+  nextReleaseVersion,
+  parseReleaseVersion,
+  RELEASE_VERSION_SHAPE,
+} from './version.js';
+import { currentReleaseVersion, highestCutVersion, releaseLineOf } from './version-store.js';
 import { attemptsOf, issueIdsOf, type RunRow, versionRuns, versionStatus } from './versions.js';
 
 const NOBODY: ReleaseWaiting = { kind: 'none', who: '—', act: '', rule: '' };
@@ -319,12 +324,13 @@ async function draftPart(projectId: string): Promise<Part | null> {
     .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`);
   if (rows.length === 0) return null;
   const ids = rows.map((r) => r.id);
-  const [highest, report] = await Promise.all([
+  const [highest, line, report] = await Promise.all([
     highestCutVersion(db, projectId),
+    releaseLineOf(projectId),
     collectReleaseBlockers(projectId, { issueIds: ids, door: 'batch' }),
   ]);
   return {
-    version: formatReleaseVersion(nextReleaseVersion(highest?.version ?? null, null)),
+    version: formatReleaseVersion(nextReleaseVersion(highest?.version ?? null, null, line)),
     runId: null,
     state: 'draft',
     issueIds: ids,
@@ -434,7 +440,7 @@ export async function readRelease(
     throw approvalRefusal(
       422,
       'RELEASE_VERSION_SHAPE',
-      `${JSON.stringify(version)} is not a release version: MAJOR.MINOR.PATCH, three dot-separated integers`,
+      `${JSON.stringify(version)} is not a release version: ${RELEASE_VERSION_SHAPE}`,
     );
   }
   const [required, current] = await Promise.all([
