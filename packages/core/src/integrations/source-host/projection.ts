@@ -18,7 +18,7 @@ import {
   type ProjectedReview,
   repoPullRequests,
 } from '../../db/schema-repo-projection.js';
-import { forgeReads } from '../forge-reads.js';
+import { forgeReads } from '../index.js';
 import { foldCheckRun, foldReviewDismissed, foldReviewSubmitted } from './projection-shape.js';
 
 /** What the caller already knows about the delivery's binding. */

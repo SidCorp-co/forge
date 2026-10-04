@@ -3,7 +3,7 @@
  * graph behind it — workflows and the routes they answer — read live through the binding's token.
  */
 
-import type { StorefrontTargetArgs } from '../types.js';
+import type { StorefrontTargetArgs } from '../index.js';
 import { autoflowDraftVersion } from './draft.js';
 import { autoflowBaseUrl, autoflowMcpUrl, autoflowSiteUrl } from './endpoints.js';
 import { autoflowLiveRead } from './live-read.js';

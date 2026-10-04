@@ -12,14 +12,13 @@ import { env } from './config/env.js';
 import { registerRoomChat } from './conversations/index.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
+import { stampGitCredentialRef } from './devices/index.js';
 import { seedDomainTemplates } from './domain-templates/index.js';
 import { registerContractMeasureWorker } from './ecosystem/index.js';
 import { provideAdmissionThresholds } from './error-intake/index.js';
-import {
-  assertVaultBootSafety,
-  provideForgeReads,
-  registerAllIntegrations,
-} from './integrations/index.js';
+import { provideGitCredentialStamp } from './git/index.js';
+import { registerAllIntegrations } from './integration-registry.js';
+import { assertVaultBootSafety, provideForgeReads } from './integrations/index.js';
 import { bootstrapChatProviders } from './integrations/llm/index.js';
 import { registerOutboundDeliveryWorker } from './integrations/outbound-webhooks/index.js';
 import {
@@ -54,6 +53,7 @@ import { coreTimers } from './timer-registry.js';
 import { attachWs, closeWs } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
+provideGitCredentialStamp(stampGitCredentialRef);
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,
   issueForHeadRef: (projectId, headRef) => resolveIssueForHeadRef({ projectId, headRef }),

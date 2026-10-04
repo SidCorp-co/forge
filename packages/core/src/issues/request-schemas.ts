@@ -4,12 +4,12 @@
  * the database.
  */
 
+import { ISSUE_INITIAL_STATUSES } from '@forge/contracts/issue-machine';
 import { ReleaseNotesSchema } from '@forge/contracts/release-notes';
 import { z } from 'zod';
 import { BODY_FORMATS } from '../body/formats.js';
 import { issueComplexities, issuePriorities, issueStatuses } from '../db/schema.js';
 import { paginationSchema } from '../lib/pagination.js';
-import { CREATE_ENTRY_STATUSES } from './create-service.js';
 import {
   attachmentInputSchema,
   labelAttachItemSchema,
@@ -112,7 +112,7 @@ export const issueCreateSchema = z
     attachments: z.array(attachmentInputSchema).max(10).optional(),
     detectorKey: z.string().trim().min(1).max(120).optional(),
     relations: z.array(issueRelationInputSchema).max(20).optional(),
-    status: z.enum(CREATE_ENTRY_STATUSES).optional(),
+    status: z.enum(ISSUE_INITIAL_STATUSES).optional(),
   })
   .strict();
 

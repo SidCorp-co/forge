@@ -1,15 +1,17 @@
 import { logger } from '../../observability/logger.js';
 import { traceStep } from '../../observability/sentry.js';
-import { recordDelivery, updateDelivery } from '../deliveries.js';
-import { findConnectionById, updateConnection } from '../store.js';
 import {
   type DeployTargetDispatch,
   type DispatchingAdapterMethods,
   declareIntegration,
+  findConnectionById,
   type HealthCheckResult,
   type OutboundDispatchInput,
   type OutboundDispatchResult,
-} from '../types.js';
+  recordDelivery,
+  updateConnection,
+  updateDelivery,
+} from '../index.js';
 import { verifyCoolifyBindingTarget } from './binding-target.js';
 import { breakerAllowsDispatch, maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
 import { CoolifyApiError, coolifyAbilityForRoute, describeCoolifyForbidden } from './client.js';

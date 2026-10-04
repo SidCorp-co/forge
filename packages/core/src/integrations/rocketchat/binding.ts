@@ -1,5 +1,5 @@
-import type { BindingWithConnection } from '../store.js';
-import { findBindingWithConnectionById, listActiveBindingsForProjectProvider } from '../store.js';
+import type { BindingWithConnection } from '../index.js';
+import { findBindingWithConnectionById, listActiveBindingsForProjectProvider } from '../index.js';
 
 /** This project's Rocket.Chat binding, or null. Oldest-first, so the pick is stable. */
 export async function activeRocketChatBinding(

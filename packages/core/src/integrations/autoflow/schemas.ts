@@ -1,7 +1,7 @@
 /** The shapes an Autoflow connection and binding are allowed to hold. */
 
 import { z } from 'zod';
-import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../release-channel-schema.js';
+import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../index.js';
 
 const httpsUrl = () =>
   z

@@ -9,13 +9,14 @@
 
 import type { SentryAgentStatus } from '@forge/contracts/integrations';
 import { scrubLogText } from '@forge/observability';
-import { grantHolds, notGrantedMessage } from '../agent-access.js';
-import { getIntegration } from '../registry.js';
 import {
   type BindingWithConnection,
   buildContextFromBinding,
+  getIntegration,
+  grantHolds,
   listBindingsForProject,
-} from '../store.js';
+  notGrantedMessage,
+} from '../index.js';
 import { listSentryIssues, readSentryIssue, type SentryAdapterContext } from './issues.js';
 import { type SentryIssueListing, SentryListingFailed, type SentryListRefusal } from './listing.js';
 import { SentryRefusal } from './refusals.js';

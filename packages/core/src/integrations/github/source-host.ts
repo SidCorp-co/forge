@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { HostCompare, SourceHost, SourceHostFactory } from '../source-host/types.js';
+import type { HostCompare, SourceHost, SourceHostFactory } from '../source-host/index.js';
 import {
   buildGitHubAgentClient,
   type GitHubAgentClient,

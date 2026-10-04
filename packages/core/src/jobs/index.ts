@@ -7,5 +7,6 @@ export {
   releaseJobHold,
 } from './master-holds.js';
 export { probePgBossBackstop } from './pgboss-health.js';
+export { resolveSessionMcpServers } from './resolve-job-mcp-servers.js';
 export { runStaleSweep } from './stale-detector.js';
 export { insertJobRow } from './writes.js';

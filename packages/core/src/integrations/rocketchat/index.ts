@@ -1,3 +1,4 @@
+export { rocketchatIntegration } from './adapter.js';
 export { activeRocketChatBinding, rocketChatBindingOfProject } from './binding.js';
 export { screenCarriedComment } from './comment-carry.js';
 export { threadRootText } from './comment-render.js';
