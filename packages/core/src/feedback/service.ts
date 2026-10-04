@@ -1,13 +1,13 @@
 /**
  * Feedback writes (workflows `feedback-lifecycle` rev 2 and `feedback-triage` rev 2). Each runs in
  * one transaction under the project's feedback lock and answers an outcome, refusals named and
- * nothing written. A person declines, verifies or reopens; routing is `triage.ts`, attachments and
+ * nothing written. A person verifies or reopens; triage, decline and the case are `triage.ts`, attachments and
  * the clarification `attachments.ts`. Every decision is a `feedback_decisions` row.
  */
 
 import type {
   CreateFeedbackRequest,
-  FeedbackTriage,
+  FeedbackRoute,
   FeedbackTriageEffect,
   FeedbackView,
 } from '@forge/contracts/feedback';
@@ -29,7 +29,6 @@ import { embedFeedbackLater } from './embeddings.js';
 import { detailAs, type FeedbackActor, feedbackKey, phaseOfRow, type Row, rowIn } from './read.js';
 import { isRefusal, resolveTarget } from './refs.js';
 import {
-  decideActRefusal,
   declineRefusal,
   redactActRefusal,
   redactedRefusal,
@@ -94,7 +93,7 @@ export async function decide(
   actor: FeedbackActor,
   d: {
     decision: typeof feedbackDecisions.$inferInsert.decision;
-    route?: FeedbackTriage['route'] | null;
+    route?: FeedbackRoute | null;
     carrier?: string | null;
     reason?: string | null;
     fromSuggestionId?: string | null;
@@ -244,36 +243,22 @@ export async function createFeedback(input: {
   return answer(projectId, id, actor, { created });
 }
 
-export async function declineFeedback(input: {
-  projectId: string;
-  ref: string;
-  actor: FeedbackActor;
-  reason: string | undefined;
-}): Promise<FeedbackOutcome> {
-  const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'viewer');
-  const forbidden = decideActRefusal(
-    await roleFacts(actor, projectId),
-    projectId,
-    'declining feedback',
-  );
-  if (forbidden) return { ok: false, refusals: [forbidden] };
-  const first = await rowIn(db, projectId, input.ref);
-  const refusals = await inTx(async (tx) => {
-    await lockFeedback(tx, projectId);
-    const row = await rowIn(tx, projectId, first.id, true);
-    const refused = declineRefusal(row.status, input.reason);
-    if (refused) return [refused];
-    await tx
-      .update(feedback)
-      .set({ status: 'declined', updatedAt: new Date() })
-      .where(eq(feedback.id, row.id));
-    await decide(tx, row, actor, { decision: 'declined', reason: input.reason ?? null });
-    await closeClarification(tx, row.id, 'declined');
-    return null;
-  });
-  if (refusals) return { ok: false, refusals };
-  return answer(projectId, first.id, actor);
+/** The decline act, reached from triage's decline route: the reason the reporter reads, a decision row. */
+export async function declineIn(
+  tx: Tx,
+  row: Row,
+  actor: FeedbackActor,
+  reason: string | undefined,
+): Promise<NamedRefusal | null> {
+  const refused = declineRefusal(row.status, reason);
+  if (refused) return refused;
+  await tx
+    .update(feedback)
+    .set({ status: 'declined', updatedAt: new Date() })
+    .where(eq(feedback.id, row.id));
+  await decide(tx, row, actor, { decision: 'declined', reason: reason ?? null });
+  await closeClarification(tx, row.id, 'declined');
+  return null;
 }
 
 async function personalAct(

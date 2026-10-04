@@ -11,11 +11,9 @@ import type {
   FeedbackPhase,
   FeedbackRouteView,
   FeedbackSummary,
-  FeedbackTargetView,
   FeedbackView,
 } from '@forge/contracts/feedback';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
-import type { NodeRef } from '@forge/contracts/workflow-health';
 import { and, asc, count, desc, eq, ilike, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
@@ -36,8 +34,8 @@ import { actMiss, PERSON_ADMIN_ACT } from '../lib/person-act.js';
 import { requirementKey } from '../requirements/read.js';
 import { deliveredAmong } from '../requirements/standing-read.js';
 import { userNames } from '../workflows/service.js';
+import { type CaseRow, casesOf, caseView } from './case.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
-import { targetTypeOf } from './refs.js';
 import { feedbackIdsOfRequirement, NO_FEEDBACK, sourceOf } from './relations.js';
 import {
   attentionOf,
@@ -49,6 +47,7 @@ import {
   waitingOf,
   waitingOnOf,
 } from './rules.js';
+import { targetView } from './target-view.js';
 
 export interface FeedbackActor {
   userId: string;
@@ -92,6 +91,7 @@ export interface Linked {
   suggestions: Map<string, { status: string; revisionLive: boolean; delivered: boolean }>;
   roots: Map<string, Row>;
   names: Map<string, string>;
+  cases: Map<string, CaseRow>;
 }
 
 const ids = (values: (string | null)[]) => [...new Set(values.filter((v): v is string => !!v))];
@@ -104,7 +104,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
   const suggestionIds = ids(rows.map((r) => r.routedSuggestionId));
   const known = new Set(rows.map((r) => r.id));
   const rootIds = ids(rows.map((r) => r.duplicateOf)).filter((id) => !known.has(id));
-  const [prefix, issueRows, reqRows, releaseRows, workflowRows, suggestionRows, rootRows] =
+  const [prefix, issueRows, reqRows, releaseRows, workflowRows, suggestionRows, rootRows, cases] =
     await Promise.all([
       activeIssuePrefix(projectId),
       issueIds.length
@@ -161,6 +161,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
             .where(inArray(suggestions.id, suggestionIds))
         : [],
       rootIds.length ? db.select().from(feedback).where(inArray(feedback.id, rootIds)) : [],
+      casesOf(rows.map((r) => r.id)),
     ]);
   const allRows = [...rows, ...rootRows];
   const providerIds = ids(rows.map((r) => r.contractProviderProjectId));
@@ -216,6 +217,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     ),
     roots: new Map(allRows.map((r) => [r.id, r])),
     names: await userNames(allRows.map((r) => r.reportedBy)),
+    cases,
   };
 }
 
@@ -246,50 +248,6 @@ export function phaseIn(r: Row, l: Linked): FeedbackPhase {
   const root = r.duplicateOf ? l.roots.get(r.duplicateOf) : undefined;
   const rootPhase = root ? phaseOf(phaseFacts(root, l, null)) : null;
   return phaseOf(phaseFacts(r, l, rootPhase));
-}
-
-function targetView(r: Row, l: Linked): FeedbackTargetView {
-  const type = targetTypeOf(r);
-  if (type === 'requirement') {
-    const q = l.requirements.get(r.requirementId as string);
-    return { type, key: q?.key ?? (r.requirementId as string), title: q?.title ?? null };
-  }
-  if (type === 'issue') {
-    const i = l.issues.get(r.issueId as string);
-    return { type, key: i?.key ?? (r.issueId as string), title: i?.title ?? null };
-  }
-  if (type === 'release') {
-    return {
-      type,
-      key: l.releases.get(r.releaseRunId as string) ?? (r.releaseRunId as string),
-      title: null,
-    };
-  }
-  if (type === 'workflow') {
-    const w = l.workflows.get(r.workflowId as string);
-    const node: NodeRef | null = r.stepId
-      ? { step: r.stepId }
-      : r.edgeFrom && r.edgeTo
-        ? {
-            edge: {
-              from: r.edgeFrom,
-              to: r.edgeTo,
-              ...(r.edgeLabel ? { label: r.edgeLabel } : {}),
-            },
-          }
-        : null;
-    return {
-      type,
-      key: w?.flow ?? (r.workflowId as string),
-      title: w?.title ?? null,
-      ...(node ? { node } : {}),
-    };
-  }
-  if (type === 'contract') {
-    const provider = l.providers.get(r.contractProviderProjectId as string);
-    return { type, key: `${provider}/${r.contractSlug}@${r.contractVersion}`, title: null };
-  }
-  return { type, key: r.whereSeen ?? '', title: null };
 }
 
 export function routeView(r: Row, l: Linked): FeedbackRouteView | null {
@@ -331,7 +289,10 @@ export function summaryOf(
   const route = routeView(r, l);
   const reporterName = l.names.get(r.reportedBy) ?? null;
   const attention = attentionOf(phase, viewer.userId === r.reportedBy);
-  const waiting = waitingOf(phase, r.route, route?.key ?? null, reporterName ?? 'The reporter');
+  const stored = l.cases.get(r.id);
+  const kase = stored ? caseView(stored) : null;
+  const reporter = reporterName ?? 'The reporter';
+  const waiting = waitingOf(phase, r.route, route?.key ?? null, reporter, kase);
   return {
     id: r.id,
     key: feedbackKey(r.fbSeq),
@@ -341,10 +302,11 @@ export function summaryOf(
     status: r.status,
     phase,
     attention,
-    waitingOn: waitingOnOf(phase, r.route, route?.key ?? null, reporterName ?? 'The reporter'),
+    waitingOn: waitingOnOf(phase, r.route, route?.key ?? null, reporter, kase),
     waiting: waitingFor(waiting, attention),
     target: targetView(r, l),
     route: withhold && route?.answer ? { ...route, answer: null } : route,
+    case: kase,
     reporter: { id: r.reportedBy, name: reporterName, agency: r.reporterAgency },
     dueAt: r.dueAt?.toISOString() ?? null,
     redacted: r.redactedAt !== null,
@@ -497,6 +459,11 @@ export async function detailAs(
       can: {
         triage:
           mayApprove(facts, 'feedback') && ['new', 'triaged', 'reopened'].includes(summary.phase),
+        route:
+          summary.phase === 'triaged' &&
+          summary.case !== null &&
+          summary.case.routedAt === null &&
+          mayApprove(facts, 'feedback'),
         verify: mayApprove(facts, 'feedback') && summary.phase === 'resolved',
         redact: !actMiss(facts, PERSON_ADMIN_ACT) && row.redactedAt === null,
       },
