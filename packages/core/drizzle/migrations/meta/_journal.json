@@ -2451,6 +2451,13 @@
       "when": 1815868800000,
       "tag": "0381_a_retired_issue_status_is_stored_nowhere",
       "breakpoints": true
+    },
+    {
+      "idx": 382,
+      "version": "7",
+      "when": 1815955200000,
+      "tag": "0382_a_release_hold_is_a_record",
+      "breakpoints": true
     }
   ]
 }
