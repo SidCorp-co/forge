@@ -1,5 +1,7 @@
+import type { DesignRevisionState } from "./design-status.js";
+
 // cm:why the answer shapes a workflow and its design are read in when the whole document is not
-// asked for (ISS-87); the design statuses themselves are still declared in core (domain-entities item 5)
+// asked for (ISS-87)
 
 export const WORKFLOW_SUMMARY_FIELDS = [
 	"workflowId",
@@ -69,6 +71,7 @@ export const DESIGN_HEAD_FIELDS = [
 	"approvedRevision",
 	"approver",
 	"canDecide",
+	"waitingOn",
 ] as const;
 
 export interface DesignHead {
@@ -80,6 +83,35 @@ export interface DesignHead {
 	approvedRevision: number | null;
 	approver: string;
 	canDecide: boolean;
+	waitingOn: DesignWaitingOn;
+}
+
+export const DESIGN_WAITING_ON_KINDS = [
+	"you",
+	"person",
+	"agent",
+	"none",
+] as const;
+export type DesignWaitingOnKind = (typeof DESIGN_WAITING_ON_KINDS)[number];
+
+// cm:why whose turn a design is, worded as a requirement's is (`requirements.ts:RequirementWaitingOn`), so every screen says it once from core (`workflows/design-standing.ts:designStandingOf`)
+export interface DesignWaitingOn {
+	kind: DesignWaitingOnKind;
+	who: string;
+	act: string;
+	rule: string;
+}
+
+export interface DesignRequirementLink {
+	key: string;
+	title: string;
+	status: string;
+	pinnedRevision: number | null;
+}
+
+export interface DesignBuildGate {
+	open: boolean;
+	rule: string;
 }
 
 export interface DesignRevisionSummary {
@@ -93,6 +125,7 @@ export interface DesignRevisionSummary {
 	decidedByName: string | null;
 	decidedAt: string | null;
 	reason: string | null;
+	state: DesignRevisionState;
 	stepCount: number;
 }
 
