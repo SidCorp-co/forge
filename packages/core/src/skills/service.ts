@@ -22,7 +22,7 @@ function contentBlocked(blockers: Finding[]): RefusalError {
   );
 }
 
-export interface SkillFileInput {
+interface SkillFileInput {
   path: string;
   content: string;
   encoding?: 'utf8' | 'base64' | undefined;
@@ -104,7 +104,7 @@ export const skillProjection = {
   pinnedAt: skills.pinnedAt,
 } as const;
 
-export interface CreateProjectSkillInput {
+interface CreateProjectSkillInput {
   projectId: string;
   name: string;
   description: string;
@@ -163,7 +163,7 @@ export async function createProjectSkill(input: CreateProjectSkillInput): Promis
   return inserted;
 }
 
-export interface UpdateProjectSkillPatch {
+interface UpdateProjectSkillPatch {
   name?: string | undefined;
   description?: string | undefined;
   skillMd?: string | undefined;
@@ -295,10 +295,7 @@ export async function applyGlobalSkillDefault(input: {
  * Resolve a project's runners to a distinct set of device ids, optionally
  * narrowed to one device.
  */
-export async function listProjectSyncDeviceIds(
-  projectId: string,
-  deviceId?: string,
-): Promise<string[]> {
+async function listProjectSyncDeviceIds(projectId: string, deviceId?: string): Promise<string[]> {
   const rows = await db
     .selectDistinct({ deviceId: runners.deviceId })
     .from(runners)
@@ -310,7 +307,7 @@ export async function listProjectSyncDeviceIds(
   return rows.map((r) => r.deviceId).filter((d): d is string => d != null);
 }
 
-export interface RequestSkillSyncInput {
+interface RequestSkillSyncInput {
   projectId: string;
   actorUserId: string;
   skillNames?: string[] | null | undefined;
@@ -318,7 +315,7 @@ export interface RequestSkillSyncInput {
   deviceId?: string | undefined;
 }
 
-export interface RequestSkillSyncResult {
+interface RequestSkillSyncResult {
   projectId: string;
   deviceIds: string[];
 }

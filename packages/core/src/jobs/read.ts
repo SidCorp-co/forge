@@ -1,17 +1,6 @@
-import { and, asc, count, desc, eq, gt, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import {
-  devices,
-  issues,
-  type JobStatus,
-  type JobType,
-  jobEvents,
-  jobs,
-  promptBlobs,
-  usageRecords,
-} from '../db/schema.js';
-import { canonicalSessionId, usageSessionMatch } from '../usage-records/index.js';
-import type { ActualUsage } from './prompt-route.js';
+import { devices, issues, type JobStatus, type JobType, jobEvents, jobs } from '../db/schema.js';
 
 /** The project an issue belongs to, or null when there is no such issue. */
 export async function issueProjectId(issueId: string): Promise<string | null> {
@@ -70,50 +59,7 @@ export async function jobDeviceSummary(
     .where(eq(devices.id, deviceId))
     .limit(1);
   return d ?? null;
-}
-
-/** A stored system prompt by its hash, or null. */
-export async function promptBlobContent(hash: string): Promise<string | null> {
-  const [blob] = await db
-    .select({ content: promptBlobs.content })
-    .from(promptBlobs)
-    .where(eq(promptBlobs.hash, hash))
-    .limit(1);
-  return blob?.content ?? null;
-}
-
-/**
- * A job's usage rollup. Usage rows are tagged with the job id
- * (`usage_records.session_id::uuid = jobs.id`, see runs-rollup.ts), not the
- * agent_sessions row id. Null when no rows match.
- */
-export async function jobActualUsage(agentSessionId: string): Promise<ActualUsage | null> {
-  const [row] = await db
-    .select({
-      input: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
-      output: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)`.mapWith(Number),
-      cached: sql<number>`coalesce(sum(${usageRecords.cacheReadTokens}), 0)`.mapWith(Number),
-      cacheCreation: sql<number>`coalesce(sum(${usageRecords.cacheCreationTokens}), 0)`.mapWith(
-        Number,
-      ),
-      cost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
-      count: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
-      samples: sql<number>`count(${usageRecords.id})`.mapWith(Number),
-    })
-    .from(usageRecords)
-    .where(usageSessionMatch(sql`= ${canonicalSessionId(agentSessionId)}`));
-  if (!row || row.samples === 0) return null;
-  return {
-    input: row.input,
-    output: row.output,
-    cached: row.cached,
-    cacheCreation: row.cacheCreation,
-    cost: row.cost,
-    count: row.count,
-  };
-}
-
-/** A job's events in seq order, after `sinceSeq` when given. */
+} /** A job's events in seq order, after `sinceSeq` when given. */
 export async function listJobEvents(
   jobId: string,
   sinceSeq: number | undefined,

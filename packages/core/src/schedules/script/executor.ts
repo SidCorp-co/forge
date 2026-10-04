@@ -1,22 +1,22 @@
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 
-export const SCRIPT_TIMEOUT_MS = 30_000;
+const SCRIPT_TIMEOUT_MS = 30_000;
 const MAX_OUTPUT_CHARS = 16_000;
 
-export interface ScriptNotifyPayload {
+interface ScriptNotifyPayload {
   title: string;
   body?: string;
   severity?: string;
 }
 
-export interface RunScheduleScriptInput {
+interface RunScheduleScriptInput {
   script: string;
   params?: Record<string, unknown> | null;
   timeoutMs?: number;
 }
 
-export type RunScheduleScriptResult =
+type RunScheduleScriptResult =
   | { status: 'success'; output: string; notifications: ScriptNotifyPayload[] }
   | { status: 'failed'; output: string; error: string; notifications: ScriptNotifyPayload[] };
 

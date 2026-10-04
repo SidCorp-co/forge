@@ -1,21 +1,13 @@
-import { JOB_MACHINE } from '@forge/contracts/job-machine';
 import {
   AUTO_RELEASE_REASONS,
-  AUTO_RETRY_PAYLOAD_KEY,
   HOLD_PAYLOAD_KEY,
   type HoldState,
-  holdReleasesItself,
   readHoldState,
   TIME_CHECKED_REASONS,
 } from '@forge/contracts/jobs';
-import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type JobType, jobs } from '../db/schema.js';
-import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/index.js';
+import { jobs } from '../db/schema.js';
 import { logger } from '../observability/logger.js';
-import { resolvePipelineWedge } from '../pipeline/index.js';
-import { onlineCapableDeviceIds } from '../runners/select.js';
-import type { RequiredCapabilities } from '../runners/types.js';
 
 export {
   AUTO_RELEASE_REASONS,
@@ -27,7 +19,7 @@ export {
 
 type JobRow = typeof jobs.$inferSelect;
 
-export const HOLD_REASONS: ReadonlySet<string> = new Set([
+const HOLD_REASONS: ReadonlySet<string> = new Set([
   'all_devices_exhausted',
   'retry_rounds_exhausted',
   'non_retryable_terminal',
@@ -35,7 +27,7 @@ export const HOLD_REASONS: ReadonlySet<string> = new Set([
 ]);
 
 /** How long a {@link TIME_CHECKED_REASONS} hold waits before it tries again. */
-export const HOLD_RECHECK_MS = 10 * 60_000;
+const HOLD_RECHECK_MS = 10 * 60_000;
 
 /**
  * Whether holding `job` for `reason` produces a hold that will release itself: a self-clearing
@@ -90,145 +82,4 @@ export async function holdJobForReason(job: JobRow, reason: string): Promise<str
     logger.warn({ err, jobId: job.id, reason }, 'hold: successor insert failed');
     return null;
   }
-}
-
-// cm:hack ISS-5 until:no held job carries this reason — its budget gate is gone, so it releases.
-const RETIRED_BUDGET_HOLD = 'monthly_budget_exhausted';
-
-async function conditionCleared(job: JobRow, reason: string): Promise<boolean> {
-  if (reason === RETIRED_BUDGET_HOLD) return true;
-  if (reason === 'all_devices_exhausted') {
-    const required = (job.payload as { requiredCapabilities?: RequiredCapabilities } | null)
-      ?.requiredCapabilities;
-    const healthy = await onlineCapableDeviceIds(job.projectId, required);
-    return healthy.length > 0;
-  }
-  return TIME_CHECKED_REASONS.has(reason);
-}
-
-/**
- * Turn a held row back into a queued one: the kernel's `held → queued` move, with the columns a
- * requeue resets. Shared by the automatic release below and the operator resume in
- * `resume-job.ts`, so the two produce an IDENTICAL row.
- */
-export async function requeueHeldJob(
-  exec: KernelExecutor,
-  job: JobRow,
-  now: Date,
-  move: { actor: KernelActor; reason: string; source: string },
-): Promise<{ id: string; type: JobType; issueId: string | null } | null> {
-  const [row] = (
-    await transition(exec, JOB_MACHINE, {
-      to: 'queued',
-      from: 'held',
-      set: requeueColumns(job, now),
-      where: eq(jobs.id, job.id),
-      reason: move.reason,
-      actor: move.actor,
-      source: move.source,
-      returning: ['id', 'type', 'issueId'],
-    })
-  ).rows;
-  return row ?? null;
-}
-
-function requeueColumns(
-  job: JobRow,
-  now: Date,
-): {
-  queuedAt: Date;
-  retryAfterAt: null;
-  failureKind: null;
-  failureReason: null;
-  payload: Record<string, unknown>;
-} {
-  const { [AUTO_RETRY_PAYLOAD_KEY]: _spentRotation, ...freshPayload } = (job.payload ??
-    {}) as Record<string, unknown>;
-  return {
-    queuedAt: now,
-    retryAfterAt: null,
-    failureKind: null,
-    failureReason: null,
-    payload: {
-      ...freshPayload,
-      [HOLD_PAYLOAD_KEY]: { ...readHoldState(job.payload), autoRelease: false },
-    },
-  };
-}
-
-/** Clear the requeued job's hold wedge; the pool offers the queued row on the box's next read. */
-export async function dispatchRequeuedJob(updated: {
-  id: string;
-  type: JobType;
-  issueId: string | null;
-}): Promise<void> {
-  await resolvePipelineWedge(updated.id);
-}
-
-/**
- * Re-queue every held job in `projectId` whose condition has cleared.
- *
- * A released job carries a FRESH rotation: the auto-retry payload is dropped so
- * the recovered fleet gets a full round budget rather than one attempt. Its
- * `autoRelease` flag is already spent, so a second hold is permanent.
- */
-export async function releaseHeldJobs(projectId: string): Promise<number> {
-  const now = new Date();
-  const candidates = await db
-    .select()
-    .from(jobs)
-    .where(
-      and(
-        eq(jobs.projectId, projectId),
-        eq(jobs.status, 'held'),
-        or(isNull(jobs.retryAfterAt), lte(jobs.retryAfterAt, now)),
-      ),
-    );
-
-  let released = 0;
-  for (const job of candidates) {
-    const state = readHoldState(job.payload);
-    const reason = state?.reason ?? job.failureReason ?? '';
-    if (state && !holdReleasesItself(state)) continue;
-    let cleared = false;
-    try {
-      cleared = await conditionCleared(job, reason);
-    } catch (err) {
-      logger.warn({ err, jobId: job.id, reason }, 'hold: condition check threw, staying held');
-      continue;
-    }
-    if (!cleared) continue;
-
-    const updated = await requeueHeldJob(db, job, now, {
-      actor: { type: 'system' },
-      reason: `hold condition cleared: ${reason}`,
-      source: 'hold-release',
-    });
-    if (!updated) continue;
-
-    released += 1;
-    logger.info({ jobId: job.id, issueId: job.issueId, reason }, 'hold: released to queued');
-    await dispatchRequeuedJob(updated);
-  }
-  return released;
-}
-
-/** Held jobs for `projectId`, newest first — the alert surface for INV-7. */
-export async function listHeldJobs(
-  projectId: string,
-): Promise<
-  Array<{ id: string; issueId: string | null; type: string; reason: string | null; heldAt: Date }>
-> {
-  const rows = await db
-    .select({
-      id: jobs.id,
-      issueId: jobs.issueId,
-      type: jobs.type,
-      reason: jobs.failureReason,
-      heldAt: jobs.queuedAt,
-    })
-    .from(jobs)
-    .where(and(eq(jobs.projectId, projectId), inArray(jobs.status, ['held'])))
-    .orderBy(sql`${jobs.queuedAt} DESC`);
-  return rows;
 }

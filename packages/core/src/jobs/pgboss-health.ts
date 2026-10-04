@@ -24,7 +24,7 @@ interface CheckBackstopDeps {
   uptimeMs: number;
 }
 
-export function checkBackstop(deps: CheckBackstopDeps): boolean {
+function checkBackstop(deps: CheckBackstopDeps): boolean {
   const { now, uptimeMs } = deps;
 
   let lastTickAt: number | null;

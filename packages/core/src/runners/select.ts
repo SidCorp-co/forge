@@ -1,6 +1,6 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type RunnerType, runners } from '../db/schema.js';
+import { type RunnerType } from '../db/schema.js';
 import { CLAIM_CAPABLE_DEVICE } from './device-cap.js';
 import {
   deviceNotDisabled,
@@ -46,25 +46,6 @@ export function defaultRunnerCapabilities(
   }
   return {};
 }
-
-/**
- * The `capabilities` jsonb of the device's `claude-code` runner, or `null`
- * when the device has none registered.
- *
- * `capabilities.pm` is the PM opt-in written by {@link defaultRunnerCapabilities}.
- */
-export async function readDeviceClaudeCodeCapabilities(
-  deviceId: string,
-): Promise<Record<string, unknown> | null> {
-  const [runner] = await db
-    .select({ capabilities: runners.capabilities })
-    .from(runners)
-    .where(and(eq(runners.deviceId, deviceId), eq(runners.type, 'claude-code')))
-    .limit(1);
-  if (!runner) return null;
-  return (runner.capabilities ?? {}) as Record<string, unknown>;
-}
-
 /**
  * Circuit breaker — number of consecutive recent FAILED terminal jobs on a
  * device (for a project) that trips it out of dispatch selection. Override via
@@ -75,7 +56,7 @@ export const DEVICE_FAILURE_STREAK = (() => {
   return Number.isFinite(n) && n > 0 ? n : 3;
 })();
 
-export const DEVICE_TRIP_WINDOW_MS = (() => {
+const DEVICE_TRIP_WINDOW_MS = (() => {
   const n = Number.parseInt(process.env.DEVICE_TRIP_WINDOW_MS ?? '', 10);
   return Number.isFinite(n) && n > 0 ? n : 15 * 60_000;
 })();

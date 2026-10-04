@@ -5,24 +5,26 @@
 import type { ContentLanguageView } from '@forge/contracts/content-language';
 import type { Tx } from '../db/client.js';
 import type { KernelExecutor } from '../db/kernel-marker.js';
+import type { MemberLens } from '../db/schema.js';
 import type { InterventionEventInput, ResolvedJobMcpServers } from '../jobs/index.js';
 import type { EgressScope } from '../lib/data-egress.js';
 import type { KernelActor } from '../lifecycle/index.js';
 
 /** The blob store attachment bytes live in. */
-export interface AttachmentStore {
+interface AttachmentStore {
   get(path: string): Promise<Buffer>;
   put(key: string, bytes: Buffer, mime: string): Promise<{ path: string }>;
 }
 
-/** A completed session a schedule started, as the schedule's write-back reads it. */
-export interface CompletedScheduleSession {
-  id: string;
-  metadata: unknown;
-  messages: unknown;
-}
-
-export interface AgentSessionsPorts {
+interface AgentSessionsPorts {
+  /** The preamble an interactive session on this project starts with. */
+  buildChatPreamble(
+    projectId: string,
+    userId?: string | null,
+    forceLenses?: readonly MemberLens[] | null,
+  ): Promise<string>;
+  /** The tool reference a resumed chat turn is handed as its system prompt. */
+  toolReference(): string;
   attachments(): AttachmentStore;
   /** The deployment's fast model; null when none is configured or the call failed. */
   callFastModel(scope: EgressScope, prompt: string, maxTokens: number): Promise<string | null>;
@@ -43,8 +45,6 @@ export interface AgentSessionsPorts {
       source: string;
     },
   ): Promise<void>;
-  /** Writes a completed schedule session's report back onto its schedule and session. */
-  writeBackScheduleSession(session: CompletedScheduleSession): Promise<void>;
   /** Re-dispatches a schedule's session on another box after a failover-class failure. */
   redispatchScheduleSessionOnFailover(
     sessionId: string,

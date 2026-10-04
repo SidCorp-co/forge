@@ -1,4 +1,4 @@
-export { compareRunnerBuild, type RunnerBuildComparison } from './build-state.js';
+export { type RunnerBuildComparison } from './build-state.js';
 export { assertDeviceBoundToProject } from './device-project.js';
 export { readRunGate } from './gate-report.js';
 export { OCCUPYING } from './load.js';
@@ -7,7 +7,7 @@ export { ensureMasterSession, residentMasterSql } from './master-session.js';
 export { masterLastBeatSql, masterSilentSql } from './master-silence.js';
 export { ADMITTED_RUNNER } from './pool-admission.js';
 export { readRunnerPoolRead } from './pool-read-report.js';
-export { type DevicesPorts, provideDevicesPorts } from './ports.js';
+export { provideDevicesPorts } from './ports.js';
 export { runDevicePrune } from './prune.js';
 export { returnIssuesForRun } from './run-issue-return.js';
 export { handleRunnerSessions } from './run-ledger-ws.js';

@@ -84,9 +84,3 @@ export function broadcastTurnEdited(session: SessionLite, turnId: string): void 
 export function broadcastTurnTruncated(session: SessionLite, fromTurnIndex: number): void {
   broadcastSession(session, 'agent-session.turn.truncated', { fromTurnIndex });
 }
-
-/** Test hook — flush any pending streaming-append debounce timers. */
-export function flushPendingTurnBroadcasts(): void {
-  for (const t of pendingTailBroadcast.values()) clearTimeout(t);
-  pendingTailBroadcast.clear();
-}

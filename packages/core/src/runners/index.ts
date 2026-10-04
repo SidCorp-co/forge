@@ -3,7 +3,7 @@ export { attributeFailureToRunner } from './attribute-failure.js';
 export { bootstrapRunnerAdapters } from './bootstrap.js';
 export { AGENT_NAMING_MIN_RUNNER, atLeastVersion, claimCapableSql } from './device-cap.js';
 export { reapGhostRunners } from './ghost-reaper.js';
-export { type HeartbeatRunnerTransition, mirrorHeartbeatToRunners } from './heartbeat-mirror.js';
+export { mirrorHeartbeatToRunners } from './heartbeat-mirror.js';
 export {
   handleRunnerRegister,
   handleRunnerUnregister,
@@ -18,11 +18,10 @@ export {
 export {
   deviceNotDisabled,
   runnerFresh,
-  runnerLive,
   runnerUnlimited,
   runnerWorkspaceReady,
 } from './liveness-sql.js';
-export { provideRunnersPorts, type RunnersPorts } from './ports.js';
+export { provideRunnersPorts } from './ports.js';
 export { clearRunnerQuarantine, maybeQuarantineRunner } from './quarantine.js';
 export { releaseLabelVerdict, runnerMayTakeJob } from './release-label.js';
 export { runnerEventsRetention } from './retention.js';
@@ -32,11 +31,7 @@ export { runRunnerStaleSweep } from './stale-detector.js';
 export type { RequiredCapabilities } from './types.js';
 export {
   deleteDeviceRunners,
-  deleteProjectRunner,
   patchDeviceRunnerCheckout,
-  patchProjectRunner,
-  type RunnerCheckout,
   setRunnerProvisionDetail,
   storeRunnerPoolReads,
-  upsertDeviceRunner,
 } from './writes.js';

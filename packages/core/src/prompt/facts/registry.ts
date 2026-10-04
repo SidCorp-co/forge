@@ -2,10 +2,10 @@ import type { IssueStatus, JobType } from '../../db/schema.js';
 import { guideRef } from '../../guides/index.js';
 import { STEP_TOOL_REFERENCE_TEXT } from './drive-rules.js';
 
-export type FactCategory = 'enum' | 'protocol' | 'format' | 'reference';
-export type FactTier = 'mandatory' | 'contextual';
-export type FactScope = 'global' | 'project-resolved';
-export type FactNamespace = 'forge' | 'project';
+type FactCategory = 'enum' | 'protocol' | 'format' | 'reference';
+type FactTier = 'mandatory' | 'contextual';
+type FactScope = 'global' | 'project-resolved';
+type FactNamespace = 'forge' | 'project';
 
 /**
  * Inputs a fact's `render()` may consult. Project-resolved facts read the
@@ -46,8 +46,8 @@ export interface ForgeFact {
    *
    * Distinct from `appliesTo`, which gates on the stage and is known statically: this gates on
    * resolved project data, so a fact about a feature a project does not use costs that project
-   * nothing. `render()` must still return text without it — the author-time surfaces (Skill
-   * Studio, `GET /api/skill-facts`) preview every fact regardless of any one project.
+   * nothing. `render()` must still return text without it — the author-time surface (Skill
+   * Studio) previews every fact regardless of any one project.
    */
   relevant?(ctx: FactRenderContext): boolean;
 }
@@ -282,11 +282,6 @@ When you are unsure which module fits, attach the labels you are sure of and lea
 ] as const;
 
 const FACT_BY_ID = new Map<string, ForgeFact>(FORGE_FACTS.map((f) => [f.id, f]));
-
-export function getFact(id: string): ForgeFact | undefined {
-  return FACT_BY_ID.get(id);
-}
-
 export function listFacts(opts?: { tier?: FactTier; namespace?: FactNamespace }): ForgeFact[] {
   return FORGE_FACTS.filter(
     (f) =>

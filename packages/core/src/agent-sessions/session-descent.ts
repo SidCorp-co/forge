@@ -20,7 +20,7 @@ export const DESCENT_SOURCE = 'session-descent';
 /** Nothing forbids a cycle in a self-referencing column; hitting this is a defect. */
 const MAX_DEPTH = 8;
 
-export interface DescentResult {
+interface DescentResult {
   closed: string[];
   runsReturned: string[];
 }

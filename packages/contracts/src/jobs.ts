@@ -110,3 +110,25 @@ export function noPromptMessage(jobType: string): string {
 		"every pass. Mint it with a non-empty `promptString`, or not at all."
 	);
 }
+
+/** Which block of a job's system preamble a measurement is about. */
+export type PreambleBlockId =
+	| "pipeline-rules"
+	| "tool-reference"
+	| "project-config"
+	| "policy"
+	| "project-context"
+	| "forge-facts"
+	| "state-block"
+	| "contract-context"
+	| "artifact-context"
+	| "pinned-contract-context"
+	| "content-language";
+
+/** One block of a built preamble, measured. */
+export interface PreambleBlock {
+	id: PreambleBlockId;
+	kind: "system" | "user";
+	chars: number;
+	estTokens: number;
+}

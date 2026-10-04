@@ -298,10 +298,6 @@
         "users"
       ]
     },
-    "improvement-messages": {
-      "kind": "domain",
-      "context": "design"
-    },
     "install": {
       "kind": "door",
       "context": "access"
@@ -705,10 +701,6 @@
     "security": {
       "kind": "platform",
       "context": "platform"
-    },
-    "skill-facts": {
-      "kind": "domain",
-      "context": "execution"
     },
     "skills": {
       "kind": "domain",

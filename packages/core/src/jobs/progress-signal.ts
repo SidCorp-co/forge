@@ -6,13 +6,13 @@ import {
   RESULT_GUARD,
 } from './resident-session.js';
 
-export const LAST_EVENT_LATERAL = sql`LEFT JOIN LATERAL (SELECT max(e.ts) AS max_ts FROM job_events e WHERE e.job_id = j.id) le ON true`;
+const LAST_EVENT_LATERAL = sql`LEFT JOIN LATERAL (SELECT max(e.ts) AS max_ts FROM job_events e WHERE e.job_id = j.id) le ON true`;
 
-export const LAST_PHASE_LATERAL = sql`LEFT JOIN LATERAL (SELECT max(GREATEST(p.started_at, COALESCE(p.ended_at, p.started_at))) AS max_ts FROM phase_journal p WHERE p.run_id = j.pipeline_run_id) lp ON true`;
+const LAST_PHASE_LATERAL = sql`LEFT JOIN LATERAL (SELECT max(GREATEST(p.started_at, COALESCE(p.ended_at, p.started_at))) AS max_ts FROM phase_journal p WHERE p.run_id = j.pipeline_run_id) lp ON true`;
 
-export const LAST_PROGRESS_AT = sql`GREATEST(COALESCE(le.max_ts, j.dispatched_at), COALESCE(lp.max_ts, j.dispatched_at), j.dispatched_at)`;
+const LAST_PROGRESS_AT = sql`GREATEST(COALESCE(le.max_ts, j.dispatched_at), COALESCE(lp.max_ts, j.dispatched_at), j.dispatched_at)`;
 
-export interface QuietJobCandidateOptions {
+interface QuietJobCandidateOptions {
   /** Columns to select off the driving `jobs` row, which is aliased `j`. */
   columns: SQL;
   /** How long a job must have shown no progress by `LAST_PROGRESS_AT`. */

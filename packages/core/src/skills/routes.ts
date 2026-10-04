@@ -1,4 +1,3 @@
-export { skillActivityRoutes } from './activity-routes.js';
 export { skillCrudRoutes } from './crud-routes.js';
 export { deviceSkillRoutes } from './device-routes.js';
 export { projectOnboardRoutes } from './onboard-routes.js';

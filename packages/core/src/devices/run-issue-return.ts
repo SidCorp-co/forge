@@ -38,7 +38,7 @@ import { TransitionError, transitionIssueStatus } from '../issues/index.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { logger } from '../observability/logger.js';
 
-export interface ReturnedIssue {
+interface ReturnedIssue {
   issueKey: string;
   from: IssueStatus;
   to: IssueStatus;

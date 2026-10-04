@@ -1,4 +1,4 @@
-export interface ParsedManifest {
+interface ParsedManifest {
   frontmatter: Record<string, unknown>;
   body: string;
 }

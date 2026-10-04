@@ -14,7 +14,6 @@ import { closeRunIfOneShot } from '../pipeline/index.js';
 import { broadcastSession } from './broadcast.js';
 import { checkoutUnbound, noClaudeClient } from './chat-turn.js';
 import { abortBodySchema, desktopStatusSchema, setRunnerBodySchema } from './lifecycle-schemas.js';
-import { agentSessionsPorts } from './ports.js';
 import { deviceLiveness, deviceServesAnyOf, loadProjectBySlug } from './read.js';
 import { refuseSession } from './refusals.js';
 import {
@@ -208,17 +207,6 @@ agentSessionLifecycleRoutes.post(
 
     if (classification) {
       await classification.recoverAfterWrite(existing.metadata);
-    }
-
-    // ISS-548/ISS-556 — schedule session completion write-back.
-    // When a schedule session completes, parse the agent's embedded report and
-    // persist it. Two paths based on session metadata:
-    //   steward===true  → ISS-556 standing steward: persist stewardReport to
-    //                     session metadata; NO appliedMessageVersions write (standing).
-    //   otherwise       → ISS-548 one-shot: update appliedMessageVersions + skillImproveReport.
-    // Best-effort — failures must not break the status update itself.
-    if (status === 'completed') {
-      await agentSessionsPorts().writeBackScheduleSession(existing);
     }
 
     broadcastSession(updated, 'agent-session.status', { note: note ?? null });

@@ -9,7 +9,7 @@ import { db } from '../db/client.js';
 import { agentSessionTurns, jobs } from '../db/schema.js';
 import { logger } from '../observability/logger.js';
 
-export interface PriorAttempt {
+interface PriorAttempt {
   attempt: number;
   sessionId: string | null;
   /** Turns recorded for that attempt's session; `null` when the ledger holds none for it. */
@@ -31,7 +31,7 @@ export const salvageSchema = z
 
 /** What the runner managed to preserve of a failed attempt's working copy. Inferred from the
  *  schema above so the wire contract and the type cannot drift apart. */
-export type SalvageRecord = z.infer<typeof salvageSchema>;
+type SalvageRecord = z.infer<typeof salvageSchema>;
 
 /** Merge a reported salvage into `jobs.failure_meta` without clobbering what is already there.
  *  Spreads to nothing when the runner reported none, so the caller can spread unconditionally. */

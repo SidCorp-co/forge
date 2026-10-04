@@ -4,7 +4,7 @@
 
 import type { Hono } from 'hono';
 import { adminAggregateRoutes, adminAlertRoutes, adminRoutes } from './admin/routes.js';
-import { agentReportRoutes, feedbackReportsAliasRoutes } from './agent-reports/routes.js';
+import { agentReportRoutes } from './agent-reports/routes.js';
 import {
   agentSessionAttachmentRoutes,
   agentSessionProjectReadRoutes,
@@ -68,7 +68,6 @@ import {
   projectHealthRoutes,
   publicHealthRoutes,
 } from './health/routes.js';
-import { improvementMessageRoutes } from './improvement-messages/routes.js';
 import { installRoutes } from './install/routes.js';
 import {
   githubCallbackRoutes,
@@ -160,11 +159,9 @@ import { mcpMessageBody, mcpNoBody, rootRoutes } from './root-routes.js';
 import { projectRunnerRoutes, runnerRoutes } from './runners/routes.js';
 import { runStandingRoutes } from './runs/routes.js';
 import { scheduleRoutes } from './schedules/routes.js';
-import { skillFactsRoutes } from './skill-facts/routes.js';
 import {
   deviceSkillRoutes,
   projectOnboardRoutes,
-  skillActivityRoutes,
   skillCrudRoutes,
   skillPinRoutes,
   skillStudioRoutes,
@@ -335,8 +332,6 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
 /** Prompts, skills, notifications, questions, agents, conversations, sessions and pipeline runs. */
 function mountAgentRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issue-step-contexts', stepHandoffRoutes);
-  app.route('/api/skill-facts', skillFactsRoutes);
-  app.route('/api/skill-activity', skillActivityRoutes);
   app.route('/api/notifications', notificationRoutes);
   app.route('/api/me', meAttentionRoutes);
   app.route('/api/me', mePulseRoutes);
@@ -380,8 +375,6 @@ function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', projectCostAnalyticsRoutes);
   app.route('/api/schedules', scheduleRoutes);
   app.route('/api/agent-reports', agentReportRoutes);
-  app.route('/api/feedback-reports', feedbackReportsAliasRoutes);
-  app.route('/api/improvement-messages', improvementMessageRoutes);
   app.route('/api/knowledge', knowledgeIngestRoutes);
   app.route('/api/projects', knowledgeRoutes);
   app.route('/api/knowledge-edges', knowledgeEdgeRoutes);

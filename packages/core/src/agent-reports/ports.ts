@@ -3,7 +3,7 @@
 
 import type { AgentReportFeedbackLink } from '@forge/contracts/agent-reports';
 
-export interface AgentReportsPorts {
+interface AgentReportsPorts {
   /** The feedback item each report was triaged into, as the feedback domain shows it. */
   reportLinksOf(
     projectId: string,

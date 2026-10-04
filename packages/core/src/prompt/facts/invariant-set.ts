@@ -8,7 +8,7 @@ export interface PlatformInvariantEntry {
   sha: string;
 }
 
-export interface PlatformInvariantSet {
+interface PlatformInvariantSet {
   digest: string;
   entries: PlatformInvariantEntry[];
   /** One line naming every invariant in force — becomes the event's `reason`. */

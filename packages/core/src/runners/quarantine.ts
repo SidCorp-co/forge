@@ -11,7 +11,7 @@ import { classifyBoxFault } from './attribute-failure.js';
  * quarantine. Override via `RUNNER_QUARANTINE_STREAK` env. Default 3 (mirrors
  * `DEVICE_FAILURE_STREAK`).
  */
-export const RUNNER_QUARANTINE_STREAK = (() => {
+const RUNNER_QUARANTINE_STREAK = (() => {
   const n = Number.parseInt(process.env.RUNNER_QUARANTINE_STREAK ?? '', 10);
   return Number.isFinite(n) && n > 0 ? n : 3;
 })();
@@ -20,7 +20,7 @@ export const RUNNER_QUARANTINE_STREAK = (() => {
  * FIRST quarantine's length — the base of {@link QUARANTINE_BACKOFF}, not the
  * whole story. Override via `RUNNER_QUARANTINE_TTL_MS` env. Default 60 minutes.
  */
-export const RUNNER_QUARANTINE_TTL_MS = (() => {
+const RUNNER_QUARANTINE_TTL_MS = (() => {
   const n = Number.parseInt(process.env.RUNNER_QUARANTINE_TTL_MS ?? '', 10);
   return Number.isFinite(n) && n > 0 ? n : 60 * 60_000;
 })();
@@ -33,7 +33,7 @@ const QUARANTINE_BACKOFF = [1, 2, 4, 8, 24] as const;
  * holds at the last rung: a box that has failed the same check seven times
  * running gets one probe a day, not one an hour.
  */
-export function quarantineTtlMs(level: number): number {
+function quarantineTtlMs(level: number): number {
   const rung = QUARANTINE_BACKOFF[Math.min(Math.max(level, 0), QUARANTINE_BACKOFF.length - 1)];
   return RUNNER_QUARANTINE_TTL_MS * (rung ?? 1);
 }

@@ -42,27 +42,27 @@ export interface RetryOutcome {
 }
 
 /** Uniform cooldown between every retry. No phases, no Retry-After. */
-export const RETRY_COOLDOWN_MS = 60_000;
+const RETRY_COOLDOWN_MS = 60_000;
 
 /** Attempts a single device gets before the chain rotates to the next one. */
-export const RETRY_TRIES_PER_DEVICE = 3;
+const RETRY_TRIES_PER_DEVICE = 3;
 
 /**
  * How long a job may sit deferred for want of ANY usable device before it stops
  * retrying and holds instead.
  */
-export const CAPACITY_DEFER_CEILING_MS = 5 * 60_000;
+const CAPACITY_DEFER_CEILING_MS = 5 * 60_000;
 
 /**
  * What {@link nextRotation} decided. Three outcomes, not two: "nowhere to send
  * it" is not the same answer as "budget spent".
  */
-export type RotationOutcome =
+type RotationOutcome =
   | { kind: 'rotate'; state: AutoRetryPayload }
   | { kind: 'defer'; state: AutoRetryPayload }
   | { kind: 'give_up'; reason: 'retry_rounds_exhausted' | 'all_devices_exhausted' };
 
-export function nextRotation(
+function nextRotation(
   job: JobRow,
   state: AutoRetryPayload,
   online: string[],
@@ -206,7 +206,7 @@ function wedgeCopy(
  * Best-effort: a query failure returns null (classifier falls through to its
  * text patterns).
  */
-export async function deriveCcStartupSignals(
+async function deriveCcStartupSignals(
   job: JobRow,
 ): Promise<{ diedBeforeFirstToolUse: boolean; sessionMessageCount: number } | null> {
   try {

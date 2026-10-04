@@ -41,7 +41,7 @@ export interface LoopScope {
   projectId?: string;
 }
 
-export interface ZombieSessionReapResult {
+interface ZombieSessionReapResult {
   queueTimedOut: number;
   /** ISS-1101 — claimed, reported, then silent with no turn ever reported. */
   turnNeverReported: number;
@@ -49,7 +49,7 @@ export interface ZombieSessionReapResult {
   noClientAcked: number;
 }
 
-export interface JobAxisReapResult {
+interface JobAxisReapResult {
   reaped: number;
   killRequested: number;
   awaitingKill: number;
@@ -457,7 +457,7 @@ export async function reapZombieSessions(
  * pre-kill-gate — failed the job on the very same read, letting the retry it
  * scheduled dispatch a second agent onto the still-live worktree.
  */
-export async function reapSessionLostJobs(
+async function reapSessionLostJobs(
   _now: Date = new Date(),
   scope: LoopScope = {},
 ): Promise<JobAxisReapResult> {
@@ -514,7 +514,7 @@ export async function reapSessionLostJobs(
  * query measures the likeness, and stays green while the shape the sweeper
  * actually runs drifts away from it.
  */
-export function resultMissCandidateQuery(scope: LoopScope = {}, limit?: number): SQL {
+function resultMissCandidateQuery(scope: LoopScope = {}, limit?: number): SQL {
   return quietJobCandidateQuery({
     columns: KILL_GATE_CANDIDATE_COLUMNS,
     quietMinutes: RESULT_QUIET_MINUTES,

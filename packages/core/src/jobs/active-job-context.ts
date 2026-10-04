@@ -1,10 +1,10 @@
+import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
+import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
-import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
-import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 
-export type ActiveJobContext = {
+type ActiveJobContext = {
   /** Always present: the session IS the context, and a job is what it may be running. */
   agentSessionId: string;
   /** Null for a session with no job — a steward or schedule run (ISS-557). */
@@ -23,7 +23,7 @@ export type PipelineCaller = {
   boundProjectId: string | null;
 };
 
-export type PipelineContextResult =
+type PipelineContextResult =
   | { ok: true; context: ActiveJobContext }
   | { ok: false; reason: 'not_pipeline_context' | 'ambiguous_pipeline_context'; detail: string };
 

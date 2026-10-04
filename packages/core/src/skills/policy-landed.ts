@@ -9,7 +9,7 @@ import {
 } from '../prompt/index.js';
 import { recordSkillActivityEvent } from './activity.js';
 
-export interface PolicyLandedSweepResult {
+interface PolicyLandedSweepResult {
   digest: string;
   projectsStamped: number;
   changed: boolean;
@@ -54,7 +54,7 @@ function parseEntries(reason: string | null): PlatformInvariantEntry[] {
  * that existed at boot, so a project created afterwards would carry an empty
  * bundle item 11 until the next deploy.
  */
-export async function ensurePolicyLandedFor(projectId: string): Promise<boolean> {
+async function ensurePolicyLandedFor(projectId: string): Promise<boolean> {
   const set = buildPlatformInvariantSet();
   const previous = await lastSnapshotFor(projectId);
   if (previous?.digest === set.digest) return false;

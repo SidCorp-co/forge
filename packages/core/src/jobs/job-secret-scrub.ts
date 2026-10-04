@@ -7,7 +7,7 @@ import { projectSecrets } from '../db/schema-project-config.js';
 import { appendJobEvent } from './intervention-event.js';
 import { jobsPorts } from './ports.js';
 
-export const SECRET_RESOLVE_KIND = 'secret_resolve' as const;
+const SECRET_RESOLVE_KIND = 'secret_resolve' as const;
 
 export interface SecretResolveAudit {
   environment: string;
@@ -91,7 +91,7 @@ async function currentValues(projectId: string, refs: ReadonlySet<string>): Prom
 
 // cm:flow testing-secrets/scrub after:audit — the values a job was handed are taken back out of
 // everything its box posts, before the row is stored or broadcast
-export async function secretsHeldByJobs(jobIds: readonly string[]): Promise<string[]> {
+async function secretsHeldByJobs(jobIds: readonly string[]): Promise<string[]> {
   const values = new Set<string>();
   for (const id of jobIds) for (const v of handedOut.get(id) ?? []) values.add(v);
   for (const [key, refs] of await resolvedRefsByJob(jobIds)) {

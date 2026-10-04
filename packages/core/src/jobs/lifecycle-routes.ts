@@ -12,7 +12,7 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
-import { holds, requireHeld } from '../permissions/index.js';
+import { holds } from '../permissions/index.js';
 import { clearRunnerLimit, clearRunnerQuarantine } from '../runners/index.js';
 import { materializeJobUsage } from '../usage-records/index.js';
 import { SYNTHETIC_REAP_ERRORS, syncAgentSessionLifecycle } from './agent-session-link.js';
@@ -22,7 +22,6 @@ import { isResumeFailedError, reclassifyAbortedResume } from './handle-resume-fa
 import { readJobGate } from './job-queries.js';
 import { salvageSchema, salvageSet } from './prior-attempts.js';
 import { refuseJob } from './refusals.js';
-import { resumeHeldJob } from './resume-job.js';
 import type { RetryOutcome } from './retry.js';
 import { ackJob, confirmJobKill, finishJobFromRunner, reclaimReapedJob } from './service.js';
 import { jobTurnVerdictRoutes } from './turn-verdict-routes.js';
@@ -390,36 +389,6 @@ jobLifecycleUserRoutes.post(
       actorUserId: userId,
       actorAgency: restActor(c).agency,
       reason: body.reason ?? 'manual cancel (REST)',
-      source: 'rest',
-    });
-    return c.json(result);
-  },
-);
-
-jobLifecycleUserRoutes.post(
-  '/:id/resume',
-  requireAuth(),
-  assertEmailVerified(),
-  zValidator('param', jobIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', cancelBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const job = await loadJob(id);
-    const access = await loadProjectAccess(job.projectId, userId);
-    requireHeld(access, 'project.write');
-
-    const body = c.req.valid('json');
-
-    const result = await resumeHeldJob(id, {
-      actorUserId: userId,
-      actor: restActor(c),
-      reason: body.reason ?? 'manual resume (REST)',
       source: 'rest',
     });
     return c.json(result);

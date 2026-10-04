@@ -14,12 +14,12 @@ import { agentSessions, devices, runners } from '../db/schema.js';
 import { deviceRunLedger } from '../db/schema-run-ledger.js';
 import { logger } from '../observability/logger.js';
 
-export interface RunLedgerIssue {
+interface RunLedgerIssue {
   issueKey: string;
   leaseReturned: boolean;
 }
 
-export interface RunLedgerEntry {
+interface RunLedgerEntry {
   runId: string;
   projectId: string;
   sessionId: string | null;
@@ -145,7 +145,7 @@ export async function applyRunLedgerSnapshot(args: {
   logger.debug({ deviceId: args.deviceId, runs: entries.length }, 'run-ledger: snapshot applied');
 }
 
-export interface ProjectRunSessionRow
+interface ProjectRunSessionRow
   extends Omit<RunLedgerEntry, 'sessionTerminalAtEpochS' | 'worktreeGoneAtEpochS'> {
   /** ISO, because this half is read by a browser rather than written by a box. */
   sessionTerminalAt: string | null;

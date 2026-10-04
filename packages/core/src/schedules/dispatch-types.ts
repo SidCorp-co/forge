@@ -1,7 +1,6 @@
 import type { SessionAsker, SessionRefusal } from '../agent-sessions/index.js';
-import type { ScheduleKind, ScheduleMode } from '../db/schema.js';
+import type { ScheduleKind } from '../db/schema.js';
 import type { FireSettlement } from './fires.js';
-import type { AppliedVersions } from './messages/skill-improve-prompt.js';
 
 export interface ScheduleRowForDispatch {
   id: string;
@@ -9,11 +8,7 @@ export interface ScheduleRowForDispatch {
   projectId: string;
   prompt: string | null;
   targetProjectSlug: string | null;
-  /** When set, the skill-improve engine builds the prompt instead of using `prompt`. */
-  templateKey?: string | null;
   params?: Record<string, unknown> | null;
-  mode?: ScheduleMode | null;
-  appliedMessageVersions?: AppliedVersions | null;
   /** `'script'` runs a sandboxed script with no agent session at all (ISS-618). */
   kind?: ScheduleKind | null;
   script?: string | null;
@@ -30,7 +25,7 @@ export interface DispatchScheduleInput {
   resolvedTarget?: { id: string; createdBy: string };
 }
 
-export type RoutedScheduleResult =
+type RoutedScheduleResult =
   | {
       ok: true;
       sessionId: string | null;
@@ -39,7 +34,7 @@ export type RoutedScheduleResult =
     }
   | {
       ok: false;
-      reason: 'project-not-found' | 'no-device' | 'already-applied';
+      reason: 'project-not-found' | 'no-device';
       status: 'skipped';
     }
   | { ok: false; reason: 'session-failed'; status: 'failed'; sessionId?: string }

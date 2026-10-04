@@ -13,13 +13,13 @@ import { logger } from '../observability/logger.js';
 import { storeRunnerPoolReads } from '../runners/index.js';
 import { WIRE_UNITS } from './gate-report.js';
 
-export const poolReadVerdicts = ['blind', 'intermittent'] as const;
+const poolReadVerdicts = ['blind', 'intermittent'] as const;
 
 /**
  * Both sides read this from `pool-read-report.fixture.json`. The box never truncates
  * to it, since an omitted project is cleared: past it the whole report is refused.
  */
-export const WIRE_PROJECTS = 256;
+const WIRE_PROJECTS = 256;
 
 const failureSchema = z
   .object({
@@ -72,17 +72,17 @@ const conditionSchema = z
     }
   });
 
-export const poolReportSchema = z
+const poolReportSchema = z
   .object({ projects: z.array(conditionSchema).max(WIRE_PROJECTS) })
   .strict();
 
-export type PoolReport = z.infer<typeof poolReportSchema>;
-export type PoolCondition = z.infer<typeof conditionSchema>;
+type PoolReport = z.infer<typeof poolReportSchema>;
+type PoolCondition = z.infer<typeof conditionSchema>;
 
 /** What every surface shows for one runner; `null` where its box reported no failed read. */
 export type RunnerPoolRead = PoolCondition & { receivedAt: string };
 
-export function readHeartbeatPool(pool: unknown): { report?: PoolReport; refused?: string } {
+function readHeartbeatPool(pool: unknown): { report?: PoolReport; refused?: string } {
   if (pool === undefined) return {};
   const parsed = poolReportSchema.safeParse(pool);
   if (parsed.success) return { report: parsed.data };

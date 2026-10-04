@@ -45,6 +45,11 @@ import {
   withDeclaredSource,
 } from './project-config/index.js';
 import {
+  buildChatPreamble,
+  buildPipelinePreambleStructured,
+  TOOL_REFERENCE,
+} from './prompt/index.js';
+import {
   type AskInput,
   answerOf,
   askQuestion,
@@ -61,7 +66,6 @@ import {
   provideSchedulesPorts,
   redispatchScheduleSessionOnFailover,
   settleSessionFires,
-  writeBackScheduleSession,
 } from './schedules/index.js';
 import { recordSkillActivityEvent, resolveRegisteredEffectiveSkills } from './skills/index.js';
 import { getStorage } from './storage/index.js';
@@ -80,6 +84,7 @@ const skillActivity = { recordSkillActivityEvent };
 
 export function provideExecutionPorts(): void {
   provideJobsPorts({
+    buildPipelinePreamble: (projectId, opts) => buildPipelinePreambleStructured(projectId, opts),
     skillActivity,
     dispatchPolicy: {
       dispatchState: async (projectId, wanted) =>
@@ -105,13 +110,14 @@ export function provideExecutionPorts(): void {
   });
 
   provideAgentSessionsPorts({
+    buildChatPreamble,
+    toolReference: () => TOOL_REFERENCE,
     attachments: () => getStorage(),
     callFastModel: (scope, prompt, maxTokens) => callFastModel(scope, prompt, maxTokens),
     foreignScriptChars,
     readContentLanguage,
     resolveRegisteredEffectiveSkills,
     settleSessionFires,
-    writeBackScheduleSession,
     redispatchScheduleSessionOnFailover,
     deviceHolderUserId,
     insertInterventionEvent,
@@ -121,7 +127,6 @@ export function provideExecutionPorts(): void {
   });
 
   provideDevicesPorts({
-    skillActivity,
     readEffectivePolicy,
     policyRefusal,
     policyRefusalOf,
@@ -147,11 +152,7 @@ export function provideExecutionPorts(): void {
       (await resolveProjectHandle(tx, projectId)).userId,
   });
 
-  provideRunnersPorts({
-    publishedRunnerBuild: getPublishedRunnerBuild,
-    mainRunnerHead,
-    readThresholds,
-  });
+  provideRunnersPorts({ readThresholds });
 
   provideSchedulesPorts({
     emitNotification,
