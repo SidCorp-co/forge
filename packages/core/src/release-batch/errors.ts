@@ -263,6 +263,23 @@ export class ReleaseVersionExhaustedError extends Error {
   }
 }
 
+// cm:why a prerelease line declared below what this project already cut would hand out a lower
+// version after a higher one; the line is the operator's to raise, never skipped forward here.
+export class ReleaseVersionLineBehindError extends Error {
+  constructor(
+    public readonly projectId: string,
+    public readonly wanted: string,
+    public readonly highest: string,
+  ) {
+    super(
+      `RELEASE_VERSION_LINE_BEHIND: the next version for project ${projectId} would be ${wanted}, ` +
+        `and this project already cut ${highest}. Nothing was cut. Raise \`release.prerelease.of\` ` +
+        'in the project document to the release the line now previews.',
+    );
+    this.name = 'ReleaseVersionLineBehindError';
+  }
+}
+
 /**
  * One or more issues named by a release record have no `merged_at`, so Forge
  * never watched their work land.

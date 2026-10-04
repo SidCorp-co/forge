@@ -6,8 +6,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { ReleaseRecutRefusedError } from './errors.js';
-import { type ReleaseRowReading, ruleOnRecut } from './version-store.js';
+import { ReleaseRecutRefusedError, ReleaseVersionLineBehindError } from './errors.js';
+import { type ReleaseRowReading, ruleAboveHighest, ruleOnRecut } from './version-store.js';
 
 function highestRow(over: Partial<ReleaseRowReading> = {}): ReleaseRowReading {
   return {
@@ -99,5 +99,38 @@ describe('ruleOnRecut — what it refuses, each by its own reason', () => {
   it('puts the version it refused in the message, so the caller can see what it sent', () => {
     expect(refusalFor('0.4.0', highestRow())).toContain('0.4.0');
     expect(refusalFor('not-a-version', highestRow())).toContain('not-a-version');
+  });
+});
+
+describe('ruleOnRecut — a prerelease', () => {
+  it('refuses to re-cut a prerelease, which the next number on its line replaces', () => {
+    const highest = highestRow({
+      version: { major: 0, minor: 4, patch: 0, pre: { label: 'dev', number: 3 } },
+    });
+    expect(refusalFor('0.4.0-dev.3', highest)).toContain('a prerelease is never re-cut');
+  });
+});
+
+describe('ruleAboveHighest — RELEASE_VERSION_LINE_BEHIND', () => {
+  const pre = (number: number) => ({ major: 0, minor: 4, patch: 0, pre: { label: 'dev', number } });
+
+  it('lets a cut above the highest through', () => {
+    expect(() => ruleAboveHighest('p', pre(2), highestRow({ version: pre(1) }))).not.toThrow();
+    expect(() =>
+      ruleAboveHighest('p', pre(1), highestRow({ version: { major: 0, minor: 3, patch: 0 } })),
+    ).not.toThrow();
+    expect(() => ruleAboveHighest('p', pre(1), null)).not.toThrow();
+  });
+
+  it('refuses a line declared below what the project already cut, naming both versions', () => {
+    try {
+      ruleAboveHighest('p', pre(1), highestRow({ version: { major: 0, minor: 4, patch: 0 } }));
+      throw new Error('ruleAboveHighest returned instead of refusing');
+    } catch (err) {
+      expect(err).toBeInstanceOf(ReleaseVersionLineBehindError);
+      expect((err as Error).message).toMatch(
+        /^RELEASE_VERSION_LINE_BEHIND: .*0\.4\.0-dev\.1.*already cut 0\.4\.0\./,
+      );
+    }
   });
 });

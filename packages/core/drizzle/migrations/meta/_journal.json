@@ -2367,6 +2367,13 @@
       "when": 1814832000000,
       "tag": "0369_a_token_fence_is_edited_with_its_reason",
       "breakpoints": true
+    },
+    {
+      "idx": 370,
+      "version": "7",
+      "when": 1815004800000,
+      "tag": "0370_a_release_version_may_be_a_prerelease",
+      "breakpoints": true
     }
   ]
 }
