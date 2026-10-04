@@ -15,9 +15,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { announceTriage } from '../feedback/triage.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
-import { announceIssueCreated } from '../issues/create-service.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
 import {
@@ -25,12 +23,10 @@ import {
   type PendingIssueRelation,
   writeIssueRelations,
 } from '../issues/relations-service.js';
-import { emitIssueFieldUpdate } from '../issues/update-hook.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
 import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
 import { permissionRefusalFor, requireCan } from '../permissions/index.js';
-import { hooks } from '../pipeline/hooks.js';
 import { lockRequirements } from '../requirements/service.js';
 import { type AcceptChannel, type Effect, type EffectWritten, writeEffect } from './effects.js';
 import {
@@ -54,45 +50,15 @@ import {
 export { createSuggestion, reviseSuggestion } from './propose.js';
 export type { SuggestionOutcome } from './write.js';
 
-/** After the accept committed: the hooks every issue create and field write emit, and the edges' effects. */
+/** After the accept committed: the effects of the edges it landed. Its issue creates, field writes
+ *  and comments wrote their outbox events in the accept's own transaction. */
 async function announceEffect(written: EffectWritten, projectId: string, actor: SuggestionActor) {
-  const who = { type: 'user' as const, id: actor.userId, agency: actor.agency };
-  if (written.triage) await announceTriage(written.triage, actor);
-  for (const id of written.createdIssueIds ?? []) {
-    const [issue] = await db.select().from(issues).where(eq(issues.id, id));
-    if (issue) await announceIssueCreated(issue, who);
-  }
-  if (written.relations?.length) {
-    await flushIssueRelationEffects(
-      { actor: who, createdById: actor.userId },
-      projectId,
-      written.relations,
-    );
-  }
-  if (written.routeComment) {
-    const { issueId, row, authored } = written.routeComment;
-    await hooks.emit('commentCreated', {
-      issueId,
-      projectId,
-      actor: who,
-      authored,
-      commentId: row.id,
-      body: row.body,
-      parentId: null,
-    });
-  }
-  if (written.updatedIssue?.written.length) {
-    const { before } = written.updatedIssue;
-    const [after] = await db.select().from(issues).where(eq(issues.id, before.id));
-    if (after) {
-      await emitIssueFieldUpdate({
-        before: { ...before, workState: null },
-        after: { ...after, workState: null },
-        written: written.updatedIssue.written,
-        actor: who,
-      });
-    }
-  }
+  if (!written.relations?.length) return;
+  await flushIssueRelationEffects(
+    { actor: { type: 'user', id: actor.userId, agency: actor.agency }, createdById: actor.userId },
+    projectId,
+    written.relations,
+  );
 }
 
 // cm:why workflow issue-lifecycle step `dropped` ("not work: … a duplicate"): accepting a duplicate

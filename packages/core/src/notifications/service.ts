@@ -7,6 +7,7 @@ import {
   notifications,
   type NotificationType,
 } from '../db/schema.js';
+import { emitEvent } from '../outbox/index.js';
 import { liveConditionOf, ownsDelivery } from './read.js';
 
 /** Every unread delivery of the caller, marked read; answers how many. */
@@ -21,14 +22,19 @@ export async function markAllDeliveriesRead(userId: string): Promise<number> {
 
 /** One of the caller's deliveries, marked read or unread; null when it is not theirs. */
 export async function setDeliveryRead(deliveryId: string, userId: string, read: boolean) {
-  const [row] = await db
-    .update(notificationDeliveries)
-    .set({ readAt: read ? new Date() : null })
-    .where(
-      and(eq(notificationDeliveries.id, deliveryId), eq(notificationDeliveries.userId, userId)),
-    )
-    .returning();
-  return row ?? null;
+  return db.transaction(async (tx) => {
+    const [marked] = await tx
+      .update(notificationDeliveries)
+      .set({ readAt: read ? new Date() : null })
+      .where(
+        and(eq(notificationDeliveries.id, deliveryId), eq(notificationDeliveries.userId, userId)),
+      )
+      .returning();
+    if (marked && read) {
+      await emitEvent(tx, 'notification.read', { notificationId: marked.id, userId });
+    }
+    return marked ?? null;
+  });
 }
 
 /** Close the tasks this delivery carries; a condition is not reachable from here. Null when not the caller's. */

@@ -4,7 +4,7 @@ import { db } from '../db/client.js';
 import { type MemorySource, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/index.js';
 import { logger } from '../logger.js';
-import type { HooksBus } from '../pipeline/hooks.js';
+import { consume } from '../outbox/index.js';
 import {
   chunkAndPublish,
   chunkContextPrefix,
@@ -120,11 +120,11 @@ function describe(row: { description?: unknown; descriptionFormat?: unknown }): 
 }
 
 /**
- * Subscribe to issue/comment lifecycle hooks and keep the `memories` table in
- * sync via the embeddings service.
+ * Consume the issue outbox events and keep the `memories` table in sync via
+ * the embeddings service.
  *
- * Hook work is detached with `queueMicrotask` so it never adds LiteLLM
- * latency to the request path. Hook subscribers use `indexMemoryBestEffort`,
+ * The consumer detaches its work with `queueMicrotask` so a slow LiteLLM call
+ * never holds the outbox worker; it uses `indexMemoryBestEffort`,
  * which logs and swallows failures — eventually consistent. Explicit callers
  * (REST `POST /api/memory`, knowledge ingest) use
  * `indexMemory` which throws so the caller can report or retry.
@@ -390,30 +390,20 @@ export async function deleteMemory(
 }
 
 /**
- * Attach indexer subscribers to the hook bus. Returns an unsubscribe function
- * for tests; production code should let the subscriptions live for the
- * process lifetime.
+ * The memory index's consumers. Indexing calls the embedding provider, so it is handed off rather
+ * than awaited, and the outbox worker is not held behind it.
  */
-let alreadyRegistered = false;
-
-export function registerMemoryIndexer(bus: HooksBus): () => void {
-  if (alreadyRegistered) {
-    // Prevent duplicate subscriptions when src/index.ts is imported by tests
-    // that also spin up their own subscribers. The boot wiring calls this
-    // once per process; the second caller gets a no-op unsubscribe.
-    return () => undefined;
-  }
-  alreadyRegistered = true;
+export function registerMemoryIndexer(): void {
   const detach = (fn: () => Promise<void>) =>
     queueMicrotask(() => {
       fn().catch((err) => {
         logger.error({ err: (err as Error).message }, 'memory.indexer: detached task failed');
       });
     });
-  const unsubs: Array<() => void> = [];
 
-  unsubs.push(
-    bus.on('issueCreated', (p) => {
+  consume('issue.created', {
+    name: 'memory-indexer',
+    handle: (p) => {
       const text = [p.snapshot.title, describe(p.snapshot)].filter(Boolean).join('\n\n');
       if (!text) return;
       detach(() =>
@@ -425,11 +415,12 @@ export function registerMemoryIndexer(bus: HooksBus): () => void {
           metadata: { priority: p.snapshot.priority, category: p.snapshot.category ?? undefined },
         }),
       );
-    }),
-  );
+    },
+  });
 
-  unsubs.push(
-    bus.on('issueUpdated', (p) => {
+  consume('issue.updated', {
+    name: 'memory-indexer',
+    handle: (p) => {
       if (!p.fields.includes('title') && !p.fields.includes('description')) return;
       const title = (p.after.title ?? '') as string;
       const text = [title, describe(p.after)].filter(Boolean).join('\n\n');
@@ -446,41 +437,6 @@ export function registerMemoryIndexer(bus: HooksBus): () => void {
           },
         }),
       );
-    }),
-  );
-
-  return () => {
-    for (const u of unsubs) u();
-    alreadyRegistered = false;
-  };
-}
-
-/** Test-only. Resets the single-registration guard. */
-export function resetMemoryIndexerRegistration(): void {
-  alreadyRegistered = false;
-}
-
-/**
- * Keep only the `keep` most recently updated notes of one kind that name `errorType`, deleting
- * the stalest of the rest.
- */
-export async function trimNotesOfKind(
-  projectId: string,
-  kind: string,
-  errorType: string,
-  keep: number,
-): Promise<void> {
-  const errorTypeJson = JSON.stringify([errorType]);
-  await db.execute(sql`
-    DELETE FROM memories
-    WHERE id IN (
-      SELECT id FROM memories
-      WHERE project_id = ${projectId}
-        AND source = 'note'
-        AND metadata->>'kind' = ${kind}
-        AND metadata->'errorTypes' @> ${errorTypeJson}::jsonb
-      ORDER BY updated_at DESC
-      OFFSET ${keep}
-    )
-  `);
+    },
+  });
 }

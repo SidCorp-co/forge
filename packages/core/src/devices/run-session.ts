@@ -13,6 +13,8 @@
  */
 
 import { and, eq, inArray, notInArray, type SQL, sql } from 'drizzle-orm';
+import { insertSessionRow } from '../agent-sessions/index.js';
+import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, issues, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
 import { refuseHeldTakeForSeqs } from '../issues/blocked-by.js';
@@ -25,16 +27,8 @@ import {
 import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
 import { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 import { canonicalIssueKey, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
-import { insertSessionRow } from '../agent-sessions/index.js';
-import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { logger } from '../logger.js';
-import {
-  announceOneShotRun,
-  closeRunIfOneShot,
-  insertOneShotRun,
-  type OneShotRunSpec,
-  stampRunMetadataTime,
-} from '../pipeline/runs.js';
+import { closeRunIfOneShot, insertOneShotRun, type OneShotRunSpec } from '../pipeline/runs.js';
 import { requirePolicy } from '../project-config/dispatch-policy.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { liveMasterSessionId } from './master-owner.js';
@@ -56,9 +50,6 @@ export {
 /** The box's own run id for this dispatch, so the two records can be joined. */
 export const BOX_RUN_ID_METADATA_KEY = 'boxRunId';
 
-/** Set on the run once its open event has actually reached the subscribers. */
-export const RUN_ANNOUNCED_METADATA_KEY = 'runSessionAnnouncedAt';
-
 /**
  * The BOX's gate condition when the run opened — not this dispatch's own admission,
  * which a hook holding no control capability cannot attribute to a run (ISS-1192).
@@ -68,11 +59,6 @@ export { RUN_GATE_METADATA_KEY } from './gate-report.js';
 export interface RunSession {
   sessionId: string;
   runId: string;
-}
-
-/** A session found for a box run, and whether its open event ever reached anyone. */
-interface FoundRunSession extends RunSession {
-  announced: boolean;
 }
 
 /**
@@ -119,12 +105,11 @@ async function openSessionForBoxRun(
     deviceId: string;
     boxRunId: string;
   },
-): Promise<FoundRunSession | null> {
+): Promise<RunSession | null> {
   const [row] = await executor
     .select({
       sessionId: agentSessions.id,
       runId: pipelineRuns.id,
-      announced: sql<string | null>`${pipelineRuns.metadata}->>${RUN_ANNOUNCED_METADATA_KEY}`,
     })
     .from(agentSessions)
     .innerJoin(pipelineRuns, eq(pipelineRuns.id, agentSessions.pipelineRunId))
@@ -137,21 +122,7 @@ async function openSessionForBoxRun(
       ),
     )
     .limit(1);
-  return row
-    ? { sessionId: row.sessionId, runId: row.runId, announced: row.announced !== null }
-    : null;
-}
-
-/**
- * Emit this run's open event unless it has already been emitted, and record that it was.
- */
-async function announceOnce(
-  found: { runId: string; announced: boolean },
-  projectId: string,
-): Promise<void> {
-  if (found.announced) return;
-  await announceOneShotRun(found.runId, { projectId, kind: 'system' });
-  await stampRunMetadataTime(found.runId, RUN_ANNOUNCED_METADATA_KEY);
+  return row ? { sessionId: row.sessionId, runId: row.runId } : null;
 }
 
 /**
@@ -182,7 +153,6 @@ export async function openRunSession(args: {
         { ...existing, boxRunId: args.boxRunId, deviceId: args.deviceId },
         'run-session: this box run already has a session, answering with it rather than opening a second',
       );
-      await announceOnce(existing, args.projectId);
       return { sessionId: existing.sessionId, runId: existing.runId };
     }
   }
@@ -267,13 +237,11 @@ export async function openRunSession(args: {
       { ...claimed.existing, boxRunId: args.boxRunId, deviceId: args.deviceId },
       'run-session: another request opened this box run while we were opening it, answering with theirs',
     );
-    await announceOnce(claimed.existing, args.projectId);
     return { sessionId: claimed.existing.sessionId, runId: claimed.existing.runId };
   }
   const opened = claimed.opened;
   if (!opened)
     throw new Error('openRunSession: the claim returned neither a session nor an answer');
-  await announceOnce({ runId: opened.runId, announced: false }, args.projectId);
   logger.info(
     {
       runSessionId: opened.sessionId,

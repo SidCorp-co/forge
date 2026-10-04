@@ -19,6 +19,7 @@ import {
   mirrorHeartbeatToRunners,
   setRunnerProvisionDetail,
 } from '../runners/index.js';
+import { emitEvent } from '../outbox/index.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
 import { recordSkillActivityEvent, resolvePacketIdForHash } from '../skills/activity.js';
 import { revokeDeviceCredentials } from './credential.js';
@@ -145,6 +146,15 @@ export async function reportProvisionStatus(input: {
       returning: ['id'],
     });
     const [row] = await setRunnerProvisionDetail(tx, mine, input.detail, input.status === 'ready');
+    if (row) {
+      await emitEvent(tx, 'runner.provisionStatus', {
+        projectId: row.projectId,
+        runnerId: row.id,
+        deviceId: input.deviceId,
+        status: input.status,
+        detail: input.detail,
+      });
+    }
     return row;
   });
   return runner ?? null;

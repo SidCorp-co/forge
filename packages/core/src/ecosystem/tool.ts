@@ -1,28 +1,23 @@
 import { and, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
-import { agentSessions } from '../../db/schema.js';
-import { supersedeBuilderRun } from '../../ecosystem/builder-supersede.js';
+import { db } from '../db/client.js';
+import { agentSessions } from '../db/schema.js';
+import { type ContextScopedMcpToolFactory, type McpContext, refusedAnswer } from '../lib/tool.js';
+import { requireCan } from '../permissions/index.js';
+import { supersedeBuilderRun } from './builder-supersede.js';
 import {
   CONTRACT_DECISION_REASON_MAX,
   CONTRACT_DECISIONS,
   type ContractDecision,
-} from '../../ecosystem/contract/approval.js';
-import { decideContractVersion } from '../../ecosystem/contract/decide.js';
-import { MAX_ARTIFACT_BYTES } from '../../ecosystem/contract/measure.js';
-import { publishContractVersion } from '../../ecosystem/contract/publish.js';
-import {
-  loadContractContext,
-  recordContractContext,
-} from '../../ecosystem/contract/run-context-service.js';
-import { approvalView } from '../../ecosystem/contract/store.js';
-import { SOURCE_REF } from '../../ecosystem/contract/version-schema.js';
-import {
-  commitmentsSetter,
-  loadInterface,
-  writeInterface,
-} from '../../ecosystem/interface-service.js';
+} from './contract/approval.js';
+import { decideContractVersion } from './contract/decide.js';
+import { MAX_ARTIFACT_BYTES } from './contract/measure.js';
+import { publishContractVersion } from './contract/publish.js';
+import { loadContractContext, recordContractContext } from './contract/run-context-service.js';
+import { approvalView } from './contract/store.js';
+import { SOURCE_REF } from './contract/version-schema.js';
+import { commitmentsSetter, loadInterface, writeInterface } from './interface-service.js';
 import {
   listBuilderRunsAs,
   listLinksAs,
@@ -30,17 +25,17 @@ import {
   readBus,
   readLinkAs,
   recordView,
-} from '../../ecosystem/link-read.js';
-import { repoPath } from '../../ecosystem/link-schema.js';
+} from './link-read.js';
+import { repoPath } from './link-schema.js';
 import {
   createBuilderRun,
   createLink,
   type RecordOutcome,
   updateBuilderRun,
   updateLink,
-} from '../../ecosystem/link-service.js';
-import type { EcosystemRefusal } from '../../ecosystem/refusals.js';
-import { projectsWhere } from '../../ecosystem/store.js';
+} from './link-service.js';
+import type { EcosystemRefusal } from './refusals.js';
+import { projectsWhere } from './store.js';
 import {
   WAIT_BY_ACTION,
   WAIT_DESCRIPTION,
@@ -49,10 +44,8 @@ import {
   WAIT_READS,
   WAIT_SHAPES,
   WAIT_WRITES,
-} from './ecosystem-contract-waits.js';
-import { namedRefusals, type SideCodes, sideOf } from './ecosystem-side.js';
-import { type ContextScopedMcpToolFactory, type McpContext, refusedAnswer } from './lib.js';
-import { requireCan } from '../../permissions/index.js';
+} from './tool-contract-waits.js';
+import { namedRefusals, type SideCodes, sideOf } from './tool-side.js';
 
 const READS = [
   'interface',

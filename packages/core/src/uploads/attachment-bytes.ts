@@ -1,7 +1,7 @@
 // Resolve an attachment's storage path + display metadata across the three
-// attachment tables. Kept separate from `mcp/tools/forge-uploads.ts` (which has
-// its own richer loader for the inline path) so the unauthenticated download
-// route does not have to import the MCP tool layer.
+// attachment tables. Kept separate from `uploads/tool.ts` (which has its own
+// richer loader for the inline path) so the unauthenticated download route does
+// not have to import the MCP tool.
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';

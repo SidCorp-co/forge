@@ -2,13 +2,13 @@
  * ISS-1036 — Google service-account adapter.
  *
  * Google's role in Forge is server-side Sheets access for a project's agents:
- * `mcp/tools/forge-google-sheets.ts` resolves the binding, core makes the call,
+ * `integrations/google/tool.ts` resolves the binding, core makes the call,
  * and the JSON key never leaves this process. So this adapter implements
  * `healthcheck` alone — there is no outbound delivery and no inbound webhook,
  * the same archetype `sentry/adapter.ts` has.
  */
 
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { isPreviousCredentialValid } from '../rotation.js';
 import { findConnectionById, updateConnection } from '../store.js';
 import {

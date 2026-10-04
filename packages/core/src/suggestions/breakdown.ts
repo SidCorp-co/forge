@@ -202,23 +202,27 @@ export async function breakdownEffect(
   for (const [i, item] of p.issues.entries()) {
     const priority = item.priority ?? BREAKDOWN_ISSUE_DEFAULTS.priority;
     const category = item.category ?? BREAKDOWN_ISSUE_DEFAULTS.category;
-    const issue = await insertIssueRow(tx, {
-      projectId,
-      title: item.title,
-      description: item.description ?? null,
-      descriptionFormat: 'markdown',
-      status: 'draft',
-      priority,
-      category,
-      complexity: item.complexity,
-      createdById: actor.userId,
-      createdByDeviceId: null,
-      createdVia: channel,
-      requirementId: req.id,
-      plannedRevision: head,
-      plannedBaselineSeq: guard.baselineSeq,
-      fromSuggestionId: row.id,
-    });
+    const issue = await insertIssueRow(
+      tx,
+      {
+        projectId,
+        title: item.title,
+        description: item.description ?? null,
+        descriptionFormat: 'markdown',
+        status: 'draft',
+        priority,
+        category,
+        complexity: item.complexity,
+        createdById: actor.userId,
+        createdByDeviceId: null,
+        createdVia: channel,
+        requirementId: req.id,
+        plannedRevision: head,
+        plannedBaselineSeq: guard.baselineSeq,
+        fromSuggestionId: row.id,
+      },
+      { actor: { type: 'user', id: actor.userId, agency: actor.agency } },
+    );
     ids.push(issue.id);
     const design = builds[i] ?? null;
     if (design) {
@@ -273,7 +277,6 @@ export async function breakdownEffect(
   const seqOf = new Map(seqs.map((s) => [s.id, s.seq]));
   return {
     refusals: null,
-    createdIssueIds: ids,
     relations,
     effect: {
       requirementId: req.id,

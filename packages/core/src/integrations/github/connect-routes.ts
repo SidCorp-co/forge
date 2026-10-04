@@ -16,7 +16,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { loadOrgRole } from '../../lib/authz.js';
 import { refuser } from '../../lib/refusal.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { badRequest } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';

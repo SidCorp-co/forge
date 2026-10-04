@@ -6,7 +6,6 @@
     "no-coordinator-blob|packages/core/src/comments/routes.ts": 7,
     "no-coordinator-blob|packages/core/src/devices/login-routes.ts": 7,
     "no-coordinator-blob|packages/core/src/devices/routes.ts": 10,
-    "no-coordinator-blob|packages/core/src/eager-subscribers.ts": 7,
     "no-coordinator-blob|packages/core/src/index.ts": 48,
     "no-coordinator-blob|packages/core/src/issues/routes.ts": 7,
     "no-coordinator-blob|packages/core/src/jobs/dispatcher.ts": 9,

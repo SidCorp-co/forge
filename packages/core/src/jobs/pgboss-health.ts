@@ -1,5 +1,5 @@
 import { logger } from '../logger.js';
-import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import { traceStep } from '../observability/sentry.js';
 import { globalRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 
@@ -49,14 +49,12 @@ function fireAlert(now: number, lastTickAtMs: number | null, gapMs: number): boo
   const lastTickAt = lastTickAtMs === null ? null : new Date(lastTickAtMs).toISOString();
   const gapSeconds = Math.round(gapMs / 1000);
 
-  if (isSentryEnabled()) {
-    Sentry.addBreadcrumb({
-      category: 'dispatcher.tick_missing',
-      level: 'warning',
-      message: 'pg-boss backstop tick missing',
-      data: { lastTickAt, gapSeconds },
-    });
-  }
+  traceStep({
+    category: 'dispatcher.tick_missing',
+    level: 'warning',
+    message: 'pg-boss backstop tick missing',
+    data: { lastTickAt, gapSeconds },
+  });
 
   roomManager.publish(globalRoom(), {
     event: 'dispatcher.tick_missing',

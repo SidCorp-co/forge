@@ -1,3 +1,4 @@
+export { registerReleaseBatchClaimSubscriber } from './claim-subscriber.js';
 export { registerReleaseBatchFinish } from './finish-job.js';
 export {
   clearProjectReleaseHolds,

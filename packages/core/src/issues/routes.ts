@@ -18,7 +18,6 @@ import { logger } from '../logger.js';
 import { deleteMemory } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { hooks } from '../pipeline/hooks.js';
 import { requirementOfIssue } from '../requirements/issue-links.js';
 import { proposesWorkflowOf } from '../workflows/design-issue.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
@@ -462,20 +461,10 @@ issueRoutes.patch(
         ...(patch.expect ? { expect: patch.expect } : {}),
         ...(patch.workState ? { workState: patch.workState } : {}),
         actor,
+        changes: { fields: changedFields, before, after },
       });
     } catch (err) {
       throw heldTakeRefusal(err) ?? err;
-    }
-
-    if (changedFields.length > 0) {
-      await hooks.emit('issueUpdated', {
-        issueId: id,
-        projectId: issue.projectId,
-        actor,
-        fields: changedFields,
-        before,
-        after,
-      });
     }
 
     const patched = serializeIssue(

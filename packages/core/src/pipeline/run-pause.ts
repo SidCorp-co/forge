@@ -6,25 +6,10 @@ import { type KernelActor, transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
-import { type HooksBus, hooks } from './hooks.js';
 
 export type PipelineRunRow = typeof pipelineRuns.$inferSelect;
 
-async function emitRunPauseTransition(
-  run: PipelineRunRow,
-  fromStatus: 'running' | 'paused',
-  toStatus: 'paused' | 'running',
-  bus: HooksBus,
-): Promise<void> {
-  await bus.emit('pipelineRunStatusChanged', {
-    runId: run.id,
-    projectId: run.projectId,
-    issueId: run.issueId,
-    kind: run.kind,
-    fromStatus,
-    toStatus,
-    currentStep: run.currentStep,
-  });
+function broadcastRunPause(run: PipelineRunRow): void {
   roomManager.publish(projectRoom(run.projectId), {
     event: 'pipeline_run.status_changed',
     data: {
@@ -115,7 +100,6 @@ export async function pauseRun(args: {
   pauseReason?: string | undefined;
   /** Who paused it; a machine pause is the system's. */
   actor?: KernelActor | undefined;
-  bus?: HooksBus | undefined;
 }): Promise<PipelineRunRow | null> {
   const [row] = (
     await transition(db, RUN_MACHINE, {
@@ -136,13 +120,13 @@ export async function pauseRun(args: {
     })
   ).rows;
   if (!row) return null;
-  await emitRunPauseTransition(row, 'running', 'paused', args.bus ?? hooks);
+  broadcastRunPause(row);
   return row;
 }
 
 export async function resumeRunsWhere(
   where: SQL | undefined,
-  opts: { bus?: HooksBus | undefined; actor?: KernelActor | undefined } = {},
+  opts: { actor?: KernelActor | undefined } = {},
 ): Promise<PipelineRunRow[]> {
   const { rows } = await transition(db, RUN_MACHINE, {
     to: 'running',
@@ -156,7 +140,7 @@ export async function resumeRunsWhere(
     source: 'run-resume',
   });
   for (const row of rows) {
-    await emitRunPauseTransition(row, 'paused', 'running', opts.bus ?? hooks);
+    broadcastRunPause(row);
   }
   return rows;
 }
@@ -165,12 +149,8 @@ export async function resumeRunsWhere(
 export async function resumeRun(args: {
   runId: string;
   actor?: KernelActor | undefined;
-  bus?: HooksBus | undefined;
 }): Promise<PipelineRunRow | null> {
-  const rows = await resumeRunsWhere(eq(pipelineRuns.id, args.runId), {
-    bus: args.bus,
-    actor: args.actor,
-  });
+  const rows = await resumeRunsWhere(eq(pipelineRuns.id, args.runId), { actor: args.actor });
   return rows[0] ?? null;
 }
 

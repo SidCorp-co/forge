@@ -1,6 +1,7 @@
 import { AGENT_REPORT_LIMITS, type AgentReportSeverity } from '@forge/contracts/agent-reports';
 import type { Tx } from '../db/client.js';
 import type { IssuePriority, issueCreationChannels } from '../db/schema.js';
+import type { ActorAgency } from '../issues/actor-agency.js';
 import { insertIssueRow } from '../issues/create-service.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -45,24 +46,28 @@ export async function fileIssueIn(
   tx: Tx,
   reports: readonly FiledReport[],
   ask: { title?: string | undefined; description?: string | undefined },
-  actor: { userId: string },
+  actor: { userId: string; agency: ActorAgency },
   channel: IssueChannel,
 ): Promise<{ id: string; key: string; created: true }> {
   const [first] = reports;
   if (!first) throw new Error('fileIssueIn: no report to file');
   const top = reports.reduce((a, r) => (RANK[r.severity] > RANK[a.severity] ? r : a), first);
-  const issue = await insertIssueRow(tx, {
-    projectId: first.projectId,
-    title: ask.title ?? first.summary.slice(0, AGENT_REPORT_LIMITS.title),
-    description: ask.description ?? reports.map(evidenceOf).join('\n\n---\n\n'),
-    descriptionFormat: 'markdown',
-    status: 'draft',
-    priority: PRIORITY[top.severity],
-    category: reports.some((r) => r.kind === 'bug') ? 'bug' : 'feature',
-    createdById: actor.userId,
-    createdByDeviceId: null,
-    createdVia: channel,
-  });
+  const issue = await insertIssueRow(
+    tx,
+    {
+      projectId: first.projectId,
+      title: ask.title ?? first.summary.slice(0, AGENT_REPORT_LIMITS.title),
+      description: ask.description ?? reports.map(evidenceOf).join('\n\n---\n\n'),
+      descriptionFormat: 'markdown',
+      status: 'draft',
+      priority: PRIORITY[top.severity],
+      category: reports.some((r) => r.kind === 'bug') ? 'bug' : 'feature',
+      createdById: actor.userId,
+      createdByDeviceId: null,
+      createdVia: channel,
+    },
+    { actor: { type: 'user', id: actor.userId, agency: actor.agency } },
+  );
   const prefix = await activeIssuePrefix(first.projectId);
   return { id: issue.id, key: formatIssueRef(prefix, issue.issSeq), created: true };
 }

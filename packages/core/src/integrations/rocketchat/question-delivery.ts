@@ -13,7 +13,7 @@ import { agentQuestions, type QuestionOrigin } from '../../db/schema-questions.j
 import { rocketchatQuestionDeliveries } from '../../db/schema-rocketchat.js';
 import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { problemsOf } from '../../messaging/contract.js';
 import { screenForDoor } from '../../messaging/proven.js';
 import { resolveNotifications } from '../../notifications/auto-resolve.js';

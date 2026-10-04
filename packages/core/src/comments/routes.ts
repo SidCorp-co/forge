@@ -30,7 +30,6 @@ import {
 } from '../middleware/client-capabilities.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { hooks } from '../pipeline/hooks.js';
 import { commentAttachmentRoutes } from './attachment-routes.js';
 import {
   bodyRefusalHttp,
@@ -142,6 +141,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
           parentId: parentId ?? null,
           declaresRecordRoute: declares(clientCapabilities(c), RECORD_ROUTE_CAPABILITY),
           intent,
+          announce: { actor: restActor(c), authored: restAuthored(c) },
         });
       } catch (err) {
         const refusal = bodyRefusalHttp(err) ?? messageRefusalHttp(err);
@@ -163,15 +163,6 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         throw err;
       }
       const inserted = written.row;
-      await hooks.emit('commentCreated', {
-        issueId,
-        projectId: issue.projectId,
-        actor: restActor(c),
-        authored: restAuthored(c),
-        commentId: inserted.id,
-        body: inserted.body,
-        parentId: inserted.parentId,
-      });
 
       return c.json(
         written.warnings.length > 0 ? { ...inserted, warnings: written.warnings } : inserted,
@@ -287,6 +278,7 @@ commentRoutes.patch(
         body,
         format,
         declaresRecordRoute: declares(clientCapabilities(c), RECORD_ROUTE_CAPABILITY),
+        announce: { actor: restActor(c), projectId: comment.projectId, before: comment.body ?? '' },
       });
     } catch (err) {
       const refusal = messageRefusalHttp(err);
@@ -295,14 +287,6 @@ commentRoutes.patch(
     }
     if (!written) throw notFound('comment not found');
     const updated = written.row;
-    await hooks.emit('commentUpdated', {
-      issueId: updated.issueId,
-      projectId: comment.projectId,
-      actor: restActor(c),
-      commentId: updated.id,
-      before: comment.body ?? '',
-      after: updated.body,
-    });
     const { warnings } = written;
     return c.json(warnings.length > 0 ? { ...updated, warnings } : updated);
   },
@@ -325,12 +309,10 @@ commentRoutes.delete(
       requireHeld(access, 'project.admin', "deleting another person's comment");
     }
 
-    await deleteComment(id);
-    await hooks.emit('commentDeleted', {
+    await deleteComment(id, {
+      actor: restActor(c),
       issueId: comment.issueId,
       projectId: comment.projectId,
-      actor: restActor(c),
-      commentId: comment.id,
     });
     return c.body(null, 204);
   },

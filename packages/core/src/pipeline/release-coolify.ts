@@ -6,7 +6,7 @@ import { findDeliveryByRequestId } from '../integrations/deliveries.js';
 import { enqueueOutboundDispatch } from '../integrations/queue.js';
 import { listActiveDeployBindingsForProvider } from '../integrations/store.js';
 import { logger } from '../logger.js';
-import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import { traceStep } from '../observability/sentry.js';
 import { type DeployMap, readDeployMap } from '../project-config/release-path.js';
 import { abandonDeployDispatchHold, openDeployDispatchHold } from './deploy-confirmations.js';
 import {
@@ -236,14 +236,12 @@ export async function tryDispatchCoolifyRelease(args: {
       });
       dispatched.push(binding.id);
 
-      if (isSentryEnabled()) {
-        Sentry.addBreadcrumb({
-          category: 'integration.coolify.dispatch',
-          level: 'info',
-          message: 'enqueued coolify dispatch',
-          data: { bindingId: binding.id, environment: envOf(binding), runId },
-        });
-      }
+      traceStep({
+        category: 'integration.coolify.dispatch',
+        level: 'info',
+        message: 'enqueued coolify dispatch',
+        data: { bindingId: binding.id, environment: envOf(binding), runId },
+      });
     }
   } catch (err) {
     // A placeholder whose deploy was never queued is a hold nothing can settle.
@@ -312,14 +310,12 @@ export async function dispatchCoolifyDeployDirect(args: {
     requestId,
   });
 
-  if (isSentryEnabled()) {
-    Sentry.addBreadcrumb({
-      category: 'integration.coolify.dispatch',
-      level: 'info',
-      message: 'enqueued run-less coolify dispatch',
-      data: { bindingId: binding.id, runId: null },
-    });
-  }
+  traceStep({
+    category: 'integration.coolify.dispatch',
+    level: 'info',
+    message: 'enqueued run-less coolify dispatch',
+    data: { bindingId: binding.id, runId: null },
+  });
 
   return { dispatched: true, pendingHumanConfirm: false, integrationIds: [binding.id] };
 }

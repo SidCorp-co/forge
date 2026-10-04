@@ -10,7 +10,7 @@ import { rateLimit } from '../middleware/rate-limit.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { badRequest, forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { hooks } from '../pipeline/hooks.js';
+import { requireHeld, requireOrgCan } from '../permissions/index.js';
 import { readPluginDesignations, unionPluginDesignations } from '../plugins/designation.js';
 import { withDeclaredSource } from '../project-config/source.js';
 import { annotateDeviceBuilds } from './build-state.js';
@@ -34,7 +34,6 @@ import {
   revokeDevice,
   updateDevice,
 } from './service.js';
-import { requireHeld, requireOrgCan } from '../permissions/index.js';
 
 const unauth = () =>
   new HTTPException(401, { message: 'unauthenticated', cause: { code: 'UNAUTHENTICATED' } });
@@ -419,14 +418,6 @@ deviceAuthRoutes.post(
         cause: { code: 'RUNNER_NOT_FOUND' },
       });
     }
-
-    await hooks.emit('runnerProvisionStatus', {
-      projectId: runner.projectId,
-      runnerId: runner.id,
-      deviceId: device.id,
-      status,
-      detail: detail ?? null,
-    });
 
     return c.json(runner);
   },

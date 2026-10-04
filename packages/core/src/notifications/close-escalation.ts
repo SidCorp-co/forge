@@ -5,7 +5,7 @@ import {
   notificationDeliveryMembers,
   notifications,
 } from '../db/schema.js';
-import { hooks } from '../pipeline/hooks.js';
+import { emitEvent } from '../outbox/index.js';
 
 /**
  * Close every open escalation task carrying this decision, and mark read the deliveries
@@ -32,25 +32,27 @@ export async function closeEscalationTasks(projectId: string, decisionId: string
     .returning({ id: notifications.id });
 
   for (const row of closed) {
-    const told = await db
-      .update(notificationDeliveries)
-      .set({ readAt: new Date() })
-      .where(
-        and(
-          isNull(notificationDeliveries.readAt),
-          inArray(
-            notificationDeliveries.id,
-            db
-              .select({ id: notificationDeliveryMembers.deliveryId })
-              .from(notificationDeliveryMembers)
-              .where(eq(notificationDeliveryMembers.notificationId, row.id)),
+    await db.transaction(async (tx) => {
+      const told = await tx
+        .update(notificationDeliveries)
+        .set({ readAt: new Date() })
+        .where(
+          and(
+            isNull(notificationDeliveries.readAt),
+            inArray(
+              notificationDeliveries.id,
+              db
+                .select({ id: notificationDeliveryMembers.deliveryId })
+                .from(notificationDeliveryMembers)
+                .where(eq(notificationDeliveryMembers.notificationId, row.id)),
+            ),
           ),
-        ),
-      )
-      .returning({ userId: notificationDeliveries.userId });
-    for (const t of told) {
-      await hooks.emit('notificationRead', { notificationId: row.id, userId: t.userId });
-    }
+        )
+        .returning({ userId: notificationDeliveries.userId });
+      for (const t of told) {
+        await emitEvent(tx, 'notification.read', { notificationId: row.id, userId: t.userId });
+      }
+    });
   }
   return closed.length;
 }

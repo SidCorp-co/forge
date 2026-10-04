@@ -17,7 +17,6 @@ import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
-import { hooks } from '../pipeline/hooks.js';
 import {
   dependencyEdgeById,
   issueProjectsOf,
@@ -161,15 +160,7 @@ issueDependencyRoutes.delete(
       throw badRequest({ message: 'edge does not involve this issue' }, 'EDGE_MISMATCH');
     }
 
-    await deleteIssueDependency(edgeId);
-
-    await hooks.emit('dependencyChanged', {
-      projectId: edge.projectId,
-      edgeId,
-      fromIssueId: edge.fromIssueId,
-      toIssueId: edge.toIssueId,
-      kind: edge.kind,
-    });
+    await deleteIssueDependency(edge);
 
     const removedPayload = {
       edgeId,

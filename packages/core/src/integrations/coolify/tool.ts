@@ -16,7 +16,16 @@
  */
 
 import { z } from 'zod';
-import { CoolifyApiError } from '../../integrations/coolify/client.js';
+import {
+  type ContextScopedMcpToolFactory,
+  type McpContext,
+  zodToMcpSchema,
+} from '../../lib/tool.js';
+import { requireCan } from '../../permissions/index.js';
+import { resolveEffectiveProjectId } from '../../projects/index.js';
+import { findLastOutbound } from '../deliveries.js';
+import { requireCoolifyRun } from './access.js';
+import { CoolifyApiError } from './client.js';
 import {
   activeCoolifyIntegrations,
   CoolifyCommandError,
@@ -24,28 +33,16 @@ import {
   listCoolifyIntegrations,
   resolveIntegrationRow,
   runCoolifyDeploy,
-} from '../../integrations/coolify/commands.js';
+} from './commands.js';
 import {
   listApplicationsForIntegration,
   listCoolifyRollbackImages,
   resolveCoolifyTargets,
   runCoolifyCancel,
   runCoolifyRollback,
-} from '../../integrations/coolify/controls.js';
-import {
-  fetchCoolifyDeploymentLogs,
-  fetchCoolifyRuntimeLogs,
-} from '../../integrations/coolify/log-fetch.js';
-import type { CoolifyConfig } from '../../integrations/coolify/types.js';
-import { findLastOutbound } from '../../integrations/deliveries.js';
-import {
-  type ContextScopedMcpToolFactory,
-  type McpContext,
-  resolveEffectiveProjectId,
-  zodToMcpSchema,
-} from './lib.js';
-import { requireCan } from '../../permissions/index.js';
-import { requireCoolifyRun } from '../../integrations/coolify/access.js';
+} from './controls.js';
+import { fetchCoolifyDeploymentLogs, fetchCoolifyRuntimeLogs } from './log-fetch.js';
+import type { CoolifyConfig } from './types.js';
 
 const inputSchema = z
   .object({

@@ -4,7 +4,7 @@
  * The point of the tool is what it does NOT hand back: the project's service
  * account is resolved server-side and the Google call is made from core, so no
  * session, prompt or MCP server config ever holds the key. Same shape as
- * `forge-coolify-deploy.ts`, for the same reason.
+ * `integrations/coolify/tool.ts`, for the same reason.
  *
  * The action list and what each one returns live in the `description` below —
  * it is what a model actually reads, and a second copy here is one that goes
@@ -17,20 +17,20 @@
 
 import { z } from 'zod';
 import {
+  type ContextScopedMcpToolFactory,
+  type McpContext,
+  zodToMcpSchema,
+} from '../../lib/tool.js';
+import { requireCan } from '../../permissions/index.js';
+import { resolveEffectiveProjectId } from '../../projects/index.js';
+import {
   GoogleCommandError,
   googleSheetsAppend,
   googleSheetsInfo,
   googleSheetsRead,
   googleSheetsUpdate,
   listGoogleIntegrations,
-} from '../../integrations/google/commands.js';
-import {
-  type ContextScopedMcpToolFactory,
-  type McpContext,
-  resolveEffectiveProjectId,
-  zodToMcpSchema,
-} from './lib.js';
-import { requireCan } from '../../permissions/index.js';
+} from './commands.js';
 
 const cellSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 

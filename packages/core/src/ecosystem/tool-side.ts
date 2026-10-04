@@ -1,9 +1,8 @@
 import { HTTPException } from 'hono/http-exception';
-import type { EcosystemRefusal, EcosystemRefusalCode } from '../../ecosystem/refusals.js';
-import { RefusalError } from '../../lib/refusal.js';
-import { findProjectIdBySlug } from '../../projects/service.js';
-import type { McpContext } from './lib.js';
-import { patEffectiveProjectIds } from './project-scope.js';
+import { RefusalError } from '../lib/refusal.js';
+import { type McpContext, patEffectiveProjectIds } from '../lib/tool.js';
+import { findProjectIdBySlug } from '../projects/service.js';
+import type { EcosystemRefusal, EcosystemRefusalCode } from './refusals.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

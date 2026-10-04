@@ -6,10 +6,9 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { hooks } from '../pipeline/hooks.js';
+import { requireHeld } from '../permissions/index.js';
 import { clearRunnerFaultFlags } from '../runners/clear-fault-flags.js';
 import { deleteProjectRunner, patchProjectRunner } from '../runners/index.js';
-import { requireHeld } from '../permissions/index.js';
 import { deviceForBind, listProjectRunners, projectHasRunner } from './read.js';
 import { bindDeviceRunner } from './service.js';
 
@@ -93,15 +92,6 @@ projectRunnerRoutes.post(
       });
     }
 
-    // Wake the device room so an online device pulls its queued provision now;
-    // an offline device picks it up from the `queued` row on reconnect.
-    if (runner.deviceId) {
-      await hooks.emit('runnerProvisionRequested', {
-        projectId: runner.projectId,
-        deviceId: runner.deviceId,
-        runnerId: runner.id,
-      });
-    }
 
     return c.json(runner, 201);
   },

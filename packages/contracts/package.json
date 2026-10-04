@@ -10,6 +10,10 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./mcp-tools": {
+      "types": "./dist/mcp-tools.d.ts",
+      "default": "./dist/mcp-tools.js"
+    },
     "./failure-causes": {
       "types": "./dist/failure-causes.d.ts",
       "default": "./dist/failure-causes.js"
@@ -65,6 +69,10 @@
     "./master-standing": {
       "types": "./dist/master-standing.d.ts",
       "default": "./dist/master-standing.js"
+    },
+    "./outbox-events": {
+      "types": "./dist/outbox-events.d.ts",
+      "default": "./dist/outbox-events.js"
     },
     "./run-standing": {
       "types": "./dist/run-standing.d.ts",

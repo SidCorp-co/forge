@@ -1,16 +1,15 @@
 import { JOB_MACHINE } from '@forge/contracts/job-machine';
 import { and, eq, gte } from 'drizzle-orm';
+import { deriveSessionFinal } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { issueStepContexts, jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
-import { hooks } from '../pipeline/hooks.js';
 import { materializeJobUsage } from '../usage-records/materialize.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
-import { deriveSessionFinal } from '../agent-sessions/index.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
@@ -64,12 +63,6 @@ export async function finalizeJobDone(job: JobRow, reason: string): Promise<bool
   roomManager.publish(projectRoom(updated.projectId), {
     event: 'job.completed',
     data: { jobId: updated.id, status: 'done', exitCode: 0 },
-  });
-  await hooks.emit('jobCompleted', {
-    jobId: updated.id,
-    projectId: updated.projectId,
-    issueId: updated.issueId,
-    type: updated.type,
   });
 
   if (updated.issueId) await publishPipelineHealthChanged(updated.projectId, [updated.issueId]);

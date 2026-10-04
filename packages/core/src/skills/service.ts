@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { projects, runners, type SkillTarget, skills } from '../db/schema.js';
 import { RefusalError } from '../lib/refusal.js';
 import { logger } from '../logger.js';
-import { hooks } from '../pipeline/hooks.js';
+import { emitEvent } from '../outbox/index.js';
 import type { Finding } from '../security/findings.js';
 import { scanSkillContent } from '../security/skill-content-scanner.js';
 import { hashSkillBody } from './hash.js';
@@ -409,7 +409,7 @@ export interface RequestSkillSyncResult {
 /**
  * The single explicit-push entrypoint, shared by `POST /api/skills/bulk-push` and project
  * onboarding. Resolves the project's device-bound runners,
- * emits `skillSyncRequested` (→ one `skill.sync` WS command per device room),
+ * emits `skill.syncRequested` (→ one `skill.sync` WS command per device room),
  * and returns the devices that were signalled. No-op (empty deviceIds) when
  * the project has no device-bound runner. Never seeds skills itself — the
  * device pulls + reports.
@@ -426,7 +426,7 @@ export async function requestSkillSync(
 
   const deviceIds = await listProjectSyncDeviceIds(input.projectId, input.deviceId);
   if (deviceIds.length > 0) {
-    await hooks.emit('skillSyncRequested', {
+    await emitEvent(db, 'skill.syncRequested', {
       projectId: input.projectId,
       projectSlug: project.slug,
       deviceIds,

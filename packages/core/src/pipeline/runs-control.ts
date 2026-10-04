@@ -2,8 +2,8 @@ import { RUN_MACHINE } from '@forge/contracts/run-machine';
 /**
  * ISS-102 — pause / resume / cancel transitions for `pipeline_runs`.
  *
- * REST handlers (`pipeline/runs-routes.ts`) and MCP tools
- * (`mcp/tools/forge-pipeline-runs.ts`) both call into these helpers so the
+ * REST handlers (`pipeline/runs-routes.ts`) and the chat tool
+ * (`pipeline/tool-runs.ts`) both call into these helpers so the
  * transition semantics live in one place.
  */
 
@@ -16,10 +16,9 @@ import { type KernelActor, transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
-import { hooks } from './hooks.js';
+import { refusePipeline } from './refuse.js';
 import { pauseRun, resumeRun } from './run-pause.js';
 import { cascadeCancelChildJobs, type JobRow, requestKillsForCascade } from './runs-cascade.js';
-import { refusePipeline } from './refuse.js';
 
 /**
  * ISS-411 — issue statuses an operator cancel must NOT disturb. `on_hold` is
@@ -230,16 +229,6 @@ export async function cancelPipelineRun(
   let issueParked = false;
   if (result.broadcast) {
     broadcastRunStatus(result.run);
-    await hooks.emit('pipelineRunStatusChanged', {
-      runId: result.run.id,
-      projectId: result.run.projectId,
-      issueId: result.run.issueId,
-      kind: result.run.kind,
-      fromStatus: 'running',
-      toStatus: 'cancelled',
-      currentStep: result.run.currentStep,
-      cascadedJobIds: result.cancelledJobIds,
-    });
     await requestKillsForCascade(result.killableJobs, FAILURE_REASON_PIPELINE_CANCELLED);
     if (opts.parkIssue ?? true) {
       issueParked = await parkIssueOnCancel(result.run, opts.actorAgency, opts.actorUserId);

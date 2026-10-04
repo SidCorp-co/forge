@@ -5,7 +5,7 @@ import { postIssueNotice } from '../../comments/index.js';
 import { issues, projects } from '../../db/schema.js';
 import { TransitionError, transitionIssueStatus } from '../../issues/apply-transition.js';
 import { fileDetectedIssue, rewriteIssueMetadata } from '../../issues/index.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { judgeSentryIssue, type SentryAdmissionThresholds } from './admission.js';
 import type { SentryIssueDetail } from './types.js';
 

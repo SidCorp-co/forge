@@ -1,15 +1,15 @@
 import { z } from 'zod';
-import { EmbeddingUnavailableError } from '../../integrations/embeddings/index.js';
+import { EmbeddingUnavailableError } from '../integrations/embeddings/index.js';
+import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
+import { requireCan } from '../permissions/index.js';
 import {
   deleteKnowledgeEntry,
   getKnowledgeEntry,
   listKnowledgeEntries,
   upsertKnowledgeEntry,
   upsertKnowledgeInputSchema,
-} from '../../knowledge/service.js';
-import { runUnifiedSearch } from '../../knowledge/unified-search.js';
-import { type ContextScopedMcpToolFactory, zodToMcpSchema } from './lib.js';
-import { requireCan } from '../../permissions/index.js';
+} from './service.js';
+import { runUnifiedSearch } from './unified-search.js';
 
 const inputSchema = z
   .object({

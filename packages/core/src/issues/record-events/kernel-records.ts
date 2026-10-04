@@ -1,5 +1,5 @@
-import { PARK_STATUSES } from '@forge/contracts/issue-machine';
 import { VERDICTS_WAIVED_FIELD } from '@forge/contracts/delivery-policy';
+import { PARK_STATUSES } from '@forge/contracts/issue-machine';
 import type { Tx } from '../../db/client.js';
 import type { IssueStatus, WaitingKind } from '../../db/schema.js';
 import type { WorkStep } from '../../db/schema-issue-work-state.js';
@@ -71,15 +71,21 @@ export function parkRecordFields(move: MoveRecord): RecordEventField[] {
   ];
 }
 
-// cm:guard ISS-96 — called on the move's own transaction beside its kernel_transitions row, so a move
-// that rolls back leaves no record and a record never stands for a move that did not happen
+/**
+ * What a move adds to its `kernel_transitions` row and outbox event, on the move's own transaction,
+ * and only where that row has no column for it: a park's why, kind and needs (`record.park`, read
+ * by the park view), and a verdict gate passed only because the project waives verdicts
+ * (`record.transition` naming `verdicts-waived`). Any other move writes no record here.
+ */
 export async function recordMove(tx: Tx, move: MoveRecord): Promise<void> {
-  await writeKernelRecord(tx, {
-    issueId: move.issueId,
-    actor: move.actor,
-    kind: 'transition',
-    fields: transitionRecordFields(move),
-  });
+  if (move.verdictsWaived) {
+    await writeKernelRecord(tx, {
+      issueId: move.issueId,
+      actor: move.actor,
+      kind: 'transition',
+      fields: transitionRecordFields(move),
+    });
+  }
   if (!PARK_STATUSES.includes(move.to)) return;
   await writeKernelRecord(tx, {
     issueId: move.issueId,

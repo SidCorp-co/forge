@@ -1,5 +1,5 @@
-import { logger } from '../../logger.js';
-import { isSentryEnabled, Sentry } from '../../observability/sentry.js';
+import { logger } from '../../observability/logger.js';
+import { reportCondition } from '../../observability/sentry.js';
 import { recentOutboundDeliveries } from '../deliveries.js';
 import { findBindingById, findConnectionById, updateConnection } from '../store.js';
 
@@ -76,21 +76,19 @@ export async function maybeTripBreaker(args: {
     'integration: circuit breaker tripped',
   );
 
-  if (isSentryEnabled()) {
-    Sentry.captureMessage('integration.coolify.breaker_tripped', {
-      level: 'error',
-      tags: {
-        provider: connection.provider,
-        role: binding?.role ?? 'unknown',
-        projectId: binding?.projectId ?? 'unknown',
-      },
-      extra: {
-        connectionId: args.connectionId,
-        bindingId: args.bindingId,
-        consecutiveFailures: evaluation.consecutiveFailures,
-      },
-    });
-  }
+  reportCondition('integration.coolify.breaker_tripped', {
+    level: 'error',
+    tags: {
+      provider: connection.provider,
+      role: binding?.role ?? 'unknown',
+      projectId: binding?.projectId ?? 'unknown',
+    },
+    extra: {
+      connectionId: args.connectionId,
+      bindingId: args.bindingId,
+      consecutiveFailures: evaluation.consecutiveFailures,
+    },
+  });
 
   return true;
 }

@@ -1,3 +1,4 @@
+import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import {
   and,
   type Column,
@@ -8,14 +9,13 @@ import {
   type SQL,
   sql,
 } from 'drizzle-orm';
+import { beatSession, insertSessionRow } from '../agent-sessions/index.js';
+import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
-import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
-import { beatSession, insertSessionRow } from '../agent-sessions/index.js';
-import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { logger } from '../logger.js';
-import { announceOneShotRun, insertOneShotRun, type OneShotRunSpec } from '../pipeline/runs.js';
+import { insertOneShotRun, type OneShotRunSpec } from '../pipeline/runs.js';
 
 export { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 export { liveMasterSessionId, masterSessionIfOwned } from './master-owner.js';
@@ -110,7 +110,6 @@ export async function ensureMasterSession(args: {
 
   const opened = claimed.opened;
   if (!opened) throw new Error('ensureMasterSession: the claim answered with neither row');
-  await announceOneShotRun(opened.runId, spec);
   logger.info(
     {
       masterSessionId: opened.sessionId,

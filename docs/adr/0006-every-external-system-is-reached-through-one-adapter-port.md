@@ -105,11 +105,11 @@ sentence that justifies it, and an exception with no reason is refused.
 
 - Every bypass in the table above now sits behind its port; the scan reads zero offenders.
 - **Two priced amnesties remain**, each with the condition that ends it:
-  - Callers of `packages/core/src/observability/sentry.ts` take the vendor's `Sentry` namespace from it (15 core files
-    outside `integrations`, read on 2026-10-04). Ends when that module exports role-typed capture functions and
-    no caller names `Sentry`.
+  - Callers of `packages/core/src/observability/sentry.ts` took the vendor's `Sentry` namespace from it (18 core
+    files outside `integrations`, read on 2026-10-04). Closed by ISS-167: the module exports role-typed
+    functions (`reportFailure`, `reportCondition`, `traceStep`, `flushReports`) and no caller names `Sentry`.
   - Three domain files call a vendor directory where a source-hosting port exists:
-    `mcp/tools/forge-source.ts` (`github/opened-pull-request`, `github/review-note`),
+    `integrations/source-host/tool.ts` (`github/opened-pull-request`, `github/review-note`),
     `issues/merge-routes.ts` (`github/projection-health`) and `webhooks/github-adapter.ts`
     (`github/projection-events`). These are GitHub-only behaviours with no GitLab counterpart yet.
     Ends when each is a `source-host` function, at which point the scan can also refuse a domain

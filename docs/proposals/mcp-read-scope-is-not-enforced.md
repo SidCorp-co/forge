@@ -19,7 +19,7 @@ No gate compares it with `principal.scopes`. The permission check refuses any no
 to a token without `write` (`packages/core/src/permissions/can.ts:holds`), but a tool that asks only
 `project.read` before writing still lets a token holding only `read` write through `/mcp`:
 `forge_agent_report`'s `submit` inserts a report after `requireCan(…, 'project.read', …)`
-(`mcp/tools/forge-agent-report.ts`). No `/mcp` tool reads the token's `admin` scope.
+(`agent-reports/tool.ts`). No `/mcp` tool reads the token's `admin` scope.
 
 ## Why it was not closed on ISS-1175
 

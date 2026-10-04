@@ -1,9 +1,8 @@
 /**
  * Project lookups both transports share.
  *
- * Slug→id resolution had two byte-identical copies — one in `mcp/tools/lib.ts`
- * behind `X-Forge-Project-Slug`, one in `chat-logs/routes.ts` — each returning
- * a different shape of "not found". The routes that select extra columns
+ * Slug→id resolution is shared by `projects/project-scope.ts` (behind
+ * `X-Forge-Project-Slug`) and `chat-logs/routes.ts`. The routes that select extra columns
  * (`webhooks/inbound-routes.ts`, `agent-sessions/lifecycle-routes.ts`) are
  * genuinely different queries and keep their own.
  */
@@ -32,13 +31,14 @@ import {
   removeProjectMember,
   updateProjectMember,
 } from '../permissions/index.js';
+import { emitEvent } from '../outbox/index.js';
 import { DEFAULT_POLICY } from '../project-config/default-policy.js';
-import { seedProjectPolicy } from '../project-config/store.js';
 import { readDeclaredSource } from '../project-config/source.js';
 import { upsertDeviceRunner } from '../runners/index.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
 import { defaultRunnerCapabilities } from '../runners/select.js';
 import { type AgentConfigKeyPatch, patchAgentConfigKeys } from './agent-config.js';
+import { seedProjectPolicy } from '../project-config/store.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { PATCHED_PROJECT } from './projections.js';
 import { refuse } from './refuse.js';
@@ -388,6 +388,13 @@ export async function bindDeviceRunner(input: {
       source: 'runner-bind',
       returning: ['id'],
     });
+    if (row.deviceId) {
+      await emitEvent(tx, 'runner.provisionRequested', {
+        projectId: row.projectId,
+        deviceId: row.deviceId,
+        runnerId: row.id,
+      });
+    }
     return live.rows.length > 0 ? { ...row, status } : row;
   });
   if (!runner) return null;

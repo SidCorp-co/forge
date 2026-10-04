@@ -1,32 +1,18 @@
 import type { ChannelRefusalCode } from '@forge/contracts/ecosystem';
 import { HTTPException } from 'hono/http-exception';
-import { db } from '../../db/client.js';
-import { ecosystemReadFence } from '../../ecosystem/access.js';
-import { readApiPage } from '../../ecosystem/api-page.js';
-import type { ChannelOutcome } from '../../ecosystem/channel-act.js';
-import {
-  channelRoleRefusal,
-  type Writer,
-  writerOfPrincipal,
-} from '../../ecosystem/channel-author.js';
-import { supersede, withdraw } from '../../ecosystem/channel-ends.js';
-import { holdOrRelease } from '../../ecosystem/channel-holds.js';
-import { inbox, outbox, readAs, threadAs, unanswered } from '../../ecosystem/channel-read.js';
-import { readRegister } from '../../ecosystem/channel-register.js';
-import { UUID_PATTERN } from '../../ecosystem/channel-schema.js';
-import { createDraft, editDraft, submit } from '../../ecosystem/channel-service.js';
-import {
-  holdView,
-  inboxView,
-  outboxView,
-  threadView,
-  unansweredView,
-  viewOf,
-} from '../../ecosystem/channel-view.js';
-import { activeEcosystemIdsOf, isActiveMember } from '../../ecosystem/store.js';
-import { RefusalError } from '../../lib/refusal.js';
-import { namedRefusals, type SideCodes, sideOf } from '../../mcp/tools/ecosystem-side.js';
-import type { ContextScopedMcpToolFactory, McpContext } from '../../mcp/tools/lib.js';
+import { db } from '../db/client.js';
+import { RefusalError } from '../lib/refusal.js';
+import type { ContextScopedMcpToolFactory, McpContext } from '../lib/tool.js';
+import { ecosystemReadFence } from './access.js';
+import { readApiPage } from './api-page.js';
+import type { ChannelOutcome } from './channel-act.js';
+import { channelRoleRefusal, type Writer, writerOfPrincipal } from './channel-author.js';
+import { supersede, withdraw } from './channel-ends.js';
+import { holdOrRelease } from './channel-holds.js';
+import { inbox, outbox, readAs, threadAs, unanswered } from './channel-read.js';
+import { readRegister } from './channel-register.js';
+import { UUID_PATTERN } from './channel-schema.js';
+import { createDraft, editDraft, submit } from './channel-service.js';
 import {
   CHANNEL_ACTIONS,
   CHANNEL_INPUT_SCHEMA,
@@ -34,8 +20,18 @@ import {
   type ChannelAction,
   type ChannelArgs,
   parseChannelCall,
-} from './forge-channel-args.js';
-import { decideGateAs, type NamedRefusal } from './forge-channel-gate.js';
+} from './channel-tool-args.js';
+import { decideGateAs, type NamedRefusal } from './channel-tool-gate.js';
+import {
+  holdView,
+  inboxView,
+  outboxView,
+  threadView,
+  unansweredView,
+  viewOf,
+} from './channel-view.js';
+import { activeEcosystemIdsOf, isActiveMember } from './store.js';
+import { namedRefusals, type SideCodes, sideOf } from './tool-side.js';
 
 const DESCRIPTION = [
   "Act in a project's ecosystem channel under the credential's own role: a viewer reads, a member writes.",

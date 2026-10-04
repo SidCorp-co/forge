@@ -22,7 +22,7 @@ import {
   claimOf,
   releaseWindow,
 } from '../../conversations/windows.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import type { ActiveConnection } from './connection-manager.js';
 import { parseRocketChatVenueId, rocketChatConversationPorts } from './conversation-port.js';
 import { rocketChatTurn } from './turn-inputs.js';

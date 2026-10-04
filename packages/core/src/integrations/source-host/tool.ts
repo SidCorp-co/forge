@@ -14,26 +14,22 @@
 
 import { z } from 'zod';
 import {
-  OpenedPullRequestIncomplete,
-  projectOpenedPullRequest,
-} from '../../integrations/github/opened-pull-request.js';
-import { noteReviewOnIssue } from '../../integrations/github/review-note.js';
-import { listIntegrations } from '../../integrations/registry.js';
-import {
-  SourceHostCallError,
-  SourceHostInputRefusal,
-  SourceHostUnavailable,
-} from '../../integrations/source-host/errors.js';
-import { resolveSourceHost } from '../../integrations/source-host/resolve.js';
-import type { ReviewEvent, SourceHost } from '../../integrations/source-host/types.js';
-import { logger } from '../../logger.js';
-import {
   type ContextScopedMcpToolFactory,
   type McpContext,
-  resolveEffectiveProjectId,
   zodToMcpSchema,
-} from './lib.js';
+} from '../../lib/tool.js';
+import { logger } from '../../logger.js';
 import { requireCan } from '../../permissions/index.js';
+import { resolveEffectiveProjectId } from '../../projects/index.js';
+import {
+  OpenedPullRequestIncomplete,
+  projectOpenedPullRequest,
+} from '../github/opened-pull-request.js';
+import { noteReviewOnIssue } from '../github/review-note.js';
+import { listIntegrations } from '../registry.js';
+import { SourceHostCallError, SourceHostInputRefusal, SourceHostUnavailable } from './errors.js';
+import { resolveSourceHost } from './resolve.js';
+import type { ReviewEvent, SourceHost } from './types.js';
 
 /**
  * The verbs this face refuses BY NAME rather than by schema. Nothing an agent does through it can

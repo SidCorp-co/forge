@@ -2,9 +2,8 @@
  * ISS-571 / ISS-868 — the `relations` a caller declares relative to the issue
  * being created or updated, mapped onto the graph's `from`/`to` shape.
  *
- * ISS-889 — moved out of `mcp/tools/` so the create path can reach it without
- * an `issues → mcp` import. It is transport-neutral: callers hand it the
- * writer identity they already resolved.
+ * It is transport-neutral: callers hand it the writer identity they already
+ * resolved.
  */
 
 import { z } from 'zod';

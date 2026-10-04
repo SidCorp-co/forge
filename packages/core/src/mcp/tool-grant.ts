@@ -10,33 +10,14 @@ import {
   patGrantCovers,
   patPrefixForPath,
 } from '../credentials/pat-permissions.js';
-
-export type ToolGrantNone = { readonly none: string };
-
-export type ToolGrantEntry = PatPermission | ToolGrantNone;
-
-// cm:guard an action the per-action table does not name is refused, never let through.
-export type ToolGrant =
-  | ToolGrantEntry
-  | {
-      readonly byAction: Readonly<Record<string, ToolGrantEntry>>;
-      readonly defaultAction?: string;
-    };
-
-/**
- * Where a tool's work lands. `project`: in one project, which the tool resolves and fences
- * itself. `public`: in no project and on nothing private, beside a `none` grant. `{ account }`:
- * beyond any one project, so a token fenced to projects is refused; the text names the work.
- */
-export type ToolReachEntry = 'project' | 'public' | { readonly account: string };
-
-export type ToolReach =
-  | ToolReachEntry
-  | { readonly byAction: Readonly<Record<string, ToolReachEntry>> };
-
-// cm:why a tool is dated by the REST mount serving its rows, one per resource its grants name,
-// not by its resource's oldest prefix, so a token is refused a tool exactly where REST refuses it the route.
-export type ToolRoute = PatRoute | readonly PatRoute[];
+import type {
+  ToolGrant,
+  ToolGrantEntry,
+  ToolGrantNone,
+  ToolReach,
+  ToolReachEntry,
+  ToolRoute,
+} from '../lib/tool.js';
 
 export interface GrantedTool {
   readonly name: string;

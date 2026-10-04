@@ -2472,6 +2472,13 @@
       "when": 1816128000000,
       "tag": "0384_a_coolify_binding_takes_no_agent_grant",
       "breakpoints": true
+    },
+    {
+      "idx": 385,
+      "version": "7",
+      "when": 1816214400000,
+      "tag": "0385_one_durable_outbox_replaces_the_hooks_bus",
+      "breakpoints": true
     }
   ]
 }

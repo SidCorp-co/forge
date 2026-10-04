@@ -1,6 +1,8 @@
+import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
 import { eq, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
+import { emitEvent } from '../outbox/index.js';
 
 export type IssueTriage = Partial<
   Pick<typeof issues.$inferInsert, 'priority' | 'category' | 'complexity'>
@@ -15,12 +17,19 @@ export async function setIssueTriage(tx: Tx, issueId: string, set: IssueTriage):
     .where(eq(issues.id, issueId));
 }
 
-/** A batch edit's plain fields, stamped with the database clock. */
-export async function setIssueBatchFields(issueId: string, set: IssueTriage): Promise<void> {
-  await db
-    .update(issues)
-    .set({ ...set, updatedAt: sql`now()` })
-    .where(eq(issues.id, issueId));
+/** A batch edit's plain fields, stamped with the database clock, and its `issue.updated` event. */
+export async function applyBatchFieldEdit(
+  issue: { id: string; projectId: string },
+  set: IssueTriage,
+  change: Omit<OutboxEventPayload<'issue.updated'>, 'issueId' | 'projectId'>,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx
+      .update(issues)
+      .set({ ...set, updatedAt: sql`now()` })
+      .where(eq(issues.id, issue.id));
+    await emitEvent(tx, 'issue.updated', { issueId: issue.id, projectId: issue.projectId, ...change });
+  });
 }
 
 /**

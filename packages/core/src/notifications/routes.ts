@@ -7,7 +7,6 @@ import { fromPage, listResponse } from '../lib/pagination.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { hooks } from '../pipeline/hooks.js';
 import { recordAndDeliver } from './deliver.js';
 import { deliveryMembers, listDeliveries, openNotificationCount } from './read.js';
 import {
@@ -115,8 +114,6 @@ notificationRoutes.patch(
 
     const row = await setDeliveryRead(id, userId, read);
     if (!row) throw notFound('notification not found');
-
-    if (read) await hooks.emit('notificationRead', { notificationId: row.id, userId });
     return c.json(row);
   },
 );

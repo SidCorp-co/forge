@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
 
 function readMasterKey(): string | undefined {
   const v = process.env.INTEGRATION_MASTER_KEY;

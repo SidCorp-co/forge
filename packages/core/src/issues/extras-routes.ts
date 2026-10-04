@@ -10,12 +10,11 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
-import { hooks } from '../pipeline/hooks.js';
 import { triggerPipelineStepManual } from '../pipeline/orchestrator.js';
 import { statusChangeRows } from './activity-read.js';
 import { TransitionError, transitionIssueStatus } from './apply-transition.js';
 import { BATCH_SKIP_BY_CODE, type BatchSkipReason } from './batch-skip-reason.js';
-import { type IssueTriage, setIssueBatchFields } from './field-writes.js';
+import { applyBatchFieldEdit, type IssueTriage } from './field-writes.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import {
   issueRouteIdParamSchema,
@@ -183,16 +182,13 @@ issueExtrasRoutes.patch(
           }
         }
         if (changedFields.length > 0) {
-          await setIssueBatchFields(row.id, plainUpdates as IssueTriage);
-          touched = true;
-          await hooks.emit('issueUpdated', {
-            issueId: row.id,
-            projectId: row.projectId,
+          await applyBatchFieldEdit(row, plainUpdates as IssueTriage, {
             actor,
             fields: changedFields,
             before,
             after,
           });
+          touched = true;
         }
       } catch (err) {
         result.failed.push({

@@ -16,7 +16,6 @@ import {
 } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { closeEscalationTasks } from '../notifications/close-escalation.js';
-import { hooks } from '../pipeline/hooks.js';
 import { refuser } from '../lib/refusal.js';
 import {
   decisionInProject,
@@ -160,8 +159,8 @@ pmRoutes.post(
 
 /**
  * Operator response to a PM escalation. Posts a comment on each issue the
- * decision referenced (memory indexer auto-embeds via the `commentCreated`
- * hook), marks the matching `pm_escalation` notification rows as read, and
+ * decision referenced (memory indexer auto-embeds via the `comment.created`
+ * event), marks the matching `pm_escalation` notification rows as read, and
  * spawns a follow-up PM session with `cause='operator-reply'`.
  */
 pmRoutes.post(
@@ -191,20 +190,12 @@ pmRoutes.post(
     for (const issueId of issueIds) {
       if (!(await issueIsInProject(issueId, projectId))) continue;
 
-      const inserted = await postIssueNotice({
+      await postIssueNotice({
         issueId,
         authorId: userId,
         body,
         intent: 'decision',
-      });
-      await hooks.emit('commentCreated', {
-        issueId,
-        projectId,
-        actor: restActor(c),
-        authored: restAuthored(c),
-        commentId: inserted.id,
-        body: inserted.body,
-        parentId: inserted.parentId,
+        announce: { actor: restActor(c), authored: restAuthored(c) },
       });
     }
 

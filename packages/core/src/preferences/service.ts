@@ -18,7 +18,7 @@ import {
   preferenceChanges,
 } from '../db/schema-agent-selves.js';
 import { refuser } from '../lib/refusal.js';
-import { hooks } from '../pipeline/hooks.js';
+import { emitEvent } from '../outbox/index.js';
 import {
   ASSISTANT_PREFERENCE_DEFAULTS,
   FULL_PREFERENCES,
@@ -258,31 +258,31 @@ export async function writeDisplayPreferences(
   patch: { theme?: PreferenceValues['theme'] | undefined; language?: PreferenceValues['language'] | undefined },
 ) {
   const { theme, language } = patch;
-  const [row] = await defaultDb
-    .insert(userPreferences)
-    .values({
-      userId,
-      ...(theme !== undefined ? { theme } : {}),
-      ...(language !== undefined ? { language } : {}),
-    })
-    .onConflictDoUpdate({
-      target: userPreferences.userId,
-      set: {
+  return defaultDb.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(userPreferences)
+      .values({
+        userId,
         ...(theme !== undefined ? { theme } : {}),
         ...(language !== undefined ? { language } : {}),
-        updatedAt: sql`now()`,
-      },
-    })
-    .returning(FULL_PREFERENCES);
-
-  if (!row) throw new Error('user_preferences: upsert returned no row');
-
-  await hooks.emit('userPreferencesChanged', {
-    userId: row.userId,
-    theme: row.theme,
-    language: row.language,
+      })
+      .onConflictDoUpdate({
+        target: userPreferences.userId,
+        set: {
+          ...(theme !== undefined ? { theme } : {}),
+          ...(language !== undefined ? { language } : {}),
+          updatedAt: sql`now()`,
+        },
+      })
+      .returning(FULL_PREFERENCES);
+    if (!row) throw new Error('user_preferences: upsert returned no row');
+    await emitEvent(tx, 'user.preferencesChanged', {
+      userId: row.userId,
+      theme: row.theme,
+      language: row.language,
+    });
+    return row;
   });
-  return row;
 }
 
 export interface MePreferencePatch {

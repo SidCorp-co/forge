@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
-import { initSentry, Sentry } from '../observability/sentry.js';
+import { flushReports, initSentry, reportCondition } from '../observability/sentry.js';
 import { closeDb } from './client.js';
 import {
   describeUnrecorded,
@@ -46,12 +46,12 @@ try {
     try {
       if (initSentry()) {
         const event = unrecordedSentryEvent(unrecorded);
-        Sentry.captureMessage(event.message, {
+        reportCondition(event.message, {
           level: event.level,
           tags: event.tags,
           extra: event.extra,
         });
-        await Sentry.flush(2000); // migrate.js exits right after — flush now or the event is dropped
+        await flushReports(2000); // migrate.js exits right after — flush now or the event is dropped
       }
     } catch (sentryErr) {
       console.warn('[migrate] failed to report unrecorded-migration drift to Sentry', sentryErr);

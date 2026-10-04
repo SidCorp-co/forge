@@ -1,4 +1,4 @@
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import {
   type BindingWithConnection,
   buildContextFromBinding,

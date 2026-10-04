@@ -8,8 +8,32 @@ import {
 } from '@forge/contracts/agent-reports';
 import { eq, inArray, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
+import { env } from '../config/env.js';
 import {
-  announceFiled,
+  agentReportKinds,
+  agentReportSeverities,
+  agentReports,
+  agentReportTargets,
+} from '../db/schema.js';
+import { principalAgency } from '../issues/index.js';
+import { resolvePipelineContext } from '../jobs/active-job-context.js';
+import { buildListEnvelope, overfetch } from '../lib/list-envelope.js';
+import {
+  type ContextScopedMcpToolFactory,
+  loadVisibleProjectIdsForPrincipal,
+  type McpContext,
+  patEffectiveProjectIds,
+  refusedAnswer,
+  zodToMcpSchema,
+} from '../lib/tool.js';
+import { requireCan } from '../permissions/index.js';
+import {
+  listVisibleProjectsWithRole,
+  resolveEffectiveProjectId,
+  type VisibleProjectWithRole,
+} from '../projects/index.js';
+import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../prompt/sanitize.js';
+import {
   countReportsForJob,
   fireOfSession,
   insertReport,
@@ -19,28 +43,7 @@ import {
   triageReports,
   visibleIssue,
   writableProjectIds,
-} from '../../agent-reports/service.js';
-import { env } from '../../config/env.js';
-import {
-  agentReportKinds,
-  agentReportSeverities,
-  agentReports,
-  agentReportTargets,
-} from '../../db/schema.js';
-import { resolvePipelineContext } from '../../jobs/active-job-context.js';
-import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../../prompt/sanitize.js';
-import {
-  type ContextScopedMcpToolFactory,
-  loadVisibleProjectIdsForPrincipal,
-  loadVisibleProjectsWithRoleForPrincipal,
-  type McpContext,
-  principalAgency,
-  refusedAnswer,
-  resolveEffectiveProjectId,
-  zodToMcpSchema,
-} from './lib.js';
-import { buildListEnvelope, overfetch } from './list-envelope.js';
-import { requireCan } from '../../permissions/index.js';
+} from './service.js';
 
 const inputSchema = z
   .object({
@@ -306,7 +309,7 @@ async function triage(ctx: McpContext, input: z.infer<typeof inputSchema>) {
           'BAD_REQUEST: createIssue files into one project, so a scope="all" triage names an existing issue instead',
         );
       }
-      const writable = writableProjectIds(await loadVisibleProjectsWithRoleForPrincipal(principal));
+      const writable = writableProjectIds(await visibleProjectsWithRole(principal));
       if (writable.length === 0) {
         throw new Error('NOT_FOUND: no project you can write to holds agent reports');
       }
@@ -341,8 +344,17 @@ async function triage(ctx: McpContext, input: z.infer<typeof inputSchema>) {
     linkIssue,
   });
   if (!out.ok) return refusedAnswer(out.refusals, 'AGENT_REPORT_REFUSED');
-  await announceFiled(out, actor);
   return { effect: out.effect };
+}
+
+async function visibleProjectsWithRole(
+  principal: McpContext['principal'],
+): Promise<VisibleProjectWithRole[]> {
+  const rows = await listVisibleProjectsWithRole(principal.userId);
+  const allow = patEffectiveProjectIds(principal);
+  if (allow === null) return rows;
+  const allowSet = new Set(allow);
+  return rows.filter((r) => allowSet.has(r.id));
 }
 
 export const forgeAgentReportTool: ContextScopedMcpToolFactory = (ctx) => ({

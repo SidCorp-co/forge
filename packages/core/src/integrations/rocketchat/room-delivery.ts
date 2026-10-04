@@ -9,7 +9,7 @@ import { claimSessionMetadataDelivery } from '../../agent-sessions/index.js';
 import { messageRoleToTurnRole } from '../../agent-sessions/turns-helpers.js';
 import { db } from '../../db/client.js';
 import { agentSessions, integrationBindings } from '../../db/schema.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { decryptConnectionSecrets, findConnectionById } from '../store.js';
 import type { RocketChatBindingConfig, RocketChatConfig, RocketChatSecrets } from './types.js';
 

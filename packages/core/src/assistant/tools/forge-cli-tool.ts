@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ContextScopedMcpToolFactory } from '../../mcp/tools/lib.js';
+import type { ContextScopedMcpToolFactory } from '../../lib/tool.js';
 import { runForgeCli } from './forge-cli.js';
 import { admitVerb } from './forge-cli-argv.js';
 import { readFormsLine } from './forge-cli-forms.js';
