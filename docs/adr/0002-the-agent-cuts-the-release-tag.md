@@ -1,6 +1,6 @@
 # 0002 — The agent cuts the release tag; no code path does
 
-**Status:** accepted · **Date:** 2026-09-27 · **Supersedes:** none
+**Status:** accepted · **Date:** 2026-09-27 · **Supersedes:** none · **Amended by:** [0005](0005-a-project-may-number-releases-as-prereleases.md), which answers its last consequence
 
 ## Context
 

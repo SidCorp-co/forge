@@ -152,6 +152,10 @@
 
 ### Added
 
+- **Releases can be numbered as prereleases.** With `release.prerelease` in the project document,
+  each release is `0.4.0-dev.1`, `0.4.0-dev.2` and so on. Dev releases carry such a version in
+  `/api/version` and the sidebar, tagged `dev-v…`.
+
 - **Guides for requirements, suggestions and feedback triage (ISS-90).** The tools for them cite
   these public guides instead of designs only Forge's own project could read, as do the issue
   status refusals.
