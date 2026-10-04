@@ -166,13 +166,6 @@
       "kind": "platform",
       "context": "platform"
     },
-    "chat-logs": {
-      "kind": "domain",
-      "context": "conversations",
-      "owns": [
-        "chatLogs"
-      ]
-    },
     "comments": {
       "kind": "domain",
       "context": "work",

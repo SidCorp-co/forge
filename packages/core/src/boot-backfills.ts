@@ -1,6 +1,3 @@
-import postgres from 'postgres';
-import { runCanonicalBackfillOnce } from './agent-sessions/index.js';
-import { env } from './config/env.js';
 import { runCriteriaBackfillOnce } from './issues/index.js';
 import { logger } from './observability/logger.js';
 
@@ -10,15 +7,6 @@ import { logger } from './observability/logger.js';
  * listens, rather than inside the migrator, which imports no domain.
  */
 export async function runOnceBackfills(): Promise<void> {
-  const sql = postgres(env.DATABASE_URL, { max: 1 });
-  try {
-    const canonical = await runCanonicalBackfillOnce(sql);
-    if (canonical.ran) {
-      logger.info(canonical.report, 'boot: canonical-transcript backfill rewrote legacy entries');
-    }
-  } finally {
-    await sql.end();
-  }
   const criteria = await runCriteriaBackfillOnce();
   if (criteria) {
     for (const line of criteria.refusals)

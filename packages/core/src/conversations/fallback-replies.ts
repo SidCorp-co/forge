@@ -16,5 +16,5 @@ export const nothingPostedStatus = (name: string): string =>
 export const uncertainStatus = (name: string): string =>
   `${name} đã gửi câu trả lời nhưng chưa xác nhận được là nó đã đến — bạn kiểm tra lại phòng, nếu không thấy thì hỏi lại giúp ${name} nhé.`; // i18n-allow: user-facing channel reply
 
-/** The head of the door's corrective retry, which is the retry row's `chat_logs.query`: history reads a screen repair by it (ISS-1053). */
+/** The head of the door's corrective retry, the retry turn's query: history reads a screen repair by it (ISS-1053). */
 export const CORRECTIVE_PREFIX = '[SYSTEM CHECK — not from the user]';

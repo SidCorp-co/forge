@@ -17,11 +17,6 @@ export async function markBackfill(client: Sql, key: string): Promise<void> {
   await client`INSERT INTO backfill_markers (key) VALUES (${key}) ON CONFLICT (key) DO NOTHING`;
 }
 
-/** Forget a backfill's completion over the raw client, so the next boot runs it again. */
-export async function unmarkBackfill(client: Sql, key: string): Promise<void> {
-  await client`DELETE FROM backfill_markers WHERE key = ${key}`;
-}
-
 /** Whether a backfill already recorded its completion, inside a drizzle transaction. */
 export async function backfillMarkedIn(tx: Tx, key: string): Promise<boolean> {
   const rows = (await tx.execute(

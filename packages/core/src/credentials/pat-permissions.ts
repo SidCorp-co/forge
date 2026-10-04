@@ -69,7 +69,7 @@ export const PAT_PERMISSION_RESOURCES = {
   runners: { reach: 'project', prefixes: { '/api/runners': 2 } },
   assistant: {
     reach: 'project',
-    prefixes: { '/api/agents': 2, '/api/conversations': 2, '/api/chat-logs': 2 },
+    prefixes: { '/api/agents': 2, '/api/conversations': 2 },
   },
   // `feedback:read`/`feedback:write` keep meaning agent reports (ISS-59 decided): product feedback
   // FB-n mounts under `/api/projects/:id/feedback`, so `projects:*` grants it as it grants

@@ -38,7 +38,6 @@ import {
   verifyRoutes,
 } from './auth/routes.js';
 import { automationRoutes } from './automation/routes.js';
-import { chatLogRoutes } from './chat-logs/routes.js';
 import { commentRoutes, entityCommentRoutes } from './comments/routes.js';
 import { contentLanguageRoutes } from './content-language/routes.js';
 import { developmentOverviewRoutes, needsYouRoutes } from './development/routes.js';
@@ -420,7 +419,6 @@ function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/knowledge-edges', knowledgeEdgeRoutes);
   app.route('/api/skills', skillCrudRoutes);
   app.route('/api/usage-records', usageRecordRoutes);
-  app.route('/api/chat-logs', chatLogRoutes);
   app.route('/api/app-config', memoryModelRoutes);
   app.route('/api/app-config', appConfigRoutes);
   app.route('/api/domain-templates', domainTemplateRoutes);

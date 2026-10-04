@@ -4,8 +4,6 @@ export type CanonicalConversion =
   | { ok: false; why: string };
 
 /** The key the original entry is kept under when one was actually rewritten. */
-export const LEGACY_ENTRY_KEY = '__legacyEntry';
-
 export const CANONICAL_ENTRY_TYPES = [
   'user',
   'assistant',
@@ -117,14 +115,7 @@ export function toCanonicalEntry(raw: unknown): CanonicalConversion {
     };
   }
 
-  out[LEGACY_ENTRY_KEY] = entry;
   return { ok: true, entry: out, converted: true };
-}
-
-/** The entry this canonical one was rewritten from, or null where it is not a rewrite. */
-export function legacyEntryOf(entry: unknown): unknown {
-  if (!entry || typeof entry !== 'object') return null;
-  return (entry as Record<string, unknown>)[LEGACY_ENTRY_KEY] ?? null;
 }
 
 /** What a whole `messages` array converts to, refusing by INDEX so the caller can name the row. */

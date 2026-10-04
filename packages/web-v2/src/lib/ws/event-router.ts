@@ -342,7 +342,6 @@ const REPLAY_PREFIXES: readonly (readonly unknown[])[] = [
 	["pulse"],
 	["devices", "me"],
 	["devices", "org"],
-	["chat-logs"],
 	["integrations"],
 	["integration-connections"],
 	["questions"],
