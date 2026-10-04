@@ -1,8 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type ProjectMemberRole, projectInvitations, projectMembers } from '../db/schema.js';
+import { type ProjectMemberRole, projectInvitations } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
+import { addProjectMembers } from '../permissions/index.js';
 
 export const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -114,16 +115,11 @@ export async function consumeInvitationToken(
     // 23505 — a caught error would still leave the Postgres transaction in
     // aborted state and fail the subsequent UPDATE. DO NOTHING keeps the tx
     // healthy so we can still mark the invite consumed.
-    await tx
-      .insert(projectMembers)
-      .values({
-        userId: accepting.userId,
-        projectId: row.project_id,
-        role: row.role,
-      })
-      .onConflictDoNothing({
-        target: [projectMembers.userId, projectMembers.projectId],
-      });
+    await addProjectMembers(
+      tx,
+      [{ userId: accepting.userId, projectId: row.project_id, role: row.role }],
+      { ifAbsent: true },
+    );
 
     await tx
       .update(projectInvitations)

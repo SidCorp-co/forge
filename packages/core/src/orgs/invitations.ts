@@ -1,7 +1,8 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type OrgMemberRole, organizationMembers, orgInvitations } from '../db/schema.js';
+import { type OrgMemberRole, orgInvitations } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
+import { addOrgMember } from '../permissions/index.js';
 import { generateToken, INVITATION_TTL_MS } from '../projects/invitation-token.js';
 
 /**
@@ -93,12 +94,11 @@ export async function consumeOrgInvitationToken(
       return { status: 'email_mismatch', invitedEmail: row.email };
     }
 
-    await tx
-      .insert(organizationMembers)
-      .values({ orgId: row.org_id, userId: accepting.userId, role: row.role })
-      .onConflictDoNothing({
-        target: [organizationMembers.orgId, organizationMembers.userId],
-      });
+    await addOrgMember(
+      tx,
+      { orgId: row.org_id, userId: accepting.userId, role: row.role },
+      { ifAbsent: true },
+    );
 
     await tx
       .update(orgInvitations)

@@ -269,8 +269,8 @@ export interface RequirementFacts {
 	proposedRevision: number | null;
 	/** The open revision still being written, else null. */
 	draftRevision: number | null;
-	/** Designs the latest baseline pins at an older revision than the one now approved. */
-	stalePins: { flow: string; pinned: number; approved: number }[];
+	/** Linked designs the latest baseline leaves unpinned (pinned null) or pins below their approved revision. */
+	stalePins: { flow: string; pinned: number | null; approved: number }[];
 	/** Linked contracts whose current version is not the one the latest baseline pins. */
 	staleContractPins: { contract: string; pinned: string | null; current: string }[];
 	feedbackOpen: number;

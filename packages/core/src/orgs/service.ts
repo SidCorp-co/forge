@@ -1,12 +1,7 @@
 import { and, eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { organizationMembers, organizations, users } from '../db/schema.js';
-
-/**
- * Tx-compatible handle — both `db` and the `tx` inside `db.transaction`
- * satisfy this for the two inserts we need.
- */
-type DbLike = Pick<typeof db, 'insert' | 'select'>;
+import { addOrgMember } from '../permissions/index.js';
 
 /**
  * Idempotently provision the user's personal org (one per user, enforced by
@@ -15,7 +10,7 @@ type DbLike = Pick<typeof db, 'insert' | 'select'>;
  * migration 0106. Slug mirrors the migration: `personal-<userId>`.
  */
 export async function ensurePersonalOrg(
-  dbh: DbLike,
+  dbh: Tx,
   userId: string,
   email: string,
 ): Promise<string> {
@@ -48,10 +43,7 @@ export async function ensurePersonalOrg(
     return row.id;
   }
 
-  await dbh
-    .insert(organizationMembers)
-    .values({ orgId: org.id, userId, role: 'owner' })
-    .onConflictDoNothing();
+  await addOrgMember(dbh, { orgId: org.id, userId, role: 'owner' }, { ifAbsent: true });
   return org.id;
 }
 

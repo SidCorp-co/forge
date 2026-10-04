@@ -6,7 +6,7 @@ export const KINDS = ['kernel', 'domain', 'read-model', 'adapter', 'door', 'plat
 
 /** What each kind may import, besides itself. The order is the dependency direction. */
 export const MAY_IMPORT = {
-  door: ['door', 'read-model', 'domain', 'kernel', 'platform'],
+  door: ['door', 'read-model', 'domain', 'kernel', 'adapter', 'platform'],
   'read-model': ['read-model', 'domain', 'kernel', 'platform'],
   domain: ['domain', 'kernel', 'adapter', 'platform'],
   kernel: ['kernel', 'platform'],

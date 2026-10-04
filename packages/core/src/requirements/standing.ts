@@ -79,8 +79,8 @@ export interface StandingInput {
   issueCriteria: readonly StandingIssueCriterion[];
   /** Kinds of the suggestions still `proposed` on this requirement. */
   openSuggestionKinds: readonly string[];
-  /** The latest baseline's design pins whose design is now approved at a newer revision. */
-  stalePins: readonly { flow: string; pinned: number; approved: number }[];
+  /** Linked designs the latest baseline leaves unpinned or pins below their approved revision. */
+  stalePins: readonly { flow: string; pinned: number | null; approved: number }[];
   staleContractPins: readonly { contract: string; pinned: string | null; current: string }[];
   feedback: { open: number; untriaged: readonly string[] };
   /** When the current revision was first agreed: its first baseline. */
@@ -246,7 +246,7 @@ function turnOf(
       ...input.staleContractPins.map((p) => `${p.contract}@${p.current}`),
     ].join(', ')}`;
     const rule =
-      'a linked design was approved past the revision the agreed baseline pins, or a linked contract has a current version it does not pin';
+      'a linked design is unpinned or approved past the revision the agreed baseline pins, or a linked contract has a current version it does not pin';
     if (viewer?.canSignOff) return { group: 'needs_you', waitingOn: wait('you', 'You', act, rule) };
     const owner = input.owner?.kind === 'human' ? input.owner.name : null;
     return { group: 'others', waitingOn: wait('person', owner ?? SIGNER, act, rule) };
