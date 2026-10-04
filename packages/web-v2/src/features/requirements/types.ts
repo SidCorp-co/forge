@@ -1,5 +1,7 @@
 import type { IssueStatusTone } from "@forge/contracts/issue-vocabulary";
 import type {
+  DeliveryPhase,
+  RequirementDelivery,
   RequirementDeferral,
   RequirementFeedbackItem,
   RequirementHistoryEntry,
@@ -7,11 +9,9 @@ import type {
   RequirementStatus,
 } from '@forge/contracts/requirements';
 
-export type { RequirementFeedbackItem, RequirementStatus };
+export type { DeliveryPhase, RequirementDelivery, RequirementFeedbackItem, RequirementStatus };
 export type RevisionState = 'draft' | 'proposed' | 'current' | 'superseded';
-export type DeliveryPhase = 'agreed' | 'in_delivery' | 'delivered';
 export interface RequirementSpec { goal?: string; personas?: string[]; scopeIn?: string[]; scopeOut?: string[] }
-export interface RequirementDelivery { phase: DeliveryPhase | null; liveIssues: number; startedIssues: number; closedIssues: number; criteriaCoverage: { criteria: number; passing: number; judged: number } }
 export interface RequirementSummary {
   id: string; key: string; title: string; status: RequirementStatus;
   currentRevision: number | null;

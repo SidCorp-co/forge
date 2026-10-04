@@ -8,6 +8,7 @@ import {
   type OnboardingHint,
   type OnboardingJobPhase,
   type OnboardingStateResponse,
+  type OnboardingStatus,
   type OnboardingView,
   QUESTIONNAIRE_DUE_DAYS,
   QUESTIONNAIRE_MAX_ROUNDS,
@@ -34,6 +35,39 @@ export async function onboardingOf(
   const query = tx.select().from(onboardings).where(eq(onboardings.projectId, projectId));
   const [row] = lock ? await query.for('update') : await query;
   return row ?? null;
+}
+
+// The status is read, never stored: done once a person closed it (until a re-analysis clears the
+// close), waiting on a person while one of its batches is open or skipped, else with the agent
+export const onboardingStatusOf = (
+  row: Pick<OnboardingRow, 'doneAt'>,
+  answerable: boolean,
+): OnboardingStatus => (row.doneAt ? 'done' : answerable ? 'waiting_on_you' : 'in_progress');
+
+const ANSWERABLE = ['open', 'skipped'] as const;
+
+/** The status of each onboarding whose thread is in `conversationIds`, keyed by conversation. */
+export async function onboardingStatusesOf(
+  conversationIds: readonly string[],
+): Promise<Map<string, OnboardingStatus>> {
+  if (conversationIds.length === 0) return new Map();
+  const [rows, answerable] = await Promise.all([
+    db
+      .select({ id: onboardings.id, conversationId: onboardings.conversationId, doneAt: onboardings.doneAt })
+      .from(onboardings)
+      .where(inArray(onboardings.conversationId, [...conversationIds])),
+    db
+      .selectDistinct({ onboardingId: questionnaireBatches.onboardingId })
+      .from(questionnaireBatches)
+      .where(
+        and(
+          inArray(questionnaireBatches.conversationId, [...conversationIds]),
+          inArray(questionnaireBatches.status, [...ANSWERABLE]),
+        ),
+      ),
+  ]);
+  const waiting = new Set(answerable.map((a) => a.onboardingId));
+  return new Map(rows.map((r) => [r.conversationId, onboardingStatusOf(r, waiting.has(r.id))]));
 }
 
 /** The onboarding job not yet over for this project, if any: one runs at a time. */
@@ -115,7 +149,7 @@ export async function onboardingView(tx: Executor, row: OnboardingRow): Promise<
       .where(
         and(
           eq(questionnaireBatches.onboardingId, row.id),
-          inArray(questionnaireBatches.status, ['open', 'skipped']),
+          inArray(questionnaireBatches.status, [...ANSWERABLE]),
         ),
       )
       .limit(1),
@@ -148,7 +182,7 @@ export async function onboardingView(tx: Executor, row: OnboardingRow): Promise<
     id: row.id,
     projectId: row.projectId,
     conversationId: row.conversationId,
-    status: row.status,
+    status: onboardingStatusOf(row, batch !== undefined),
     roundsSent: row.roundsSent,
     maxRounds: QUESTIONNAIRE_MAX_ROUNDS,
     startedBy: row.startedBy,
