@@ -37,7 +37,7 @@ a door.
 | **read-model** | Derived facts only: standing, waiting-on, needs-you, coverage, counts, the system graph | Write any table |
 | **adapter** | One external system behind a role-named port ([ADR 0006](../adr/0006-every-external-system-is-reached-through-one-adapter-port.md)) | Import a domain, a kernel module or a read model |
 | **door** | The route-mount registry, the MCP registry, WebSocket, inbound webhooks, the CLI shapes, and the auth door (sign-in, which reaches the identity adapter through its port) | Hold a rule or a query |
-| **platform** | The db client and schema, `lib`, middleware, queue, config, observability | Import any other kind |
+| **platform** | The db client and schema, `lib`, middleware, queue, config, observability, the credential helpers (`credentials`) | Import any other kind |
 
 ## Dependency direction (BC-12)
 
@@ -91,7 +91,7 @@ One file per responsibility, under `packages/core/src/<module>/`. The references
 
 - **Routes hold no queries (BC-15).** A route file validates, calls one service or read function,
   and answers. A `db` or `tx` call in a route file is a finding.
-- A route's prefix is in `packages/core/src/auth/pat-permissions.ts:PAT_PERMISSION_RESOURCES`, so a
+- A route's prefix is in `packages/core/src/credentials/pat-permissions.ts:PAT_PERMISSION_RESOURCES`, so a
   token can be granted it.
 
 ## Doors: REST first, the CLI over it, MCP only where neither serves (BC-21)
@@ -266,6 +266,9 @@ A write a rule refuses answers **422** with one body, and nothing is written:
   Amendment). `permissions` owns `project_members` and `organization_members`, so `can()` reads
   only its own tables. A domain that adds, changes or drops a membership (projects, orgs,
   conversations) calls the kernel's writer, `packages/core/src/permissions/memberships.ts`.
+- **Where a project sits is handed in.** The projects domain provides the project's org at boot
+  (`packages/core/src/lib/authz.ts:provideProjectOrg`); the check reads no `projects` or
+  `organizations` row.
 
 ## External systems (BC-22)
 

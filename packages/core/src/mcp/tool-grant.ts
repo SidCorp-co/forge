@@ -9,7 +9,7 @@ import {
   patEpochRefusal,
   patGrantCovers,
   patPrefixForPath,
-} from '../auth/pat-permissions.js';
+} from '../credentials/pat-permissions.js';
 
 export type ToolGrantNone = { readonly none: string };
 

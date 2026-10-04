@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
-import { lockPatName, mintPat } from '../auth/pat.js';
-import { deviceTokenNameFor } from '../auth/pat-format.js';
-import { PAT_GRANT_ALL } from '../auth/pat-permissions.js';
+import { lockPatName, mintPat } from '../credentials/pat.js';
+import { deviceTokenNameFor } from '../credentials/pat-format.js';
+import { PAT_GRANT_ALL } from '../credentials/pat-permissions.js';
 import { env } from '../config/env.js';
 import { db, type Tx } from '../db/client.js';
 import { personalAccessTokens } from '../db/schema.js';

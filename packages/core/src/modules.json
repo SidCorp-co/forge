@@ -52,12 +52,8 @@
       "kind": "door",
       "owns": [
         "emailVerificationTokens",
-        "mcpAuditLog",
         "oauthAccounts",
-        "personalAccessTokens",
-        "preferenceChanges",
         "refreshTokens",
-        "userPreferences",
         "users"
       ]
     },
@@ -104,6 +100,13 @@
         "conversationPassages",
         "conversationWindows",
         "conversations"
+      ]
+    },
+    "credentials": {
+      "kind": "platform",
+      "owns": [
+        "mcpAuditLog",
+        "personalAccessTokens"
       ]
     },
     "db": {
@@ -408,6 +411,13 @@
         "pmConfig",
         "pmDecisions",
         "pmPolicies"
+      ]
+    },
+    "preferences": {
+      "kind": "domain",
+      "owns": [
+        "preferenceChanges",
+        "userPreferences"
       ]
     },
     "project-config": {

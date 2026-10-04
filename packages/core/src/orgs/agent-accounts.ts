@@ -11,10 +11,10 @@
 import { randomBytes } from 'node:crypto';
 import { and, count, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { agentAccountRow, isAgentHandle } from '../auth/agent-account.js';
-import { mintPat } from '../auth/pat.js';
-import { patIsLive } from '../auth/pat-live.js';
-import { PAT_GRANT_ALL } from '../auth/pat-permissions.js';
+import { agentAccountRow, isAgentHandle } from '../credentials/agent-account.js';
+import { mintPat } from '../credentials/pat.js';
+import { patIsLive } from '../credentials/pat-live.js';
+import { PAT_GRANT_ALL } from '../credentials/pat-permissions.js';
 import { handleNameForProject } from '../conversations/handles.js';
 import { db, type Tx } from '../db/client.js';
 import {

@@ -5,15 +5,15 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { refreshTokens } from '../db/schema.js';
 import { assertNotAgentUser } from './agent-login-gate.js';
-import { REFRESH_COOKIE_NAME, setAuthCookie, setRefreshCookie } from './cookie.js';
-import { signUserToken } from './jwt.js';
+import { REFRESH_COOKIE_NAME, setAuthCookie, setRefreshCookie } from '../credentials/cookie.js';
+import { signUserToken } from '../credentials/jwt.js';
 import {
   generateRefreshToken,
   hashRefreshToken,
   refreshTokenExpiresAt,
   refreshTokenPrefix,
   verifyRefreshToken,
-} from './refresh-token.js';
+} from '../credentials/refresh-token.js';
 
 export const refreshRoutes = new Hono();
 

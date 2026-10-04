@@ -21,9 +21,9 @@
  */
 
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
-import { lockPatName, mintPat } from '../auth/pat.js';
-import { deviceTokenNameFor, workspaceTokenNameFor } from '../auth/pat-format.js';
-import { PAT_GRANT_ALL } from '../auth/pat-permissions.js';
+import { lockPatName, mintPat } from '../credentials/pat.js';
+import { deviceTokenNameFor, workspaceTokenNameFor } from '../credentials/pat-format.js';
+import { PAT_GRANT_ALL } from '../credentials/pat-permissions.js';
 import { resolveProjectHandle } from '../conversations/handles.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens, users } from '../db/schema.js';

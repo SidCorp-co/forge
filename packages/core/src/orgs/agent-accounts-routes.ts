@@ -10,7 +10,7 @@ import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { writeAssistantPreferences } from '../auth/preference-changes.js';
+import { writeAssistantPreferences } from '../preferences/index.js';
 import { PresenceValidationError } from '../conversations/presence.js';
 import { db } from '../db/client.js';
 import { answerStyles, organizationMembers, projectMemberRoles } from '../db/schema.js';

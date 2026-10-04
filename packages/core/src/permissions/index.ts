@@ -34,3 +34,4 @@ export {
   updateOrgMember,
   updateProjectMember,
 } from './memberships.js';
+export { resolveTurnAuthority } from './turn-authority.js';

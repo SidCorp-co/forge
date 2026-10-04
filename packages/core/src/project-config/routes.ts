@@ -1,7 +1,7 @@
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { verifyDeviceCredential } from '../auth/device-credential.js';
+import { verifyDeviceCredential } from '../credentials/device-credential.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { readBearerToken } from '../middleware/bearer.js';
 import { badRequest } from '../middleware/route-errors.js';

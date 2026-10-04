@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { db } from '../db/client.js';
 import { refreshTokens } from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
-import { clearAuthCookie, clearRefreshCookie } from './cookie.js';
+import { clearAuthCookie, clearRefreshCookie } from '../credentials/cookie.js';
 
 export const logoutRoutes = new Hono<{ Variables: AuthVars }>();
 

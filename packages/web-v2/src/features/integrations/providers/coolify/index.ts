@@ -8,7 +8,7 @@ export const coolify: ProviderModule = {
   secretField: "apiToken",
   secretPlaceholder: "Coolify API token",
   drillable: true,
-  agentPathKind: "core-mediated",
+  agentPathKind: "permission",
   bindingKeys: ["targets"],
   bindingTarget: {
     toTarget: (config) => ({
