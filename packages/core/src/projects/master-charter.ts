@@ -10,21 +10,21 @@
  * line is the silent substitution this whole record exists to stop.
  */
 
-export const MASTER_CHARTER_GOAL_MAX = 4000;
-export const MASTER_CHARTER_RULES_MAX = 50;
-export const MASTER_CHARTER_RULE_MAX = 2000;
+const MASTER_CHARTER_GOAL_MAX = 4000;
+const MASTER_CHARTER_RULES_MAX = 50;
+const MASTER_CHARTER_RULE_MAX = 2000;
 
 export interface MasterCharterWrite {
   goal: string;
   rules: string[];
 }
 
-export interface CharterRefusal {
+interface CharterRefusal {
   field: string;
   message: string;
 }
 
-export type ParsedCharterWrite =
+type ParsedCharterWrite =
   | { ok: true; value: MasterCharterWrite }
   | { ok: false; refusal: CharterRefusal };
 

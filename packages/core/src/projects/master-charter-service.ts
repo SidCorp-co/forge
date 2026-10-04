@@ -1,8 +1,8 @@
 import { desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projectMasterCharters } from '../db/schema-master-charter.js';
-import type { MasterCharterWrite } from './master-charter.js';
 import { lockXact } from '../lib/advisory-lock.js';
+import type { MasterCharterWrite } from './master-charter.js';
 
 export interface MasterCharter {
   version: number;
@@ -49,18 +49,7 @@ export async function readCurrentCharter(projectId: string): Promise<MasterChart
   return row ? toCharter(row) : null;
 }
 
-/** Every version this project was ever given, newest first — unbounded, because this history is
- *  a person's own hand-written record and not agent-volume data, so nothing here trims it. */
-export async function readCharterVersions(projectId: string): Promise<MasterCharter[]> {
-  const rows = await db
-    .select(projection)
-    .from(projectMasterCharters)
-    .where(eq(projectMasterCharters.projectId, projectId))
-    .orderBy(desc(projectMasterCharters.version));
-  return rows.map(toCharter);
-}
-
-export interface DeclareCharterResult {
+interface DeclareCharterResult {
   charter: MasterCharter;
   /** False where the content had not moved, so no version was appended. */
   created: boolean;

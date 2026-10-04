@@ -45,7 +45,7 @@ async function lockProjectVersions(tx: Tx, projectId: string): Promise<void> {
   await lockXact(tx, 'releaseVersion', projectId);
 }
 
-export interface ReleaseRowReading {
+interface ReleaseRowReading {
   runId: string;
   version: ReleaseVersion;
   status: string;
@@ -114,7 +114,7 @@ export async function currentReleaseVersion(projectId: string): Promise<string |
  * Each of the four ways a caller can be wrong is refused by its own reason: a re-cut silently
  * turned into a fresh minor is the burn rule failing in the one direction nobody would notice.
  */
-export function ruleOnRecut(recutOf: string, highest: ReleaseRowReading | null): ReleaseVersion {
+function ruleOnRecut(recutOf: string, highest: ReleaseRowReading | null): ReleaseVersion {
   const asked = parseReleaseVersion(recutOf);
   if (!asked) {
     throw recutRefused(recutOf, `it is not a version. Send ${RELEASE_VERSION_SHAPE}`);
@@ -159,7 +159,7 @@ export function ruleOnRecut(recutOf: string, highest: ReleaseRowReading | null):
   return highest.version;
 }
 
-export function ruleAboveHighest(
+function ruleAboveHighest(
   projectId: string,
   next: ReleaseVersion,
   highest: ReleaseRowReading | null,
@@ -175,7 +175,7 @@ export function ruleAboveHighest(
   );
 }
 
-export interface CutReleaseVersionArgs {
+interface CutReleaseVersionArgs {
   runId: string;
   projectId: string;
   /** The failed release being cut again, which raises the patch digit instead of the minor. */

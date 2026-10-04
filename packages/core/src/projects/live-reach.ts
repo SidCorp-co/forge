@@ -57,7 +57,7 @@ export type LiveReach =
     })
   | (ReadingBranches & { state: 'unmeasured'; measuredAt: string | null; reason: string });
 
-export interface LiveReachIssue {
+interface LiveReachIssue {
   issSeq: number;
   mergedAt: Date | string | null;
   mergedCommitSha: string | null;

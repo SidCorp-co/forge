@@ -1,21 +1,21 @@
 import { z } from 'zod';
 import { pluginDesignationSchema } from '../plugins/designation.js';
 
-export const agentConfigSchema = z
+const agentConfigSchema = z
   .object({
     /** Read by `plugins/designation.ts:readPluginDesignations`, unioned per device by `GET /api/devices/me/plugins`. */
     plugins: z.array(pluginDesignationSchema).optional(),
   })
   .strict();
 
-export type AgentConfigDocument = z.infer<typeof agentConfigSchema>;
+type AgentConfigDocument = z.infer<typeof agentConfigSchema>;
 
 export type AgentConfigKey = keyof AgentConfigDocument;
 
 /** Every declared key, in declaration order. */
 export const AGENT_CONFIG_KEYS = Object.keys(agentConfigSchema.shape) as AgentConfigKey[];
 
-export const AGENT_CONFIG_DOORS: Record<AgentConfigKey, string> = {
+const AGENT_CONFIG_DOORS: Record<AgentConfigKey, string> = {
   plugins: '`PATCH /api/projects/:id/plugins`',
 };
 
@@ -26,7 +26,7 @@ export const AGENT_CONFIG_DOORS: Record<AgentConfigKey, string> = {
  * operator's save into a 200 and a silent discard, which is the defect ISS-994 and ISS-1000
  * established and the one this retirement exists to avoid repeating.
  */
-export const RETIRED_AGENT_CONFIG_KEYS: Record<string, string> = {
+const RETIRED_AGENT_CONFIG_KEYS: Record<string, string> = {
   repoPath:
     "agentConfig.repoPath decides nothing — a checkout is a path on one box, so it lives on that box's device binding (`forge-runner bind <slug> --path <dir>`, or PATCH /api/projects/:id/runners/:runnerId { repoPath }). Remove repoPath from agentConfig.",
   baseBranch:
@@ -40,14 +40,14 @@ export const RETIRED_AGENT_CONFIG_KEYS: Record<string, string> = {
 };
 
 /** The message a raw `agentConfig` record carrying a DECLARED key is refused with. */
-export function agentConfigDoorMessage(key: AgentConfigKey): string {
+function agentConfigDoorMessage(key: AgentConfigKey): string {
   return `agentConfig is no longer a field on PATCH /api/projects/:id — every value it held has a door of its own, so a wholesale record can no longer overwrite a sibling key a concurrent write just set. Write \`${key}\` through ${AGENT_CONFIG_DOORS[key]}.`;
 }
 
-export const AGENT_CONFIG_CLEAR_GUIDE =
+const AGENT_CONFIG_CLEAR_GUIDE =
   'agentConfig is no longer a field on PATCH /api/projects/:id, and it cannot be cleared wholesale. Clear each value through its own door instead: send `plugins` as null on PATCH /api/projects/:id/plugins.';
 
-export function agentConfigUndeclaredMessage(key: string): string {
+function agentConfigUndeclaredMessage(key: string): string {
   return `agentConfig.${key} is not a key this project's configuration declares, so nothing would ever read it. The declared keys are ${AGENT_CONFIG_KEYS.join(', ')}, each written through its own door. Refused by name rather than stored, and rather than answered 200 and dropped.`;
 }
 

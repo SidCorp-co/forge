@@ -34,7 +34,7 @@ import { type ServingNowOutcome, verifyServingNow } from './verify.js';
 /** The one ledger key a recorded release writes under. */
 const RECORD_ATTEMPT_KEY = 'release-record';
 
-export interface RecordPerformedReleaseArgs {
+interface RecordPerformedReleaseArgs {
   projectId: string;
   issueIds: string[];
   /** The whole sha the caller says production is serving. */
@@ -47,13 +47,13 @@ export interface RecordPerformedReleaseArgs {
 }
 
 /** One issue as the record found it, so the claim stays checkable afterwards. */
-export interface RecordedIssue {
+interface RecordedIssue {
   id: string;
   mergedAt: string | null;
   mergedCommitSha: string | null;
 }
 
-export interface RecordPerformedReleaseResult {
+interface RecordPerformedReleaseResult {
   runId: string;
   /** What the caller claimed, normalized by nothing. */
   commit: string;
@@ -246,7 +246,7 @@ async function writeLedger(
   });
 }
 
-export interface ReleaseRecordView {
+interface ReleaseRecordView {
   runId: string;
   projectId: string;
   recordedAt: string | null;

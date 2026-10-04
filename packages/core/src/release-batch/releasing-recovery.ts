@@ -63,7 +63,7 @@ function heldMidRelease(issue: { status: string; step?: string | null }): boolea
   return issue.status === 'awaiting_release' && issue.step === 'release';
 }
 
-export interface RecoverStrandedReleasingOptions {
+interface RecoverStrandedReleasingOptions {
   /** Written onto the issue as the reason, and into a comment when an author is known. */
   reason: string;
   /** The person who caused this, when there is one. Absent for a machine sweep. */

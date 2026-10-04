@@ -38,8 +38,8 @@ import {
 /** Re-exported so this module's existing callers and their mocks keep one path. */
 export { productionDeploysOnLand };
 
-export const RELEASE_DEPLOY_PENDING = 'release.deploy.pending_human';
-export const RELEASE_DEPLOY_SKIPPED = 'release.deploy.skipped';
+const RELEASE_DEPLOY_PENDING = 'release.deploy.pending_human';
+const RELEASE_DEPLOY_SKIPPED = 'release.deploy.skipped';
 
 export interface DispatchOutcome {
   dispatched: boolean;
@@ -411,7 +411,7 @@ async function getProdGateState(bindingId: string): Promise<ProdGateState | null
   return null;
 }
 
-export interface ConfirmProdResult {
+interface ConfirmProdResult {
   confirmed: boolean;
   runId: string | null;
   /** The binding id the confirmation targeted (== old project_integration id). */

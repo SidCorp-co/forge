@@ -28,7 +28,7 @@ const strings = (v: unknown): string[] =>
 const heldOf = (d: Details): Held[] => (Array.isArray(d?.held) ? (d?.held as Held[]) : []);
 const waitsOf = (d: Details): Wait[] => (Array.isArray(d?.waits) ? (d?.waits as Wait[]) : []);
 
-export function issuesNamed(d: Details): string[] {
+function issuesNamed(d: Details): string[] {
   const shown = strings(d?.displayIds);
   if (shown.length > 0) return shown;
   const held = heldOf(d).map((h) => h.displayId);
@@ -168,7 +168,7 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
   },
 };
 
-export function gateView(
+function gateView(
   entry: ReleaseBlocker | ReleaseWarning,
   kind: ReleaseGateView['kind'],
 ): ReleaseGateView {

@@ -6,7 +6,7 @@ import {
   readRuntimeProbe,
 } from '../integrations/deploy/index.js';
 
-export interface VerifyProbe {
+interface VerifyProbe {
   url: string;
   /** Dot path into the JSON body. Omitted → the whole body, trimmed. */
   commitPath?: string | undefined;
@@ -108,7 +108,7 @@ export type VerifyOutcome =
       readings: string[];
     };
 
-export interface VerifyArgs {
+interface VerifyArgs {
   cfg: VerifyConfig;
   /** What was serving before the release started. */
   commitBefore: string | null;
@@ -123,7 +123,7 @@ export interface VerifyArgs {
 /** Whether one reading satisfies the gate: a claim is the whole proof where one
  *  is made, and only a claimless gate asks that the build left `commitBefore` —
  *  asking both leaves a batch opened after its own release stuck (ISS-1199). */
-export function readingSatisfies(
+function readingSatisfies(
   live: string | null,
   commitBefore: string | null,
   claim: string | null,
@@ -274,7 +274,7 @@ export function reportedCommit(raw: string): string | null {
  * Whether what the deployment reports confirms the commit a caller claimed.
  * One direction only: the reading may abbreviate the claim, never the reverse.
  */
-export function deploymentConfirms(claimed: string, reported: string): boolean {
+function deploymentConfirms(claimed: string, reported: string): boolean {
   const claim = claimedCommit(claimed);
   const reading = reportedCommit(reported);
   if (claim === null || reading === null) return false;
@@ -308,7 +308,7 @@ export function liveCarriesRoster(
   return mergedCommits.some((sha) => sha !== null && deploymentConfirms(sha, commitBefore));
 }
 
-export interface ServingNowArgs {
+interface ServingNowArgs {
   cfg: VerifyConfig;
   /** The whole sha the caller says production is serving. */
   expected: string;

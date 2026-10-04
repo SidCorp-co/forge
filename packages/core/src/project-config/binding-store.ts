@@ -2,10 +2,10 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { AgentAccess, BindingRole } from '../db/release-axes.js';
 import { integrationBindings, integrationConnections } from '../db/schema.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import { loadOrgRole, projectOrgOf } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { holdsOrg } from '../permissions/index.js';
-import { lockXact } from '../lib/advisory-lock.js';
 
 export interface StoredBinding {
   id: string;
@@ -21,7 +21,7 @@ export interface StoredBinding {
   revision: number;
 }
 
-export interface ConnectionFacts {
+interface ConnectionFacts {
   id: string;
   provider: string;
   ownerType: 'user' | 'org';
@@ -29,7 +29,7 @@ export interface ConnectionFacts {
   active: boolean;
 }
 
-export interface BindingWrite {
+interface BindingWrite {
   id: string;
   projectId: string;
   connectionId: string;
@@ -42,7 +42,7 @@ export interface BindingWrite {
   instructions: string | null;
 }
 
-export type BindingCasResult =
+type BindingCasResult =
   | { ok: true; stored: StoredBinding; created: boolean; changed: boolean }
   | { ok: false; reason: 'stale'; storedRevision: number | null }
   | { ok: false; reason: 'foreign' }

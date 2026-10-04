@@ -16,7 +16,7 @@ export interface ConfigRefusal {
   detail: string;
 }
 
-export interface BindingFacts {
+interface BindingFacts {
   role: BindingRole;
   provider: string;
   canDeploy: boolean;
@@ -377,7 +377,7 @@ export function checkProjectConfig(
 // cm:why a project template is policy over the kernel's built-ins: each is held to the same
 // meta-schema and consistency as a built-in, and one a stored design is drawn in cannot be taken
 // out from under it — that design would be read in a vocabulary nobody declares any more
-export function checkWorkflowTemplates(
+function checkWorkflowTemplates(
   doc: Pick<ProjectDocument, 'workflows'>,
   ctx: Pick<ProjectConfigContext, 'workflowTemplatesInUse'>,
 ): ConfigRefusal[] {

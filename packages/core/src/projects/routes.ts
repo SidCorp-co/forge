@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { extractIssueBranchOverride, resolveIssueBranches } from '../branches/resolve.js';
 import {
   assertUnfenced,
   loadProjectAccess,
@@ -22,15 +21,12 @@ import {
 import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
 import { readDeclaredSource } from '../project-config/index.js';
 import { type AgentConfigKeyPatch, patchAgentConfigKeys, readAgentConfig } from './agent-config.js';
-import { projectFactsRoutes } from './project-facts-routes.js';
 import { listVisibleProjectRows, projectDetail } from './read.js';
 import { createProjectBodySchema, updateProjectPatchSchema } from './request-schemas.js';
 import {
   archiveProject,
   createProject,
   deleteProject,
-  readIssueBranchInputs,
-  readProjectBranches,
   unarchiveProject,
   updateProjectSettings,
 } from './service.js';
@@ -252,57 +248,6 @@ projectRoutes.patch(
     await patchAgentConfigKeys(id, { plugins });
 
     return c.json({ plugins: plugins ?? [] });
-  },
-);
-
-projectRoutes.route('/', projectFactsRoutes);
-
-// ─── Branch config (ISS-135 PR-A) ───────────────────────────────────────────
-//
-// Resolved branch config for one issue: the per-issue override, read by
-// `extractIssueBranchOverride`, layered on the
-// project defaults. The endpoint returns the *resolved* shape only.
-
-const branchConfigParamSchema = z.object({
-  id: z.uuid(),
-  issueId: z.uuid(),
-});
-
-projectRoutes.get(
-  '/:id/issues/:issueId/branch-config',
-  zValidator('param', branchConfigParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const { id, issueId } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(id, userId);
-    requireHeld(access, 'project.read');
-
-    const project = await readProjectBranches(id);
-    if (!project) throw notFound();
-
-    const issueRow = await readIssueBranchInputs(issueId, id);
-    if (!issueRow) {
-      throw new HTTPException(404, {
-        message: 'issue not found',
-        cause: { code: 'NOT_FOUND' },
-      });
-    }
-
-    const resolved = resolveIssueBranches(
-      {
-        metadata: {
-          branchConfig: extractIssueBranchOverride(
-            issueRow as Parameters<typeof extractIssueBranchOverride>[0],
-          ),
-        },
-      },
-      project,
-    );
-
-    return c.json(resolved);
   },
 );
 

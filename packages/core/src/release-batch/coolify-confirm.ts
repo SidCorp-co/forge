@@ -42,14 +42,14 @@ const POLL_INTERVAL_SECONDS = 20;
 const SUCCESS_STATUSES = new Set(['finished', 'success', 'succeeded', 'completed']);
 const FAILURE_STATUSES = new Set(['failed', 'error', 'cancelled', 'canceled', 'cancelled-by-user']);
 
-export type DeploymentVerdict = 'succeeded' | 'failed' | 'pending';
+type DeploymentVerdict = 'succeeded' | 'failed' | 'pending';
 
 /**
  * What one poll actually did. Returned rather than only logged so the caller —
  * and a test — can read the decision instead of inferring it from which
  * collaborator got called.
  */
-export interface ConfirmOutcome {
+interface ConfirmOutcome {
   /** `null` while the deployment is non-terminal and another poll is queued. */
   settled: 'succeeded' | 'failed' | null;
   /** Whether this poll wrote the run's terminal status. */
@@ -63,7 +63,7 @@ export interface ConfirmOutcome {
 }
 
 /** Classify one `GET /deployments/{uuid}` status string. */
-export function classifyDeploymentStatus(status: string | null | undefined): DeploymentVerdict {
+function classifyDeploymentStatus(status: string | null | undefined): DeploymentVerdict {
   if (!status) return 'pending';
   const s = status.toLowerCase().trim();
   if (SUCCESS_STATUSES.has(s)) return 'succeeded';
@@ -186,7 +186,7 @@ async function recordDeployDelivery(
 }
 
 /** What one target's settled outcome does to its run. */
-export type DeploySettlementTarget = Pick<
+type DeploySettlementTarget = Pick<
   CoolifyConfirmJob,
   'bindingId' | 'runId' | 'deliveryId' | 'deploymentUuid' | 'targetLabel'
 >;

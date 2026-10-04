@@ -10,7 +10,6 @@ import {
   agentSessionProjectReadRoutes,
   agentSessionRoutes,
 } from './agent-sessions/routes.js';
-import { appConfigRoutes } from './app-config/routes.js';
 import {
   baDoorRoutes,
   conversationRoutes,
@@ -137,7 +136,7 @@ import {
   stepHandoffRoutes,
 } from './pipeline/routes.js';
 import { pmReadRoutes } from './pm/routes.js';
-import { orgMemberPreferenceRoutes, preferenceRoutes } from './preferences/routes.js';
+import { preferenceRoutes } from './preferences/routes.js';
 import {
   environmentStateRoutes,
   jobTestingSecretsRoutes,
@@ -269,7 +268,6 @@ function mountProjectAndOrgRoutes(app: Hono<{ Variables: RequestIdVars }>): void
   app.route('/api/orgs', orgRoutes);
   // No auth of their own: they answer under orgRoutes' gate, mounted just above on the same prefix.
   app.route('/api/orgs', deviceOrgRoutes);
-  app.route('/api/orgs', orgMemberPreferenceRoutes);
   app.route('/api/orgs', sshKeyRoutes);
   app.route('/api/org-invitations', orgInvitationRoutes);
   app.route('/api/projects', integrationsRoutes);
@@ -387,7 +385,6 @@ function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/knowledge-edges', knowledgeEdgeRoutes);
   app.route('/api/skills', skillCrudRoutes);
   app.route('/api/app-config', memoryModelRoutes);
-  app.route('/api/app-config', appConfigRoutes);
   app.route('/api/runners', runnerRoutes);
 
   app.route('/api/projects', pmReadRoutes);

@@ -21,7 +21,7 @@ export interface ViewerFacts {
   mayApprove: boolean;
 }
 
-export interface TurnFacts {
+interface TurnFacts {
   state: ReleaseState;
   version: string;
   approval: {

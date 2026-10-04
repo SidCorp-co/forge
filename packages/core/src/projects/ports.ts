@@ -12,7 +12,7 @@ export type AssignPrefixResult =
   | IssuePrefixShapeError
   | { ok: false; reason: 'taken'; holderProjectId: string | null };
 
-export interface ProjectsPorts {
+interface ProjectsPorts {
   /** Hold the prefix in the issues kernel's alias table; the caller then sets the active prefix. */
   claimIssuePrefix(projectId: string, raw: string, dbi: PrefixWriter): Promise<AssignPrefixResult>;
   notifyInvitee(notice: { userId: string; projectId: string; title: string }): Promise<void>;

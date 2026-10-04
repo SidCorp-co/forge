@@ -9,10 +9,9 @@ import { listAttempts, type ReleaseAttemptRow } from './ledger.js';
 import { type ReleaseMethod, readMethod } from './method.js';
 import type { ReleaseVerification } from './plan.js';
 import { loadReleaseRoster, type ReleaseRoster } from './queries.js';
-import { refuseRelease } from './refuse.js';
 import { type LiveState, readLiveState, type VerifyConfig } from './verify.js';
 
-export interface ReleaseRunState {
+interface ReleaseRunState {
   runId: string;
   projectId: string;
   runStatus: string;
@@ -48,7 +47,7 @@ function liveProbes(channels: ReleaseChannel[]): VerifyConfig | null {
 }
 
 /** The run's own record of how its close is proved, stamped at create and again at the close. */
-export function recordedVerification(
+function recordedVerification(
   meta: Record<string, unknown>,
   runId: string,
 ): ReleaseVerification | null {
@@ -109,17 +108,4 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
     methodUnloaded: method !== null && !method.loaded,
     finish: readFinishRecord(meta),
   };
-}
-
-/**
- * Refuse a further attempt on a run that is already past a bound.
- */
-export async function assertRunNotHolding(runId: string): Promise<void> {
-  const bounds = readBounds(await listAttempts(runId));
-  if (bounds.holding) {
-    throw refuseRelease(
-      'RELEASE_RUN_HOLDING',
-      `This release run is past its ${bounds.crossedNames.join(' and ')} bound, so it records no further attempts. Read GET .../state, then either finish it or abort it with what you found.`,
-    );
-  }
 }

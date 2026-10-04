@@ -38,14 +38,6 @@ function die(msg) {
 
 const EXEMPT = [
   {
-    route: 'GET /api/projects/:id/project-facts',
-    why: 'answers 410 Gone and reads nothing (ISS-1048 retired the field)',
-  },
-  {
-    route: 'PATCH /api/projects/:id/project-facts',
-    why: 'answers 410 Gone and reads nothing (ISS-1048 retired the field)',
-  },
-  {
     route: 'POST /api/projects/:projectId/integrations',
     why: 'answers 410 BINDING_WRITE_MOVED and reads nothing (ISS-15: a binding is written as its binding-v1 document)',
   },

@@ -4,7 +4,7 @@ import { type BindingDocument, bindingDocumentSchema } from './schema.js';
 
 export type Target = BindingDocument['target'];
 
-export interface Encoded {
+interface Encoded {
   provider: string;
   label: string;
   config: Record<string, unknown>;

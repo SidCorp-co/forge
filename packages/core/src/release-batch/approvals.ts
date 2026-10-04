@@ -26,9 +26,9 @@ export const approvalRequestSchema = z.strictObject({
   }),
   note: z.string().trim().min(1).max(500).optional(),
 });
-export type ApprovalRequest = z.infer<typeof approvalRequestSchema>;
+type ApprovalRequest = z.infer<typeof approvalRequestSchema>;
 
-export const DECISIONS = ['approve', 'return'] as const;
+const DECISIONS = ['approve', 'return'] as const;
 
 export type Decision = { decision: 'approve' } | { decision: 'return'; reason: string };
 

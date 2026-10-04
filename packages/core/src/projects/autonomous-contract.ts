@@ -8,17 +8,17 @@ export interface KnowledgeObligation {
 }
 
 /** What the contract is a function of: the project document's repository and its production. */
-export interface ProjectDeclarations {
+interface ProjectDeclarations {
   repository: string | null;
   /** The production environment's name, or null where the project document declares none. */
   production: string | null;
 }
 
-export function declaresRepository(p: ProjectDeclarations): boolean {
+function declaresRepository(p: ProjectDeclarations): boolean {
   return p.repository !== null;
 }
 
-export function requiredProjectKnowledge(p: ProjectDeclarations): KnowledgeObligation[] {
+function requiredProjectKnowledge(p: ProjectDeclarations): KnowledgeObligation[] {
   const owed: KnowledgeObligation[] = [];
   if (declaresRepository(p)) {
     owed.push({

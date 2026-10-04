@@ -3,7 +3,7 @@ import { checkPolicy } from './rules.js';
 import { type PolicyDocument, policyDocumentSchema } from './schema.js';
 
 // cm:why each outlives the run that calls it — a cron, a workflow, a trigger, a wake-up.
-export const DRIVER_DENY = [
+const DRIVER_DENY = [
   'CronCreate',
   'CronDelete',
   'CronList',
@@ -12,7 +12,7 @@ export const DRIVER_DENY = [
   'ScheduleWakeup',
 ] as const;
 
-export const DEFAULT_POLICY_PROFILE = 'driver';
+const DEFAULT_POLICY_PROFILE = 'driver';
 
 const DRIVER_STATE = { model: 'opus', permissions: DEFAULT_POLICY_PROFILE } as const;
 

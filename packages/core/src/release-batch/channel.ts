@@ -30,7 +30,7 @@ export { RELEASE_PROCEDURE_FACT } from './plan.js';
  * exposes a rollback API and Forge performs it, so a paragraph there is a
  * second path to the same outcome that nothing has verified is still true.
  */
-export function classifyRollback(provider: string, raw: unknown): ReleaseRollback | null {
+function classifyRollback(provider: string, raw: unknown): ReleaseRollback | null {
   if (typeof raw === 'string') {
     const text = raw.trim();
     if (text.length === 0) return null;
@@ -52,7 +52,7 @@ export function classifyRollback(provider: string, raw: unknown): ReleaseRollbac
 }
 
 /** A release proves the commit it shipped, so only a probe identifying the source can prove it. */
-export function releaseProbesOf(production: NamedEnvironment): {
+function releaseProbesOf(production: NamedEnvironment): {
   verify: VerifyConfig | null;
   verifySource: ReleaseChannel['verifySource'];
 } {

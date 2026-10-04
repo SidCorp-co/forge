@@ -16,7 +16,7 @@ export const RELEASE_UNSTARTED_DEADLINE_MS = (() => {
   return Number.isFinite(raw) && raw > 0 ? raw : 30 * 60_000;
 })();
 
-export interface ReleaseUnstartedRecoveryResult {
+interface ReleaseUnstartedRecoveryResult {
   /** Batches whose job was fenced and whose roster was handed back. */
   recovered: number;
 }

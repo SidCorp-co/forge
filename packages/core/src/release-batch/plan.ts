@@ -10,7 +10,7 @@ export const releaseBatchPath = (runId: string): string =>
 import { promotedBranch, type ReleasePath } from '../project-config/index.js';
 import type { VerifyConfig } from './verify.js';
 
-export interface ReleaseBranches {
+interface ReleaseBranches {
   /** Where work lands; `null` on a project with no git source. */
   defaultBranch: string | null;
   /** The branch production deploys from. Equals `defaultBranch` where no promotion crosses. */

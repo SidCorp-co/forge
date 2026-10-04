@@ -15,7 +15,7 @@ export function undeclaredFieldError(door: string, fields: readonly string[]) {
   };
 }
 
-export const RETIRED_PROJECT_FIELDS: Record<string, string> = {
+const RETIRED_PROJECT_FIELDS: Record<string, string> = {
   baseBranch:
     "`baseBranch` is not a project field: the branch work is cut from and lands on is the project document's `source.git.defaultBranch`. Read it with GET /api/projects/:id/config and write it with PUT /api/projects/:id/config { baseRevision, document }.",
   webhookSecret:
@@ -33,7 +33,7 @@ export const RETIRED_PROJECT_FIELDS: Record<string, string> = {
 };
 
 /** PATCH /api/projects/:id does not rename: the name has one source, the project document. */
-export const PROJECT_NAME_MOVED =
+const PROJECT_NAME_MOVED =
   "`name` is not written by PATCH /api/projects/:id: a project's name is its project document's `project.name`, and the `projects` row carries it only as that document's projection. Read the document with GET /api/projects/:id/config and write it with PUT /api/projects/:id/config { baseRevision, document }.";
 
 export function refuseRetiredProjectFields(raw: unknown, ctx: z.RefinementCtx): void {

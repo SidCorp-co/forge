@@ -1,25 +1,14 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { RELEASE_ATTEMPT_STAGES } from '../db/schema-release-ledger.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { assertApprovalAllowsAttempt } from './approvals.js';
-import { resolveReleaseChannels } from './channel.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
-import {
-  attemptReading,
-  openAttempt,
-  readAttempt,
-  recordAccount,
-  settleAttempt,
-} from './ledger.js';
 import { announceMethod } from './method.js';
 import { loadReleaseReadiness } from './readiness.js';
 import { readReleaseRecord, recordPerformedRelease } from './recorded.js';
-import { refuseMachineKeys, refuseRelease } from './refuse.js';
 import {
   abortReleaseBatch,
   createReleaseBatch,
@@ -28,8 +17,7 @@ import {
   loadReleaseBatchContext,
   loadReleaseRoster,
 } from './service.js';
-import { readServingDeployment } from './serving.js';
-import { assertRunNotHolding, readReleaseRunState } from './state.js';
+import { readReleaseRunState } from './state.js';
 import { releaseVersionRoutes } from './version-routes.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
@@ -140,27 +128,6 @@ releaseBatchRoutes.get(
   },
 );
 
-releaseBatchRoutes.get(
-  '/:projectId/deployment',
-  zValidator('param', projectParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { projectId } = c.req.valid('param');
-    const access = await loadProjectAccess(projectId, c.get('userId'));
-    requireHeld(access, 'project.write');
-
-    // cm:edge protocol -> packages/core/src/release-batch/readiness.ts — readiness answers the
-    // DECLARATION and makes no outbound request; this one reads the probes, so they stay apart
-    const read = await readServingDeployment(projectId);
-    if (!read.ok) {
-      if (read.code === 'NO_PROJECT') throw notFound('project not found');
-      throw refuseRelease(read.code, read.detail);
-    }
-    return c.json(read.deployment);
-  },
-);
-
 const runParamSchema = z.object({ projectId: z.uuid(), runId: z.uuid() });
 
 const finishBodySchema = z.object({ commit: z.string().trim().max(200).optional() }).strict();
@@ -253,22 +220,6 @@ releaseBatchRoutes.post(
   },
 );
 
-const attemptBodySchema = z
-  .object({
-    stage: z.enum(RELEASE_ATTEMPT_STAGES),
-    idempotencyKey: z.string().trim().min(1).max(200),
-    commit: z.string().trim().max(200).optional(),
-  })
-  .passthrough();
-
-const accountBodySchema = z
-  .object({
-    account: z.string().trim().min(1).max(20_000),
-    providerRef: z.string().trim().max(500).optional(),
-    logTail: z.string().max(200_000).optional(),
-  })
-  .passthrough();
-
 const methodBodySchema = z
   .object({
     skill: z.string().trim().min(1).max(200),
@@ -276,12 +227,6 @@ const methodBodySchema = z
     detail: z.string().trim().max(4_000).optional(),
   })
   .strict();
-
-const attemptKeyParamSchema = z.object({
-  projectId: z.uuid(),
-  runId: z.uuid(),
-  key: z.string().trim().min(1).max(200),
-});
 
 releaseBatchRoutes.get(
   '/:projectId/release-batches/:runId/state',
@@ -309,66 +254,6 @@ releaseBatchRoutes.post(
     const { projectId, runId } = c.req.valid('param');
     await loadRunForProject(runId, projectId, c.get('userId'));
     return c.json(await announceMethod({ runId, ...c.req.valid('json') }));
-  },
-);
-
-releaseBatchRoutes.post(
-  '/:projectId/release-batches/:runId/attempts',
-  zValidator('param', runParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', attemptBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { projectId, runId } = c.req.valid('param');
-    await loadRunForProject(runId, projectId, c.get('userId'));
-    const body = c.req.valid('json') as Record<string, unknown>;
-    refuseMachineKeys(body);
-    await assertRunNotHolding(runId);
-    await assertApprovalAllowsAttempt(runId, projectId);
-    const row = await openAttempt({
-      runId,
-      stage: body.stage as never,
-      idempotencyKey: body.idempotencyKey as string,
-      commit: (body.commit as string | undefined) ?? null,
-    });
-    return c.json(row, 201);
-  },
-);
-
-releaseBatchRoutes.post(
-  '/:projectId/release-batches/:runId/attempts/:key/account',
-  zValidator('param', attemptKeyParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', accountBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { projectId, runId, key } = c.req.valid('param');
-    await loadRunForProject(runId, projectId, c.get('userId'));
-    const body = c.req.valid('json') as Record<string, unknown>;
-    refuseMachineKeys(body);
-    const existing = await readAttempt(runId, key);
-    if (!existing) {
-      throw notFound(
-        `no attempt \`${key}\` on this run — record the intent first with POST .../attempts`,
-      );
-    }
-    await recordAccount({
-      runId,
-      idempotencyKey: key,
-      account: body.account as string,
-      providerRef: (body.providerRef as string | undefined) ?? null,
-      logTail: (body.logTail as string | undefined) ?? null,
-    });
-    const settled = await settleAttempt({
-      runId,
-      idempotencyKey: key,
-      ...(await attemptReading(await resolveReleaseChannels(projectId))),
-    });
-    return c.json(settled);
   },
 );
 

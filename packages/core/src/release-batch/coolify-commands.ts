@@ -121,7 +121,7 @@ const shape = (outcome: DispatchOutcome) => ({
  * announcement, `loaded: false` included. ISS-1276 removed the method gate at `finish` and renamed
  * this to say what it checks — a run announcing that its method would not load still deploys.
  */
-export const RELEASE_DEPLOY_BEFORE_RECORDING =
+const RELEASE_DEPLOY_BEFORE_RECORDING =
   'this release run has recorded nothing on its release batch, so nothing ' +
   'shows the credential it runs on can record what this deploy would do. Make one call first — POST .../method ' +
   'says what you are working from, and `loaded: false` with a detail is a valid answer — then deploy. ' +

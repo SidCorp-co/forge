@@ -11,7 +11,7 @@ export function defaultBranchOf(document: ProjectDocument | null | undefined): s
   return document?.source.type === 'git' ? document.source.git.defaultBranch : null;
 }
 
-export function setupOf(document: ProjectDocument | null | undefined): string | null {
+function setupOf(document: ProjectDocument | null | undefined): string | null {
   return document?.workspace.setup ?? null;
 }
 
@@ -26,7 +26,7 @@ export function webUrlOf(repository: string): string {
   return `https://${repository}`;
 }
 
-export interface DeclaredSource {
+interface DeclaredSource {
   repository: string | null;
   defaultBranch: string | null;
   setup: string | null;

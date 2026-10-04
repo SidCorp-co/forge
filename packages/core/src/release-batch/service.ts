@@ -70,7 +70,7 @@ import { noteUnverifiedCloses, stampRunVerification } from './unverified-close.j
 import { liveCarriesRoster, readLiveCommit, verifyDeployed } from './verify.js';
 import { cutReleaseVersion, markReleaseShipped } from './version-store.js';
 
-export interface CreateReleaseBatchArgs {
+interface CreateReleaseBatchArgs {
   projectId: string;
   issueIds: string[];
   userId: string;
@@ -258,12 +258,12 @@ export async function createReleaseBatch(
   };
 }
 
-export interface FinishReleaseBatchResult {
+interface FinishReleaseBatchResult {
   closed: string[];
   failed: Array<{ id: string; reason: string }>;
 }
 
-export interface FinishReleaseBatchOptions {
+interface FinishReleaseBatchOptions {
   /** The commit the release says it pushed, for the probes to match against. */
   commit?: string | undefined;
   /** An earlier worker on this same attempt already saw the probes go green, so they are not read again. */
@@ -286,7 +286,7 @@ export interface FinishReleaseBatchOptions {
   onClosed?: ((result: FinishReleaseBatchResult) => Promise<void>) | undefined;
 }
 
-export type ReleaseRunRow = {
+type ReleaseRunRow = {
   projectId: string;
   metadata: unknown;
   status: PipelineRunStatus;
@@ -446,7 +446,7 @@ export async function finishReleaseBatch(
 
 /** What the recovery did to the roster, and what the abort did to the run row. `alreadyClosed` is
  *  every roster issue closed when the abort ran, claimed or not (`closedBeforeAbort`). */
-export interface AbortReleaseBatchResult extends RecoverStrandedReleasingResult {
+interface AbortReleaseBatchResult extends RecoverStrandedReleasingResult {
   run: {
     status: PipelineRunStatus | null;
     wasAlreadyTerminal: boolean;
@@ -463,9 +463,9 @@ export interface AbortReleaseBatchResult extends RecoverStrandedReleasingResult 
  * `POST /release-records` closes it against what production serves, with an
  * account (ISS-1199).
  */
-export type PromotedRosterSettlement = 'hold' | 'return-to-gate';
+type PromotedRosterSettlement = 'hold' | 'return-to-gate';
 
-export interface AbortReleaseBatchOptions {
+interface AbortReleaseBatchOptions {
   promotedRoster?: PromotedRosterSettlement | undefined;
   /** Test seam: runs after the roster is recovered and before its account is settled. */
   afterRosterRecovered?: (() => Promise<void>) | undefined;

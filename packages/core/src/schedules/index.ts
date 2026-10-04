@@ -1,3 +1,4 @@
+export { nextRunFor } from './cron.js';
 export { redispatchScheduleSessionOnFailover } from './failover.js';
 export { lastFires, settleSessionFires } from './fires.js';
 export { type ImprovementMessage, listImprovementMessages } from './messages/registry.js';

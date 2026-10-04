@@ -6,7 +6,7 @@ import type { EnvironmentState, ProjectDocument } from './schema.js';
 
 const PLATFORM_TIMEOUT_MS = 10_000;
 
-export const environmentStateDeps = (projectId: string): EnvironmentStateDeps => ({
+const environmentStateDeps = (projectId: string): EnvironmentStateDeps => ({
   deployAdapterFor: (bindingId) =>
     deployAdapterForBinding(projectId, bindingId, PLATFORM_TIMEOUT_MS),
   probeTimeoutMs: PROBE_TIMEOUT_MS,

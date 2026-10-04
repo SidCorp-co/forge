@@ -21,8 +21,8 @@ export interface CoolifyHealthGateJob {
   deadlineAt: string;
 }
 
-export const HEALTH_GRACE_MS = 45_000;
-export const HEALTH_WINDOW_MS = 5 * 60_000;
+const HEALTH_GRACE_MS = 45_000;
+const HEALTH_WINDOW_MS = 5 * 60_000;
 const HEALTH_POLL_INTERVAL_SECONDS = 15;
 
 export async function enqueueCoolifyHealthGate(
@@ -40,7 +40,7 @@ export async function enqueueCoolifyHealthGate(
 /**
  * Whether this deployment gets a health gate, and when it does not, why.
  */
-export type HealthGateDecision =
+type HealthGateDecision =
   | { kind: 'gate'; job: CoolifyHealthGateJob }
   | { kind: 'not-declared' }
   | { kind: 'window-too-short'; remainingMs: number };
@@ -49,7 +49,7 @@ export type HealthGateDecision =
  * The shortest window worth opening: the grace period the container is owed,
  * plus room for more than one reading inside it.
  */
-export const HEALTH_MIN_WINDOW_MS = HEALTH_GRACE_MS + 60_000;
+const HEALTH_MIN_WINDOW_MS = HEALTH_GRACE_MS + 60_000;
 
 /** Build the gate job for a target that declares a health URL, or say why not. */
 export function healthGateFor(args: {
@@ -95,13 +95,13 @@ export function healthGateFor(args: {
   };
 }
 
-export interface HealthGateOutcome {
+interface HealthGateOutcome {
   /** `null` while the window is open and another poll is queued. */
   verdict: 'healthy' | 'unhealthy' | null;
   reason?: string;
 }
 
-export interface HealthGateDeps {
+interface HealthGateDeps {
   probe: (url: string) => Promise<HealthReading>;
   /** Settle the deploy hold this gate deferred — `confirm.ts` owns the write. */
   settle: (verdict: 'succeeded' | 'failed', detail?: string) => Promise<void>;

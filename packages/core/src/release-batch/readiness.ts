@@ -12,7 +12,7 @@ import { releaseRunnerLabelOf } from './channel.js';
 import type { ReleaseRollback, VerifySource } from './plan.js';
 import { readServingNow } from './serving-reading.js';
 
-export type ReleaseGapKey = string;
+type ReleaseGapKey = string;
 
 type ReleaseDeclarationRead = Awaited<ReturnType<typeof collectReleaseBlockers>>['declaration'];
 type ReleaseChannelRead = NonNullable<

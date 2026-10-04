@@ -9,7 +9,7 @@ import { readProjectConfig } from './service.js';
 
 const store: BindingStore = drizzleBindingStore;
 
-export type HeldBinding = { revision: number; document: BindingDocument };
+type HeldBinding = { revision: number; document: BindingDocument };
 
 export type BindingRead = { ok: true; held: HeldBinding } | { ok: false; unrepresentable: string };
 
@@ -131,7 +131,7 @@ function inUse(at: string, path: string): ApiRefusal {
   };
 }
 
-export type BindingWriteOutcome =
+type BindingWriteOutcome =
   | { ok: true; held: HeldBinding; created: boolean; effects: Record<string, unknown> }
   | { ok: false; refusals: ApiRefusal[] };
 
@@ -275,7 +275,7 @@ export async function writeBinding(input: {
   };
 }
 
-export type BindingRemoveOutcome =
+type BindingRemoveOutcome =
   | { ok: true; revision: number }
   | { ok: false; refusals: ApiRefusal[] }
   | { ok: false; notFound: true };

@@ -25,7 +25,7 @@ const SHORT_NAME = /^[a-z][a-z0-9-]{0,31}$/;
 const GIT_REF = /^(?!\/)(?!.*\/\/)(?!.*\.\.)(?!.*@\{)[A-Za-z0-9._/-]+(?<!\/)(?<!\.lock)$/;
 
 /** A project's one-line description: what the system is, as the Workflows overview leads with it. */
-export const PROJECT_DESCRIPTION_MAX = 280;
+const PROJECT_DESCRIPTION_MAX = 280;
 
 export const uuid = () => z.string().regex(UUID);
 export const slug = () => z.string().regex(SLUG);
@@ -73,8 +73,7 @@ const gitSourceSchema = z.strictObject({
   }),
 });
 
-export const DESIGN_APPROVERS = ['owner', 'master'] as const;
-export type DesignApprover = (typeof DESIGN_APPROVERS)[number];
+const DESIGN_APPROVERS = ['owner', 'master'] as const;
 
 export const STOREFRONT_PROVIDERS = ['epodsystem', 'shopify', 'autoflow'] as const;
 
@@ -384,7 +383,7 @@ const BINDING_TARGETS = [
   targetOf('agent', {}),
 ] as const;
 
-export const BINDING_TARGET_PROVIDERS: readonly string[] = BINDING_TARGETS.map(
+const BINDING_TARGET_PROVIDERS: readonly string[] = BINDING_TARGETS.map(
   (target) => target.shape.provider.value,
 );
 

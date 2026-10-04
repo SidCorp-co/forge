@@ -9,14 +9,14 @@ import { and, count, eq, ilike, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projectMembers, projects, users } from '../db/schema.js';
 
-export type CollaboratorQuery = {
+type CollaboratorQuery = {
   visibleProjectIds: string[];
   limit: number;
   offset: number;
   search?: string | undefined;
 };
 
-export type Collaborator = {
+type Collaborator = {
   id: string;
   email: string;
   emailVerifiedAt: Date | null;
