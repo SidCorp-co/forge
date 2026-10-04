@@ -1406,9 +1406,6 @@
         "REQ-23"
       ]
     },
-    "improvement-messages": {
-      "serves": []
-    },
     "integrations": {
       "serves": [
         "github-merge-sequence#p-integrations"

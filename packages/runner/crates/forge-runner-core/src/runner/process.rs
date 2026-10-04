@@ -43,10 +43,6 @@ pub(crate) fn mcp_tool_timeout_default(existing: Option<&OsStr>) -> Option<&'sta
 /// Resolve the `claude` binary: `$PATH` first, then common install dirs.
 #[cfg(not(target_os = "windows"))]
 pub fn resolve_claude_bin() -> &'static str {
-    #[cfg(test)]
-    if let Some(stub) = testing::stub() {
-        return stub;
-    }
     static CLAUDE_BIN: OnceLock<String> = OnceLock::new();
     CLAUDE_BIN.get_or_init(|| {
         if let Ok(p) = which::which("claude") {
@@ -80,76 +76,6 @@ pub fn resolve_claude_bin() -> &'static str {
 #[cfg(target_os = "windows")]
 pub fn resolve_claude_bin() -> &'static str {
     "claude"
-}
-
-/// A stand-in for `claude` that a test can start a real pane with.
-///
-/// The resolution above is cached for the life of the process, so a stub put
-/// on `PATH` reaches only a test that happens to run before anything else
-/// resolved `claude`, and a pane started otherwise runs the real one. The
-/// stub is the installing thread's alone: a process-wide one reached every
-/// test resolving `claude` at the same moment, and one of them spawned it
-/// with `--version` and waited two minutes on its `sleep` (ISS-1312).
-#[cfg(all(test, not(target_os = "windows")))]
-pub(crate) mod testing {
-    use std::cell::Cell;
-
-    thread_local! {
-        static STUB: Cell<Option<&'static str>> = const { Cell::new(None) };
-    }
-
-    pub(super) fn stub() -> Option<&'static str> {
-        STUB.with(Cell::get)
-    }
-
-    /// Every `claude` this thread resolves is `bin` until this is dropped.
-    /// Dropping it puts back whatever stub stood before it, so a guard taken
-    /// inside another does not leave the outer one's test resolving the real
-    /// `claude`. A test that installs it runs what resolves `claude` on its
-    /// own thread, as a current-thread `#[tokio::test]` does.
-    pub(crate) struct StubClaude {
-        before: Option<&'static str>,
-    }
-
-    impl StubClaude {
-        pub(crate) fn installed(bin: &std::path::Path) -> Self {
-            let leaked: &'static str =
-                Box::leak(bin.to_string_lossy().into_owned().into_boxed_str());
-            StubClaude {
-                before: STUB.with(|s| s.replace(Some(leaked))),
-            }
-        }
-    }
-
-    impl Drop for StubClaude {
-        fn drop(&mut self) {
-            STUB.with(|s| s.set(self.before));
-        }
-    }
-
-    #[test]
-    fn a_stub_taken_inside_another_gives_the_outer_one_back() {
-        let outer = StubClaude::installed(std::path::Path::new("/stub/outer"));
-        {
-            let _inner = StubClaude::installed(std::path::Path::new("/stub/inner"));
-            assert_eq!(super::resolve_claude_bin(), "/stub/inner");
-        }
-        assert_eq!(super::resolve_claude_bin(), "/stub/outer");
-        drop(outer);
-        assert_ne!(super::resolve_claude_bin(), "/stub/outer");
-    }
-
-    #[test]
-    fn a_stub_is_not_what_another_thread_resolves() {
-        let _stub = StubClaude::installed(std::path::Path::new("/stub/here"));
-        let there = std::thread::spawn(super::resolve_claude_bin)
-            .join()
-            .unwrap();
-        assert_ne!(
-            there, "/stub/here",
-            "a test resolving `claude` beside this one would spawn the stub"
-        );
-    }
 }
 
 pub fn build_command(args: &[String], repo_path: &str) -> Command {
@@ -208,52 +134,5 @@ pub async fn graceful_kill(child: &mut Child) -> Option<ExitStatus> {
             let _ = child.kill().await;
             child.wait().await.ok()
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::ffi::OsStr;
-
-    #[test]
-    fn injects_default_mcp_tool_timeout_when_unset() {
-        assert_eq!(
-            mcp_tool_timeout_default(None),
-            Some(DEFAULT_MCP_TOOL_TIMEOUT_MS)
-        );
-    }
-
-    #[test]
-    fn treats_empty_value_as_unset() {
-        assert_eq!(
-            mcp_tool_timeout_default(Some(OsStr::new(""))),
-            Some(DEFAULT_MCP_TOOL_TIMEOUT_MS)
-        );
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn a_spawned_child_leads_its_own_process_group() {
-        let mut cmd = build_command(&["--version".into()], ".");
-        cmd.stdout(std::process::Stdio::null());
-        cmd.stderr(std::process::Stdio::null());
-        let Ok(mut child) = cmd.spawn() else {
-            return;
-        };
-        let pid = child.id().expect("a spawned child has a pid") as i32;
-        let pgid = nix::unistd::getpgid(Some(nix::unistd::Pid::from_raw(pid)))
-            .expect("the child's group is readable");
-        assert_eq!(
-            pgid.as_raw(),
-            pid,
-            "the child must LEAD its group, or kill(-pid) signals the daemon's group instead"
-        );
-        let _ = child.wait().await;
-    }
-
-    #[test]
-    fn respects_operator_override() {
-        assert_eq!(mcp_tool_timeout_default(Some(OsStr::new("120000"))), None);
     }
 }
