@@ -1,7 +1,7 @@
 import { unclaimedShas } from './commit-owners.js';
 import { issueWorkRecordsAt } from './issue-work-records.js';
 import { issueRefPattern, type LiveReach, liveReachOf } from './live-reach.js';
-import { type LiveReadingDeps, liveReadingForRow, projectReleaseRow } from './live-reading.js';
+import { liveReadingForRow, projectReleaseRow } from './live-reading.js';
 
 /**
  * One merged issue's place against the branch production deploys from; `null` where there is none
@@ -15,12 +15,11 @@ export async function liveReachForIssue(
     mergedCommitSha: string | null;
   },
   prefixes: readonly string[],
-  deps?: LiveReadingDeps,
 ): Promise<LiveReach | null> {
   if (issue.mergedAt == null) return null;
   const row = await projectReleaseRow(issue.projectId);
   if (!row) return null;
-  const reading = await liveReadingForRow(row, deps);
+  const reading = await liveReadingForRow(row);
   if (!reading) return null;
   const pattern = issueRefPattern(prefixes);
   const records =

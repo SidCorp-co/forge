@@ -2,20 +2,9 @@ import {
   type BranchRefs,
   type LiveDivergence,
   resolveSourceHost,
-  type SourceHost,
   SourceHostUnavailable,
 } from '../integrations/source-host/index.js';
 import { readDeclaredSource } from '../project-config/index.js';
-
-interface ProjectDivergenceDeps {
-  sourceHost: (projectId: string) => Promise<SourceHost>;
-  repository: (projectId: string) => Promise<string | null>;
-}
-
-const divergenceDeps: ProjectDivergenceDeps = {
-  sourceHost: (projectId) => resolveSourceHost(projectId, 'kernel'),
-  repository: async (projectId) => (await readDeclaredSource(projectId)).repository,
-};
 
 function noBinding(repository: string | null): string {
   if (!repository) {
@@ -32,13 +21,12 @@ function noBinding(repository: string | null): string {
 export async function readProjectDivergence(
   projectId: string,
   refs: BranchRefs,
-  deps: ProjectDivergenceDeps = divergenceDeps,
 ): Promise<LiveDivergence> {
   try {
-    return await (await deps.sourceHost(projectId)).readDivergence(refs);
+    return await (await resolveSourceHost(projectId, 'kernel')).readDivergence(refs);
   } catch (err) {
     if (!(err instanceof SourceHostUnavailable)) throw err;
     if (err.reason !== 'no_binding') return { ok: false, reason: err.message };
   }
-  return { ok: false, reason: noBinding(await deps.repository(projectId)) };
+  return { ok: false, reason: noBinding((await readDeclaredSource(projectId)).repository) };
 }
