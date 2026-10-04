@@ -1,6 +1,11 @@
 import { getDiscovery, verifyIdToken } from './oidc-discovery.js';
-import type { ProviderConfig } from './providers.js';
-import type { AuthorizeArgs, CallbackArgs, OAuthIdentity, OAuthProvider } from './types.js';
+import type {
+  AuthorizeArgs,
+  CallbackArgs,
+  OAuthIdentity,
+  OAuthProvider,
+  ProviderConfig,
+} from './types.js';
 
 interface IdTokenClaims {
   sub?: string;

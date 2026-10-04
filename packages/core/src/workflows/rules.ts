@@ -285,7 +285,7 @@ function evidenceRefusals(doc: WorkflowWrite): WorkflowRefusal[] {
       out.push({
         code: 'WORKFLOW_ANNOTATION_MISMATCH',
         path: at('evidence', 'annotation'),
-        detail: `step "${s.id}" of flow "${doc.flow}" cites \`cm:flow ${s.evidence.annotation}\`; its annotation is \`cm:flow ${expected}\`, the id the flow-coverage checker reads.`,
+        detail: `step "${s.id}" of flow "${doc.flow}" cites \`cm:flow ${s.evidence.annotation}\`; its annotation is \`cm:flow ${expected}\`, the id written in the code.`,
       });
     }
     out.push(...coverageRefusals(s.evidence.coverage, at));
@@ -304,7 +304,7 @@ function coverageRefusals(
       path: at('evidence', 'coverage', 'atSha'),
       detail:
         reading === 'unmeasured'
-          ? `an unmeasured step names no commit; atSha is null until a flow-coverage report has read it.`
+          ? `an unmeasured step names no commit; atSha is null until a coverage report has read it.`
           : `a ${reading} reading says which commit's integration report it came from; atSha is that sha.`,
     },
   ];

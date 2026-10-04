@@ -14,7 +14,7 @@ export const RUNNER_RELEASE_WORKFLOW_PATH = '.github/workflows/runner-release.ym
 /** The targets `runner-release.yml` builds, and therefore the assets a whole release carries. */
 export const RUNNER_RELEASE_TARGETS = ['x86_64-unknown-linux-gnu', 'aarch64-apple-darwin'] as const;
 
-/** The prefix `install/fetch-release.ts` filters a release's assets by. */
+/** The prefix `fetch-release.ts` filters a release's assets by. */
 export const RUNNER_ASSET_PREFIX = 'forge-runner-';
 
 export const tagMessageForVersion = (version: string) => `forge-runner ${version}`;

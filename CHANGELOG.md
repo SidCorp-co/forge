@@ -8,6 +8,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- **A requirement, a feedback item or an issue can carry mockups (ISS-78).** A wireframe board, a
+  sketch, an image, an HTML page or an API example is proposed as MK-n about exactly one target
+  (`POST /api/projects/:id/mockups`, `forge_mockups`, the BA assistant's `ba_draw_mockup`, the
+  Mockups tab and the chat board's Propose). A person other than its author accepts it, or any
+  person returns it with a reason. The next agree or re-pin of a requirement pins its accepted
+  mockups beside the designs, and every job on an issue built from it, or on the issue a mockup was
+  accepted on, is given each one with its fetch. Bytes never change once proposed, and on a
+  no_egress project they are withheld from agents (surface `mockup.content`).
+
+## [0.4.0-dev.1] - 2026-10-04
+
+Requirements, feedback and suggestions get homes; issue statuses say who acts next
+
+
 ### Security
 
 - **You can change which projects your token reaches without a new secret (ISS-92).**
@@ -2732,6 +2748,8 @@
   (ISS-1313)
 
 ### Removed
+- **The flow-coverage gate is gone.** `check-flow-coverage`, its baseline and its flow
+  declarations are removed; flow coverage returns anchored on the approved workflow designs.
 - **Comments are no longer gated, and codemap is gone.** The comment-budget check, its
   baseline and the `comment` conformance axis are removed, and no rule asks for `cm:` annotations;
   existing ones stay as plain comments.
@@ -3390,6 +3408,12 @@
   set is now 59.
 
 ### Fixed
+
+- **An onboarding job ends done when its agent posts its last act, and an answer sent right after
+  it is read.** The questionnaire or the hand-over that ends a phase now settles the job that ran it.
+  Before, nothing did: the runner concluded the job failed a quarter hour after the agent stopped,
+  and a person who answered the questionnaire inside that window found the job still live, so no job
+  ever read the answers.
 
 - **Onboarding reads the project's code as it is on its default branch, not as a runner's checkout
   last left it.** The analysis job opened in the device binding's checkout and read it as it stood,

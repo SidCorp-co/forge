@@ -119,7 +119,7 @@ describe('improves: shrink', () => {
     expect(faults).toEqual(['frozen entries grew 1 -> 2']);
   });
 
-  it('reads the flow-coverage shape, which is one array under a key', () => {
+  it('reads a baseline that is one array under a key', () => {
     const faults = compareBaseline(
       'shrink',
       { uncovered: ['release/deploy'] },

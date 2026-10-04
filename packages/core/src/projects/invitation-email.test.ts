@@ -24,11 +24,12 @@ vi.mock('../logger.js', () => ({
 }));
 
 const envMod = await import('../config/env.js');
+const mail = await import('../integrations/mail/smtp.js');
 const emailMod = await import('./invitation-email.js');
 
 beforeEach(() => {
   vi.clearAllMocks();
-  emailMod.__resetTransportForTests();
+  mail.__resetMailTransportForTests();
   (envMod.env as { SMTP_DEBUG: boolean }).SMTP_DEBUG = false;
 });
 
