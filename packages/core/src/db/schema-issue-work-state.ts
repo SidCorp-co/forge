@@ -34,9 +34,6 @@ export const issueWorkState = pgTable(
     headSha: text('head_sha'),
     /** The status a park (`needs_info`, `on_hold`) left, and returns to; NULL off a park. */
     leftStatus: text('left_status'),
-    // cm:hack the retired rung forge-plugin last wrote, read back to a 17-status reader. Exit: when
-    // forge-plugin moves to the 10-status model (plugin-followups.md), dropped with legacy-status.ts.
-    legacyStatus: text('legacy_status'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -60,10 +57,6 @@ export const issueWorkState = pgTable(
     leftStatusChk: check(
       'issue_work_state_left_status_chk',
       sql`${t.leftStatus} IS NULL OR ${t.leftStatus} IN ('open', 'reopen', 'in_progress', 'approved', 'awaiting_release')`,
-    ),
-    legacyStatusChk: check(
-      'issue_work_state_legacy_status_chk',
-      sql`${t.legacyStatus} IS NULL OR ${t.legacyStatus} IN ('confirmed', 'clarified', 'developed', 'testing', 'tested', 'releasing')`,
     ),
     leaseHolderIdx: index('issue_work_state_lease_holder_idx')
       .on(t.leaseHolder)

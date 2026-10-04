@@ -203,8 +203,9 @@ A write a rule refuses answers **422** with one body, and nothing is written:
 - **A derived phase is a read-model value**: computed in one function, never stored, never a SQL
   view plus a TypeScript override.
 - **A retired value is refused by name.** The kernel never maps an old status onto a new one; the
-  17-to-10 legacy issue status map is deleted on dev (owner, 2026-10-04), and kernel input naming a
-  legacy status is refused by name.
+  17-to-10 legacy issue status map is deleted (owner, 2026-10-04), and kernel input naming a
+  legacy status is refused `ISSUE_STATUS_LEGACY`
+  (`packages/contracts/src/issue-vocabulary.ts:issueStatusLegacyRefusal`).
 
 ## Records and events (BC-18)
 
