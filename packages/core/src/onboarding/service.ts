@@ -34,7 +34,7 @@ import type { Refusal } from '../lib/refusal.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { openOneShotRun } from '../pipeline/runs.js';
-import { readDeclaredSource } from '../project-config/source.js';
+import { readDeclaredSource } from '../project-config/index.js';
 import {
   type BatchRow,
   batchesOfConversation,
