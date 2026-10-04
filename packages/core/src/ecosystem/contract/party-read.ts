@@ -4,8 +4,9 @@ import { holds } from '../../permissions/index.js';
 import { forbidden, notFound } from '../access.js';
 import { loadGraph } from '../graph.js';
 import { loadInterface } from '../interface-service.js';
+import { activeEcosystemIdsOf } from '../membership-store.js';
 import { liveEdges } from '../party.js';
-import { activeEcosystemIdsOf, projectsWhere } from '../store.js';
+import { projectsWhere } from '../store.js';
 import { type StoredVersion, versionsOf } from './store.js';
 
 // cm:why a consumer reads a provider's contract only through a live consumption edge in an ecosystem the provider still publishes it to, and only as the project it holds a role on

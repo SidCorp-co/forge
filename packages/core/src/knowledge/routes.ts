@@ -11,14 +11,14 @@ import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import {
-  deleteKnowledgeEntry,
-  getKnowledgeEntry,
-  listKnowledgeEntries,
+  knowledgeInjectionEnum,
+  knowledgeKindEnum,
   slugSchema,
-  upsertKnowledgeEntry,
   upsertKnowledgeInputSchema,
-} from './service.js';
+} from './entry-input.js';
+import { deleteKnowledgeEntry, getKnowledgeEntry, listKnowledgeEntries } from './service.js';
 import { runUnifiedSearch } from './unified-search.js';
+import { upsertKnowledgeEntry } from './upsert.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 /**
@@ -33,10 +33,8 @@ const idParamSchema = z.object({ id: z.uuid() });
 const slugParamSchema = z.object({ id: z.uuid(), slug: slugSchema });
 
 const listQuerySchema = z.object({
-  kind: z
-    .enum(['overview', 'scenario', 'workflow', 'rule', 'guide', 'reference', 'glossary'])
-    .optional(),
-  injection: z.enum(['always', 'on_demand', 'none']).optional(),
+  kind: z.enum(knowledgeKindEnum).optional(),
+  injection: z.enum(knowledgeInjectionEnum).optional(),
   // Left as bare strings rather than a zod enum so a bad value is refused with the message below
   // — naming the field and every value that IS valid — rather than zValidator's generic
   // "invalid query params" (ISS-1313 criteria 24, 25).
@@ -168,18 +166,7 @@ knowledgeRoutes.put(
     const userId = c.get('userId');
     await requireCan(actorFor(userId), 'project.write', projectResource(id));
 
-    try {
-      const result = await upsertKnowledgeEntry({ projectId: id, slug, ...body });
-      return c.json(result);
-    } catch (err) {
-      if (err instanceof EmbeddingUnavailableError) {
-        throw new HTTPException(503, {
-          message: 'embeddings service unavailable',
-          cause: { code: 'EMBEDDING_UNAVAILABLE' },
-        });
-      }
-      throw err;
-    }
+    return c.json(await upsertKnowledgeEntry({ projectId: id, slug, ...body }));
   },
 );
 

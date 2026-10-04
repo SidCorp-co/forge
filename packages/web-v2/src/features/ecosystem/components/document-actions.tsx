@@ -15,7 +15,7 @@ import { ReadOnlyNotice, RefusalNotice } from "./notices";
 export type Role = ProjectListItem["role"];
 
 /** Whether the reader's side owes this document a reply it can write. */
-export function owesReply(view: DocumentView): boolean {
+function owesReply(view: DocumentView): boolean {
   const d = view.document;
   if (view.side !== "recipient" || d.state !== "published") return false;
   if ((REPLY_TYPES[d.type] ?? []).length === 0) return false;
@@ -95,17 +95,50 @@ export function ReasonAction({
   );
 }
 
-export function DocumentActions({
-  view,
-  projectId,
-  slug,
-  role,
-}: {
-  view: DocumentView;
-  projectId: string;
-  slug: string;
-  role: Role;
-}) {
+function DraftActions({ view, projectId, slug }: { view: DocumentView; projectId: string; slug: string }) {
+  return (
+    <>
+      <Link
+        href={ecosystemRoutes.compose(slug, { draft: view.id })}
+        className="inline-flex items-center rounded-md border border-line-strong px-[11px] py-[6px] text-13 hover:bg-hover"
+      >
+        Edit draft
+      </Link>
+      {view.document.state === "draft" ? (
+        <ReasonAction
+          label="Submit"
+          confirmLabel="Submit"
+          reason="none"
+          variant="primary"
+          run={() => ecosystemApi.submit(projectId, view.id)}
+        />
+      ) : (
+        // Core submits only a draft, and an edit is what turns a returned document back into one.
+        <p className="self-center text-13 text-muted">Edit it to submit it again.</p>
+      )}
+    </>
+  );
+}
+
+function HoldAction({ projectId, thread, held }: { projectId: string; thread: string; held: boolean }) {
+  return held ? (
+    <ReasonAction
+      label="Release the conversation"
+      confirmLabel="Release"
+      reason="optional"
+      run={(reason) => ecosystemApi.hold(projectId, thread, "release", reason || undefined)}
+    />
+  ) : (
+    <ReasonAction
+      label="Hold the conversation"
+      confirmLabel="Hold"
+      reason="required"
+      run={(reason) => ecosystemApi.hold(projectId, thread, "hold", reason)}
+    />
+  );
+}
+
+export function DocumentActions({ view, projectId, slug, role }: { view: DocumentView; projectId: string; slug: string; role: Role }) {
   const d = view.document;
   if (!canWriteProject(role)) {
     return <ReadOnlyNotice role={role} slug={slug} writes="drafts, replies and holds" />;
@@ -113,31 +146,9 @@ export function DocumentActions({
   const sender = view.side === "sender";
   const editable = sender && (d.state === "draft" || d.state === "returned");
   const standing = sender && d.state === "published";
-  const held = view.hold?.action === "hold";
   return (
     <div className="flex flex-wrap items-start gap-2">
-      {editable ? (
-        <>
-          <Link
-            href={ecosystemRoutes.compose(slug, { draft: view.id })}
-            className="inline-flex items-center rounded-md border border-line-strong px-[11px] py-[6px] text-13 hover:bg-hover"
-          >
-            Edit draft
-          </Link>
-          {d.state === "draft" ? (
-            <ReasonAction
-              label="Submit"
-              confirmLabel="Submit"
-              reason="none"
-              variant="primary"
-              run={() => ecosystemApi.submit(projectId, view.id)}
-            />
-          ) : (
-            // Core submits only a draft, and an edit is what turns a returned document back into one.
-            <p className="self-center text-13 text-muted">Edit it to submit it again.</p>
-          )}
-        </>
-      ) : null}
+      {editable ? <DraftActions view={view} projectId={projectId} slug={slug} /> : null}
       {owesReply(view) && d.number ? (
         <Link
           href={ecosystemRoutes.compose(slug, { inReplyTo: d.number, ecosystem: d.ecosystem })}
@@ -165,21 +176,7 @@ export function DocumentActions({
         </>
       ) : null}
       {view.thread && d.state === "published" ? (
-        held ? (
-          <ReasonAction
-            label="Release the conversation"
-            confirmLabel="Release"
-            reason="optional"
-            run={(reason) => ecosystemApi.hold(projectId, view.thread as string, "release", reason || undefined)}
-          />
-        ) : (
-          <ReasonAction
-            label="Hold the conversation"
-            confirmLabel="Hold"
-            reason="required"
-            run={(reason) => ecosystemApi.hold(projectId, view.thread as string, "hold", reason)}
-          />
-        )
+        <HoldAction projectId={projectId} thread={view.thread} held={view.hold?.action === "hold"} />
       ) : null}
     </div>
   );

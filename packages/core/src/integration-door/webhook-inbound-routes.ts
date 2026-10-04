@@ -65,15 +65,6 @@ function routeRemoved(): HTTPException {
   });
 }
 
-/**
- * Header → provider lookup, DERIVED from the declarations rather than listed here.
- *
- * Order matters only when a request carries several provider headers — first match wins, which is
- * registry order. Until ISS-1071 this was a literal array in this file, and a provider that declared
- * a webhook without also being added to it was routed nowhere: the delivery answered 404 with the
- * integration reporting healthy, and nothing in the array's neighbourhood said a second edit was
- * owed.
- */
 interface ProviderRoute {
   header: string;
   /** Absent only where a provider declares an inbound surface and forgets how it is signed. */
@@ -82,6 +73,7 @@ interface ProviderRoute {
   provider: IntegrationProvider;
 }
 
+// cm:why derived from the integration declarations, never listed here: a hand-kept list let a provider that declared a webhook route nowhere while it reported healthy (ISS-1071). A request carrying several provider headers takes the first in registry order.
 function providerHeaderMap(): ProviderRoute[] {
   return listIntegrations()
     .filter((d) => d.capabilities.canReceiveWebhook && d.capabilities.webhookHeader)
@@ -105,12 +97,11 @@ webhookInboundRoutes.post(
     const slug = c.req.param('slug');
     if (!slug) throw badRequest({ slug: 'required' });
 
-    // First matching provider header wins, in registry order.
     const map = providerHeaderMap().find((m) => c.req.header(m.header));
     if (!map) throw routeRemoved();
 
     // Raw body first — HMAC covers the untouched bytes.
-    const rawBody = await c.req.raw.clone().text();
+    const raw = await c.req.raw.clone().text();
 
     const projectId = await findProjectIdBySlug(slug);
     if (!projectId) throw notFound();
@@ -139,7 +130,7 @@ webhookInboundRoutes.post(
         p.binding.integrationSecret !== null &&
         (shared
           ? verifySharedToken(p.binding.integrationSecret, signatureHeader)
-          : verifyHmacSignature(p.binding.integrationSecret, rawBody, signatureHeader)),
+          : verifyHmacSignature(p.binding.integrationSecret, raw, signatureHeader)),
     );
     if (!pair) {
       const code = shared ? 'WEBHOOK_TOKEN_MISMATCH' : 'INVALID_SIGNATURE';
@@ -149,7 +140,7 @@ webhookInboundRoutes.post(
 
     let parsed: unknown;
     try {
-      parsed = rawBody.length > 0 ? JSON.parse(rawBody) : {};
+      parsed = raw.length > 0 ? JSON.parse(raw) : {};
     } catch {
       throw badRequest({ body: 'invalid json' });
     }
@@ -157,7 +148,7 @@ webhookInboundRoutes.post(
     try {
       const result = await adapter.handleInbound(ctx, {
         headers: Object.fromEntries(c.req.raw.headers),
-        rawBody,
+        rawBody: raw,
         payload: parsed,
       });
       // The adapter performs no effect on Forge's modules: what the delivery reports goes to the

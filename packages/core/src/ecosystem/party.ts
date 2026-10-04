@@ -1,5 +1,5 @@
+import type { EdgeRow } from './interface-store.js';
 import type { VisibilityMode } from './schema.js';
-import type { EdgeRow } from './store.js';
 
 export interface PartyGraph {
   active: ReadonlyMap<string, ReadonlySet<string>>;

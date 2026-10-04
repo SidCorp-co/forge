@@ -4,6 +4,7 @@ import { knowledgeEntries, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../integrations/llm/index.js';
 import { fillKnowledgeEmbedding, knowledgeEmbedInput } from '../knowledge/index.js';
 import { logger } from '../observability/logger.js';
+import { MAX_EMBED_CHARS } from './indexer.js';
 
 /**
  * memory-v2 phase 1 — re-embed rows written while the embeddings service was
@@ -17,7 +18,6 @@ import { logger } from '../observability/logger.js';
  */
 
 const BATCH_SIZE = 50;
-const MAX_EMBED_CHARS = 8192;
 
 export async function runEmbeddingBackfill(): Promise<{
   reembedded: number;

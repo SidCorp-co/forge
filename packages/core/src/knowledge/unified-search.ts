@@ -22,6 +22,33 @@ interface UnifiedSearchResult {
   degraded?: boolean;
 }
 
+type Needs = {
+  projectId: string;
+  query: string;
+  topK: number | undefined;
+  knowledge: boolean;
+  memory: boolean;
+};
+
+const labelKnowledge = (hits: KnowledgeHit[]) =>
+  hits.map((h) => ({ ...h, origin: 'knowledge' as const }));
+const labelMemory = (hits: MemoryHit[]) => hits.map((h) => ({ ...h, origin: 'memory' as const }));
+
+/** Both stores by keyword alone — the `keyword` strategy, and what the others degrade to. */
+async function keywordOnly(needs: Needs): Promise<UnifiedSearchResult> {
+  const { projectId, query, topK } = needs;
+  const knowledge = needs.knowledge
+    ? labelKnowledge(await keywordSearchKnowledge(projectId, query, topK))
+    : [];
+  const memory = needs.memory
+    ? labelMemory(
+        (await runMemorySearch({ projectId, query, topK, strategy: 'keyword', surface: 'agent' }))
+          .hits,
+      )
+    : [];
+  return { knowledge, memory };
+}
+
 /**
  * Unified search across knowledge_entries and/or memories.
  * Each store is queried independently — scores are NOT blended across stores.
@@ -35,33 +62,16 @@ export async function runUnifiedSearch(input: {
   strategy?: UnifiedStrategy;
 }): Promise<UnifiedSearchResult> {
   const { projectId, query, scope, topK, strategy = 'semantic' } = input;
+  const needs: Needs = {
+    projectId,
+    query,
+    topK,
+    knowledge: scope === 'knowledge' || scope === 'all',
+    memory: scope === 'memory' || scope === 'all',
+  };
+  if (strategy === 'keyword') return keywordOnly(needs);
 
-  const knowledgeHits: KnowledgeHitLabeled[] = [];
-  const memoryHits: MemoryHitLabeled[] = [];
-  let degraded = false;
-
-  const needsKnowledge = scope === 'knowledge' || scope === 'all';
-  const needsMemory = scope === 'memory' || scope === 'all';
-
-  if (strategy === 'keyword') {
-    if (needsKnowledge) {
-      const hits = await keywordSearchKnowledge(projectId, query, topK);
-      knowledgeHits.push(...hits.map((h) => ({ ...h, origin: 'knowledge' as const })));
-    }
-    if (needsMemory) {
-      const result = await runMemorySearch({
-        projectId,
-        query,
-        topK,
-        strategy: 'keyword',
-        surface: 'agent',
-      });
-      memoryHits.push(...result.hits.map((h) => ({ ...h, origin: 'memory' as const })));
-    }
-    return { knowledge: knowledgeHits, memory: memoryHits };
-  }
-
-  let queryVec: number[] | null = null;
+  let queryVec: number[];
   try {
     queryVec = await embed({ surface: 'knowledge' }, query);
   } catch (err) {
@@ -70,51 +80,23 @@ export async function runUnifiedSearch(input: {
       { projectId, scope, strategy },
       'knowledge.unified-search: embeddings unavailable, degrading to keyword',
     );
-    degraded = true;
+    return { ...(await keywordOnly(needs)), degraded: true };
   }
 
-  if (degraded || queryVec === null) {
-    if (needsKnowledge) {
-      const hits = await keywordSearchKnowledge(projectId, query, topK);
-      knowledgeHits.push(...hits.map((h) => ({ ...h, origin: 'knowledge' as const })));
-    }
-    if (needsMemory) {
-      const result = await runMemorySearch({
-        projectId,
-        query,
-        topK,
-        strategy: 'keyword',
-        surface: 'agent',
-      });
-      memoryHits.push(...result.hits.map((h) => ({ ...h, origin: 'memory' as const })));
-    }
-    return { knowledge: knowledgeHits, memory: memoryHits, degraded: true };
-  }
-
-  const tasks: Promise<void>[] = [];
-
-  if (needsKnowledge) {
-    tasks.push(
-      (strategy === 'hybrid'
-        ? hybridSearchKnowledge(projectId, queryVec, query, topK)
-        : searchKnowledge(projectId, queryVec, topK)
-      ).then((hits) => {
-        knowledgeHits.push(...hits.map((h) => ({ ...h, origin: 'knowledge' as const })));
-      }),
-    );
-  }
-
-  if (needsMemory) {
-    tasks.push(
-      runMemorySearch({ projectId, query, queryVec, topK, strategy, surface: 'agent' }).then(
-        (result) => {
-          memoryHits.push(...result.hits.map((h) => ({ ...h, origin: 'memory' as const })));
-          if (result.degraded) degraded = true;
-        },
-      ),
-    );
-  }
-
-  await Promise.all(tasks);
-  return { knowledge: knowledgeHits, memory: memoryHits, ...(degraded ? { degraded } : {}) };
+  const [knowledge, memory] = await Promise.all([
+    needs.knowledge
+      ? (strategy === 'hybrid'
+          ? hybridSearchKnowledge(projectId, queryVec, query, topK)
+          : searchKnowledge(projectId, queryVec, topK)
+        ).then(labelKnowledge)
+      : [],
+    needs.memory
+      ? runMemorySearch({ projectId, query, queryVec, topK, strategy, surface: 'agent' })
+      : undefined,
+  ]);
+  return {
+    knowledge,
+    memory: memory ? labelMemory(memory.hits) : [],
+    ...(memory?.degraded ? { degraded: true } : {}),
+  };
 }

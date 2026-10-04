@@ -47,9 +47,6 @@
     "core-runs": [
       "packages/core/src/runs/**"
     ],
-    "core-embeddings": [
-      "packages/core/src/embeddings/**"
-    ],
     "core-feedback": [
       "packages/core/src/feedback/**"
     ],

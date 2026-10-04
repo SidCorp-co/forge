@@ -9,26 +9,16 @@ import { lockKeys } from './store.js';
 
 export const GATE_OPTIONS = { approve: 'approve', return: 'return' } as const;
 
-// cm:why the gate is decided only by answering its question, inside the answer's transaction, so an approval that the checks refuse leaves the question open and nothing published
-export async function decideChannelGate(
-  tx: Tx,
-  args: {
-    documentId: string;
-    projectId: string;
-    optionId: string;
-    note: string | undefined;
-    by: string;
-    via: PersonVia;
-  },
-): Promise<() => Promise<void>> {
-  await lockKeys(tx, [`channel-doc:${args.documentId}`]);
-  const row = await readDocument(tx, args.documentId);
-  if (!row || row.fromProjectId !== args.projectId) {
-    throw new Error(
-      `channel: gate question names document ${args.documentId}, which project ${args.projectId} did not send`,
-    );
-  }
-  notIn(row, ['submitted'], 'a gate decision');
+type GateArgs = {
+  documentId: string;
+  projectId: string;
+  optionId: string;
+  note: string | undefined;
+  by: string;
+  via: PersonVia;
+};
+
+function decisionOf(args: GateArgs): 'approved' | 'returned' {
   const decision =
     args.optionId === GATE_OPTIONS.approve
       ? 'approved'
@@ -47,6 +37,48 @@ export async function decideChannelGate(
       'a returned document says what to change: answer the gate question with { "optionId": "return", "note": … }.',
     );
   }
+  return decision;
+}
+
+async function recordDecided(
+  tx: Tx,
+  documentId: string,
+  published: boolean,
+  args: GateArgs,
+  now: Date,
+) {
+  const actor: Author = { kind: 'person', id: args.by, via: args.via };
+  const at = { actor, userId: args.by, at: now };
+  await insertEvent(tx, {
+    documentId,
+    verb: published ? 'approve' : 'return',
+    fromState: 'submitted',
+    toState: published ? 'published' : 'returned',
+    reason: args.note ?? null,
+    ...at,
+  });
+  if (published) {
+    await insertEvent(tx, {
+      documentId,
+      verb: 'publish',
+      fromState: 'submitted',
+      toState: 'published',
+      ...at,
+    });
+  }
+}
+
+// cm:why the gate is decided only by answering its question, inside the answer's transaction, so an approval that the checks refuse leaves the question open and nothing published
+export async function decideChannelGate(tx: Tx, args: GateArgs): Promise<() => Promise<void>> {
+  await lockKeys(tx, [`channel-doc:${args.documentId}`]);
+  const row = await readDocument(tx, args.documentId);
+  if (!row || row.fromProjectId !== args.projectId) {
+    throw new Error(
+      `channel: gate question names document ${args.documentId}, which project ${args.projectId} did not send`,
+    );
+  }
+  notIn(row, ['submitted'], 'a gate decision');
+  const decision = decisionOf(args);
   const now = new Date();
   const gate: Gate = {
     mode: 'approve',
@@ -75,24 +107,6 @@ export async function decideChannelGate(
     document: doc,
     publishedAt: state === 'published' ? now : null,
   });
-  const actor: Author = { kind: 'person', id: args.by, via: args.via };
-  const at = { actor, userId: args.by, at: now };
-  await insertEvent(tx, {
-    documentId: row.id,
-    verb: state === 'published' ? 'approve' : 'return',
-    fromState: 'submitted',
-    toState: state,
-    reason: args.note ?? null,
-    ...at,
-  });
-  if (state === 'published') {
-    await insertEvent(tx, {
-      documentId: row.id,
-      verb: 'publish',
-      fromState: 'submitted',
-      toState: 'published',
-      ...at,
-    });
-  }
+  await recordDecided(tx, row.id, state === 'published', args, now);
   return () => announceGateDecided(row.id, doc);
 }

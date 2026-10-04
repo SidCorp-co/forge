@@ -12,7 +12,7 @@ import type {
   WorkspaceRead,
 } from "./types";
 
-export interface DraftInput {
+interface DraftInput {
   type: DocumentType;
   to: string[];
   subject: string;
@@ -55,7 +55,6 @@ export const ecosystemApi = {
   ecosystemsOf: (projectId: string) =>
     apiClient<ProjectEcosystemsResponse>(`/projects/${projectId}/ecosystems`),
 
-
   document: (projectId: string, ref: string) =>
     apiClient<DocumentView>(`${channel(projectId)}/documents/${encodeURIComponent(ref)}`),
 
@@ -90,5 +89,4 @@ export const ecosystemApi = {
     ),
 
   apiPage: (projectId: string) => apiClient<ApiPage>(`/projects/${projectId}/api-page`),
-
 };

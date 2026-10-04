@@ -134,7 +134,7 @@ export async function refetchRunnerRelease(): Promise<void> {
   });
 }
 
-// Only run when invoked directly (`node dist/integrations/published-releases/fetch-release.js`), not
+// Only run when invoked directly (`node dist/integrations/github/published-releases/fetch-release.js`), not
 // when imported by the unit tests — otherwise importing the pure helpers would
 // trigger a live GitHub fetch and `process.exit(0)`.
 const isMain = argv[1] && import.meta.url === pathToFileURL(argv[1]).href;

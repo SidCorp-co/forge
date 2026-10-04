@@ -7,7 +7,7 @@ import type { EcosystemRefusal } from '../refusals.js';
 import { lockKeys, projectsWhere } from '../store.js';
 import { type Approved, announceApproved, fileBreakingIn } from './announce.js';
 import { approverRefusal, type ContractDecision, decisionRefusals } from './approval.js';
-import { decideVersion, type StoredVersion, versionsOf } from './store.js';
+import { approvalView, decideVersion, type StoredVersion, versionsOf } from './store.js';
 
 interface DecideInput {
   projectId: string;
@@ -29,9 +29,7 @@ export async function decideContractVersion(input: DecideInput): Promise<DecideO
   const [project] = await projectsWhere(db, { ids: [projectId] });
   if (!project) throw notFound(`project ${projectId} does not exist`);
   const ref = `${project.slug}/${contract}@${version}`;
-  const read = async () =>
-    (await versionsOf(db, [projectId], contract)).find((v) => v.version === version) ?? null;
-  const target = await read();
+  const target = (await versionsOf(db, [projectId], contract)).find((v) => v.version === version);
   if (!target) throw notFound(`${project.slug}/${contract} has no recorded version "${version}"`);
   const [facts, iface] = await Promise.all([
     permissionFactsOf(actor.userId, projectId),
@@ -76,3 +74,10 @@ export async function decideContractVersion(input: DecideInput): Promise<DecideO
   if (outcome.ok && approved) await announceApproved(db, approved, outcome.filed);
   return outcome;
 }
+
+/** The answer both doors give a decided version. */
+export const decidedView = (out: Extract<DecideOutcome, { ok: true }>) => ({
+  version: out.version.document,
+  approval: approvalView(out.version),
+  filedFeedback: out.filed.length,
+});

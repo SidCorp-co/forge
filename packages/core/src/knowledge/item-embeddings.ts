@@ -48,10 +48,10 @@ async function upsert(
     .onConflictDoUpdate({ target: [itemEmbeddings.itemType, itemEmbeddings.itemId], set: values });
 }
 
-/** Embeds the item's head as its project's data policy allows, replacing whatever row it held. */
 const surfaceOf = (arc: ItemArc): EgressSurface =>
   'requirementId' in arc ? 'requirement' : 'feedback';
 
+/** Embeds the item's head as its project's data policy allows, replacing whatever row it held. */
 export async function writeItemEmbedding(head: ItemHead): Promise<ItemEmbeddingStatus> {
   const scope = {
     level: await dataPolicyOf(head.projectId),

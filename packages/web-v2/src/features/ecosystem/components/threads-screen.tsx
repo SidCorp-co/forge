@@ -85,7 +85,7 @@ function pillOf(row: InboxRow, draft: WorkspaceDraft | null, ctx: Ctx): Pill {
 }
 
 function InlineGate({ projectId, draftId }: { projectId: string; draftId: string }) {
-  const reading = readingOf(useGateQuestion(projectId, draftId, true));
+  const reading = readingOf(useGateQuestion(projectId, draftId));
   const answer = useAnswerGate(projectId);
   const [returning, setReturning] = useState(false);
   const [note, setNote] = useState("");
@@ -269,23 +269,70 @@ function Select({
   );
 }
 
-export function ThreadsScreen({
-  filters,
-  onParam,
-}: {
-  filters: ThreadsFilters;
-  onParam: (key: keyof ThreadsFilters, value: string | null) => void;
-}) {
-  const reading = readingOf(useMyEcosystems());
-  const view: InboxView | null = filters.view === null ? "needs-me" : (INBOX_VIEWS as readonly string[]).includes(filters.view) ? (filters.view as InboxView) : null;
-  const header = (action?: React.ReactNode) => (
+function Header({ action }: { action?: React.ReactNode }) {
+  return (
     <div className="flex min-w-0 flex-wrap items-center gap-3">
       <PageTitle className="text-[22px] font-bold">Threads</PageTitle>
       {action ? <span className="ml-auto">{action}</span> : null}
     </div>
   );
-  if (reading.kind === "loading") return <div className="grid gap-4">{header()}<Loading what="your threads" /></div>;
-  if (reading.kind === "unread") return <div className="grid gap-4">{header()}<UnreadNotice what="Your threads" refusals={reading.refusals} /></div>;
+}
+
+function ViewBar({
+  view,
+  filters,
+  onParam,
+  read,
+  count,
+}: {
+  view: InboxView | null;
+  filters: ThreadsFilters;
+  onParam: (key: keyof ThreadsFilters, value: string | null) => void;
+  read: WorkspaceRead;
+  count: (v: InboxView) => number;
+}) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      {INBOX_VIEWS.map((v) => (
+        <Tooltip key={v} label={INBOX_TIP[v]} multiline>
+          <button
+            type="button"
+            aria-pressed={view === v}
+            onClick={() => onParam("view", v === "needs-me" ? null : v)}
+            className={cn(
+              "rounded-pill border px-[11px] py-[3px] text-12-5 font-semibold",
+              view === v ? "border-[var(--fg-default)] bg-[var(--fg-default)] text-[var(--bg-surface)]" : "border-line bg-surface text-muted",
+            )}
+          >
+            {INBOX_LABEL[v]}
+            {COUNTED.has(v) ? <span className="ml-[3px] tabular-nums opacity-75">{count(v)}</span> : null}
+          </button>
+        </Tooltip>
+      ))}
+      <span className="ml-auto flex flex-wrap gap-2">
+        <Select label="Type" value={filters.type ?? ""} onChange={(v) => onParam("type", v)} options={DOCUMENT_TYPES.map((t) => ({ value: t, label: TYPE_LABEL[t] }))} />
+        <Select
+          label="Ecosystem"
+          value={filters.ecosystem ?? ""}
+          onChange={(v) => onParam("ecosystem", v)}
+          options={read.ecosystems.map((e) => ({ value: e.id, label: e.name }))}
+        />
+        <Select
+          label="Project"
+          value={filters.project ?? ""}
+          onChange={(v) => onParam("project", v)}
+          options={read.projects.filter((p) => read.mine.includes(p.id)).map((p) => ({ value: p.id, label: p.slug }))}
+        />
+      </span>
+    </div>
+  );
+}
+
+export function ThreadsScreen({ filters, onParam }: { filters: ThreadsFilters; onParam: (key: keyof ThreadsFilters, value: string | null) => void }) {
+  const reading = readingOf(useMyEcosystems());
+  const view: InboxView | null = filters.view === null ? "needs-me" : (INBOX_VIEWS as readonly string[]).includes(filters.view) ? (filters.view as InboxView) : null;
+  if (reading.kind === "loading") return <div className="grid gap-4"><Header /><Loading what="your threads" /></div>;
+  if (reading.kind === "unread") return <div className="grid gap-4"><Header /><UnreadNotice what="Your threads" refusals={reading.refusals} /></div>;
   const read = reading.value;
   const mine = new Set(read.mine);
   const slugs = new Map(read.projects.map((p) => [p.id, p.slug]));
@@ -301,49 +348,19 @@ export function ThreadsScreen({
   const composer = read.projects.find((p) => p.id === (filters.project ?? read.ecosystems[0]?.members[0]));
   return (
     <div className="grid min-w-0 gap-4">
-      {header(
-        composer ? (
-          <Link
-            href={ecosystemRoutes.compose(composer.slug, { ecosystem: filters.ecosystem ?? undefined })}
-            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-13 font-semibold text-on-accent"
-          >
-            + New document
-          </Link>
-        ) : undefined,
-      )}
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
-        {INBOX_VIEWS.map((v) => (
-          <Tooltip key={v} label={INBOX_TIP[v]} multiline>
-            <button
-              type="button"
-              aria-pressed={view === v}
-              onClick={() => onParam("view", v === "needs-me" ? null : v)}
-              className={cn(
-                "rounded-pill border px-[11px] py-[3px] text-12-5 font-semibold",
-                view === v ? "border-[var(--fg-default)] bg-[var(--fg-default)] text-[var(--bg-surface)]" : "border-line bg-surface text-muted",
-              )}
+      <Header
+        action={
+          composer ? (
+            <Link
+              href={ecosystemRoutes.compose(composer.slug, { ecosystem: filters.ecosystem ?? undefined })}
+              className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-13 font-semibold text-on-accent"
             >
-              {INBOX_LABEL[v]}
-              {COUNTED.has(v) ? <span className="ml-[3px] tabular-nums opacity-75">{count(v)}</span> : null}
-            </button>
-          </Tooltip>
-        ))}
-        <span className="ml-auto flex flex-wrap gap-2">
-          <Select label="Type" value={filters.type ?? ""} onChange={(v) => onParam("type", v)} options={DOCUMENT_TYPES.map((t) => ({ value: t, label: TYPE_LABEL[t] }))} />
-          <Select
-            label="Ecosystem"
-            value={filters.ecosystem ?? ""}
-            onChange={(v) => onParam("ecosystem", v)}
-            options={read.ecosystems.map((e) => ({ value: e.id, label: e.name }))}
-          />
-          <Select
-            label="Project"
-            value={filters.project ?? ""}
-            onChange={(v) => onParam("project", v)}
-            options={read.projects.filter((p) => mine.has(p.id)).map((p) => ({ value: p.id, label: p.slug }))}
-          />
-        </span>
-      </div>
+              + New document
+            </Link>
+          ) : undefined
+        }
+      />
+      <ViewBar view={view} filters={filters} onParam={onParam} read={read} count={count} />
       {view === null ? (
         <RefusalNotice
           title="Not a Threads view"

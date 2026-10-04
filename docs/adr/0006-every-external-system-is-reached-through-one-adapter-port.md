@@ -18,7 +18,7 @@ call sits now.
 
 | Then (under core's `src`) | Now | What it called |
 |---|---|---|
-| memory/llm.ts | `packages/core/src/integrations/llm/fast-model.ts` | LiteLLM `chat/completions` with the global `fetch` — **outside the data-egress guard**. So did every memory and knowledge embedding; only `packages/core/src/embeddings/item-writer.ts` and `packages/core/src/requirements/embeddings.ts` gated their text |
+| memory/llm.ts | `packages/core/src/integrations/llm/fast-model.ts` | LiteLLM `chat/completions` with the global `fetch` — **outside the data-egress guard**. So did every memory and knowledge embedding; only `packages/core/src/knowledge/item-embeddings.ts` and `packages/core/src/requirements/embeddings.ts` gated their text |
 | assistant/providers/*, and the token counter in assistant/tool-catalog-cost.ts | `packages/core/src/integrations/llm/` | the chat model (OpenAI-compatible and Anthropic Messages) and Anthropic's `count_tokens` |
 | embeddings/client.ts, embeddings/index.ts | `packages/core/src/integrations/llm/embeddings.ts`, `packages/core/src/integrations/llm/embeddings-client.ts` | the embeddings endpoint |
 | the transports in auth/email.ts and projects/invitation-email.ts | `packages/core/src/integrations/identity/smtp.ts` | two `nodemailer` transports, built twice from the same `SMTP_*` |

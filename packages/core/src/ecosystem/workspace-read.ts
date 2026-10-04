@@ -7,9 +7,10 @@ import { type RegisterRow, registerRowsOver } from './channel-register.js';
 import type { ChannelDocument } from './channel-schema.js';
 import { documentsWhere } from './channel-store.js';
 import { serveAll } from './channel-world.js';
-import { heldEcosystem } from './ecosystem-service.js';
+import { type HeldEcosystem, heldEcosystem } from './ecosystem-service.js';
+import { membershipsWhere } from './membership-store.js';
 import type { EcosystemDocument } from './schema.js';
-import { membershipsWhere, projectsWhere, readEcosystems } from './store.js';
+import { projectsWhere, readEcosystems } from './store.js';
 
 export interface WorkspaceEcosystem {
   id: string;
@@ -61,40 +62,25 @@ async function orgsOf(userId: string): Promise<Set<string>> {
   return new Set(rows.map((r) => r.orgId));
 }
 
-// cm:why an ecosystem is the person's when one of their projects is invited to it or active in it, or their org stewards it — the same readers readableEcosystem admits — and every row is one a project of theirs sent or received, as in readRegister
-export async function readWorkspace(userId: string): Promise<WorkspaceRead> {
-  const mine = await readerProjects(userId);
-  const orgs = await orgsOf(userId);
-  const memberships = await membershipsWhere({ projectIds: [...mine] });
-  const stewarded =
-    orgs.size === 0
-      ? []
-      : await db
-          .select({ id: ecosystemTable.id })
-          .from(ecosystemTable)
-          .where(inArray(ecosystemTable.stewardOrgId, [...orgs]));
-  const ids = new Set([
-    ...memberships
-      .filter((m) => m.state === 'active' || m.state === 'invited')
-      .map((m) => m.ecosystemId),
-    ...stewarded.map((s) => s.id),
-  ]);
-  const held = (await readEcosystems(db, [...ids])).map(heldEcosystem);
-  const stewards = new Map(
-    held.length === 0
-      ? []
-      : (
-          await db
-            .select({ id: organizations.id, name: organizations.name })
-            .from(organizations)
-            .where(inArray(organizations.id, [...new Set(held.map((h) => h.stewardOrgId))]))
-        ).map((o) => [o.id, o.name]),
-  );
-  const activeIn = (eco: string) =>
-    memberships
-      .filter((m) => m.ecosystemId === eco && m.state === 'active')
-      .map((m) => m.projectId);
+async function stewardedBy(orgs: ReadonlySet<string>): Promise<string[]> {
+  if (orgs.size === 0) return [];
+  const rows = await db
+    .select({ id: ecosystemTable.id })
+    .from(ecosystemTable)
+    .where(inArray(ecosystemTable.stewardOrgId, [...orgs]));
+  return rows.map((r) => r.id);
+}
 
+async function orgNames(ids: readonly string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select({ id: organizations.id, name: organizations.name })
+    .from(organizations)
+    .where(inArray(organizations.id, [...new Set(ids)]));
+  return new Map(rows.map((o) => [o.id, o.name]));
+}
+
+async function threadsOf(held: readonly HeldEcosystem[], mine: ReadonlySet<string>) {
   const threads: WorkspaceRead['threads'] = [];
   for (const h of held) {
     const stored = await documentsWhere(db, { ecosystem: h.id, published: true });
@@ -103,13 +89,17 @@ export async function readWorkspace(userId: string): Promise<WorkspaceRead> {
         threads.push({ ...row, ecosystem: h.id });
     }
   }
-  threads.sort((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? ''));
+  return threads.sort((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? ''));
+}
 
-  const senders = [...new Set(held.flatMap((h) => activeIn(h.id)))];
+async function draftsOf(
+  senders: readonly string[],
+  ids: ReadonlySet<string>,
+): Promise<WorkspaceDraft[]> {
   const pending = (await Promise.all(senders.map((p) => documentsWhere(db, { from: p })))).flatMap(
     (rows) => rows.filter((r) => r.state !== 'published' && r.inReplyTo && ids.has(r.ecosystemId)),
   );
-  const drafts = (await serveAll(db, pending)).map(({ id, document: d }) => ({
+  return (await serveAll(db, pending)).map(({ id, document: d }) => ({
     id,
     ecosystem: d.ecosystem,
     from: d.from,
@@ -119,29 +109,63 @@ export async function readWorkspace(userId: string): Promise<WorkspaceRead> {
     authoredBy: d.authoredBy,
     gate: d.gate ?? null,
   }));
+}
 
+function ecosystemRow(
+  h: HeldEcosystem,
+  steward: WorkspaceEcosystem['steward'],
+  members: string[],
+): WorkspaceEcosystem {
+  return {
+    id: h.id,
+    slug: h.document.ecosystem.slug,
+    name: h.document.ecosystem.name,
+    purpose: h.document.ecosystem.purpose ?? null,
+    code: h.document.channel.code,
+    steward,
+    visibility: h.document.visibility.members,
+    responseDays: h.document.channel.responseDays,
+    gate: h.document.gate,
+    members,
+  };
+}
+
+// cm:why an ecosystem is the person's when one of their projects is invited to it or active in it, or their org stewards it — the same readers readableEcosystem admits — and every row is one a project of theirs sent or received, as in readRegister
+export async function readWorkspace(userId: string): Promise<WorkspaceRead> {
+  const mine = await readerProjects(userId);
+  const orgs = await orgsOf(userId);
+  const memberships = await membershipsWhere({ projectIds: [...mine] });
+  const ids = new Set([
+    ...memberships
+      .filter((m) => m.state === 'active' || m.state === 'invited')
+      .map((m) => m.ecosystemId),
+    ...(await stewardedBy(orgs)),
+  ]);
+  const held = (await readEcosystems(db, [...ids])).map(heldEcosystem);
+  const stewards = await orgNames(held.map((h) => h.stewardOrgId));
+  const activeIn = (eco: string) =>
+    memberships
+      .filter((m) => m.ecosystemId === eco && m.state === 'active')
+      .map((m) => m.projectId);
+  const threads = await threadsOf(held, mine);
+  const drafts = await draftsOf([...new Set(held.flatMap((h) => activeIn(h.id)))], ids);
   const named = new Set([
     ...memberships.map((m) => m.projectId),
     ...threads.flatMap((t) => [t.from, ...t.to]),
   ]);
   return {
     ecosystems: held
-      .map((h) => ({
-        id: h.id,
-        slug: h.document.ecosystem.slug,
-        name: h.document.ecosystem.name,
-        purpose: h.document.ecosystem.purpose ?? null,
-        code: h.document.channel.code,
-        steward: {
-          id: h.stewardOrgId,
-          name: stewards.get(h.stewardOrgId) ?? null,
-          mine: orgs.has(h.stewardOrgId),
-        },
-        visibility: h.document.visibility.members,
-        responseDays: h.document.channel.responseDays,
-        gate: h.document.gate,
-        members: activeIn(h.id),
-      }))
+      .map((h) =>
+        ecosystemRow(
+          h,
+          {
+            id: h.stewardOrgId,
+            name: stewards.get(h.stewardOrgId) ?? null,
+            mine: orgs.has(h.stewardOrgId),
+          },
+          activeIn(h.id),
+        ),
+      )
       .sort((a, b) => a.name.localeCompare(b.name)),
     invitations: memberships
       .filter((m) => m.state === 'invited')

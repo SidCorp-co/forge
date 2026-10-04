@@ -1,7 +1,7 @@
 /**
  * `item_embeddings` for requirements (Q7): one vector per requirement, of its head revision only,
  * written when the head moves and read by the BA assistant's dedup, through the shared writer
- * (`embeddings/item-writer.ts`), which applies the project's data policy.
+ * (`knowledge/item-embeddings.ts`), which applies the project's data policy.
  */
 
 import { requirementKey } from '@forge/contracts/requirements';
@@ -14,8 +14,8 @@ import {
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
-import { EMBEDDING_PROVIDER_NOT_CONFIGURED, writeItemEmbedding } from '../embeddings/index.js';
 import { embeddingsConfigured, embedWithModel } from '../integrations/llm/index.js';
+import { EMBEDDING_PROVIDER_NOT_CONFIGURED, writeItemEmbedding } from '../knowledge/index.js';
 import { dataPolicyOf, type EgressSurface, egressAt, egressText } from '../lib/data-egress.js';
 import { logger } from '../observability/logger.js';
 
