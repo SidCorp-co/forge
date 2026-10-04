@@ -1,3 +1,4 @@
+import { parseSecretRef, secretRefOf } from '@forge/contracts/project-config';
 import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import type { BindingRole } from '../db/release-axes.js';
@@ -12,7 +13,7 @@ import {
 import { lockXact } from '../lib/advisory-lock.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
 import { DEFAULT_POLICY } from './default-policy.js';
-import { type ApiRefusal, parseSecretRef, secretRefOf } from './documents.js';
+import type { ApiRefusal } from './documents.js';
 import { projectConfigPorts } from './ports.js';
 import type { ProjectDocument } from './schema.js';
 

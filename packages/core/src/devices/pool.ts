@@ -8,8 +8,8 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { runnerMayTakeJob } from '../runners/index.js';
 import { ADMITTED_RUNNER } from './pool-admission.js';
-import { runnerMayTakeJob } from './release-label.js';
 
 export type PoolRelation = {
   kind: string;

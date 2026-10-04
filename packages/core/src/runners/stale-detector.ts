@@ -2,7 +2,7 @@ import { RUNNER_MACHINE } from '@forge/contracts/runner-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projectRoom, roomManager, runnerRoom } from '../lib/rooms.js';
-import { transition } from '../lifecycle/transition.js';
+import { transition } from '../lifecycle/index.js';
 import { insertRunnerEvent } from './runner-events.js';
 
 const RUNNER_STALE_THRESHOLD = "interval '30 seconds'";

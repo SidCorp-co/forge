@@ -1,3 +1,4 @@
+import { SELF_JOB } from '@forge/contracts/project-config';
 import { type Context, Hono } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { HTTPException } from 'hono/http-exception';
@@ -5,12 +6,12 @@ import { z } from 'zod';
 import { AUTH_COOKIE_NAME } from '../credentials/cookie-names.js';
 import { verifyUserToken } from '../credentials/jwt.js';
 import { isPatLike } from '../credentials/pat-format.js';
+import { RefusalError } from '../lib/refusal.js';
 import { parseBearerHeader } from '../middleware/bearer.js';
 import { authenticatePat, type PatPrincipal } from '../middleware/require-pat.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { RefusalError } from '../lib/refusal.js';
-import { resolveTestingSecrets, SELF_JOB } from '../project-config/testing-secrets.js';
+import { resolveTestingSecrets } from './testing-secrets.js';
 
 export const jobTestingSecretsRoutes = new Hono();
 

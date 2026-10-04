@@ -24,6 +24,7 @@ import {
   registerContractMeasureWorker,
 } from './ecosystem/index.js';
 import { provideAdmissionThresholds } from './error-intake/index.js';
+import { provideExecutionPorts } from './execution-ports.js';
 import { provideFeedbackDependents, requirementFeedbackAs } from './feedback/index.js';
 import { provideGitCredentialStamp } from './git/index.js';
 import { registerAllIntegrations } from './integration-registry.js';
@@ -88,6 +89,7 @@ import { coreTimers } from './timer-registry.js';
 import { attachWs, closeWs } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
+provideExecutionPorts();
 provideProjectsPorts({
   claimIssuePrefix,
   notifyInvitee: async (notice) => {

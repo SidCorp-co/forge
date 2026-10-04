@@ -1,3 +1,8 @@
-export { answerAs } from './read.js';
+export { answerAs, answerOf, registerWaiter, waiterFor } from './read.js';
 export { agentAuthoredSegments } from './screen.js';
-export { askQuestion, deleteFeedbackQuestions, insertBatchQuestions } from './write.js';
+export {
+  type AskInput,
+  askQuestion,
+  deleteFeedbackQuestions,
+  insertBatchQuestions,
+} from './write.js';

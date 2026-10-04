@@ -1,14 +1,17 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import {
+  applySkillReport,
+  assertDeviceBoundToProject,
+  recordSkillSyncFailure,
+} from '../devices/index.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { loadDeviceSkillStatus, resolveRegisteredEffectiveSkills } from '../skills/effective.js';
-import { assertDeviceBoundToProject } from './device-project.js';
-import { applySkillReport, recordSkillSyncFailure } from './service.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { loadDeviceSkillStatus, resolveRegisteredEffectiveSkills } from './effective.js';
 
 // Skill Studio 4 (ISS-278) — server-driven device skill sync.
 //

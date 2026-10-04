@@ -1,10 +1,10 @@
-import type { pipelineRuns } from '../db/schema.js';
 import {
   MASTER_SESSION_METADATA_TYPE,
   RUN_GROUP_METADATA_KEY,
   RUN_ISSUE_STATUSES_METADATA_KEY,
   RUN_SESSION_METADATA_TYPE,
-} from '../devices/run-session-keys.js';
+} from '@forge/contracts/agent-sessions';
+import type { pipelineRuns } from '../db/schema.js';
 
 type RunRow = typeof pipelineRuns.$inferSelect;
 

@@ -1,3 +1,4 @@
+import { MASTER_SESSION_KIND, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { oneShotRunOutcome } from '@forge/contracts/run-machine';
 import { SESSION_SILENCE_REAP_MS } from '@forge/contracts/run-standing';
 import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
@@ -15,13 +16,7 @@ import {
 } from '../jobs/loop-monitor.js';
 import { parkedOnAHuman } from '../jobs/park-deadline.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
-import {
-  CLIENT_SESSION_KINDS,
-  kindTuple,
-  MASTER_SESSION_KIND,
-  PIPELINE_SESSION_KINDS,
-  RUN_SESSION_KIND,
-} from '../jobs/session-kinds.js';
+import { CLIENT_SESSION_KINDS, kindTuple, PIPELINE_SESSION_KINDS } from '../jobs/session-kinds.js';
 import {
   type ReevaluateResult,
   reevaluateConditions,

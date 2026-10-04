@@ -17,19 +17,16 @@
  * into the kernel through a second door (ISS-1050).
  */
 
+import { RUN_ISSUES_METADATA_KEY, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { latestIssueCommentWith, postIssueNotice, postIssueNoticeOnce } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { agentSessions, devices, issues, pipelineRuns } from '../db/schema.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { logger } from '../observability/logger.js';
-import {
-  BOX_RUN_ID_METADATA_KEY,
-  RUN_ISSUES_METADATA_KEY,
-  RUN_SESSION_KIND,
-} from './run-session.js';
-import { lockXact } from '../lib/advisory-lock.js';
+import { devicesPorts } from './ports.js';
+import { BOX_RUN_ID_METADATA_KEY } from './run-session.js';
 
 /**
  * The box's half, exactly as `daemon/checkpoint.rs` puts it on the wire.
@@ -310,7 +307,7 @@ async function insertCommentOnce(args: {
   authorId: string;
   deviceId: string;
 }): Promise<boolean> {
-  const posted = await postIssueNoticeOnce({
+  const posted = await devicesPorts().comments.postIssueNoticeOnce({
     issueId: args.issueId,
     marker: args.marker,
     body: args.body,
@@ -344,9 +341,9 @@ async function insertHeldReportOnChange(args: {
     const whole = [args.family, `${args.family}:refused`, `${args.family}:not-refused`].map(
       (m) => `\`${m}\``,
     );
-    const latest = await latestIssueCommentWith(args.issueId, whole, tx);
+    const latest = await devicesPorts().comments.latestIssueCommentWith(args.issueId, whole, tx);
     if (latest?.includes(`\`${args.marker}\``)) return false;
-    await postIssueNotice(
+    await devicesPorts().comments.postIssueNotice(
       {
         issueId: args.issueId,
         authorId: args.authorId,

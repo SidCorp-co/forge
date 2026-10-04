@@ -120,3 +120,44 @@ export const TESTING_SECRETS_REFUSAL_CODES = [
 ] as const;
 
 export type TestingSecretsRefusalCode = (typeof TESTING_SECRETS_REFUSAL_CODES)[number];
+
+/** A `secret://<scope>/<name>` reference into the project's vault, or null when the text is not one. */
+export function parseSecretRef(
+	ref: string,
+): { scope: string; name: string } | null {
+	const m = /^secret:\/\/([a-z][a-z0-9-]{0,62})\/([a-z][a-z0-9-]{0,62})$/.exec(
+		ref,
+	);
+	return m?.[1] && m[2] ? { scope: m[1], name: m[2] } : null;
+}
+
+export const secretRefOf = (scope: string, name: string) =>
+	`secret://${scope}/${name}`;
+
+export const POLICY_QA_MODES = ["self", "independent"] as const;
+export type PolicyQaMode = (typeof POLICY_QA_MODES)[number];
+export const POLICY_MODELS = ["opus", "sonnet", "haiku", "fable"] as const;
+export type PolicyModel = (typeof POLICY_MODELS)[number];
+
+/** How the state a job runs under was chosen. */
+export type PolicyStateSource = "stamped" | "issue" | "entry";
+
+/** The policy state one dispatch runs under, read from the project's policy document. */
+export interface DispatchState {
+	revision: number;
+	qa: PolicyQaMode;
+	status: string;
+	from: PolicyStateSource;
+	model: PolicyModel;
+	profile: string;
+	deniedTools: string[];
+}
+
+/**
+ * The job types that log in to judge a deployment and so read its testing secrets. `drive` is here
+ * because an autonomous project's driver walks the judging phase in the same job that builds.
+ */
+export const JUDGING_JOB_TYPES = ["test", "smoke", "staging", "drive"] as const;
+
+/** The job id a running job's credential names itself by. */
+export const SELF_JOB = "self";

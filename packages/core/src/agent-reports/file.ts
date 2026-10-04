@@ -2,8 +2,7 @@ import { AGENT_REPORT_LIMITS, type AgentReportSeverity } from '@forge/contracts/
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { Tx } from '../db/client.js';
 import type { IssuePriority, issueCreationChannels } from '../db/schema.js';
-import { insertIssueRow } from '../issues/create-service.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { activeIssuePrefix, insertIssueRow } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 
 export type IssueChannel = (typeof issueCreationChannels)[number];

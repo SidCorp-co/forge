@@ -10,8 +10,8 @@ import { RUNNER_PROVISION_MACHINE } from '@forge/contracts/runner-machine';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { runners } from '../db/schema.js';
+import { transition } from '../lifecycle/index.js';
 import { setRunnerProvisionDetail } from '../runners/index.js';
-import { transition } from '../lifecycle/transition.js';
 import type { ProvisionReport } from './provision-row.js';
 
 const DETAIL_MAX = 2000;

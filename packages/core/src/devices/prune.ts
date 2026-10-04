@@ -1,8 +1,8 @@
 import { DEVICE_MACHINE } from '@forge/contracts/runner-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { transition } from '../lifecycle/index.js';
 import { deleteDeviceRunners } from '../runners/index.js';
-import { transition } from '../lifecycle/transition.js';
 
 function pruneDays(): number {
   const raw = Number.parseInt(process.env.DEVICE_PRUNE_DAYS ?? '', 10);

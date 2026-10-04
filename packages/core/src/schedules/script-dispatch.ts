@@ -1,8 +1,8 @@
 import { db } from '../db/client.js';
-import { emitNotification } from '../notifications/emit.js';
 import { logger } from '../observability/logger.js';
 import { emitEvent } from '../outbox/index.js';
 import type { DispatchScheduleInput, RoutedFire } from './dispatch-types.js';
+import { schedulesPorts } from './ports.js';
 import { resolveScheduleTargetProject } from './release-batch-dispatch.js';
 import { runScheduleScript } from './script/executor.js';
 
@@ -35,7 +35,7 @@ export async function routeScheduleScriptFire(
 
   for (const n of outcome.notifications) {
     try {
-      await emitNotification({
+      await schedulesPorts().emitNotification({
         userId,
         projectId: resolvedProjectId,
         type: 'schedule_report',

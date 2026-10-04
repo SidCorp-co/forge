@@ -1,5 +1,4 @@
-import { getPublishedRunnerBuild } from '../install/routes.js';
-import { cmpVersion, mainRunnerHead } from '../integrations/published-releases/index.js';
+import { devicesPorts } from './ports.js';
 
 /**
  * Whether a box is running the runner `main` holds. Two questions, each between
@@ -71,7 +70,7 @@ function judgeBox(
   if (published === null) {
     return { state: 'unknown', detail: 'no runner release is published to compare against' };
   }
-  const order = cmpVersion(device.version, published.version);
+  const order = devicesPorts().cmpVersion(device.version, published.version);
   if (order < 0) {
     return {
       state: 'behind',
@@ -133,8 +132,8 @@ interface DeviceRowBuild {
  * against. One read of the release and the branch head serves the whole list.
  */
 export async function annotateDeviceBuilds<T extends DeviceRowBuild>(rows: T[]) {
-  const published = await getPublishedRunnerBuild();
-  const head = mainRunnerHead();
+  const published = await devicesPorts().publishedRunnerBuild();
+  const head = devicesPorts().mainRunnerHead();
   return rows.map((r) => {
     const build = compareRunnerBuild(
       { version: r.agentVersion, commit: r.agentCommit },

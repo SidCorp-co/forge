@@ -7,7 +7,7 @@ import {
   sessionRuntimeStates,
   terminalAgentSessionStatuses,
 } from '../db/schema.js';
-import { isPipelineSessionKind } from '../jobs/session-kinds.js';
+import { isPipelineSessionKind } from '../jobs/index.js';
 import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import {
@@ -150,7 +150,7 @@ agentSessionRoutes.post(
     }
 
     // Lazy-import breaks the agent-sessions ↔ pipeline import cycle.
-    const { reEnqueueForIssue } = await import('../pipeline/orchestrator.js');
+    const { reEnqueueForIssue } = await import('../pipeline/index.js');
     await reEnqueueForIssue({
       projectId: issue.projectId,
       issueId: issue.id,
@@ -236,7 +236,7 @@ agentSessionRoutes.post(
 
     // ISS-449 — the loop monitor owns session reaps now; the sweeper's
     // sweepZombieSessions was demoted to an alarm pass.
-    const { reapZombieSessions } = await import('../jobs/loop-monitor.js');
+    const { reapZombieSessions } = await import('../jobs/index.js');
     const result = await reapZombieSessions(new Date(), { projectId });
     return c.json(result);
   },

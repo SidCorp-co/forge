@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
-import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
+import { CLASSIFIER_VERSION } from '../pipeline/index.js';
 
 const RESUME_TAG = '[RESUME_FAILED]';
 

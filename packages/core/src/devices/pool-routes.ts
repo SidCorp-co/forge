@@ -6,6 +6,7 @@
  * only through its daemon, so there is one holder of the device token.
  */
 
+import { PARK_PROTECTIONS } from '@forge/contracts/questions';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -22,9 +23,6 @@ import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { PARK_PROTECTIONS } from '../questions/protections.js';
-import { answerOf, registerWaiter, waiterFor } from '../questions/read.js';
-import { type AskAnswer, type AskInput, askQuestion } from '../questions/write.js';
 import { assertDeviceBoundToProject } from './device-project.js';
 import { refuseDevice } from './refusals.js';
 import { notFound, sessionParamsSchema } from './route-errors.js';
@@ -70,20 +68,16 @@ type AskBody = z.infer<typeof askBodySchema>;
 
 const answerQuerySchema = z.object({ runId: z.string().optional() });
 
-import {
-  type ResolvedLeaseKey,
-  readDeviceIssueLease,
-  resolveLeaseKey,
-} from '../issues/issue-lease.js';
+import { type ResolvedLeaseKey, readDeviceIssueLease, resolveLeaseKey } from '../issues/index.js';
 import { releaseHoldsOf, releaseJobHold } from '../jobs/index.js';
 import { readAdmissibleIssues } from './admissible.js';
-import { deviceChannelInboxRoutes } from './channel-inbox-routes.js';
 import { prepareJobForMaster, startJobForMaster } from './claim.js';
 import { deviceCommentInboxRoutes } from './comment-inbox-routes.js';
 import { readDeviceLoad, readFleetLoad, readProjectLoad } from './load.js';
 import { clearMasterLimit, recordMasterLimit } from './master-limit.js';
 import { closeMasterSession } from './master-session.js';
 import { readPool } from './pool.js';
+import { devicesPorts } from './ports.js';
 import { readRunSessionTerminal, releaseIssueLease } from './run-session.js';
 import { deviceRunSessionRoutes } from './run-session-routes.js';
 
@@ -91,7 +85,6 @@ export const devicePoolRoutes = new Hono<{ Variables: DeviceVars }>();
 
 // The device's run-session and inbox routes live in their own files and mount here.
 devicePoolRoutes.route('/', deviceRunSessionRoutes);
-devicePoolRoutes.route('/', deviceChannelInboxRoutes);
 devicePoolRoutes.route('/', deviceCommentInboxRoutes);
 
 const poolQuerySchema = z.object({
@@ -330,10 +323,12 @@ devicePoolRoutes.get('/me/protections', requireDevice(), async (c) =>
   c.json({ protections: PARK_PROTECTIONS }),
 );
 
-function askAnswerOf(body: AskBody): AskAnswer {
-  if (body.answerShape === 'free_text') return { shape: 'free_text', needed: body.needed ?? '' };
+function askAnswerOf(body: AskBody) {
+  if (body.answerShape === 'free_text') {
+    return { shape: 'free_text' as const, needed: body.needed ?? '' };
+  }
   return {
-    shape: 'choice',
+    shape: 'choice' as const,
     options: (body.options ?? []).map(({ fingerprint, ...o }) =>
       fingerprint === undefined ? o : { ...o, fingerprint },
     ),
@@ -350,8 +345,8 @@ devicePoolRoutes.post(
   async (c) => {
     const body = c.req.valid('json');
     await assertDeviceBoundToProject(c.get('device').id, body.projectId);
-    const q = await askQuestion({
-      ...(body as Omit<AskInput, 'answer' | 'blockerKind'>),
+    const q = await devicesPorts().questions.askQuestion({
+      ...body,
       id: body.id,
       projectId: body.projectId,
       prompt: body.prompt,
@@ -359,7 +354,11 @@ devicePoolRoutes.post(
       answer: askAnswerOf(body),
     });
     if (body.runId) {
-      await registerWaiter({ questionId: q.id, deviceId: c.get('device').id, runId: body.runId });
+      await devicesPorts().questions.registerWaiter({
+        questionId: q.id,
+        deviceId: c.get('device').id,
+        runId: body.runId,
+      });
     }
     return c.json({ questionId: q.id });
   },
@@ -373,13 +372,13 @@ devicePoolRoutes.get(
   }),
   async (c) => {
     const questionId = c.req.param('questionId');
-    const waiter = await waiterFor({
+    const waiter = await devicesPorts().questions.waiterFor({
       questionId,
       deviceId: c.get('device').id,
       runId: c.req.valid('query').runId ?? '',
     });
     if (!waiter) throw notFound('question');
-    return c.json({ answer: await answerOf(questionId) });
+    return c.json({ answer: await devicesPorts().questions.answerOf(questionId) });
   },
 );
 

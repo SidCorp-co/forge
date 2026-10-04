@@ -4,6 +4,8 @@
 // evaluated becomes an answer in the position that check held); it makes no outbound
 // request, so what is checked here is the probe DECLARATION; and it reports in the order
 // the doors refuse in, a door refusing with every blocker in one envelope, the first first.
+
+import { RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
@@ -21,7 +23,6 @@ import { onlineCapableDeviceIds, releaseIneligibleRunners } from '../runners/ind
 import { attempt, blocker, evaluate } from './blocker-kit.js';
 import {
   type CollectReleaseBlockersOptions,
-  RELEASE_ROSTER_LIMIT,
   type ReleaseBlocker,
   type ReleaseBlockerReport,
   type ReleaseDoor,

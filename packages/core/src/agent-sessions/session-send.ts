@@ -22,9 +22,9 @@ import {
   type SessionSendOutcome,
   sessionInbox,
 } from '../db/schema-session-inbox.js';
-import { insertInterventionEvent } from '../jobs/intervention-event.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { deviceRoom, roomManager } from '../lib/rooms.js';
+import { agentSessionsPorts } from './ports.js';
 
 export type SessionInboxRow = typeof sessionInbox.$inferSelect;
 
@@ -104,7 +104,7 @@ async function auditSend(req: SessionSendRequest, actor: SessionSendActor): Prom
     .limit(1);
   if (!job) return;
   await db.transaction(async (tx) => {
-    await insertInterventionEvent(tx, {
+    await agentSessionsPorts().insertInterventionEvent(tx, {
       jobId: job.id,
       issueId: job.issueId,
       action: req.kind === 'inject' ? 'inject' : 'answer',

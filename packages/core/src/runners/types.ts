@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { RunnerLimitReason, RunnerStatus, RunnerType } from '../db/schema.js';
-import type { RunnerBuildComparison } from '../devices/build-state.js';
+import type { RunnerBuildComparison } from '../devices/index.js';
 
 export const runnerCapabilitiesSchema = z
   .object({

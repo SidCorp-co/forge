@@ -557,7 +557,7 @@ numbered 1..n.
 - **Machine-read text never does.** Enum values, refusal codes, keys, field names, status names,
   `file:symbol` citations, Forge's own `detail`, code, commits and branch names are English.
 - **Told, not checked.** Nothing refuses a write for its language. Every prompt that writes prose
-  appends `packages/core/src/content-language/block.ts:contentLanguageBlock`.
+  appends `packages/contracts/src/content-language.ts:contentLanguageBlock`.
 
 ## Data policy (sensitive projects)
 

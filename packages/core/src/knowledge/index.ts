@@ -1,1 +1,7 @@
-export { getKnowledgeEntry, selectAllSlugsFromKnowledge } from './service.js';
+export {
+  getKnowledgeEntry,
+  selectAllSlugsFromKnowledge,
+  selectAlwaysInjectFromKnowledge,
+  selectKnowledgeBodies,
+  selectOnDemandSlugsFromKnowledge,
+} from './service.js';

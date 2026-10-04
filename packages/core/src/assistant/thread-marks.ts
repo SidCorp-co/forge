@@ -5,7 +5,7 @@ import {
   CONVERSATION_AGENT_MARKER,
   readConversationAgentMeta,
   turnState,
-} from '../agent-sessions/conversation-agent.js';
+} from '../conversations/index.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { conversationWindows } from '../db/schema-conversations.js';

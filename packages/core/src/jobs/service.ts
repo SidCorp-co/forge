@@ -1,13 +1,12 @@
 import { JOB_MACHINE, type JobStatus, OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { beatSession } from '../agent-sessions/index.js';
-import { transitionSessions } from '../agent-sessions/session-transition.js';
+import { beatSession, transitionSessions } from '../agent-sessions/index.js';
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, jobEvents, jobs, skills } from '../db/schema.js';
-import { transition } from '../lifecycle/transition.js';
-import { recordSkillActivityEvent, resolvePacketIdForHash } from '../skills/activity.js';
-import type { JobGateRow } from './job-queries.js';
 import { lockXact } from '../lib/advisory-lock.js';
+import { transition } from '../lifecycle/index.js';
+import type { JobGateRow } from './job-queries.js';
+import { jobsPorts } from './ports.js';
 
 /** A job created by REST, queued on the given run; answers the whole row. */
 export async function createQueuedJob(
@@ -57,7 +56,12 @@ export async function ackJob(
               )
               .limit(1);
             const packetId = skill
-              ? await resolvePacketIdForHash(db, job.projectId, skill.id, hash)
+              ? await jobsPorts().skillActivity.resolvePacketIdForHash(
+                  db,
+                  job.projectId,
+                  skill.id,
+                  hash,
+                )
               : undefined;
             return { name, hash, skillId: skill?.id, packetId };
           }),
@@ -83,7 +87,7 @@ export async function ackJob(
       .returning({ id: jobs.id, status: jobs.status, ackedAt: jobs.ackedAt });
     if (row) {
       for (const lookup of skillLookups) {
-        await recordSkillActivityEvent(tx, {
+        await jobsPorts().skillActivity.recordSkillActivityEvent(tx, {
           eventType: 'job.ran.with',
           actor: `runner:${deviceId}`,
           trigger: 'push',

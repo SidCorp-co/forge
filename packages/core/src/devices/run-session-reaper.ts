@@ -7,13 +7,13 @@
  * keys on the heartbeat, which stops on its own when a box vanishes.
  */
 
+import { RUN_ISSUES_METADATA_KEY, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { and, eq, sql } from 'drizzle-orm';
-import { transitionSessions } from '../agent-sessions/session-transition.js';
+import { transitionSessions } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { logger } from '../observability/logger.js';
-import { closeRunIfOneShot } from '../pipeline/runs.js';
-import { RUN_ISSUES_METADATA_KEY, RUN_SESSION_KIND } from './run-session.js';
+import { closeRunIfOneShot } from '../pipeline/index.js';
 import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 
 export interface ReapedRunSession {

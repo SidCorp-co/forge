@@ -7,7 +7,7 @@ import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { openIssueRun, openOneShotRun } from '../pipeline/runs.js';
+import { openIssueRun, openOneShotRun } from '../pipeline/index.js';
 import { readJob } from './job-queries.js';
 import { noPromptMessage, poolPrompt } from './pool-served.js';
 import { extractPayloadExtras, extractResolvedFlags, type PromptEnvelope } from './prompt-route.js';
@@ -254,4 +254,3 @@ jobRoutes.get(
 
 export { jobEventsListRoutes, jobEventsRoutes } from './events-routes.js';
 export { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './lifecycle-routes.js';
-export { jobTestingSecretsRoutes } from './testing-secrets-routes.js';

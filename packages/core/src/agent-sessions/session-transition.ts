@@ -1,3 +1,4 @@
+import { RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import {
   type AgentSessionStatus,
   SESSION_MACHINE,
@@ -5,16 +6,15 @@ import {
 } from '@forge/contracts/session-machine';
 import { eq } from 'drizzle-orm';
 import { agentSessions } from '../db/schema.js';
-import { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
-import type { MachineRow } from '../lifecycle/machine-tables.js';
+import type { MachineRow } from '../lifecycle/index.js';
 import {
   type KernelExecutor,
   type TransitionArgs,
   type TransitionResult,
   transition,
-} from '../lifecycle/transition.js';
+} from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
-import { settleSessionFires } from '../schedules/fires.js';
+import { agentSessionsPorts } from './ports.js';
 import { fireTerminalSessionBridges, sessionCarriesBridgeMarker } from './terminal-effects.js';
 
 type SessionRow = MachineRow<'session'>;
@@ -52,7 +52,7 @@ export async function transitionSessions<K extends keyof SessionRow = keyof Sess
     afterWrite: async (tx, rows) => {
       await args.afterWrite?.(tx, rows);
       if (ending) {
-        await settleSessionFires(tx, {
+        await agentSessionsPorts().settleSessionFires(tx, {
           sessionIds: rows.map((r) => r.id),
           sessionStatus: args.to,
           actor: args.actor,
@@ -89,7 +89,7 @@ async function handBackRunIssues(
     if (kind === RUN_SESSION_KIND && pipelineRunId) runs.add(pipelineRunId);
   }
   if (runs.size === 0) return [];
-  const { returnIssuesForRun } = await import('../devices/run-issue-return.js');
+  const { returnIssuesForRun } = await import('../devices/index.js');
   const returned: string[] = [];
   for (const runId of runs) {
     try {

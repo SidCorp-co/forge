@@ -2,7 +2,7 @@ import { DEVICE_MACHINE } from '@forge/contracts/runner-machine';
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type Device, type DevicePlatform, devices } from '../db/schema.js';
-import { transition } from '../lifecycle/transition.js';
+import { transition } from '../lifecycle/index.js';
 import { hashMachineId } from './credential.js';
 
 export interface RegisterDeviceInput {

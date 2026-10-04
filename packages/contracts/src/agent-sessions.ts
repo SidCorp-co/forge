@@ -29,3 +29,28 @@ export const AGENT_SESSION_REFUSAL_STATUSES = {
 	TURN_STALE: 409,
 	SEQ_TAKEN_BY_CORE: 409,
 } as const satisfies RefusalStatuses<AgentSessionRefusalCode>;
+
+/** Who asked, as a session's metadata carries it so a failover can mint again. */
+export interface SessionAsker {
+	userId: string;
+	viaTokenId: string | null;
+}
+
+export function readSessionAsker(raw: unknown): SessionAsker | null {
+	const m = raw as { userId?: unknown; viaTokenId?: unknown } | null;
+	if (!m || typeof m.userId !== "string") return null;
+	return {
+		userId: m.userId,
+		viaTokenId: typeof m.viaTokenId === "string" ? m.viaTokenId : null,
+	};
+}
+
+/** `agent_sessions.kind` of a box's standing master session. */
+export const MASTER_SESSION_KIND = "master";
+/** `agent_sessions.kind` of a run a master declared on its box. */
+export const RUN_SESSION_KIND = "run_session";
+export const MASTER_SESSION_METADATA_TYPE = MASTER_SESSION_KIND;
+export const RUN_SESSION_METADATA_TYPE = RUN_SESSION_KIND;
+export const RUN_ISSUES_METADATA_KEY = "runIssues";
+export const RUN_GROUP_METADATA_KEY = "runGroup";
+export const RUN_ISSUE_STATUSES_METADATA_KEY = "runIssueStatuses";

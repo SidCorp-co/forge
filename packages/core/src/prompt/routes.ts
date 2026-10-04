@@ -1,18 +1,18 @@
+import type { PromptRefusalCode } from '@forge/contracts/prompt';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import type { PromptRefusalCode } from '@forge/contracts/prompt';
 import { z } from 'zod';
 import { type JobType, jobTypes } from '../db/schema.js';
-import { buildJobSystemPrompt } from '../jobs/job-system-prompt.js';
+import { buildJobSystemPrompt } from '../jobs/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { RUNNER_CAPABILITIES } from '../pipeline/registry.js';
-import { dispatchStateOf, requirePolicy } from '../project-config/dispatch-policy.js';
+import { requireHeld } from '../permissions/index.js';
+import { RUNNER_CAPABILITIES } from '../pipeline/index.js';
+import { dispatchStateOf, requirePolicy } from '../project-config/index.js';
 import { loadIssueSnapshot } from './issue-snapshot.js';
 import { buildJobPromptString } from './user.js';
-import { requireHeld } from '../permissions/index.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });

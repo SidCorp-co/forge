@@ -1,9 +1,9 @@
+import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { and, eq, notInArray, sql } from 'drizzle-orm';
-import { transitionSessions } from '../agent-sessions/session-transition.js';
+import { transitionSessions } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
 import { releaseHoldsOf, releaseHoldsOfDeadMasters } from '../jobs/index.js';
-import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { logger } from '../observability/logger.js';
 import { masterSilentSql } from './master-silence.js';
 import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';

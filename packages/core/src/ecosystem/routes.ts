@@ -241,6 +241,7 @@ ecosystemRoutes.get('/:id/register', idParam, registerQuery, async (c) => {
 
 export { channelProjectRoutes } from './channel-routes.js';
 export { contractRoutes } from './contract/routes.js';
+export { deviceChannelInboxRoutes } from './device-channel-inbox-routes.js';
 export { busRoutes, linkProjectRoutes } from './link-routes.js';
 export { ecosystemProjectRoutes } from './project-routes.js';
 export { contractRequestRoutes } from './requests/routes.js';

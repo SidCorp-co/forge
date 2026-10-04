@@ -1,3 +1,4 @@
+import { RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
 import {
   type IssueCriteriaReport,
   issueDisplayIds,
@@ -8,7 +9,6 @@ import { attempt, blocker, evaluate } from './blocker-kit.js';
 import {
   type HeldIssueRef,
   heldBackWarningSentence,
-  RELEASE_ROSTER_LIMIT,
   type ReleaseBlocker,
   type ReleaseWarning,
   uncorroboratedWarningSentence,

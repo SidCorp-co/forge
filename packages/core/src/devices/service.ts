@@ -13,24 +13,21 @@ import {
   skills,
 } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { type KernelActor, transition } from '../lifecycle/transition.js';
+import { type KernelActor, transition } from '../lifecycle/index.js';
+import { emitEvent } from '../outbox/index.js';
 import {
   deleteDeviceRunners,
+  insertRunnerEvent,
   mirrorHeartbeatToRunners,
   setRunnerProvisionDetail,
 } from '../runners/index.js';
-import { emitEvent } from '../outbox/index.js';
-import { insertRunnerEvent } from '../runners/runner-events.js';
-import { recordSkillActivityEvent, resolvePacketIdForHash } from '../skills/activity.js';
 import { revokeDeviceCredentials } from './credential.js';
 import type { DevicePatch } from './heartbeat-patch.js';
 import { heartbeatPool } from './pool-read-report.js';
+import { devicesPorts } from './ports.js';
 
 /** A device's name or disabled switch; null when the device is gone. */
-export async function updateDevice(
-  id: string,
-  patch: { name?: string; disabledAt?: Date | null },
-) {
+export async function updateDevice(id: string, patch: { name?: string; disabledAt?: Date | null }) {
   const [updated] = await db.update(devices).set(patch).where(eq(devices.id, id)).returning({
     id: devices.id,
     name: devices.name,
@@ -211,7 +208,7 @@ export async function recordSkillSyncFailure(input: {
       .limit(1);
     if (last?.reason === error) return;
 
-    await recordSkillActivityEvent(tx, {
+    await devicesPorts().skillActivity.recordSkillActivityEvent(tx, {
       eventType: 'device.sync.failed',
       actor: `runner:${deviceId}`,
       trigger: 'poll',
@@ -282,7 +279,7 @@ async function applyReportedSkill(input: {
         },
       });
 
-    const appliedPacketId = await resolvePacketIdForHash(
+    const appliedPacketId = await devicesPorts().skillActivity.resolvePacketIdForHash(
       tx,
       projectId,
       entry.skillId,
@@ -290,7 +287,7 @@ async function applyReportedSkill(input: {
     );
 
     if (hashChanged) {
-      await recordSkillActivityEvent(tx, {
+      await devicesPorts().skillActivity.recordSkillActivityEvent(tx, {
         eventType: 'device.skill.applied',
         actor: `runner:${deviceId}`,
         trigger: 'poll',
@@ -306,7 +303,7 @@ async function applyReportedSkill(input: {
 
     if (nextShadowedBy !== null) {
       if (shadowChanged || observedChanged) {
-        await recordSkillActivityEvent(tx, {
+        await devicesPorts().skillActivity.recordSkillActivityEvent(tx, {
           eventType: 'device.skill.shadowed',
           actor: `runner:${deviceId}`,
           trigger: 'poll',
@@ -320,7 +317,7 @@ async function applyReportedSkill(input: {
         });
       }
     } else if (observedChanged || shadowChanged) {
-      await recordSkillActivityEvent(tx, {
+      await devicesPorts().skillActivity.recordSkillActivityEvent(tx, {
         eventType: 'device.skill.observed',
         actor: `runner:${deviceId}`,
         trigger: 'poll',
@@ -370,7 +367,7 @@ async function recordPrunedSkill(input: {
           ),
         );
     }
-    await recordSkillActivityEvent(tx, {
+    await devicesPorts().skillActivity.recordSkillActivityEvent(tx, {
       eventType: 'device.skill.pruned',
       actor: `runner:${input.deviceId}`,
       trigger: 'poll',

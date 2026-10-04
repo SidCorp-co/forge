@@ -1,8 +1,9 @@
 import type { TestingSecretsRefusalCode } from '@forge/contracts/project-config';
+import { JUDGING_JOB_TYPES, SELF_JOB } from '@forge/contracts/project-config';
 import { SCRUB_MIN_SECRET_LENGTH } from '@forge/observability';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, type JobType, jobs } from '../db/schema.js';
+import { issues, jobs } from '../db/schema.js';
 import { decryptSecret, isVaultConfigured } from '../integrations/index.js';
 import type { PatPrincipal } from '../middleware/require-pat.js';
 import { projectConfigPorts } from './ports.js';
@@ -14,17 +15,6 @@ import {
   readSecretValues,
   readTestingProfile,
 } from './service.js';
-
-// cm:why `drive` is here because an autonomous project's driver walks the judging phase in the
-// same job that builds; a job of any other type is not one that logs in to judge a deployment.
-export const JUDGING_JOB_TYPES = [
-  'test',
-  'smoke',
-  'staging',
-  'drive',
-] as const satisfies readonly JobType[];
-
-export const SELF_JOB = 'self';
 
 export interface TestingSecretsRefusal {
   status: 403 | 404 | 422 | 503;

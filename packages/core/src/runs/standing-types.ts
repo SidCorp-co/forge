@@ -12,8 +12,8 @@ import type {
 } from '@forge/contracts/run-standing';
 import { nobodyWaits, type WaitingOn } from '@forge/contracts/standing';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
-import type { HoldState } from '../jobs/hold.js';
-import type { PipelineRunLane } from '../pipeline/runs-lane.js';
+import type { HoldState } from '../jobs/index.js';
+import type { PipelineRunLane } from '../pipeline/index.js';
 
 export interface KernelFlip {
   toStatus: string;

@@ -1,9 +1,8 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { isHttpsGitUrl, projectsWithHostCredential } from '../git/host-credential.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { logger } from '../observability/logger.js';
-import { readDeclaredSource, remoteOf } from '../project-config/source.js';
+import { devicesPorts } from './ports.js';
 import { recordProvisionReports } from './provision-reports.js';
 import {
   buildProvisionRow,
@@ -25,25 +24,27 @@ deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
   if (device.status === 'revoked') throw unauth();
 
   const rows = await queuedProvisionRows(device.id);
-  const credentialed = await projectsWithHostCredential(rows.map((r) => r.projectId));
+  const credentialed = await devicesPorts().projectsWithHostCredential(
+    rows.map((r) => r.projectId),
+  );
   // The identity the box acts as, resolved once: a box paired as an agent hands
   // its checkouts that agent's reach and not the approving person's.
   const holderUserId = rows.length > 0 ? await deviceHolderUserId(device.id) : null;
 
   const settled = await Promise.allSettled(
     rows.map(async (r) => {
-      const { repository, defaultBranch } = await readDeclaredSource(r.projectId);
+      const { repository, defaultBranch } = await devicesPorts().readDeclaredSource(r.projectId);
       // cm:why the document names a repository, not a transport: an attached deploy key can only
       // reach it over SSH, and every other credential (a host's minted one, public) reaches it over HTTPS.
       const repoUrl = repository
-        ? remoteOf(repository, r.sshPrivateKeyEnc ? 'ssh' : 'https')
+        ? devicesPorts().remoteOf(repository, r.sshPrivateKeyEnc ? 'ssh' : 'https')
         : null;
       return buildProvisionRow(
         { ...r, repoUrl, baseBranch: defaultBranch },
         {
           deviceId: device.id,
           holderUserId,
-          hostCredential: isHttpsGitUrl(repoUrl) && credentialed.has(r.projectId),
+          hostCredential: devicesPorts().isHttpsGitUrl(repoUrl) && credentialed.has(r.projectId),
         },
         { issueCredential: issueCheckoutCredential },
       );

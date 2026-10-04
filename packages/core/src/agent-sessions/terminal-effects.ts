@@ -18,13 +18,7 @@ export const TERMINAL_SESSION_BRIDGE_MARKERS = [
 ] as const;
 export type TerminalSessionBridgeMarker = (typeof TERMINAL_SESSION_BRIDGE_MARKERS)[number];
 
-const deliveries = new Map<TerminalSessionBridgeMarker, TerminalSessionDelivery>([
-  [
-    'conversationAgent',
-    async (row) =>
-      (await import('./conversation-agent-bridge.js')).deliverConversationAgentReplyOnce(row),
-  ],
-]);
+const deliveries = new Map<TerminalSessionBridgeMarker, TerminalSessionDelivery>();
 
 /** Registers the delivery behind one marker. Called once at boot by the module that owns it. */
 export function provideTerminalSessionBridge(

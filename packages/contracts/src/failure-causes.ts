@@ -48,7 +48,7 @@ export const FAILURE_CAUSES = [
   /** the ack hop reaped it. 7 sessions all-time. */
   'no_client_ack',
   /** the websocket publish that carries a chat turn failed. Writers:
-   *  schedules/dispatch.ts, agent-sessions/conversation-agent.ts, rocketchat/escalation.ts. */
+   *  schedules/dispatch.ts, conversations/conversation-agent.ts, rocketchat/escalation.ts. */
   'ws_publish_failed',
   /** project monthly budget. Writer: jobs/dispatcher.ts. */
   'forge_budget_exhausted',

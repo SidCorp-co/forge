@@ -8,10 +8,17 @@
  */
 
 import { eq } from 'drizzle-orm';
+import {
+  createChatSessionRow,
+  dispatchChatTurn,
+  firstUserMessageText,
+  mintSessionCredential,
+  pickTurnCredentialDevice,
+  resolveSessionAuthority,
+} from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { type agentSessions, type MemberLens, projects } from '../db/schema.js';
 import { logger } from '../observability/logger.js';
-import { createChatSessionRow, dispatchChatTurn } from './chat-turn.js';
 import {
   CONVERSATION_AGENT_MARKER,
   type ConversationAgentMeta,
@@ -20,12 +27,6 @@ import {
   TITLE_MAX,
 } from './conversation-agent.js';
 import { scheduleAck } from './conversation-agent-ack.js';
-import {
-  mintSessionCredential,
-  pickTurnCredentialDevice,
-  resolveSessionAuthority,
-} from './session-credential.js';
-import { firstUserMessageText } from './turns-helpers.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
 

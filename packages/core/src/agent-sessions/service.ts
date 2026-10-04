@@ -12,7 +12,7 @@ import { withKernelMarker } from '../db/kernel-marker.js';
 import { type AgentSessionStatus, agentSessions, agentSessionTurns } from '../db/schema.js';
 import { agentSessionEvents } from '../db/schema-agent-session-events.js';
 import { lockXact } from '../lib/advisory-lock.js';
-import { type KernelActor, movedRow } from '../lifecycle/transition.js';
+import { type KernelActor, movedRow } from '../lifecycle/index.js';
 import { notFound } from './session-access.js';
 import { recordReportedTranscript } from './session-events.js';
 import type { AgentSessionPatch } from './session-failure.js';

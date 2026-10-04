@@ -35,5 +35,8 @@ export {
   targetUndeclaredHold,
   writeReleaseHolds,
 } from './hold.js';
+export { loadReleaseRoster } from './queries.js';
+export { heldBackByProviders } from './refuse.js';
+export { createReleaseBatch } from './service.js';
 export { recoverUnstartedReleaseBatches } from './unstarted-recovery.js';
 export { provideReleaseBatchPorts } from './ports.js';

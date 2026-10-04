@@ -7,11 +7,11 @@
  * it is stale by construction.
  */
 
+import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, devices, runners } from '../db/schema.js';
 import { deviceRunLedger } from '../db/schema-run-ledger.js';
-import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { logger } from '../observability/logger.js';
 
 export interface RunLedgerIssue {

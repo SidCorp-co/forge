@@ -9,15 +9,12 @@ import {
 import { deviceRoom, roomManager } from '../lib/rooms.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { logger } from '../observability/logger.js';
 import { holds } from '../permissions/index.js';
-import { closeRunIfOneShot } from '../pipeline/runs.js';
-import { extractReportFromMessages } from '../schedules/messages/skill-improve-prompt.js';
-import { extractStewardReportFromMessages } from '../schedules/messages/skill-steward-prompt.js';
-import { mergeAppliedMessageVersions } from '../schedules/service.js';
+import { closeRunIfOneShot } from '../pipeline/index.js';
 import { broadcastSession } from './broadcast.js';
 import { checkoutUnbound, noClaudeClient } from './chat-turn.js';
 import { abortBodySchema, desktopStatusSchema, setRunnerBodySchema } from './lifecycle-schemas.js';
+import { agentSessionsPorts } from './ports.js';
 import { deviceLiveness, deviceServesAnyOf, loadProjectBySlug } from './read.js';
 import { refuseSession } from './refusals.js';
 import {
@@ -25,7 +22,6 @@ import {
   cancelSession,
   rebindSessionRunner,
   setDesktopSessionStatus,
-  setSessionMetadata,
 } from './service.js';
 import {
   badRequest,
@@ -222,42 +218,7 @@ agentSessionLifecycleRoutes.post(
     //   otherwise       → ISS-548 one-shot: update appliedMessageVersions + skillImproveReport.
     // Best-effort — failures must not break the status update itself.
     if (status === 'completed') {
-      const meta = existing.metadata as Record<string, unknown> | null;
-      const scheduleId = meta?.scheduleId;
-      const templateKey = meta?.templateKey;
-      if (typeof scheduleId === 'string' && typeof templateKey === 'string') {
-        try {
-          const messages = Array.isArray(existing.messages) ? existing.messages : [];
-          const isSteward = meta?.steward === true;
-
-          if (isSteward) {
-            // ISS-556 — standing steward: parse steward run report, persist to
-            // session metadata. No appliedMessageVersions write (fires every run).
-            const stewardReport = extractStewardReportFromMessages(messages);
-            if (stewardReport) {
-              await setSessionMetadata(sessionId, { ...(meta ?? {}), stewardReport });
-            }
-          } else {
-            // ISS-548 — one-shot skill-improve: update appliedMessageVersions gate.
-            const report = extractReportFromMessages(messages);
-            if (report && Object.keys(report.updatedVersions).length > 0) {
-              await mergeAppliedMessageVersions(scheduleId, report.updatedVersions);
-            }
-            // Always persist the report in session metadata for the UI.
-            if (report) {
-              await setSessionMetadata(sessionId, {
-                ...(meta ?? {}),
-                skillImproveReport: report.entries,
-              });
-            }
-          }
-        } catch (err) {
-          logger.error(
-            { err, sessionId, scheduleId, templateKey },
-            'agent-sessions/desktop-status: schedule write-back failed',
-          );
-        }
-      }
+      await agentSessionsPorts().writeBackScheduleSession(existing);
     }
 
     broadcastSession(updated, 'agent-session.status', { note: note ?? null });
