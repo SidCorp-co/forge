@@ -438,7 +438,7 @@ export const INTEGRATION_REFUSAL_CODES = [
 
 export type IntegrationRefusalCode = (typeof INTEGRATION_REFUSAL_CODES)[number];
 
-/** The rules the Coolify commands refuse by name, in the one 422 envelope. */
+/** The rules the Coolify commands refuse by name, in the one refusal envelope. */
 export const COOLIFY_REFUSAL_CODES = [
   'COOLIFY_REFUSED',
   'COOLIFY_ROLLBACK_IMAGE_UNLISTED',

@@ -25,7 +25,7 @@ import {
 } from './agent-accounts.js';
 import { agentSelfPatchSchema, readAgentSelf, writeAgentSelf } from './agent-selves.js';
 import { orgMemberRole } from './read.js';
-import { requireOrgCan } from '../permissions/index.js';
+import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 
 export const agentAccountRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -58,11 +58,11 @@ const setAgentProjectsSchema = z.object({ projectIds: agentProjectsSchema }).str
 agentAccountRoutes.get(
   '/:orgId/agents',
   zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');
-    await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     return c.json({ agents: await listAgentAccounts(orgId) });
   },
 );
@@ -70,15 +70,15 @@ agentAccountRoutes.get(
 agentAccountRoutes.post(
   '/:orgId/agents',
   zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', createAgentSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');
     const body = c.req.valid('json');
-    await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     assertMayMintFullCredential(c);
 
     const { agent, plaintext } = await createAgentAccount({
@@ -95,14 +95,14 @@ agentAccountRoutes.post(
 agentAccountRoutes.put(
   '/:orgId/agents/:agentUserId/projects',
   zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', setAgentProjectsSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
-    await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     const out = await setAgentProjects(orgId, agentUserId, c.req.valid('json').projectIds);
     if (!out) throw notFound('agent not found');
     return c.json(out);
@@ -112,11 +112,11 @@ agentAccountRoutes.put(
 agentAccountRoutes.delete(
   '/:orgId/agents/:agentUserId',
   zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
-    await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     if (!(await revokeAgentAccount(orgId, agentUserId))) throw notFound('agent not found');
     return c.body(null, 204);
   },
@@ -125,11 +125,11 @@ agentAccountRoutes.delete(
 agentAccountRoutes.post(
   '/:orgId/agents/:agentUserId/tokens',
   zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
-    await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     assertMayMintFullCredential(c);
     const minted = await mintAgentCredential(orgId, agentUserId, mintEpochFor(c));
     if (!minted) throw notFound('agent not found');
@@ -140,11 +140,11 @@ agentAccountRoutes.post(
 agentAccountRoutes.delete(
   '/:orgId/agents/:agentUserId/tokens',
   zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
-    await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     const revoked = await revokeAgentCredentials(orgId, agentUserId);
     if (revoked === null) throw notFound('agent not found');
     return c.json({ revoked });
@@ -154,14 +154,14 @@ agentAccountRoutes.delete(
 agentAccountRoutes.patch(
   '/:orgId/agents/:agentUserId',
   zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', displayNameSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
-    await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     const displayName = await setAgentDisplayName(
       orgId,
       agentUserId,
@@ -179,11 +179,11 @@ agentAccountRoutes.patch(
 agentAccountRoutes.get(
   '/:orgId/agents/:agentUserId/self',
   zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
-    await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     const self = await readAgentSelf(orgId, agentUserId);
     if (!self) throw notFound('agent not found');
     return c.json(self);
@@ -193,15 +193,15 @@ agentAccountRoutes.get(
 agentAccountRoutes.patch(
   '/:orgId/agents/:agentUserId/self',
   zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', agentSelfPatchSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
     const actor = c.get('userId');
-    await requireOrgCan({ userId: actor }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(actor), 'org.admin', orgResource(orgId));
     const self = await writeAgentSelf(orgId, agentUserId, c.req.valid('json'), actor);
     if (!self) throw notFound('agent not found');
     return c.json(self);
@@ -223,15 +223,15 @@ const memberAssistantPrefsSchema = z
 agentAccountRoutes.patch(
   '/:orgId/members/:userId/assistant-preferences',
   zValidator('param', memberParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', memberAssistantPrefsSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId, userId } = c.req.valid('param');
     const actor = c.get('userId');
-    await requireOrgCan({ userId: actor }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(actor), 'org.admin', orgResource(orgId));
     if ((await orgMemberRole(orgId, userId)) === null) throw notFound('membership not found');
     const prefs = await writeAssistantPreferences({
       userId,

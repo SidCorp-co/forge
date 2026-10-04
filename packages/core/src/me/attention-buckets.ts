@@ -3,7 +3,6 @@ import {
   and,
   desc,
   eq,
-  exists,
   inArray,
   isNull,
   notExists,
@@ -21,12 +20,11 @@ import {
   notificationDeliveries,
   notificationDeliveryMembers,
   notifications,
-  organizationMembers,
-  projectMembers,
   projects,
   reconcileRuns,
 } from '../db/schema.js';
 import { issueArchiveSide } from '../issues/archive.js';
+import { actorFor, visibleFilter } from '../permissions/index.js';
 
 const PER_BUCKET = 5;
 const PENDING_SKILL_UPDATES_CAP = 20;
@@ -64,32 +62,7 @@ export interface AttentionReconcileRow {
 }
 
 function adminsProject(userId: string) {
-  return or(
-    exists(
-      db
-        .select({ one: sql`1` })
-        .from(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, projects.id),
-            eq(projectMembers.userId, userId),
-            eq(projectMembers.role, 'admin'),
-          ),
-        ),
-    ),
-    exists(
-      db
-        .select({ one: sql`1` })
-        .from(organizationMembers)
-        .where(
-          and(
-            eq(organizationMembers.orgId, projects.orgId),
-            eq(organizationMembers.userId, userId),
-            inArray(organizationMembers.role, ['owner', 'admin']),
-          ),
-        ),
-    ),
-  );
+  return visibleFilter(actorFor(userId), 'project.admin', { type: 'project', projectId: projects.id });
 }
 
 export function selectMentions(userId: string): Promise<AttentionMentionRow[]> {

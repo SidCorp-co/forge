@@ -13,7 +13,7 @@ import { linkedContracts } from './baselines.js';
 import { notFound, type RequirementActor, rowIn } from './read.js';
 import { contractLinkRefusal } from './rules.js';
 import { answer, type RequirementOutcome } from './service.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 /** The contracts `projectId`'s interface publishes and consumes, as `<project>/<contract>` refs. */
 async function contractsOfProject(projectId: string) {
@@ -34,7 +34,7 @@ export async function linkContract(input: {
   contract: string;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await requireCan({ userId: actor.userId }, 'project.write', projectId);
+  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const row = await rowIn(db, projectId, input.ref);
   const refusal = contractLinkRefusal({
     contract: input.contract,
@@ -63,7 +63,7 @@ export async function unlinkContract(input: {
   contract: string;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await requireCan({ userId: actor.userId }, 'project.write', projectId);
+  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const row = await rowIn(db, projectId, input.ref);
   const linked = (await linkedContracts(db, row.id)).find((c) => c.contract === input.contract);
   if (!linked) throw notFound(`${input.ref} links no contract ${input.contract}`);

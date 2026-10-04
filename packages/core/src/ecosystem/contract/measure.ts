@@ -78,9 +78,9 @@ export async function measureChange(
   }
   if (type === 'graphql') {
     return measured(
-      'graphql-sdl-diff',
+      'graphql-inspector',
       GRAPHQL_RULES_VERSION,
-      diffGraphql(
+      await diffGraphql(
         parseArtifact(type, previous) as SdlSchema,
         parseArtifact(type, next) as SdlSchema,
       ),

@@ -71,10 +71,10 @@ jobProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 jobProjectRoutes.post(
   '/:id/jobs',
   zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', jobCreateSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
@@ -116,10 +116,10 @@ jobProjectRoutes.post(
 jobProjectRoutes.get(
   '/:id/jobs',
   zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', jobListFiltersSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
@@ -149,7 +149,7 @@ jobRoutes.get(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', jobIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -170,10 +170,10 @@ jobRoutes.patch(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', jobIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', jobPatchSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -205,7 +205,7 @@ jobRoutes.get(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', jobIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

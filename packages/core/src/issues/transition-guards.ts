@@ -37,11 +37,12 @@ import type { Tx } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import type { Guard, GuardInput } from '../lifecycle/transition.js';
 import type { Refusal } from '../lib/refusal.js';
-import { permissionRefusalFor } from '../permissions/index.js';
+import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { planDriftOf } from '../requirements/plan-drift.js';
 import type { ActorAgency } from './actor-agency.js';
 import { refuseHeldTake } from './blocked-by.js';
+import type { IssueTransitionRefusalCode } from '@forge/contracts/issue-machine';
 import { isRefusal } from '../lib/refusal.js';
 import type { DraftReader } from './criteria/storefront-draft.js';
 import { isDispatchGateError } from './dispatch-gates.js';
@@ -50,27 +51,10 @@ import { mergeNotRecorded } from './merged-at.js';
 import { isBlankPlan } from './transition-evidence.js';
 import { issueHolder } from './work-state.js';
 
-export type GuardCode =
-  | 'ILLEGAL_TRANSITION'
-  | 'NO_HOLDER'
-  | 'ISSUE_BLOCKED'
-  | 'WORKFLOW_DESIGN_NOT_APPROVED'
-  | 'CONTRACT_WAIT_UNSETTLED'
-  | 'PLAN_REQUIRED'
-  | 'PERMISSION_FORBIDDEN'
-  | 'NO_WORK_EVIDENCE'
-  | 'VERDICT_IDENTITY_REQUIRED'
-  | 'VERDICT_PREDATES_REOPEN'
-  | 'VERDICT_IDENTITY_NOT_ADMISSIBLE'
-  | 'VERDICT_UNCORROBORATED'
-  | 'VERDICT_DRAFT_SUPERSEDED'
-  | 'REQUIREMENT_CHANGED_SINCE_PLAN'
-  | 'MERGE_NOT_RECORDED'
-  | 'CLOSE_REQUIRES_SHIPPED'
-  | 'CLOSE_ONLY_BY_RELEASE'
-  | 'TRANSITION_REASON_REQUIRED'
-  | 'WAITING_KIND_REQUIRED'
-  | 'VOID_REASON_REQUIRED';
+export type GuardCode = Exclude<
+  IssueTransitionRefusalCode,
+  'NO_OP' | 'STALE_TRANSITION' | 'WAITING_KIND_NOT_APPLICABLE' | 'ISSUE_ARCHIVED' | 'OPEN_QUESTIONS'
+>;
 
 export interface GuardFault {
   code: GuardCode;
@@ -250,9 +234,9 @@ async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
   }
   if (await planApprovalRequired(ctx.issue.projectId)) {
     const denied = await permissionRefusalFor(
-      { userId: ctx.actorUserId },
-      ctx.issue.projectId,
+      actorFor(ctx.actorUserId),
       'plans.approve',
+      projectResource(ctx.issue.projectId),
       'moving an issue to `approved` (project document `plan.approval.required`)',
     );
     if (denied) {
@@ -429,9 +413,9 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
   const guards: Record<IssueGuard, Guard<'issue'>> = {
     admit: async () => {
       const denied = await permissionRefusalFor(
-        { userId: base.actorUserId },
-        base.issue.projectId,
+        actorFor(base.actorUserId),
         ISSUE_ADMIT_PERMISSION,
+        projectResource(base.issue.projectId),
         'promoting a `draft` to `open`',
       );
       return denied ? ({ ...denied, path: '/status' } as Refusal) : null;

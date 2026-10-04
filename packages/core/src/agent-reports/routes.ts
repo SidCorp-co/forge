@@ -17,7 +17,7 @@ import {
   agentReportTargets,
 } from '../db/schema.js';
 import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
-import { refusalEnvelope } from '../lib/refusal.js';
+import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
@@ -70,7 +70,7 @@ function actorOf(c: Ctx): ReportActor {
 }
 
 async function answer(c: Ctx, out: TriageOutcome) {
-  if (!out.ok) return c.json(refusalEnvelope(out.refusals, 'AGENT_REPORT_REFUSED'), 422);
+  if (!out.ok) return refused(c, out.refusals, 'AGENT_REPORT_REFUSED');
   return c.json({ effect: out.effect });
 }
 
@@ -80,7 +80,7 @@ agentReportRoutes.use('*', requireAuth(), assertEmailVerified());
 agentReportRoutes.get(
   '/',
   zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, scope, kind, severity, target, triage, limit } = c.req.valid('query');

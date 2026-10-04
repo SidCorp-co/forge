@@ -66,10 +66,10 @@ recordEventRoutes.use('/:id/events', requireAuth(), assertEmailVerified());
 recordEventRoutes.post(
   '/:id/events',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', eventBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -98,10 +98,10 @@ recordEventRoutes.post(
 recordEventRoutes.get(
   '/:id/events',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

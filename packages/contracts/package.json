@@ -373,6 +373,10 @@
     "./pm": {
       "types": "./dist/pm.d.ts",
       "default": "./dist/pm.js"
+    },
+    "./refusal-statuses": {
+      "types": "./dist/refusal-statuses.d.ts",
+      "default": "./dist/refusal-statuses.js"
     }
   },
   "types": "./src/index.ts",
@@ -390,7 +394,7 @@
     "vitest": "^5.0.2"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.emit.json --noCheck && node scripts/check-exports.mjs",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.emit.json --noCheck && node scripts/check-exports.mjs",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   }

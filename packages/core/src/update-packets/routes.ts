@@ -38,7 +38,7 @@ updatePacketRoutes.use('*', requireAuth(), assertEmailVerified());
 updatePacketRoutes.post(
   '/',
   zValidator('json', bodySchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const userId = c.get('userId');

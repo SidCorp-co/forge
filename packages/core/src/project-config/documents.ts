@@ -1,5 +1,6 @@
 import type { ProjectConfigRefusalCode } from '@forge/contracts/project-config';
 import type { z } from 'zod';
+import { jsonPointer as pointer } from '../lib/refusal.js';
 import type { ConfigRefusal } from './rules.js';
 import { TOOL_PATTERN } from './schema.js';
 
@@ -12,9 +13,7 @@ export interface ApiRefusal extends Omit<ConfigRefusal, 'code'> {
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; refusals: ApiRefusal[] };
 
-export function pointer(segments: readonly PropertyKey[]): string {
-  return segments.map((s) => `/${String(s).replaceAll('~', '~0').replaceAll('/', '~1')}`).join('');
-}
+export { pointer };
 
 export const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);

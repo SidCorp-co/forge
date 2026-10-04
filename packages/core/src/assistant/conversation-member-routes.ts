@@ -71,7 +71,7 @@ export async function membershipOf(
 conversationMemberRoutes.get(
   '/candidates',
   zValidator('query', projectQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('query');
@@ -93,7 +93,7 @@ conversationMemberRoutes.get(
 conversationMemberRoutes.get(
   '/:id/candidates',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -114,10 +114,10 @@ conversationMemberRoutes.get(
 conversationMemberRoutes.post(
   '/:id/people',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', addPersonSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -134,10 +134,10 @@ conversationMemberRoutes.post(
 conversationMemberRoutes.post(
   '/:id/handles',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', addHandleSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -154,7 +154,7 @@ conversationMemberRoutes.post(
 conversationMemberRoutes.delete(
   '/:id/participants/:participantId',
   zValidator('param', removeParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id, participantId } = c.req.valid('param');

@@ -44,7 +44,7 @@ export {
   type RevisionWrite,
 } from './revision-write.js';
 
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import {
   detailOf,
   linkedDesigns,
@@ -126,7 +126,7 @@ export async function createRequirement(input: {
   write: RevisionWrite;
 }): Promise<RequirementOutcome> {
   const { projectId, actor, write } = input;
-  await requireCan({ userId: actor.userId }, 'project.write', projectId);
+  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const early = reasonRefusal(write.reason);
   if (early) return { ok: false, refusals: [early] };
   let id = '';
@@ -152,7 +152,7 @@ export async function writeRevision(input: {
   write: RevisionWrite;
 }): Promise<RequirementOutcome> {
   const { projectId, actor, write } = input;
-  await requireCan({ userId: actor.userId }, 'project.write', projectId);
+  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const early = reasonRefusal(write.reason);
   if (early) return { ok: false, refusals: [early] };
   const row = await rowIn(db, projectId, input.ref);
@@ -239,7 +239,7 @@ export async function proposeRevision(input: {
   revision: number;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await requireCan({ userId: actor.userId }, 'project.write', projectId);
+  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const row = await rowIn(db, projectId, input.ref);
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);

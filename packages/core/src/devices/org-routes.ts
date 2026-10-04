@@ -12,7 +12,7 @@ import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { annotateDeviceBuilds } from './build-state.js';
 import { listOrgDevices } from './read.js';
-import { requireOrgCan } from '../permissions/index.js';
+import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 
 const orgIdParamSchema = z.object({ orgId: z.uuid() });
 
@@ -21,12 +21,12 @@ export const deviceOrgRoutes = new Hono<{ Variables: AuthVars }>();
 deviceOrgRoutes.get(
   '/:orgId/devices',
   zValidator('param', orgIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireOrgCan({ userId }, 'org.read', orgId);
+    await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
 
     const visibleIds = await loadVisibleProjectIds(userId);
     if (visibleIds.length === 0) return c.json([]);

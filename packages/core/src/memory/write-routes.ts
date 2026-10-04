@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import {
   EMBEDDING_UNAVAILABLE,
@@ -9,7 +8,7 @@ import {
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { memoryFeedbackInputSchema, runMemoryFeedback } from './feedback-service.js';
 import { runMemoryWrite, writeMemoryInputSchema } from './write-service.js';
 
@@ -28,12 +27,12 @@ memoryWriteRoutes.use(
 memoryWriteRoutes.post(
   '/',
   zValidator('json', writeMemoryInputSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const body = c.req.valid('json');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.write', body.projectId);
+    await requireCan(actorFor(userId), 'project.write', projectResource(body.projectId));
 
     try {
       const result = await runMemoryWrite(body);
@@ -56,12 +55,12 @@ memoryWriteRoutes.post(
 memoryWriteRoutes.post(
   '/feedback',
   zValidator('json', memoryFeedbackInputSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const body = c.req.valid('json');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.write', body.projectId);
+    await requireCan(actorFor(userId), 'project.write', projectResource(body.projectId));
 
     const result = await runMemoryFeedback(body);
     return c.json(result, result.found ? 200 : 404);

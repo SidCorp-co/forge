@@ -46,7 +46,7 @@ knowledgeEdgeRoutes.use('*', requireAuth(), assertEmailVerified());
 knowledgeEdgeRoutes.get(
   '/',
   zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, subject, predicate, object, limit } = c.req.valid('query');
@@ -62,7 +62,7 @@ knowledgeEdgeRoutes.get(
 knowledgeEdgeRoutes.post(
   '/',
   zValidator('json', createSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const input = c.req.valid('json');
@@ -79,7 +79,7 @@ knowledgeEdgeRoutes.post(
 knowledgeEdgeRoutes.delete(
   '/:id',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

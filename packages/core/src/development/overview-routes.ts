@@ -17,7 +17,7 @@ developmentOverviewRoutes.use('*', requireAuth(), assertEmailVerified());
 developmentOverviewRoutes.get(
   '/:id/development/overview',
   zValidator('param', projectParam, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', noQuery, (r) => {
     if (!r.success) throw queryBadRequest(noQuery, r.error);

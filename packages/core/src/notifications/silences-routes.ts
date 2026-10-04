@@ -39,7 +39,7 @@ silenceRoutes.get('/', async (c) => c.json(await listActiveSilences(c.get('userI
 silenceRoutes.post(
   '/',
   zValidator('json', createSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const body = c.req.valid('json');
@@ -66,7 +66,7 @@ silenceRoutes.post(
 silenceRoutes.delete(
   '/:id',
   zValidator('param', z.object({ id: z.uuid() }), (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const ended = await endSilence(c.req.valid('param').id, c.get('userId'));

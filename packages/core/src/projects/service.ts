@@ -31,6 +31,7 @@ import {
   removeProjectMember,
   updateProjectMember,
 } from '../permissions/index.js';
+import { regrantAgentCredentials } from '../orgs/agent-fence.js';
 import { emitEvent } from '../outbox/index.js';
 import { DEFAULT_POLICY } from '../project-config/default-policy.js';
 import { readDeclaredSource } from '../project-config/source.js';
@@ -212,13 +213,20 @@ export async function addProjectMemberIfAbsent(
   return inserted ?? null;
 }
 
-/** Change a member's role or grant; null when the membership is gone. */
+/**
+ * Change a member's role or grant; null when the membership is gone. An agent's live credentials
+ * take the new grant's token-explicit permissions in the same transaction.
+ */
 export async function changeProjectMember(
   projectId: string,
   userId: string,
   patch: { role?: ProjectMemberRole | undefined; grants?: ProjectPermission[] | undefined },
 ) {
-  return updateProjectMember(db, projectId, userId, patch);
+  return db.transaction(async (tx) => {
+    const row = await updateProjectMember(tx, projectId, userId, patch);
+    if (row && patch.grants !== undefined) await regrantAgentCredentials(tx, userId);
+    return row;
+  });
 }
 
 /** Remove a member from the project. */

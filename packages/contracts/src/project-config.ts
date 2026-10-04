@@ -2,6 +2,7 @@
 
 import { CONTENT_LANGUAGE_REFUSAL_CODES } from "./content-language.js";
 import { TEMPLATE_REFUSAL_CODES } from "./workflow-template-schema.js";
+import type { RefusalStatuses } from "./refusal.js";
 
 export const PURE_REFUSAL_CODES = [
 	"DEFAULT_BRANCH_UNDECLARED",
@@ -77,6 +78,10 @@ export const PROJECT_CONFIG_REFUSAL_CODES = [
 ] as const;
 
 export type ProjectConfigRefusalCode = (typeof PROJECT_CONFIG_REFUSAL_CODES)[number];
+export const PROJECT_CONFIG_REFUSAL_STATUSES = {
+	STALE_BASE: 409,
+	AGENT_ACCESS_NEEDS_ORG_ADMIN: 403,
+} as const satisfies RefusalStatuses<ProjectConfigRefusalCode>;
 
 /** Reading an environment's deployed state through its binding. */
 export const ENVIRONMENT_STATE_REFUSAL_CODES = [

@@ -8,7 +8,7 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { loadDeviceSkillStatus, resolveRegisteredEffectiveSkills } from '../skills/effective.js';
 import { assertDeviceBoundToProject } from './device-project.js';
 import { applySkillReport, recordSkillSyncFailure } from './service.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 // Skill Studio 4 (ISS-278) — server-driven device skill sync.
 //
@@ -59,7 +59,7 @@ deviceSkillRoutes.get(
   '/me/skills',
   requireDevice(),
   zValidator('query', projectQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const device = c.get('device');
@@ -99,10 +99,10 @@ deviceSkillRoutes.get(
   '/me/skills/:skillId/content',
   requireDevice(),
   zValidator('param', contentParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', contentQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const device = c.get('device');
@@ -132,10 +132,10 @@ deviceSkillRoutes.post(
   '/me/skills/report',
   requireDevice(),
   zValidator('query', contentQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', reportBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const device = c.get('device');
@@ -156,10 +156,10 @@ deviceSkillRoutes.post(
   '/me/skills/sync-failed',
   requireDevice(),
   zValidator('query', contentQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', syncFailedBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const device = c.get('device');
@@ -183,12 +183,12 @@ deviceSkillStatusRoutes.get(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', statusParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, deviceId } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.read', projectId);
+    await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
 
     const status = await loadDeviceSkillStatus(projectId, deviceId);
     return c.json({ skills: status });

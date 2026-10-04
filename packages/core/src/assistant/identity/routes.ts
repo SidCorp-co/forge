@@ -23,7 +23,7 @@ import {
   type SpeakerRefusal,
   sourceUnknownRefusal,
 } from './speaker-link.js';
-import { requireCan } from '../../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
 import { listSpeakerLinks } from '../read.js';
 import { confirmSpeakerLink, unlinkSpeaker } from '../service.js';
 
@@ -51,13 +51,13 @@ const speakerBody = zValidator('json', speakerBodySchema, (result) => {
 
 const refuseSpeaker = refuser<SpeakerRefusalCode>('SPEAKER_SOURCE_UNKNOWN');
 
-/** A speaker refusal in the one envelope: 422, nothing written. */
+/** A speaker refusal in the one envelope, nothing written. */
 const refused = (refusal: SpeakerRefusal, path = ''): RefusalError =>
   refuseSpeaker(refusal.code, refusal.message, path);
 
 // cm:why project access is refused before the body is read, so a stranger learns nothing from a 400
 const projectAccess: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
-  await requireCan({ userId: c.get('userId') }, 'project.write', c.req.param('projectId') ?? '');
+  await requireCan(actorFor(c.get('userId')), 'project.write', projectResource(c.req.param('projectId') ?? ''));
   await next();
 };
 

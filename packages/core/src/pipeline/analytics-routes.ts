@@ -16,7 +16,7 @@ import {
   readStepDurations,
 } from './read.js';
 import { shippedPerDay } from './throughput-series.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 const querySchema = z.object({
   days: z.coerce.number().int().min(1).max(90).optional().default(30),
@@ -50,7 +50,7 @@ pipelineAnalyticsRoutes.use('*', requireAuth(), assertEmailVerified());
 pipelineAnalyticsRoutes.get(
   '/throughput',
   zValidator('query', querySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { days, projectId } = c.req.valid('query');
@@ -77,7 +77,7 @@ pipelineAnalyticsRoutes.get(
 pipelineAnalyticsRoutes.get(
   '/cycle-time',
   zValidator('query', cycleTimeQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { days, projectId } = c.req.valid('query');
@@ -93,7 +93,7 @@ pipelineAnalyticsRoutes.get(
 pipelineAnalyticsRoutes.get(
   '/step-durations',
   zValidator('query', stepDurationsQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { days, projectId, step } = c.req.valid('query');
@@ -118,7 +118,7 @@ pipelineAnalyticsRoutes.get(
 pipelineAnalyticsRoutes.get(
   '/retry-rescues',
   zValidator('query', querySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { days, projectId } = c.req.valid('query');
@@ -133,7 +133,7 @@ pipelineAnalyticsRoutes.get(
 pipelineAnalyticsRoutes.get(
   '/interventions',
   zValidator('query', querySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { days, projectId } = c.req.valid('query');
@@ -170,16 +170,16 @@ const outliersQuerySchema = z.object({
 projectCostAnalyticsRoutes.get(
   '/:id/analytics/cost-summary',
   zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', costSummaryQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
     const { days } = c.req.valid('query');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.read', id);
+    await requireCan(actorFor(userId), 'project.read', projectResource(id));
 
     return c.json(await readCostSummary(id, days));
   },
@@ -192,16 +192,16 @@ projectCostAnalyticsRoutes.get(
 projectCostAnalyticsRoutes.get(
   '/:id/analytics/cost-trend',
   zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', costTrendQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
     const { days, step } = c.req.valid('query');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.read', id);
+    await requireCan(actorFor(userId), 'project.read', projectResource(id));
 
     return c.json(await readCostTrend(id, days, step));
   },
@@ -215,16 +215,16 @@ projectCostAnalyticsRoutes.get(
 projectCostAnalyticsRoutes.get(
   '/:id/analytics/outliers',
   zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', outliersQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
     const { days } = c.req.valid('query');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.read', id);
+    await requireCan(actorFor(userId), 'project.read', projectResource(id));
 
     return c.json(await readCostOutliers(id, days));
   },
@@ -233,7 +233,7 @@ projectCostAnalyticsRoutes.get(
 pipelineAnalyticsRoutes.get(
   '/driver-comparison',
   zValidator('query', querySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { days, projectId } = c.req.valid('query');

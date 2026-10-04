@@ -83,10 +83,10 @@ export const conversationAttachmentRoutes = new Hono<{ Variables: AuthVars }>();
 conversationAttachmentRoutes.post(
   '/:id/attachments',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', attachmentTicketSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -120,7 +120,7 @@ conversationAttachmentRoutes.post(
 conversationAttachmentRoutes.get(
   '/:id/attachments/:attachmentId/download',
   zValidator('param', idParamSchema.extend({ attachmentId: z.uuid() }), (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id, attachmentId } = c.req.valid('param');
@@ -148,7 +148,7 @@ conversationAttachmentRoutes.get(
 conversationAttachmentRoutes.post(
   '/:id/stop',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

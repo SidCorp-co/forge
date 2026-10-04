@@ -3,6 +3,7 @@
 
 import { CONTRACT_WAIT_REFUSAL_CODES } from "./contract-waits.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
+import type { RefusalStatuses } from "./refusal.js";
 
 export const LINK_REFUSAL_CODES = [
 	"LINK_STATE_UNKNOWN",
@@ -150,6 +151,17 @@ export const ECOSYSTEM_REFUSAL_CODES = [
 	...LINK_REFUSAL_CODES,
 ] as const;
 export type EcosystemRefusalCode = (typeof ECOSYSTEM_REFUSAL_CODES)[number];
+export const ECOSYSTEM_REFUSAL_STATUSES = {
+	STALE_BASE: 409,
+	THREAD_HELD: 409,
+	THREAD_ALREADY_HELD: 409,
+	THREAD_NOT_HELD: 409,
+	HOLD_NOT_AUTHORISED: 403,
+	CHANNEL_NO_ROLE: 403,
+	CHANNEL_WRITE_NOT_AUTHORISED: 403,
+	ECOSYSTEM_WRITE_NOT_AUTHORISED: 403,
+	ECOSYSTEM_NOT_AUTHORISED: 403,
+} as const satisfies RefusalStatuses<EcosystemRefusalCode | ChannelRefusalCode | EcosystemToolRefusalCode>;
 
 // The channel tool's actions: reads answer, writes change a channel document.
 export const CHANNEL_READS = [

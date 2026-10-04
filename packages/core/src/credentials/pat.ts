@@ -11,6 +11,7 @@ import {
   patPrefixOf,
 } from './pat-format.js';
 import { patIsLive } from './pat-live.js';
+import { PAT_EXPLICIT_PERMISSIONS, PAT_PERMISSION_ALL } from './pat-permissions.js';
 import { lockXact } from '../lib/advisory-lock.js';
 
 const ARGON2_OPTIONS = {
@@ -41,6 +42,8 @@ export interface MintPatInput {
   deviceId?: string | null | undefined;
   expiresAt?: Date | null | undefined;
   rateLimitMax?: number | null | undefined;
+  /** The person this token acts for when it is not its holder's own — see `personalAccessTokens.onBehalfOf`. */
+  onBehalfOf?: string | null | undefined;
 }
 
 export interface MintedPat {
@@ -86,6 +89,7 @@ export async function mintPat(input: MintPatInput, tx: Tx = db): Promise<MintedP
       deviceId: input.deviceId ?? null,
       expiresAt: input.expiresAt ?? null,
       rateLimitMax: input.rateLimitMax ?? null,
+      onBehalfOf: input.onBehalfOf ?? null,
     })
     .returning();
 
@@ -166,6 +170,39 @@ export async function refenceLiveTokens(tx: Tx, userId: string, fence: TokenFenc
     .where(and(eq(personalAccessTokens.userId, userId), patIsLive()))
     .returning({ id: personalAccessTokens.id });
   return rows.length;
+}
+
+/**
+ * A grant with its token-explicit names replaced by `explicit`, its route grant kept; a grant that
+ * named no route group (a legacy token) keeps its whole reach as `*`.
+ */
+export function grantNaming(
+  permissions: readonly string[] | null,
+  explicit: readonly string[],
+): string[] {
+  const routes = (permissions ?? []).filter(
+    (p) => !(PAT_EXPLICIT_PERMISSIONS as readonly string[]).includes(p),
+  );
+  return [...new Set([...(routes.length > 0 ? routes : [PAT_PERMISSION_ALL]), ...explicit])];
+}
+
+/** Every live token of one holder names exactly `explicit` among its token-explicit permissions; answers how many. */
+export async function regrantLiveTokens(
+  tx: Tx,
+  userId: string,
+  explicit: readonly string[],
+): Promise<number> {
+  const live = await tx
+    .select({ id: personalAccessTokens.id, permissions: personalAccessTokens.permissions })
+    .from(personalAccessTokens)
+    .where(and(eq(personalAccessTokens.userId, userId), patIsLive()));
+  for (const token of live) {
+    await tx
+      .update(personalAccessTokens)
+      .set({ permissions: grantNaming(token.permissions, explicit) })
+      .where(eq(personalAccessTokens.id, token.id));
+  }
+  return live.length;
 }
 
 export interface VerifiedPat {
@@ -361,6 +398,7 @@ export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null
         deviceId: existing.deviceId,
         expiresAt: input.expiresAt ?? existing.expiresAt,
         rateLimitMax: existing.rateLimitMax,
+        onBehalfOf: existing.onBehalfOf,
       })
       .returning();
 

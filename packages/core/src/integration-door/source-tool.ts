@@ -27,7 +27,7 @@ import {
 } from '../integrations/source-host/index.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
 import { logger } from '../observability/logger.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { resolveEffectiveProjectId } from '../projects/index.js';
 
 /**
@@ -202,13 +202,13 @@ async function dispatchAction(input: Input, ctx: McpContext): Promise<unknown> {
   const { principal } = ctx;
 
   if (input.action === 'list') {
-    await requireCan({ userId: principal.userId }, 'project.read', projectId);
+    await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
     return listSourceBindings(projectId);
   }
 
   const reading = input.action === 'diff' || input.action === 'check-log';
-  if (reading) await requireCan({ userId: principal.userId }, 'project.read', projectId);
-  else await requireCan({ userId: principal.userId }, 'project.write', projectId);
+  if (reading) await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
+  else await requireCan(actorFor(principal.userId), 'project.write', projectResource(projectId));
 
   const host = await resolveSourceHost(projectId, 'agent');
 

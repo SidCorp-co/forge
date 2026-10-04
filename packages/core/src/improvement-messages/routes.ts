@@ -35,7 +35,7 @@ improvementMessageRoutes.use('*', requireAuth(), assertEmailVerified());
 improvementMessageRoutes.get(
   '/',
   zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('query');

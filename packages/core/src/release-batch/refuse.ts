@@ -7,7 +7,7 @@ import {
   releaseBlockerSentence,
 } from './blocker-sentences.js';
 
-/** Every release refusal, at every door, in the one 422 envelope. */
+/** Every release refusal, at every door, in the one refusal envelope. */
 export const refuseRelease = refuser<ReleaseRefusalCode>('RELEASE_REFUSED');
 
 /** One blocker, answered under its code with the sentence readiness lists it with. */

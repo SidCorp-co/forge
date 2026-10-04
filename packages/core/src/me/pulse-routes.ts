@@ -77,7 +77,7 @@ mePulseRoutes.use('/pulse', requireAuth(), assertEmailVerified());
 mePulseRoutes.get(
   '/pulse',
   zValidator('query', pulseQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { orgId } = c.req.valid('query');

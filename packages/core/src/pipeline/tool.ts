@@ -6,7 +6,7 @@
  * `./tool-runs.ts`. This file owns input validation, required-field
  * checks per action, and routing. Authorization is re-applied inside each
  * handler — list gates on the projectId argument, the runId-resolved actions
- * gate after the run lookup, both through `requireCan(…, 'project.read', …)` — so the
+ * gate after the run lookup, both through `requireCan(…, 'project.read', projectResource(…))` — so the
  * dispatcher does NOT collapse auth into a single pre-switch call.
  */
 

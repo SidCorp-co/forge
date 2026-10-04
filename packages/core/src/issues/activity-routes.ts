@@ -77,10 +77,10 @@ issueActivityRoutes.use('*', requireAuth(), assertEmailVerified());
 issueActivityRoutes.get(
   '/:id/activity',
   zValidator('param', issueRouteIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', perIssueQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: rawId } = c.req.valid('param');
@@ -123,10 +123,10 @@ export function assertActivityMutable(action: string): void {
 issueActivityRoutes.patch(
   '/:id/activity/:activityId/evaluate',
   zValidator('param', activityIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', evaluateBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: issueId, activityId } = c.req.valid('param');
@@ -161,7 +161,7 @@ issueActivityRoutes.patch(
 issueActivityRoutes.delete(
   '/:id/activity/:activityId',
   zValidator('param', activityIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: issueId, activityId } = c.req.valid('param');
@@ -185,10 +185,10 @@ projectActivityRoutes.use('*', requireAuth(), assertEmailVerified());
 projectActivityRoutes.get(
   '/:id/activity',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', activityQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: projectId } = c.req.valid('param');

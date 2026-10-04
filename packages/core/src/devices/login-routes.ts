@@ -30,7 +30,7 @@ import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
 import { reportFailure } from '../observability/sentry.js';
-import { requireOrgCan } from '../permissions/index.js';
+import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import { issueDeviceCredential } from './credential.js';
 import { loginCodeState, userExists, userKindAndOrg } from './read.js';
 import { registerDevice } from './register.js';
@@ -248,7 +248,7 @@ async function resolveApprovableAgent(raw: unknown, approverId: string): Promise
       cause: { code: 'AGENT_NOT_FOUND' },
     });
   }
-  await requireOrgCan({ userId: approverId }, 'org.admin', agent.orgId);
+  await requireOrgCan(actorFor(approverId), 'org.admin', orgResource(agent.orgId));
   return agent.id;
 }
 

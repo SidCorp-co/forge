@@ -22,6 +22,7 @@ import {
 } from '@forge/contracts/state-machine';
 import { and, inArray, type SQL } from 'drizzle-orm';
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core';
+import { delegationOf } from '../credentials/pat-scope.js';
 import { type KernelExecutor, stampKernelTxn } from '../db/kernel-marker.js';
 import { type KernelTransitionActorType, kernelTransitions } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
@@ -33,12 +34,31 @@ export type { KernelExecutor };
 
 type Tx = Parameters<Parameters<KernelExecutor['transaction']>[0]>[0];
 
+/**
+ * Who moves the rows. A user actor's credential and delegation are recorded with the move: the ones
+ * it carries, else the request's own when the request's credential is that user's.
+ */
 export type KernelActor =
-  | { type: 'user'; id?: string | null; agency: ActorAgency }
+  | {
+      type: 'user';
+      id?: string | null;
+      agency: ActorAgency;
+      tokenId?: string | null;
+      onBehalfOf?: string | null;
+    }
   | { type: Exclude<KernelTransitionActorType, 'user'>; id?: string | null };
 
 function agencyOf(actor: KernelActor): ActorAgency {
   return actor.type === 'user' ? actor.agency : 'agent';
+}
+
+function credentialOf(actor: KernelActor): { tokenId: string | null; onBehalfOf: string | null } {
+  if (actor.type !== 'user') return { tokenId: null, onBehalfOf: null };
+  if (actor.tokenId !== undefined) {
+    return { tokenId: actor.tokenId, onBehalfOf: actor.onBehalfOf ?? null };
+  }
+  const { tokenId, onBehalfOf } = delegationOf(actor.id);
+  return { tokenId, onBehalfOf };
 }
 
 /** A row as the guards and hooks see it before the write: its id and the status it is leaving. */
@@ -203,6 +223,7 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
   >;
 
   const left = new Map(prior.map((r) => [r.id, r.status]));
+  const credential = credentialOf(args.actor);
   const records = rows.map((row) => ({
     entity: machine.entity,
     entityId: row.id,
@@ -212,6 +233,8 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
     actorType: args.actor.type,
     actorAgency: agencyOf(args.actor),
     actorId: args.actor.id ?? null,
+    actorTokenId: credential.tokenId,
+    actorOnBehalfOf: credential.onBehalfOf,
     source: args.source,
   }));
   if (records.length > 0) await tx.insert(kernelTransitions).values(records);

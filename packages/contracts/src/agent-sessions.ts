@@ -1,4 +1,5 @@
-// The codes an agent session, its turns and its attachments are refused by, in the 422 envelope.
+// The codes an agent session, its turns and its attachments are refused by, in the refusal envelope.
+import type { RefusalStatuses } from "./refusal.js";
 
 export const AGENT_SESSION_REFUSAL_CODES = [
 	"AGENT_SESSION_REFUSED",
@@ -23,3 +24,8 @@ export const AGENT_SESSION_REFUSAL_CODES = [
 ] as const;
 
 export type AgentSessionRefusalCode = (typeof AGENT_SESSION_REFUSAL_CODES)[number];
+export const AGENT_SESSION_REFUSAL_STATUSES = {
+	SESSION_STALE: 409,
+	TURN_STALE: 409,
+	SEQ_TAKEN_BY_CORE: 409,
+} as const satisfies RefusalStatuses<AgentSessionRefusalCode>;

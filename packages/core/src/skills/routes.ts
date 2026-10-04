@@ -61,10 +61,10 @@ skillSyncRoutes.use('/:projectId/skills/sync', requireDevice());
 skillSyncRoutes.post(
   '/:projectId/skills/sync',
   zValidator('param', projectParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', syncBodySchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -102,10 +102,10 @@ skillRegisterRoutes.use(
 skillRegisterRoutes.post(
   '/:projectId/skills/:skillId/register',
   zValidator('param', skillParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', registerBodySchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { projectId, skillId } = c.req.valid('param');
@@ -135,7 +135,7 @@ skillRegisterRoutes.use('/:projectId/skill-registrations', requireAuth(), assert
 skillRegisterRoutes.get(
   '/:projectId/skill-registrations',
   zValidator('param', projectParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -161,7 +161,7 @@ skillRegisterRoutes.use(
 skillRegisterRoutes.delete(
   '/:projectId/skills/registrations/:stage',
   zValidator('param', stageParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { projectId, stage } = c.req.valid('param');

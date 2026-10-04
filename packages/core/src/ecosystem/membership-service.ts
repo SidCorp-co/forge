@@ -21,7 +21,7 @@ import {
   readInterface,
   readMembership,
 } from './store.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 export type MembershipOutcome =
   | { ok: true; membership: MembershipRow }
@@ -88,7 +88,7 @@ async function assertSide(
     await assertStewardAdmin(eco.stewardOrgId, userId);
     return;
   }
-  await requireCan({ userId }, 'project.admin', row.projectId);
+  await requireCan(actorFor(userId), 'project.admin', projectResource(row.projectId));
 }
 
 export async function transition(input: {

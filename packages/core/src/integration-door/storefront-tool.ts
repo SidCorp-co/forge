@@ -10,7 +10,7 @@ import {
 } from '../integrations/index.js';
 import { refuser } from '../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { resolveEffectiveProjectId } from '../projects/index.js';
 import { buildMcpPreview } from './mcp-preview-service.js';
 
@@ -111,7 +111,7 @@ export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = (ctx) => (
   handler: async (args) => {
     const input = inputSchema.parse(args) as Input;
     const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-    await requireCan({ userId: ctx.principal.userId }, 'project.read', projectId);
+    await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(projectId));
 
     const served = storefrontProviders();
     let providers = served;

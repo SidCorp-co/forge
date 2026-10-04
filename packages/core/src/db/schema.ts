@@ -517,6 +517,12 @@ export const personalAccessTokens = pgTable(
     permissions: text('permissions').array(),
     grantEpoch: integer('grant_epoch').notNull().default(1),
     rateLimitMax: integer('rate_limit_max'),
+    /**
+     * The person this credential was handed to act for, where it is not a token its holder minted
+     * for themselves: a turn's token acts for the person it answers, a box's for whoever paired it.
+     * Every act made with it records this beside the token (`permissions/actor.ts:Actor`).
+     */
+    onBehalfOf: uuid('on_behalf_of').references(() => users.id, { onDelete: 'set null' }),
   },
   (t) => ({
     userNameUq: uniqueIndex('pat_user_name_uniq').on(t.userId, t.name).where(isNull(t.revokedAt)),
@@ -807,6 +813,10 @@ export const kernelTransitions = pgTable(
     actorType: text('actor_type', { enum: kernelTransitionActorTypes }).notNull(),
     actorAgency: text('actor_agency', { enum: actorAgencies }).notNull(),
     actorId: uuid('actor_id'),
+    /** The credential the move was made with; null for a session or a system actor. */
+    actorTokenId: uuid('actor_token_id'),
+    /** The person that credential acts for (`personal_access_tokens.on_behalf_of`). */
+    actorOnBehalfOf: uuid('actor_on_behalf_of'),
     source: text('source').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

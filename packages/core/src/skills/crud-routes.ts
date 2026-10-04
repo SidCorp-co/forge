@@ -100,7 +100,7 @@ skillCrudRoutes.use('*', requireAuth(), assertEmailVerified());
 skillCrudRoutes.get(
   '/',
   zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, scope } = c.req.valid('query');
@@ -144,7 +144,7 @@ skillCrudRoutes.get(
 skillCrudRoutes.get(
   '/invokable',
   zValidator('query', invokableQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('query');
@@ -166,7 +166,7 @@ skillCrudRoutes.get(
 skillCrudRoutes.get(
   '/:id',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -187,7 +187,7 @@ skillCrudRoutes.get(
 skillCrudRoutes.post(
   '/',
   zValidator('json', skillCreateSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const input = c.req.valid('json');
@@ -225,10 +225,10 @@ skillCrudRoutes.post(
 skillCrudRoutes.put(
   '/:id',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', skillUpdateSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -254,7 +254,7 @@ skillCrudRoutes.put(
 skillCrudRoutes.delete(
   '/:id',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -278,7 +278,7 @@ skillCrudRoutes.delete(
 skillCrudRoutes.post(
   '/sync-status',
   zValidator('json', syncStatusSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('json');
@@ -295,7 +295,7 @@ skillCrudRoutes.post(
 skillCrudRoutes.post(
   '/bulk-push',
   zValidator('json', bulkPushSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, deviceId, skillNames } = c.req.valid('json');

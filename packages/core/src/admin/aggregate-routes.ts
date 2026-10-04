@@ -26,7 +26,7 @@ adminAggregateRoutes.use('*', requireAuth(), assertEmailVerified(), requireAdmin
 adminAggregateRoutes.get(
   '/overview',
   zValidator('query', overviewQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { window } = c.req.valid('query');
@@ -42,7 +42,7 @@ const adoptionQuerySchema = z.object({
 adminAggregateRoutes.get(
   '/adoption',
   zValidator('query', adoptionQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { weeks, bucket } = c.req.valid('query');
@@ -59,7 +59,7 @@ const workspacesQuerySchema = z.object({
 adminAggregateRoutes.get(
   '/workspaces',
   zValidator('query', workspacesQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { window, sort, limit } = c.req.valid('query');

@@ -20,7 +20,7 @@ adminAlertRoutes.use('*', requireAuth(), assertEmailVerified(), requireAdmin());
 adminAlertRoutes.get(
   '/alerts',
   zValidator('query', alertsQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { staleSeconds } = c.req.valid('query');

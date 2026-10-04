@@ -20,7 +20,7 @@ jobTurnVerdictRoutes.get(
   '/:id/turn-verdict',
   requireDevice(),
   zValidator('param', paramSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

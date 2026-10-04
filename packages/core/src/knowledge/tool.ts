@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { EmbeddingUnavailableError } from '../integrations/embeddings/index.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import {
   deleteKnowledgeEntry,
   getKnowledgeEntry,
@@ -65,7 +65,7 @@ export const forgeKnowledgeTool: ContextScopedMcpToolFactory = (ctx) => ({
     const { action, projectId } = input;
 
     if (action === 'list') {
-      await requireCan({ userId: ctx.principal.userId }, 'project.read', projectId);
+      await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(projectId));
       return listKnowledgeEntries({
         projectId,
         kind: input.kindFilter,
@@ -75,7 +75,7 @@ export const forgeKnowledgeTool: ContextScopedMcpToolFactory = (ctx) => ({
 
     if (action === 'get') {
       if (!input.slug) throw new Error('BAD_REQUEST: slug is required for action=get');
-      await requireCan({ userId: ctx.principal.userId }, 'project.read', projectId);
+      await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(projectId));
       const entry = await getKnowledgeEntry(projectId, input.slug);
       if (!entry) throw new Error('NOT_FOUND: knowledge entry not found');
       return entry;
@@ -85,7 +85,7 @@ export const forgeKnowledgeTool: ContextScopedMcpToolFactory = (ctx) => ({
       if (!input.slug) throw new Error('BAD_REQUEST: slug is required for action=upsert');
       if (!input.title) throw new Error('BAD_REQUEST: title is required for action=upsert');
       if (!input.body) throw new Error('BAD_REQUEST: body is required for action=upsert');
-      await requireCan({ userId: ctx.principal.userId }, 'project.write', projectId);
+      await requireCan(actorFor(ctx.principal.userId), 'project.write', projectResource(projectId));
       try {
         const parsed = upsertKnowledgeInputSchema.parse({
           projectId,
@@ -110,14 +110,14 @@ export const forgeKnowledgeTool: ContextScopedMcpToolFactory = (ctx) => ({
 
     if (action === 'delete') {
       if (!input.slug) throw new Error('BAD_REQUEST: slug is required for action=delete');
-      await requireCan({ userId: ctx.principal.userId }, 'project.write', projectId);
+      await requireCan(actorFor(ctx.principal.userId), 'project.write', projectResource(projectId));
       const removed = await deleteKnowledgeEntry(projectId, input.slug);
       return { deleted: removed > 0 };
     }
 
     if (action === 'search') {
       if (!input.query) throw new Error('BAD_REQUEST: query is required for action=search');
-      await requireCan({ userId: ctx.principal.userId }, 'project.read', projectId);
+      await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(projectId));
       try {
         return await runUnifiedSearch({
           projectId,

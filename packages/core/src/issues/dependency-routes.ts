@@ -58,10 +58,10 @@ issueDependencyRoutes.use('*', requireAuth(), assertEmailVerified());
 issueDependencyRoutes.get(
   '/:id/dependencies',
   zValidator('param', issueRouteIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', projectScopeQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: rawId } = c.req.valid('param');
@@ -84,10 +84,10 @@ issueDependencyRoutes.get(
 issueDependencyRoutes.post(
   '/:id/dependencies',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', createBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: toIssueId } = c.req.valid('param');
@@ -141,7 +141,7 @@ issueDependencyRoutes.post(
 issueDependencyRoutes.delete(
   '/:id/dependencies/:edgeId',
   zValidator('param', edgeParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: issueId, edgeId } = c.req.valid('param');

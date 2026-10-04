@@ -214,8 +214,7 @@ export interface JudgeOptions {
   model: string;
   fetch: FetchLike;
   timeoutMs?: number;
-  /** Backoff between the provider's retries; tests pass [0]. */
-  retryDelaysMs?: number[];
+  maxRetries?: number;
 }
 
 /** One request per call through the provider given, at temperature 0; every failure is `{ error }`, never a throw. */
@@ -258,7 +257,7 @@ export function createJudge(o: JudgeOptions): Judge {
     apiKey: o.apiKey,
     defaultModel: o.model,
     fetchImpl: o.fetch as unknown as typeof fetch,
-    ...(o.retryDelaysMs ? { retryDelaysMs: o.retryDelaysMs } : {}),
+    ...(o.maxRetries !== undefined ? { maxRetries: o.maxRetries } : {}),
   });
   return createJudgeFromProvider(provider, o.model, { timeoutMs: o.timeoutMs ?? 120_000 });
 }

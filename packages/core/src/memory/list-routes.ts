@@ -10,7 +10,7 @@ import { deleteMemory } from './indexer.js';
 import { memoryProject } from './read.js';
 import { memoryRevisionsInputSchema, runMemoryRevisions } from './revisions-service.js';
 import { deleteMemoryById } from './service.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 const listQuerySchema = paginationSchema.extend({
   projectId: z.uuid(),
@@ -41,12 +41,12 @@ memoryListRoutes.use('*', requireAuth(), assertEmailVerified());
 memoryListRoutes.get(
   '/',
   zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, source, sourceRef, limit, offset, includeArchived } = c.req.valid('query');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.read', projectId);
+    await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
 
     const { rows, total } = await runMemoryGet({
       projectId,
@@ -66,12 +66,12 @@ memoryListRoutes.get(
 memoryListRoutes.get(
   '/revisions',
   zValidator('query', revisionsQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, memoryId, source, sourceRef, limit, offset } = c.req.valid('query');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.read', projectId);
+    await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
 
     const { rows, total } = await runMemoryRevisions({
       projectId,
@@ -89,12 +89,12 @@ memoryListRoutes.get(
 memoryListRoutes.delete(
   '/by-source',
   zValidator('query', deleteQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, source, sourceRef } = c.req.valid('query');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.write', projectId);
+    await requireCan(actorFor(userId), 'project.write', projectResource(projectId));
 
     return c.json({ deleted: await deleteMemory(projectId, source, sourceRef) });
   },
@@ -105,7 +105,7 @@ const idParamSchema = z.object({ id: z.uuid() });
 memoryListRoutes.delete(
   '/:id',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -118,7 +118,7 @@ memoryListRoutes.delete(
     if (!projectId) return c.body(null, 204);
 
     try {
-      await requireCan({ userId }, 'project.write', projectId);
+      await requireCan(actorFor(userId), 'project.write', projectResource(projectId));
     } catch {
       return c.body(null, 204);
     }

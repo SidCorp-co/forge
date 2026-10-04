@@ -126,7 +126,7 @@ export async function applySecretsPatch(opts: {
   if (!decl || !primaryField) return undefined;
   if (opts.vaultGuardTiming === 'before-parse') assertVaultConfigured();
   const parsedSecrets = decl.schemas.patchSecrets.safeParse(opts.rawSecrets);
-  if (!parsedSecrets.success) throw badRequest(z.flattenError(parsedSecrets.error));
+  if (!parsedSecrets.success) throw badRequest(parsedSecrets.error);
   const incoming = parsedSecrets.data as Record<string, unknown>;
   // A field a rotation does not touch is writable on its own only where the provider DECLARES it
   // so. Rocket.Chat's bot `userId` is the only one today. Treating every non-primary field as

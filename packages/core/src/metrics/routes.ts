@@ -34,10 +34,10 @@ const badRequest = (details: unknown) =>
 projectMetricsRoutes.get(
   '/:id/metrics/timeseries',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('query', timeseriesQuerySchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -67,10 +67,10 @@ const stepDurationsQuerySchema = z.object({
 projectMetricsRoutes.get(
   '/:id/metrics/step-durations',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('query', stepDurationsQuerySchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -92,10 +92,10 @@ const daysQuerySchema = z.object({
 projectMetricsRoutes.get(
   '/:id/metrics/retry-rescues',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', daysQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -110,10 +110,10 @@ projectMetricsRoutes.get(
 projectMetricsRoutes.get(
   '/:id/metrics/session-failures',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', daysQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -128,10 +128,10 @@ projectMetricsRoutes.get(
 projectMetricsRoutes.get(
   '/:id/metrics/interventions',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', daysQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

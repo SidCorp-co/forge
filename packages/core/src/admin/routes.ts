@@ -51,7 +51,7 @@ const RETRIEVAL_BREAKDOWN_DEFAULT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 adminProtected.get(
   '/retrieval/breakdown',
   zValidator('query', retrievalBreakdownQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, since } = c.req.valid('query');
@@ -66,7 +66,7 @@ adminProtected.get(
 adminProtected.get(
   '/users',
   zValidator('query', searchQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { limit, offset, q } = c.req.valid('query');
@@ -78,7 +78,7 @@ adminProtected.get(
 adminProtected.get(
   '/projects',
   zValidator('query', searchQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { limit, offset, q } = c.req.valid('query');
@@ -90,7 +90,7 @@ adminProtected.get(
 adminProtected.get(
   '/devices',
   zValidator('query', devicesQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { limit, offset, status } = c.req.valid('query');
@@ -102,7 +102,7 @@ adminProtected.get(
 adminProtected.get(
   '/audit',
   zValidator('query', auditQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { limit, offset, action, actorId, since } = c.req.valid('query');

@@ -46,7 +46,7 @@ searchRoutes.use('*', requireAuth(), assertEmailVerified());
 searchRoutes.get(
   '/:id/issues/search',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', searchQuerySchema, (r) => {
     if (!r.success) {

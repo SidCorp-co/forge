@@ -105,10 +105,10 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
   router.post(
     '/:id/comments',
     zValidator('param', idParamSchema, (r) => {
-      if (!r.success) throw badRequest(z.flattenError(r.error));
+      if (!r.success) throw badRequest(r.error);
     }),
     zValidator('json', commentCreateSchema, (r) => {
-      if (!r.success) throw badRequest(z.flattenError(r.error));
+      if (!r.success) throw badRequest(r.error);
     }),
     async (c) => {
       const { id: issueId } = c.req.valid('param');
@@ -174,10 +174,10 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
   router.get(
     '/:id/comments',
     zValidator('param', issueRouteIdParamSchema, (r) => {
-      if (!r.success) throw badRequest(z.flattenError(r.error));
+      if (!r.success) throw badRequest(r.error);
     }),
     zValidator('query', threadQuerySchema, (r) => {
-      if (!r.success) throw badRequest(z.flattenError(r.error));
+      if (!r.success) throw badRequest(r.error);
     }),
     async (c) => {
       const { id: rawId } = c.req.valid('param');
@@ -230,10 +230,10 @@ commentRoutes.get(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', paginationSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -261,10 +261,10 @@ commentRoutes.patch(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', commentBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -302,7 +302,7 @@ commentRoutes.delete(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

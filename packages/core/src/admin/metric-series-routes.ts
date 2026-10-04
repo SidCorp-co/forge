@@ -39,10 +39,10 @@ adminMetricSeriesRoutes.use('*', requireAuth(), assertEmailVerified(), requireAd
 adminMetricSeriesRoutes.get(
   '/metrics/:metric/timeseries',
   zValidator('param', paramSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', querySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { metric } = c.req.valid('param');

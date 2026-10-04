@@ -35,7 +35,7 @@ divergenceCharterRoutes.use('*', requireAuth(), assertEmailVerified());
 divergenceCharterRoutes.get(
   '/:id/divergence-charter',
   zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
@@ -49,10 +49,10 @@ divergenceCharterRoutes.get(
 divergenceCharterRoutes.put(
   '/:id/divergence-charter',
   zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', charterPutSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: projectId } = c.req.valid('param');

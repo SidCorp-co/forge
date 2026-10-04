@@ -17,7 +17,7 @@ import {
   restActor,
 } from '../../middleware/auth.js';
 import { strictBody, zValidator } from '../../middleware/zod-validator.js';
-import { requireCan } from '../../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
 import { issueContractWaitsOf, issueScopeOf } from './read.js';
 import { addContractWait, retractContractWait, type WaitOutcome } from './service.js';
 
@@ -49,7 +49,7 @@ const listQuery = zValidator(
 async function issueFor(id: string, userId: string) {
   const issue = await issueScopeOf(id);
   if (!issue) throw new HTTPException(404, { message: `issue ${id} not found` });
-  await requireCan({ userId }, 'project.read', issue.projectId);
+  await requireCan(actorFor(userId), 'project.read', projectResource(issue.projectId));
   return issue;
 }
 

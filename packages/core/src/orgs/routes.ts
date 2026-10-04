@@ -7,7 +7,7 @@ import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
-import { requireOrgCan, requireOrgHeld } from '../permissions/index.js';
+import { actorFor, orgResource, requireOrgCan, requireOrgHeld } from '../permissions/index.js';
 import { sendOrgInvitationEmail } from '../projects/invitation-email.js';
 import { agentAccountRoutes } from './agent-accounts-routes.js';
 import { issueOrgInvitationToken } from './invitations.js';
@@ -88,7 +88,7 @@ orgRoutes.get('/', async (c) => {
 orgRoutes.post(
   '/',
   zValidator('json', createOrgSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { slug, name } = c.req.valid('json');
@@ -108,17 +108,17 @@ orgRoutes.post(
 orgRoutes.patch(
   '/:orgId',
   zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', patchOrgSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');
     const patch = c.req.valid('json');
     const userId = c.get('userId');
 
-    await requireOrgCan({ userId }, 'org.own', orgId);
+    await requireOrgCan(actorFor(userId), 'org.own', orgResource(orgId));
 
     const updated = await updateOrg(orgId, patch);
     if (!updated) throw notFound('organization not found');
@@ -131,13 +131,13 @@ orgRoutes.patch(
 orgRoutes.delete(
   '/:orgId',
   zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    await requireOrgCan({ userId }, 'org.own', orgId);
+    await requireOrgCan(actorFor(userId), 'org.own', orgResource(orgId));
     if (await isPersonalOrg(orgId)) {
       throw refuse('PERSONAL_ORG_IMMUTABLE', 'a personal org cannot be deleted');
     }
@@ -159,13 +159,13 @@ orgRoutes.delete(
 orgRoutes.get(
   '/:orgId/projects',
   zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    await requireOrgCan({ userId }, 'org.read', orgId);
+    await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
 
     return c.json(await listOrgProjects(orgId));
   },
@@ -174,13 +174,13 @@ orgRoutes.get(
 orgRoutes.get(
   '/:orgId/members',
   zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    await requireOrgCan({ userId }, 'org.read', orgId);
+    await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
 
     return c.json(await listOrgMembers(orgId));
   },
@@ -191,17 +191,17 @@ orgRoutes.get(
 orgRoutes.post(
   '/:orgId/members',
   zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', addMemberSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');
     const { email, role } = c.req.valid('json');
     const callerId = c.get('userId');
 
-    const caller = await requireOrgCan({ userId: callerId }, 'org.admin', orgId);
+    const caller = await requireOrgCan(actorFor(callerId), 'org.admin', orgResource(orgId));
     if (role === 'owner') requireOrgHeld(orgId, caller.role, 'org.own');
     if (await isPersonalOrg(orgId)) {
       throw refuse('PERSONAL_ORG_IMMUTABLE', 'a personal org cannot have additional members');
@@ -252,12 +252,12 @@ orgRoutes.post(
 orgRoutes.get(
   '/:orgId/invitations',
   zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireOrgCan({ userId }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(userId), 'org.admin', orgResource(orgId));
 
     const rows = await listPendingOrgInvitations(orgId);
 
@@ -269,20 +269,20 @@ orgRoutes.get(
 orgRoutes.delete(
   '/:orgId/invitations',
   zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator(
     'query',
     z.object({ email: z.string().trim().toLowerCase().pipe(z.email().max(254)) }),
     (result) => {
-      if (!result.success) throw badRequest(z.flattenError(result.error));
+      if (!result.success) throw badRequest(result.error);
     },
   ),
   async (c) => {
     const { orgId } = c.req.valid('param');
     const { email } = c.req.valid('query');
     const userId = c.get('userId');
-    await requireOrgCan({ userId }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(userId), 'org.admin', orgResource(orgId));
 
     if (!(await revokeOrgInvitation(orgId, email))) {
       throw notFound('pending invitation not found', 'INVITATION_NOT_FOUND');
@@ -294,17 +294,17 @@ orgRoutes.delete(
 orgRoutes.patch(
   '/:orgId/members/:userId',
   zValidator('param', memberParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', patchMemberSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId, userId: targetUserId } = c.req.valid('param');
     const { role, lenses } = c.req.valid('json');
     const callerId = c.get('userId');
 
-    const caller = await requireOrgCan({ userId: callerId }, 'org.admin', orgId);
+    const caller = await requireOrgCan(actorFor(callerId), 'org.admin', orgResource(orgId));
 
     const targetRole = await orgMemberRole(orgId, targetUserId);
     if (!targetRole) throw notFound('membership not found');
@@ -339,7 +339,7 @@ orgRoutes.patch(
 orgRoutes.delete(
   '/:orgId/members/:userId',
   zValidator('param', memberParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId, userId: targetUserId } = c.req.valid('param');
@@ -347,9 +347,9 @@ orgRoutes.delete(
 
     const selfLeave = targetUserId === callerId;
     const caller = await requireOrgCan(
-      { userId: callerId },
+      actorFor(callerId),
       selfLeave ? 'org.read' : 'org.admin',
-      orgId,
+      orgResource(orgId),
     );
 
     const targetRole = await orgMemberRole(orgId, targetUserId);

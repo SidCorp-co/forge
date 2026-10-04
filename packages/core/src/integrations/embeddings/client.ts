@@ -1,13 +1,12 @@
-import { openAiCompatUrl } from '../../lib/openai-compat-url.js';
+import { createOpenAICompatible, type OpenAICompatibleProvider } from '@ai-sdk/openai-compatible';
+import { APICallError, embedMany, RetryError } from 'ai';
+import { openAiCompatBaseUrl } from '../../lib/openai-compat-url.js';
 import { logger } from '../../observability/logger.js';
 
 /**
- * LiteLLM-compatible embeddings client with timeout, bounded retry, and a
- * module-local circuit breaker.
- *
- * Protocol: `POST {baseUrl}/v1/embeddings` (base is the host; a trailing `/v1` is tolerated) with `{ input, model }` and
- * `Authorization: Bearer <apiKey>`. Response follows the OpenAI shape
- * `{ data: [{ embedding: number[] }, ...] }`.
+ * OpenAI-compatible embeddings client (`POST {base}/v1/embeddings`) over the AI SDK, which owns the
+ * wire and the bounded retry; this module keeps the per-attempt timeout, the fallback model, the
+ * quota reading, the dimension guard and a module-local circuit breaker.
  */
 
 export interface EmbeddingsConfig {
@@ -46,7 +45,7 @@ export interface CircuitBreakerState {
 
 const FAILURE_THRESHOLD = 5;
 const OPEN_DURATION_MS = 30_000;
-const RETRY_DELAYS_MS = [250, 1_000, 4_000];
+const MAX_RETRIES = 2;
 
 /** Vectors and the model that produced them — the configured one, or its fallback. */
 export interface EmbedDetailed {
@@ -54,15 +53,36 @@ export interface EmbedDetailed {
   model: string;
 }
 
+/** An attempt that outlives its timeout fails as a network error would, so the SDK retries it rather than treating it as the caller's abort. */
+function timedFetch(fetchFn: typeof fetch, timeoutMs: number): typeof fetch {
+  return async (input, init) => {
+    const timeout = AbortSignal.timeout(timeoutMs);
+    const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+    try {
+      return await fetchFn(input, { ...init, signal });
+    } catch (err) {
+      if (timeout.aborted && !init?.signal?.aborted) {
+        throw new TypeError('fetch failed', { cause: new Error(`timed out after ${timeoutMs}ms`) });
+      }
+      throw err;
+    }
+  };
+}
+
 export class EmbeddingsClient {
   private readonly cfg: EmbeddingsConfig;
   private readonly breaker: CircuitBreakerState;
-  private readonly fetchFn: typeof fetch;
+  private readonly sdk: OpenAICompatibleProvider;
 
   constructor(cfg: EmbeddingsConfig, fetchFn: typeof fetch = fetch) {
     this.cfg = cfg;
     this.breaker = { consecutiveFailures: 0, openUntil: 0 };
-    this.fetchFn = fetchFn;
+    this.sdk = createOpenAICompatible({
+      name: 'embeddings',
+      baseURL: openAiCompatBaseUrl(cfg.baseUrl),
+      apiKey: cfg.apiKey,
+      fetch: timedFetch(fetchFn, cfg.timeoutMs),
+    });
   }
 
   /** Test-only. Reset the in-memory circuit breaker state. */
@@ -84,28 +104,26 @@ export class EmbeddingsClient {
   async embedDetailed(texts: string[]): Promise<EmbedDetailed> {
     if (texts.length === 0) return { vectors: [], model: this.cfg.model };
     this.assertBreakerClosed();
-
     try {
       return { vectors: await this.embedWith(texts, this.cfg.model), model: this.cfg.model };
     } catch (err) {
-      if (err instanceof EmbeddingUnavailableError) throw err;
-      if (this.cfg.fallbackModel && !isRetriable(err)) {
-        logger.warn(
-          { err: (err as Error).message, fallback: this.cfg.fallbackModel },
-          'embeddings: primary failed, trying fallback',
-        );
-        try {
-          return {
-            vectors: await this.embedWith(texts, this.cfg.fallbackModel),
-            model: this.cfg.fallbackModel,
-          };
-        } catch (fallbackErr) {
-          this.recordFailure();
-          throw fallbackErr;
-        }
+      if (err instanceof EmbeddingUnavailableError || !this.cfg.fallbackModel) {
+        this.recordFailure();
+        throw err;
       }
-      this.recordFailure();
-      throw err;
+      logger.warn(
+        { err: (err as Error).message, fallback: this.cfg.fallbackModel },
+        'embeddings: primary failed, trying fallback',
+      );
+      try {
+        return {
+          vectors: await this.embedWith(texts, this.cfg.fallbackModel),
+          model: this.cfg.fallbackModel,
+        };
+      } catch (fallbackErr) {
+        this.recordFailure();
+        throw fallbackErr;
+      }
     }
   }
 
@@ -122,10 +140,7 @@ export class EmbeddingsClient {
     if (this.breaker.consecutiveFailures >= FAILURE_THRESHOLD) {
       this.breaker.openUntil = Date.now() + OPEN_DURATION_MS;
       logger.error(
-        {
-          threshold: FAILURE_THRESHOLD,
-          openForMs: OPEN_DURATION_MS,
-        },
+        { threshold: FAILURE_THRESHOLD, openForMs: OPEN_DURATION_MS },
         'embeddings: circuit breaker opened',
       );
     }
@@ -137,81 +152,21 @@ export class EmbeddingsClient {
   }
 
   private async embedWith(texts: string[], model: string): Promise<number[][]> {
-    let lastErr: unknown;
-    for (let attempt = 0; attempt < RETRY_DELAYS_MS.length + 1; attempt++) {
-      try {
-        const result = await this.callOnce(texts, model);
-        this.recordSuccess();
-        return result;
-      } catch (err) {
-        lastErr = err;
-        if (!isRetriable(err)) throw err;
-        const delay = RETRY_DELAYS_MS[attempt];
-        if (delay === undefined) break;
-        logger.warn(
-          { attempt: attempt + 1, delay, err: (err as Error).message },
-          'embeddings: retrying',
-        );
-        await sleep(delay);
-      }
-    }
-    if (isRetriable(lastErr)) {
-      throw new EmbeddingUnavailableError(
-        `embeddings service unavailable after ${RETRY_DELAYS_MS.length + 1} attempts: ${(lastErr as Error).message}`,
-      );
-    }
-    throw lastErr ?? new Error('embeddings: exhausted retries');
-  }
-
-  private async callOnce(texts: string[], model: string): Promise<number[][]> {
-    const url = openAiCompatUrl(this.cfg.baseUrl, 'embeddings');
-
-    const body: Record<string, unknown> = {
-      input: texts.length === 1 ? texts[0] : texts,
-      model,
-    };
-    // Request server-side dimensionality reduction (Matryoshka) for providers
-    // that need it. When the proxy ignores this field, the `expectedDim`
-    // length check below catches the mismatch and surfaces it explicitly.
-    if (this.cfg.expectedDim !== undefined) {
-      body.dimensions = this.cfg.expectedDim;
-    }
-
-    let response: Response;
+    let vectors: number[][];
     try {
-      response = await this.fetchFn(url, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${this.cfg.apiKey}`,
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(this.cfg.timeoutMs),
-      });
+      ({ embeddings: vectors } = await embedMany({
+        model: this.sdk.embeddingModel(model),
+        values: texts,
+        maxRetries: MAX_RETRIES,
+        // Request server-side dimensionality reduction (Matryoshka); a proxy that ignores it is
+        // caught by the `expectedDim` length check below.
+        ...(this.cfg.expectedDim !== undefined
+          ? { providerOptions: { embeddings: { dimensions: this.cfg.expectedDim } } }
+          : {}),
+      }));
     } catch (err) {
-      throw new RetriableError(`network error: ${(err as Error).message}`, err);
+      throw classify(err);
     }
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      if (response.status >= 500) {
-        throw new RetriableError(`${response.status} ${body.slice(0, 200)}`);
-      }
-      if (isQuotaRejection(response.status, body)) {
-        throw new EmbeddingUnavailableError(
-          `embeddings quota exhausted (${response.status}): ${body.slice(0, 200)}`,
-        );
-      }
-      throw new Error(`embeddings ${response.status}: ${body.slice(0, 200)}`);
-    }
-
-    const payload = (await response.json()) as {
-      data?: Array<{ embedding?: number[] }>;
-    };
-    if (!payload.data || !Array.isArray(payload.data)) {
-      throw new Error('embeddings: malformed response (missing data[])');
-    }
-    const vectors = payload.data.map((d) => d.embedding ?? []);
     if (vectors.some((v) => !Array.isArray(v) || v.length === 0)) {
       throw new Error('embeddings: malformed response (missing embedding[])');
     }
@@ -224,20 +179,32 @@ export class EmbeddingsClient {
         }
       }
     }
-    return vectors as number[][];
+    this.recordSuccess();
+    return vectors;
   }
 }
 
-class RetriableError extends Error {
-  readonly retriable = true as const;
-  constructor(message: string, cause?: unknown) {
-    super(message, cause ? { cause } : undefined);
-    this.name = 'RetriableError';
+function classify(err: unknown): Error {
+  const exhausted = RetryError.isInstance(err) && err.reason === 'maxRetriesExceeded';
+  const cause = RetryError.isInstance(err) ? err.lastError : err;
+  const call = APICallError.isInstance(cause) ? cause : null;
+  const body = (call?.responseBody ?? '').slice(0, 200);
+  if (
+    call?.statusCode !== undefined &&
+    isQuotaRejection(call.statusCode, call.responseBody ?? '')
+  ) {
+    return new EmbeddingUnavailableError(
+      `embeddings quota exhausted (${call.statusCode}): ${body}`,
+    );
   }
-}
-
-function isRetriable(err: unknown): boolean {
-  return err instanceof RetriableError;
+  const message = cause instanceof Error ? cause.message : String(cause);
+  if (exhausted || call?.isRetryable) {
+    return new EmbeddingUnavailableError(
+      `embeddings service unavailable after ${MAX_RETRIES + 1} attempts: ${call?.statusCode ?? ''} ${body || message}`.trim(),
+    );
+  }
+  if (call?.statusCode !== undefined) return new Error(`embeddings ${call.statusCode}: ${body}`);
+  return new Error(`embeddings: ${message}`);
 }
 
 const QUOTA_MARKERS = [
@@ -253,10 +220,4 @@ export function isQuotaRejection(status: number, body: string): boolean {
   if (status === 429) return true;
   const haystack = body.toLowerCase();
   return QUOTA_MARKERS.some((m) => haystack.includes(m));
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }

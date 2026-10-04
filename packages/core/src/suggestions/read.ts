@@ -19,7 +19,7 @@ import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
 import { rowIn } from '../requirements/read.js';
 import { designNodesIn } from '../workflows/node-refs.js';
 import type { KernelActor } from '../lifecycle/transition.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 export interface SuggestionActor {
   userId: string;
@@ -131,7 +131,7 @@ export async function listSuggestions(input: {
   statuses?: readonly SuggestionStatus[] | undefined;
   limit?: number | undefined;
 }): Promise<SuggestionListResponse> {
-  await requireCan({ userId: input.userId }, 'project.read', input.projectId);
+  await requireCan(actorFor(input.userId), 'project.read', projectResource(input.projectId));
   const target = input.target
     ? await resolveTarget(input.projectId, input.target, input.userId)
     : null;

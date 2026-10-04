@@ -37,7 +37,7 @@ import { findIssueById } from '../issues/read-service.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { holds, requireCan } from '../permissions/index.js';
+import { actorFor, holds, projectResource, requireCan } from '../permissions/index.js';
 import { requirementKey, rowIn as requirementRowIn } from '../requirements/read.js';
 import { deliveredAmong } from '../requirements/standing-read.js';
 import { userNames } from '../workflows/service.js';
@@ -384,7 +384,7 @@ export async function listFeedbackAs(
   } = {},
   door: ReadDoor = {},
 ): Promise<{ ok: true; list: FeedbackListResponse } | { ok: false; refusals: FeedbackRefusal[] }> {
-  await requireCan({ userId: viewer.userId }, 'project.read', projectId);
+  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
   const level = await dataPolicyOf(projectId);
   const { withhold, shown } = feedbackEgress(level, viewer.agency, door);
   const searchRefused = searchWithheldRefusal(query.q, withhold);
@@ -429,7 +429,7 @@ export async function detailAs(
   ref: string,
   door: ReadDoor = {},
 ): Promise<FeedbackView> {
-  await requireCan({ userId: viewer.userId }, 'project.read', projectId);
+  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
   const row = await rowIn(db, projectId, ref);
   const [level, access, linked, decisions, attachments, questions, pointing, [open], source] =
     await Promise.all([

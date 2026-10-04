@@ -16,9 +16,9 @@ type Envelope = { code?: unknown; message?: unknown; refusals?: unknown } | unde
 
 const envelopeOf = (err: ApiError): Envelope => (err.body as { error?: Envelope } | undefined)?.error;
 
-/** The refusals a document write's 422 envelope names, and nothing for any other failure. */
+/** The refusals a document write's envelope names, at any status; nothing for any other failure. */
 export function documentRefusals(err: unknown): Refusal[] {
-  if (!(err instanceof ApiError) || err.status !== 422) return [];
+  if (!(err instanceof ApiError)) return [];
   return listed(envelopeOf(err)?.refusals);
 }
 
@@ -30,10 +30,19 @@ export function namedRefusals(err: unknown): Refusal[] {
   return listed((err.details as { refusals?: unknown } | undefined)?.refusals);
 }
 
+/** A fact the leading refusal row carries beside its detail, else the HTTP error's `details`. */
+export function refusalFact(err: unknown, key: string): unknown {
+  if (!(err instanceof ApiError)) return undefined;
+  const lead = listed(envelopeOf(err)?.refusals)[0] as Record<string, unknown> | undefined;
+  if (lead && key in lead) return lead[key];
+  const details = err.details;
+  return details && typeof details === "object" ? (details as Record<string, unknown>)[key] : undefined;
+}
+
 /**
  * Every refusal a failed request carries, whichever of core's two shapes it came in: the
- * `{ error: { code, refusals } }` envelope a document refusal answers with, or the
- * `{ code, message, details: { refusals } }` an HTTP refusal answers with. A failure that names
+ * `{ error: { code, refusals } }` envelope every refusal and every 400 answers with, or the
+ * `{ code, message, details: { refusals } }` an HTTP error answers with. A failure that names
  * nothing is still returned as one row naming its status, so no caller can render it as nothing.
  */
 export function refusalsOf(err: unknown): Refusal[] {

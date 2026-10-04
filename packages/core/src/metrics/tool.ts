@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { jobTypes } from '../db/schema.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { BUCKETS, METRICS, runTimeseries, stepDurationsForProject } from './queries.js';
 
 const stepEnum = z.enum(jobTypes);
@@ -37,7 +37,7 @@ export const forgeMetricsProjectStepDurationsTool: ContextScopedMcpToolFactory =
   inputSchema: zodToMcpSchema(projectInputSchema),
   handler: async (args) => {
     const input = projectInputSchema.parse(args);
-    await requireCan({ userId: ctx.principal.userId }, 'project.read', input.projectId);
+    await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(input.projectId));
 
     const result = await stepDurationsForProject(
       input.projectId,
@@ -79,7 +79,7 @@ export const forgeMetricsProjectTimeseriesTool: ContextScopedMcpToolFactory = (c
   inputSchema: zodToMcpSchema(timeseriesInputSchema),
   handler: async (args) => {
     const input = timeseriesInputSchema.parse(args);
-    await requireCan({ userId: ctx.principal.userId }, 'project.read', input.projectId);
+    await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(input.projectId));
     return runTimeseries({
       projectId: input.projectId,
       metric: input.metric,

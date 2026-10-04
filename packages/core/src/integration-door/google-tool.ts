@@ -25,7 +25,7 @@ import {
   listGoogleIntegrations,
 } from '../integrations/google/index.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { resolveEffectiveProjectId } from '../projects/index.js';
 
 const cellSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
@@ -134,19 +134,19 @@ async function dispatchAction(input: Input, ctx: McpContext): Promise<unknown> {
 
   switch (input.action) {
     case 'list': {
-      await requireCan({ userId: principal.userId }, 'project.read', projectId);
+      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
       return listGoogleIntegrations(projectId);
     }
     case 'info': {
-      await requireCan({ userId: principal.userId }, 'project.read', projectId);
+      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
       return googleSheetsInfo({ projectId, ...spreadsheet });
     }
     case 'read': {
-      await requireCan({ userId: principal.userId }, 'project.read', projectId);
+      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
       return googleSheetsRead({ projectId, ...spreadsheet, range: requireRange(input, 'read') });
     }
     case 'update': {
-      await requireCan({ userId: principal.userId }, 'project.write', projectId);
+      await requireCan(actorFor(principal.userId), 'project.write', projectResource(projectId));
       return googleSheetsUpdate({
         projectId,
         ...spreadsheet,
@@ -155,7 +155,7 @@ async function dispatchAction(input: Input, ctx: McpContext): Promise<unknown> {
       });
     }
     case 'append': {
-      await requireCan({ userId: principal.userId }, 'project.write', projectId);
+      await requireCan(actorFor(principal.userId), 'project.write', projectResource(projectId));
       return googleSheetsAppend({
         projectId,
         ...spreadsheet,

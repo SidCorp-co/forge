@@ -6,7 +6,7 @@ import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { readApiPage } from './api-page.js';
 import { heldEcosystem } from './ecosystem-service.js';
 import {
@@ -46,7 +46,7 @@ const serialise = (held: HeldInterface, setBy: CommitmentsSetter | null) => ({
 
 ecosystemProjectRoutes.get('/:id/interface', idParam, async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan({ userId: c.get('userId') }, 'project.read', id);
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const held = await loadInterface(id);
   return c.json(
     held
@@ -77,7 +77,7 @@ ecosystemProjectRoutes.put(
 
 ecosystemProjectRoutes.get('/:id/interface/revisions', idParam, async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan({ userId: c.get('userId') }, 'project.read', id);
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   return c.json(serialiseRevisions(await listInterfaceRevisions(id)));
 });
 
@@ -87,7 +87,7 @@ ecosystemProjectRoutes.get('/:id/api-page', idParam, async (c) =>
 
 ecosystemProjectRoutes.get('/:id/ecosystems', idParam, async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan({ userId: c.get('userId') }, 'project.read', id);
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const memberships = await membershipsWhere({ projectIds: [id] });
   const ecos = new Map(
     (

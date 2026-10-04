@@ -16,7 +16,7 @@ import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { readContentLanguage } from './read.js';
 import { writeContentLanguage } from './service.js';
 
@@ -35,7 +35,7 @@ const projectParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
 
 contentLanguageRoutes.get('/:id/content-language', projectParam, async (c) => {
   const { id } = c.req.valid('param');
-  await requireCan({ userId: c.get('userId') }, 'project.read', id);
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   return c.json(await readContentLanguage(id));
 });
 
@@ -46,7 +46,7 @@ contentLanguageRoutes.put(
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.admin', id);
+    await requireCan(actorFor(userId), 'project.admin', projectResource(id));
     const outcome = await writeContentLanguage({
       projectId: id,
       userId,

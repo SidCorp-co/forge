@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { answerStyles } from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireOrgCan } from '../permissions/index.js';
+import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import { readMePreferences, readPreferences } from './read.js';
 import {
   listPreferenceChanges,
@@ -56,7 +56,7 @@ preferenceRoutes.get('/preferences/changes', async (c) =>
 preferenceRoutes.post(
   '/preferences/changes/:id/restore',
   zValidator('param', changeParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const userId = c.get('userId');
@@ -78,7 +78,7 @@ preferenceRoutes.post(
 preferenceRoutes.patch(
   '/preferences',
   zValidator('json', patchBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { theme, language, answerStyle, assistantInstructions } = c.req.valid('json');
@@ -123,7 +123,7 @@ preferenceRoutes.patch(
     if (!r.success) {
       throw new HTTPException(400, {
         message: 'Invalid input',
-        cause: { code: 'BAD_REQUEST', details: z.flattenError(r.error) },
+        cause: { code: 'BAD_REQUEST', details: r.error },
       });
     }
   }),
@@ -138,7 +138,7 @@ preferenceRoutes.patch(
     }
 
     if (patch.activeOrgId != null) {
-      await requireOrgCan({ userId }, 'org.read', patch.activeOrgId);
+      await requireOrgCan(actorFor(userId), 'org.read', orgResource(patch.activeOrgId));
     }
 
     return c.json(await writeMePreferences(userId, patch));

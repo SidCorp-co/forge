@@ -73,10 +73,10 @@ releaseBatchRoutes.use('*', requireAuth(), assertEmailVerified());
 releaseBatchRoutes.post(
   '/:projectId/release-batches',
   zValidator('param', projectParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', createBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -94,7 +94,7 @@ releaseBatchRoutes.post(
 releaseBatchRoutes.get(
   '/:projectId/release-batches/active',
   zValidator('param', projectParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -111,7 +111,7 @@ releaseBatchRoutes.get(
 releaseBatchRoutes.get(
   '/:projectId/release-batches/roster',
   zValidator('param', projectParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -127,7 +127,7 @@ releaseBatchRoutes.get(
 releaseBatchRoutes.get(
   '/:projectId/release-readiness',
   zValidator('param', projectParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -143,7 +143,7 @@ releaseBatchRoutes.get(
 releaseBatchRoutes.get(
   '/:projectId/deployment',
   zValidator('param', projectParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -202,7 +202,7 @@ async function loadRunForProject(runId: string, projectId: string, userId: strin
 releaseBatchRoutes.get(
   '/:projectId/release-batches/:runId',
   zValidator('param', runParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
@@ -214,10 +214,10 @@ releaseBatchRoutes.get(
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/finish',
   zValidator('param', runParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', finishBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
@@ -235,10 +235,10 @@ releaseBatchRoutes.post(
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/abort',
   zValidator('param', runParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', abortBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
@@ -286,7 +286,7 @@ const attemptKeyParamSchema = z.object({
 releaseBatchRoutes.get(
   '/:projectId/release-batches/:runId/state',
   zValidator('param', runParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
@@ -300,10 +300,10 @@ releaseBatchRoutes.get(
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/method',
   zValidator('param', runParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', methodBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
@@ -315,10 +315,10 @@ releaseBatchRoutes.post(
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/attempts',
   zValidator('param', runParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', attemptBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
@@ -340,10 +340,10 @@ releaseBatchRoutes.post(
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/attempts/:key/account',
   zValidator('param', attemptKeyParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', accountBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, runId, key } = c.req.valid('param');
@@ -380,10 +380,10 @@ releaseBatchRoutes.post(
 releaseBatchRoutes.post(
   '/:projectId/release-records',
   zValidator('param', projectParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', releaseRecordBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -400,7 +400,7 @@ releaseBatchRoutes.post(
 releaseBatchRoutes.get(
   '/:projectId/release-records/:runId',
   zValidator('param', runParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');

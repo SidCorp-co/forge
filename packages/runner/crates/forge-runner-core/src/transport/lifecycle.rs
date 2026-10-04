@@ -74,7 +74,7 @@ async fn send(client: &CoreClient, url: &str, body: serde_json::Value) -> Result
         let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
         let said = super::status::refused("lifecycle", code, &text);
-        // A core before ISS-162 answers a rule refusal 409; from it on, 422 in the envelope.
+        // A rule refusal: 409 before ISS-162, 422 from it on, 403 or 409 by its code from ISS-186.
         if matches!(code, 403 | 409 | 422) {
             return Err(Error::Other(format!(
                 "{}: {said}",

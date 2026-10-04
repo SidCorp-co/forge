@@ -1,4 +1,4 @@
-// The codes a device and the run sessions it opens are refused by, in the 422 envelope.
+// The codes a device and the run sessions it opens are refused by, in the refusal envelope.
 
 export const DEVICE_REFUSAL_CODES = [
 	"DEVICE_REFUSED",

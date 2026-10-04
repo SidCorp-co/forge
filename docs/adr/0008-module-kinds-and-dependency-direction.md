@@ -22,7 +22,7 @@ and patterns are the root the code is reconciled to. A read-only review of `pack
   twelve live implementations, so two screens could disagree about one issue
   (`VISION: state-never-lies`).
 - **The pattern covered one slice kind.** The previous `docs/conventions/domain-entities.md` was a
-  sound recipe for an entity slice (contracts as the one declaration, the 422 envelope, revisions,
+  sound recipe for an entity slice (contracts as the one declaration, the refusal envelope, revisions,
   keys), and 7 directories followed it. It said nothing about state machines, events, read models,
   dependency direction, table ownership or permission, which is where the tangles were, and its own
   route-mount rule made `project-config` a hub in both directions.

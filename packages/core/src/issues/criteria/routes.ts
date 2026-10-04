@@ -29,7 +29,7 @@ const badInput = (r: { success: boolean; error?: z.core.$ZodError }) => {
   if (!r.success) {
     throw new HTTPException(400, {
       message: 'Invalid input',
-      cause: { code: 'BAD_REQUEST', details: r.error ? z.flattenError(r.error) : undefined },
+      cause: { code: 'BAD_REQUEST', details: r.error ? r.error : undefined },
     });
   }
 };

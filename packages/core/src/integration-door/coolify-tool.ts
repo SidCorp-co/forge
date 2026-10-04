@@ -24,7 +24,7 @@ import {
 } from '../integrations/coolify/index.js';
 import { findLastOutbound } from '../integrations/index.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { resolveEffectiveProjectId } from '../projects/index.js';
 import {
   activeCoolifyIntegrations,
@@ -206,13 +206,13 @@ async function dispatchAction(
   switch (input.action) {
     case 'list': {
       const projectId = await resolveProjectId(input, ctx);
-      await requireCan({ userId: principal.userId }, 'project.read', projectId);
+      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
       return listCoolifyIntegrations(projectId);
     }
 
     case 'deploy': {
       const projectId = await resolveProjectId(input, ctx);
-      await requireCoolifyRun({ userId: principal.userId }, projectId, 'deploy');
+      await requireCoolifyRun(actorFor(principal.userId, principal.agency), projectId, 'deploy');
       return runCoolifyDeploy({
         projectId,
         ...(input.issueId ? { issueId: input.issueId } : {}),
@@ -223,7 +223,7 @@ async function dispatchAction(
 
     case 'status': {
       const projectId = await resolveProjectId(input, ctx);
-      await requireCan({ userId: principal.userId }, 'project.read', projectId);
+      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
       return coolifyDeliveryStatus({
         projectId,
         ...(input.integrationId ? { integrationId: input.integrationId } : {}),
@@ -232,7 +232,7 @@ async function dispatchAction(
 
     case 'logs': {
       const projectId = await resolveProjectId(input, ctx);
-      await requireCan({ userId: principal.userId }, 'project.read', projectId);
+      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
 
       // Resolve the integration row. Explicit integrationId wins; otherwise
       // require exactly one active Coolify integration (multiple is ambiguous).
@@ -282,7 +282,7 @@ async function dispatchAction(
 
     case 'runtime-logs': {
       const projectId = await resolveProjectId(input, ctx);
-      await requireCan({ userId: principal.userId }, 'project.read', projectId);
+      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
 
       const row = resolveIntegrationRow(await activeCoolifyIntegrations(projectId), input);
       if (!row) {
@@ -340,7 +340,7 @@ async function dispatchControlAction(
   switch (input.action) {
     case 'cancel': {
       const projectId = await resolveProjectId(input, ctx);
-      await requireCoolifyRun({ userId: principal.userId }, projectId, 'cancel');
+      await requireCoolifyRun(actorFor(principal.userId, principal.agency), projectId, 'cancel');
       return runCoolifyCancel({
         projectId,
         ...(input.integrationId ? { integrationId: input.integrationId } : {}),
@@ -349,7 +349,7 @@ async function dispatchControlAction(
     }
     case 'rollback-images': {
       const projectId = await resolveProjectId(input, ctx);
-      await requireCan({ userId: principal.userId }, 'project.read', projectId);
+      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
       return listCoolifyRollbackImages({
         projectId,
         ...(input.integrationId ? { integrationId: input.integrationId } : {}),
@@ -358,7 +358,7 @@ async function dispatchControlAction(
     }
     case 'rollback': {
       const projectId = await resolveProjectId(input, ctx);
-      await requireCoolifyRun({ userId: principal.userId }, projectId, 'rollback');
+      await requireCoolifyRun(actorFor(principal.userId, principal.agency), projectId, 'rollback');
       if (!input.commit) {
         throw new Error(
           'BAD_REQUEST: rollback needs `commit` — the image tag from rollback-images',
@@ -373,7 +373,7 @@ async function dispatchControlAction(
     }
     case 'applications': {
       const projectId = await resolveProjectId(input, ctx);
-      await requireCan({ userId: principal.userId }, 'project.read', projectId);
+      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
       return listApplicationsForIntegration({
         projectId,
         ...(input.integrationId ? { integrationId: input.integrationId } : {}),
@@ -381,7 +381,7 @@ async function dispatchControlAction(
     }
     case 'targets': {
       const projectId = await resolveProjectId(input, ctx);
-      await requireCan({ userId: principal.userId }, 'project.read', projectId);
+      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
       return resolveCoolifyTargets({
         projectId,
         ...(input.integrationId ? { integrationId: input.integrationId } : {}),

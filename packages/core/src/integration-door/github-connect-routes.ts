@@ -40,12 +40,12 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
-import { requireCan, requireOrgHeld } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan, requireOrgHeld } from '../permissions/index.js';
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 
 const invalidQuery = (result: { success: boolean; error?: z.core.$ZodError }) => {
-  if (!result.success && result.error) throw badRequest(z.flattenError(result.error));
+  if (!result.success && result.error) throw badRequest(result.error);
 };
 
 const connectQuerySchema = z.object({ org: z.string().optional(), orgId: z.string().optional() });
@@ -61,7 +61,7 @@ const installedQuerySchema = z.object({
 
 // cm:why the admin check runs before the query is read, so a non-admin learns nothing from a 400
 const projectAdmin: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
-  await requireCan({ userId: c.get('userId') }, 'project.admin', c.req.param('projectId') ?? '');
+  await requireCan(actorFor(c.get('userId')), 'project.admin', projectResource(c.req.param('projectId') ?? ''));
   await next();
 };
 
@@ -239,7 +239,7 @@ githubCallbackRoutes.get(
     const userId = c.get('userId');
     if (state.userId !== userId) throw badRequest({ state: 'issued for another user' });
 
-    await requireCan({ userId }, 'project.admin', state.projectId);
+    await requireCan(actorFor(userId), 'project.admin', projectResource(state.projectId));
     assertVaultConfigured();
 
     const app = await convertManifestCode({ code });
@@ -289,7 +289,7 @@ githubCallbackRoutes.get(
     if (!state && !owner) throw notFound('github app');
     const projectId = state?.projectId ?? owner?.projectId ?? null;
     if (!projectId) return c.redirect(`${webBaseUrl()}/integrations`);
-    await requireCan({ userId }, 'project.admin', projectId);
+    await requireCan(actorFor(userId), 'project.admin', projectResource(projectId));
 
     return c.redirect(`${webBaseUrl()}/projects/${projectId}/settings/integrations`);
   },

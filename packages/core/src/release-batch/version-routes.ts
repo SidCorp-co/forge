@@ -31,23 +31,23 @@ releaseVersionRoutes.use(
 );
 
 const projectParam = zValidator('param', z.object({ projectId: z.uuid() }), (r) => {
-  if (!r.success) throw badRequest(z.flattenError(r.error));
+  if (!r.success) throw badRequest(r.error);
 });
 const versionParam = zValidator(
   'param',
   z.object({ projectId: z.uuid(), version: z.string().min(1).max(40) }),
   (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   },
 );
 const runParam = zValidator('param', z.object({ projectId: z.uuid(), runId: z.uuid() }), (r) => {
-  if (!r.success) throw badRequest(z.flattenError(r.error));
+  if (!r.success) throw badRequest(r.error);
 });
 const approvalParam = zValidator(
   'param',
   z.object({ projectId: z.uuid(), runId: z.uuid(), approvalId: z.uuid() }),
   (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   },
 );
 const requestBody = zValidator('json', approvalRequestSchema, (r) => {

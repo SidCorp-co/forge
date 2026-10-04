@@ -99,10 +99,10 @@ export const agentSessionEventsRoutes = new Hono<{ Variables: AuthVars }>();
 agentSessionEventsRoutes.post(
   '/:id/events',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', eventBatchSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: sessionId } = c.req.valid('param');

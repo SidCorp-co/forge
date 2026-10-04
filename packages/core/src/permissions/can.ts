@@ -1,29 +1,39 @@
 /**
  * The one permission check (pattern v2 BC-20, ADR 0007): every who-may-act decision in core asks
- * `can(actor, permission, scope)` or one of its forms below, and nothing else reads a role, a grant
- * or a token for that purpose. Agency and authorship are never read.
+ * `can(actor, permission, resource)` or one of its forms below, and nothing else reads a role, a
+ * grant or a token for that purpose. Agency and authorship are never read. A list asks the same
+ * question of every row at once through `visibleFilter`.
  *
  * A project permission is held when the actor's effective role holds it
  * (`@forge/contracts/permissions:ROLE_PERMISSIONS`) or its membership's grant names it, and the
  * token the request arrived on admits it: a write needs the token's `write` scope, and a permission
- * in `TOKEN_EXPLICIT_PERMISSIONS` needs the token's grant to name it.
+ * in `TOKEN_EXPLICIT_PERMISSIONS` (every approval among them) needs the token's grant to name it.
+ * Only the resource's project decides today; its type and id are carried so that per-resource
+ * permissions change no call site.
  */
 
 import {
-  ORG_ROLE_PERMISSIONS,
   type OrgPermission,
+  type OrgResource,
+  ORG_ROLE_PERMISSIONS,
   type Permission,
   type PermissionRefusal,
-  type PermissionScope,
   PROJECT_ROLES,
   type ProjectPermission,
+  type ProjectResource,
   permissionVerb,
   ROLE_PERMISSIONS,
   TOKEN_EXPLICIT_PERMISSIONS,
 } from '@forge/contracts/permissions';
-import { HTTPException } from 'hono/http-exception';
-import { currentPatScope } from '../credentials/pat-scope.js';
-import type { OrgMemberRole } from '../db/schema.js';
+import { and, exists, inArray, or, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
+import { currentPatScope, fencedProjectIds } from '../credentials/pat-scope.js';
+import { db } from '../db/client.js';
+import {
+  type OrgMemberRole,
+  organizationMembers,
+  projectMembers,
+  projects,
+} from '../db/schema.js';
 import {
   effectiveProjectRole,
   loadOrgRole,
@@ -32,13 +42,21 @@ import {
 } from '../lib/authz.js';
 import { RefusalError } from '../lib/refusal.js';
 import { forbidden } from '../middleware/route-errors.js';
+import type { Actor } from './actor.js';
 
 /** What a project decision reads: the effective role and the membership's grant. */
 export type PermissionFacts = Pick<ProjectAccess, 'projectId' | 'role' | 'grants'>;
 
-export interface PermissionActor {
-  userId: string | null | undefined;
-}
+export type PermissionActor = Actor;
+
+/** A project-wide resource: the project itself, for a check no narrower row answers. */
+export const projectResource = (projectId: string): ProjectResource => ({
+  type: 'project',
+  id: projectId,
+  projectId,
+});
+
+export const orgResource = (orgId: string): OrgResource => ({ type: 'org', id: orgId });
 
 const isExplicit = (permission: Permission) => TOKEN_EXPLICIT_PERMISSIONS.includes(permission);
 
@@ -114,7 +132,7 @@ function orgRefusal(
 
 const noAccess = (what: string) => forbidden(`not a member of this ${what}`);
 
-/** Throw unless the resolved access holds the permission: 403 with no role at all, else the 422 refusal. */
+/** Throw unless the resolved access holds the permission: 403 with no role at all, else the 403 refusal. */
 export function requireHeld(
   access: PermissionFacts,
   permission: ProjectPermission,
@@ -125,14 +143,14 @@ export function requireHeld(
   if (refusal) throw new RefusalError([refusal], refusal.code);
 }
 
-/** Resolve the actor's access to the project (404 when it does not exist) and require the permission. */
+/** Resolve the actor's access to the resource's project (404 when it does not exist) and require the permission. */
 export async function requireCan(
   actor: PermissionActor,
   permission: ProjectPermission,
-  projectId: string,
+  resource: ProjectResource,
   act?: string,
 ): Promise<ProjectAccess> {
-  const access = await loadProjectAccess(projectId, actor.userId);
+  const access = await loadProjectAccess(resource.projectId, actor.userId);
   requireHeld(access, permission, act);
   return access;
 }
@@ -156,44 +174,98 @@ export function requireOrgHeld(
 export async function requireOrgCan(
   actor: PermissionActor,
   permission: OrgPermission,
-  orgId: string,
+  resource: OrgResource,
 ): Promise<{ orgId: string; role: OrgMemberRole }> {
-  const role = await loadOrgRole(orgId, actor.userId);
-  requireOrgHeld(orgId, role, permission);
-  return { orgId, role };
+  const role = await loadOrgRole(resource.id, actor.userId);
+  requireOrgHeld(resource.id, role, permission);
+  return { orgId: resource.id, role };
 }
 
 /** The question itself, for a caller that only needs the answer. */
 export async function can(
   actor: PermissionActor,
   permission: ProjectPermission,
-  scope: { kind: 'project'; id: string },
+  resource: ProjectResource,
 ): Promise<boolean>;
 export async function can(
   actor: PermissionActor,
   permission: OrgPermission,
-  scope: { kind: 'org'; id: string },
+  resource: OrgResource,
 ): Promise<boolean>;
 export async function can(
   actor: PermissionActor,
   permission: Permission,
-  scope: PermissionScope,
+  resource: ProjectResource | OrgResource,
 ): Promise<boolean> {
-  if (scope.kind === 'org') {
-    return holdsOrg(await loadOrgRole(scope.id, actor.userId), permission as OrgPermission);
+  if (!('projectId' in resource)) {
+    return holdsOrg(await loadOrgRole(resource.id, actor.userId), permission as OrgPermission);
   }
-  const access = await effectiveProjectRole(actor.userId, scope.id);
+  const access = await effectiveProjectRole(actor.userId, resource.projectId);
   return access ? holds(access, permission as ProjectPermission) : false;
+}
+
+/**
+ * The same question asked of every row of a list at once: a predicate over the rows' project
+ * column, true where the actor holds the permission on that project and the request's token
+ * admits it. `and(...)` it into the list's WHERE in place of joining `project_members` by hand.
+ */
+export function visibleFilter(
+  actor: PermissionActor,
+  permission: ProjectPermission,
+  resource: { type: string; projectId: SQLWrapper },
+): SQL {
+  const userId = actor.userId;
+  if (!userId || !tokenAdmits(permission)) return sql`false`;
+  const memberRoles = rolesHolding(permission);
+  const member = exists(
+    db
+      .select({ one: sql`1` })
+      .from(projectMembers)
+      .where(
+        and(
+          sql`${projectMembers.projectId} = ${resource.projectId}`,
+          sql`${projectMembers.userId} = ${userId}`,
+          or(
+            ...(memberRoles.length > 0 ? [inArray(projectMembers.role, memberRoles)] : []),
+            sql`${permission} = ANY(${projectMembers.grants})`,
+          ),
+        ),
+      ),
+  );
+  const orgAdmin = ROLE_PERMISSIONS.admin.includes(permission)
+    ? exists(
+        db
+          .select({ one: sql`1` })
+          .from(projects)
+          .innerJoin(organizationMembers, sql`${organizationMembers.orgId} = ${projects.orgId}`)
+          .where(
+            and(
+              sql`${projects.id} = ${resource.projectId}`,
+              sql`${organizationMembers.userId} = ${userId}`,
+              inArray(organizationMembers.role, ['owner', 'admin']),
+            ),
+          ),
+      )
+    : undefined;
+  const held = orgAdmin ? (or(member, orgAdmin) as SQL) : member;
+  const fence = fencedProjectIds();
+  if (fence === null) return held;
+  if (fence.length === 0) return sql`false`;
+  return and(held, sql`${resource.projectId} IN ${[...fence]}`) as SQL;
 }
 
 /** The refusal a write answers, reading the actor's access first; null when the permission is held. */
 export async function permissionRefusalFor(
   actor: PermissionActor,
-  projectId: string,
   permission: ProjectPermission,
+  resource: ProjectResource,
   act?: string,
 ): Promise<PermissionRefusal | null> {
-  return permissionRefusal(await permissionFactsOf(actor.userId, projectId), permission, act);
+  return permissionRefusal(
+    await permissionFactsOf(actor.userId, resource.projectId),
+    permission,
+    act,
+  );
 }
 
 export async function permissionFactsOf(
