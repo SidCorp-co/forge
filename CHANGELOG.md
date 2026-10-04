@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.3] - 2026-10-04
+
+Agents / Runs pages, and requirements that pin the contracts they build on
+
+
 ### Added
 
 - **Development > Agents / Runs lists every run, grouped by what needs attention (ISS-111).** The
