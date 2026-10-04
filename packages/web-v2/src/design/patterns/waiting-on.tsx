@@ -12,7 +12,7 @@ import { WhoMark, type WhoKind } from "./person-chip";
 
 export interface WaitingOnView {
   /** `you` is the viewer; `agent` a master, assistant or run; `issue` another issue or contract;
-   *  `none` nobody (done, or no owner). */
+   *  `project` another project in an ecosystem; `none` nobody (done, or no owner). */
   kind: WhoKind | "none";
   who: string;
   act: string;

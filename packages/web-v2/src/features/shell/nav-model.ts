@@ -60,7 +60,7 @@ export const PROJECT_MENU: ProjEntry[] = [
       { key: "proj-issues", label: "Issues", icon: "list", sub: "/issues" },
       { key: "proj-modules", label: "Modules", icon: "rows", sub: "/modules" },
       { key: "proj-agents", label: "Agents", icon: "agent", sub: "/agents" },
-      { key: "proj-contracts", label: "Contracts", icon: "link", sub: "/ecosystem/contracts" },
+      { key: "proj-contracts", label: "Contracts", icon: "link", sub: "/contracts" },
       { key: "proj-automation", label: "Automation", icon: "calendar", sub: "/automation" },
     ],
   },

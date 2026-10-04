@@ -13,6 +13,7 @@ import {
   DetailTabs,
   FactsRail,
   Markdown,
+  NotAvailable,
   useUrlTab,
   ViewHeading,
 } from "@/design";
@@ -20,7 +21,7 @@ import { issueHref } from "@/features/issues/routes";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { moduleHref } from "../routes";
 import type { ModuleCoupling, ModuleDetail, ModuleLanding } from "../types";
-import { ActivityBars, AttentionBadge, ModuleBanner, NotAvailable, openSegments } from "./module-bits";
+import { ActivityBars, AttentionBadge, ModuleBanner, openSegments } from "./module-bits";
 import { ModuleFacts } from "./module-facts";
 
 export const MODULE_TABS = ["overview", "code", "landings"] as const;

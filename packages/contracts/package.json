@@ -106,6 +106,10 @@
       "types": "./dist/contract-waits.d.ts",
       "default": "./dist/contract-waits.js"
     },
+    "./contract-standing": {
+      "types": "./dist/contract-standing.d.ts",
+      "default": "./dist/contract-standing.js"
+    },
     "./ui-actions": {
       "types": "./dist/ui-actions.d.ts",
       "default": "./dist/ui-actions.js"

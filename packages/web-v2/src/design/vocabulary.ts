@@ -48,6 +48,19 @@ import {
   REVISION_STATE_TONES,
 } from "@forge/contracts/requirements";
 import { SUGGESTION_STATUS_GLYPHS, SUGGESTION_STATUS_LABELS, SUGGESTION_STATUS_TONES } from "@forge/contracts/suggestions";
+import {
+  CONTRACT_ADOPTION_GLYPHS,
+  CONTRACT_ADOPTION_HINTS,
+  CONTRACT_ADOPTION_LABELS,
+  CONTRACT_ADOPTION_TONES,
+  CONTRACT_APPROVAL_LABELS,
+  CONTRACT_APPROVAL_TONES,
+  CONTRACT_DIRECTION_LABELS,
+  CONTRACT_STATE_GLYPHS,
+  CONTRACT_STATE_HINTS,
+  CONTRACT_STATE_LABELS,
+  CONTRACT_STATE_TONES,
+} from "@forge/contracts/contract-standing";
 import { ENUM_LABELS, type Reading, STATE_READINGS } from "@forge/contracts/ui-vocabulary";
 import { type ColorMeta, TONE_META } from "./status";
 
@@ -112,6 +125,9 @@ const CONTRACT_FAMILIES = {
     tones: Object.fromEntries(Object.entries(ISSUE_ATTENTION_LABELS).map(([k, v]) => [k, v.tone])),
   },
   suggestion: { labels: SUGGESTION_STATUS_LABELS, tones: SUGGESTION_STATUS_TONES, glyphs: SUGGESTION_STATUS_GLYPHS },
+  contractState: { labels: CONTRACT_STATE_LABELS, tones: CONTRACT_STATE_TONES, glyphs: CONTRACT_STATE_GLYPHS, hints: CONTRACT_STATE_HINTS },
+  contractAdoption: { labels: CONTRACT_ADOPTION_LABELS, tones: CONTRACT_ADOPTION_TONES, glyphs: CONTRACT_ADOPTION_GLYPHS, hints: CONTRACT_ADOPTION_HINTS },
+  contractApproval: { labels: CONTRACT_APPROVAL_LABELS, tones: CONTRACT_APPROVAL_TONES, glyphs: { proposed: "●", approved: "✓", returned: "↺" } },
   onboarding: { labels: ONBOARDING_STATUS_LABELS, tones: ONBOARDING_STATUS_TONES, glyphs: { in_progress: "•", waiting_on_you: "?", done: "✓" } },
   dataPolicy: {
     labels: Object.fromEntries(Object.entries(SENSITIVE_DATA_BADGES).map(([k, v]) => [k, v.label])),
@@ -155,6 +171,7 @@ export const ENUM_FAMILIES = {
   feedbackRoute: FEEDBACK_ROUTE_LABELS,
   feedbackDecision: FEEDBACK_DECISION_LABELS,
   feedbackTarget: FEEDBACK_TARGET_LABELS,
+  contractDirection: CONTRACT_DIRECTION_LABELS,
   step: WORK_STEP_LABELS,
   ...ENUM_LABELS,
 } as const satisfies Record<string, Record<string, string>>;
