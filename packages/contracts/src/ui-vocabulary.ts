@@ -4,6 +4,8 @@
 // takes its reading with it (domain-entities.md, "Badges"); until then this file is its one reading.
 
 import type { IssueStatusTone } from "./issue-vocabulary.js";
+import type { MasterState } from "./master-standing.js";
+import type { RunState } from "./run-standing.js";
 
 /** A state value's reading: sentence-case label, legend tone, and the glyph drawn for its dot. */
 export type Reading = readonly [
@@ -232,6 +234,40 @@ export const STATE_READINGS = {
 		open: ["Open", "ready", "✓"],
 		held: ["Held", "blocked", "○"],
 	},
+	runStanding: {
+		queued: ["Queued", "ready", "○"],
+		claimed: ["Claimed", "run", "◔"],
+		running: ["Running", "run", "●"],
+		waiting_person: ["Waiting on a person", "you", "?"],
+		waiting_gate: ["Waiting on a gate", "blocked", "‖"],
+		stuck: ["Stuck", "err", "!"],
+		done: ["Done", "done", "✓"],
+		failed: ["Failed", "err", "✕"],
+		cancelled: ["Cancelled", "done", "–"],
+		handed_back: ["Handed back", "neutral", "↩"],
+	} satisfies Record<RunState, Reading>,
+	job: {
+		queued: ["Queued", "neutral", "○"],
+		dispatched: ["Dispatched", "run", "◔"],
+		running: ["Running", "run", "●"],
+		held: ["Held", "blocked", "‖"],
+		done: ["Done", "done", "✓"],
+		failed: ["Failed", "err", "✕"],
+		cancelled: ["Cancelled", "done", "–"],
+	},
+	pipelineRun: {
+		running: ["Running", "run", "●"],
+		paused: ["Paused", "blocked", "‖"],
+		completed: ["Completed", "done", "✓"],
+		failed: ["Failed", "err", "✕"],
+		cancelled: ["Cancelled", "done", "–"],
+	},
+	masterState: {
+		in_pass: ["In a pass", "run", "●"],
+		idle: ["Idle", "neutral", "○"],
+		silent: ["Silent", "err", "!"],
+		none: ["No master", "you", "?"],
+	} satisfies Record<MasterState, Reading>,
 } as const satisfies Record<string, Record<string, Reading>>;
 
 export type StateReadingFamily = keyof typeof STATE_READINGS;
@@ -435,6 +471,14 @@ export const ENUM_LABELS = {
 	},
 	/** The model tier a run used (core `db/schema.ts:modelTiers`). */
 	modelTier: { haiku: "Haiku", sonnet: "Sonnet", opus: "Opus" },
+	runStuckRule: {
+		silent: "Silent",
+		lease_expired: "Claim expired",
+		lease_abandoned: "Claim abandoned",
+		disagreement: "Box and core disagree",
+		stranded: "Stranded",
+		overdue: "Gate overdue",
+	},
 	/** What a schedule runs (web `schedules/types.ts:ScheduleKind`, plus the PM and improve rows). */
 	scheduleKind: {
 		prompt: "Prompt",

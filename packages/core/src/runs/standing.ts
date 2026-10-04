@@ -1,5 +1,5 @@
 // cm:why where a run stands, derived from what `runs/facts.ts` read and nothing else (design agent-run-standing
-// rev 1, ISS-108): pure, so every rule is a unit test, and the screen never derives a state of its own
+// rev 1, ISS-108; stuck ISS-109): pure, so every rule is a unit test, and the screen never derives a state of its own
 
 import type {
   RunAttempt,
@@ -13,7 +13,8 @@ import { stepOf } from '../pipeline/runs-lane.js';
 import { finalOf } from './standing-final.js';
 import { holderOf } from './standing-holder.js';
 import { liveOf } from './standing-live.js';
-import { iso, none, type RunFacts, type StandingContext } from './standing-types.js';
+import { type StuckReading, stuckField, stuckOf } from './standing-stuck.js';
+import { type Derived, iso, none, type RunFacts, type StandingContext } from './standing-types.js';
 
 export type { KernelFlip, RunFacts, StandingContext } from './standing-types.js';
 
@@ -78,13 +79,34 @@ function releaseOf(f: RunFacts, lane: RunLane): RunRelease | null {
   };
 }
 
-export const STUCK_NOT_COMPUTED =
-  'stuck is not computed in core yet (ISS-109); this read model makes no stuck claim either way';
+function asStuck(f: RunFacts, base: Derived, reading: StuckReading): Derived {
+  return {
+    state: 'stuck',
+    since: reading.since,
+    rule: reading.detail,
+    outcome: null,
+    waitingOn: {
+      kind: 'master',
+      who: f.master?.name ?? 'Master',
+      since: iso(reading.since),
+      rule: `stuck (${reading.rule}): the project master acts next, and a person may cancel the run or revoke its lease${
+        base.outcome ? `; its root already ended: ${base.rule}` : ''
+      }`,
+    },
+  };
+}
+
+function rootSessionOf(f: RunFacts): string | null {
+  return f.session?.id ?? f.job?.agentSessionId ?? null;
+}
 
 export function runStandingOf(f: RunFacts, ctx: StandingContext): RunStanding {
-  const derived = finalOf(f) ?? liveOf(f, ctx);
+  const base = finalOf(f) ?? liveOf(f, ctx);
+  const reading = stuckOf(f, ctx, base);
+  const derived = reading ? asStuck(f, base, reading) : base;
   const lane = laneOfRun(f);
   const live = derived.outcome === null;
+  const holder = holderOf(f, ctx, derived.state);
   return {
     id: f.run.id,
     projectId: f.run.projectId,
@@ -95,17 +117,18 @@ export function runStandingOf(f: RunFacts, ctx: StandingContext): RunStanding {
     title: titleOf(f, lane),
     issue: f.issue ? { key: f.issue.key, title: f.issue.title, status: f.issue.status } : null,
     issues: f.issues,
+    sessionId: rootSessionOf(f),
     step: stepFor(f, live),
     attempt: attemptOf(f),
     lastBeatAt: iso(f.lastBeatAt),
     liveJobs: f.liveJobs,
     device: f.session?.device ?? f.job?.device ?? null,
-    holder: holderOf(f, ctx, derived.state),
+    holder,
     waitingOn: derived.waitingOn,
     needsViewer: derived.waitingOn.kind === 'person' && derived.waitingOn.isViewer,
     outcome: derived.outcome,
     master: masterOf(f),
-    stuck: { source: 'not_computed', detail: STUCK_NOT_COMPUTED },
+    stuck: stuckField(reading, derived, holder, ctx),
     release: releaseOf(f, lane),
     deployLocks: f.deployLocks.map((l) => ({
       environment: l.environment,

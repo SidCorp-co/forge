@@ -3,8 +3,8 @@
 // `GET /api/projects/:id/runs/standing` serves them, so no screen guesses a run's state from raw rows.
 // cm:guard every derived arm that cannot be read is a `RunNone` naming why, never an empty value; a gate
 // with no deadline serves `resumesAt: null`, and a hold's `expiresAt` is null only beside `expiryDetail`
-// cm:why stuck is ISS-109's: the slot reads `not_computed` until core computes it, so no reader takes
-// an absent rule for "not stuck"
+// cm:why stuck is computed in core and nowhere else (ISS-109, decision 7 on the design): a live run nothing
+// moves reads `stuck` with its rule, since and evidence row, so every screen reads one rule
 
 import type { FailureCause } from "./failure-causes.js";
 import type { IssueLeaseVerdict } from "./issue-standing.js";
@@ -18,6 +18,7 @@ export const RUN_STATES = [
 	"running",
 	"waiting_person",
 	"waiting_gate",
+	"stuck",
 	"done",
 	"failed",
 	"cancelled",
@@ -31,6 +32,7 @@ export const RUN_LIVE_STATES = [
 	"running",
 	"waiting_person",
 	"waiting_gate",
+	"stuck",
 ] as const satisfies readonly RunState[];
 export type RunLiveState = (typeof RUN_LIVE_STATES)[number];
 
@@ -41,6 +43,31 @@ export const RUN_FINAL_STATES = [
 	"handed_back",
 ] as const satisfies readonly RunState[];
 export type RunFinalState = (typeof RUN_FINAL_STATES)[number];
+
+// cm:guard one source for the silence clocks (decision 7 on agent-run-standing rev 1): stuck shows at 3 min,
+// the master and run-session reapers fail at 10 min, and the loop monitor's job heartbeat reap defaults to
+// 3 min; `silent` counts only a run with no live job, so it never races the job reap, and core's
+// `runs/standing-stuck.test.ts` holds stuck strictly before the session reap
+export const RUN_STUCK_AFTER_MS = 3 * 60_000;
+export const SESSION_SILENCE_REAP_MS = 10 * 60_000;
+export const JOB_HEARTBEAT_REAP_DEFAULT_MS = 3 * 60_000;
+
+export const RUN_STUCK_RULES = [
+	"silent",
+	"lease_expired",
+	"lease_abandoned",
+	"disagreement",
+	"stranded",
+	"overdue",
+] as const;
+export type RunStuckRule = (typeof RUN_STUCK_RULES)[number];
+
+export const RUN_DISAGREEMENTS = [
+	"box-live-core-terminal",
+	"box-exited-core-running",
+	"run-live-root-ended",
+] as const;
+export type RunDisagreement = (typeof RUN_DISAGREEMENTS)[number];
 
 export const RUN_LANES = ["issue", "release", "deploy", "job"] as const;
 export type RunLane = (typeof RUN_LANES)[number];
@@ -231,11 +258,31 @@ export type RunMasterRef =
 	  }
 	| RunNone;
 
-export interface RunStuckNotComputed {
-	source: "not_computed";
+export interface RunStuckEvidence {
+	table: string;
+	id: string;
+	column: string;
+	value: string | null;
+	at: string | null;
+}
+
+export interface RunStuckOn {
+	source: "stuck";
+	rule: RunStuckRule;
+	disagreement: RunDisagreement | null;
+	since: string;
+	evidence: RunStuckEvidence;
+	failsAt: string | null;
+	failsBy: string;
 	detail: string;
 }
-export type RunStuck = RunStuckNotComputed;
+
+export interface RunStuckClear {
+	source: "clear";
+	detail: string;
+}
+
+export type RunStuck = RunStuckOn | RunStuckClear | RunNone;
 
 export interface RunRelease {
 	version: string | null;
@@ -262,6 +309,7 @@ export interface RunStanding {
 	title: string;
 	issue: RunIssueRef | null;
 	issues: string[];
+	sessionId: string | null;
 	step: RunStep;
 	attempt: RunAttempt;
 	lastBeatAt: string | null;
@@ -334,6 +382,7 @@ export const RUN_SUMMARY_FIELDS = [
 	"needsViewer",
 	"outcome",
 	"lastBeatAt",
+	"stuck",
 	"startedAt",
 ] as const satisfies readonly (keyof RunStanding)[];
 export type RunSummaryView = Pick<

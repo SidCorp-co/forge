@@ -5,6 +5,11 @@ import {
   LEGACY_NEUTRAL_REASONS,
   resolveFailureCause,
 } from "@forge/contracts/failure-causes";
+import {
+  JOB_HEARTBEAT_REAP_DEFAULT_MS,
+  RUN_STUCK_AFTER_MS,
+  SESSION_SILENCE_REAP_MS,
+} from "@forge/contracts/run-standing";
 import { TERMINAL_AGENT_SESSION_STATUSES } from "@forge/contracts/status-sets";
 import type { StatusKey } from "@/design/status";
 
@@ -26,11 +31,7 @@ export const TERMINAL_SESSION_STATUSES: ReadonlySet<string> = new Set<AgentSessi
  *  persists `running`; the `stalled` distinction is presentational. */
 export type AgentSessionDisplayStatus = AgentSessionStatus | "stalled";
 
-/** Warning band between a fresh heartbeat and the sweeper's heartbeat_timeout
- *  cutoff — promote `running` → `stalled` past this. */
-export const STALLED_THRESHOLD_MS = 60_000;
-
-export const HEARTBEAT_REAP_MS = 3 * 60_000;
+export const STALLED_THRESHOLD_MS = RUN_STUCK_AFTER_MS;
 
 export type Liveness = "alive" | "stale" | "reaping" | "na";
 
@@ -312,10 +313,17 @@ export function failureReasonAction(reason: string | null | undefined): string |
   );
 }
 
+export function heartbeatReapMs(
+  session: Pick<SessionRow, "metadata"> & { kind?: AgentSessionKind | null },
+): number {
+  const kind = sessionKind(session);
+  return kind === "run_session" || kind === "master" ? SESSION_SILENCE_REAP_MS : JOB_HEARTBEAT_REAP_DEFAULT_MS;
+}
+
 export function deriveLiveness(
   session: Pick<
     SessionRow,
-    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata"
+    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata" | "kind"
   >,
   nowMs: number = Date.now(),
 ): LivenessResult {
@@ -329,9 +337,10 @@ export function deriveLiveness(
   if (Number.isNaN(lastMs)) return { state: "alive", sinceHeartbeatMs: null, reapInMs: null };
 
   const since = nowMs - lastMs;
+  const reapMs = heartbeatReapMs(session);
   if (since <= STALLED_THRESHOLD_MS) return { state: "alive", sinceHeartbeatMs: since, reapInMs: null };
-  if (since <= HEARTBEAT_REAP_MS) {
-    return { state: "stale", sinceHeartbeatMs: since, reapInMs: HEARTBEAT_REAP_MS - since };
+  if (since <= reapMs) {
+    return { state: "stale", sinceHeartbeatMs: since, reapInMs: reapMs - since };
   }
   return { state: "reaping", sinceHeartbeatMs: since, reapInMs: 0 };
 }
@@ -339,7 +348,7 @@ export function deriveLiveness(
 export function deriveSessionDisplayStatus(
   session: Pick<
     SessionRow,
-    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata"
+    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata" | "kind"
   >,
   nowMs: number = Date.now(),
 ): AgentSessionDisplayStatus {

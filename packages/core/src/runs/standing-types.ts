@@ -37,7 +37,13 @@ export interface RunFacts {
     pauseReason: string | null;
     releaseVersion: string | null;
   };
-  issue: (RunIssueRef & { id: string; statusSince: Date | null }) | null;
+  issue:
+    | (RunIssueRef & {
+        id: string;
+        statusSince: Date | null;
+        strand: { at: Date; status: string; reason: string } | null;
+      })
+    | null;
   issues: string[];
   openingStatuses: Record<string, string>;
   endStatuses: Record<string, KernelIssueStatus>;
@@ -112,6 +118,7 @@ export interface StandingContext {
   now: Date;
   viewer: { canWrite: boolean; isAdmin: boolean } | null;
   slots: { inUse: number; max: number } | null;
+  stuckAfterMs: number;
   silenceReapMs: number;
   jobHeartbeatMs: number;
   jobAckMs: number;

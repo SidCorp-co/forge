@@ -1,5 +1,6 @@
 import {
   RUN_LIVE_STATES,
+  RUN_STUCK_AFTER_MS,
   type RunAttemptRow,
   type RunLiveState,
   type RunStanding,
@@ -20,7 +21,7 @@ import {
   LIVE_PIPELINE_RUN_STATUSES,
   TERMINAL_PIPELINE_RUN_STATUSES,
 } from '../pipeline/status-sets.js';
-import { BASE_COLUMNS, type BaseRun, gatherFacts, RUN_SCOPE_SQL } from './facts.js';
+import { BASE_COLUMNS, type BaseRun, gatherFacts, MASTER_RUN_SQL, RUN_SCOPE_SQL } from './facts.js';
 import { runStandingOf, type StandingContext } from './standing.js';
 
 export interface RunViewer {
@@ -41,7 +42,7 @@ const SCOPE_SQL: Record<RunStandingScope, SQL> = {
 };
 
 export const SCOPE_RULE =
-  'scope reads the pipeline run status: live is running or paused, finished is completed, failed or cancelled; a run whose own status is still live while its root ended is served under live with the state its rows derive, which is what ISS-109 reads as a disagreement';
+  'scope reads the pipeline run status: live is running or paused, finished is completed, failed or cancelled; a run whose own status is still live while its root ended is served under live as stuck, rule disagreement (run-live-root-ended)';
 
 async function viewerOf(viewer: RunViewer | null, projectId: string) {
   if (!viewer) return null;
@@ -70,6 +71,7 @@ async function contextFor(projectId: string, viewer: RunViewer | null) {
     now: new Date(),
     viewer: who,
     slots,
+    stuckAfterMs: RUN_STUCK_AFTER_MS,
     silenceReapMs: SESSION_SILENCE_TIMEOUT_MS,
     jobHeartbeatMs: getLoopThresholds().heartbeatMs,
     jobAckMs: getLoopThresholds().ackMs,
@@ -110,8 +112,7 @@ async function countsOf(projectId: string) {
       SELECT count(*) FILTER (WHERE ${RUN_SCOPE_SQL} AND ${LIVE_SQL})::int AS live,
              count(*) FILTER (WHERE ${RUN_SCOPE_SQL} AND NOT (${LIVE_SQL}))::int AS finished,
              count(*) FILTER (WHERE r.kind = 'interactive')::int AS interactive,
-             count(*) FILTER (WHERE r.kind <> 'interactive' AND r.issue_id IS NULL
-                                AND r.metadata->>'type' = 'master')::int AS masters
+             count(*) FILTER (WHERE r.kind <> 'interactive' AND ${MASTER_RUN_SQL})::int AS masters
         FROM pipeline_runs r WHERE r.project_id = ${projectId}`),
   );
   return row ?? { live: 0, finished: 0, interactive: 0, masters: 0 };

@@ -1,7 +1,9 @@
 /** ISS-1273 — the timing `jobs/loop-monitor.ts` reads from the environment and re-exports. */
 
+import { JOB_HEARTBEAT_REAP_DEFAULT_MS } from '@forge/contracts/run-standing';
+
 const QUEUE_TIMEOUT_MS_DEFAULT = 120_000;
-const HEARTBEAT_TIMEOUT_MS_DEFAULT = 3 * 60_000;
+const HEARTBEAT_TIMEOUT_MS_DEFAULT = JOB_HEARTBEAT_REAP_DEFAULT_MS;
 const ACK_TIMEOUT_MS_DEFAULT = 3 * 60_000;
 const MIN_TIMEOUT_MS = 30_000;
 const ACK_FAST_MS_DEFAULT = 90_000;

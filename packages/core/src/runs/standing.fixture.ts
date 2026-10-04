@@ -1,3 +1,4 @@
+import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import type { KernelFlip, RunFacts, StandingContext } from './standing-types.js';
 
 export const NOW = new Date('2026-10-04T10:00:00Z');
@@ -7,6 +8,7 @@ export const ctx = (over: Partial<StandingContext> = {}): StandingContext => ({
   now: NOW,
   viewer: { canWrite: true, isAdmin: false },
   slots: { inUse: 1, max: 3 },
+  stuckAfterMs: 3 * 60_000,
   silenceReapMs: 10 * 60_000,
   jobHeartbeatMs: 3 * 60_000,
   jobAckMs: 2 * 60_000,
@@ -86,7 +88,14 @@ export function facts(over: Partial<RunFacts> = {}, run: Partial<RunFacts['run']
       releaseVersion: null,
       ...run,
     },
-    issue: { id: 'i-7', key: 'ISS-7', title: 'Seven', status: 'in_progress', statusSince: at(-40) },
+    issue: {
+      id: 'i-7',
+      key: 'ISS-7',
+      title: 'Seven',
+      status: 'in_progress',
+      statusSince: at(-40),
+      strand: null,
+    },
     issues: ['ISS-7'],
     openingStatuses: { 'ISS-7': 'open' },
     endStatuses: { 'ISS-7': 'in_progress' },
@@ -111,4 +120,12 @@ export function facts(over: Partial<RunFacts> = {}, run: Partial<RunFacts['run']
 }
 
 export const jobLane = (j: RunFacts['job'], run: Partial<RunFacts['run']> = {}) =>
-  facts({ session: null, job: j, fleetKeys: [] }, { rawLane: 'job', ...run });
+  facts(
+    {
+      session: null,
+      job: j,
+      fleetKeys: [],
+      liveJobs: j && (UNHELD_LIVE_JOB_STATUSES as readonly string[]).includes(j.status) ? 1 : 0,
+    },
+    { rawLane: 'job', ...run },
+  );

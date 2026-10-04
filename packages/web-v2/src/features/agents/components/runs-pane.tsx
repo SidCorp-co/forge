@@ -1,13 +1,12 @@
 "use client";
 
+import type { RunStanding, RunStandingList } from "@forge/contracts/run-standing";
 import { useMemo, useState } from "react";
-import { EmptyState, ErrorState, Input, Skeleton } from "@/design";
-import { useNow } from "@/design/hooks/use-now";
-import { useProjectRuns } from "@/features/pipeline/hooks";
+import { EmptyState, ErrorState, Input, Skeleton, StatusBadge } from "@/design";
+import { enumLabel } from "@/design/vocabulary";
 import { formatApiError } from "@/lib/api/error";
-import { applyFilters, type StateFilter } from "../filter";
-import { useRunSessions } from "../hooks";
-import { stalledRuns } from "../stalled-runs";
+import { applyFilters, type StandingBySession, type StateFilter, standingOf } from "../filter";
+import { useRunSessions, useRunStanding } from "../hooks";
 import { RunRow } from "./run-row";
 
 const FILTERS: Array<{ value: StateFilter; label: string }> = [
@@ -20,18 +19,14 @@ export interface RunsPaneProps {
   scope: { projectId: string };
 }
 
-/**
- * How many pipeline runs on this project are open with nothing working on them.
- */
-function StalledBand({ projectId, now }: { projectId: string; now: number }) {
-  const runsQ = useProjectRuns(projectId);
+const STUCK_SHOWN = 5;
+
+function StuckBand({ q }: { q: ReturnType<typeof useRunStanding> }) {
+  const runsQ = q;
   const loading = runsQ.isLoading;
   const failed = runsQ.isError;
-
-  const stalled = useMemo(
-    () => stalledRuns(runsQ.data?.items, now),
-    [runsQ.data, now],
-  );
+  const data: RunStandingList | undefined = runsQ.data;
+  const stuck = useMemo(() => (data?.items ?? []).filter((r) => r.state === "stuck"), [data]);
 
   if (loading) {
     return <Skeleton variant="rect" className="h-8 w-full max-w-md" aria-busy="true" />;
@@ -55,29 +50,59 @@ function StalledBand({ projectId, now }: { projectId: string; now: number }) {
     );
   }
 
+  const count = data?.counts.liveByState.stuck ?? 0;
   return (
-    <p className="fg-caption text-muted">
-      {stalled.length === 0
-        ? "Every open run has a job or a live agent behind it."
-        : `${stalled.length} open ${stalled.length === 1 ? "run has" : "runs have"} nothing working on ${
-            stalled.length === 1 ? "it" : "them"
-          } — no live job and no agent still reporting.`}
-    </p>
+    <div className="flex flex-col gap-1.5">
+      <p className="fg-caption flex flex-wrap items-center gap-2 text-muted">
+        <span>Project master</span>
+        {data ? <StatusBadge family="masterState" value={data.master.state} /> : null}
+        <span aria-hidden="true">·</span>
+        <span>
+          {count === 0
+            ? "No open run is stuck."
+            : `${count} open ${count === 1 ? "run is" : "runs are"} stuck: nothing has moved ${count === 1 ? "it" : "them"} past the 3 min threshold.`}
+        </span>
+      </p>
+      {stuck.length > 0 ? (
+        <ul className="flex flex-col gap-1">
+          {stuck.slice(0, STUCK_SHOWN).map((r) => (
+            <StuckItem key={r.id} run={r} />
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+function StuckItem({ run }: { run: RunStanding }) {
+  const s = run.stuck;
+  if (s.source !== "stuck") return null;
+  return (
+    <li className="fg-caption flex min-w-0 items-center gap-2 text-muted" title={`${s.detail}\n${s.failsBy}`}>
+      <StatusBadge family="runStanding" value={run.state} />
+      <span className="truncate text-fg">{run.issue?.key ?? run.title}</span>
+      <span className="flex-none">{enumLabel("runStuckRule", s.rule)}</span>
+    </li>
   );
 }
 
 export function RunsPane({ scope }: RunsPaneProps) {
   const { data, isLoading, isError, error, refetch } = useRunSessions(scope.projectId);
+  const standingQ = useRunStanding(scope.projectId);
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<StateFilter>("all");
-  const now = useNow(10_000);
 
+  const standings: StandingBySession = useMemo(() => {
+    const m = new Map<string, RunStanding>();
+    for (const r of standingQ.data?.items ?? []) if (r.sessionId) m.set(r.sessionId, r);
+    return m;
+  }, [standingQ.data]);
   const all = data?.items ?? [];
-  const rows = useMemo(() => applyFilters(all, q, filter, now), [all, q, filter, now]);
+  const rows = useMemo(() => applyFilters(all, q, filter, standings), [all, q, filter, standings]);
 
   return (
     <div className="flex flex-col gap-3 p-4">
-      <StalledBand projectId={scope.projectId} now={now} />
+      <StuckBand q={standingQ} />
       {isLoading ? (
         <div className="flex flex-col gap-2" aria-busy="true">
           <Skeleton className="h-9 w-full max-w-sm" />
@@ -146,7 +171,7 @@ export function RunsPane({ scope }: RunsPaneProps) {
           ) : (
             <ul className="flex flex-col gap-2">
               {rows.map((row) => (
-                <RunRow key={row.runId} row={row} now={now} />
+                <RunRow key={row.runId} row={row} standing={standingOf(row, standings)} />
               ))}
             </ul>
           )}

@@ -8,7 +8,11 @@ import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { masterLastBeatSql } from '../devices/master-silence.js';
 import { RUN_GROUP_METADATA_KEY } from '../devices/run-session-keys.js';
-import { PIPELINE_SESSION_KINDS, RUN_SESSION_KIND } from '../jobs/session-kinds.js';
+import {
+  MASTER_SESSION_KIND,
+  PIPELINE_SESSION_KINDS,
+  RUN_SESSION_KIND,
+} from '../jobs/session-kinds.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { groupOf, laneOf, type PipelineRunLane } from '../pipeline/runs-lane.js';
@@ -38,8 +42,11 @@ const q = (s: SQL) => db.execute(s).then((r) => rowsOf(r));
 const when = (ok: boolean, s: () => Promise<Row[]>) => (ok ? s() : Promise.resolve([] as Row[]));
 
 // cm:why a run here is a pipeline run a person reads on Agents / Runs: a chat's one-shot run is a conversation,
-// and a master's own run is the master, served by masters/standing beside the list
-export const RUN_SCOPE_SQL = sql`r.kind <> 'interactive' AND NOT (r.issue_id IS NULL AND COALESCE(r.metadata->>'type', '') = 'master')`;
+// and a master's own run is the master, served by masters/standing beside the list; the master is read off its
+// session's `kind` column, never a jsonb key (jobs/session-kinds.test.ts)
+export const MASTER_RUN_SQL = sql`r.issue_id IS NULL AND EXISTS (
+  SELECT 1 FROM agent_sessions ms WHERE ms.pipeline_run_id = r.id AND ms.kind = ${MASTER_SESSION_KIND})`;
+export const RUN_SCOPE_SQL = sql`r.kind <> 'interactive' AND NOT (${MASTER_RUN_SQL})`;
 
 export const BASE_COLUMNS = sql`r.id, r.project_id, r.issue_id, r.kind, r.status, r.current_step, r.started_at,
   r.finished_at, r.updated_at, r.metadata, r.release_version, i.iss_seq, i.title AS issue_title, i.status AS issue_status`;
@@ -207,6 +214,7 @@ function issueRowsOf(projectId: string, seqs: number[]) {
   return when(seqs.length > 0, () =>
     q(sql`
       SELECT i.id, i.iss_seq, i.title, i.status, w.step, w.step_started_at, w.lease,
+             i.session_context -> 'strand' AS strand,
              (SELECT max(kt.created_at) FROM kernel_transitions kt
                WHERE kt.entity = 'issue' AND kt.entity_id = i.id AND kt.to_status = i.status)
                AS status_since
