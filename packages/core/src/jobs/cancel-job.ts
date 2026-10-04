@@ -1,8 +1,8 @@
 import { JOB_MACHINE, LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { deviceRoom, projectRoom, roomManager } from '../lib/rooms.js';
 import { transition } from '../lifecycle/transition.js';

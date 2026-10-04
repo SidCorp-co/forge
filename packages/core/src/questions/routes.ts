@@ -2,6 +2,7 @@
 //
 // A rule refusal leaves as the refusal envelope `middleware/error.ts` answers a thrown refusal with.
 
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -13,7 +14,6 @@ import {
   questionStatuses,
 } from '../db/schema-questions.js';
 import { doorOf, tokenIdOf } from '../ecosystem/channel-author.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import { egressAs } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';

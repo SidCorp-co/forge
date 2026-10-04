@@ -1,4 +1,5 @@
 import { RUN_MACHINE } from '@forge/contracts/run-machine';
+
 /**
  * ISS-102 — pause / resume / cancel transitions for `pipeline_runs`.
  *
@@ -7,10 +8,11 @@ import { RUN_MACHINE } from '@forge/contracts/run-machine';
  * transition semantics live in one place.
  */
 
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
-import type { ActorAgency, TransitionActor } from '../issues/actor-agency.js';
+import type { TransitionActor } from '../issues/actor-agency.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
 import { type KernelActor, transition } from '../lifecycle/transition.js';

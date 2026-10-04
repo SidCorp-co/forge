@@ -5,6 +5,7 @@
 // only by TypeScript is a shape held nowhere (ISS-964 criteria 14, 16, 21).
 
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import type { QuestionRefusalCode } from '@forge/contracts/questions';
 import { and, eq, sql } from 'drizzle-orm';
@@ -22,7 +23,6 @@ import {
 } from '../db/schema-questions.js';
 import { decideChannelGate } from '../ecosystem/channel-gate.js';
 import type { PersonVia } from '../ecosystem/channel-schema.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
 import { refuser } from '../lib/refusal.js';
 import { type KernelActor, transition } from '../lifecycle/transition.js';

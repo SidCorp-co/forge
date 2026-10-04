@@ -1,5 +1,5 @@
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { db } from '../../db/client.js';
-import type { ActorAgency } from '../../issues/actor-agency.js';
 import { permissionFactsOf } from '../../permissions/index.js';
 import { notFound } from '../access.js';
 import { loadInterface } from '../interface-service.js';

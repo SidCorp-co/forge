@@ -1,7 +1,8 @@
 import type { MergeRefusalCode } from '@forge/contracts/issues';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { z } from 'zod';
-import { db, type Tx } from '../db/client.js';
 import { postIssueNotice } from '../comments/index.js';
+import { db, type Tx } from '../db/client.js';
 import {
   type DriftRefusal,
   landingDriftRefusal,
@@ -12,7 +13,6 @@ import { notFound } from '../middleware/route-errors.js';
 import { emitEvents } from '../outbox/index.js';
 import type { Actor } from '../pipeline/activity.js';
 import { collectWorkEvidence, findMissingWorkEvidence } from '../pipeline/work-evidence.js';
-import type { ActorAgency } from './actor-agency.js';
 import { type CommitLanding, readCommitLanding } from './commit-landing.js';
 import {
   landingMarkRefusal,

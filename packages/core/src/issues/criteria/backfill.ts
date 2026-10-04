@@ -9,12 +9,12 @@
  * `record.verdict` event written straight to `POST /api/issues/:id/events` (no comment behind it).
  */
 
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { sql } from 'drizzle-orm';
 import { backfillMarkedIn, markBackfillIn } from '../../db/backfill-markers.js';
 import { db, type Tx } from '../../db/client.js';
 import { criterionVerdicts, issueCriteria } from '../../db/schema-issue-criteria.js';
 import { parseForgeRecord } from '../../messaging/forge-record.js';
-import type { ActorAgency } from '../actor-agency.js';
 import { recordOfFields } from '../record-events/store.js';
 import {
   type BackfillDesign,
