@@ -1,22 +1,9 @@
-import { randomBytes } from 'node:crypto';
-import { DEVICE_MACHINE, RUNNER_PROVISION_MACHINE } from '@forge/contracts/runner-machine';
-import { and, desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
-import { db } from '../db/client.js';
-import {
-  devicePlatforms,
-  devices,
-  pairingCodes,
-  projects,
-  runnerProvisionStatuses,
-  runners,
-} from '../db/schema.js';
+import { devicePlatforms, runnerProvisionStatuses } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { isUniqueViolation } from '../lib/db-errors.js';
-import { transition } from '../lifecycle/transition.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -26,41 +13,31 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { readPluginDesignations, unionPluginDesignations } from '../plugins/designation.js';
 import { withDeclaredSource } from '../project-config/source.js';
-import { insertRunnerEvent } from '../runners/runner-events.js';
 import { annotateDeviceBuilds } from './build-state.js';
-import { revokeDeviceCredentials } from './credential.js';
-import { DEVICE_LIST_COLUMNS } from './device-columns.js';
 import { heartbeatGate, withDeviceGate } from './gate-report.js';
 import { heartbeatPatch } from './heartbeat-patch.js';
-import {
-  deleteDeviceRunners,
-  mirrorHeartbeatToRunners,
-  patchDeviceRunnerCheckout,
-  setRunnerProvisionDetail,
-} from '../runners/index.js';
+import { patchDeviceRunnerCheckout } from '../runners/index.js';
 import { deviceProvisionRoutes } from './me-provisions.js';
 import { listDeviceAssignments } from './me-runners.js';
 import { redeemPairingCode } from './pair.js';
+import {
+  deviceOwnership,
+  deviceProjectAgentConfigs,
+  listDeviceRunners,
+  listOwnedDevices,
+} from './read.js';
 import { refuseDevice } from './refusals.js';
-import { heartbeatPool } from './pool-read-report.js';
+import {
+  mintPairingCode,
+  recordHeartbeat,
+  reportProvisionStatus,
+  revokeDevice,
+  updateDevice,
+} from './service.js';
 import { requireHeld, requireOrgCan } from '../permissions/index.js';
 
 const unauth = () =>
   new HTTPException(401, { message: 'unauthenticated', cause: { code: 'UNAUTHENTICATED' } });
-
-const CROCKFORD_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
-
-function generatePairingCode(): string {
-  const bytes = randomBytes(10);
-  let chars = '';
-  for (let i = 0; i < 10; i++) {
-    // biome-ignore lint/style/noNonNullAssertion: randomBytes guarantees byte access
-    chars += CROCKFORD_ALPHABET[bytes[i]! & 0x1f];
-  }
-  return `${chars.slice(0, 2)}-${chars.slice(2, 6)}-${chars.slice(6, 10)}`;
-}
-
-const PAIR_CODE_TTL_MS = 5 * 60 * 1000;
 
 const platformEnum = z.enum(devicePlatforms);
 
@@ -124,11 +101,7 @@ devicePublicRoutes.post(
 );
 
 async function ownedDevice(id: string, userId: string) {
-  const [device] = await db
-    .select({ ownerId: devices.ownerId, status: devices.status })
-    .from(devices)
-    .where(eq(devices.id, id))
-    .limit(1);
+  const device = await deviceOwnership(id);
   if (!device) throw notFound('device not found');
   if (device.ownerId !== userId) throw forbidden('not the device owner');
   return device;
@@ -154,19 +127,7 @@ deviceOwnerRoutes.get(
     const { orgId } = c.req.valid('query');
     if (orgId !== undefined) await requireOrgCan({ userId }, 'org.read', orgId);
 
-    const rows = orgId
-      ? await db
-          .selectDistinct(DEVICE_LIST_COLUMNS)
-          .from(devices)
-          .innerJoin(runners, eq(runners.deviceId, devices.id))
-          .innerJoin(projects, eq(projects.id, runners.projectId))
-          .where(and(eq(devices.ownerId, userId), eq(projects.orgId, orgId)))
-          .orderBy(desc(devices.pairedAt))
-      : await db
-          .select(DEVICE_LIST_COLUMNS)
-          .from(devices)
-          .where(eq(devices.ownerId, userId))
-          .orderBy(desc(devices.pairedAt));
+    const rows = await listOwnedDevices(userId, orgId);
     // ISS-392, widened by ISS-1165 — each box is compared against the published
     // release AND the runner head on the default branch. The second is what catches
     // a release that was never cut, where every box reports the number the last one
@@ -215,15 +176,7 @@ deviceOwnerRoutes.patch(
     if (name !== undefined) patch.name = name;
     if (disabled !== undefined) patch.disabledAt = disabled ? new Date() : null;
 
-    const [updated] = await db.update(devices).set(patch).where(eq(devices.id, id)).returning({
-      id: devices.id,
-      name: devices.name,
-      platform: devices.platform,
-      status: devices.status,
-      disabledAt: devices.disabledAt,
-      lastSeenAt: devices.lastSeenAt,
-      pairedAt: devices.pairedAt,
-    });
+    const updated = await updateDevice(id, patch);
     if (!updated) throw notFound('device not found');
 
     // When toggling on/off, live-refresh the owner's Runners surface + any device
@@ -257,17 +210,7 @@ deviceOwnerRoutes.delete(
 
     await ownedDevice(id, userId);
 
-    await db.transaction(async (tx) => {
-      await transition(tx, DEVICE_MACHINE, {
-        to: 'revoked',
-        where: eq(devices.id, id),
-        actor: restActor(c),
-        source: 'device-revoke',
-        returning: ['id'],
-      });
-      await deleteDeviceRunners(tx, [id]);
-    });
-    await revokeDeviceCredentials(id);
+    await revokeDevice(id, restActor(c));
 
     try {
       const { roomManager } = await import('../ws/server.js');
@@ -302,23 +245,7 @@ deviceOwnerRoutes.get(
 
     await ownedDevice(id, userId);
 
-    const rows = await db
-      .select({
-        runnerId: runners.id,
-        projectId: runners.projectId,
-        slug: projects.slug,
-        name: projects.name,
-        repoPath: runners.repoPath,
-        branch: runners.branch,
-        status: runners.status,
-        lastSeenAt: runners.lastSeenAt,
-        provisionStatus: runners.provisionStatus,
-        provisionDetail: runners.provisionDetail,
-        provisionedAt: runners.provisionedAt,
-      })
-      .from(runners)
-      .innerJoin(projects, eq(projects.id, runners.projectId))
-      .where(and(eq(runners.deviceId, id), eq(runners.type, 'claude-code')));
+    const rows = await listDeviceRunners(id);
 
     return c.json(await withDeclaredSource(rows));
   },
@@ -341,23 +268,9 @@ deviceUserRoutes.post(
     requireHeld(access, 'project.write');
 
     // 5-minute TTL, server-minted. Retry on unique-violation (collision).
-    const expiresAt = new Date(Date.now() + PAIR_CODE_TTL_MS);
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const code = generatePairingCode();
-      try {
-        await db.insert(pairingCodes).values({
-          code,
-          userId,
-          projectId,
-          grantEpoch: mintEpochFor(c),
-          expiresAt,
-        });
-        return c.json({ code, expiresAt: expiresAt.toISOString() }, 201);
-      } catch (err: unknown) {
-        if (!isUniqueViolation(err)) throw err;
-      }
-    }
-    throw new HTTPException(500, { message: 'failed to mint pairing code' });
+    const minted = await mintPairingCode({ projectId, userId, grantEpoch: mintEpochFor(c) });
+    if (!minted) throw new HTTPException(500, { message: 'failed to mint pairing code' });
+    return c.json({ code: minted.code, expiresAt: minted.expiresAt.toISOString() }, 201);
   },
 );
 
@@ -382,33 +295,12 @@ deviceAuthRoutes.post(
 
     const gate = heartbeatGate(input.gate, device.id);
 
-    const [updated] = await db
-      .update(devices)
-      .set(heartbeatPatch({ ...input, gate: gate.report }, new Date()))
-      .where(eq(devices.id, device.id))
-      .returning({ id: devices.id });
-
-    if (!updated) throw unauth();
-    await transition(db, DEVICE_MACHINE, {
-      to: 'online',
-      from: 'offline',
-      where: eq(devices.id, device.id),
-      actor: { type: 'runner', id: device.id },
-      source: 'device-heartbeat',
-      returning: ['id'],
-    });
-    const pool = await heartbeatPool(input.pool, device.id);
-
-    const transitioned = await mirrorHeartbeatToRunners(device.id);
-    for (const r of transitioned) {
-      await insertRunnerEvent(db, {
-        runnerId: r.id,
-        projectId: r.project_id,
-        oldStatus: r.old_status,
-        newStatus: 'online',
-        reason: 'device_heartbeat',
-      });
-    }
+    const beat = await recordHeartbeat(
+      device.id,
+      heartbeatPatch({ ...input, gate: gate.report }, new Date()),
+      input.pool,
+    );
+    if (!beat) throw unauth();
 
     if (wasOffline) {
       const { roomManager } = await import('../ws/server.js');
@@ -419,7 +311,7 @@ deviceAuthRoutes.post(
       });
     }
 
-    return c.json({ ok: true, serverTime: new Date().toISOString(), ...gate.ack, ...pool.ack });
+    return c.json({ ok: true, serverTime: new Date().toISOString(), ...gate.ack, ...beat.poolAck });
   },
 );
 
@@ -437,11 +329,7 @@ deviceAuthRoutes.get('/me/plugins', requireDevice(), async (c) => {
   const device = c.get('device');
   if (device.status === 'revoked') throw unauth();
 
-  const rows = await db
-    .select({ slug: projects.slug, agentConfig: projects.agentConfig })
-    .from(runners)
-    .innerJoin(projects, eq(projects.id, runners.projectId))
-    .where(and(eq(runners.deviceId, device.id), eq(runners.type, 'claude-code')));
+  const rows = await deviceProjectAgentConfigs(device.id);
 
   const plugins = unionPluginDesignations(
     rows.map((r) => ({
@@ -518,18 +406,11 @@ deviceAuthRoutes.post(
     const { runnerId } = c.req.valid('param');
     const { status, detail } = c.req.valid('json');
 
-    const mine = and(eq(runners.id, runnerId), eq(runners.deviceId, device.id));
-    const runner = await db.transaction(async (tx) => {
-      await transition(tx, RUNNER_PROVISION_MACHINE, {
-        to: status,
-        where: mine,
-        reason: detail ?? null,
-        actor: { type: 'runner', id: device.id },
-        source: 'provision-status',
-        returning: ['id'],
-      });
-      const [row] = await setRunnerProvisionDetail(tx, mine, detail ?? null, status === 'ready');
-      return row;
+    const runner = await reportProvisionStatus({
+      deviceId: device.id,
+      runnerId,
+      status,
+      detail: detail ?? null,
     });
 
     if (!runner) {

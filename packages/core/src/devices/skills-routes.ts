@@ -1,16 +1,13 @@
-import { and, desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { deviceSkills, skillActivityEvents, skills } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { recordSkillActivityEvent, resolvePacketIdForHash } from '../skills/activity.js';
 import { loadDeviceSkillStatus, resolveRegisteredEffectiveSkills } from '../skills/effective.js';
 import { assertDeviceBoundToProject } from './device-project.js';
+import { applySkillReport, recordSkillSyncFailure } from './service.js';
 import { requireCan } from '../permissions/index.js';
 
 // Skill Studio 4 (ISS-278) — server-driven device skill sync.
@@ -147,14 +144,7 @@ deviceSkillRoutes.post(
     const { skills: reported, pruned } = c.req.valid('json');
     await assertDeviceBoundToProject(device.id, projectId);
 
-    const now = new Date();
-    for (const s of reported) {
-      await applyReportedSkill({ projectId, deviceId: device.id, syncedAt: now, entry: s });
-    }
-
-    for (const name of pruned ?? []) {
-      await recordPrunedSkill({ projectId, deviceId: device.id, name });
-    }
+    await applySkillReport({ projectId, deviceId: device.id, reported, pruned: pruned ?? [] });
 
     return c.json({ upserted: reported.length, pruned: pruned?.length ?? 0 });
   },
@@ -178,204 +168,11 @@ deviceSkillRoutes.post(
     const { error } = c.req.valid('json');
     await assertDeviceBoundToProject(device.id, projectId);
 
-    await db.transaction(async (tx) => {
-      const [last] = await tx
-        .select({ reason: skillActivityEvents.reason })
-        .from(skillActivityEvents)
-        .where(
-          and(
-            eq(skillActivityEvents.eventType, 'device.sync.failed'),
-            eq(skillActivityEvents.projectId, projectId),
-            eq(skillActivityEvents.deviceId, device.id),
-          ),
-        )
-        .orderBy(desc(skillActivityEvents.occurredAt))
-        .limit(1);
-      if (last?.reason === error) return;
-
-      await recordSkillActivityEvent(tx, {
-        eventType: 'device.sync.failed',
-        actor: `runner:${device.id}`,
-        trigger: 'poll',
-        projectId,
-        deviceId: device.id,
-        reason: error,
-        outcome: 'failed',
-      });
-    });
+    await recordSkillSyncFailure({ projectId, deviceId: device.id, error });
 
     return c.json({ ok: true });
   },
 );
-
-async function applyReportedSkill(input: {
-  projectId: string;
-  deviceId: string;
-  syncedAt: Date;
-  entry: {
-    skillId: string;
-    installedHash: string;
-    installedVersion?: number | undefined;
-    observedSha?: string | undefined;
-    shadowedBy?: string | undefined;
-  };
-}): Promise<void> {
-  const { projectId, deviceId, syncedAt, entry } = input;
-  const nextObservedSha = entry.observedSha ?? null;
-  const nextShadowedBy = entry.shadowedBy ?? null;
-
-  await db.transaction(async (tx) => {
-    const [existing] = await tx
-      .select({
-        installedHash: deviceSkills.installedHash,
-        observedSha: deviceSkills.observedSha,
-        shadowedBy: deviceSkills.shadowedBy,
-      })
-      .from(deviceSkills)
-      .where(
-        and(
-          eq(deviceSkills.deviceId, deviceId),
-          eq(deviceSkills.projectId, projectId),
-          eq(deviceSkills.skillId, entry.skillId),
-        ),
-      )
-      .for('update')
-      .limit(1);
-
-    const hashChanged = !existing || existing.installedHash !== entry.installedHash;
-    const observedChanged = existing
-      ? existing.observedSha !== nextObservedSha
-      : nextObservedSha !== null;
-    const shadowChanged = existing
-      ? existing.shadowedBy !== nextShadowedBy
-      : nextShadowedBy !== null;
-
-    await tx
-      .insert(deviceSkills)
-      .values({
-        deviceId,
-        projectId,
-        skillId: entry.skillId,
-        installedHash: entry.installedHash,
-        installedVersion: entry.installedVersion ?? null,
-        syncedAt,
-        observedSha: nextObservedSha,
-        shadowedBy: nextShadowedBy,
-      })
-      .onConflictDoUpdate({
-        target: [deviceSkills.deviceId, deviceSkills.projectId, deviceSkills.skillId],
-        set: {
-          installedHash: entry.installedHash,
-          installedVersion: entry.installedVersion ?? null,
-          syncedAt,
-          observedSha: nextObservedSha,
-          shadowedBy: nextShadowedBy,
-        },
-      });
-
-    const appliedPacketId = await resolvePacketIdForHash(
-      tx,
-      projectId,
-      entry.skillId,
-      entry.installedHash,
-    );
-
-    if (hashChanged) {
-      await recordSkillActivityEvent(tx, {
-        eventType: 'device.skill.applied',
-        actor: `runner:${deviceId}`,
-        trigger: 'poll',
-        projectId,
-        skillId: entry.skillId,
-        deviceId,
-        ...(appliedPacketId ? { packetId: appliedPacketId } : {}),
-        ...(existing?.installedHash !== undefined ? { beforeHash: existing.installedHash } : {}),
-        afterHash: entry.installedHash,
-        outcome: 'ok',
-      });
-    }
-
-    if (nextShadowedBy !== null) {
-      if (shadowChanged || observedChanged) {
-        await recordSkillActivityEvent(tx, {
-          eventType: 'device.skill.shadowed',
-          actor: `runner:${deviceId}`,
-          trigger: 'poll',
-          projectId,
-          skillId: entry.skillId,
-          deviceId,
-          ...(existing?.observedSha ? { beforeHash: existing.observedSha } : {}),
-          ...(nextObservedSha !== null ? { afterHash: nextObservedSha } : {}),
-          deltaSummary: nextShadowedBy,
-          outcome: 'ok',
-        });
-      }
-    } else if (observedChanged || shadowChanged) {
-      await recordSkillActivityEvent(tx, {
-        eventType: 'device.skill.observed',
-        actor: `runner:${deviceId}`,
-        trigger: 'poll',
-        projectId,
-        skillId: entry.skillId,
-        deviceId,
-        ...(appliedPacketId ? { packetId: appliedPacketId } : {}),
-        ...(existing?.observedSha ? { beforeHash: existing.observedSha } : {}),
-        ...(nextObservedSha !== null ? { afterHash: nextObservedSha } : {}),
-        outcome: 'ok',
-      });
-    }
-  });
-}
-
-/**
- * A pruned skill is reported by NAME (the runner has no id for a manifest
- * entry that no longer exists) — resolve it to the project's skill row so the
- * activity event and the stale device_skills row are keyed correctly. Removes
- * the device_skills row (it no longer reflects disk) and the event, in the
- * SAME transaction (§9.11). Best-effort: an unresolvable name (skill deleted
- * entirely, not just unregistered) still gets an event with a null skillId.
- */
-async function recordPrunedSkill(input: {
-  projectId: string;
-  deviceId: string;
-  name: string;
-}): Promise<void> {
-  const [skill] = await db
-    .select({ id: skills.id })
-    .from(skills)
-    .where(
-      and(
-        eq(skills.scope, 'project'),
-        eq(skills.projectId, input.projectId),
-        eq(skills.name, input.name),
-      ),
-    )
-    .limit(1);
-
-  await db.transaction(async (tx) => {
-    if (skill) {
-      await tx
-        .delete(deviceSkills)
-        .where(
-          and(
-            eq(deviceSkills.deviceId, input.deviceId),
-            eq(deviceSkills.projectId, input.projectId),
-            eq(deviceSkills.skillId, skill.id),
-          ),
-        );
-    }
-    await recordSkillActivityEvent(tx, {
-      eventType: 'device.skill.pruned',
-      actor: `runner:${input.deviceId}`,
-      trigger: 'poll',
-      projectId: input.projectId,
-      ...(skill ? { skillId: skill.id } : {}),
-      deviceId: input.deviceId,
-      deltaSummary: input.name,
-      outcome: 'ok',
-    });
-  });
-}
 
 export const deviceSkillStatusRoutes = new Hono<{ Variables: AuthVars }>();
 
