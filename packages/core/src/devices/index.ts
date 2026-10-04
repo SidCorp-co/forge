@@ -5,3 +5,5 @@ export { handleRunnerSessions } from './run-ledger-ws.js';
 export { reapDeadRunSessions } from './run-session-reaper.js';
 export { runDeviceStaleSweep } from './stale-detector.js';
 export { setMaxJobPanes, stampGitCredentialRef } from './writes.js';
+export { residentMasterSql } from './master-session.js';
+export { readRunnerPoolRead } from './pool-read-report.js';

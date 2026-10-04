@@ -5,12 +5,12 @@ import {
   countClaimHeldIssuesByProject,
   type LoopMonitorCoverage,
   loopMonitorCoverage,
-} from '../jobs/loop-monitor-axis.js';
+} from '../jobs/index.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { type BlockerRow, readHealthAggregates } from './health-aggregates.js';
-import { listProjectHeads } from './read.js';
+import { listProjectHeads } from '../projects/index.js';
+import { type BlockerRow, readHealthAggregates } from './project-health.js';
 
 interface ProjectHealthRow {
   /** Project UUID — needed by web-v2 to join the `GET /api/projects` list rows

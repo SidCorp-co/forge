@@ -15,7 +15,7 @@ import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
-import type { TransitionActor } from '../issues/actor-agency.js';
+import type { TransitionActor } from '../issues/index.js';
 import { isRefusal, refusalCodeOf } from '../lib/refusal.js';
 import { logger } from '../observability/logger.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';

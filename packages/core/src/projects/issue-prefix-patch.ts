@@ -6,14 +6,9 @@ import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
-import {
-  type AssignPrefixResult,
-  assignIssuePrefix,
-  type PrefixWriter,
-  retireIssuePrefix,
-} from '../issues/issue-prefix-service.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import type { RefusalError } from '../lib/refusal.js';
+import { type AssignPrefixResult, type PrefixWriter, projectsPorts } from './ports.js';
 import { refuse } from './refuse.js';
 
 async function readProjectName(projectId: string): Promise<string | null> {
@@ -48,6 +43,16 @@ async function issuePrefixRefusal(
   );
 }
 
+/** The project's issue prefix; null sends it back to the legacy `ISS`. The alias it held is NOT
+ *  released — see the guard on `issuePrefixAliases`. */
+async function setProjectIssuePrefix(
+  projectId: string,
+  prefix: string | null,
+  tx: Pick<PrefixWriter, 'update'>,
+): Promise<void> {
+  await tx.update(projects).set({ issuePrefix: prefix }).where(eq(projects.id, projectId));
+}
+
 export async function applyIssuePrefixPatch(
   projectId: string,
   value: string | null,
@@ -55,9 +60,10 @@ export async function applyIssuePrefixPatch(
   dbi: PrefixWriter,
 ): Promise<void> {
   if (value === null || value === '') {
-    await retireIssuePrefix(projectId, dbi);
+    await setProjectIssuePrefix(projectId, null, dbi);
     return;
   }
-  const assigned = await assignIssuePrefix(projectId, value, dbi);
-  if (!assigned.ok) throw await issuePrefixRefusal(assigned, userId);
+  const claimed = await projectsPorts().claimIssuePrefix(projectId, value, dbi);
+  if (!claimed.ok) throw await issuePrefixRefusal(claimed, userId);
+  await setProjectIssuePrefix(projectId, claimed.prefix, dbi);
 }

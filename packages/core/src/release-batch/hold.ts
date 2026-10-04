@@ -12,7 +12,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { releaseHolds } from '../db/schema-release-ledger.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
-import type { IssueCriteriaReport } from '../issues/criteria-verdicts.js';
+import type { IssueCriteriaReport } from '../issues/index.js';
 import { logger } from '../observability/logger.js';
 import { type ServingReading, servingClause } from './serving-reading.js';
 

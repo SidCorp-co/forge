@@ -113,6 +113,21 @@ export const PARKABLE_STATUSES: readonly IssueStatus[] = [
 /** The issue is over, whichever exit it took. */
 export const ISSUE_TERMINAL_STATUSES: readonly IssueStatus[] = ["closed", "dropped"];
 
+/** The status at which an autonomous project's driver is handed the issue. */
+export const AUTONOMOUS_ENTRY_STATUS: IssueStatus = "open";
+
+/** The one park the driver may enter, and the only one a human answer restarts. */
+export const AUTONOMOUS_QUESTION_STATUS: IssueStatus = "needs_info";
+
+/** Every status an autonomous project's issue stands at while the driver works it. */
+export const AUTONOMOUS_DRIVER_STATUSES: readonly IssueStatus[] = [
+	"open",
+	"in_progress",
+	"needs_info",
+	"closed",
+	"dropped",
+] as const;
+
 /** What a master may start work from: the backlog, the plan checkpoint, a reopen. */
 export const TAKEABLE_STATUSES: readonly IssueStatus[] = ["open", "approved", "reopen"];
 

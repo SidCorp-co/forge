@@ -7,9 +7,10 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
-import { issueDisplayIds } from '../issues/display-ids.js';
+import { issueDisplayIds } from '../issues/index.js';
 import { agrees } from '../lib/plural.js';
 import type { RefusalError } from '../lib/refusal.js';
+import { releaseBatchPorts } from './ports.js';
 import { refuseRelease } from './refuse.js';
 import { closedOnRoster, runRecordedPromotion } from './releasing-recovery.js';
 
@@ -65,14 +66,12 @@ export async function stampAbort(
     roster: held ? 'held' : 'returning',
     closed: null,
   };
-  await db.execute(sql`
-    UPDATE pipeline_runs
-    SET metadata = coalesce(metadata, '{}'::jsonb) || jsonb_build_object('abort',
-          ${JSON.stringify(record)}::jsonb
-          || jsonb_build_object('closed', coalesce(metadata -> 'abort' -> 'closed', 'null'::jsonb))),
-        updated_at = now()
-    WHERE id = ${runId}
-  `);
+  await releaseBatchPorts().writeRunMetadata(runId, {
+    value: sql`coalesce(metadata, '{}'::jsonb) || jsonb_build_object('abort',
+      ${JSON.stringify(record)}::jsonb
+      || jsonb_build_object('closed', coalesce(metadata -> 'abort' -> 'closed', 'null'::jsonb)))`,
+    touch: true,
+  });
   return record.id;
 }
 
@@ -87,17 +86,20 @@ export async function settleAbortStamp(
   settled: { roster: 'held' | 'released'; closed: string[] },
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    await tx.execute(sql`
-      UPDATE pipeline_runs
-      SET metadata = jsonb_set(metadata, '{abort}', (metadata -> 'abort') || jsonb_build_object(
-            'roster', ${settled.roster}::text,
-            'closed', (SELECT coalesce(jsonb_agg(DISTINCT id), '[]'::jsonb) FROM jsonb_array_elements_text(
-              (CASE WHEN jsonb_typeof(metadata -> 'abort' -> 'closed') = 'array'
-                    THEN metadata -> 'abort' -> 'closed' ELSE '[]'::jsonb END)
-              || ${JSON.stringify(settled.closed)}::jsonb) AS t(id)))),
-          updated_at = now()
-      WHERE id = ${runId} AND metadata -> 'abort' ->> 'id' = ${stampId}
-    `);
+    await releaseBatchPorts().writeRunMetadata(
+      runId,
+      {
+        value: sql`jsonb_set(metadata, '{abort}', (metadata -> 'abort') || jsonb_build_object(
+          'roster', ${settled.roster}::text,
+          'closed', (SELECT coalesce(jsonb_agg(DISTINCT id), '[]'::jsonb) FROM jsonb_array_elements_text(
+            (CASE WHEN jsonb_typeof(metadata -> 'abort' -> 'closed') = 'array'
+                  THEN metadata -> 'abort' -> 'closed' ELSE '[]'::jsonb END)
+            || ${JSON.stringify(settled.closed)}::jsonb) AS t(id))))`,
+        when: sql`${pipelineRuns.metadata} -> 'abort' ->> 'id' = ${stampId}`,
+        touch: true,
+      },
+      tx,
+    );
     await rewordStoredAbort(runId, tx);
   });
 }
@@ -120,15 +122,17 @@ export async function rewordStoredAbort(runId: string, executor?: Tx): Promise<v
   if (row?.code !== ABORTED_CODE || row.reason !== RETURNING_SENTENCE) return;
   const reason = abortedSentence(await abortedFacts(runId, executor));
   if (reason === row.reason) return;
-  await executor.execute(sql`
-    UPDATE pipeline_runs
-    SET metadata = jsonb_set(metadata, '{finish}', (metadata -> 'finish') || jsonb_build_object(
-          'refusal', (metadata -> 'finish' -> 'refusal') || jsonb_build_object('reason', ${reason}::text),
-          'version', ((metadata -> 'finish' ->> 'version')::int + 1),
-          'updatedAt', ${new Date().toISOString()}::text)),
-        updated_at = now()
-    WHERE id = ${runId}
-  `);
+  await releaseBatchPorts().writeRunMetadata(
+    runId,
+    {
+      value: sql`jsonb_set(metadata, '{finish}', (metadata -> 'finish') || jsonb_build_object(
+        'refusal', (metadata -> 'finish' -> 'refusal') || jsonb_build_object('reason', ${reason}::text),
+        'version', ((metadata -> 'finish' ->> 'version')::int + 1),
+        'updatedAt', ${new Date().toISOString()}::text))`,
+      touch: true,
+    },
+    executor,
+  );
 }
 
 const RETURNING_SENTENCE =

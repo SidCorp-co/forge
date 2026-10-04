@@ -5,10 +5,11 @@ import { and, eq, sql } from 'drizzle-orm';
 import { postIssueNoticeOnce } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
-import type { TransitionActor } from '../issues/actor-agency.js';
-import { issueArchiveSide } from '../issues/archive.js';
+import type { TransitionActor } from '../issues/index.js';
+import { issueArchiveSide } from '../issues/index.js';
 import { logger } from '../observability/logger.js';
 import type { ReleaseVerification } from './plan.js';
+import { releaseBatchPorts } from './ports.js';
 
 /** The line a reader, or a query, finds an unverified close by. One per issue per release run. */
 export function unverifiedMarker(runId: string): string {
@@ -77,10 +78,8 @@ export async function stampRunVerification(
   runId: string,
   kind: ReleaseVerification,
 ): Promise<void> {
-  await db
-    .update(pipelineRuns)
-    .set({
-      metadata: sql`coalesce(${pipelineRuns.metadata}, '{}'::jsonb) || ${JSON.stringify({ verification: kind })}::jsonb`,
-    })
-    .where(eq(pipelineRuns.id, runId));
+  await releaseBatchPorts().writeRunMetadata(runId, {
+    merge: { verification: kind },
+    touch: false,
+  });
 }

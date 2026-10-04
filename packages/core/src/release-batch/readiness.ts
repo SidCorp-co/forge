@@ -1,8 +1,7 @@
-import { selectAllSlugsFromKnowledge } from '../knowledge/service.js';
-import type { Promotion } from '../project-config/release-path.js';
-import type { DeploymentTrigger } from '../project-config/schema.js';
-import { readDeclaredSource } from '../project-config/source.js';
-import { missingProjectKnowledge } from '../projects/autonomous-contract.js';
+import { selectAllSlugsFromKnowledge } from '../knowledge/index.js';
+import type { DeploymentTrigger, Promotion } from '../project-config/index.js';
+import { readDeclaredSource } from '../project-config/index.js';
+import { missingProjectKnowledge } from '../projects/index.js';
 import {
   collectReleaseBlockers,
   type ReleaseBlocker,

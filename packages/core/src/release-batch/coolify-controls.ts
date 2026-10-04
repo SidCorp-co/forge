@@ -13,6 +13,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { DEPLOY_CONFIRM_WINDOW_MS } from '@forge/contracts/pipeline';
 import {
   buildClient,
   CoolifyApiError,
@@ -29,7 +30,6 @@ import {
   recordDelivery,
   updateDelivery,
 } from '../integrations/index.js';
-import { DEPLOY_CONFIRM_WINDOW_MS } from '../pipeline/deploy-confirmations.js';
 import { liveActionNeedsHumanConfirm } from '../pipeline/release-coolify.js';
 import {
   activeCoolifyIntegrations,

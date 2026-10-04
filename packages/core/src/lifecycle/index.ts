@@ -1,2 +1,1 @@
-export type { KernelActor } from './transition.js';
-export { movedRow, transition } from './transition.js';
+export { type KernelActor, movedRow, transition } from './transition.js';

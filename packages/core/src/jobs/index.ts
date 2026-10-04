@@ -1,6 +1,13 @@
 export { resolvePipelineContext } from './active-job-context.js';
+export { syncAgentSessionLifecycle } from './agent-session-link.js';
 export { countInFlightByRunner } from './in-flight.js';
 export { appendJobEvent } from './intervention-event.js';
+export { recordSecretResolve, rememberHandedOut } from './job-secret-scrub.js';
+export {
+  countClaimHeldIssuesByProject,
+  type LoopMonitorCoverage,
+  loopMonitorCoverage,
+} from './loop-monitor-axis.js';
 export {
   holdQueuedJob,
   releaseHoldsOf,

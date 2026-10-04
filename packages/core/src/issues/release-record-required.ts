@@ -7,11 +7,6 @@ export interface ReleaseRecordRefusal {
   details: Record<string, unknown>;
 }
 
-export const RELEASE_RECORD_REMEDY =
-  'Set `releaseNotes` first: `{ section, userFacing }` with the one plain-language line a ' +
-  "user would read, or `{ section: 'Skip', userFacing: '-' }` when the change has no " +
-  'user-facing half.';
-
 /**
  * Which of these issues have no release note. The shared read behind both doors.
  */

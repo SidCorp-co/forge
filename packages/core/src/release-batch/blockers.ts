@@ -9,17 +9,15 @@ import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { issues } from '../db/schema.js';
 import { projectConfigDocuments } from '../db/schema-project-config.js';
-import { contractProviderShortfalls } from '../ecosystem/waits/live.js';
-import { issueDisplayIds } from '../issues/display-ids.js';
 import {
+  issueDisplayIds,
+  issuesMissingReleaseRecord,
   landingShapeOf,
   landingShortfall,
   requireLandingShape,
-} from '../issues/landing-evidence.js';
-import { issuesMissingReleaseRecord } from '../issues/release-record-required.js';
+} from '../issues/index.js';
 import { logger } from '../observability/logger.js';
-import { releaseIneligibleRunners } from '../runners/ineligible.js';
-import { onlineCapableDeviceIds } from '../runners/select.js';
+import { onlineCapableDeviceIds, releaseIneligibleRunners } from '../runners/index.js';
 import { attempt, blocker, evaluate } from './blocker-kit.js';
 import {
   type CollectReleaseBlockersOptions,
@@ -41,6 +39,7 @@ import {
 import { claimConflictDetails, readClaimConflicts } from './claim-conflicts.js';
 import { criteriaHold } from './criteria-hold.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
+import { releaseBatchPorts } from './ports.js';
 import { getActiveReleaseBatch } from './queries.js';
 
 export * from './blocker-sentences.js';
@@ -168,7 +167,7 @@ async function rosterBlockers(
   }
   const notLive = await evaluate(
     'contract-provider-live',
-    async () => await contractProviderShortfalls(issueIds),
+    async () => await releaseBatchPorts().contractProviderShortfalls(issueIds),
     out,
   );
   if (notLive && notLive.length > 0) {

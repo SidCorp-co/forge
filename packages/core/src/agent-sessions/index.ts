@@ -1,5 +1,10 @@
 export { runCanonicalBackfillOnce } from './backfill-canonical-transcripts.js';
-export { createChatSessionRow, dispatchChatTurn } from './chat-turn.js';
+export { createChatSessionRow, dispatchChatTurn, noClaudeClient } from './chat-turn.js';
+export {
+  authorizeInteractiveTurn,
+  dispatchInteractiveTurn,
+  resolveInteractiveClient,
+} from './interactive-credential.js';
 export {
   agentRefusalText,
   mintSessionCredential,

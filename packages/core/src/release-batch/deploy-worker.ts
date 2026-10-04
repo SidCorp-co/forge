@@ -1,3 +1,4 @@
+import { DEPLOY_CONFIRM_WINDOW_MS } from '@forge/contracts/pipeline';
 import { probeHealth } from '../integrations/coolify/index.js';
 import {
   type DeployDispatchOutcome,
@@ -6,7 +7,6 @@ import {
 } from '../integrations/index.js';
 import { logger } from '../observability/logger.js';
 import {
-  DEPLOY_CONFIRM_WINDOW_MS,
   readDeployHolds,
   replaceDispatchHoldWithTargets,
 } from '../pipeline/deploy-confirmations.js';

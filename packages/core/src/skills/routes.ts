@@ -186,6 +186,7 @@ skillRegisterRoutes.delete(
 export { skillActivityRoutes } from './activity-routes.js';
 export { skillCrudRoutes } from './crud-routes.js';
 export { divergenceCharterRoutes } from './divergence-charter-routes.js';
+export { projectOnboardRoutes } from './onboard-routes.js';
 export { skillPinRoutes } from './pin-routes.js';
 export { reconcileRoutes } from './reconcile-routes.js';
 export { skillSmokeVerifyRoutes } from './smoke-verify-routes.js';

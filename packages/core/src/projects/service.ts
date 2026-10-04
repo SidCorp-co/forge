@@ -8,7 +8,6 @@
  */
 
 import type { ProjectPermission } from '@forge/contracts/permissions';
-import { RUNNER_MACHINE, RUNNER_PROVISION_MACHINE } from '@forge/contracts/runner-machine';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
@@ -21,24 +20,16 @@ import {
   projectInvitations,
   projectMembers,
   projects,
-  runners,
 } from '../db/schema.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
-import { type KernelActor, transition } from '../lifecycle/transition.js';
-import { emitEvent } from '../outbox/index.js';
 import {
   addProjectMembers,
   regrantAgentCredentials,
   removeProjectMember,
   updateProjectMember,
 } from '../permissions/index.js';
-import { DEFAULT_POLICY } from '../project-config/default-policy.js';
-import { readDeclaredSource } from '../project-config/source.js';
-import { seedProjectPolicy } from '../project-config/store.js';
-import { upsertDeviceRunner } from '../runners/index.js';
-import { insertRunnerEvent } from '../runners/runner-events.js';
-import { defaultRunnerCapabilities } from '../runners/select.js';
+import { readDeclaredSource, seedProjectPolicy } from '../project-config/index.js';
 import { type AgentConfigKeyPatch, patchAgentConfigKeys } from './agent-config.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { PATCHED_PROJECT } from './projections.js';
@@ -111,7 +102,7 @@ export async function createProject(input: NewProject) {
       await addProjectMembers(tx, [
         { userId: input.createdBy, projectId: project.id, role: 'admin' },
       ]);
-      await seedProjectPolicy(tx, project.id, DEFAULT_POLICY, input.createdBy);
+      await seedProjectPolicy(tx, project.id, input.createdBy);
       return project;
     });
   } catch (err) {
@@ -176,15 +167,6 @@ export async function readIssueBranchInputs(issueId: string, projectId: string) 
     .where(and(eq(issues.id, issueId), eq(issues.projectId, projectId)))
     .limit(1);
   return row ?? null;
-}
-
-/** The project's issue prefix; null sends it back to the legacy `ISS`. */
-export async function setProjectIssuePrefix(
-  projectId: string,
-  prefix: string | null,
-  tx: Pick<Tx, 'update'> = db,
-): Promise<void> {
-  await tx.update(projects).set({ issuePrefix: prefix }).where(eq(projects.id, projectId));
 }
 
 /** The slug and name the project document declares, projected onto the row; false when no row. */
@@ -348,72 +330,4 @@ export async function pickProjectGitKey(
 /** Forget the project's picked git key. */
 export async function clearProjectGitKey(projectId: string): Promise<void> {
   await db.delete(projectGitCredentials).where(eq(projectGitCredentials.projectId, projectId));
-}
-
-/**
- * Bind a device to the project as its claude-code runner: upsert the row, re-queue provisioning,
- * take the device's liveness, then audit the bind as the runner's first status event. Null when
- * the upsert returned no row.
- */
-export async function bindDeviceRunner(input: {
-  projectId: string;
-  device: { id: string; name: string; status: string; lastSeenAt: Date | null };
-  capabilities: Record<string, unknown> | undefined;
-  checkout: { repoPath?: string | null | undefined; branch?: string | null | undefined };
-  actor: KernelActor;
-}) {
-  const status: 'online' | 'offline' =
-    input.device.status === 'online' && input.device.lastSeenAt ? 'online' : 'offline';
-  const now = new Date();
-  const runner = await db.transaction(async (tx) => {
-    const row = await upsertDeviceRunner(tx, {
-      projectId: input.projectId,
-      deviceId: input.device.id,
-      name: input.device.name,
-      capabilities: defaultRunnerCapabilities('claude-code', input.capabilities),
-      capabilitiesSent: input.capabilities,
-      checkout: input.checkout,
-      status,
-      now,
-    });
-    if (!row) return null;
-    // A re-bind re-queues provisioning (path or url may have changed); an operator's drain or
-    // disable is left standing.
-    await transition(tx, RUNNER_PROVISION_MACHINE, {
-      to: 'queued',
-      where: eq(runners.id, row.id),
-      reason: 'bind',
-      actor: input.actor,
-      source: 'runner-bind',
-      returning: ['id'],
-    });
-    const live = await transition(tx, RUNNER_MACHINE, {
-      to: status,
-      from: status === 'online' ? 'offline' : 'online',
-      where: eq(runners.id, row.id),
-      reason: 'bind',
-      actor: input.actor,
-      source: 'runner-bind',
-      returning: ['id'],
-    });
-    if (row.deviceId) {
-      await emitEvent(tx, 'runner.provisionRequested', {
-        projectId: row.projectId,
-        deviceId: row.deviceId,
-        runnerId: row.id,
-      });
-    }
-    return live.rows.length > 0 ? { ...row, status } : row;
-  });
-  if (!runner) return null;
-
-  // ISS-381 (2.3) — an event per bind is informative, unlike the per-tick heartbeat site.
-  await insertRunnerEvent(db, {
-    runnerId: runner.id,
-    projectId: runner.projectId,
-    oldStatus: null,
-    newStatus: runner.status,
-    reason: 'bind',
-  });
-  return runner;
 }
