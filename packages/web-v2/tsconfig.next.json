@@ -15,12 +15,7 @@
     "incremental": true,
     "plugins": [{ "name": "next" }],
     "paths": {
-      "@/*": ["./src/*"],
-      "@forge/contracts": ["../contracts/src/index.ts"],
-      "@forge/contracts/*": ["../contracts/src/*"],
-      "@forge/core/public": ["../core/src/public.ts"],
-      "@forge/core/admin-types": ["../core/src/admin/types.ts"],
-      "@forge/observability": ["../observability/src/index.ts"]
+      "@/*": ["./src/*"]
     }
   },
   "include": [

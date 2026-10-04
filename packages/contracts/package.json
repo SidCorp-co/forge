@@ -198,7 +198,7 @@
     "vitest": "^5.0.2"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.emit.json && tsc --noEmit -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.emit.json --noCheck",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   }

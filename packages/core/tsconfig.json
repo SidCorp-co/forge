@@ -18,8 +18,16 @@
     "incremental": true,
     "tsBuildInfoFile": "node_modules/.cache/tsc/typecheck.tsbuildinfo",
     "outDir": "dist",
+    "rootDir": "..",
     "declaration": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "paths": {
+      "@forge/contracts": ["../contracts/src/index.ts"],
+      "@forge/contracts/*": ["../contracts/src/*"],
+      "@forge/core/public": ["../core/src/public.ts"],
+      "@forge/core/admin-types": ["../core/src/admin/types.ts"],
+      "@forge/observability": ["../observability/src/index.ts"]
+    }
   },
   "include": [
     "src/**/*",
