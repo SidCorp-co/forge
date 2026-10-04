@@ -15,6 +15,7 @@ import {
   type FeedbackSummary,
   type FeedbackView,
 } from '@forge/contracts/feedback';
+import { requirementKey } from '@forge/contracts/requirements';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import { and, asc, count, desc, eq, ilike, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -30,17 +31,14 @@ import { agentQuestions } from '../db/schema-questions.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { isUuid } from '../issues/issue-route-ref.js';
-import { findIssueById } from '../issues/read-service.js';
+import type { ActorAgency } from '../issues/index.js';
+import { activeIssuePrefix, findIssueById, isUuid } from '../issues/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { actorFor, holds, projectResource, requireCan } from '../permissions/index.js';
-import { requirementKey, rowIn as requirementRowIn } from '../requirements/read.js';
-import { deliveredAmong } from '../requirements/standing-read.js';
-import { userNames } from '../workflows/service.js';
+import { deliveredAmong, rowIn as requirementRowIn } from '../requirements/index.js';
+import { userNames } from '../workflows/index.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
 import { feedbackIdsOfRequirement, NO_FEEDBACK, sourceOf } from './relations.js';
 import { type FeedbackRefusal, searchWithheldRefusal } from './rules.js';
@@ -515,7 +513,8 @@ export async function detailAs(
       openSuggestions: open?.n ?? 0,
       can: {
         triage:
-          holds(facts, 'feedback.approve') && ['new', 'triaged', 'reopened'].includes(summary.phase),
+          holds(facts, 'feedback.approve') &&
+          ['new', 'triaged', 'reopened'].includes(summary.phase),
         route:
           summary.phase === 'triaged' &&
           summary.case !== null &&

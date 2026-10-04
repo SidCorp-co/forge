@@ -3,6 +3,7 @@
  * what an issue reads back — whether its requirement changed since its plan was written.
  */
 
+import { requirementKey } from '@forge/contracts/requirements';
 import { and, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -15,13 +16,13 @@ import { projectWorkflows } from '../db/schema-workflows.js';
 import {
   adoptIssuePlan,
   linkIssueToRequirement,
+  resolveIssueRouteRef,
   unlinkIssueFromRequirement,
 } from '../issues/index.js';
-import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { plannedBaselineSeqIn } from './baselines.js';
 import { planDriftOf } from './plan-drift.js';
-import { notFound, type RequirementActor, requirementKey, rowIn, signerRefusal } from './read.js';
+import { notFound, type RequirementActor, rowIn, signerRefusal } from './read.js';
 import { linkIssueRefusal, refuseRequirement } from './rules.js';
 import { answer, inTx, lockRequirements, type RequirementOutcome } from './service.js';
 

@@ -17,24 +17,19 @@ import {
   feedbackVerifyRequestSchema,
   listFeedbackQuerySchema,
   PROMOTE_AGENT_REPORT_SHAPE,
-  PROPOSE_FEEDBACK_TRIAGE_SHAPE,
   promoteAgentReportRequestSchema,
-  proposeFeedbackTriageRequestSchema,
 } from '@forge/contracts/feedback';
-import type { SuggestionResponse } from '@forge/contracts/suggestions';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { createSuggestion } from '../suggestions/service.js';
 import { addAttachment, askClarification, attachmentBytes } from './attachments.js';
 import { similarFeedbackAs } from './embeddings.js';
 import { promoteAgentReport } from './promote.js';
-import { detailAs, type FeedbackActor, listFeedbackAs, rowIn } from './read.js';
+import { detailAs, type FeedbackActor, listFeedbackAs } from './read.js';
 import {
   createFeedback,
   type FeedbackOutcome,
@@ -167,32 +162,6 @@ feedbackRoutes.post(
         channel: 'web',
       }),
     );
-  },
-);
-
-feedbackRoutes.post(
-  '/:id/feedback/:fb/triage-suggestions',
-  itemParam,
-  strictBody(proposeFeedbackTriageRequestSchema, PROPOSE_FEEDBACK_TRIAGE_SHAPE),
-  async (c) => {
-    const { id, fb } = c.req.valid('param');
-    const actor = actorOf(c);
-    const body = c.req.valid('json');
-    const row = await rowIn(db, id, fb);
-    const outcome = await createSuggestion({
-      projectId: id,
-      actor,
-      producerKind: actor.agency === 'agent' ? 'agent' : 'person',
-      producerId: actor.userId,
-      kind: 'feedback_triage',
-      target: { feedback: row.id },
-      baseRevision: null,
-      payload: body.triage,
-      model: body.model ?? null,
-    });
-    if (!outcome.ok) return refused(c, outcome.refusals, 'FEEDBACK_REFUSED');
-    const answerBody: SuggestionResponse = { suggestion: outcome.suggestion };
-    return c.json(answerBody, 201);
   },
 );
 

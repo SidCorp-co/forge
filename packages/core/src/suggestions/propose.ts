@@ -12,11 +12,17 @@ import {
 import { and, eq, ne } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { nearestFeedbackOf } from '../feedback/embeddings.js';
+import { nearestFeedbackOf } from '../feedback/index.js';
 import type { Refusal } from '../lib/refusal.js';
-import { movedRow, transition } from '../lifecycle/transition.js';
-import { actorFor, permissionFactsOf, permissionRefusalFor, projectResource, requireCan } from '../permissions/index.js';
-import { designNodesIn, nodeSetRefusals } from '../workflows/node-refs.js';
+import { movedRow, transition } from '../lifecycle/index.js';
+import {
+  actorFor,
+  permissionFactsOf,
+  permissionRefusalFor,
+  projectResource,
+  requireCan,
+} from '../permissions/index.js';
+import { designNodesIn, nodeSetRefusals } from '../workflows/index.js';
 import { breakdownGuardIn } from './breakdown.js';
 import {
   headOf,

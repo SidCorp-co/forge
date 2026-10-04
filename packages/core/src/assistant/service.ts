@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { requirementKey } from '@forge/contracts/requirements';
 import { and, eq } from 'drizzle-orm';
 import { resolveProjectHandle } from '../conversations/handles.js';
 import { assertPersonReachesScope, personLabel, settleShape } from '../conversations/membership.js';
@@ -8,7 +9,7 @@ import { getConversation, openConversationIn } from '../conversations/store.js';
 import { db } from '../db/client.js';
 import { conversationParticipants, conversationPins } from '../db/schema-conversations.js';
 import { assistantSpeakerLinks } from '../db/schema-speaker-links.js';
-import { requirementKey, rowIn } from '../requirements/read.js';
+import { rowIn } from '../requirements/read.js';
 import { withMembershipLock } from './conversation-access.js';
 import type { SpeakerProfile } from './identity/directory.js';
 import { requirementRoomOf } from './read.js';

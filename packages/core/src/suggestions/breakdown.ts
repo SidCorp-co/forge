@@ -4,6 +4,7 @@
  * edged and linked as the builds of the designs the requirement's baseline pins.
  */
 
+import { requirementKey } from '@forge/contracts/requirements';
 import {
   BREAKDOWN_ISSUE_DEFAULTS,
   SUGGESTION_PAYLOADS,
@@ -14,17 +15,19 @@ import type { Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { requirementCriteria } from '../db/schema-requirements.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
-import { insertIssueRow } from '../issues/create-service.js';
 import { putCriteria } from '../issues/criteria/store.js';
-import { activeIssuePrefix, heldIssuePrefixes } from '../issues/issue-prefix-read.js';
-import { isUuid } from '../issues/issue-route-ref.js';
-import { type PendingIssueRelation, writeIssueRelations } from '../issues/relations-service.js';
+import {
+  activeIssuePrefix,
+  heldIssuePrefixes,
+  insertIssueRow,
+  isUuid,
+  type PendingIssueRelation,
+} from '../issues/index.js';
+import { writeIssueRelations } from '../issues/relations-service.js';
 import { formatIssueRef, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import type { Refusal } from '../lib/refusal.js';
-import { latestBaselineIn } from '../requirements/baselines.js';
-import { requirementKey, rowIn } from '../requirements/read.js';
-import { linkIssueRefusal } from '../requirements/rules.js';
-import { linkBuild } from '../workflows/store.js';
+import { latestBaselineIn, linkIssueRefusal, rowIn } from '../requirements/index.js';
+import { linkBuild } from '../workflows/index.js';
 import type { AcceptChannel, EffectWritten } from './effects.js';
 import { type Row, type SuggestionActor, targetOfRow } from './read.js';
 import {

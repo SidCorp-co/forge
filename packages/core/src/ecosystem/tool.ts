@@ -1,3 +1,4 @@
+import { repoPath } from '@forge/contracts/repo-path';
 import { and, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -26,7 +27,6 @@ import {
   readLinkAs,
   recordView,
 } from './link-read.js';
-import { repoPath } from './link-schema.js';
 import {
   createBuilderRun,
   createLink,

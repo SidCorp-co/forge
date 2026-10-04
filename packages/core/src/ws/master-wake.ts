@@ -169,6 +169,13 @@ export function registerMasterWakeSubscribers(): void {
     },
   });
 
+  consume('workflow.designDecided', {
+    name: 'master-wake',
+    handle: async (p) => {
+      await wakeMastersForDesign(p);
+    },
+  });
+
   // cm:guard only a person's comment wakes: a master's own reply is agent-authored, so it can never
   // wake the master that wrote it, whatever status the issue is at.
   consume('comment.created', {

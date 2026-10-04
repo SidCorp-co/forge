@@ -534,7 +534,7 @@ numbered 1..n.
 
 - **Shape.** A human key reads `<PREFIX>-<n>`. `n` is an `integer` `<x>_seq` column, unique per
   `(project_id, <x>_seq)`.
-- **Format and resolve.** A formatter builds the key (`packages/core/src/requirements/read.ts:requirementKey`,
+- **Format and resolve.** A formatter builds the key (`packages/contracts/src/requirements.ts:requirementKey`,
   `packages/core/src/lib/issue-ref.ts:formatIssueRef`). `rowIn` resolves a uuid, a key or a bare
   `n`, and answers 404 naming the ref (`packages/core/src/requirements/read.ts:rowIn`).
 - **Allocation.** `max(seq)+1` inside the entity's advisory-locked transaction

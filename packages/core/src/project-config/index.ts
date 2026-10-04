@@ -1,3 +1,10 @@
 export { setBindingInboundSecret } from './binding-store.js';
+export type { ApiRefusal } from './documents.js';
+export { isRecord, parseVersionedDocument, staleBase } from './documents.js';
 export { announceIntegrationChanged } from './integration-changed.js';
+export { emitJsonSchema } from './json-schema.js';
+export type { ProjectDocument } from './schema.js';
+export { STOREFRONT_PROVIDERS } from './schema.js';
+export type { WriteOutcome } from './service.js';
+export { readProjectConfig, readProjectDocument, writeProjectConfig } from './service.js';
 export { readDeclaredSource } from './source.js';

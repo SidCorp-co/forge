@@ -4,6 +4,7 @@
  * (`embeddings/item-writer.ts`), which applies the project's data policy.
  */
 
+import { requirementKey } from '@forge/contracts/requirements';
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
@@ -20,7 +21,6 @@ import {
 import { embeddingsConfigured, embedWithModel } from '../integrations/embeddings/index.js';
 import { dataPolicyOf, type EgressSurface, egressAt, egressText } from '../lib/data-egress.js';
 import { logger } from '../observability/logger.js';
-import { requirementKey } from './read.js';
 
 export { EMBEDDING_PROVIDER_NOT_CONFIGURED };
 

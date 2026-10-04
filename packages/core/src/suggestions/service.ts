@@ -15,19 +15,24 @@ import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
 import {
-  flushIssueRelationEffects,
+  activeIssuePrefix,
   type PendingIssueRelation,
-  writeIssueRelations,
-} from '../issues/relations-service.js';
+  resolveIssueRouteRef,
+  TransitionError,
+  transitionIssueStatus,
+} from '../issues/index.js';
+import { flushIssueRelationEffects, writeIssueRelations } from '../issues/relations-service.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
-import { type KernelActor, movedRow, transition } from '../lifecycle/transition.js';
-import { actorFor, permissionRefusalFor, projectResource, requireCan } from '../permissions/index.js';
-import { lockRequirements } from '../requirements/service.js';
+import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';
+import {
+  actorFor,
+  permissionRefusalFor,
+  projectResource,
+  requireCan,
+} from '../permissions/index.js';
+import { lockRequirements } from '../requirements/index.js';
 import { type AcceptChannel, type Effect, type EffectWritten, writeEffect } from './effects.js';
 import {
   headOf,

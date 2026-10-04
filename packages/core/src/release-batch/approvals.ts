@@ -1,4 +1,4 @@
-import type { ReleaseApprovalView } from '@forge/contracts/releases';
+import { type ReleaseApprovalView, releaseApprovalRequired } from '@forge/contracts/releases';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
@@ -235,8 +235,7 @@ export async function decideApproval(input: {
 
 /** `release.approval.required` of the project document; a project with no document requires none. */
 export async function approvalRequired(projectId: string): Promise<boolean> {
-  const held = await readProjectDocument(projectId);
-  return held?.document.release?.approval.required === true;
+  return releaseApprovalRequired((await readProjectDocument(projectId))?.document);
 }
 
 // cm:guard an attempt on a run whose latest request is pending or returned is refused: the attempts of a release run are its production acts, and approval is what lets the master make them

@@ -2,7 +2,7 @@ import {
   projectWorkflowTemplateSchema,
   WORKFLOW_TEMPLATE_SCHEMA_ID,
 } from '@forge/contracts/workflow-templates';
-import { emitJsonSchema } from '../project-config/json-schema.js';
+import { emitJsonSchema } from '../project-config/index.js';
 import {
   WORKFLOW_SCHEMA_ID,
   WORKFLOW_V2_SCHEMA_ID,

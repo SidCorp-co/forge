@@ -13,9 +13,9 @@ import { sql } from 'drizzle-orm';
 import { postIssueNotice } from '../comments/index.js';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
-import { transitionIssueStatus } from '../issues/apply-transition.js';
+import { transitionIssueStatus } from '../issues/index.js';
 import { logger } from '../observability/logger.js';
-import { wakeMastersForDesign } from '../ws/master-wake.js';
+import { emitEvent } from '../outbox/index.js';
 import type { DesignDecision, DesignStatus } from './design.js';
 import type { WorkflowWriter } from './service.js';
 
@@ -44,7 +44,7 @@ export async function settleDesignIssue(input: {
     input.decision === 'return'
       ? await handBack(input)
       : { issueId: input.designIssueId, action: 'none', status: null };
-  await wakeMastersForDesign({
+  await emitEvent(db, 'workflow.designDecided', {
     projectId: input.projectId,
     workflowId: input.workflowId,
     decision: input.decision,

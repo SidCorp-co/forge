@@ -5,10 +5,10 @@ import {
 } from '@forge/contracts/workflow-templates';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
+import type { ActorAgency } from '../issues/index.js';
 import { peopleOf } from '../lib/people.js';
-import { staleBase } from '../project-config/documents.js';
-import { readProjectDocument } from '../project-config/service.js';
+import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
+import { readProjectDocument, staleBase } from '../project-config/index.js';
 import {
   designApproverRefusal,
   designFingerprint,
@@ -38,7 +38,6 @@ import {
   workflowsOf,
 } from './store.js';
 import { type ProjectDesign, type ProjectDesigns, projectDesignOf } from './template-check.js';
-import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 
 export interface WorkflowWriter {
   userId: string;
@@ -109,7 +108,12 @@ const templateFor = (doc: WorkflowWrite, templates: readonly WorkflowTemplate[])
   doc.version === 2 ? findTemplate(templates, doc.template) : null;
 
 export async function assertWriter(writer: WorkflowWriter, projectId: string): Promise<void> {
-  await requireCan(actorFor(writer.userId, writer.agency), 'workflow-designs.write', projectResource(projectId), 'writing a workflow');
+  await requireCan(
+    actorFor(writer.userId, writer.agency),
+    'workflow-designs.write',
+    projectResource(projectId),
+    'writing a workflow',
+  );
 }
 
 export async function createWorkflow(input: {

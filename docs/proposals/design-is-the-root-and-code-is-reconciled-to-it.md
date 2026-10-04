@@ -237,7 +237,7 @@ Upcoming steps are recommended **rewrite**, which here means building the node t
 | `drafted` | Wrong | data | `requirements/service.ts:writeRevision` | **keep**: The row is the record and nothing consumes the event; revise the design to say so (one revision for the four event nodes). |
 | `fb-case` | Wrong | behaviour, wiring | `feedback/standing.ts:phaseOf` | **rewrite** (due): Threshold reached; build the case the design draws, or the orchestrator revises the design to make the FB-n row the case. |
 | `fb-filed` | Wrong | data | `feedback/service.ts:createFeedback` | **keep**: Same as drafted. |
-| `impact` | Wrong | behaviour, data, wiring | `requirements/rules.ts:changedSincePlan` | **rewrite** (due): Differs in behaviour, data and wiring; delete the flag-only code and the second computation, build impact on read with the gate the design draws. |
+| `impact` | Wrong | behaviour, data, wiring | `packages/contracts/src/requirements.ts:changedSincePlan` | **rewrite** (due): Differs in behaviour, data and wiring; delete the flag-only code and the second computation, build impact on read with the gate the design draws. |
 | `pins` | Wrong | data, wiring | `requirements/baselines.ts:latestBaselineIn` | **rewrite** (due): Contract pins are never written and bindings never read; build the pin set to the design with req-head and agreed. |
 | `ready` | Wrong | behaviour | `requirements/rules.ts:agreeRefusals` | **keep**: REQ-4 BC-4 lets any person member sign; revise the design from "BA or owner". |
 | `release-gate` | Wrong | behaviour | `release-batch/blockers.ts:rosterBlockers` | **rewrite**: Small: record gate off on the batch. |
@@ -261,7 +261,7 @@ Upcoming steps are recommended **rewrite**, which here means building the node t
 | `obs-mockup-pins` | `requirements/baselines.ts:acceptedMockupIds` | Accepted mockups are pinned beside designs and given to jobs. | **keep**: ISS-78 is a build of this design; the pins node owes the mockup output. |
 | `obs-readiness-mode` | `requirements/rules.ts:baselineReadiness` | Readiness gate off, warn or block (default off), copied onto the baseline. | **keep**: It is the design's "where the project turns it on"; draw the copy onto the baseline. |
 | `obs-link-issue` | `requirements/issue-links.ts:linkIssue` | An existing issue links to the requirement and stamps planned_revision. | **keep**: REQ-4 BC-8 and BC-9. |
-| `obs-csp-second` | `issues/standing-read.ts:changedSincePlan` | planned < current only, ignoring re-pins; disagrees with requirements/rules.ts:changedSincePlan. | **delete**: Two answers to one question; the impact rewrite owns the only one. |
+| `obs-csp-second` | `issues/standing-read.ts:changedSincePlan` | planned < current only, ignoring re-pins; disagrees with packages/contracts/src/requirements.ts:changedSincePlan. | **delete**: Two answers to one question; the impact rewrite owns the only one. |
 | `obs-standing` | `requirements/standing.ts:deriveStanding` | Attention groups and whom a requirement waits on (re-pin, prove BC-n, approve breakdown). | **keep**: The read model the stalled, acceptance and re-plan nodes should be served from; draw it. |
 | `obs-build-gate` | `workflows/build-gate.ts:assertDesignApprovedForIssue` | An issue linked as a build is held from claim until its design is approved (WORKFLOW_DESIGN_NOT_APPROVED). | **keep**: REQ-1 BC-6; draw it on delivery to build. |
 | `obs-link-build` | `suggestions/breakdown.ts:breakdownEffect` | Each breakdown issue is linked as a build of one pinned design (SUGGESTION_BUILD_UNNAMED, SUGGESTION_BUILD_UNPINNED); issues are filed at draft. | **keep**: Traceability step markers need; draw it, and decide whether draft issues wait on a promote. |
@@ -292,7 +292,7 @@ Upcoming steps are recommended **rewrite**, which here means building the node t
 
 Since this observation, chain A has landed on dev: `build` (ISS-150, which deleted
 `obs-named-contracts`), `verdict-result` (ISS-151) and `impact` (ISS-152, after which
-`issues/standing-read.ts` reads the one `requirements/rules.ts:changedSincePlan`). Chain B's
+`issues/standing-read.ts` reads the one `changedSincePlan`, now `packages/contracts/src/requirements.ts:changedSincePlan`). Chain B's
 `breakdown` (ISS-154), `triage` and `fb-case` (ISS-155) and `check` (ISS-156) are merged and await
 release. None has been re-observed (Phase 5).
 

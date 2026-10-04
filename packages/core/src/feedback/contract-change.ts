@@ -3,7 +3,7 @@ import { FEEDBACK_LIMITS } from '@forge/contracts/feedback';
 import { and, eq, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
+import type { ActorAgency } from '../issues/index.js';
 import { storedText } from '../lib/data-egress.js';
 import { lockFeedback } from './service.js';
 

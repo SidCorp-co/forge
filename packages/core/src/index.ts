@@ -13,8 +13,9 @@ import { registerRoomChat } from './conversations/index.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { seedDomainTemplates } from './domain-templates/index.js';
-import { registerContractMeasureWorker } from './ecosystem/index.js';
+import { interfaceContractsOf, registerContractMeasureWorker } from './ecosystem/index.js';
 import { provideAdmissionThresholds } from './error-intake/index.js';
+import { provideFeedbackDependents, requirementFeedbackAs } from './feedback/index.js';
 import {
   assertVaultBootSafety,
   provideForgeReads,
@@ -34,6 +35,7 @@ import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
+import { deleteFeedbackMockups } from './mockups/index.js';
 import { logger } from './observability/logger.js';
 import {
   declareOutboxQueues,
@@ -46,10 +48,12 @@ import { readDeclaredSource } from './project-config/index.js';
 import { findProjectOrgId } from './projects/index.js';
 import { startBoss, stopBoss } from './queue/boss.js';
 import { registerDeployWorker, registerReleaseBatchFinish } from './release-batch/index.js';
+import { provideInterfaceContracts, provideRequirementDependents } from './requirements/index.js';
 import { mountRoutes } from './route-registry.js';
 import { bootstrapRunnerAdapters } from './runners/index.js';
 import { startTimers, stopTimers } from './schedules/index.js';
 import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
+import { redactFeedbackSuggestions, staleOnTargetRevised } from './suggestions/index.js';
 import { coreTimers } from './timer-registry.js';
 import { attachWs, closeWs } from './ws/index.js';
 
@@ -57,6 +61,12 @@ provideProjectOrg(findProjectOrgId);
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,
   issueForHeadRef: (projectId, headRef) => resolveIssueForHeadRef({ projectId, headRef }),
+});
+provideInterfaceContracts(interfaceContractsOf);
+provideRequirementDependents({ feedbackOf: requirementFeedbackAs, revised: staleOnTargetRevised });
+provideFeedbackDependents({
+  redactSuggestions: redactFeedbackSuggestions,
+  deleteMockups: deleteFeedbackMockups,
 });
 provideAdmissionThresholds(async () => {
   const policy = await readThresholds();

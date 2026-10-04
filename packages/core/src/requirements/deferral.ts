@@ -13,9 +13,9 @@ import {
   requirementDeferrals,
   requirements,
 } from '../db/schema-requirements.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { movedRow, transition } from '../lifecycle/transition.js';
+import { movedRow, transition } from '../lifecycle/index.js';
 import { latestDeferOf } from './deferral-read.js';
 import { type RequirementActor, rowIn, signerRefusal } from './read.js';
 import { deferRefusals, undeferRefusal } from './rules.js';

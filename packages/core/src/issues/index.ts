@@ -7,6 +7,7 @@ export {
 } from './actor-agency.js';
 export { TransitionError, transitionIssueStatus } from './apply-transition.js';
 export { closeBacklogStreams } from './backlog/open-streams.js';
+export { insertIssueRow } from './create-service.js';
 export { runCriteriaBackfillOnce } from './criteria/backfill.js';
 export { isValidDetectorKey } from './detector-key.js';
 export {
@@ -19,9 +20,12 @@ export {
 export { referenceInHeadRef, resolveIssueForHeadRef } from './head-ref-link.js';
 export { registerHostMergeStamp, stampHostMerge } from './host-merge.js';
 export { issueWorkInFlightSql } from './issue-lease.js';
-export { activeIssuePrefix } from './issue-prefix-read.js';
-export { resolveIssueRouteRef } from './issue-route-ref.js';
+export { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
+export { isUuid, resolveIssueRouteRef } from './issue-route-ref.js';
 export { recordIssueMerge } from './merge-record.js';
+export { findIssueById } from './read-service.js';
+export { writeRecordEvent } from './record-events/store.js';
+export type { PendingIssueRelation } from './relations-service.js';
 export { claimIssuesForRelease, releaseEndedRunClaims, releaseRunClaims } from './release-claim.js';
 export {
   type IssueCreateInput,
@@ -37,3 +41,4 @@ export {
   type PlannedAgainst,
   unlinkIssueFromRequirement,
 } from './requirement-link.js';
+export { emitIssueFieldUpdate } from './update-hook.js';

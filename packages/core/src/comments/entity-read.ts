@@ -7,6 +7,7 @@ import type {
   EntityCommentView,
 } from '@forge/contracts/comments';
 import type { CommentIntent } from '@forge/contracts/record-events';
+import { requirementKey } from '@forge/contracts/requirements';
 import { and, asc, desc, eq, isNotNull, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
@@ -22,9 +23,9 @@ import { isUuid } from '../issues/issue-route-ref.js';
 import { dataPolicyOf, type EgressSurface, egressReading } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
-import { requirementKey, rowIn as requirementRowIn } from '../requirements/read.js';
-import { type CommentArc, scopeOfArc } from './entity-rules.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { rowIn as requirementRowIn } from '../requirements/read.js';
+import { type CommentArc, scopeOfArc } from './entity-rules.js';
 
 export interface EntityCommentActor {
   userId: string;

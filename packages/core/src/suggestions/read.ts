@@ -13,13 +13,13 @@ import { and, count, desc, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { rowIn as feedbackRowIn } from '../feedback/read.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
-import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
-import { rowIn } from '../requirements/read.js';
-import { designNodesIn } from '../workflows/node-refs.js';
-import type { KernelActor } from '../lifecycle/transition.js';
+import { rowIn as feedbackRowIn } from '../feedback/index.js';
+import type { ActorAgency } from '../issues/index.js';
+import { resolveIssueRouteRef } from '../issues/index.js';
+import type { KernelActor } from '../lifecycle/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { rowIn } from '../requirements/index.js';
+import { designNodesIn } from '../workflows/index.js';
 
 export interface SuggestionActor {
   userId: string;

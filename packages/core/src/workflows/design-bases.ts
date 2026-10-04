@@ -1,5 +1,5 @@
 import type { DesignStatus } from '@forge/contracts/design-status';
-import { pointer } from '../project-config/documents.js';
+import { jsonPointer as pointer } from '../lib/refusal.js';
 import type { DesignRefusal } from './design.js';
 import type { WorkflowRefusal } from './rules.js';
 import { readStoredWorkflow, type WorkflowWrite } from './schema.js';

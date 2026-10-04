@@ -7,6 +7,7 @@
  */
 
 import type { FeedbackTriageEffect } from '@forge/contracts/feedback';
+import { requirementKey } from '@forge/contracts/requirements';
 import { SUGGESTION_MACHINE } from '@forge/contracts/suggestion-machine';
 import { SUGGESTION_PAYLOADS, type SuggestionEffect } from '@forge/contracts/suggestions';
 import { and, eq, sql } from 'drizzle-orm';
@@ -15,23 +16,20 @@ import type { Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { requirementRevisions } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { rowIn as feedbackRowIn } from '../feedback/read.js';
-import { triageIn } from '../feedback/triage.js';
-import { setIssueTriage } from '../issues/index.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import type { PendingIssueRelation } from '../issues/relations-service.js';
-import { emitIssueFieldUpdate } from '../issues/update-hook.js';
+import { rowIn as feedbackRowIn, triageIn } from '../feedback/index.js';
+import type { PendingIssueRelation } from '../issues/index.js';
+import { activeIssuePrefix, emitIssueFieldUpdate, setIssueTriage } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { Refusal } from '../lib/refusal.js';
-import { transition } from '../lifecycle/transition.js';
+import { transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
-import { requirementKey, rowIn } from '../requirements/read.js';
 import {
   createRequirementIn,
   newDraftRevisionIn,
   openRevisionOf,
   type RevisionWrite,
-} from '../requirements/service.js';
+  rowIn,
+} from '../requirements/index.js';
 import { breakdownEffect } from './breakdown.js';
 import { type Row, type SuggestionActor, suggestionKernelActor, targetOfRow } from './read.js';
 

@@ -15,14 +15,13 @@ import {
   requirementBaselines,
   requirements,
 } from '../db/schema-requirements.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { isUuid } from '../issues/issue-route-ref.js';
-import { holds } from '../permissions/index.js';
+import type { ActorAgency } from '../issues/index.js';
+import { activeIssuePrefix, isUuid } from '../issues/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf, egressReading } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
+import { holds } from '../permissions/index.js';
 
 export type MockupRow = typeof mockups.$inferSelect;
 
