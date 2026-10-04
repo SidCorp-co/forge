@@ -17,14 +17,6 @@
       "fileLines": 527,
       "maxFunctionLines": 0
     },
-    "packages/core/src/issues/criteria/store.ts": {
-      "fileLines": 502,
-      "maxFunctionLines": 0
-    },
-    "packages/core/src/issues/standing.ts": {
-      "fileLines": 639,
-      "maxFunctionLines": 0
-    },
     "packages/core/src/jobs/loop-monitor.ts": {
       "fileLines": 522,
       "maxFunctionLines": 0

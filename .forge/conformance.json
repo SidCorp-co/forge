@@ -22,12 +22,10 @@
         "$amnesty": {
           "files": [
             "packages/core/src/agent-sessions/chat-turn.ts",
-            "packages/core/src/feedback/read.ts",
-            "packages/core/src/issues/criteria/store.ts",
-            "packages/core/src/issues/standing.ts"
+            "packages/core/src/feedback/read.ts"
           ],
-          "$what": "Four files the pattern-v2 rewrite and the cleanup lanes grew past the budget are frozen at their size on 2026-10-05 (ISS-225): chat-turn.ts's longest function at 152 lines, feedback/read.ts at 527, issues/criteria/store.ts at 502 and issues/standing.ts at 639.",
-          "$costs": "Each may stay over 500 lines (or 150 per function) and grow no further; a reader of these four pays the length, and a fifth file growing past the budget is still refused.",
+          "$what": "Two files the pattern-v2 rewrite and the cleanup lanes grew past the budget are frozen at their size on 2026-10-05 (ISS-225): chat-turn.ts's longest function at 152 lines and feedback/read.ts at 527.",
+          "$costs": "Each may stay over 500 lines (or 150 per function) and grow no further; a reader of these two pays the length, and a third file growing past the budget is still refused.",
           "$ends": "ISS-218, the simplify phase, splits them; the entries leave the baseline in that change and this block is deleted."
         }
       },

@@ -1,6 +1,7 @@
 import { db } from '../../db/client.js';
-import { type CriterionInput, listCriteria, putCriteria, recordVerdict } from './store.js';
+import { type CriterionInput, listCriteria, putCriteria } from './store.js';
 import { withCurrentDrafts } from './storefront-draft.js';
+import { recordVerdict } from './verdict-record.js';
 
 /** An issue's live criteria with their latest verdicts and the storefront's current drafts. */
 export async function readCriteriaWithDrafts(issue: { id: string; projectId: string }) {

@@ -36,12 +36,11 @@ import { classifyLease } from './session-claim.js';
 import {
   deriveIssueStanding,
   type IssueStandingInput,
-  issueBlockerOf,
   type StandingEdge,
-  type StepDurationFact,
-  stepOutcomesOf,
   wavesOf,
 } from './standing.js';
+import { issueBlockerOf } from './standing-blocker.js';
+import { type StepDurationFact, stepOutcomesOf } from './step-outcomes.js';
 
 /** The most rows one read answers; the list says so when a scope holds more. */
 export const STANDING_LIMIT = 500;
