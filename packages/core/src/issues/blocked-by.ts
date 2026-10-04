@@ -128,14 +128,14 @@ export async function blockingEdgesIn(
   }));
 }
 
-export interface UnsettledBlocker {
+interface UnsettledBlocker {
   issueId: string;
   issueKey: string;
   status: IssueStatus;
   design: string | null;
 }
 
-export async function unsettledBlockersOf(
+async function unsettledBlockersOf(
   executor: Pick<Tx, 'execute'>,
   issue: { id: string; projectId: string; prefix: string | null },
 ): Promise<UnsettledBlocker[]> {
@@ -158,7 +158,7 @@ function whyUnsettled(b: UnsettledBlocker): string {
   return `${b.issueKey} is at \`${b.status}\`, and its ${b.design ?? 'design revision is not approved'}`;
 }
 
-export interface BlockedIssue {
+interface BlockedIssue {
   issueKey: string;
   blockers: UnsettledBlocker[];
 }
@@ -190,7 +190,7 @@ function issueBlocked(held: BlockedIssue[], door: string): RefusalError {
   );
 }
 
-export const isTakeable = (status: IssueStatus) => TAKEABLE_STATUSES.includes(status);
+const isTakeable = (status: IssueStatus) => TAKEABLE_STATUSES.includes(status);
 
 type TakenIssue = {
   id: string;
@@ -252,7 +252,7 @@ export async function refuseHeldTake(
   await assertDispatchGatesForIssue(issue.projectId, issue.id, executor);
 }
 
-export async function refuseBlockedTakeForSeqs(
+async function refuseBlockedTakeForSeqs(
   executor: Pick<Tx, 'execute'>,
   projectId: string,
   seqs: readonly number[],

@@ -13,18 +13,18 @@ import {
 import { refusePipeline } from './refuse.js';
 
 /** Expiry frees no transaction's row lock, so an acquire waiting on one needs its own bound. */
-export const DEPLOY_LOCK_WAIT_MS = 3_000;
+const DEPLOY_LOCK_WAIT_MS = 3_000;
 
 /** Postgres `lock_not_available`, raised when `lock_timeout` runs out. */
 const LOCK_NOT_AVAILABLE = '55P03';
 
-export interface DeployLockRequest {
+interface DeployLockRequest {
   projectId: string;
   runId: string;
   subject: string;
 }
 
-export interface DeployLockHolder {
+interface DeployLockHolder {
   projectId: string;
   environment: string;
   runId: string;
@@ -34,7 +34,7 @@ export interface DeployLockHolder {
 }
 
 /** `holder` is null only where nothing could be read: a concurrent acquire not yet committed. */
-export function environmentLocked(environment: string, holder: DeployLockHolder | null) {
+function environmentLocked(environment: string, holder: DeployLockHolder | null) {
   return refusePipeline('DEPLOY_ENVIRONMENT_LOCKED', lockedSentence(environment, holder));
 }
 

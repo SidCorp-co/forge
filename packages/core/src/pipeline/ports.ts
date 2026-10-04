@@ -30,7 +30,7 @@ export interface ProjectPolicy {
   intake: { mode: 'auto' | 'manual' };
 }
 
-export interface NotificationInput {
+interface NotificationInput {
   userId?: string;
   recipients?: string[];
   projectId?: string | null;
@@ -47,7 +47,7 @@ export interface NotificationInput {
   groupTitle?: string | null;
 }
 
-export interface IssueNoticeInput {
+interface IssueNoticeInput {
   issueId: string;
   authorId: string;
   body: string;
@@ -57,7 +57,7 @@ export type RunGateReading =
   | { read: 'ok'; condition: Record<string, unknown> }
   | { read: 'unreadable'; reason: string };
 
-export interface KillableJob {
+interface KillableJob {
   id: string;
   deviceId: string | null;
   runnerId: string | null;
@@ -66,7 +66,7 @@ export interface KillableJob {
   killOutcome: (typeof jobs.$inferSelect)['killOutcome'];
 }
 
-export interface PipelinePorts {
+interface PipelinePorts {
   insertJobRow: (tx: Tx, values: typeof jobs.$inferInsert) => Promise<{ id: string }>;
   wakeMastersForProject: (args: {
     projectId: string;
@@ -118,7 +118,6 @@ export interface PipelinePorts {
   existingProjectHandle: (tx: Tx, projectId: string) => Promise<{ userId: string } | undefined>;
   resolveProjectHandle: (tx: Tx, projectId: string, mintAs?: string) => Promise<{ userId: string }>;
   retryRescuesSince: (projectIds: readonly string[] | null, since: SQL) => SQL;
-  buildInterventionsReport: (projectIds: readonly string[], days: number) => Promise<object>;
 
   postIssueNotice: (notice: IssueNoticeInput, tx?: Tx) => Promise<unknown>;
   postIssueNoticeOnce: (notice: IssueNoticeInput & { marker: string }) => Promise<unknown>;
@@ -136,9 +135,6 @@ export interface PipelinePorts {
     projectId: string,
     status: string | null,
   ) => RefusalError;
-  readLandingBranches: (
-    projectId: string,
-  ) => Promise<{ defaultBranch: string | null; promoted: string | null }>;
 }
 
 let ports: PipelinePorts | null = null;
@@ -147,7 +143,7 @@ export function providePipelinePorts(given: PipelinePorts): void {
   ports = given;
 }
 
-export function pipelinePorts(): PipelinePorts {
+function pipelinePorts(): PipelinePorts {
   if (!ports) {
     throw new Error(
       'pipeline: no ports were provided; the process entry calls providePipelinePorts before it serves',
@@ -212,8 +208,6 @@ export const resolveProjectHandle: PipelinePorts['resolveProjectHandle'] = (tx, 
   pipelinePorts().resolveProjectHandle(tx, projectId, as);
 export const retryRescuesSince: PipelinePorts['retryRescuesSince'] = (projectIds, since) =>
   pipelinePorts().retryRescuesSince(projectIds, since);
-export const buildInterventionsReport: PipelinePorts['buildInterventionsReport'] = (ids, days) =>
-  pipelinePorts().buildInterventionsReport(ids, days);
 
 export const postIssueNotice: PipelinePorts['postIssueNotice'] = (notice, tx) =>
   pipelinePorts().postIssueNotice(notice, tx);
@@ -231,5 +225,3 @@ export const readEffectivePolicy: PipelinePorts['readEffectivePolicy'] = (projec
   pipelinePorts().readEffectivePolicy(projectId);
 export const policyRefusal: PipelinePorts['policyRefusal'] = (code, projectId, status) =>
   pipelinePorts().policyRefusal(code, projectId, status);
-export const readLandingBranches: PipelinePorts['readLandingBranches'] = (projectId) =>
-  pipelinePorts().readLandingBranches(projectId);

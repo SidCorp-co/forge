@@ -591,7 +591,6 @@ export const jobTypes = [
   'release',
   'fix',
   'custom',
-  'pm',
   'smoke',
   'release_batch',
   'drive',
@@ -604,7 +603,7 @@ export type JobType = (typeof jobTypes)[number];
 export const modelTiers = ['haiku', 'sonnet', 'opus'] as const;
 export type ModelTier = (typeof modelTiers)[number];
 
-export const pipelineRunKinds = ['issue', 'pm', 'interactive', 'system'] as const;
+export const pipelineRunKinds = ['issue', 'interactive', 'system'] as const;
 export type PipelineRunKind = (typeof pipelineRunKinds)[number];
 
 export const pipelineRunStatuses = PIPELINE_RUN_STATUSES;

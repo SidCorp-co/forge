@@ -84,7 +84,7 @@ export async function jobHistoryForStep(issueId: string, step: JobType) {
     .orderBy(sql`coalesce(${jobs.dispatchedAt}, ${jobs.queuedAt}) desc`);
 }
 
-export type IssueScope = Pick<IssueRow, 'id' | 'projectId' | 'status' | 'mergedAt'>;
+type IssueScope = Pick<IssueRow, 'id' | 'projectId' | 'status' | 'mergedAt'>;
 
 /** The few columns a route needs to gate on an issue before acting on it. */
 export async function issueScopeOf(issueId: string): Promise<IssueScope | null> {

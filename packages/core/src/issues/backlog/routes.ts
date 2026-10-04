@@ -19,15 +19,15 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../../middlewar
 import { rateLimit } from '../../middleware/rate-limit.js';
 import { idParamSchema } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
+import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
 import { alikeSource } from './alike-source.js';
 import { Cancellation } from './cancellation.js';
 import { emitBacklogStream } from './emitter.js';
 import { orderingSource } from './ordering-source.js';
 import { countMatching } from './page-read.js';
-import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
 
 /** What `forge alike` calls open: everything the tracker has not settled. */
-export const UNSETTLED_STATUSES: IssueStatus[] = issueStatuses.filter(
+const UNSETTLED_STATUSES: IssueStatus[] = issueStatuses.filter(
   (s) => s !== 'closed' && s !== 'dropped',
 );
 

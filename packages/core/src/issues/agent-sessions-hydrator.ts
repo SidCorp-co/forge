@@ -3,9 +3,9 @@ import { db } from '../db/client.js';
 import { agentSessions, devices } from '../db/schema.js';
 import { getLoopThresholds } from './ports.js';
 
-export type DerivedAgentStatus = 'running' | 'queued' | 'completed' | 'failed' | 'cancelled' | null;
+type DerivedAgentStatus = 'running' | 'queued' | 'completed' | 'failed' | 'cancelled' | null;
 
-export interface HydratedAgentSession {
+interface HydratedAgentSession {
   id: string;
   status: string;
   metadata: Record<string, unknown> | null;
@@ -29,9 +29,9 @@ export interface HydratedAgentSession {
   freshReason: SessionFreshReason | null;
 }
 
-export type SessionHeartbeat = 'alive' | 'stale' | 'unknown';
+type SessionHeartbeat = 'alive' | 'stale' | 'unknown';
 export type SessionContinuity = 'resumed' | 'fresh' | 'unknown';
-export type SessionFreshReason = 'first-in-group' | 'different-device' | 'prior-failed' | 'new-session';
+type SessionFreshReason = 'first-in-group' | 'different-device' | 'prior-failed' | 'new-session';
 
 function heartbeatOf(at: Date | null, now: number, timeoutMs: number): SessionHeartbeat {
   if (!at) return 'unknown';
@@ -71,12 +71,12 @@ function withContinuity(sessions: HydratedAgentSession[]): void {
   }
 }
 
-export interface HydratedAgentAttachment {
+interface HydratedAgentAttachment {
   agentSessions: HydratedAgentSession[];
   agentStatus: DerivedAgentStatus;
 }
 
-export function deriveAgentStatus(sessions: HydratedAgentSession[]): DerivedAgentStatus {
+function deriveAgentStatus(sessions: HydratedAgentSession[]): DerivedAgentStatus {
   if (sessions.length === 0) return null;
   if (sessions.some((s) => s.status === 'running')) return 'running';
   if (sessions.some((s) => s.status === 'queued')) return 'queued';

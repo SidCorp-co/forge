@@ -15,7 +15,7 @@ import {
 } from '../db/schema.js';
 import type { DownloadTargetType } from './download-ticket-service.js';
 
-export interface AttachmentBytesTarget {
+interface AttachmentBytesTarget {
   name: string;
   mime: string;
   size: number;

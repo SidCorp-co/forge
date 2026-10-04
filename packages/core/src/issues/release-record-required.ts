@@ -2,11 +2,6 @@ import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 
-export interface ReleaseRecordRefusal {
-  detail: string;
-  details: Record<string, unknown>;
-}
-
 /**
  * Which of these issues have no release note. The shared read behind both doors.
  */

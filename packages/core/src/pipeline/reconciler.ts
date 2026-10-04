@@ -189,7 +189,7 @@ async function selectWedgeCandidates(after: string | null): Promise<WedgeCandida
   `)) as unknown as WedgeCandidate[];
 }
 
-export async function resetAutonomousWedgesOnce(): Promise<number> {
+async function resetAutonomousWedgesOnce(): Promise<number> {
   if (AUTONOMOUS_INFLIGHT_STATUSES.length === 0) return 0;
   let reset = 0;
   let after: string | null = null;

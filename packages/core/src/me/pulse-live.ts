@@ -22,7 +22,7 @@ import type {
   PulseThresholds,
 } from './pulse-types.js';
 
-export interface PulseLive {
+interface PulseLive {
   notOnLive: PulseCapped<PulseNotOnLiveIdentity>;
   liveUnmeasured: PulseCapped<PulseLiveGap>;
 }

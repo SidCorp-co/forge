@@ -5,7 +5,7 @@ import type { NodeRef } from '@forge/contracts/workflow-health';
 import type { Tx } from '../db/client.js';
 import type { Refusal } from '../lib/refusal.js';
 
-export interface CommentPorts {
+interface CommentPorts {
   requirementRowIn: (
     tx: Tx,
     projectId: string,

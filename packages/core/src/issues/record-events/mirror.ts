@@ -13,7 +13,7 @@ import type { Actor } from '../activity.js';
 import { recordEventVerdicts } from '../criteria/event-verdicts.js';
 import { commentMirrorKey, writeRecordEvent } from './store.js';
 
-export interface MirroredComment {
+interface MirroredComment {
   readonly id: string;
   readonly issueId: string;
   readonly body: string;

@@ -10,7 +10,6 @@ import { db } from '../db/client.js';
 import { issueDependencies, type issueDependencyKinds, issues } from '../db/schema.js';
 import { refuser } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
-import { emitEvent } from '../outbox/index.js';
 import { type Actor, safeRecordActivity } from './activity.js';
 import { archivedAmong } from './archive.js';
 import { detectCycle } from './cycle-detect.js';
@@ -64,7 +63,7 @@ async function findEdge(
 const expiresEdge = (validUntil: string | undefined): boolean =>
   validUntil !== undefined && new Date(validUntil).getTime() <= Date.now();
 
-export type SetIssueDependencyResult = {
+type SetIssueDependencyResult = {
   id: string;
   created: boolean;
   updated?: boolean;
@@ -168,7 +167,6 @@ export async function writeIssueDependency(
   if (inserted.length > 0) {
     const id = inserted[0]?.id;
     if (!id) throw new Error('issue dependency insert returned no id');
-    await emitEdgeChanged(ex, input, id);
     return { id, created: true, updated: false, effect: 'added' };
   }
 
@@ -182,7 +180,6 @@ export async function writeIssueDependency(
 
   if (updated) {
     await ex.update(issueDependencies).set(patch).where(eq(issueDependencies.id, existing.id));
-    await emitEdgeChanged(ex, input, existing.id);
   }
 
   return { id: existing.id, created: false, updated, effect: updated ? 'updated' : null };
@@ -190,7 +187,7 @@ export async function writeIssueDependency(
 
 /**
  * The EFFECTS half: the activity rows on both sides and the dependent's health. Runs after the
- * write has committed; the edge's `dependency.changed` event was written with it.
+ * write has committed.
  */
 export async function emitIssueDependencyEffects(
   input: SetIssueDependencyInput,
@@ -213,20 +210,6 @@ export async function emitIssueDependencyEffects(
     });
     await refreshDependentHealth(input, opts);
   }
-}
-
-async function emitEdgeChanged(
-  ex: IssueDependencyExecutor,
-  input: SetIssueDependencyInput,
-  edgeId: string,
-): Promise<void> {
-  await emitEvent(ex, 'dependency.changed', {
-    projectId: input.projectId,
-    edgeId,
-    fromIssueId: input.fromIssueId,
-    toIssueId: input.toIssueId,
-    kind: input.kind,
-  });
 }
 
 async function recordOnBothSides(
@@ -258,7 +241,7 @@ async function refreshDependentHealth(
   await publishPipelineHealthChanged(input.projectId, [input.toIssueId]);
 }
 
-/** Removes one dependency edge and records `dependency.changed` with it. */
+/** Removes one dependency edge. */
 export async function deleteIssueDependency(edge: {
   id: string;
   projectId: string;
@@ -266,14 +249,5 @@ export async function deleteIssueDependency(edge: {
   toIssueId: string;
   kind: IssueDependencyKind;
 }): Promise<void> {
-  await db.transaction(async (tx) => {
-    await tx.delete(issueDependencies).where(eq(issueDependencies.id, edge.id));
-    await emitEvent(tx, 'dependency.changed', {
-      projectId: edge.projectId,
-      edgeId: edge.id,
-      fromIssueId: edge.fromIssueId,
-      toIssueId: edge.toIssueId,
-      kind: edge.kind,
-    });
-  });
+  await db.delete(issueDependencies).where(eq(issueDependencies.id, edge.id));
 }

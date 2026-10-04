@@ -22,7 +22,7 @@ export type FailureKind = 'code' | 'infra' | 'transient-cc' | 'timeout';
 
 export type FailureAction = 'terminal' | 'quarantine' | 'failover' | 'retry';
 
-export interface ClassifyResult {
+interface ClassifyResult {
   kind: FailureKind;
   /** Policy verdict callers must obey instead of re-deriving from `kind`. */
   action: FailureAction;

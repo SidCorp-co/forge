@@ -69,7 +69,7 @@ export type TransitionIssueRow = {
 
 type TransitionTx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
-export interface ApplyStatusTransitionOptions {
+interface ApplyStatusTransitionOptions {
   beforeStatusWrite?: (tx: TransitionTx) => Promise<void>;
   /**
    * A kernel recovery move rather than a lifecycle move: a run that ended, or a wedge nothing holds,

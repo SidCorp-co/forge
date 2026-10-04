@@ -18,9 +18,9 @@ import type { BacklogSource, SourceDone } from './emitter.js';
 import { cursorFrom, issuePage, type PageCursor } from './page-read.js';
 
 /** Rows read per database round trip. One relations query is spent per page, whatever its size. */
-export const ORDERING_PAGE_SIZE = 100;
+const ORDERING_PAGE_SIZE = 100;
 
-export interface OrderingInput {
+interface OrderingInput {
   projectId: string;
   statuses: IssueStatus[];
   withBody: boolean;

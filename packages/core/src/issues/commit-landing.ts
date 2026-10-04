@@ -22,7 +22,7 @@ export type CommitLanding =
       detail: string;
     };
 
-export interface CommitLandingDeps {
+interface CommitLandingDeps {
   host?: (projectId: string) => Promise<CommitHost>;
 }
 

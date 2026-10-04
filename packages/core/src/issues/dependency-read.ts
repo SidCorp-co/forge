@@ -15,8 +15,8 @@ import {
   issues,
 } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { DISPATCH_GATING_KIND } from './dependency-effects.js';
 import { blockingEdgesIn } from './blocked-by.js';
+import { DISPATCH_GATING_KIND } from './dependency-effects.js';
 import { designHoldPhrase } from './design-delivery.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 
@@ -45,7 +45,7 @@ export type IssueDependencyEdge = {
   toDisplayId: string | null;
 };
 
-export type IssueDependencyEdges = {
+type IssueDependencyEdges = {
   outgoing: IssueDependencyEdge[];
   incoming: IssueDependencyEdge[];
 };
@@ -163,7 +163,7 @@ export async function loadIssueDependencyEdgesForIssues(
   return byIssue;
 }
 
-export type IssueRelationDigest = {
+type IssueRelationDigest = {
   edgeId: string;
   kind: IssueDependencyKind;
   fromIssueId: string;
@@ -203,14 +203,14 @@ function digest(edge: IssueDependencyEdge, issueId: string): IssueRelationDigest
 
 /** One kind's edges at an issue: `outgoing` from it, `incoming` to it. For `blocks`, outgoing is
  *  what this issue holds back and incoming is what holds this issue back. */
-export type IssueRelationDirections = {
+type IssueRelationDirections = {
   outgoing: IssueRelationDigest[];
   incoming: IssueRelationDigest[];
 };
 
 /** An issue's relations keyed by kind, every kind present, so a `relates` edge can never be read
  *  out of a list named for blocking. */
-export type IssueRelations = Record<IssueDependencyKind, IssueRelationDirections> & {
+type IssueRelations = Record<IssueDependencyKind, IssueRelationDirections> & {
   /** Legacy: the live gating edges into this issue, for readers still on the old shape. */
   blockedBy: IssueRelationDigest[];
 };
@@ -228,21 +228,6 @@ export function allRelationDigests(relations: IssueRelations): IssueRelationDige
     ...relations[kind].outgoing,
     ...relations[kind].incoming,
   ]);
-}
-
-/**
- * Agent-facing projection of {@link loadIssueDependencyEdges}: ids, kind and
- * expiry only. Titles and `reason` are deliberately omitted — they are
- * caller-authored text from a DIFFERENT issue, and this payload is inlined
- * into an agent's context without the untrusted-data framing `serialize()`
- * applies to the issue's own fields.
- */
-export async function loadIssueRelations(
-  issueId: string,
-  projectId: string,
-): Promise<IssueRelations> {
-  const byIssue = await loadIssueRelationsForIssues([issueId], projectId);
-  return byIssue.get(issueId) ?? emptyIssueRelations();
 }
 
 /**

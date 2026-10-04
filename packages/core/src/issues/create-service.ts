@@ -44,9 +44,9 @@ const refuse = refuser<IssueCreateRefusalCode>('ISSUE_CREATE_REFUSED');
  * `issues.admit`, `draft` otherwise. Every other status change goes through the transition surface
  * so the state machine and activity log run.
  */
-export const CREATE_ENTRY_STATUSES = ISSUE_INITIAL_STATUSES;
+const CREATE_ENTRY_STATUSES = ISSUE_INITIAL_STATUSES;
 
-export type CreateEntryStatus = (typeof CREATE_ENTRY_STATUSES)[number];
+type CreateEntryStatus = (typeof CREATE_ENTRY_STATUSES)[number];
 
 export type CreateIssueInput = {
   projectId: string;
@@ -73,7 +73,7 @@ export type CreateIssueInput = {
  * Who is creating. `createdVia` is the channel the origin classifier reads
  * (`creator.ts`), so it must name the real transport, never a default.
  */
-export type IssueCreateWriter = {
+type IssueCreateWriter = {
   createdById: string;
   /** The paired box whose credential files it, or null for an account's own write. */
   createdByDeviceId: string | null;
@@ -83,12 +83,12 @@ export type IssueCreateWriter = {
   scheduleRunId?: string | null;
 };
 
-export type IssueCreateRow = typeof issues.$inferSelect;
+type IssueCreateRow = typeof issues.$inferSelect;
 
 /** The channel column's own union — a create must name a real transport. */
-export type IssueCreatedVia = NonNullable<IssueCreateRow['createdVia']>;
+type IssueCreatedVia = NonNullable<IssueCreateRow['createdVia']>;
 
-export type CreateIssueResult =
+type CreateIssueResult =
   | {
       deduped: true;
       detectorKey: string;

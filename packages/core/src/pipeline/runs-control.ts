@@ -40,7 +40,7 @@ const CANCEL_PARK_REASON =
 
 export type PipelineRunRow = typeof pipelineRuns.$inferSelect;
 
-export type CancelPipelineRunResult = {
+type CancelPipelineRunResult = {
   run: PipelineRunRow;
   cancelledJobIds: string[];
   abortedSessionIds: string[];
@@ -49,7 +49,7 @@ export type CancelPipelineRunResult = {
   issueParked: boolean;
 };
 
-export interface CancelPipelineRunOptions {
+interface CancelPipelineRunOptions {
   /** The user the cancel is attributed to. Recorded on the run flip AND the issue park. */
   actorUserId?: string;
   actorAgency: ActorAgency;

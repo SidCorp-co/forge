@@ -21,6 +21,7 @@ export { clearRunnerQuarantine, maybeQuarantineRunner } from './quarantine.js';
 export { releaseLabelVerdict, runnerMayTakeJob } from './release-label.js';
 export { runnerEventsRetention } from './retention.js';
 export { insertRunnerEvent } from './runner-events.js';
+export { readRunnerLoad } from './runner-load-read.js';
 export { getTrippedDeviceIds, onlineCapableDeviceIds } from './select.js';
 export { runRunnerStaleSweep } from './stale-detector.js';
 export type { RequiredCapabilities } from './types.js';

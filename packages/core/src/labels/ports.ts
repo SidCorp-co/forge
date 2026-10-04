@@ -4,7 +4,7 @@
 import type { FeedbackListResponse, FeedbackRefusal } from '@forge/contracts/feedback';
 import type { ActorAgency } from '@forge/contracts/permissions';
 
-export interface LabelPorts {
+interface LabelPorts {
   listFeedbackAs: (
     viewer: { userId: string; agency: ActorAgency },
     projectId: string,

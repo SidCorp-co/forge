@@ -162,7 +162,7 @@ export function verdictDraftFault(draft: VerdictDraft): VerdictRefusal | null {
  * the wrong shape is kept as a malformed draft so its refusal names it.
  *
  */
-export function identityFromBlock(block: CriterionBlock): VerdictIdentity | null {
+function identityFromBlock(block: CriterionBlock): VerdictIdentity | null {
   const draft = parseStorefrontDraftRuntime(block.runtime);
   if (draft) return { kind: 'storefront_draft', ...draft, environment: block.environment ?? '' };
   if (block.runtime !== null) return { kind: 'runtime', ref: block.runtime };

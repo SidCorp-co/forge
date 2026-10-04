@@ -16,7 +16,7 @@ export {
 
 import { type ProjectPolicy, wakeMastersForProject } from './ports.js';
 
-export interface DispatchAutonomousArgs {
+interface DispatchAutonomousArgs {
   projectId: string;
   issueId: string;
   status: IssueStatus;

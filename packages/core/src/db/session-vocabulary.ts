@@ -5,14 +5,11 @@ import {
 } from '@forge/contracts/session-machine';
 import { sql } from 'drizzle-orm';
 
-export const agentSessionKinds = ['master', 'run_session', 'pipeline', 'pm', 'chat'] as const;
+export const agentSessionKinds = ['master', 'run_session', 'pipeline', 'chat'] as const;
 
 export type AgentSessionKind = (typeof agentSessionKinds)[number];
 
-export const PIPELINE_SESSION_KINDS = [
-  'pipeline',
-  'pm',
-] as const satisfies readonly AgentSessionKind[];
+export const PIPELINE_SESSION_KINDS = ['pipeline'] as const satisfies readonly AgentSessionKind[];
 
 export const CLIENT_SESSION_KINDS = ['chat'] as const satisfies readonly AgentSessionKind[];
 

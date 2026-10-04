@@ -13,21 +13,21 @@ import { logger } from '../observability/logger.js';
 import { judgeSentryIssue, type SentryAdmissionThresholds } from './rules.js';
 
 /** The status a Sentry issue is filed at, and the only one this path ever writes on a create. */
-export const SENTRY_FILED_STATUS = 'draft' as const;
+const SENTRY_FILED_STATUS = 'draft' as const;
 /** The `issues.source` value this path writes. */
-export const SENTRY_ISSUE_SOURCE = 'sentry' as const;
+const SENTRY_ISSUE_SOURCE = 'sentry' as const;
 /**
  * The Sentry substatus that means an error somebody had resolved is happening again.
  *
  * Structural, which is why acting on it does not breach the rule that Sentry text never decides an
  * action: this is an enum Sentry computes, not a string an event carried.
  */
-export const SENTRY_REGRESSED_SUBSTATUS = 'regressed';
+const SENTRY_REGRESSED_SUBSTATUS = 'regressed';
 
 const TITLE_CAP = 200;
 
 /** What `issues.metadata.sentry` holds, and the only key of that metadata this path writes. */
-export interface SentrySightingRecord {
+interface SentrySightingRecord {
   shortId: string;
   count: number | null;
   userCount: number | null;
@@ -54,7 +54,7 @@ export interface SentrySightingRecord {
  * There is no `priority`, no `category` and no label here, so no amount of Sentry text can reach
  * one: the columns those would be take their own defaults. `status` is a literal.
  */
-export interface SentryIssueRow {
+interface SentryIssueRow {
   title: string;
   description: string;
   status: typeof SENTRY_FILED_STATUS;
@@ -82,7 +82,7 @@ export interface SentryIntakeContext {
  * output and the webhook onto its delivery row, and in both places a person reading it has to be
  * able to fix the cause without opening the source.
  */
-export type SentryIntakeOutcome =
+type SentryIntakeOutcome =
   | { kind: 'filed' }
   | { kind: 'commented' }
   | { kind: 'refreshed' }
@@ -131,7 +131,7 @@ function capTitle(text: string, max: number): string {
  * capped because it is a column a person scans, and the structural fields (counts, timestamps,
  * permalink) are written by this code from typed values rather than copied out of free text.
  */
-export function buildSentryIssueRow(
+function buildSentryIssueRow(
   issue: ErrorTrackerIssue,
   externalId: string,
   detectorKey: string,
@@ -166,11 +166,11 @@ export function buildSentryIssueRow(
   };
 }
 
-export function sentryMetadataMerge(record: SentrySightingRecord): SQL {
+function sentryMetadataMerge(record: SentrySightingRecord): SQL {
   return sql`coalesce(${issues.metadata}, '{}'::jsonb) || ${JSON.stringify({ sentry: record })}::jsonb`;
 }
 
-export function sentryWatermarkStamp(lastSeen: string): SQL {
+function sentryWatermarkStamp(lastSeen: string): SQL {
   return sql`jsonb_set(
     coalesce(${issues.metadata}, '{}'::jsonb),
     '{sentry}',
@@ -204,17 +204,9 @@ function parseSeen(value: string | null | undefined): number | null {
 }
 
 /** The whole sighting the last observation stored, or `null` where none was ever stored. */
-export function recordedSighting(
-  metadata: Record<string, unknown> | null,
-): SentrySightingRecord | null {
+function recordedSighting(metadata: Record<string, unknown> | null): SentrySightingRecord | null {
   const entry = (metadata?.sentry ?? null) as SentrySightingRecord | null;
   return entry && typeof entry === 'object' ? entry : null;
-}
-
-export function recordedCount(metadata: Record<string, unknown> | null): number | null {
-  const entry = (metadata?.sentry ?? null) as { count?: unknown } | null;
-  if (!entry || typeof entry.count !== 'number') return null;
-  return entry.count;
 }
 
 interface ExistingIssue {

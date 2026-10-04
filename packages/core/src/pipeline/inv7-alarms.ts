@@ -20,10 +20,10 @@ export interface Inv7AlarmResult {
 }
 
 /** How many aged holds one pass surfaces. Paired with the wrapping cursor, never used alone. */
-export const HELD_SCAN_LIMIT = 200;
+const HELD_SCAN_LIMIT = 200;
 
 /** How long a hold may sit before it is worth a human's attention. */
-export const HOLD_AGE_ALARM_MS = (() => {
+const HOLD_AGE_ALARM_MS = (() => {
   const raw = Number(process.env.FORGE_HOLD_AGE_ALARM_MS);
   return Number.isFinite(raw) && raw > 0 ? raw : 6 * 60 * 60_000;
 })();
@@ -123,7 +123,7 @@ interface StalledQueuedRow extends Record<string, unknown> {
 }
 
 /** How long a job may sit `queued` with nothing gating it before it is worth a human's attention. */
-export const QUEUED_STALL_ALARM_MS = (() => {
+const QUEUED_STALL_ALARM_MS = (() => {
   const raw = Number(process.env.FORGE_QUEUED_STALL_ALARM_MS);
   return Number.isFinite(raw) && raw > 0 ? raw : RESULT_QUIET_MINUTES * 60_000;
 })();
@@ -199,7 +199,7 @@ interface PausedRunRow extends Record<string, unknown> {
  */
 export const PAUSED_RUN_SCAN_LIMIT = 200;
 
-export const PAUSED_RUN_ALARM_MS = (() => {
+const PAUSED_RUN_ALARM_MS = (() => {
   const raw = Number(process.env.FORGE_PAUSED_RUN_ALARM_MS);
   return Number.isFinite(raw) && raw > 0 ? raw : HOLD_AGE_ALARM_MS;
 })();

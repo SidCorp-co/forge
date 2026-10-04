@@ -4,7 +4,7 @@ import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { utcDateTrunc } from '../lib/time-buckets.js';
 import { firstShipped } from './shipped-at.js';
 
-export interface ShippedDay {
+interface ShippedDay {
   projectId: string;
   date: string;
   count: number;

@@ -17,7 +17,6 @@ import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { activeIssuePrefix, listIssueStanding } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { notFound } from '../middleware/route-errors.js';
-import { loadDeclaredEdges } from './module-diagram-source.js';
 import { moduleDrift } from './module-drift.js';
 import { levelCouplings, moduleRollup, readIssueModuleSets } from './module-rollup.js';
 import {
@@ -38,7 +37,7 @@ import {
 } from './module-standing.js';
 import { listFeedbackAs } from './ports.js';
 
-export interface ModuleViewer {
+interface ModuleViewer {
   userId: string;
   agency: ActorAgency;
 }
@@ -84,14 +83,6 @@ async function readNodes(projectId: string): Promise<(ModuleNode & { color: stri
     color: r.color,
   }));
 }
-
-const snapshotOf = (n: ModuleNode) => ({
-  id: n.id,
-  name: n.name,
-  slug: n.slug,
-  parentId: n.parentId,
-  node: null,
-});
 
 interface LandingRaw {
   module_id: string;
@@ -238,10 +229,7 @@ export async function moduleRollupWithStanding(
     readTraces(projectId),
     readIssueModuleSets(projectId),
   ]);
-  const [latest, declared] = await Promise.all([
-    readLatestLandings(projectId, prefix),
-    loadDeclaredEdges(projectId, nodes.map(snapshotOf)),
-  ]);
+  const latest = await readLatestLandings(projectId, prefix);
   const standings = deriveStandings({
     nodes,
     openIssues: openIssuesOf(list),
@@ -268,7 +256,7 @@ export async function moduleRollupWithStanding(
     activeWithinDays: counts.activeWithinDays,
     generatedAt: counts.generatedAt,
     modules,
-    couplings: levelCouplings({ nodes, declared, issueModules }),
+    couplings: levelCouplings({ nodes, issueModules }),
     unassigned: counts.unassigned,
     issuesRead: issuesReadOf(list),
   };
@@ -366,18 +354,16 @@ export async function moduleDetailOf(
   const subtree = subtreesOf(nodes).get(node.id) ?? [node.id];
   const prefix = await activeIssuePrefix(projectId);
   const since = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 13));
-  const [list, traces, latest, landings, activity, seqs, entry, drift, declared] =
-    await Promise.all([
-      listIssueStanding(projectId, 'open', { userId: viewer.userId }),
-      readTraces(projectId),
-      readLatestLandings(projectId, prefix),
-      readRecentLandings(projectId, subtree, prefix),
-      readActivity(projectId, subtree, since),
-      readIssueSeqs(projectId, subtree),
-      node.knowledgeEntryId ? readEntry(projectId, node.knowledgeEntryId) : Promise.resolve(null),
-      moduleDrift(projectId),
-      loadDeclaredEdges(projectId, nodes.map(snapshotOf)),
-    ]);
+  const [list, traces, latest, landings, activity, seqs, entry, drift] = await Promise.all([
+    listIssueStanding(projectId, 'open', { userId: viewer.userId }),
+    readTraces(projectId),
+    readLatestLandings(projectId, prefix),
+    readRecentLandings(projectId, subtree, prefix),
+    readActivity(projectId, subtree, since),
+    readIssueSeqs(projectId, subtree),
+    node.knowledgeEntryId ? readEntry(projectId, node.knowledgeEntryId) : Promise.resolve(null),
+    moduleDrift(projectId),
+  ]);
 
   const open = openIssuesOf(list);
   const standing = deriveStandings({ nodes, openIssues: open, latestLandings: latest, traces }).get(
@@ -432,7 +418,7 @@ export async function moduleDetailOf(
     standing,
     purpose: purposeOf(entry, linked),
     keyPaths: keyPathsFact(entry, linked),
-    couplings: couplingsOf(node.id, refs, declared, observed),
+    couplings: couplingsOf(node.id, refs, observed),
     landings: { total: landings.total, recent: landingsOf(landings.recent, paths) },
     activity: { days, total: days.reduce((n, d) => n + d.events, 0) },
     issues,

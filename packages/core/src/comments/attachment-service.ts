@@ -1,5 +1,5 @@
 import type { AttachmentRefusalCode } from '@forge/contracts/attachments';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { commentAttachments } from '../db/schema.js';
@@ -25,11 +25,7 @@ const refuse = refuser<AttachmentRefusalCode>('ATTACHMENT_REFUSED');
  * storage or the DB. Returns the type the row will be stored under, read from
  * the BYTES and only then narrowed by the name (ISS-957).
  */
-export function validateCommentAttachment(input: {
-  name: string;
-  mime: string;
-  bytes: Buffer;
-}): string {
+function validateCommentAttachment(input: { name: string; mime: string; bytes: Buffer }): string {
   if (!input.name) throw refuse('INVALID_NAME', 'name is empty after sanitisation');
   if (nameExceedsByteBudget(input.name))
     throw refuse(
@@ -89,7 +85,7 @@ export async function findCommentAttachmentByName(
   return { id: row.id, name: row.name, url: `/api/comments/attachments/${row.id}` };
 }
 
-export interface PersistCommentAttachmentInput {
+interface PersistCommentAttachmentInput {
   commentId: string;
   name: string;
   mime: string;
@@ -98,7 +94,7 @@ export interface PersistCommentAttachmentInput {
   uploaderDeviceId: string | null;
 }
 
-export interface PersistedCommentAttachment {
+interface PersistedCommentAttachment {
   id: string;
   commentId: string;
   name: string;
@@ -155,19 +151,4 @@ export async function persistCommentAttachment(
     ...inserted,
     url: `/api/comments/attachments/${inserted.id}`,
   };
-}
-
-/** Remove attachments this process wrote and no longer stands behind (storage and rows). */
-export async function discardCommentAttachments(ids: readonly string[]): Promise<void> {
-  if (ids.length === 0) return;
-  const rows = await db
-    .select({ id: commentAttachments.id, path: commentAttachments.path })
-    .from(commentAttachments)
-    .where(inArray(commentAttachments.id, [...ids]));
-  for (const row of rows) {
-    try {
-      await getStorage().delete(row.path);
-    } catch {}
-  }
-  await db.delete(commentAttachments).where(inArray(commentAttachments.id, [...ids]));
 }

@@ -12,9 +12,9 @@ import type { LeaseReading } from './session-claim.js';
 type ReleaseHold = Omit<ReleaseHoldView, 'heldAt'>;
 
 /** Whose move it is for a stranded row to leave the status it is stuck at. */
-export type StrandOwner = 'agent' | 'human';
+type StrandOwner = 'agent' | 'human';
 
-export type StrandRule =
+type StrandRule =
   | {
       watch: false;
       /** Why nothing is owed here. A status left out with no reason is what this type forbids. */
@@ -66,12 +66,7 @@ export const STRAND_RULES: Record<IssueStatus, StrandRule> = {
   },
   reopen: { watch: true, graceMs: 6 * HOUR, owes: 'agent', waitingFor: 'a run to build it again' },
 };
-
-export const AT_REST_STATUSES: readonly IssueStatus[] = (
-  Object.keys(STRAND_RULES) as IssueStatus[]
-).filter((s) => STRAND_RULES[s].watch === false);
-
-export const WATCHED_STATUSES: readonly IssueStatus[] = (
+const WATCHED_STATUSES: readonly IssueStatus[] = (
   Object.keys(STRAND_RULES) as IssueStatus[]
 ).filter((s) => STRAND_RULES[s].watch === true);
 

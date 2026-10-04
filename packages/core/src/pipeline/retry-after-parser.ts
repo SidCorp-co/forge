@@ -1,5 +1,4 @@
-export const MIN_RETRY_COOLDOWN_MS = 60_000;
-export const MAX_RETRY_AFTER_CAP_MS = 24 * 60 * 60 * 1000;
+const MAX_RETRY_AFTER_CAP_MS = 24 * 60 * 60 * 1000;
 
 export function parseRetryAfter(header: string | null | undefined): Date | null {
   if (header === null || header === undefined) return null;

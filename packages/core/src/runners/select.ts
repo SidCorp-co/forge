@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type RunnerType } from '../db/schema.js';
+import type { RunnerType } from '../db/schema.js';
 import { CLAIM_CAPABLE_DEVICE } from './device-cap.js';
 import {
   deviceNotDisabled,
@@ -25,27 +25,14 @@ function poolClause(deviceIds: string[] | null | undefined, column = sql`device_
   )})`;
 }
 
-/**
- * Decide the initial `capabilities` jsonb for a freshly-created runner row.
- *
- * Dev-mode (`NODE_ENV !== 'production'`) defaults `claude-code` runners with
- * `pm: true` so a stock `pnpm dev` setup can pick up PM jobs without an
- * extra opt-in step. Production never auto-grants PM — operators must enable
- * it explicitly via PATCH /api/runners/:id (ISS-18 requirement).
- *
- * Always returns the caller-provided capabilities verbatim when they are
- * supplied, so explicit `{}` from a callsite still clears the default.
- */
+/** The initial `capabilities` jsonb for a freshly-created runner row: what the caller supplied, else none. */
 export function defaultRunnerCapabilities(
-  type: RunnerType,
+  _type: RunnerType,
   provided?: Record<string, unknown>,
 ): Record<string, unknown> {
-  if (provided !== undefined) return provided;
-  if (type === 'claude-code' && process.env.NODE_ENV !== 'production') {
-    return { pm: true };
-  }
-  return {};
+  return provided ?? {};
 }
+
 /**
  * Circuit breaker — number of consecutive recent FAILED terminal jobs on a
  * device (for a project) that trips it out of dispatch selection. Override via

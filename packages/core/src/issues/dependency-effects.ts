@@ -15,7 +15,7 @@ export const DISPATCH_GATING_KIND: IssueDependencyKind = 'blocks';
  *  approved (`design-delivery.ts`, FB-57), which no status says. */
 export const BLOCKER_SETTLED_STATUSES: readonly IssueStatus[] = ISSUE_RESOLVED_STATUSES;
 
-export const GATES_DISPATCH_NOTE =
+const GATES_DISPATCH_NOTE =
   'B is held out of the admissible set a master reads, and refused ISSUE_BLOCKED to every claim of ' +
   'it while it has not started (a lease, a run session, a pool job, a move to `in_progress`), while a ' +
   'live `blocks` edge points at it ' +

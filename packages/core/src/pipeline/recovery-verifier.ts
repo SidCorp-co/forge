@@ -6,7 +6,7 @@ import { issues, type jobs } from '../db/schema.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
-export type RecoveryVerdict = 'advanced' | 'pending' | 'reverted';
+type RecoveryVerdict = 'advanced' | 'pending' | 'reverted';
 
 // A job's step is progress inside `in_progress` (ISS-54), so what a job leaves behind is read off
 // the statuses a run hands an issue on to: the plan checkpoint, the release gate, a park, a close.
@@ -21,7 +21,6 @@ export const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<JobType, readonly IssueStatus
   fix: ['awaiting_release', 'closed'],
   release: ['awaiting_release', 'closed'],
   custom: [],
-  pm: [],
   drive: [],
   // smoke canaries (ISS-455) are issue-less; there is no status to advance.
   smoke: [],
@@ -81,7 +80,7 @@ export function classifyVerdict(currentStatus: IssueStatus, jobType: JobType): R
 
   if (ISSUE_RESOLVED_STATUSES.includes(currentStatus)) return 'advanced';
 
-  // No entry mapping (e.g. `custom` / `pm`) and not in any exit set —
+  // No entry mapping (e.g. `custom`) and not in any exit set —
   // verifier cannot decide; default to pending so the retry path proceeds.
   if (!entry) return 'pending';
 

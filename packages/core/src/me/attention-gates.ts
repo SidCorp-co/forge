@@ -7,7 +7,7 @@ import { effectiveProjectRole } from '../lib/authz.js';
 import { actorFor, visibleFilter } from '../permissions/index.js';
 import { mayChoose } from '../questions/index.js';
 
-export const CHANNEL_GATES_CAP = 20;
+const CHANNEL_GATES_CAP = 20;
 
 export interface AttentionGateRow {
   questionId: string;

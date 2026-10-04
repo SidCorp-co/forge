@@ -82,7 +82,7 @@ export async function recordQueueSnapshots(): Promise<number> {
   }
 }
 
-export type SweepScope = LoopScope;
+type SweepScope = LoopScope;
 
 type SessionAlarmRow = {
   id: string;
@@ -171,7 +171,7 @@ type JobAlarmRow = {
   issue_id: string | null;
 };
 
-export function orphanedJobAlarmQuery(now: Date = new Date(), scope: SweepScope = {}): SQL {
+function orphanedJobAlarmQuery(now: Date = new Date(), scope: SweepScope = {}): SQL {
   const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
   const killGateCutoffIso = new Date(now.getTime() - killGraceMs()).toISOString();
   return sql`
@@ -199,7 +199,7 @@ export async function alarmOrphanedJobs(
   return { reconciled: candidates.length };
 }
 
-export function neverClaimedAlarmQuery(now: Date = new Date(), scope: SweepScope = {}): SQL {
+function neverClaimedAlarmQuery(now: Date = new Date(), scope: SweepScope = {}): SQL {
   const projectClause = scope.projectId ? sql`AND j.project_id = ${scope.projectId}` : sql``;
   const cutoffIso = new Date(now.getTime() - getLoopThresholds().ackMs).toISOString();
   const killGateCutoffIso = new Date(now.getTime() - killGraceMs()).toISOString();

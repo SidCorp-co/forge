@@ -63,7 +63,7 @@ interface QueueHopResult {
   turnNeverReported: number;
 }
 
-/** Both arms, in one pass each, over the `queued` pipeline/pm sessions. */
+/** Both arms, in one pass each, over the `queued` pipeline sessions. */
 export async function reapQueueHop(input: QueueHopInput): Promise<QueueHopResult> {
   const { now, queueCutoff, quietCutoff, projectFilter } = input;
 

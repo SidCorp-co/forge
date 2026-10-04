@@ -112,7 +112,7 @@ const KERNEL_RECORD_ACTIONS: ReadonlySet<string> = new Set(KERNEL_RECORD_KINDS.m
 
 // cm:guard ISS-96 — kernel evidence is kept as written for as long as its issue is: the activity
 // routes neither evaluate nor delete a verdict, transition, landing, park or correction row
-export function assertActivityMutable(action: string): void {
+function assertActivityMutable(action: string): void {
   if (!KERNEL_RECORD_ACTIONS.has(action)) return;
   throw refuseRecord(
     'KERNEL_RECORD_IMMUTABLE',

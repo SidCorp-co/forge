@@ -15,8 +15,8 @@ import { type KernelActor, transition } from '../lifecycle/index.js';
 
 type Executor = IssueDependencyExecutor;
 
-export const QUESTION_ENDED_WITH_ISSUE = 'issue_terminal';
-export const QUESTION_NOT_NEEDED = 'not_needed';
+const QUESTION_ENDED_WITH_ISSUE = 'issue_terminal';
+const QUESTION_NOT_NEEDED = 'not_needed';
 
 /**
  * The marker that a person owes an issue an answer: an open `human` question on it.
@@ -35,7 +35,7 @@ export async function personOwesAnAnswer(executor: Executor, issueId: string): P
   return (rows[0] as { held?: boolean } | undefined)?.held === true;
 }
 
-export async function openQuestionIdsOn(executor: Executor, issueId: string): Promise<string[]> {
+async function openQuestionIdsOn(executor: Executor, issueId: string): Promise<string[]> {
   const rows = await executor
     .select({ id: agentQuestions.id })
     .from(agentQuestions)
@@ -63,7 +63,7 @@ export async function openHumanQuestionIdsOn(
   return rows.map((r) => r.id);
 }
 
-export type TerminalQuestionFault = {
+type TerminalQuestionFault = {
   code: 'OPEN_QUESTIONS' | 'VOID_REASON_REQUIRED';
   detail: string;
   details: Record<string, unknown>;

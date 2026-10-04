@@ -13,7 +13,7 @@ import { issueWorkMovingSql } from './issue-lease.js';
 import { holderFanout, readClaim } from './lease-fanout.js';
 import { leaseIsWorkInProgress } from './session-claim.js';
 
-export interface IssueHold {
+interface IssueHold {
   held: boolean;
   /** ISO time of the latest check-in core has for the row, `null` where it has none. */
   lastCheckInAt: string | null;

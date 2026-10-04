@@ -6,8 +6,8 @@ import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../observability/logger.js';
 import { emitNotification, retryRescuesSince } from './ports.js';
 
-export const RETRY_RESCUE_ALERT_THRESHOLD = 5;
-export const RETRY_RESCUE_ALERT_WINDOW_MS = 24 * 60 * 60 * 1000;
+const RETRY_RESCUE_ALERT_THRESHOLD = 5;
+const RETRY_RESCUE_ALERT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export interface RetryRescueAlertResult {
   detected: number;
@@ -20,7 +20,7 @@ function windowStart(now: Date): Date {
   );
 }
 
-export function retryRescueResolutionKey(projectId: string, reason: string, now: Date): string {
+function retryRescueResolutionKey(projectId: string, reason: string, now: Date): string {
   return `retry-rescue:${projectId}:${encodeURIComponent(reason)}:${windowStart(now).toISOString()}`;
 }
 

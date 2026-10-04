@@ -24,13 +24,13 @@ const SIDE_STATUSES: readonly string[] = PARK_STATUSES;
 const LEFT_UNKNOWN =
   'this park began before Forge kept the status a park leaves (migration 0346 found no audited move into it), so nothing says where it resumes — a person names it with Move anyway';
 
-export interface ParkMove {
+interface ParkMove {
   to: string;
   at: Date;
   reason: string | null;
 }
 
-export interface ParkComment {
+interface ParkComment {
   id: string;
   body: string;
   createdAt: Date;
@@ -44,7 +44,7 @@ export interface ParkComment {
   commentId?: string | null;
 }
 
-export interface ParkInput {
+interface ParkInput {
   status: IssueStatus;
   waitingKind: WaitingKind | null;
   /** `issue_work_state.left_status`: where the park returns, or null where nothing recorded it. */
@@ -63,7 +63,7 @@ export interface ParkInput {
  * written around the `needs_info` move it records, so it falls after this boundary,
  * and a record from an earlier park falls before it. `null` where the history holds no such move.
  */
-export function boundaryOf(moves: readonly ParkMove[]): Date | null {
+function boundaryOf(moves: readonly ParkMove[]): Date | null {
   return moves.find((m) => !SIDE_STATUSES.includes(m.to))?.at ?? null;
 }
 
@@ -94,7 +94,7 @@ function resumeFrom(leftStatus: IssueStatus | null, recordId: string | null): Pa
 }
 
 /** The park view for one issue, or `null` where nobody owes it anything. */
-export function readPark(input: ParkInput): IssuePark | null {
+function readPark(input: ParkInput): IssuePark | null {
   const parked = AWAITING_INPUT_STATUSES.includes(input.status);
   if (!parked && input.openHumanQuestionIds.length === 0) return null;
   const entry = input.moves[0]?.to === input.status ? input.moves[0] : undefined;

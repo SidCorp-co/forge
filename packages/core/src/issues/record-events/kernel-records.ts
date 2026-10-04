@@ -8,7 +8,7 @@ import { actorAgency } from '../actor-agency.js';
 import type { TransitionWriteInput } from '../apply-transition.js';
 import { type RecordEventField, writeKernelRecord } from './store.js';
 
-export interface MoveRecord {
+interface MoveRecord {
   readonly issueId: string;
   readonly actor: Actor;
   readonly from: IssueStatus;
@@ -49,7 +49,7 @@ export function moveOf(
 const field = (key: string, value: string | null | undefined): RecordEventField[] =>
   value === null || value === undefined || value === '' ? [] : [{ key, value }];
 
-export function transitionRecordFields(move: MoveRecord): RecordEventField[] {
+function transitionRecordFields(move: MoveRecord): RecordEventField[] {
   return [
     { key: 'from', value: move.from },
     { key: 'to', value: move.to },
@@ -61,7 +61,7 @@ export function transitionRecordFields(move: MoveRecord): RecordEventField[] {
   ];
 }
 
-export function parkRecordFields(move: MoveRecord): RecordEventField[] {
+function parkRecordFields(move: MoveRecord): RecordEventField[] {
   return [
     { key: 'status', value: move.to },
     ...field('kind', move.to === 'needs_info' ? move.waitingKind : null),

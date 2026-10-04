@@ -4,7 +4,7 @@ import { db as defaultDb } from '../db/client.js';
 import { activityLog, type IssueStatus, issueStatuses, issues } from '../db/schema.js';
 import { logger } from '../observability/logger.js';
 
-export type ProgressBucket = 'shipped' | 'closed_unshipped' | 'in_flight' | 'remaining';
+type ProgressBucket = 'shipped' | 'closed_unshipped' | 'in_flight' | 'remaining';
 
 export interface ProjectProgress {
   /** Released, or closed with evidence the code actually shipped. */
@@ -38,7 +38,7 @@ function emptyByStatus(): Record<IssueStatus, number> {
 }
 
 /** The pool, or a caller's open transaction — this is one read and it must join the caller's. */
-export type ProgressReader = Pick<typeof defaultDb, 'execute'>;
+type ProgressReader = Pick<typeof defaultDb, 'execute'>;
 
 export async function computeProjectProgress(
   projectId: string,

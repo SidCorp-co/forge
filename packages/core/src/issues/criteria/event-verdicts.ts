@@ -39,7 +39,7 @@ function asMessageRefusal(err: RefusalError, criterion: number): MessageRefusal 
 }
 
 /** The verdict's author as the event's actor names it: a box is an agent, an account its agency. */
-export function authorOfActor(actor: Actor): VerdictAuthor {
+function authorOfActor(actor: Actor): VerdictAuthor {
   return {
     userId: actor.type === 'user' ? actor.id : null,
     deviceId: actor.type === 'device' ? actor.id : null,

@@ -37,7 +37,7 @@ export async function readWorkState(
 }
 
 /** The step log with the open entry closed at `at` and `next` opened, newest last, capped. */
-export function nextStepLog(
+function nextStepLog(
   log: readonly WorkStepEntry[],
   next: WorkStep | null,
   at: Date,
@@ -142,7 +142,7 @@ function objectOf(value: unknown): Record<string, unknown> | null {
  * the typed columns the kernel reads. Exit: until forge-plugin moves to the 10-status model
  * (plugin-followups.md) and writes `workState` itself.
  */
-export interface SplitSessionContext {
+interface SplitSessionContext {
   rest: Record<string, unknown> | null;
   lease: { present: boolean; value: unknown };
   branch: string | null;

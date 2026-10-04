@@ -32,7 +32,7 @@ export interface ModuleDriftEdge {
   nearestCommonAncestor: ModuleDriftNode | null;
 }
 
-export interface ModuleDriftDeclaredEdge {
+interface ModuleDriftDeclaredEdge {
   a: ModuleDriftNode;
   b: ModuleDriftNode;
   issueCount: number;
@@ -57,7 +57,7 @@ export interface ModuleDriftResponse {
   agreedEdgeCount: number;
 }
 
-export interface ObservedModuleEdge {
+interface ObservedModuleEdge {
   aLabelId: string;
   bLabelId: string;
   issueCount: number;
@@ -65,7 +65,7 @@ export interface ObservedModuleEdge {
   recentIssueSeqs: number[];
 }
 
-export interface ModuleNodeRow extends ModuleDriftNode {
+interface ModuleNodeRow extends ModuleDriftNode {
   parentId: string | null;
 }
 
@@ -79,7 +79,7 @@ const RECENT_ISSUE_SAMPLE = 5;
  * primary×secondary half of the co-occurrence the epic defines — the remainder of `issueCount` is
  * secondary×secondary, and a consumer can tell them apart without a second query.
  */
-export async function observedModuleEdges(projectId: string): Promise<ObservedModuleEdge[]> {
+async function observedModuleEdges(projectId: string): Promise<ObservedModuleEdge[]> {
   const right = alias(issueLabels, 'right_label');
   const leftModule = alias(labels, 'left_module');
   const rightModule = alias(labels, 'right_module');
@@ -128,7 +128,7 @@ export async function observedModuleEdges(projectId: string): Promise<ObservedMo
 }
 
 /** The project's modules, with the parent edge the declared graph is closed over. */
-export async function moduleNodes(projectId: string): Promise<ModuleNodeRow[]> {
+async function moduleNodes(projectId: string): Promise<ModuleNodeRow[]> {
   return db
     .select({
       labelId: labels.id,
@@ -152,7 +152,7 @@ const pairKey = (a: string, b: string): string =>
  * The walk is bounded by a seen-set exactly as `module-service.ts` bounds its own: the FK permits
  * a cycle, and a corrupted chain must answer the request rather than spin.
  */
-export function closeHierarchy(nodes: ModuleNodeRow[]): {
+function closeHierarchy(nodes: ModuleNodeRow[]): {
   declaredPairs: Set<string>;
   ancestorsOf: Map<string, string[]>;
 } {
@@ -183,7 +183,7 @@ export function closeHierarchy(nodes: ModuleNodeRow[]): {
  * declared connected — the taxonomy says they are both parts of something, never that they relate
  * to each other — so their pair stays in `undeclared` and carries the parent that explains it.
  */
-export function nearestCommonAncestorId(
+function nearestCommonAncestorId(
   ancestorsOf: Map<string, string[]>,
   a: string,
   b: string,
@@ -195,7 +195,7 @@ export function nearestCommonAncestorId(
   return null;
 }
 
-export interface ModuleDriftInput {
+interface ModuleDriftInput {
   nodes: ModuleNodeRow[];
   observed: ObservedModuleEdge[];
   minCoOccurrence: number;
@@ -212,7 +212,7 @@ export interface ModuleDriftInput {
  * `belowThresholdEdgeCount`, because one issue touching two modules is a coincidence and a
  * detector that called it a finding would report noise forever.
  */
-export function driftFromSets(input: ModuleDriftInput): ModuleDriftResponse {
+function driftFromSets(input: ModuleDriftInput): ModuleDriftResponse {
   const { nodes, observed, minCoOccurrence, generatedAt } = input;
   const nodeOf = new Map<string, ModuleDriftNode>(
     nodes.map((n) => [

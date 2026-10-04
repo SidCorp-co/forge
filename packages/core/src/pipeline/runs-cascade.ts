@@ -10,9 +10,9 @@ import { requestJobKill, transitionSessions } from './ports.js';
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 export type JobRow = typeof jobs.$inferSelect;
 
-export type CascadeReason = 'pipeline_cancelled' | 'pipeline_completed' | 'pipeline_failed';
+type CascadeReason = 'pipeline_cancelled' | 'pipeline_completed' | 'pipeline_failed';
 
-export interface CascadeResult {
+interface CascadeResult {
   cancelledJobIds: string[];
   abortedSessionIds: string[];
   deviceBySession: Map<string, string>;

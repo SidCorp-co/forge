@@ -24,7 +24,7 @@ import type { Actor } from '../activity.js';
 const FIELD_KEY = /^[a-z][a-z0-9-]*$/u;
 
 /** How many fields one event may carry: a verdict names one block per criterion, so it is wide. */
-export const RECORD_EVENT_MAX_FIELDS = 400;
+const RECORD_EVENT_MAX_FIELDS = 400;
 
 export interface RecordEventField {
   readonly key: string;
@@ -32,7 +32,7 @@ export interface RecordEventField {
 }
 
 /** What a writer sends: the kind, the contract its fields are shaped by, and the fields in order. */
-export interface RecordEventDraft {
+interface RecordEventDraft {
   readonly kind: string;
   readonly contract: number;
   readonly fields: readonly RecordEventField[];
@@ -236,7 +236,7 @@ export async function writeRecordEvent(
   return eventOfRow(row);
 }
 
-export interface KernelRecordInput {
+interface KernelRecordInput {
   readonly issueId: string;
   readonly actor: Actor;
   readonly kind: KernelOnlyRecordKind;
@@ -265,7 +265,7 @@ export async function writeKernelRecord(executor: Tx, input: KernelRecordInput):
   });
 }
 
-export interface RecordEventQuery {
+interface RecordEventQuery {
   readonly kinds?: readonly (RecordEventKind | typeof RECORD_DIGEST_KIND)[];
   readonly limit?: number;
   readonly kernelOnly?: boolean;

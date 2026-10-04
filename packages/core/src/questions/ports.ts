@@ -9,14 +9,14 @@ import type { ConversationAdapter } from '../db/schema-conversations.js';
 import type { AuthVars } from '../middleware/auth.js';
 
 /** The conversation turn a session ran for, as its own record names it. */
-export interface ConversationTurnMeta {
+interface ConversationTurnMeta {
   venue: { adapter: ConversationAdapter; externalId: string };
   conversationId: string;
   windowId: string;
   askedByLabel: string | null;
 }
 
-export interface QuestionPorts {
+interface QuestionPorts {
   decideChannelGate: (
     tx: Tx,
     args: {

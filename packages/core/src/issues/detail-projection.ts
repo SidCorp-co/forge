@@ -7,7 +7,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import type { LandingShape } from './landing-evidence.js';
 import { type MergeMarkColumns, type MergeMarkKind, mergeMarkKindOf } from './merge-record.js';
 
-export interface IssueBodyColumns {
+interface IssueBodyColumns {
   description?: string | null;
   descriptionFormat?: string | null;
 }

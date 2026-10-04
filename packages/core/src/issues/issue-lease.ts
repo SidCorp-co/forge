@@ -52,7 +52,7 @@ const livePipelineRunList = sql.join(
 );
 
 /** Held-ness is the row AND a non-terminal session. `docs/modules/issues/issue-lease.md`. */
-export function issueLeaseHeldSql(
+function issueLeaseHeldSql(
   projectId: SQL | string,
   issueKey: SQL | string,
   exceptRunId: string | null = null,
@@ -120,7 +120,7 @@ export function issueWorkMovingSql(args: {
 }
 
 /** One issue's holder, as the refusal and the lease endpoint report it. */
-export interface IssueLeaseHolder {
+interface IssueLeaseHolder {
   issueKey: string;
   deviceId: string;
   sessionId: string;
@@ -249,7 +249,7 @@ function reachableProjects(deviceId: string): SQL {
 }
 
 /** What one box is told about one issue's lease. */
-export interface DeviceIssueLease {
+interface DeviceIssueLease {
   /** Held by a live run session on ANY box, across the projects this one serves. */
   held: boolean;
   /** Held by THIS box. What a close loop asking "have I given this back" means. */
@@ -327,7 +327,7 @@ export async function readDeviceIssueLease(args: {
 }
 
 /** A key that reaches no lease, with the status that says which way. */
-export interface LeaseKeyRefusal {
+interface LeaseKeyRefusal {
   code:
     | 'ISSUE_LEASE_KEY_SHAPE'
     | 'ISSUE_LEASE_KEY_UNKNOWN_PREFIX'

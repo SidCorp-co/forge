@@ -2,7 +2,7 @@ import { and, eq, inArray, isNotNull, isNull, notInArray, or, type SQL, sql } fr
 import { db } from '../db/client.js';
 import { issues, users } from '../db/schema.js';
 
-export const DETECTOR_CHANNELS = ['system', 'schedule'] as const;
+const DETECTOR_CHANNELS = ['system', 'schedule'] as const;
 
 /** Detector-or-person, a question about the DOOR. Not about who wrote it. */
 export function buildOriginCondition(origin: 'detector' | 'human'): SQL {
@@ -17,7 +17,7 @@ export function buildOriginCondition(origin: 'detector' | 'human'): SQL {
   ) as SQL;
 }
 
-export interface IssueCreator {
+interface IssueCreator {
   creatorEmail: string | null;
   creatorIsAgent: boolean;
   creatorLabel: string;
@@ -63,7 +63,7 @@ export async function hydrateCreatorsForIssues(
 }
 
 /** The same question in SQL: did a paired box or an agent account file this issue? */
-export function creatorIsAgentCondition(): SQL {
+function creatorIsAgentCondition(): SQL {
   return sql`(${issues.createdByDeviceId} IS NOT NULL OR EXISTS (SELECT 1 FROM ${users} WHERE ${users.id} = ${issues.createdById} AND ${users.kind} = 'agent'))`;
 }
 

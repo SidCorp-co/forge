@@ -1,11 +1,11 @@
 // Every record an issue holds, in the order written: its typed events, and the records that were
 // only ever posted as comment fences before events existed (ISS-56).
 
+import { isKernelOnlyRecordKind, type RecordEventKind } from '@forge/contracts/record-events';
 import { and, asc, eq, gt, like } from 'drizzle-orm';
 import { db, type Tx } from '../../db/client.js';
 import { comments } from '../../db/schema.js';
 import { type ForgeRecord, parseForgeRecord } from '../../messaging/forge-record.js';
-import { isKernelOnlyRecordKind, type RecordEventKind } from '@forge/contracts/record-events';
 import { listRecordEvents, mirroredCommentIds, recordOfEvent } from './store.js';
 
 export interface RecordEntry {
@@ -21,7 +21,7 @@ export interface RecordEntry {
   readonly byDevice: boolean;
 }
 
-export interface RecordHistoryQuery {
+interface RecordHistoryQuery {
   readonly kinds: readonly RecordEventKind[];
   /** Only records written strictly after this moment. */
   readonly after?: Date | null;

@@ -12,7 +12,7 @@ const HANDOFF_SCAN_LIMIT = 50;
 
 type EvidenceExecutor = Pick<Db, 'select'>;
 
-export interface WorkEvidence {
+interface WorkEvidence {
   implementationJobCount: number;
   handoffCommitSha: string | null;
   handoffFilesModified: number;
@@ -93,7 +93,7 @@ export async function collectWorkEvidence(
   };
 }
 
-export function hasCodeEvidence(evidence: WorkEvidence): boolean {
+function hasCodeEvidence(evidence: WorkEvidence): boolean {
   return (
     Boolean(evidence.handoffCommitSha) ||
     evidence.handoffFilesModified > 0 ||
@@ -102,10 +102,7 @@ export function hasCodeEvidence(evidence: WorkEvidence): boolean {
   );
 }
 
-export async function hasChildIssues(
-  issueId: string,
-  executor: EvidenceExecutor = db,
-): Promise<boolean> {
+async function hasChildIssues(issueId: string, executor: EvidenceExecutor = db): Promise<boolean> {
   const [row] = await executor
     .select({ id: issueDependencies.id })
     .from(issueDependencies)
@@ -120,7 +117,7 @@ export async function hasChildIssues(
   return row != null;
 }
 
-export const NO_WORK_EVIDENCE_DETAIL =
+const NO_WORK_EVIDENCE_DETAIL =
   'no branch, commit or code handoff is recorded for this issue — record the branch in ' +
   '`workState.branch` (a `sessionContext` naming `branch` or `worklog.branch` records it ' +
   'there too), write the implementation step ' +
@@ -144,7 +141,7 @@ export const NO_WORK_EVIDENCE_DETAIL =
  * published on a pull request. Enforcement keeps the fail-open wrapper; nothing
  * that gates a transition may reach this.
  */
-export async function missingWorkEvidenceStrict(
+async function missingWorkEvidenceStrict(
   issueId: string,
   executor: EvidenceExecutor = db,
 ): Promise<string | null> {

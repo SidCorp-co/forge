@@ -95,7 +95,7 @@ function masterDetail(master: ResidentMaster | null | undefined): string {
 
 /** ISS-1273 — what to say when no step is held. Each sentence is about THIS ROW: naming a group
  *  the row does not carry, or a lane that keeps no step, is prose the fields beside it falsify. */
-export function noStepDetail(
+function noStepDetail(
   lane: PipelineRunLane,
   group?: PipelineRunGroup,
   master?: ResidentMaster | null,

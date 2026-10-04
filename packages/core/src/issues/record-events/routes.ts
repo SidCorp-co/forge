@@ -42,7 +42,7 @@ const listQuerySchema = z
   .strict();
 
 /** The wire shape of one event: what `@forge/contracts` `RecordEventView` declares. */
-export function serializeRecordEvent(event: RecordEvent) {
+function serializeRecordEvent(event: RecordEvent) {
   return { ...event, createdAt: event.createdAt.toISOString() };
 }
 

@@ -49,7 +49,7 @@ export function verdictPairsIn(body: string): CriterionVerdict[] {
 }
 
 /** The same triples, read off a record whichever store it came from. */
-export function verdictPairsOf(record: ForgeRecord | null): CriterionVerdict[] {
+function verdictPairsOf(record: ForgeRecord | null): CriterionVerdict[] {
   const out: CriterionVerdict[] = [];
   for (const block of criterionBlocksIn(record)) {
     if (block.verdict === null) continue;
@@ -113,9 +113,7 @@ function identityOfRow(row: LatestVerdict): VerdictIdentity | null {
 }
 
 /** Each live criterion's latest verdict, keyed by the criterion's number. */
-export function latestByNumber(
-  criteria: readonly CriterionWithVerdict[],
-): Map<number, CriterionVerdict> {
+function latestByNumber(criteria: readonly CriterionWithVerdict[]): Map<number, CriterionVerdict> {
   const latest = new Map<number, CriterionVerdict>();
   for (const { n, latest: row } of criteria) {
     if (!row) continue;
@@ -130,7 +128,7 @@ export function latestByNumber(
 }
 
 /** One criterion an issue does not carry an earned, standing verdict on. */
-export interface UnearnedCriterion {
+interface UnearnedCriterion {
   readonly criterion: number;
   /** The latest verdict's word, or null where no verdict record has ever named this criterion. */
   readonly verdict: string | null;
@@ -140,7 +138,7 @@ export interface UnearnedCriterion {
 }
 
 /** One criterion whose verdict cites something the tracker cannot resolve, and which citation. */
-export interface BrokenCitations {
+interface BrokenCitations {
   readonly criterion: number;
   readonly unresolved: readonly CitationReport[];
 }
@@ -157,7 +155,7 @@ export interface IssueCriteriaReport {
 }
 
 /** Every name the tracker holds an attachment under for this issue, its comments' included. */
-export async function heldAttachmentNames(issueId: string): Promise<Set<string>> {
+async function heldAttachmentNames(issueId: string): Promise<Set<string>> {
   const own = await db
     .select({ name: issueAttachments.name })
     .from(issueAttachments)
@@ -468,13 +466,4 @@ export async function unearnedCriteriaReports(
     );
   }
   return out;
-}
-
-/** Issues carrying a criterion that is not earned: never judged, `skipped`, `fail`, or stale. */
-export async function issuesWithUnearnedCriteria(
-  issueIds: string[],
-  serving: ServingReading,
-): Promise<string[]> {
-  const reports = await unearnedCriteriaReports(issueIds, serving);
-  return reports.filter((r) => r.unearned.length > 0).map((r) => r.issueId);
 }

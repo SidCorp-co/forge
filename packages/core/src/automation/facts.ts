@@ -8,7 +8,7 @@ import {
   type AgentReportView,
 } from '@forge/contracts/agent-reports';
 import type { AutomationPerson, FireProducedItems } from '@forge/contracts/automation-standing';
-import { and, asc, count, desc, eq, inArray, ne, type SQL, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   agentReports,
@@ -16,7 +16,6 @@ import {
   issues,
   notifications,
   pipelineRuns,
-  projects,
   scheduleRuns,
   schedules,
 } from '../db/schema.js';
@@ -89,7 +88,7 @@ const fireColumns = {
 
 export type FireRow = FireFacts & { output: string | null };
 
-export interface FireScope {
+interface FireScope {
   projectId: string;
   scheduleId?: string;
   fireId?: string;
