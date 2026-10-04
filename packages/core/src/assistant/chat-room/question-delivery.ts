@@ -3,7 +3,7 @@
 
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { agentQuestions, type QuestionOrigin } from '../../db/schema-questions.js';
+import { agentQuestions } from '../../db/schema-questions.js';
 import { rocketchatQuestionDeliveries } from '../../db/schema-rocketchat.js';
 import {
   registerThread,
@@ -13,14 +13,18 @@ import {
 } from '../../integrations/rocketchat/index.js';
 import { issueDisplayIds } from '../../issues/index.js';
 import { problemsOf } from '../../messaging/contract.js';
-import { screenForDoor } from '../../messaging/proven.js';
+import { type ProvenMessage, screenForDoor } from '../../messaging/proven.js';
 import { logger } from '../../observability/logger.js';
 import {
   clearWebDecidedAlerts,
   reportUndeliverable,
   resolveUndeliverableAlert,
 } from './question-alerts.js';
-import { isUnreachableRoom, resolveQuestionDestination } from './question-destination.js';
+import {
+  isUnreachableRoom,
+  type QuestionDestination,
+  resolveQuestionDestination,
+} from './question-destination.js';
 import {
   claimRound,
   MAX_ATTEMPTS,
@@ -51,21 +55,33 @@ async function noteFailure(
   return 'failed';
 }
 
+type Outcome = 'delivered' | 'failed' | 'undeliverable' | 'held';
+type RoomDestination = Extract<QuestionDestination, { kind: 'room' }>;
+type Prepared = {
+  attempt: number;
+  destination: RoomDestination;
+  proven: ProvenMessage;
+};
+
+const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
 /**
  * Deliver one owed round. Never throws — a failure is a record, not an exception.
  */
-async function deliverOwedRound(
-  owed: OwedRound,
-  now: Date = new Date(),
-): Promise<'delivered' | 'failed' | 'undeliverable' | 'held'> {
+async function deliverOwedRound(owed: OwedRound, now: Date = new Date()): Promise<Outcome> {
+  const prepared = await prepareRound(owed, now);
+  return typeof prepared === 'string' ? prepared : postRound(owed, prepared, now);
+}
+
+/** Claim the round, find where it goes and screen what it says; an outcome where it stops. */
+async function prepareRound(owed: OwedRound, now: Date): Promise<Prepared | Outcome> {
   const [question] = await db
     .select()
     .from(agentQuestions)
     .where(eq(agentQuestions.id, owed.questionId))
     .limit(1);
-  if (!question) return 'failed';
-  const step = question.steps[owed.round - 1];
-  if (!step) return 'failed';
+  const step = question?.steps[owed.round - 1];
+  if (!question || !step) return 'failed';
 
   const attempt = await claimRound(owed, now);
   if (attempt === null) return 'held';
@@ -76,9 +92,7 @@ async function deliverOwedRound(
     origin: question.origin ?? null,
     step,
   });
-  if (destination.kind === 'unresolvable') {
-    return refuse(owed, destination.reason, now);
-  }
+  if (destination.kind === 'unresolvable') return refuse(owed, destination.reason, now);
 
   const issueKey = owed.issueId
     ? ((await issueDisplayIds([owed.issueId])).get(owed.issueId) ?? null)
@@ -90,45 +104,37 @@ async function deliverOwedRound(
       step,
       rounds: question.steps.length,
       parkDeadlineAt: question.parkDeadlineAt ?? null,
-      askedBy: askerOf(question.origin ?? null),
+      askedBy: question.origin?.kind === 'conversation' ? question.origin.askedByLabel : null,
     }),
   );
-  if (!screening.ok) {
-    logger.error(
-      {
-        questionId: owed.questionId,
-        round: owed.round,
-        problems: problemsOf(screening.verdict),
-      },
-      'rocketchat.question-delivery: the round was refused by the operator screen; not posted',
-    );
-    return await noteFailure(
-      owed,
-      attempt,
-      `screen refused the round: ${problemsOf(screening.verdict).join('; ')}`,
-      now,
-    );
-  }
+  if (screening.ok) return { attempt, destination, proven: screening.proven };
+  const problems = problemsOf(screening.verdict);
+  logger.error(
+    { questionId: owed.questionId, round: owed.round, problems },
+    'rocketchat.question-delivery: the round was refused by the operator screen; not posted',
+  );
+  return noteFailure(owed, attempt, `screen refused the round: ${problems.join('; ')}`, now);
+}
 
+/** Post the screened round into its room and record the thread it now lives in. */
+async function postRound(
+  owed: OwedRound,
+  { attempt, destination, proven }: Prepared,
+  now: Date,
+): Promise<Outcome> {
   const auth = await resolveRoomPostAuth(destination.connectionId, {
     source: 'rocketchat.question-delivery',
     questionId: owed.questionId,
   });
-  if (!auth) {
-    return await noteFailure(owed, attempt, 'the connection carries no usable credentials', now);
-  }
+  if (!auth) return noteFailure(owed, attempt, 'the connection carries no usable credentials', now);
 
-  const ref = {
-    connectionId: destination.connectionId,
-    rid: destination.rid,
-    tmid: destination.tmid ?? '',
-  };
-  if (destination.takeAnchor && destination.tmid) {
-    const took = await registerThread({ questionId: owed.questionId }, ref);
+  const { connectionId, rid, tmid } = destination;
+  if (destination.takeAnchor && tmid) {
+    const took = await registerThread({ questionId: owed.questionId }, { connectionId, rid, tmid });
     if (!took) {
       return refuse(
         owed,
-        `the message this question was raised against (${destination.tmid}) is already another thread's root, so this round cannot be hung under it`,
+        `the message this question was raised against (${tmid}) is already another thread's root, so this round cannot be hung under it`,
         now,
       );
     }
@@ -137,54 +143,46 @@ async function deliverOwedRound(
   let receipt: { messageId: string | null };
   try {
     receipt = await sendFixedReply(
-      {
-        kind: 'rest',
-        auth,
-        rid: destination.rid,
-        ...(destination.tmid ? { tmid: destination.tmid } : {}),
-      },
-      screening.proven.text,
-      screening.proven,
+      { kind: 'rest', auth, rid, ...(tmid ? { tmid } : {}) },
+      proven.text,
+      proven,
     );
   } catch (err) {
     await releaseTakenAnchor(destination, owed.questionId);
     logger.error(
-      { err, questionId: owed.questionId, round: owed.round, rid: destination.rid },
+      { err, questionId: owed.questionId, round: owed.round, rid },
       'rocketchat.question-delivery: posting the round failed',
     );
     if (isUnreachableRoom(err)) {
       return refuse(
         owed,
-        `this bot can no longer post in room ${destination.rid}, which is where this question was asked`,
+        `this bot can no longer post in room ${rid}, which is where this question was asked`,
         now,
       );
     }
-    return await noteFailure(owed, attempt, err instanceof Error ? err.message : String(err), now);
+    return noteFailure(owed, attempt, messageOf(err), now);
   }
 
-  try {
-    const tmid = destination.tmid ?? receipt.messageId;
-    if (!tmid) {
-      return await noteFailure(
-        owed,
-        attempt,
-        'the post named no message id, so no thread can be registered',
-        now,
-      );
-    }
-    await registerThread(
-      { questionId: owed.questionId },
-      { connectionId: destination.connectionId, rid: destination.rid, tmid },
+  const thread = tmid ?? receipt.messageId;
+  if (!thread) {
+    return noteFailure(
+      owed,
+      attempt,
+      'the post named no message id, so no thread can be registered',
+      now,
     );
+  }
+  try {
+    await registerThread({ questionId: owed.questionId }, { connectionId, rid, tmid: thread });
     await settle(owed, { status: 'delivered' }, now);
     await resolveUndeliverableAlert(owed.questionId);
     return 'delivered';
   } catch (err) {
     logger.error(
-      { err, questionId: owed.questionId, round: owed.round, rid: destination.rid },
+      { err, questionId: owed.questionId, round: owed.round, rid },
       'rocketchat.question-delivery: the round was posted and recording it failed',
     );
-    return await noteFailure(owed, attempt, err instanceof Error ? err.message : String(err), now);
+    return noteFailure(owed, attempt, messageOf(err), now);
   }
 }
 
@@ -206,11 +204,6 @@ async function releaseTakenAnchor(
     rid: destination.rid,
     tmid: destination.tmid,
   });
-}
-
-/** Who this round is being put to, where the question remembers. */
-function askerOf(origin: QuestionOrigin | null): string | null {
-  return origin?.kind === 'conversation' ? origin.askedByLabel : null;
 }
 
 export interface QuestionDrainResult {

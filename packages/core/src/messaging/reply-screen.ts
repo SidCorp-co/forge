@@ -20,7 +20,7 @@ interface ReplyScreenInput {
   /**
    * The snapshot the writer's own turn was shown.
    */
-  readonly progress: ProgressFacts | null | 'legacy-session';
+  readonly progress: ProgressFacts | null;
   /** A caller inside a transaction MUST pass its own handle. */
   readonly executor?: Tx;
 }
@@ -36,7 +36,7 @@ export async function screenReplyAtDoor(
     intent,
     segments: input.segments,
     toolCalls: input.toolCalls,
-    progress: input.progress === 'legacy-session' ? 'compute' : input.progress,
+    progress: input.progress,
     ...(input.executor ? { executor: input.executor } : {}),
   });
   return screenMessage({ audience, intent, segments: input.segments, facts });

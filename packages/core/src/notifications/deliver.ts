@@ -214,10 +214,36 @@ export async function deliverExisting(
   return deliverTo(recordId, { ...row, recipients }, now);
 }
 
+/**
+ * A condition already carrying this identity is the SAME condition: stamp that it was seen again,
+ * promote it out of `pending` once it has held long enough, and deliver only what now fires.
+ */
+async function seenAgain(
+  existing: NonNullable<Awaited<ReturnType<typeof activeRecord>>>,
+  input: DeliverInput,
+  now: Date,
+): Promise<number> {
+  const heldFor = existing.pendingSince ? now.getTime() - existing.pendingSince.getTime() : 0;
+  const owed = pendingEvaluationsFor(input.type) * EVALUATION_MS;
+  const ripe = existing.state === 'pending' && heldFor >= owed;
+  const inhibitedNow = ripe || existing.state === 'firing' ? await inhibitor(input) : null;
+  const promote = ripe && !inhibitedNow;
+  await db
+    .update(notifications)
+    .set({
+      lastSeenAt: now,
+      ...(promote ? { state: 'firing' as const } : {}),
+      ...(ripe && inhibitedNow ? { state: 'inhibited' as const, inhibitedBy: inhibitedNow } : {}),
+    })
+    .where(eq(notifications.id, existing.id));
+  if (inhibitedNow || !(promote || existing.state === 'firing')) return 0;
+  return deliverTo(existing.id, input, now);
+}
+
 export async function recordAndDeliver(
   input: DeliverInput,
   now: Date = new Date(),
-): Promise<{ id: string; delivered: number } | null> {
+): Promise<{ id: string; delivered: number }> {
   const kind = kindOf(input.type);
 
   if (kind === 'signal' && input.resolutionKey) {
@@ -229,29 +255,8 @@ export async function recordAndDeliver(
     );
   }
 
-  // A condition already carrying this identity is the SAME condition. Stamp that it was
-  // seen again, and promote it out of `pending` once it has held long enough.
   const existing = kind === 'condition' ? await activeRecord(input) : null;
-  if (existing) {
-    const heldFor = existing.pendingSince ? now.getTime() - existing.pendingSince.getTime() : 0;
-    const owed = pendingEvaluationsFor(input.type) * EVALUATION_MS;
-    const ripe = existing.state === 'pending' && heldFor >= owed;
-    const inhibitedNow = ripe || existing.state === 'firing' ? await inhibitor(input) : null;
-    const promote = ripe && !inhibitedNow;
-    await db
-      .update(notifications)
-      .set({
-        lastSeenAt: now,
-        ...(promote ? { state: 'firing' as const } : {}),
-        ...(ripe && inhibitedNow ? { state: 'inhibited' as const, inhibitedBy: inhibitedNow } : {}),
-      })
-      .where(eq(notifications.id, existing.id));
-    if (existing.state === 'pending' && !promote) return { id: existing.id, delivered: 0 };
-    if (existing.state === 'inhibited') return { id: existing.id, delivered: 0 };
-    if (inhibitedNow) return { id: existing.id, delivered: 0 };
-    const delivered = await deliverTo(existing.id, input, now);
-    return { id: existing.id, delivered };
-  }
+  if (existing) return { id: existing.id, delivered: await seenAgain(existing, input, now) };
 
   const inhibitedBy = kind === 'condition' ? await inhibitor(input) : null;
   const waits = kind === 'condition' && pendingEvaluationsFor(input.type) > 0;
