@@ -6,7 +6,6 @@
     "no-coordinator-blob|packages/core/src/conversations/conversation-agent.ts": 7,
     "no-coordinator-blob|packages/core/src/devices/claim.ts": 7,
     "no-coordinator-blob|packages/core/src/jobs/finalize-done.ts": 7,
-    "no-coordinator-blob|packages/core/src/jobs/lifecycle-routes.ts": 7,
-    "no-coordinator-blob|packages/core/src/release-batch/release-sweep.ts": 7
+    "no-coordinator-blob|packages/core/src/jobs/lifecycle-routes.ts": 7
   }
 }
