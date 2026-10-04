@@ -24,6 +24,11 @@ const v = (major: number, minor: number, patch: number): ReleaseVersion => ({
   patch,
 });
 
+const p = (major: number, minor: number, patch: number, label: string, number: number) => ({
+  ...v(major, minor, patch),
+  pre: { label, number },
+});
+
 describe('parseReleaseVersion', () => {
   it('reads three dot-separated integers', () => {
     expect(parseReleaseVersion('0.1.0')).toEqual(v(0, 1, 0));
@@ -38,6 +43,10 @@ describe('parseReleaseVersion', () => {
       '1.2.3.4',
       'v1.2.3',
       '1.2.3-rc1',
+      '1.2.3-Dev.1',
+      '1.2.3-dev',
+      '1.2.3-dev.',
+      '1.2.3-1.2',
       '1.2.3+build',
       ' 1.2.3',
       '1.2.3 ',
@@ -136,5 +145,40 @@ describe('nextReleaseVersion — a re-cut', () => {
   it('still lands above the failed release, so the burned number is not re-worn', () => {
     const failed = v(0, 5, 1);
     expect(compareReleaseVersions(nextReleaseVersion(failed, failed), failed)).toBeGreaterThan(0);
+  });
+});
+
+describe('a prerelease line', () => {
+  const line = { of: v(0, 4, 0), label: 'dev' };
+
+  it('reads and writes the -label.N tail', () => {
+    expect(parseReleaseVersion('0.4.0-dev.12')).toEqual(p(0, 4, 0, 'dev', 12));
+    expect(formatReleaseVersion(p(0, 4, 0, 'dev', 12))).toBe('0.4.0-dev.12');
+  });
+
+  it('orders a prerelease below the release it previews, and its numbers by digit', () => {
+    expect(compareReleaseVersions(p(0, 4, 0, 'dev', 9), v(0, 4, 0))).toBeLessThan(0);
+    expect(compareReleaseVersions(p(0, 4, 0, 'dev', 1), v(0, 3, 0))).toBeGreaterThan(0);
+    expect(compareReleaseVersions(p(0, 4, 0, 'dev', 10), p(0, 4, 0, 'dev', 9))).toBeGreaterThan(0);
+    expect(compareReleaseVersions(p(0, 4, 0, 'rc', 1), p(0, 4, 0, 'dev', 9))).toBeGreaterThan(0);
+  });
+
+  it('starts the line at 1 above a plain release, and continues it from its own highest', () => {
+    expect(formatReleaseVersion(nextReleaseVersion(v(0, 3, 0), null, line))).toBe('0.4.0-dev.1');
+    expect(formatReleaseVersion(nextReleaseVersion(null, null, line))).toBe('0.4.0-dev.1');
+    expect(formatReleaseVersion(nextReleaseVersion(p(0, 4, 0, 'dev', 7), null, line))).toBe(
+      '0.4.0-dev.8',
+    );
+  });
+
+  it('starts a raised line at 1', () => {
+    const raised = { of: v(0, 5, 0), label: 'dev' };
+    expect(formatReleaseVersion(nextReleaseVersion(p(0, 4, 0, 'dev', 7), null, raised))).toBe(
+      '0.5.0-dev.1',
+    );
+  });
+
+  it('cuts the previewed release once the line is gone', () => {
+    expect(nextReleaseVersion(p(0, 4, 0, 'dev', 7), null)).toEqual(v(0, 4, 0));
   });
 });

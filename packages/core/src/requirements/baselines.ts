@@ -1,5 +1,6 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, lte } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
+import { mockups } from '../db/schema-mockups.js';
 import { requirementBaselinePins, requirementBaselines } from '../db/schema-requirements.js';
 
 // cm:why an agree writes seq 1 and each re-pin a further seq of the same revision, so the latest
@@ -37,4 +38,25 @@ export async function plannedBaselineSeqIn(
 ): Promise<number | null> {
   if (revision === null) return null;
   return (await latestBaselineIn(tx, requirementId, revision))?.seq ?? null;
+}
+
+// cm:why a baseline pins every accepted mockup proposed against its revision or an earlier one,
+// beside the designs (ISS-78): a mockup's bytes never change, so the pin is the row
+export async function acceptedMockupIds(
+  tx: Tx,
+  requirementId: string,
+  revision: number,
+): Promise<string[]> {
+  const rows = await tx
+    .select({ id: mockups.id })
+    .from(mockups)
+    .where(
+      and(
+        eq(mockups.requirementId, requirementId),
+        eq(mockups.status, 'accepted'),
+        lte(mockups.revision, revision),
+      ),
+    )
+    .orderBy(asc(mockups.mockupSeq));
+  return rows.map((r) => r.id);
 }

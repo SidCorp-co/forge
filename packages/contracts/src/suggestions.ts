@@ -5,7 +5,10 @@
 import { z } from "zod";
 import { type FeedbackTriageEffect, feedbackTriageSchema } from "./feedback.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
-import { REGISTRY_ISSUE_COMPLEXITIES } from "./pipeline-registry.js";
+import {
+	REGISTRY_ISSUE_COMPLEXITIES,
+	REGISTRY_ISSUE_PRIORITIES,
+} from "./pipeline-registry.js";
 import { ANSWER_VIEWS, pickFields } from "./projection.js";
 
 /** The six kinds rev 2 names, and feedback_triage (workflow feedback-triage, ISS-59); cluster, stale_requirement, conflict, verify and ask_reporter are deferred. */
@@ -104,6 +107,10 @@ export const SUGGESTION_REFUSAL_CODES = [
 	"SUGGESTION_EFFECT_UNDECIDED",
 	"SUGGESTION_BLOCKER_UNKNOWN",
 	"SUGGESTION_BLOCKER_TERMINAL",
+	"SUGGESTION_BUILD_UNNAMED",
+	"SUGGESTION_BUILD_UNPINNED",
+	"SUGGESTION_REVISE_FORBIDDEN",
+	"SUGGESTION_REVISION_UNCHANGED",
 	"CLARIFICATION_ALREADY_OPEN",
 ] as const;
 export type SuggestionRefusalCode = (typeof SUGGESTION_REFUSAL_CODES)[number];
@@ -152,6 +159,13 @@ const breakdownBlocker = z.union([
 	z.string().trim().min(1).max(200),
 ]);
 
+/** What a breakdown issue is filed with when its item leaves the field out (decision on design
+ *  suggestion-lifecycle, ISS-117); complexity has no default, since an empty one picks the heaviest rung. */
+export const BREAKDOWN_ISSUE_DEFAULTS = {
+	priority: "medium",
+	category: "feature",
+} as const;
+
 /** Each kind's payload and the targets it may name; a payload that does not parse is refused. */
 export const SUGGESTION_PAYLOADS = {
 	requirement_draft: {
@@ -198,6 +212,10 @@ export const SUGGESTION_PAYLOADS = {
 							.max(100)
 							.optional(),
 						blockedBy: z.array(breakdownBlocker).max(50).optional(),
+						complexity: z.enum(REGISTRY_ISSUE_COMPLEXITIES),
+						priority: z.enum(REGISTRY_ISSUE_PRIORITIES).optional(),
+						category: z.string().trim().min(1).max(100).optional(),
+						builds: z.string().trim().min(1).max(200).nullable().optional(),
 					}),
 				)
 				.min(1)
@@ -264,6 +282,18 @@ export type AcceptSuggestionRequest = z.infer<
 export const ACCEPT_SUGGESTION_SHAPE =
 	"{ reason? } — why it is accepted, and on whose authority";
 
+/** `POST /api/projects/:id/suggestions/:sid/revise` — a reviewer's edit: the original is rejected
+ *  with `reason` and a new suggestion carrying `payload` is proposed by the reviewer (ISS-117). */
+export const reviseSuggestionRequestSchema = z.strictObject({
+	payload: z.unknown(),
+	reason: z.string().max(4_000),
+});
+export type ReviseSuggestionRequest = z.infer<
+	typeof reviseSuggestionRequestSchema
+>;
+export const REVISE_SUGGESTION_SHAPE =
+	"{ payload, reason } — the whole payload as it should read, and why the original is changed";
+
 /** `POST /api/projects/:id/suggestions/:sid/reject`. */
 export const rejectSuggestionRequestSchema = z.strictObject({
 	reason: z.string().max(4_000),
@@ -294,6 +324,8 @@ export interface SuggestionView {
 	payload: unknown;
 	payloadVersion: number;
 	fingerprint: string;
+	/** The suggestion this one revises: a reviewer's edit names the original it replaced. */
+	revises: string | null;
 	producerKind: SuggestionProducer;
 	producerId: string | null;
 	conversationMessageId: string | null;
@@ -312,12 +344,24 @@ export interface SuggestionRevisionEffect {
 	revision: number;
 }
 
+/** One issue a breakdown accept filed: the fields written, the pinned design it builds, and which
+ *  fields its item left out and took the default for. */
+export interface SuggestionBreakdownIssue {
+	issueId: string;
+	key: string;
+	priority: string;
+	category: string;
+	complexity: string;
+	builds: string | null;
+	defaulted: (keyof typeof BREAKDOWN_ISSUE_DEFAULTS)[];
+}
+
 /** A breakdown accept: the draft issues it filed against the requirement at `revision`. */
 export interface SuggestionBreakdownEffect {
 	requirementId: string;
 	requirement: string;
 	revision: number;
-	issues: { issueId: string; key: string }[];
+	issues: SuggestionBreakdownIssue[];
 }
 
 /** A readiness accept: the accepted row is the readiness result at `revision` (no readiness table). */
@@ -354,7 +398,7 @@ export type SuggestionEffect =
 	| SuggestionIssueTriageEffect
 	| SuggestionDuplicateEffect;
 
-/** The answer to create, accept, reject and withdraw. */
+/** The answer to create, accept, reject, revise and withdraw. */
 export interface SuggestionResponse {
 	suggestion: SuggestionView;
 	effect?: SuggestionEffect | FeedbackTriageEffect;
@@ -372,6 +416,7 @@ export const SUGGESTION_SUMMARY_FIELDS = [
 	"status",
 	"target",
 	"baseRevision",
+	"revises",
 	"producerKind",
 	"producerId",
 	"model",
@@ -386,5 +431,6 @@ export type SuggestionSummaryView = Pick<
 	(typeof SUGGESTION_SUMMARY_FIELDS)[number]
 >;
 
-export const suggestionSummaryOf = (view: SuggestionView): SuggestionSummaryView =>
-	pickFields(view, SUGGESTION_SUMMARY_FIELDS);
+export const suggestionSummaryOf = (
+	view: SuggestionView,
+): SuggestionSummaryView => pickFields(view, SUGGESTION_SUMMARY_FIELDS);

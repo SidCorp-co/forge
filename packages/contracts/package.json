@@ -86,6 +86,10 @@
       "types": "./dist/wireframe.d.ts",
       "default": "./dist/wireframe.js"
     },
+    "./mockups": {
+      "types": "./dist/mockups.d.ts",
+      "default": "./dist/mockups.js"
+    },
     "./field-changes": {
       "types": "./dist/field-changes.d.ts",
       "default": "./dist/field-changes.js"
