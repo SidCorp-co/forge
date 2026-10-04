@@ -1,28 +1,13 @@
-// web-v2 shell feature module — cross-cutting UX state for the app shell:
-// density, sidebar collapse/clusters, recents, pinned views, deep-links.
-export { useSidebar, type SidebarState } from './sidebar';
 export { SidebarProvider, useSidebarContext } from './sidebar-context';
-export { useRecents, type RecentEntry, type RecentKind } from './recents';
-export { usePinnedViews, type PinnedView } from './pinned-views';
+export { useRecents } from './recents';
+export { usePinnedViews } from './pinned-views';
+export { buildShareLink, decodeFilter, decodeNumber } from './deep-link';
 export {
-  NavRailCompact,
-  type NavRailCompactProps,
-  type RailItem,
-  type SwitcherProject,
-} from './nav-rail-compact';
-export {
-  buildShareLink, decodeFilter, decodeNumber,
-} from './deep-link';
-export {
-  WORKSPACE_ITEMS, SECONDARY_DESTINATIONS, PROJECT_ITEMS, ecosystemMenu, ecosystemHref,
-  PROJECT_ITEMS_BY_SPECIFICITY, activeSlug, matchesSub,
-  buildActiveKey, buildBottomActiveKey, workspaceNavItems,
-  compactWorkspaceRailItems, projectRailItems, bottomTabItems,
-  resolveRailSlug, projectMenu, PROJECT_MENU, isProjGroup, DEVELOPMENT_GROUP_KEY,
-  type ProjItem, type ProjGroup, type ProjEntry, type ProjectBadges,
+  WORKSPACE_ITEMS, SECONDARY_DESTINATIONS, PROJECT_ITEMS, ecosystemHref, activeSlug,
+  buildActiveKey, buildBottomActiveKey, bottomTabItems, resolveRailSlug,
 } from './nav-model';
-export { buildWorkspaceCommands, type WorkspaceCommandDeps } from './commands';
+export { buildWorkspaceCommands } from './commands';
 export { useProjectOrgScopeSync } from './use-project-org-scope-sync';
 export { CurrentProjectProvider, useCurrentProject } from './current-project';
 export { useRailProjectData } from './use-rail-project-data';
-export { MobileNavDrawer, type MobileNavDrawerProps } from './components/mobile-nav-drawer';
+export { MobileNavDrawer } from './components/mobile-nav-drawer';

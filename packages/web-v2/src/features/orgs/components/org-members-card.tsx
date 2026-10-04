@@ -1,92 +1,30 @@
 "use client";
 
-// Org members management card (ISS-468) — extracted from orgs-tab.tsx (ISS-470)
-// so it can be reused both in Settings → Organizations AND in the org home,
-// bound to the active org. List/add/role/remove members, list/revoke pending
-// invitations, list the org's projects, and (owner only) rename/delete the org.
-// Behavior is unchanged from the original Settings embedding.
+// Org members management card (ISS-468), used in Settings → Organizations and in the org home,
+// bound to the active org: members, invitations, the org's projects, and (owner only)
+// rename/delete the org.
 import { useState } from "react";
-import { Badge, Button, Card, CardContent, CardTitle, ErrorState, Field, IconButton, Input, SectionTitle, Select, Skeleton, SlideOver, type SelectOption, EnumBadge } from "@/design";
-import { formatApiError } from "@/lib/api/error";
-import { cn } from "@/lib/utils/cn";
-import { useAuth } from "@/providers/auth-provider";
-import { useToast } from "@/providers/toast-provider";
 import {
-  useAddOrgMember,
-  useDeleteOrg,
-  useOrgInvitations,
-  useOrgMembers,
-  useOrgProjects,
-  useRemoveOrgMember,
-  useRenameOrg,
-  useRevokeOrgInvitation,
-  useUpdateOrgMemberLenses,
-  useUpdateOrgMemberRole,
-} from "../hooks";
-import {
-  MEMBER_LENS_OPTIONS,
-  type MemberLens,
-  type OrgInvitationRow,
-  type OrgListItem,
-  type OrgMemberRow,
-  type OrgRole,
-} from "../types";
+  Button,
+  Card,
+  CardContent,
+  Field,
+  Input,
+  SectionTitle,
+  type SelectOption,
+  SlideOver,
+} from "@/design";
 import { ConfirmDialog } from "@/design/primitives/confirm-dialog";
-
-/**
- * Per-member working-lens control (role-aware chat). Two toggle-chips — a
- * member can hold both, one, or none (none = default product/non-technical
- * voice). Read-only badges when the viewer can't manage. Soft: shapes only how
- * the interactive agent answers, never permissions.
- */
-function LensControl({
-  lenses,
-  canManage,
-  busy,
-  onToggle,
-}: {
-  lenses: MemberLens[];
-  canManage: boolean;
-  busy: boolean;
-  onToggle: (lens: MemberLens) => void;
-}) {
-  if (!canManage) {
-    if (lenses.length === 0) return null;
-    return (
-      <span className="flex items-center gap-1">
-        {MEMBER_LENS_OPTIONS.filter((o) => lenses.includes(o.value)).map((o) => (
-          <Badge key={o.value} tone="neutral">
-            {o.label}
-          </Badge>
-        ))}
-      </span>
-    );
-  }
-  return (
-    <span className="flex items-center gap-1" title="Working lens — shapes how chat answers this member">
-      {MEMBER_LENS_OPTIONS.map((o) => {
-        const on = lenses.includes(o.value);
-        return (
-          <button
-            key={o.value}
-            type="button"
-            disabled={busy}
-            aria-pressed={on}
-            onClick={() => onToggle(o.value)}
-            className={cn(
-              "rounded-pill border px-2 py-0.5 text-11 font-medium transition-colors disabled:opacity-50",
-              on
-                ? "border-transparent bg-accent-tint text-accent-text"
-                : "border-line text-subtle hover:bg-hover hover:text-fg",
-            )}
-          >
-            {o.label}
-          </button>
-        );
-      })}
-    </span>
-  );
-}
+import { useToast } from "@/providers/toast-provider";
+import { useDeleteOrg, useRenameOrg } from "../hooks";
+import type { OrgListItem } from "../types";
+import {
+  AddMemberForm,
+  InvitationList,
+  MemberList,
+  ProjectList,
+  useFailToast,
+} from "./org-member-sections";
 
 const ORG_ROLE_OPTIONS: SelectOption[] = [
   { value: "member", label: "Member" },
@@ -94,25 +32,7 @@ const ORG_ROLE_OPTIONS: SelectOption[] = [
   { value: "owner", label: "Owner" },
 ];
 
-export function OrgMembersCard({
-  org,
-  onDeleted,
-}: {
-  org: OrgListItem;
-  onDeleted: () => void;
-}) {
-  const membersQ = useOrgMembers(org.id);
-  const addMember = useAddOrgMember(org.id);
-  const updateRole = useUpdateOrgMemberRole(org.id);
-  const updateLenses = useUpdateOrgMemberLenses(org.id);
-  const removeMember = useRemoveOrgMember(org.id);
-  const renameOrg = useRenameOrg(org.id);
-  const deleteOrg = useDeleteOrg();
-  const { user } = useAuth();
-  const { toast } = useToast();
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState<OrgRole>("member");
-
+export function OrgMembersCard({ org, onDeleted }: { org: OrgListItem; onDeleted: () => void }) {
   const canManage = org.role === "owner" || org.role === "admin";
   const isOwner = org.role === "owner";
   // Owner is only assignable by an owner — mirror this in BOTH the existing-
@@ -122,70 +42,40 @@ export function OrgMembersCard({
     ? ORG_ROLE_OPTIONS
     : ORG_ROLE_OPTIONS.filter((o) => o.value !== "owner");
 
-  const projectsQ = useOrgProjects(org.id);
-  const invitationsQ = useOrgInvitations(canManage ? org.id : undefined);
-  const revokeInvitation = useRevokeOrgInvitation(org.id);
+  return (
+    <Card>
+      <CardContent>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <SectionTitle className="fg-h3">{org.name} — members</SectionTitle>
+          {isOwner && <OwnerActions org={org} onDeleted={onDeleted} />}
+        </div>
+        <MemberList org={org} canManage={canManage} roleOptions={roleOptions} />
+        <ProjectList orgId={org.id} />
+        {canManage && <InvitationList orgId={org.id} />}
+        {canManage && <AddMemberForm orgId={org.id} roleOptions={roleOptions} />}
+      </CardContent>
+    </Card>
+  );
+}
 
-  // Destructive actions go through a confirm step before firing.
-  const [memberToRemove, setMemberToRemove] = useState<OrgMemberRow | null>(
-    null,
-  );
-  const [inviteToRevoke, setInviteToRevoke] = useState<OrgInvitationRow | null>(
-    null,
-  );
+/** Rename and delete, each behind its own confirm surface. */
+function OwnerActions({ org, onDeleted }: { org: OrgListItem; onDeleted: () => void }) {
+  const renameOrg = useRenameOrg(org.id);
+  const deleteOrg = useDeleteOrg();
+  const { toast } = useToast();
+  const fail = useFailToast();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState(org.name);
 
-  function confirmRemoveMember() {
-    if (!memberToRemove) return;
-    removeMember.mutate(memberToRemove.userId, {
-      onSuccess: () => {
-        toast({ title: "Member removed", tone: "success" });
-        setMemberToRemove(null);
-      },
-      onError: (err) => {
-        toast({
-          title: "Request failed",
-          description: formatApiError(err),
-          tone: "error",
-        });
-        setMemberToRemove(null);
-      },
-    });
-  }
-
-  function confirmRevokeInvitation() {
-    if (!inviteToRevoke) return;
-    revokeInvitation.mutate(inviteToRevoke.email, {
-      onSuccess: () => {
-        toast({ title: "Invitation revoked", tone: "success" });
-        setInviteToRevoke(null);
-      },
-      onError: (err) => {
-        toast({
-          title: "Request failed",
-          description: formatApiError(err),
-          tone: "error",
-        });
-        setInviteToRevoke(null);
-      },
-    });
-  }
-
-  function confirmDeleteOrg() {
+  function confirmDelete() {
     deleteOrg.mutate(org.id, {
       onSuccess: () => {
         toast({ title: "Organization deleted", tone: "success" });
         setDeleteOpen(false);
         onDeleted();
       },
-      onError: (err) =>
-        toast({
-          title: "Request failed",
-          description: formatApiError(err),
-          tone: "error",
-        }),
+      onError: fail,
     });
   }
 
@@ -201,294 +91,25 @@ export function OrgMembersCard({
         toast({ title: "Organization renamed", tone: "success" });
         setRenameOpen(false);
       },
-      onError: (err) =>
-        toast({
-          title: "Request failed",
-          description: formatApiError(err),
-          tone: "error",
-        }),
+      onError: fail,
     });
   }
 
   return (
-    <Card>
-      <CardContent>
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <SectionTitle className="fg-h3">{org.name} — members</SectionTitle>
-          {isOwner && (
-            <span className="flex shrink-0 items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setRenameValue(org.name);
-                  setRenameOpen(true);
-                }}
-              >
-                Rename
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => setDeleteOpen(true)}
-              >
-                Delete
-              </Button>
-            </span>
-          )}
-        </div>
-        {membersQ.isLoading ? (
-          <Skeleton className="h-9 w-full rounded-md" />
-        ) : membersQ.isError ? (
-          <ErrorState
-            message={formatApiError(membersQ.error)}
-            onRetry={() => membersQ.refetch()}
-          />
-        ) : (
-          <ul className="space-y-1.5">
-            {(membersQ.data ?? []).map((m) => (
-              <li
-                key={m.userId}
-                className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <span className="min-w-0 truncate text-fg">{m.email}</span>
-                  {user?.id === m.userId && <Badge tone="accent">You</Badge>}
-                </span>
-                <span className="flex shrink-0 items-center gap-2">
-                  <LensControl
-                    lenses={m.lenses ?? []}
-                    canManage={canManage}
-                    busy={
-                      updateLenses.isPending &&
-                      updateLenses.variables?.userId === m.userId
-                    }
-                    onToggle={(lens) => {
-                      const cur = m.lenses ?? [];
-                      const next = cur.includes(lens)
-                        ? cur.filter((l) => l !== lens)
-                        : [...cur, lens];
-                      updateLenses.mutate(
-                        { userId: m.userId, lenses: next },
-                        {
-                          onError: (err) =>
-                            toast({
-                              title: "Couldn't update lens",
-                              description: formatApiError(err),
-                              tone: "error",
-                            }),
-                        },
-                      );
-                    }}
-                  />
-                  {canManage ? (
-                    <Select
-                      options={roleOptions}
-                      value={m.role}
-                      onChange={(v) =>
-                        updateRole.mutate(
-                          { userId: m.userId, role: v as OrgRole },
-                          {
-                            onSuccess: () =>
-                              toast({ title: "Role updated", tone: "success" }),
-                            onError: (err) =>
-                              toast({
-                                title: "Request failed",
-                                description: formatApiError(err),
-                                tone: "error",
-                              }),
-                          },
-                        )
-                      }
-                      disabled={
-                        updateRole.isPending &&
-                        updateRole.variables?.userId === m.userId
-                      }
-                    />
-                  ) : (
-                    <EnumBadge family="role" value={m.role} />
-                  )}
-                  {canManage && (
-                    <IconButton
-                      icon="trash"
-                      aria-label={`Remove ${m.email}`}
-                      onClick={() => setMemberToRemove(m)}
-                      disabled={
-                        removeMember.isPending &&
-                        removeMember.variables === m.userId
-                      }
-                    />
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <div className="mt-4 space-y-3 border-t border-line pt-4">
-          <CardTitle className="fg-label text-fg">Projects</CardTitle>
-          {projectsQ.isLoading ? (
-            <Skeleton className="h-9 w-full rounded-md" />
-          ) : projectsQ.isError ? (
-            <ErrorState
-              message={formatApiError(projectsQ.error)}
-              onRetry={() => projectsQ.refetch()}
-            />
-          ) : (projectsQ.data ?? []).length === 0 ? (
-            <p className="fg-body-sm text-subtle">No projects yet.</p>
-          ) : (
-            <ul className="space-y-1.5">
-              {(projectsQ.data ?? []).map((p) => (
-                <li
-                  key={p.id}
-                  className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"
-                >
-                  <span className="min-w-0 truncate text-fg">{p.name}</span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    {p.archivedAt && <Badge tone="amber">archived</Badge>}
-                    <span className="fg-body-sm text-subtle">{p.slug}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {canManage && (
-          <div className="mt-4 space-y-3 border-t border-line pt-4">
-            <CardTitle className="fg-label text-fg">Pending invitations</CardTitle>
-            {invitationsQ.isLoading ? (
-              <Skeleton className="h-9 w-full rounded-md" />
-            ) : invitationsQ.isError ? (
-              <ErrorState
-                message={formatApiError(invitationsQ.error)}
-                onRetry={() => invitationsQ.refetch()}
-              />
-            ) : (invitationsQ.data ?? []).length === 0 ? (
-              <p className="fg-body-sm text-subtle">No pending invitations.</p>
-            ) : (
-              <ul className="space-y-1.5">
-                {(invitationsQ.data ?? []).map((inv) => (
-                  <li
-                    key={inv.email}
-                    className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"
-                  >
-                    <span className="min-w-0 truncate text-fg">
-                      {inv.email}
-                    </span>
-                    <span className="flex shrink-0 items-center gap-2">
-                      {inv.expired && <Badge tone="amber">Expired</Badge>}
-                      <EnumBadge family="role" value={inv.role} />
-                      <IconButton
-                        icon="trash"
-                        aria-label={`Revoke invitation for ${inv.email}`}
-                        onClick={() => setInviteToRevoke(inv)}
-                        disabled={
-                          revokeInvitation.isPending &&
-                          revokeInvitation.variables === inv.email
-                        }
-                      />
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        {canManage && (
-          <form
-            className="mt-4 flex flex-wrap items-end gap-3 border-t border-line pt-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const trimmed = email.trim().toLowerCase();
-              addMember.mutate(
-                { email: trimmed, role },
-                {
-                  onSuccess: (data) => {
-                    setEmail("");
-                    // 202 = no account yet → an email invitation was sent.
-                    if ("invited" in data && data.invited) {
-                      toast({
-                        title: "Invitation sent",
-                        description: trimmed,
-                        tone: "success",
-                      });
-                    } else {
-                      toast({ title: "Member added", tone: "success" });
-                    }
-                  },
-                  onError: (err) =>
-                    toast({
-                      title: "Request failed",
-                      description: formatApiError(err),
-                      tone: "error",
-                    }),
-                },
-              );
-            }}
-          >
-            <div className="min-w-56 flex-1">
-              <Field label="Add member by email">
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="teammate@example.com"
-                />
-              </Field>
-            </div>
-            <div className="min-w-32">
-              <Field label="Role">
-                <Select
-                  options={roleOptions}
-                  value={role}
-                  onChange={(v) => setRole(v as OrgRole)}
-                />
-              </Field>
-            </div>
-            <Button
-              type="submit"
-              disabled={!email.trim() || addMember.isPending}
-            >
-              Add
-            </Button>
-          </form>
-        )}
-      </CardContent>
-
-      <ConfirmDialog
-        open={!!memberToRemove}
-        title="Remove member"
-        message={
-          <>
-            Remove <strong>{memberToRemove?.email}</strong> from {org.name}?
-            They lose access to all of its projects.
-          </>
-        }
-        confirmLabel="Remove member"
-        tone="danger"
-        loading={removeMember.isPending}
-        onConfirm={confirmRemoveMember}
-        onClose={() => setMemberToRemove(null)}
-      />
-
-      <ConfirmDialog
-        open={!!inviteToRevoke}
-        title="Revoke invitation"
-        message={
-          <>
-            Revoke the pending invitation for{" "}
-            <strong>{inviteToRevoke?.email}</strong>? They will no longer be able
-            to join with it.
-          </>
-        }
-        confirmLabel="Revoke invitation"
-        tone="danger"
-        loading={revokeInvitation.isPending}
-        onConfirm={confirmRevokeInvitation}
-        onClose={() => setInviteToRevoke(null)}
-      />
+    <span className="flex shrink-0 items-center gap-2">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          setRenameValue(org.name);
+          setRenameOpen(true);
+        }}
+      >
+        Rename
+      </Button>
+      <Button variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
+        Delete
+      </Button>
 
       <ConfirmDialog
         open={deleteOpen}
@@ -501,16 +122,11 @@ export function OrgMembersCard({
         confirmLabel="Delete organization"
         tone="danger"
         loading={deleteOrg.isPending}
-        onConfirm={confirmDeleteOrg}
+        onConfirm={confirmDelete}
         onClose={() => setDeleteOpen(false)}
       />
 
-      <SlideOver
-        open={renameOpen}
-        onClose={() => setRenameOpen(false)}
-        title="Rename organization"
-        width={420}
-      >
+      <SlideOver open={renameOpen} onClose={() => setRenameOpen(false)} title="Rename organization" width={420}>
         <form onSubmit={submitRename} className="flex h-full flex-col gap-4">
           <Field label="Organization name">
             <Input
@@ -529,17 +145,12 @@ export function OrgMembersCard({
             >
               Cancel
             </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              loading={renameOrg.isPending}
-              disabled={!renameValue.trim()}
-            >
+            <Button type="submit" variant="primary" loading={renameOrg.isPending} disabled={!renameValue.trim()}>
               Save
             </Button>
           </div>
         </form>
       </SlideOver>
-    </Card>
+    </span>
   );
 }

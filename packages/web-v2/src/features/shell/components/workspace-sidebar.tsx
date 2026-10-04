@@ -19,7 +19,7 @@ import {
 } from "../nav-model";
 import type { useRailProjectData } from "../use-rail-project-data";
 
-export interface WorkspaceSidebarProps {
+interface WorkspaceSidebarProps {
   collapsed: boolean;
   onToggleCollapsed: () => void;
   groupOpen: Record<string, boolean>;

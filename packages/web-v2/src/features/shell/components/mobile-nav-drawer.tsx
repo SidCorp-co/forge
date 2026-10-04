@@ -2,7 +2,7 @@
 
 // cm:why below md this drawer, opened from the More tab, is the whole of the sidebar: the project tier, the workspace destinations, the project switcher, the bell beside the org picker as the sidebar has it at its top, and the search, account and version the sidebar carries above md
 import { useEffect } from "react";
-import { Icon, ProjectMark } from "@/design";
+import { Icon, type IconName, ProjectMark } from "@/design";
 import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import type { ProjectListItem } from "@/features/projects/types";
@@ -10,7 +10,6 @@ import { cn } from "@/lib/utils/cn";
 import { useMyEcosystems } from "@/features/ecosystem/hooks";
 import {
   ecosystemMenu,
-  type ProjItem,
   type ProjectBadges,
   SECONDARY_DESTINATIONS,
   WORKSPACE_ITEMS,
@@ -24,8 +23,7 @@ import {
 // project tier (ISS-514). Routed via their key through onNavigate().
 const DRAWER_WORKSPACE_ITEMS = [
   ...WORKSPACE_ITEMS,
-  SECONDARY_DESTINATIONS.find((it) => it.key === "attention")!,
-  SECONDARY_DESTINATIONS.find((it) => it.key === "settings")!,
+  ...SECONDARY_DESTINATIONS.filter((it) => it.key === "attention" || it.key === "settings"),
 ];
 
 /** One 44px drawer nav row — icon/mark + label + optional count pill. */
@@ -61,7 +59,9 @@ function DrawerNavButton({
   );
 }
 
-export interface MobileNavDrawerProps {
+type NavRow = { key: string; label: string; icon: IconName; badge?: number };
+
+interface MobileNavDrawerProps {
   open: boolean;
   onClose: () => void;
   /** Active project slug from the pathname (null on workspace screens). */
@@ -121,17 +121,17 @@ export function MobileNavDrawer({
 
   if (!open) return null;
 
-  const projectRow = (it: ProjItem) => (
+  const navRow = (it: NavRow, active = it.key === activeKey, badge = it.badge) => (
     <DrawerNavButton
       key={it.key}
-      active={it.key === activeKey}
+      active={active}
       onClick={() => {
         onNavigate(it.key);
         onClose();
       }}
       leading={<Icon name={it.icon} size={18} />}
       label={it.label}
-      badge={it.badge}
+      badge={badge}
     />
   );
 
@@ -151,11 +151,11 @@ export function MobileNavDrawer({
               {e.label}
             </span>
             <div className="ml-[19px] flex flex-col border-l border-line-subtle pl-2">
-              {e.items.map((it) => projectRow(it))}
+              {e.items.map((it) => navRow(it))}
             </div>
           </div>
         ) : (
-          projectRow(e)
+          navRow(e)
         ),
       )}
     </>
@@ -164,76 +164,11 @@ export function MobileNavDrawer({
   const workspaceSection = (
     <>
       <span className="fg-label px-1.5 pb-1 pt-2 text-fg">Workspace</span>
-      {DRAWER_WORKSPACE_ITEMS.map((it) => (
-        <DrawerNavButton
-          key={it.key}
-          active={!slug && it.key === activeKey}
-          onClick={() => {
-            onNavigate(it.key);
-            onClose();
-          }}
-          leading={<Icon name={it.icon} size={18} />}
-          label={it.label}
-          badge={it.key === "attention" ? attentionCount : undefined}
-        />
-      ))}
-      <span className="fg-label px-1.5 pb-1 pt-2 text-fg">Ecosystem</span>
-      {ecosystemItems.map((it) => (
-        <DrawerNavButton
-          key={it.key}
-          active={it.key === activeKey}
-          onClick={() => {
-            onNavigate(it.key);
-            onClose();
-          }}
-          leading={<Icon name={it.icon} size={18} />}
-          label={it.label}
-          badge={it.badge}
-        />
-      ))}
-    </>
-  );
-
-  // Projects switcher (unchanged behaviour — do not regress).
-  const projectsSection = (
-    <>
-      <div className="flex items-center justify-between px-1.5 pb-1 pt-2">
-        <span className="fg-label text-fg">Projects</span>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onCreateProject}
-            className="fg-caption inline-flex items-center gap-1 rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-          >
-            <Icon name="plus" size={13} />
-            Create
-          </button>
-          <button
-            type="button"
-            onClick={onViewAllProjects}
-            className="fg-caption rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-          >
-            View all
-          </button>
-        </div>
-      </div>
-      {scopedProjects.map((p) => {
-        const g = projectGlyph(p.id);
-        return (
-          <DrawerNavButton
-            key={p.id}
-            active={p.slug === slug}
-            onClick={() => onOpenProject(p.slug)}
-            leading={
-              <ProjectMark tint={g.tint} ink={g.ink} initials={projectInitials(p.name)} size={24} radius="var(--r-sm)" />
-            }
-            label={p.name}
-          />
-        );
-      })}
-      {scopedProjects.length === 0 && (
-        <p className="fg-body-sm px-1.5 py-2 text-muted">No projects yet.</p>
+      {DRAWER_WORKSPACE_ITEMS.map((it) =>
+        navRow(it, !slug && it.key === activeKey, it.key === "attention" ? attentionCount : undefined),
       )}
+      <span className="fg-label px-1.5 pb-1 pt-2 text-fg">Ecosystem</span>
+      {ecosystemItems.map((it) => navRow(it))}
     </>
   );
 
@@ -266,12 +201,75 @@ export function MobileNavDrawer({
         <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
           {thisProjectSection}
           {workspaceSection}
-          {projectsSection}
+          <DrawerProjects
+            projects={scopedProjects}
+            slug={slug}
+            onOpenProject={onOpenProject}
+            onCreateProject={onCreateProject}
+            onViewAllProjects={onViewAllProjects}
+          />
         </div>
 
         {footer && <div className="flex flex-col gap-1 border-t border-line-subtle pt-2">{footer}</div>}
         {version && <div className="px-1.5 pt-2">{version}</div>}
       </div>
     </div>
+  );
+}
+
+/** The org's projects, each opening its board, with Create and View all. */
+function DrawerProjects({
+  projects,
+  slug,
+  onOpenProject,
+  onCreateProject,
+  onViewAllProjects,
+}: {
+  projects: ProjectListItem[];
+  slug: string | null;
+  onOpenProject: (slug: string) => void;
+  onCreateProject: () => void;
+  onViewAllProjects: () => void;
+}) {
+  return (
+    <>
+      <div className="flex items-center justify-between px-1.5 pb-1 pt-2">
+        <span className="fg-label text-fg">Projects</span>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onCreateProject}
+            className="fg-caption inline-flex items-center gap-1 rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          >
+            <Icon name="plus" size={13} />
+            Create
+          </button>
+          <button
+            type="button"
+            onClick={onViewAllProjects}
+            className="fg-caption rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          >
+            View all
+          </button>
+        </div>
+      </div>
+      {projects.map((p) => {
+        const g = projectGlyph(p.id);
+        return (
+          <DrawerNavButton
+            key={p.id}
+            active={p.slug === slug}
+            onClick={() => onOpenProject(p.slug)}
+            leading={
+              <ProjectMark tint={g.tint} ink={g.ink} initials={projectInitials(p.name)} size={24} radius="var(--r-sm)" />
+            }
+            label={p.name}
+          />
+        );
+      })}
+      {projects.length === 0 && (
+        <p className="fg-body-sm px-1.5 py-2 text-muted">No projects yet.</p>
+      )}
+    </>
   );
 }

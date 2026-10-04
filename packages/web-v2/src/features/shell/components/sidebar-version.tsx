@@ -4,7 +4,7 @@ import { Icon, Tooltip } from "@/design";
 import { ForgeVersion } from "@/features/version";
 import { cn } from "@/lib/utils/cn";
 
-export interface SidebarVersionProps {
+interface SidebarVersionProps {
   onDocs: () => void;
   activeKey: string;
   /** The 88px rail: smaller type, the pair centred. */

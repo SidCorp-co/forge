@@ -75,6 +75,18 @@ const REAUTH_ERROR_MESSAGES: Record<string, string> = {
   identity_mismatch: "The provider account doesn't match the one linked to your Forge account.",
 };
 
+type TokenDraft = {
+  name: string;
+  scopes: PatScope[];
+  grantMode: "" | "full" | "named";
+  permissions: string[];
+  expiresAt: string;
+  boundProjectId: string;
+};
+
+const toggled = <T,>(list: T[], item: T) =>
+  list.includes(item) ? list.filter((x) => x !== item) : [...list, item];
+
 export function TokensTab() {
   const tokensQ = useTokens();
   const projectsQ = useProjects();
@@ -116,6 +128,13 @@ export function TokensTab() {
     return `Project: ${projectsById.get(t.boundProjectId)?.slug ?? t.boundProjectId.slice(0, 8)}`;
   }
 
+  const itemProps = (t: PatToken): TokenItemProps => ({
+    token: t,
+    level: levelLabel(t),
+    onRevoke: () => revoke.mutate(t.id),
+    pending: revoke.isPending,
+  });
+
   // One-time plaintext reveal.
   const [revealed, setRevealed] = useState<PatTokenCreated | null>(null);
 
@@ -131,6 +150,7 @@ export function TokensTab() {
   // Consume the SSO reauth outcome on return: restore the draft on success,
   // surface the typed error on failure, and strip the params either way so a
   // refresh doesn't replay the toast.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: applyDraft only calls state setters, which are stable
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     const ok = sp.get("reauth") === "ok";
@@ -152,20 +172,7 @@ export function TokensTab() {
     if (ok) {
       if (raw) {
         try {
-          const draft = JSON.parse(raw) as {
-            name?: string;
-            scopes?: PatScope[];
-            grantMode?: "" | "full" | "named";
-            permissions?: string[];
-            expiresAt?: string;
-            boundProjectId?: string;
-          };
-          setName(draft.name ?? "");
-          if (draft.scopes?.length) setScopes(draft.scopes);
-          setGrantMode(draft.grantMode ?? "");
-          setPermissions(draft.permissions ?? []);
-          setExpiresAt(draft.expiresAt ?? "");
-          setBoundProjectId(draft.boundProjectId ?? "");
+          applyDraft(JSON.parse(raw) as Partial<TokenDraft>);
         } catch {
           // corrupt draft — start clean
         }
@@ -195,17 +202,8 @@ export function TokensTab() {
     window.location.href = reauthStartUrl(provider, RETURN_PATH);
   }
 
-  function toggleScope(scope: PatScope) {
-    setScopes((prev) =>
-      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
-    );
-  }
-
-  function togglePermission(permission: string) {
-    setPermissions((prev) =>
-      prev.includes(permission) ? prev.filter((p) => p !== permission) : [...prev, permission],
-    );
-  }
+  const toggleScope = (scope: PatScope) => setScopes((prev) => toggled(prev, scope));
+  const togglePermission = (permission: string) => setPermissions((prev) => toggled(prev, permission));
 
   function buildInput(): CreatePatInput | null {
     const next: typeof errors = {};
@@ -229,13 +227,17 @@ export function TokensTab() {
   }
 
   function resetForm() {
-    setName("");
-    setScopes(["read"]);
-    setGrantMode("");
-    setPermissions([]);
-    setExpiresAt("");
-    setBoundProjectId("");
+    applyDraft({});
     setErrors({});
+  }
+
+  function applyDraft(draft: Partial<TokenDraft>) {
+    setName(draft.name ?? "");
+    setScopes(draft.scopes?.length ? draft.scopes : ["read"]);
+    setGrantMode(draft.grantMode ?? "");
+    setPermissions(draft.permissions ?? []);
+    setExpiresAt(draft.expiresAt ?? "");
+    setBoundProjectId(draft.boundProjectId ?? "");
   }
 
   function runCreate(input: CreatePatInput) {
@@ -434,8 +436,8 @@ export function TokensTab() {
 
         {tokensQ.isLoading && (
           <div className="space-y-2.5">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-14 w-full rounded-lg" />
+            {["a", "b", "c"].map((k) => (
+              <Skeleton key={k} className="h-14 w-full rounded-lg" />
             ))}
           </div>
         )}
@@ -470,26 +472,14 @@ export function TokensTab() {
                 </THead>
                 <TBody>
                   {tokens.map((t) => (
-                    <TokenRow
-                      key={t.id}
-                      token={t}
-                      level={levelLabel(t)}
-                      onRevoke={() => revoke.mutate(t.id)}
-                      pending={revoke.isPending}
-                    />
+                    <TokenRow key={t.id} {...itemProps(t)} />
                   ))}
                 </TBody>
               </Table>
             </div>
             <div className="space-y-2.5 md:hidden">
               {tokens.map((t) => (
-                <TokenMobileCard
-                  key={t.id}
-                  token={t}
-                  level={levelLabel(t)}
-                  onRevoke={() => revoke.mutate(t.id)}
-                  pending={revoke.isPending}
-                />
+                <TokenMobileCard key={t.id} {...itemProps(t)} />
               ))}
             </div>
           </>
@@ -562,23 +552,36 @@ function ScopeBadges({ scopes }: { scopes: PatScope[] }) {
   );
 }
 
-function TokenRow({
-  token,
-  level,
-  onRevoke,
-  pending,
-}: {
+interface TokenItemProps {
   token: PatToken;
   level: string;
   onRevoke: () => void;
   pending: boolean;
-}) {
-  const revoked = !!token.revokedAt;
+}
+
+function RevokeButton({ token, onRevoke, pending }: TokenItemProps) {
+  return (
+    <Button variant="danger" size="sm" disabled={!!token.revokedAt || pending} onClick={onRevoke} className="min-h-11">
+      Revoke
+    </Button>
+  );
+}
+
+function TokenName({ token }: { token: PatToken }) {
+  return (
+    <>
+      {token.name}
+      {token.revokedAt && <span className="fg-caption ml-2">(revoked)</span>}
+    </>
+  );
+}
+
+function TokenRow(props: TokenItemProps) {
+  const { token, level } = props;
   return (
     <TR>
       <TD className="font-medium text-fg">
-        {token.name}
-        {revoked && <span className="fg-caption ml-2">(revoked)</span>}
+        <TokenName token={token} />
       </TD>
       <TD>
         <Badge tone={token.boundProjectId ? "cobalt" : "neutral"}>{level}</Badge>
@@ -595,55 +598,28 @@ function TokenRow({
       <TD className="font-mono text-muted">{fmtDate(token.expiresAt)}</TD>
       <TD className="font-mono text-muted">{fmtDate(token.lastUsedAt)}</TD>
       <TD className="text-right">
-        <Button
-          variant="danger"
-          size="sm"
-          disabled={revoked || pending}
-          onClick={onRevoke}
-          className="min-h-11"
-        >
-          Revoke
-        </Button>
+        <RevokeButton {...props} />
       </TD>
     </TR>
   );
 }
 
-function TokenMobileCard({
-  token,
-  level,
-  onRevoke,
-  pending,
-}: {
-  token: PatToken;
-  level: string;
-  onRevoke: () => void;
-  pending: boolean;
-}) {
-  const revoked = !!token.revokedAt;
+function TokenMobileCard(props: TokenItemProps) {
+  const { token, level } = props;
   return (
     <Card>
       <CardContent>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="fg-body-sm font-medium text-fg">
-              {token.name}
-              {revoked && <span className="fg-caption ml-2">(revoked)</span>}
+              <TokenName token={token} />
             </p>
             <div className="mt-1.5 flex items-center gap-1.5">
               <MonoTag>{token.prefix}…</MonoTag>
               <Badge tone={token.boundProjectId ? "cobalt" : "neutral"}>{level}</Badge>
             </div>
           </div>
-          <Button
-            variant="danger"
-            size="sm"
-            disabled={revoked || pending}
-            onClick={onRevoke}
-            className="min-h-11"
-          >
-            Revoke
-          </Button>
+          <RevokeButton {...props} />
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
           <ScopeBadges scopes={token.scopes} />

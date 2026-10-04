@@ -102,6 +102,18 @@ function RailKicker({ label, className }: { label: string; className?: string })
   );
 }
 
+function RailCount({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      className="absolute right-2 top-3px inline-flex h-[15px] min-w-[15px] items-center justify-center rounded-pill px-[3px] font-mono text-9 font-bold text-white"
+      style={{ background: 'var(--accent)', border: '1.5px solid var(--bg-surface)' }}
+    >
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
+
 function RailButton({
   item,
   active,
@@ -145,14 +157,7 @@ function RailButton({
       >
         {item.label}
       </span>
-      {count > 0 && (
-        <span
-          className="absolute right-2 top-3px inline-flex h-[15px] min-w-[15px] items-center justify-center rounded-pill px-[3px] font-mono text-9 font-bold text-white"
-          style={{ background: 'var(--accent)', border: '1.5px solid var(--bg-surface)' }}
-        >
-          {count > 99 ? '99+' : count}
-        </span>
-      )}
+      <RailCount count={count} />
     </button>
   );
 }
@@ -188,14 +193,7 @@ function RailGroupBlock({
           <Icon name="chevronDown" size={11} className={cn("transition-transform", !open && "-rotate-90")} />
         </span>
         <span className="block min-w-0 max-w-full truncate text-10 font-semibold tracking-[-0.01em] text-fg">{group.label}</span>
-        {folded > 0 && (
-          <span
-            className="absolute right-2 top-3px inline-flex h-[15px] min-w-[15px] items-center justify-center rounded-pill px-[3px] font-mono text-9 font-bold text-white"
-            style={{ background: 'var(--accent)', border: '1.5px solid var(--bg-surface)' }}
-          >
-            {folded > 99 ? '99+' : folded}
-          </span>
-        )}
+        <RailCount count={folded} />
       </button>
       {open && (
         <div className="ml-2.5 flex flex-col items-center gap-3px border-l border-line-subtle pl-0.5">
@@ -259,6 +257,14 @@ export function NavRailCompact({
   const userMenu: MenuItem[] = [];
   if (onAccount) userMenu.push({ label: 'Account & Settings', icon: 'settings', onSelect: onAccount });
   if (onSignOut) userMenu.push({ label: 'Sign out', icon: 'logOut', danger: true, onSelect: onSignOut });
+
+  const tier = (items: RailItem[]) => (
+    <div className="mt-1 flex flex-col items-center gap-3px">
+      {items.map((it) => (
+        <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
+      ))}
+    </div>
+  );
 
   const selectProject = (slug: string) => {
     setFlyOpen(false);
@@ -469,19 +475,11 @@ export function NavRailCompact({
 
         {/* Workspace tier — demoted below the project tier (project-first). */}
         <RailKicker label="Space" />
-        <div className="mt-1 flex flex-col items-center gap-3px">
-          {workspaceItems.map((it) => (
-            <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
-          ))}
-        </div>
+        {tier(workspaceItems)}
         {ecosystemItems && ecosystemItems.length > 0 && (
           <>
             <RailKicker label="Ecosystem" className="mt-2.5" />
-            <div className="mt-1 flex flex-col items-center gap-3px">
-              {ecosystemItems.map((it) => (
-                <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
-              ))}
-            </div>
+            {tier(ecosystemItems)}
           </>
         )}
       </div>

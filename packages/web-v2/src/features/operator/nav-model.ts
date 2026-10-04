@@ -1,7 +1,7 @@
 import type { IconName } from "@/design";
 import type { OperatorSectionKey } from "./types";
 
-export interface OperatorNavItem {
+interface OperatorNavItem {
   key: OperatorSectionKey;
   label: string;
   href: string;
