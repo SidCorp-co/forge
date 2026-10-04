@@ -117,6 +117,17 @@ export interface DestinationInput {
   step: QuestionStep;
 }
 
+type ConversationOrigin = Extract<QuestionOrigin, { kind: 'conversation' }>;
+
+const unresolvable = (reason: string): QuestionDestination => ({ kind: 'unresolvable', reason });
+const openRoom = (connectionId: string, rid: string): QuestionDestination => ({
+  kind: 'room',
+  connectionId,
+  rid,
+  tmid: null,
+  takeAnchor: false,
+});
+
 /**
  * Where this round goes.
  */
@@ -124,14 +135,14 @@ export async function resolveQuestionDestination(
   input: DestinationInput,
 ): Promise<QuestionDestination> {
   const existing = await questionThread(input.questionId);
-  const wantsDirect = input.step.sensitive === true;
-
   if (existing) {
-    if (wantsDirect && !(await isDirectRoomOf(input, existing.connectionId, existing.rid))) {
-      return {
-        kind: 'unresolvable',
-        reason: `round ${input.step.round} is private to whoever asked, and this question is already threaded in room ${existing.rid}, which is not their direct room — one decision is one thread, so this round is not posted anywhere`,
-      };
+    if (
+      input.step.sensitive === true &&
+      !(await isDirectRoomOf(input, existing.connectionId, existing.rid))
+    ) {
+      return unresolvable(
+        `round ${input.step.round} is private to whoever asked, and this question is already threaded in room ${existing.rid}, which is not their direct room — one decision is one thread, so this round is not posted anywhere`,
+      );
     }
     return {
       kind: 'room',
@@ -141,101 +152,85 @@ export async function resolveQuestionDestination(
       takeAnchor: false,
     };
   }
-
   if (!input.origin) {
     const room = await roomForProject(input.projectId);
-    if (!room) {
-      return {
-        kind: 'unresolvable',
-        reason: 'no Rocket.Chat room is bound to this project',
-      };
-    }
-    return {
-      kind: 'room',
-      connectionId: room.connectionId,
-      rid: room.rid,
-      tmid: null,
-      takeAnchor: false,
-    };
+    return room
+      ? openRoom(room.connectionId, room.rid)
+      : unresolvable('no Rocket.Chat room is bound to this project');
   }
-
-  if (input.origin.kind === 'unresolved') {
-    return { kind: 'unresolvable', reason: input.origin.reason };
-  }
-
+  if (input.origin.kind === 'unresolved') return unresolvable(input.origin.reason);
   if (input.origin.kind === 'channel_gate') {
     throw new Error(
       `rocketchat.question-destination: ${input.origin.number} waits at a channel approve gate, which is decided signed in to Forge; question-ledger.ts:owedRounds never owes it to a room, so reaching here is a defect`,
     );
   }
+  return conversationDestination(input, input.origin);
+}
 
-  if (input.origin.adapter !== 'rocketchat') {
-    return {
-      kind: 'unresolvable',
-      reason: `this question was asked in a ${input.origin.adapter} conversation, and this delivery lane posts to Rocket.Chat rooms only — it is answered where it was asked, on that surface`,
-    };
+/** A round raised while answering a conversation goes back to the room that conversation is in. */
+async function conversationDestination(
+  input: DestinationInput,
+  origin: ConversationOrigin,
+): Promise<QuestionDestination> {
+  if (origin.adapter !== 'rocketchat') {
+    return unresolvable(
+      `this question was asked in a ${origin.adapter} conversation, and this delivery lane posts to Rocket.Chat rooms only — it is answered where it was asked, on that surface`,
+    );
   }
-
-  const venue = parseRocketChatVenueId(input.origin.venueId);
+  const venue = parseRocketChatVenueId(origin.venueId);
   if (!venue) {
-    return {
-      kind: 'unresolvable',
-      reason: `the venue this question was asked in (${input.origin.venueId}) cannot be read as a Rocket.Chat room`,
-    };
+    return unresolvable(
+      `the venue this question was asked in (${origin.venueId}) cannot be read as a Rocket.Chat room`,
+    );
   }
-
   if (venue.tmid) {
-    return {
-      kind: 'unresolvable',
-      reason: `this question was asked while answering a Rocket.Chat thread (${venue.tmid}), and Rocket.Chat threads do not nest — a round posted there could not be told apart from the conversation it interrupts, so it is not posted`,
-    };
+    return unresolvable(
+      `this question was asked while answering a Rocket.Chat thread (${venue.tmid}), and Rocket.Chat threads do not nest — a round posted there could not be told apart from the conversation it interrupts, so it is not posted`,
+    );
   }
-
   const connectionId = await connectionBinding(venue.namespace, venue.rid, input.projectId);
   if (!connectionId) {
-    return {
-      kind: 'unresolvable',
-      reason: `no active Rocket.Chat connection binds room ${venue.rid} under this project any more, so the conversation this question was asked in has no route back`,
-    };
+    return unresolvable(
+      `no active Rocket.Chat connection binds room ${venue.rid} under this project any more, so the conversation this question was asked in has no route back`,
+    );
   }
-
-  if (wantsDirect) {
-    const auth = await resolveRoomPostAuth(connectionId, {
-      source: 'rocketchat.question-destination',
-      questionId: input.questionId,
-    });
-    if (!auth) {
-      return {
-        kind: 'unresolvable',
-        reason:
-          'this round is private to whoever asked, and the connection carries no usable credentials to open a direct room with',
-      };
-    }
-    const direct = await directRoomFor(auth, input.origin.askedByKey);
-    if (!direct.ok) return { kind: 'unresolvable', reason: direct.reason };
-    const directBinding = await connectionBinding(venue.namespace, direct.rid, input.projectId);
-    if (!directBinding) {
-      return {
-        kind: 'unresolvable',
-        reason: `this round is private to whoever asked, and their direct room (${direct.rid}) is not among the rooms bound to this project — a reply typed there would reach nothing, so the round is not posted. Bind that room to this project, or ask this round in the open.`,
-      };
-    }
-    return {
-      kind: 'room',
-      connectionId: directBinding,
-      rid: direct.rid,
-      tmid: null,
-      takeAnchor: false,
-    };
+  if (input.step.sensitive === true) {
+    return directDestination(input, origin, venue.namespace, connectionId);
   }
-
   return {
     kind: 'room',
     connectionId,
     rid: venue.rid,
-    tmid: input.origin.anchorId,
-    takeAnchor: input.origin.anchorId !== null,
+    tmid: origin.anchorId,
+    takeAnchor: origin.anchorId !== null,
   };
+}
+
+/** A private round goes to the asker's direct room, and only where that room is bound here. */
+async function directDestination(
+  input: DestinationInput,
+  origin: ConversationOrigin,
+  namespace: string,
+  connectionId: string,
+): Promise<QuestionDestination> {
+  const auth = await resolveRoomPostAuth(connectionId, {
+    source: 'rocketchat.question-destination',
+    questionId: input.questionId,
+  });
+  if (!auth) {
+    return unresolvable(
+      'this round is private to whoever asked, and the connection carries no usable credentials to open a direct room with',
+    );
+  }
+  const direct = await directRoomFor(auth, origin.askedByKey);
+  if (!direct.ok) return unresolvable(direct.reason);
+  const directBinding = await connectionBinding(namespace, direct.rid, input.projectId);
+  if (!directBinding) {
+    return unresolvable(
+      `this round is private to whoever asked, and their direct room (${direct.rid}) is not among the rooms bound to this project — a reply typed there would reach nothing, so the round is not posted. Bind that room to this project, or ask this round in the open.`,
+    );
+  }
+  return openRoom(directBinding, direct.rid);
 }
 
 /** Is this room the direct room of the person who asked? */

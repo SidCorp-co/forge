@@ -61,6 +61,109 @@ async function say(transport: ReplyTransport, text: string): Promise<void> {
   }
 }
 
+type Question = typeof agentQuestions.$inferSelect;
+type Round = Question['steps'][number];
+type Chosen = { optionId: string | null; token: string };
+
+/** The round this reply can answer, or null once the refusal is posted. */
+async function openRound(questionId: string, transport: ReplyTransport) {
+  const [question] = await db
+    .select()
+    .from(agentQuestions)
+    .where(eq(agentQuestions.id, questionId))
+    .limit(1);
+  if (!question) {
+    await say(transport, ANSWER_FAILED('that question is no longer on the record.'));
+    return null;
+  }
+  const current = question.steps[question.steps.length - 1];
+  if (!current) {
+    await say(transport, ANSWER_FAILED('that question carries no round to answer.'));
+    return null;
+  }
+  if (current.sensitive === true && !(await roundWasDelivered(questionId, current.round))) {
+    await say(
+      transport,
+      ANSWER_FAILED(
+        'that question is waiting on something private, and it has not been put to anybody here — it cannot be shown or answered in this thread.',
+      ),
+    );
+    return null;
+  }
+  return { question, current };
+}
+
+/** What the reply chose, or null once the refusal (or the options again) is posted. */
+async function readChoice(
+  text: string,
+  current: Round,
+  rounds: number,
+  transport: ReplyTransport,
+): Promise<Chosen | null> {
+  if (!isChoiceStep(current)) {
+    if (text.trim()) return { optionId: null, token: '' };
+    await say(
+      transport,
+      ANSWER_FAILED('that reply carries no text, and this round asks for some.'),
+    );
+    return null;
+  }
+  const choice = parseChoice(text, rounds);
+  if (!choice.ok) {
+    if (choice.reason === 'ambiguous') {
+      await say(transport, AMBIGUOUS_ROUND_REPLY);
+      return null;
+    }
+    const screening = screenForDoor('question-delivery', renderOptionsAgain(current, rounds));
+    await (screening.ok
+      ? sendFixedReply(transport, screening.proven.text, screening.proven).catch((err) =>
+          logger.error({ err, rid: transport.rid }, 'rocketchat.question-inbound: re-post failed'),
+        )
+      : say(
+          transport,
+          ANSWER_FAILED('that reply named no option, and the options cannot be shown here.'),
+        ));
+    return null;
+  }
+  if (choice.round !== current.round) {
+    await say(transport, STALE_ROUND_REPLY(choice.round, current.round));
+    return null;
+  }
+  const option = current.options[choice.index];
+  const token = optionToken(current.round, choice.index, rounds);
+  if (!option) {
+    await say(transport, UNKNOWN_OPTION_REPLY(token));
+    return null;
+  }
+  return { optionId: option.id, token };
+}
+
+/** The Forge user this Rocket.Chat speaker is linked to, or null once the refusal is posted. */
+async function answererOf(
+  serverUrl: string,
+  m: RocketChatIncomingMessage,
+  projectId: string,
+  transport: ReplyTransport,
+): Promise<string | null> {
+  const namespace = namespaceFromServerUrl(serverUrl);
+  if (!namespace) {
+    await say(
+      transport,
+      ANSWER_FAILED(
+        `this Rocket.Chat server's address (${serverUrl}) cannot be read as a channel identity, so nothing can be answered as you here.`,
+      ),
+    );
+    return null;
+  }
+  const resolution = await resolveSpeaker(
+    { source: 'rocketchat', namespace, externalId: m.userId, label: m.username ?? null },
+    projectId,
+  );
+  if (resolution.linked) return resolution.userId;
+  await say(transport, resolution.refusal.message);
+  return null;
+}
+
 /**
  * Answer, or refuse by name. Always consumes the message.
  */
@@ -71,109 +174,23 @@ async function handleQuestionThreadReply(args: {
   transport: ReplyTransport;
 }): Promise<void> {
   const { m, transport } = args;
-  const [question] = await db
-    .select()
-    .from(agentQuestions)
-    .where(eq(agentQuestions.id, args.questionId))
-    .limit(1);
-  if (!question) {
-    await say(transport, ANSWER_FAILED('that question is no longer on the record.'));
-    return;
-  }
-  const rounds = question.steps.length;
-  const current = question.steps[rounds - 1];
-  if (!current) {
-    await say(transport, ANSWER_FAILED('that question carries no round to answer.'));
-    return;
-  }
-
-  if (current.sensitive === true && !(await roundWasDelivered(args.questionId, current.round))) {
-    await say(
-      transport,
-      ANSWER_FAILED(
-        'that question is waiting on something private, and it has not been put to anybody here — it cannot be shown or answered in this thread.',
-      ),
-    );
-    return;
-  }
-
-  const choiceRound = isChoiceStep(current);
-  let chosenOptionId: string | null = null;
-  let token = '';
-  if (!choiceRound) {
-    if (!m.text.trim()) {
-      await say(
-        transport,
-        ANSWER_FAILED('that reply carries no text, and this round asks for some.'),
-      );
-      return;
-    }
-  } else {
-    const choice = parseChoice(m.text, rounds);
-    if (!choice.ok) {
-      if (choice.reason === 'ambiguous') {
-        await say(transport, AMBIGUOUS_ROUND_REPLY);
-        return;
-      }
-      const screening = screenForDoor('question-delivery', renderOptionsAgain(current, rounds));
-      await (screening.ok
-        ? sendFixedReply(transport, screening.proven.text, screening.proven).catch((err) =>
-            logger.error(
-              { err, rid: transport.rid },
-              'rocketchat.question-inbound: re-post failed',
-            ),
-          )
-        : say(
-            transport,
-            ANSWER_FAILED('that reply named no option, and the options cannot be shown here.'),
-          ));
-      return;
-    }
-
-    if (choice.round !== current.round) {
-      await say(transport, STALE_ROUND_REPLY(choice.round, current.round));
-      return;
-    }
-    const option = current.options[choice.index];
-    token = optionToken(current.round, choice.index, rounds);
-    if (!option) {
-      await say(transport, UNKNOWN_OPTION_REPLY(token));
-      return;
-    }
-    chosenOptionId = option.id;
-  }
-
-  const namespace = namespaceFromServerUrl(args.serverUrl);
-  if (!namespace) {
-    await say(
-      transport,
-      ANSWER_FAILED(
-        `this Rocket.Chat server's address (${args.serverUrl}) cannot be read as a channel identity, so nothing can be answered as you here.`,
-      ),
-    );
-    return;
-  }
-  const ref = {
-    source: 'rocketchat',
-    namespace,
-    externalId: m.userId,
-    label: m.username ?? null,
-  };
-  const resolution = await resolveSpeaker(ref, question.projectId);
-  if (!resolution.linked) {
-    await say(transport, resolution.refusal.message);
-    return;
-  }
+  const open = await openRound(args.questionId, transport);
+  if (!open) return;
+  const { question, current } = open;
+  const chosen = await readChoice(m.text, current, question.steps.length, transport);
+  if (!chosen) return;
+  const userId = await answererOf(args.serverUrl, m, question.projectId, transport);
+  if (!userId) return;
 
   try {
     // cm:why a room reply comes through the assistant's chat door, so a channel gate it decides records via assistant, never web
     await answerAs({
       questionId: args.questionId,
-      answer: chosenOptionId
-        ? { kind: 'option', optionId: chosenOptionId }
+      answer: chosen.optionId
+        ? { kind: 'option', optionId: chosen.optionId }
         : { kind: 'text', text: m.text },
       round: current.round,
-      userId: resolution.userId,
+      userId,
       via: 'assistant',
     });
   } catch (err) {
@@ -188,7 +205,7 @@ async function handleQuestionThreadReply(args: {
     await say(transport, ANSWER_FAILED('it could not be written. Nothing has changed.'));
     return;
   }
-  await say(transport, ANSWER_RECORDED(token, m.username ?? '', resolution.userId));
+  await say(transport, ANSWER_RECORDED(chosen.token, m.username ?? '', userId));
 }
 
 /**
