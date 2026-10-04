@@ -72,7 +72,7 @@ export interface WebConversationRoom {
 /**
  * What the Forge UI contributes to a turn: who the assistant is, and what it may read.
  */
-export function webConversationTurn(args: {
+function webConversationTurn(args: {
   project: { id: string; slug: string; name: string };
   handleName: string;
   askedBy: string | null;
@@ -212,7 +212,7 @@ async function requirementKeyOf(requirementId: string): Promise<string> {
 /**
  * What the thread is shown when an Agent turn has no answer to give it.
  */
-export const WEB_AGENT_REPLIES = {
+const WEB_AGENT_REPLIES = {
   dedup:
     'This conversation already has an Agent turn running. Wait for it to answer, or open another conversation to ask something else in parallel.',
   noDevice:
@@ -372,9 +372,7 @@ export async function routeWebWindow(
     outcome = await routeWindow({
       window,
       handoffFor: async (windowId) =>
-        (await import('../conversations/index.js')).conversationAgentTurnForWindow(
-          windowId,
-        ),
+        (await import('../conversations/index.js')).conversationAgentTurnForWindow(windowId),
       inputs: ({ venue, conversationId, windowId, deliveryKey, mode, messages, reserve }) =>
         webConversationTurn({
           project: subject.project,

@@ -17,7 +17,7 @@ import type { ExternalChatTurnResult } from './external-chat.js';
 /**
  * What a turn says when it has nothing to add.
  */
-export const NOTHING_TO_ADD = '(nothing to add)';
+const NOTHING_TO_ADD = '(nothing to add)';
 
 /**
  * Did the model decline this turn? Case, punctuation and whatever it added after

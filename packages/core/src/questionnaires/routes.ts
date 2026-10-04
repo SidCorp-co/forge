@@ -10,8 +10,8 @@ import { db } from '../db/client.js';
 import { type Refusal, refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { afterOnboardingSubmit, onboardingSubmittedIn } from '../onboarding/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { afterSubmit, onSubmittedIn } from './ports.js';
 import { batchIn, batchView, questionnairesAs } from './read.js';
 import { submitAnswers } from './service.js';
 
@@ -67,11 +67,11 @@ questionnaireRoutes.post(
       actor,
       answers: body.answers,
       skip: body.skip,
-      onSubmittedIn: onboardingSubmittedIn,
+      onSubmittedIn,
     });
     if (!outcome.ok) return refusedOnboarding(c, outcome.refusals);
     if (outcome.questionnaire.status === 'submitted') {
-      await afterOnboardingSubmit(await batchIn(db, id, bid), actor.userId);
+      await afterSubmit(await batchIn(db, id, bid), actor.userId);
     }
     const res: QuestionnaireResponse = { questionnaire: outcome.questionnaire };
     return c.json(res);

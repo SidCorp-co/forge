@@ -46,8 +46,8 @@ function sanitizeName(name: string): string {
   return name.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64);
 }
 
-export const DESCRIPTION_CAP = 1024;
-export const RESULT_CAP = 200_000;
+const DESCRIPTION_CAP = 1024;
+const RESULT_CAP = 200_000;
 
 export function truncate(s: string, cap: number): string {
   return s.length > cap ? `${s.slice(0, cap)}… [truncated]` : s;
@@ -58,7 +58,7 @@ export function toolError(message: string): CallToolResult {
   return { content: [{ type: 'text', text: JSON.stringify({ error: message }) }], isError: true };
 }
 
-export function thrownMessage(err: unknown): string {
+function thrownMessage(err: unknown): string {
   const cause = (err as { cause?: unknown } | null)?.cause;
   if (cause instanceof Error && cause.message) return cause.message;
   return err instanceof Error ? err.message : String(err);

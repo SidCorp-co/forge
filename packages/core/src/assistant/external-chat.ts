@@ -249,7 +249,6 @@ export async function runExternalChatTurn(
   const sent = egressAt(level, 'conversation', spoken, what);
   if (!sent.ok) throw new EgressRefused(sent.refusal);
 
-  const startedAt = Date.now();
   const gen = runTurnEvents({
     provider: resolved.provider,
     model: resolved.model,
@@ -276,7 +275,6 @@ export async function runExternalChatTurn(
     step = await gen.next();
   }
   const result = step.value;
-  const durationMs = Date.now() - startedAt;
   if (result.elided.overBudget) {
     logger.warn(
       { conversationId: turn?.conversationId ?? null, elided: result.elided },

@@ -20,7 +20,7 @@ import { boundedPresence, presenceInvalid } from '../orgs/index.js';
  * these back so the two cannot drift; `presence.test.ts` asserts they equal
  * the values the guards were tuned at.
  */
-export const PRESENCE_DEFAULTS = {
+const PRESENCE_DEFAULTS = {
   dormantMs: 24 * 60 * 60 * 1000,
   backoffAfter: 3,
   loopBounceMs: 5 * 60 * 1000,
@@ -65,16 +65,14 @@ export function foldPresence(selves: readonly PresenceConfig[]): ResolvedPresenc
 /**
  * The one mode a room of several handles answers in.
  */
-export function foldAnswerInGroup(
-  modes: readonly (AnswerInGroupMode | undefined)[],
-): AnswerInGroupMode {
+function foldAnswerInGroup(modes: readonly (AnswerInGroupMode | undefined)[]): AnswerInGroupMode {
   if (modes.includes('mention')) return 'mention';
   if (modes.includes('tool')) return 'tool';
   return PRESENCE_DEFAULTS.answerInGroup;
 }
 
 /** The five keys a ROOM may set for itself. */
-export const ROOM_PRESENCE_KEYS = [
+const ROOM_PRESENCE_KEYS = [
   'dormantMs',
   'backoffAfter',
   'loopBounceMs',
@@ -82,7 +80,7 @@ export const ROOM_PRESENCE_KEYS = [
   'answerInGroup',
 ] as const;
 
-export const roomPresenceSchema = z
+const roomPresenceSchema = z
   .object({
     dormantMs: boundedPresence('dormantMs').optional(),
     backoffAfter: boundedPresence('backoffAfter').optional(),
@@ -144,7 +142,7 @@ export function namesHandle(content: string, handle: string | null): boolean {
 }
 
 /** Whether any message in the window names any of the room's handles. */
-export function windowNamesAHandle(
+function windowNamesAHandle(
   messages: readonly { content: string }[],
   handles: readonly (string | null)[],
 ): boolean {
