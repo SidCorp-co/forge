@@ -58,14 +58,14 @@ describe("the project menu", () => {
     expect(PROJECT_MENU.map((e) => e.label)).toEqual(["Dashboard", "Requirements", "Workflows", "Releases", "Feedback", "Development"]);
   });
 
-  it("holds Overview, Issues, Modules, Agents, Contracts and Automation under Development, and Releases outside it", () => {
+  it("holds Overview, Issues, Modules, Agents / Runs, Contracts and Automation under Development, and Releases outside it", () => {
     const group = PROJECT_MENU.find(isProjGroup);
     expect(group?.label).toBe("Development");
     expect(group?.items.map((i) => [i.label, i.sub])).toEqual([
       ["Overview", "/overview"],
       ["Issues", "/issues"],
       ["Modules", "/modules"],
-      ["Agents", "/agents"],
+      ["Agents / Runs", "/agents"],
       ["Contracts", "/contracts"],
       ["Automation", "/automation"],
     ]);
@@ -151,7 +151,7 @@ describe("the project menu", () => {
     const rail = projectRailItems({});
     expect(rail.map((e) => e.label)).toEqual(["Dashboard", "Requirements", "Workflows", "Releases", "Feedback", "Development"]);
     const dev = rail.find(isRailGroup);
-    expect(dev?.items.map((i) => i.label)).toEqual(["Overview", "Issues", "Modules", "Agents", "Contracts", "Automation"]);
+    expect(dev?.items.map((i) => i.label)).toEqual(["Overview", "Issues", "Modules", "Agents / Runs", "Contracts", "Automation"]);
   });
 });
 

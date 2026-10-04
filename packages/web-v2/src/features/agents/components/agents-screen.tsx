@@ -1,39 +1,33 @@
 "use client";
 
-import { ScreenTabs, type TabItem } from "@/design";
+import { PageTitle, Tabs, useUrlTab } from "@/design";
 import { SessionsScreen } from "@/features/sessions/components/sessions-screen";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
-import { useTabParam } from "@/lib/utils/use-tab-param";
 import { QuestionsPane } from "./questions-pane";
-import { RunsPane } from "./runs-pane";
+import { type AgentsAccess, RunsList } from "./runs-list";
 
-type AgentsTab = "runs" | "questions" | "sessions";
+const AGENTS_TABS = ["runs", "questions", "sessions"] as const;
+type AgentsTab = (typeof AGENTS_TABS)[number];
 
-const TAB_VALUES = ["runs", "questions", "sessions"] as const;
-const TABS: TabItem[] = [
+const TABS = [
   { value: "runs", label: "Runs" },
   { value: "questions", label: "Questions" },
   { value: "sessions", label: "Sessions" },
 ];
 
-export interface AgentsScreenProps {
-  scope: { projectId: string; slug: string };
-}
-
-export function AgentsScreen({ scope }: AgentsScreenProps) {
-  const [tab, setTab] = useTabParam<AgentsTab>(TAB_VALUES, "runs");
+export function AgentsScreen({ access }: { access: AgentsAccess }) {
+  const [tab, setTab] = useUrlTab(AGENTS_TABS);
   const focusQuestionId = new URLSearchParams(useLocationSearch()).get("q");
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <ScreenTabs tabs={TABS} value={tab} onChange={(v) => setTab(v as AgentsTab)} />
-      <div className="min-h-0 flex-1 overflow-auto">
-        {tab === "runs" && <RunsPane scope={scope} />}
-        {tab === "questions" && (
-          <QuestionsPane scope={scope} focusQuestionId={focusQuestionId} />
-        )}
-        {tab === "sessions" && <SessionsScreen scope={{ projectId: scope.projectId }} />}
+    <div className="grid min-h-full content-start bg-app" data-testid="agents-screen">
+      <PageTitle hint="Every run core knows of, the project master beside them, and the questions agents asked.">Agents / Runs</PageTitle>
+      <div className="border-b border-line-subtle px-5 max-md:px-2" data-testid="agents-tabs">
+        <Tabs tabs={TABS} value={tab} onChange={(t) => setTab(t as AgentsTab)} />
       </div>
+      {tab === "runs" ? <RunsList access={access} /> : null}
+      {tab === "questions" ? <QuestionsPane scope={access} focusQuestionId={focusQuestionId} /> : null}
+      {tab === "sessions" ? <SessionsScreen scope={{ projectId: access.projectId }} /> : null}
     </div>
   );
 }
