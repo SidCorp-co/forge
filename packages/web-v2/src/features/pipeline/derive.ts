@@ -1,4 +1,4 @@
-import { REGISTRY_ISSUE_STATUSES } from "@forge/contracts/pipeline-registry";
+import { ISSUE_STATUSES } from "@forge/contracts/issue-machine";
 import { deriveQueuedStep, hasLiveAgentSession, queuedChipStatus } from "@/features/issues/waiting";
 import {
   statusLabel,
@@ -117,7 +117,7 @@ export function boardColumns(
   excluded: readonly string[] = BOARD_EXCLUDED_STATUSES,
 ): BoardColumnKey[] {
   const out: BoardColumnKey[] = [];
-  for (const status of REGISTRY_ISSUE_STATUSES) {
+  for (const status of ISSUE_STATUSES) {
     if (excluded.includes(status)) continue;
     out.push(status);
     if (status === "in_progress") out.push("unheld");

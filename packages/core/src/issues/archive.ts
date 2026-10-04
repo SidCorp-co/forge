@@ -14,6 +14,7 @@
  * can see.
  */
 
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import {
   and,
   eq,
@@ -40,7 +41,6 @@ import {
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import type { Actor } from '../pipeline/activity.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
-import { ISSUE_TERMINAL_STATUSES } from './status-sets.js';
 
 /** The condition a discovery read composes: nothing when the caller asked for archived rows too. */
 export function issueArchiveSide(includeArchived: boolean | undefined): SQL[] {

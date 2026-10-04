@@ -6,7 +6,7 @@ import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { agrees, counted } from '../lib/plural.js';
-import { TERMINAL_PIPELINE_RUN_STATUSES } from '../pipeline/status-sets.js';
+import { TERMINAL_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { ClaimConflictError, ReleaseClaimLostError } from './errors.js';
 
 /**

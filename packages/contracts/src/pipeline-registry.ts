@@ -2,28 +2,10 @@
 // derived constants live in `@forge/core/src/pipeline/registry.ts`; this
 // file is the client-facing Zod contract.
 //
-// Enum tuples are hardcoded locally rather than imported from core because
-// `@forge/core/public` has side effects at module load (env validation in
-// `src/config/env.ts`). Importing it at runtime in a browser or test
-// without `DATABASE_URL`/`JWT_SECRET` set would throw. A parity test in
-// `packages/core/src/pipeline/registry.test.ts` keeps these tuples in sync
-// with `core/db/schema.ts`.
+// The issue statuses are the issue machine's (`issue-machine.ts`).
 
 import { z } from 'zod';
-
-// The ten issue statuses, declared once: core's `db/schema.ts:issueStatuses` imports this tuple.
-export const REGISTRY_ISSUE_STATUSES = [
-  'draft',
-  'open',
-  'reopen',
-  'in_progress',
-  'approved',
-  'needs_info',
-  'on_hold',
-  'awaiting_release',
-  'closed',
-  'dropped',
-] as const;
+import { ISSUE_STATUSES, type IssueStatus } from './issue-machine.js';
 
 export const REGISTRY_JOB_TYPES = [
   'triage',
@@ -51,25 +33,15 @@ export const REGISTRY_ISSUE_PRIORITIES = ['critical', 'high', 'medium', 'low', '
 
 export const REGISTRY_ISSUE_COMPLEXITIES = ['xs', 's', 'm', 'l', 'xl'] as const;
 
-export const REGISTRY_PIPELINE_RUN_STATUSES = [
-  'running',
-  'paused',
-  'completed',
-  'failed',
-  'cancelled',
-] as const;
-
 export const REGISTRY_PIPELINE_RUN_KINDS = ['issue', 'pm', 'interactive', 'system'] as const;
 
 export const pipelineRegistryResponseSchema = z.object({
   version: z.number().int().positive(),
   runnerCapabilities: z.record(z.enum(REGISTRY_RUNNER_TYPES), z.array(z.enum(REGISTRY_JOB_TYPES))),
   statusExits: z
-    .record(z.enum(REGISTRY_ISSUE_STATUSES), z.array(z.enum(REGISTRY_ISSUE_STATUSES)))
+    .record(z.enum(ISSUE_STATUSES), z.array(z.enum(ISSUE_STATUSES)))
     .optional(),
 });
 
-export type StatusExits = Partial<
-  Record<(typeof REGISTRY_ISSUE_STATUSES)[number], (typeof REGISTRY_ISSUE_STATUSES)[number][]>
->;
+export type StatusExits = Partial<Record<IssueStatus, IssueStatus[]>>;
 export type PipelineRegistryResponse = z.infer<typeof pipelineRegistryResponseSchema>;

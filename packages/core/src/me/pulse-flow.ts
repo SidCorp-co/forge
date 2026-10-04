@@ -1,6 +1,6 @@
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import { utcDateTrunc, utcDayText } from '../lib/time-buckets.js';
 import { walkFlow, weekStartsEnding } from './pulse-folds.js';
 import { idList } from './pulse-sql.js';

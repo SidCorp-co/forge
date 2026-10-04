@@ -15,6 +15,7 @@
  * cm:edge naming -> packages/core/src/pipeline/session-claim.ts — which RUN may write a record.
  */
 
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
@@ -25,9 +26,8 @@ import {
   LEGACY_ISSUE_PREFIX,
   parseIssueRef,
 } from '../lib/issue-ref.js';
-import { LIVE_PIPELINE_RUN_STATUSES } from '../pipeline/status-sets.js';
+import { LIVE_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { issuePrefixHolder } from './issue-prefix-read.js';
-import { ISSUE_TERMINAL_STATUSES } from './status-sets.js';
 
 const terminalSessionList = sql.join(
   terminalAgentSessionStatuses.map((s) => sql`${s}`),

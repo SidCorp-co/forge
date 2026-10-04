@@ -8,6 +8,7 @@
  * once per iteration, which is the collision this issue exists to end.
  */
 
+import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
@@ -19,7 +20,6 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../../middlewar
 import { rateLimit } from '../../middleware/rate-limit.js';
 import { idParamSchema } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
-import { TAKEABLE_STATUSES } from '../status-sets.js';
 import { alikeSource } from './alike-source.js';
 import { Cancellation } from './cancellation.js';
 import { emitBacklogStream } from './emitter.js';

@@ -1,4 +1,5 @@
-import type { KernelIssueStatus, WorkStep } from '@forge/contracts/issue-vocabulary';
+import type { IssueStatus } from '@forge/contracts/issue-machine';
+import type { WorkStep } from '@forge/contracts/issue-vocabulary';
 import {
   RUN_ISSUE_STATUSES_METADATA_KEY,
   RUN_SESSION_METADATA_TYPE,
@@ -41,7 +42,7 @@ function issueStatusesOf(b: BaseRun, t: Tables, keys: string[], display: Display
   const opening = metadataObject(metadataObject(b.metadata)[RUN_ISSUE_STATUSES_METADATA_KEY]);
   const start = must(b.started_at).getTime();
   const openingStatuses: Record<string, string> = {};
-  const endStatuses: Record<string, KernelIssueStatus> = {};
+  const endStatuses: Record<string, IssueStatus> = {};
   for (const canonical of keys) {
     const n = seqOf(canonical);
     const row = n === null ? undefined : t.issueBySeq.get(n);
@@ -54,8 +55,8 @@ function issueStatusesOf(b: BaseRun, t: Tables, keys: string[], display: Display
       return String(m.entity_id) === String(row.id) && at >= start && at <= end.getTime();
     });
     const last = moves[moves.length - 1];
-    if (last) endStatuses[key] = String(last.to_status) as KernelIssueStatus;
-    else if (opened) endStatuses[key] = opened as KernelIssueStatus;
+    if (last) endStatuses[key] = String(last.to_status) as IssueStatus;
+    else if (opened) endStatuses[key] = opened as IssueStatus;
   }
   return { openingStatuses, endStatuses };
 }
@@ -211,7 +212,7 @@ function factsOf(
           id: String(primary.id),
           key: formatIssueRef(prefix, Number(primary.iss_seq)),
           title: String(primary.title),
-          status: primary.status as KernelIssueStatus,
+          status: primary.status as IssueStatus,
           statusSince: date(primary.status_since),
           strand: strandOf(primary.strand),
         }

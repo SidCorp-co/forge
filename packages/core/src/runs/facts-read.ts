@@ -2,7 +2,7 @@
 // ISS-108): pipeline_runs, jobs, agent_sessions and the run ledger; the claim blob, the fleet key and deploy
 // locks; questions, release approvals and the kernel's own transitions
 
-import type { KernelIssueStatus } from '@forge/contracts/issue-vocabulary';
+import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
@@ -17,7 +17,7 @@ import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { groupOf, laneOf, type PipelineRunLane } from '../pipeline/runs-lane.js';
 import { loadRunLivenessByRunIds, type RunLiveness } from '../pipeline/runs-liveness.js';
-import { TERMINAL_PIPELINE_RUN_STATUSES } from '../pipeline/status-sets.js';
+import { TERMINAL_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import type { KernelFlip, RunFacts } from './standing-types.js';
 
 export type Row = Record<string, unknown>;
@@ -64,7 +64,7 @@ export interface BaseRun extends Row {
   release_version: string | null;
   iss_seq: number | null;
   issue_title: string | null;
-  issue_status: KernelIssueStatus | null;
+  issue_status: IssueStatus | null;
 }
 
 export const seqOf = (key: string) => {

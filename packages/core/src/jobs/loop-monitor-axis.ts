@@ -1,9 +1,9 @@
 /** ISS-1273 — the axis `jobs/loop-monitor.ts` sweeps and the size of what it does not: every hop
  *  there starts from a `jobs` row, so a claim-held issue is outside all of them. */
 
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import { logger } from '../logger.js';
 import { holderFanout, readClaim } from '../pipeline/lease-fanout.js';
 import { leaseIsWorkInProgress } from '../pipeline/session-claim.js';

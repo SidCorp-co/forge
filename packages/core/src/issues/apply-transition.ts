@@ -1,17 +1,22 @@
-import { and, eq, sql } from 'drizzle-orm';
+import {
+  ISSUE_DISPATCH_TERMINAL_STATUSES,
+  ISSUE_MACHINE,
+  ISSUE_TERMINAL_STATUSES,
+  PARK_STATUSES,
+} from '@forge/contracts/issue-machine';
+import { edgeBetween } from '@forge/contracts/state-machine';
+import { eq, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
-import { stampKernelTxn } from '../db/kernel-marker.js';
 import { comments, type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
 import type { WorkStep } from '../db/schema-issue-work-state.js';
-import { type KernelActor, recordKernelTransition } from '../lifecycle/transition.js';
+import { type KernelActor, transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
-import { withActorContext } from '../pipeline/outbox-session.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
-import { isRecoveryEdge, PARK_STATUSES } from '../pipeline/state-machine.js';
 import { settleOpenQuestions } from '../questions/issue-coupling.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
+import type { Refusal } from '../lib/refusal.js';
 import { archivedAmong, archiveRefusalForTransition } from './archive.js';
 import { noOpSentence } from './close-substitution.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
@@ -22,20 +27,15 @@ import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { moveOf, recordMove } from './record-events/kernel-records.js';
 import { resolveAgentCloseTarget } from './release-gate-hold.js';
 import { refuseUnrecordedClose } from './release-record-required.js';
-import { ISSUE_TERMINAL_STATUSES } from './status-sets.js';
-import { edgeFault, type GuardCode, guardFault, reasonFault } from './transition-guards.js';
+import { edgeFault, type GuardCode, issueGuards, reasonFault } from './transition-guards.js';
 import {
   postLeaveComment,
   postTransitionReasonComment,
   requiresAuthoredReason,
 } from './transition-reason.js';
-import { issueHolder, readWorkState, setLeftStatus, setWorkStep } from './work-state.js';
+import { readWorkState, setLeftStatus, setWorkStep } from './work-state.js';
 
-export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>([
-  'awaiting_release',
-  'closed',
-  'dropped',
-]);
+export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(ISSUE_DISPATCH_TERMINAL_STATUSES);
 
 export type TransitionErrorCode =
   | GuardCode
@@ -75,7 +75,7 @@ export interface ApplyStatusTransitionOptions {
   beforeStatusWrite?: (tx: TransitionTx) => Promise<void>;
   /**
    * A kernel recovery move rather than a lifecycle move: a run that ended, or a wedge nothing holds,
-   * handing an `in_progress` issue back (`state-machine.ts:RECOVERY_EDGES`). Refused while anything
+   * handing an `in_progress` issue back (the issue machine's recovery edges). Refused while anything
    * still holds the issue. Every other guard runs.
    */
   recovery?: boolean;
@@ -190,7 +190,8 @@ export async function transitionIssueStatus(
     });
   }
 
-  const recovering = options.recovery === true && isRecoveryEdge(fromStatus, requestedStatus);
+  const recovering =
+    options.recovery === true && edgeBetween(ISSUE_MACHINE, fromStatus, requestedStatus, true) !== null;
   if (!recovering) {
     const edge = edgeFault({ from: fromStatus, to: requestedStatus, leftStatus });
     if (edge) throw new TransitionError(edge.code, edge.detail, edge.details);
@@ -344,114 +345,91 @@ async function writeWorkStateOfMove(tx: TransitionTx, input: TransitionWriteInpu
 
 async function executeTransitionWrite(input: TransitionWriteInput): Promise<TransitionWriteResult> {
   const { issue, fromStatus, requestedStatus, toStatus, actor, options, recovering } = input;
-  return db.transaction(async (tx) => {
-    // ISS-1107 — stamped before any write, so the trigger reads this transaction's marker
-    // whichever statement moves the status.
-    await stampKernelTxn(tx);
-    const archiveRefusal = await archiveRefusalForTransition(tx, issue.id, toStatus);
-    if (archiveRefusal)
-      throw new TransitionError('ISSUE_ARCHIVED', archiveRefusal, { to: toStatus });
-    await options.beforeStatusWrite?.(tx);
-    if (recovering) {
-      const holder = await issueHolder(tx, issue, new Date(), options.recoveringRunId ?? null);
-      if (holder) {
-        throw new TransitionError(
-          'ILLEGAL_TRANSITION',
-          `a recovery move hands back an \`in_progress\` issue nothing holds, and ${holder} holds this one — it stays with its holder`,
-          { from: fromStatus, to: toStatus, holder },
-        );
-      }
-    }
-    // cm:guard a guard that cannot be read refuses the move by throwing, never allows it: this runs
-    // inside the transition's transaction, which a failed read has already aborted.
-    const waiver = { waived: false };
-    const guard = await guardFault({
+  const by = authorOf(actor);
+  const waiver = { waived: false };
+  let unblockedDependents: UnblockedDependent[] = [];
+  const moved = await transition(db, ISSUE_MACHINE, {
+    to: toStatus,
+    where: eq(issues.id, issue.id),
+    from: fromStatus,
+    recovery: recovering,
+    set: {
+      reopenCount: toStatus === 'reopen' ? sql`${issues.reopenCount} + 1` : issues.reopenCount,
+      waitingKind: toStatus === 'needs_info' ? (options.waitingKind ?? null) : null,
+      updatedAt: sql`now()`,
+    } as never,
+    returning: ['id', 'status', 'reopenCount', 'updatedAt'],
+    reason: options.transitionReason?.trim() || options.reason || null,
+    actor: kernelActorFor(actor),
+    source: 'issues',
+    guards: issueGuards({
       issue: { id: issue.id, projectId: issue.projectId },
-      from: fromStatus,
-      to: toStatus,
       leftStatus: input.leftStatus,
       agency: actorAgency(actor),
-      actorUserId: authorOf(actor),
+      actorUserId: by,
       transitionReason: options.transitionReason,
       waitingKind: options.waitingKind,
-      executor: tx,
+      recoveringRunId: options.recoveringRunId,
       onVerdictsWaived: () => {
         waiver.waived = true;
       },
-    });
-    if (guard) throw new TransitionError(guard.code, guard.detail, guard.details);
-    if (requiresAuthoredReason(fromStatus, requestedStatus)) {
-      await postTransitionReasonComment(
-        {
-          issueId: issue.id,
-          authorId: authorOf(actor),
-          fromStatus,
-          toStatus: requestedStatus,
-          reason: options.transitionReason?.trim() ?? '',
-          waitingKind: options.waitingKind ?? null,
-        },
-        tx,
-      );
-    }
-    await postLeaveComment({ issue, fromStatus, toStatus, actor, options }, tx);
-    await mintParkQuestion({ issue, toStatus, actor, options }, tx);
-    // Judged on the status the issue LANDS at, and asked BEFORE the UPDATE: a close diverted to
-    // the release gate lands at `awaiting_release` and is no close, and a refusal after the
-    // conditional UPDATE is indistinguishable from the lost race it reports as STALE_TRANSITION.
-    const unshipped = await refuseUnshippedClose(tx, { issueId: issue.id, toStatus });
-    if (unshipped)
-      throw new TransitionError('CLOSE_REQUIRES_SHIPPED', unshipped.detail, unshipped.details);
-    const by = authorOf(actor);
-    const asked = await settleOpenQuestions(tx, { ...options, issueId: issue.id, toStatus, by });
-    if (asked) throw new TransitionError(asked.code, asked.detail, asked.details);
-    // cm:flow dispatch/transition — the status UPDATE commits and an AFTER UPDATE trigger enqueues the outbox row in this same transaction
-    const result = await withActorContext(
-      tx,
-      { type: actor.type, id: actor.id, agency: actorAgency(actor) },
-      options.reason ?? null,
-      async (t) => {
-        const [row] = await t
-          .update(issues)
-          .set({
-            status: toStatus,
-            reopenCount:
-              toStatus === 'reopen' ? sql`${issues.reopenCount} + 1` : issues.reopenCount,
-            waitingKind: toStatus === 'needs_info' ? (options.waitingKind ?? null) : null,
-            updatedAt: sql`now()`,
-          })
-          .where(and(eq(issues.id, issue.id), eq(issues.status, fromStatus)))
-          .returning({
-            id: issues.id,
-            status: issues.status,
-            reopenCount: issues.reopenCount,
-            updatedAt: issues.updatedAt,
-          });
-        if (!row) return null;
-        await recordKernelTransition(t, [
+    }),
+    beforeWrite: async (tx) => {
+      const archiveRefusal = await archiveRefusalForTransition(tx, issue.id, toStatus);
+      if (archiveRefusal) {
+        throw new TransitionError('ISSUE_ARCHIVED', archiveRefusal, { to: toStatus });
+      }
+      await options.beforeStatusWrite?.(tx);
+      if (requiresAuthoredReason(fromStatus, requestedStatus)) {
+        await postTransitionReasonComment(
           {
-            entity: 'issue',
-            entityId: row.id,
+            issueId: issue.id,
+            authorId: by,
             fromStatus,
-            toStatus,
-            reason: options.transitionReason?.trim() || options.reason || null,
-            actor: kernelActorFor(actor),
-            source: 'issues',
+            toStatus: requestedStatus,
+            reason: options.transitionReason?.trim() ?? '',
+            waitingKind: options.waitingKind ?? null,
           },
-        ]);
-        await recordMove(t, moveOf(input, row.reopenCount, waiver.waived));
-        await writeWorkStateOfMove(t, input);
-        const unblockedDependents =
-          toStatus === 'dropped' ? await expireBlocksEdgesOnDrop(t, issue.projectId, issue.id) : [];
-        return { row, unblockedDependents, verdictsWaived: waiver.waived };
-      },
-    );
-    if (!result)
-      throw new TransitionError('STALE_TRANSITION', 'issue status changed concurrently', {
-        from: fromStatus,
-        to: toStatus,
-      });
-    return result;
+          tx,
+        );
+      }
+      await postLeaveComment({ issue, fromStatus, toStatus, actor, options }, tx);
+      await mintParkQuestion({ issue, toStatus, actor, options }, tx);
+      // Judged on the status the issue LANDS at, and asked before the write: a close diverted to
+      // the release gate lands at `awaiting_release` and is no close.
+      const unshipped = await refuseUnshippedClose(tx, { issueId: issue.id, toStatus });
+      if (unshipped) {
+        throw new TransitionError('CLOSE_REQUIRES_SHIPPED', unshipped.detail, unshipped.details);
+      }
+      const asked = await settleOpenQuestions(tx, { ...options, issueId: issue.id, toStatus, by });
+      if (asked) throw new TransitionError(asked.code, asked.detail, asked.details);
+    },
+    afterWrite: async (tx, rows) => {
+      const row = rows[0];
+      if (!row) return;
+      await recordMove(tx, moveOf(input, row.reopenCount, waiver.waived));
+      await writeWorkStateOfMove(tx, input);
+      if (toStatus === 'dropped') {
+        unblockedDependents = await expireBlocksEdgesOnDrop(tx, issue.projectId, issue.id);
+      }
+    },
   });
+  const refused = moved.refusals[0] as
+    | (Refusal & { code: GuardCode; details?: Record<string, unknown> })
+    | undefined;
+  if (refused) throw new TransitionError(refused.code, refused.detail, refused.details ?? {});
+  const [row] = moved.rows;
+  if (!row) {
+    throw new TransitionError('STALE_TRANSITION', 'issue status changed concurrently', {
+      from: fromStatus,
+      to: toStatus,
+    });
+  }
+  return {
+    row: { ...row, status: row.status as IssueStatus },
+    unblockedDependents,
+    verdictsWaived: waiver.waived,
+  };
 }
 
 /** Device-actor wrapper for MCP tools and pipeline internals. Same semantics as

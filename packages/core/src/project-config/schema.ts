@@ -1,3 +1,4 @@
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import {
   CONTENT_LANGUAGE_LIMITS,
   keepTermsInEnglishSchema,
@@ -12,7 +13,6 @@ import {
 import { z } from 'zod';
 import { agentAccessValues } from '../db/release-axes.js';
 import type { IssueStatus } from '../db/schema.js';
-import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import { AUTONOMOUS_DRIVER_STATUSES } from '../pipeline/autonomous-mode.js';
 import { releaseRuleSchema } from './release-rule-schema.js';
 

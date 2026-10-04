@@ -5,7 +5,8 @@
 // writes data — a board reaches an issue only when the person presses Attach.
 
 import { z } from 'zod';
-import { REGISTRY_ISSUE_PRIORITIES, REGISTRY_ISSUE_STATUSES } from './pipeline-registry.js';
+import { ISSUE_STATUSES } from './issue-machine.js';
+import { REGISTRY_ISSUE_PRIORITIES } from './pipeline-registry.js';
 import {
   parseWireframe,
   type WireframeRefusalCode,
@@ -38,7 +39,7 @@ export const UI_ISSUE_FILTER_FIELDS = ['status', 'priority', 'createdBy', 'assig
 export type UiIssueFilterField = (typeof UI_ISSUE_FILTER_FIELDS)[number];
 
 export const uiIssueFilterSchema = z.strictObject({
-  status: z.array(z.enum(REGISTRY_ISSUE_STATUSES)).min(1).optional(),
+  status: z.array(z.enum(ISSUE_STATUSES)).min(1).optional(),
   priority: z.enum(REGISTRY_ISSUE_PRIORITIES).optional(),
   createdBy: z.literal('me').optional(),
   assignee: z.literal('me').optional(),

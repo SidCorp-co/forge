@@ -1,10 +1,10 @@
-import type { KernelIssueStatus } from "./issue-vocabulary.js";
+import type { IssueStatus } from "./issue-machine.js";
 
 export type ParkOwes = "information" | "decision" | "resource";
 
 /** Read off `issue_work_state.left_status` — the status the park left — never guessed. */
 export type ParkResume =
-  | { at: KernelIssueStatus; recordId: string | null }
+  | { at: IssueStatus; recordId: string | null }
   | { at: null; why: string };
 
 export interface ParkRecordView {
@@ -26,7 +26,7 @@ export interface ParkAnswerView {
 export interface IssuePark {
   /** `park` at `needs_info`; `question` at a working status holding an open human question. */
   shape: "park" | "question";
-  status: KernelIssueStatus;
+  status: IssueStatus;
   owes: ParkOwes;
   since: string | null;
   reason: string | null;

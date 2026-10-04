@@ -3,7 +3,8 @@
 // window, adoption and the issues waiting on a version are core's, never the browser's (REQ-11 BC-12)
 
 import type { FeedbackStatus } from "./feedback.js";
-import type { IssueStatusTone, KernelIssueStatus } from "./issue-vocabulary.js";
+import type { IssueStatus } from "./issue-machine.js";
+import type { IssueStatusTone } from "./issue-vocabulary.js";
 
 export const CONTRACT_DIRECTIONS = ["provided", "consumed"] as const;
 export type ContractDirection = (typeof CONTRACT_DIRECTIONS)[number];
@@ -213,7 +214,7 @@ export interface ContractConsumerView {
 export interface ContractIssueWait {
 	issue: string;
 	title: string;
-	status: KernelIssueStatus;
+	status: IssueStatus;
 	minVersion: string;
 	reason: string | null;
 	settled: boolean;

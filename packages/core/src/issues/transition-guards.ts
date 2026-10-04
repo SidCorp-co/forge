@@ -1,7 +1,7 @@
 /**
- * One guard per move of workflow `issue-lifecycle` (approved revision 3), each refusing by name.
- * `apply-transition.ts` asks `edgeFault` before anything is written and `guardFault` inside the
- * transition's own transaction, so a guard reads the row the move will change.
+ * The guards the issue machine (`@forge/contracts/issue-machine:ISSUE_MACHINE`) names, each refusing
+ * by name. `apply-transition.ts` asks `edgeFault` before anything is written; the kernel transition
+ * runs `issueGuards` inside its own transaction, so a guard reads the row the move will change.
  *
  *   into               condition                                                code
  *   any (edge)         the move is an edge of the lifecycle                      ILLEGAL_TRANSITION
@@ -22,16 +22,18 @@
  */
 
 import { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
+import {
+  ISSUE_MACHINE,
+  type IssueGuard,
+  PARK_STATUSES,
+} from '@forge/contracts/issue-machine';
+import { edgeBetween } from '@forge/contracts/state-machine';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import { approvalRefusalFor } from '../lib/approval.js';
-import {
-  canTransition,
-  PARK_STATUSES,
-  parkExitTargets,
-  transitions,
-} from '../pipeline/state-machine.js';
+import type { Guard, GuardInput } from '../lifecycle/transition.js';
+import type { Refusal } from '../lib/refusal.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { planDriftOf } from '../requirements/plan-drift.js';
 import type { ActorAgency } from './actor-agency.js';
@@ -70,19 +72,29 @@ export interface GuardFault {
 const quote = (s: string) => `\`${s}\``;
 const list = (statuses: readonly string[]) => statuses.map(quote).join(', ');
 
-/** The edge check: whether `from → to` is a move of the lifecycle at all. */
+/** The moves out of `from` a person may name: a park's return (to the status it left, or any
+ *  parkable one where none is recorded), then the machine's other lifecycle exits. */
+export function allowedExits(from: IssueStatus, leftStatus: IssueStatus | null): IssueStatus[] {
+  const out: IssueStatus[] = [];
+  for (const e of ISSUE_MACHINE.edges) {
+    if (e.from !== from || e.recovery || out.includes(e.to)) continue;
+    if (e.guards.includes('left_status') && leftStatus !== null && e.to !== leftStatus) continue;
+    out.push(e.to);
+  }
+  return out;
+}
+
+/** The edge check: whether `from → to` is a move of the issue machine at all. */
 export function edgeFault(args: {
   from: IssueStatus;
   to: IssueStatus;
   leftStatus: IssueStatus | null;
 }): GuardFault | null {
   const { from, to, leftStatus } = args;
-  if (canTransition(from, to, leftStatus)) return null;
-  const allowed = PARK_STATUSES.includes(from)
-    ? parkExitTargets(from, leftStatus)
-    : transitions[from];
-  const details = { from, to, allowed: [...allowed], leftStatus };
-  if (PARK_STATUSES.includes(from) && leftStatus !== null) {
+  const allowed = allowedExits(from, leftStatus);
+  if (allowed.includes(to)) return null;
+  const details = { from, to, allowed, leftStatus };
+  if (PARK_STATUSES.includes(from) && leftStatus !== null && edgeBetween(ISSUE_MACHINE, from, to)) {
     return {
       code: 'ILLEGAL_TRANSITION',
       detail: `${quote(from)} returns to the status it left, which is ${quote(leftStatus)} — not ${quote(to)}. From here the moves are ${list(allowed)}.`,
@@ -359,32 +371,75 @@ export function storefrontDraftFault(
   return null;
 }
 
-/**
- * A park returning to the status it left is the park's own edge, not an entry: the status was
- * earned when it was first entered, so its guard is not asked again. A park with no recorded left
- * status (`leftStatus` null) going anywhere is an entry like any other, and is guarded.
- */
-function isParkReturn(ctx: GuardContext): boolean {
-  return PARK_STATUSES.includes(ctx.from) && (ctx.leftStatus ?? null) === ctx.to;
+/** A guard's fault as the kernel transition carries it: the refusal, with its details beside it. */
+function refusalOf(fault: GuardFault | null): Refusal | null {
+  if (!fault) return null;
+  return { code: fault.code, path: '/status', detail: fault.detail, details: fault.details } as Refusal;
 }
 
-/** The guards that read the row, asked inside the transition's transaction. */
-export async function guardFault(ctx: GuardContext): Promise<GuardFault | null> {
-  if (isParkReturn(ctx)) return null;
-  switch (ctx.to) {
-    case 'in_progress':
-      return (await heldTakeGuard(ctx)) ?? holderGuard(ctx);
-    case 'approved':
-      return planGuard(ctx);
-    case 'awaiting_release':
-      return (await planDriftGuard(ctx)) ?? verdictGuard(ctx);
-    // cm:guard ISS-96 — a close from in_progress claims the proof awaiting_release asks for, on every
-    // issue whether or not it was ever reopened; an issue that is not work is dropped, never closed
-    case 'closed':
-      return ctx.from === 'in_progress' ? ((await planDriftGuard(ctx)) ?? verdictGuard(ctx)) : null;
-    default:
+/** The guards the issue machine's edges into a status name, read off its first lifecycle edge
+ *  from a working status: what a park with no recorded left status owes on the way out. */
+function entryGuardsOf(to: IssueStatus): readonly string[] {
+  const entry = ISSUE_MACHINE.edges.find(
+    (e) => e.to === to && !e.recovery && !PARK_STATUSES.includes(e.from),
+  );
+  return entry?.guards ?? [];
+}
+
+export type IssueGuardContext = Omit<GuardContext, 'from' | 'to' | 'executor'> & {
+  /** The run a recovery move hands the issue back from: its own hold is the one ending. */
+  recoveringRunId?: string | null | undefined;
+};
+
+/** Each guard the issue machine names, bound to the move being made. */
+export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'issue'>> {
+  const ctxOf = (input: GuardInput<'issue'>): GuardContext => ({
+    ...base,
+    from: input.row.status,
+    to: input.to,
+    executor: input.tx,
+  });
+  const guards: Record<IssueGuard, Guard<'issue'>> = {
+    holder: async (input) => {
+      const ctx = ctxOf(input);
+      return refusalOf((await heldTakeGuard(ctx)) ?? (await holderGuard(ctx)));
+    },
+    plan_checkpoint: async (input) => refusalOf(await planGuard(ctxOf(input))),
+    verdicts: async (input) => {
+      const ctx = ctxOf(input);
+      return refusalOf((await planDriftGuard(ctx)) ?? (await verdictGuard(ctx)));
+    },
+    // A park returning to the status it left is the park's own edge, not an entry: the status was
+    // earned when it was first entered. A park with no recorded left status going anywhere is an
+    // entry like any other, and owes that entry's guards.
+    left_status: async (input) => {
+      const left = base.leftStatus ?? null;
+      if (left === input.to) return null;
+      if (left !== null) {
+        return refusalOf(edgeFault({ from: input.row.status, to: input.to, leftStatus: left }));
+      }
+      for (const name of entryGuardsOf(input.to)) {
+        const refused = await guards[name as IssueGuard](input);
+        if (refused) return refused;
+      }
       return null;
-  }
+    },
+    unheld: async (input) => {
+      const holder = await issueHolder(
+        input.tx,
+        base.issue,
+        new Date(),
+        base.recoveringRunId ?? null,
+      );
+      if (!holder) return null;
+      return refusalOf({
+        code: 'ILLEGAL_TRANSITION',
+        detail: `a recovery move hands back an \`in_progress\` issue nothing holds, and ${holder} holds this one — it stays with its holder`,
+        details: { from: input.row.status, to: input.to, holder },
+      });
+    },
+  };
+  return guards;
 }
 
 function sqlPlanRow(issueId: string) {

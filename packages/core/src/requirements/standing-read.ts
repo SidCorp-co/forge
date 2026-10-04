@@ -3,7 +3,8 @@
  * requirement's page reads is `history-read.ts`.
  */
 
-import { issueStatusToneOn, type KernelIssueStatus } from '@forge/contracts/issue-vocabulary';
+import type { IssueStatus } from '@forge/contracts/issue-machine';
+import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
 import type { RequirementStanding } from '@forge/contracts/requirements';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -167,7 +168,7 @@ export async function standingsOf(
       displayId: formatIssueRef(prefix, i.issSeq),
       title: i.title,
       status: i.status,
-      tone: issueStatusToneOn(i.status as KernelIssueStatus, releaseApproval),
+      tone: issueStatusToneOn(i.status as IssueStatus, releaseApproval),
       updatedAt: i.updatedAt,
       closedAt: i.status === 'closed' ? (closedAt.get(i.id) ?? null) : null,
       changedSincePlan: changedSincePlan({

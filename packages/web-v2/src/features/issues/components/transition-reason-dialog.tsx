@@ -1,5 +1,5 @@
 // RFC 0002 INV-8 — the statuses that stop or end the work carry the reason they
-// did (`REASON_REQUIRED_ISSUE_STATUSES`: reopen, needs_info, on_hold, dropped).
+// did (`issue-machine.ts:REASON_REQUIRED_STATUSES`: reopen, needs_info, on_hold, dropped).
 // The server rejects the write without one (422 TRANSITION_REASON_REQUIRED, plus
 // WAITING_KIND_REQUIRED for `needs_info`), so every surface that offers these
 // routes through here rather than firing the mutation and surfacing a 422 toast.
@@ -7,14 +7,14 @@
 "use client";
 
 import { NEEDS_INFO_KIND_LABELS } from "@forge/contracts/issue-vocabulary";
-import type { REASON_REQUIRED_ISSUE_STATUSES } from "@forge/contracts/status-sets";
+import type { REASON_REQUIRED_STATUSES } from "@forge/contracts/issue-machine";
 import { useEffect, useState } from "react";
 import { Button, Field, Radio, RadioGroup, Textarea } from "@/design";
 import { SlideOver } from "@/design/patterns/slide-over";
 import { statusLabel } from "../derive";
 import type { IssueStatus, WaitingCause } from "../types";
 
-export type ReasonStatus = (typeof REASON_REQUIRED_ISSUE_STATUSES)[number];
+export type ReasonStatus = (typeof REASON_REQUIRED_STATUSES)[number];
 /**
  * ISS-1257 — a close or drop the server refused because questions on the issue are still open.
  * ISS-1310 — the two ways out of a park that leave its question unanswered, each asking why.

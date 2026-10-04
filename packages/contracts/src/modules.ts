@@ -3,11 +3,8 @@ import type {
 	IssueAttentionGroup,
 	IssueWaitingOn,
 } from "./issue-standing.js";
-import type {
-	IssueStatusTone,
-	KernelIssueStatus,
-	WorkStep,
-} from "./issue-vocabulary.js";
+import type { IssueStatus } from "./issue-machine.js";
+import type { IssueStatusTone, WorkStep } from "./issue-vocabulary.js";
 
 export const MODULE_ATTENTION_GROUPS = [
 	"needs_you",
@@ -176,7 +173,7 @@ export interface ModuleActivityDay {
 export interface ModuleActiveIssue {
 	key: string;
 	title: string;
-	status: KernelIssueStatus;
+	status: IssueStatus;
 	tone: IssueStatusTone;
 	step: WorkStep | null;
 	attentionGroup: IssueAttentionGroup;

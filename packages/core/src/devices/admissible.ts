@@ -12,6 +12,7 @@
  * with no policy admits nothing and is named in `refused`, never left out in silence.
  */
 
+import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -21,7 +22,6 @@ import {
 import { blockedByUnsettledSql } from '../issues/blocked-by.js';
 import { dispatchGateHeldSql } from '../issues/dispatch-gates.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
-import { TAKEABLE_STATUSES } from '../issues/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { AUTONOMOUS_ENTRY_STATUS, isEntryGateClosed } from '../pipeline/autonomous-mode.js';
 import { type PolicyRefusalCode, PolicyRefusedError } from '../project-config/dispatch-policy.js';

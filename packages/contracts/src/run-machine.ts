@@ -12,10 +12,10 @@ export const PIPELINE_RUN_STATUSES = [
 ] as const;
 export type PipelineRunStatus = (typeof PIPELINE_RUN_STATUSES)[number];
 
-/** The run is open: work may still be dispatched under it. */
-export const OPEN_RUN_STATUSES: readonly PipelineRunStatus[] = ["running", "paused"];
+/** The run is live: a step runs or waits under it. */
+export const LIVE_PIPELINE_RUN_STATUSES: readonly PipelineRunStatus[] = ["running", "paused"];
 
-export const TERMINAL_RUN_STATUSES: readonly PipelineRunStatus[] = [
+export const TERMINAL_PIPELINE_RUN_STATUSES: readonly PipelineRunStatus[] = [
 	"completed",
 	"failed",
 	"cancelled",
@@ -26,14 +26,14 @@ export const RUN_MACHINE = defineMachine({
 	design: null,
 	states: PIPELINE_RUN_STATUSES,
 	initial: ["running"],
-	terminal: TERMINAL_RUN_STATUSES,
+	terminal: TERMINAL_PIPELINE_RUN_STATUSES,
 	reasonRequired: [],
 	edges: [
 		{ from: "running", to: "paused", act: "run.paused", permission: "runs.pause", guards: [] },
 		{ from: "paused", to: "running", act: "run.resumed", permission: "runs.pause", guards: [] },
-		...fromEach(OPEN_RUN_STATUSES, "completed", { act: "run.completed", permission: null, guards: [] }),
-		...fromEach(OPEN_RUN_STATUSES, "failed", { act: "run.failed", permission: null, guards: [] }),
-		...fromEach(OPEN_RUN_STATUSES, "cancelled", { act: "run.cancelled", permission: "runs.cancel", guards: [] }),
+		...fromEach(LIVE_PIPELINE_RUN_STATUSES, "completed", { act: "run.completed", permission: null, guards: [] }),
+		...fromEach(LIVE_PIPELINE_RUN_STATUSES, "failed", { act: "run.failed", permission: null, guards: [] }),
+		...fromEach(LIVE_PIPELINE_RUN_STATUSES, "cancelled", { act: "run.cancelled", permission: "runs.cancel", guards: [] }),
 	],
 });
 

@@ -1,3 +1,5 @@
+import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
+import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
@@ -9,7 +11,6 @@ import {
   assertDispatchGatesForSeqs,
   isDispatchGateError,
 } from './dispatch-gates.js';
-import { ISSUE_STATUS_LABELS, TAKEABLE_STATUSES } from './status-sets.js';
 
 const DROPPED: IssueStatus = 'dropped';
 

@@ -14,7 +14,8 @@ import {
   type UiSnapshot,
   uiActionNamed,
 } from "@forge/contracts/ui-actions";
-import { REGISTRY_ISSUE_PRIORITIES, REGISTRY_ISSUE_STATUSES } from "@forge/contracts/pipeline-registry";
+import { ISSUE_STATUSES } from "@forge/contracts/issue-machine";
+import { REGISTRY_ISSUE_PRIORITIES } from "@forge/contracts/pipeline-registry";
 import { applyWireframePatch, describeWireframe } from "@forge/contracts/wireframe";
 import { boardStore } from "../board/board-store";
 import { assistantFilters } from "./assistant-filters";
@@ -43,8 +44,8 @@ export function filterFromSearch(search: string, userId: string | null): UiIssue
   const statuses = (sp.get("status") ?? "")
     .split(",")
     .map((s) => s.trim())
-    .filter((s): s is (typeof REGISTRY_ISSUE_STATUSES)[number] =>
-      (REGISTRY_ISSUE_STATUSES as readonly string[]).includes(s),
+    .filter((s): s is (typeof ISSUE_STATUSES)[number] =>
+      (ISSUE_STATUSES as readonly string[]).includes(s),
     );
   if (statuses.length) out.status = statuses;
   const priority = sp.get("priority");

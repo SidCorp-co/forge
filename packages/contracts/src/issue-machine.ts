@@ -1,6 +1,7 @@
 // The issue machine: workflow `issue-lifecycle`, approved revision 3. A status answers only "who is
 // it waiting on"; a run's step is progress inside `in_progress`, kept in `issue_work_state`.
 
+import type { Refusal } from "./refusal.js";
 import { defineMachine, type MachineEdge } from "./state-machine.js";
 
 export const ISSUE_STATUSES = [
@@ -16,6 +17,48 @@ export const ISSUE_STATUSES = [
 	"dropped",
 ] as const;
 export type IssueStatus = (typeof ISSUE_STATUSES)[number];
+
+/** The seventeen-status model's names the ten do not hold. Kernel input naming one is refused
+ *  `ISSUE_STATUS_LEGACY`; none is mapped onto a status. */
+export const LEGACY_ISSUE_STATUSES = [
+	"confirmed",
+	"clarified",
+	"waiting",
+	"developed",
+	"testing",
+	"tested",
+	"releasing",
+] as const;
+export type LegacyIssueStatus = (typeof LEGACY_ISSUE_STATUSES)[number];
+
+export const ISSUE_STATUS_REFUSAL_CODES = ["ISSUE_STATUS_LEGACY"] as const;
+export type IssueStatusRefusalCode = (typeof ISSUE_STATUS_REFUSAL_CODES)[number];
+
+export type IssueStatusLegacyRefusal = Refusal & {
+	code: "ISSUE_STATUS_LEGACY";
+	received: LegacyIssueStatus;
+	validStatuses: readonly IssueStatus[];
+};
+
+export function isLegacyIssueStatus(value: string): value is LegacyIssueStatus {
+	return (LEGACY_ISSUE_STATUSES as readonly string[]).includes(value);
+}
+
+export function issueStatusLegacyRefusal(
+	received: LegacyIssueStatus,
+	path: string,
+): IssueStatusLegacyRefusal {
+	return {
+		code: "ISSUE_STATUS_LEGACY",
+		path,
+		detail: `\`${received}\` is a legacy status and is not accepted; name one of ${ISSUE_STATUSES.join(", ")}. A run's progress inside a status is \`workState.step\`.`,
+		received,
+		validStatuses: ISSUE_STATUSES,
+	};
+}
+
+/** Entering one of these carries the actor's reason. */
+export const REASON_REQUIRED_STATUSES = ["reopen", "needs_info", "on_hold", "dropped"] as const;
 
 /** The two parks: each stores the status it left (`issue_work_state.left_status`) and returns to it. */
 export const PARK_STATUSES: readonly IssueStatus[] = ["needs_info", "on_hold"];
@@ -99,7 +142,7 @@ export const ISSUE_MACHINE = defineMachine({
 	states: ISSUE_STATUSES,
 	initial: ["draft", "open"],
 	terminal: ISSUE_TERMINAL_STATUSES,
-	reasonRequired: ["reopen", "needs_info", "on_hold", "dropped"],
+	reasonRequired: REASON_REQUIRED_STATUSES,
 	edges: [
 		{ from: "draft", to: "open", act: "admitted", permission: MOVE, guards: [] },
 		{ from: "draft", to: "dropped", act: "not.work", permission: MOVE, guards: [] },

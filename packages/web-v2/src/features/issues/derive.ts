@@ -1,10 +1,13 @@
 
 import {
-	DONE_ISSUE_STATUSES,
+	ISSUE_MACHINE,
+	ISSUE_RESOLVED_STATUSES,
+	ISSUE_STATUSES,
+	ISSUE_TERMINAL_STATUSES,
+} from "@forge/contracts/issue-machine";
+import {
 	ISSUE_PRIORITY_LABELS,
 	ISSUE_STATUS_HINTS,
-	PARKABLE_ISSUE_STATUSES,
-	PARKED_ISSUE_STATUSES,
 	ISSUE_STATUS_LABELS,
 	ISSUE_STATUS_TONES,
 	type IssueStatusTone,
@@ -12,14 +15,6 @@ import {
 	type WorkStep,
 } from "@forge/contracts/issue-vocabulary";
 import type { IssueStanding } from "@forge/contracts/issue-standing";
-import {
-	REGISTRY_ISSUE_STATUSES,
-	type StatusExits,
-} from "@forge/contracts/pipeline-registry";
-import {
-	BLOCKER_SETTLED_STATUSES,
-	REASON_REQUIRED_ISSUE_STATUSES,
-} from "@forge/contracts/status-sets";
 import {
 	type SemanticTone,
 	STATUS_KEY_TONE,
@@ -130,30 +125,31 @@ export function statusToTone(status: IssueStatus): SemanticTone {
 }
 
 /**
- * The targets a rung may move to, read off core's exits table as the pipeline
- * registry served it (`useStatusExits`). The row arrives in its declared
- * order and is returned in it: the first entry is the rung's forward move.
- *
- * An absent map (in flight, failed, or an older server) yields NO targets — never the whole enum
- * (ISS-982). A park's return to the status it left comes first, from `parkReturnTargets`.
+ * The targets a rung may move to, read off the issue machine in the order it declares them: the
+ * first is the rung's forward move. A park's return to the status it left comes first; with no
+ * recorded left status every parkable status is offered.
  */
 export function allowedTransitions(
-	exits: StatusExits | undefined,
 	from: IssueStatus,
 	leftStatus: IssueStatus | null = null,
 ): IssueStatus[] {
-	const row = exits?.[from];
-	if (!row) return [];
-	return [...parkReturnTargets(from, leftStatus), ...row];
+	const back = parkReturnTargets(from, leftStatus);
+	const rest = ISSUE_MACHINE.edges
+		.filter((e) => e.from === from && !e.recovery && !e.guards.includes("left_status"))
+		.map((e) => e.to);
+	return [...back, ...new Set(rest)];
 }
 
-/** Core's `parkExitTargets` less the table's row: the left status, or any parkable one where none is recorded. */
+/** The park's return edges the machine draws, narrowed to the recorded left status where there is one. */
 export function parkReturnTargets(
 	from: IssueStatus,
 	leftStatus: IssueStatus | null | undefined,
 ): IssueStatus[] {
-	if (!PARKED_ISSUE_STATUSES.includes(from)) return [];
-	return leftStatus ? [leftStatus] : [...PARKABLE_ISSUE_STATUSES];
+	const back = ISSUE_MACHINE.edges
+		.filter((e) => e.from === from && e.guards.includes("left_status"))
+		.map((e) => e.to);
+	if (!leftStatus) return back;
+	return back.includes(leftStatus) ? [leftStatus] : [];
 }
 
 /** How a target reads against the rung it is offered from. */
@@ -182,11 +178,10 @@ const KIND_ORDER: TransitionKind[] = ["forward", "bounce", "discard"];
  * `awaiting_release → closed` out of the discard group.
  */
 export function groupedTransitions(
-	exits: StatusExits | undefined,
 	from: IssueStatus,
 	leftStatus: IssueStatus | null = null,
 ): GroupedTransition[] {
-	const row = allowedTransitions(exits, from, leftStatus);
+	const row = allowedTransitions(from, leftStatus);
 	const back = new Set(parkReturnTargets(from, leftStatus));
 	const kindOf = (to: IssueStatus, i: number): TransitionKind => {
 		if (i === 0 || back.has(to)) return "forward";
@@ -212,14 +207,11 @@ export function transitionLabels(targets: IssueStatus[]): string[] {
 	return targets.map(statusLabel);
 }
 
-export function bulkAllowedStatuses(
-	exits: StatusExits | undefined,
-	rows: IssueRow[],
-): IssueStatus[] {
+export function bulkAllowedStatuses(rows: IssueRow[]): IssueStatus[] {
 	if (rows.length === 0) return [];
 	let common: IssueStatus[] | null = null;
 	for (const r of rows) {
-		const allowed = allowedTransitions(exits, r.status, r.workState?.leftStatus ?? null);
+		const allowed = allowedTransitions(r.status, r.workState?.leftStatus ?? null);
 		if (common === null) {
 			common = allowed;
 		} else {
@@ -231,7 +223,7 @@ export function bulkAllowedStatuses(
 }
 
 const BULK_HAS_NO_REASON_TO_COLLECT: ReadonlySet<string> = new Set(
-	REASON_REQUIRED_ISSUE_STATUSES,
+	ISSUE_MACHINE.reasonRequired,
 );
 
 export interface DepCounts {
@@ -267,7 +259,7 @@ export function depCounts(deps: IssueDependencies | undefined): DepCounts {
 
 /* The toolbar's Closed segment is the two statuses an issue is over at: the release gate
    (`awaiting_release`) is still open work to the person reading the list. */
-const CLOSED_STATUSES: IssueStatus[] = [...DONE_ISSUE_STATUSES];
+const CLOSED_STATUSES: IssueStatus[] = [...ISSUE_TERMINAL_STATUSES];
 
 /** The search params one status segment of the toolbar stands for. */
 export function filterToQueryParams(filter: IssueFilter): {
@@ -301,7 +293,7 @@ export function statusesFromParam(
 	raw: string | null | undefined,
 ): IssueStatus[] | undefined {
 	if (!raw) return undefined;
-	const known = new Set<string>(REGISTRY_ISSUE_STATUSES);
+	const known = new Set<string>(ISSUE_STATUSES);
 	const seen = new Set<string>();
 	const out: IssueStatus[] = [];
 	for (const part of raw.split(",")) {
@@ -647,7 +639,7 @@ function parkBlocker(park: IssuePark, blockingRefs: BlockingRef[]): BlockerState
 	};
 }
 
-const SETTLED_BLOCKERS: ReadonlySet<string> = new Set(BLOCKER_SETTLED_STATUSES);
+const SETTLED_BLOCKERS: ReadonlySet<string> = new Set(ISSUE_RESOLVED_STATUSES);
 
 /** Incoming `blocks` edges whose blocker core has not settled — i.e. this issue is genuinely
  *  blocked-by one Forge will not dispatch past. Exported so list/board rows can flag a

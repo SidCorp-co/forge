@@ -1,51 +1,5 @@
-import {
-	type REGISTRY_ISSUE_PRIORITIES,
-	REGISTRY_ISSUE_STATUSES,
-} from "./pipeline-registry.js";
-import type { Refusal } from "./refusal.js";
-
-/** The ten statuses of workflow `issue-lifecycle` (ISS-54), named the same on every surface. */
-export const ISSUE_STATUSES = REGISTRY_ISSUE_STATUSES;
-export type KernelIssueStatus = (typeof REGISTRY_ISSUE_STATUSES)[number];
-
-/** The seventeen-status model's names the ten do not hold. Kernel input naming one is refused
- *  `ISSUE_STATUS_LEGACY`; none is mapped onto a status. */
-export const LEGACY_ISSUE_STATUSES = [
-	"confirmed",
-	"clarified",
-	"waiting",
-	"developed",
-	"testing",
-	"tested",
-	"releasing",
-] as const;
-export type LegacyIssueStatus = (typeof LEGACY_ISSUE_STATUSES)[number];
-
-export const ISSUE_STATUS_REFUSAL_CODES = ["ISSUE_STATUS_LEGACY"] as const;
-export type IssueStatusRefusalCode = (typeof ISSUE_STATUS_REFUSAL_CODES)[number];
-
-export type IssueStatusLegacyRefusal = Refusal & {
-	code: "ISSUE_STATUS_LEGACY";
-	received: LegacyIssueStatus;
-	validStatuses: readonly KernelIssueStatus[];
-};
-
-export function isLegacyIssueStatus(value: string): value is LegacyIssueStatus {
-	return (LEGACY_ISSUE_STATUSES as readonly string[]).includes(value);
-}
-
-export function issueStatusLegacyRefusal(
-	received: LegacyIssueStatus,
-	path: string,
-): IssueStatusLegacyRefusal {
-	return {
-		code: "ISSUE_STATUS_LEGACY",
-		path,
-		detail: `\`${received}\` is a legacy status and is not accepted; name one of ${ISSUE_STATUSES.join(", ")}. A run's progress inside a status is \`workState.step\`.`,
-		received,
-		validStatuses: ISSUE_STATUSES,
-	};
-}
+import type { IssueStatus } from "./issue-machine.js";
+import type { REGISTRY_ISSUE_PRIORITIES } from "./pipeline-registry.js";
 
 /** A run's steps, in order: core's `workSteps`, held equal by core's `pipeline/registry.test.ts`. */
 export const WORK_STEPS = [
@@ -68,7 +22,7 @@ export const WORK_STEP_LABELS: Record<WorkStep, string> = {
 };
 
 /** Each status as a person reads it — the badge legend's labels, one map for every surface. */
-export const ISSUE_STATUS_LABELS: Record<KernelIssueStatus, string> = {
+export const ISSUE_STATUS_LABELS: Record<IssueStatus, string> = {
 	draft: "Draft",
 	open: "Open",
 	reopen: "Reopened",
@@ -94,7 +48,7 @@ export type IssueStatusTone =
 	| "done"
 	| "err";
 
-export const ISSUE_STATUS_TONES: Record<KernelIssueStatus, IssueStatusTone> = {
+export const ISSUE_STATUS_TONES: Record<IssueStatus, IssueStatusTone> = {
 	draft: "neutral",
 	open: "neutral",
 	reopen: "err",
@@ -111,7 +65,7 @@ export const ISSUE_STATUS_TONES: Record<KernelIssueStatus, IssueStatusTone> = {
  *  project requires a release approval (`release.approval.required`); elsewhere the release takes
  *  it, which is ready. Every other status wears `ISSUE_STATUS_TONES`. */
 export function issueStatusToneOn(
-	status: KernelIssueStatus,
+	status: IssueStatus,
 	releaseApproval: boolean,
 ): IssueStatusTone {
 	if (status === "awaiting_release" && !releaseApproval) return "ready";
@@ -119,7 +73,7 @@ export function issueStatusToneOn(
 }
 
 /** The legend glyph per status: a mark drawn in the dot's place, so a status is never told by colour alone. */
-export const ISSUE_STATUS_GLYPHS: Record<KernelIssueStatus, string> = {
+export const ISSUE_STATUS_GLYPHS: Record<IssueStatus, string> = {
 	draft: "○",
 	open: "●",
 	reopen: "↺",
@@ -133,7 +87,7 @@ export const ISSUE_STATUS_GLYPHS: Record<KernelIssueStatus, string> = {
 };
 
 /** Who each status waits on, in the legend's words: the tooltip a badge carries. */
-export const ISSUE_STATUS_HINTS: Record<KernelIssueStatus, string> = {
+export const ISSUE_STATUS_HINTS: Record<IssueStatus, string> = {
 	draft: "draft: not accepted as work yet; a person decides",
 	open: "open: accepted, no run yet; a master takes it",
 	reopen: "reopen: sent back with a reason; a master takes it again",
@@ -147,27 +101,6 @@ export const ISSUE_STATUS_HINTS: Record<KernelIssueStatus, string> = {
 	closed: "closed: shipped",
 	dropped: "dropped: will not be done",
 };
-
-/** status-tuple: differs — core's ISSUE_TERMINAL_STATUSES (the issue is over), bound by db/status-sets-parity.test.ts */
-export const DONE_ISSUE_STATUSES: readonly KernelIssueStatus[] = [
-	"closed",
-	"dropped",
-];
-
-/** status-tuple: differs — core's PARK_STATUSES (stopped on a person); the parity test holds the pair equal */
-export const PARKED_ISSUE_STATUSES: readonly KernelIssueStatus[] = [
-	"needs_info",
-	"on_hold",
-];
-
-/** status-tuple: differs — core's PARKABLE_STATUSES, where a park is entered from; state-machine.test.ts checks it */
-export const PARKABLE_ISSUE_STATUSES: readonly KernelIssueStatus[] = [
-	"open",
-	"reopen",
-	"in_progress",
-	"approved",
-	"awaiting_release",
-];
 
 /** What a `needs_info` park is stopped on (core's `waitingKinds`). */
 export const NEEDS_INFO_KINDS = [

@@ -35,8 +35,8 @@
       "default": "./src/deploy-capability.ts"
     },
     "./status-sets": {
-      "types": "./src/status-sets.ts",
-      "default": "./src/status-sets.ts"
+      "types": "./dist/status-sets.d.ts",
+      "default": "./dist/status-sets.js"
     },
     "./record-events": {
       "types": "./src/record-events.ts",

@@ -1,5 +1,5 @@
 import type { FeedbackStatus } from '@forge/contracts/feedback';
-import type { KernelIssueStatus } from '@forge/contracts/issue-vocabulary';
+import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
@@ -112,7 +112,7 @@ export async function changeItems(projectId: string): Promise<ChangeRow[]> {
 export interface WaitRow {
   issue: string;
   title: string;
-  status: KernelIssueStatus;
+  status: IssueStatus;
   providerId: string;
   providerSlug: string;
   slug: string;
@@ -125,7 +125,7 @@ export async function issueWaits(projectId: string): Promise<WaitRow[]> {
   const found = rowsOf<{
     iss_seq: number;
     title: string;
-    status: KernelIssueStatus;
+    status: IssueStatus;
     provider: string;
     provider_slug: string;
     contract_slug: string;

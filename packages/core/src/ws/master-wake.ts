@@ -1,8 +1,8 @@
+import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { runners } from '../db/schema.js';
-import { TAKEABLE_STATUSES } from '../issues/status-sets.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
 import { masterCharterPath } from '../projects/master-charter.js';

@@ -1,8 +1,5 @@
-import type {
-	IssueStatusTone,
-	KernelIssueStatus,
-	WorkStep,
-} from "./issue-vocabulary.js";
+import type { IssueStatus } from "./issue-machine.js";
+import type { IssueStatusTone, WorkStep } from "./issue-vocabulary.js";
 
 /** The list's attention groups, in the order they are drawn. */
 export const ISSUE_ATTENTION_GROUPS = [
@@ -87,7 +84,7 @@ export interface IssueWaitingOn {
 export interface IssueEdgeRef {
 	key: string;
 	title: string;
-	status: KernelIssueStatus;
+	status: IssueStatus;
 	/** The other issue's own attention group, so a chip can say "needs you" or "running". */
 	group: IssueAttentionGroup | null;
 	landed: boolean;
@@ -163,7 +160,7 @@ export interface IssueStepEntry {
 }
 
 export interface IssueStanding {
-	state: KernelIssueStatus;
+	state: IssueStatus;
 	/** The run's step inside the status (`issue_work_state.step`), null where none is recorded. */
 	step: WorkStep | null;
 	stepStartedAt: string | null;
@@ -196,7 +193,7 @@ export interface IssueStandingRow {
 	id: string;
 	key: string;
 	title: string;
-	status: KernelIssueStatus;
+	status: IssueStatus;
 	priority: string;
 	category: string | null;
 	complexity: string | null;

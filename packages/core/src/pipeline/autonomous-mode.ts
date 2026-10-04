@@ -1,5 +1,5 @@
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import type { IssueStatus, JobType } from '../db/schema.js';
-import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import type { PolicyDocument } from '../project-config/schema.js';
 
 /** The status at which the driver is handed the issue. */

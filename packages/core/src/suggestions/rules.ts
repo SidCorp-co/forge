@@ -6,6 +6,7 @@
  * Who is a person of the project is the shared check in `lib/person-act.ts`, not a rule of this file.
  */
 
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { createHash } from 'node:crypto';
 import {
   SUGGESTION_MAX_OPEN_PER_TARGET,
@@ -16,7 +17,6 @@ import {
   type SuggestionStatus,
   type SuggestionTargetType,
 } from '@forge/contracts/suggestions';
-import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import { type ActorFacts, actMiss, PROJECT_AGENT_WRITE } from '../lib/person-act.js';
 
 export type { SuggestionRefusal, SuggestionRefusalCode } from '@forge/contracts/suggestions';

@@ -5,6 +5,7 @@
  * `standing-read.ts` gathers the facts.
  */
 
+import { ISSUE_RESOLVED_STATUSES, ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import type {
   IssueAttentionGroup,
   IssueCriteriaTally,
@@ -15,14 +16,9 @@ import type {
   IssueStanding,
   IssueWaitingOn,
 } from '@forge/contracts/issue-standing';
-import {
-  type IssueStatusTone,
-  issueStatusToneOn,
-  type KernelIssueStatus,
-  type WorkStep,
-} from '@forge/contracts/issue-vocabulary';
+import type { IssueStatus } from '@forge/contracts/issue-machine';
+import { type IssueStatusTone, issueStatusToneOn, type WorkStep } from '@forge/contracts/issue-vocabulary';
 import { landedWait } from '../pipeline/strand-rules.js';
-import { ISSUE_RESOLVED_STATUSES, ISSUE_TERMINAL_STATUSES } from './status-sets.js';
 
 /** Settled blockers release their dependents (`dependency-effects.ts:BLOCKER_SETTLED_STATUSES`). */
 const SETTLED: readonly string[] = ISSUE_RESOLVED_STATUSES;
@@ -54,14 +50,14 @@ export interface StandingEdge {
   id: string;
   key: string;
   title: string;
-  status: KernelIssueStatus;
+  status: IssueStatus;
   merged: boolean;
   step: WorkStep | null;
   designHold?: string | null | undefined;
 }
 
 export interface IssueStandingInput {
-  status: KernelIssueStatus;
+  status: IssueStatus;
   designHold?: string | null | undefined;
   waitingKind: string | null;
   merged: boolean;
@@ -99,7 +95,7 @@ const wait = (
 ): IssueWaitingOn => ({ kind, who, act, rule, ref });
 
 /** The badge tone of a status on this project (contracts `issueStatusToneOn`). */
-export function toneOf(status: KernelIssueStatus, releaseApproval: boolean): IssueStatusTone {
+export function toneOf(status: IssueStatus, releaseApproval: boolean): IssueStatusTone {
   return issueStatusToneOn(status, releaseApproval);
 }
 
@@ -278,7 +274,7 @@ const LANDED_BLOCKER = 'landed, waits on a judge';
 
 const awaitsJudge = (e: StandingEdge) => landedWait(e.status, e) !== null;
 
-function blockerAct(status: KernelIssueStatus): string {
+function blockerAct(status: IssueStatus): string {
   if (status === 'in_progress') return 'running';
   if (status === 'needs_info' || status === 'draft') return 'needs a person';
   if (status === 'on_hold') return 'paused';

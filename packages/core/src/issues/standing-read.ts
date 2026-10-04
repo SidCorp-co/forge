@@ -13,7 +13,8 @@ import type {
   IssueStandingRow,
   IssueStandingScope,
 } from '@forge/contracts/issue-standing';
-import type { KernelIssueStatus, WorkStep } from '@forge/contracts/issue-vocabulary';
+import type { IssueStatus } from '@forge/contracts/issue-machine';
+import type { WorkStep } from '@forge/contracts/issue-vocabulary';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { WorkStepEntry } from '../db/schema-issue-work-state.js';
@@ -44,7 +45,7 @@ interface IssueRowRaw {
   id: string;
   iss_seq: number;
   title: string;
-  status: KernelIssueStatus;
+  status: IssueStatus;
   waiting_kind: string | null;
   merged_at: string | null;
   priority: string;
@@ -115,8 +116,8 @@ interface EdgeRaw {
   to_seq: number;
   from_title: string;
   to_title: string;
-  from_status: KernelIssueStatus;
-  to_status: KernelIssueStatus;
+  from_status: IssueStatus;
+  to_status: IssueStatus;
   from_merged: boolean;
   to_merged: boolean;
   from_step: WorkStep | null;
@@ -331,7 +332,7 @@ async function standingRows(
     id: string,
     seq: number,
     title: string,
-    status: KernelIssueStatus,
+    status: IssueStatus,
     merged: boolean,
     step: WorkStep | null,
   ): StandingEdge => ({

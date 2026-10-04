@@ -5,11 +5,8 @@ import type {
 	IssueLeaseVerdict,
 	IssueWaitingOn,
 } from "./issue-standing.js";
-import type {
-	IssueStatusTone,
-	KernelIssueStatus,
-	WorkStep,
-} from "./issue-vocabulary.js";
+import type { IssueStatus } from "./issue-machine.js";
+import type { IssueStatusTone, WorkStep } from "./issue-vocabulary.js";
 import type { MasterSlots, MasterState } from "./master-standing.js";
 
 export const OVERVIEW_WINDOW_DAYS = 14;
@@ -66,7 +63,7 @@ export const OVERVIEW_FLOW_LABELS: Record<OverviewFlowStageId, string> = {
 };
 
 export const OVERVIEW_FLOW_STAGE_OF: Record<
-	KernelIssueStatus,
+	IssueStatus,
 	OverviewFlowStageId
 > = {
 	draft: "draft",
@@ -107,7 +104,7 @@ export interface OverviewLaneSegment {
 export interface OverviewLane {
 	key: string;
 	title: string;
-	status: KernelIssueStatus;
+	status: IssueStatus;
 	step: WorkStep | null;
 	holder: string | null;
 	box: string | null;
@@ -128,7 +125,7 @@ export interface OverviewChainNode {
 	kind: "issue" | "contract";
 	key: string;
 	title: string;
-	status: KernelIssueStatus | null;
+	status: IssueStatus | null;
 	step: WorkStep | null;
 	tone: IssueStatusTone | null;
 	waitingOn: IssueWaitingOn | null;
@@ -168,7 +165,7 @@ export type OverviewNeedKind = (typeof OVERVIEW_NEED_KINDS)[number];
 export type OverviewNeedState =
 	| {
 			family: "issue";
-			value: KernelIssueStatus;
+			value: IssueStatus;
 			step: WorkStep | null;
 			tone: IssueStatusTone;
 	  }

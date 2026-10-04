@@ -1,5 +1,5 @@
+import { ISSUE_RESOLVED_STATUSES } from '@forge/contracts/issue-machine';
 import type { IssueDependencyKind, IssueStatus } from '../db/schema.js';
-import { ISSUE_RESOLVED_STATUSES } from './status-sets.js';
 
 export const WORK_EVIDENCE_WAIVER_KIND: IssueDependencyKind = 'decomposes';
 

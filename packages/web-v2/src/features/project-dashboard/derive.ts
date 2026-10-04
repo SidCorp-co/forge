@@ -12,7 +12,7 @@ import {
   type RunnerLimitDisplay,
   runnerLimitDisplay,
 } from "@/features/runners/types";
-import { NON_OPEN_ISSUE_STATUSES } from "@forge/contracts/status-sets";
+import { NON_OPEN_STATUSES as NON_OPEN_ISSUE_STATUSES } from "@forge/contracts/issue-machine";
 import type { ScheduleRow } from "@/features/schedules/types";
 import type { QueueStats } from "@/features/sessions/types";
 

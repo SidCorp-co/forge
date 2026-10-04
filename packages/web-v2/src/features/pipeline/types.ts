@@ -3,11 +3,10 @@ import type { IssueWorkStateRow, PipelineHealth } from "@/features/issues/types"
 import {
   type REGISTRY_JOB_TYPES,
   REGISTRY_PIPELINE_RUN_KINDS,
-  REGISTRY_PIPELINE_RUN_STATUSES,
 } from "@forge/contracts/pipeline-registry";
+import { PIPELINE_RUN_STATUSES, type PipelineRunStatus } from "@forge/contracts/run-machine";
 
-export const PIPELINE_RUN_STATUSES = REGISTRY_PIPELINE_RUN_STATUSES;
-export type PipelineRunStatus = (typeof PIPELINE_RUN_STATUSES)[number];
+export { PIPELINE_RUN_STATUSES, type PipelineRunStatus };
 
 export const PIPELINE_RUN_KINDS = REGISTRY_PIPELINE_RUN_KINDS;
 export type PipelineRunKind = (typeof PIPELINE_RUN_KINDS)[number];

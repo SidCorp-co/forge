@@ -1,4 +1,5 @@
-import type { KernelIssueStatus, WorkStep } from '@forge/contracts/issue-vocabulary';
+import type { IssueStatus } from '@forge/contracts/issue-machine';
+import type { WorkStep } from '@forge/contracts/issue-vocabulary';
 import type {
   RunActor,
   RunDeployLock,
@@ -46,7 +47,7 @@ export interface RunFacts {
     | null;
   issues: string[];
   openingStatuses: Record<string, string>;
-  endStatuses: Record<string, KernelIssueStatus>;
+  endStatuses: Record<string, IssueStatus>;
   workState: { step: WorkStep | null; stepStartedAt: Date | null; lease: unknown } | null;
   session: {
     id: string;

@@ -4,6 +4,7 @@
 // runner on a box that compiles against none of these types, so a shape held
 // only by TypeScript is a shape held nowhere (ISS-964 criteria 14, 16, 21).
 
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, type ProjectMemberRole } from '../db/schema.js';
@@ -20,7 +21,6 @@ import {
 import { decideChannelGate } from '../ecosystem/channel-gate.js';
 import type { PersonVia } from '../ecosystem/channel-schema.js';
 import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
-import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import { hooks } from '../pipeline/hooks.js';
 import { wakeMastersForAnswer } from '../ws/master-wake.js';
 import { batchItemRefusal } from './batch-item.js';

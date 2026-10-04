@@ -1,3 +1,4 @@
+import { AWAITING_INPUT_STATUSES, ISSUE_RESOLVED_STATUSES } from '@forge/contracts/issue-machine';
 import {
   and,
   desc,
@@ -28,7 +29,6 @@ import {
 } from '../db/schema.js';
 import { issueArchiveSide } from '../issues/archive.js';
 import { creatorIsAgentCondition } from '../issues/creator.js';
-import { AWAITING_INPUT_STATUSES, ISSUE_RESOLVED_STATUSES } from '../issues/status-sets.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
 import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
 

@@ -9,7 +9,6 @@ import type { WorkStep } from "@forge/contracts/issue-vocabulary";
 import { Menu, NativeSelect, Select, StatusBadge, type MenuItem, type SelectOption } from "@/design";
 import { groupedTransitions, statusLabel, transitionLabels } from "../derive";
 import { AGENT_HOLDS_MOVE, heldByAgent } from "../edit-lock";
-import { useStatusExits } from "../hooks";
 import { useStatusTone } from "../release-approval";
 import type { ParkReading } from "../derive";
 import { type ParkMenuActions, parkMenuItems } from "../park";
@@ -70,13 +69,9 @@ export function InlineSelect({
 function ordinaryItems(args: {
   status: IssueStatus;
   grouped: ReturnType<typeof groupedTransitions>;
-  isPending: boolean;
-  isError: boolean;
   onTransition: (toStatus: IssueStatus) => void;
 }): MenuItem[] {
-  const { status, grouped, isPending, isError, onTransition } = args;
-  if (isPending) return [{ label: "Loading status moves…", disabled: true }];
-  if (isError) return [{ label: "Couldn't load status moves", disabled: true }];
+  const { status, grouped, onTransition } = args;
   if (grouped.length === 0) {
     return [{ label: `No move from ${statusLabel(status)} — re-file instead`, disabled: true }];
   }
@@ -105,8 +100,7 @@ interface StatusEditProps {
 
 /**
  * StatusBadge that doubles as an inline status editor. The menu offers the moves
- * the RUNG has — core's exits row for this status, read over the pipeline
- * registry — forward move first, then the bounces, then the discards. A rung
+ * the RUNG has — the issue machine's exits for this status — forward move first, then the bounces, then the discards. A rung
  * with no exit says so rather than opening empty (ISS-982).
  */
 export function StatusEdit({
@@ -119,22 +113,19 @@ export function StatusEdit({
   size,
   park,
 }: StatusEditProps) {
-  const { exits, isPending, isError } = useStatusExits();
   const tone = useStatusTone(status);
-  const grouped = groupedTransitions(exits, status, leftStatus);
+  const grouped = groupedTransitions(status, leftStatus);
   const held = heldByAgent(status, agentStatus);
   let items: MenuItem[];
   if (held) {
     items = [{ label: AGENT_HOLDS_MOVE, disabled: true }];
   } else {
-    items = ordinaryItems({ status, grouped, isPending, isError, onTransition });
-    const mapRead = !isPending && !isError;
+    items = ordinaryItems({ status, grouped, onTransition });
     const parkItems = park
       ? parkMenuItems({
           status,
           leftStatus,
           reading: park.reading,
-          exits: mapRead ? (exits ?? {}) : undefined,
           ordinary: items,
           actions: park.actions,
         })

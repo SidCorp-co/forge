@@ -8,27 +8,28 @@ import type {
 } from "@forge/contracts";
 import type { NeedsInfoKind, WorkStep } from "@forge/contracts/issue-vocabulary";
 import {
+  ISSUE_STATUSES as MACHINE_ISSUE_STATUSES,
+  type IssueStatus,
+} from "@forge/contracts/issue-machine";
+import {
   REGISTRY_ISSUE_COMPLEXITIES,
   REGISTRY_ISSUE_PRIORITIES,
-  REGISTRY_ISSUE_STATUSES,
 } from "@forge/contracts/pipeline-registry";
 import type { StageKey } from "@/design/stages";
 import type { StatusKey } from "@/design/status";
 
-/** Lifecycle status enum — derived from `@forge/contracts`, which is
- *  parity-tested against core `db/schema.ts` (`core/pipeline/registry.test.ts`). */
 /** The kinds of merged mark core reads off an issue (`merge-record.ts`). */
 export type MergeMarkKind = "unmarked" | "asserted" | "landed" | "observed";
 /** `git`: work lands as commits. `outside_git`: it lands as a live resource, and a mark names it. */
 export type LandingShape = "git" | "outside_git";
 
-export type IssueStatus = (typeof REGISTRY_ISSUE_STATUSES)[number];
+export type { IssueStatus };
 
 export type IssuePriority = (typeof REGISTRY_ISSUE_PRIORITIES)[number];
 export type IssueComplexity = (typeof REGISTRY_ISSUE_COMPLEXITIES)[number];
 
 /** Runtime arrays for inline-edit option lists (registry order). */
-export const ISSUE_STATUSES: IssueStatus[] = [...REGISTRY_ISSUE_STATUSES];
+export const ISSUE_STATUSES: IssueStatus[] = [...MACHINE_ISSUE_STATUSES];
 export const ISSUE_PRIORITIES: IssuePriority[] = [...REGISTRY_ISSUE_PRIORITIES];
 export const ISSUE_COMPLEXITIES: IssueComplexity[] = [...REGISTRY_ISSUE_COMPLEXITIES];
 

@@ -1,6 +1,6 @@
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
-import { TERMINAL_PIPELINE_RUN_STATUSES } from '../pipeline/status-sets.js';
+import { TERMINAL_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 
 const TERMINAL_STATUSES = new Set<string>(TERMINAL_PIPELINE_RUN_STATUSES);

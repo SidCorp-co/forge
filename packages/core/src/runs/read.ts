@@ -25,7 +25,7 @@ import { readMasterStanding } from '../masters/read.js';
 import {
   LIVE_PIPELINE_RUN_STATUSES,
   TERMINAL_PIPELINE_RUN_STATUSES,
-} from '../pipeline/status-sets.js';
+} from '@forge/contracts/run-machine';
 import { BASE_COLUMNS, type BaseRun, gatherFacts, MASTER_RUN_SQL, RUN_SCOPE_SQL } from './facts.js';
 import { runStandingOf, type StandingContext } from './standing.js';
 

@@ -3,11 +3,11 @@
 // them by kind. Kernel evidence — verdicts, transitions, landings, parks, corrections — is never
 // touched: the collapse set is `NARRATION_RECORD_KINDS`, typed so that it cannot name one.
 
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
 import { activityLog } from '../../db/schema-activity.js';
-import { ISSUE_TERMINAL_STATUSES } from '../status-sets.js';
 import {
   KERNEL_RECORD_KINDS,
   NARRATION_COLLAPSE_DAYS,

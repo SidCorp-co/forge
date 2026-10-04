@@ -1,22 +1,12 @@
+import { AWAITING_INPUT_STATUSES, ISSUE_MACHINE } from '@forge/contracts/issue-machine';
 import { type Db, db } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import { comments } from '../db/schema.js';
 import { actorAgency, type TransitionActor } from './actor-agency.js';
-import { AWAITING_INPUT_STATUSES } from './status-sets.js';
 
-/** The moves that carry the actor's reason, posted as a comment (`transition-guards.ts:reasonFault`). */
-export const REASON_REQUIRED_STATUSES = new Set<IssueStatus>([
-  'reopen',
-  'needs_info',
-  'on_hold',
-  'dropped',
-]);
-
-/**
- * Does this transition need an authored reason?
- */
+/** Does this move carry the actor's reason, posted as a comment (`transition-guards.ts:reasonFault`)? */
 export function requiresAuthoredReason(from: IssueStatus, to: IssueStatus): boolean {
-  return REASON_REQUIRED_STATUSES.has(to) && from !== to;
+  return ISSUE_MACHINE.reasonRequired.includes(to) && from !== to;
 }
 
 const NEEDS_INFO_HEADINGS: Record<WaitingKind, string> = {

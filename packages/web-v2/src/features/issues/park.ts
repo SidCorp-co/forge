@@ -3,7 +3,6 @@
 // The status control at a park: the decision the person has, then the transitions map behind one
 // more click (ISS-1310). The park view is read once and every surface below takes it from here.
 
-import type { StatusExits } from "@forge/contracts/pipeline-registry";
 import { useQuery } from "@tanstack/react-query";
 import type { MenuItem } from "@/design";
 import {
@@ -67,24 +66,20 @@ export function parkMenuItems(args: {
 	/** The status the park left (`workState.leftStatus`): what the map returns it to. */
 	leftStatus?: IssueStatus | null;
 	reading: ParkReading;
-	/** `undefined` while the map is unread: `ordinary` then says why, in Move anyway's place. */
-	exits: StatusExits | undefined;
 	ordinary: MenuItem[];
 	actions: ParkMenuActions;
 }): MenuItem[] | null {
-	const { status, leftStatus = null, reading, exits, ordinary, actions } = args;
+	const { status, leftStatus = null, reading, ordinary, actions } = args;
 	const parked = PARKED.has(status);
-	const map = allowedTransitions(exits, status, leftStatus);
-	const anyway: MenuItem[] = exits
-		? [
-				{
-					label: MOVE_ANYWAY_LABEL,
-					separatorBefore: true,
-					disabled: map.length === 0,
-					onSelect: () => actions.moveAnyway(map),
-				},
-			]
-		: ordinary.map((item) => ({ ...item, separatorBefore: true }));
+	const map = allowedTransitions(status, leftStatus);
+	const anyway: MenuItem[] = [
+		{
+			label: MOVE_ANYWAY_LABEL,
+			separatorBefore: true,
+			disabled: map.length === 0,
+			onSelect: () => actions.moveAnyway(map),
+		},
+	];
 	if (reading.state !== "ready") {
 		if (!parked) return null;
 		const said = reading.state === "loading" ? PARK_LOADING_LABEL : PARK_ERROR_LABEL;

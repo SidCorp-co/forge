@@ -8,11 +8,8 @@
 
 import type { FailureCause } from "./failure-causes.js";
 import type { IssueLeaseVerdict } from "./issue-standing.js";
-import type {
-	IssueStatusTone,
-	KernelIssueStatus,
-	WorkStep,
-} from "./issue-vocabulary.js";
+import type { IssueStatus } from "./issue-machine.js";
+import type { IssueStatusTone, WorkStep } from "./issue-vocabulary.js";
 import type { MasterStanding } from "./master-standing.js";
 import { pickFields } from "./projection.js";
 
@@ -197,7 +194,7 @@ export interface RunDevice {
 export interface RunIssueRef {
 	key: string;
 	title: string;
-	status: KernelIssueStatus;
+	status: IssueStatus;
 }
 
 export interface RunExpiry {
@@ -295,7 +292,7 @@ export interface RunActor {
 
 export interface RunReturned {
 	issueKey: string;
-	status: KernelIssueStatus;
+	status: IssueStatus;
 }
 
 export type RunOutcome =

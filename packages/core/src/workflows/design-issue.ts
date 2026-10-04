@@ -7,13 +7,13 @@
  * and every decision wakes the project's master, which is what makes the issue admissible work again.
  */
 
+import { ISSUE_MACHINE, TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
+import { exitsOf } from '@forge/contracts/state-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, type IssueStatus } from '../db/schema.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
-import { TAKEABLE_STATUSES } from '../issues/status-sets.js';
 import { logger } from '../logger.js';
-import { getAllowedTransitions } from '../pipeline/state-machine.js';
 import { wakeMastersForDesign } from '../ws/master-wake.js';
 import type { DesignDecision, DesignStatus } from './design.js';
 import type { WorkflowWriter } from './service.js';
@@ -74,7 +74,7 @@ async function handBack(input: {
     reason: input.reason ?? '',
   });
   const actor = { type: 'user' as const, id: input.decider.userId, agency: input.decider.agency };
-  if (!TAKEABLE_STATUSES.includes(status) && getAllowedTransitions(status).includes('reopen')) {
+  if (!TAKEABLE_STATUSES.includes(status) && exitsOf(ISSUE_MACHINE, status).includes('reopen')) {
     const moved = await transitionIssueStatus(
       {
         id: String(row.id),

@@ -10,7 +10,7 @@ import {
   RUN_STUCK_AFTER_MS,
   SESSION_SILENCE_REAP_MS,
 } from "@forge/contracts/run-standing";
-import { TERMINAL_AGENT_SESSION_STATUSES } from "@forge/contracts/status-sets";
+import { TERMINAL_AGENT_SESSION_STATUSES } from "@forge/contracts/session-machine";
 import type { StatusKey } from "@/design/status";
 
 export type AgentSessionStatus =

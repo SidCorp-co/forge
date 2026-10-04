@@ -7,7 +7,6 @@ import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, issuesApi, releaseBatchApi } from "./api";
-import { registryApi } from "./registry-api";
 import type { IssueStandingScope } from "@forge/contracts/issue-standing";
 import type {
   IssueLabel,
@@ -423,23 +422,4 @@ export function useBulkUpdateIssues() {
       toast({ title: "Bulk update failed", description: formatApiError(err), tone: "error" });
     },
   });
-}
-
-/**
- * The per-rung status exits, read once per session from core's pipeline
- * registry. `isPending` and `isError` are what the three status surfaces
- * render instead of a menu — an absent map is never widened back into the
- * whole enum.
- */
-export function useStatusExits() {
-  const q = useQuery({
-    queryKey: ["pipeline", "registry"],
-    queryFn: () => registryApi.get(),
-    staleTime: Number.POSITIVE_INFINITY,
-  });
-  return {
-    exits: q.data?.statusExits,
-    isPending: q.isPending,
-    isError: q.isError || (!q.isPending && q.data?.statusExits === undefined),
-  };
 }

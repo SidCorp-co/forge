@@ -3,7 +3,8 @@
 // The full page's views below the facts: the criteria with their verdicts and evidence, the
 // revisions and the diff a proposal carries, and the history by source.
 
-import { ISSUE_STATUS_LABELS, type KernelIssueStatus } from "@forge/contracts/issue-vocabulary";
+import type { IssueStatus } from "@forge/contracts/issue-machine";
+import { ISSUE_STATUS_LABELS } from "@forge/contracts/issue-vocabulary";
 import type { CoverageIssue, HistorySource, RequirementHistoryEntry } from "@forge/contracts/requirements";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
@@ -14,7 +15,7 @@ import type { RequirementCriterion, RequirementDetail, RequirementRevision } fro
 import { issueHref } from "@/features/issues/routes";
 import { diffColours } from "./standing-bits";
 
-const issueWord = (s: string) => ISSUE_STATUS_LABELS[s as KernelIssueStatus] ?? s;
+const issueWord = (s: string) => ISSUE_STATUS_LABELS[s as IssueStatus] ?? s;
 
 
 const Ins = ({ children }: { children: ReactNode }) => (

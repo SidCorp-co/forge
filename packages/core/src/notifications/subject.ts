@@ -1,8 +1,9 @@
 import type { NotificationSubject } from '@forge/contracts';
-import { ISSUE_STATUS_LABELS, type KernelIssueStatus } from '@forge/contracts/issue-vocabulary';
+import type { IssueStatus } from '@forge/contracts/issue-machine';
+import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 
 export function statusWords(status: string): string {
-  const label = ISSUE_STATUS_LABELS[status as KernelIssueStatus];
+  const label = ISSUE_STATUS_LABELS[status as IssueStatus];
   return label ? label.toLowerCase() : status;
 }
 

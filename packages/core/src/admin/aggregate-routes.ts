@@ -9,6 +9,7 @@
  * ISS-975, shared with `GET /metrics/:metric/timeseries`.
  */
 
+import { NON_OPEN_STATUSES } from '@forge/contracts/issue-machine';
 import { count, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -24,7 +25,6 @@ import {
   usageRecords,
   users,
 } from '../db/schema.js';
-import { NON_OPEN_STATUSES } from '../issues/status-sets.js';
 import { UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { listResponse } from '../lib/pagination.js';
 import { utcDateTrunc } from '../lib/time-buckets.js';

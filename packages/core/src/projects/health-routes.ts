@@ -1,9 +1,9 @@
+import { NON_OPEN_STATUSES } from '@forge/contracts/issue-machine';
 import { inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { projects } from '../db/schema.js';
-import { NON_OPEN_STATUSES } from '../issues/status-sets.js';
 import {
   countClaimHeldIssuesByProject,
   type LoopMonitorCoverage,

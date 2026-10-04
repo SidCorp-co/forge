@@ -3,7 +3,8 @@
  * every write resolves a requirement and its signer with.
  */
 
-import { issueStatusToneOn, type KernelIssueStatus } from '@forge/contracts/issue-vocabulary';
+import type { IssueStatus } from '@forge/contracts/issue-machine';
+import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
 import type { RequirementStanding } from '@forge/contracts/requirements';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -341,7 +342,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null, door: 
       title: i.title,
       status: i.status,
       // awaiting_release is a person's turn only where this project requires a release approval
-      tone: issueStatusToneOn(i.status as KernelIssueStatus, releaseApproval),
+      tone: issueStatusToneOn(i.status as IssueStatus, releaseApproval),
       plannedRevision: i.plannedRevision,
       changedSincePlan: changedSincePlan({
         ...i,

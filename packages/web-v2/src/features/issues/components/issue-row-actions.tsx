@@ -37,7 +37,6 @@ import {
   type QueuedStepView,
 } from "../waiting";
 import { groupedTransitions, transitionLabels } from "../derive";
-import { useStatusExits } from "../hooks";
 import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
 import { sinceLastWrite } from "../waiting";
 import {
@@ -175,7 +174,6 @@ function useRowMenuItems(
   actions: RowActions,
   open: () => void,
 ): MenuItem[] {
-  const { exits, isPending, isError } = useStatusExits();
   const items: MenuItem[] = [
     { label: "Open issue", icon: "arrowRight", onSelect: open },
   ];
@@ -187,12 +185,7 @@ function useRowMenuItems(
     return items;
   }
 
-  const grouped = groupedTransitions(exits, row.status, row.workState?.leftStatus ?? null);
-  if (isPending) {
-    items.push({ label: "Loading status moves…", disabled: true, separatorBefore: true });
-  } else if (isError) {
-    items.push({ label: "Couldn't load status moves", disabled: true, separatorBefore: true });
-  }
+  const grouped = groupedTransitions(row.status, row.workState?.leftStatus ?? null);
   const statusNames = transitionLabels(grouped.map((g) => g.to));
   for (const [i, g] of grouped.entries()) {
     items.push({

@@ -82,7 +82,6 @@ import {
   useIssueStandingOf,
   usePatchIssue,
   useProjectMembers,
-  useStatusExits,
 } from "../hooks";
 import { ISSUES_LIST, issuesHref } from "../routes";
 import { ReleaseApprovalProvider } from "../release-approval";
@@ -163,7 +162,6 @@ export function IssueDetailScreen({
   const tasksQ = useTasks(canonicalId, projectId);
   const attachmentsQ = useAttachments(canonicalId, projectId);
   const depsQ = useIssueDeps(canonicalId, true, projectId);
-  const { exits: statusExits } = useStatusExits();
   const costQ = useIssueCost(canonicalId, true, projectId);
   const membersQ = useProjectMembers(projectId);
   const handoffsQ = useStepHandoffs(projectId, canonicalId);
@@ -285,8 +283,8 @@ export function IssueDetailScreen({
   const threadQuestion = park.state === "ready" && park.park ? threadQuestionOf(park.park) : null;
 
   const isTerminal = issue.status === "awaiting_release" || issue.status === "closed";
-  // The menu offers Pause and Reopen only where core's exits row for this status has them.
-  const exitsHere = allowedTransitions(statusExits, issue.status, issue.workState?.leftStatus ?? null);
+  // The menu offers Pause and Reopen only where the issue machine draws them from this status.
+  const exitsHere = allowedTransitions(issue.status, issue.workState?.leftStatus ?? null);
   // The run's state is a session chip beside the issue's lifecycle chip, never merged into it (ISS-360, ISS-1150).
   const runChip = runStatusChip(issue);
   const isRunActive = isLiveRun(runChip) || issue.status === "in_progress" || issue.status === "reopen";

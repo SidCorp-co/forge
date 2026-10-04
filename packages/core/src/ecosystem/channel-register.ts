@@ -1,3 +1,4 @@
+import { REGISTER_STATUSES, type RegisterStatus } from '@forge/contracts/status-sets';
 import { db } from '../db/client.js';
 import { readerProjects } from './access.js';
 import { heldThreads, REPLIES, today } from './channel-rules.js';
@@ -7,9 +8,8 @@ import { holdOf, serveAll } from './channel-world.js';
 import { readableEcosystem } from './membership-service.js';
 import type { DocumentType } from './schema.js';
 
-/** The register's filters, in the words its rows use: `awaiting` is a row some recipient still owes. */
-export const REGISTER_STATUSES = ['awaiting', 'overdue', 'held', 'answered', 'closed'] as const;
-export type RegisterStatus = (typeof REGISTER_STATUSES)[number];
+export { REGISTER_STATUSES, type RegisterStatus };
+
 
 export type RecipientStatus = 'awaiting' | 'answered' | 'overdue' | 'not-owed';
 

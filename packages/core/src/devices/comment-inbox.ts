@@ -3,9 +3,9 @@
  * device room has no buffer, so this read, not the `comment` wake, is what makes it master work.
  */
 
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 
 /** The most owed issues one read hands back; `count` still says how many there are. */

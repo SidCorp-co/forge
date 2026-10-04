@@ -1,7 +1,8 @@
+import { ISSUE_MACHINE } from '@forge/contracts/issue-machine';
+import { edgeBetween, exitsOf } from '@forge/contracts/state-machine';
 import { z } from 'zod';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import { guideRef } from '../guides/guide-ref.js';
-import { isRecoveryEdge, RECOVERY_EDGES } from '../pipeline/state-machine.js';
 import type { TransitionActor } from './actor-agency.js';
 import {
   TransitionError,
@@ -9,7 +10,10 @@ import {
   transitionIssueStatus,
 } from './apply-transition.js';
 
-const RECOVERY_TARGETS = (RECOVERY_EDGES.in_progress ?? []).map((t) => `\`${t}\``).join(', ');
+const RECOVERY_EXITS = exitsOf(ISSUE_MACHINE, 'in_progress', true);
+const RECOVERY_TARGETS = RECOVERY_EXITS.map((t) => `\`${t}\``).join(', ');
+const isRecoveryEdge = (from: IssueStatus, to: IssueStatus) =>
+  edgeBetween(ISSUE_MACHINE, from, to, true) !== null;
 
 // cm:guard REQ-2 BC-10: `recovery` reaches only the kernel hand-back of an `in_progress` issue nothing
 // holds; `apply-transition.ts` refuses it while anything does, so a live holder is never displaced.
@@ -18,7 +22,7 @@ export function refuseOffRecoveryEdge(from: IssueStatus, to: IssueStatus): void 
   throw new TransitionError(
     'ILLEGAL_TRANSITION',
     `\`recovery: true\` names the hand-back of an \`in_progress\` issue nothing holds, to ${RECOVERY_TARGETS} (${guideRef('pipeline-and-issue-lifecycle')}). \`${from}\` → \`${to}\` is not one; send the move without \`recovery\`.`,
-    { from, to, recovery: true, recoveryEdges: RECOVERY_EDGES },
+    { from, to, recovery: true, recoveryEdges: { in_progress: RECOVERY_EXITS } },
   );
 }
 

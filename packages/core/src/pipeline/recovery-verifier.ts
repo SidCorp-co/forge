@@ -1,8 +1,8 @@
+import { ISSUE_RESOLVED_STATUSES } from '@forge/contracts/issue-machine';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus, JobType } from '../db/schema.js';
 import { issues, type jobs } from '../db/schema.js';
-import { ISSUE_RESOLVED_STATUSES } from '../issues/status-sets.js';
 
 type JobRow = typeof jobs.$inferSelect;
 

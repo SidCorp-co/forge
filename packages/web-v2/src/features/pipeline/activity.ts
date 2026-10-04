@@ -5,7 +5,7 @@ import {
   LEGACY_NEUTRAL_REASONS,
   resolveFailureCause,
 } from "@forge/contracts/failure-causes";
-import { LIVE_JOB_STATUSES } from "@forge/contracts/status-sets";
+import { LIVE_JOB_STATUSES } from "@forge/contracts/job-machine";
 import { statusReading } from "@/design/vocabulary";
 import { failureReasonAction, failureReasonLabel } from "@/features/sessions/types";
 import type { PipelineRunAttempt } from "./types";

@@ -17,6 +17,7 @@
  * recovery edge (`pipeline/state-machine.ts:RECOVERY_EDGES`), refused while anything holds it.
  */
 
+import { ASSERTS_WORK_IN_PROGRESS, PARK_STATUSES } from '@forge/contracts/issue-machine';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -27,10 +28,8 @@ import {
 } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
-import { ASSERTS_WORK_IN_PROGRESS } from '../issues/status-sets.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
-import { PARK_STATUSES } from '../pipeline/state-machine.js';
 import {
   RUN_ISSUE_STATUSES_METADATA_KEY,
   RUN_ISSUES_METADATA_KEY,

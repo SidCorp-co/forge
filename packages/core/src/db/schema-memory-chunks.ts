@@ -35,12 +35,4 @@ export const memoryChunks = pgTable(
   }),
 );
 
-/** The `memory_reindex` jsonb's `state`; written only by memory/chunk-reindex.ts and the memory-model routes. */
-export const memoryReindexStates = [
-  'queued',
-  'running',
-  'completed',
-  'failed',
-  'cancelled',
-] as const;
-export type MemoryReindexState = (typeof memoryReindexStates)[number];
+export { MEMORY_REINDEX_STATES as memoryReindexStates, type MemoryReindexState } from '@forge/contracts/status-sets';

@@ -6,10 +6,10 @@
 // transition/patch endpoints, tallied once with a single summary toast).
 //
 // Set-status offers only `bulkAllowedStatuses()` — the intersection, across the
-// whole selection, of the exits core declares for each row's rung — so a bulk
+// whole selection, of the exits the issue machine draws for each row's rung — so a bulk
 // pick can't mass-409 (mirrors the per-row ISS-308 E1 guard). The control is
-// disabled, with the reason rendered beside it, both when that intersection is
-// empty and while the exits themselves are unread. Priority has no
+// disabled, with the reason rendered beside it, when that intersection is
+// empty. Priority has no
 // state-machine constraint, so all five values are offered — except while a
 // drive job is live on any selected issue, which refuses both controls together
 // because the job writes both fields (ISS-1010).
@@ -18,7 +18,7 @@ import { useId, useState } from "react";
 import { Button, Menu, type MenuItem } from "@/design";
 import { bulkAllowedStatuses, priorityLabel, transitionLabels } from "../derive";
 import { agentHoldsSelection, heldInSelection } from "../edit-lock";
-import { type BulkUpdate, useBulkUpdateIssues, useStatusExits } from "../hooks";
+import { type BulkUpdate, useBulkUpdateIssues } from "../hooks";
 import { ISSUE_PRIORITIES, type IssueRow } from "../types";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "./batch-release-dialog";
 
@@ -76,21 +76,15 @@ export function BulkActionBar({
   onCleared: () => void;
 }) {
   const bulk = useBulkUpdateIssues();
-  const { exits, isPending: exitsPending, isError: exitsFailed } = useStatusExits();
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const statusReasonId = useId();
   const count = selectedRows.length;
   if (count === 0) return null;
 
   const ids = selectedRows.map((r) => r.id);
-  const statusTargets = bulkAllowedStatuses(exits, selectedRows);
+  const statusTargets = bulkAllowedStatuses(selectedRows);
   const heldCount = heldInSelection(selectedRows);
   const heldReason = heldCount > 0 ? agentHoldsSelection(heldCount, count) : null;
-  const statusUnavailable = exitsPending
-    ? "Loading the status moves…"
-    : exitsFailed
-      ? "Couldn't load the status moves"
-      : null;
   const noCommonStatus = statusTargets.length === 0;
   const batchRelease = canBatchRelease(selectedRows);
 
@@ -120,11 +114,11 @@ export function BulkActionBar({
             />
           ) : (
             <>
-              {statusUnavailable || noCommonStatus ? (
+              {noCommonStatus ? (
                 <RefusedAction
                   labels={["Set status"]}
                   reasonId={statusReasonId}
-                  reason={statusUnavailable ?? "No status change is valid for every selected issue"}
+                  reason="No status change is valid for every selected issue"
                 />
               ) : (
                 <Menu
