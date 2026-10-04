@@ -175,6 +175,52 @@ export const requirementCriteria = pgTable(
   }),
 );
 
+// The steps and edges of one linked design a business criterion constrains (REQ-17 BC-10), keyed by
+// the BC code so a reworded criterion keeps its trace; a row is one step, or one edge by its ends and
+// its label where several edges share both ends
+export const requirementCriterionSteps = pgTable(
+  'requirement_criterion_steps',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    requirementId: uuid('requirement_id')
+      .notNull()
+      .references((): AnyPgColumn => requirements.id, { onDelete: 'cascade' }),
+    code: text('code').notNull(),
+    workflowId: uuid('workflow_id')
+      .notNull()
+      .references(() => projectWorkflows.id, { onDelete: 'cascade' }),
+    stepId: text('step_id'),
+    edgeFrom: text('edge_from'),
+    edgeTo: text('edge_to'),
+    edgeLabel: text('edge_label'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    workflowIdx: index('requirement_criterion_steps_workflow_idx').on(t.projectId, t.workflowId),
+    criterionIdx: index('requirement_criterion_steps_criterion_idx').on(t.requirementId, t.code),
+    nodeUq: uniqueIndex('requirement_criterion_steps_node_uq').on(
+      t.requirementId,
+      t.code,
+      t.workflowId,
+      sql`coalesce(${t.stepId}, '')`,
+      sql`coalesce(${t.edgeFrom}, '')`,
+      sql`coalesce(${t.edgeTo}, '')`,
+      sql`coalesce(${t.edgeLabel}, '')`,
+    ),
+    codeChk: check('requirement_criterion_steps_code_chk', sql`${t.code} ~ '^BC-[1-9][0-9]*$'`),
+    nodeChk: check(
+      'requirement_criterion_steps_node_chk',
+      sql`(${t.stepId} IS NOT NULL AND ${t.edgeFrom} IS NULL AND ${t.edgeTo} IS NULL AND ${t.edgeLabel} IS NULL) OR (${t.stepId} IS NULL AND ${t.edgeFrom} IS NOT NULL AND ${t.edgeTo} IS NOT NULL)`,
+    ),
+  }),
+);
+
 // cm:why a requirement has its designs before it has issues, so the link cannot be read off workflow_builds
 export const requirementWorkflows = pgTable(
   'requirement_workflows',
@@ -193,6 +239,29 @@ export const requirementWorkflows = pgTable(
   (t) => ({
     pk: primaryKey({ columns: [t.requirementId, t.workflowId] }),
     workflowIdx: index('requirement_workflows_workflow_idx').on(t.workflowId),
+  }),
+);
+
+// A requirement names the contracts it is built on before any version exists (contract-first), so
+// the link is to the contract, and the agree or re-pin pins whichever version is current then.
+export const requirementContracts = pgTable(
+  'requirement_contracts',
+  {
+    requirementId: uuid('requirement_id')
+      .notNull()
+      .references((): AnyPgColumn => requirements.id, { onDelete: 'cascade' }),
+    providerProjectId: uuid('provider_project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    contractSlug: text('contract_slug').notNull(),
+    linkedBy: uuid('linked_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.requirementId, t.providerProjectId, t.contractSlug] }),
+    contractIdx: index('requirement_contracts_contract_idx').on(t.providerProjectId, t.contractSlug),
   }),
 );
 

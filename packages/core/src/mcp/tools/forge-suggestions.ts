@@ -47,6 +47,8 @@ const inputSchema = z
     issue: z.string().trim().min(1).max(200).optional(),
     /** Or a feedback item (uuid or FB-n), for a feedback_triage suggestion. */
     feedback: z.string().trim().min(1).max(64).optional(),
+    /** Or a workflow (uuid or flow), for a design_change suggestion. */
+    workflow: z.string().trim().min(1).max(200).optional(),
     suggestionId: z.uuid().optional(),
     kind: z.enum(SUGGESTION_KINDS).optional(),
     baseRevision: z.number().int().min(1).nullable().optional(),
@@ -81,7 +83,7 @@ const DESCRIPTION =
   'target SUGGESTION_QUEUE_FULL, a payload that does not parse for its kind SUGGESTION_PAYLOAD_INVALID. ' +
   'revision_diff takes { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } on a ' +
   'requirement; requirement_draft takes { title, reason, … } on an issue; readiness { checks: [{ check, passed, detail? }] }; ' +
-  'breakdown { issues: [{ title, description?, complexity: xs | s | m | l | xl, priority?, category?, builds?: flow | null, criteria?: [{ body, tracesTo? }], blockedBy?: [index | issue key] }], uncovered? } — ' +
+  'breakdown, proposed only by the project master (the project’s own agent; anyone else, and a revise, is SUGGESTION_BREAKDOWN_PROPOSE_FORBIDDEN), one open per requirement revision (SUGGESTION_BREAKDOWN_OPEN): { issues: [{ title, description?, complexity: xs | s | m | l | xl, priority?, category?, builds?: flow | null, criteria: [{ body, tracesTo: BC-n }] (at least one, each traced), blockedBy?: [index | issue key] }], uncovered? } — ' +
   'priority defaults to medium and category to feature, and the accept effect names each issue it defaulted; builds names the ' +
   'pinned design the issue builds (left out: the one design the latest baseline pins; several pinned is SUGGESTION_BUILD_UNNAMED, ' +
   'a flow it does not pin SUGGESTION_BUILD_UNPINNED), linked as the issue’s build so the build gate holds it; ' +
@@ -90,6 +92,7 @@ const DESCRIPTION =
   'the base revision lacks or a blocker cycle, SUGGESTION_BLOCKER_UNKNOWN, SUGGESTION_BLOCKER_TERMINAL), and accepting it files ' +
   'every issue at draft, linked, traced and edged, in one transaction; ' +
   'triage { note, priority?, category?, route? } on an issue; duplicate { duplicateOf, similarity?, note? }; ' +
+  'design_change on `workflow` (uuid or flow), baseRevision null: { steps?, edges?: [{ from, to, label? }], change: change | remove | rewire, reason }; a node the latest revision does not hold is WORKFLOW_NODE_UNKNOWN, and accepting it writes nothing into the design. ' +
   'feedback_triage on `feedback` (FB-n), baseRevision null: { route: issue | revision | new_requirement | answer | duplicate, issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? }; accepting it writes the route (forge_feedback_items). ' +
   'accept { suggestionId, reason? } and reject { suggestionId, reason } take suggestions.approve (project admin, or an org owner or admin), person or agent alike, its producer included (APPROVE_PERMISSION_REQUIRED without it); ' +
   'an accept’s reason is kept on the suggestion, and is where the authority behind it is named. ' +
@@ -122,9 +125,10 @@ const settle = (input: Input, outcome: SuggestionOutcome) =>
     : refusedBy(outcome.refusals);
 
 function targetOf(input: Input): SuggestionTargetRef | undefined {
-  if ([input.requirement, input.issue, input.feedback].filter(Boolean).length > 1) {
-    throw new Error('BAD_REQUEST: name one target, `requirement`, `issue` or `feedback`');
+  if ([input.requirement, input.issue, input.feedback, input.workflow].filter(Boolean).length > 1) {
+    throw new Error('BAD_REQUEST: name one target, `requirement`, `issue`, `feedback` or `workflow`');
   }
+  if (input.workflow) return { workflow: input.workflow };
   if (input.requirement) return { requirement: input.requirement };
   if (input.issue) return { issue: input.issue };
   if (input.feedback) return { feedback: input.feedback };
@@ -170,7 +174,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
     case 'create': {
       const target = targetOf(input);
       if (!target)
-        throw new Error('BAD_REQUEST: create needs `requirement`, `issue` or `feedback`');
+        throw new Error('BAD_REQUEST: create needs `requirement`, `issue`, `feedback` or `workflow`');
       return settle(
         input,
         await createSuggestion({

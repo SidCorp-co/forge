@@ -1,7 +1,7 @@
 /**
  * The facts a requirement's standing reads beyond its own rows: each linked issue criterion's
- * latest verdict that is still current evidence, and the latest baseline's design pins beside the
- * revision each design is approved at now.
+ * latest verdict that is still current evidence, and the latest baseline's design and contract pins
+ * beside the revision or version each is approved at now.
  */
 
 import { sql } from 'drizzle-orm';
@@ -80,5 +80,35 @@ export async function latestPinsOf(ids: readonly string[]) {
     flow: r.flow,
     pinned: r.pinned,
     approved: r.approved,
+  }));
+}
+
+type ContractPinRow = {
+  requirement_id: string;
+  provider_project_id: string;
+  contract_slug: string;
+  contract_version: string;
+};
+
+/** The contract pins of each requirement's latest baseline. */
+export async function latestContractPinsOf(ids: readonly string[]) {
+  if (ids.length === 0) return [];
+  const rows = (await db.execute(sql`
+    SELECT p.requirement_id, p.provider_project_id, p.contract_slug, p.contract_version
+      FROM requirement_baseline_pins p
+     WHERE p.requirement_id IN (${sql.join(
+       ids.map((id) => sql`${id}`),
+       sql`, `,
+     )})
+       AND p.contract_slug IS NOT NULL
+       AND (p.revision, p.baseline_seq) = (
+             SELECT b.revision, b.seq FROM requirement_baselines b
+              WHERE b.requirement_id = p.requirement_id
+              ORDER BY b.revision DESC, b.seq DESC LIMIT 1)`)) as unknown as ContractPinRow[];
+  return [...rows].map((r) => ({
+    requirementId: r.requirement_id,
+    providerProjectId: r.provider_project_id,
+    contractSlug: r.contract_slug,
+    contractVersion: r.contract_version,
   }));
 }

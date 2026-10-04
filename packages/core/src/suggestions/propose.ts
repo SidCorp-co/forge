@@ -12,8 +12,9 @@ import { and, eq, ne } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { approvalRefusalFor } from '../lib/approval.js';
-import { assertProjectAccess } from '../lib/authz.js';
+import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import type { NamedRefusal } from '../project-config/respond.js';
+import { designNodesIn, nodeSetRefusals } from '../workflows/node-refs.js';
 import { breakdownGuardIn } from './breakdown.js';
 import {
   headOf,
@@ -27,6 +28,8 @@ import {
 } from './read.js';
 import {
   baseStaleRefusal,
+  breakdownOpenRefusal,
+  breakdownProposerRefusal,
   decidedRefusal,
   duplicateRefusal,
   fingerprintOf,
@@ -76,6 +79,17 @@ async function proposeIn(
     );
     if (guard.refusals.length) return { refusals: guard.refusals };
   }
+  if (p.kind === 'design_change' && p.target.type === 'workflow') {
+    const nodes = await designNodesIn(tx, p.projectId, p.target.id);
+    const wrong = nodes
+      ? nodeSetRefusals(
+          nodes,
+          SUGGESTION_PAYLOADS.design_change.schema.parse(p.payload),
+          '/payload',
+        )
+      : [];
+    if (wrong.length) return { refusals: wrong };
+  }
   const open = await tx
     .select({ id: suggestions.id, kind: suggestions.kind, fingerprint: suggestions.fingerprint })
     .from(suggestions)
@@ -87,7 +101,12 @@ async function proposeIn(
       ),
     );
   const twin = open.find((s) => s.kind === p.kind && s.fingerprint === p.fingerprint);
-  const refusal = duplicateRefusal(twin?.id ?? null) ?? queueFullRefusal(open.length);
+  const openBreakdown =
+    p.kind === 'breakdown' ? open.find((s) => s.kind === 'breakdown') : undefined;
+  const refusal =
+    breakdownOpenRefusal(openBreakdown?.id ?? null, head) ??
+    duplicateRefusal(twin?.id ?? null) ??
+    queueFullRefusal(open.length);
   if (refusal) return { refusals: [refusal] };
   const [row] = await tx
     .insert(suggestions)
@@ -97,6 +116,7 @@ async function proposeIn(
       requirementId: p.target.type === 'requirement' ? p.target.id : null,
       issueId: p.target.type === 'issue' ? p.target.id : null,
       feedbackId: p.target.type === 'feedback' ? p.target.id : null,
+      workflowId: p.target.type === 'workflow' ? p.target.id : null,
       baseRevision: p.baseRevision,
       payload: p.payload,
       fingerprint: p.fingerprint,
@@ -125,6 +145,14 @@ export async function createSuggestion(input: {
 }): Promise<SuggestionOutcome> {
   const { projectId, kind } = input;
   await assertProjectAccess(projectId, input.actor.userId, 'member');
+  if (kind === 'breakdown') {
+    const access = await effectiveProjectRole(input.actor.userId, projectId);
+    const forbidden = breakdownProposerRefusal(
+      { ...input.actor, role: access?.role ?? null },
+      input.producerKind,
+    );
+    if (forbidden) return { ok: false, refusals: [forbidden] };
+  }
   const target = await resolveTarget(projectId, input.target, input.actor.userId);
   const invalid = payloadRefusal(kind, target.type, input.payload);
   if (invalid) return { ok: false, refusals: [invalid] };
@@ -173,6 +201,11 @@ export async function reviseSuggestion(input: {
 }): Promise<SuggestionOutcome> {
   const { projectId, actor } = input;
   const first = await rowOf(db, projectId, input.id);
+  if (first.kind === 'breakdown') {
+    const access = await effectiveProjectRole(actor.userId, projectId);
+    const refusal = breakdownProposerRefusal({ ...actor, role: access?.role ?? null }, 'person');
+    if (refusal) return { ok: false, refusals: [refusal] };
+  }
   const forbidden = await approvalRefusalFor(
     actor,
     projectId,

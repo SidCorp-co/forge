@@ -219,7 +219,13 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
             </div>
           ) : null}
           <div className="flex min-h-0 flex-1 flex-col">
-            <WorkflowCanvas doc={{ ...shown, steps: stepsWithRemoved(shown, diff) }} template={template} diff={diff} decision={walkDecision} />
+            <WorkflowCanvas
+              doc={{ ...shown, steps: stepsWithRemoved(shown, diff) }}
+              template={template}
+              diff={diff}
+              decision={walkDecision}
+              graph={{ projectId, workflowId: record.document.id, revision: shownRevision, against: diff ? d.approvedRevision : null }}
+            />
           </div>
         </div>
       ) : (

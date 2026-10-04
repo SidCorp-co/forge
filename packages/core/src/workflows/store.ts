@@ -288,14 +288,25 @@ export async function buildOfIssue(
 
 export async function linkBuild(
   tx: Tx,
-  input: { issueId: string; workflowId: string; projectId: string; userId: string },
+  input: {
+    issueId: string;
+    workflowId: string;
+    projectId: string;
+    userId: string;
+    stepIds?: string[] | null;
+  },
 ): Promise<void> {
   await tx.insert(workflowBuilds).values({
     issueId: input.issueId,
     workflowId: input.workflowId,
     projectId: input.projectId,
     linkedByUser: input.userId,
+    stepIds: input.stepIds ?? null,
   });
+}
+
+export async function setBuildSteps(tx: Tx, issueId: string, stepIds: string[] | null) {
+  await tx.update(workflowBuilds).set({ stepIds }).where(eq(workflowBuilds.issueId, issueId));
 }
 
 export async function unlinkBuild(tx: Tx, issueId: string): Promise<void> {

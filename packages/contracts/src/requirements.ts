@@ -195,6 +195,28 @@ export interface RequirementWaitingOn {
 	act: string;
 	/** Why, for the tooltip: the rule in `requirements/standing.ts` that put it there. */
 	rule: string;
+	/** When what they owe is a task with an SLA, its due time. */
+	dueAt?: string;
+}
+
+/** The tasks of workflow requirement-to-delivery a requirement holds open, derived on read. */
+export const REQUIREMENT_TASK_KINDS = ["breakdown", "check"] as const;
+export type RequirementTaskKind = (typeof REQUIREMENT_TASK_KINDS)[number];
+
+/** Step `breakdown`: the master proposes the breakdown within this many working days of the agree. */
+export const BREAKDOWN_SLA_WORKING_DAYS = 2;
+/** Step `check`: the BA checks the business criteria within this many working days of delivery. */
+export const CHECK_SLA_WORKING_DAYS = 5;
+
+export interface RequirementTask {
+	kind: RequirementTaskKind;
+	/** The role the design gives the task: the project master breaks down, the BA checks. */
+	owner: "Project master" | "BA";
+	/** The requirement revision the task is for; a revision holds at most one of each kind. */
+	revision: number;
+	openedAt: string;
+	dueAt: string;
+	overdue: boolean;
 }
 
 /** A business criterion's proof: its linked issue criteria and their latest verdicts. */
@@ -249,6 +271,8 @@ export interface RequirementFacts {
 	draftRevision: number | null;
 	/** Designs the latest baseline pins at an older revision than the one now approved. */
 	stalePins: { flow: string; pinned: number; approved: number }[];
+	/** Linked contracts whose current version is not the one the latest baseline pins. */
+	staleContractPins: { contract: string; pinned: string | null; current: string }[];
 	feedbackOpen: number;
 	feedbackUntriaged: number;
 }
@@ -300,6 +324,8 @@ export interface RequirementStanding {
 	attentionGroup: RequirementAttentionGroup;
 	waitingOn: RequirementWaitingOn;
 	facts: RequirementFacts;
+	/** The open tasks of the delivery journey, each with its owner and SLA. */
+	tasks: RequirementTask[];
 	/** The revision the coverage is read against: the current one, else the newest. */
 	shownRevision: number | null;
 	coverage: RequirementCoverage[];
@@ -363,7 +389,15 @@ export const repinRequirementRequestSchema = z.strictObject({
 	reason: z.string().max(4_000).nullable().optional(),
 });
 export const REPIN_REQUIREMENT_SHAPE =
-	"{ revision, reason? } — names the head revision; writes a baseline pinning each linked design's approved revision";
+	"{ revision, reason? } — names the head revision; writes a baseline pinning each linked design's approved revision and each linked contract's current version";
+
+export const REQUIREMENT_CONTRACT_REF = /^[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9-]{0,62}$/;
+
+export const linkRequirementContractRequestSchema = z.strictObject({
+	contract: z.string().regex(REQUIREMENT_CONTRACT_REF),
+});
+export const LINK_REQUIREMENT_CONTRACT_SHAPE =
+	"{ contract } — `<project>/<contract>`, a contract this project publishes or consumes; the next agree or re-pin pins its current version";
 
 export interface RequirementDeferral {
 	from: (typeof DEFERRABLE_STATUSES)[number];
@@ -447,6 +481,15 @@ export interface RequirementLinkedIssue {
 	changedSincePlan: boolean;
 }
 
+export interface RequirementLinkedContract {
+	providerProjectId: string;
+	/** `<project>/<contract>`. */
+	contract: string;
+	contractSlug: string;
+	/** The newest approved version, which the next agree or re-pin pins; null while none is approved. */
+	currentVersion: string | null;
+}
+
 export interface RequirementLinkedDesign {
 	workflowId: string;
 	flow: string;
@@ -470,6 +513,8 @@ export const REQUIREMENT_ACTS = [
 	"unlink_issue",
 	"link_workflow",
 	"unlink_workflow",
+	"link_contract",
+	"unlink_contract",
 ] as const;
 export type RequirementAct = (typeof REQUIREMENT_ACTS)[number];
 
@@ -480,4 +525,5 @@ export interface RequirementActAnswer {
 	baseline?: { revision: number; seq: number; agreedAt: string; pins: number };
 	issues?: RequirementLinkedIssue[];
 	workflows?: RequirementLinkedDesign[];
+	contracts?: RequirementLinkedContract[];
 }

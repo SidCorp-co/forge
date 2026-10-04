@@ -268,6 +268,9 @@ means `off`).
   yet is item 25.
 - **Embeddings.** `packages/core/src/embeddings/item-writer.ts:writeItemEmbedding` is the one writer;
   a withheld item is recorded as `withheld_by_policy`, never left missing.
+- **LLM and embedding providers gate inside the adapter.** `callFastModel` and every embed function
+  take a `packages/core/src/lib/data-egress.ts:EgressScope` and run `egressScoped` before any text
+  leaves, so a slice names the surface its text belongs to and cannot skip the guard.
 - **Readers.** `ba_read_requirement` and `ba_read_issue` answer metadata only, plus `withheld`, at
   `no_egress` (`packages/core/src/assistant/tools/ba-tools.ts`).
 
@@ -317,6 +320,21 @@ means `off`).
   depends on the project is toned by
   `packages/contracts/src/issue-vocabulary.ts:issueStatusToneOn`. A feature declares no colour map
   and no second badge primitive.
+
+## External systems
+
+Every external system is reached through one adapter port under `packages/core/src/integrations/<port>/`,
+named by role (source hosting, deploy, error tracking, storefront, documents, chat, LLM,
+embeddings, mail, identity, outbound webhooks, paired runner box), never by vendor
+([ADR 0006](../adr/0006-every-external-system-is-reached-through-one-adapter-port.md)). The ports,
+their vendors and their callers are in `packages/core/src/integrations/README.md`.
+
+- **A slice calls the port's typed function.** It never imports a vendor SDK, calls the global
+  `fetch`, or names a vendor's types; `scripts/check-provider-literals.mjs` refuses either outside
+  `packages/core/src/integrations/` by file and line, beyond the exceptions `.forge/conformance.json` names with a
+  reason.
+- **A new system gets a port first.** If no port serves its role, add one with a row in the
+  integrations README; a project-bound vendor also registers in `packages/core/src/integrations/register-all.ts`.
 
 ## Compat amnesties
 

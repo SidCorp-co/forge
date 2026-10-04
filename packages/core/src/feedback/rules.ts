@@ -5,6 +5,7 @@
  * Who may act is `actMiss` against a declared rule (`lib/person-act.ts`).
  */
 
+import type { NodeRef } from '@forge/contracts/workflow-health';
 import type {
   FeedbackAttention,
   FeedbackKind,
@@ -149,6 +150,7 @@ export interface TargetFields {
   release?: string | undefined;
   workflow?: string | undefined;
   screen?: string | undefined;
+  node?: NodeRef | undefined;
 }
 
 // cm:guard an item is about exactly one target (FEEDBACK_TARGET_NOT_ONE): a requirement, an issue,

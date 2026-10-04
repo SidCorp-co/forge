@@ -6,6 +6,8 @@ import {
   blockerRefusal,
   breakdownBuilds,
   breakdownFaults,
+  breakdownOpenRefusal,
+  breakdownProposerRefusal,
   decidedRefusal,
   duplicateRefusal,
   fingerprintOf,
@@ -93,7 +95,12 @@ describe('a breakdown, checked at propose and again at accept', () => {
     const p = {
       issues: [
         { title: 'A', complexity: 's' as const, criteria: [{ body: 'a', tracesTo: 'BC-1' }] },
-        { title: 'B', complexity: 's' as const, blockedBy: [0] },
+        {
+          title: 'B',
+          complexity: 's' as const,
+          criteria: [{ body: 'b', tracesTo: 'BC-1' }],
+          blockedBy: [0],
+        },
       ],
     };
     expect(breakdownFaults(p, codes, 1)).toEqual([]);
@@ -122,8 +129,18 @@ describe('a breakdown, checked at propose and again at accept', () => {
     const faults = breakdownFaults(
       {
         issues: [
-          { title: 'A', complexity: 's' as const, blockedBy: [0] },
-          { title: 'B', complexity: 's' as const, blockedBy: [5] },
+          {
+            title: 'A',
+            complexity: 's' as const,
+            criteria: [{ body: 'b', tracesTo: 'BC-1' }],
+            blockedBy: [0],
+          },
+          {
+            title: 'B',
+            complexity: 's' as const,
+            criteria: [{ body: 'b', tracesTo: 'BC-1' }],
+            blockedBy: [5],
+          },
         ],
       },
       codes,
@@ -139,8 +156,18 @@ describe('a breakdown, checked at propose and again at accept', () => {
     const faults = breakdownFaults(
       {
         issues: [
-          { title: 'A', complexity: 's' as const, blockedBy: [1] },
-          { title: 'B', complexity: 's' as const, blockedBy: [0] },
+          {
+            title: 'A',
+            complexity: 's' as const,
+            criteria: [{ body: 'b', tracesTo: 'BC-1' }],
+            blockedBy: [1],
+          },
+          {
+            title: 'B',
+            complexity: 's' as const,
+            criteria: [{ body: 'b', tracesTo: 'BC-1' }],
+            blockedBy: [0],
+          },
         ],
       },
       codes,
@@ -158,8 +185,17 @@ describe('a breakdown blocker named by key or uuid (ISS-89)', () => {
     expect(blockerRefusal(at, 'ISS-9', 'p1', live)).toBeNull();
     expect(
       breakdownFaults(
-        { issues: [{ title: 'A', complexity: 's' as const, blockedBy: ['ISS-9'] }] },
-        new Map(),
+        {
+          issues: [
+            {
+              title: 'A',
+              complexity: 's' as const,
+              criteria: [{ body: 'b', tracesTo: 'BC-1' }],
+              blockedBy: ['ISS-9'],
+            },
+          ],
+        },
+        new Map([['BC-1', 'w1']]),
         1,
       ),
     ).toEqual([]);
@@ -217,10 +253,16 @@ describe('a reviewer revises a proposed suggestion (ISS-117, FB-62)', () => {
 describe('a breakdown issue is sized and builds a pinned design (ISS-117, FB-60, FB-61)', () => {
   const one = { workflowId: 'w1', flow: 'automation' };
   const two = { workflowId: 'w2', flow: 'agent-run-standing' };
-  const item = { title: 'A', complexity: 's' as const };
+  const item = {
+    title: 'A',
+    complexity: 's' as const,
+    criteria: [{ body: 'a', tracesTo: 'BC-1' }],
+  };
 
   it('an item with no complexity is SUGGESTION_PAYLOAD_INVALID at its path', () => {
-    const refused = payloadRefusal('breakdown', 'requirement', { issues: [{ title: 'A' }] });
+    const refused = payloadRefusal('breakdown', 'requirement', {
+      issues: [{ title: 'A', criteria: [{ body: 'a', tracesTo: 'BC-1' }] }],
+    });
     expect(refused).toMatchObject({
       code: 'SUGGESTION_PAYLOAD_INVALID',
       path: '/payload/issues/0/complexity',
@@ -260,5 +302,44 @@ describe('a breakdown issue is sized and builds a pinned design (ISS-117, FB-60,
         path: '/payload/issues/1/builds',
       }),
     ]);
+  });
+});
+
+describe('step breakdown: the project master proposes one open breakdown per revision', () => {
+  const agent = { userId: 'm1', agency: 'agent' as const, role: 'member' as const };
+  const person = { userId: 'u1', agency: 'human' as const, role: 'member' as const };
+
+  it('the project agent proposes; a person, the BA assistant and another project agent are refused', () => {
+    expect(breakdownProposerRefusal(agent, 'agent')).toBeNull();
+    expect(breakdownProposerRefusal(person, 'person')).toMatchObject({
+      code: 'SUGGESTION_BREAKDOWN_PROPOSE_FORBIDDEN',
+    });
+    expect(breakdownProposerRefusal(agent, 'ba_assistant')?.detail).toContain('the BA assistant');
+    expect(breakdownProposerRefusal({ ...agent, role: null }, 'agent')?.detail).toContain(
+      'not an agent of this project',
+    );
+  });
+
+  it('a second open breakdown on the revision is SUGGESTION_BREAKDOWN_OPEN naming the open one', () => {
+    expect(breakdownOpenRefusal(null, 2)).toBeNull();
+    expect(breakdownOpenRefusal('s9', 2)).toMatchObject({
+      code: 'SUGGESTION_BREAKDOWN_OPEN',
+      detail: expect.stringContaining('s9'),
+    });
+  });
+
+  it('an issue with no criterion, or a criterion with no BC trace, does not parse', () => {
+    const bare = { title: 'A', complexity: 's' };
+    expect(payloadRefusal('breakdown', 'requirement', { issues: [bare] })).toMatchObject({
+      path: '/payload/issues/0/criteria',
+    });
+    expect(
+      payloadRefusal('breakdown', 'requirement', { issues: [{ ...bare, criteria: [] }] }),
+    ).toMatchObject({ path: '/payload/issues/0/criteria' });
+    expect(
+      payloadRefusal('breakdown', 'requirement', {
+        issues: [{ ...bare, criteria: [{ body: 'x' }] }],
+      }),
+    ).toMatchObject({ path: '/payload/issues/0/criteria/0/tracesTo' });
   });
 });

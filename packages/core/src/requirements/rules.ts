@@ -32,6 +32,10 @@ export type RequirementRefusalCode =
   | 'REQUIREMENT_NOT_DEFERRED'
   | 'REQUIREMENT_HAS_LIVE_ISSUES'
   | 'REQUIREMENT_PINS_CURRENT'
+  | 'REQUIREMENT_CONTRACT_UNKNOWN'
+  | 'REQUIREMENT_DESIGN_UNLINKED'
+  | 'WORKFLOW_NODE_UNKNOWN'
+  | 'WORKFLOW_NODE_AMBIGUOUS'
   | 'REVISION_REASON_REQUIRED'
   | 'CRITERION_CODE_UNKNOWN'
   | 'CRITERION_CODE_DUPLICATE'
@@ -112,6 +116,33 @@ export interface LinkedDesign {
   flow: string;
   designStatus: string | null;
   approvedRevision: number | null;
+}
+
+export interface LinkedContract {
+  providerProjectId: string;
+  /** `<project>/<contract>`. */
+  contract: string;
+  contractSlug: string;
+  /** The newest approved version; null while none is approved, so nothing is pinned for it yet. */
+  currentVersion: string | null;
+}
+
+// A requirement links a contract its project publishes or consumes (REQ-5 BC-1, BC-2); any other
+// ref names nothing the project builds against.
+export function contractLinkRefusal(input: {
+  contract: string;
+  publishes: readonly string[];
+  consumes: readonly string[];
+}): RequirementRefusal | null {
+  if (input.publishes.includes(input.contract) || input.consumes.includes(input.contract)) {
+    return null;
+  }
+  const known = [...input.publishes, ...input.consumes];
+  return {
+    code: 'REQUIREMENT_CONTRACT_UNKNOWN',
+    path: '/contract',
+    detail: `${input.contract} is neither published nor consumed by this project's interface (it names ${known.join(', ') || 'no contract'}); a requirement links a contract its project builds against.`,
+  };
 }
 
 // cm:guard an agree reads the current head and pins only current revisions: the named revision must
@@ -354,6 +385,29 @@ export function stalePinsOf(
   );
 }
 
+export interface ContractPin {
+  providerProjectId: string;
+  contractSlug: string;
+  contractVersion: string;
+}
+
+// The one detector of a contract pin behind its contract: a linked contract whose current version
+// is not the one the latest baseline pins, including one approved since the agree pinned none.
+export function staleContractPinsOf(
+  contracts: readonly LinkedContract[],
+  pins: readonly ContractPin[],
+): { contract: string; pinned: string | null; current: string }[] {
+  return contracts.flatMap((c) => {
+    if (c.currentVersion === null) return [];
+    const pin = pins.find(
+      (p) => p.providerProjectId === c.providerProjectId && p.contractSlug === c.contractSlug,
+    );
+    return pin?.contractVersion === c.currentVersion
+      ? []
+      : [{ contract: c.contract, pinned: pin?.contractVersion ?? null, current: c.currentVersion }];
+  });
+}
+
 // cm:guard a re-pin writes a baseline of the head with no text revision (ISS-86): an agreed
 // requirement (an accepted one is delivered, and a draft has nothing to move), the head named and
 // current, every linked design approved (the agree's own guards), and at least one design approved
@@ -365,6 +419,8 @@ export function repinRefusals(input: {
   headState: RevisionState | null;
   designs: readonly LinkedDesign[];
   pins: readonly BaselinePin[] | null;
+  contracts: readonly LinkedContract[];
+  contractPins: readonly ContractPin[];
   mockupsMoved?: boolean;
 }): RequirementRefusal[] {
   const deferred = deferredRefusal(input.status, 're-pinning it', '/revision');
@@ -394,12 +450,13 @@ export function repinRefusals(input: {
     const pin = pins.find((p) => p.workflowId === d.workflowId);
     return pin ? [{ flow: d.flow, pinned: pin.designRevision, approved: d.approvedRevision }] : [];
   });
-  if (stalePinsOf(positions).length === 0 && !input.mockupsMoved) {
+  const contractsMoved = staleContractPinsOf(input.contracts, input.contractPins).length > 0;
+  if (stalePinsOf(positions).length === 0 && !contractsMoved && !input.mockupsMoved) {
     return [
       {
         code: 'REQUIREMENT_PINS_CURRENT',
         path: '/revision',
-        detail: `the latest baseline of revision ${input.named} already pins every linked design at its approved revision and every accepted mockup; there is nothing to re-pin.`,
+        detail: `the latest baseline of revision ${input.named} already pins every linked design at its approved revision, every linked contract at its current version and every accepted mockup; there is nothing to re-pin.`,
       },
     ];
   }

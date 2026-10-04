@@ -1,0 +1,894 @@
+{
+  "workflowId": "forge-system-context",
+  "revision": 1,
+  "against": null,
+  "focal": {
+    "boundary": "forge",
+    "title": "Forge (hosted)",
+    "tip": "What the operator runs: the docker-compose stack.",
+    "purpose": "",
+    "parts": [
+      "web",
+      "core",
+      "postgres",
+      "uploads"
+    ]
+  },
+  "nodes": [
+    {
+      "id": "member",
+      "kind": "person",
+      "title": "Team member",
+      "name": "Team member",
+      "purpose": "A person in an org and its projects: files and reads issues, answers questions, approves releases, pairs boxes. Signs in by password, GitHub, Google or OIDC.",
+      "owner": null,
+      "boundary": "people",
+      "integration": null,
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "operator",
+      "kind": "person",
+      "title": "Platform operator",
+      "name": "Platform operator",
+      "purpose": "Runs the instance: an email on the ADMIN_EMAILS list reaches /api/admin and the /admin screens.",
+      "owner": null,
+      "boundary": "people",
+      "integration": null,
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "mcp-client",
+      "kind": "external",
+      "title": "MCP client with a PAT",
+      "name": "MCP client with a PAT",
+      "purpose": "Any MCP client holding a forge_pat_* token (a developer's Claude Code, an agent account) calling /mcp. Cookies, JWTs and device tokens are refused there.",
+      "owner": "The PAT holder",
+      "boundary": "outside",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "web",
+      "kind": "container",
+      "title": "Web app (web-v2)",
+      "name": "Web app (web-v2)",
+      "purpose": "Next.js UI for issues, runs, sessions, conversations, settings and admin.",
+      "owner": null,
+      "boundary": "forge",
+      "integration": null,
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "runner",
+      "kind": "external",
+      "title": "Runner daemon (forge-runner)",
+      "name": "Runner daemon (forge-runner)",
+      "purpose": "Rust daemon that executes work on a box the person paired.",
+      "owner": null,
+      "boundary": "box",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "claude",
+      "kind": "external",
+      "title": "Claude Code CLI",
+      "name": "Claude Code CLI",
+      "purpose": "The claude CLI the runner spawns with FORGE_PAT, FORGE_PROJECT_ID and FORGE_PROJECT_SLUG; it uses the box's own Claude login and calls Forge back over /mcp.",
+      "owner": "Anthropic (logged in per box)",
+      "boundary": "box",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "core",
+      "kind": "container",
+      "title": "Core API and workers",
+      "name": "Core API and workers",
+      "purpose": "Backend over Postgres: issues, pipeline, devices, sessions, memory, integrations, MCP server and WebSocket rooms.",
+      "owner": null,
+      "boundary": "forge",
+      "integration": null,
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "postgres",
+      "kind": "container",
+      "title": "Postgres + pgvector",
+      "name": "Postgres + pgvector",
+      "purpose": "System of record, job queue and vector index.",
+      "owner": null,
+      "boundary": "forge",
+      "integration": null,
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "uploads",
+      "kind": "container",
+      "title": "Upload disk",
+      "name": "Upload disk",
+      "purpose": "Issue, comment, session and conversation attachments.",
+      "owner": null,
+      "boundary": "forge",
+      "integration": null,
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "github",
+      "kind": "external",
+      "title": "GitHub",
+      "name": "GitHub",
+      "purpose": "GitHub login (OAuth) and the GitHub App per connection: repos, pull requests, releases, installation tokens for runner git; webhooks in signed x-hub-signature-256. Runner binaries are downloaded from GitHub releases.",
+      "owner": "GitHub (Microsoft)",
+      "boundary": "outside",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "google",
+      "kind": "external",
+      "title": "Google (OIDC, Sheets)",
+      "name": "Google (OIDC, Sheets)",
+      "purpose": "Google OIDC sign-in (platform) and Google Sheets read/write per connection with a service account.",
+      "owner": "Google",
+      "boundary": "outside",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "oidc",
+      "kind": "external",
+      "title": "SSO identity provider",
+      "name": "SSO identity provider",
+      "purpose": "A generic OIDC identity provider the operator configures (OIDC_ISSUER_URL) for SSO.",
+      "owner": "The operator's IdP",
+      "boundary": "outside",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "smtp",
+      "kind": "external",
+      "title": "SMTP relay",
+      "name": "SMTP relay",
+      "purpose": "Mail relay for verification and invitation emails.",
+      "owner": "The operator's mail provider",
+      "boundary": "outside",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "sentry",
+      "kind": "external",
+      "title": "Sentry",
+      "name": "Sentry",
+      "purpose": "Error reporting from core and the browser (scrubbed by scrubSentryEvent), and, per connection, Sentry issue intake by pull and signed webhook.",
+      "owner": "Sentry (the operator's and each project's org)",
+      "boundary": "outside",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "coolify",
+      "kind": "external",
+      "title": "Coolify",
+      "name": "Coolify",
+      "purpose": "Deploy host per connection: dispatch, confirm and health-gate deploys through pg-boss forge.integrations jobs; deploy logs fetched and scrubbed.",
+      "owner": "The project's deploy host (to confirm)",
+      "boundary": "outside",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "rocketchat",
+      "kind": "external",
+      "title": "Rocket.Chat",
+      "name": "Rocket.Chat",
+      "purpose": "Chat per connection: core opens a DDP websocket for inbound messages and posts questions, comment mirrors and replies over REST.",
+      "owner": "The org's chat server (to confirm)",
+      "boundary": "outside",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "postman",
+      "kind": "external",
+      "title": "Postman",
+      "name": "Postman",
+      "purpose": "Postman per connection: a key test from core, and an MCP endpoint handed to agent sessions.",
+      "owner": "Postman",
+      "boundary": "outside",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "epodsystem",
+      "kind": "external",
+      "title": "Epodsystem",
+      "name": "Epodsystem",
+      "purpose": "Epodsystem per connection: GraphQL from core and an MCP endpoint handed to agent sessions.",
+      "owner": "Epodsystem (to confirm)",
+      "boundary": "outside",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "anthropic",
+      "kind": "external",
+      "title": "Anthropic API",
+      "name": "Anthropic API",
+      "purpose": "Anthropic Messages API for the in-app assistant when it is the chosen chat provider.",
+      "owner": "Anthropic",
+      "boundary": "outside",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "llm-gateway",
+      "kind": "external",
+      "title": "LLM gateway (LiteLLM)",
+      "name": "LLM gateway (LiteLLM)",
+      "purpose": "OpenAI-compatible gateway (LiteLLM): assistant chat, the fast model for memory extraction, consolidation, rerank and session titles, and vision for images.",
+      "owner": "The operator (to confirm)",
+      "boundary": "outside",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "embeddings",
+      "kind": "external",
+      "title": "Embeddings provider",
+      "name": "Embeddings provider",
+      "purpose": "OpenAI-shape /v1/embeddings endpoint: memory chunks, knowledge entries, issue titles and search queries.",
+      "owner": "The operator (to confirm)",
+      "boundary": "outside",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "webhook-receivers",
+      "kind": "external",
+      "title": "Project webhook receivers",
+      "name": "Project webhook receivers",
+      "purpose": "Each project's configured URLs: Forge POSTs events signed x-forge-signature-256 through the webhook-delivery queue.",
+      "owner": "Each project",
+      "boundary": "outside",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    }
+  ],
+  "relationships": [
+    {
+      "id": "member>web",
+      "from": "member",
+      "to": "web",
+      "label": "works issues, runs, chat",
+      "technology": "HTTPS (browser)",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "operator>web",
+      "from": "operator",
+      "to": "web",
+      "label": "admin screens",
+      "technology": "HTTPS (browser)",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "member>runner",
+      "from": "member",
+      "to": "runner",
+      "label": "pairs the box, binds repos",
+      "technology": "forge-runner CLI",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "runner>claude",
+      "from": "runner",
+      "to": "claude",
+      "label": "spawns sessions in panes",
+      "technology": "local process (tmux)",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "web>core",
+      "from": "web",
+      "to": "core",
+      "label": "REST and live rooms",
+      "technology": "HTTPS + /ws, forge_auth cookie",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "mcp-client>core",
+      "from": "mcp-client",
+      "to": "core",
+      "label": "Forge tools",
+      "technology": "MCP over HTTPS, PAT",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "runner>core",
+      "from": "runner",
+      "to": "core",
+      "label": "claims, leases, events; wake in",
+      "technology": "REST + /ws, device token",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "claude>core",
+      "from": "claude",
+      "to": "core",
+      "label": "phases, comments, memory",
+      "technology": "MCP over HTTPS, scoped PAT",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "core>postgres",
+      "from": "core",
+      "to": "postgres",
+      "label": "records, queue, outbox, locks",
+      "technology": "SQL",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "core>uploads",
+      "from": "core",
+      "to": "uploads",
+      "label": "attachments",
+      "technology": "file I/O",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "core>github",
+      "from": "core",
+      "to": "github",
+      "label": "login, App API out; webhooks in",
+      "technology": "OAuth, REST, HMAC webhook",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "runner>github",
+      "from": "runner",
+      "to": "github",
+      "label": "git fetch/push, binaries",
+      "technology": "git HTTPS/SSH",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "core>google",
+      "from": "core",
+      "to": "google",
+      "label": "sign-in; Sheets read/write",
+      "technology": "OIDC, Sheets v4 REST",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "core>oidc",
+      "from": "core",
+      "to": "oidc",
+      "label": "SSO sign-in",
+      "technology": "OIDC + PKCE",
+      "kind": {
+        "id": "reads-from",
+        "label": "Reads from",
+        "tooltip": "Reads an outside system.",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "toTypes": [
+          "SYSTEM"
+        ],
+        "line": "dotted",
+        "colour": "teal"
+      }
+    },
+    {
+      "id": "core>smtp",
+      "from": "core",
+      "to": "smtp",
+      "label": "verification, invitations",
+      "technology": "SMTP",
+      "kind": {
+        "id": "writes-to",
+        "label": "Writes to",
+        "tooltip": "Writes into an outside system.",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "toTypes": [
+          "SYSTEM"
+        ],
+        "line": "dashed",
+        "colour": "amber"
+      }
+    },
+    {
+      "id": "core>sentry",
+      "from": "core",
+      "to": "sentry",
+      "label": "errors out; intake pull, webhook in",
+      "technology": "SDK, REST, HMAC webhook",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "web>sentry",
+      "from": "web",
+      "to": "sentry",
+      "label": "browser errors",
+      "technology": "Sentry SDK",
+      "kind": {
+        "id": "writes-to",
+        "label": "Writes to",
+        "tooltip": "Writes into an outside system.",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "toTypes": [
+          "SYSTEM"
+        ],
+        "line": "dashed",
+        "colour": "amber"
+      }
+    },
+    {
+      "id": "core>coolify",
+      "from": "core",
+      "to": "coolify",
+      "label": "deploy, confirm, health, logs",
+      "technology": "REST, Bearer",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "core>rocketchat",
+      "from": "core",
+      "to": "rocketchat",
+      "label": "messages out; DDP inbound",
+      "technology": "REST + DDP websocket",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "core>postman",
+      "from": "core",
+      "to": "postman",
+      "label": "key test",
+      "technology": "REST",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "claude>postman",
+      "from": "claude",
+      "to": "postman",
+      "label": "API tools",
+      "technology": "MCP, key from Forge",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "core>epodsystem",
+      "from": "core",
+      "to": "epodsystem",
+      "label": "store data",
+      "technology": "GraphQL",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "claude>epodsystem",
+      "from": "claude",
+      "to": "epodsystem",
+      "label": "store tools",
+      "technology": "MCP, key from Forge",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "core>anthropic",
+      "from": "core",
+      "to": "anthropic",
+      "label": "assistant chat",
+      "technology": "Messages REST",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "core>llm-gateway",
+      "from": "core",
+      "to": "llm-gateway",
+      "label": "chat, fast model, vision",
+      "technology": "OpenAI-compatible REST",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "core>embeddings",
+      "from": "core",
+      "to": "embeddings",
+      "label": "embed text",
+      "technology": "REST /v1/embeddings",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "core>webhook-receivers",
+      "from": "core",
+      "to": "webhook-receivers",
+      "label": "signed event POSTs",
+      "technology": "HTTPS, HMAC",
+      "kind": {
+        "id": "writes-to",
+        "label": "Writes to",
+        "tooltip": "Writes into an outside system.",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "toTypes": [
+          "SYSTEM"
+        ],
+        "line": "dashed",
+        "colour": "amber"
+      }
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "people:people",
+      "lane": "people",
+      "side": "people",
+      "label": "People",
+      "tip": "Who signs in and works the product.",
+      "members": [
+        "member",
+        "operator"
+      ]
+    },
+    {
+      "id": "focal:forge",
+      "lane": "forge",
+      "side": "focal",
+      "label": "Forge (hosted)",
+      "tip": "What the operator runs: the docker-compose stack.",
+      "members": [
+        "web",
+        "core",
+        "postgres",
+        "uploads"
+      ]
+    },
+    {
+      "id": "outside:box",
+      "lane": "box",
+      "side": "outside",
+      "label": "Paired box",
+      "tip": "A machine a person paired: the runner daemon and the Claude Code processes it spawns.",
+      "members": [
+        "runner",
+        "claude"
+      ]
+    },
+    {
+      "id": "outside:outside",
+      "lane": "outside",
+      "side": "outside",
+      "label": "Outside systems",
+      "tip": "Third-party and operator-run systems Forge calls or is called by.",
+      "members": [
+        "mcp-client",
+        "github",
+        "google",
+        "oidc",
+        "smtp",
+        "sentry",
+        "coolify",
+        "rocketchat",
+        "postman",
+        "epodsystem",
+        "anthropic",
+        "llm-gateway",
+        "embeddings",
+        "webhook-receivers"
+      ]
+    }
+  ],
+  "facts": {
+    "people": [
+      {
+        "name": "Team member"
+      },
+      {
+        "name": "Platform operator"
+      }
+    ],
+    "externals": 16,
+    "boundaries": [
+      {
+        "name": "Paired box",
+        "count": 2,
+        "unconfirmed": 0
+      },
+      {
+        "name": "Outside systems",
+        "count": 14,
+        "unconfirmed": 0
+      }
+    ],
+    "namedBoundaries": 2
+  }
+}

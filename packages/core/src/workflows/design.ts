@@ -28,7 +28,9 @@ export type DesignRefusalCode =
   | 'WORKFLOW_DESIGN_BASE_UNAPPROVED'
   | 'WORKFLOW_DESIGN_ISSUE_IS_BUILD'
   | 'WORKFLOW_BUILD_ALREADY_LINKED'
-  | 'WORKFLOW_BUILD_NOT_LINKED';
+  | 'WORKFLOW_BUILD_NOT_LINKED'
+  | 'WORKFLOW_NODE_UNKNOWN'
+  | 'WORKFLOW_NODE_AMBIGUOUS';
 
 export interface DesignRefusal {
   code: DesignRefusalCode;

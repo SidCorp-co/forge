@@ -10,6 +10,7 @@ import type {
 } from "./agent-reports.js";
 import { APPROVAL_REFUSAL_CODES } from "./approval.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
+import { type NodeRef, nodeRefSchema } from "./workflow-health.js";
 
 /** What the reporter says it is; `contract_change` is filed by core for a breaking version (E3). */
 export const FEEDBACK_KINDS = [
@@ -252,6 +253,9 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_SOURCE_ALREADY_PROMOTED",
 	"FEEDBACK_SOURCE_NOT_IN_PROJECT",
 	"FEEDBACK_SOURCE_ROUTED_ELSEWHERE",
+	"FEEDBACK_NODE_NEEDS_WORKFLOW",
+	"WORKFLOW_NODE_UNKNOWN",
+	"WORKFLOW_NODE_AMBIGUOUS",
 ] as const;
 export type FeedbackRefusalCode = (typeof FEEDBACK_REFUSAL_CODES)[number];
 
@@ -271,6 +275,8 @@ export const feedbackTargetFields = {
 	release: ref.optional(),
 	workflow: ref.optional(),
 	screen: z.string().trim().min(1).max(FEEDBACK_LIMITS.whereSeen).optional(),
+	/** With a workflow target, the one step or edge of it the item is about (REQ-17 BC-11). */
+	node: nodeRefSchema.optional(),
 };
 
 /** `POST /api/projects/:id/feedback`. */
@@ -283,7 +289,7 @@ export const createFeedbackRequestSchema = z.strictObject({
 	...feedbackTargetFields,
 });
 export type CreateFeedbackRequest = z.infer<typeof createFeedbackRequestSchema>;
-export const CREATE_FEEDBACK_SHAPE = `{ kind: ${FEEDBACK_KINDS.join(" | ")}, title, body?, severity?: ${FEEDBACK_SEVERITIES.join(" | ")}, whereSeen?, exactly one of requirement | issue | release | workflow | screen }`;
+export const CREATE_FEEDBACK_SHAPE = `{ kind: ${FEEDBACK_KINDS.join(" | ")}, title, body?, severity?: ${FEEDBACK_SEVERITIES.join(" | ")}, whereSeen?, exactly one of requirement | issue | release | workflow | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only) }`;
 
 /**
  * A route as a person picks it, or as a `feedback_triage` suggestion carries it. issue: `issue`
@@ -323,7 +329,7 @@ export const promoteAgentReportRequestSchema = z.strictObject({
 export type PromoteAgentReportRequest = z.infer<
 	typeof promoteAgentReportRequestSchema
 >;
-export const PROMOTE_AGENT_REPORT_SHAPE = `{ agentReport: uuid, kind: ${FEEDBACK_KINDS.join(" | ")}, title?, body?, severity?, whereSeen?, exactly one of requirement | issue | release | workflow | screen }`;
+export const PROMOTE_AGENT_REPORT_SHAPE = `{ agentReport: uuid, kind: ${FEEDBACK_KINDS.join(" | ")}, title?, body?, severity?, whereSeen?, exactly one of requirement | issue | release | workflow | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only) }`;
 
 /** `POST …/feedback/:fb/decline` and `…/reopen`: the reason the reporter reads. */
 export const feedbackReasonRequestSchema = z.strictObject({ reason });
@@ -380,6 +386,8 @@ export interface FeedbackTargetView {
 	/** REQ-n, ISS-n, a release version, a workflow flow, `<provider>/<contract>@<version>`, or the screen as written. */
 	key: string;
 	title: string | null;
+	/** On a workflow target, the step or edge the item names; absent, it is about the whole workflow. */
+	node?: NodeRef;
 }
 
 export interface FeedbackRouteView {

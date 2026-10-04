@@ -4,14 +4,16 @@ import { type Edge, MarkerType, type Node, useReactFlow } from "@xyflow/react";
 import { Play } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, SegmentedControl } from "@/design";
+import { formatApiError } from "@/lib/api/error";
+import { refusalsOf } from "@/lib/api/refusals";
 import { useQueryParam } from "@/lib/utils/use-query-param";
-import { readSystemGraph, relationshipText } from "../c4/graph";
 import { type DBox, type Diagram, fitZoom, layoutView, MIN_READABLE_ZOOM } from "../c4/layout";
-import { type Detail, FOCAL, foldable, type Level, viewOf } from "../c4/view";
+import { type Detail, FOCAL, foldable, type Level, relationshipText, viewOf } from "../c4/view";
+import { useSystemGraph } from "../hooks";
 import { C4_EDGE_TYPES, C4_NODE_TYPES, type C4BoxData, type C4FrameData, type C4LineData } from "./c4-nodes";
 import { SearchBox, WalkBar } from "./controls";
 import { Frame } from "./frame";
-import { pathOf, searchSteps, walkOrder } from "./model";
+import { pathOf, readCanvas, searchSteps, walkOrder } from "./model";
 import { DetailPanel, type Selection } from "./panel";
 import { hue } from "./style";
 import type { WorkflowCanvasProps } from "./workflow-canvas";
@@ -34,17 +36,18 @@ const DETAILS = [
 const KIND_HUE: Record<DBox["node"]["kind"], string> = { person: "orange", group: "slate", external: "slate", system: "blue", container: "blue", focal: "blue" };
 
 /**
- * A system-context design on the shared canvas, drawn as C4 by one pipeline: graph (`readSystemGraph`)
- * → view (`viewOf`, by level and detail) → layout (`layoutView`, ELK) → nodes and edges here. It opens
- * on Every system when that reads at 12px in the view, else on Boundaries.
+ * A system-context design on the shared canvas, drawn as C4 by one pipeline: graph (core's read model,
+ * `GET …/system-graph`) → view (`viewOf`, by level and detail) → layout (`layoutView`, ELK) → nodes and
+ * edges here. It opens on Every system when that reads at 12px in the view, else on Boundaries.
  */
 export function C4Canvas(props: WorkflowCanvasProps) {
   const { doc, template, diff = null, compact = false } = props;
   const rf = useReactFlow();
   const wrap = useRef<HTMLDivElement>(null);
-  const graph = useMemo(() => readSystemGraph(doc, template), [doc, template]);
-  const c = graph.canvas;
-  const canFold = useMemo(() => foldable(graph), [graph]);
+  const read = useSystemGraph(props.graph ?? null);
+  const graph = read.data ?? null;
+  const c = useMemo(() => readCanvas(doc, template), [doc, template]);
+  const canFold = useMemo(() => (graph ? foldable(graph) : false), [graph]);
   const [param, setParam] = useQueryParam("level");
   const level: Level = !compact && param === "containers" ? "containers" : "context";
   /** Null until the fit has chosen it for this level. */
@@ -72,7 +75,7 @@ export function C4Canvas(props: WorkflowCanvasProps) {
   }, [level, graph]);
 
   useEffect(() => {
-    if (detail !== null) return;
+    if (detail !== null || !graph) return;
     const all = viewOf(graph, level, "systems");
     if (!all) return;
     if (!canFold) {
@@ -89,7 +92,7 @@ export function C4Canvas(props: WorkflowCanvasProps) {
     };
   }, [detail, graph, level, canFold, viewBox]);
 
-  const view = useMemo(() => (detail ? viewOf(graph, level, detail, open) : null), [graph, level, detail, open]);
+  const view = useMemo(() => (detail && graph ? viewOf(graph, level, detail, open) : null), [graph, level, detail, open]);
   useEffect(() => {
     if (!view) return;
     let live = true;
@@ -228,7 +231,7 @@ export function C4Canvas(props: WorkflowCanvasProps) {
     return diagram.lines.map((l) => {
       const ids = l.edge.rels.map((r) => r.id);
       const lit = Boolean(focus && ids.some((e) => focus.edges.has(e)));
-      const data: C4LineData = { line: l, rows: l.edge.rels.map((r) => relationshipText(r, graph)), on: edge !== null && ids.includes(edge), lit, dim: Boolean(focus) && !lit };
+      const data: C4LineData = { line: l, rows: graph ? l.edge.rels.map((r) => relationshipText(r, graph)) : [], on: edge !== null && ids.includes(edge), lit, dim: Boolean(focus) && !lit };
       const head = { type: MarkerType.ArrowClosed, color: l.colour, width: 14, height: 14 };
       return { id: l.id, source: l.ends[0], target: l.ends[1], type: "c4", data, selectable: false, markerEnd: head, markerStart: head };
     });
@@ -269,6 +272,14 @@ export function C4Canvas(props: WorkflowCanvasProps) {
       )}
     </div>
   );
+
+  if (read.error) {
+    return (
+      <p role="alert" className="m-auto max-w-[72ch] p-6 text-13 text-red" data-testid="system-graph-error">
+        {refusalsOf(read.error)[0]?.detail ?? formatApiError(read.error)}
+      </p>
+    );
+  }
 
   return (
     <Frame

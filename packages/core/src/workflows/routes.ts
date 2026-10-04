@@ -1,5 +1,6 @@
 import { ANSWER_VIEWS } from '@forge/contracts/projection';
 import { DESIGN_VIEWS } from '@forge/contracts/workflows';
+import { WORKFLOW_STEP_ID } from '@forge/contracts/workflow-health';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -26,6 +27,7 @@ import {
   type WorkflowWriter,
   workflowView,
 } from './service.js';
+import { readSystemGraphAs } from './system-graph-read.js';
 import { listProjectTemplatesAs, readProjectTemplateAs } from './template-service.js';
 
 export const workflowRoutes = new Hono<{ Variables: AuthVars }>();
@@ -172,6 +174,40 @@ workflowRoutes.get('/:id/workflows/:workflow/design', workflowParam, designView,
   return c.json(design);
 });
 
+const graphQuery = zValidator(
+  'query',
+  z.strictObject({
+    revision: z.coerce.number().int().min(1).optional(),
+    against: z.coerce.number().int().min(1).optional(),
+  }),
+  (r) => {
+    if (!r.success) {
+      throw badRequest(
+        'invalid query: revision? (the revision to read, the current one by default) and against? (a revision whose removed steps are drawn too), whole numbers from 1',
+      );
+    }
+  },
+);
+
+workflowRoutes.get(
+  '/:id/workflows/:workflow/system-graph',
+  workflowParam,
+  graphQuery,
+  async (c) => {
+    const { id, workflow } = c.req.valid('param');
+    const outcome = await readSystemGraphAs({
+      userId: c.get('userId'),
+      projectId: id,
+      workflowId: workflow,
+      ...c.req.valid('query'),
+    });
+    if (!outcome.ok) return refused(c, outcome.refusals);
+    return c.json(
+      await egressForRequest(c.get('agency'), id, 'design', outcome.graph, `workflow ${workflow}`),
+    );
+  },
+);
+
 workflowRoutes.post(
   '/:id/workflows/:workflow/design/propose',
   workflowParam,
@@ -224,18 +260,23 @@ workflowRoutes.post(
   '/:id/workflows/:workflow/builds',
   workflowParam,
   strictBody(
-    z.strictObject({ issue: z.string().trim().min(1).max(200) }),
-    '{ issue } names the issue that builds this workflow, by uuid or key',
+    z.strictObject({
+      issue: z.string().trim().min(1).max(200),
+      steps: z.array(z.string().regex(WORKFLOW_STEP_ID)).max(40).optional(),
+    }),
+    '{ issue, steps? } names the issue that builds this workflow, by uuid or key, and the steps it builds when its criteria trace none',
   ),
   async (c) => {
     const { id, workflow } = c.req.valid('param');
+    const body = c.req.valid('json');
     return answerDesign(
       c,
       await linkBuildAs({
         projectId: id,
         id: workflow,
         actor: writerOf(c),
-        issue: c.req.valid('json').issue,
+        issue: body.issue,
+        steps: body.steps,
       }),
     );
   },

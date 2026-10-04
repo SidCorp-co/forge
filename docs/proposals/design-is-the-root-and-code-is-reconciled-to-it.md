@@ -38,6 +38,11 @@ that is badly off is deleted and rebuilt to its design, not patched.
 - [ ] Every marked node gets keep / rewrite / delete as a decision comment on its design.
 - [ ] Past a stated threshold of markers or divergence the default is **Rewrite**: delete the code
       and build the node to the design.
+  - [x] Pilot decided: one decision comment on `requirement-to-delivery` (`b6ce21f8`), one line
+        per node. Rewrite: `pins`, `agreed`, `req-head`, `build`, `verdict-result`, `impact`
+        (chain A) and `breakdown`, `triage`, `fb-case`, `check` (chain B, a separate run). Keep:
+        the four event nodes, `ready`, `routed` and `route-result`, drawn as the code has them in
+        approved revision r3. REQ-1 and REQ-2 re-pinned to `issue-lifecycle` r3.
 
 ### Phase 4 — act
 - [ ] Rewrite and delete run as issues broken down from the design and land on dev continuously.
@@ -92,9 +97,9 @@ yet; it joins the pattern column when it lands.
 4. REQ-7 BC-2 names `planned` and `resolved` as statuses; feedback-lifecycle r2 draws them as views,
    and draws `reopened`, which the BC does not name.
 5. The new links pin nothing: their requirements were agreed before the link, so
-   `pinnedRevision` is empty until a person re-pins. REQ-1 and REQ-2 pin issue-lifecycle r2 while
-   r3 is approved. A re-pin flags every issue planned against the old baseline as changed since
-   plan, so it is the orchestrator's decision, not done here.
+   `pinnedRevision` is empty until a person re-pins. REQ-1 and REQ-2 were re-pinned to
+   issue-lifecycle r3 in Phase 3, so every issue planned against the r2 baseline reads changed
+   since plan until it is re-planned.
 6. REQ-9, REQ-14 and REQ-17 are drafts with no BCs.
 
 ## Phase 2 — pilot observation (requirement-to-delivery)

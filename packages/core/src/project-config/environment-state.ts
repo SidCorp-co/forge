@@ -1,4 +1,4 @@
-import { describeProbeReading, readRuntimeProbe } from '../lib/runtime-probe.js';
+import { describeProbeReading, readRuntimeProbe } from '../integrations/deploy/runtime-probe.js';
 import type {
   DeploymentRecord,
   DeploymentStatus,
@@ -18,7 +18,8 @@ type UnknownCause = Extract<EnvironmentState, { state: 'unknown' }>['reason']['c
 
 export interface EnvironmentStateDeps {
   readonly deployAdapterFor: (bindingId: string) => Promise<TargetedDeployAdapter | null>;
-  readonly fetch: typeof fetch;
+  /** Absent in production, where the runtime probe makes its own request; a test hands in a fake. */
+  readonly fetch?: typeof fetch;
   readonly probeTimeoutMs: number;
 }
 

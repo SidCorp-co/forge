@@ -119,6 +119,8 @@ export interface MasterStanding {
 	projectId: string;
 	state: MasterState;
 	sessionId: string | null;
+	/** The master session's own name, as the runner declared it. */
+	name: string | null;
 	device: { id: string; name: string } | null;
 	since: string | null;
 	pass: MasterOpenPass | null;

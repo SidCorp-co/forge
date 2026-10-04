@@ -1,5 +1,5 @@
 import { apiClient } from "@/lib/api/client";
-import type { DesignDecisionBody, WorkflowDesign, WorkflowList, WorkflowTemplateList } from "./types";
+import type { DesignDecisionBody, SystemGraph, SystemGraphRef, WorkflowDesign, WorkflowList, WorkflowTemplateList } from "./types";
 
 export const workflowsApi = {
   list: (projectId: string) => apiClient<WorkflowList>(`/projects/${projectId}/workflows`),
@@ -7,6 +7,10 @@ export const workflowsApi = {
     apiClient<WorkflowTemplateList>(`/projects/${projectId}/workflow-templates`),
   design: (projectId: string, workflowId: string) =>
     apiClient<WorkflowDesign>(`/projects/${projectId}/workflows/${workflowId}/design`),
+  systemGraph: ({ projectId, workflowId, revision, against }: SystemGraphRef) =>
+    apiClient<SystemGraph>(
+      `/projects/${projectId}/workflows/${workflowId}/system-graph?revision=${revision}${against ? `&against=${against}` : ""}`,
+    ),
   decide: (projectId: string, workflowId: string, body: DesignDecisionBody) =>
     apiClient<WorkflowDesign>(`/projects/${projectId}/workflows/${workflowId}/design/decision`, {
       method: "POST",

@@ -12,6 +12,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { Tx } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
+import { projectWorkflowDesigns } from '../../db/schema-workflows.js';
 import {
   criterionVerdicts,
   issueCriteria,
@@ -437,6 +438,25 @@ async function identityColumns(
           code: 'VERDICT_DESIGN_UNKNOWN',
           criterion: draft.criterion,
           detail: `criterion ${draft.criterion} names design \`${identity.workflow}\` rev ${identity.revision}, which this issue's project does not hold${found.kind === 'found' ? ` (revisions held: ${found.design.revisions.join(', ')})` : ''}.`,
+        });
+      }
+      // a verdict judged against a revision nobody approved would read as earned on a drawing the
+      // approver never accepted (REQ-17 BC-6)
+      const [approved] = await tx
+        .select({ revision: projectWorkflowDesigns.revision })
+        .from(projectWorkflowDesigns)
+        .where(
+          and(
+            eq(projectWorkflowDesigns.workflowId, found.design.id),
+            eq(projectWorkflowDesigns.revision, identity.revision),
+            eq(projectWorkflowDesigns.decision, 'approve'),
+          ),
+        );
+      if (!approved) {
+        throw new VerdictRefused({
+          code: 'VERDICT_DESIGN_UNAPPROVED',
+          criterion: draft.criterion,
+          detail: `criterion ${draft.criterion} names design \`${identity.workflow}\` rev ${identity.revision}, which was never approved; a verdict is judged against an approved revision.`,
         });
       }
       return {

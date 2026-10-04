@@ -182,6 +182,12 @@ const nodeSchema = z.strictObject({
   /** The code of an outside vocabulary a state is (a FHIR status); a preset closes the set. */
   mapsTo: z.string().min(1).max(WORKFLOW_LIMITS.code).optional(),
   channel: z.string().min(1).max(WORKFLOW_LIMITS.label).optional(),
+  /** The contracts the step uses, by provider project slug and contract slug (REQ-17 BC-5). */
+  contracts: z
+    .array(z.strictObject({ provider: slug(), slug: slug() }))
+    .min(1)
+    .max(WORKFLOW_LIMITS.refs)
+    .optional(),
   /** Cross-links: steps of the project's other designs this one is, each held to its type's `links`. */
   refs: z
     .array(

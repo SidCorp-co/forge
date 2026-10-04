@@ -3,9 +3,9 @@
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { ReactFlowProvider } from "@xyflow/react";
 import type { ReactNode } from "react";
-import { SYSTEM_CONTEXT_TEMPLATE } from "../c4/graph";
+import { SYSTEM_CONTEXT_TEMPLATE } from "@forge/contracts/system-graph";
 import type { DesignDiff } from "../design-diff";
-import type { WorkflowBody } from "../types";
+import type { SystemGraphRef, WorkflowBody } from "../types";
 import { C4Canvas } from "./c4-canvas";
 import { FlowCanvas } from "./flow-canvas";
 
@@ -16,6 +16,8 @@ export interface WorkflowCanvasProps {
   /** The approver's Approve / Return, shown in the panel and at the end of a walk-through. */
   decision?: ReactNode;
   compact?: boolean;
+  /** Where core reads a system context's graph; the C4 canvas draws nothing without it. */
+  graph?: SystemGraphRef | null;
 }
 
 /**

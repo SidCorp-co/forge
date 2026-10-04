@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { workflowsApi } from "./api";
-import type { DesignDecisionBody } from "./types";
+import type { DesignDecisionBody, SystemGraphRef } from "./types";
 
 export function useWorkflows(projectId: string | undefined) {
   return useQuery({
@@ -29,6 +29,16 @@ export function useWorkflowDesign(projectId: string | undefined, workflowId: str
     queryFn: () => workflowsApi.design(projectId as string, workflowId as string),
     enabled: Boolean(projectId && workflowId),
     staleTime: 15_000,
+  });
+}
+
+/** A system-context design read as its graph by core; a revision's content never changes, so neither does its graph. */
+export function useSystemGraph(ref: SystemGraphRef | null) {
+  return useQuery({
+    queryKey: ["system-graph", ref?.projectId ?? "", ref?.workflowId ?? "", ref?.revision ?? 0, ref?.against ?? 0],
+    queryFn: () => workflowsApi.systemGraph(ref as SystemGraphRef),
+    enabled: ref !== null,
+    staleTime: 5 * 60_000,
   });
 }
 

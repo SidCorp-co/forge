@@ -3,19 +3,19 @@ import { db } from '../db/client.js';
 import {
   type RequirementStatus,
   type RevisionState,
-  requirementBaselinePins,
   requirementBaselines,
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
-import { acceptedMockupIds, latestBaselineIn } from './baselines.js';
+import { acceptedMockupIds, latestBaselineIn, linkedContracts, writePinsIn } from './baselines.js';
 import { linkedDesigns, type RequirementActor, rowIn, signerRefusal } from './read.js';
 import { repinRefusals } from './rules.js';
 import { answer, inTx, lockRequirements, type RequirementOutcome } from './service.js';
 
-// cm:why when a linked design is approved past the revision the agreed baseline pins, a person
-// writes a further baseline of the same head revision pinning each linked design's approved
-// revision, with no text revision; the earlier baseline stays, and an issue whose plan read it
+// cm:why when a linked design is approved past the revision the agreed baseline pins, or a linked
+// contract has a newer approved version, a person writes a further baseline of the same head
+// revision pinning each linked design's approved revision and each linked contract's current
+// version, with no text revision; the earlier baseline stays, and an issue whose plan read it
 // reads changed-since-plan until it is re-planned; the text is unchanged, so the readiness result
 // the agree recorded carries over (ISS-86, ISS-98); a mockup accepted after the agree is pinned the
 // same way, beside the designs (ISS-78)
@@ -48,6 +48,7 @@ export async function repinRequirement(input: {
             );
     const headState = (headRow?.state ?? null) as RevisionState | null;
     const designs = await linkedDesigns(tx, row.id);
+    const contracts = await linkedContracts(tx, row.id);
     const latest = head === null ? null : await latestBaselineIn(tx, row.id, head);
     const accepted = head === null ? [] : await acceptedMockupIds(tx, row.id, head);
     const pinnedMockups = new Set(latest?.pins.flatMap((p) => (p.mockupId ? [p.mockupId] : [])));
@@ -63,6 +64,19 @@ export async function repinRequirement(input: {
             ? [{ workflowId: p.workflowId, designRevision: p.designRevision }]
             : [],
         ) ?? null,
+      contracts,
+      contractPins:
+        latest?.pins.flatMap((p) =>
+          p.providerProjectId && p.contractSlug && p.contractVersion
+            ? [
+                {
+                  providerProjectId: p.providerProjectId,
+                  contractSlug: p.contractSlug,
+                  contractVersion: p.contractVersion,
+                },
+              ]
+            : [],
+        ) ?? [],
       mockupsMoved:
         accepted.length !== pinnedMockups.size || accepted.some((id) => !pinnedMockups.has(id)),
     });
@@ -77,32 +91,7 @@ export async function repinRequirement(input: {
       reason: input.reason?.trim() || null,
       readiness: latest.readiness,
     });
-    const pins = [
-      ...designs.flatMap((d) =>
-        d.approvedRevision === null
-          ? []
-          : [{ workflowId: d.workflowId, designRevision: d.approvedRevision }],
-      ),
-      ...accepted.map((mockupId) => ({ mockupId })),
-      ...latest.pins.flatMap((p) =>
-        p.contractSlug
-          ? [
-              {
-                providerProjectId: p.providerProjectId,
-                contractSlug: p.contractSlug,
-                contractVersion: p.contractVersion,
-              },
-            ]
-          : [],
-      ),
-    ];
-    if (pins.length) {
-      await tx
-        .insert(requirementBaselinePins)
-        .values(
-          pins.map((p) => ({ requirementId: row.id, revision: head, baselineSeq: seq, ...p })),
-        );
-    }
+    await writePinsIn(tx, { requirementId: row.id, revision: head, seq }, designs, contracts);
     await tx.update(requirements).set({ updatedAt: new Date() }).where(eq(requirements.id, row.id));
     return null;
   });

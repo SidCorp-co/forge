@@ -11,11 +11,13 @@ import {
   SUGGESTION_MAX_OPEN_PER_TARGET,
   SUGGESTION_PAYLOADS,
   type SuggestionKind,
+  type SuggestionProducer,
   type SuggestionRefusal,
   type SuggestionStatus,
   type SuggestionTargetType,
 } from '@forge/contracts/suggestions';
 import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
+import { type ActorFacts, actMiss, PROJECT_AGENT_WRITE } from '../lib/person-act.js';
 
 export type { SuggestionRefusal, SuggestionRefusalCode } from '@forge/contracts/suggestions';
 
@@ -95,6 +97,38 @@ export function queueFullRefusal(openOnTarget: number): SuggestionRefusal | null
     code: 'SUGGESTION_QUEUE_FULL',
     path: '/target',
     detail: `${openOnTarget} suggestions already wait on this target (at most ${SUGGESTION_MAX_OPEN_PER_TARGET}); one is decided before another is proposed.`,
+  };
+}
+
+// workflow requirement-to-delivery step `breakdown`: the project master proposes it, so only the
+// project's own agent writes one; a person, the BA assistant door and another project's agent are
+// refused, and a person's revision too (the reviewer rejects with a reason, the master re-proposes)
+export function breakdownProposerRefusal(
+  facts: ActorFacts,
+  producer: SuggestionProducer,
+): SuggestionRefusal | null {
+  if (producer === 'agent' && !actMiss(facts, PROJECT_AGENT_WRITE)) return null;
+  const as =
+    producer === 'ba_assistant' ? 'the BA assistant' : facts.agency === 'agent' ? null : 'a person';
+  return {
+    code: 'SUGGESTION_BREAKDOWN_PROPOSE_FORBIDDEN',
+    path: '',
+    detail: as
+      ? `${facts.userId} writes as ${as}; a breakdown is proposed by the project master, the project's own agent. Reject a breakdown with a reason and the master proposes again.`
+      : `${facts.userId} is not an agent of this project; the project master proposes its breakdowns.`,
+  };
+}
+
+// one open breakdown suggestion per requirement revision (step `breakdown` idempotency)
+export function breakdownOpenRefusal(
+  openId: string | null,
+  revision: number | null,
+): SuggestionRefusal | null {
+  if (!openId) return null;
+  return {
+    code: 'SUGGESTION_BREAKDOWN_OPEN',
+    path: '/target',
+    detail: `breakdown suggestion ${openId} is still open on revision ${revision ?? '?'}; a revision holds one open breakdown. A holder of suggestions.approve accepts or rejects it first.`,
   };
 }
 
@@ -223,8 +257,8 @@ export function breakdownFaults(
     });
   }
   p.issues.forEach((issue, i) => {
-    (issue.criteria ?? []).forEach((c, j) => {
-      if (c.tracesTo && !codes.has(c.tracesTo)) {
+    issue.criteria.forEach((c, j) => {
+      if (!codes.has(c.tracesTo)) {
         out.push({
           code: 'SUGGESTION_PAYLOAD_INVALID',
           path: `/payload/issues/${i}/criteria/${j}/tracesTo`,

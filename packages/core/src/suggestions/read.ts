@@ -16,6 +16,7 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { rowIn as feedbackRowIn } from '../feedback/read.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
+import { designNodesIn } from '../workflows/node-refs.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { rowIn } from '../requirements/read.js';
 
@@ -27,7 +28,8 @@ export interface SuggestionActor {
 export type SuggestionTargetRef =
   | { requirement: string }
   | { issue: string }
-  | { feedback: string };
+  | { feedback: string }
+  | { workflow: string };
 export interface SuggestionTarget {
   type: SuggestionTargetType;
   id: string;
@@ -43,7 +45,9 @@ export const targetOfRow = (r: Row): SuggestionTarget =>
     ? { type: 'requirement', id: r.requirementId }
     : r.feedbackId
       ? { type: 'feedback', id: r.feedbackId }
-      : { type: 'issue', id: r.issueId as string };
+      : r.workflowId
+        ? { type: 'workflow', id: r.workflowId }
+        : { type: 'issue', id: r.issueId as string };
 
 export const viewOf = (r: Row): SuggestionView => ({
   id: r.id,
@@ -66,7 +70,7 @@ export const viewOf = (r: Row): SuggestionView => ({
   payloadPurgedAt: r.payloadPurgedAt?.toISOString() ?? null,
 });
 
-/** A target of `projectId` by requirement, issue or feedback uuid or key; 404 otherwise. */
+/** A target of `projectId` by requirement, issue or feedback uuid or key, or a workflow by uuid or flow; 404 otherwise. */
 export async function resolveTarget(
   projectId: string,
   target: SuggestionTargetRef,
@@ -77,6 +81,11 @@ export async function resolveTarget(
   }
   if ('feedback' in target) {
     return { type: 'feedback', id: (await feedbackRowIn(db, projectId, target.feedback)).id };
+  }
+  if ('workflow' in target) {
+    const nodes = await designNodesIn(db, projectId, target.workflow);
+    if (!nodes) throw notFound(`project ${projectId} holds no workflow ${target.workflow}`);
+    return { type: 'workflow', id: nodes.workflowId };
   }
   const issue = await resolveIssueRouteRef(target.issue, projectId, userId);
   if (issue.projectId !== projectId) {
@@ -90,7 +99,9 @@ export const onTarget = (t: SuggestionTarget) =>
     ? eq(suggestions.requirementId, t.id)
     : t.type === 'feedback'
       ? eq(suggestions.feedbackId, t.id)
-      : eq(suggestions.issueId, t.id);
+      : t.type === 'workflow'
+        ? eq(suggestions.workflowId, t.id)
+        : eq(suggestions.issueId, t.id);
 
 /** The target's head revision: a requirement's current revision, none for an issue or feedback. */
 export async function headOf(tx: Tx, projectId: string, t: SuggestionTarget) {
