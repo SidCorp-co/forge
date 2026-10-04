@@ -2437,6 +2437,13 @@
       "when": 1815696000000,
       "tag": "0379_one_scheduler_and_a_schedules_last_fire_is_read",
       "breakpoints": true
+    },
+    {
+      "idx": 380,
+      "version": "7",
+      "when": 1815782400000,
+      "tag": "0380_a_copied_citation_carries_its_kind_and_coverage_sha",
+      "breakpoints": true
     }
   ]
 }
