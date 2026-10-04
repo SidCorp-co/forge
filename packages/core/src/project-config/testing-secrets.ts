@@ -47,15 +47,11 @@ const refuse = (
 const JOB_CREDENTIAL_SHAPE =
   'The credential that reaches this route is the one a running job holds: issued to the box the job runs on and bound to the job’s project, so it names exactly one live job.';
 
-// cm:flow testing-secrets/resolve — a job credential reads the values behind the secret:// refs of
-// the one testing profile its environment names, and nothing else
-export async function resolveTestingSecrets(args: {
-  principal: PatPrincipal;
-  jobId: string;
-  profileId: string;
-  refs: readonly string[] | null;
-}): Promise<TestingSecretsOutcome> {
-  const { principal, profileId } = args;
+/** The one live job this credential names, which must be the job asked about. */
+async function credentialJob(
+  principal: PatPrincipal,
+  asked: string,
+): Promise<Refused | { ok: true; jobId: string }> {
   const context = await projectConfigPorts().jobOfCredential(principal);
   if (!context.ok) {
     return context.reason === 'ambiguous_pipeline_context'
@@ -73,7 +69,7 @@ export async function resolveTestingSecrets(args: {
       `This credential's session (${context.context.agentSessionId}) is running no job, so it judges no environment. ${JOB_CREDENTIAL_SHAPE}`,
     );
   }
-  const jobId = args.jobId === SELF_JOB ? context.context.jobId : args.jobId;
+  const jobId = asked === SELF_JOB ? context.context.jobId : asked;
   if (context.context.jobId !== jobId) {
     return refuse(
       403,
@@ -83,6 +79,11 @@ export async function resolveTestingSecrets(args: {
     );
   }
 
+  return { ok: true, jobId };
+}
+
+/** The job's row, where it is a judging job. */
+async function judgingJob(jobId: string) {
   const [job] = await db
     .select({ projectId: jobs.projectId, type: jobs.type, issueId: jobs.issueId })
     .from(jobs)
@@ -99,26 +100,17 @@ export async function resolveTestingSecrets(args: {
     );
   }
 
-  const project = await readProjectConfig(job.projectId);
-  if (!project) {
-    return refuse(
-      422,
-      'TESTING_SECRETS_NO_PROJECT_DOCUMENT',
-      `project ${job.projectId} declares no project document, so no environment names a testing profile.`,
-    );
-  }
-  const judged = await judgedEnvironment(job.issueId, project.document, jobId);
-  if (!judged.ok) return judged;
-  const { environment, testing } = judged;
-  if (testing !== profileId) {
-    return refuse(
-      422,
-      'TESTING_PROFILE_NOT_NAMED',
-      `environment \`${environment}\`, which job ${jobId} judges, names testing profile \`${testing}\`, not \`${profileId}\`.`,
-    );
-  }
+  return { ok: true as const, job };
+}
 
-  const profile = await readTestingProfile(job.projectId, profileId);
+/** The secret refs to resolve: every ref the profile names, or the asked subset of them. */
+async function profileRefs(
+  projectId: string,
+  profileId: string,
+  environment: string,
+  asked: readonly string[] | null,
+): Promise<Refused | { ok: true; wanted: string[] }> {
+  const profile = await readTestingProfile(projectId, profileId);
   if (!profile) {
     return refuse(
       422,
@@ -127,7 +119,7 @@ export async function resolveTestingSecrets(args: {
     );
   }
   const named = [...new Set(credentialRefs(profile.document).map((r) => r.ref))];
-  const wanted = args.refs === null ? named : [...new Set(args.refs)];
+  const wanted = asked === null ? named : [...new Set(asked)];
   const unnamed = wanted.filter((r) => !named.includes(r));
   if (unnamed.length > 0) {
     return refuse(
@@ -145,13 +137,22 @@ export async function resolveTestingSecrets(args: {
     );
   }
 
-  const stored = await readSecretValues(job.projectId, wanted);
+  return { ok: true, wanted };
+}
+
+/** Each wanted value decrypted, long enough for the scrubber to replace in a log. */
+async function decryptedValues(
+  projectId: string,
+  profileId: string,
+  wanted: string[],
+): Promise<Refused | { ok: true; secrets: { ref: string; value: string }[] }> {
+  const stored = await readSecretValues(projectId, wanted);
   const missing = wanted.filter((r) => !stored.has(r));
   if (missing.length > 0) {
     return refuse(
       422,
       'SECRET_VALUE_MISSING',
-      `testing profile \`${profileId}\` names ${missing.join(', ')}, and this project stores no value for it; PUT /api/projects/${job.projectId}/secrets/<scope>/<name> first.`,
+      `testing profile \`${profileId}\` names ${missing.join(', ')}, and this project stores no value for it; PUT /api/projects/${projectId}/secrets/<scope>/<name> first.`,
       { missing },
     );
   }
@@ -177,6 +178,53 @@ export async function resolveTestingSecrets(args: {
     }
     secrets.push({ ref, value });
   }
+
+  return { ok: true, secrets };
+}
+
+// cm:flow testing-secrets/resolve — a job credential reads the values behind the secret:// refs of
+// the one testing profile its environment names, and nothing else
+export async function resolveTestingSecrets(args: {
+  principal: PatPrincipal;
+  jobId: string;
+  profileId: string;
+  refs: readonly string[] | null;
+}): Promise<TestingSecretsOutcome> {
+  const { principal, profileId } = args;
+  const own = await credentialJob(principal, args.jobId);
+  if (!own.ok) return own;
+  const { jobId } = own;
+
+  const judging = await judgingJob(jobId);
+  if (!judging.ok) return judging;
+  const { job } = judging;
+
+  const project = await readProjectConfig(job.projectId);
+  if (!project) {
+    return refuse(
+      422,
+      'TESTING_SECRETS_NO_PROJECT_DOCUMENT',
+      `project ${job.projectId} declares no project document, so no environment names a testing profile.`,
+    );
+  }
+  const judged = await judgedEnvironment(job.issueId, project.document, jobId);
+  if (!judged.ok) return judged;
+  const { environment, testing } = judged;
+  if (testing !== profileId) {
+    return refuse(
+      422,
+      'TESTING_PROFILE_NOT_NAMED',
+      `environment \`${environment}\`, which job ${jobId} judges, names testing profile \`${testing}\`, not \`${profileId}\`.`,
+    );
+  }
+
+  const refs = await profileRefs(job.projectId, profileId, environment, args.refs);
+  if (!refs.ok) return refs;
+  const { wanted } = refs;
+
+  const values = await decryptedValues(job.projectId, profileId, wanted);
+  if (!values.ok) return values;
+  const { secrets } = values;
 
   await projectConfigPorts().recordSecretResolve(jobId, {
     environment,
