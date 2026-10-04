@@ -1,9 +1,16 @@
 // ISS-55 — the evidence `awaiting_release` stands on, read from `criterion_verdicts`, never comments.
 
 import { sql } from 'drizzle-orm';
-import type { Tx } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
+import type { IssueStatus } from '../db/schema.js';
 import { type CriterionWithVerdict, listCriteria } from './criteria/store.js';
-import { type CurrentDrafts, withDrafts } from './criteria/storefront-draft.js';
+import {
+  type CurrentDrafts,
+  draftWorkflowIds,
+  NO_DRAFTS_READ,
+  readCurrentDrafts,
+  withDrafts,
+} from './criteria/storefront-draft.js';
 
 const PASSING: ReadonlySet<string> = new Set(['pass', 'short']);
 
@@ -22,6 +29,19 @@ export type CriteriaEvidence =
     };
 
 export type SourceType = 'git' | 'storefront' | 'none' | null;
+
+/**
+ * The drafts a move into `awaiting_release` corroborates its storefront verdicts against, read
+ * before the move takes its lock. Any other move reads none.
+ */
+export async function readMoveDrafts(
+  issue: { id: string; projectId: string },
+  to: IssueStatus,
+): Promise<CurrentDrafts> {
+  if (to !== 'awaiting_release') return NO_DRAFTS_READ;
+  const workflowIds = draftWorkflowIds(await listCriteria(db, issue.id));
+  return workflowIds.length > 0 ? readCurrentDrafts(issue.projectId, workflowIds) : NO_DRAFTS_READ;
+}
 
 function draftFinding(
   latest: NonNullable<CriterionWithVerdict['latest']>,

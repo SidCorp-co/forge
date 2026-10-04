@@ -12,6 +12,7 @@ import type {
   QuestionnaireView,
 } from '@forge/contracts/onboarding';
 import { QUESTIONNAIRE_MACHINE } from '@forge/contracts/onboarding-machine';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import {
@@ -26,7 +27,6 @@ import { db } from '../db/client.js';
 import { conversations } from '../db/schema-conversations.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions, type QuestionOrigin, type QuestionStep } from '../db/schema-questions.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import { dataPolicyOf, storedAnswers } from '../lib/data-egress.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { type KernelActor, movedRow, transition } from '../lifecycle/transition.js';

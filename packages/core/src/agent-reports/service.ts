@@ -11,6 +11,7 @@ import type {
   AgentReportView,
   TriageAgentReportRequest,
 } from '@forge/contracts/agent-reports';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, asc, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import {
@@ -28,7 +29,6 @@ import {
 import { feedback } from '../db/schema-feedback.js';
 import { reportLinksOf } from '../feedback/about.js';
 import { feedbackKey } from '../feedback/read.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { writeRecordEvent } from '../issues/record-events/store.js';
 import { type PipelineCaller, resolvePipelineContext } from '../jobs/active-job-context.js';
