@@ -55,8 +55,8 @@ import { identSearchColumn, MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './s
 export { MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
 import type { DecisionFields } from '@forge/contracts/comments';
-import { SCHEDULE_RUN_STATUSES } from '@forge/contracts/schedules';
 import { MASTER_JOB_PANES_MAX } from '@forge/contracts/master-standing';
+import { SCHEDULE_RUN_STATUSES } from '@forge/contracts/schedules';
 import { BODY_FORMATS } from '../body/formats.js';
 import type { IssueBranchOverride } from '../branches/resolve.js';
 import { COMMENT_INTENTS } from '../issues/record-events/kinds.js';
