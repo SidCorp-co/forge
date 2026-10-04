@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { deriveIssueStanding, type IssueStandingInput, toneOf, wavesOf } from './standing.js';
+import {
+  deriveIssueStanding,
+  type IssueStandingInput,
+  type StandingEdge,
+  toneOf,
+  wavesOf,
+} from './standing.js';
 
 const NOW = new Date('2026-10-04T10:00:00Z');
 
 const base = (over: Partial<IssueStandingInput> = {}): IssueStandingInput => ({
   status: 'open',
   waitingKind: null,
+  merged: false,
   step: null,
   stepStartedAt: null,
   lease: null,
@@ -28,11 +35,16 @@ const base = (over: Partial<IssueStandingInput> = {}): IssueStandingInput => ({
 });
 
 const live = { holder: 'run-4', verdict: 'live' as const, expiresAt: '2026-10-04T10:30:00Z' };
-const edge = (status: IssueStandingInput['status'], key = 'ISS-9') => ({
+const edge = (
+  status: IssueStandingInput['status'],
+  key = 'ISS-9',
+  landed: Pick<StandingEdge, 'merged' | 'step'> = { merged: false, step: null },
+): StandingEdge => ({
   id: key,
   key,
   title: 't',
   status,
+  ...landed,
 });
 
 describe('whose turn an issue is', () => {
@@ -139,6 +151,88 @@ describe('whose turn an issue is', () => {
     expect(deriveIssueStanding(base({ status: 'closed', blocks: [edge('open')] })).blocks).toEqual(
       [],
     );
+  });
+});
+
+describe('a landed row nothing holds waits on its judge (ISS-80 criterion 8)', () => {
+  const expired = { ...live, verdict: 'expired' as const };
+
+  it('a landed in_progress row at step test with no holder is queued on a judge, never stuck', () => {
+    const s = deriveIssueStanding(
+      base({ status: 'in_progress', merged: true, step: 'test', lease: expired }),
+    );
+    expect(s.attentionGroup).toBe('queued');
+    expect(s.waitingOn).toMatchObject({
+      kind: 'judge',
+      who: 'Judge',
+      act: 'landed · a verdict on each criterion',
+      ref: null,
+    });
+    expect(s.waitingOn.rule).toContain('waits at step `test` for a judge');
+    expect(s.waitingOn.who).not.toBe('No holder');
+  });
+
+  it('a landed open row waits on the run that claims it and judges what landed', () => {
+    const s = deriveIssueStanding(base({ status: 'open', merged: true }));
+    expect(s.attentionGroup).toBe('queued');
+    expect(s.waitingOn).toMatchObject({
+      kind: 'judge',
+      who: 'Next run',
+      act: 'landed · claim it and judge what landed',
+    });
+  });
+
+  it('a judge that holds the lease is moving on its run, not waiting', () => {
+    const s = deriveIssueStanding(
+      base({ status: 'in_progress', merged: true, step: 'test', lease: live }),
+    );
+    expect(s.attentionGroup).toBe('moving');
+    expect(s.waitingOn.kind).toBe('run');
+  });
+
+  it('an unlanded row, or a landed row at another step, keeps its old reading', () => {
+    expect(
+      deriveIssueStanding(base({ status: 'in_progress', step: 'test', lease: expired })).waitingOn
+        .who,
+    ).toBe('No holder');
+    expect(
+      deriveIssueStanding(base({ status: 'in_progress', merged: true, step: 'build' })).waitingOn
+        .who,
+    ).toBe('No holder');
+    expect(deriveIssueStanding(base({ status: 'open' })).waitingOn.act).toBe('free slot');
+    expect(deriveIssueStanding(base({ status: 'reopen', merged: true })).waitingOn.kind).toBe(
+      'master',
+    );
+  });
+
+  it('an unsettled blocker comes first: a landed open row it holds back is stuck on it', () => {
+    const s = deriveIssueStanding(
+      base({ status: 'open', merged: true, blockedBy: [edge('in_progress', 'ISS-7')] }),
+    );
+    expect(s.attentionGroup).toBe('stuck');
+    expect(s.waitingOn.who).toBe('ISS-7');
+  });
+
+  it('a dependent of a landed blocker waits on that blocker’s judge, and the edge says it landed', () => {
+    const blocker = edge('in_progress', 'ISS-9', { merged: true, step: 'test' });
+    const s = deriveIssueStanding(base({ blockedBy: [blocker] }));
+    expect(s.attentionGroup).toBe('stuck');
+    expect(s.waitingOn).toMatchObject({
+      kind: 'issue',
+      who: 'ISS-9',
+      act: 'landed, waits on a judge',
+      ref: 'ISS-9',
+    });
+    expect(s.blockedBy).toEqual([
+      { key: 'ISS-9', title: 't', status: 'in_progress', group: null, landed: true },
+    ]);
+  });
+
+  it('a blocker whose landing was sent back to build is running, not waiting on a judge', () => {
+    const blocker = edge('in_progress', 'ISS-9', { merged: true, step: 'build' });
+    const s = deriveIssueStanding(base({ blockedBy: [blocker] }));
+    expect(s.waitingOn.act).toBe('running');
+    expect(s.blockedBy[0]?.landed).toBe(false);
   });
 });
 

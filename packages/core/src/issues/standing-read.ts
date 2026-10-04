@@ -43,6 +43,7 @@ interface IssueRowRaw {
   title: string;
   status: KernelIssueStatus;
   waiting_kind: string | null;
+  merged_at: string | null;
   priority: string;
   category: string | null;
   complexity: string | null;
@@ -81,7 +82,7 @@ function scopeSql(scope: IssueStandingScope | 'one', key: number | null): SQL {
 async function issueRows(projectId: string, where: SQL, limit: number): Promise<IssueRowRaw[]> {
   return rowsOf<IssueRowRaw>(
     await db.execute(sql`
-      SELECT i.id, i.iss_seq, i.title, i.status, i.waiting_kind, i.priority, i.category, i.complexity,
+      SELECT i.id, i.iss_seq, i.title, i.status, i.waiting_kind, i.merged_at, i.priority, i.category, i.complexity,
              i.assignee_id, i.created_by_id, i.requirement_id, i.planned_revision,
              i.created_at, i.updated_at,
              w.step, w.step_started_at, w.steps, w.lease, w.branch, w.head_sha, w.updated_at AS ws_updated_at,
@@ -109,6 +110,10 @@ interface EdgeRaw {
   to_title: string;
   from_status: KernelIssueStatus;
   to_status: KernelIssueStatus;
+  from_merged: boolean;
+  to_merged: boolean;
+  from_step: WorkStep | null;
+  to_step: WorkStep | null;
 }
 
 /** Live `blocks` edges touching these issues: `from` holds `to` back. Expired edges count as nothing. */
@@ -118,10 +123,14 @@ async function edgesOf(projectId: string, ids: readonly string[]): Promise<EdgeR
     await db.execute(sql`
       SELECT d.from_issue_id AS from_id, d.to_issue_id AS to_id,
              f.iss_seq AS from_seq, t.iss_seq AS to_seq, f.title AS from_title, t.title AS to_title,
-             f.status AS from_status, t.status AS to_status
+             f.status AS from_status, t.status AS to_status,
+             f.merged_at IS NOT NULL AS from_merged, t.merged_at IS NOT NULL AS to_merged,
+             fw.step AS from_step, tw.step AS to_step
         FROM issue_dependencies d
         JOIN issues f ON f.id = d.from_issue_id
         JOIN issues t ON t.id = d.to_issue_id
+        LEFT JOIN issue_work_state fw ON fw.issue_id = f.id
+        LEFT JOIN issue_work_state tw ON tw.issue_id = t.id
        WHERE d.project_id = ${projectId} AND d.kind = 'blocks'
          AND (d.valid_until IS NULL OR d.valid_until > now())
          AND (d.from_issue_id IN (${idList(ids)}) OR d.to_issue_id IN (${idList(ids)}))`),
@@ -282,11 +291,15 @@ async function standingRows(
     seq: number,
     title: string,
     status: KernelIssueStatus,
+    merged: boolean,
+    step: WorkStep | null,
   ): StandingEdge => ({
     id,
     key: key(seq),
     title,
     status,
+    merged,
+    step,
   });
 
   const inputs = raws.map((r): [IssueRowRaw, IssueStandingInput] => {
@@ -299,6 +312,7 @@ async function standingRows(
       {
         status: r.status,
         waitingKind: r.waiting_kind,
+        merged: r.merged_at !== null,
         step: r.step,
         stepStartedAt: r.step_started_at ? new Date(r.step_started_at) : null,
         lease: leaseOf(r.lease, now),
@@ -306,10 +320,12 @@ async function standingRows(
         owesAnswer: r.owes_answer,
         blockedBy: edges
           .filter((e) => e.to_id === r.id)
-          .map((e) => edge(e.from_id, e.from_seq, e.from_title, e.from_status)),
+          .map((e) =>
+            edge(e.from_id, e.from_seq, e.from_title, e.from_status, e.from_merged, e.from_step),
+          ),
         blocks: edges
           .filter((e) => e.from_id === r.id)
-          .map((e) => edge(e.to_id, e.to_seq, e.to_title, e.to_status)),
+          .map((e) => edge(e.to_id, e.to_seq, e.to_title, e.to_status, e.to_merged, e.to_step)),
         criteria: {
           total: mine.length,
           passing: mine.filter((c) => c.verdict === 'pass' || c.verdict === 'short').length,
