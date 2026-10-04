@@ -1,8 +1,8 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { indexMemory } from '../memory/indexer.js';
+import { indexMemory, trimNotesOfKind } from '../memory/indexer.js';
 import type { HooksBus } from './hooks.js';
 
 const MAX_DIFF_SUMMARY_CHARS = 1024;
@@ -107,22 +107,7 @@ export async function storeCiFixPattern(args: {
 }
 
 export async function enforcePatternCap(projectId: string, errorType: string): Promise<void> {
-  const errorTypeJson = JSON.stringify([errorType]);
-  // Sort newest-updated-first and skip the freshest MAX rows; the remainder
-  // are the stalest extras and get deleted. Using ASC + OFFSET would do the
-  // inverse and evict the just-stored row instead.
-  await db.execute(sql`
-    DELETE FROM memories
-    WHERE id IN (
-      SELECT id FROM memories
-      WHERE project_id = ${projectId}
-        AND source = 'note'
-        AND metadata->>'kind' = 'ci_fix_pattern'
-        AND metadata->'errorTypes' @> ${errorTypeJson}::jsonb
-      ORDER BY updated_at DESC
-      OFFSET ${MAX_PATTERNS_PER_ERROR_TYPE}
-    )
-  `);
+  await trimNotesOfKind(projectId, 'ci_fix_pattern', errorType, MAX_PATTERNS_PER_ERROR_TYPE);
 }
 
 async function loadCiFixContext(issueId: string): Promise<CiFixContextLike | null> {

@@ -1,8 +1,9 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issuePrefixAliases, projects } from '../db/schema.js';
+import { issuePrefixAliases } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type IssuePrefixShapeError, validateIssuePrefix } from '../lib/issue-ref.js';
+import { setProjectIssuePrefix } from '../projects/index.js';
 import { issuePrefixHolder } from './issue-prefix-read.js';
 
 export type PrefixWriter = Pick<typeof db, 'transaction' | 'select' | 'insert' | 'update'>;
@@ -36,14 +37,14 @@ export async function assignIssuePrefix(
       if (!held) {
         await tx.insert(issuePrefixAliases).values({ projectId, prefix });
       }
-      await tx.update(projects).set({ issuePrefix: prefix }).where(eq(projects.id, projectId));
+      await setProjectIssuePrefix(projectId, prefix, tx);
       return { ok: true as const, prefix };
     });
   } catch (err) {
     if (!isUniqueViolation(err)) throw err;
     const holder = await issuePrefixHolder(prefix);
     if (holder?.projectId === projectId) {
-      await dbi.update(projects).set({ issuePrefix: prefix }).where(eq(projects.id, projectId));
+      await setProjectIssuePrefix(projectId, prefix, dbi);
       return { ok: true, prefix };
     }
     return { ok: false, reason: 'taken', holderProjectId: holder?.projectId ?? null };
@@ -53,5 +54,5 @@ export async function assignIssuePrefix(
 /** Send a project back to the legacy `ISS`. The alias it held is NOT released — see the guard on
  *  `issuePrefixAliases`. */
 export async function retireIssuePrefix(projectId: string, dbi: PrefixWriter = db): Promise<void> {
-  await dbi.update(projects).set({ issuePrefix: null }).where(eq(projects.id, projectId));
+  await setProjectIssuePrefix(projectId, null, dbi);
 }

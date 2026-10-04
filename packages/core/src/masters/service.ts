@@ -10,6 +10,7 @@ import { eq, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, devices, terminalAgentSessionStatuses } from '../db/schema.js';
+import { setMaxJobPanes } from '../devices/index.js';
 import { ensureMasterSession } from '../devices/master-session.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { closedPassOf, openPassOf, readClosedPass, readOpenPass } from './read.js';
@@ -46,10 +47,7 @@ export async function declareMasterSession(args: {
   });
   if (refusal) return { ok: false, refusals: [refusal] };
   if (args.maxJobPanes !== undefined && args.maxJobPanes !== device.maxJobPanes) {
-    await db
-      .update(devices)
-      .set({ maxJobPanes: args.maxJobPanes })
-      .where(eq(devices.id, args.deviceId));
+    await setMaxJobPanes(args.deviceId, args.maxJobPanes);
   }
   const session = await ensureMasterSession(args);
   return {

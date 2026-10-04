@@ -2,8 +2,8 @@ import { and, eq, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { resolveNotifications } from '../notifications/auto-resolve.js';
-import { PENDING_STALE_MS } from '../notifications/deliver.js';
+import { resolveNotifications } from './auto-resolve.js';
+import { PENDING_STALE_MS } from './deliver.js';
 
 export interface ReevaluateResult {
   /** Firing conditions whose subject is over. */

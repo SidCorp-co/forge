@@ -9,7 +9,7 @@
  */
 
 import { and, eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import {
   issues,
   type OrgMemberRole,
@@ -18,11 +18,11 @@ import {
   projectMembers,
   projects,
 } from '../db/schema.js';
-import { projectPolicies } from '../db/schema-project-config.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
 import { addProjectMembers } from '../permissions/index.js';
 import { DEFAULT_POLICY } from '../project-config/default-policy.js';
+import { seedProjectPolicy } from '../project-config/store.js';
 import { readDeclaredSource } from '../project-config/source.js';
 
 /** The project's id, or `null` when no project carries that slug. */
@@ -100,12 +100,7 @@ export async function createProject(input: NewProject) {
       await addProjectMembers(tx, [
         { userId: input.createdBy, projectId: project.id, role: 'admin' },
       ]);
-      await tx.insert(projectPolicies).values({
-        projectId: project.id,
-        revision: 1,
-        document: DEFAULT_POLICY,
-        updatedBy: input.createdBy,
-      });
+      await seedProjectPolicy(tx, project.id, DEFAULT_POLICY, input.createdBy);
       return project;
     });
   } catch (err) {
@@ -166,4 +161,27 @@ export async function readIssueBranchInputs(issueId: string, projectId: string) 
     .where(and(eq(issues.id, issueId), eq(issues.projectId, projectId)))
     .limit(1);
   return row ?? null;
+}
+
+/** The project's issue prefix; null sends it back to the legacy `ISS`. */
+export async function setProjectIssuePrefix(
+  projectId: string,
+  prefix: string | null,
+  tx: Pick<Tx, 'update'> = db,
+): Promise<void> {
+  await tx.update(projects).set({ issuePrefix: prefix }).where(eq(projects.id, projectId));
+}
+
+/** The slug and name the project document declares, projected onto the row; false when no row. */
+export async function projectDocumentNames(
+  tx: Tx,
+  projectId: string,
+  names: { slug: string; name: string },
+): Promise<boolean> {
+  const projected = await tx
+    .update(projects)
+    .set({ slug: names.slug, name: names.name })
+    .where(eq(projects.id, projectId))
+    .returning({ id: projects.id });
+  return projected.length > 0;
 }

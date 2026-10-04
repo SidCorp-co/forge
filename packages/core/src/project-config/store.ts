@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import type { BindingRole } from '../db/release-axes.js';
 import { integrationBindings, projects, runners } from '../db/schema.js';
 import {
@@ -10,6 +10,7 @@ import {
   projectTestingProfiles,
 } from '../db/schema-project-config.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
+import { projectDocumentNames } from '../projects/index.js';
 import { type ApiRefusal, parseSecretRef, secretRefOf } from './documents.js';
 import type { ProjectDocument } from './schema.js';
 
@@ -159,12 +160,7 @@ export const drizzleConfigStore: ConfigStore = {
           .insert(projectConfigRevisions)
           .values({ projectId, revision, document, writtenBy: userId, writtenAt: now });
         if (!row) throw new Error('project-config: document upsert returned no row');
-        const projected = await tx
-          .update(projects)
-          .set({ slug, name })
-          .where(eq(projects.id, projectId))
-          .returning({ id: projects.id });
-        if (projected.length === 0) {
+        if (!(await projectDocumentNames(tx, projectId, { slug, name }))) {
           throw new Error(
             `project-config: project ${projectId} has a document and no projects row`,
           );
@@ -376,3 +372,13 @@ export const drizzleConfigStore: ConfigStore = {
     return row ?? null;
   },
 };
+
+/** A new project's first policy revision. */
+export async function seedProjectPolicy(
+  tx: Tx,
+  projectId: string,
+  document: unknown,
+  userId: string,
+): Promise<void> {
+  await tx.insert(projectPolicies).values({ projectId, revision: 1, document, updatedBy: userId });
+}

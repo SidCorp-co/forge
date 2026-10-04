@@ -15,6 +15,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { integrationConnections } from '../../db/schema.js';
 import { logger } from '../../logger.js';
+import { writeConnectionSecrets } from '../store.js';
 import { decryptJson, encryptJson } from '../vault.js';
 import { autoflowBaseUrl } from './endpoints.js';
 import type { AutoflowSecrets } from './types.js';
@@ -191,16 +192,10 @@ export async function ensureFreshAutoflowToken(opts: {
         refreshRefusedAt: new Date(now).toISOString(),
         refreshRefusedReason: answer.reason,
       };
-      await tx
-        .update(integrationConnections)
-        .set({
-          secretsEnc: encryptJson(next),
-          lastHealthStatus: 'needs_reauth',
-          lastHealthDetail: reauthDetail(answer.reason, baseUrl),
-          lastHealthAt: new Date(now),
-          updatedAt: new Date(now),
-        })
-        .where(eq(integrationConnections.id, opts.connectionId));
+      await writeConnectionSecrets(tx, opts.connectionId, encryptJson(next), new Date(now), {
+        status: 'needs_reauth',
+        detail: reauthDetail(answer.reason, baseUrl),
+      });
       logger.warn(
         { connectionId: opts.connectionId, reason: answer.reason },
         'autoflow: refresh refused, connection needs re-auth',
@@ -229,10 +224,7 @@ export async function ensureFreshAutoflowToken(opts: {
           }
         : {}),
     };
-    await tx
-      .update(integrationConnections)
-      .set({ secretsEnc: encryptJson(next), updatedAt: new Date(now) })
-      .where(eq(integrationConnections.id, opts.connectionId));
+    await writeConnectionSecrets(tx, opts.connectionId, encryptJson(next), new Date(now));
     return { kind: 'ok', secrets: next, rotated: true };
   });
 }

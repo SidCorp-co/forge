@@ -6,6 +6,7 @@ import {
 } from '@forge/contracts/feedback';
 import { eq, inArray } from 'drizzle-orm';
 import { alreadyTriagedRefusal, type TriageFacts } from '../agent-reports/rules.js';
+import { markReportFiled } from '../agent-reports/service.js';
 import { db, type Tx } from '../db/client.js';
 import { agentReports, issues, projects } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
@@ -129,16 +130,7 @@ export async function promoteAgentReport(input: {
         copied.length ? `copied its ${copied.join(' and ')}` : 'nothing copied from it'
       }.`,
     });
-    await tx
-      .update(agentReports)
-      .set({
-        feedbackId: id,
-        triage: 'filed',
-        triagedBy: actor.userId,
-        triagedAgency: actor.agency,
-        triagedAt: new Date(),
-      })
-      .where(eq(agentReports.id, report.id));
+    await markReportFiled(tx, report.id, { feedbackId: id, by: actor.userId, agency: actor.agency });
     return null;
   });
   if (refusals) return { ok: false, refusals };

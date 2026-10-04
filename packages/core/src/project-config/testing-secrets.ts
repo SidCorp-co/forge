@@ -1,9 +1,10 @@
 import { SCRUB_MIN_SECRET_LENGTH } from '@forge/observability';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, type JobType, jobEvents, jobs } from '../db/schema.js';
+import { issues, type JobType, jobs } from '../db/schema.js';
 import { decryptSecret, isVaultConfigured } from '../integrations/vault.js';
 import { resolvePipelineContext } from '../jobs/active-job-context.js';
+import { appendJobEvent } from '../jobs/index.js';
 import {
   rememberHandedOut,
   SECRET_RESOLVE_KIND,
@@ -287,17 +288,5 @@ async function judgedEnvironment(
 // cm:flow testing-secrets/audit after:resolve — the row commits before any value leaves, and it is
 // the row the scrubber reads to know what this job holds
 async function writeResolveAudit(jobId: string, audit: SecretResolveAudit): Promise<void> {
-  await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${jobId}))`);
-    const [row] = await tx
-      .select({ max: sql<number | string | null>`max(${jobEvents.seq})` })
-      .from(jobEvents)
-      .where(eq(jobEvents.jobId, jobId));
-    await tx.insert(jobEvents).values({
-      jobId,
-      kind: SECRET_RESOLVE_KIND,
-      data: { ...audit },
-      seq: Number(row?.max ?? 0) + 1,
-    });
-  });
+  await db.transaction((tx) => appendJobEvent(tx, jobId, SECRET_RESOLVE_KIND, { ...audit }));
 }

@@ -1,7 +1,8 @@
 import type { Context } from 'hono';
-import { type Db, db } from '../db/client.js';
-import { type ActorType, activityLog } from '../db/schema.js';
+import type { Db } from '../db/client.js';
+import type { ActorType } from '../db/schema.js';
 import { type ActorAgency, ActorAgencyUndetermined } from '../issues/actor-agency.js';
+import { insertActivityRow } from '../issues/index.js';
 import { logger } from '../logger.js';
 
 export type Actor = { type: ActorType; id: string; agency: ActorAgency };
@@ -43,11 +44,11 @@ function buildValues(input: RecordActivityInput) {
 }
 
 export async function recordActivity(input: RecordActivityInput): Promise<void> {
-  await db.insert(activityLog).values(buildValues(input));
+  await insertActivityRow(buildValues(input));
 }
 
 export async function recordActivityTx(tx: Tx, input: RecordActivityInput): Promise<void> {
-  await tx.insert(activityLog).values(buildValues(input));
+  await insertActivityRow(buildValues(input), tx);
 }
 
 // Never throws. A failed audit insert must not fail the business operation.

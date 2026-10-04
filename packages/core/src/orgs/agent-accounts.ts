@@ -9,10 +9,14 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { and, count, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { agentAccountRow, isAgentHandle } from '../auth/agent-account.js';
-import { mintPat } from '../auth/pat.js';
+import {
+  insertAgentAccount,
+  isAgentHandle,
+  setUserDisplayName,
+} from '../auth/agent-account.js';
+import { mintPat, refenceLiveTokens, revokeLiveTokens } from '../auth/pat.js';
 import { patIsLive } from '../auth/pat-live.js';
 import { PAT_GRANT_ALL } from '../auth/pat-permissions.js';
 import { handleNameForProject } from '../conversations/handles.js';
@@ -129,16 +133,9 @@ export async function createAgentAccount(
   }
 
   const projectRole: ProjectMemberRole = input.projectRole ?? 'member';
-  const account = agentAccountRow(input.handle);
-  const { email } = account;
-
   const created = await mapHandleCollision(input, () =>
     db.transaction(async (tx) => {
-      const [row] = await tx
-        .insert(users)
-        .values(account)
-        .returning({ id: users.id, createdAt: users.createdAt });
-      if (!row) throw new Error('createAgentAccount: user insert returned no row');
+      const row = await insertAgentAccount(tx, input.handle);
 
       await addOrgMember(tx, {
         orgId: input.orgId,
@@ -174,7 +171,7 @@ export async function createAgentAccount(
       userId: created.id,
       handle: input.handle,
       displayName: input.handle,
-      email,
+      email: created.email,
       projects: wanted.map((id) => ({ id, role: projectRole })),
       createdAt: created.createdAt,
       activeTokens: 1,
@@ -405,12 +402,7 @@ export async function setAgentProjects(
         role: held.get(projectId) ?? ('member' as const),
       })),
     );
-    const rows = await tx
-      .update(personalAccessTokens)
-      .set({ boundProjectId: fence.boundProjectId, projectIds: fence.projectIds })
-      .where(and(eq(personalAccessTokens.userId, agentUserId), patIsLive()))
-      .returning({ id: personalAccessTokens.id });
-    return rows.length;
+    return refenceLiveTokens(tx, agentUserId, fence);
   });
 
   return { projects: wanted, fence, refenced };
@@ -427,14 +419,7 @@ export async function revokeAgentCredentials(
   agentUserId: string,
 ): Promise<number | null> {
   if (!(await loadOrgAgent(orgId, agentUserId))) return null;
-  const revoked = await db
-    .update(personalAccessTokens)
-    .set({ revokedAt: new Date() })
-    .where(
-      and(eq(personalAccessTokens.userId, agentUserId), isNull(personalAccessTokens.revokedAt)),
-    )
-    .returning({ id: personalAccessTokens.id });
-  return revoked.length;
+  return revokeLiveTokens({ userId: agentUserId });
 }
 
 /**
@@ -457,12 +442,7 @@ export async function revokeAgentAccount(orgId: string, agentUserId: string): Pr
   if (!row) return false;
 
   await db.transaction(async (tx) => {
-    await tx
-      .update(personalAccessTokens)
-      .set({ revokedAt: new Date() })
-      .where(
-        and(eq(personalAccessTokens.userId, agentUserId), isNull(personalAccessTokens.revokedAt)),
-      );
+    await revokeLiveTokens({ userId: agentUserId }, tx);
     await removeProjectMembershipsOf(tx, agentUserId);
     await removeOrgMember(tx, orgId, agentUserId);
   });
@@ -481,10 +461,5 @@ export async function setAgentDisplayName(
   displayName: string | null,
 ): Promise<string | null | undefined> {
   if (!(await loadOrgAgent(orgId, agentUserId))) return undefined;
-  const [row] = await db
-    .update(users)
-    .set({ displayName })
-    .where(eq(users.id, agentUserId))
-    .returning({ displayName: users.displayName });
-  return row?.displayName ?? null;
+  return (await setUserDisplayName(agentUserId, displayName)) ?? null;
 }

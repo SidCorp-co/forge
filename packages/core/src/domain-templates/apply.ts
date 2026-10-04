@@ -1,6 +1,8 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agents, appConfig, domainTemplates, projects } from '../db/schema.js';
+import { agents, domainTemplates, projects } from '../db/schema.js';
+import { insertAgent, updateAgent } from '../agents/service.js';
+import { upsertAppConfig } from '../app-config/service.js';
 import { logger } from '../logger.js';
 import { registerSkillForProject } from '../skills/registration-service.js';
 import { resolveOrAdoptProjectSkill } from '../skills/service.js';
@@ -81,32 +83,21 @@ export async function applyTemplate(input: ApplyTemplateInput): Promise<ApplyTem
       if ('enabled' in manifest.agentConfig && manifest.agentConfig.enabled !== undefined) {
         updateValues.enabled = manifest.agentConfig.enabled;
       }
-      const [updated] = await tx
-        .update(agents)
-        .set(updateValues)
-        .where(eq(agents.id, existingAgent.id))
-        .returning({ id: agents.id });
-      if (!updated) throw new Error('domain-templates.apply: agent update returned no row');
-      txAgentId = updated.id;
+      txAgentId = await updateAgent(tx, existingAgent.id, updateValues);
     } else {
-      const [inserted] = await tx
-        .insert(agents)
-        .values({
-          projectId,
-          name: manifest.agentConfig.name,
-          type: manifest.agentConfig.type,
-          description: manifest.agentConfig.description ?? null,
-          customInstructions: manifest.agentConfig.customInstructions ?? null,
-          enabled: manifest.agentConfig.enabled ?? true,
-          // `focusAreas` falls back to the schema default (forge agent defaults)
-          // when omitted from the manifest — that is intentional, not a bug.
-          ...(manifest.agentConfig.focusAreas !== undefined
-            ? { focusAreas: manifest.agentConfig.focusAreas }
-            : {}),
-        })
-        .returning({ id: agents.id });
-      if (!inserted) throw new Error('domain-templates.apply: agent insert returned no row');
-      txAgentId = inserted.id;
+      txAgentId = await insertAgent(tx, {
+        projectId,
+        name: manifest.agentConfig.name,
+        type: manifest.agentConfig.type,
+        description: manifest.agentConfig.description ?? null,
+        customInstructions: manifest.agentConfig.customInstructions ?? null,
+        enabled: manifest.agentConfig.enabled ?? true,
+        // `focusAreas` falls back to the schema default (forge agent defaults)
+        // when omitted from the manifest — that is intentional, not a bug.
+        ...(manifest.agentConfig.focusAreas !== undefined
+          ? { focusAreas: manifest.agentConfig.focusAreas }
+          : {}),
+      });
     }
 
     // app_config is UNIQUE on project_id, so a plain upsert is race-safe even
@@ -126,17 +117,9 @@ export async function applyTemplate(input: ApplyTemplateInput): Promise<ApplyTem
     if (defaults.systemPromptOverride !== undefined)
       appConfigValues.systemPromptOverride = defaults.systemPromptOverride;
 
-    const [appConfigRow] = await tx
-      .insert(appConfig)
-      .values({ projectId, ...appConfigValues })
-      .onConflictDoUpdate({
-        target: appConfig.projectId,
-        set: { ...appConfigValues, updatedAt: sql`now()` },
-      })
-      .returning({ id: appConfig.id });
-    if (!appConfigRow) throw new Error('domain-templates.apply: app_config upsert returned no row');
+    const appConfigId = await upsertAppConfig(tx, projectId, appConfigValues);
 
-    return { agentId: txAgentId, appConfigId: appConfigRow.id };
+    return { agentId: txAgentId, appConfigId };
   });
   const { agentId, appConfigId } = result;
 

@@ -1,7 +1,7 @@
 import { and, asc, eq, ne, notExists, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { HTTPException } from 'hono/http-exception';
-import { agentAccountRow, isAgentHandle } from '../auth/agent-account.js';
+import { insertAgentAccount, isAgentHandle } from '../auth/agent-account.js';
 import { organizationMembers, projectMembers, projects, users } from '../db/schema.js';
 import { addOrgMember, addProjectMembers } from '../permissions/index.js';
 import type { Executor } from './db-executor.js';
@@ -97,11 +97,7 @@ export async function resolveProjectHandle(
   }
 
   const handle = handleNameForProject(project.slug, project.id);
-  const [created] = await tx
-    .insert(users)
-    .values(agentAccountRow(handle, mintAs))
-    .returning({ id: users.id });
-  if (!created) throw new Error('conversations: agent-account insert returned no row');
+  const created = await insertAgentAccount(tx, handle, mintAs);
 
   await addOrgMember(tx, { orgId: project.orgId, userId: created.id, role: 'member', handle });
   await addProjectMembers(tx, [{ projectId: project.id, userId: created.id, role: 'member' }], {

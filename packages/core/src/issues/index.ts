@@ -12,3 +12,4 @@ export {
   type PlannedAgainst,
   unlinkIssueFromRequirement,
 } from './requirement-link.js';
+export { insertActivityRow } from './activity-log.js';

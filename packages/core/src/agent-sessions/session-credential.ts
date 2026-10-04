@@ -4,7 +4,7 @@
  * revoked when the session goes terminal. The runner puts it where the box's own would have gone.
  */
 
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { revokeLiveTokens } from '../auth/pat.js';
 import { turnTokenNameFor } from '../auth/pat-format.js';
 import type { PatPermission } from '../auth/pat-permissions.js';
 import {
@@ -14,8 +14,6 @@ import {
   type TurnAuthority,
   type TurnAuthorityRefusal,
 } from '../auth/turn-credential.js';
-import { db } from '../db/client.js';
-import { personalAccessTokens } from '../db/schema.js';
 import { deviceHolderUserId } from '../devices/workspace-credential.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { findAvailableDeviceForProject } from '../lib/device-pool.js';
@@ -131,15 +129,7 @@ export async function mintSessionCredential(args: {
 /** Revoke whatever token a session was handed; a session that was handed none revokes nothing. */
 export async function revokeSessionCredential(sessionId: string): Promise<void> {
   try {
-    await db
-      .update(personalAccessTokens)
-      .set({ revokedAt: sql`now()` })
-      .where(
-        and(
-          eq(personalAccessTokens.name, turnTokenNameFor(sessionId)),
-          isNull(personalAccessTokens.revokedAt),
-        ),
-      );
+    await revokeLiveTokens({ name: turnTokenNameFor(sessionId) });
   } catch (err) {
     logger.error({ err, sessionId }, 'session credential: the turn token could not be revoked');
   }

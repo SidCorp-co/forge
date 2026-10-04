@@ -20,8 +20,8 @@
  * checkout's token reaches its own project alone.
  */
 
-import { and, eq, isNull, or, sql } from 'drizzle-orm';
-import { lockPatName, mintPat } from '../auth/pat.js';
+import { and, eq, isNull } from 'drizzle-orm';
+import { lockPatName, mintPat, supersedeNamedToken } from '../auth/pat.js';
 import { deviceTokenNameFor, workspaceTokenNameFor } from '../auth/pat-format.js';
 import { PAT_GRANT_ALL } from '../auth/pat-permissions.js';
 import { resolveProjectHandle } from '../conversations/handles.js';
@@ -81,19 +81,7 @@ export async function issueWorkspaceCredential(args: {
         ),
       )
       .limit(1);
-    await tx
-      .update(personalAccessTokens)
-      .set({ revokedAt: sql`now()` })
-      .where(
-        and(
-          eq(personalAccessTokens.name, name),
-          isNull(personalAccessTokens.revokedAt),
-          or(
-            eq(personalAccessTokens.deviceId, args.deviceId),
-            eq(personalAccessTokens.userId, args.holderUserId),
-          ),
-        ),
-      );
+    await supersedeNamedToken(tx, name, { deviceId: args.deviceId, userId: args.holderUserId });
 
     const { plaintext } = await mintPat(
       {

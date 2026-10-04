@@ -314,3 +314,23 @@ export async function runScheduleNow(
 
   return { fireId: result.fireId, sessionId: result.sessionId, message: 'Schedule triggered' };
 }
+
+/** The message versions a schedule's runs applied, merged so a version never moves backwards. */
+export async function mergeAppliedMessageVersions(
+  scheduleId: string,
+  versions: Record<string, number>,
+): Promise<void> {
+  const [row] = await db
+    .select({ applied: schedules.appliedMessageVersions })
+    .from(schedules)
+    .where(eq(schedules.id, scheduleId))
+    .limit(1);
+  const merged: Record<string, number> = {
+    ...((row?.applied as Record<string, number> | null) ?? {}),
+  };
+  for (const [key, ver] of Object.entries(versions)) merged[key] = Math.max(merged[key] ?? 0, ver);
+  await db
+    .update(schedules)
+    .set({ appliedMessageVersions: merged })
+    .where(eq(schedules.id, scheduleId));
+}

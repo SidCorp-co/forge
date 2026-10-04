@@ -15,7 +15,8 @@ import { env } from '../config/env.js';
 import { contentLanguageBlock } from '../content-language/block.js';
 import { readContentLanguage } from '../content-language/read.js';
 import { db as defaultDb } from '../db/client.js';
-import { appConfig, chatLogs, projects } from '../db/schema.js';
+import { insertChatLog } from '../chat-logs/service.js';
+import { appConfig, projects } from '../db/schema.js';
 import type { ConversationAdapter, ConversationShape } from '../db/schema-conversations.js';
 import { defaultChatProviderId } from '../integrations/llm/bootstrap.js';
 import { type ChatTurnKind, resolveForProject } from '../integrations/llm/registry.js';
@@ -322,20 +323,23 @@ export async function runExternalChatTurn(
   }
 
   try {
-    await dbi.insert(chatLogs).values({
-      sessionId: turn?.conversationId ?? null,
-      projectSlug: project.slug,
-      userKey: args.userKey ?? args.userId ?? null,
-      query: args.message,
-      reply: result.finalText.length > 0 ? result.finalText : null,
-      model: resolved.model,
-      toolCalls: result.toolCalls.map(cappedForAudit) as never,
-      usage: usageForLog(result) as never,
-      iterations: result.iterations,
-      durationMs,
-      error: result.errorMessage,
-      source: args.adapter,
-    });
+    await insertChatLog(
+      {
+        sessionId: turn?.conversationId ?? null,
+        projectSlug: project.slug,
+        userKey: args.userKey ?? args.userId ?? null,
+        query: args.message,
+        reply: result.finalText.length > 0 ? result.finalText : null,
+        model: resolved.model,
+        toolCalls: result.toolCalls.map(cappedForAudit) as never,
+        usage: usageForLog(result) as never,
+        iterations: result.iterations,
+        durationMs,
+        error: result.errorMessage,
+        source: args.adapter,
+      },
+      dbi,
+    );
   } catch (err) {
     logger.error({ err, conversationId: turn?.conversationId ?? null }, 'chat_logs insert failed');
   }

@@ -7,6 +7,7 @@ import { and, asc, eq, inArray, isNotNull, isNull, notInArray, sql } from 'drizz
 import { db } from '../db/client.js';
 import { appConfig, memories } from '../db/schema.js';
 import { type MemoryReindexState, memoryChunks } from '../db/schema-memory-chunks.js';
+import { mergeMemoryReindex, stampLastBackfill } from '../app-config/service.js';
 import { EmbeddingUnavailableError } from '../integrations/embeddings/index.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
@@ -86,13 +87,7 @@ export async function writeReindex(
   projectId: string,
   patch: Partial<MemoryReindex>,
 ): Promise<void> {
-  await db
-    .update(appConfig)
-    .set({
-      memoryReindex: sql`${appConfig.memoryReindex} || ${JSON.stringify(patch)}::jsonb`,
-      updatedAt: sql`now()`,
-    })
-    .where(eq(appConfig.projectId, projectId));
+  await mergeMemoryReindex(projectId, patch);
 }
 
 export const isLive = (r: MemoryReindex | null): boolean =>
@@ -174,10 +169,7 @@ export async function runChunkReindex(projectId: string): Promise<MemoryReindex 
     remaining: counts.pending,
     finishedAt: now(),
   });
-  await db
-    .update(appConfig)
-    .set({ lastBackfillAt: sql`now()` })
-    .where(eq(appConfig.projectId, projectId));
+  await stampLastBackfill(projectId);
   return readReindex(projectId);
 }
 

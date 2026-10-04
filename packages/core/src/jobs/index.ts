@@ -5,3 +5,4 @@ export {
   releaseJobHold,
 } from './master-holds.js';
 export { insertJobRow } from './writes.js';
+export { appendJobEvent } from './intervention-event.js';

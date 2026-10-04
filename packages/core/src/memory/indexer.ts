@@ -459,3 +459,28 @@ export function registerMemoryIndexer(bus: HooksBus): () => void {
 export function resetMemoryIndexerRegistration(): void {
   alreadyRegistered = false;
 }
+
+/**
+ * Keep only the `keep` most recently updated notes of one kind that name `errorType`, deleting
+ * the stalest of the rest.
+ */
+export async function trimNotesOfKind(
+  projectId: string,
+  kind: string,
+  errorType: string,
+  keep: number,
+): Promise<void> {
+  const errorTypeJson = JSON.stringify([errorType]);
+  await db.execute(sql`
+    DELETE FROM memories
+    WHERE id IN (
+      SELECT id FROM memories
+      WHERE project_id = ${projectId}
+        AND source = 'note'
+        AND metadata->>'kind' = ${kind}
+        AND metadata->'errorTypes' @> ${errorTypeJson}::jsonb
+      ORDER BY updated_at DESC
+      OFFSET ${keep}
+    )
+  `);
+}

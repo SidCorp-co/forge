@@ -1,8 +1,9 @@
 import crypto from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, issues, type JobType, knowledgeEdges, memories } from '../db/schema.js';
+import { comments, issues, type JobType, memories } from '../db/schema.js';
 import { callFastModel, fastModelConfigured } from '../integrations/llm/fast-model.js';
+import { insertKnowledgeEdgeOnce } from '../knowledge-edges/service.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
 import { indexMemory } from './indexer.js';
@@ -267,20 +268,7 @@ export async function runExtractionForIssue(
   let edgesWritten = 0;
   for (const e of kept.edges) {
     try {
-      const [dupe] = await db
-        .select({ id: knowledgeEdges.id })
-        .from(knowledgeEdges)
-        .where(
-          and(
-            eq(knowledgeEdges.projectId, projectId),
-            eq(knowledgeEdges.subject, e.subject),
-            eq(knowledgeEdges.predicate, e.predicate),
-            eq(knowledgeEdges.object, e.object),
-          ),
-        )
-        .limit(1);
-      if (dupe) continue;
-      await db.insert(knowledgeEdges).values({
+      const wrote = await insertKnowledgeEdgeOnce({
         projectId,
         subject: e.subject,
         predicate: e.predicate,
@@ -288,6 +276,7 @@ export async function runExtractionForIssue(
         value: e.value ?? null,
         sourceMemoryId: `issue:${issueId}`,
       });
+      if (!wrote) continue;
       edgesWritten++;
     } catch (err) {
       logger.warn(

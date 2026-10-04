@@ -1,6 +1,4 @@
-import { eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { devices } from '../db/schema.js';
+import { stampGitCredentialRef } from '../devices/index.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { logger } from '../logger.js';
 
@@ -43,7 +41,7 @@ export async function provisionGitCredential(deviceId: string): Promise<GitCrede
 
   const ref = `https:${host}`;
   try {
-    await db.update(devices).set({ gitCredentialRef: ref }).where(eq(devices.id, deviceId));
+    await stampGitCredentialRef(deviceId, ref);
   } catch (err) {
     logger.error({ err, deviceId }, 'failed to stamp devices.git_credential_ref');
   }
