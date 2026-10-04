@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { baseRef } from './lib/base-branch.mjs';
+import { gitOut, ROOT } from './lib/gate.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CRATE_DIR = resolve(ROOT, 'packages/runner');
 const all = process.argv.includes('--all');
 
@@ -23,10 +22,7 @@ const GATES = [
   { label: 'test', argv: ['cargo', 'test', '--workspace'] },
 ];
 
-function git(args) {
-  const r = spawnSync('git', args, { cwd: ROOT, encoding: 'utf8' });
-  return r.status === 0 ? r.stdout : null;
-}
+const git = (args) => gitOut(args);
 
 /** Why the scope could not be computed, set beside the `no-base` sentinel below. */
 let noBase = null;

@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { dieAs } from './lib/gate.mjs';
 import { suspendedWithoutTests } from './lib/suspended-without-tests.mjs';
 import { CONFIG_RE } from './lib/test-reachability.mjs';
 import {
@@ -32,13 +33,10 @@ import {
   vitestSetup,
 } from './lib/whole-tree-gates.mjs';
 
+const die = dieAs('whole-tree-gates');
+
 const ROOT = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), '..'));
 const RUN = process.argv.includes('--run');
-
-function die(msg) {
-  console.error(`whole-tree-gates: ${msg}`);
-  process.exit(2);
-}
 
 const ls = spawnSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' });
 if (ls.status !== 0) die('could not list tracked files — not a git repository?');

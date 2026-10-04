@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
+import { gitOut, ROOT } from './lib/gate.mjs';
 import { absentPrerequisites, remedyLines } from './lib/prerequisite.mjs';
 import { suspendedWithoutTests } from './lib/suspended-without-tests.mjs';
 import {
@@ -15,13 +15,7 @@ import {
   TEST_FILE_RE,
 } from './lib/test-reachability.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-
-function git(args) {
-  const r = spawnSync('git', args, { cwd: ROOT, encoding: 'utf8' });
-  if (r.status !== 0) return null;
-  return r.stdout.split('\n').filter(Boolean);
-}
+const git = (args) => gitOut(args)?.split('\n').filter(Boolean) ?? null;
 
 /**
  * Ask one vitest project which files it would collect.

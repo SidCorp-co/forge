@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { ROOT } from './lib/gate.mjs';
 import { sshResolutions } from './lib/lockfile-transport.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const LOCKFILE = join(ROOT, 'pnpm-lock.yaml');
 
 if (!existsSync(LOCKFILE)) {

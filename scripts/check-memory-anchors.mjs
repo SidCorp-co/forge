@@ -13,17 +13,15 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { extname, join } from 'node:path';
+import { dieAs } from './lib/gate.mjs';
+
+const die = dieAs('check-memory-anchors');
 
 const PROJECT =
   process.argv[process.argv.indexOf('--project') + 1]?.match(/^[0-9a-f-]{36}$/)?.[0] ??
   'da368b0a-8e21-4763-9d90-8f7b9d0c7115';
 const API = process.env.FORGE_API ?? 'https://forge-beta-api.sidcorp.co';
 const JSON_OUT = process.argv.includes('--json');
-
-function die(msg) {
-  console.error(`check-memory-anchors: ${msg}`);
-  process.exit(2);
-}
 
 function token() {
   if (process.env.FORGE_PAT) return process.env.FORGE_PAT;

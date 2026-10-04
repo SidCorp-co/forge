@@ -24,12 +24,13 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
 import { API, artifactDrift, MCP, memberCount } from './lib/api-contracts.mjs';
+import { dieAs, ROOT } from './lib/gate.mjs';
 import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequisite.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const die = dieAs('check-api-contracts');
+
 const CORE = join(ROOT, 'packages', 'core');
 const TSX = join(ROOT, 'node_modules', '.bin', 'tsx');
 const GENERATOR = join(CORE, 'src', 'api-contract', 'generate.ts');
@@ -38,11 +39,6 @@ const ARTIFACTS = [
   { spec: API, file: 'forge-api.openapi.json' },
   { spec: MCP, file: 'forge-mcp.tools.json' },
 ];
-
-function die(message) {
-  console.error(`check-api-contracts: ${message}`);
-  process.exit(2);
-}
 
 if (process.argv.length > 2) die(`takes no arguments, got: ${process.argv.slice(2).join(' ')}`);
 

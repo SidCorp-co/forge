@@ -15,9 +15,9 @@
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { baseRev } from './lib/baseline-ratchet.mjs';
+import { dieAs, ROOT } from './lib/gate.mjs';
 import {
   BOUNDARY_RULES,
   cruiseOptions,
@@ -28,14 +28,10 @@ import {
 } from './lib/module-boundaries.mjs';
 import { declaredTables, moduleOf, parseDeclaration } from './lib/module-shape.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const die = dieAs('module-boundaries');
+
 const DECLARATION = 'packages/core/src/modules.json';
 const BASELINE = '.forge/module-boundaries-baseline.json';
-
-function die(message) {
-  console.error(`module-boundaries: ${message}`);
-  process.exit(2);
-}
 
 const args = process.argv.slice(2);
 for (const a of args)
