@@ -91,7 +91,7 @@ export async function keywordSearchKnowledge(
 const RRF_K = 60;
 export const HYBRID_ALPHA = 0.5;
 
-export function rrfFuse(lists: KnowledgeHit[][], weights: number[], limit: number): KnowledgeHit[] {
+function rrfFuse(lists: KnowledgeHit[][], weights: number[], limit: number): KnowledgeHit[] {
   const scoreMap = new Map<string, { score: number; hit: KnowledgeHit }>();
   for (let li = 0; li < lists.length; li++) {
     const list = lists[li] ?? [];

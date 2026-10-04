@@ -7,7 +7,6 @@ import type {
   CommentNode,
   IssueDetail,
   IssueParkResponse,
-  TaskRow,
 } from "./types";
 
 interface ActivityEnvelope {
@@ -48,10 +47,6 @@ export const issueDetailApi = {
   /** `GET /api/issues/:id/activity` — reverse-chron timeline + `nextBefore`. */
   listActivity: (id: string, limit = 50, projectId?: string) =>
     apiClient<ActivityEnvelope>(withProject(`/issues/${id}/activity?limit=${limit}`, projectId)),
-
-  /** `GET /api/issues/:id/tasks` — flat task rows. */
-  listTasks: (id: string, projectId?: string) =>
-    apiClient<TaskRow[]>(withProject(`/issues/${id}/tasks`, projectId)),
 
   /** `POST /api/issues/:id/attachments` — one file onto the issue, by its uuid. */
   uploadAttachment: (id: string, file: File) => {

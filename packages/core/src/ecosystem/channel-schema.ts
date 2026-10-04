@@ -15,7 +15,7 @@ export const TYPE_ABBREVIATIONS: Readonly<Record<DocumentType, string>> = {
   decision: 'DEC',
 };
 
-export const DOCUMENT_STATES = [
+const DOCUMENT_STATES = [
   'draft',
   'submitted',
   'returned',
@@ -27,7 +27,7 @@ export type DocumentState = (typeof DOCUMENT_STATES)[number];
 
 export const NUMBER_PATTERN = /^[A-Z][A-Z0-9]{1,5}-(CN|ACK|RFI|CR|DEC)-[1-9][0-9]{0,5}$/;
 export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-export const THREAD_PATTERN = /^[A-Z][A-Z0-9]{1,5}-(CN|RFI|CR)-[1-9][0-9]*$/;
+const THREAD_PATTERN = /^[A-Z][A-Z0-9]{1,5}-(CN|RFI|CR)-[1-9][0-9]*$/;
 const CONTRACT_REF = /^[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9-]{0,62}$/;
 
 const docNumber = () => z.string().regex(NUMBER_PATTERN);
@@ -36,8 +36,6 @@ const timestamp = () => z.iso.datetime({ offset: true });
 const prose = () => z.string().min(1).max(4000);
 const element = () => z.string().min(1).max(200);
 const contractRef = () => z.string().regex(CONTRACT_REF);
-
-export const AUTHOR_VIAS = ['master', 'assistant', 'web', 'cli'] as const;
 
 export const authorSchema = z.discriminatedUnion('kind', [
   z.strictObject({

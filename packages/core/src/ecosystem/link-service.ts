@@ -287,7 +287,7 @@ export async function openOwedRun(
 }
 
 /** What a finished run leaves unsaid by its own findings: each declared consumption no link it holds calls. */
-export async function finishedRunReport(
+async function finishedRunReport(
   doc: BuilderRunWrite,
 ): Promise<{ open: boolean; declaredWithoutCallSite: DeclaredWithoutCallSite[] }> {
   if (isOpenRun(doc)) return { open: true, declaredWithoutCallSite: [] };

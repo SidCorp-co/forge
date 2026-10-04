@@ -41,7 +41,7 @@ const idParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
   }
 });
 
-export const serialiseEcosystem = (held: HeldEcosystem) => ({
+const serialiseEcosystem = (held: HeldEcosystem) => ({
   id: held.id,
   revision: held.revision,
   document: held.document,
@@ -59,7 +59,7 @@ export const serialiseRevisions = (revisions: readonly StoredRevision[]) => ({
   returned: revisions.length,
 });
 
-export const serialiseMembership = (row: MembershipRow) => ({
+const serialiseMembership = (row: MembershipRow) => ({
   id: row.id,
   document: membershipDocument(row),
 });
@@ -244,6 +244,4 @@ export { contractRoutes } from './contract/routes.js';
 export { deviceChannelInboxRoutes } from './device-channel-inbox-routes.js';
 export { busRoutes, linkProjectRoutes } from './link-routes.js';
 export { ecosystemProjectRoutes } from './project-routes.js';
-export { contractRequestRoutes } from './requests/routes.js';
 export { contractStandingRoutes } from './standing/routes.js';
-export { contractWaitRoutes } from './waits/routes.js';

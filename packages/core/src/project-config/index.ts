@@ -47,7 +47,6 @@ export {
   writeProjectConfig,
 } from './service.js';
 export {
-  NO_REPOSITORY,
   readDeclaredSource,
   remoteOf,
   repositoryOf,

@@ -17,7 +17,7 @@ export interface ReadWhenRefusal {
   message: string;
 }
 
-export type ParsedReadWhen =
+type ParsedReadWhen =
   | { ok: true; value: ReadWhenCondition | null }
   | { ok: false; refusal: ReadWhenRefusal };
 

@@ -9,7 +9,7 @@ import { RUN_NOT_ABORTED } from './abort-stamp.js';
 import type { ReleaseVerification } from './plan.js';
 import { releaseBatchPorts } from './ports.js';
 
-export type FinishState = 'accepted' | 'verifying' | 'closing' | 'finished' | 'failed';
+type FinishState = 'accepted' | 'verifying' | 'closing' | 'finished' | 'failed';
 
 export const IN_FLIGHT: ReadonlySet<FinishState> = new Set(['accepted', 'verifying', 'closing']);
 const STATES: ReadonlySet<string> = new Set([...IN_FLIGHT, 'finished', 'failed']);

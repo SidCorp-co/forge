@@ -36,7 +36,7 @@ export function compareVersions(versioning: Versioning, a: string, b: string): n
 type Bump = 'major' | 'minor' | 'patch';
 
 // cm:why unknown asks for a MAJOR like breaking does: naming a smaller bump would say the change is compatible, which is the one thing an unknown measurement did not show
-export function bumpOwed(diff: Pick<MeasuredDiff, 'classification' | 'changes'>): Bump {
+function bumpOwed(diff: Pick<MeasuredDiff, 'classification' | 'changes'>): Bump {
   if (diff.classification === 'breaking' || diff.classification === 'unknown') return 'major';
   return diff.changes.some((c) => c.kind === 'added') ? 'minor' : 'patch';
 }

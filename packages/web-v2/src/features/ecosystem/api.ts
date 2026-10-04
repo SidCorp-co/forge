@@ -6,7 +6,6 @@ import type {
   DocumentView,
   EcosystemDocument,
   HeldEcosystem,
-  OutboxResponse,
   ProjectEcosystemsResponse,
   ThreadHold,
   ThreadView,
@@ -56,7 +55,6 @@ export const ecosystemApi = {
   ecosystemsOf: (projectId: string) =>
     apiClient<ProjectEcosystemsResponse>(`/projects/${projectId}/ecosystems`),
 
-  outbox: (projectId: string) => apiClient<OutboxResponse>(`${channel(projectId)}/outbox`),
 
   document: (projectId: string, ref: string) =>
     apiClient<DocumentView>(`${channel(projectId)}/documents/${encodeURIComponent(ref)}`),

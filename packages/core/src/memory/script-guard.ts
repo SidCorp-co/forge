@@ -65,8 +65,3 @@ export function foreignScriptChars(rendered: string, source: string): string[] {
   }
   return [...offending];
 }
-
-/** `foreignScriptChars` as the yes/no the write paths branch on. */
-export function storableAgainstSource(rendered: string, source: string): boolean {
-  return foreignScriptChars(rendered, source).length === 0;
-}

@@ -3,9 +3,8 @@ import type { IssueUpdateRefusalCode } from '@forge/contracts/issues';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { BodyInvalidError } from '../body/errors.js';
-import { BODY_FORMATS } from '../body/formats.js';
 import { bodyInvalidHttp } from '../body/http-error.js';
-import { type IssueStatus, issueComplexities, issuePriorities, jobTypes } from '../db/schema.js';
+import { type IssueStatus, jobTypes } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
@@ -18,11 +17,10 @@ import { logger } from '../observability/logger.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { registerIssueAttributeRoutes } from './attributes/routes.js';
 import { heldTakeRefusal } from './blocked-by.js';
-import { CREATE_ENTRY_STATUSES, createIssue } from './create-service.js';
+import { createIssue } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
 import { serializeIssue } from './detail-projection.js';
 import { dispatchGatesOf } from './dispatch-gates.js';
-import { attachmentInputSchema, labelAttachItemSchema } from './input-schemas.js';
 import { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
 import {
   issueRouteIdParamSchema,
@@ -48,7 +46,6 @@ import {
   isProjectMember,
   jobHistoryForStep,
 } from './read-service.js';
-import { issueRelationInputSchema } from './relations-service.js';
 import { issueCreateSchema, issueFiltersSchema, issuePatchSchema } from './request-schemas.js';
 import { deleteIssue } from './service.js';
 import { refuseLegacyStatusFields } from './status-input.js';
@@ -188,7 +185,7 @@ issueProjectRoutes.get(
       ...creatorMap.get(issue.id),
       pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(issue.status),
       liveReach: await liveReachForIssue(issue),
-      ...(await dispatchGatesOf(issue.id, issue.projectId)),
+      ...(await dispatchGatesOf(issue.id)),
       proposesWorkflow: await proposesWorkflowOf(issue.id),
       requirement: await requirementOfIssue(issue.id),
       labels: labelRows,
@@ -330,7 +327,7 @@ issueRoutes.get(
       agentStatus: agentBucket?.agentStatus ?? null,
       pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(issue.status),
       liveReach: await liveReachForIssue(issue),
-      ...(await dispatchGatesOf(issue.id, issue.projectId)),
+      ...(await dispatchGatesOf(issue.id)),
       proposesWorkflow: await proposesWorkflowOf(issue.id),
       requirement: await requirementOfIssue(issue.id),
       labels: labelRows,

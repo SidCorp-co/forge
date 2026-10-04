@@ -27,7 +27,7 @@ import {
 import type { Refusal } from "../missing";
 
 /** What the reader shows: a door's page list, or one page by its href, unique across both homes. */
-export type ReaderView = { kind: "door"; audience: Audience } | { kind: "page"; href: string };
+type ReaderView = { kind: "door"; audience: Audience } | { kind: "page"; href: string };
 
 function resultItem(doc: PublicDoc, activeHref: string | null): DocsNavItem {
   return {

@@ -95,11 +95,6 @@ export interface ThreadView {
   holds: ThreadHold[];
 }
 
-export interface OutboxResponse {
-  documents: (Omit<DocumentView, "side" | "thread" | "standing">)[];
-  returned: number;
-}
-
 export interface RegisterRow {
   number: string;
   type: DocumentType;

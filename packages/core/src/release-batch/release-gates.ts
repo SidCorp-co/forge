@@ -15,25 +15,15 @@ interface Held {
   criteria: number[];
 }
 
-interface Wait {
-  issue: string;
-  contract: string;
-  needed: string;
-  live: string | null;
-}
-
 const strings = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
 
 const heldOf = (d: Details): Held[] => (Array.isArray(d?.held) ? (d?.held as Held[]) : []);
-const waitsOf = (d: Details): Wait[] => (Array.isArray(d?.waits) ? (d?.waits as Wait[]) : []);
 
 function issuesNamed(d: Details): string[] {
   const shown = strings(d?.displayIds);
   if (shown.length > 0) return shown;
-  const held = heldOf(d).map((h) => h.displayId);
-  if (held.length > 0) return held;
-  return waitsOf(d).map((w) => w.issue);
+  return heldOf(d).map((h) => h.displayId);
 }
 
 const NAMED_AT_MOST = 5;
@@ -105,18 +95,6 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
     title: 'Work not marked merged',
     plain: (d) =>
       `${these(d, 'has', 'have')} no merge Forge saw land, so nothing says ${theirs(d, 'its', 'their')} work is in this release.`,
-  },
-  CONTRACT_PROVIDER_NOT_LIVE: {
-    title: 'Provider not live yet',
-    plain: (d) => {
-      const each = waitsOf(d)
-        .map(
-          (w) =>
-            `${w.issue} waits on ${w.contract} ${w.needed} or later, and the provider’s production serves ${w.live ?? 'no version Forge could read'}`,
-        )
-        .join('; ');
-      return `${each || 'An issue waits on a contract version'}. Release once the provider serves it, or take the issue out of this release.`;
-    },
   },
   RELEASE_PROBES_UNREADABLE: {
     title: 'Production cannot be proved',

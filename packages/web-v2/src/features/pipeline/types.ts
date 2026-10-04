@@ -177,25 +177,6 @@ export interface ThroughputRow {
   count: number;
 }
 
-export type TaskStatus = "backlog" | "todo" | "in_progress" | "in_review" | "done";
-
-/** One subtask from `GET /api/issues/:id/tasks` (mirrors `tasks` in
- *  `db/schema.ts`). Used by the RunDetail Tasks tab. */
-export interface TaskRow {
-  id: string;
-  issueId: string;
-  projectId: string;
-  title: string;
-  description: string | null;
-  status: TaskStatus;
-  priority: string;
-  assigneeId: string | null;
-  isAgentTask: boolean;
-  sortOrder: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
 /** Options for the per-project runs list. */
 export interface ProjectRunsOpts {
   projectId: string;

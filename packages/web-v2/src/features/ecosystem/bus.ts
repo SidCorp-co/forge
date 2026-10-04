@@ -225,7 +225,7 @@ export function impactLine(link: BusLink): string {
     .join("; ");
 }
 
-export interface BuilderProgress {
+interface BuilderProgress {
   done: number;
   total: number;
   running: BuilderStep | null;

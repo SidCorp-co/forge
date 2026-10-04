@@ -37,7 +37,7 @@ import { IssueQuickActions } from "@/features/issues/components/issue-quick-acti
 import { priorityLabel, runStatusChip, workStepOf } from "@/features/issues/derive";
 import type { IssuePriority, IssueStatus } from "@/features/issues/types";
 import { drawerRunChip, formatDurationMs, formatUsd } from "../derive";
-import { useCancelRun, useIssueTasks, usePauseRun, useResumeRun, useRun } from "../hooks";
+import { useCancelRun, usePauseRun, useResumeRun, useRun } from "../hooks";
 import { ActivityTab } from "./activity-feed";
 import { AskAboutThis } from "@/features/conversations/components/ask-about-this";
 import type {
@@ -65,7 +65,6 @@ interface RunDetailProps {
 const TABS = [
   { value: "activity", label: "History" },
   { value: "timeline", label: "Timeline" },
-  { value: "tasks", label: "Tasks" },
   { value: "cost", label: "Cost" },
 ];
 
@@ -329,8 +328,6 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
                 <ErrorState message={formatApiError(runQ.error)} onRetry={() => runQ.refetch()} />
               ) : tab === "timeline" ? (
                 <TimelineTab run={run} loading={runQ.isLoading} />
-              ) : tab === "tasks" ? (
-                <TasksTab issueId={taskIssueId} open={open} />
               ) : (
                 <CostTab run={run} loading={runQ.isLoading} />
               )}
@@ -417,55 +414,6 @@ function TimelineTab({ run, loading }: { run: PipelineRunSummary | undefined; lo
                 )}
               </div>
             </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/* ── Tasks ────────────────────────────────────────────────────────────── */
-
-function TasksTab({ issueId, open }: { issueId: string | null; open: boolean }) {
-  const tasksQ = useIssueTasks(issueId ?? undefined, open && !!issueId);
-  if (!issueId) {
-    return <EmptyState title="No issue" message="This run isn't linked to an issue." />;
-  }
-  if (tasksQ.isLoading) return <PanelSpinner />;
-  if (tasksQ.isError) {
-    return <ErrorState message={formatApiError(tasksQ.error)} onRetry={() => tasksQ.refetch()} />;
-  }
-  const tasks = tasksQ.data ?? [];
-  if (tasks.length === 0) {
-    return <EmptyState title="No tasks" message="This issue has no subtasks yet." />;
-  }
-  return (
-    <div className="flex flex-col gap-2.5">
-      {tasks.map((t) => {
-        const done = t.status === "done";
-        return (
-          <div
-            key={t.id}
-            className="flex items-center gap-3 rounded-md border border-line-subtle bg-app px-3.5 py-3"
-          >
-            <span
-              className="flex size-[18px] flex-none items-center justify-center rounded-5"
-              style={{
-                background: done ? "var(--green-500)" : "var(--bg-surface)",
-                border: `1.5px solid ${done ? "var(--green-500)" : "var(--border-strong)"}`,
-              }}
-            >
-              {done && <Icon name="check" size={12} strokeWidth={3} style={{ color: "var(--fg-on-accent)" }} />}
-            </span>
-            <span
-              className="fg-body-sm"
-              style={{
-                color: done ? "var(--fg-subtle)" : "var(--fg-default)",
-                textDecoration: done ? "line-through" : "none",
-              }}
-            >
-              {t.title}
-            </span>
           </div>
         );
       })}

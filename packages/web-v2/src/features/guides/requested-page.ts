@@ -4,7 +4,7 @@
 import { type Audience, isAudience } from "./audience";
 import { missingDoor, missingPage, PAGE_AND_DOOR, type Refusal } from "./missing";
 
-export type PublicRequest =
+type PublicRequest =
   | { kind: "landing" }
   | { kind: "door"; audience: Audience }
   | { kind: "page"; slug: string }

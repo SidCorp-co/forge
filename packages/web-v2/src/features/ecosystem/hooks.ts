@@ -57,13 +57,6 @@ export function useEcosystemDocument(ecosystemId: string | undefined) {
   });
 }
 
-export function useOutbox(projectId: string) {
-  return useQuery({
-    queryKey: [...KEY, "outbox", projectId],
-    queryFn: () => ecosystemApi.outbox(projectId),
-  });
-}
-
 export function useDocument(projectId: string, ref: string | undefined) {
   return useQuery({
     queryKey: [...KEY, "document", projectId, ref],

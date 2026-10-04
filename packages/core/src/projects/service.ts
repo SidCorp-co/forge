@@ -15,7 +15,6 @@ import {
   type OrgMemberRole,
   organizationMembers,
   type ProjectMemberRole,
-  projectGitCredentials,
   projectInvitations,
   projectMembers,
   projects,
@@ -283,24 +282,4 @@ export async function unarchiveProject(projectId: string) {
     .where(eq(projects.id, projectId))
     .returning(ARCHIVE_PROJECTION);
   return updated ?? null;
-}
-
-/** The project's git access uses pool key `sshKeyId`, replacing any earlier pick. */
-export async function pickProjectGitKey(
-  projectId: string,
-  sshKeyId: string,
-  userId: string,
-): Promise<void> {
-  await db
-    .insert(projectGitCredentials)
-    .values({ projectId, sshKeyId, createdBy: userId })
-    .onConflictDoUpdate({
-      target: projectGitCredentials.projectId,
-      set: { sshKeyId, createdBy: userId, updatedAt: new Date() },
-    });
-}
-
-/** Forget the project's picked git key. */
-export async function clearProjectGitKey(projectId: string): Promise<void> {
-  await db.delete(projectGitCredentials).where(eq(projectGitCredentials.projectId, projectId));
 }

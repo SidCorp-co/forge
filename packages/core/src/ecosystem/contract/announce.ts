@@ -27,7 +27,7 @@ async function consumersOfContract(tx: Tx, providerId: string, slug: string) {
   return [...seen].map(([id, consumerSlug]) => ({ id, slug: consumerSlug }));
 }
 
-export const isBreaking = (v: StoredVersion) => v.document.diff.classification === 'breaking';
+const isBreaking = (v: StoredVersion) => v.document.diff.classification === 'breaking';
 
 // cm:guard a breaking approval files its consumers' items inside its own transaction, so no approval
 // commits owing an item it did not file; the key makes a retry find the item instead of a twin (E3)

@@ -32,7 +32,6 @@ import { IntegrationsTab } from "./integrations-tab";
 import { LabelsTab } from "./labels-tab";
 import { MembersTab } from "./members-tab";
 import { ModulesTab } from "./modules-tab";
-import { MemoryTab } from "./memory-tab";
 import { PipelineTab } from "./pipeline-tab";
 import { RepoTab } from "./repo-tab";
 
@@ -42,7 +41,6 @@ const TAB_VALUES = [
 	"config",
 	"runners",
 	"pipeline",
-	"memory",
 	"labels",
 	"modules",
 	"members",
@@ -57,7 +55,6 @@ const TABS: TabItem[] = [
 	{ value: "config", label: "Configuration" },
 	{ value: "runners", label: "Runners" },
 	{ value: "pipeline", label: "Pipeline" },
-	{ value: "memory", label: "Memory" },
 	{ value: "labels", label: "Labels" },
 	{ value: "modules", label: "Modules" },
 	{ value: "members", label: "Members" },
@@ -185,12 +182,6 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 							projectId={project.id}
 							canEdit={canEdit}
 							slug={project.slug}
-						/>
-					)}
-					{tab === "memory" && (
-						<MemoryTab
-							project={project}
-							canEdit={canEdit || isProjectAdmin}
 						/>
 					)}
 					{tab === "labels" && (

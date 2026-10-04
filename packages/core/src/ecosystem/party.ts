@@ -24,12 +24,7 @@ export function liveEdges(graph: PartyGraph): EdgeRow[] {
   );
 }
 
-export function areCounterparties(
-  graph: PartyGraph,
-  ecosystemId: string,
-  a: string,
-  b: string,
-): boolean {
+function areCounterparties(graph: PartyGraph, ecosystemId: string, a: string, b: string): boolean {
   return liveEdges(graph).some(
     (e) =>
       e.ecosystemId === ecosystemId &&

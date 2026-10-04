@@ -58,6 +58,3 @@ export async function withDeclaredSource<T extends { projectId: string }>(
     workspaceSetup: sources.get(r.projectId)?.setup ?? null,
   }));
 }
-
-export const NO_REPOSITORY =
-  "this project's document declares no repository: set `source.git.repository` with PUT /api/projects/:id/config";

@@ -1,7 +1,7 @@
 import type { CoreGuide } from './types.js';
 
 /** The one spelling of this guide's slug. Every door persona points at it. */
-export const ASSISTANT_METHOD_SLUG = 'answering-as-the-assistant';
+const ASSISTANT_METHOD_SLUG = 'answering-as-the-assistant';
 
 let methodBody: string | null = null;
 

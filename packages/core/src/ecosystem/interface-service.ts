@@ -48,7 +48,7 @@ export interface HeldInterface {
   updatedAt: Date;
 }
 
-export type InterfaceOutcome =
+type InterfaceOutcome =
   | { ok: true; held: HeldInterface; created: boolean }
   | { ok: false; refusals: EcosystemRefusal[] };
 

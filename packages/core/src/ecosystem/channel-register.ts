@@ -31,7 +31,7 @@ export interface RegisterRow {
   hold: ThreadHold | null;
 }
 
-export interface RegisterQuery {
+interface RegisterQuery {
   status?: RegisterStatus | undefined;
   type?: DocumentType | undefined;
   party?: string | undefined;

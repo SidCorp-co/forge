@@ -116,7 +116,7 @@ export async function recordPerformedRelease(
     door: 'record',
   });
   if (!report.projectExists) throw blockerRefusal('NO_RELEASE_GATE');
-  const refusal = releaseBlockedRefusal(report, args.issueIds);
+  const refusal = releaseBlockedRefusal(report);
   if (refusal) throw refusal;
   // Every id is now an issue at this project's gate, so its lower-case spelling is the row's own.
   const issueIds = args.issueIds.map((id) => id.toLowerCase());

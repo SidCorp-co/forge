@@ -1,18 +1,8 @@
 export type {
-  ContractAdoption,
   ContractAttentionGroup,
   ContractConsumerView,
-  ContractDemand,
-  ContractDirection,
-  ContractFeedbackRef,
-  ContractIssueWait,
-  ContractMeasurementView,
-  ContractProjectRef,
-  ContractRequestRow,
   ContractStandingDetail,
   ContractStandingList,
   ContractStandingRow,
-  ContractState,
   ContractVersionView,
-  ContractWindow,
 } from "@forge/contracts/contract-standing";

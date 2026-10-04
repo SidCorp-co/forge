@@ -265,7 +265,7 @@ export function claimedCommit(raw: string): string | null {
  * The commit a deployment reports, whole or abbreviated, or `null` where it is
  * neither. Seven is git's own floor on an abbreviation and the floor here.
  */
-export function reportedCommit(raw: string): string | null {
+function reportedCommit(raw: string): string | null {
   const text = raw.trim().toLowerCase();
   return REPORTED_COMMIT.test(text) ? text : null;
 }

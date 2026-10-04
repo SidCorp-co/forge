@@ -1,4 +1,3 @@
-import { CONTRACT_WAIT_AGENCIES, CONTRACT_WAIT_LIMITS } from '@forge/contracts/contract-waits';
 import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
@@ -14,6 +13,10 @@ import {
 import { issues, projects, users } from './schema.js';
 import { channelDocuments, contractVersions } from './schema-ecosystem.js';
 import { requirements } from './schema-requirements.js';
+
+// cm:why dbLegacy (ISS-214): the contract waits and requests code is deleted and these tables wait for the one migration that drops them; the CHECK values they were created with are kept here so the schema still describes them
+const CONTRACT_WAIT_AGENCIES = ['human', 'agent'] as const;
+const CONTRACT_WAIT_LIMITS = { version: 40, reason: 1000 } as const;
 
 const agencies = sql.raw(CONTRACT_WAIT_AGENCIES.map((a) => `'${a}'`).join(', '));
 

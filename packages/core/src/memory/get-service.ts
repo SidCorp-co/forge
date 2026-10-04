@@ -31,9 +31,9 @@ export const getMemoryInputSchema = z.object({
   orderDir: z.enum(['asc', 'desc']).default('desc'),
 });
 
-export type GetMemoryInput = z.infer<typeof getMemoryInputSchema>;
+type GetMemoryInput = z.infer<typeof getMemoryInputSchema>;
 
-export interface MemoryRow {
+interface MemoryRow {
   id: string;
   projectId: string;
   source: string;
@@ -47,7 +47,7 @@ export interface MemoryRow {
   archivedAt: Date | null;
 }
 
-export interface GetMemoryResult {
+interface GetMemoryResult {
   rows: MemoryRow[];
   total: number;
 }

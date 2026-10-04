@@ -10,7 +10,7 @@
  *   into               condition                                                code
  *   any (edge)         the move is an edge of the lifecycle                      ILLEGAL_TRANSITION
  *   open, from draft   the actor holds `issues.admit`                            PERMISSION_FORBIDDEN
- *   in_progress        a run or lease holds it; nothing admissible holds out     NO_HOLDER, ISSUE_BLOCKED, WORKFLOW_DESIGN_NOT_APPROVED, CONTRACT_WAIT_UNSETTLED
+ *   in_progress        a run or lease holds it; nothing admissible holds out     NO_HOLDER, ISSUE_BLOCKED, WORKFLOW_DESIGN_NOT_APPROVED
  *   approved           plan and criteria written; the actor holds `plans.approve`  PLAN_REQUIRED
  *                      where the project document sets `plan.approval.required`
  *   awaiting_release   the merge is recorded (a landing moves no status)          MERGE_NOT_RECORDED

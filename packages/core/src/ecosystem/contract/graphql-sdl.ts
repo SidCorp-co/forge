@@ -21,9 +21,9 @@ import { refuseEcosystem } from '../refusals.js';
 
 export type SdlSchema = GraphQLSchema;
 
-export type RootRole = 'query' | 'mutation' | 'subscription';
+type RootRole = 'query' | 'mutation' | 'subscription';
 
-export const ROOT_NAME: Record<RootRole, string> = {
+const ROOT_NAME: Record<RootRole, string> = {
   query: 'Query',
   mutation: 'Mutation',
   subscription: 'Subscription',
@@ -110,7 +110,7 @@ export function operationsOf(schema: SdlSchema): { element: string; field: SdlFi
   );
 }
 
-export const isRootType = (schema: SdlSchema, name: string): boolean =>
+const isRootType = (schema: SdlSchema, name: string): boolean =>
   [schema.getQueryType(), schema.getMutationType(), schema.getSubscriptionType()].some(
     (t) => t?.name === name,
   );

@@ -128,16 +128,6 @@
         "core-components#door-rest"
       ]
     },
-    "app-config": {
-      "kind": "domain",
-      "context": "project-config",
-      "owns": [
-        "appConfig"
-      ],
-      "serves": [
-        "REQ-19"
-      ]
-    },
     "assistant": {
       "kind": "domain",
       "context": "conversations",
@@ -354,7 +344,6 @@
         "contractVersions",
         "devices",
         "feedback",
-        "issueContractWaits",
         "issueLabels",
         "issueLeases",
         "issueWorkState",
@@ -396,8 +385,6 @@
         "channelDocuments",
         "channelThreadHolds",
         "contractArtifacts",
-        "contractMeasurements",
-        "contractRequests",
         "contractVersions",
         "ecosystemBuilderRuns",
         "ecosystemConsumptions",
@@ -406,7 +393,6 @@
         "ecosystemMemberships",
         "ecosystemRevisions",
         "ecosystems",
-        "issueContractWaits",
         "projectInterfaceRevisions",
         "projectInterfaces"
       ],
@@ -692,16 +678,6 @@
         "project-onboarding#mapped",
         "project-onboarding#code-map",
         "personal-data-flow#ds-memory"
-      ]
-    },
-    "knowledge-edges": {
-      "kind": "domain",
-      "context": "knowledge",
-      "owns": [
-        "knowledgeEdges"
-      ],
-      "serves": [
-        "REQ-13"
       ]
     },
     "labels": {
@@ -1262,14 +1238,6 @@
         "requirement-to-delivery#approve",
         "feedback-triage#suggest"
       ]
-    },
-    "tasks": {
-      "kind": "domain",
-      "context": "work",
-      "owns": [
-        "tasks"
-      ],
-      "serves": []
     },
     "uploads": {
       "kind": "domain",

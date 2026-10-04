@@ -30,11 +30,11 @@ export function doorHref(audience: Audience): string {
   return `${INDEX_PATH}?for=${audience}`;
 }
 
-export function guideMarkdownUrl(slug: string): string {
+function guideMarkdownUrl(slug: string): string {
   return coreFileUrl(`/api/guides/${slug}.md`);
 }
 
-export function fromHelpDoc(doc: HelpDoc): PublicDoc {
+function fromHelpDoc(doc: HelpDoc): PublicDoc {
   return {
     slug: doc.slug,
     title: doc.title,

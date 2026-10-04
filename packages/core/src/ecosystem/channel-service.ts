@@ -11,7 +11,6 @@ import { announceGatePending, announcePublished } from './channel-signals.js';
 import { insertDraft, insertEvent, reserveNumber, rewriteDocument } from './channel-store.js';
 import { serve } from './channel-world.js';
 import { heldEcosystem } from './ecosystem-service.js';
-import { landChangeRequestIn } from './requests/land.js';
 import { type EcosystemDocument, interfaceDocumentSchema } from './schema.js';
 import { readEcosystem, readInterfaces } from './store.js';
 
@@ -236,13 +235,6 @@ export async function submit(args: {
           fromState: 'draft',
           toState: 'published',
           ...actor,
-        });
-        await landChangeRequestIn(tx, doc, {
-          documentId: row.id,
-          by: {
-            userId: args.writer.userId,
-            agency: args.writer.author.kind === 'agent' ? 'agent' : 'human',
-          },
         });
       } else {
         await askGate(tx, row.id, doc);
