@@ -243,11 +243,16 @@ A write a rule refuses answers **422** with one body, and nothing is written:
 
 ## Permissions (BC-20)
 
-- **One check**: `can(actor, permission, scope)` over the actor's project role and token grant
-  (ADR 0007). Each route and tool action declares its permission in contracts, and REST and MCP
-  read the same declaration.
-- **Approval is a permission.** No rule refuses an actor for being an agent, for being a person or
-  for being the author; whoever holds the permission acts.
+- **One check**: `can(actor, permission, scope)` over the actor's project role and token grant.
+  Each route and tool action declares its permission in contracts, and REST and MCP read the same
+  declaration.
+- **Approval is a permission**
+  ([ADR 0007](../adr/0007-approval-is-a-permission.md)): every approve-type act asks
+  `packages/core/src/lib/approval.ts:mayApprove` and refuses with
+  `packages/core/src/lib/approval.ts:approvalRefusal`. No rule refuses an actor for being an agent,
+  for being a person or for being the author; whoever holds the permission acts. The other
+  who-may-act checks (project roles in `lib/authz`, token grants, the MCP principal checks) move
+  onto the same `can()`.
 - **A slice never compares `agency`.** Agency is recorded on the row and read by no rule.
 
 ## External systems (BC-22)

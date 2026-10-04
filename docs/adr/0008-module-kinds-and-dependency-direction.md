@@ -74,7 +74,8 @@ The choices inside that, and why:
   outbox makes every reaction durable, and an event nobody consumes is not emitted.
 - **Refusals stay one envelope**, and the error-class and `HTTPException` shapes are retired rather
   than mapped, because a client that has to read four shapes reads none of them reliably.
-- **Permission is ADR 0007's**, not restated here: one `can()` replaces the agency rule table.
+- **Permission is [ADR 0007](0007-approval-is-a-permission.md)'s**, not restated here: approval
+  became a permission, and one `can()` replaces the agency rule table for every other act.
 
 **The rules are measured by a script, on demand.** `scripts/check-module-shape.mjs` reads the kind declaration and archmap's import graph
 (`archmap graph --json`, so one resolver answers for both checks) and reports per module: kind,
