@@ -21,11 +21,16 @@ requirements and workflow designs.
   Today's violations are frozen in `.forge/module-boundaries-baseline.json`; a new violation, an
   entry that no longer occurs, or a rule whose frozen count rose fails, so the baseline only
   shrinks. It runs in `pnpm verify` and CI.
-- **The semantic rules are reported on demand.** `scripts/check-module-shape.mjs` refuses a
-  declaration that contradicts itself and reports table writers, database calls in routes and the
-  refusal shape; `--markers` writes its findings as Wrong markers. The orchestrator or QA runs it;
-  nothing runs it before a push. A status written outside the kernel is not reported: the database
-  refuses it (Status machines, below).
+- **The semantic rules block too.** `scripts/check-module-shape.mjs` refuses a declaration that
+  contradicts itself, then runs the type-aware ESLint rules in `scripts/eslint-module-shape/`: a
+  write to a table outside its owner module (any receiver typed as a Drizzle database or
+  transaction, any value typed as the table, raw SQL naming it), a database call in a route file, a
+  refusal built outside `packages/core/src/lib/refusal.ts`, and the global `fetch` outside an
+  adapter. Today's violations are frozen in `.forge/module-shape-suppressions.json` (ESLint bulk
+  suppressions): a new violation, an entry that no longer occurs, or a rule whose frozen total rose
+  fails. It runs in `pnpm verify` and CI; `--markers` writes every finding as Wrong markers. A
+  status written outside the kernel is not linted: the database refuses it (Status machines,
+  below).
 - **The API comes first.** The CLI wraps the routes, and MCP keeps only what neither covers
   ([api-first.md](../proposals/destination/api-first.md)), so every rule below is stated for the
   route first.
@@ -157,7 +162,8 @@ One file per responsibility, under `packages/core/src/<module>/`. The references
 | **index.ts** | The light face (BC-13): services, read functions, types | Mount anything; export a router or a tool; construct anything at import |
 
 - **Routes hold no queries (BC-15).** A route file validates, calls one service or read function,
-  and answers. A `db` or `tx` call in a route file is a finding. A route file is one named
+  and answers. A call on any value typed as a Drizzle database or transaction in a route file is
+  refused (`scripts/eslint-module-shape/rules/route-query.mjs`). A route file is one named
   `routes.ts`, `*-routes.ts` or under `routes/`, and any other file that builds a Hono router
   (`scripts/lib/module-shape.mjs:isRouteFile`).
 - A route's prefix is in `packages/core/src/credentials/pat-permissions.ts:PAT_PERMISSION_RESOURCES`, so a
@@ -502,8 +508,9 @@ Every external system is reached through one adapter port under
 their vendors and their callers are in `packages/core/src/integrations/README.md`.
 
 - **A domain imports the port's index.ts.** It never imports a vendor directory, a vendor SDK, a
-  vendor's types, or calls the global `fetch`; `scripts/check-provider-literals.mjs` refuses the
-  last two outside `packages/core/src/integrations/`.
+  vendor's types, or calls the global `fetch`; `scripts/check-provider-literals.mjs` refuses a
+  vendor SDK import outside `packages/core/src/integrations/`, and the module-shape lint
+  (`scripts/eslint-module-shape/rules/global-fetch.mjs`) the global `fetch` outside an adapter.
 - **An adapter imports no domain, kernel module or read model.** What the vendor sends back enters
   through a door, and a provider's routes and tools are the integration door's
   (`packages/core/src/integration-door/`), never the adapter's.

@@ -150,6 +150,16 @@ const CHECKS = [
     needs: ['deps'],
   },
   {
+    axis: 'relations',
+    label: 'module-shape',
+    layer: 'shared',
+    reads:
+      "packages/core's files, type-checked, against the table owners and kinds modules.json declares",
+    cmd: ['node', 'scripts/check-module-shape.mjs'],
+    scanned: /^module-shape: (\d+) file\(s\) linted/m,
+    needs: ['deps'],
+  },
+  {
     axis: 'form',
     label: 'core lint',
     layer: 'entry',
@@ -316,6 +326,7 @@ const CI_COVERAGE = {
     'verify, as the `archmap-resolver` prerequisite the archmap check declares in `needs`',
   './.forge/archmap/archmap check': 'verify',
   'node scripts/check-module-boundaries.mjs': 'verify',
+  'node scripts/check-module-shape.mjs': 'verify',
   'node scripts/check-test-reachability.mjs': 'verify',
   'pnpm exec biome check scripts': 'verify',
   'pnpm --filter @forge/core lint': 'verify',

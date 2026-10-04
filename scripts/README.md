@@ -57,7 +57,7 @@ passed, because the external record of what shipped belonged to none of them.
 | lint debt | `check-lint-budget` — `conformance` | per (file, rule) biome violations in `web-v2` and `core`, frozen; drained on touch where a scope asks for it | which rules exist — each package's `biome.json` declares them |
 | checkers | `biome check scripts` — `conformance` | the files in `scripts/` that implement every other gate | anything under `packages/` |
 | lazy init | `check-lazy-module-init` — `conformance` | whether a read of `env` or `db` runs when a core module is merely IMPORTED | what the value is once read, or whether a caller should be reading it at all |
-| provider literals | `check-provider-literals` — `conformance` | whether a provider's name (`coolify`, `postman`, …) is written outside the locations `.forge/conformance.json` allows WITH a reason: that provider's own directory, the registry, the schema and contracts vocabularies; and whether core reaches an external system — a global `fetch`, or an import of a vendor SDK `egress.vendorSdks` lists — outside `packages/core/src/integrations/`, beyond the exceptions `egress.exceptions` names with a reason (ADR 0006) | whether a name allowed there is USED correctly; and `agent`, which this repo also spells as an actor, an author and a principal — excluded by name, with its reason and its retirement condition printed on every run; and a file that binds its own `fetch`, which the egress scan reads as not using the global one |
+| provider literals | `check-provider-literals` — `conformance` | whether a provider's name (`coolify`, `postman`, …) is written outside the locations `.forge/conformance.json` allows WITH a reason: that provider's own directory, the registry, the schema and contracts vocabularies; and whether core imports a vendor SDK `egress.vendorSdks` lists outside `packages/core/src/integrations/`, beyond the exceptions `egress.exceptions` names with a reason (ADR 0006) | whether a name allowed there is USED correctly; and `agent`, which this repo also spells as an actor, an author and a principal — excluded by name, with its reason and its retirement condition printed on every run; and the global `fetch`, which is `check-module-shape`'s |
 | declarations | `check-integration-declarations` — `conformance` | whether every provider in the live registry carries the capability, schema and agent-path fields the generic paths read — including a non-empty `justification` on a `direct-mcp` arm, since that arm puts a project's credential on a runner box | which archetype a provider SHOULD be — that is the declaration's author's, and review's |
 | injected docs | `check-injected-doc-modes` — `injected-docs` | that a status transition in a guide body or a mandatory fact names the pipeline mode it belongs to | whether the prose around a qualified transition is true; a project's own knowledge entries, which live in the DB |
 | PAT surface | `check-pat-surface` — `conformance` | whether every route the running app serves under a project-reach permission reaches the PAT fence, `packages/core/src/credentials/pat-scope.ts:fencedProjectIds`, one route at a time: the routes come from `app.routes` under the contract generator's hermetic environment, each is matched to a registration the TypeScript checker finds from `packages/core/src/index.ts` (through `.route()` nesting and a router handed to a registering function), and it is fenced only when that registration's own handlers, or a middleware its router registered before it on a covering pattern, call the fence through calls the checker resolves to declarations in `packages/core/src`. Reachability is per FUNCTION: a module holding one fenced function lends nothing to the functions beside it, which is how ISS-28's planted route passed the file-level check this replaced. A served route no registration spells is refused, never skipped; a path in `PAT_UNGRANTABLE`, or on the gate's short EXEMPT list of routes that read no project's data, is not walked | whether a given fence is correct — a handler that reads the fence for one project and then serves another passes; a call through a value the checker cannot resolve reaches nothing, so that gap errs red, never green |
@@ -65,7 +65,7 @@ passed, because the external record of what shipped belonged to none of them.
 | doc citations | `check-doc-citations` — `lang-check` | whether a document's citation of a file in this repo is still true: a path no tracked file carries and an anchor whose file does not hold that symbol each fail, a line-number citation fails because `CLAUDE.md` already forbids one, and a live citation whose target was changed after the document was comes back on the worklist without failing. Resolves in two scopes and no third — the document's own directory and its package — with a root-written path resolved exactly or not at all, so no namesake can stand in for a deleted file and no part of resolution reads whether the target is present. An excusal names the tokens it excuses | a document's PROSE, which no machine can check; a count or a number in a document; whether a symbol that still exists still means what the sentence says; `CHANGELOG.md` and `docs/proposals/`, each excluded with its reason in `.forge/conformance.json` |
 | API contracts | `check-api-contracts` — `conformance` | whether `packages/core/contracts/forge-api.openapi.json` and `forge-mcp.tools.json` are byte for byte what the generator writes from the running app, naming each route (`METHOD /path`) or tool that was added, removed or changed and the JSON pointer where it differs; and whether every mounted route and served tool is describable at all — one the generator cannot describe is its refusal, never an omission | whether a route's contract is GOOD — a response schema, a missing validator, a description; and whether a change is breaking, which is the differ's (oasdiff, and a JSON Schema differ for the tools) |
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs; and whether every file directly under `docs/proposals/` opens with a `**Removed when:**` line naming at least one issue key, the issue whose landing change deletes the file (`docs/proposals/destination/` is exempt) | whether the price stated is honest, or whether the named issue really carries the condition — that is review's |
-| relations | `archmap check` + `check-module-boundaries` — `archmap` | which module may depend on which: archmap's contracts, and pattern v2's context direction, kind direction, runtime cycles between modules, face-only access, adapter ports and read models' declared reads over `packages/core/src`, generated from `packages/core/src/modules.json` | how a file is written; table writers, database calls in routes and refusal shape, which `check-module-shape` reports on demand (a status written outside the kernel is refused by the database, `forge_kernel_status_guard`) |
+| relations | `archmap check` + `check-module-boundaries` + `check-module-shape` — `archmap` | which module may depend on which: archmap's contracts, and pattern v2's context direction, kind direction, runtime cycles between modules, face-only access, adapter ports and read models' declared reads over `packages/core/src`, generated from `packages/core/src/modules.json`; and which module may write which table, and where a database call, a refusal and the global `fetch` may be written (`check-module-shape`) | how a file is formatted; a status written outside the kernel, which the database refuses (`forge_kernel_status_guard`) |
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
 | selection | `check-whole-tree-gates` — `whole-tree`, after the merge | whether a test whose input is the whole repository runs on every change: it runs every test carrying `@gate-input whole-tree` under the vitest config that collects it, refuses a declared file that ran no case or failed to load, and refuses an undeclared test that builds a path to the root and lists a directory | which jobs `changes` selects for everything else, and what a declared test asserts |
 | behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
@@ -232,6 +232,46 @@ base revision. `--update-baseline` rewrites the file and refuses when any rule's
 it is for after a fix or a file move, never to admit a violation. The ratchet lives in the checker
 rather than in `conformance.json`, whose `relations` axis already declares its two baseline slots
 for archmap.
+
+### check-module-shape
+
+Pattern v2's declaration and semantic rules (ISS-196, ADR 0008). It first refuses a
+`packages/core/src/modules.json` that contradicts itself (`lib/module-shape.mjs:parseDeclaration`)
+or leaves a directory under `packages/core/src` with no kind, and a `global-fetch` allow entry
+naming a file that no longer exists. Then it runs ESLint with
+`eslint-module-shape/eslint.config.mjs` over `packages/core/src`, tests excluded, with type
+information from `packages/core/tsconfig.json`:
+
+- `table-writer`: an `insert`, `update` or `delete` on any value whose type is a Drizzle
+  `PgDatabase` or `PgTransaction`, whose argument's type is a table (its SQL name read from the
+  table type, so an alias or a variable holding the table is the table), and raw SQL in a `sql`
+  template or `sql.raw` that writes a declared table, a `${table}` interpolation included — each
+  outside the module `modules.json` names as the table's owner. A write whose table type does not
+  carry its name (a `PgTable` parameter) is refused too, since its owner cannot be judged.
+- `route-query`: a database call on a value of either type in a route file
+  (`lib/module-shape.mjs:isRouteFile`).
+- `refusal`: an `HTTPException` with a rule status, an `Error` subclass outside platform and
+  adapter modules, a thrown `"<CODE>: …"`, a refusal-code list declared in core, and a
+  `c.json(…, <rule status>)` body built by hand.
+- `global-fetch`: a reference to the global `fetch` (scope analysis, so a local binding is not
+  it) or `globalThis.fetch` outside an adapter module, beyond the config's `allow` entries, each of
+  which must carry its `why`.
+
+Inline `eslint-disable` comments are not read (`noInlineConfig`), so
+`.forge/module-shape-suppressions.json`, ESLint's bulk-suppressions file keyed
+`<file> -> <rule> -> count`, is the only amnesty. Exit `1` on a refused declaration, a violation
+the file does not hold (a file whose count for a rule rose shows all of that rule's findings), an
+entry whose count exceeds what occurs (a deleted file included), or a rule whose frozen total rose
+over the base revision (`lib/baseline-ratchet.mjs:baseRev`); exit `2` when it cannot run.
+`--prune` drops entries that no longer occur; nothing here adds one, and a hand edit that raises a
+rule's total is what the base-revision comparison refuses. `--markers <file>` writes every finding, frozen or not, as the
+reconciliation Wrong markers (`lib/module-shape.mjs:markers`). A type-aware run over core takes
+about 40 seconds.
+
+Each rule was seen going red on a planted violation before landing: an aliased table written
+through a receiver named `handle`, `UPDATE ${issues} AS i SET`, `h.select()` in a `*-routes.ts`,
+`new HTTPException(409)`, an `Error` subclass, a thrown code, a hand-built 422 body, a code list,
+and `globalThis.fetch` and a bare `fetch` value, plus a stale and a deleted-file suppression.
 
 ### Vendored checkers
 
