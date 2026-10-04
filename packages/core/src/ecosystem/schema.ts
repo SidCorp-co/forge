@@ -1,7 +1,7 @@
 import { PROVIDER_LIVE_MODES } from '@forge/contracts/contract-waits';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { z } from 'zod';
-import { sized, slug, unique, uuid } from '../project-config/schema.js';
+import { sized, slug, unique, uuid } from '../project-config/index.js';
 
 export const DOCUMENT_TYPES = [
   'change-notice',

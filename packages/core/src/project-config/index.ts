@@ -22,6 +22,7 @@ export {
   type EnvironmentState,
   type ProjectDocument,
   STOREFRONT_PROVIDERS,
+  sized,
   slug,
   unique,
   uuid,
