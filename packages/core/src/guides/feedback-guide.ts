@@ -41,40 +41,54 @@ Two more phases are **read, never written**, from the work the item was routed t
 
 Nothing ever reads an item as \`verified\` on its own.
 
-### Triage: an agent proposes, a person routes
-- A route is one of \`issue\` (\`issue\` to link one, or \`createIssue\` to file a draft), \`revision\`
-  (\`suggestion\`, a \`revision_diff\` suggestion of the target's own requirement), \`new_requirement\`
-  (\`requirement\`, an existing draft, or \`title\` to start one), \`answer\` (the text the reporter reads)
-  and \`duplicate\` (\`duplicateOf\`, the root). A route missing its carrier is
-  \`FEEDBACK_ROUTE_INCOMPLETE\` (\`FEEDBACK_ANSWER_MISSING\` for an empty answer); one that does not fit
-  the item is \`FEEDBACK_ROUTE_TARGET_MISMATCH\`: contract-change feedback goes to an issue only, a
-  revision is a revision_diff of the item's own requirement, and a new-requirement route is carried by a
-  draft (an agreed requirement's change is routed as a revision).
-- **An agent never routes.** It sends \`propose_triage\` \`{ feedback, triage }\`, which writes a
-  \`feedback_triage\` suggestion; a person accepts it (\`forge_suggestions accept\`), and the accept writes
-  the route (${guideRef('suggestions')}). Routing directly, declining and marking a duplicate are a
-  person's acts: an agent is refused \`FEEDBACK_DECIDE_FORBIDDEN\`.
-- A route is picked while the item is \`new\`, \`reopened\`, or \`triaged\` with a dead carrier; any other
-  phase is \`FEEDBACK_STATUS_INVALID\`.
-- **duplicate** names a root that is not itself a duplicate, and an item others point at stays a root
-  (\`FEEDBACK_DUPLICATE_CHAIN\` names the root to use instead); an item is never its own duplicate
-  (\`FEEDBACK_DUPLICATE_SELF\`).
-- **decline** \`{ reason }\` from \`new\`, \`triaged\` or \`reopened\`; the reporter reads the reason
-  (\`FEEDBACK_DECLINE_REASON_REQUIRED\`).
+### Triage: decided by a holder of feedback.approve, the case writes the route
+- Triage picks one of \`issue\`, \`revision\`, \`new_requirement\`, \`answer\`, \`duplicate\` or \`decline\`,
+  by the rule table (workflow requirement-to-delivery step \`triage\`): a bug routes to an issue, a
+  contract change to the consumer's upgrade issue, a question to an answer, a change request or an idea to
+  a revision of the agreed requirement it is about or else to a new requirement, and any kind to
+  duplicate or decline. A route outside the item's kind is \`FEEDBACK_ROUTE_KIND_MISMATCH\` (change its
+  \`kind\` in the same triage if it was filed as the wrong one); a revision for an item about no agreed
+  requirement, a suggestion that is not a revision_diff of that requirement, or a new-requirement route
+  carried by a requirement that is not a draft is \`FEEDBACK_ROUTE_TARGET_MISMATCH\`.
+- **Triage opens the item's case** (step \`fb-case\`), one per item: owned by the project master for an
+  issue route and by the BA otherwise, due by severity (critical 1, high 2, medium 5, low 10 working
+  days), and for a contract change at the end of the provider's commitment window. The item reads
+  \`triaged\` and waits on the case's owner by name until the route is written.
+- What carries the route may come with the triage, and is then written at once: \`issue\` (\`issue\` to
+  link one, or \`createIssue\` to file a draft, which takes the requirement of the item's target, or of
+  its target issue), \`revision\` (\`suggestion\`), \`new_requirement\` (\`requirement\`, a draft, or
+  \`title\` to start one) and \`answer\` (the text the reporter reads). Otherwise the owner writes it
+  later with \`route\` \`{ feedback, write: { … } }\` (REST \`POST …/feedback/:fb/route\`), with the same
+  permission as triage, and only while the case waits (\`FEEDBACK_CASE_NOT_OPEN\`). A carrier of another route is
+  \`FEEDBACK_ROUTE_TARGET_MISMATCH\`, two alternatives at once or a write naming none
+  \`FEEDBACK_ROUTE_INCOMPLETE\`.
+- **duplicate** names its root in the triage (\`duplicateOf\`): a root that is not itself a duplicate, and
+  an item others point at stays a root (\`FEEDBACK_DUPLICATE_CHAIN\` names the root to use instead); an
+  item is never its own duplicate (\`FEEDBACK_DUPLICATE_SELF\`).
+- **decline** is a triage route whose reason, in \`note\`, the reporter reads
+  (\`FEEDBACK_DECLINE_REASON_REQUIRED\`); it moves the item to \`declined\` and closes its case.
+- **Triage is an approval.** Triage and writing a case's route take \`feedback.approve\` on the project
+  (project admin, or an org owner or admin), person or agent alike; without it the call is refused
+  \`APPROVE_PERMISSION_REQUIRED\` naming the permission. Without it, send \`propose_triage\`
+  \`{ feedback, triage }\`, which writes a \`feedback_triage\` suggestion stamped by core with the nearest
+  item (\`dedup\`, or why dedup did not run); a holder accepts it (\`forge_suggestions accept\`), and the
+  accept is the triage (${guideRef('suggestions')}).
+- Triage is picked while the item is \`new\`, \`reopened\`, or \`triaged\` with nothing carrying it; any
+  other phase is \`FEEDBACK_STATUS_INVALID\`.
 
 ### Asking the reporter
 \`clarify\` \`{ prompt, needed }\` asks the reporter one question, before the item is routed
 (\`FEEDBACK_CLARIFICATION_CLOSED\` once it is past \`new\` or \`reopened\`), and at most one is open per item
 (\`FEEDBACK_CLARIFICATION_ALREADY_OPEN\`): wait for its answer. The answer never edits the item. Picking a
-route or declining closes the open question.
+route, declining included, closes the open question.
 
 ### After it ships
 - \`verify\` follows \`resolved\` and nothing else (\`FEEDBACK_NOT_RESOLVED\`): an item is never verified
-  before its fix shipped, and never automatically. It is a person's act, the reporter's or a BA's
-  naming them (\`FEEDBACK_VERIFY_FORBIDDEN\` for an agent).
+  before its fix shipped, and never automatically. It takes \`feedback.approve\`
+  (\`APPROVE_PERMISSION_REQUIRED\` without it).
 - \`reopen\` \`{ reason }\` also follows \`resolved\`, says what the fix does not answer
   (\`FEEDBACK_REOPEN_REASON_REQUIRED\`), and sends the item back to triage.
-- Every triage, decline, verify, reopen, redaction and promotion is kept as its own decision record, so
+- Every triage, route write, decline, verify, reopen, redaction and promotion is kept as its own decision record, so
   a re-triage keeps the history.
 
 ### Sensitive projects
@@ -86,7 +100,7 @@ project admin person's act (\`FEEDBACK_REDACT_FORBIDDEN\`).
 
 ### Reading the list
 \`list\` \`{ phase?, q?, requirement? }\` answers each item's derived phase and who it waits on: a person to
-triage a new or reopened item, the carrier to ship a planned one, the reporter to verify a resolved one.
+triage a new or reopened item, the case's owner (BA or Project master) to write a triaged one's route, the carrier to ship a planned one, the reporter to verify a resolved one.
 \`similar\` \`{ feedback }\` compares stored embeddings to find likely duplicates. How a requirement a
 feedback item revises moves is in ${guideRef('requirement-lifecycle')}.`,
 };

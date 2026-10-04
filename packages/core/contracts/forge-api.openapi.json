@@ -27200,6 +27200,123 @@
         ]
       }
     },
+    "/api/projects/{id}/requirements/{req}/contracts": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "req",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "contract": {
+                    "pattern": "^[a-z][a-z0-9-]{0,62}\\/[a-z][a-z0-9-]{0,62}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "contract"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{id}/requirements/{req}/contracts/{project}/{contract}": {
+      "delete": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "req",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project",
+            "required": true,
+            "schema": {
+              "maxLength": 63,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "contract",
+            "required": true,
+            "schema": {
+              "maxLength": 63,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "param"
+        ]
+      }
+    },
     "/api/projects/{id}/requirements/{req}/criteria/{code}/steps": {
       "put": {
         "parameters": [
@@ -30315,6 +30432,787 @@
         ],
         "x-forge-validated": [
           "json",
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{id}/workflows/{workflow}/observations": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workflow",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "param"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workflow",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "atSha": {
+                    "pattern": "^[0-9a-f]{40}$",
+                    "type": "string"
+                  },
+                  "drift": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "reason": {
+                            "maxLength": 400,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "steps": {
+                            "items": {
+                              "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                              "type": "string"
+                            },
+                            "maxItems": 200,
+                            "minItems": 1,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "steps",
+                          "reason"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "edges": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "maxLength": 400,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "condition": {
+                          "maxLength": 400,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "evidence": {
+                          "anyOf": [
+                            {
+                              "oneOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "coverage": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "atSha": {
+                                          "anyOf": [
+                                            {
+                                              "pattern": "^[0-9a-f]{40}$",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "reading": {
+                                          "enum": [
+                                            "walked",
+                                            "not_walked",
+                                            "unmeasured"
+                                          ],
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "reading",
+                                        "atSha"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "file": {
+                                      "maxLength": 400,
+                                      "minLength": 1,
+                                      "pattern": "^(?![A-Za-z]:)(?!(?:.*\\/)?\\.{1,2}(?:\\/|$))[^/\\\\\\p{Cc}]+(?:\\/[^/\\\\\\p{Cc}]+)*$",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "repo",
+                                      "type": "string"
+                                    },
+                                    "symbol": {
+                                      "maxLength": 200,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "file"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "id": {
+                                      "maxLength": 200,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "storefront",
+                                      "type": "string"
+                                    },
+                                    "provider": {
+                                      "enum": [
+                                        "epodsystem",
+                                        "shopify",
+                                        "autoflow"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "ref": {
+                                      "enum": [
+                                        "workflow",
+                                        "route",
+                                        "node"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "provider",
+                                    "ref",
+                                    "id"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "from": {
+                          "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                          "type": "string"
+                        },
+                        "idempotency": {
+                          "maxLength": 400,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "kind": {
+                          "pattern": "^[a-z][a-z0-9-]{0,31}$",
+                          "type": "string"
+                        },
+                        "label": {
+                          "maxLength": 60,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "mapping": {
+                          "additionalProperties": {
+                            "maxLength": 400,
+                            "type": "string"
+                          },
+                          "propertyNames": {
+                            "maxLength": 120,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "type": "object",
+                          "x-forge-refinements": [
+                            "a mapping names at most 40 fields"
+                          ]
+                        },
+                        "onFailure": {
+                          "maxLength": 400,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "payload": {
+                          "items": {
+                            "maxLength": 400,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "maxItems": 20,
+                          "type": "array"
+                        },
+                        "protocol": {
+                          "maxLength": 60,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "reevaluates": {
+                          "maxLength": 400,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "to": {
+                          "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "from",
+                        "to",
+                        "evidence"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 600,
+                    "type": "array"
+                  },
+                  "revision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "steps": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "after": {
+                          "items": {
+                            "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                            "type": "string"
+                          },
+                          "maxItems": 24,
+                          "type": "array"
+                        },
+                        "does": {
+                          "maxLength": 600,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "evidence": {
+                          "anyOf": [
+                            {
+                              "oneOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "coverage": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "atSha": {
+                                          "anyOf": [
+                                            {
+                                              "pattern": "^[0-9a-f]{40}$",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "reading": {
+                                          "enum": [
+                                            "walked",
+                                            "not_walked",
+                                            "unmeasured"
+                                          ],
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "reading",
+                                        "atSha"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "file": {
+                                      "maxLength": 400,
+                                      "minLength": 1,
+                                      "pattern": "^(?![A-Za-z]:)(?!(?:.*\\/)?\\.{1,2}(?:\\/|$))[^/\\\\\\p{Cc}]+(?:\\/[^/\\\\\\p{Cc}]+)*$",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "repo",
+                                      "type": "string"
+                                    },
+                                    "symbol": {
+                                      "maxLength": 200,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "file"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "id": {
+                                      "maxLength": 200,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "const": "storefront",
+                                      "type": "string"
+                                    },
+                                    "provider": {
+                                      "enum": [
+                                        "epodsystem",
+                                        "shopify",
+                                        "autoflow"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "ref": {
+                                      "enum": [
+                                        "workflow",
+                                        "route",
+                                        "node"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "provider",
+                                    "ref",
+                                    "id"
+                                  ],
+                                  "type": "object"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "id": {
+                          "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                          "type": "string"
+                        },
+                        "matches": {
+                          "anyOf": [
+                            {
+                              "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "node": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "actions": {
+                              "items": {
+                                "maxLength": 400,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "maxItems": 20,
+                              "type": "array"
+                            },
+                            "band": {
+                              "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+                              "type": "string"
+                            },
+                            "channel": {
+                              "maxLength": 60,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "conditions": {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "result": {
+                                    "maxLength": 400,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "when": {
+                                    "maxLength": 400,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "when",
+                                  "result"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 30,
+                              "type": "array"
+                            },
+                            "contracts": {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "provider": {
+                                    "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                                    "type": "string"
+                                  },
+                                  "slug": {
+                                    "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "provider",
+                                  "slug"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 8,
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "dataShown": {
+                              "items": {
+                                "maxLength": 400,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "maxItems": 20,
+                              "type": "array"
+                            },
+                            "event": {
+                              "maxLength": 120,
+                              "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+                              "type": "string"
+                            },
+                            "expectedOutcome": {
+                              "maxLength": 400,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "idempotency": {
+                              "maxLength": 400,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "inputs": {
+                              "items": {
+                                "maxLength": 120,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "maxItems": 20,
+                              "type": "array"
+                            },
+                            "label": {
+                              "maxLength": 60,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "mapsTo": {
+                              "maxLength": 40,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "outputs": {
+                              "items": {
+                                "maxLength": 120,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "maxItems": 20,
+                              "type": "array"
+                            },
+                            "owner": {
+                              "maxLength": 120,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "payload": {
+                              "items": {
+                                "maxLength": 120,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "maxItems": 20,
+                              "type": "array"
+                            },
+                            "permissions": {
+                              "items": {
+                                "maxLength": 400,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "maxItems": 20,
+                              "type": "array"
+                            },
+                            "persona": {
+                              "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+                              "type": "string"
+                            },
+                            "purpose": {
+                              "maxLength": 400,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "refs": {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "flow": {
+                                    "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                                    "type": "string"
+                                  },
+                                  "step": {
+                                    "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                                    "type": "string"
+                                  },
+                                  "template": {
+                                    "pattern": "^[a-z][a-z0-9-]{1,62}$",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "template",
+                                  "flow",
+                                  "step"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 8,
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "route": {
+                              "maxLength": 200,
+                              "pattern": "^\\/",
+                              "type": "string"
+                            },
+                            "sla": {
+                              "maxLength": 60,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "tests": {
+                              "items": {
+                                "maxLength": 400,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "maxItems": 30,
+                              "type": "array"
+                            },
+                            "trigger": {
+                              "maxLength": 400,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "type": {
+                              "pattern": "^[A-Z][A-Z0-9_]{0,31}$",
+                              "type": "string"
+                            },
+                            "validation": {
+                              "maxLength": 400,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "values": {
+                              "items": {
+                                "maxLength": 40,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "maxItems": 20,
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "variant": {
+                              "enum": [
+                                "empty",
+                                "loading",
+                                "error",
+                                "success",
+                                "partial"
+                              ],
+                              "type": "string"
+                            },
+                            "wireframe": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "attachment": {
+                                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                                  "type": "string"
+                                },
+                                "svg": {
+                                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "attachment"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "type"
+                          ],
+                          "type": "object"
+                        },
+                        "title": {
+                          "maxLength": 120,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "matches",
+                        "does",
+                        "after",
+                        "evidence"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 200,
+                    "type": "array"
+                  },
+                  "summary": {
+                    "maxLength": 400,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "atSha",
+                  "steps"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{id}/workflows/{workflow}/observations/{at}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workflow",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "at",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
           "param"
         ]
       }

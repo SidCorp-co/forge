@@ -34,7 +34,6 @@ import { RELEASE_GATE_STATUS } from './gate.js';
 import { approversOf, loadReleaseFacts, type ReleaseFacts } from './release-facts.js';
 import { gateViews } from './release-gates.js';
 import {
-  canDecide,
   completionOf,
   headlineOf,
   proofOf,
@@ -82,11 +81,6 @@ function inFlightStage(attempts: readonly ReleaseAttemptRow[]) {
   return [...attempts].reverse().find((a) => a.settledAt === null)?.stage ?? null;
 }
 
-function eligibleApprovers(s: Shared, p: Part): ReleasePerson[] {
-  const asker = p.approvals[0]?.requestedBy.id;
-  return s.approvers.filter((a) => a.id !== asker);
-}
-
 function approvalFacts(p: Part) {
   const latest = p.approvals[0];
   return latest
@@ -99,7 +93,7 @@ function turnFor(p: Part, s: Shared) {
     state: p.state,
     version: p.version,
     approval: approvalFacts(p),
-    approvers: eligibleApprovers(s, p),
+    approvers: s.approvers,
     viewer: s.viewer,
     gates: p.gates.filter((g) => g.kind === 'blocker'),
     inFlight: inFlightStage(p.attempts),
@@ -196,7 +190,7 @@ function summaryOf(p: Part, s: Shared): ReleaseSummary {
         p.state === 'draft' &&
         s.viewer?.isAdmin === true &&
         !p.gates.some((g) => g.kind === 'blocker'),
-      decide: canDecide(s.viewer, approvalFacts(p)),
+      decide: s.viewer?.mayApprove === true && approvalFacts(p)?.decision === null,
     },
     openedAt: iso(p.openedAt),
     releasedAt: iso(p.releasedAt),
@@ -297,7 +291,7 @@ function detailOf(
     gates: p.gates,
     approval: latest ? strip(latest) : null,
     approvals: p.approvals.map(strip),
-    approvers: eligibleApprovers(s, p),
+    approvers: s.approvers,
     approvalRequired: s.required,
     attempts: p.attempts.map((a) => attemptView(a, readers)),
     bounds: {

@@ -3,16 +3,16 @@ import {
   createFeedbackRequestSchema,
   FEEDBACK_ATTACHMENT_SHAPE,
   FEEDBACK_CLARIFICATION_SHAPE,
-  FEEDBACK_DUPLICATE_SHAPE,
   FEEDBACK_PHASES,
   FEEDBACK_REASON_SHAPE,
+  FEEDBACK_ROUTE_WRITE_SHAPE,
   FEEDBACK_TRIAGE_SHAPE,
   FEEDBACK_VERIFY_SHAPE,
   type FeedbackResponse,
   feedbackAttachmentRequestSchema,
   feedbackClarificationRequestSchema,
-  feedbackDuplicateRequestSchema,
   feedbackReasonRequestSchema,
+  feedbackRouteWriteSchema,
   feedbackTriageSchema,
   feedbackVerifyRequestSchema,
   listFeedbackQuerySchema,
@@ -37,13 +37,12 @@ import { promoteAgentReport } from './promote.js';
 import { detailAs, type FeedbackActor, listFeedbackAs, rowIn } from './read.js';
 import {
   createFeedback,
-  declineFeedback,
   type FeedbackOutcome,
   redactReporterData,
   reopenFeedback,
   verifyFeedback,
 } from './service.js';
-import { triageFeedback } from './triage.js';
+import { routeFeedback, triageFeedback } from './triage.js';
 
 export const feedbackRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -198,41 +197,18 @@ feedbackRoutes.post(
 );
 
 feedbackRoutes.post(
-  '/:id/feedback/:fb/decline',
+  '/:id/feedback/:fb/route',
   itemParam,
-  strictBody(feedbackReasonRequestSchema, FEEDBACK_REASON_SHAPE),
+  strictBody(feedbackRouteWriteSchema, FEEDBACK_ROUTE_WRITE_SHAPE),
   async (c) => {
     const { id, fb } = c.req.valid('param');
     return answer(
       c,
-      await declineFeedback({
+      await routeFeedback({
         projectId: id,
         ref: fb,
         actor: actorOf(c),
-        reason: c.req.valid('json').reason,
-      }),
-    );
-  },
-);
-
-feedbackRoutes.post(
-  '/:id/feedback/:fb/duplicate',
-  itemParam,
-  strictBody(feedbackDuplicateRequestSchema, FEEDBACK_DUPLICATE_SHAPE),
-  async (c) => {
-    const { id, fb } = c.req.valid('param');
-    const body = c.req.valid('json');
-    return answer(
-      c,
-      await triageFeedback({
-        projectId: id,
-        ref: fb,
-        actor: actorOf(c),
-        triage: {
-          route: 'duplicate',
-          duplicateOf: body.of,
-          ...(body.note ? { note: body.note } : {}),
-        },
+        write: c.req.valid('json'),
         channel: 'web',
       }),
     );

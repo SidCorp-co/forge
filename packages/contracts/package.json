@@ -90,6 +90,10 @@
       "types": "./dist/mockups.d.ts",
       "default": "./dist/mockups.js"
     },
+    "./approval": {
+      "types": "./dist/approval.d.ts",
+      "default": "./dist/approval.js"
+    },
     "./field-changes": {
       "types": "./dist/field-changes.d.ts",
       "default": "./dist/field-changes.js"
@@ -113,6 +117,10 @@
     "./content-language": {
       "types": "./dist/content-language.d.ts",
       "default": "./dist/content-language.js"
+    },
+    "./delivery-policy": {
+      "types": "./dist/delivery-policy.d.ts",
+      "default": "./dist/delivery-policy.js"
     },
     "./data-policy": {
       "types": "./dist/data-policy.d.ts",

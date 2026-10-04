@@ -10,6 +10,8 @@
  *                      the project document sets `plan.approval.required`
  *   awaiting_release   every criterion's latest verdict passes, with an          NO_WORK_EVIDENCE,
  *                      admissible identity, recorded after the latest reopen     VERDICT_IDENTITY_REQUIRED, VERDICT_PREDATES_REOPEN, VERDICT_IDENTITY_NOT_ADMISSIBLE, VERDICT_DRAFT_SUPERSEDED, VERDICT_UNCORROBORATED
+ *                      (a project document with `delivery.verdictsRequired: false` passes the move
+ *                      and the move's record says `verdicts-waived`)
  *   closed             shipped; from in_progress, as awaiting_release           CLOSE_REQUIRES_SHIPPED + the codes above
  *
  *   needs_info         a question (the reason) and its kind                      TRANSITION_REASON_REQUIRED,
@@ -18,9 +20,11 @@
  *   dropped            a reason                                                  VOID_REASON_REQUIRED
  */
 
+import { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
+import { approvalRefusalFor } from '../lib/approval.js';
 import {
   canTransition,
   PARK_STATUSES,
@@ -43,6 +47,7 @@ export type GuardCode =
   | 'WORKFLOW_DESIGN_NOT_APPROVED'
   | 'CONTRACT_WAIT_UNSETTLED'
   | 'PLAN_REQUIRED'
+  | 'APPROVE_PERMISSION_REQUIRED'
   | 'NO_WORK_EVIDENCE'
   | 'VERDICT_IDENTITY_REQUIRED'
   | 'VERDICT_PREDATES_REOPEN'
@@ -103,17 +108,21 @@ export interface GuardContext {
   /** The status the park being left was entered from (`issue_work_state.left_status`), or null. */
   leftStatus?: IssueStatus | null | undefined;
   agency: ActorAgency;
+  /** The account the move is made as: the user, or the owner of the device making it. */
+  actorUserId: string;
   transitionReason?: string | undefined;
   waitingKind?: WaitingKind | undefined;
   executor: Pick<Tx, 'select' | 'execute'>;
   readDraft?: DraftReader | undefined;
+  /** Called with the refusal a move passed only because the project does not require verdicts. */
+  onVerdictsWaived?: ((waived: GuardFault) => void) | undefined;
 }
 
 const hasText = (s: string | undefined) => Boolean(s?.trim());
 
 /** Reasons and kinds: the guards that read only the request. Asked before the write begins. */
 export function reasonFault(
-  ctx: Omit<GuardContext, 'executor' | 'issue' | 'leftStatus'>,
+  ctx: Omit<GuardContext, 'executor' | 'issue' | 'leftStatus' | 'actorUserId'>,
 ): GuardFault | null {
   const details = { from: ctx.from, to: ctx.to };
   if (ctx.to === 'needs_info') {
@@ -197,7 +206,7 @@ async function planApprovalRequired(projectId: string): Promise<boolean> {
   return held?.document.plan?.approval.required === true;
 }
 
-/** approved, the plan checkpoint: a plan and criteria, and a person where the project says so. */
+/** approved, the plan checkpoint: a plan and criteria, and plans.approve where the project says so. */
 async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
   const rows = (await ctx.executor.execute(sqlPlanRow(ctx.issue.id))) as unknown as Array<{
     plan: string | null;
@@ -215,23 +224,45 @@ async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
       details: { from: ctx.from, to: ctx.to, missing },
     };
   }
-  if (ctx.agency !== 'human' && (await planApprovalRequired(ctx.issue.projectId))) {
-    return {
-      code: 'PLAN_REQUIRED',
-      detail:
-        'this project requires a person to approve a plan (project document `plan.approval.required`), so the move to `approved` is a person\'s to make. Ask for it: park at `needs_info` with `waitingKind: "needs_decision"` naming the plan, and the person who approves moves it once it is back.',
-      details: { from: ctx.from, to: ctx.to, requires: 'human', rule: 'plan.approval.required' },
-    };
+  if (await planApprovalRequired(ctx.issue.projectId)) {
+    const denied = await approvalRefusalFor(
+      { userId: ctx.actorUserId },
+      ctx.issue.projectId,
+      'plans',
+      'moving an issue to `approved` (project document `plan.approval.required`)',
+    );
+    if (denied) {
+      return {
+        code: denied.code,
+        detail: `${denied.detail} Ask for it: park at \`needs_info\` with \`waitingKind: "needs_decision"\` naming the plan, and a holder of ${denied.permission} moves it once it is back.`,
+        details: {
+          from: ctx.from,
+          to: ctx.to,
+          permission: denied.permission,
+          resource: denied.resource,
+          rule: 'plan.approval.required',
+        },
+      };
+    }
   }
   return null;
 }
 
 /**
  * awaiting_release, and in_progress → closed: every criterion's latest verdict passes, says what it
- * held in, and was recorded after the issue's latest reopen.
+ * held in, and was recorded after the issue's latest reopen. A project document with
+ * `delivery.verdictsRequired: false` lets the move through and reports what it would have refused,
+ * so the move's record says the verdicts were waived and not that they held.
  */
 async function verdictGuard(ctx: GuardContext): Promise<GuardFault | null> {
-  const source = (await readProjectDocument(ctx.issue.projectId))?.document.source.type ?? null;
+  const document = (await readProjectDocument(ctx.issue.projectId))?.document;
+  const fault = await verdictFault(ctx, document?.source.type ?? null);
+  if (fault === null || verdictsRequiredOf(document?.delivery)) return fault;
+  ctx.onVerdictsWaived?.(fault);
+  return null;
+}
+
+async function verdictFault(ctx: GuardContext, source: SourceType): Promise<GuardFault | null> {
   const found = await unpassedCriteria(ctx.executor, ctx.issue, source, ctx.readDraft);
   const into = quote(ctx.to);
   if (found.kind === 'no-criteria') {

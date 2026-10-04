@@ -14,7 +14,7 @@ import {
   type ProposeMockupRequest,
 } from '@forge/contracts/mockups';
 import type { RevisionState } from '@forge/contracts/requirements';
-import { type PersonActFacts, personActRefusal } from '../lib/person-act.js';
+import { type ApproverFacts, approvalRefusal } from '../lib/approval.js';
 
 export interface MockupRefusal {
   code: MockupRefusalCode;
@@ -138,30 +138,19 @@ export function decidedRefusal(key: string, status: MockupStatus): MockupRefusal
   );
 }
 
-// cm:guard accept and return are a person's acts (S0 PERSON_ACT), and the person who proposed a
-// mockup never accepts it (MOCKUP_ACCEPT_OWN_FORBIDDEN), the suggestion two-party rule
+// Accept and return are approvals (ADR 0007): whoever holds mockups.approve decides, its author included.
 export function deciderRefusal(
-  facts: PersonActFacts,
+  facts: ApproverFacts,
   projectId: string,
   key: string,
   act: 'accept' | 'return',
-  proposedBy: string,
 ): MockupRefusal | null {
-  const person = personActRefusal(
+  return approvalRefusal(
     facts,
+    'mockups',
     projectId,
     `${act === 'accept' ? 'accepting' : 'returning'} ${key}`,
-    'MOCKUP_DECIDE_FORBIDDEN' as const,
   );
-  if (person) return person;
-  if (act === 'accept' && proposedBy === facts.userId) {
-    return refusal(
-      'MOCKUP_ACCEPT_OWN_FORBIDDEN',
-      '',
-      `${facts.userId} proposed ${key}; somebody else accepts it.`,
-    );
-  }
-  return null;
 }
 
 export function returnReasonRefusal(reason: string | null | undefined): MockupRefusal | null {
@@ -178,6 +167,6 @@ export function withdrawRefusal(key: string, userId: string, proposedBy: string)
   return refusal(
     'MOCKUP_WITHDRAW_FORBIDDEN',
     '',
-    `${userId} did not propose ${key}; its author withdraws it, a person returns it with a reason.`,
+    `${userId} did not propose ${key}; its author withdraws it, a holder of mockups.approve returns it with a reason.`,
   );
 }

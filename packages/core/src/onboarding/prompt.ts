@@ -28,7 +28,7 @@ const TOOLS = `Tools (Forge MCP; every write is refused by name with what is val
 - forge_knowledge: upsert { projectId, slug, title, body, kind: reference, injection: on_demand, authoredBy: agent, confidence: inferred }.`;
 
 const FINDINGS = `What the hand-run trials found — follow it:
-1. A design you create lands at DRAFT. It reaches proposed only through forge_workflows propose { workflowId, revision }. Create, then propose, every design. Never approve: only a person approves (WORKFLOW_DESIGN_APPROVER_NOT_PERSON), and onboarding designs never take designApprover: master.
+1. A design you create lands at DRAFT. It reaches proposed only through forge_workflows propose { workflowId, revision }. Create, then propose, every design. Never approve: the user decides the picture you drew of their code.
 2. Write system-context FIRST: the integration sequence, the data flow and the journey reference its SYSTEM and CONTAINER steps, and a ref to a design that does not exist yet is WORKFLOW_REF_DANGLING.
 3. ux-flow needs a wireframe on every SCREEN, and onboarding has none: draw the core business journey in operational-flow (or service-blueprint), not ux-flow.
 4. In system-context, a line into a SYSTEM needs an explicit kind (uses / reads-from / writes-to), or it is WORKFLOW_EDGE_KIND_AMBIGUOUS. Lines go forward only (after): a two-way integration is one line whose label says both ways.

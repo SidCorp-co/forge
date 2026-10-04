@@ -93,8 +93,9 @@ or node id. A repository project cites \`{ kind: "repo", file, symbol }\`. The o
 \`WORKFLOW_OBSERVATION_CITATION_KIND_MISMATCH\`.
 
 ### Who approves
-The project document's \`workflows.designApprover\` decides. \`owner\` (the default) is an org admin
-person: an agent deciding is refused \`WORKFLOW_DESIGN_APPROVER_NOT_PERSON\`. Once the owner sets
-\`master\`, this project's own master may approve too — never another project's agent
-(\`WORKFLOW_DESIGN_APPROVER_NOT_PROJECT\`). Unlinking an issue lifts its gate, so only the approver may.`,
+Whoever holds \`workflow-designs.approve\` on the project (project admin, or an org owner or admin),
+person or agent alike, a design onboarding drafted included; without it the call is refused
+\`APPROVE_PERMISSION_REQUIRED\` naming the permission. Unlinking an issue lifts its gate, so it takes the
+same permission. The project document's old \`workflows.designApprover\` is retired, and a write naming
+it is refused \`APPROVER_POLICY_RETIRED\`.`,
 };
