@@ -10,7 +10,7 @@ const httpsUrl = () =>
     .optional();
 
 /** A site slug as the platform mints it: the `<shop>` label of `<shop>.auto.sidcorp.co`. */
-export const autoflowShop = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/, {
+const autoflowShop = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/, {
   error:
     'shop is the site slug — the <shop> of <shop>.auto.sidcorp.co: lowercase letters, digits and dashes, at most 63',
 });

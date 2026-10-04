@@ -17,7 +17,7 @@ export const settingsApi = {
 
   updatePreferences: (
     patch: Partial<
-      Pick<Preferences, "theme" | "language" | "notifyOnMention" | "lastSeenWhatsNew" | "activeOrgId">
+      Pick<Preferences, "theme" | "language" | "notifyOnMention" | "activeOrgId">
     >,
   ) =>
     apiClient<Preferences>(`/auth/me/preferences`, {

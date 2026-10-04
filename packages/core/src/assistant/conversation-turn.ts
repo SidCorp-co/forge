@@ -29,7 +29,7 @@ export type { ConversationImage };
 export { toCanonicalEntry };
 
 /** How many stored turns a turn is allowed to read back. Storage is unbounded; the window is not. */
-export const CONVERSATION_READ_WINDOW = 200;
+const CONVERSATION_READ_WINDOW = 200;
 
 export interface PendingMessage {
   role: ConversationMessageRole;

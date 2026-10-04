@@ -12,9 +12,9 @@ import { epodsystemGraphqlBase } from './endpoints.js';
 const THEME_QUERY_TIMEOUT_MS = 5_000;
 const VERSION_LIMIT = 5;
 
-export type ThemeRole = 'main' | 'unpublished' | 'development';
+type ThemeRole = 'main' | 'unpublished' | 'development';
 
-export interface StorefrontTheme {
+interface StorefrontTheme {
   id: string;
   name: string | null;
   role: ThemeRole | string | null;
@@ -22,14 +22,14 @@ export interface StorefrontTheme {
   publishedFilesVersionId: string | null;
 }
 
-export interface StorefrontThemeVersion {
+interface StorefrontThemeVersion {
   id: string;
   versionNumber: number | null;
   label: string | null;
   createdAt: string | null;
 }
 
-export interface StorefrontThemes {
+interface StorefrontThemes {
   themes: StorefrontTheme[];
   /** The live theme (`role: 'main'`). */
   mainThemeId: string | null;

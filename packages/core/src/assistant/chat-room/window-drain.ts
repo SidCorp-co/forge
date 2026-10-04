@@ -30,7 +30,7 @@ import { rocketChatTurn } from './turn-inputs.js';
 /**
  * How many windows one connection takes per tick.
  */
-export const WINDOW_DRAIN_BATCH = 5;
+const WINDOW_DRAIN_BATCH = 5;
 
 /**
  * Settle and route every window this core's connections owe an answer.
@@ -67,7 +67,7 @@ export async function drainConversationWindows(
   }
 }
 
-export async function routeOne(
+async function routeOne(
   current: () => ActiveConnection | null,
   connectionId: string,
   window: ClaimedWindow,
@@ -86,9 +86,7 @@ export async function routeOne(
   const outcome = await routeWindow({
     window,
     handoffFor: async (windowId) =>
-      (await import('../../conversations/index.js')).conversationAgentTurnForWindow(
-        windowId,
-      ),
+      (await import('../../conversations/index.js')).conversationAgentTurnForWindow(windowId),
     refusalFor: async ({ authorKey, authorLabel }) => {
       if (!authorKey) return null;
       const resolved = await rocketChatConversationPorts.resolveSpeaker({

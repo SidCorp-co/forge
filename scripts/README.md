@@ -65,7 +65,7 @@ passed, because the external record of what shipped belonged to none of them.
 | doc citations | `check-doc-citations` — `lang-check` | whether a document's citation of a file in this repo is still true: a path no tracked file carries and an anchor whose file does not hold that symbol each fail, a line-number citation fails because `CLAUDE.md` already forbids one, and a live citation whose target was changed after the document was comes back on the worklist without failing. Resolves in two scopes and no third — the document's own directory and its package — with a root-written path resolved exactly or not at all, so no namesake can stand in for a deleted file and no part of resolution reads whether the target is present. An excusal names the tokens it excuses | a document's PROSE, which no machine can check; a count or a number in a document; whether a symbol that still exists still means what the sentence says; `CHANGELOG.md` and `docs/proposals/`, each excluded with its reason in `.forge/conformance.json` |
 | API contracts | `check-api-contracts` — `conformance` | whether `packages/core/contracts/forge-api.openapi.json` and `forge-mcp.tools.json` are byte for byte what the generator writes from the running app, naming each route (`METHOD /path`) or tool that was added, removed or changed and the JSON pointer where it differs; and whether every mounted route and served tool is describable at all — one the generator cannot describe is its refusal, never an omission | whether a route's contract is GOOD — a response schema, a missing validator, a description; and whether a change is breaking, which is the differ's (oasdiff, and a JSON Schema differ for the tools) |
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs; and whether every file directly under `docs/proposals/` opens with a `**Removed when:**` line naming at least one issue key, the issue whose landing change deletes the file (`docs/proposals/destination/` is exempt) | whether the price stated is honest, or whether the named issue really carries the condition — that is review's |
-| relations | `archmap check` + `check-module-boundaries` + `check-module-shape` — `archmap` | which module may depend on which: archmap's contracts, and pattern v2's context direction, kind direction, runtime cycles between modules, face-only access, adapter ports and read models' declared reads over `packages/core/src`, generated from `packages/core/src/modules.json`; and which module may write which table, and where a database call, a refusal and the global `fetch` may be written (`check-module-shape`) | how a file is formatted; a status written outside the kernel, which the database refuses (`forge_kernel_status_guard`) |
+| relations | `archmap check` + `check-module-boundaries` + `check-module-shape` — `archmap` | which requirement or workflow step every core module, web-v2 feature and runner crate serves (`check-module-shape`'s trace); which module may depend on which: archmap's contracts, and pattern v2's context direction, kind direction, runtime cycles between modules, face-only access, adapter ports and read models' declared reads over `packages/core/src`, generated from `packages/core/src/modules.json`; and which module may write which table, and where a database call, a refusal and the global `fetch` may be written (`check-module-shape`) | how a file is formatted; a status written outside the kernel, which the database refuses (`forge_kernel_status_guard`) |
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
 | selection | `check-whole-tree-gates` — `whole-tree`, after the merge | whether a test whose input is the whole repository runs on every change: it runs every test carrying `@gate-input whole-tree` under the vitest config that collects it, refuses a declared file that ran no case or failed to load, and refuses an undeclared test that builds a path to the root and lists a directory | which jobs `changes` selects for everything else, and what a declared test asserts |
 | behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
@@ -267,6 +267,22 @@ over the base revision (`lib/baseline-ratchet.mjs:baseRev`); exit `2` when it ca
 rule's total is what the base-revision comparison refuses. `--markers <file>` writes every finding, frozen or not, as the
 reconciliation Wrong markers (`lib/module-shape.mjs:markers`). A type-aware run over core takes
 about 40 seconds.
+
+**Requirement trace** (ISS-221, `lib/module-trace.mjs`). Before the lint it reads `serves` on every
+unit `packages/core/src/modules.json` declares — `modules` (core), `web` (each directory under
+`packages/web-v2/src/features`) and `runner` (each crate under `packages/runner/crates`) — against
+`.forge/design-index.json`, the requirements and workflow steps of the Forge project that
+`refresh-design-index.mjs` writes from the dev API (a `FORGE_TOKEN` run, never verify's).
+`trace-empty`: an empty `serves`, or a web feature or crate directory with no entry; `trace-unknown`:
+a reference to a requirement that is absent or dropped, a workflow, or a step the snapshot does not
+hold; `trace-via`: `via:<unit>` naming a unit that serves nothing directly. A declared web feature or
+crate with no directory is refused outright. Untraced units are frozen in
+`.forge/module-trace-baseline.json` with the boundary gate's ratchet: a new entry, a stale entry or a
+rule whose count rose over the base revision fails, and `--update-trace-baseline` refuses to let a
+count rise. Planted red before landing: an emptied `labels`, `REQ-999`, a step that does not exist,
+`via:pm` (itself untraced), an emptied web feature and a new feature directory with no entry — each
+named with its unit and rule, and the three modules that serve through `labels` named under
+`trace-via`.
 
 Each rule was seen going red on a planted violation before landing: an aliased table written
 through a receiver named `handle`, `UPDATE ${issues} AS i SET`, `h.select()` in a `*-routes.ts`,
@@ -876,15 +892,13 @@ moment a sibling could invalidate a minute later, and it scaled as N².
 `CHANGELOG.md` is the external record of what shipped, and until 2026-08-28 nothing owned it.
 Commit `3df9a8e9` removed **1,034 lines, added 0** — the whole `[Unreleased]` block, every released
 version section and the style header — inside a commit about closing 94 dangling docs pointers whose
-message never named the file. Twelve gates ran on it and every one passed. The in-app What's New
-feed parses this file (`packages/web-v2/src/lib/changelog.ts`) and renders an empty list when it
-finds no `## [` heading, so it went blank for every signed-in user without throwing.
+message never named the file. Twelve gates ran on it and every one passed.
 
 Three rules:
 
 | | Fails when |
 |---|---|
-| `structure` | the file carries no `## [Unreleased]` heading — the What's New feed, the release step, the release cutter, the batch release plan and the release-notes schema all key on it — or one release section carries the same `###` heading twice, or an entry this change adds is followed by prose a blank line cut off from its bullet |
+| `structure` | the file carries no `## [Unreleased]` heading — the release step, the release cutter, the batch release plan and the release-notes schema all key on it — or one release section carries the same `###` heading twice, or an entry this change adds is followed by prose a blank line cut off from its bullet |
 | `no-silent-loss` | an entry present at the base revision is absent at HEAD, is not an edit of one that is present, and nothing declares the removal |
 | `entry-budget` | an entry this change adds runs over `ENTRY_WORD_BUDGET` words, or one it corrects runs over the larger of that budget and what the entry already held. The refusal names each entry with the ceiling actually applied to it and whether it paired as a correction, because an inherited ceiling advertised to an entry that did not inherit one reads as a rule the checker is not following |
 
@@ -938,7 +952,7 @@ breaks ties between pairings of the same size.
 ### Prose a blank line orphaned is named, not dropped
 
 A blank line ends an entry, so a bullet's second paragraph belongs to no bullet: `parseRecord` drops
-it, the What's New feed never renders it, and neither the loss rule nor the budget can see it. That
+it, and neither the loss rule nor the budget can see it. That
 was tolerable while every entry was compared by byte identity, and it stopped being tolerable the
 moment corrections paired: a published 50-word bullet split after word 40 by a blank line leaves a
 40-word bullet that pairs with what it truncated, inherits its ceiling, and passes green — where the

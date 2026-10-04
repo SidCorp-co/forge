@@ -1,14 +1,14 @@
 import type { DoorId, MessageVerdict } from './contract.js';
 import { doorPolicy } from './doors.js';
 
-export interface RepairRound {
+interface RepairRound {
   /** Screen this attempt. */
   readonly screen: (segments: readonly string[]) => Promise<MessageVerdict> | MessageVerdict;
   /** Ask the writer for another attempt, given what broke. Never edits the text. */
   readonly rewrite: (verdict: MessageVerdict) => Promise<readonly string[]>;
 }
 
-export type RepairOutcome =
+type RepairOutcome =
   | {
       readonly kind: 'passed';
       readonly segments: readonly string[];

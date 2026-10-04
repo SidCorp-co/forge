@@ -15,7 +15,7 @@ import type { Audience, FactKind, Intent } from './contract.js';
 import { type IssueRow, type MessageFacts, NO_FACTS, type ProgressFacts } from './facts.js';
 import { extractIssueClaims } from './issue-tokens.js';
 
-export interface GatherInput {
+interface GatherInput {
   readonly projectId: string;
   readonly audience: Audience;
   readonly intent: Intent;
@@ -33,7 +33,7 @@ export interface GatherInput {
 }
 
 /** The issue reads a screen needs, from the work kernel that owns them. */
-export interface IssueFactReads {
+interface IssueFactReads {
   activeIssuePrefix(projectId: string, tx: Tx): Promise<string | null>;
   heldIssuePrefixes(projectId: string, tx: Tx): Promise<readonly string[]>;
   projectProgress(projectId: string, tx: Tx): Promise<ProgressFacts | null>;

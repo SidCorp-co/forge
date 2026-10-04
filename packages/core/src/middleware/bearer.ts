@@ -5,10 +5,7 @@ import { AUTH_COOKIE_NAME } from '../credentials/cookie-names.js';
 
 const BEARER = /^Bearer\s+(.+)$/i;
 
-export type BearerHeader =
-  | { kind: 'absent' }
-  | { kind: 'malformed' }
-  | { kind: 'token'; token: string };
+type BearerHeader = { kind: 'absent' } | { kind: 'malformed' } | { kind: 'token'; token: string };
 
 export function parseBearerHeader(c: Context): BearerHeader {
   const header = c.req.header('authorization') ?? c.req.header('Authorization');

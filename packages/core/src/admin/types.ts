@@ -22,15 +22,6 @@ export interface AdminMetricSeriesPoint {
   bucketStart: string;
   value: number | null;
 }
-
-export interface AdminMetricSeries {
-  metric: AdminGlanceMetricName;
-  window: AdminMetricWindow;
-  value: number | null;
-  deltaPct: number | null;
-  points: AdminMetricSeriesPoint[];
-}
-
 /** `GET /api/admin/overview?window=24h|7d|30d`. */
 export interface AdminOverview {
   counts: {

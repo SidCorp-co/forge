@@ -10,7 +10,7 @@ export interface CliForm {
   readonly says: string;
 }
 
-export const READ_FORMS: readonly CliForm[] = [
+const READ_FORMS: readonly CliForm[] = [
   { argv: ['issue', '--status', '<s>', '--limit', '<n>'], says: 'issues at a status' },
   { argv: ['issue', 'ISS-<n>'], says: 'one issue with its edges and its documentId' },
   { argv: ['issue', '--search', '<q>'], says: 'issues matching text' },
@@ -37,64 +37,6 @@ export interface UsageShape {
   readonly options: ReadonlyMap<string, boolean>;
   readonly positionals: readonly UsagePositional[];
 }
-
-/** `Usage: forge issue [<uuid|ISS-45>] [--status s] …` → its shape. */
-export function parseUsage(line: string): UsageShape {
-  const after = line.replace(/^\s*Usage:\s*forge\s+\S+\s*/, '');
-  const options = new Map<string, boolean>();
-  const positionals: UsagePositional[] = [];
-  const groups = topLevelGroups(after);
-  for (let g = 0; g < groups.length; g++) {
-    const group = groups[g] as string;
-    const optional = group.startsWith('[');
-    const inner = optional ? group.slice(1, -1) : group;
-    if (inner.startsWith('--')) {
-      const [flags, inlineOperand] = inner.split(/\s+/, 2);
-      const next = groups[g + 1];
-      const takesNext =
-        inlineOperand === undefined &&
-        !optional &&
-        next !== undefined &&
-        !next.startsWith('[') &&
-        !next.startsWith('--');
-      if (takesNext) g++;
-      const operand = inlineOperand ?? (takesNext ? next : undefined);
-      for (const flag of (flags as string).split('|')) options.set(flag, operand !== undefined);
-      continue;
-    }
-    if (inner.includes('|')) {
-      positionals.push({ required: !optional, literal: null });
-      continue;
-    }
-    for (const word of inner.replace(/[[\]]/g, ' ').split(/\s+/).filter(Boolean)) {
-      positionals.push({
-        required: !optional,
-        literal: /^[a-z][\w-]*$/.test(word) ? word : null,
-      });
-    }
-  }
-  return { options, positionals };
-}
-
-/** Split a Usage tail into its top-level tokens: a bare word, or one `[…]` group with its nesting intact. */
-function topLevelGroups(text: string): string[] {
-  const groups: string[] = [];
-  let depth = 0;
-  let current = '';
-  for (const ch of text) {
-    if (ch === '[') depth++;
-    if (depth === 0 && /\s/.test(ch)) {
-      if (current) groups.push(current);
-      current = '';
-      continue;
-    }
-    current += ch;
-    if (ch === ']') depth--;
-  }
-  if (current) groups.push(current);
-  return groups;
-}
-
 /** Why a carried form does not fit the Usage line; empty when it does. */
 export function formProblems(form: CliForm, usage: UsageShape): string[] {
   const problems: string[] = [];

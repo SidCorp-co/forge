@@ -26,7 +26,7 @@ import {
   transitionSessions,
 } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
-import { agentSessions, type MemberLens } from '../db/schema.js';
+import { agentSessions } from '../db/schema.js';
 import { buildProgressFactsBlock, computeProjectProgress } from '../issues/index.js';
 import { egressShown } from '../lib/data-egress.js';
 import type { ProgressFacts } from '../messaging/facts.js';
@@ -41,7 +41,6 @@ import {
   type ConversationAgentTurnResult,
   readConversationAgentMeta,
 } from './conversation-agent-meta.js';
-import type { ConversationVenue } from './ports.js';
 import type { ConversationImage } from './store.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
@@ -60,7 +59,7 @@ export {
 /**
  * At most one live runner-hosted turn per room.
  */
-export async function hasInFlightConversationAgentTurn(
+async function hasInFlightConversationAgentTurn(
   projectId: string,
   conversationId: string,
 ): Promise<boolean> {
@@ -165,14 +164,6 @@ export function turnState(
   if (row.status !== 'running') return 'dispatched';
   return row.runtimeState ? 'running' : 'dispatched';
 }
-
-/**
- * Whether a box could take a turn for this project right now.
- */
-export async function conversationAgentDeviceAvailable(projectId: string): Promise<boolean> {
-  return (await conversationAgentUnavailableReason(projectId)) === null;
-}
-
 /** Why Agent mode cannot answer here right now, in a sentence; null where a box can. */
 export async function conversationAgentUnavailableReason(
   projectId: string,
@@ -340,7 +331,7 @@ export async function startConversationAgentTurn(
 /**
  * The prompt a runner-hosted conversation turn runs.
  */
-export function buildConversationAgentPrompt(args: {
+function buildConversationAgentPrompt(args: {
   persona: string;
   conversationContext?: string | null | undefined;
   question: string;

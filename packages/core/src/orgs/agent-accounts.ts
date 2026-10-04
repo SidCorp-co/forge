@@ -12,8 +12,8 @@ import { randomBytes } from 'node:crypto';
 import { and, count, desc, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { insertAgentAccount, setUserDisplayName } from '../auth/index.js';
-import { handleNameForProject, isAgentHandle } from '../credentials/agent-account.js';
-import { mintPat, refenceLiveTokens, revokeLiveTokens } from '../credentials/pat.js';
+import { isAgentHandle } from '../credentials/agent-account.js';
+import { mintPat, revokeLiveTokens } from '../credentials/pat.js';
 import { patIsLive } from '../credentials/pat-live.js';
 import { db, type Tx } from '../db/client.js';
 import {
@@ -31,10 +31,6 @@ import {
   addProjectMembers,
   agentCredentialFence,
   agentCredentialGrant,
-  fenceFor,
-  regrantAgentCredentials,
-  removeOrgMember,
-  removeProjectMembershipsOf,
   withAgentFenceLock,
 } from '../permissions/index.js';
 import { refuse } from './refuse.js';
@@ -50,7 +46,7 @@ const AGENT_CREDENTIAL_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 
 const agentCredentialExpiry = () => new Date(Date.now() + AGENT_CREDENTIAL_TTL_MS);
 
-export interface CreateAgentAccountInput {
+interface CreateAgentAccountInput {
   orgId: string;
   /** The menu epoch the agent's credential is fixed at: see `mintPat`. */
   grantEpoch?: number;
@@ -65,7 +61,7 @@ export interface CreateAgentAccountInput {
   projectRole?: ProjectMemberRole;
 }
 
-export interface AgentAccount {
+interface AgentAccount {
   userId: string;
   handle: string;
   /** The label a person reads, or null where nobody has typed one. */
@@ -337,105 +333,8 @@ async function mintDistinctlyNamed(
     'AGENT_CREDENTIAL_NAME_TAKEN',
   );
 }
-
-/**
- * Set the whole list of projects an agent works on, and re-fence what it holds.
- *
- * The membership write and the credential re-fence are ONE transaction on purpose.
- * Split them and there is a window where the agent is a member of a project none of
- * its credentials may reach, which on the box reads as `NOT_FOUND` — the deliberately
- * existence-hiding refusal a foreign-project token gets — so an operator sees "that
- * project is gone" rather than "your token has not caught up".
- */
-export async function setAgentProjects(
-  orgId: string,
-  agentUserId: string,
-  projectIds: string[],
-): Promise<{ projects: string[]; fence: AgentCredentialFence; refenced: number } | null> {
-  if (!(await loadOrgAgent(orgId, agentUserId))) return null;
-
-  const wanted = [...new Set(projectIds)];
-  if (wanted.length === 0) {
-    throw badRequest(
-      'projectIds must name at least one project — removing the last one would leave a credential fenced to nothing; retire the agent instead',
-      'AGENT_NEEDS_A_PROJECT',
-    );
-  }
-
-  const found = await db
-    .select({ id: projects.id, orgId: projects.orgId })
-    .from(projects)
-    .where(inArray(projects.id, wanted));
-  const inThisOrg = new Set(found.filter((p) => p.orgId === orgId).map((p) => p.id));
-  const strangers = wanted.filter((id) => !inThisOrg.has(id));
-  if (strangers.length > 0) {
-    throw new HTTPException(404, {
-      message: `not a project of organization ${orgId}: ${strangers.join(', ')}`,
-      cause: { code: 'NOT_FOUND' },
-    });
-  }
-
-  const held = await db
-    .select({ projectId: projectMembers.projectId })
-    .from(projectMembers)
-    .where(eq(projectMembers.userId, agentUserId));
-  const only = held.length === 1 ? (held[0]?.projectId as string) : null;
-  if (only && !(wanted.length === 1 && wanted[0] === only)) {
-    const [p] = await db
-      .select({ slug: projects.slug, id: projects.id })
-      .from(projects)
-      .where(eq(projects.id, only))
-      .limit(1);
-    const [me] = await db
-      .select({ handle: organizationMembers.handle })
-      .from(organizationMembers)
-      .where(eq(organizationMembers.userId, agentUserId))
-      .limit(1);
-    if (p && me?.handle === handleNameForProject(p.slug, p.id)) {
-      throw refuse(
-        'AGENT_IS_A_PROJECT_HANDLE',
-        `agent ${agentUserId} carries the name project ${only}'s conversational handle is minted under (@${me.handle}) — widening it would leave that project unable to mint a replacement, so its rooms would stop opening; create a separate agent for the projects you want covered and leave this one where it is`,
-      );
-    }
-  }
-
-  const fence = fenceFor(wanted);
-  const refenced = await withAgentFenceLock(agentUserId, async (tx) => {
-    const held = new Map(
-      (
-        await tx
-          .select({
-            projectId: projectMembers.projectId,
-            role: projectMembers.role,
-            grants: projectMembers.grants,
-          })
-          .from(projectMembers)
-          .where(eq(projectMembers.userId, agentUserId))
-      ).map((r) => [r.projectId, r]),
-    );
-    await removeProjectMembershipsOf(tx, agentUserId);
-    await addProjectMembers(
-      tx,
-      wanted.map((projectId) => ({
-        userId: agentUserId,
-        projectId,
-        role: held.get(projectId)?.role ?? ('member' as const),
-        grants: held.get(projectId)?.grants ?? [],
-      })),
-    );
-    const refenced = await refenceLiveTokens(tx, agentUserId, fence);
-    await regrantAgentCredentials(tx, agentUserId);
-    return refenced;
-  });
-
-  return { projects: wanted, fence, refenced };
-}
-
 /**
  * Take every live credential away from an agent, leaving the account standing.
- *
- * Distinct from {@link revokeAgentAccount}, which also drops the memberships:
- * this is "it may not act right now", that is "it is retired".
  */
 export async function revokeAgentCredentials(
   orgId: string,
@@ -444,34 +343,6 @@ export async function revokeAgentCredentials(
   if (!(await loadOrgAgent(orgId, agentUserId))) return null;
   return revokeLiveTokens({ userId: agentUserId });
 }
-
-/**
- * Retire an agent: every token revoked, every membership dropped. The `users`
- * row STAYS.
- */
-export async function revokeAgentAccount(orgId: string, agentUserId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ id: users.id })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
-    .where(
-      and(
-        eq(organizationMembers.orgId, orgId),
-        eq(organizationMembers.userId, agentUserId),
-        eq(users.kind, 'agent'),
-      ),
-    )
-    .limit(1);
-  if (!row) return false;
-
-  await db.transaction(async (tx) => {
-    await revokeLiveTokens({ userId: agentUserId }, tx);
-    await removeProjectMembershipsOf(tx, agentUserId);
-    await removeOrgMember(tx, orgId, agentUserId);
-  });
-  return true;
-}
-
 /**
  * Set the label an org admin reads this agent by.
  *

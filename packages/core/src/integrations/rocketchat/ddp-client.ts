@@ -42,7 +42,7 @@ export interface RocketChatIncomingMessage {
 }
 
 const QUOTE_LINK_RE = /\?msg=([A-Za-z0-9]+)/;
-export function replyTargetOf(m: {
+function replyTargetOf(m: {
   msg?: unknown;
   tmid?: unknown;
   attachments?: unknown;
@@ -58,22 +58,16 @@ export function replyTargetOf(m: {
   return typeof m.tmid === 'string' ? m.tmid : undefined;
 }
 
-export type DdpClientState =
-  | 'idle'
-  | 'connecting'
-  | 'connected'
-  | 'authenticated'
-  | 'live'
-  | 'closed';
+type DdpClientState = 'idle' | 'connecting' | 'connected' | 'authenticated' | 'live' | 'closed';
 
 /** The subset of the `ws` WebSocket surface we use — lets tests inject a fake. */
-export interface WsLike {
+interface WsLike {
   on(event: 'open' | 'message' | 'close' | 'error', cb: (...args: unknown[]) => void): void;
   send(data: string): void;
   close(): void;
 }
 
-export interface RocketChatDdpOptions {
+interface RocketChatDdpOptions {
   /** e.g. https://chat.sidcorp.co (ws(s):// + /websocket derived). */
   serverUrl: string;
   authToken: string;
@@ -86,12 +80,12 @@ export interface RocketChatDdpOptions {
 }
 
 /** Convert an https/http server URL to the DDP websocket endpoint. */
-export function ddpUrl(serverUrl: string): string {
+function ddpUrl(serverUrl: string): string {
   return `${serverUrl.replace(/\/+$/, '').replace(/^http/, 'ws')}/websocket`;
 }
 
 /** Map a raw `stream-room-messages` arg to our shape, or null if unusable. */
-export function parseStreamMessage(arg: unknown, serverUrl = ''): RocketChatIncomingMessage | null {
+function parseStreamMessage(arg: unknown, serverUrl = ''): RocketChatIncomingMessage | null {
   if (!arg || typeof arg !== 'object') return null;
   const m = arg as Record<string, unknown>;
   const rid = m.rid;

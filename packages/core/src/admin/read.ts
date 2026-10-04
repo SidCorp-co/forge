@@ -44,7 +44,7 @@ import {
 type GlanceWindow = (typeof GLANCE_WINDOWS)[number];
 
 /** A page of rows and the total the filter matched. */
-export type AdminPage<T> = { rows: T[]; total: number };
+type AdminPage<T> = { rows: T[]; total: number };
 
 /** The Ops Console overview: tenant counts, KPIs and the glance metrics for `window`. */
 export async function readAdminOverview(window: GlanceWindow): Promise<AdminOverview> {
@@ -171,7 +171,7 @@ export async function readAdminAdoption(
   });
 }
 
-export type AdminWorkspaceSort = 'runs' | 'spend' | 'leadTime';
+type AdminWorkspaceSort = 'runs' | 'spend' | 'leadTime';
 
 /** Every live project's runs, spend, median lead time and open issues in `window`, sorted. */
 export async function readAdminWorkspaces(

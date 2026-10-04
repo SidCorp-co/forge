@@ -21,7 +21,7 @@ function rankOf(status: string): number {
  * Rank first, `completed_at` second: two `completed` deliveries for one id are a
  * retry of the same fact, and the later completion is the one to keep.
  */
-export function checkRunIsNewer(
+function checkRunIsNewer(
   incoming: ProjectedCheckRun,
   stored: ProjectedCheckRun | undefined,
 ): boolean {
@@ -47,7 +47,7 @@ export function foldCheckRun(
   return pruneChecks(next, currentHeadSha);
 }
 
-export function pruneChecks(checks: ProjectedChecks, currentHeadSha: string): ProjectedChecks {
+function pruneChecks(checks: ProjectedChecks, currentHeadSha: string): ProjectedChecks {
   const foreign = Object.values(checks).filter((c) => c.headSha !== currentHeadSha);
   if (foreign.length <= FOREIGN_CHECK_RETENTION) return checks;
   const keep = new Set(
@@ -64,10 +64,7 @@ export function pruneChecks(checks: ProjectedChecks, currentHeadSha: string): Pr
   return out;
 }
 
-export function currentHeadRuns(
-  checks: ProjectedChecks,
-  currentHeadSha: string,
-): ProjectedCheckRun[] {
+function currentHeadRuns(checks: ProjectedChecks, currentHeadSha: string): ProjectedCheckRun[] {
   const latest = new Map<string, ProjectedCheckRun>();
   for (const run of Object.values(checks)) {
     if (run.headSha !== currentHeadSha) continue;
@@ -140,24 +137,4 @@ export function foldReviewDismissed(
 ): ProjectedReviews {
   const stored = reviews[incoming.id];
   return { ...reviews, [incoming.id]: { ...(stored ?? incoming), dismissed: true } };
-}
-
-/**
- * Whether an incoming pull-request payload is at least as new as the one the
- * row's scalars were last written from.
- *
- * A row with no stored timestamp takes the payload: that is a row this delivery
- * is creating, or one written before the column existed.
- */
-export function payloadIsNotOlder(
-  incomingUpdatedAt: string | null | undefined,
-  storedUpdatedAt: Date | string | null | undefined,
-): boolean {
-  if (!storedUpdatedAt) return true;
-  const incoming = Date.parse(incomingUpdatedAt ?? '');
-  if (Number.isNaN(incoming)) return true;
-  const stored =
-    storedUpdatedAt instanceof Date ? storedUpdatedAt.getTime() : Date.parse(storedUpdatedAt);
-  if (Number.isNaN(stored)) return true;
-  return incoming >= stored;
 }

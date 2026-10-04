@@ -22,7 +22,7 @@ export function initSentry(): boolean {
 }
 
 /** The shared scrub, after a failed query's params are redacted from the exception it reports. */
-export function sentryBeforeSend<E extends Parameters<typeof scrubSentryEvent>[0]>(
+function sentryBeforeSend<E extends Parameters<typeof scrubSentryEvent>[0]>(
   event: E,
   hint: { originalException?: unknown },
 ): E {
@@ -33,9 +33,9 @@ export function isSentryEnabled(): boolean {
   return initialized;
 }
 
-export type ReportLevel = 'fatal' | 'error' | 'warning' | 'info' | 'debug';
+type ReportLevel = 'fatal' | 'error' | 'warning' | 'info' | 'debug';
 
-export interface ReportContext {
+interface ReportContext {
   level?: ReportLevel;
   tags?: Record<string, string>;
   extra?: Record<string, unknown>;

@@ -33,7 +33,7 @@ export class GitHubAuthError extends Error {
   }
 }
 
-export interface AppCredential {
+interface AppCredential {
   appId: string;
   privateKey: string;
   apiBaseUrl?: string;
@@ -130,10 +130,6 @@ export const anonymousOctokit = (args: { apiBaseUrl?: string; fetchImpl?: typeof
     request: { fetch: boundedFetch(args.fetchImpl ?? fetch) },
     log: octokitLog,
   });
-
-export function __resetGitHubClients(): void {
-  instances.clear();
-}
 
 /** The status and headers of a GitHub answer carried by a thrown octokit error, or null. */
 export function responseOf(

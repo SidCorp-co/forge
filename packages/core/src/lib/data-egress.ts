@@ -13,7 +13,7 @@ import { RefusalError } from './refusal.js';
 // here, the one table. Product is written to build the product and an agent cannot build without
 // it; operational is what people send in, where patient text arrives. A name missing here is
 // refused, so a new surface cannot leak; the write side (`storedText`) scrubs on write
-export const EGRESS_SURFACES = {
+const EGRESS_SURFACES = {
   requirement: {
     class: 'product',
     holds: 'requirements: revisions, spec, business criteria, baselines, history',
@@ -91,7 +91,7 @@ export function isProviderBound(reader: EgressReader): boolean {
 }
 
 /** A project's declared data policy, or undefined where its document sets none. */
-export type DataPolicySource = (projectId: string) => Promise<SensitiveDataLevel | undefined>;
+type DataPolicySource = (projectId: string) => Promise<SensitiveDataLevel | undefined>;
 
 let dataPolicySource: DataPolicySource | null = null;
 

@@ -59,7 +59,7 @@ export interface EscalationPayload {
 
 const JSON_FENCE_RE = /```json\s*([\s\S]*?)```/gi;
 
-export function parseEscalationPayload(text: string): EscalationPayload {
+function parseEscalationPayload(text: string): EscalationPayload {
   const matches = [...text.matchAll(JSON_FENCE_RE)];
   const fence = matches[matches.length - 1]?.[1];
   if (!fence) return { answer: text };

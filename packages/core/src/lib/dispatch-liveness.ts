@@ -7,8 +7,3 @@ export function dispatchLivenessMs(): number {
   const n = Number(raw);
   return Number.isFinite(n) && n >= MIN_MS ? n : DEFAULT_MS;
 }
-
-export function isLastSeenFresh(lastSeenAt: Date | null): boolean {
-  if (!lastSeenAt) return false;
-  return Date.now() - lastSeenAt.getTime() < dispatchLivenessMs();
-}

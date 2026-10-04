@@ -9,7 +9,7 @@ import type { CoolifyClient } from './client.js';
 import { buildClient } from './log-fetch.js';
 import type { CoolifyConfig, CoolifyDeploymentResponse, CoolifySecrets } from './types.js';
 
-export interface CoolifyDeployTarget {
+interface CoolifyDeployTarget {
   readonly applicationUuid: string;
 }
 
@@ -25,14 +25,14 @@ const UNRECORDED_COMMIT = 'HEAD';
 const LATEST_PAGE = 5;
 const MEMBERSHIP_PAGE = 50;
 
-export class CoolifyDeploymentRecordError extends Error {
+class CoolifyDeploymentRecordError extends Error {
   constructor(deploymentId: string, what: string) {
     super(`Coolify deployment ${deploymentId}: ${what}`);
     this.name = 'CoolifyDeploymentRecordError';
   }
 }
 
-export function mapCoolifyDeploymentStatus(deploymentId: string, raw: unknown): DeploymentStatus {
+function mapCoolifyDeploymentStatus(deploymentId: string, raw: unknown): DeploymentStatus {
   const mapped = typeof raw === 'string' ? COOLIFY_STATUS.get(raw) : undefined;
   if (!mapped) {
     throw new CoolifyDeploymentRecordError(
@@ -63,7 +63,7 @@ function timeOf(deploymentId: string, raw: unknown): string {
   return at.toISOString();
 }
 
-export function toDeploymentRecord(raw: CoolifyDeploymentResponse): DeploymentRecord {
+function toDeploymentRecord(raw: CoolifyDeploymentResponse): DeploymentRecord {
   const id = raw.deployment_uuid;
   if (typeof id !== 'string' || id === '') {
     throw new CoolifyDeploymentRecordError('(unnamed)', 'the record carries no deployment_uuid');
@@ -77,7 +77,7 @@ export function toDeploymentRecord(raw: CoolifyDeploymentResponse): DeploymentRe
   };
 }
 
-export function coolifyDeployAdapter(client: CoolifyClient): DeployAdapter<CoolifyDeployTarget> {
+function coolifyDeployAdapter(client: CoolifyClient): DeployAdapter<CoolifyDeployTarget> {
   return {
     provider: 'coolify',
     async latestDeployment(target) {

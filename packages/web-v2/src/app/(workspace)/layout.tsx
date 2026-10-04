@@ -16,7 +16,6 @@ import { useProjects } from "@/features/projects/hooks";
 import { usePinnedProjects } from "@/features/projects/pins";
 import { ActiveOrgProvider } from "@/features/orgs/active-org";
 import { useAttention } from "@/features/attention/hooks";
-import { useWhatsNewStatus } from "@/features/whats-new/hooks";
 import { useUnblockCascadeToasts } from "@/features/issues/use-unblock-cascade";
 import { useOpenCount } from "@/features/notifications/hooks";
 import { NotificationsBell } from "@/features/notifications/components/notifications-bell";
@@ -113,7 +112,6 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const pinnedViews = usePinnedViews();
   const { total: attentionCount } = useAttention();
   const { data: openCount } = useOpenCount();
-  const { hasUnseen: whatsNewUnseen } = useWhatsNewStatus();
 
   useEffect(() => {
     if (!isLoading && !user) router.replace("/login");
@@ -159,7 +157,6 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
   const navigate = useCallback(
     (key: string) => {
-      if (key === "whats-new") return router.push("/whats-new");
       if (key === "docs") return router.push("/docs");
       const eco = ecosystemHref(key);
       if (eco) return router.push(eco);
@@ -255,9 +252,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         onViewAllProjects={() => router.push("/projects")}
         version={
           <SidebarVersion
-            onWhatsNew={() => router.push("/whats-new")}
             onDocs={() => router.push("/docs")}
-            unseen={whatsNewUnseen}
             activeKey={activeKey}
           />
         }

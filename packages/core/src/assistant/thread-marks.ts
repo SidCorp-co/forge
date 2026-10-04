@@ -32,7 +32,7 @@ export interface ThreadFacts {
 // cm:why an onboarding thread wears its onboarding's own status; any other room waits on the person
 // while a batch is open, is in progress while a reply is still being made, and is done otherwise —
 // the prototype's conversation status, so every row of the list carries one (REQ-11 BC-8)
-export function threadStatusOf(f: ThreadFacts): OnboardingStatus {
+function threadStatusOf(f: ThreadFacts): OnboardingStatus {
   if (f.onboarding) return f.onboarding;
   if (f.batchOpen) return 'waiting_on_you';
   if (f.replyPending) return 'in_progress';
@@ -40,9 +40,7 @@ export function threadStatusOf(f: ThreadFacts): OnboardingStatus {
 }
 
 /** The rooms among these holding a runner-hosted turn that is still dispatched or running. */
-export async function roomsWithLiveAgentTurn(
-  conversationIds: readonly string[],
-): Promise<Set<string>> {
+async function roomsWithLiveAgentTurn(conversationIds: readonly string[]): Promise<Set<string>> {
   const live = new Set<string>();
   if (conversationIds.length === 0) return live;
   const rows = await db

@@ -25,7 +25,7 @@ import {
 import { refusalCodeOf } from './refusal-code.js';
 import { type ChatToolset, toolError, toolResultText } from './tools/mcp-adapter.js';
 
-export const MAX_TOOL_ITERATIONS = 16;
+const MAX_TOOL_ITERATIONS = 16;
 
 /** What a tool call record keeps of a result: enough to see what the model was shown, never the full 24k body. */
 const RESULT_PREVIEW_CHARS = 500;
@@ -33,7 +33,7 @@ const RESULT_PREVIEW_CHARS = 500;
 const RESULT_ISSUE_REF_RE = /(?<![A-Za-z0-9]-)\b[A-Za-z][A-Za-z0-9]{1,5}-\d{1,6}\b/g;
 
 /** Every issue-shaped reference a tool result named, de-duplicated. */
-export function issueRefsIn(text: string): string[] {
+function issueRefsIn(text: string): string[] {
   const seen = new Set<string>();
   for (const m of text.matchAll(RESULT_ISSUE_REF_RE)) seen.add((m[0] as string).toUpperCase());
   return [...seen];

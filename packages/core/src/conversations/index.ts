@@ -23,6 +23,7 @@ export {
   turnState,
 } from './conversation-agent.js';
 export { registerConversationAgentBridge } from './conversation-agent-bridge.js';
+export type { TxOnly } from './db-executor.js';
 export {
   CORRECTIVE_PREFIX,
   emptyFallbackReply,

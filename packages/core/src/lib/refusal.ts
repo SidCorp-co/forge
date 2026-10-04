@@ -10,7 +10,7 @@ import {
 import { refusalStatusOf } from '@forge/contracts/refusal-statuses';
 import type { Context } from 'hono';
 
-export type { Refusal, RefusalEnvelope, RefusalStatus };
+export type { Refusal, RefusalEnvelope };
 
 export class RefusalError extends Error {
   constructor(
@@ -137,7 +137,11 @@ function detailRefusals(
   if (value === undefined || value === null) return [{ code, path, detail: message }];
   if (typeof value === 'string') return [{ code, path, detail: value }];
   if (isIssueList(value)) {
-    return value.issues.map((i) => ({ code, path: jsonPointer([...at, ...i.path]), detail: i.message }));
+    return value.issues.map((i) => ({
+      code,
+      path: jsonPointer([...at, ...i.path]),
+      detail: i.message,
+    }));
   }
   if (Array.isArray(value)) {
     if (value.every(isRefusalRow)) return value;

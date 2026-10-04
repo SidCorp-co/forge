@@ -8,10 +8,10 @@ import type { MessageRefusal } from './contract.js';
 import type { ForgeRecord } from './forge-record.js';
 import { type CriterionBlock, criterionBlocksIn, EVIDENCE_FIELD } from './verdict-identity.js';
 
-export type CitationForm = 'url' | 'machine-path' | 'identity' | 'in-tree' | 'attachment';
+type CitationForm = 'url' | 'machine-path' | 'identity' | 'in-tree' | 'attachment';
 
 /** The verdicts taken by looking, which owe what they were taken from. `skipped` owes nothing. */
-export const EXERCISED_VERDICTS: ReadonlySet<string> = new Set(['pass', 'fail', 'short']);
+const EXERCISED_VERDICTS: ReadonlySet<string> = new Set(['pass', 'fail', 'short']);
 
 const URL = /^https?:\/\//iu;
 const MACHINE_PATH = /^(?:\/|~\/|file:\/\/)/u;

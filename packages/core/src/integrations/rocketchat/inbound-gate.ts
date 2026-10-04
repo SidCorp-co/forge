@@ -1,6 +1,6 @@
 import type { RocketChatIncomingMessage } from './ddp-client.js';
 
-export type InboundSkipReason = 'own-message' | 'system' | 'edited' | 'empty';
+type InboundSkipReason = 'own-message' | 'system' | 'edited' | 'empty';
 
 /**
  * The facts about a message that hold in any room it came from.

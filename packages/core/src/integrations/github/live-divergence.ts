@@ -2,9 +2,9 @@ import type { LiveDivergence, WaitingCommit } from '../source-host/index.js';
 import { GitHubClientError, GitHubReadError, type GitHubRepoClient } from './client.js';
 
 /** Commits per compare page, GitHub's own ceiling. */
-export const COMPARE_PAGE_SIZE = 100;
+const COMPARE_PAGE_SIZE = 100;
 /** Pages read per reading. A longer wait than this is reported as cut short, never as complete. */
-export const COMPARE_MAX_PAGES = 3;
+const COMPARE_MAX_PAGES = 3;
 
 interface BranchRead {
   commit?: { sha?: string };

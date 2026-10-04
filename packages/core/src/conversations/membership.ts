@@ -73,7 +73,7 @@ export async function projectsNamed(
 /**
  * The shape a room takes from the handles in it.
  */
-export function shapeForHandleCount(liveHandles: number): 'direct' | 'group' {
+function shapeForHandleCount(liveHandles: number): 'direct' | 'group' {
   return liveHandles > 1 ? 'group' : 'direct';
 }
 
@@ -108,10 +108,7 @@ async function liveCounts(
 /**
  * The shape a room takes from who is in it.
  */
-export function shapeForCounts(counts: {
-  handles: number;
-  persons: number;
-}): 'direct' | 'group' | null {
+function shapeForCounts(counts: { handles: number; persons: number }): 'direct' | 'group' | null {
   if (counts.persons === 0) return null;
   return counts.handles > 1 || counts.persons > 1 ? 'group' : 'direct';
 }

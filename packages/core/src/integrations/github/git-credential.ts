@@ -4,7 +4,7 @@ import { githubHostOf } from './source-host.js';
 import type { GitHubConfig, GitHubSecrets } from './types.js';
 
 /** `owner/repo` out of git's helper path, or null for anything that is not exactly two segments. */
-export function parseRepoPath(raw: string): { owner: string; repo: string } | null {
+function parseRepoPath(raw: string): { owner: string; repo: string } | null {
   const parts = raw
     .trim()
     .replace(/^\/+/, '')

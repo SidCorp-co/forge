@@ -57,7 +57,7 @@ export type StartEscalationResult =
     };
 
 // every frozen comment in this file is an `i18n-allow` lint pragma; deleting one to pay the drain would break the language gate instead of cleaning prose.
-export function hasInFlightEscalation(
+function hasInFlightEscalation(
   projectId: string,
   rid: string,
   tmid?: string | null | undefined,
@@ -65,7 +65,7 @@ export function hasInFlightEscalation(
   return hasInFlightRoomSession(projectId, rid, 'escalation', tmid);
 }
 
-export function buildEscalationPrompt(question: string): string {
+function buildEscalationPrompt(question: string): string {
   return [
     'A teammate asked a question in Rocket.Chat that the fast assistant could not answer from existing project knowledge:',
     `"${question}"`,

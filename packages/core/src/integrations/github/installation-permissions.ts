@@ -20,7 +20,7 @@ import { appOctokit, responseOf } from './octokit.js';
 
 const READ_TIMEOUT_MS = 6000;
 
-export type InstallationGrants =
+type InstallationGrants =
   | {
       read: true;
       /** GitHub's own answer: permission name to level. */
@@ -30,7 +30,7 @@ export type InstallationGrants =
     }
   | { read: false; reason: string };
 
-export type AppIdentity =
+type AppIdentity =
   | { read: true; slug: string; ownerLogin: string; ownerType: string }
   | { read: false; reason: string };
 
@@ -76,7 +76,7 @@ async function askGitHub(args: {
  * "this installation holds nothing" would send an operator to re-grant permissions GitHub never
  * said were missing.
  */
-export async function readInstallationGrants(args: {
+async function readInstallationGrants(args: {
   appId: string;
   privateKey: string;
   installationId: number;
@@ -96,7 +96,7 @@ export async function readInstallationGrants(args: {
 }
 
 /** Who this App is, so the sentence can name the page a permission is granted on. */
-export async function readAppIdentity(args: {
+async function readAppIdentity(args: {
   appId: string;
   privateKey: string;
   apiBaseUrl?: string;
@@ -117,7 +117,7 @@ export async function readAppIdentity(args: {
 }
 
 /** What the health probe found out about the grant: nothing to say, a sentence, or a read failure. */
-export type GrantVerdict =
+type GrantVerdict =
   | { kind: 'granted' }
   | { kind: 'short'; shortfall: PermissionShortfall[]; message: string }
   | { kind: 'unread'; reason: string };

@@ -103,9 +103,6 @@ const preferencesSchema = z
     theme: z.enum(PREF_THEMES).optional(),
     language: z.enum(PREF_LANGUAGES).optional(),
     notifyOnMention: z.boolean().optional(),
-    // Identity of the newest "What's New" entry the user has seen (changelog
-    // version or `unreleased:<hash>`). Opaque to the server (ISS-384).
-    lastSeenWhatsNew: z.string().max(200).optional(),
     // The org the user is currently "working in" (ISS-469). `null` clears it
     // back to "no explicit choice" (the client resolves that to the personal
     // org). A non-null value is membership-checked below before it is stored.

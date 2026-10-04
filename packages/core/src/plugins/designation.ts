@@ -26,7 +26,7 @@ export const pluginDesignationsPatchSchema = z.array(pluginDesignationSchema).ma
 
 export type PluginDesignation = z.infer<typeof pluginDesignationSchema>;
 
-export interface ResolvedPluginDesignation extends PluginDesignation {
+interface ResolvedPluginDesignation extends PluginDesignation {
   /** Slugs of the bound projects that asked for this plugin — traceability for the operator. */
   projects: string[];
   /** Set when bound projects pinned different SHAs; the pin is then dropped rather than guessed. */
