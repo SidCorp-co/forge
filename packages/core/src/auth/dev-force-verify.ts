@@ -1,12 +1,11 @@
-import { eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { env } from '../config/env.js';
-import { db } from '../db/client.js';
-import { emailVerificationTokens, users } from '../db/schema.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { verificationByEmail } from './read.js';
+import { forceVerifyEmail } from './service.js';
 
 export const devForceVerifyRoutes = new Hono();
 
@@ -42,11 +41,7 @@ devForceVerifyRoutes.post(
       throw forbidden('email not allow-listed');
     }
 
-    const [row] = await db
-      .select({ id: users.id, emailVerifiedAt: users.emailVerifiedAt })
-      .from(users)
-      .where(sql`lower(${users.email}) = ${parsed.email.toLowerCase()}`)
-      .limit(1);
+    const row = await verificationByEmail(parsed.email);
     if (!row) {
       throw new HTTPException(404, {
         message: 'user not found',
@@ -55,10 +50,7 @@ devForceVerifyRoutes.post(
     }
 
     if (row.emailVerifiedAt === null) {
-      await db.transaction(async (tx) => {
-        await tx.update(users).set({ emailVerifiedAt: new Date() }).where(eq(users.id, row.id));
-        await tx.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, row.id));
-      });
+      await forceVerifyEmail(row.id);
     }
 
     return c.json({ verified: true, alreadyVerified: row.emailVerifiedAt !== null });
