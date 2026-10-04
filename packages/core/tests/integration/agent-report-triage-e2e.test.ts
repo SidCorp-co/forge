@@ -194,7 +194,7 @@ describe('0368 maps every reviewed state to a triage', () => {
         triage_reason: 'reviewed before triage was recorded',
         triaged_by: null,
       });
-      expect((by.get(unlinked)?.triaged_at as Date).toISOString()).toBe('2026-09-01T00:00:00.000Z');
+      expect(by.get(unlinked)?.triaged_at).toEqual(new Date('2026-09-01T00:00:00.000Z'));
       const [col] = await tx`
         SELECT count(*)::int AS n FROM information_schema.columns
         WHERE table_name = 'agent_reports' AND column_name = 'reviewed_at'`;
@@ -220,7 +220,8 @@ describe('0368 maps every reviewed state to a triage', () => {
       expect(fireOf.get(issueRun)).toBeNull();
       const [marker] =
         await tx`SELECT report FROM backfill_markers WHERE key = '0368_agent_report_triage'`;
-      const run = (marker?.report as { runs: Record<string, unknown>[] }).runs.at(-1);
+      const report = marker?.report as { runs: Record<string, unknown>[] } | undefined;
+      const run = report?.runs.at(-1);
       expect(run).toMatchObject({ fireLinked: 1, fireUnlinked: 1, new: 3 });
       expect(run?.unlinked).toEqual([
         expect.objectContaining({ reportId: lost, sessionId: orphan.session }),
@@ -421,6 +422,25 @@ describe('triage acts (REQ-16 BC-3)', () => {
     await expect(client`DELETE FROM issues WHERE id = ${issue?.id as string}`).rejects.toThrow(
       /agent_reports_linked_issue_id/,
     );
+  });
+});
+
+describe('a triage across every project moves reports only where the caller may write', () => {
+  it('leaves out a project the caller only views, and keeps one the org makes them admin of', async () => {
+    const { createTestProjectMember } = await import('../helpers/index.js');
+    const { listVisibleProjectsWithRole } = await import('../../src/projects/service.js');
+    const owner = await createTestUser(harness.db);
+    const viewed = (await createTestProject(harness.db, owner.id)).id;
+    const viewer = await createTestUser(harness.db);
+    await createTestProjectMember(harness.db, {
+      userId: viewer.id,
+      projectId: viewed,
+      role: 'viewer',
+    });
+    const own = (await createTestProject(harness.db, viewer.id)).id;
+    const rows = await listVisibleProjectsWithRole(viewer.id);
+    expect(rows.map((r) => r.id)).toEqual(expect.arrayContaining([viewed, own]));
+    expect(service.writableProjectIds(rows)).toEqual([own]);
   });
 });
 

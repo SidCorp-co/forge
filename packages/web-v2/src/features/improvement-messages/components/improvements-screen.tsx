@@ -98,8 +98,22 @@ function DismissForm({ report, projectId, onDone }: { report: AgentReport; proje
   );
 }
 
-function TriagedAction({ report, projectId, slug, canWrite }: { report: AgentReport; projectId: string; slug: string; canWrite: boolean }) {
+function ReopenButton({ report, projectId }: { report: AgentReport; projectId: string }) {
   const triage = useTriageAgentReport(projectId);
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      disabled={triage.isPending}
+      onClick={() => triage.mutate({ id: report.id, act: { act: "reopen" } })}
+      aria-label={`Reopen triage of ${report.summary}`}
+    >
+      Reopen
+    </Button>
+  );
+}
+
+function TriagedAction({ report, projectId, slug, canWrite }: { report: AgentReport; projectId: string; slug: string; canWrite: boolean }) {
   if (report.feedback) {
     const fb = report.feedback;
     return (
@@ -111,30 +125,19 @@ function TriagedAction({ report, projectId, slug, canWrite }: { report: AgentRep
       </span>
     );
   }
-  if (report.linkedIssueId) {
-    return (
-      <Link href={`/projects/${slug}/issues/${report.linkedIssueId}`} className="fg-caption text-accent hover:underline">
-        View issue →
-      </Link>
-    );
-  }
   return (
     <span className="inline-flex items-center gap-2">
-      <span className="fg-caption max-w-[260px] truncate text-muted" title={report.triageReason ?? undefined}>
-        {report.triage === "duplicate" ? "Repeats an earlier report" : report.triageReason}
-        {report.triagedBy?.name ? ` · ${report.triagedBy.name}` : ""}
-      </span>
-      {canWrite ? (
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={triage.isPending}
-          onClick={() => triage.mutate({ id: report.id, act: { act: "reopen" } })}
-          aria-label={`Reopen triage of ${report.summary}`}
-        >
-          Reopen
-        </Button>
-      ) : null}
+      {report.linkedIssueId ? (
+        <Link href={`/projects/${slug}/issues/${report.linkedIssueId}`} className="fg-caption text-accent hover:underline">
+          View issue →
+        </Link>
+      ) : (
+        <span className="fg-caption max-w-[260px] truncate text-muted" title={report.triageReason ?? undefined}>
+          {report.triage === "duplicate" ? "Repeats an earlier report" : report.triageReason}
+          {report.triagedBy?.name ? ` · ${report.triagedBy.name}` : ""}
+        </span>
+      )}
+      {canWrite ? <ReopenButton report={report} projectId={projectId} /> : null}
     </span>
   );
 }

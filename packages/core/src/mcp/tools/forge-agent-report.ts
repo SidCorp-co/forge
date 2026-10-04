@@ -18,6 +18,7 @@ import {
   reportViews,
   triageReports,
   visibleIssue,
+  writableProjectIds,
 } from '../../agent-reports/service.js';
 import { env } from '../../config/env.js';
 import {
@@ -32,6 +33,7 @@ import {
   assertPrincipalIsMember,
   type ContextScopedMcpToolFactory,
   loadVisibleProjectIdsForPrincipal,
+  loadVisibleProjectsWithRoleForPrincipal,
   type McpContext,
   principalAgency,
   refusedAnswer,
@@ -304,8 +306,12 @@ async function triage(ctx: McpContext, input: z.infer<typeof inputSchema>) {
           'BAD_REQUEST: createIssue files into one project, so a scope="all" triage names an existing issue instead',
         );
       }
+      const writable = writableProjectIds(await loadVisibleProjectsWithRoleForPrincipal(principal));
+      if (writable.length === 0) {
+        throw new Error('NOT_FOUND: no project you can write to holds agent reports');
+      }
       scope = [
-        inArray(agentReports.projectId, await visible()),
+        inArray(agentReports.projectId, writable),
         eq(agentReports.signalKey, input.signalKey),
       ];
     } else {

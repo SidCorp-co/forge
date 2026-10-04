@@ -148,10 +148,9 @@
 
 ### Added
 
-- **An agent report says what was decided about it, by whom and when (ISS-113).** Its triage is
-  new, filed, dismissed or duplicate; filing makes a draft issue in the same write, a dismissal
-  needs a reason, and a report from a scheduled run links that run. Older reports are mapped, and
-  the Improvements list shows triage and offers Dismiss.
+- **An agent report records its triage, who decided and when (ISS-113).** Filing makes a draft
+  issue, a dismissal needs a reason, and a scheduled run's report links that run. Improvements
+  shows triage and offers Dismiss.
 
 - **Every schedule run is one row in its history (ISS-112).** A run of any kind records how it
   started, ended and why, and links its session; older runs are rebuilt. A run skipped for want of a

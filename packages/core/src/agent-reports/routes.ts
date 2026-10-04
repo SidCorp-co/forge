@@ -20,6 +20,7 @@ import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../
 import { refusalEnvelope } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
+import { listVisibleProjectsWithRole } from '../projects/service.js';
 import {
   announceFiled,
   listReports,
@@ -29,6 +30,7 @@ import {
   type TriageOutcome,
   triageReports,
   visibleIssue,
+  writableProjectIds,
 } from './service.js';
 
 const listQuerySchema = z
@@ -122,7 +124,9 @@ agentReportRoutes.post(
           'createIssue files into one project, so a scope=all triage names an existing issue instead',
         );
       }
-      scoped = inArray(agentReports.projectId, await loadVisibleProjectIds(userId));
+      const writable = writableProjectIds(await listVisibleProjectsWithRole(userId));
+      if (writable.length === 0) throw notFound('no project you can write to holds agent reports');
+      scoped = inArray(agentReports.projectId, writable);
     } else {
       if (!body.projectId) throw badRequest('projectId is required unless scope=all');
       const access = await loadProjectAccess(body.projectId, userId);

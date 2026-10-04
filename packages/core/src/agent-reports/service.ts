@@ -20,6 +20,8 @@ import {
   agentReports,
   agentSessions,
   issues,
+  type OrgMemberRole,
+  type ProjectMemberRole,
   projects,
   scheduleRuns,
 } from '../db/schema.js';
@@ -30,6 +32,7 @@ import type { ActorAgency } from '../issues/actor-agency.js';
 import { announceIssueCreated } from '../issues/create-service.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { writeRecordEvent } from '../issues/record-events/store.js';
+import { maxProjectRole, orgDerivedProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import type { Refusal } from '../lib/refusal.js';
@@ -91,6 +94,23 @@ export async function readReport(reportId: string) {
     .where(eq(agentReports.id, reportId))
     .limit(1);
   return row ?? null;
+}
+
+// cm:guard ISS-113: a triage across every project moves reports only where the caller may write,
+// member or above, effective through the org; a viewer membership is read-only, as on the
+// single-report and project doors
+export function writableProjectIds(
+  rows: readonly {
+    id: string;
+    memberRole: ProjectMemberRole | null;
+    orgRole: OrgMemberRole | null;
+  }[],
+): string[] {
+  return rows
+    .filter((r) =>
+      projectRoleAtLeast(maxProjectRole(r.memberRole, orgDerivedProjectRole(r.orgRole)), 'member'),
+    )
+    .map((r) => r.id);
 }
 
 /** The issue a file act links, when it sits in one of `projectIds`; null is the caller's 404. */
