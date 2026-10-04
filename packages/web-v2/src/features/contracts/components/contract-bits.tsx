@@ -3,12 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { type BannerTone, Button, EnumBadge, LEGEND, MarkStrip, StatusBadge, statusReading, WaitBanner, type WaitingOnView } from "@/design";
+import { type BannerTone, Button, EnumBadge, LEGEND, MarkStrip, StatusBadge, statusReading, WaitBanner } from "@/design";
 import { feedbackHref } from "@/features/feedback/routes";
 import { issueHref } from "@/features/issues/routes";
 import { requirementHref } from "@/features/requirements/routes";
 import { formatStamp } from "@/lib/utils/format";
-import type { ContractAttentionGroup, ContractConsumerView, ContractStandingRow, ContractWaitingOn } from "../types";
+import type { ContractAttentionGroup, ContractConsumerView, ContractStandingRow } from "../types";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -20,8 +20,6 @@ export function ContractStateBadge({ row }: { row: Pick<ContractStandingRow, "st
 export function KindBadge({ kind }: { kind: string }) {
   return <EnumBadge family="interfaceType" value={kind} />;
 }
-
-export const contractWaitingView = (w: ContractWaitingOn): WaitingOnView => ({ kind: w.kind, who: w.who, act: w.act, rule: w.rule });
 
 export function windowLeft(dueAt: string, now: number = Date.now()): string {
   const ms = new Date(dueAt).getTime() - now;

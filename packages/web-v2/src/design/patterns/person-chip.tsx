@@ -3,12 +3,13 @@
 // Who did or owns something, drawn one way everywhere: a person's initial in a round mark, an
 // agent's mark in a violet square (never mistaken for a person's or a run's), and the name beside.
 
+import type { WaitingMark } from "@forge/contracts/standing";
 import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "../icons/icon";
 import { AGENT_TINT } from "../status";
 import { LEGEND } from "../vocabulary";
 
-export type WhoKind = "you" | "person" | "agent" | "system" | "issue" | "release" | "project";
+export type WhoKind = Exclude<WaitingMark, "none">;
 
 const SYSTEM_ICON: Partial<Record<WhoKind, IconName>> = { system: "settings", issue: "rows", release: "rocket", project: "ecosystem" };
 

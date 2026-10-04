@@ -5,9 +5,12 @@ import type {
   ContractProjectRef,
   ContractState,
   ContractVersionRef,
-  ContractWaitingOn,
+  ContractWaitingKind,
   ContractWindow,
 } from '@forge/contracts/contract-standing';
+import type { WaitingOn } from '@forge/contracts/standing';
+
+type ContractWaitingOn = WaitingOn<ContractWaitingKind>;
 
 export interface VersionFact {
   version: string;
@@ -157,11 +160,11 @@ function providedTurn(
     return v.decides(pending.classification)
       ? {
           group: 'needs_you',
-          waitingOn: { kind: 'you', who: 'You', act, rule, ref: pending.version },
+          waitingOn: { kind: 'you', who: 'You', act, rule, ref: pending.version, dueAt: null },
         }
       : {
           group: 'waiting',
-          waitingOn: { kind: 'person', who: 'An org admin', act, rule, ref: pending.version },
+          waitingOn: { kind: 'person', who: 'An org admin', act, rule, ref: pending.version, dueAt: null },
         };
   }
   const asked = f.requests.find((r) => r.direction === 'incoming' && r.open);
@@ -172,7 +175,7 @@ function providedTurn(
     return v.acts
       ? {
           group: 'needs_you',
-          waitingOn: { kind: 'you', who: 'You', act, rule, ref: asked.requirementKey },
+          waitingOn: { kind: 'you', who: 'You', act, rule, ref: asked.requirementKey, dueAt: null },
         }
       : {
           group: 'waiting',
@@ -182,6 +185,7 @@ function providedTurn(
             act,
             rule,
             ref: asked.requirementKey,
+            dueAt: null,
           },
         };
   }
@@ -197,6 +201,7 @@ function providedTurn(
         act: `adopt ${window.version} by ${window.dueAt.slice(0, 10)}`,
         rule: 'providedTurn: a breaking version is approved and a consumer is still built against an older one inside the window',
         ref: window.version,
+        dueAt: window.dueAt,
       },
     };
   }
@@ -215,6 +220,7 @@ function providedTurn(
       act,
       rule: 'providedTurn: nothing is proposed, asked or owed inside a window',
       ref: null,
+      dueAt: null,
     },
   };
 }
@@ -228,11 +234,18 @@ function consumedTurn(f: ContractFacts, v: StandingViewer, current: VersionFact 
     return v.acts
       ? {
           group: 'needs_you',
-          waitingOn: { kind: 'you', who: 'You', act, rule, ref: change.feedback },
+          waitingOn: { kind: 'you', who: 'You', act, rule, ref: change.feedback, dueAt: change.dueAt.toISOString() },
         }
       : {
           group: 'waiting',
-          waitingOn: { kind: 'person', who: 'A project member', act, rule, ref: change.feedback },
+          waitingOn: {
+            kind: 'person',
+            who: 'A project member',
+            act,
+            rule,
+            ref: change.feedback,
+            dueAt: change.dueAt.toISOString(),
+          },
         };
   }
   const asked = f.requests.find((r) => r.direction === 'outgoing' && r.open);
@@ -245,6 +258,7 @@ function consumedTurn(f: ContractFacts, v: StandingViewer, current: VersionFact 
         act: `agree ${asked.number} · their ${asked.requirementKey}`,
         rule: 'consumedTurn: the change request landed as the provider’s draft requirement, not agreed yet',
         ref: asked.number,
+        dueAt: null,
       },
     };
   }
@@ -258,6 +272,7 @@ function consumedTurn(f: ContractFacts, v: StandingViewer, current: VersionFact 
         act: `publish ≥ ${need} · ${f.waits.length} ${plural(f.waits.length, 'issue waits', 'issues wait')}`,
         rule: 'consumedTurn: an unsettled contract wait holds its issue out of dispatch until the provider approves a version at or above it (ecosystem/waits/rules.ts:holdsDispatch)',
         ref: f.waits[0]?.issue ?? null,
+        dueAt: null,
       },
     };
   }
@@ -274,6 +289,7 @@ function consumedTurn(f: ContractFacts, v: StandingViewer, current: VersionFact 
       act,
       rule: 'consumedTurn: no breaking item, request or wait is open',
       ref: null,
+      dueAt: null,
     },
   };
 }

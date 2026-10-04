@@ -5,6 +5,13 @@
 
 import type { CriterionStanding, IssueStatusTone } from "./issue-vocabulary.js";
 import type { BcVerdict, RequirementState } from "./requirements.js";
+import type {
+	Standing,
+	StandingGroup,
+	StandingGroupLabels,
+	WaitingKind,
+	WaitingOn,
+} from "./standing.js";
 
 export const VERSION_STATUSES = [
 	"in_progress",
@@ -69,21 +76,18 @@ export const RELEASE_STATE_HINTS: Record<ReleaseState, string> = {
 	aborted: "aborted: the release run was stopped on purpose",
 };
 
-export const RELEASE_ATTENTION = [
-	"you",
+export const RELEASE_ATTENTION_GROUPS = [
+	"needs_you",
 	"moving",
-	"others",
+	"waiting",
 	"stuck",
 	"done",
 	"stopped",
-] as const;
-export type ReleaseAttention = (typeof RELEASE_ATTENTION)[number];
+] as const satisfies readonly StandingGroup[];
+export type ReleaseAttentionGroup = (typeof RELEASE_ATTENTION_GROUPS)[number];
 
-export const RELEASE_ATTENTION_LABELS: Record<
-	ReleaseAttention,
-	{ label: string; hint: string; tone: IssueStatusTone; collapsed: boolean }
-> = {
-	you: {
+export const RELEASE_ATTENTION_LABELS: StandingGroupLabels<ReleaseAttentionGroup> = {
+	needs_you: {
 		label: "Needs you",
 		hint: "Approve or return a release, or cut the next one",
 		tone: "you",
@@ -95,7 +99,7 @@ export const RELEASE_ATTENTION_LABELS: Record<
 		tone: "run",
 		collapsed: false,
 	},
-	others: {
+	waiting: {
 		label: "Someone else’s turn",
 		hint: "The master or another approver acts next",
 		tone: "neutral",
@@ -127,15 +131,8 @@ export const RELEASE_WAITING_KINDS = [
 	"agent",
 	"system",
 	"none",
-] as const;
+] as const satisfies readonly WaitingKind[];
 export type ReleaseWaitingKind = (typeof RELEASE_WAITING_KINDS)[number];
-
-export interface ReleaseWaiting {
-	kind: ReleaseWaitingKind;
-	who: string;
-	act: string;
-	rule: string;
-}
 
 export interface ReleasePerson {
 	id: string;
@@ -184,14 +181,13 @@ export interface ReleaseContentGroup {
 	issues: ReleaseContentIssue[];
 }
 
-export interface ReleaseSummary {
+export interface ReleaseSummary
+	extends Standing<ReleaseAttentionGroup, ReleaseWaitingKind> {
 	key: string;
 	version: string;
 	runId: string | null;
 	state: ReleaseState;
 	current: boolean;
-	attention: ReleaseAttention;
-	waiting: ReleaseWaiting;
 	headline: string;
 	issueCount: number;
 	requirements: string[];
@@ -216,7 +212,7 @@ export type ReleaseProduction =
 
 export interface ReleaseListResponse {
 	releases: ReleaseSummary[];
-	counts: Record<ReleaseAttention, number>;
+	counts: Record<ReleaseAttentionGroup, number>;
 	approvalRequired: boolean;
 	production: ReleaseProduction;
 }
@@ -230,7 +226,7 @@ export interface ReleaseIssueView {
 	requirement: string | null;
 	proof: ReleaseProof;
 	criteria: ReleaseCriteriaTotals;
-	waiting: ReleaseWaiting;
+	waitingOn: WaitingOn<ReleaseWaitingKind>;
 }
 
 export interface ReleaseRequirementView {

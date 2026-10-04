@@ -18,7 +18,7 @@ import {
 import { issueHref } from "@/features/issues/routes";
 import { requirementHref } from "@/features/requirements/routes";
 import type { ReleaseDetail, ReleaseIssueView, ReleaseNoteEntry, ReleaseSummary } from "../types";
-import { GateLine, waitingView } from "./release-bits";
+import { GateLine } from "./release-bits";
 import { ReleaseTrain } from "./release-train";
 
 export const RELEASE_TABS = ["overview", "issues", "criteria", "checks", "notes"] as const;
@@ -104,7 +104,7 @@ const issueRow =
       i.criteria.total === 0 ? RELEASE_PROOF_LABELS.unrecorded : `Criteria ${i.criteria.proven} of ${i.criteria.total} proven`,
     ],
     state: <StatusBadge family="issue" value={i.status} />,
-    waitingOn: <WaitingOn w={waitingView(i.waiting)} />,
+    waitingOn: <WaitingOn w={i.waitingOn} />,
     owner: null,
     age: null,
   });

@@ -1,21 +1,18 @@
 import { FEEDBACK_UNTRIAGED_PHASES, type FeedbackPhase } from '@forge/contracts/feedback';
 import type { NeedsYouArea } from '@forge/contracts/needs-you';
+import { needsViewer, type Standing } from '@forge/contracts/standing';
 
 /**
  * The rows a list puts in its waiting-on-you group, and what each owes the viewer, most frequent
- * first. `isYou` is the list's own grouping, so the count is the list's group size by construction.
+ * first. The group is the list's own standing, so the count is the list's group size by construction.
  */
-export function areaOf<T>(
-  rows: readonly T[],
-  isYou: (row: T) => boolean,
-  actOf: (row: T) => string,
-): NeedsYouArea {
+export function areaOf(rows: readonly Standing[]): NeedsYouArea {
   const tally = new Map<string, number>();
   let you = 0;
   for (const row of rows) {
-    if (!isYou(row)) continue;
+    if (!needsViewer(row)) continue;
     you += 1;
-    const act = actOf(row);
+    const act = row.waitingOn.act;
     tally.set(act, (tally.get(act) ?? 0) + 1);
   }
   const acts = [...tally]

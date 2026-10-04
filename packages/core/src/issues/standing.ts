@@ -14,8 +14,9 @@ import type {
   IssueModuleRef,
   IssueRequirementRef,
   IssueStanding,
-  IssueWaitingOn,
+  IssueWaitingKind,
 } from '@forge/contracts/issue-standing';
+import type { WaitingOn } from '@forge/contracts/standing';
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import {
   type IssueStatusTone,
@@ -90,13 +91,15 @@ export interface IssueStandingInput {
   now: Date;
 }
 
+type IssueWaitingOn = WaitingOn<IssueWaitingKind>;
+
 const wait = (
-  kind: IssueWaitingOn['kind'],
+  kind: IssueWaitingKind,
   who: string,
   act: string,
   rule: string,
   ref: string | null = null,
-): IssueWaitingOn => ({ kind, who, act, rule, ref });
+): IssueWaitingOn => ({ kind, who, act, rule, ref, dueAt: null });
 
 /** The badge tone of a status on this project (contracts `issueStatusToneOn`). */
 export function toneOf(status: IssueStatus, releaseApproval: boolean): IssueStatusTone {

@@ -1,7 +1,7 @@
 export type {
   ReleaseApprovalView,
   ReleaseAttemptView,
-  ReleaseAttention,
+  ReleaseAttentionGroup,
   ReleaseContentGroup,
   ReleaseCriteriaTotals,
   ReleaseCriterionView,
@@ -17,7 +17,6 @@ export type {
   ReleaseResponse,
   ReleaseState,
   ReleaseSummary,
-  ReleaseWaiting,
 } from "@forge/contracts/releases";
 export type { ReleaseRoster, ReleaseRosterEntry } from "./roster";
 

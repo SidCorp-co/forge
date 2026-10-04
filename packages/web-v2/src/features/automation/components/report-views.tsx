@@ -41,7 +41,7 @@ import { useAutomationStanding, useReportDetail } from "../hooks";
 import { feedbackDraftOf } from "../report-feedback";
 import { fireHref, reportHref, scheduleHref, sessionHref } from "../routes";
 import type { ReportStanding } from "../types";
-import { shortId, waitingView } from "../view";
+import { shortId } from "../view";
 
 const aboutOf = (r: ReportStanding) => `${enumLabel("agentReportTarget", r.target)}${r.targetRef ? ` ${r.targetRef}` : ""}`;
 
@@ -54,7 +54,7 @@ export const reportRow =
     title: r.summary,
     facts: [enumLabel("agentReportKind", r.kind), aboutOf(r), `Severity ${r.severity}`, r.fire ? `From ${r.fire.scheduleName}` : "From a run"],
     state: <StatusBadge family="reportTriage" value={r.triage} />,
-    waitingOn: <WaitingOn w={waitingView(r.waitingOn)} />,
+    waitingOn: <WaitingOn w={r.waitingOn} />,
     owner: r.fire?.scheduleName ?? "—",
     age: { text: formatAge(r.createdAt), title: `Filed ${formatStamp(r.createdAt)}` },
     dim: r.attentionGroup === "closed",
@@ -83,7 +83,7 @@ export function ReportLines({ reports, slug }: { reports: readonly ReportStandin
 
 export function ReportBanner({ r, className }: { r: ReportStanding; className?: string }) {
   if (r.triage !== "new") return null;
-  const w = waitingView(r.waitingOn);
+  const w = r.waitingOn;
   return (
     <WaitBanner
       tone={w.kind === "you" ? "you" : "blocked"}

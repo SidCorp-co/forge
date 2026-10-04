@@ -3,22 +3,24 @@
 // needs_you and wait_triage; ISS-114): pure, so every rule is a unit test, and no screen derives one
 
 import type { AgentReportView } from '@forge/contracts/agent-reports';
-import type {
-  AutomationAct,
-  AutomationPerson,
-  AutomationWaitingOn,
-  FireGroup,
-  FireProduced,
-  FireProposal,
-  FireStanding,
-  ReportFireRef,
-  ReportGroup,
-  ReportStanding,
-  ScheduleGroup,
-  ScheduleLastFire,
-  ScheduleStanding,
-  ScheduleState,
+import {
+  AUTOMATION_ACT_LABELS,
+  type AutomationAct,
+  type AutomationPerson,
+  type AutomationWaitingKind,
+  type FireGroup,
+  type FireProduced,
+  type FireProposal,
+  type FireStanding,
+  type ReportFireRef,
+  type ReportGroup,
+  type ReportStanding,
+  type ScheduleGroup,
+  type ScheduleLastFire,
+  type ScheduleStanding,
+  type ScheduleState,
 } from '@forge/contracts/automation-standing';
+import { nobodyWaits, type WaitingOn } from '@forge/contracts/standing';
 import type { LastFire } from '../schedules/fires.js';
 import { type ScheduleStreak, streakFails } from '../schedules/streak.js';
 
@@ -74,12 +76,22 @@ export interface ReportFacts {
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
-const NOBODY = (rule: string): AutomationWaitingOn => ({
-  kind: 'none',
-  who: 'Nobody',
-  act: null,
+type AutomationWaitingOn = WaitingOn<AutomationWaitingKind>;
+
+const NOBODY = nobodyWaits;
+
+const owed = (
+  kind: AutomationWaitingKind,
+  who: string,
+  act: AutomationAct,
+  rule: string,
+): AutomationWaitingOn => ({
+  kind,
+  who,
+  act: AUTOMATION_ACT_LABELS[act],
   rule,
   ref: null,
+  dueAt: null,
 });
 
 function personWait(
@@ -88,8 +100,8 @@ function personWait(
   act: AutomationAct,
   rule: string,
 ): AutomationWaitingOn {
-  if (person.id === viewer.userId) return { kind: 'you', who: 'You', act, rule, ref: null };
-  return { kind: 'person', who: person.name ?? 'The schedule owner', act, rule, ref: null };
+  if (person.id === viewer.userId) return owed('you', 'You', act, rule);
+  return owed('person', person.name ?? 'The schedule owner', act, rule);
 }
 
 function groupWait(
@@ -99,9 +111,8 @@ function groupWait(
   rule: string,
 ): AutomationWaitingOn {
   const mine = kind === 'admins' ? viewer.isAdmin : viewer.canWrite;
-  if (mine) return { kind: 'you', who: 'You', act, rule, ref: null };
-  const who = kind === 'admins' ? 'A project admin' : 'A project writer';
-  return { kind, who, act, rule, ref: null };
+  if (mine) return owed('you', 'You', act, rule);
+  return owed(kind, kind === 'admins' ? 'A project admin' : 'A project writer', act, rule);
 }
 
 export function scheduleStateOf(
@@ -340,18 +351,20 @@ function reportWaitOf(r: ReportFacts, viewer: AutomationViewer): AutomationWaiti
     return {
       kind: 'feedback',
       who: v.feedback.key,
-      act: null,
+      act: '',
       rule: `filed as ${v.feedback.key}, at ${v.feedback.phase}`,
       ref: v.feedback.key,
+      dueAt: null,
     };
   }
   if (v.triage === 'filed' && r.issue) {
     return {
       kind: 'issue',
       who: r.issue.key,
-      act: null,
+      act: '',
       rule: `filed as ${r.issue.key}, at ${r.issue.status}`,
       ref: r.issue.key,
+      dueAt: null,
     };
   }
   return NOBODY(`triaged ${v.triage}`);

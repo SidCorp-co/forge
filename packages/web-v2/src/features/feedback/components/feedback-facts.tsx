@@ -26,7 +26,7 @@ export function PhaseSteps({ f }: { f: FeedbackView }) {
         key: p,
         label: FEEDBACK_PHASE_LABELS[p],
         state: i < at || (i === at && p === "verified") ? "done" : i === at ? "now" : "next",
-        tone: f.attention === "you" ? "you" : "run",
+        tone: f.attentionGroup === "needs_you" ? "you" : "run",
       }))}
     />
   );
@@ -34,13 +34,15 @@ export function PhaseSteps({ f }: { f: FeedbackView }) {
 
 /** One line at the top of the page and the peek: whom it waits on, from core's read model. */
 export function FeedbackBanner({ f, className }: { f: FeedbackView; className?: string }) {
-  const w = f.waiting;
-  const tone = FEEDBACK_ATTENTION_LABELS[f.attention].tone;
+  const w = f.waitingOn;
+  const g = f.attentionGroup;
+  const tone = FEEDBACK_ATTENTION_LABELS[g].tone;
   return (
     <WaitBanner
-      tone={f.attention === "others" || f.attention === "done" ? "calm" : tone}
-      head={f.attention === "done" ? `${FEEDBACK_PHASE_LABELS[f.phase]}.` : `Waiting on ${w.kind === "you" ? "you" : w.who}:`}
-      body={f.attention === "done" ? "Nothing is owed on it." : w.act || f.waitingOn}
+      tone={g === "waiting" || g === "done" ? "calm" : tone}
+      head={g === "done" ? `${FEEDBACK_PHASE_LABELS[f.phase]}.` : `Waiting on ${w.kind === "you" ? "you" : w.who}:`}
+      body={g === "done" ? "Nothing is owed on it." : w.act || w.who}
+      rule={w.rule}
       className={className}
     />
   );
@@ -77,9 +79,9 @@ export function FeedbackFacts({ f, slug }: { f: FeedbackView; slug: string }) {
         <Fact label="State">
           <StatusBadge family="feedbackPhase" value={f.phase} />
         </Fact>
-        {f.attention !== "done" ? (
+        {f.attentionGroup !== "done" ? (
           <Fact label="Waiting on">
-            <WaitingOn w={f.waiting} />
+            <WaitingOn w={f.waitingOn} />
           </Fact>
         ) : null}
         <Fact label="Severity">

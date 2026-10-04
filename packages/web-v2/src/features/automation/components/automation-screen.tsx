@@ -21,6 +21,7 @@ import {
   PageTitle,
   ProjectLoader,
   rememberListOrigin,
+  standingGroups,
   Tabs,
   useGroupFold,
   usePeek,
@@ -35,7 +36,6 @@ import { cn } from "@/lib/utils/cn";
 import { useAutomationStanding } from "../hooks";
 import { AUTOMATION_LIST, AUTOMATION_TABS, type AutomationTab, fireHref, reportHref, scheduleHref } from "../routes";
 import type { AutomationStandingResponse, FireStanding, ReportStanding, ScheduleStanding } from "../types";
-import { groupsOf } from "../view";
 import { FirePeek, fireRow } from "./fire-views";
 import { PmSettings } from "./pm-settings";
 import { ReportPeek, reportRow } from "./report-views";
@@ -47,14 +47,14 @@ const matches = (text: string, ...parts: Array<string | null | undefined>) =>
 function tabRows(d: AutomationStandingResponse, tab: AutomationTab, text: string) {
   if (tab === "schedules") {
     const rows = d.schedules.filter((s) => matches(text, s.name, s.templateKey, s.targetProjectSlug, s.owner?.name));
-    return groupsOf(rows, SCHEDULE_GROUPS, SCHEDULE_GROUP_LABELS) as ListGroup<ScheduleStanding | FireStanding | ReportStanding>[];
+    return standingGroups(rows, SCHEDULE_GROUPS, SCHEDULE_GROUP_LABELS) as ListGroup<ScheduleStanding | FireStanding | ReportStanding>[];
   }
   if (tab === "fires") {
     const rows = d.fires.filter((f) => matches(text, f.id, f.scheduleName));
-    return groupsOf(rows, FIRE_GROUPS, FIRE_GROUP_LABELS) as ListGroup<ScheduleStanding | FireStanding | ReportStanding>[];
+    return standingGroups(rows, FIRE_GROUPS, FIRE_GROUP_LABELS) as ListGroup<ScheduleStanding | FireStanding | ReportStanding>[];
   }
   const rows = d.reports.filter((r) => matches(text, r.id, r.summary, r.fire?.scheduleName, r.targetRef));
-  return groupsOf(rows, REPORT_GROUPS, REPORT_GROUP_LABELS) as ListGroup<ScheduleStanding | FireStanding | ReportStanding>[];
+  return standingGroups(rows, REPORT_GROUPS, REPORT_GROUP_LABELS) as ListGroup<ScheduleStanding | FireStanding | ReportStanding>[];
 }
 
 const COLUMNS: Record<AutomationTab, { key: string; title: string; state: string; waitingOn: string; meta: string }> = {

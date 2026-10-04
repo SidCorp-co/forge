@@ -12,6 +12,7 @@ import {
   type RunStandingList,
   type RunStandingScope,
 } from '@forge/contracts/run-standing';
+import { needsViewer } from '@forge/contracts/standing';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { SESSION_SILENCE_TIMEOUT_MS } from '../devices/session-silence.js';
@@ -167,7 +168,7 @@ export async function listRunStanding(
       live: counts.live,
       finished: counts.finished,
       liveByState,
-      needsViewer: live.filter((r) => r.needsViewer).length,
+      needsViewer: live.filter(needsViewer).length,
       held: live.filter((r) => r.holder.source === 'held').length,
     },
     excluded: [

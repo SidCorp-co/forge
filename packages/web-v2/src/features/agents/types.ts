@@ -6,7 +6,6 @@ export type {
   RunStandingDetail,
   RunStandingList,
   RunStandingScope,
-  RunWaitingOn,
 } from "@forge/contracts/run-standing";
 export type { MasterClosedPass, MasterPassList, MasterPassView, MasterStanding } from "@forge/contracts/master-standing";
 
