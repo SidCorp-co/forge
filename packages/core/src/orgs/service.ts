@@ -1,7 +1,17 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { organizationMembers, organizations, users } from '../db/schema.js';
-import { addOrgMember } from '../permissions/index.js';
+import {
+  type OrgMemberRole,
+  organizationMembers,
+  organizations,
+  orgInvitations,
+  users,
+} from '../db/schema.js';
+import {
+  addOrgMember,
+  removeOrgMember,
+  updateOrgMember,
+} from '../permissions/index.js';
 
 /** The user's personal org (created at signup, or by migration 0106 for older users). */
 export async function findPersonalOrgId(
@@ -115,4 +125,90 @@ export async function listOrgMembers(orgId: string): Promise<OrgMember[]> {
     .from(organizationMembers)
     .innerJoin(users, eq(users.id, organizationMembers.userId))
     .where(eq(organizationMembers.orgId, orgId));
+}
+
+const orgHead = {
+  id: organizations.id,
+  slug: organizations.slug,
+  name: organizations.name,
+  isPersonal: organizations.isPersonal,
+  createdAt: organizations.createdAt,
+};
+
+/** A team org created by `userId`, who becomes its owner. A taken slug throws the unique violation. */
+export async function createTeamOrg(userId: string, input: { slug: string; name: string }) {
+  return db.transaction(async (tx) => {
+    const [org] = await tx
+      .insert(organizations)
+      .values({ slug: input.slug, name: input.name, isPersonal: false, createdBy: userId })
+      .returning(orgHead);
+    if (!org) throw new Error('organizations: insert returned no row');
+    await addOrgMember(tx, { orgId: org.id, userId, role: 'owner' });
+    return org;
+  });
+}
+
+/** The org takes the patch; null when it does not exist. */
+export async function updateOrg(orgId: string, patch: { name?: string | undefined }) {
+  const [updated] = await db
+    .update(organizations)
+    .set({ ...(patch.name !== undefined ? { name: patch.name } : {}) })
+    .where(eq(organizations.id, orgId))
+    .returning(orgHead);
+  return updated ?? null;
+}
+
+/** Delete the org row. */
+export async function deleteOrg(orgId: string): Promise<void> {
+  await db.delete(organizations).where(eq(organizations.id, orgId));
+}
+
+/** Add an existing user to the org; null when they were already a member. */
+export async function addExistingOrgMember(orgId: string, userId: string, role: OrgMemberRole) {
+  return addOrgMember(db, { orgId, userId, role }, { ifAbsent: true });
+}
+
+/** Revoke the pending invitation for `email`; false when there was none. */
+export async function revokeOrgInvitation(orgId: string, email: string): Promise<boolean> {
+  const deleted = await db
+    .delete(orgInvitations)
+    .where(
+      and(
+        eq(orgInvitations.orgId, orgId),
+        eq(orgInvitations.email, email),
+        isNull(orgInvitations.acceptedAt),
+      ),
+    )
+    .returning({ token: orgInvitations.token });
+  return deleted.length > 0;
+}
+
+/** Change a member's role or lenses; null when the membership is gone. */
+export async function changeOrgMember(
+  orgId: string,
+  userId: string,
+  patch: { role?: OrgMemberRole | undefined; lenses?: readonly string[] | undefined },
+) {
+  return updateOrgMember(db, orgId, userId, patch);
+}
+
+/** Remove a member from the org. */
+export async function dropOrgMember(orgId: string, userId: string): Promise<void> {
+  await removeOrgMember(db, orgId, userId);
+}
+
+/** Dismiss the pending invitation `token` when it was sent to `email`; false when none matched. */
+export async function declineOrgInvitation(token: string, email: string): Promise<boolean> {
+  const [updated] = await db
+    .update(orgInvitations)
+    .set({ dismissedAt: new Date() })
+    .where(
+      and(
+        eq(orgInvitations.token, token),
+        sql`lower(${orgInvitations.email}) = lower(${email})`,
+        isNull(orgInvitations.acceptedAt),
+      ),
+    )
+    .returning({ token: orgInvitations.token });
+  return updated !== undefined;
 }

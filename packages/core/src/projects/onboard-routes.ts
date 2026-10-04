@@ -1,4 +1,3 @@
-import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -8,8 +7,6 @@ import {
   dispatchInteractiveTurn,
   resolveInteractiveClient,
 } from '../agent-sessions/interactive-credential.js';
-import { db } from '../db/client.js';
-import { projects } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { resolveSessionRepoPathForDevice } from '../lib/device-pool.js';
 import { logger } from '../logger.js';
@@ -19,6 +16,7 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { resolveRegisteredEffectiveSkills } from '../skills/effective.js';
 import { requestSkillSync } from '../skills/service.js';
 import { requireHeld } from '../permissions/index.js';
+import { projectHead } from './read.js';
 
 // ISS-733 — the "Build Project Brain" trigger: web calls this once, after
 // bootstrap, to open a fresh chat session that runs `forge-onboard` as turn 1
@@ -51,11 +49,7 @@ projectOnboardRoutes.post(
     const access = await loadProjectAccess(id, userId);
     requireHeld(access, 'project.admin');
 
-    const [project] = await db
-      .select({ id: projects.id, slug: projects.slug })
-      .from(projects)
-      .where(eq(projects.id, id))
-      .limit(1);
+    const project = await projectHead(id);
     if (!project) throw new HTTPException(404, { message: 'project not found' });
 
     const effective = await resolveRegisteredEffectiveSkills(project.id);

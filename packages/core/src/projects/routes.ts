@@ -1,25 +1,12 @@
-import { and, eq, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { extractIssueBranchOverride, resolveIssueBranches } from '../branches/resolve.js';
-import { db } from '../db/client.js';
-import { withKernelMarker } from '../db/kernel-marker.js';
-import {
-  devices,
-  labels,
-  organizationMembers,
-  organizations,
-  projectMembers,
-  projects,
-  runners,
-} from '../db/schema.js';
 import {
   assertUnfenced,
   loadProjectAccess,
   maxProjectRole,
   orgDerivedProjectRole,
-  visibleProjectsWhere,
 } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, flatten, idParamSchema, notFound } from '../middleware/route-errors.js';
@@ -30,17 +17,24 @@ import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
 import { readDeclaredSource } from '../project-config/source.js';
 import { type AgentConfigKeyPatch, patchAgentConfigKeys, readAgentConfig } from './agent-config.js';
 import { assistantWeeklySchema } from './agent-config-schema.js';
-import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
-import { PATCHED_PROJECT, PROJECT_DETAIL } from './projections.js';
+import { listVisibleProjectRows, projectDetail } from './read.js';
 import {
   refuseRetiredProjectFields,
   refuseRetiredProjectKeys,
   undeclaredFieldError,
 } from './retired-project-keys.js';
 import { projectRunnerRoutes } from './runners-routes.js';
-import { createProject, readIssueBranchInputs, readProjectBranches } from './service.js';
+import {
+  archiveProject,
+  createProject,
+  deleteProject,
+  readIssueBranchInputs,
+  readProjectBranches,
+  unarchiveProject,
+  updateProjectSettings,
+} from './service.js';
 
 const createProjectFields = {
   slug: z
@@ -153,40 +147,7 @@ projectRoutes.get('/', listQuery, async (c) => {
   const includeArchived = ['1', 'true'].includes(archived.toLowerCase());
   // Visible = explicit membership (any role) OR org owner/admin on the
   // project's org (implicit admin) — same rule as lib/authz.ts.
-  const rows = await db
-    .selectDistinctOn([projects.id], {
-      id: projects.id,
-      slug: projects.slug,
-      name: projects.name,
-      orgId: projects.orgId,
-      orgName: organizations.name,
-      orgIsPersonal: organizations.isPersonal,
-      createdBy: projects.createdBy,
-      memberRole: projectMembers.role,
-      orgRole: organizationMembers.role,
-      issuePrefix: projects.issuePrefix,
-      archivedAt: projects.archivedAt,
-      createdAt: projects.createdAt,
-    })
-    .from(projects)
-    .innerJoin(organizations, eq(organizations.id, projects.orgId))
-    .leftJoin(
-      projectMembers,
-      and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId)),
-    )
-    .leftJoin(
-      organizationMembers,
-      and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
-    )
-    .where(
-      and(...visibleProjectsWhere(), ...(includeArchived ? [] : [isNull(projects.archivedAt)])),
-    )
-    // DISTINCT ON requires its leading ORDER BY expression to match the
-    // distinct column. Without this the list order was arbitrary/run-varying,
-    // so a refetch could reorder it and shift list[0] — the rail's raw-order
-    // fallback (ISS-734) then jumps every workspace tab in the same org onto
-    // the new list[0] at once. Console display is unaffected (client-sorted).
-    .orderBy(projects.id);
+  const rows = await listVisibleProjectRows(userId, includeArchived);
 
   return c.json(
     rows.map(({ memberRole, orgRole, ...row }) => {
@@ -212,47 +173,17 @@ projectRoutes.get(
     const access = await loadProjectAccess(id, userId);
     requireHeld(access, 'project.read');
 
-    const [project] = await db
-      .select(PROJECT_DETAIL)
-      .from(projects)
-      .where(eq(projects.id, id))
-      .limit(1);
-    if (!project) throw notFound();
-
-    const members = await db
-      .select({ userId: projectMembers.userId, role: projectMembers.role })
-      .from(projectMembers)
-      .where(eq(projectMembers.projectId, id));
-
-    const labelRows = await db
-      .select({ id: labels.id, name: labels.name, color: labels.color })
-      .from(labels)
-      .where(eq(labels.projectId, id));
-
-    // ISS-172 Slice A — devicePool now reads from `runners`. One device can
-    // be a runner for N projects, so this is just the per-project slice of
-    // the runners table filtered to `claude-code` device-host rows.
-    const devicePool = await db
-      .select({
-        id: devices.id,
-        name: devices.name,
-        platform: devices.platform,
-        status: devices.status,
-        lastSeenAt: devices.lastSeenAt,
-        runnerId: runners.id,
-      })
-      .from(runners)
-      .innerJoin(devices, eq(devices.id, runners.deviceId))
-      .where(and(eq(runners.projectId, id), eq(runners.type, 'claude-code')));
+    const detail = await projectDetail(id);
+    if (!detail) throw notFound();
 
     return c.json({
-      ...project,
+      ...detail.project,
       baseBranch: (await readDeclaredSource(id)).defaultBranch,
       role: access.role,
       orgRole: access.orgRole,
-      members,
-      labels: labelRows,
-      devicePool,
+      members: detail.members,
+      labels: detail.labels,
+      devicePool: detail.devicePool,
     });
   },
 );
@@ -276,25 +207,20 @@ projectRoutes.patch(
     const access = await loadProjectAccess(id, userId);
     requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
 
-    const updates: Record<string, unknown> = {};
+    let orgId: string | undefined;
     if (patch.orgId !== undefined && patch.orgId !== access.orgId) {
       await requireOrgCan({ userId }, 'org.admin', patch.orgId);
-      updates.orgId = patch.orgId;
+      orgId = patch.orgId;
     }
 
     const agentConfigPatch: AgentConfigKeyPatch = {};
     if (patch.assistantWeekly !== undefined)
       agentConfigPatch.assistantWeekly = patch.assistantWeekly;
 
-    const [updated] = await db.transaction(async (tx) => {
-      await patchAgentConfigKeys(id, agentConfigPatch, tx);
-      if (patch.issuePrefix !== undefined) {
-        await applyIssuePrefixPatch(id, patch.issuePrefix, userId, tx);
-      }
-      if (Object.keys(updates).length === 0) {
-        return tx.select(PATCHED_PROJECT).from(projects).where(eq(projects.id, id)).limit(1);
-      }
-      return tx.update(projects).set(updates).where(eq(projects.id, id)).returning(PATCHED_PROJECT);
+    const updated = await updateProjectSettings(id, userId, {
+      orgId,
+      agentConfig: agentConfigPatch,
+      issuePrefix: patch.issuePrefix,
     });
     if (!updated) throw notFound();
 
@@ -320,7 +246,7 @@ projectRoutes.delete(
     const access = await loadProjectAccess(id, userId);
     requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
 
-    await withKernelMarker(db, async (tx) => tx.delete(projects).where(eq(projects.id, id)));
+    await deleteProject(id);
     return c.body(null, 204);
   },
 );
@@ -334,16 +260,6 @@ projectRoutes.delete(
 // dispatching new auto-pipeline jobs (see orchestrator.loadProjectPolicy);
 // in-flight jobs are unaffected. The hard DELETE /:id route above is unchanged.
 
-const ARCHIVE_PROJECTION = {
-  id: projects.id,
-  slug: projects.slug,
-  name: projects.name,
-  orgId: projects.orgId,
-  createdBy: projects.createdBy,
-  archivedAt: projects.archivedAt,
-  createdAt: projects.createdAt,
-} as const;
-
 projectRoutes.post(
   '/:id/archive',
   zValidator('param', idParamSchema, (result) => {
@@ -356,11 +272,7 @@ projectRoutes.post(
     const access = await loadProjectAccess(id, userId);
     requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
 
-    const [updated] = await db
-      .update(projects)
-      .set({ archivedAt: sql`coalesce(${projects.archivedAt}, now())` })
-      .where(eq(projects.id, id))
-      .returning(ARCHIVE_PROJECTION);
+    const updated = await archiveProject(id);
     if (!updated) throw notFound();
     return c.json(updated);
   },
@@ -378,11 +290,7 @@ projectRoutes.post(
     const access = await loadProjectAccess(id, userId);
     requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
 
-    const [updated] = await db
-      .update(projects)
-      .set({ archivedAt: null })
-      .where(eq(projects.id, id))
-      .returning(ARCHIVE_PROJECTION);
+    const updated = await unarchiveProject(id);
     if (!updated) throw notFound();
     return c.json(updated);
   },
