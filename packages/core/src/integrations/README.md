@@ -36,7 +36,7 @@ protocol and nothing else:
 
 | Port | Directory | Vendors | Bound to | Called from |
 |---|---|---|---|---|
-| source hosting | `source-host/` over `github/`, `gitlab/`; the change request projection (`repo_pull_requests`) is the port's | GitHub, GitLab | project | `devices/admissible.ts`, `ecosystem/builder-head.ts`, `ecosystem/contract/land.ts`, `git/remote-divergence.ts`, `issues/commit-landing.ts`, `issues/merge-routes.ts`, `integration-door/source-tool.ts`, `projects/commit-owners.ts`, `projects/live-reach.ts`, `projects/live-reading.ts`, `projects/live-source.ts` |
+| source hosting | `source-host/` over `github/`, `gitlab/`; the change request projection (`repo_pull_requests`) is the port's | GitHub, GitLab | project | `ecosystem/builder-head.ts`, `ecosystem/contract/land.ts`, `execution-ports.ts`, `git/remote-divergence.ts`, `integration-door/issue-merge-routes.ts`, `integration-door/source-tool.ts`, `integration-door/status-service.ts`, `projects/commit-owners.ts`, `projects/live-reach.ts`, `projects/live-reading.ts`, `projects/live-source.ts`, `work-ports.ts` |
 | deploy | `deploy/` (the record contract in `deploy/records.ts`, the runtime probe), `coolify/` | Coolify; a deployed app's runtime probe | project | `project-config/environment-state.ts`, `project-config/environment-state-read.ts`, `release-batch/verify.ts`, `release-batch/coolify-*.ts`, `release-batch/deploy-worker.ts`, `integration-door/coolify-*.ts` |
 | error tracking | `sentry/` | Sentry | project | `error-intake/pull.ts`, `error-intake/sightings.ts`, `integration-door/sentry-tool.ts` |
 | storefront | `epodsystem/`, `autoflow/` | ePodSystem, Autoflow | project | the registry only |
@@ -44,12 +44,12 @@ protocol and nothing else:
 | chat | `rocketchat/` (the REST and DDP clients, the connection owner, room routing, the thread registry) | Rocket.Chat | project | `assistant/chat-room/*`, `assistant/identity/directory.ts`, `integration-door/routes.ts`, `index.ts` |
 | contract testing | `postman/` | Postman | project | `integration-door/postman-target-routes.ts` |
 | LLM | `llm/`, over the AI SDK (`ai`, `@ai-sdk/openai-compatible`, `@ai-sdk/anthropic`) behind `ChatProvider` | OpenAI-compatible endpoints (LiteLLM), Anthropic Messages | deployment | `assistant/*` (the chat turn and its runner, BA tools, bench judge, catalog cost), `memory/extraction.ts`, `memory/consolidation.ts`, `memory/rerank.ts`, `agent-sessions/auto-title.ts`, `app-config/routes.ts` |
-| embeddings | `embeddings/`, over the AI SDK's `embedMany` | OpenAI-compatible endpoints | deployment | `memory/*`, `knowledge/*`, `requirements/embeddings.ts`, `embeddings/item-writer.ts`, `issues/backlog/alike-source.ts`, `memory/tool.ts`, `knowledge/tool.ts` |
+| embeddings | `embeddings/`, over the AI SDK's `embedMany` | OpenAI-compatible endpoints | deployment | `memory/*`, `knowledge/*`, `requirements/embeddings.ts`, `embeddings/item-writer.ts`, `work-ports.ts`, `memory/tool.ts`, `knowledge/tool.ts` |
 | mail | `mail/` | SMTP | deployment | `auth/email.ts`, `projects/invitation-email.ts` |
 | identity | `identity/` | GitHub OAuth, Google, generic OIDC | deployment | `auth/oauth/*` |
 | outbound webhooks | `outbound-webhooks/` | a customer's URL | project webhook row | `webhooks/subscribers.ts`, `index.ts` |
 | paired runner box, pinned downloads | `published-releases/` | GitHub releases | deployment | `devices/build-state.ts`, `runners/build-comparison.ts`, `ecosystem/contract/oasdiff.ts`, `timer-registry.ts`, `index.ts` |
-| runner release publishing | `github/` (`runner-release*.ts`) | GitHub | project | `pipeline/runner-release-deadline.ts`, `integration-door/runner-release-routes.ts` |
+| runner release publishing | `github/` (`runner-release*.ts`) | GitHub | project | `pipeline-sweep.ts`, `integration-door/runner-release-routes.ts` |
 
 The LLM and embedding ports gate every text through `lib/data-egress.ts:egressScoped` inside the
 adapter: their functions take an `EgressScope`, so no caller can send content without naming the

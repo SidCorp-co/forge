@@ -107,7 +107,7 @@ export interface ClassifyInput {
   runnerPool: RunnerAvailability;
   /** ISS-853 — the issue's paused pipeline run, from `loadPausedRunsByIssue`. */
   pausedRun?: PipelineHealthPausedRun;
-  /** ISS-1273 — the issue's own claim, read by `pipeline/lease-fanout.ts`. `null` where the
+  /** ISS-1273 — the issue's own claim, read by `lease-fanout.ts`. `null` where the
    *  caller did not read one, which is not the same as a row carrying none. */
   claim?: LeaseReading | null;
   /** Injectable clock for the retry-cooldown comparison; defaults to now. */

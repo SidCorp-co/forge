@@ -138,7 +138,7 @@ const held = (lease: IssueLeaseView | null) =>
 // where the project requires it, else queued for the release; a live lease or a job in flight →
 // moving; a live unsettled blocker → stuck on the first, worded as waiting on its judge where its
 // change landed; a landed row nothing holds → queued for its judge
-// (`pipeline/strand-rules.ts:landedWait`); in_progress with no holder or reopen → stuck; open or
+// (`strand-rules.ts:landedWait`); in_progress with no holder or reopen → stuck; open or
 // approved → queued for a master slot.
 function turnOf(input: IssueStandingInput): {
   group: IssueAttentionGroup;
