@@ -13,9 +13,9 @@
 use std::io::{BufRead, Write};
 
 use clap::Args as ClapArgs;
-use forge_runner_core::auth::cred_store;
-use forge_runner_core::config::Config;
-use forge_runner_core::transport::{git_credential, CoreClient};
+use runner_platform::config::Config;
+use runner_platform::cred_store;
+use runner_transport::{git_credential, CoreClient};
 
 use super::Ctx;
 

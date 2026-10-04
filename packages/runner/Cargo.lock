@@ -401,39 +401,19 @@ dependencies = [
  "anyhow",
  "clap",
  "dirs-next",
- "forge-runner-core",
+ "runner-core",
+ "runner-daemon",
+ "runner-platform",
+ "runner-proto",
+ "runner-transport",
+ "runner-update",
+ "runner-workspace",
  "serde_json",
  "tokio",
  "toml",
  "tracing-subscriber",
  "uuid",
  "webbrowser",
- "which",
-]
-
-[[package]]
-name = "forge-runner-core"
-version = "0.18.0"
-dependencies = [
- "async-trait",
- "base64 0.23.1",
- "dirs-next",
- "futures-util",
- "hex",
- "hostname",
- "keyring",
- "nix",
- "reqwest",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 2.0.21",
- "tokio",
- "tokio-tungstenite",
- "toml",
- "tracing",
- "uuid",
  "which",
 ]
 
@@ -1364,6 +1344,136 @@ checksum = "c51c9ae4df8a7fba42103df5c621fa3c37eccf3a3c650879e90fc48b11cc192c"
 dependencies = [
  "hashbrown 0.16.1",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "runner-agent"
+version = "0.18.0"
+dependencies = [
+ "async-trait",
+ "runner-core",
+ "runner-platform",
+ "runner-transport",
+ "runner-workspace",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "runner-core"
+version = "0.18.0"
+dependencies = [
+ "dirs-next",
+ "nix",
+ "runner-platform",
+ "runner-proto",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "runner-daemon"
+version = "0.18.0"
+dependencies = [
+ "async-trait",
+ "dirs-next",
+ "nix",
+ "runner-agent",
+ "runner-core",
+ "runner-platform",
+ "runner-proto",
+ "runner-transport",
+ "runner-update",
+ "runner-workspace",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "runner-platform"
+version = "0.18.0"
+dependencies = [
+ "dirs-next",
+ "keyring",
+ "nix",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "toml",
+ "tracing",
+ "which",
+]
+
+[[package]]
+name = "runner-proto"
+version = "0.18.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "runner-transport"
+version = "0.18.0"
+dependencies = [
+ "futures-util",
+ "reqwest",
+ "runner-platform",
+ "runner-proto",
+ "runner-update",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+]
+
+[[package]]
+name = "runner-update"
+version = "0.18.0"
+dependencies = [
+ "hex",
+ "reqwest",
+ "runner-platform",
+ "serde",
+ "sha2",
+ "tracing",
+]
+
+[[package]]
+name = "runner-workspace"
+version = "0.18.0"
+dependencies = [
+ "async-trait",
+ "base64 0.23.1",
+ "dirs-next",
+ "hex",
+ "hostname",
+ "nix",
+ "reqwest",
+ "runner-core",
+ "runner-platform",
+ "runner-transport",
+ "runner-update",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "uuid",
+ "which",
 ]
 
 [[package]]

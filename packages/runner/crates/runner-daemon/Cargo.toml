@@ -1,0 +1,25 @@
+[package]
+name = "runner-daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+runner-platform = { path = "../runner-platform" }
+runner-proto = { path = "../runner-proto" }
+runner-update = { path = "../runner-update" }
+runner-transport = { path = "../runner-transport" }
+runner-core = { path = "../runner-core" }
+runner-workspace = { path = "../runner-workspace" }
+runner-agent = { path = "../runner-agent" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+dirs-next = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+rusqlite = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31", features = ["signal", "process", "fs"] }

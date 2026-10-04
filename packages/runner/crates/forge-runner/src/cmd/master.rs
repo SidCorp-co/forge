@@ -35,17 +35,17 @@
 use std::time::Duration;
 
 use clap::{Args as ClapArgs, Subcommand};
-use forge_runner_core::auth::cred_store;
-use forge_runner_core::config::Config;
-use forge_runner_core::daemon::master::accepts_new_work;
-use forge_runner_core::daemon::master_exit::{self, Holding};
-use forge_runner_core::daemon::pane_exit;
-use forge_runner_core::daemon::recovery::MasterPresence;
-use forge_runner_core::daemon::recovery_ports;
-use forge_runner_core::daemon::subagent_host::ProcHosts;
-use forge_runner_core::daemon::terminal;
-use forge_runner_core::runner::ledger::{Ledger, MasterAuthority};
-use forge_runner_core::transport::{runners, CoreClient};
+use runner_core::ledger::{Ledger, MasterAuthority};
+use runner_core::pane_exit;
+use runner_daemon::master::accepts_new_work;
+use runner_daemon::master_exit::{self, Holding};
+use runner_daemon::recovery::MasterPresence;
+use runner_daemon::recovery_ports;
+use runner_platform::config::Config;
+use runner_platform::cred_store;
+use runner_platform::subagent_host::ProcHosts;
+use runner_transport::{runners, CoreClient};
+use runner_workspace::terminal;
 
 use super::Ctx;
 
@@ -542,7 +542,7 @@ fn presence_detail(
 /// daemon keeps beside its transcript, with who holds a held conversation read
 /// from this box's process table now (ISS-1343).
 fn last_exit_line(slug: &str) -> String {
-    let found = match forge_runner_core::config::master_dir(slug) {
+    let found = match runner_platform::config::master_dir(slug) {
         Ok(dir) => pane_exit::read(&dir),
         Err(e) => pane_exit::Found::Unavailable(format!(
             "this box's config directory cannot be resolved: {e}"

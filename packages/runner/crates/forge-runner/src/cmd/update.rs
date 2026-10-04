@@ -1,7 +1,7 @@
 use clap::Args as ClapArgs;
-use forge_runner_core::config::Config;
-use forge_runner_core::daemon::serving::Turnover;
-use forge_runner_core::update;
+use runner_daemon::serving::Turnover;
+use runner_platform::config::Config;
+use runner_update as update;
 
 use super::Ctx;
 
@@ -95,9 +95,9 @@ pub(crate) enum Applied {
 /// left the lagging one lagging. Both branches now ask the same question of
 /// the same daemon, and a restart reaches only the unit answering for it.
 fn restart_this_configurations_daemon(applied: Applied) {
-    use forge_runner_core::daemon::serving;
+    use runner_daemon::serving;
 
-    let Some(dir) = forge_runner_core::config::config_dir() else {
+    let Some(dir) = runner_platform::config::config_dir() else {
         println!("  no config directory resolves on this box, so which build the daemon serves cannot be read — restart the service by hand if it lags");
         return;
     };
@@ -111,7 +111,7 @@ fn restart_this_configurations_daemon(applied: Applied) {
         .and_then(|r| r.as_ref())
         .and_then(|r| r.start_ticks.clone());
     let still_the_same = move |pid: u32| match &recorded {
-        Some(then) => forge_runner_core::proc::start_ticks(pid).as_ref() == Some(then),
+        Some(then) => runner_platform::proc::start_ticks(pid).as_ref() == Some(then),
         // No recorded identity is `unverified`, which never acts.
         None => false,
     };

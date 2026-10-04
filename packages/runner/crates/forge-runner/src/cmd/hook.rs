@@ -10,8 +10,8 @@
 //! having printed `{}`, and the report is simply lost.
 
 use clap::Args as ClapArgs;
-use forge_runner_core::config::Config;
-use forge_runner_core::daemon::{control, session_tokens};
+use runner_daemon::{control, session_tokens};
+use runner_platform::config::Config;
 
 #[derive(ClapArgs)]
 pub struct Args {

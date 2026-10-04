@@ -1,5 +1,5 @@
 use clap::{Args as ClapArgs, Subcommand};
-use forge_runner_core::config::Config;
+use runner_platform::config::Config;
 
 use super::Ctx;
 

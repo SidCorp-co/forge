@@ -1,11 +1,12 @@
 use std::path::PathBuf;
 
 use clap::Args as ClapArgs;
-use forge_runner_core::auth::{cred_store, git_cred};
-use forge_runner_core::config::{Binding, Config};
-use forge_runner_core::transport::runners::MeRunner;
-use forge_runner_core::transport::{runners, CoreClient};
-use forge_runner_core::workspace::provision;
+use runner_platform::config::{Binding, Config};
+use runner_platform::cred_store;
+use runner_transport::runners::MeRunner;
+use runner_transport::{runners, CoreClient};
+use runner_workspace::git_cred;
+use runner_workspace::provision;
 
 use super::Ctx;
 
@@ -154,7 +155,7 @@ fn checkout_credential_host(
 }
 
 fn config_dir() -> Option<PathBuf> {
-    forge_runner_core::config::config_dir()
+    runner_platform::config::config_dir()
 }
 
 /// The master skill is written at bind, so a bound project carries it whether
@@ -165,12 +166,12 @@ fn install_skill(
     repo: &std::path::Path,
     dir: Option<&std::path::Path>,
 ) -> (String, bool) {
-    use forge_runner_core::daemon::master_skill::{install_and_record, Point};
+    use runner_workspace::master_skill::{install_and_record, Point};
     let outcome = install_and_record(slug, repo, Point::Bind, dir);
     let build = format!(
         "{} ({})",
-        forge_runner_core::update::CURRENT_VERSION,
-        forge_runner_core::update::BUILD_COMMIT
+        runner_update::CURRENT_VERSION,
+        runner_update::BUILD_COMMIT
     );
     (
         format!("skill {slug}: {}", outcome.says(Some(repo), &build)),

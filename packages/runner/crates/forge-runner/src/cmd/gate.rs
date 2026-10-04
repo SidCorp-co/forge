@@ -18,9 +18,9 @@
 use std::path::{Path, PathBuf};
 
 use clap::Args as ClapArgs;
-use forge_runner_core::daemon::degraded::{mark, Kind, Mark, Run, Source};
-use forge_runner_core::daemon::dispatch_gate::Dispatch;
-use forge_runner_core::daemon::{control, session_tokens};
+use runner_core::degraded::{mark, Kind, Mark, Run, Source};
+use runner_core::dispatch_gate::Dispatch;
+use runner_daemon::{control, session_tokens};
 
 const ANSWER_WITHIN: std::time::Duration = std::time::Duration::from_secs(2);
 
@@ -92,7 +92,7 @@ const ALLOW: &str = "{}";
 
 /// Where this box's config, socket and marks live.
 fn config_dir() -> Option<PathBuf> {
-    forge_runner_core::config::config_dir()
+    runner_platform::config::config_dir()
 }
 
 /// Why a mark this process writes never names a run: the registry of declared
@@ -226,7 +226,7 @@ async fn session_of_this_pane(socket: &Path) -> Result<String, String> {
 /// What the hook can establish about the process it ran in, holding no token.
 async fn tokenless_here(dir: Option<&Path>) -> Tokenless {
     let tmux = std::env::var("TMUX").ok();
-    let socket = forge_runner_core::daemon::terminal::socket_path();
+    let socket = runner_workspace::terminal::socket_path();
     let named = match (tmux.as_deref(), socket.as_deref()) {
         (Some(t), Some(sock)) if !t.is_empty() => Some(session_of_this_pane(sock).await),
         _ => None,
@@ -262,7 +262,7 @@ fn shell_word(s: &str) -> String {
 /// server by name, since a bare `tmux` reaches the operator's default server
 /// instead.
 pub fn lost_mint_reason(pane: &str, project: &str, slug: Option<&str>, socket: &Path) -> String {
-    use forge_runner_core::daemon::terminal::{session_name, JOB_PREFIX, MASTER_PREFIX};
+    use runner_workspace::terminal::{session_name, JOB_PREFIX, MASTER_PREFIX};
     let placed = match slug {
         Some(slug) => format!("project {slug} ({project})"),
         None => format!(
@@ -353,7 +353,7 @@ async fn answer(dir: Option<&Path>, caller: Caller<'_>, d: &Dispatch) -> String 
         Ok(Err(e)) => open_because(&format!("the daemon could not be reached: {e}")),
         Ok(Ok(reply)) if reply.ok => ALLOW.to_string(),
         Ok(Ok(reply)) => match reply.reason.as_deref() {
-            Some(r) if r == forge_runner_core::daemon::dispatch_gate::REFUSAL => deny(r),
+            Some(r) if r == runner_core::dispatch_gate::REFUSAL => deny(r),
             Some(other) => {
                 open_because(&format!("the daemon refused the question itself: {other}"))
             }

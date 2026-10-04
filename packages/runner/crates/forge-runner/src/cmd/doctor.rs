@@ -1,13 +1,13 @@
 use std::time::Duration;
 
 use clap::Args as ClapArgs;
-use forge_runner_core::auth::cred_store;
-use forge_runner_core::config::Config;
-use forge_runner_core::daemon::terminal;
-use forge_runner_core::error::Error;
-use forge_runner_core::transport::pool::{self, PoolEntry, ReadFailure};
-use forge_runner_core::transport::{heartbeat, mcp_servers, runners, CoreClient};
-use forge_runner_core::update;
+use runner_platform::config::Config;
+use runner_platform::cred_store;
+use runner_platform::error::Error;
+use runner_transport::pool::{self, PoolEntry, ReadFailure};
+use runner_transport::{heartbeat, mcp_servers, runners, CoreClient};
+use runner_update as update;
+use runner_workspace::terminal;
 
 use super::Ctx;
 
@@ -157,9 +157,9 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     // What the daemon recorded about its own pool reads. History, not a check of
     // this run: the live read of each project follows in the online section. A
     // record that cannot be read fails the check — the box is reporting nothing.
-    if let Some(dir) = forge_runner_core::config::config_dir() {
-        let now = forge_runner_core::daemon::agent_activity::now_ms();
-        let recorded = forge_runner_core::daemon::pool_reads::report(&dir, now);
+    if let Some(dir) = runner_platform::config::config_dir() {
+        let now = runner_core::agent_activity::now_ms();
+        let recorded = runner_daemon::pool_reads::report(&dir, now);
         let mark = if recorded.is_err() { "✖" } else { "•" };
         failed |= recorded.is_err();
         for line in super::status::pool_lines(&recorded, &cfg, now) {
@@ -215,7 +215,7 @@ fn repo_mcp_state(repo_path: &std::path::Path) -> RepoMcp {
 /// an operator told only that something could not be read has nothing to open
 /// (ISS-1235, routed here).
 fn access_token_row(
-    pat: &forge_runner_core::error::Result<Option<String>>,
+    pat: &runner_platform::error::Result<Option<String>>,
     file: Option<&std::path::Path>,
 ) -> (String, bool) {
     match pat {
@@ -486,7 +486,7 @@ async fn mcp_servers_line(
                 ));
             }
         };
-    let path = forge_runner_core::mcp::config::session_path(slug);
+    let path = runner_workspace::mcp::config::session_path(slug);
     let disk = session_file(&path, &found.mcp_servers);
     let (mark, line) = mcp_verdict(&found, &path, &disk, pane_state(slug).await);
     Some((mark, format!("{slug}: {line}")))
@@ -587,7 +587,7 @@ fn session_file(
     if servers.is_empty() {
         return SessionFile::Differs;
     }
-    match forge_runner_core::mcp::config::session_servers(text) {
+    match runner_workspace::mcp::config::session_servers(text) {
         None => SessionFile::Unparseable,
         Some(on_disk) if on_disk == *servers => SessionFile::Matches,
         Some(_) => SessionFile::Differs,

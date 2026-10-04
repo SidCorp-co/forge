@@ -1,12 +1,12 @@
 use std::io::Read;
 
 use clap::Args as ClapArgs;
-use forge_runner_core::api::{
+use runner_platform::config::Config;
+use runner_platform::cred_store;
+use runner_transport::api::{
     build, run as run_api, usage_failure, RequestSpec, SlugSources, EXIT_TAXONOMY,
 };
-use forge_runner_core::auth::cred_store;
-use forge_runner_core::config::Config;
-use forge_runner_core::transport::CoreClient;
+use runner_transport::CoreClient;
 
 use super::Ctx;
 

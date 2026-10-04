@@ -9,7 +9,13 @@ name = "forge-runner"
 path = "src/main.rs"
 
 [dependencies]
-forge-runner-core = { path = "../forge-runner-core" }
+runner-platform = { path = "../runner-platform" }
+runner-proto = { path = "../runner-proto" }
+runner-update = { path = "../runner-update" }
+runner-transport = { path = "../runner-transport" }
+runner-core = { path = "../runner-core" }
+runner-workspace = { path = "../runner-workspace" }
+runner-daemon = { path = "../runner-daemon" }
 clap = { workspace = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }

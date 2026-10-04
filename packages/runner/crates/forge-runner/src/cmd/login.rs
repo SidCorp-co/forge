@@ -1,9 +1,10 @@
 use std::time::{Duration, Instant};
 
 use clap::Args as ClapArgs;
-use forge_runner_core::auth::pairing::LoginPoll;
-use forge_runner_core::auth::{cred_store, pairing};
-use forge_runner_core::config::Config;
+use runner_platform::config::Config;
+use runner_platform::cred_store;
+use runner_workspace::pairing;
+use runner_workspace::pairing::LoginPoll;
 
 use super::Ctx;
 
