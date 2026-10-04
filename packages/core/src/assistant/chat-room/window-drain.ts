@@ -86,7 +86,7 @@ export async function routeOne(
   const outcome = await routeWindow({
     window,
     handoffFor: async (windowId) =>
-      (await import('../../conversations/conversation-agent.js')).conversationAgentTurnForWindow(
+      (await import('../../conversations/index.js')).conversationAgentTurnForWindow(
         windowId,
       ),
     refusalFor: async ({ authorKey, authorLabel }) => {

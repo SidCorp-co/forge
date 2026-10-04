@@ -117,7 +117,7 @@ export function webConversationTurn(args: {
       setPhase('agent-turn');
       if (!(await args.window.reserve()))
         return { send: false, reason: 'superseded-before-agent-turn' };
-      const { startConversationAgentTurn } = await import('../conversations/conversation-agent.js');
+      const { startConversationAgentTurn } = await import('../conversations/index.js');
       const started = await startConversationAgentTurn({
         venue: args.window.venue,
         conversationId: args.window.conversationId,
@@ -372,7 +372,7 @@ export async function routeWebWindow(
     outcome = await routeWindow({
       window,
       handoffFor: async (windowId) =>
-        (await import('../conversations/conversation-agent.js')).conversationAgentTurnForWindow(
+        (await import('../conversations/index.js')).conversationAgentTurnForWindow(
           windowId,
         ),
       inputs: ({ venue, conversationId, windowId, deliveryKey, mode, messages, reserve }) =>
