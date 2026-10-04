@@ -32,7 +32,7 @@ import {
   targetUndeclaredHold,
   writeReleaseHolds,
 } from './hold.js';
-import { productionDeploysOnLand } from './release-coolify.js';
+import { productionDeploysOnLand } from './production-trigger.js';
 import {
   reportClaimedFailure,
   reportHeldBack,

@@ -11,6 +11,9 @@
  */
 
 import type { CoolifyRefusalCode } from '@forge/contracts/integrations';
+import { and, desc, eq } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import { issues, pipelineRuns } from '../db/schema.js';
 import type { CoolifyConfig } from '../integrations/coolify/index.js';
 import {
   effectiveConfig,
@@ -22,15 +25,13 @@ import { refuser } from '../lib/refusal.js';
 import { approvalRequired, readDeployMap } from '../project-config/index.js';
 import { assertApprovalAllowsAttempt } from './approvals.js';
 import { readRunMethod } from './method.js';
+import { isOpenReleaseBatchRun } from './queries.js';
 import { refuseRelease } from './refuse.js';
 import {
   type DispatchOutcome,
   dispatchCoolifyDeployDirect,
-  isIssueAtReleaseStage,
-  resolveLatestIssueRunId,
   tryDispatchCoolifyRelease,
 } from './release-coolify.js';
-import { isOpenReleaseBatchRun } from './queries.js';
 
 /** A Coolify rule refused by name, in the one refusal envelope. */
 export const refuseCoolify = refuser<CoolifyRefusalCode>('COOLIFY_REFUSED');
@@ -253,4 +254,29 @@ export async function coolifyDeliveryStatus(input: {
     )
   ).flat();
   return { deliveries };
+}
+
+async function resolveLatestIssueRunId(issueId: string): Promise<string | null> {
+  const [run] = await db
+    .select({ id: pipelineRuns.id })
+    .from(pipelineRuns)
+    .where(and(eq(pipelineRuns.issueId, issueId), eq(pipelineRuns.kind, 'issue')))
+    .orderBy(desc(pipelineRuns.createdAt))
+    .limit(1);
+  return run?.id ?? null;
+}
+
+/**
+ * Whether an issue has reached the post-release stage (`awaiting_release`/`closed`) —
+ * the only statuses where an agent-driven `forge_coolify_deploy` call is
+ * allowed to touch a prod integration. Every pre-release status returns
+ * `false`, so a mid-pipeline deploy (code/fix/testing) is staging-only.
+ */
+async function isIssueAtReleaseStage(issueId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ status: issues.status })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  return row?.status === 'awaiting_release' || row?.status === 'closed';
 }
