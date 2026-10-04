@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { RunnerLimitReason, RunnerStatus, RunnerType } from '../db/schema.js';
 import type { RunnerBuildComparison } from '../devices/index.js';
 
-export const runnerCapabilitiesSchema = z
+const runnerCapabilitiesSchema = z
   .object({
     skills: z.array(z.string()).optional(),
     maxConcurrent: z.number().int().positive().optional(),
@@ -11,10 +11,10 @@ export const runnerCapabilitiesSchema = z
   })
   .catchall(z.unknown());
 
-export type RunnerCapabilities = z.infer<typeof runnerCapabilitiesSchema>;
+type RunnerCapabilities = z.infer<typeof runnerCapabilitiesSchema>;
 
 /** Inverse of capabilities — what a job demands from a runner. */
-export const requiredCapabilitiesSchema = z
+const requiredCapabilitiesSchema = z
   .object({
     skills: z.array(z.string()).optional(),
     gpu: z.boolean().optional(),
@@ -47,30 +47,6 @@ export interface Runner {
   /** Why the runner is quarantined (the tripping preflight check), or null. */
   quarantineReason: string | null;
 }
-
-export interface DispatchInput {
-  job: {
-    id: string;
-    projectId: string;
-    issueId: string | null;
-    type: string;
-    payload: unknown;
-    dispatchedAt: Date;
-    /** `jobs.attempts` — which try this is. */
-    attempts: number;
-    createdBy: string;
-    agentSessionId?: string | null;
-    promptString?: string | null;
-    systemPrompt?: string | null;
-  };
-  runner: Runner;
-}
-
-export interface DispatchResult {
-  status: 'dispatched' | 'failed';
-  errorReason?: string;
-}
-
 export interface HealthInput {
   runner: Runner;
   /**
@@ -86,7 +62,7 @@ export interface HealthResult {
   details?: Record<string, unknown>;
 }
 
-export interface QuotaResult {
+interface QuotaResult {
   remaining?: number;
   limit?: number;
   details?: Record<string, unknown>;

@@ -3,7 +3,6 @@ import type {
   MasterOpenPass,
   MasterRefusal,
   MasterSlots,
-  MasterStanding,
 } from '@forge/contracts/master-standing';
 import { MASTER_JOB_PANES_MAX } from '@forge/contracts/master-standing';
 
@@ -59,7 +58,7 @@ export function sessionEndedRefusal(status: string, terminal: boolean): MasterRe
   };
 }
 
-export function undeclaredSlots(deviceName: string): MasterRefusal {
+function undeclaredSlots(deviceName: string): MasterRefusal {
   return {
     code: 'MASTER_SLOTS_UNDECLARED',
     path: '/slots/max',

@@ -2,9 +2,12 @@
 // (ADR 0008: a kernel imports only kernel and platform modules). Read only inside a call, never at
 // import, so an unprovided port fails the call that needed it and names the provide it lacked.
 
+import type { ContentLanguageRecord } from '@forge/contracts/content-language';
+import type { PreambleBlock } from '@forge/contracts/jobs';
 import type { DispatchState, PolicyStateSource } from '@forge/contracts/project-config';
 import type { Db } from '../db/client.js';
 import type {
+  JobType,
   SkillActivityEventType,
   SkillActivityOutcome,
   SkillActivityTrigger,
@@ -32,7 +35,7 @@ export interface RecordSkillActivityEventInput {
 }
 
 /** The skills domain's audit trail, written inside the caller's transaction. */
-export interface SkillActivityPort {
+interface SkillActivityPort {
   recordSkillActivityEvent(
     executor: SkillActivityExecutor,
     input: RecordSkillActivityEventInput,
@@ -40,7 +43,7 @@ export interface SkillActivityPort {
 }
 
 /** The project's policy document, read as the state one dispatch runs under. */
-export interface DispatchPolicyPort {
+interface DispatchPolicyPort {
   /**
    * Throws the policy refusal when the project has no policy, or its policy leaves out the state
    * the work is for.
@@ -62,7 +65,7 @@ export interface GivenRequirement {
  * The design and contract context a job's issue reaches. Each loaded value is opaque here and handed
  * back to the function that renders or records it.
  */
-export interface JobContextPort {
+interface JobContextPort {
   loadArtifactContext(issueId: string): Promise<readonly unknown[]>;
   renderArtifactContext(loaded: readonly unknown[]): string | null;
   loadRequirementContext(
@@ -96,7 +99,12 @@ export interface ProducedMcpServer {
   bindingId: string;
 }
 
-export interface JobsPorts {
+interface JobsPorts {
+  /** The pipeline preamble one step's job runs under, measured per block. */
+  buildPipelinePreamble(
+    projectId: string,
+    opts: { step: JobType; policy: DispatchState },
+  ): Promise<{ content: string; blocks: PreambleBlock[]; contentLanguage?: ContentLanguageRecord }>;
   skillActivity: SkillActivityPort;
   dispatchPolicy: DispatchPolicyPort;
   jobContext: JobContextPort;

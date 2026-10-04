@@ -22,7 +22,7 @@ export interface ImpactChange {
   check?: string | undefined;
 }
 
-export interface ImpactMeasurement {
+interface ImpactMeasurement {
   classification: MeasuredClassification;
   changes: readonly ImpactChange[];
 }
@@ -48,7 +48,7 @@ export interface LinkImpact {
   breaks: ImpactBreak[];
 }
 
-export type RecipientReason = 'breaks' | 'unmapped' | 'unmeasured';
+type RecipientReason = 'breaks' | 'unmapped' | 'unmeasured';
 
 export interface Recipient {
   consumer: string;

@@ -22,7 +22,7 @@ export interface ResumeRecord {
   failureAction: string | null;
 }
 
-export interface ResumePolicy {
+interface ResumePolicy {
   priorClaudeSessionId: string | null;
   pinDeviceId: string | null;
   excludeDeviceIds: string[];

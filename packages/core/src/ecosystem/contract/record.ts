@@ -12,15 +12,15 @@ import {
   contractVersionSchema,
 } from './version-schema.js';
 
-export type ArtifactOrigin = { sourceCommit: string } | { uploadedBy: string; sourceRef?: string };
+type ArtifactOrigin = { sourceCommit: string } | { uploadedBy: string; sourceRef?: string };
 
-export interface SemanticChange {
+interface SemanticChange {
   classification: 'breaking' | 'unknown';
   reason: string;
   elements: string[];
 }
 
-export interface RecordInput {
+interface RecordInput {
   providerProjectId: string;
   contractRef: string;
   publication: Pick<Publication, 'type'>;

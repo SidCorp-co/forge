@@ -1,16 +1,15 @@
 /**
  * The system prompt a job on an issue runs under: the pipeline preamble, then the artifact,
- * contract and pinned-contract blocks its issue reaches. `prepare-claimed-job.ts` and the prompt
- * preview (`prompt/routes.ts`) both call `buildJobSystemPrompt`, so what a preview shows is what a
- * claimed job is given. Nothing here writes; recording the loads on a session is prepare's.
+ * contract and pinned-contract blocks its issue reaches. Nothing here writes; recording the loads
+ * on a session is `prepare-claimed-job.ts`'s.
  */
 
 import type { ContentLanguageRecord } from '@forge/contracts/content-language';
+import type { PreambleBlock } from '@forge/contracts/jobs';
 import type { DispatchState } from '@forge/contracts/project-config';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, type JobType } from '../db/schema.js';
-import { buildPipelinePreambleStructured, type PreambleBlock } from '../lib/chat-preamble.js';
 import { dataPolicyOf, type EgressSurface, egressText, withheldAt } from '../lib/data-egress.js';
 import { isRefusal, RefusalError, refusalCodeOf } from '../lib/refusal.js';
 import { estimateTokens } from '../lib/token-estimator.js';
@@ -20,7 +19,7 @@ import { type GivenRequirement, jobsPorts } from './ports.js';
 const contextRefused = (code: string, detail: string) =>
   new RefusalError([{ code, path: '', detail }], 'JOB_CONTEXT_REFUSED');
 
-export interface JobSystemPrompt {
+interface JobSystemPrompt {
   systemPrompt: string;
   blocks: PreambleBlock[];
   contentLanguage: ContentLanguageRecord | undefined;
@@ -164,7 +163,10 @@ export async function buildJobSystemPrompt(input: {
 }): Promise<JobSystemPrompt> {
   const { projectId, issueId, step, subject } = input;
   const { deniedTools } = input.policy;
-  const preamble = await buildPipelinePreambleStructured(projectId, { step, policy: input.policy });
+  const preamble = await jobsPorts().buildPipelinePreamble(projectId, {
+    step,
+    policy: input.policy,
+  });
   const [issueRow] = issueId
     ? await db
         .select({

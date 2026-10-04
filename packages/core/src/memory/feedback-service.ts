@@ -6,10 +6,10 @@ import { memories } from '../db/schema.js';
 import { refuser } from '../lib/refusal.js';
 import { logger } from '../observability/logger.js';
 
-export const FEEDBACK_SOURCES = ['note', 'knowledge'] as const;
+const FEEDBACK_SOURCES = ['note', 'knowledge'] as const;
 
 /** Last N feedback entries kept on `metadata.feedback`. */
-export const FEEDBACK_HISTORY_CAP = 10;
+const FEEDBACK_HISTORY_CAP = 10;
 
 export const memoryFeedbackInputSchema = z.object({
   projectId: z.uuid(),
@@ -22,11 +22,11 @@ export const memoryFeedbackInputSchema = z.object({
   evidence: z.string().trim().min(1).max(2000).optional(),
 });
 
-export type MemoryFeedbackInput = z.infer<typeof memoryFeedbackInputSchema>;
+type MemoryFeedbackInput = z.infer<typeof memoryFeedbackInputSchema>;
 
 const refuse = refuser<MemoryRefusalCode>('MEMORY_REFUSED');
 
-export interface MemoryFeedbackResult {
+interface MemoryFeedbackResult {
   found: boolean;
   /** What actually happened: verified | archived | noop (missing or already archived). */
   action: 'verified' | 'archived' | 'noop';

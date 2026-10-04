@@ -13,7 +13,7 @@ import {
 } from './run-context.js';
 import { versionsOf } from './store.js';
 
-export const CONTRACT_CONTEXT_KEY = 'contractContext';
+const CONTRACT_CONTEXT_KEY = 'contractContext';
 
 /** The contracts a consumer project's run reaches through `paths`: guide + pinned→latest diff per link. */
 export async function loadContractContext(

@@ -1,5 +1,3 @@
-import { MEMORY_REINDEX_STATES, type MemoryReindexState } from "@forge/contracts/status-sets";
-
 /** Patch body accepted by `PATCH /api/projects/:id`.
  *  `orgId` moves the project to another org — requires org admin on BOTH the
  *  current and the destination org (403/404 otherwise). */
@@ -149,33 +147,3 @@ export interface ProjectAgentConfig {
 }
 
 
-export type MemoryModel = "flat" | "chunked";
-
-export { MEMORY_REINDEX_STATES, type MemoryReindexState };
-
-/** `app_config.memory_reindex` as `GET /api/app-config/:id/memory-model/reindex` returns it. */
-export interface MemoryReindex {
-	state: MemoryReindexState;
-	total: number;
-	done: number;
-	remaining: number;
-	requestedAt: string;
-	startedAt?: string;
-	finishedAt?: string;
-	lastBatchAt?: string;
-	lastError?: string;
-}
-
-export interface MemoryModelStatus {
-	model: MemoryModel;
-	reindex: MemoryReindex | null;
-}
-
-/** `GET /api/app-config/:id/memory-model/estimate` — CHUNKED_SOURCES rows only. */
-export interface MemoryReindexEstimate {
-	memories: number;
-	totalChars: number;
-	estimatedChunks: number;
-	estimatedEmbedCalls: number;
-	estimatedMinutes: number;
-}

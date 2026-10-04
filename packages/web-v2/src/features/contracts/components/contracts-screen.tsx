@@ -60,7 +60,6 @@ function factsLine(r: ContractStandingRow): ReactNode[] {
   parts.push(r.direction === "consumed" ? `From ${r.provider.slug}` : "Provided");
   parts.push(versionLine(r));
   if (r.direction === "provided" && r.consumers.total > 0) parts.push(`Consumers ${r.consumers.total}${r.consumers.behind ? ` · behind ${r.consumers.behind}` : ""}`);
-  if (r.waits > 0) parts.push(`Issues waiting ${r.waits}`);
   return parts;
 }
 

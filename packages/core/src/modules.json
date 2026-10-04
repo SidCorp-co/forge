@@ -353,7 +353,6 @@
         "contractVersions",
         "devices",
         "feedback",
-        "issueContractWaits",
         "issueLabels",
         "issueLeases",
         "issueWorkState",
@@ -395,8 +394,6 @@
         "channelDocuments",
         "channelThreadHolds",
         "contractArtifacts",
-        "contractMeasurements",
-        "contractRequests",
         "contractVersions",
         "ecosystemBuilderRuns",
         "ecosystemConsumptions",
@@ -405,7 +402,6 @@
         "ecosystemMemberships",
         "ecosystemRevisions",
         "ecosystems",
-        "issueContractWaits",
         "projectInterfaceRevisions",
         "projectInterfaces"
       ],
@@ -691,16 +687,6 @@
         "project-onboarding#mapped",
         "project-onboarding#code-map",
         "personal-data-flow#ds-memory"
-      ]
-    },
-    "knowledge-edges": {
-      "kind": "domain",
-      "context": "knowledge",
-      "owns": [
-        "knowledgeEdges"
-      ],
-      "serves": [
-        "REQ-13"
       ]
     },
     "labels": {
@@ -1223,13 +1209,6 @@
       "context": "platform",
       "serves": [
         "via:skills"
-      ]
-    },
-    "skill-facts": {
-      "kind": "domain",
-      "context": "execution",
-      "serves": [
-        "REQ-13"
       ]
     },
     "skills": {

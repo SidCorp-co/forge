@@ -9,7 +9,7 @@ import { db } from '../db/client.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 
 /** The most owed issues one read hands back; `count` still says how many there are. */
-export const OWED_COMMENTS_LIMIT = 50;
+const OWED_COMMENTS_LIMIT = 50;
 
 export type OwedComment = {
   issueId: string;

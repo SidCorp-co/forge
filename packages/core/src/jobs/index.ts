@@ -3,11 +3,7 @@ export { broadcastSessionEvent, syncAgentSessionLifecycle } from './agent-sessio
 export { finalizeJobDone } from './finalize-done.js';
 export { type HoldState, holdReleasesItself, readHoldState } from './hold.js';
 export { countInFlightByRunner } from './in-flight.js';
-export {
-  appendJobEvent,
-  type InterventionEventInput,
-  insertInterventionEvent,
-} from './intervention-event.js';
+export { type InterventionEventInput, insertInterventionEvent } from './intervention-event.js';
 export { extractStageStatus, resolveJobPolicy } from './job-policy.js';
 export {
   jobsOfSession,
@@ -15,7 +11,6 @@ export {
   rememberHandedOut,
   scrubJobOutput,
 } from './job-secret-scrub.js';
-export { buildJobSystemPrompt } from './job-system-prompt.js';
 export { killGraceMs, requestJobKill } from './kill-gate.js';
 export { type LoopMonitorResult, reapZombieSessions, runLoopMonitor } from './loop-monitor.js';
 export {
@@ -34,11 +29,9 @@ export { parkedOnAHuman } from './park-deadline.js';
 export { probePgBossBackstop, recordPipelineSweeperTick } from './pgboss-health.js';
 export { poolPrompt, settleNoPromptJob } from './pool-served.js';
 export {
-  type JobsPorts,
   provideJobsPorts,
   type RecordSkillActivityEventInput,
   type SkillActivityExecutor,
-  type SkillActivityPort,
 } from './ports.js';
 export {
   canNameItsAgent,

@@ -43,7 +43,7 @@ export const DEVICE_FAILURE_STREAK = (() => {
   return Number.isFinite(n) && n > 0 ? n : 3;
 })();
 
-export const DEVICE_TRIP_WINDOW_MS = (() => {
+const DEVICE_TRIP_WINDOW_MS = (() => {
   const n = Number.parseInt(process.env.DEVICE_TRIP_WINDOW_MS ?? '', 10);
   return Number.isFinite(n) && n > 0 ? n : 15 * 60_000;
 })();

@@ -28,12 +28,3 @@ export function memoryOfLiveIssue(projectId: string): SQL {
     projectId,
   );
 }
-
-/** The same condition for hand-written SQL that names the memories table by an alias. */
-export function memoryOfLiveIssueAs(tableAlias: string, projectId: string): SQL {
-  const t = sql.raw(tableAlias);
-  return liveIssueMemory(
-    { source: sql`${t}.source`, sourceRef: sql`${t}.source_ref`, metadata: sql`${t}.metadata` },
-    projectId,
-  );
-}

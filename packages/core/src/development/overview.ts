@@ -109,13 +109,6 @@ export function movingOf(
   };
 }
 
-export interface ContractWaitFact {
-  issueKey: string;
-  contract: string;
-  minVersion: string;
-  current: string | null;
-}
-
 const issueNode = (r: IssueStandingRow, held: boolean): OverviewChainNode => ({
   kind: 'issue',
   key: r.key,
@@ -138,36 +131,11 @@ const edgeNode = (e: IssueEdgeRef): OverviewChainNode => ({
   held: false,
 });
 
-const contractNode = (w: ContractWaitFact): OverviewChainNode => ({
-  kind: 'contract',
-  key: w.contract,
-  title: `Needs ${w.minVersion}; the provider has published ${w.current ?? 'no version'}`,
-  status: null,
-  step: null,
-  tone: null,
-  waitingOn: null,
-  held: false,
-});
-
-// cm:why held means held back by something that is neither a person nor a run: the Stuck attention group, or a queued issue an unsettled contract wait keeps out of dispatch (`ecosystem/waits/rules.ts:holdsDispatch`), which the standing read model does not yet read
-export function stuckOf(
-  rows: readonly IssueStandingRow[],
-  waits: readonly ContractWaitFact[],
-): OverviewStuck {
+// cm:why held means held back by something that is neither a person nor a run: the Stuck attention group
+export function stuckOf(rows: readonly IssueStandingRow[]): OverviewStuck {
   const open = rows.filter(isOpen);
   const byKey = new Map(open.map((r) => [r.key, r]));
-  const waitsOf = new Map<string, ContractWaitFact[]>();
-  for (const w of waits) waitsOf.set(w.issueKey, [...(waitsOf.get(w.issueKey) ?? []), w]);
-
-  const held = new Set(
-    open
-      .filter(
-        (r) =>
-          r.standing.attentionGroup === 'stuck' ||
-          (r.standing.attentionGroup === 'queued' && waitsOf.has(r.key)),
-      )
-      .map((r) => r.key),
-  );
+  const held = new Set(open.filter((r) => r.standing.attentionGroup === 'stuck').map((r) => r.key));
   if (held.size === 0) return { count: 0, chains: [] };
 
   const dependents = new Map<string, string[]>();
@@ -183,29 +151,20 @@ export function stuckOf(
     if (r) return issueNode(r, held.has(key));
     return edgeNode(refs.get(key) as IssueEdgeRef);
   };
-  const waitId = (w: ContractWaitFact) => `contract:${w.contract}@${w.minVersion}`;
-  const waitsByRoot = new Map<string, ContractWaitFact>();
 
   const rootsOf = (key: string, seen = new Set<string>()): string[] => {
     if (seen.has(key)) return [];
     seen.add(key);
     const r = byKey.get(key);
     const up = r ? r.standing.blockedBy.map((b) => b.key) : [];
-    const contracts = (waitsOf.get(key) ?? []).map((w) => {
-      waitsByRoot.set(waitId(w), w);
-      return waitId(w);
-    });
-    const above = [...up.flatMap((k) => rootsOf(k, seen)), ...contracts];
+    const above = up.flatMap((k) => rootsOf(k, seen));
     return above.length > 0 ? above : [key];
   };
 
   const rootIds = [...new Set([...held].flatMap((k) => rootsOf(k)))];
   const chains = rootIds.map((id): OverviewChain => {
-    const contract = waitsByRoot.get(id);
-    const rootNode = contract ? contractNode(contract) : nodeOf(id);
-    const first = contract
-      ? waits.filter((w) => waitId(w) === id).map((w) => w.issueKey)
-      : (dependents.get(id) ?? []);
+    const rootNode = nodeOf(id);
+    const first = dependents.get(id) ?? [];
     const seen = new Set<string>([id]);
     const levels: OverviewChainNode[][] = [[rootNode]];
     let frontier = first;

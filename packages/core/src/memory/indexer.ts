@@ -5,26 +5,16 @@ import { type MemorySource, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/index.js';
 import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
-import {
-  chunkAndPublish,
-  chunkContextPrefix,
-  chunkSetMatches,
-  invalidateChunks,
-} from './chunk-writer.js';
-import { chunkText, isChunkedSource } from './chunker.js';
-import { loadRetrievalFlags } from './retrieval-flags.js';
 import { searchMemories } from './search.js';
 
 type Executor = Pick<typeof db, 'insert'>;
 
-/** The parent row as it LANDED — what the chunk comparison and the race check are both read off. */
+/** The parent row as it LANDED — what the race check is read off. */
 interface LandedRow {
   id: string;
   embeddedAt: Date;
   textContent: string;
   metadata: unknown;
-  chunkGeneration: number;
-  chunkedAt: Date | null;
   hasEmbedding: boolean;
 }
 
@@ -64,52 +54,8 @@ function upsertParent(
       embeddedAt: memories.embeddedAt,
       textContent: memories.textContent,
       metadata: memories.metadata,
-      chunkGeneration: memories.chunkGeneration,
-      chunkedAt: memories.chunkedAt,
       hasEmbedding: sql<boolean>`${memories.embedding} is not null`,
     });
-}
-
-async function upsertChunkedParent(
-  input: IndexInput,
-  vector: number[] | null,
-  preserveUnchangedVector: boolean,
-  outage: boolean,
-): Promise<{ row: LandedRow; chunksDegraded: boolean }> {
-  const { row, generation } = await db.transaction(async (tx) => {
-    const [r] = await upsertParent(tx, input, vector, preserveUnchangedVector);
-    if (!r) throw new Error('memory.indexer: upsert returned no row');
-    const prefix = await chunkContextPrefix({
-      source: input.source,
-      sourceRef: input.sourceRef,
-      textContent: r.textContent,
-      metadata: r.metadata,
-    });
-    const passages = chunkText(r.textContent);
-    if (await chunkSetMatches(tx, r, prefix, passages)) {
-      return { row: r, generation: null as number | null };
-    }
-    return { row: r, generation: await invalidateChunks(tx, r.id) };
-  });
-  if (generation === null || outage) return { row, chunksDegraded: outage };
-  try {
-    await chunkAndPublish({
-      id: row.id,
-      source: input.source,
-      sourceRef: input.sourceRef,
-      textContent: row.textContent,
-      metadata: row.metadata,
-      chunkGeneration: generation,
-    });
-  } catch (err) {
-    if (!(err instanceof EmbeddingUnavailableError)) throw err;
-    logger.warn(
-      { projectId: input.projectId, source: input.source, sourceRef: input.sourceRef },
-      'memory.indexer: embeddings unavailable for the chunk set, row stays flat-only for backfill',
-    );
-    return { row, chunksDegraded: true };
-  }
-  return { row, chunksDegraded: false };
 }
 
 function describe(row: { description?: unknown; descriptionFormat?: unknown }): string {
@@ -135,7 +81,7 @@ function describe(row: { description?: unknown; descriptionFormat?: unknown }): 
 
 export const MAX_EMBED_CHARS = 8192;
 
-export interface IndexInput {
+interface IndexInput {
   projectId: string;
   source: MemorySource;
   sourceRef: string;
@@ -165,7 +111,7 @@ export interface IndexResult {
   dedupeScore?: number;
 }
 
-export interface IndexOptions {
+interface IndexOptions {
   nearDuplicateProbe?: boolean;
 }
 
@@ -210,7 +156,6 @@ interface WriteOutcome {
 async function writeOnce(
   input: IndexInput,
   opts: IndexOptions | undefined,
-  chunked: boolean,
   allowSkip: boolean,
 ): Promise<WriteOutcome> {
   const existing = allowSkip ? await readExisting(input) : null;
@@ -249,10 +194,7 @@ async function writeOnce(
   }
 
   const preserve = skip || outage;
-  const written = chunked
-    ? await upsertChunkedParent(input, vector, preserve, outage)
-    : { row: (await upsertParent(db, input, vector, preserve))[0], chunksDegraded: false };
-  const row = written.row;
+  const [row] = await upsertParent(db, input, vector, preserve);
 
   if (!row) {
     // Shouldn't happen — UPSERT with returning always returns a row.
@@ -268,7 +210,7 @@ async function writeOnce(
   }
   return {
     row,
-    degraded: outage || raceLost || written.chunksDegraded,
+    degraded: outage || raceLost,
     raceLost,
     nearDuplicate,
   };
@@ -288,11 +230,8 @@ export async function indexMemory(input: IndexInput, opts?: IndexOptions): Promi
     );
   }
 
-  const flags = await loadRetrievalFlags(input.projectId);
-  const chunked = flags.memoryModel === 'chunked' && isChunkedSource(input.source);
-
-  const first = await writeOnce(input, opts, chunked, true);
-  const outcome = first.raceLost ? await writeOnce(input, opts, chunked, false) : first;
+  const first = await writeOnce(input, opts, true);
+  const outcome = first.raceLost ? await writeOnce(input, opts, false) : first;
 
   return {
     id: outcome.row.id,

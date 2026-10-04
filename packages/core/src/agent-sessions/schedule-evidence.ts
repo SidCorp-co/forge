@@ -4,7 +4,7 @@ export const BLIND_SCHEDULE_RUN_REASON = 'audit_ran_blind';
 
 const SCHEDULE_SOURCE = 'schedule.run';
 
-export interface BlindScheduleRunInput {
+interface BlindScheduleRunInput {
   /** Status after every earlier rewrite in the handler, not the reported one. */
   resolvedStatus: AgentSessionStatus | undefined;
   /** Resolved session metadata — the base the write will persist. */

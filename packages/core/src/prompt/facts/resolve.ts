@@ -42,28 +42,13 @@ import {
   CANONICAL_LADDER,
   type FactRenderContext,
   FORGE_FACTS,
-  type ForgeFact,
-  getFact,
   type ProjectModuleFact,
 } from './registry.js';
 
-export interface ResolvedFact {
-  id: string;
-  title: string;
-  category: ForgeFact['category'];
-  tier: ForgeFact['tier'];
-  scope: ForgeFact['scope'];
-  namespace: ForgeFact['namespace'];
-  appliesTo?: readonly JobType[];
-  version: number;
-  /** Project-resolved canonical text. */
-  preview: string;
-}
-
 /** Resolves a `{{project:<key>}}` reference to its text, or undefined if unknown. */
-export type ProjectVarResolver = (key: string) => string | undefined;
+type ProjectVarResolver = (key: string) => string | undefined;
 
-export interface ProjectFactInputs {
+interface ProjectFactInputs {
   /** The happy-path status ladder (`registry.ts:CANONICAL_LADDER`). */
   ladder: IssueStatus[];
   /** Raw project branch columns — lets a caller that already needs this read
@@ -177,7 +162,7 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
   return `## Project integrations\nConnected integrations and how to use them:\n${lines.join('\n')}`;
 }
 
-export function makeProjectResolver(src: {
+function makeProjectResolver(src: {
   projectId: string;
   baseBranch: string | null;
   deploysFrom: string | null;
@@ -207,7 +192,7 @@ export function makeProjectResolver(src: {
  * Parent comes back as a NAME because the only consumer writes it into a system prompt, where an
  * id is noise an agent cannot act on: `PATCH /api/issues/:id` resolves a module by name as well as by uuid.
  */
-export async function loadProjectModules(projectId: string): Promise<ProjectModuleFact[]> {
+async function loadProjectModules(projectId: string): Promise<ProjectModuleFact[]> {
   const parents = alias(labels, 'parent_labels');
   const rows = await db
     .select({ name: labels.name, parentName: parents.name })
@@ -397,61 +382,4 @@ export function renderStageFactsText(
   }
 
   return ['## Forge context', forgeText, ...projectParts].filter((s) => s.length > 0).join('\n\n');
-}
-
-/**
- * Render the `## Forge context` block injected into the system prompt for a
- * pipeline `stage` (prompt/system.ts) — the project-resolved contextual facts a
- * skill at this stage needs, so skill bodies stay pure business logic.
- * Returns '' for a non-pipeline stage. See `renderStageFactsText` for what is
- * inlined vs pointed-to.
- */
-export async function renderStageFactsBlock(
-  projectId: string,
-  stage: JobType | null,
-): Promise<string> {
-  if (!stage) return '';
-  const inputs = await loadProjectFactInputs(projectId);
-  return renderStageFactsText(inputs, projectId, stage);
-}
-
-export async function buildFactContext(
-  projectId: string,
-  stage?: JobType | null,
-): Promise<FactRenderContext> {
-  const { ladder, modules } = await loadProjectFactInputs(projectId);
-  return { projectId, stage: stage ?? null, ladder, modules };
-}
-
-function toResolved(fact: ForgeFact, ctx: FactRenderContext): ResolvedFact {
-  const base: ResolvedFact = {
-    id: fact.id,
-    title: fact.title,
-    category: fact.category,
-    tier: fact.tier,
-    scope: fact.scope,
-    namespace: fact.namespace,
-    version: fact.version,
-    preview: fact.render(ctx),
-  };
-  return fact.appliesTo ? { ...base, appliesTo: fact.appliesTo } : base;
-}
-
-export async function listResolvedFacts(
-  projectId: string,
-  stage?: JobType | null,
-): Promise<ResolvedFact[]> {
-  const ctx = await buildFactContext(projectId, stage);
-  return FORGE_FACTS.map((f) => toResolved(f, ctx));
-}
-
-export async function getResolvedFact(
-  projectId: string,
-  id: string,
-  stage?: JobType | null,
-): Promise<ResolvedFact | undefined> {
-  const fact = getFact(id);
-  if (!fact) return undefined;
-  const ctx = await buildFactContext(projectId, stage);
-  return toResolved(fact, ctx);
 }

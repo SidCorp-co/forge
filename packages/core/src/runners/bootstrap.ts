@@ -8,7 +8,3 @@ export function bootstrapRunnerAdapters(): void {
   registerRunnerAdapter(claudeCodeAdapter);
   bootstrapped = true;
 }
-
-export function resetRunnerBootstrapForTest(): void {
-  bootstrapped = false;
-}

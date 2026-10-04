@@ -8,8 +8,6 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { resolvedWindowDaysFor } from '../pipeline/index.js';
-import { runnerHealthWithBuild } from './build-comparison.js';
-import { clearRunnerQuarantine } from './quarantine.js';
 import {
   activeRunnersOf,
   listProjectRunners,
@@ -17,10 +15,10 @@ import {
   runnerActivity,
   runnerRow,
 } from './read.js';
-import { getRunnerAdapter, listRunnerTypes } from './registry.js';
+import { getRunnerAdapter } from './registry.js';
 import { setRunnerStatus } from './runner-events.js';
 import { defaultRunnerCapabilities } from './select.js';
-import { deleteRunner, insertRunner, storeRunnerQuota, updateRunner } from './service.js';
+import { deleteRunner, insertRunner, updateRunner } from './service.js';
 import type { Runner } from './types.js';
 
 const badRequest = (details: unknown) =>
@@ -90,14 +88,6 @@ const listQuery = z.object({
 export const runnerRoutes = new Hono<{ Variables: AuthVars }>();
 
 runnerRoutes.use('*', requireAuth(), assertEmailVerified());
-
-runnerRoutes.get('/types', async (c) => {
-  const types = listRunnerTypes().map((a) => ({
-    type: a.type,
-    configSchema: 'configSchema' in a && a.configSchema ? '<zod>' : null,
-  }));
-  return c.json({ types });
-});
 
 runnerRoutes.get(
   '/',
@@ -300,110 +290,6 @@ runnerRoutes.delete(
       event: 'runner.deleted',
       data: { runnerId: id },
     });
-    return c.json({ ok: true });
-  },
-);
-
-runnerRoutes.post(
-  '/:id/health-check',
-  zValidator('param', idParam, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const userId = c.get('userId');
-    const { id } = c.req.valid('param');
-    const existing = await runnerRow(id);
-    if (!existing) throw notFound();
-    const access = await loadProjectAccess(existing.projectId, userId);
-    requireHeld(access, 'project.read');
-    const adapter = getRunnerAdapter(existing.type);
-    if (!adapter) throw badRequest({ type: 'no adapter registered' });
-    return c.json(await runnerHealthWithBuild(adapter, rowToRunner(existing), existing.deviceId));
-  },
-);
-
-runnerRoutes.post(
-  '/:id/refresh-quota',
-  zValidator('param', idParam, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const userId = c.get('userId');
-    const { id } = c.req.valid('param');
-    const existing = await runnerRow(id);
-    if (!existing) throw notFound();
-    const access = await loadProjectAccess(existing.projectId, userId);
-    requireHeld(access, 'project.write');
-    const adapter = getRunnerAdapter(existing.type);
-    if (!adapter?.refreshQuota) {
-      return c.json({ remaining: null, limit: null });
-    }
-    const result = await adapter.refreshQuota({ runner: rowToRunner(existing) });
-    if (Object.keys(result).length > 0) {
-      await storeRunnerQuota(id, (existing.config ?? {}) as Record<string, unknown>, result);
-    }
-    return c.json(result);
-  },
-);
-
-runnerRoutes.post(
-  '/:id/exclude',
-  zValidator('param', idParam, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const userId = c.get('userId');
-    const { id } = c.req.valid('param');
-    const existing = await runnerRow(id);
-    if (!existing) throw notFound();
-    const access = await loadProjectAccess(existing.projectId, userId);
-    // Same gate as PATCH `status` — exclude/include are status mutations.
-    requireHeld(access, 'project.admin');
-    await setRunnerStatus({
-      runnerId: id,
-      newStatus: 'disabled',
-      reason: 'operator_exclude',
-      actor: restActor(c),
-    });
-    return c.json({ ok: true });
-  },
-);
-
-runnerRoutes.post(
-  '/:id/include',
-  zValidator('param', idParam, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const userId = c.get('userId');
-    const { id } = c.req.valid('param');
-    const existing = await runnerRow(id);
-    if (!existing) throw notFound();
-    const access = await loadProjectAccess(existing.projectId, userId);
-    requireHeld(access, 'project.admin');
-    await setRunnerStatus({
-      runnerId: id,
-      newStatus: 'offline',
-      reason: 'operator_include',
-      actor: restActor(c),
-    });
-    return c.json({ ok: true });
-  },
-);
-
-runnerRoutes.post(
-  '/:id/clear-quarantine',
-  zValidator('param', idParam, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const userId = c.get('userId');
-    const { id } = c.req.valid('param');
-    const existing = await runnerRow(id);
-    if (!existing) throw notFound();
-    const access = await loadProjectAccess(existing.projectId, userId);
-    requireHeld(access, 'project.admin');
-    await clearRunnerQuarantine(id, existing.projectId);
     return c.json({ ok: true });
   },
 );

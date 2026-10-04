@@ -19,7 +19,7 @@ async function findRunnerId(projectId: string, deviceId: string): Promise<string
   return runner?.id ?? null;
 }
 
-export interface ChatRunnerHealthInput {
+interface ChatRunnerHealthInput {
   sessionId: string;
   projectId: string;
   deviceId: string | null;

@@ -18,7 +18,6 @@ import {
   optionExecutors,
   questionBlockerKinds,
 } from '../db/schema-questions.js';
-import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { badRequest } from '../middleware/route-errors.js';
@@ -73,7 +72,6 @@ import { releaseHoldsOf, releaseJobHold } from '../jobs/index.js';
 import { readAdmissibleIssues } from './admissible.js';
 import { prepareJobForMaster, startJobForMaster } from './claim.js';
 import { deviceCommentInboxRoutes } from './comment-inbox-routes.js';
-import { readDeviceLoad, readFleetLoad, readProjectLoad } from './load.js';
 import { clearMasterLimit, recordMasterLimit } from './master-limit.js';
 import { closeMasterSession } from './master-session.js';
 import { readPool } from './pool.js';
@@ -276,30 +274,6 @@ devicePoolRoutes.post(
     return c.json({ released });
   },
 );
-
-const loadQuerySchema = z.object({
-  projectId: z.string().uuid().optional(),
-});
-
-devicePoolRoutes.get(
-  '/me/load',
-  requireDevice(),
-  zValidator('query', loadQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { projectId } = c.req.valid('query');
-    const deviceId = c.get('device').id;
-    const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
-
-    const device = await readDeviceLoad(deviceId);
-    const project = projectId ? await readProjectLoad(projectId) : null;
-    const fleet = projectId ? await readFleetLoad(projectId, livenessSeconds) : [];
-
-    return c.json({ device, project, fleet });
-  },
-);
-
 const masterCloseBodySchema = z.object({
   sessionId: z.string().uuid(),
   reason: z.string().min(1).max(500),

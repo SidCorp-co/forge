@@ -34,17 +34,6 @@ export function useRun(runId: string | undefined, enabled = true) {
   });
 }
 
-/** Issue subtasks for the RunDetail Tasks tab. Keyed `['issue',id,'tasks']`.
- *  Only fetched when the SlideOver is open. */
-export function useIssueTasks(issueId: string | undefined, enabled = true) {
-  return useQuery({
-    queryKey: ["issue", issueId, "tasks"],
-    queryFn: () => pipelineApi.tasksForIssue(issueId as string),
-    enabled: enabled && !!issueId,
-    staleTime: 30_000,
-  });
-}
-
 /** Cross-project per-step durations + cost. Keyed `['pipeline','step-durations',opts]`. */
 export function useStepDurations(opts: AnalyticsOpts = {}) {
   return useQuery({

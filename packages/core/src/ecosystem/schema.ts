@@ -1,4 +1,3 @@
-import { PROVIDER_LIVE_MODES } from '@forge/contracts/contract-waits';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { z } from 'zod';
 import { sized, slug, unique, uuid } from '../project-config/index.js';
@@ -12,7 +11,7 @@ export const DOCUMENT_TYPES = [
 ] as const;
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 
-export const CONTRACT_TYPES = [
+const CONTRACT_TYPES = [
   'openapi',
   'asyncapi',
   'mcp-tools',
@@ -58,8 +57,6 @@ const ecosystemFields = <I extends z.ZodType>(id: I) => ({
     decision: gateMode(),
   }),
   visibility: z.strictObject({ members: z.enum(VISIBILITY_MODES) }),
-  // cm:why absent is `required`: a consumer's production release waits for its provider to serve the version it waits on unless the ecosystem turns that off (E4)
-  releases: z.strictObject({ providerLive: z.enum(PROVIDER_LIVE_MODES) }).optional(),
 });
 
 // cm:why core assigns an ecosystem its id, so the id is core's to write: a create carries none and an update carries the one core assigned (`ecosystem-service.ts:parseEcosystem` refuses either otherwise as ECOSYSTEM_ID_IMMUTABLE). The written shape is what ecosystem-v1.json publishes, so the schema a client authors against never asks for an id a create refuses.

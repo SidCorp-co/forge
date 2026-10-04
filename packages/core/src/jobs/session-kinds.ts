@@ -16,13 +16,6 @@ export {
 export function isPipelineSessionKind(kind: AgentSessionKind): boolean {
   return (PIPELINE_SESSION_KINDS as readonly AgentSessionKind[]).includes(kind);
 }
-
-export const NON_CLIENT_SESSION_KINDS = [
-  'pipeline',
-  'master',
-  'run_session',
-] as const satisfies readonly AgentSessionKind[];
-
 export const NEVER_PARKED_SESSION_KINDS = ['master'] as const satisfies readonly AgentSessionKind[];
 
 export function isAgentSessionKind(value: unknown): value is AgentSessionKind {

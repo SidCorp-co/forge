@@ -47,7 +47,7 @@ import { releaseLabelVerdict } from '../runners/index.js';
 import { runnerAdmission } from './pool-admission.js';
 import { devicesPorts } from './ports.js';
 
-export type PrepareResult =
+type PrepareResult =
   | {
       ok: true;
       jobId: string;
@@ -76,7 +76,7 @@ export type PrepareResult =
     }
   | { ok: false; reason: 'checkout_unbound'; detail: string };
 
-export type StartResult = { ok: true } | { ok: false; reason: 'hold_lost' | 'runner_too_old' };
+type StartResult = { ok: true } | { ok: false; reason: 'hold_lost' | 'runner_too_old' };
 
 /**
  * Take one queued job for `sessionId` on `deviceId` and build the work, WITHOUT

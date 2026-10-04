@@ -16,7 +16,7 @@ type StaleAlarmRow = {
   issue_id: string | null;
 };
 
-export function staleAlarmQuery(now: Date = new Date()): SQL {
+function staleAlarmQuery(now: Date = new Date()): SQL {
   return quietJobCandidateQuery({
     columns: sql`j.id, j.project_id, j.issue_id`,
     quietMinutes: RESULT_QUIET_MINUTES + ALARM_MARGIN_MINUTES,

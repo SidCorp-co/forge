@@ -123,7 +123,7 @@ export interface OverviewMoving {
 }
 
 export interface OverviewChainNode {
-	kind: "issue" | "contract";
+	kind: "issue";
 	key: string;
 	title: string;
 	status: IssueStatus | null;

@@ -10,7 +10,7 @@ import { logger } from '../observability/logger.js';
 import { hashSkillBody } from './hash.js';
 import { parseManifest } from './parse-manifest.js';
 
-export interface SeedChange {
+interface SeedChange {
   name: string;
   /** Row id of the global template — set on 'updated' bumps (ISS-605 sweep key). */
   globalSkillId?: string;
@@ -27,7 +27,7 @@ export interface SeedResult {
   changes: SeedChange[];
 }
 
-export interface SeedOptions {
+interface SeedOptions {
   /**
    * Override the directory scanned for `forge-*` subdirectories. Defaults to
    * the `skills/` folder shipped alongside the compiled package.

@@ -1,12 +1,12 @@
 import crypto from 'node:crypto';
+import type { PreambleBlock } from '@forge/contracts/jobs';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
-import type { PreambleBlock } from '../lib/chat-preamble.js';
 import { estimateTokens } from '../lib/token-estimator.js';
 import { logger } from '../observability/logger.js';
 
-export interface PersistPromptSnapshotArgs {
+interface PersistPromptSnapshotArgs {
   jobId: string;
   systemPrompt: string;
   userPrompt: string;

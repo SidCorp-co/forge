@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, gte, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, gte } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type AgentSessionTurnRole, agentSessionTurns } from '../db/schema.js';
 
@@ -211,12 +211,6 @@ export function sliceMessagesThrough(messages: unknown, keepThroughTurnIndex: nu
   const arr = Array.isArray(messages) ? messages : [];
   return arr.slice(0, keepThroughTurnIndex + 1);
 }
-
-/** SQL fragment to raise the agent_sessions row counter without re-reading. */
-export function bumpUpdatedAt() {
-  return sql`now()`;
-}
-
 /**
  * Extract a non-empty string prompt from a `messages[i].content` value. The
  * legacy schema lets `content` be either a string or an array of structured

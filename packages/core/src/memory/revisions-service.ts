@@ -22,9 +22,9 @@ export const memoryRevisionsInputSchema = z.object({
   offset: z.number().int().min(0).default(0),
 });
 
-export type MemoryRevisionsInput = z.infer<typeof memoryRevisionsInputSchema>;
+type MemoryRevisionsInput = z.infer<typeof memoryRevisionsInputSchema>;
 
-export interface MemoryRevisionRow {
+interface MemoryRevisionRow {
   id: string;
   memoryId: string;
   source: string;
@@ -34,7 +34,7 @@ export interface MemoryRevisionRow {
   replacedAt: Date;
 }
 
-export interface MemoryRevisionsResult {
+interface MemoryRevisionsResult {
   rows: MemoryRevisionRow[];
   total: number;
 }

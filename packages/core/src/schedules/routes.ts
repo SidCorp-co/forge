@@ -22,8 +22,6 @@ const listQuerySchema = z
   })
   .strict();
 
-const scheduleMode = z.enum(['propose', 'auto']);
-
 const apiScheduleKind = z.enum(scheduleKinds);
 
 const createSchema = z
@@ -37,9 +35,7 @@ const createSchema = z
     enabled: z.boolean().optional(),
     targetProjectSlug: z.string().trim().min(1).max(200).nullable().optional(),
     metadata: z.record(z.string(), z.unknown()).nullable().optional(),
-    templateKey: z.string().trim().min(1).max(200).nullable().optional(),
     params: z.record(z.string(), z.unknown()).nullable().optional(),
-    mode: scheduleMode.optional(),
   })
   .strict()
   .superRefine((data, ctx) => {
@@ -59,19 +55,12 @@ const createSchema = z
           message: 'prompt must be omitted when kind is "script"',
         });
       }
-      if (data.templateKey) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['templateKey'],
-          message: 'templateKey must be omitted when kind is "script"',
-        });
-      }
     } else if (kind === 'release_batch' || kind === 'sentry_pull') {
       const what =
         kind === 'release_batch'
           ? 'it cuts whatever is waiting at the gate'
           : "it pulls whatever the project's Sentry binding declares";
-      for (const field of ['prompt', 'script', 'templateKey'] as const) {
+      for (const field of ['prompt', 'script'] as const) {
         if (data[field] !== undefined && data[field] !== null) {
           ctx.addIssue({
             code: 'custom',
@@ -99,9 +88,7 @@ const updateSchema = z
     enabled: z.boolean().optional(),
     targetProjectSlug: z.string().trim().min(1).max(200).nullable().optional(),
     metadata: z.record(z.string(), z.unknown()).nullable().optional(),
-    templateKey: z.string().trim().min(1).max(200).nullable().optional(),
     params: z.record(z.string(), z.unknown()).nullable().optional(),
-    mode: scheduleMode.optional(),
   })
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' })

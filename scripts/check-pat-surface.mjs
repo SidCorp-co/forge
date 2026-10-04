@@ -57,10 +57,6 @@ const EXEMPT = [
     route: 'POST /api/body/preview',
     why: 'renders the body sent in the request and nothing else; it reads no stored row',
   },
-  {
-    route: 'GET /api/runners/types',
-    why: 'the static list of runner adapters this build registers; no project data',
-  },
 ];
 
 function servedTable() {

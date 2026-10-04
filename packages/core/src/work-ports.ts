@@ -38,16 +38,11 @@ import {
 } from './conversations/index.js';
 import { ADMITTED_RUNNER, readRunGate } from './devices/index.js';
 import {
-  assertWaitsSettledForIssue,
-  assertWaitsSettledForSeqs,
-  ContractWaitUnsettledError,
   decideChannelGate,
   doorOf,
   landingDriftRefusal,
   landingWorld,
   tokenIdOf,
-  waitsOnContractsOf,
-  waitUnsettledSql,
 } from './ecosystem/index.js';
 import { rowIn as feedbackRowIn, listFeedbackAs } from './feedback/index.js';
 import { guideRef } from './guides/index.js';
@@ -199,17 +194,11 @@ export function provideWorkPorts(): void {
     issueDeleteRefusal,
     steerIssue,
     designUnapprovedSql,
-    waitUnsettledSql,
     assertDesignsApprovedForSeqs,
-    assertWaitsSettledForSeqs,
     assertDesignApprovedForIssue,
-    assertWaitsSettledForIssue,
-    isDispatchGateError: (
-      err,
-    ): err is WorkflowDesignNotApprovedError | ContractWaitUnsettledError =>
-      err instanceof WorkflowDesignNotApprovedError || err instanceof ContractWaitUnsettledError,
+    isDispatchGateError: (err): err is WorkflowDesignNotApprovedError =>
+      err instanceof WorkflowDesignNotApprovedError,
     buildsWorkflowOf,
-    waitsOnContractsOf,
     proposesWorkflowOf,
     requirementOfIssue,
     plannedRevisionFor,

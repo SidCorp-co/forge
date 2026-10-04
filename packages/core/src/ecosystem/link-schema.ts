@@ -114,7 +114,7 @@ export type LinkDocument = z.infer<typeof linkDocumentSchema>;
 
 const findingSite = { site: callSiteSchema };
 
-export const findingSchema = z.discriminatedUnion('classification', [
+const findingSchema = z.discriminatedUnion('classification', [
   z.strictObject({
     classification: z.literal('matched'),
     ...findingSite,
@@ -198,4 +198,3 @@ export const builderRunDocumentSchema = z
     updatedAt: timestamp(),
   })
   .refine(supersededAgrees, { message: SUPERSEDED_MESSAGE, path: ['supersededBy'] });
-export type BuilderRunDocument = z.infer<typeof builderRunDocumentSchema>;

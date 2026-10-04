@@ -105,7 +105,7 @@ export async function issueWorkspaceCredential(args: {
  * Who a checkout's credential is held by: the device's holder where that is an
  * agent, and the project's own agent where it is a person entitled to hand it.
  */
-export async function workspaceHolderFor(args: {
+async function workspaceHolderFor(args: {
   deviceHolderUserId: string;
   projectId: string;
 }): Promise<string> {

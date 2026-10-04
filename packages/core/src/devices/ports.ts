@@ -4,7 +4,6 @@
 
 import type { PolicyRefusalCode } from '@forge/contracts/project-config';
 import type { Tx } from '../db/client.js';
-import type { SkillActivityPort } from '../jobs/index.js';
 import type { RefusalError } from '../lib/refusal.js';
 
 /** The runner build this deployment publishes. */
@@ -14,7 +13,7 @@ export interface PublishedRunnerBuild {
 }
 
 /** A question a box asks on behalf of its master, as the device route validated it. */
-export interface DeviceQuestion {
+interface DeviceQuestion {
   id: string;
   projectId: string;
   prompt: string;
@@ -24,15 +23,14 @@ export interface DeviceQuestion {
 }
 
 /** A notice posted on an issue by a box, screened and mirrored as any comment is. */
-export interface DeviceNotice {
+interface DeviceNotice {
   issueId: string;
   authorId: string;
   authorDeviceId: string;
   body: string;
 }
 
-export interface DevicesPorts {
-  skillActivity: SkillActivityPort;
+interface DevicesPorts {
   /** The project's effective policy document, or null when it declares none. */
   readEffectivePolicy(projectId: string): Promise<{ document: unknown } | null>;
   /** The refusal a dispatch against a project's policy is answered with. */

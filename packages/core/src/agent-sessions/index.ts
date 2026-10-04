@@ -12,7 +12,7 @@ export {
   sessionRoleRefusal,
 } from './interactive-credential.js';
 export { liveMasterSessionId, masterSessionIfOwned } from './master-owner.js';
-export { type AgentSessionsPorts, provideAgentSessionsPorts } from './ports.js';
+export { provideAgentSessionsPorts } from './ports.js';
 export { publishSessionRecoveryChanged } from './recovery-publish.js';
 export {
   incrementAutoRetryCount,
@@ -20,7 +20,6 @@ export {
   markSessionTerminal,
 } from './recovery-stats.js';
 export { agentSessionEventsRetention } from './retention.js';
-export { setSessionMetadata } from './service.js';
 export {
   agentRefusalText,
   mintSessionCredential,

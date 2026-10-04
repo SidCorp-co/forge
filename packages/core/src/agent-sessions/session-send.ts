@@ -26,12 +26,12 @@ import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { deviceRoom, roomManager } from '../lib/rooms.js';
 import { agentSessionsPorts } from './ports.js';
 
-export type SessionInboxRow = typeof sessionInbox.$inferSelect;
+type SessionInboxRow = typeof sessionInbox.$inferSelect;
 
 const SEND_ACK_MS_DEFAULT = 10_000;
 const SEND_ACK_MS_FLOOR = 2_000;
 
-export function sendGraceMs(): number {
+function sendGraceMs(): number {
   const raw = process.env.SESSION_SEND_ACK_MS;
   if (!raw) return SEND_ACK_MS_DEFAULT;
   const n = Number(raw);
@@ -39,21 +39,21 @@ export function sendGraceMs(): number {
 }
 
 /** How long one send stays the CURRENT episode. Two grace windows, matching the kill gate. */
-export function sendEpisodeWindowMs(): number {
+function sendEpisodeWindowMs(): number {
   return sendGraceMs() * 2;
 }
 
-export function isSendEpisodeLive(row: SessionInboxRow, now: number = Date.now()): boolean {
+function isSendEpisodeLive(row: SessionInboxRow, now: number = Date.now()): boolean {
   return now - row.sendRequestedAt.getTime() <= sendEpisodeWindowMs();
 }
 
-export interface SessionSendActor {
+interface SessionSendActor {
   userId: string;
   reason: string;
   source: 'rest' | 'mcp';
 }
 
-export interface SessionSendRequest {
+interface SessionSendRequest {
   agentSessionId: string;
   kind: SessionInboxKind;
   /** Idempotency key. Stable across redeliveries of ONE intent — a comment id, a job id. */
@@ -63,7 +63,7 @@ export interface SessionSendRequest {
   actor?: SessionSendActor;
 }
 
-export interface SessionSendRequestResult {
+interface SessionSendRequestResult {
   row: SessionInboxRow;
   /** False when the session has no device to publish to — resolve() will call it `gone`. */
   published: boolean;
@@ -212,7 +212,7 @@ export async function markSessionSendApplied(
     .where(and(eq(sessionInbox.agentSessionId, agentSessionId), eq(sessionInbox.seq, seq)));
 }
 
-export interface SendResolution {
+interface SendResolution {
   outcome: SessionSendOutcome;
   /** True once the message is known to have reached the model, not merely the CLI. */
   applied: boolean;

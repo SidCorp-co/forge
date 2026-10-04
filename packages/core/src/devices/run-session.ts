@@ -29,7 +29,6 @@ import { agentSessions, issues, pipelineRuns, terminalAgentSessionStatuses } fro
 import {
   heldIssuePrefixes,
   type IssueLeaseRelease,
-  readDeviceIssueLease,
   refuseHeldTakeForSeqs,
   releaseIssueLeaseRow,
   takeIssueLeases,
@@ -51,7 +50,7 @@ export const BOX_RUN_ID_METADATA_KEY = 'boxRunId';
  */
 export { RUN_GATE_METADATA_KEY } from './gate-report.js';
 
-export interface RunSession {
+interface RunSession {
   sessionId: string;
   runId: string;
 }
@@ -170,7 +169,7 @@ export async function openRunSession(args: {
     );
   }
   const canonical = await canonicaliseIssueKeys(args.projectId, args.issueKeys);
-  // cm:guard an unstarted issue a live blocks edge holds (ISSUE_BLOCKED), a flow's build without its approved design (ISS-53) and a contract wait before its version (E1) are refused as the job claim refuses them
+  // cm:guard an unstarted issue a live blocks edge holds (ISSUE_BLOCKED), and a flow's build without its approved design (ISS-53) are refused as the job claim refuses them
   await refuseHeldTakeForSeqs(args.projectId, canonical.seqs);
   const openingStatuses = await readIssueStatuses(args.projectId, canonical.seqs);
   const spec: OneShotRunSpec = {
@@ -242,19 +241,6 @@ export async function openRunSession(args: {
   );
   return opened;
 }
-
-/** The issues one live run session carries, read back from its run. */
-export async function runSessionIssues(sessionId: string): Promise<string[]> {
-  const [row] = await db
-    .select({
-      issues: sql<string[] | null>`${pipelineRuns.metadata} -> ${RUN_ISSUES_METADATA_KEY}`,
-    })
-    .from(agentSessions)
-    .innerJoin(pipelineRuns, eq(pipelineRuns.id, agentSessions.pipelineRunId))
-    .where(eq(agentSessions.id, sessionId));
-  return row?.issues ?? [];
-}
-
 /** Is this box's run session terminal, read from the authoritative row. */
 export async function readRunSessionTerminal(args: {
   deviceId: string;
@@ -273,22 +259,6 @@ export async function readRunSessionTerminal(args: {
   if (!row) return null;
   return (terminalAgentSessionStatuses as readonly string[]).includes(row.status);
 }
-
-/**
- * Is one issue held by a live run session on ANY box this device can see?
- *
- * The device bounds which projects may be asked about, never who counts as a
- * holder: filtering holders by device is what let box B open a second run over
- * an issue box A was running (ISS-1109).
- */
-export async function isIssueLeaseHeld(args: {
-  deviceId: string;
-  issueKey: string;
-  projectId?: string | null;
-}): Promise<boolean> {
-  return (await readDeviceIssueLease(args)).held;
-}
-
 /**
  * Give one issue's lease back, per ISSUE and per PROJECT, never per run.
  *
@@ -341,35 +311,12 @@ export async function releaseIssueLease(args: {
     return outcome;
   });
 }
-
-/** Every live run session on one device, for the daemon's own reconcile. */
-export async function listRunSessionsForDevice(
-  deviceId: string,
-): Promise<Array<{ sessionId: string; runId: string; issueKeys: string[] }>> {
-  const rows = await db
-    .select({
-      id: agentSessions.id,
-      runId: pipelineRuns.id,
-      issues: sql<string[] | null>`${pipelineRuns.metadata} -> ${RUN_ISSUES_METADATA_KEY}`,
-    })
-    .from(agentSessions)
-    .innerJoin(pipelineRuns, eq(pipelineRuns.id, agentSessions.pipelineRunId))
-    .where(
-      and(
-        eq(agentSessions.deviceId, deviceId),
-        eq(agentSessions.kind, RUN_SESSION_KIND),
-        notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
-      ),
-    );
-  return rows.map((r) => ({ sessionId: r.id, runId: r.runId, issueKeys: r.issues ?? [] }));
-}
-
 /** How a box says a run session ended, and whether the work came back. */
-export type RunSessionOutcome = 'ended' | 'killed_idle' | 'died';
+type RunSessionOutcome = 'ended' | 'killed_idle' | 'died';
 
 const FAILING_OUTCOMES: readonly RunSessionOutcome[] = ['died'];
 
-export interface ClosedRunSession {
+interface ClosedRunSession {
   alreadyTerminal: boolean;
   returned: string[];
 }

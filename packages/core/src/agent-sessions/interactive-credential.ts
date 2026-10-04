@@ -28,7 +28,7 @@ import {
 type AgentSessionRow = typeof agentSessions.$inferSelect;
 
 /** A runner declaring this runs a follow-up turn (`agent:send`) under the token it carries, too. */
-export const FOLLOW_UP_CREDENTIAL_CAPABILITY = 'followUpCredential';
+const FOLLOW_UP_CREDENTIAL_CAPABILITY = 'followUpCredential';
 
 /** Bounds a turn whose stop is never written; a turn is revoked when it stops, and may run for hours. */
 const INTERACTIVE_TURN_CREDENTIAL_TTL_MS = 8 * 60 * 60 * 1000;
@@ -62,7 +62,9 @@ export const RUNNER_OUTDATED_REFUSAL: SessionRefusal = {
  * A session on a paired box runs a shell in the box holder's checkout, which no Forge token
  * bounds, so a session takes project.write rather than handing a reader a read-only token.
  */
-export function sessionRoleRefusal(facts: PermissionFacts | null | undefined): SessionRefusal | null {
+export function sessionRoleRefusal(
+  facts: PermissionFacts | null | undefined,
+): SessionRefusal | null {
   if (!facts?.role) {
     return {
       noRole: true,

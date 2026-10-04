@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { type RunnerLimitReason, runners } from '../db/schema.js';
 import { clearRunnerLimit, DEFAULT_LIMIT_COOLDOWN_MS, stampRunnerLimit } from '../runners/index.js';
 
-export interface MasterLimitReport {
+interface MasterLimitReport {
   reason: RunnerLimitReason;
   /** Seconds until the account is expected back; null when unknown or `auth`. */
   resetsInSeconds: number | null;

@@ -6,13 +6,13 @@ import { logger } from '../observability/logger.js';
 const PREFLIGHT_PREFIX = 'preflight_failed:';
 
 /** Job error the ack hop writes when no runner ever claimed the dispatch. */
-export const NO_ACK_ERROR = 'dispatch_unclaimed';
+const NO_ACK_ERROR = 'dispatch_unclaimed';
 
 const NO_ACK_SUMMARY =
   'dispatch_unclaimed: accepted the dispatch and never claimed it (no ack, zero job events)';
 
 /** A failure the BOX owns, as opposed to one the agent's work produced. */
-export interface BoxFault {
+interface BoxFault {
   /** What two failures must SHARE to count as the same fault repeating. */
   key: string;
   /** What `runners.lastError` should read while this fault stands. */

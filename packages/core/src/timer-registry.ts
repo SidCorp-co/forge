@@ -23,7 +23,6 @@ import {
 } from './integrations/published-releases/index.js';
 import { probePgBossBackstop, runStaleSweep } from './jobs/index.js';
 import {
-  runChunkBackfill,
   runConsolidationSweep,
   runEmbeddingBackfill,
   runMemoryDecay,
@@ -173,11 +172,6 @@ export function coreTimers(): Timer[] {
         const result = await runEmbeddingBackfill();
         if (result.reembedded > 0 || result.knowledgeReembedded > 0 || result.aborted) {
           logger.info(result, 'memory.backfill: sweep complete');
-        }
-        if (result.aborted) return;
-        const chunks = await runChunkBackfill();
-        if (chunks.chunked > 0 || chunks.aborted) {
-          logger.info(chunks, 'memory.backfill: chunk sweep complete');
         }
       },
     },

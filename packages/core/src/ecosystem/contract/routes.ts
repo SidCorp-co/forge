@@ -15,9 +15,9 @@ import { slug } from '../../project-config/index.js';
 import { CONTRACT_DECISION_REASON_MAX, CONTRACT_DECISIONS } from './approval.js';
 import { decideContractVersion } from './decide.js';
 import { MAX_ARTIFACT_BYTES } from './measure.js';
-import { consumedContract, consumedMeasurements, consumedVersions } from './party-read.js';
+import { consumedContract, consumedVersions } from './party-read.js';
 import { publishContractVersion } from './publish.js';
-import { approvalView, currentOf, measurementsOf, readArtifact, versionsOf } from './store.js';
+import { approvalView, currentOf, readArtifact, versionsOf } from './store.js';
 import { SOURCE_REF } from './version-schema.js';
 
 export const contractRoutes = new Hono<{ Variables: AuthVars }>();
@@ -198,29 +198,10 @@ contractRoutes.post(
     return c.json({
       version: out.version.document,
       approval: approvalView(out.version),
-      settledWaits: out.settled.length,
       filedFeedback: out.filed.length,
     });
   },
 );
-
-contractRoutes.get('/:id/contracts/:contract/measurements', contractParam, async (c) => {
-  const { id, contract } = c.req.valid('param');
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
-  const rows = await measurementsOf(id, contract, 100);
-  return c.json({
-    measurements: rows.map((r) => ({
-      commit: r.commitSha,
-      branch: r.branch,
-      environments: r.environments,
-      outcome: r.outcome,
-      version: r.version,
-      reason: r.reason,
-      observedAt: r.observedAt.toISOString(),
-      settledAt: r.settledAt?.toISOString() ?? null,
-    })),
-  });
-});
 
 contractRoutes.get('/:id/consumes/:provider/:contract/versions', consumedParam, async (c) => {
   const { id, provider, contract } = c.req.valid('param');
@@ -236,17 +217,6 @@ contractRoutes.get('/:id/consumes/:provider/:contract/versions', consumedParam, 
     ecosystems: party.ecosystems,
     versions: await consumedVersions(provider, contract),
   });
-});
-
-contractRoutes.get('/:id/consumes/:provider/:contract/measurements', consumedParam, async (c) => {
-  const { id, provider, contract } = c.req.valid('param');
-  await consumedContract({
-    userId: c.get('userId'),
-    consumerId: id,
-    providerId: provider,
-    contract,
-  });
-  return c.json({ measurements: await consumedMeasurements(provider, contract) });
 });
 
 contractRoutes.post('/:id/contracts/:contract/versions', contractParam, uploadBody, async (c) => {

@@ -31,13 +31,13 @@ import { logger } from '../observability/logger.js';
 
 type AgentSessionRow = typeof agentSessions.$inferSelect;
 
-export const SCHEDULE_OWNER_GONE_REFUSAL: SessionRefusal = {
+const SCHEDULE_OWNER_GONE_REFUSAL: SessionRefusal = {
   code: 'SCHEDULE_OWNER_GONE',
   message:
     'This schedule has no owner to run as: the account that saved it is gone. A project admin can save the schedule again to run it as themselves.',
 };
 
-export type ScheduledAuthorityOutcome =
+type ScheduledAuthorityOutcome =
   | { kind: 'authorised'; authority: NonNullable<InteractiveAuthority> }
   | { kind: 'refused'; refusal: SessionRefusal }
   | { kind: 'no-device' };

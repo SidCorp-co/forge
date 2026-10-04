@@ -1,5 +1,4 @@
 import {
-  AGENT_REPORT_TRIAGES,
   TRIAGE_AGENT_REPORT_SHAPE,
   TRIAGE_AGENT_REPORTS_BY_SIGNAL_SHAPE,
   type TriageAgentReportRequest,
@@ -10,43 +9,21 @@ import { eq, inArray, type SQL } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import {
-  agentReportKinds,
-  agentReportSeverities,
-  agentReports,
-  agentReportTargets,
-} from '../db/schema.js';
+import { agentReports } from '../db/schema.js';
 import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { strictBody, zValidator } from '../middleware/zod-validator.js';
+import { strictBody } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { listVisibleProjectsWithRole } from '../projects/index.js';
 import {
-  listReports,
   type ReportActor,
   readReport,
-  reportViews,
   type TriageOutcome,
   triageReports,
   visibleIssue,
   writableProjectIds,
 } from './service.js';
-
-const listQuerySchema = z
-  .object({
-    projectId: z.uuid().optional(),
-    // scope=all rolls the feed up across every project the caller can see
-    // (owns or member) — bounded via loadVisibleProjectIds, same primitive as
-    // the pipeline analytics/project-health routes. Default 'project'.
-    scope: z.enum(['project', 'all']).optional(),
-    kind: z.enum(agentReportKinds).optional(),
-    severity: z.enum(agentReportSeverities).optional(),
-    target: z.enum(agentReportTargets).optional(),
-    triage: z.enum(AGENT_REPORT_TRIAGES).optional(),
-    limit: z.coerce.number().int().min(1).max(200).optional(),
-  })
-  .strict();
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -76,40 +53,6 @@ async function answer(c: Ctx, out: TriageOutcome) {
 
 export const agentReportRoutes = new Hono<{ Variables: AuthVars }>();
 agentReportRoutes.use('*', requireAuth(), assertEmailVerified());
-
-agentReportRoutes.get(
-  '/',
-  zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { projectId, scope, kind, severity, target, triage, limit } = c.req.valid('query');
-    const userId = c.get('userId');
-    let scoped: SQL;
-    if (scope === 'all') {
-      const visibleIds = await loadVisibleProjectIds(userId);
-      if (visibleIds.length === 0) return c.json([]);
-      scoped = inArray(agentReports.projectId, visibleIds);
-    } else {
-      if (!projectId) throw badRequest('projectId is required unless scope=all');
-      const access = await loadProjectAccess(projectId, userId);
-      requireHeld(access, 'project.read');
-      scoped = eq(agentReports.projectId, projectId);
-    }
-    const rows = await listReports(
-      [
-        scoped,
-        kind ? eq(agentReports.kind, kind) : undefined,
-        severity ? eq(agentReports.severity, severity) : undefined,
-        target ? eq(agentReports.target, target) : undefined,
-        triage ? eq(agentReports.triage, triage) : undefined,
-      ],
-      limit ?? 50,
-    );
-    return c.json(await reportViews(rows));
-  },
-);
-
 agentReportRoutes.post(
   '/triage',
   strictBody(triageAgentReportsBySignalRequestSchema, TRIAGE_AGENT_REPORTS_BY_SIGNAL_SHAPE),
@@ -166,40 +109,3 @@ agentReportRoutes.post(
     return answer(c, out);
   },
 );
-
-/** What a caller of the old mount is told, on the object it gets back and in its headers. */
-export const FEEDBACK_REPORTS_ALIAS_DEPRECATION = {
-  alias: '/api/feedback-reports',
-  replacement: '/api/agent-reports',
-  reason:
-    'agent friction reports are `agent_reports` now; the word `feedback` belongs to a person reporting on the product',
-  endsWhen: 'forge-plugin no longer calls the alias',
-} as const;
-
-// cm:hack the pinned forge-plugin still calls `/api/feedback-reports`, so the old mount answers with
-// the same handlers and says it is deprecated — ends when forge-plugin moves to `/api/agent-reports`
-// and `forge_agent_report` (logged in forge-local-docs/plugin-followups.md); then delete this mount.
-export const feedbackReportsAliasRoutes = new Hono<{ Variables: AuthVars }>();
-feedbackReportsAliasRoutes.use('*', async (c, next) => {
-  await next();
-  const res = c.res;
-  const headers = new Headers(res.headers);
-  headers.set('Deprecation', 'true');
-  headers.set(
-    'Link',
-    `<${FEEDBACK_REPORTS_ALIAS_DEPRECATION.replacement}>; rel="successor-version"`,
-  );
-  let body: ReadableStream<Uint8Array> | string | null = res.body;
-  if ((res.headers.get('content-type') ?? '').includes('application/json')) {
-    const text = await res.text();
-    const parsed: unknown = JSON.parse(text);
-    // An array keeps its shape: a caller iterating it must not meet a new element; the header says it.
-    body =
-      parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? JSON.stringify({ ...parsed, deprecation: FEEDBACK_REPORTS_ALIAS_DEPRECATION })
-        : text;
-    headers.delete('content-length');
-  }
-  c.res = new Response(body, { status: res.status, statusText: res.statusText, headers });
-});
-feedbackReportsAliasRoutes.route('/', agentReportRoutes);

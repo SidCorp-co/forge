@@ -415,24 +415,6 @@ export interface ActivityItem {
   createdAt: string;
 }
 
-export type TaskStatus = "backlog" | "todo" | "in_progress" | "in_review" | "done";
-
-/** Task row from `GET /api/issues/:id/tasks`. */
-export interface TaskRow {
-  id: string;
-  issueId: string;
-  projectId: string;
-  title: string;
-  description: string | null;
-  status: TaskStatus;
-  priority: IssuePriority;
-  assigneeId: string | null;
-  sortOrder: number;
-  isAgentTask: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
 /** Per-file failure from the inline create's `attachments[]`, as core returns it
  *  on the 201 body (`issues/routes.ts` sets `attachmentErrors`). Mirrors core's
  *  `AttachmentErrorEntry`. */

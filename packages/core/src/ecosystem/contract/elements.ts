@@ -101,7 +101,7 @@ const ajv = new Ajv2020({
   formats: boundedFormats(),
 });
 
-export interface ExampleProblem {
+interface ExampleProblem {
   code: 'EXAMPLE_NOT_IN_CONTRACT' | 'CONTRACT_PATTERN_UNSAFE';
   detail: string;
 }

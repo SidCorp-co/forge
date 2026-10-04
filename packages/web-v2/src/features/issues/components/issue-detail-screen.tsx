@@ -8,7 +8,6 @@
 // exactly those, so a query keyed anything else here stops updating and nothing reports it.
 
 import {
-  Badge,
   Button,
   Checkbox,
   DetailHeader,
@@ -17,7 +16,6 @@ import {
   DetailPane,
   DetailTabs,
   EmptyPanelLine,
-  EmptyState,
   ErrorState,
   FactsGroup,
   FactsRail,
@@ -67,7 +65,6 @@ import {
   useComments,
   useCreateComment,
   useIssue,
-  useTasks,
 } from "../detail-hooks";
 import {
   useIssueCost,
@@ -80,7 +77,7 @@ import { ISSUES_LIST, issuesHref } from "../routes";
 import { ReleaseApprovalProvider } from "../release-approval";
 import { IssueBanner, IssueStandingFacts } from "./issue-standing-bits";
 import { useIssuePark } from "../park";
-import type { IssueAgentSession, IssueStatus, TaskRow } from "../types";
+import type { IssueAgentSession, IssueStatus } from "../types";
 import { ActivityFeed } from "./activity-feed";
 import { AskAboutThis } from "@/features/conversations/components/ask-about-this";
 import { AwaitingReleaseBanner } from "./awaiting-release-banner";
@@ -96,24 +93,6 @@ import { SessionGroupTimeline } from "./session-group-timeline";
 import { readStart, StartIssueAction } from "./start-issue-action";
 import { StepArtifactCard } from "./step-artifact-card";
 
-const TASK_STATUS_TONE: Record<
-  TaskRow["status"],
-  "neutral" | "cobalt" | "amber" | "green"
-> = {
-  backlog: "neutral",
-  todo: "neutral",
-  in_progress: "cobalt",
-  in_review: "amber",
-  done: "green",
-};
-
-const TASK_STATUS_LABELS: Record<TaskRow["status"], string> = {
-  backlog: "Backlog",
-  todo: "To do",
-  in_progress: "In progress",
-  in_review: "In review",
-  done: "Done",
-};
 
 
 interface IssueDetailScreenProps {
@@ -131,7 +110,7 @@ export function IssueDetailScreen({
   const { toast } = useToast();
   const { push: pushRecent } = useRecents();
   const [tab, setTab] = useUrlTab(ISSUE_TABS);
-  const [thread, setThread] = useState<"comments" | "activity" | "tasks">("comments");
+  const [thread, setThread] = useState<"comments" | "activity">("comments");
   const back = useListOrigin(ISSUES_LIST, issuesHref(slug));
   const [expandedStep, setExpandedStep] = useState<string | null>(null);
 
@@ -152,7 +131,6 @@ export function IssueDetailScreen({
   const canonicalId = canonicalIssueId(id, issueQ.data?.id);
   const commentsQ = useComments(canonicalId, projectId);
   const activityQ = useActivity(canonicalId, projectId);
-  const tasksQ = useTasks(canonicalId, projectId);
   const attachmentsQ = useAttachments(canonicalId, projectId);
   const depsQ = useIssueDeps(canonicalId, true, projectId);
   const costQ = useIssueCost(canonicalId, true, projectId);
@@ -506,7 +484,6 @@ export function IssueDetailScreen({
                 options={[
                   { value: "comments", label: "Comments", count: commentsQ.data?.totalCount },
                   { value: "activity", label: "History", count: activityQ.data?.items.length },
-                  { value: "tasks", label: "Tasks", count: tasksQ.data?.length },
                 ]}
                 value={thread}
                 onChange={setThread}
@@ -527,23 +504,6 @@ export function IssueDetailScreen({
                     <TabError query={activityQ} what="history" />
                   ) : (
                     <ActivityFeed items={activityQ.data?.items ?? []} />
-                  ))}
-                {thread === "tasks" &&
-                  (tasksQ.isLoading ? (
-                    <TabLoading />
-                  ) : tasksQ.isError ? (
-                    <TabError query={tasksQ} what="tasks" />
-                  ) : (tasksQ.data?.length ?? 0) === 0 ? (
-                    <EmptyState title="No tasks" message="This issue has no sub-tasks." mascot={false} />
-                  ) : (
-                    <ul className="border-t border-line-subtle">
-                      {tasksQ.data?.map((t) => (
-                        <li key={t.id} className="flex items-center justify-between gap-3 border-b border-line-subtle py-2">
-                          <span className="fg-body-sm min-w-0 truncate text-fg">{t.title}</span>
-                          <Badge tone={TASK_STATUS_TONE[t.status]}>{TASK_STATUS_LABELS[t.status]}</Badge>
-                        </li>
-                      ))}
-                    </ul>
                   ))}
               </div>
             </section>

@@ -58,7 +58,7 @@ export interface RunnerAvailability {
   total: number;
 }
 
-export type DispatchGateCode = 'WORKFLOW_DESIGN_NOT_APPROVED' | 'CONTRACT_WAIT_UNSETTLED';
+export type DispatchGateCode = 'WORKFLOW_DESIGN_NOT_APPROVED';
 
 export interface DispatchGateError extends Error {
   readonly code: DispatchGateCode;
@@ -154,22 +154,14 @@ interface IssuePorts {
   ) => Promise<object>;
 
   designUnapprovedSql: (issueId: SQL) => SQL;
-  waitUnsettledSql: (issueId: SQL) => SQL;
   assertDesignsApprovedForSeqs: (projectId: string, seqs: readonly number[]) => Promise<void>;
-  assertWaitsSettledForSeqs: (projectId: string, seqs: readonly number[]) => Promise<void>;
   assertDesignApprovedForIssue: (
-    projectId: string,
-    issueId: string,
-    executor?: GateReader,
-  ) => Promise<void>;
-  assertWaitsSettledForIssue: (
     projectId: string,
     issueId: string,
     executor?: GateReader,
   ) => Promise<void>;
   isDispatchGateError: (err: unknown) => err is DispatchGateError;
   buildsWorkflowOf: (issueId: string) => Promise<unknown>;
-  waitsOnContractsOf: (issueId: string, projectId: string) => Promise<unknown>;
   proposesWorkflowOf: (issueId: string) => Promise<object | null>;
   requirementOfIssue: (issueId: string) => Promise<object | null>;
   plannedRevisionFor: (
@@ -298,32 +290,19 @@ export const steerIssue: IssuePorts['steerIssue'] = (issueId, body, opts) =>
 
 export const designUnapprovedSql: IssuePorts['designUnapprovedSql'] = (issueId) =>
   issuePorts().designUnapprovedSql(issueId);
-export const waitUnsettledSql: IssuePorts['waitUnsettledSql'] = (issueId) =>
-  issuePorts().waitUnsettledSql(issueId);
 export const assertDesignsApprovedForSeqs: IssuePorts['assertDesignsApprovedForSeqs'] = (
   projectId,
   seqs,
 ) => issuePorts().assertDesignsApprovedForSeqs(projectId, seqs);
-export const assertWaitsSettledForSeqs: IssuePorts['assertWaitsSettledForSeqs'] = (
-  projectId,
-  seqs,
-) => issuePorts().assertWaitsSettledForSeqs(projectId, seqs);
 export const assertDesignApprovedForIssue: IssuePorts['assertDesignApprovedForIssue'] = (
   projectId,
   issueId,
   executor,
 ) => issuePorts().assertDesignApprovedForIssue(projectId, issueId, executor);
-export const assertWaitsSettledForIssue: IssuePorts['assertWaitsSettledForIssue'] = (
-  projectId,
-  issueId,
-  executor,
-) => issuePorts().assertWaitsSettledForIssue(projectId, issueId, executor);
 export const isDispatchGateError = (err: unknown): err is DispatchGateError =>
   issuePorts().isDispatchGateError(err);
 export const buildsWorkflowOf: IssuePorts['buildsWorkflowOf'] = (issueId) =>
   issuePorts().buildsWorkflowOf(issueId);
-export const waitsOnContractsOf: IssuePorts['waitsOnContractsOf'] = (issueId, projectId) =>
-  issuePorts().waitsOnContractsOf(issueId, projectId);
 export const proposesWorkflowOf: IssuePorts['proposesWorkflowOf'] = (issueId) =>
   issuePorts().proposesWorkflowOf(issueId);
 export const requirementOfIssue: IssuePorts['requirementOfIssue'] = (issueId) =>

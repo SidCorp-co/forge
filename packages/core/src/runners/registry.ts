@@ -9,11 +9,3 @@ export function registerRunnerAdapter(adapter: RunnerAdapter): void {
 export function getRunnerAdapter(type: string): RunnerAdapter | undefined {
   return adapters.get(type);
 }
-
-export function listRunnerTypes(): RunnerAdapter[] {
-  return Array.from(adapters.values());
-}
-
-export function clearRunnerAdaptersForTest(): void {
-  adapters.clear();
-}

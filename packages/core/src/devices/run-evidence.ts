@@ -47,12 +47,12 @@ export const runCheckpointSchema = z
   })
   .strict();
 
-export type RunCheckpoint = z.infer<typeof runCheckpointSchema>;
+type RunCheckpoint = z.infer<typeof runCheckpointSchema>;
 
-export const RECONSTRUCTION_SOURCE = 'reconstructed_from_box';
+const RECONSTRUCTION_SOURCE = 'reconstructed_from_box';
 
 /** The line that makes a second write of the same evidence a no-op. */
-export function runEvidenceMarker(sessionId: string): string {
+function runEvidenceMarker(sessionId: string): string {
   return `run-evidence: ${sessionId}`;
 }
 
@@ -99,7 +99,7 @@ function testimonyBlock(next: string | null): string {
   return `${head}\n\n${fence}text\n${next}\n${fence}`;
 }
 
-export function buildRunEvidenceBody(args: {
+function buildRunEvidenceBody(args: {
   sessionId: string;
   checkpoint: RunCheckpoint;
   next: string | null;
@@ -138,7 +138,7 @@ export const heldWorktreeSchema = z
   })
   .strict();
 
-export type HeldWorktree = z.infer<typeof heldWorktreeSchema>;
+type HeldWorktree = z.infer<typeof heldWorktreeSchema>;
 
 /**
  * What a resumed master decided about a run it inherited.
@@ -151,13 +151,13 @@ export const resumeChoiceSchema = z
   })
   .strict();
 
-export type ResumeChoice = z.infer<typeof resumeChoiceSchema>;
+type ResumeChoice = z.infer<typeof resumeChoiceSchema>;
 
-export function resumeChoiceMarker(runId: string): string {
+function resumeChoiceMarker(runId: string): string {
   return `resume-choice: ${runId}`;
 }
 
-export function buildResumeChoiceBody(args: { choice: ResumeChoice }): string {
+function buildResumeChoiceBody(args: { choice: ResumeChoice }): string {
   const { choice } = args;
   const said = {
     continue: 'carry this work on from where it stopped',
@@ -185,7 +185,7 @@ export function buildResumeChoiceBody(args: { choice: ResumeChoice }): string {
 }
 
 /** Every held report about one run's checkout at one commit, whatever its reading. */
-export function heldWorktreeFamily(sessionId: string, head: string): string {
+function heldWorktreeFamily(sessionId: string, head: string): string {
   return `held-worktree: ${sessionId}:${head}`;
 }
 
@@ -195,14 +195,11 @@ export function heldWorktreeFamily(sessionId: string, head: string): string {
  * alone, a kept report was the last word on an issue whose checkout the next
  * sweep's reading let the release take (ISS-1250, judge j2).
  */
-export function heldWorktreeMarker(
-  sessionId: string,
-  held: Pick<HeldWorktree, 'head' | 'kept'>,
-): string {
+function heldWorktreeMarker(sessionId: string, held: Pick<HeldWorktree, 'head' | 'kept'>): string {
   return `${heldWorktreeFamily(sessionId, held.head)}:${held.kept ? 'refused' : 'not-refused'}`;
 }
 
-export function buildHeldWorktreeBody(args: {
+function buildHeldWorktreeBody(args: {
   sessionId: string;
   held: HeldWorktree;
   box: string;
@@ -356,7 +353,7 @@ async function insertHeldReportOnChange(args: {
   });
 }
 
-export interface RunEvidenceResult {
+interface RunEvidenceResult {
   /** Issues the run was holding. */
   issues: number;
   /** Issues this call posted the evidence onto. */
