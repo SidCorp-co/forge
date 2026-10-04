@@ -204,7 +204,7 @@ excluded.
 - **The technical layers are defined by kind.** A platform-kind module is in `platform` and an
   adapter in `adapters`; neither holds a domain or a read model. That moved, against the label
   grouping: `config`, `credentials`, `pat`, `security`, `branches`, `embeddings` and
-  `observability` to platform (every layer reads `config/env.ts`, and middleware reads the
+  `observability` to platform (every layer reads `packages/core/src/config/env.ts`, and middleware reads the
   credential helpers, so in a business context each was a false back edge); `git`,
   `integrations/coolify`, `integrations/deploy`, `integrations/published-releases` and `storage` to
   adapters (the registry imports them); `uploads`, a domain, to work. The integration door joins
@@ -269,6 +269,7 @@ per table over twelve tables) already broke the rule this ADR stated. The rule n
 - **The boundary check enforces the list.** `scripts/check-module-boundaries.mjs` refuses a read
   model file that SELECTs (raw SQL `FROM` or `JOIN`, or a value import from a schema file) a table
   its `reads` does not name (`undeclared-read`), and a declared read nothing uses. A read model may
+  <!-- doc-citation: unchecked `read.ts` `read/` — file-name patterns a module may use, not paths in this tree -->
   import an owner's read files (`read.ts`, `<x>-read.ts`, `read/`) for a table it declares, past the
   face-only and context-direction rules; nothing else behind the face.
 - **One input-builder per derived fact.** The predicate was declared once, in contracts, but its

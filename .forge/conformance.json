@@ -243,7 +243,7 @@
         },
         {
           "glob": "packages/core/src/release-batch/coolify-*.ts",
-          "why": "The Coolify release commands, controls, confirmation and health gate (ISS-167), named for the provider because each is that provider's deploy as the release drives it, beside `pipeline/release-coolify.ts`. They moved out of the adapter because what a deploy means to a run is the release's; nothing generic reads them to learn a provider exists."
+          "why": "The Coolify release commands, controls, confirmation and health gate (ISS-167), named for the provider because each is that provider's deploy as the release drives it, beside `release-batch/release-coolify.ts`. They moved out of the adapter because what a deploy means to a run is the release's; nothing generic reads them to learn a provider exists."
         },
         {
           "glob": "packages/core/src/error-intake/**",
@@ -266,7 +266,7 @@
           "why": "The assistant's chat-room door (ISS-167, split out of `integrations/rocketchat/`): the escalation and agent-chat bridges, the question and comment lanes of a Rocket.Chat room, and its conversation ports, window drain and turn inputs (moved from `conversations/chat-room/` by ISS-203). `rocketchat` here is the `conversations.source` and question-origin `adapter` value rows already carry, and the provider a room binding is looked up under; the vendor itself is reached only through the `integrations/rocketchat` port."
         },
         {
-          "glob": "packages/core/src/pipeline/release-coolify.ts",
+          "glob": "packages/core/src/release-batch/release-coolify.ts",
           "why": "The Coolify release path, named for the provider in the file name because the whole module is that provider's deploy dispatch. `release-batch/plan.ts` no longer decides WHETHER to use it by naming coolify \u2014 that is `declaration.releaseStep` now \u2014 so nothing generic reads this file to learn a provider exists."
         }
       ],

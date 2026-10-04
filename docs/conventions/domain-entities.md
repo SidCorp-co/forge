@@ -163,6 +163,7 @@ One file per responsibility, under `packages/core/src/<module>/`. The references
 
 - **Routes hold no queries (BC-15).** A route file validates, calls one service or read function,
   and answers. A call on any value typed as a Drizzle database or transaction in a route file is
+  <!-- doc-citation: unchecked `routes.ts` `routes/` — file-name patterns, not paths in this tree -->
   refused (`scripts/eslint-module-shape/rules/route-query.mjs`). A route file is one named
   `routes.ts`, `*-routes.ts` or under `routes/`, and any other file that builds a Hono router
   (`scripts/lib/module-shape.mjs:isRouteFile`).
@@ -415,12 +416,14 @@ written:
 - **One standing shape.** A row's group and whom it waits on are
   `packages/contracts/src/standing.ts:Standing<Group, WaitingKind>`: its groups are a subset of
   `STANDING_GROUPS`, its waiting kinds a subset of `WAITING_KINDS`, and its group labels a
-  `StandingGroupLabels`. Needs-you is the one predicate `standing.ts:needsViewer` over that shape.
+  `StandingGroupLabels`. Needs-you is the one predicate
+  `packages/contracts/src/standing.ts:needsViewer` over that shape.
 - **A read model reads the data directly.** It SELECTs the owners' tables or views it lists under
   `reads` on its entry in `packages/core/src/modules.json`, and writes none. It does not build a
   fact by calling other domains' read functions row by row, which is an N+1 read. The boundary
   check refuses a read model file that SELECTs a table its `reads` does not name (a raw SQL `FROM`
   or `JOIN`, or a value import from a schema file: `undeclared-read`) and a declared read nothing
+  <!-- doc-citation: unchecked `read.ts` `read/` — file-name patterns a module may use, not paths in this tree -->
   uses. A read model may import an owner's read files (`read.ts`, `<x>-read.ts`, anything under
   `read/`) for a table it declares, and nothing else behind the owner's face.
 - **The reference shape is `packages/core/src/runs/facts-read.ts`.** One statement per table for
