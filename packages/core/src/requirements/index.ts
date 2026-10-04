@@ -13,4 +13,4 @@ export {
   openRevisionOf,
   type RevisionWrite,
 } from './service.js';
-export { deliveredAmong } from './standing-read.js';
+export { deliveredAmong, standingsOf } from './standing-read.js';

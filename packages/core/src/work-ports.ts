@@ -10,10 +10,8 @@ import {
 } from './agent-reports/index.js';
 import {
   agentSessionEventsRetention,
-  CONVERSATION_AGENT_MARKER,
   deriveSessionFinal,
   persistSessionAttachment,
-  readConversationAgentMeta,
   requestSessionSend,
   resolveSessionSend,
   stampFinalizeAttempt,
@@ -30,10 +28,12 @@ import {
 } from './comments/index.js';
 import {
   appendMessagesIn,
+  CONVERSATION_AGENT_MARKER,
   existingProjectHandle,
   handleForProject,
   openOrExtendWindow,
   persistConversationAttachment,
+  readConversationAgentMeta,
   resolveProjectHandle,
 } from './conversations/index.js';
 import { ADMITTED_RUNNER, readRunGate } from './devices/index.js';
@@ -93,7 +93,6 @@ import {
   declaredIssueSeqs,
   issueRefPattern,
   liveReachForIssue,
-  setProjectIssuePrefix,
   subjectOf,
 } from './projects/index.js';
 import { buildJobPromptString } from './prompt/index.js';
@@ -188,7 +187,6 @@ export function provideWorkPorts(): void {
     messageRefusalHttp,
     readProjectDocument,
     readLandingBranches,
-    setProjectIssuePrefix,
     issueRefPattern,
     declaredIssueSeqs,
     subjectOf,

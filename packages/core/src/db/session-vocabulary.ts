@@ -9,16 +9,6 @@ export const agentSessionKinds = ['master', 'run_session', 'pipeline', 'pm', 'ch
 
 export type AgentSessionKind = (typeof agentSessionKinds)[number];
 
-export const RUN_ISSUES_METADATA_KEY = 'runIssues';
-export const RUN_GROUP_METADATA_KEY = 'runGroup';
-export const RUN_ISSUE_STATUSES_METADATA_KEY = 'runIssueStatuses';
-export const RUN_SESSION_METADATA_TYPE = 'run_session';
-export const MASTER_SESSION_METADATA_TYPE = 'master';
-
-export const MASTER_SESSION_KIND: AgentSessionKind = MASTER_SESSION_METADATA_TYPE;
-
-export const RUN_SESSION_KIND: AgentSessionKind = RUN_SESSION_METADATA_TYPE;
-
 export const PIPELINE_SESSION_KINDS = [
   'pipeline',
   'pm',

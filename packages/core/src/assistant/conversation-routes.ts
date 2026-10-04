@@ -17,11 +17,8 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
-  conversationAgentUnavailableReason,
-  readConversationAgentTurns,
-} from '../agent-sessions/conversation-agent.js';
-import {
   type ConversationRow,
+  conversationAgentUnavailableReason,
   deleteConversation,
   derivedScope,
   effectiveConversationMode,
@@ -32,6 +29,7 @@ import {
   mayChangeMembership,
   projectsNamed,
   readableConversation,
+  readConversationAgentTurns,
   readMessages,
   refuseConversation,
   renameConversation,

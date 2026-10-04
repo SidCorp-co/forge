@@ -2,11 +2,10 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { AgentAccess, BindingRole } from '../db/release-axes.js';
 import { integrationBindings, integrationConnections } from '../db/schema.js';
-import { loadOrgRole } from '../lib/authz.js';
-import { isUniqueViolation } from '../lib/db-errors.js';
-import { findProjectOrgId } from '../projects/service.js';
-import { holdsOrg } from '../permissions/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
+import { loadOrgRole, projectOrgOf } from '../lib/authz.js';
+import { isUniqueViolation } from '../lib/db-errors.js';
+import { holdsOrg } from '../permissions/index.js';
 
 export interface StoredBinding {
   id: string;
@@ -107,7 +106,7 @@ export const drizzleBindingStore: BindingStore = {
     return row ?? null;
   },
 
-  projectOrgId: findProjectOrgId,
+  projectOrgId: projectOrgOf,
 
   async isOrgAdmin(orgId, userId) {
     return holdsOrg(await loadOrgRole(orgId, userId), 'org.admin');

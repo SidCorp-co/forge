@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { openOneShotRun } from '../pipeline/runs.js';
+import { openOneShotRun } from '../pipeline/index.js';
 import {
   broadcastSession,
   broadcastTurnAppended,

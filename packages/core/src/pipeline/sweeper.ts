@@ -1,3 +1,4 @@
+import { MASTER_SESSION_KIND, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { oneShotRunOutcome } from '@forge/contracts/run-machine';
 import { SESSION_SILENCE_REAP_MS } from '@forge/contracts/run-standing';
 import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
@@ -7,9 +8,7 @@ import { agentSessions } from '../db/schema.js';
 import {
   CLIENT_SESSION_KINDS,
   kindTuple,
-  MASTER_SESSION_KIND,
   PIPELINE_SESSION_KINDS,
-  RUN_SESSION_KIND,
 } from '../db/session-vocabulary.js';
 import { logger } from '../observability/logger.js';
 import {

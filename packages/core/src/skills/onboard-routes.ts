@@ -1,12 +1,13 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { createChatSessionRow, noClaudeClient } from '../agent-sessions/chat-turn.js';
 import {
   authorizeInteractiveTurn,
+  createChatSessionRow,
   dispatchInteractiveTurn,
+  noClaudeClient,
   resolveInteractiveClient,
-} from '../agent-sessions/interactive-credential.js';
+} from '../agent-sessions/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { resolveSessionRepoPathForDevice } from '../lib/device-pool.js';
 import type { AuthVars } from '../middleware/auth.js';
@@ -14,14 +15,14 @@ import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
 import { requireHeld } from '../permissions/index.js';
-import { resolveRegisteredEffectiveSkills } from '../skills/effective.js';
-import { requestSkillSync } from '../skills/service.js';
-import { projectHead } from './read.js';
+import { projectHead } from '../projects/index.js';
+import { resolveRegisteredEffectiveSkills } from './effective.js';
+import { requestSkillSync } from './service.js';
 
 // ISS-733 — the "Build Project Brain" trigger: web calls this once, after
 // bootstrap, to open a fresh chat session that runs `forge-onboard` as turn 1
 // (the chat-runs-skill mechanism in `agent-sessions/chat-turn.ts`). Mirrors
-// the dedup-free dispatch shape of `agent-sessions/conversation-agent.ts`
+// the dedup-free dispatch shape of `conversations/conversation-agent.ts`
 // (resolveChatDevice → createChatSessionRow → dispatchChatTurn), plus an
 // explicit skill-sync push first since sync is explicit-only (the runner
 // won't have the file on disk otherwise).
@@ -32,8 +33,8 @@ const ONBOARD_MESSAGE =
 
 const onboardParamSchema = z.object({ id: z.uuid() });
 
-// NOTE: mounted under `projectRoutes` (see ./routes.ts), which applies
-// requireAuth() + assertEmailVerified() for the whole /api/projects surface —
+// NOTE: mounted by the route registry right after `projectRoutes`, whose
+// requireAuth() + assertEmailVerified() gate the whole /api/projects surface —
 // no own auth middleware here, or it would run twice.
 export const projectOnboardRoutes = new Hono<{ Variables: AuthVars }>();
 

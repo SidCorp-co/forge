@@ -9,9 +9,7 @@ import { kindTuple, PIPELINE_SESSION_KINDS } from '../db/session-vocabulary.js';
 export {
   CLIENT_SESSION_KINDS,
   kindTuple,
-  MASTER_SESSION_KIND,
   PIPELINE_SESSION_KINDS,
-  RUN_SESSION_KIND,
 } from '../db/session-vocabulary.js';
 
 /** Whether a row's own `kind` is one a pipeline step drives, so `/retry` may reach it. */

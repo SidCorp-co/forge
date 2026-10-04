@@ -1,8 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type RunnerLimitReason, runners } from '../db/schema.js';
-import { clearRunnerLimit, stampRunnerLimit } from '../runners/apply-runner-limit.js';
-import { DEFAULT_LIMIT_COOLDOWN_MS } from '../runners/limit-detect.js';
+import { clearRunnerLimit, DEFAULT_LIMIT_COOLDOWN_MS, stampRunnerLimit } from '../runners/index.js';
 
 export interface MasterLimitReport {
   reason: RunnerLimitReason;

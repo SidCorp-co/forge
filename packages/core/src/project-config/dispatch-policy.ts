@@ -1,6 +1,11 @@
-import { POLICY_REFUSAL_CODES, type PolicyRefusalCode } from '@forge/contracts/project-config';
+import { AUTONOMOUS_ENTRY_STATUS } from '@forge/contracts/issue-machine';
+import {
+  type DispatchState,
+  POLICY_REFUSAL_CODES,
+  type PolicyRefusalCode,
+  type PolicyStateSource,
+} from '@forge/contracts/project-config';
 import { isRefusal, type RefusalError, refuser } from '../lib/refusal.js';
-import { AUTONOMOUS_ENTRY_STATUS } from '../pipeline/autonomous-mode.js';
 import { readEffectivePolicy } from './effective.js';
 import { POLICY_STATE_STATUSES, type PolicyDocument } from './schema.js';
 import type { Held } from './service.js';
@@ -35,18 +40,7 @@ export type PolicyStatus = (typeof POLICY_STATE_STATUSES)[number];
 export const isPolicyStatus = (status: string): status is PolicyStatus =>
   (POLICY_STATE_STATUSES as readonly string[]).includes(status);
 
-/** How the state a job runs under was chosen. */
-export type PolicyStateSource = 'stamped' | 'issue' | 'entry';
-
-export interface DispatchState {
-  revision: number;
-  qa: PolicyDocument['qa'];
-  status: PolicyStatus;
-  from: PolicyStateSource;
-  model: NonNullable<PolicyDocument['states'][PolicyStatus]>['model'];
-  profile: string;
-  deniedTools: string[];
-}
+export type { DispatchState, PolicyStateSource };
 
 export async function requirePolicy(projectId: string): Promise<Held<PolicyDocument>> {
   const held = await readEffectivePolicy(projectId);

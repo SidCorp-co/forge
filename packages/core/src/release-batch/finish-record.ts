@@ -4,10 +4,11 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
-import type { TransitionActor } from '../issues/actor-agency.js';
+import type { TransitionActor } from '../issues/index.js';
 import { logger } from '../observability/logger.js';
 import { RUN_NOT_ABORTED } from './abort-stamp.js';
 import type { ReleaseVerification } from './plan.js';
+import { releaseBatchPorts } from './ports.js';
 
 export type FinishState = 'accepted' | 'verifying' | 'closing' | 'finished' | 'failed';
 
@@ -130,14 +131,11 @@ export async function compareAndSet(
       ? sql`${pipelineRuns.metadata} -> 'finish' IS NULL`
       : sql`(${pipelineRuns.metadata} -> 'finish' ->> 'version')::int = ${expected}`;
   const guard = runOpen ? and(version, RUN_NOT_ABORTED) : version;
-  const rows = await db
-    .update(pipelineRuns)
-    .set({
-      metadata: sql`coalesce(${pipelineRuns.metadata}, '{}'::jsonb) || ${JSON.stringify({ finish: next })}::jsonb`,
-    })
-    .where(and(eq(pipelineRuns.id, runId), guard))
-    .returning({ id: pipelineRuns.id });
-  return rows.length > 0;
+  return releaseBatchPorts().writeRunMetadata(runId, {
+    merge: { finish: next },
+    when: guard,
+    touch: false,
+  });
 }
 
 export function stamp(

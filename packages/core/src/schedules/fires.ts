@@ -6,16 +6,16 @@
 // under a running fire is settled by trigger `forge_session_delete_settles_its_fire`. Nothing is
 // copied onto the schedule; its last status is its newest fire (`lastFires`).
 
+import { SCHEDULE_RUN_MACHINE } from '@forge/contracts/schedule-run-machine';
 import type {
   ScheduleRunSkipReason,
   ScheduleRunStatus,
   ScheduleRunTrigger,
 } from '@forge/contracts/schedules';
-import { SCHEDULE_RUN_MACHINE } from '@forge/contracts/schedule-run-machine';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { scheduleRuns } from '../db/schema.js';
-import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/transition.js';
+import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/index.js';
 
 export type FireSettlement =
   | { status: 'success'; output?: string | null; pipelineRunId?: string | null }

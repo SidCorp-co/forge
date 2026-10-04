@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { AUTONOMOUS_QUESTION_STATUS } from '../pipeline/autonomous-mode.js';
+import { AUTONOMOUS_QUESTION_STATUS } from '../pipeline/index.js';
 import { issueStatusOf, jobDispatchOf } from './read.js';
 
 const badRequest = (details: unknown) =>

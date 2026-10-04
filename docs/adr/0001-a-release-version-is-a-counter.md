@@ -30,8 +30,9 @@ The version is three integers, and the middle one is a plain counter.
   worn one version, which breaks identity under exactly the conditions where it must hold. The cost
   is a gap in the sequence and nothing else.
 - **The number is allocated, never chosen.** `packages/core/src/release-batch/version-store.ts` is
-  its only writer, serialising allocation per project on an advisory lock, with a partial unique
-  index and a shape check behind it.
+  its only allocator, serialising allocation per project on an advisory lock, with a partial unique
+  index and a shape check behind it; it stores the number through the run's owner
+  (`packages/core/src/pipeline/run-records.ts:stampReleaseVersion`), which nothing else calls.
 - **A pull request does not bump anything.** The release allocates the number; a contributor's
   change does not know which release will carry it.
 

@@ -1,16 +1,20 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { readRunnerPoolRead } from '../devices/pool-read-report.js';
+import { readRunnerPoolRead } from '../devices/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { clearRunnerFaultFlags } from '../runners/clear-fault-flags.js';
-import { deleteProjectRunner, patchProjectRunner } from '../runners/index.js';
-import { deviceForBind, listProjectRunners, projectHasRunner } from './read.js';
-import { bindDeviceRunner } from './service.js';
+import { clearRunnerFaultFlags } from './clear-fault-flags.js';
+import {
+  bindDeviceRunner,
+  deviceForBind,
+  listProjectRunnerPools,
+  projectHasRunner,
+} from './project-binding.js';
+import { deleteProjectRunner, patchProjectRunner } from './writes.js';
 
 // ISS-172 Slice A — runner-shaped binding endpoints. `POST /:id/runners`
 // upserts a (project, device, 'claude-code') runner row; `DELETE
@@ -28,8 +32,8 @@ const createRunnerBodySchema = z
   })
   .strict();
 
-// NOTE: mounted under `projectRoutes` (see ./routes.ts), which applies
-// requireAuth() + assertEmailVerified() to every request — no own middleware
+// NOTE: mounted by the route registry right after `projectRoutes`, whose
+// requireAuth() + assertEmailVerified() gate every request — no own middleware
 // here, or auth (and its email-verified DB lookup) would run twice.
 export const projectRunnerRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -47,7 +51,7 @@ projectRunnerRoutes.get(
     const access = await loadProjectAccess(id, userId);
     requireHeld(access, 'project.read');
 
-    const rows = await listProjectRunners(id);
+    const rows = await listProjectRunnerPools(id);
 
     return c.json(rows.map((r) => ({ ...r, poolRead: readRunnerPoolRead(r.poolRead) })));
   },
@@ -91,7 +95,6 @@ projectRunnerRoutes.post(
         cause: { code: 'RUNNER_UPSERT_FAILED' },
       });
     }
-
 
     return c.json(runner, 201);
   },

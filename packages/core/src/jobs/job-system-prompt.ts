@@ -6,35 +6,15 @@
  */
 
 import type { ContentLanguageRecord } from '@forge/contracts/content-language';
+import type { DispatchState } from '@forge/contracts/project-config';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, type JobType } from '../db/schema.js';
-import {
-  type LoadedContract,
-  pathsNamedIn,
-  renderContractContext,
-} from '../ecosystem/contract/run-context.js';
-import { loadContractContext } from '../ecosystem/contract/run-context-service.js';
 import { buildPipelinePreambleStructured, type PreambleBlock } from '../lib/chat-preamble.js';
 import { dataPolicyOf, type EgressSurface, egressText, withheldAt } from '../lib/data-egress.js';
 import { isRefusal, RefusalError, refusalCodeOf } from '../lib/refusal.js';
 import { estimateTokens } from '../lib/token-estimator.js';
-import type { DispatchState } from '../project-config/dispatch-policy.js';
-import {
-  type LoadedPinnedContract,
-  loadPinnedContracts,
-  renderPinnedContracts,
-} from '../workflows/pinned-contracts.js';
-import {
-  type LoadedRequirement,
-  renderIssueMockups,
-} from '../workflows/requirement-context.js';
-import { type LoadedArtifact, renderArtifactContext } from '../workflows/run-context.js';
-import {
-  issueMockupsOf,
-  loadArtifactContext,
-  loadRequirementContext,
-} from '../workflows/run-context-service.js';
+import { type GivenRequirement, jobsPorts } from './ports.js';
 
 /** A context the job's issue reaches that cannot be given; the job is refused, never built blind. */
 const contextRefused = (code: string, detail: string) =>
@@ -45,10 +25,10 @@ export interface JobSystemPrompt {
   blocks: PreambleBlock[];
   contentLanguage: ContentLanguageRecord | undefined;
   deniedTools: string[];
-  designs: LoadedArtifact[];
-  requirement: LoadedRequirement | null;
-  contracts: LoadedContract[];
-  pinnedContracts: LoadedPinnedContract[];
+  designs: readonly unknown[];
+  requirement: GivenRequirement | null;
+  contracts: readonly unknown[];
+  pinnedContracts: readonly unknown[];
 }
 
 type IssueText = {
@@ -64,18 +44,19 @@ const errText = (err: unknown) =>
       ? err.message
       : String(err);
 
-// cm:why a run is given the contracts its issue's named paths reach before it starts, since the paths it will change are not known yet; it asks forge_ecosystem action=context for paths it finds later
+// a run is given the contracts its issue's named paths reach before it starts, since the paths it will change are not known yet; it asks forge_ecosystem action=context for paths it finds later
 async function contractsNamedBy(
   projectId: string,
   issue: IssueText | undefined,
   subject: string,
-): Promise<LoadedContract[]> {
+): Promise<readonly unknown[]> {
   if (!issue) return [];
   const text = [issue.description, issue.plan, issue.acceptanceCriteria].filter(Boolean).join('\n');
   try {
-    return await loadContractContext(projectId, pathsNamedIn(text));
+    const context = jobsPorts().jobContext;
+    return await context.loadContractContext(projectId, context.pathsNamedIn(text));
   } catch (err) {
-    // cm:guard a run whose contract context cannot be read is refused, never prepared without it — it would edit a call site blind (owner, 2026-10-02)
+    // a run whose contract context cannot be read is refused, never prepared without it — it would edit a call site blind (owner, 2026-10-02)
     throw contextRefused(
       'CONTRACT_CONTEXT_UNLOADABLE',
       `${subject}: the contracts its issue's paths reach could not be read (${errText(err)})`,
@@ -87,12 +68,12 @@ async function contractsNamedBy(
 // latest baseline pins, the provider's and the consumer's issue alike (requirement-to-delivery,
 // edge delivery -> build); a pinned version that cannot be given refuses the job by name.
 async function contractsPinnedFor(
-  requirement: LoadedRequirement | null,
+  requirement: GivenRequirement | null,
   subject: string,
-): Promise<LoadedPinnedContract[]> {
+): Promise<readonly unknown[]> {
   if (!requirement) return [];
   try {
-    return await loadPinnedContracts(requirement.key, requirement.pins);
+    return await jobsPorts().jobContext.loadPinnedContracts(requirement.key, requirement.pins);
   } catch (err) {
     const code = refusalCodeOf(err) ?? 'ARTIFACT_CONTEXT_UNLOADABLE';
     throw contextRefused(
@@ -102,13 +83,16 @@ async function contractsPinnedFor(
   }
 }
 
-// cm:why a build job is given the design revisions its requirement's baseline pins, or for an issue with no requirement the revision its approver approved, so it builds the journey it was held for rather than one it guesses at; an issue that reaches no design is given nothing
-async function designsBuiltBy(issueId: string | null, subject: string): Promise<LoadedArtifact[]> {
+// a build job is given the design revisions its requirement's baseline pins, or for an issue with no requirement the revision its approver approved, so it builds the journey it was held for rather than one it guesses at; an issue that reaches no design is given nothing
+async function designsBuiltBy(
+  issueId: string | null,
+  subject: string,
+): Promise<readonly unknown[]> {
   if (!issueId) return [];
   try {
-    return await loadArtifactContext(issueId);
+    return await jobsPorts().jobContext.loadArtifactContext(issueId);
   } catch (err) {
-    // cm:guard an unreadable approved revision stops the job as `ARTIFACT_CONTEXT_UNLOADABLE`: an agent given no design would build the journey blind
+    // an unreadable approved revision stops the job as `ARTIFACT_CONTEXT_UNLOADABLE`: an agent given no design would build the journey blind
     const code = refusalCodeOf(err) ?? 'ARTIFACT_CONTEXT_UNLOADABLE';
     throw contextRefused(
       code,
@@ -117,17 +101,17 @@ async function designsBuiltBy(issueId: string | null, subject: string): Promise<
   }
 }
 
-// cm:why a job on an issue that delivers a requirement is given its current revision's business criteria and the design revisions its baseline pins, so it builds what was agreed rather than what the description paraphrased
+// a job on an issue that delivers a requirement is given its current revision's business criteria and the design revisions its baseline pins, so it builds what was agreed rather than what the description paraphrased
 async function requirementServedBy(
   issueId: string | null,
   subject: string,
   mockupsWithheld: boolean,
-): Promise<LoadedRequirement | null> {
+): Promise<GivenRequirement | null> {
   if (!issueId) return null;
   try {
-    return await loadRequirementContext(issueId, mockupsWithheld);
+    return await jobsPorts().jobContext.loadRequirementContext(issueId, mockupsWithheld);
   } catch (err) {
-    // cm:guard a requirement that cannot be given at its current revision stops the job by name: a run given a superseded or unagreed revision would build the wrong intent
+    // a requirement that cannot be given at its current revision stops the job by name: a run given a superseded or unagreed revision would build the wrong intent
     const code = refusalCodeOf(err) ?? 'ARTIFACT_CONTEXT_UNLOADABLE';
     throw contextRefused(
       code,
@@ -136,7 +120,7 @@ async function requirementServedBy(
   }
 }
 
-// cm:guard the artifact block reaches the job's agent through the one egress rule, the requirement
+// the artifact block reaches the job's agent through the one egress rule, the requirement
 // as surface `requirement` and the designs as `design`; a refusal stops the job by name
 async function givenToAgent(
   projectId: string,
@@ -195,13 +179,21 @@ export async function buildJobSystemPrompt(input: {
   const designs = await designsBuiltBy(issueId, subject);
   const withheld = withheldAt(await dataPolicyOf(projectId), 'mockup.content');
   const requirement = await requirementServedBy(issueId, subject, withheld);
-  const issueMockups = issueId ? renderIssueMockups(await issueMockupsOf(issueId), withheld) : null;
+  const context = jobsPorts().jobContext;
+  const issueMockups = issueId
+    ? context.renderIssueMockups(await context.issueMockupsOf(issueId), withheld)
+    : null;
   const contracts = await contractsNamedBy(projectId, issueRow, subject);
   const pinnedContracts = await contractsPinnedFor(requirement, subject);
   const artifactBlock =
     [
       await givenToAgent(projectId, 'requirement', requirement?.text ?? null, subject),
-      await givenToAgent(projectId, 'design', renderArtifactContext(designs) || null, subject),
+      await givenToAgent(
+        projectId,
+        'design',
+        context.renderArtifactContext(designs) || null,
+        subject,
+      ),
       await givenToAgent(projectId, 'issue', issueMockups, subject),
     ]
       .filter(Boolean)
@@ -214,13 +206,13 @@ export async function buildJobSystemPrompt(input: {
         artifactBlock,
       ),
       'contract-context',
-      renderContractContext(contracts),
+      context.renderContractContext(contracts),
     ),
     'pinned-contract-context',
     await givenToAgent(
       projectId,
       'requirement',
-      requirement ? renderPinnedContracts(requirement.key, pinnedContracts) : null,
+      requirement ? context.renderPinnedContracts(requirement.key, pinnedContracts) : null,
       subject,
     ),
   );

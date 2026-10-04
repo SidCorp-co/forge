@@ -19,6 +19,11 @@
  * recovery edge (a `recovery` edge of `@forge/contracts/issue-machine:ISSUE_MACHINE`), refused while anything holds it.
  */
 
+import {
+  RUN_ISSUE_STATUSES_METADATA_KEY,
+  RUN_ISSUES_METADATA_KEY,
+  RUN_SESSION_KIND,
+} from '@forge/contracts/agent-sessions';
 import { ASSERTS_WORK_IN_PROGRESS, PARK_STATUSES } from '@forge/contracts/issue-machine';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -28,15 +33,10 @@ import {
   issues,
   terminalAgentSessionStatuses,
 } from '../db/schema.js';
-import type { TransitionActor } from '../issues/actor-agency.js';
-import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
+import type { TransitionActor } from '../issues/index.js';
+import { TransitionError, transitionIssueStatus } from '../issues/index.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { logger } from '../observability/logger.js';
-import {
-  RUN_ISSUE_STATUSES_METADATA_KEY,
-  RUN_ISSUES_METADATA_KEY,
-  RUN_SESSION_KIND,
-} from './run-session.js';
 
 export interface ReturnedIssue {
   issueKey: string;

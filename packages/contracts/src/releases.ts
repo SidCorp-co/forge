@@ -361,6 +361,12 @@ export interface ReleaseResponse {
 }
 
 /** Every reason a release will not start, in the order the doors refuse in (ISS-1127). */
+/** What an issue with no release note is told to do before it can ship. */
+export const RELEASE_RECORD_REMEDY =
+	"Set `releaseNotes` first: `{ section, userFacing }` with the one plain-language line a " +
+	"user would read, or `{ section: 'Skip', userFacing: '-' }` when the change has no " +
+	"user-facing half.";
+
 export const RELEASE_BLOCKER_CODES = [
 	"NO_RELEASE_GATE",
 	"RELEASE_TARGET_UNDECLARED",
@@ -427,6 +433,7 @@ export const RELEASE_REFUSAL_STATUSES = {
 	CLAIM_CONFLICT: 409,
 } as const satisfies RefusalStatuses<ReleaseRefusalCode | ReleaseBlockerCode>;
 
+/** What production serves, read when asked and never stored (core `release-batch/serving-reading.ts`). */
 export interface ServedAt {
 	readonly commit: string;
 	readonly where: string;
@@ -442,11 +449,7 @@ export type ServingReading =
 			readonly unread: readonly string[];
 			readonly readAt: string;
 	  }
-	| {
-			readonly kind: "undeclared";
-			readonly missing: string;
-			readonly route: string;
-	  }
+	| { readonly kind: "undeclared"; readonly missing: string; readonly route: string }
 	| {
 			readonly kind: "unreadable";
 			readonly why: string;
@@ -468,3 +471,6 @@ export function releaseApprovalRequired(
 ): boolean {
 	return document?.release?.approval.required === true;
 }
+
+/** How many issues one release batch carries at most. */
+export const RELEASE_ROSTER_LIMIT = 50;

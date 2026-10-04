@@ -17,7 +17,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
-import { jobsOfSession, scrubJobOutput } from '../jobs/job-secret-scrub.js';
+import { jobsOfSession, scrubJobOutput } from '../jobs/index.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';

@@ -14,17 +14,15 @@
 import { eq } from 'drizzle-orm';
 import {
   type InteractiveAuthority,
-  RUNNER_OUTDATED_REFUSAL,
-  readBoxAuthority,
-  type SessionRefusal,
-  sessionRoleRefusal,
-} from '../agent-sessions/interactive-credential.js';
-import {
   noTurnCredentialDeviceReason,
   pickTurnCredentialDevice,
+  RUNNER_OUTDATED_REFUSAL,
+  readBoxAuthority,
   type SessionAsker,
-} from '../agent-sessions/session-credential.js';
-import { transitionSessions } from '../agent-sessions/session-transition.js';
+  type SessionRefusal,
+  sessionRoleRefusal,
+  transitionSessions,
+} from '../agent-sessions/index.js';
 import { turnAuthorityRefusalOf } from '../credentials/turn-credential.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';

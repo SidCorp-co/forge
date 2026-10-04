@@ -1,10 +1,10 @@
-import type { IssueStatus } from '@forge/contracts/issue-machine';
-import type { WorkStep } from '@forge/contracts/issue-vocabulary';
 import {
   RUN_ISSUE_STATUSES_METADATA_KEY,
   RUN_SESSION_METADATA_TYPE,
-} from '../devices/run-session-keys.js';
-import { readHoldState } from '../jobs/hold.js';
+} from '@forge/contracts/agent-sessions';
+import type { IssueStatus } from '@forge/contracts/issue-machine';
+import type { WorkStep } from '@forge/contracts/issue-vocabulary';
+import { readHoldState } from '../jobs/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import {
   type BaseRun,

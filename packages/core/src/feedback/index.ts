@@ -1,3 +1,4 @@
+export { reportLinksOf } from './about.js';
 export { type FeedbackDependents, provideFeedbackDependents } from './dependents.js';
 export type { ReadDoor } from './egress.js';
 export { nearestFeedbackOf } from './embeddings.js';

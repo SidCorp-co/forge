@@ -2,13 +2,13 @@
  *  never stored: a commit on a row is wrong the moment the next deploy lands (ISS-1286). Neither
  *  this nor `collectReleaseBlockers`, which promises no outbound request, calls the other. */
 
-import { type ServedAt, type ServingReading, servedCommits } from '@forge/contracts/releases';
+import type { ServedAt, ServingReading } from '@forge/contracts/releases';
 import { longestSpelling } from '../messaging/verdict-identity.js';
-import { readEnvironmentState } from '../project-config/environment-state-read.js';
-import { readReleasePath } from '../project-config/release-path.js';
-import type { EnvironmentState } from '../project-config/schema.js';
+import type { EnvironmentState } from '../project-config/index.js';
+import { readEnvironmentState, readReleasePath } from '../project-config/index.js';
 
-export { type ServedAt, type ServingReading, servedCommits };
+export type { ServedAt, ServingReading } from '@forge/contracts/releases';
+export { servedCommits } from '@forge/contracts/releases';
 
 /** Each served commit beside everywhere it runs — `3c38c68` at A; `ea69715` at B and C — one
  *  commit answered whole by one source and abbreviated by another named once, whole. */

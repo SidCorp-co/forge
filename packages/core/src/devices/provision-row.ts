@@ -5,8 +5,8 @@
  * and not every other one the device is waiting on (ISS-1184).
  */
 
-import { decryptSecret } from '../integrations/index.js';
 import { isRefusal } from '../lib/refusal.js';
+import { devicesPorts } from './ports.js';
 
 const REASON_MAX = 200;
 
@@ -163,7 +163,7 @@ export async function buildProvisionRow(
 
   let sshPrivateKey: string | null = null;
   if (row.sshPrivateKeyEnc) {
-    const decrypt = deps.decrypt ?? decryptSecret;
+    const decrypt = deps.decrypt ?? devicesPorts().decryptSecret;
     try {
       sshPrivateKey = decrypt(row.sshPrivateKeyEnc);
     } catch (err) {

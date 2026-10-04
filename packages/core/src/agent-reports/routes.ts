@@ -21,7 +21,7 @@ import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { listVisibleProjectsWithRole } from '../projects/service.js';
+import { listVisibleProjectsWithRole } from '../projects/index.js';
 import {
   listReports,
   type ReportActor,

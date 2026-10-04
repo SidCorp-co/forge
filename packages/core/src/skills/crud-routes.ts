@@ -1,3 +1,4 @@
+import { isSlashCommandSkillName } from '@forge/contracts/skills';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -15,7 +16,6 @@ import {
   requestSkillSync,
   updateProjectSkill,
 } from './service.js';
-import { isSlashCommandSkillName } from './skill-name.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 

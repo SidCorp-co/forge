@@ -1,9 +1,9 @@
 import { eq } from 'drizzle-orm';
-import { codeAuthored, conversationTransport } from '../conversations/ports.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { logger } from '../observability/logger.js';
 import { type ConversationAgentMeta, readConversationAgentMeta } from './conversation-agent.js';
+import { codeAuthored, conversationTransport } from './ports.js';
 
 /**
  * Post an interim ack, but only if the turn is genuinely slow.

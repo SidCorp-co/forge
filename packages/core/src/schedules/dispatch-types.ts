@@ -1,5 +1,4 @@
-import type { SessionRefusal } from '../agent-sessions/interactive-credential.js';
-import type { SessionAsker } from '../agent-sessions/session-credential.js';
+import type { SessionAsker, SessionRefusal } from '../agent-sessions/index.js';
 import type { ScheduleKind, ScheduleMode } from '../db/schema.js';
 import type { FireSettlement } from './fires.js';
 import type { AppliedVersions } from './messages/skill-improve-prompt.js';

@@ -3,20 +3,24 @@
  * explains it. Every door reads these, so none carries its own copy (ISS-1127).
  */
 
-import type { ReleaseBlockerCode } from '@forge/contracts/releases';
-import { type LiveShortfall, notLiveSentence } from '../ecosystem/waits/rules.js';
-import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
+import { type LiveShortfall, notLiveSentence } from '@forge/contracts/contract-waits';
+import {
+  RELEASE_RECORD_REMEDY,
+  RELEASE_ROSTER_LIMIT,
+  type ReleaseBlockerCode,
+} from '@forge/contracts/releases';
 import { agrees, counted } from '../lib/plural.js';
-import { AGENT_NAMING_MIN_RUNNER } from '../runners/device-cap.js';
-import type { RunnerHold, RunnerHoldReason } from '../runners/ineligible.js';
+import {
+  AGENT_NAMING_MIN_RUNNER,
+  type RunnerHold,
+  type RunnerHoldReason,
+} from '../runners/index.js';
 import { claimConflictSentence, readClaimConflictDetails } from './claim-conflicts.js';
 import type { ReleaseDeclaration } from './gate.js';
 import type { ReleaseChannel } from './plan.js';
 import type { ServingReading } from './serving-reading.js';
 
 /** The most issues one release may carry; `resolveRoster` holds every door to it. */
-export const RELEASE_ROSTER_LIMIT = 50;
-
 export type { ReleaseBlockerCode };
 
 export type ReleaseWarningCode =

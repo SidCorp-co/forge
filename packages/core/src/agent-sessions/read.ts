@@ -16,7 +16,7 @@ import {
   EMPTY_USAGE_TOTALS,
   usageSessionMatch,
   usageTotalsSelection,
-} from '../usage-records/rollup.js';
+} from '../usage-records/index.js';
 import { extractTurnPreview } from './chat-preview.js';
 import { agentSessionListColumns } from './service.js';
 

@@ -31,7 +31,7 @@ A release that reaches step 4 and cannot cut its tag is reported as unfinished, 
 - A tag never names a build that was not served. Cutting at promotion time, before identity is
   confirmed, would allow exactly that.
 - Two things are deliberately **not** covered, because allocating a number is state while tagging is
-  an act: `packages/core/src/release-batch/version-store.ts` remains the only writer of `release_version`, and
+  an act: `packages/core/src/release-batch/version-store.ts` remains the only allocator of `release_version`, and
   `.github/workflows/runner-autorelease.yml` keeps cutting `runner-v*` on its own clock for the runner alone.
 - The dispatcher takes the number from the allocator rather than inventing one, so uniqueness and
   the burn rule of ADR 0001 keep holding.

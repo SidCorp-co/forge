@@ -21,13 +21,8 @@ import { issues } from '../db/schema.js';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import { peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
-import { readReleasePath } from '../project-config/release-path.js';
-import {
-  type ApprovalView,
-  approvalRequired,
-  approvalsOfRuns,
-  approvalViews,
-} from './approvals.js';
+import { approvalRequired, readReleasePath } from '../project-config/index.js';
+import { type ApprovalView, approvalsOfRuns, approvalViews } from './approvals.js';
 import { collectReleaseBlockers } from './blockers.js';
 import { type BoundsReading, readBounds } from './bounds.js';
 import { RELEASE_GATE_STATUS } from './gate.js';

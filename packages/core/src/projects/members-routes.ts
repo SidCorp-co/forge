@@ -14,11 +14,11 @@ import {
 } from '../middleware/auth.js';
 import { badRequest, forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { emitNotification } from '../notifications/emit.js';
 import { logger } from '../observability/logger.js';
 import { requireHeld } from '../permissions/index.js';
 import { sendInvitationEmail } from './invitation-email.js';
 import { issueInvitationToken } from './invitation-token.js';
+import { projectsPorts } from './ports.js';
 import {
   accountIdByEmail,
   listPendingProjectInvitations,
@@ -234,10 +234,9 @@ memberRoutes.post(
     // FK) get email only — the pending list surfaces the invite once they sign up.
     if (existingUserId) {
       try {
-        await emitNotification({
+        await projectsPorts().notifyInvitee({
           userId: existingUserId,
           projectId,
-          type: 'invitation_received',
           title: `${inviter.email} invited you to ${project.name} as ${role}`,
         });
       } catch (notifyErr) {

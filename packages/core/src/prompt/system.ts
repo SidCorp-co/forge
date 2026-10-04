@@ -1,11 +1,12 @@
 import type { ContentLanguageRecord } from '@forge/contracts/content-language';
-import { and, eq } from 'drizzle-orm';
 import {
   contentLanguageBlock,
   contentLanguageRecord,
+  contentLanguageViewOf,
   jobContentContext,
-} from '../content-language/block.js';
-import { readContentLanguage } from '../content-language/read.js';
+} from '@forge/contracts/content-language';
+import type { DispatchState } from '@forge/contracts/project-config';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type JobType,
@@ -17,8 +18,7 @@ import {
 import { estimateTokens } from '../lib/token-estimator.js';
 import { logger } from '../observability/logger.js';
 import { NO_PROGRESS_ROUNDS } from '../pipeline/reopen-policy.js';
-import type { DispatchState } from '../project-config/dispatch-policy.js';
-import { promotedBranch, readReleasePath } from '../project-config/release-path.js';
+import { promotedBranch, readProjectDocument, readReleasePath } from '../project-config/index.js';
 import { mandatoryPreambleBlocks } from './facts/mandatory-blocks.js';
 import { OPERATING_AFFORDANCES_TEXT } from './facts/registry.js';
 import {
@@ -297,7 +297,7 @@ export async function buildPipelinePreambleStructured(
   }
   let contentLanguage: ContentLanguageRecord | undefined;
   if (step) {
-    const setting = await readContentLanguage(projectId);
+    const setting = contentLanguageViewOf(await readProjectDocument(projectId));
     const context = jobContentContext(step);
     contentLanguage = contentLanguageRecord(setting, context, setting.revision);
     sections.push({ id: 'content-language', body: contentLanguageBlock(setting, context) });

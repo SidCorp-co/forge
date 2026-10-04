@@ -14,7 +14,6 @@ import {
   users,
   workspaceSshKeys,
 } from '../db/schema.js';
-import { residentMasterSql } from '../devices/master-session.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
 import { PROJECT_DETAIL } from './projections.js';
 
@@ -170,9 +169,7 @@ export async function listPendingProjectInvitations(projectId: string) {
     })
     .from(projectInvitations)
     .innerJoin(users, eq(users.id, projectInvitations.inviterId))
-    .where(
-      and(eq(projectInvitations.projectId, projectId), isNull(projectInvitations.acceptedAt)),
-    );
+    .where(and(eq(projectInvitations.projectId, projectId), isNull(projectInvitations.acceptedAt)));
 }
 
 /** The live project and org invitations sent to `email`, newest first. */
@@ -265,65 +262,4 @@ export async function projectGitPrivateKeyEnc(projectId: string): Promise<Buffer
     .where(eq(projectGitCredentials.projectId, projectId))
     .limit(1);
   return row?.privateKeyEnc ?? null;
-}
-
-/** The device pools serving the project, with device identity and provision status. */
-export async function listProjectRunners(projectId: string) {
-  return db
-    .select({
-      runnerId: runners.id,
-      deviceId: runners.deviceId,
-      deviceName: devices.name,
-      platform: devices.platform,
-      deviceStatus: devices.status,
-      // The version the device's binary reported is this runner's; read from the device rather
-      // than mirrored, so a missed heartbeat cannot leave two copies disagreeing (ISS-1119).
-      agentVersion: devices.agentVersion,
-      // A disabled device's runner still heartbeats online; this says why it receives no jobs.
-      deviceDisabledAt: devices.disabledAt,
-      runnerStatus: runners.status,
-      lastError: runners.lastError,
-      limitReason: runners.limitReason,
-      rateLimitedUntil: runners.rateLimitedUntil,
-      limitDetail: runners.limitDetail,
-      repoPath: runners.repoPath,
-      branch: runners.branch,
-      labels: runners.labels,
-      lastSeenAt: runners.lastSeenAt,
-      provisionStatus: runners.provisionStatus,
-      provisionDetail: runners.provisionDetail,
-      provisionedAt: runners.provisionedAt,
-      poolRead: runners.poolRead,
-      // ISS-1118 — whether a resident master for this project runs on the box.
-      residentMaster: residentMasterSql(runners.deviceId, runners.projectId),
-    })
-    .from(runners)
-    .leftJoin(devices, eq(devices.id, runners.deviceId))
-    .where(and(eq(runners.projectId, projectId), eq(runners.type, 'claude-code')))
-    .orderBy(runners.createdAt);
-}
-
-/** The device a bind names, or null. */
-export async function deviceForBind(deviceId: string) {
-  const [row] = await db
-    .select({
-      id: devices.id,
-      name: devices.name,
-      status: devices.status,
-      lastSeenAt: devices.lastSeenAt,
-    })
-    .from(devices)
-    .where(eq(devices.id, deviceId))
-    .limit(1);
-  return row ?? null;
-}
-
-/** Whether runner `runnerId` belongs to the project. */
-export async function projectHasRunner(projectId: string, runnerId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ id: runners.id })
-    .from(runners)
-    .where(and(eq(runners.id, runnerId), eq(runners.projectId, projectId)))
-    .limit(1);
-  return row !== undefined;
 }

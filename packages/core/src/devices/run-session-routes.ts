@@ -10,7 +10,7 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { isDispatchGateError } from '../issues/dispatch-gates.js';
+import { isDispatchGateError } from '../issues/index.js';
 import { RefusalError } from '../lib/refusal.js';
 import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';

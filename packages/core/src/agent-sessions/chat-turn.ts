@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
 import {
   CONTENT_LANGUAGE_KEY,
   contentLanguageBlock,
   contentLanguageRecord,
-} from '../content-language/block.js';
-import { readContentLanguage } from '../content-language/read.js';
+} from '@forge/contracts/content-language';
+import { isSlashCommandSkillName } from '@forge/contracts/skills';
+import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   agentSessions,
@@ -14,7 +14,6 @@ import {
   type ModelTier,
   memberLenses,
 } from '../db/schema.js';
-import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
 import { buildChatPreamble, TOOL_REFERENCE } from '../lib/chat-preamble.js';
 import {
   findAvailableDeviceForProject,
@@ -23,9 +22,8 @@ import {
 } from '../lib/device-pool.js';
 import type { RefusalError } from '../lib/refusal.js';
 import { deviceRoom, projectRoom, roomManager } from '../lib/rooms.js';
-import { type KernelActor, movedRow } from '../lifecycle/transition.js';
+import { type KernelActor, movedRow } from '../lifecycle/index.js';
 import { openOneShotRun } from '../pipeline/runs.js';
-import { isSlashCommandSkillName } from '../skills/skill-name.js';
 import { listSessionAttachmentsByIds, type SessionAttachmentRef } from './attachment-service.js';
 import { applyAutoTitleAsync } from './auto-title.js';
 import { broadcastSession, broadcastTurnAppended } from './broadcast.js';
@@ -36,6 +34,7 @@ import {
   readPersistedPageContext,
   samePageContext,
 } from './page-context.js';
+import { agentSessionsPorts } from './ports.js';
 import { refuseSession } from './refusals.js';
 import { seedTurn } from './session-events.js';
 import type { AgentSessionPatch } from './session-failure.js';
@@ -351,7 +350,9 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   // cm:why a cold start is where core writes the prompt, so it is where the session is told its
   // project's content language and records it; a resumed or pre-built turn keeps what it was told
   const language =
-    !resumable && !isLocal && !args.preBuilt ? await readContentLanguage(project.id) : null;
+    !resumable && !isLocal && !args.preBuilt
+      ? await agentSessionsPorts().readContentLanguage(project.id)
+      : null;
 
   const updates: AgentSessionPatch = {
     messages,
@@ -437,7 +438,9 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   }
 
   const target = deviceId as string;
-  const { mcpServers: mcpServersOverride } = await resolveSessionMcpServers(project.id);
+  const { mcpServers: mcpServersOverride } = await agentSessionsPorts().resolveSessionMcpServers(
+    project.id,
+  );
   // `claudeSessionId`/`resumable` were already resolved above (before the
   // transaction, so the `pendingSkillName` marker could be persisted).
   if (!resumable) {

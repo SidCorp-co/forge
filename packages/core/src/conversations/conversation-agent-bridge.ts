@@ -9,24 +9,28 @@
  * delivers it verbatim.
  */
 
-import { and, eq, sql } from 'drizzle-orm';
-import { codeAuthored, conversationTransport, screened } from '../conversations/ports.js';
-import { recordDeliveredReply } from '../conversations/transcript.js';
-import { db } from '../db/client.js';
-import { agentSessions } from '../db/schema.js';
+import {
+  claimSessionMarker,
+  messageRoleToTurnRole,
+  provideTerminalSessionBridge,
+  setSessionMarkerField,
+  stampSessionMarker,
+} from '../agent-sessions/index.js';
+import type { agentSessions } from '../db/schema.js';
 import { type MessageVerdict, problemsOf } from '../messaging/contract.js';
 import type { ProgressFacts } from '../messaging/facts.js';
 import { withRepairs } from '../messaging/repairs.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
 import { logger } from '../observability/logger.js';
-import { resolveFailureCause } from '../pipeline/failure-causes.js';
+import { resolveFailureCause } from '../pipeline/index.js';
 import {
   CONVERSATION_AGENT_MARKER,
   type ConversationAgentMeta,
   readConversationAgentMeta,
 } from './conversation-agent.js';
 import { redispatchConversationAgentTurn } from './conversation-agent-failover.js';
-import { messageRoleToTurnRole } from './turns-helpers.js';
+import { codeAuthored, conversationTransport, screened } from './ports.js';
+import { recordDeliveredReply } from './transcript.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
 
@@ -86,58 +90,23 @@ function finalAssistantText(messages: unknown): string | null {
  * Stamp this session as the one that delivers, at most once.
  */
 async function claimDelivery(session: SessionRow, failure: string | null): Promise<boolean> {
-  const prev = (session.metadata as Record<string, unknown>) ?? {};
-  const prevMarker = (prev[CONVERSATION_AGENT_MARKER] as Record<string, unknown>) ?? {};
-  const claimed = await db
-    .update(agentSessions)
-    .set({
-      metadata: {
-        ...prev,
-        [CONVERSATION_AGENT_MARKER]: {
-          ...prevMarker,
-          claimedAt: new Date().toISOString(),
-          ...(failure ? { deliveredAt: new Date().toISOString(), failure } : { failure: null }),
-        },
-      } as never,
-    })
-    .where(
-      and(
-        eq(agentSessions.id, session.id),
-        sql`(${agentSessions.metadata} -> ${CONVERSATION_AGENT_MARKER}::text ->> 'claimedAt') IS NULL AND (${agentSessions.metadata} -> ${CONVERSATION_AGENT_MARKER}::text ->> 'deliveredAt') IS NULL`,
-      ),
-    )
-    .returning({ id: agentSessions.id });
-  return claimed.length > 0;
+  const at = new Date().toISOString();
+  return claimSessionMarker(session, CONVERSATION_AGENT_MARKER, {
+    claimedAt: at,
+    ...(failure ? { deliveredAt: at, failure } : { failure: null }),
+  });
 }
 
 /** The answer is in the transcript: stamp the fact, which is what the screen reads. */
 async function stampDelivered(sessionId: string): Promise<void> {
-  const [row] = await db
-    .select({ metadata: agentSessions.metadata })
-    .from(agentSessions)
-    .where(eq(agentSessions.id, sessionId))
-    .limit(1);
-  const prev = (row?.metadata as Record<string, unknown>) ?? {};
-  const marker = (prev[CONVERSATION_AGENT_MARKER] as Record<string, unknown>) ?? {};
-  await db
-    .update(agentSessions)
-    .set({
-      metadata: {
-        ...prev,
-        [CONVERSATION_AGENT_MARKER]: { ...marker, deliveredAt: new Date().toISOString() },
-      } as never,
-    })
-    .where(eq(agentSessions.id, sessionId));
+  await stampSessionMarker(sessionId, CONVERSATION_AGENT_MARKER, {
+    deliveredAt: new Date().toISOString(),
+  });
 }
 
 /** Re-stamp which failure the venue was shown, once the delivery is already claimed. */
 async function stampFailure(sessionId: string, failure: string): Promise<void> {
-  await db
-    .update(agentSessions)
-    .set({
-      metadata: sql`jsonb_set(${agentSessions.metadata}, ${sql.raw(`'{${CONVERSATION_AGENT_MARKER},failure}'`)}, ${JSON.stringify(failure)}::jsonb, true)`,
-    })
-    .where(eq(agentSessions.id, sessionId));
+  await setSessionMarkerField(sessionId, CONVERSATION_AGENT_MARKER, 'failure', failure);
 }
 
 async function composeOutcome(session: SessionRow, meta: ConversationAgentMeta): Promise<Outcome> {
@@ -261,4 +230,9 @@ export async function deliverConversationAgentReplyOnce(session: SessionRow): Pr
         'conversation-agent-bridge: delivered, but the settled event was not published',
       ),
     );
+}
+
+/** Hands the kernel this module's delivery for a session that answers a conversation. */
+export function registerConversationAgentBridge(): void {
+  provideTerminalSessionBridge('conversationAgent', deliverConversationAgentReplyOnce);
 }

@@ -1,9 +1,8 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices } from '../db/schema.js';
-import { compareRunnerBuild } from '../devices/build-state.js';
-import { getPublishedRunnerBuild } from '../install/routes.js';
-import { mainRunnerHead } from '../integrations/published-releases/index.js';
+import { compareRunnerBuild } from '../devices/index.js';
+import { runnersPorts } from './ports.js';
 import type { HealthResult, Runner, RunnerAdapter } from './types.js';
 
 /**
@@ -20,7 +19,10 @@ async function runnerBuildComparison(deviceId: string | null) {
   if (!device) return undefined;
   return compareRunnerBuild(
     { version: device.agentVersion, commit: device.agentCommit },
-    { published: await getPublishedRunnerBuild(), mainRunnerHead: mainRunnerHead() },
+    {
+      published: await runnersPorts().publishedRunnerBuild(),
+      mainRunnerHead: runnersPorts().mainRunnerHead(),
+    },
   );
 }
 

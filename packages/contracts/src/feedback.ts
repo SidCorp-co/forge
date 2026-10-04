@@ -598,5 +598,5 @@ export interface FeedbackTriageEffect {
 	carrier: string | null;
 }
 
-/** `FB-<seq>`, the key a feedback item is named by. */
+/** A feedback item's key, `FB-<seq>`. */
 export const feedbackKey = (seq: number) => `FB-${seq}`;

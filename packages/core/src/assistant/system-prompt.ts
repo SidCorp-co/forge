@@ -23,7 +23,7 @@ export interface BuildSystemPromptInput {
   persona?: string | null | undefined;
   /** Deterministic project-progress block (ISS-671); always appended when set. */
   progressFacts?: string | null | undefined;
-  /** The project's content language block (`content-language/block.ts`); appended after an override too. */
+  /** The project's content language block (`@forge/contracts/content-language`); appended after an override too. */
   contentLanguage?: string | null | undefined;
 }
 

@@ -1,10 +1,11 @@
+import { parseSecretRef } from '@forge/contracts/project-config';
 import { scrubSecretValuesDeep } from '@forge/observability';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobEvents, jobs } from '../db/schema.js';
 import { projectSecrets } from '../db/schema-project-config.js';
-import { decryptSecret, isVaultConfigured } from '../integrations/index.js';
-import { parseSecretRef } from '../project-config/documents.js';
+import { appendJobEvent } from './intervention-event.js';
+import { jobsPorts } from './ports.js';
 
 export const SECRET_RESOLVE_KIND = 'secret_resolve' as const;
 
@@ -14,6 +15,12 @@ export interface SecretResolveAudit {
   refs: string[];
   tokenId: string;
   deviceId: string | null;
+}
+
+/** A testing-secrets resolve, on the job's event log: the row commits before any value leaves, and
+ *  it is the row the scrubber reads to know what this job holds. */
+export async function recordSecretResolve(jobId: string, audit: SecretResolveAudit): Promise<void> {
+  await db.transaction((tx) => appendJobEvent(tx, jobId, SECRET_RESOLVE_KIND, { ...audit }));
 }
 
 // cm:why the audit row names refs, never values, so a value rotated after it was handed out is
@@ -55,7 +62,7 @@ async function currentValues(projectId: string, refs: ReadonlySet<string>): Prom
   if (wanted.length === 0) return [];
   // cm:guard a core that cannot decrypt cannot know the values; it refuses the output rather than
   // storing it unscrubbed.
-  if (!isVaultConfigured()) {
+  if (!jobsPorts().vault.isVaultConfigured()) {
     throw new Error(
       'job output unscrubbable: this job resolved testing secrets and INTEGRATION_MASTER_KEY is not set, so their values cannot be read to scrub its output',
     );
@@ -77,7 +84,9 @@ async function currentValues(projectId: string, refs: ReadonlySet<string>): Prom
       ),
     );
   const names = new Set(wanted.map((w) => `${w.scope}/${w.name}`));
-  return rows.filter((r) => names.has(`${r.scope}/${r.name}`)).map((r) => decryptSecret(r.enc));
+  return rows
+    .filter((r) => names.has(`${r.scope}/${r.name}`))
+    .map((r) => jobsPorts().vault.decryptSecret(r.enc));
 }
 
 // cm:flow testing-secrets/scrub after:audit — the values a job was handed are taken back out of

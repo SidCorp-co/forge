@@ -21,13 +21,13 @@
  */
 
 import { and, eq, isNull } from 'drizzle-orm';
-import { resolveProjectHandle } from '../conversations/handles.js';
 import { lockPatName, mintPat, supersedeNamedToken } from '../credentials/pat.js';
 import { deviceTokenNameFor, workspaceTokenNameFor } from '../credentials/pat-format.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens, users } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { agentCredentialGrant, holds } from '../permissions/index.js';
+import { devicesPorts } from './ports.js';
 import { refuseDevice } from './refusals.js';
 
 /**
@@ -100,7 +100,6 @@ export async function issueWorkspaceCredential(args: {
   });
 }
 
-
 // A master pane is its project's agent, so the checkout carries the agent's identity; a person hands it only holding project.write.
 /**
  * Who a checkout's credential is held by: the device's holder where that is an
@@ -129,7 +128,7 @@ export async function workspaceHolderFor(args: {
       `person ${args.deviceHolderUserId} paired this box and holds ${access?.role ?? 'no role'} on project ${args.projectId}; its checkout's credential acts as the project's own agent, which only a holder of project.write hands a box. A project admin raises their role, or the box is paired as an agent of the project`,
     );
   }
-  return db.transaction(async (tx) => (await resolveProjectHandle(tx, args.projectId)).userId);
+  return db.transaction((tx) => devicesPorts().projectHandleUserId(tx, args.projectId));
 }
 
 /** The credential a provisioned checkout carries: held by {@link workspaceHolderFor}, minted by {@link issueWorkspaceCredential}. */

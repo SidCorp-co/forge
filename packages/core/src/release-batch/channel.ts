@@ -1,8 +1,8 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { effectiveConfig, getIntegration } from '../integrations/index.js';
-import { getKnowledgeEntry } from '../knowledge/service.js';
-import type { NamedEnvironment } from '../project-config/release-path.js';
+import { getKnowledgeEntry } from '../knowledge/index.js';
+import type { NamedEnvironment } from '../project-config/index.js';
 import { type ReleaseDeclaration, resolveReleaseDeclaration } from './gate.js';
 import {
   type CloseVerification,

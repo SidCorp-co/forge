@@ -34,20 +34,18 @@ import {
   updatePackets,
 } from '../db/schema.js';
 import { insertJobRow } from '../jobs/index.js';
-import { selectKnowledgeBodies } from '../knowledge/service.js';
+import { selectKnowledgeBodies } from '../knowledge/index.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { transition } from '../lifecycle/transition.js';
-import { resolveNotifications } from '../notifications/auto-resolve.js';
-import { emitNotification } from '../notifications/emit.js';
-import { projectAdminUserIds } from '../notifications/project-admins.js';
+import { transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
-import { closeRun, openOneShotRun } from '../pipeline/runs.js';
-import { readEffectivePolicy } from '../project-config/effective.js';
+import { closeRun, openOneShotRun } from '../pipeline/index.js';
+import { readEffectivePolicy } from '../project-config/index.js';
 import type { RecordSkillActivityEventInput, SkillActivityExecutor } from './activity.js';
 import { recordSkillActivityEvent } from './activity.js';
 import { globalEffectiveMd } from './effective.js';
 import { hashSkillBody } from './hash.js';
 import { ensurePolicyLandedFor } from './policy-landed.js';
+import { skillsPorts } from './ports.js';
 import { refuse } from './refuse.js';
 
 async function logActivity(
@@ -106,7 +104,7 @@ async function notifyGatePending(
     .where(eq(projects.id, projectId))
     .limit(1);
   const projectName = project?.name ?? 'this project';
-  const adminIds = await projectAdminUserIds(projectId);
+  const adminIds = await skillsPorts().projectAdminUserIds(projectId);
 
   const title =
     kind === 'decided'
@@ -119,7 +117,7 @@ async function notifyGatePending(
 
   await Promise.all(
     adminIds.map((userId) =>
-      emitNotification({
+      skillsPorts().emitNotification({
         userId,
         projectId,
         type: 'reconcile_gate_pending',
@@ -1221,7 +1219,7 @@ export async function applyReconcileRun(runId: string, actorUserId: string): Pro
     });
   });
 
-  await resolveNotifications(`reconcile_run:${runId}:gate`);
+  await skillsPorts().resolveNotifications(`reconcile_run:${runId}:gate`);
 }
 
 /**
@@ -1276,7 +1274,7 @@ export async function rejectReconcileRun(
     });
   });
 
-  await resolveNotifications(`reconcile_run:${runId}:gate`);
+  await skillsPorts().resolveNotifications(`reconcile_run:${runId}:gate`);
 }
 
 /**
@@ -1323,7 +1321,7 @@ export async function acknowledgeReconcileRun(
     });
   });
 
-  await resolveNotifications(`reconcile_run:${runId}:gate`);
+  await skillsPorts().resolveNotifications(`reconcile_run:${runId}:gate`);
 }
 
 /**

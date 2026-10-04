@@ -18,8 +18,13 @@ import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { stampGitCredentialRef } from './devices/index.js';
 import { seedDomainTemplates } from './domain-templates/index.js';
-import { interfaceContractsOf, registerContractMeasureWorker } from './ecosystem/index.js';
+import {
+  contractProviderShortfalls,
+  interfaceContractsOf,
+  registerContractMeasureWorker,
+} from './ecosystem/index.js';
 import { provideAdmissionThresholds } from './error-intake/index.js';
+import { provideExecutionPorts } from './execution-ports.js';
 import { provideFeedbackDependents, requirementFeedbackAs } from './feedback/index.js';
 import { provideGitCredentialStamp } from './git/index.js';
 import { registerAllIntegrations } from './integration-registry.js';
@@ -33,11 +38,13 @@ import {
 import { startRocketChatManager, stopRocketChatManager } from './integrations/rocketchat/index.js';
 import {
   activeIssuePrefix,
+  claimIssuePrefix,
   closeBacklogStreams,
   computeProjectProgress,
   heldIssuePrefixes,
   resolveIssueForHeadRef,
 } from './issues/index.js';
+import { recordSecretResolve, rememberHandedOut, resolvePipelineContext } from './jobs/index.js';
 import { provideProjectOrg } from './lib/authz.js';
 import { provideDataPolicy } from './lib/data-egress.js';
 import { CHAT_READ_MODEL_TOOLS } from './mcp/index.js';
@@ -48,6 +55,7 @@ import { requestLogger } from './middleware/logger.js';
 import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import { deleteFeedbackMockups } from './mockups/index.js';
+import { emitNotification } from './notifications/index.js';
 import { logger } from './observability/logger.js';
 import {
   declareOutboxQueues,
@@ -58,10 +66,19 @@ import {
 } from './outbox/index.js';
 import { registerOutboxConsumers } from './outbox-consumers.js';
 import { actorFor, projectResource, requireCan } from './permissions/index.js';
-import { readDeclaredSource, readProjectDocument } from './project-config/index.js';
-import { findProjectOrgId } from './projects/index.js';
+import { stampReleaseShipped, stampReleaseVersion, writeRunMetadata } from './pipeline/index.js';
+import {
+  provideProjectConfigPorts,
+  readDeclaredSource,
+  readProjectDocument,
+} from './project-config/index.js';
+import { findProjectOrgId, projectDocumentNames, provideProjectsPorts } from './projects/index.js';
 import { startBoss, stopBoss } from './queue/boss.js';
-import { registerDeployWorker, registerReleaseBatchFinish } from './release-batch/index.js';
+import {
+  provideReleaseBatchPorts,
+  registerDeployWorker,
+  registerReleaseBatchFinish,
+} from './release-batch/index.js';
 import { provideInterfaceContracts, provideRequirementDependents } from './requirements/index.js';
 import { mountRoutes } from './route-registry.js';
 import { bootstrapRunnerAdapters } from './runners/index.js';
@@ -74,6 +91,25 @@ import { attachWs, closeWs } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
 provideWorkPorts();
+provideExecutionPorts();
+provideProjectsPorts({
+  claimIssuePrefix,
+  notifyInvitee: async (notice) => {
+    await emitNotification({ ...notice, type: 'invitation_received' });
+  },
+});
+provideProjectConfigPorts({
+  projectDocumentNames,
+  jobOfCredential: resolvePipelineContext,
+  recordSecretResolve,
+  rememberHandedOut,
+});
+provideReleaseBatchPorts({
+  contractProviderShortfalls,
+  writeRunMetadata,
+  stampReleaseVersion,
+  stampReleaseShipped,
+});
 provideChatTools(CHAT_READ_MODEL_TOOLS);
 provideDataPolicy(
   async (projectId) => (await readProjectDocument(projectId))?.document.sensitiveData,

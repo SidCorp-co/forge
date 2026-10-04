@@ -9,7 +9,7 @@ import { db } from '../db/client.js';
 import { skillActivityTriggers } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { createUpdatePacket } from '../skills/update-packets.js';
+import { createUpdatePacket } from '../skills/index.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, {

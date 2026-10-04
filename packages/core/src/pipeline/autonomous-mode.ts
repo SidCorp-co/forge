@@ -1,20 +1,13 @@
-import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import {
+  AUTONOMOUS_DRIVER_STATUSES,
+  AUTONOMOUS_ENTRY_STATUS,
+  AUTONOMOUS_QUESTION_STATUS,
+  ISSUE_TERMINAL_STATUSES,
+} from '@forge/contracts/issue-machine';
 import type { IssueStatus, JobType } from '../db/schema.js';
 import { type ProjectPolicy } from './ports.js';
 
-/** The status at which the driver is handed the issue. */
-export const AUTONOMOUS_ENTRY_STATUS: IssueStatus = 'open';
-
-/** The one park the driver may enter, and the only one a human answer restarts. */
-export const AUTONOMOUS_QUESTION_STATUS: IssueStatus = 'needs_info';
-
-export const AUTONOMOUS_DRIVER_STATUSES: readonly IssueStatus[] = [
-  'open',
-  'in_progress',
-  'needs_info',
-  'closed',
-  'dropped',
-] as const;
+export { AUTONOMOUS_DRIVER_STATUSES, AUTONOMOUS_ENTRY_STATUS, AUTONOMOUS_QUESTION_STATUS };
 
 export const AUTONOMOUS_JOB_TYPE: JobType = 'drive';
 

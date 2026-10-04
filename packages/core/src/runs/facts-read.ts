@@ -2,22 +2,27 @@
 // ISS-108): pipeline_runs, jobs, agent_sessions and the run ledger; the claim blob, the fleet key and deploy
 // locks; questions, release approvals and the kernel's own transitions
 
+import {
+  MASTER_SESSION_KIND,
+  RUN_GROUP_METADATA_KEY,
+  RUN_SESSION_KIND,
+} from '@forge/contracts/agent-sessions';
 import type { IssueStatus } from '@forge/contracts/issue-machine';
+import { TERMINAL_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
-import { masterLastBeatSql } from '../devices/master-silence.js';
-import { RUN_GROUP_METADATA_KEY } from '../devices/run-session-keys.js';
-import {
-  heartbeatReapedSql,
-  MASTER_SESSION_KIND,
-  RUN_SESSION_KIND,
-} from '../jobs/session-kinds.js';
+import { masterLastBeatSql } from '../devices/index.js';
+import { heartbeatReapedSql } from '../jobs/index.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
-import { groupOf, laneOf, type PipelineRunLane } from '../pipeline/runs-lane.js';
-import { loadRunLivenessByRunIds, type RunLiveness } from '../pipeline/runs-liveness.js';
-import { TERMINAL_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
+import {
+  groupOf,
+  laneOf,
+  loadRunLivenessByRunIds,
+  type PipelineRunLane,
+  type RunLiveness,
+} from '../pipeline/index.js';
 import type { KernelFlip, RunFacts } from './standing-types.js';
 
 export type Row = Record<string, unknown>;

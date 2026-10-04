@@ -2,7 +2,7 @@ import { RUNNER_MACHINE } from '@forge/contracts/runner-machine';
 import { eq } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import { type RunnerStatus, runnerEvents, runners } from '../db/schema.js';
-import { type KernelActor, movedRow, transition } from '../lifecycle/transition.js';
+import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';
 
 /** A drizzle executor: the base `db` or a transaction handle. */
 export type Executor = Db | Parameters<Parameters<Db['transaction']>[0]>[0];

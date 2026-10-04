@@ -104,11 +104,6 @@ export interface IssuePorts {
   readLandingBranches: (
     projectId: string,
   ) => Promise<{ defaultBranch: string | null; promoted: string | null }>;
-  setProjectIssuePrefix: (
-    projectId: string,
-    prefix: string | null,
-    tx?: Pick<Tx, 'update'>,
-  ) => Promise<void>;
   issueRefPattern: (prefixes: readonly string[]) => RegExp;
   declaredIssueSeqs: (message: string, pattern: RegExp, baseBranch: string) => number[];
   subjectOf: (message: string) => string;
@@ -238,8 +233,6 @@ export const readProjectDocument: IssuePorts['readProjectDocument'] = (projectId
   issuePorts().readProjectDocument(projectId);
 export const readLandingBranches: IssuePorts['readLandingBranches'] = (projectId) =>
   issuePorts().readLandingBranches(projectId);
-export const setProjectIssuePrefix: IssuePorts['setProjectIssuePrefix'] = (id, prefix, tx) =>
-  issuePorts().setProjectIssuePrefix(id, prefix, tx);
 export const issueRefPattern: IssuePorts['issueRefPattern'] = (prefixes) =>
   issuePorts().issueRefPattern(prefixes);
 export const declaredIssueSeqs: IssuePorts['declaredIssueSeqs'] = (message, pattern, base) =>

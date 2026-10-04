@@ -2,7 +2,7 @@ import { type PipelineHealth, type RecoveryStats } from '@forge/contracts/pipeli
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
-import type { FailureKind } from '../pipeline/failure-classifier.js';
+import type { FailureKind } from '../pipeline/index.js';
 import { DEFAULT_RECOVERY_STATS, normaliseRecoveryStats } from './pipeline-control-types.js';
 import { transitionSessions } from './session-transition.js';
 

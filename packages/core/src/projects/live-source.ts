@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projectGitCredentials, workspaceSshKeys } from '../db/schema.js';
-import { type BranchRefs, GIT_ACCESS, readRemoteDivergence } from '../git/remote-divergence.js';
+import { type BranchRefs, GIT_ACCESS, readRemoteDivergence } from '../git/index.js';
 import { decryptSecret, isVaultConfigured } from '../integrations/index.js';
 import {
   type LiveDivergence,
@@ -9,7 +9,7 @@ import {
   type SourceHost,
   SourceHostUnavailable,
 } from '../integrations/source-host/index.js';
-import { readDeclaredSource, remoteOf } from '../project-config/source.js';
+import { readDeclaredSource, remoteOf } from '../project-config/index.js';
 
 /** Where a project's branches are read from, or why they cannot be. */
 export type LiveSource =

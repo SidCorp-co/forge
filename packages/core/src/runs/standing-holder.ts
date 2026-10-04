@@ -6,7 +6,7 @@ import type {
   RunHolder,
   RunState,
 } from '@forge/contracts/run-standing';
-import { classifyLease } from '../pipeline/session-claim.js';
+import { classifyLease } from '../pipeline/index.js';
 import {
   after,
   iso,

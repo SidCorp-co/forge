@@ -3,14 +3,14 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
-import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
+import { publishPipelineHealthChanged } from '../issues/index.js';
 import { deviceRoom, projectRoom, roomManager } from '../lib/rooms.js';
-import { transition } from '../lifecycle/transition.js';
+import { transition } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
 import { logger } from '../observability/logger.js';
-import { failReconcileRunForFailedJob } from '../skills/reconcile-service.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { insertInterventionEvent } from './intervention-event.js';
+import { jobsPorts } from './ports.js';
 import { refuseJob } from './refusals.js';
 
 /**
@@ -67,12 +67,14 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
 
     await syncAgentSessionLifecycle(updated, 'cancelled');
 
-    await failReconcileRunForFailedJob(updated).catch((err) =>
-      logger.warn(
-        { err, jobId: updated.id, type: updated.type },
-        'cancelJob: failReconcileRunForFailedJob failed',
-      ),
-    );
+    await jobsPorts()
+      .reconcileRuns.failReconcileRunForFailedJob(updated)
+      .catch((err) =>
+        logger.warn(
+          { err, jobId: updated.id, type: updated.type },
+          'cancelJob: failReconcileRunForFailedJob failed',
+        ),
+      );
 
     roomManager.publish(projectRoom(updated.projectId), {
       event: 'job.cancelled',

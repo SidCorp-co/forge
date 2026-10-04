@@ -1,6 +1,6 @@
+import { SKILL_NAME_RE } from '@forge/contracts/skills';
 import { z } from 'zod';
 import { agentSessionStatuses } from '../db/schema.js';
-import { SKILL_NAME_RE } from '../skills/skill-name.js';
 import { pageContextSchema } from './page-context.js';
 import { modelTierSchema } from './session-model.js';
 
