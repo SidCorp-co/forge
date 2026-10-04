@@ -164,9 +164,11 @@ const NOT_DISCOVERY: Record<string, string> = {
     'counts rows of one release run: claimed at `awaiting_release`, or closed by it, so never archived live work',
   'release-batch/queries.ts': 'reads only the gate status, or rows of one release run',
   'release-batch/recorded.ts': 'the ids passed in',
+  'release-batch/release-facts.ts':
+    'the issues a release run names, by id; and the issues a requirement links, an archived one still delivered it',
+  'release-batch/release-read.ts': 'reads only the gate status, not yet in a release run',
   'release-batch/releasing-recovery.ts': 'rows of one release run',
   'release-batch/service.ts': 'the ids passed in, or rows of one release run',
-  'release-batch/versions.ts': 'reads only the gate status, not yet in a release run',
   'requirements/issue-links.ts':
     'by issue id: the requirement an issue names, and the issue a link or a plan write names',
   'requirements/read.ts':

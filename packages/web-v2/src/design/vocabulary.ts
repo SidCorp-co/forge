@@ -47,6 +47,12 @@ import {
   REVISION_STATE_LABELS,
   REVISION_STATE_TONES,
 } from "@forge/contracts/requirements";
+import {
+  RELEASE_STATE_GLYPHS,
+  RELEASE_STATE_HINTS,
+  RELEASE_STATE_LABELS,
+  RELEASE_STATE_TONES,
+} from "@forge/contracts/releases";
 import { SUGGESTION_STATUS_GLYPHS, SUGGESTION_STATUS_LABELS, SUGGESTION_STATUS_TONES } from "@forge/contracts/suggestions";
 import { ENUM_LABELS, type Reading, STATE_READINGS } from "@forge/contracts/ui-vocabulary";
 import { type ColorMeta, TONE_META } from "./status";
@@ -104,6 +110,7 @@ const CONTRACT_FAMILIES = {
   criterion: { labels: CRITERION_STANDING_LABELS, tones: CRITERION_STANDING_TONES, glyphs: CRITERION_STANDING_GLYPHS, hints: CRITERION_STANDING_HINTS },
   revision: { labels: REVISION_STATE_LABELS, tones: REVISION_STATE_TONES, glyphs: REVISION_STATE_GLYPHS, hints: REVISION_STATE_HINTS },
   design: { labels: DESIGN_STATUS_LABELS, tones: DESIGN_STATUS_TONES, glyphs: DESIGN_STATUS_GLYPHS, hints: DESIGN_STATUS_HINTS },
+  releaseState: { labels: RELEASE_STATE_LABELS, tones: RELEASE_STATE_TONES, glyphs: RELEASE_STATE_GLYPHS, hints: RELEASE_STATE_HINTS },
   feedbackPhase: { labels: FEEDBACK_PHASE_LABELS, tones: FEEDBACK_PHASE_TONES, glyphs: FEEDBACK_PHASE_GLYPHS, hints: FEEDBACK_PHASE_HINTS },
   severity: { labels: FEEDBACK_SEVERITY_LABELS, tones: FEEDBACK_SEVERITY_TONES },
   lease: { labels: ISSUE_LEASE_VERDICT_LABELS, tones: ISSUE_LEASE_VERDICT_TONES },

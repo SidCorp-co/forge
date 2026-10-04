@@ -2,7 +2,7 @@
 // verdict, folded to the criterion standing whose badge reads the same on every screen.
 
 import type { CriterionStanding } from "@forge/contracts/issue-vocabulary";
-import type { StorefrontDraftVerdictView } from "@forge/contracts/verdict-identity";
+import { criterionStandingOf, identityPhraseOf, type StorefrontDraftVerdictView } from "@forge/contracts/verdict-identity";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 
@@ -35,33 +35,9 @@ export interface CriterionRow {
 /** The one reading each state takes on every screen is contracts' `CRITERION_STANDINGS`. */
 export type CriterionBadge = CriterionStanding;
 
-/** `short` is a judged pass; a backfilled abbreviated commit reads Unresolved, whatever it said. */
-export function criterionBadge(latest: CriterionVerdict | null): CriterionBadge {
-  if (!latest) return "unjudged";
-  if (latest.identityKind === "commit_unresolved") return "unresolved";
-  if (latest.verdict === "pass" || latest.verdict === "short") return "pass";
-  return latest.verdict;
-}
+export const criterionBadge = (latest: CriterionVerdict | null): CriterionBadge => criterionStandingOf(latest);
 
-/** What the verdict was judged against, as one phrase for the tooltip. */
-export function identityPhrase(v: CriterionVerdict): string {
-  switch (v.identityKind) {
-    case "commit":
-      return `commit ${v.commitSha?.slice(0, 12)}`;
-    case "commit_unresolved":
-      return `abbreviated commit ${v.commitSha} (backfilled, never resolved)`;
-    case "runtime":
-      return `runtime ${v.runtimeRef?.slice(0, 12)}`;
-    case "design":
-      return `design ${v.designFlow ?? v.designWorkflowId} rev ${v.designRevision}`;
-    case "contract":
-      return `contract ${v.contractRef}@${v.contractVersion}`;
-    case "storefront_draft":
-      return `storefront draft ${v.storefrontWorkflowId}@${v.storefrontDraftVersion?.slice(0, 12)} on ${v.storefrontEnvironment}${v.corroboration === "corroborated" ? "" : ` (uncorroborated: ${v.corroborationNote})`}`;
-    default:
-      return "no identity";
-  }
-}
+export const identityPhrase = (v: CriterionVerdict): string => identityPhraseOf(v);
 
 export function useCriteria(issueId: string | undefined) {
   return useQuery({

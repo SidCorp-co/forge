@@ -1,3 +1,4 @@
+import type { ReleaseApprovalView } from '@forge/contracts/releases';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -6,6 +7,7 @@ import { pipelineRuns, users } from '../db/schema.js';
 import { type ReleaseApprovalRow, releaseApprovals } from '../db/schema-release-ledger.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { peopleOf } from '../lib/people.js';
 import { environmentsOf, readReleasePath } from '../project-config/release-path.js';
 import { readProjectDocument } from '../project-config/service.js';
 
@@ -96,33 +98,13 @@ export function parseDecision(raw: unknown): Decision {
   return { decision: 'return', reason };
 }
 
-export interface ApprovalView {
-  id: string;
+export interface ApprovalView extends ReleaseApprovalView {
   runId: string;
-  requestedBy: { id: string; name: string };
-  requestedAt: string;
-  evidence: { environment: string; commit: string; reading: string };
-  note: string | null;
-  decision: 'approved' | 'returned' | null;
-  decidedBy: { id: string; name: string } | null;
-  decidedAt: string | null;
-  reason: string | null;
-}
-
-async function namesOf(ids: readonly string[]): Promise<Map<string, string>> {
-  if (ids.length === 0) return new Map();
-  const rows = await db
-    .select({ id: users.id, displayName: users.displayName, email: users.email })
-    .from(users)
-    .where(inArray(users.id, [...new Set(ids)]));
-  return new Map(rows.map((r) => [r.id, r.displayName ?? r.email]));
 }
 
 export async function approvalViews(rows: readonly ReleaseApprovalRow[]): Promise<ApprovalView[]> {
-  const names = await namesOf(
-    rows.flatMap((r) => [r.requestedByUser, ...(r.decidedByUser ? [r.decidedByUser] : [])]),
-  );
-  const who = (id: string) => ({ id, name: names.get(id) ?? id });
+  const people = await peopleOf(rows.flatMap((r) => [r.requestedByUser, r.decidedByUser]));
+  const who = (id: string) => ({ id, name: people.get(id)?.name ?? 'Unknown', kind: people.get(id)?.kind ?? 'human' });
   return rows.map((r) => ({
     id: r.id,
     runId: r.runId,

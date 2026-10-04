@@ -3,6 +3,7 @@
 // corroboration words and the refusal codes from here.
 
 import { z } from "zod";
+import type { CriterionStanding } from "./issue-vocabulary.js";
 
 export const STOREFRONT_DRAFT_KIND = "storefront_draft" as const;
 
@@ -42,4 +43,58 @@ export interface StorefrontDraftVerdictView {
 	storefrontEnvironment: string | null;
 	corroboration: VerdictCorroboration | null;
 	corroborationNote: string | null;
+}
+
+export const VERDICT_VALUES = ["pass", "short", "fail", "skipped"] as const;
+export type VerdictValueName = (typeof VERDICT_VALUES)[number];
+
+export const VERDICT_IDENTITY_KINDS = [
+	"commit",
+	"runtime",
+	"design",
+	"contract",
+	"storefront_draft",
+	"commit_unresolved",
+] as const;
+export type VerdictIdentityKindName = (typeof VERDICT_IDENTITY_KINDS)[number];
+
+export interface VerdictReading extends StorefrontDraftVerdictView {
+	verdict: VerdictValueName;
+	identityKind: VerdictIdentityKindName | null;
+	commitSha: string | null;
+	runtimeRef: string | null;
+	designFlow: string | null;
+	designWorkflowId: string | null;
+	designRevision: number | null;
+	contractRef: string | null;
+	contractVersion: string | null;
+}
+
+// cm:why `short` is a judged pass, and a backfilled abbreviated commit that never resolved reads Unresolved whatever it said, so every screen folds a verdict the way the release gate reads it
+export function criterionStandingOf(
+	latest: Pick<VerdictReading, "verdict" | "identityKind"> | null,
+): CriterionStanding {
+	if (!latest) return "unjudged";
+	if (latest.identityKind === "commit_unresolved") return "unresolved";
+	if (latest.verdict === "pass" || latest.verdict === "short") return "pass";
+	return latest.verdict;
+}
+
+export function identityPhraseOf(v: VerdictReading): string {
+	switch (v.identityKind) {
+		case "commit":
+			return `commit ${v.commitSha?.slice(0, 12)}`;
+		case "commit_unresolved":
+			return `abbreviated commit ${v.commitSha} (backfilled, never resolved)`;
+		case "runtime":
+			return `runtime ${v.runtimeRef?.slice(0, 12)}`;
+		case "design":
+			return `design ${v.designFlow ?? v.designWorkflowId} rev ${v.designRevision}`;
+		case "contract":
+			return `contract ${v.contractRef}@${v.contractVersion}`;
+		case "storefront_draft":
+			return `storefront draft ${v.storefrontWorkflowId}@${v.storefrontDraftVersion?.slice(0, 12)} on ${v.storefrontEnvironment}${v.corroboration === "corroborated" ? "" : ` (uncorroborated: ${v.corroborationNote})`}`;
+		default:
+			return "no identity";
+	}
 }

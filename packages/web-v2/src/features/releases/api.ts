@@ -1,17 +1,12 @@
 import { apiClient } from "@/lib/api/client";
-import type {
-  ReleaseApproval,
-  ReleaseDecisionBody,
-  ReleaseVersionDetail,
-  ReleaseVersionList,
-} from "./versions-types";
+import type { ReleaseApprovalView, ReleaseDecisionBody, ReleaseListResponse, ReleaseResponse } from "./types";
 
-export const releaseVersionsApi = {
-  list: (projectId: string) => apiClient<ReleaseVersionList>(`/projects/${projectId}/releases`),
+export const releasesApi = {
+  list: (projectId: string) => apiClient<ReleaseListResponse>(`/projects/${projectId}/releases`),
   get: (projectId: string, version: string) =>
-    apiClient<ReleaseVersionDetail>(`/projects/${projectId}/releases/${encodeURIComponent(version)}`),
+    apiClient<ReleaseResponse>(`/projects/${projectId}/releases/${encodeURIComponent(version)}`),
   decide: (projectId: string, runId: string, approvalId: string, body: ReleaseDecisionBody) =>
-    apiClient<ReleaseApproval>(
+    apiClient<ReleaseApprovalView>(
       `/projects/${projectId}/release-batches/${runId}/approvals/${approvalId}/decision`,
       { method: "POST", body: JSON.stringify(body) },
     ),

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -12,7 +12,8 @@ import {
   requestApproval,
 } from './approvals.js';
 import { findReleaseBatchRun } from './service.js';
-import { listReleaseVersions, readReleaseVersion } from './versions.js';
+import { listReleases, readRelease } from './release-read.js';
+import type { ViewerFacts } from './release-view.js';
 
 export const releaseVersionRoutes = new Hono<{ Variables: AuthVars }>();
 releaseVersionRoutes.use('/:projectId/releases', requireAuth(), assertEmailVerified());
@@ -67,16 +68,28 @@ async function assertRunOfProject(runId: string, projectId: string): Promise<voi
   if (!run || run.projectId !== projectId) throw notFound('release batch not found');
 }
 
+function viewerOf(
+  c: { get: (k: 'userId' | 'agency') => unknown },
+  access: Awaited<ReturnType<typeof loadProjectAccess>>,
+): ViewerFacts | null {
+  const userId = c.get('userId');
+  const agency = c.get('agency');
+  if (typeof userId !== 'string' || (agency !== 'human' && agency !== 'agent')) return null;
+  return { userId, agency, isAdmin: projectRoleAtLeast(access.role, 'admin') };
+}
+
 releaseVersionRoutes.get('/:projectId/releases', projectParam, async (c) => {
   const { projectId } = c.req.valid('param');
-  assertProjectRole(await loadProjectAccess(projectId, c.get('userId')), 'viewer');
-  return c.json(await listReleaseVersions(projectId));
+  const access = await loadProjectAccess(projectId, c.get('userId'));
+  assertProjectRole(access, 'viewer');
+  return c.json(await listReleases(projectId, viewerOf(c, access)));
 });
 
 releaseVersionRoutes.get('/:projectId/releases/:version', versionParam, async (c) => {
   const { projectId, version } = c.req.valid('param');
-  assertProjectRole(await loadProjectAccess(projectId, c.get('userId')), 'viewer');
-  return c.json(await readReleaseVersion(projectId, version));
+  const access = await loadProjectAccess(projectId, c.get('userId'));
+  assertProjectRole(access, 'viewer');
+  return c.json({ release: await readRelease(projectId, version, viewerOf(c, access)) });
 });
 
 releaseVersionRoutes.post(
