@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { devicePlatforms, runnerProvisionStatuses } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { RefusalError } from '../lib/refusal.js';
 import { deviceRoom, roomManager, userRoom } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { mintEpochFor } from '../middleware/pat-rest-surface.js';
@@ -330,10 +331,11 @@ deviceAuthRoutes.get('/me/plugins', requireDevice(), async (c) => {
   const rows = await deviceProjectAgentConfigs(device.id);
 
   const plugins = unionPluginDesignations(
-    rows.map((r) => ({
-      slug: r.slug,
-      designations: readPluginDesignations(r.agentConfig, r.slug),
-    })),
+    rows.map((r) => {
+      const read = readPluginDesignations(r.agentConfig, r.slug);
+      if (!read.ok) throw new RefusalError([read.refusal], 'PLUGIN_DESIGNATIONS_INVALID');
+      return { slug: r.slug, designations: read.designations };
+    }),
   );
 
   return c.json({ plugins });

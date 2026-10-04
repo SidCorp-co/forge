@@ -1842,7 +1842,6 @@ export const sessionAttachmentsRelations = relations(sessionAttachments, ({ one 
   }),
 }));
 
-
 export const appConfig = pgTable('app_config', {
   id: uuid('id').primaryKey().defaultRandom(),
   projectId: uuid('project_id')

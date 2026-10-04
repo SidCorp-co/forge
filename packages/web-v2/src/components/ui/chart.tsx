@@ -91,6 +91,7 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
 
   return (
     <style
+      // biome-ignore lint/security/noDangerouslySetInnerHtml: the CSS is built from the chart's own config keys and colour values, never from user input
       dangerouslySetInnerHTML={{
         __html: Object.entries(THEMES)
           .map(
@@ -205,7 +206,7 @@ function ChartTooltipContent({
 
             return (
               <div
-                key={index}
+                key={String(item.dataKey ?? item.name ?? key)}
                 className={cn(
                   "flex w-full flex-wrap items-stretch gap-2 [&>svg]:h-2.5 [&>svg]:w-2.5 [&>svg]:text-muted-foreground",
                   indicator === "dot" && "items-center"
@@ -297,13 +298,13 @@ function ChartLegendContent({
     >
       {payload
         .filter((item) => item.type !== "none")
-        .map((item, index) => {
+        .map((item) => {
           const key = `${nameKey ?? item.dataKey ?? "value"}`
           const itemConfig = getPayloadConfigFromPayload(config, item, key)
 
           return (
             <div
-              key={index}
+              key={String(item.dataKey ?? item.value ?? key)}
               className={cn(
                 "flex items-center gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-muted-foreground"
               )}

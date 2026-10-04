@@ -5,8 +5,8 @@ import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { readDevelopmentOverview } from './overview-read.js';
 import { requireHeld } from '../permissions/index.js';
+import { readDevelopmentOverview } from './overview-read.js';
 
 const projectParam = z.object({ id: z.uuid() });
 const noQuery = z.strictObject({});

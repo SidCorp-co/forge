@@ -210,10 +210,7 @@ export function generateModuleDiagram(
   snapshot: ModuleDiagramSnapshot,
 ): string {
   if (snapshot.modules.length === 0) {
-    throw refuse(
-      'NO_MODULES',
-      'this project has no modules, so there is no taxonomy to draw',
-    );
+    throw refuse('NO_MODULES', 'this project has no modules, so there is no taxonomy to draw');
   }
   return GENERATORS[kind](snapshot);
 }

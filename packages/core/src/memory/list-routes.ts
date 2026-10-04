@@ -5,12 +5,12 @@ import { memorySources } from '../db/schema.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { runMemoryGet } from './get-service.js';
 import { deleteMemory } from './indexer.js';
 import { memoryProject } from './read.js';
 import { memoryRevisionsInputSchema, runMemoryRevisions } from './revisions-service.js';
 import { deleteMemoryById } from './service.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 const listQuerySchema = paginationSchema.extend({
   projectId: z.uuid(),

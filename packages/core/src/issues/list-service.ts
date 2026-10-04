@@ -153,7 +153,9 @@ export async function listIssues(
     };
   }
 
-  for (const side of issueArchiveSide(filters.includeArchived === true || filters.key !== undefined))
+  for (const side of issueArchiveSide(
+    filters.includeArchived === true || filters.key !== undefined,
+  ))
     both(side);
   if (filters.key !== undefined) {
     const parsed = parseIssueRef(
@@ -167,7 +169,9 @@ export async function listIssues(
   if (filters.status?.length) {
     const atStatus = inArray(issues.status, [...filters.status]);
     conditions.push(
-      filters.orWaitingOnPerson ? (or(atStatus, holdsOpenHumanQuestion(issues.id)) as SQL) : atStatus,
+      filters.orWaitingOnPerson
+        ? (or(atStatus, holdsOpenHumanQuestion(issues.id)) as SQL)
+        : atStatus,
     );
   }
   if (filters.statusNot?.length) conditions.push(notInArray(issues.status, [...filters.statusNot]));

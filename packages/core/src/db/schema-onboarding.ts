@@ -1,7 +1,4 @@
-import {
-  QUESTIONNAIRE_MAX_ROUNDS,
-  QUESTIONNAIRE_STATUSES,
-} from '@forge/contracts/onboarding';
+import { QUESTIONNAIRE_MAX_ROUNDS, QUESTIONNAIRE_STATUSES } from '@forge/contracts/onboarding';
 import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
@@ -64,10 +61,7 @@ export const onboardings = pgTable(
       'onboardings_rounds_chk',
       sql`${t.roundsSent} BETWEEN 0 AND ${sql.raw(String(QUESTIONNAIRE_MAX_ROUNDS))}`,
     ),
-    doneChk: check(
-      'onboardings_done_chk',
-      sql`(${t.doneAt} IS NULL) = (${t.doneBy} IS NULL)`,
-    ),
+    doneChk: check('onboardings_done_chk', sql`(${t.doneAt} IS NULL) = (${t.doneBy} IS NULL)`),
     doneAgencyChk: check(
       'onboardings_done_agency_chk',
       sql`${t.doneAgency} IS NULL OR ${t.doneAgency} IN (${inList(actorAgencies)})`,

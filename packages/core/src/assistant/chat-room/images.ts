@@ -13,7 +13,7 @@ import { buildChatToolContext } from '../tools/principal.js';
 import { buildProjectToolset } from '../tools/registry.js';
 import { buildTranscriptSearchToolset } from '../tools/transcript-search-tool.js';
 import { withTurnImages } from '../tools/turn-images.js';
-import { type ImageResolver, type TurnImage } from '../vision.js';
+import type { ImageResolver, TurnImage } from '../vision.js';
 import { buildRocketChatHistoryToolset, buildRocketChatQuoteContextToolset } from './context.js';
 
 /**

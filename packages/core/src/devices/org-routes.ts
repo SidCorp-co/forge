@@ -10,9 +10,9 @@ import { loadVisibleProjectIds } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import { annotateDeviceBuilds } from './build-state.js';
 import { listOrgDevices } from './read.js';
-import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 
 const orgIdParamSchema = z.object({ orgId: z.uuid() });
 

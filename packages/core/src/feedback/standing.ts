@@ -132,9 +132,15 @@ function waitingOf(
       return caseWaiting(kase);
     case 'planned':
       if (route === 'issue')
-        return wait('issue', carrier ?? 'The linked issue', 'ship', 'planned: its issue carries it', {
-          ref: carrier,
-        });
+        return wait(
+          'issue',
+          carrier ?? 'The linked issue',
+          'ship',
+          'planned: its issue carries it',
+          {
+            ref: carrier,
+          },
+        );
       if (route === 'revision')
         return wait(
           'person',

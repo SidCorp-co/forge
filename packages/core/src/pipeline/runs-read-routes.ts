@@ -6,9 +6,9 @@ import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 import { listProjectPipelineRuns, pipelineRunProjectId } from './read.js';
 import { loadPipelineRunSummary } from './runs-rollup.js';
-import { requireHeld } from '../permissions/index.js';
 
 const listFiltersSchema = paginationSchema.extend({
   status: z.enum(pipelineRunStatuses).optional(),

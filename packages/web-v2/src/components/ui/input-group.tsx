@@ -1,6 +1,6 @@
 "use client"
 
-import * as React from "react"
+import type * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils/cn"
 
@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 
 function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
+    // biome-ignore lint/a11y/useSemanticElements: vendored shadcn/ui; the group wraps one input and its addons, not a form section a fieldset would announce
     <div
       data-slot="input-group"
       role="group"
@@ -49,6 +50,7 @@ function InputGroupAddon({
   ...props
 }: React.ComponentProps<"div"> & VariantProps<typeof inputGroupAddonVariants>) {
   return (
+    // biome-ignore lint/a11y/useSemanticElements lint/a11y/useKeyWithClickEvents: vendored shadcn/ui; the click only forwards focus to the group's input, which the keyboard reaches by itself
     <div
       role="group"
       data-slot="input-group-addon"

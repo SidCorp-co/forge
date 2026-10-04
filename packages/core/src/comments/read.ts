@@ -116,9 +116,7 @@ export async function listReplies(parentId: string, limit: number, offset: numbe
 }
 
 /** An issue comment with its project, as an attachment target; null when absent. */
-export async function issueCommentForAttachment(
-  commentId: string,
-): Promise<{
+export async function issueCommentForAttachment(commentId: string): Promise<{
   id: string;
   issueId: (typeof comments.$inferSelect)['issueId'];
   projectId: string;

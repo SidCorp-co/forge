@@ -67,7 +67,7 @@ function verdictRefused(refusal: VerdictRefusal): RefusalError {
   );
 }
 
-// status-tuple: differs — not TERMINAL_FOR_DISPATCH: where verdicts were earned, so the wording is frozen
+// status-tuple: differs — not ISSUE_DISPATCH_TERMINAL_STATUSES: where verdicts were earned, so the wording is frozen
 const LOCKED_STATUSES: ReadonlySet<string> = new Set(['awaiting_release', 'closed', 'dropped']);
 
 export interface CriterionInput {

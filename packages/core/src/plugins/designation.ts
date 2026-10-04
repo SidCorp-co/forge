@@ -1,8 +1,6 @@
+import type { Refusal } from '@forge/contracts';
 import type { PluginRefusalCode } from '@forge/contracts/plugins';
 import { z } from 'zod';
-import { refuser } from '../lib/refusal.js';
-
-const refuse = refuser<PluginRefusalCode>('PLUGIN_DESIGNATIONS_INVALID');
 
 export const pluginDesignationSchema = z
   .object({
@@ -34,15 +32,24 @@ interface ResolvedPluginDesignation extends PluginDesignation {
 }
 
 /** A stored list no write door would have accepted is refused by name, never read as no plugins. */
-export function readPluginDesignations(agentConfig: unknown, slug: string): PluginDesignation[] {
+export function readPluginDesignations(
+  agentConfig: unknown,
+  slug: string,
+):
+  | { ok: true; designations: PluginDesignation[] }
+  | { ok: false; refusal: Refusal & { code: PluginRefusalCode } } {
   const ac = (agentConfig as Record<string, unknown> | null) ?? {};
   const parsed = z.array(pluginDesignationSchema).safeParse(ac.plugins ?? []);
-  if (parsed.success) return parsed.data;
+  if (parsed.success) return { ok: true, designations: parsed.data };
   const at = parsed.error.issues.map((i) => `plugins.${i.path.join('.')}: ${i.message}`).join('; ');
-  throw refuse(
-    'PLUGIN_DESIGNATIONS_INVALID',
-    `project ${slug} stores agentConfig.plugins that no write door accepts (${at}). Rewrite the list with PATCH /api/projects/:id/plugins.`,
-  );
+  return {
+    ok: false,
+    refusal: {
+      code: 'PLUGIN_DESIGNATIONS_INVALID',
+      path: '',
+      detail: `project ${slug} stores agentConfig.plugins that no write door accepts (${at}). Rewrite the list with PATCH /api/projects/:id/plugins.`,
+    },
+  };
 }
 
 /**

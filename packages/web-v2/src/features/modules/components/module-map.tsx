@@ -48,6 +48,7 @@ function ModuleCard({ data }: NodeProps & { data: ModuleNodeData }) {
     }
   };
   return (
+    // biome-ignore lint/a11y/useSemanticElements: a canvas node holding block content (name, counts, standing), which a <button> may not contain
     <div
       role="button"
       tabIndex={0}
@@ -210,6 +211,7 @@ export function ModuleMap({
   const viewport = { x: at ? (width - at.width * zoom) / 2 : PAD, y: PAD, zoom };
 
   return (
+    // biome-ignore lint/a11y/useSemanticElements: the map canvas groups the module nodes for assistive tech; it holds no form controls a fieldset would describe
     <div
       ref={wrap}
       role="group"

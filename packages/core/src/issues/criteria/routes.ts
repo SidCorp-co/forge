@@ -9,7 +9,7 @@
 
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { loadProjectAccess } from '../../lib/authz.js';
 import { egressForRequest } from '../../lib/data-egress.js';
 import {
@@ -21,8 +21,8 @@ import {
 import { idParamSchema } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { requireHeld } from '../../permissions/index.js';
-import { criteriaPutSchema, verdictPostSchema } from './input-schemas.js';
 import { issueScopeOf } from '../read-service.js';
+import { criteriaPutSchema, verdictPostSchema } from './input-schemas.js';
 import { addVerdict, readCriteriaWithDrafts as readCriteria, replaceCriteria } from './service.js';
 
 const badInput = (r: { success: boolean; error?: z.core.$ZodError }) => {
@@ -85,19 +85,19 @@ issueCriteriaRoutes.post(
     const body = c.req.valid('json');
     const issue = await issueFor(id, c.get('userId'), 'project.write');
     const written = await addVerdict({
-        issue,
-        draft: {
-          criterion: body.criterion,
-          verdict: body.verdict,
-          reason: body.reason ?? null,
-          identity: body.identity ?? null,
-          evidence: body.evidence ?? [],
-        },
-        author: {
-          userId: c.get('userId'),
-          deviceId: c.get('patDeviceId') ?? null,
-          agency: restActor(c).agency,
-        },
+      issue,
+      draft: {
+        criterion: body.criterion,
+        verdict: body.verdict,
+        reason: body.reason ?? null,
+        identity: body.identity ?? null,
+        evidence: body.evidence ?? [],
+      },
+      author: {
+        userId: c.get('userId'),
+        deviceId: c.get('patDeviceId') ?? null,
+        agency: restActor(c).agency,
+      },
     });
     const criterion = (await readCriteria(issue)).find((row) => row.n === body.criterion);
     return c.json({ verdictId: written.id, criterion }, 201);

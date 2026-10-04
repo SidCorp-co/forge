@@ -8,8 +8,8 @@ import { z } from 'zod';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { deleteMine, findMine, listMine } from './mine-service.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { deleteMine, findMine, listMine } from './mine-service.js';
 
 const listQuerySchema = z.object({ projectId: z.uuid().optional() });
 const idParamSchema = z.object({ id: z.uuid() });

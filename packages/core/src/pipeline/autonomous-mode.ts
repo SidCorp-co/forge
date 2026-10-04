@@ -5,7 +5,7 @@ import {
   ISSUE_TERMINAL_STATUSES,
 } from '@forge/contracts/issue-machine';
 import type { IssueStatus, JobType } from '../db/schema.js';
-import { type ProjectPolicy } from './ports.js';
+import type { ProjectPolicy } from './ports.js';
 
 export { AUTONOMOUS_DRIVER_STATUSES, AUTONOMOUS_ENTRY_STATUS, AUTONOMOUS_QUESTION_STATUS };
 

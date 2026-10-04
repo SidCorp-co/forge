@@ -10,8 +10,8 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { setSkillPinned } from './pin-service.js';
 import { requireHeld } from '../permissions/index.js';
+import { setSkillPinned } from './pin-service.js';
 
 const paramSchema = z.object({ projectId: z.uuid(), skillId: z.uuid() });
 

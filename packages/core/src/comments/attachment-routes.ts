@@ -14,13 +14,13 @@ import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import type { AuthVars } from '../middleware/auth.js';
-import { forbidden } from '../middleware/route-errors.js';
 import { requireAnyAuth } from '../middleware/require-any-auth.js';
+import { forbidden } from '../middleware/route-errors.js';
 import { rawBody, zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import { persistCommentAttachment } from './attachment-service.js';
 import { commentAttachmentFile, issueCommentForAttachment } from './read.js';
-import { requireHeld } from '../permissions/index.js';
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
@@ -48,8 +48,7 @@ commentAttachmentRoutes.post(
     throw attachmentBadRequest('file too large', 'FILE_TOO_LARGE');
   }),
   zValidator('param', commentIdParamSchema, (r) => {
-    if (!r.success)
-      throw attachmentBadRequest('invalid commentId', 'BAD_REQUEST', r.error);
+    if (!r.success) throw attachmentBadRequest('invalid commentId', 'BAD_REQUEST', r.error);
   }),
   rawBody(
     'multipart/form-data',
@@ -88,8 +87,7 @@ commentAttachmentRoutes.get(
   '/attachments/:id',
   requireAnyAuth(),
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success)
-      throw attachmentBadRequest('invalid id', 'BAD_REQUEST', r.error);
+    if (!r.success) throw attachmentBadRequest('invalid id', 'BAD_REQUEST', r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

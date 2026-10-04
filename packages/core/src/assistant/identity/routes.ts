@@ -16,6 +16,9 @@ import type { ConversationAdapter } from '../../db/schema-conversations.js';
 import { type RefusalError, refuser } from '../../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
+import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
+import { listSpeakerLinks } from '../read.js';
+import { confirmSpeakerLink, unlinkSpeaker } from '../service.js';
 import { proposeCandidates, type SpeakerCandidate } from './candidates.js';
 import { lookupSpeakerProfile, type SpeakerProfile } from './directory.js';
 import {
@@ -23,9 +26,6 @@ import {
   type SpeakerRefusal,
   sourceUnknownRefusal,
 } from './speaker-link.js';
-import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
-import { listSpeakerLinks } from '../read.js';
-import { confirmSpeakerLink, unlinkSpeaker } from '../service.js';
 
 const speakerBodySchema = z.object({
   source: z.string().optional(),
@@ -57,7 +57,11 @@ const refused = (refusal: SpeakerRefusal, path = ''): RefusalError =>
 
 // cm:why project access is refused before the body is read, so a stranger learns nothing from a 400
 const projectAccess: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
-  await requireCan(actorFor(c.get('userId')), 'project.write', projectResource(c.req.param('projectId') ?? ''));
+  await requireCan(
+    actorFor(c.get('userId')),
+    'project.write',
+    projectResource(c.req.param('projectId') ?? ''),
+  );
   await next();
 };
 

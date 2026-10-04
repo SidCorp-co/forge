@@ -141,7 +141,8 @@ export function editorRefusal(
   isAuthor: boolean,
   targetKey: string,
 ): CommentRefusal | null {
-  if (isAuthor) return permissionRefusal(facts, 'project.write', `editing a comment on ${targetKey}`);
+  if (isAuthor)
+    return permissionRefusal(facts, 'project.write', `editing a comment on ${targetKey}`);
   return holds(facts, 'comments.moderate')
     ? null
     : permissionRefusal(facts, 'comments.moderate', `editing another's comment on ${targetKey}`);

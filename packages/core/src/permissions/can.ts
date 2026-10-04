@@ -13,9 +13,9 @@
  */
 
 import {
+  ORG_ROLE_PERMISSIONS,
   type OrgPermission,
   type OrgResource,
-  ORG_ROLE_PERMISSIONS,
   type Permission,
   type PermissionRefusal,
   PROJECT_ROLES,
@@ -28,12 +28,7 @@ import {
 import { and, exists, inArray, or, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import { currentPatScope, fencedProjectIds } from '../credentials/pat-scope.js';
 import { db } from '../db/client.js';
-import {
-  type OrgMemberRole,
-  organizationMembers,
-  projectMembers,
-  projects,
-} from '../db/schema.js';
+import { type OrgMemberRole, organizationMembers, projectMembers, projects } from '../db/schema.js';
 import {
   effectiveProjectRole,
   loadOrgRole,

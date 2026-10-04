@@ -12,10 +12,10 @@ import {
   projectInterfaceRevisions,
   projectInterfaces,
 } from '../db/schema-ecosystem.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import type { MembershipRow, MembershipVerb } from './membership-rules.js';
 import type { RevisionBy } from './provider-writer-rules.js';
 import type { MembershipState } from './schema.js';
-import { lockXact } from '../lib/advisory-lock.js';
 
 export interface StoredDocument {
   revision: number;

@@ -417,19 +417,6 @@ export interface RequirementDeferral {
 	deferredAt: string;
 }
 
-export const REQUIREMENT_SUMMARY_FIELDS = [
-	"id",
-	"key",
-	"title",
-	"status",
-	"state",
-	"currentRevision",
-	"latestRevision",
-	"counts",
-	"waitingOn",
-	"updatedAt",
-] as const;
-
 export interface RequirementSummaryView {
 	id: string;
 	key: string;

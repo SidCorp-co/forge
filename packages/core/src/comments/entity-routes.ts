@@ -88,9 +88,15 @@ async function listFor(
   intent: (typeof COMMENT_INTENTS)[number] | undefined,
 ) {
   return c.json(
-    await listEntityCommentsAs(actorOf(c), params.id as string, t.scope, params[t.param] as string, {
-      intent,
-    }),
+    await listEntityCommentsAs(
+      actorOf(c),
+      params.id as string,
+      t.scope,
+      params[t.param] as string,
+      {
+        intent,
+      },
+    ),
   );
 }
 
@@ -140,8 +146,11 @@ entityCommentRoutes.get(
   intentQuery,
   (c) => listFor(c, REQUIREMENT, c.req.valid('param') as Params, c.req.valid('query').intent),
 );
-entityCommentRoutes.post('/:id/requirements/:req/comments', targetParam(REQUIREMENT), createBody, (c) =>
-  postFor(c, REQUIREMENT, c.req.valid('param') as Params, c.req.valid('json')),
+entityCommentRoutes.post(
+  '/:id/requirements/:req/comments',
+  targetParam(REQUIREMENT),
+  createBody,
+  (c) => postFor(c, REQUIREMENT, c.req.valid('param') as Params, c.req.valid('json')),
 );
 entityCommentRoutes.patch(
   '/:id/requirements/:req/comments/:comment',
@@ -150,11 +159,17 @@ entityCommentRoutes.patch(
   (c) => editFor(c, REQUIREMENT, c.req.valid('param') as Params, c.req.valid('json')),
 );
 
-entityCommentRoutes.get('/:id/workflows/:workflow/comments', targetParam(WORKFLOW), intentQuery, (c) =>
-  listFor(c, WORKFLOW, c.req.valid('param') as Params, c.req.valid('query').intent),
+entityCommentRoutes.get(
+  '/:id/workflows/:workflow/comments',
+  targetParam(WORKFLOW),
+  intentQuery,
+  (c) => listFor(c, WORKFLOW, c.req.valid('param') as Params, c.req.valid('query').intent),
 );
-entityCommentRoutes.post('/:id/workflows/:workflow/comments', targetParam(WORKFLOW), createBody, (c) =>
-  postFor(c, WORKFLOW, c.req.valid('param') as Params, c.req.valid('json')),
+entityCommentRoutes.post(
+  '/:id/workflows/:workflow/comments',
+  targetParam(WORKFLOW),
+  createBody,
+  (c) => postFor(c, WORKFLOW, c.req.valid('param') as Params, c.req.valid('json')),
 );
 entityCommentRoutes.patch(
   '/:id/workflows/:workflow/comments/:comment',

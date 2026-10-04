@@ -1,4 +1,4 @@
-export { type RunnerBuildComparison } from './build-state.js';
+export type { RunnerBuildComparison } from './build-state.js';
 export { assertDeviceBoundToProject } from './device-project.js';
 export { readRunGate } from './gate-report.js';
 export { OCCUPYING } from './load.js';

@@ -13,9 +13,9 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 import { loadModuleDiagramSnapshot } from './module-diagram-source.js';
 import { generateModuleDiagram, moduleDiagramKinds } from './module-diagrams.js';
-import { requireHeld } from '../permissions/index.js';
 
 const paramSchema = z.object({ id: z.uuid(), kind: z.enum(moduleDiagramKinds) });
 

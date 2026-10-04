@@ -1,8 +1,8 @@
 import { findTemplate, type WorkflowTemplate } from '@forge/contracts/workflow-templates';
 import { HTTPException } from 'hono/http-exception';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { templatesOf } from './service.js';
 import { TEMPLATE_EXAMPLES } from './template-examples.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 /** One template as served: the template, the built-in example drawn in it (if any), and whose it is. */
 export function templateView(template: WorkflowTemplate, origin: 'builtin' | 'project') {

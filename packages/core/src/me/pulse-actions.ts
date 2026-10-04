@@ -62,7 +62,10 @@ export function pulseActionsOf(
         ageSeconds: r.ageSeconds,
       })),
     },
-    abandonedIssues: { count: work.abandoned.total, records: work.abandoned.shown.map(issueRecord) },
+    abandonedIssues: {
+      count: work.abandoned.total,
+      records: work.abandoned.shown.map(issueRecord),
+    },
     releaseWaiting: {
       count: work.releaseWaiting.total,
       records: work.releaseWaiting.shown.map(issueRecord),

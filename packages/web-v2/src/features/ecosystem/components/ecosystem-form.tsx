@@ -42,6 +42,7 @@ const BLANK: EcosystemDocument = {
 };
 
 const Field = ({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) => (
+  // biome-ignore lint/a11y/noLabelWithoutControl: the control is the child every caller passes in
   <label className="grid gap-1">
     <span className="text-12-5 font-semibold">{label}</span>
     {children}

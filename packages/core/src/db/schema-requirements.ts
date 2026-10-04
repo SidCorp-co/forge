@@ -260,7 +260,10 @@ export const requirementContracts = pgTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.requirementId, t.providerProjectId, t.contractSlug] }),
-    contractIdx: index('requirement_contracts_contract_idx').on(t.providerProjectId, t.contractSlug),
+    contractIdx: index('requirement_contracts_contract_idx').on(
+      t.providerProjectId,
+      t.contractSlug,
+    ),
   }),
 );
 
@@ -420,4 +423,3 @@ export const requirementBaselinePins = pgTable(
     ),
   }),
 );
-

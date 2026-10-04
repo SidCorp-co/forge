@@ -1,6 +1,6 @@
+import type { AttachmentRefusalCode } from '@forge/contracts/attachments';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import type { AttachmentRefusalCode } from '@forge/contracts/attachments';
 import { z } from 'zod';
 import { contentDisposition } from '../lib/attachment-headers.js';
 import { refuser } from '../lib/refusal.js';
@@ -58,7 +58,8 @@ uploadRoutes.put(
 
     try {
       const bytes = Buffer.from(await c.req.arrayBuffer());
-      if (bytes.length === 0) throw refuse('EMPTY_FILE', 'the body holds no bytes; PUT the file itself');
+      if (bytes.length === 0)
+        throw refuse('EMPTY_FILE', 'the body holds no bytes; PUT the file itself');
 
       const persisted = await persistUpload(ticket, bytes);
       return c.json(persisted, 201);
