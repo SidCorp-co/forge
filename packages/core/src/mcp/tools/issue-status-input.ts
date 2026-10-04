@@ -1,13 +1,14 @@
+import { isLegacyIssueStatus, issueStatusLegacyRefusal } from '@forge/contracts/issue-vocabulary';
 import { z } from 'zod';
 import { type IssueStatus, issueStatuses } from '../../db/schema.js';
-import { isLegacyStatus, legacyRefusal } from '../../issues/legacy-status.js';
 
-/** The ten statuses; a retired one is refused by name with what it became (ISS-54). */
+/** The ten statuses; a legacy one is refused `ISSUE_STATUS_LEGACY` by name, never mapped. */
 export const issueStatusInput = z
   .string()
   .superRefine((value, ctx) => {
-    if (isLegacyStatus(value)) {
-      ctx.addIssue({ code: 'custom', message: legacyRefusal(value) });
+    if (isLegacyIssueStatus(value)) {
+      const refusal = issueStatusLegacyRefusal(value, '');
+      ctx.addIssue({ code: 'custom', message: `${refusal.code}: ${refusal.detail}` });
     } else if (!(issueStatuses as readonly string[]).includes(value)) {
       ctx.addIssue({
         code: 'custom',

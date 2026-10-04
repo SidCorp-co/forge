@@ -12,13 +12,13 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { Tx } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
-import { projectWorkflowDesigns } from '../../db/schema-workflows.js';
 import {
   criterionVerdicts,
   issueCriteria,
   type VerdictIdentityKind,
   type VerdictValue,
 } from '../../db/schema-issue-criteria.js';
+import { projectWorkflowDesigns } from '../../db/schema-workflows.js';
 import { dbContractLookup } from '../../messaging/verdict-contract.js';
 import { dbDesignLookup } from '../../messaging/verdict-design.js';
 import { readProjectDocument } from '../../project-config/service.js';
@@ -205,7 +205,7 @@ async function lockIssue(tx: Tx, issueId: string): Promise<{ id: string; status:
 
 /**
  * The plan step's write: replace the criteria, and render `acceptance_criteria` from them so the
- * text a 17-status reader still reads says the same thing.
+ * text a reader of the plain field reads says the same thing.
  */
 export async function putCriteria(
   tx: Tx,
