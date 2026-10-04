@@ -24,7 +24,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
   let harness: TestDatabase;
   let app: Hono<{ Variables: RequestIdVars }>;
   let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
-  let embeddingsMod: typeof import('../../src/embeddings/index.js');
+  let embeddingsMod: typeof import('../../src/integrations/embeddings/index.js');
   let pairDevice: typeof import('../helpers/pair-device.js').pairDevice;
 
   beforeAll(async () => {
@@ -48,7 +48,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
     const { errorHandler } = await import('../../src/middleware/error.js');
     const { requestId } = await import('../../src/middleware/request-id.js');
     const jwtMod = await import('../../src/auth/jwt.js');
-    embeddingsMod = await import('../../src/embeddings/index.js');
+    embeddingsMod = await import('../../src/integrations/embeddings/index.js');
     signUserToken = jwtMod.signUserToken;
     pairDevice = (await import('../helpers/pair-device.js')).pairDevice;
 

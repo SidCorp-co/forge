@@ -1,8 +1,8 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
+import { callFastModel } from '../integrations/llm/fast-model.js';
 import { logger } from '../logger.js';
-import { callFastModel } from '../memory/llm.js';
 import { foreignScriptChars } from '../memory/script-guard.js';
 import { broadcastSession } from './broadcast.js';
 import { isSystemNoise, stripSystemNoise } from './content-filter.js';
@@ -40,7 +40,11 @@ function postProcessTitle(raw: string): string | null {
 export async function generateSessionTitle(userMessage: string): Promise<string | null> {
   const sanitized = stripSystemNoise(userMessage.replace(/\s+/g, ' ').trim());
   if (!sanitized) return null;
-  const raw = await callFastModel(TITLE_PROMPT.replace('{message}', sanitized), TITLE_MAX_TOKENS);
+  const raw = await callFastModel(
+    { surface: 'agent-session' },
+    TITLE_PROMPT.replace('{message}', sanitized),
+    TITLE_MAX_TOKENS,
+  );
   if (!raw) return null;
   const title = postProcessTitle(raw);
   if (title === null) return null;

@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { appConfig, knowledgeEntries, memories } from '../db/schema.js';
-import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
+import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/index.js';
 import { knowledgeEmbedInput } from '../knowledge/service.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
@@ -55,7 +55,7 @@ async function backfillMemories(): Promise<{ reembedded: number; aborted: boolea
 
   for (const row of rows) {
     try {
-      const vector = await embed(row.textContent.slice(0, MAX_EMBED_CHARS));
+      const vector = await embed({ surface: 'memory' }, row.textContent.slice(0, MAX_EMBED_CHARS));
       // Guard on embedding IS NULL: if a concurrent real write re-embedded
       // the row since the select, its fresher vector wins.
       await db
@@ -92,7 +92,10 @@ async function backfillKnowledge(): Promise<{ reembedded: number; aborted: boole
   let aborted = false;
   for (const row of rows) {
     try {
-      const vector = await embed(knowledgeEmbedInput(row.title, row.body));
+      const vector = await embed(
+        { surface: 'knowledge' },
+        knowledgeEmbedInput(row.title, row.body),
+      );
       await db
         .update(knowledgeEntries)
         .set({ embedding: vector })

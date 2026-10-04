@@ -21,7 +21,6 @@ import { projectWorkflows } from '../db/schema-workflows.js';
 import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
-import { readProjectDocument } from '../project-config/service.js';
 import type { LiveJob } from './rules.js';
 
 export type Executor = typeof db | Tx;
@@ -62,11 +61,6 @@ export async function liveJobOf(tx: Executor, projectId: string): Promise<LiveJo
 /** Whether the project's data policy (ISS-59) is above `off`: its onboarding then owes a data-flow design. */
 export async function projectHoldsSensitiveData(projectId: string): Promise<boolean> {
   return (await dataPolicyOf(projectId)) !== 'off';
-}
-
-export async function projectHasRepository(projectId: string): Promise<boolean> {
-  const doc = await readProjectDocument(projectId);
-  return doc?.document.source.type === 'git';
 }
 
 export async function designsOf(tx: Executor, projectId: string, ids: readonly string[]) {

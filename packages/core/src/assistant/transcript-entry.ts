@@ -6,7 +6,7 @@
  * builds an `AgentMessage` per stream-json line, and the web formatter
  * (`features/session/types.ts parseMessages`) reads exactly that. The assistant
  * path's upstream is a different wire — the OpenAI Chat Completions events in
- * `providers/types.ts` — so this module is what makes the two paths END in the
+ * `integrations/llm/types.ts` — so this module is what makes the two paths END in the
  * same entry: same ordered `blocks`, same `toolCalls`, one formatter.
  *
  * It is a PRODUCER of the canonical shape, never a second definition of it. The
@@ -14,13 +14,13 @@
  * `agent-stream-parser.ts` and are imported rather than restated here.
  */
 
+import type { ChatStreamEvent } from '../integrations/llm/types.js';
 import {
   type AgentMessage,
   type ContentBlock,
   mergeMessages,
   type ToolCall,
 } from '../lib/agent-stream-parser.js';
-import type { ChatStreamEvent } from './providers/types.js';
 
 /**
  * How long a growing entry waits before it is re-sent while a turn streams.
