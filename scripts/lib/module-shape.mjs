@@ -409,29 +409,3 @@ export function markers(byModule, { atSha, cycles, multiWriter, rewriteAt = 2 })
     nodes,
   };
 }
-
-/** Baseline keys `<rule>|<module>`; a count may only fall. */
-export function baselineOf(byModule) {
-  const frozen = {};
-  for (const [m, row] of Object.entries(byModule)) {
-    for (const r of RULES) if (row.counts[r] > 0) frozen[`${r}|${m}`] = row.counts[r];
-  }
-  return { version: 1, frozen };
-}
-
-export function compareBaseline(byModule, baseline) {
-  const now = baselineOf(byModule).frozen;
-  const was = baseline?.frozen ?? {};
-  const rose = [];
-  const fell = [];
-  for (const k of new Set([...Object.keys(now), ...Object.keys(was)])) {
-    const a = was[k] ?? 0;
-    const b = now[k] ?? 0;
-    if (b > a) rose.push({ key: k, was: a, now: b });
-    else if (b < a) fell.push({ key: k, was: a, now: b });
-  }
-  return {
-    rose: rose.sort((x, y) => x.key.localeCompare(y.key)),
-    fell: fell.sort((x, y) => x.key.localeCompare(y.key)),
-  };
-}

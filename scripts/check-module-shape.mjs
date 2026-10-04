@@ -4,20 +4,18 @@
 // internals, import cycles, writes to a table another module owns, database calls in route files,
 // refusals outside the envelope, and status writes outside the kernel transition.
 //
-// The import graph is archmap's (`archmap graph --json`), so one resolver answers for both checks.
-// Report-only while `.forge/conformance.json` checkers["module-shape"].mode is "report": it exits 0
-// with findings, 1 only in "gate" mode when a count rises above the frozen baseline, 2 when it
-// cannot run.
+// The import graph is archmap's (`archmap graph --json`), so one resolver answers for both. It is
+// run on demand by the orchestrator or QA, never by verify or a hook (owner, 2026-10-04: code
+// only, checking comes later). It exits 0 with its findings, 2 when it cannot run; --markers
+// writes them as the reconciliation Wrong markers.
 //
-//   node scripts/check-module-shape.mjs [--graph <file>] [--markers <file>] [--update-baseline]
+//   node scripts/check-module-shape.mjs [--graph <file>] [--markers <file>]
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  baselineOf,
-  compareBaseline,
   cycleFindings,
   declaredTables,
   directionFindings,
@@ -54,7 +52,7 @@ const flag = (name) => {
   if (!v || v.startsWith('--')) die(`${name} needs a path`);
   return v;
 };
-const known = new Set(['--graph', '--markers', '--update-baseline']);
+const known = new Set(['--graph', '--markers']);
 for (const [i, a] of args.entries()) {
   if (a.startsWith('--') && !known.has(a))
     die(`unknown flag ${a} — one of ${[...known].join(', ')}`);
@@ -62,33 +60,19 @@ for (const [i, a] of args.entries()) {
     die(`unexpected argument ${a}`);
 }
 
-let config;
-try {
-  config = JSON.parse(readFileSync(join(ROOT, '.forge/conformance.json'), 'utf8')).checkers?.[
-    'module-shape'
-  ];
-} catch (err) {
-  die(`.forge/conformance.json is unreadable: ${err.message}`);
-}
-if (!config)
-  die(
-    '.forge/conformance.json declares no checkers["module-shape"] — nothing says where the declaration and baseline live',
-  );
-if (!['report', 'gate'].includes(config.mode))
-  die(`checkers["module-shape"].mode is ${JSON.stringify(config.mode)}, not "report" or "gate"`);
-
+const DECLARATION = 'packages/core/src/modules.json';
 let declaration;
 try {
-  declaration = JSON.parse(readFileSync(join(ROOT, config.declaration), 'utf8'));
+  declaration = JSON.parse(readFileSync(join(ROOT, DECLARATION), 'utf8'));
 } catch (err) {
-  die(`${config.declaration} is unreadable: ${err.message}`);
+  die(`${DECLARATION} is unreadable: ${err.message}`);
 }
 const { faults, modules, owners } = parseDeclaration(declaration);
 if (faults.length) die(`the declaration is refused:\n  ${faults.join('\n  ')}`);
 for (const path of Object.keys(modules)) {
   if (path === '(root)') continue;
   if (!existsSync(join(SRC, path)))
-    die(`${config.declaration} declares ${path}, which has no directory under packages/core/src`);
+    die(`${DECLARATION} declares ${path}, which has no directory under packages/core/src`);
 }
 
 function sourceFiles(dir) {
@@ -178,20 +162,6 @@ if (markersPath) {
   );
 }
 
-const baselinePath = join(ROOT, config.baseline);
-if (args.includes('--update-baseline')) {
-  writeFileSync(baselinePath, `${JSON.stringify(baselineOf(byModule), null, 2)}\n`);
-}
-let baseline = null;
-try {
-  baseline = JSON.parse(readFileSync(baselinePath, 'utf8'));
-} catch {
-  die(
-    `${config.baseline} is unreadable — run with --update-baseline once to freeze today's findings`,
-  );
-}
-const { rose, fell } = compareBaseline(byModule, baseline);
-
 const wrong = Object.entries(byModule).filter(([, r]) => RULES.some((k) => r.counts[k] > 0));
 console.log(
   `module-shape: ${files.length} file(s) scanned across ${Object.keys(byModule).length} module(s), ${edges.length} import edge(s), ${tables.size} table(s)`,
@@ -213,20 +183,4 @@ for (const [m, r] of wrong.sort((a, b) => a[0].localeCompare(b[0]))) {
     `  ${m.padEnd(width)}  ${String(r.kind).padEnd(10)}  ${RULES.map((k) => String(r.counts[k]).padStart(Math.max(k.length, 4))).join(' ')}`,
   );
 }
-if (fell.length)
-  console.log(
-    `\nmodule-shape: ${fell.length} count(s) fell below the baseline — run --update-baseline to bank them`,
-  );
-if (rose.length) {
-  console.log(
-    `\nmodule-shape: ${rose.length} count(s) rose above the baseline ${config.baseline}:`,
-  );
-  for (const r of rose) console.log(`  ${r.key}: ${r.was} -> ${r.now}`);
-}
-if (config.mode === 'report') {
-  console.log(
-    `\nmodule-shape: report-only (${config.amnesty?.issue ?? 'no issue named'} ends it) — the findings above are Wrong markers, not a gate`,
-  );
-  process.exit(0);
-}
-process.exit(rose.length ? 1 : 0);
+if (!markersPath) console.log('\nmodule-shape: --markers <file> writes these as Wrong markers');
