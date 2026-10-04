@@ -162,6 +162,10 @@
   `blockedBy` can name an existing issue of another requirement; an unknown or finished one is
   refused by name.
 
+- **A workflow design reads like the other detail pages.** It has a "← Workflows" back control, a
+  line saying whom it waits on, Approve in its header, tabs, and a rail naming its requirements and
+  build gate, read from core.
+
 - **Releases is a release train and a page of its own.** A release shows whom it waits on, the
   requirements it completes and each issue's criteria, with Approve release and Return with reason
   in its header; a refused gate reads as a sentence, its code behind a tooltip.
