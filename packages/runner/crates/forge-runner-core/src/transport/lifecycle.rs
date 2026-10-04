@@ -73,4 +73,3 @@ async fn send(client: &CoreClient, url: &str, body: serde_json::Value) -> Result
     }
     Ok(())
 }
-

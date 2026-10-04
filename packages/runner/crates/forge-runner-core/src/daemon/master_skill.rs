@@ -207,9 +207,6 @@ pub struct Record {
     pub entries: Vec<Entry>,
 }
 
-impl Record {
-}
-
 #[derive(Debug, PartialEq, Eq)]
 pub enum Read {
     Absent,

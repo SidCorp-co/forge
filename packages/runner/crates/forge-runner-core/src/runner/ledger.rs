@@ -67,7 +67,6 @@ impl BlockerKind {
             BlockerKind::Nobody => "nobody",
         }
     }
-
 }
 
 impl Incarnation {

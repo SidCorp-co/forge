@@ -308,7 +308,6 @@ impl JobPanes {
         let map = self.inner.lock().ok()?;
         map.get(job_id).map(|h| h.noted_at)
     }
-
 }
 
 /// Where a session's conversation is written. What this daemon has heard wins

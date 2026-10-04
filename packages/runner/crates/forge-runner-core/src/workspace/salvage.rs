@@ -37,9 +37,6 @@ pub enum Outcome {
     Failed,
 }
 
-impl Outcome {
-}
-
 #[derive(Debug, Clone)]
 pub struct Salvage {
     pub outcome: Outcome,
@@ -67,7 +64,6 @@ impl Salvage {
             ..Self::bare(Outcome::Failed)
         }
     }
-
 }
 
 fn truncate(s: &str, max: usize) -> String {
@@ -596,17 +592,14 @@ pub async fn salvage_wip(input: SalvageInput<'_>) -> Salvage {
         Ok(Some(out)) => Salvage {
             outcome: Outcome::CommittedNotPushed,
             detail: Some(stderr_brief(&out)),
-            ..committed
         },
         Ok(None) => Salvage {
             outcome: Outcome::CommittedNotPushed,
             detail: Some("git push could not be spawned".into()),
-            ..committed
         },
         Err(_) => Salvage {
             outcome: Outcome::CommittedNotPushed,
             detail: Some(format!("push timed out after {}s", PUSH_BUDGET.as_secs())),
-            ..committed
         },
     }
 }

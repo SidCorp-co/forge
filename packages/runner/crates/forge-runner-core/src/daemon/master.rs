@@ -2010,10 +2010,7 @@ async fn release_held_tree(
         // Said once at the head of the window and then left alone: the
         // sweep runs every twenty seconds, and a line per sweep is how a
         // refusal that mattered got lost among nine hundred that did not.
-        Ok(terminate::Release::Refusing {
-            why,
-            first,
-        }) => {
+        Ok(terminate::Release::Refusing { why, first }) => {
             if first {
                 tracing::warn!(
                     "[master] run {} could not be released: {why} — trying again each sweep for the next {}s",

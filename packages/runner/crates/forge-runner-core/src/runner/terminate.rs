@@ -503,10 +503,7 @@ pub enum Release {
     Done(Box<Forced>),
     /// Refused, and the refusal is young enough that the next sweep tries
     /// again. `first` is true on the one attempt that opened this streak.
-    Refusing {
-        why: String,
-        first: bool,
-    },
+    Refusing { why: String, first: bool },
     /// Refused for longer than any retry can help. The leases are back, the run
     /// is over, and the checkout is still on disk with nobody's permission to
     /// remove it.

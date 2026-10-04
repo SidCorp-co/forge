@@ -341,9 +341,6 @@ pub struct ReasonCount {
     pub count: usize,
 }
 
-impl Condition {
-}
-
 pub fn condition(t: &Tally, now_ms: i64) -> Condition {
     let window_ms = match (t.first_at, t.last_at) {
         (Some(first), Some(last)) if last > first => Some(last - first),

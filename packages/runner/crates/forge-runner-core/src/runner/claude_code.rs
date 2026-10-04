@@ -368,8 +368,6 @@ fn classify_failure_reason(
     "[NO_RESULT_EXIT] terminal with no success signal".to_string()
 }
 
-
-
 pub struct ClaudeCodeRunner {
     core_url: String,
     device_token: String,
@@ -946,14 +944,7 @@ impl Runner for ClaudeCodeRunner {
                 None
             };
 
-            let (
-                succeeded_opt,
-                usage_limit,
-                result_seen,
-                result_error,
-                mcp_failed,
-                polled_exit,
-            ) = {
+            let (succeeded_opt, usage_limit, result_seen, result_error, mcp_failed, polled_exit) = {
                 let o = outcome.lock().await;
                 (
                     o.succeeded,
@@ -979,8 +970,7 @@ impl Runner for ClaudeCodeRunner {
                     .then(|| stderr.trim().chars().take(500).collect())
             });
 
-            let succeeded = usage_limit.is_none()
-                && succeeded_opt.unwrap_or(false);
+            let succeeded = usage_limit.is_none() && succeeded_opt.unwrap_or(false);
 
             let resume_failed = invoked_with_resume && !succeeded && {
                 let b = stderr.to_lowercase();
@@ -1024,11 +1014,7 @@ impl Runner for ClaudeCodeRunner {
                         &mcp_failed,
                         &stderr,
                     );
-                    let _ = tx
-                        .send(RunnerEvent::Failed {
-                            error,
-                        })
-                        .await;
+                    let _ = tx.send(RunnerEvent::Failed { error }).await;
                 }
             }
             sessions.lock().await.remove(&job_id);

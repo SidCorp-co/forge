@@ -41,9 +41,6 @@ pub struct WorkspaceGit {
     pub foreign_work: bool,
 }
 
-impl WorkspaceGit {
-}
-
 async fn git(repo: &Path, args: &[&str]) -> Option<std::process::Output> {
     Command::new("git")
         .args(["-C"])

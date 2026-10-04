@@ -75,7 +75,6 @@ impl ProcHosts {
             root: cfg!(target_os = "linux").then(|| PathBuf::from("/proc")),
         }
     }
-
 }
 
 impl Hosts for ProcHosts {

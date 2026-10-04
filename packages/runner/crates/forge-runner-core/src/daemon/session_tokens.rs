@@ -101,9 +101,6 @@ pub enum Holder {
     Legacy { session: String },
 }
 
-impl Holder {
-}
-
 const SHAPES: &str = "each entry is `\"<token>\": {\"session\": \"<id>\", \"project\": \"<id>\", \"slug\": \"<slug>\", \"pane\": \"<tmux session>\"}`, `slug` absent from one 0.17.72 wrote, or, written by forge-runner before 0.17.72, `\"<token>\": \"<session id>\"`";
 
 pub fn default_path() -> Option<PathBuf> {

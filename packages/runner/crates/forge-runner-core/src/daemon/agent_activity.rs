@@ -271,5 +271,4 @@ impl Activities {
             .get(session_id)
             .cloned()
     }
-
 }
