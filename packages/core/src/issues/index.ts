@@ -9,6 +9,7 @@ export {
 export { issueArchiveRoutes } from './archive-routes.js';
 export { attachmentRoutes, issueAttachmentRoutes } from './attachment-routes.js';
 export { backlogStreamRoutes, closeBacklogStreams } from './backlog/routes.js';
+export { runCriteriaBackfillOnce } from './criteria/backfill.js';
 export { issueCriteriaRoutes } from './criteria/routes.js';
 export { issueDependencyRoutes } from './dependency-routes.js';
 export { issueExtrasRoutes } from './extras-routes.js';
@@ -27,7 +28,17 @@ export {
   type PlannedAgainst,
   unlinkIssueFromRequirement,
 } from './requirement-link.js';
-export { bodyRoutes, issueProjectRoutes, issueRoutes } from './routes.js';
+export {
+  bodyRoutes,
+  type IssueCreateInput,
+  type IssueFilters,
+  type IssuePatchInput,
+  issueCreateSchema,
+  issueFiltersSchema,
+  issuePatchSchema,
+  issueProjectRoutes,
+  issueRoutes,
+} from './routes.js';
 export { searchRoutes } from './search.js';
 export { issueStandingRoutes } from './standing-routes.js';
 export { issueSteerRoutes } from './steer-routes.js';

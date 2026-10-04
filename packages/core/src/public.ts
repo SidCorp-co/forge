@@ -3,16 +3,6 @@
 // but downstream consumers MUST use `import type` so no runtime code from
 // `@forge/core` ends up bundled into `web`.
 
-export { type LoginInput, loginSchema } from './auth/login.js';
-export { type RegisterInput, registerSchema } from './auth/register.js';
-export { BODY_FORMATS, type BodyFormat, type BodyNode } from './body/index.js';
-export * as schema from './db/schema.js';
-export type {
-  AgentPath,
-  AgentPathKind,
-  IntegrationCapabilities,
-  IntegrationProvider,
-} from './integrations/types.js';
 export {
   type ReleaseNotes,
   ReleaseNotesSchema,
@@ -20,6 +10,15 @@ export {
   ReleaseNotesSectionSchema,
   releaseNotesSections,
 } from '@forge/contracts/release-notes';
+export { type LoginInput, loginSchema, type RegisterInput, registerSchema } from './auth/index.js';
+export { BODY_FORMATS, type BodyFormat, type BodyNode } from './body/index.js';
+export * as schema from './db/schema.js';
+export type {
+  AgentPath,
+  AgentPathKind,
+  IntegrationCapabilities,
+  IntegrationProvider,
+} from './integrations/index.js';
 export {
   type IssueCreateInput,
   type IssueFilters,
@@ -27,10 +26,10 @@ export {
   issueCreateSchema,
   issueFiltersSchema,
   issuePatchSchema,
-} from './issues/routes.js';
+} from './issues/index.js';
 export {
   type CreateProjectInput,
   createProjectSchema,
   type UpdateProjectInput,
   updateProjectSchema,
-} from './projects/routes.js';
+} from './projects/index.js';

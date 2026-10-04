@@ -1,35 +1,41 @@
 // Every timed job core runs for itself, in one list, started by the one scheduler
 // (`schedules/timers.ts:startTimers`). A cluster timer keeps the pg-boss queue name it always had.
 
-import { runAlertSweep } from './admin/alert-sweeper.js';
-import { drainWebConversationWindows } from './assistant/conversation-drain.js';
-import { runTranscriptIndexSweepOnce } from './assistant/conversation-index-drain.js';
-import { runAssistantWeeklyOnce } from './assistant/weekly/run.js';
-import { runHeartbeatTick } from './conversations/heartbeat.js';
-import { reapDeadMasterHolds, reapSilentMasters } from './devices/master-reaper.js';
-import { runDevicePrune } from './devices/prune.js';
-import { reapDeadRunSessions } from './devices/run-session-reaper.js';
-import { runDeviceStaleSweep } from './devices/stale-detector.js';
-import { refetchRunnerRelease, servesRunnerReleases } from './integrations/github/fetch-release.js';
-import { runIntegrationsHealthSweep } from './integrations/health-sweep.js';
-import { rocketChatManager } from './integrations/rocketchat/connection-manager.js';
-import { probePgBossBackstop } from './jobs/pgboss-health.js';
-import { runStaleSweep } from './jobs/stale-detector.js';
+import { runAlertSweep } from './admin/index.js';
+import {
+  drainWebConversationWindows,
+  runAssistantWeeklyOnce,
+  runTranscriptIndexSweepOnce,
+} from './assistant/index.js';
+import { runHeartbeatTick } from './conversations/index.js';
+import {
+  reapDeadMasterHolds,
+  reapDeadRunSessions,
+  reapSilentMasters,
+  runDevicePrune,
+  runDeviceStaleSweep,
+} from './devices/index.js';
+import { refetchRunnerRelease, servesRunnerReleases } from './integrations/github/index.js';
+import { runIntegrationsHealthSweep } from './integrations/index.js';
+import { rocketChatManager } from './integrations/rocketchat/index.js';
+import { probePgBossBackstop, runStaleSweep } from './jobs/index.js';
 import { logger } from './logger.js';
-import { runConsolidationSweep } from './memory/consolidation.js';
-import { runMemoryDecay } from './memory/decay.js';
-import { runChunkBackfill, runEmbeddingBackfill } from './memory/embedding-backfill.js';
-import { backfillPhaseJournal } from './pipeline/phase-journal-backfill.js';
-import { runReconcilerOnce } from './pipeline/reconciler.js';
-import { runRetentionSweep } from './pipeline/retention/sweep.js';
-import { runPipelineSweep } from './pipeline/sweeper.js';
-import { runPmEscalationSweep } from './pm/escalation-sweeper.js';
-import { runPmQueuePressureSweepOnce } from './pm/queue-pressure.js';
-import { resumeStrandedFinishes } from './release-batch/finish-job.js';
-import { recoverUnstartedReleaseBatches } from './release-batch/unstarted-recovery.js';
-import { reapGhostRunners } from './runners/ghost-reaper.js';
-import { runRunnerStaleSweep } from './runners/stale-detector.js';
-import type { Timer } from './schedules/timers.js';
+import {
+  runChunkBackfill,
+  runConsolidationSweep,
+  runEmbeddingBackfill,
+  runMemoryDecay,
+} from './memory/index.js';
+import {
+  backfillPhaseJournal,
+  runPipelineSweep,
+  runReconcilerOnce,
+  runRetentionSweep,
+} from './pipeline/index.js';
+import { runPmEscalationSweep, runPmQueuePressureSweepOnce } from './pm/index.js';
+import { recoverUnstartedReleaseBatches, resumeStrandedFinishes } from './release-batch/index.js';
+import { reapGhostRunners, runRunnerStaleSweep } from './runners/index.js';
+import type { Timer } from './schedules/index.js';
 
 const logged =
   (message: string, run: () => Promise<object>, when: (r: object) => boolean = () => true) =>
