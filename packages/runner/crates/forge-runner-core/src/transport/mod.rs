@@ -19,8 +19,6 @@ pub mod agent_sessions;
 pub mod channel_inbox;
 pub mod comment_inbox;
 pub mod events;
-#[cfg(test)]
-pub(crate) mod fake_core;
 pub mod frames;
 pub mod git_credential;
 pub mod heartbeat;

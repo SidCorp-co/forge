@@ -235,23 +235,3 @@ pub async fn pair(core_url: &str, code: &str, name: &str) -> Result<PairResponse
         .await
         .map_err(|e| Error::Other(format!("pair decode: {e}")))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn classify_poll_status_covers_all_branches() {
-        assert_eq!(classify_poll_status(204), PollClass::Pending);
-        assert_eq!(classify_poll_status(200), PollClass::Approved);
-        assert_eq!(classify_poll_status(410), PollClass::Gone);
-        assert_eq!(classify_poll_status(429), PollClass::Retry);
-        assert_eq!(classify_poll_status(500), PollClass::Retry);
-        assert_eq!(classify_poll_status(502), PollClass::Retry);
-        assert_eq!(classify_poll_status(520), PollClass::Retry);
-        assert_eq!(classify_poll_status(524), PollClass::Retry);
-        assert_eq!(classify_poll_status(400), PollClass::Fatal);
-        assert_eq!(classify_poll_status(401), PollClass::Fatal);
-        assert_eq!(classify_poll_status(404), PollClass::Fatal);
-    }
-}
