@@ -13,8 +13,6 @@ import { releaseReadinessKey } from "./config-hooks";
 import type {
 	LabelCreateInput,
 	LabelPatchInput,
-	MemoryModel,
-	MemoryModelStatus,
 	PluginDesignation,
 	ProjectUpdateInput,
 } from "./types";
@@ -321,73 +319,3 @@ export function useDeleteLabel(id: string | undefined) {
 	});
 }
 
-export const MEMORY_MODEL_POLL_MS = 5_000;
-
-/** True while the job is still writing state — the only time the screen polls. */
-export function isReindexLive(status: MemoryModelStatus | undefined): boolean {
-	const st = status?.reindex?.state;
-	return st === "queued" || st === "running";
-}
-
-/** GET the model + reindex state; polls every 5s only while queued/running. */
-export function useMemoryModel(id: string | undefined) {
-	return useQuery({
-		queryKey: ["project", id, "memory-model"],
-		queryFn: () => projectSettingsApi.getMemoryModel(id as string),
-		enabled: Boolean(id),
-		refetchInterval: (query) =>
-			isReindexLive(query.state.data) ? MEMORY_MODEL_POLL_MS : false,
-	});
-}
-
-/** GET the estimate; only asked for while the project is flat (the confirm screen). */
-export function useMemoryEstimate(id: string | undefined, enabled: boolean) {
-	return useQuery({
-		queryKey: ["project", id, "memory-estimate"],
-		queryFn: () => projectSettingsApi.getMemoryEstimate(id as string),
-		enabled: Boolean(id) && enabled,
-	});
-}
-
-/** True when the POST was refused because a reindex is already queued or running. */
-export function isReindexLiveError(err: unknown): boolean {
-	return err instanceof ApiError && err.code === "REINDEX_LIVE";
-}
-
-export function useSetMemoryModel(id: string | undefined) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: (model: MemoryModel) =>
-			projectSettingsApi.setMemoryModel(id as string, model),
-		onSettled: () => {
-			qc.invalidateQueries({ queryKey: ["project", id, "memory-model"] });
-			qc.invalidateQueries({ queryKey: ["project", id, "memory-estimate"] });
-		},
-		onError: (err) => {
-			if (isReindexLiveError(err)) return;
-			toast({
-				title: "Couldn't change the memory model",
-				description: formatApiError(err),
-				tone: "error",
-			});
-		},
-	});
-}
-
-export function useCancelMemoryReindex(id: string | undefined) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: () => projectSettingsApi.cancelMemoryReindex(id as string),
-		onSettled: () => {
-			qc.invalidateQueries({ queryKey: ["project", id, "memory-model"] });
-		},
-		onError: (err) =>
-			toast({
-				title: "Couldn't cancel the reindex",
-				description: formatApiError(err),
-				tone: "error",
-			}),
-	});
-}

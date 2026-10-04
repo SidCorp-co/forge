@@ -3,7 +3,6 @@ import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, issues, type JobType, jobs, memories } from '../db/schema.js';
 import { callFastModel, fastModelConfigured } from '../integrations/llm/index.js';
-import { insertKnowledgeEdgeOnce } from '../knowledge-edges/index.js';
 import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
 import { indexMemory } from './indexer.js';
@@ -11,7 +10,6 @@ import { foreignScriptChars } from './script-guard.js';
 
 export const EXTRACTION_JOB_TYPES: ReadonlySet<JobType> = new Set(['review', 'test', 'fix']);
 const MAX_FACTS = 3;
-const MAX_EDGES = 3;
 const MAX_COMMENTS = 8;
 const MAX_COMMENT_CHARS = 500;
 const MAX_EXISTING_FOR_PROMPT = 20;
@@ -27,12 +25,12 @@ const VI_EXAMPLE_GOOD = 'trang /employee lọc tìm kiếm cần tìm theo họ,
  * Ported verbatim where possible — the pass/fail examples are battle-tested.
  * Placeholders: {existing_memories}, {issue_title}, {comments}.
  */
-const EXTRACTION_PROMPT = `Extract reusable facts and entity relationships from this software-pipeline activity.
+const EXTRACTION_PROMPT = `Extract reusable facts from this software-pipeline activity.
 
 ## Rules
 - A fact must pass: "Would knowing this change how an agent works on a FUTURE issue?"
 - Preserve the original language. Do not translate. Vietnamese facts stay Vietnamese.
-- Max ${MAX_FACTS} facts, max ${MAX_EDGES} edges. If nothing qualifies, output {"facts":[],"edges":[]}
+- Max ${MAX_FACTS} facts. If nothing qualifies, output {"facts":[]}
 
 ## Categories
 - preference: someone explicitly requested a behavior ("respond in Vietnamese", "sort by priority")
@@ -52,12 +50,8 @@ const EXTRACTION_PROMPT = `Extract reusable facts and entity relationships from 
 - "ISS-1 is the first issue" → trivial, no behavioral impact
 - "the test job took 4 minutes" → narration of what happened
 
-## Entity relationships (knowledge graph edges)
-Extract subject→predicate→object when the activity reveals project structure.
-Predicates: role_in, owns, depends_on, has_rule, has_convention, related_to, part_of, uses
-
 ## Output JSON only:
-{"facts":[{"fact":"...","category":"preference|correction|convention|tool_pattern"}],"edges":[{"subject":"...","predicate":"...","object":"...","value":"optional detail"}]}
+{"facts":[{"fact":"...","category":"preference|correction|convention|tool_pattern"}]}
 
 {existing_memories}
 Issue: {issue_title}
@@ -78,7 +72,6 @@ export function hasMemoryWorthyContent(texts: string[]): boolean {
 
 interface ParsedExtraction {
   facts: Array<{ fact: string; category: string }>;
-  edges: Array<{ subject: string; predicate: string; object: string; value?: string }>;
 }
 
 /** Tolerant parse of the model output; returns null on garbage. */
@@ -87,9 +80,9 @@ export function parseExtractionOutput(raw: string): ParsedExtraction | null {
     .trim()
     .replace(/^```json?\s*/, '')
     .replace(/\s*```$/, '');
-  let parsed: { facts?: unknown; edges?: unknown };
+  let parsed: { facts?: unknown };
   try {
-    parsed = JSON.parse(jsonStr) as { facts?: unknown; edges?: unknown };
+    parsed = JSON.parse(jsonStr) as { facts?: unknown };
   } catch {
     return null;
   }
@@ -106,29 +99,11 @@ export function parseExtractionOutput(raw: string): ParsedExtraction | null {
         ? (f.category as string)
         : 'convention',
     }));
-  const edges = (Array.isArray(parsed.edges) ? parsed.edges : [])
-    .filter(
-      (e): e is { subject: string; predicate: string; object: string; value?: string } =>
-        typeof e === 'object' &&
-        e !== null &&
-        typeof (e as { subject?: unknown }).subject === 'string' &&
-        typeof (e as { predicate?: unknown }).predicate === 'string' &&
-        typeof (e as { object?: unknown }).object === 'string',
-    )
-    .slice(0, MAX_EDGES)
-    .map((e) => ({
-      subject: e.subject.toLowerCase().trim(),
-      predicate: e.predicate.toLowerCase().trim(),
-      object: e.object.toLowerCase().trim(),
-      ...(typeof e.value === 'string' ? { value: e.value } : {}),
-    }))
-    .filter((e) => e.subject && e.predicate && e.object);
-  return { facts, edges };
+  return { facts };
 }
 
 export interface ExtractionResult {
   facts: number;
-  edges: number;
   /** Items the model wrote in a script its input never used, dropped unstored (ISS-962). */
   refused: number;
   skipped?: 'disabled' | 'no-signal' | 'gated' | 'llm-failed' | 'parse-failed';
@@ -144,7 +119,7 @@ export interface RefusedItem {
  *
  * The prompt tells the model to preserve the input's language, and this is
  * what holds it to that: an item carrying a character whose script the input
- * never used does not reach `indexMemory` or `knowledge_edges`. Pure, so the
+ * never used does not reach `indexMemory`. Pure, so the
  * refusal is testable without a model or a database.
  */
 export function refuseForeignScript(
@@ -164,7 +139,6 @@ export function refuseForeignScript(
   return {
     kept: {
       facts: keep(parsed.facts, (f) => f.fact),
-      edges: keep(parsed.edges, (e) => `${e.subject} ${e.predicate} ${e.object} ${e.value ?? ''}`),
     },
     refused,
   };
@@ -174,7 +148,7 @@ export async function runExtractionForIssue(
   projectId: string,
   issueId: string,
 ): Promise<ExtractionResult> {
-  if (!fastModelConfigured()) return { facts: 0, edges: 0, refused: 0, skipped: 'disabled' };
+  if (!fastModelConfigured()) return { facts: 0, refused: 0, skipped: 'disabled' };
 
   const [issue] = await db
     .select({ title: issues.title })
@@ -188,8 +162,8 @@ export async function runExtractionForIssue(
     .orderBy(desc(comments.createdAt))
     .limit(MAX_COMMENTS);
   const bodies = recentComments.map((c) => c.body);
-  if (bodies.length === 0) return { facts: 0, edges: 0, refused: 0, skipped: 'no-signal' };
-  if (!hasMemoryWorthyContent(bodies)) return { facts: 0, edges: 0, refused: 0, skipped: 'gated' };
+  if (bodies.length === 0) return { facts: 0, refused: 0, skipped: 'no-signal' };
+  if (!hasMemoryWorthyContent(bodies)) return { facts: 0, refused: 0, skipped: 'gated' };
 
   // Existing knowledge as dedup context — the prompt-level guard; the
   // indexer's semantic dedup is the hard guard behind it.
@@ -217,11 +191,11 @@ export async function runExtractionForIssue(
     .replace('{comments}', commentsStr);
 
   const raw = await callFastModel({ surface: 'issue.comments' }, prompt, 400);
-  if (!raw) return { facts: 0, edges: 0, refused: 0, skipped: 'llm-failed' };
+  if (!raw) return { facts: 0, refused: 0, skipped: 'llm-failed' };
   const parsed = parseExtractionOutput(raw);
   if (!parsed) {
     logger.warn({ issueId, raw: raw.slice(0, 120) }, 'memory.extraction: parse failed');
-    return { facts: 0, edges: 0, refused: 0, skipped: 'parse-failed' };
+    return { facts: 0, refused: 0, skipped: 'parse-failed' };
   }
 
   const { kept, refused } = refuseForeignScript(parsed, `${issue?.title ?? ''}\n${commentsStr}`);
@@ -265,28 +239,7 @@ export async function runExtractionForIssue(
     }
   }
 
-  let edgesWritten = 0;
-  for (const e of kept.edges) {
-    try {
-      const wrote = await insertKnowledgeEdgeOnce({
-        projectId,
-        subject: e.subject,
-        predicate: e.predicate,
-        object: e.object,
-        value: e.value ?? null,
-        sourceMemoryId: `issue:${issueId}`,
-      });
-      if (!wrote) continue;
-      edgesWritten++;
-    } catch (err) {
-      logger.warn(
-        { err: (err as Error).message, issueId, subject: e.subject },
-        'memory.extraction: edge write failed',
-      );
-    }
-  }
-
-  return { facts: factsWritten, edges: edgesWritten, refused: refused.length };
+  return { facts: factsWritten, refused: refused.length };
 }
 
 /** After a review, test or fix job on an issue completes, extract its facts, handed off so the

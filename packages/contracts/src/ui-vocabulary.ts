@@ -120,14 +120,6 @@ export const STATE_READINGS = {
 		warn: ["Warning", "you", "!"],
 		crit: ["Critical", "err", "!"],
 	},
-	/** A memory reindex (contracts `status-sets.ts:MEMORY_REINDEX_STATES`). */
-	reindex: {
-		queued: ["Queued", "neutral", "○"],
-		running: ["Running", "run", "●"],
-		completed: ["Completed", "ready", "✓"],
-		failed: ["Failed", "err", "×"],
-		cancelled: ["Cancelled", "done", "–"],
-	},
 	/** An environment's deployment reading (web `project-settings/config-types.ts`). */
 	deployment: {
 		deployed: ["Deployed", "ready", "✓"],

@@ -62,7 +62,7 @@ export function inRerankHoldout(): boolean {
 }
 
 export function shownText(hit: MemoryHit): string {
-  return hit.matchedChunk?.text ?? hit.text;
+  return hit.text;
 }
 
 export function buildGradePrompt(query: string, text: string): string {

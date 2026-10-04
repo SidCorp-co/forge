@@ -419,13 +419,6 @@
         "knowledgeEntries"
       ]
     },
-    "knowledge-edges": {
-      "kind": "domain",
-      "context": "knowledge",
-      "owns": [
-        "knowledgeEdges"
-      ]
-    },
     "labels": {
       "kind": "domain",
       "context": "work",

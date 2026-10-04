@@ -53,7 +53,6 @@ import { provideDataPolicy } from './lib/data-egress.js';
 import { CHAT_READ_MODEL_TOOLS } from './mcp/index.js';
 import {
   provideMemoryIssueReads,
-  registerChunkReindex,
   registerMemoryReconcileWorker,
 } from './memory/index.js';
 import { provideIssueFactReads } from './messaging/gather.js';
@@ -270,7 +269,6 @@ if (isMain) {
   registerRoomChat();
   registerRoomBridges();
   bootstrapRunnerAdapters();
-  await registerChunkReindex();
   await registerMemoryReconcileWorker();
   await registerContractMeasureWorker();
   await registerReleaseBatchFinish();

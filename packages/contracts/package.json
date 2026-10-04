@@ -274,10 +274,6 @@
       "types": "./dist/agent-sessions.d.ts",
       "default": "./dist/agent-sessions.js"
     },
-    "./app-config": {
-      "types": "./dist/app-config.d.ts",
-      "default": "./dist/app-config.js"
-    },
     "./assistant": {
       "types": "./dist/assistant.d.ts",
       "default": "./dist/assistant.js"

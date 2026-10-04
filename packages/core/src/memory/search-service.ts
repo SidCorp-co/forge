@@ -121,7 +121,6 @@ async function retrieve(
     projectId: input.projectId,
     topK: input.topK,
     sourceFilter: input.sourceFilter,
-    memoryModel: flags.memoryModel,
   };
   if (requested === 'keyword') {
     const hits = await keywordSearchMemories({ ...base, query: input.query });

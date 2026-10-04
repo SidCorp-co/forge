@@ -105,7 +105,6 @@ import {
   jobRoutes,
 } from './jobs/routes.js';
 import { knowledgeIngestRoutes, knowledgeRoutes } from './knowledge/routes.js';
-import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
 import { labelProjectRoutes, labelRoutes, moduleDiagramRoutes } from './labels/routes.js';
 import { deviceMasterRoutes, masterStandingRoutes } from './masters/routes.js';
 import { mcpHandler, mcpRequestClass } from './mcp/index.js';
@@ -113,7 +112,6 @@ import { meAttentionRoutes, mePulseRoutes, meRecentChangesRoutes } from './me/ro
 import {
   memoryListRoutes,
   memoryMineRoutes,
-  memoryModelRoutes,
   memorySearchRoutes,
   memoryWriteRoutes,
 } from './memory/routes.js';
@@ -384,9 +382,7 @@ function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/improvement-messages', improvementMessageRoutes);
   app.route('/api/knowledge', knowledgeIngestRoutes);
   app.route('/api/projects', knowledgeRoutes);
-  app.route('/api/knowledge-edges', knowledgeEdgeRoutes);
   app.route('/api/skills', skillCrudRoutes);
-  app.route('/api/app-config', memoryModelRoutes);
   app.route('/api/app-config', appConfigRoutes);
   app.route('/api/runners', runnerRoutes);
 
