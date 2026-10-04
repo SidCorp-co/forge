@@ -1,4 +1,5 @@
 import { JOB_MACHINE } from '@forge/contracts/job-machine';
+import { noPromptMessage, POOL_JOB_NO_PROMPT } from '@forge/contracts/jobs';
 /**
  * A pool job is briefed with its own `payload.promptString` and nothing else
  * (`prepare-claimed-job.ts:prepareClaimedJob`); a box hands back a job without
@@ -15,20 +16,12 @@ import { logger } from '../observability/logger.js';
 import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
 import { failReconcileRunForFailedJob } from '../skills/reconcile-service.js';
 
-export const POOL_JOB_NO_PROMPT = 'POOL_JOB_NO_PROMPT';
+export { noPromptMessage, POOL_JOB_NO_PROMPT } from '@forge/contracts/jobs';
 
 export function poolPrompt(payload: unknown): string | null {
   if (payload === null || typeof payload !== 'object') return null;
   const value = (payload as { promptString?: unknown }).promptString;
   return typeof value === 'string' && value.trim().length > 0 ? value : null;
-}
-
-export function noPromptMessage(jobType: string): string {
-  return (
-    `a \`${jobType}\` job carries no prompt, and the job pool runs only the ` +
-    '`payload.promptString` a job is minted with — a box given this job hands it back on ' +
-    'every pass. Mint it with a non-empty `promptString`, or not at all.'
-  );
 }
 
 const NO_PROMPT_SQL = sql`NOT COALESCE(

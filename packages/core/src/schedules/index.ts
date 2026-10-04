@@ -1,3 +1,4 @@
+export { lastFires } from './fires.js';
 export { type ImprovementMessage, listImprovementMessages } from './messages/registry.js';
 export { loadCreatedBy } from './release-batch-dispatch.js';
 export { cutWaitingRelease } from './release-batch-run.js';

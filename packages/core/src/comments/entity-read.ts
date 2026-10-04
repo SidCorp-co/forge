@@ -6,6 +6,7 @@ import type {
   EntityCommentScope,
   EntityCommentView,
 } from '@forge/contracts/comments';
+import { feedbackKey } from '@forge/contracts/feedback';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { CommentIntent } from '@forge/contracts/record-events';
 import { requirementKey } from '@forge/contracts/requirements';
@@ -16,16 +17,22 @@ import { comments, issues } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { requirements } from '../db/schema-requirements.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
-import type { ReadDoor } from '../feedback/egress.js';
-import { feedbackKey, rowIn as feedbackRowIn } from '../feedback/read.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { isUuid } from '../issues/issue-route-ref.js';
-import { dataPolicyOf, type EgressSurface, egressReading } from '../lib/data-egress.js';
+import {
+  dataPolicyOf,
+  type EgressReader,
+  type EgressSurface,
+  egressReading,
+} from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { rowIn as requirementRowIn } from '../requirements/read.js';
 import { type CommentArc, scopeOfArc } from './entity-rules.js';
+import { feedbackRowIn, requirementRowIn } from './ports.js';
+
+/** What a provider-bound read says about where its text goes. */
+export type ReadDoor = Pick<EgressReader, 'providerBound'>;
 
 export interface EntityCommentActor {
   userId: string;

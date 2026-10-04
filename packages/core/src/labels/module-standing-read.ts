@@ -14,7 +14,6 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
-import { listFeedbackAs } from '../feedback/read.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { listIssueStanding } from '../issues/standing-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -38,6 +37,7 @@ import {
   summaryOf,
   type TraceRow,
 } from './module-standing.js';
+import { listFeedbackAs } from './ports.js';
 
 export interface ModuleViewer {
   userId: string;

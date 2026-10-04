@@ -143,3 +143,11 @@ export interface MasterPassList {
 	hasMore: boolean;
 	next: string | null;
 }
+
+export const NO_MASTER_SLOTS = "No live master serves this project, so no box has declared slots for it.";
+
+/** What a project's slots line says when no live master declared slots for it; null when one did. */
+export function slotsNoteOf(standing: Pick<MasterStanding, "slots">): string | null {
+	if (!standing.slots) return NO_MASTER_SLOTS;
+	return standing.slots.undeclared?.detail ?? null;
+}

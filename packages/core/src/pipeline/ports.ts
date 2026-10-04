@@ -53,20 +53,6 @@ export interface IssueNoticeInput {
   body: string;
 }
 
-export interface HoldReading {
-  reason: string;
-  heldAt: string;
-  autoRelease: boolean;
-}
-
-export interface AutoRetryReading {
-  round: number;
-  target: string | null;
-  tries: number;
-  done: string[];
-  deferredSince?: string | null;
-}
-
 export type RunGateReading =
   | { read: 'ok'; condition: Record<string, unknown> }
   | { read: 'unreadable'; reason: string };
@@ -113,14 +99,9 @@ export interface PipelinePorts {
   parkedOnAHuman: (sessionId: SQL) => SQL;
   requestJobKill: (job: KillableJob, reason: string) => Promise<string>;
   failReconcileRunForFailedJob: (job: { type: string; payload: unknown }) => Promise<void>;
-  holdPayloadKey: string;
-  readHoldState: (payload: unknown) => HoldReading | null;
-  holdReleasesItself: (hold: HoldReading | null, failureReason?: string | null) => boolean;
   gateReasonsForQueuedJobsIn: (
     projectIds: readonly string[],
   ) => Promise<ReadonlyMap<string, string>>;
-  retryMaxRounds: number;
-  readAutoRetryPayload: (payload: unknown) => AutoRetryReading;
   readRunGate: (metadata: unknown, runId: string) => RunGateReading | null;
   admittedRunner: SQL;
   usageSessionMatch: (target: SQL) => SQL;
@@ -205,16 +186,8 @@ export const requestJobKill: PipelinePorts['requestJobKill'] = (job, reason) =>
   pipelinePorts().requestJobKill(job, reason);
 export const failReconcileRunForFailedJob: PipelinePorts['failReconcileRunForFailedJob'] = (job) =>
   pipelinePorts().failReconcileRunForFailedJob(job);
-export const holdPayloadKey = (): string => pipelinePorts().holdPayloadKey;
-export const readHoldState: PipelinePorts['readHoldState'] = (payload) =>
-  pipelinePorts().readHoldState(payload);
-export const holdReleasesItself: PipelinePorts['holdReleasesItself'] = (hold, failureReason) =>
-  pipelinePorts().holdReleasesItself(hold, failureReason);
 export const gateReasonsForQueuedJobsIn: PipelinePorts['gateReasonsForQueuedJobsIn'] = (ids) =>
   pipelinePorts().gateReasonsForQueuedJobsIn(ids);
-export const retryMaxRounds = (): number => pipelinePorts().retryMaxRounds;
-export const readAutoRetryPayload: PipelinePorts['readAutoRetryPayload'] = (payload) =>
-  pipelinePorts().readAutoRetryPayload(payload);
 export const readRunGate: PipelinePorts['readRunGate'] = (metadata, runId) =>
   pipelinePorts().readRunGate(metadata, runId);
 export const admittedRunner = (): SQL => pipelinePorts().admittedRunner;

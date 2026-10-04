@@ -1,4 +1,4 @@
-import type { JobRefusalCode } from '@forge/contracts/jobs';
+import { noPromptMessage, POOL_JOB_NO_PROMPT } from '@forge/contracts/jobs';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -21,11 +21,8 @@ import {
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
-import { noPromptMessage } from './ports.js';
 import { batchIssueRows, issueScopeOf, issueUsageTotals } from './read-service.js';
 import { triggerTerminalDispatch } from './transition.js';
-
-const POOL_JOB_NO_PROMPT: JobRefusalCode = 'POOL_JOB_NO_PROMPT';
 
 const runPipelineStepBodySchema = z.object({}).strict();
 

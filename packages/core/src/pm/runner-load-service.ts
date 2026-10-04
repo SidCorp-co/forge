@@ -1,7 +1,7 @@
 import { asc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
-import { countInFlightByRunner } from '../jobs/in-flight.js';
+import { countInFlightByRunner } from './ports.js';
 
 export type RunnerLoad = {
   id: string;

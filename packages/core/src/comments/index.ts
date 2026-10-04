@@ -3,6 +3,7 @@ export {
   persistCommentAttachment,
   validateCommentAttachment,
 } from './attachment-service.js';
+export { provideCommentPorts } from './ports.js';
 export {
   noteReviewOnIssue,
   type ReviewNoteOutcome,

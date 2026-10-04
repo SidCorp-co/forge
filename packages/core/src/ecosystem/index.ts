@@ -1,3 +1,5 @@
+export { doorOf, tokenIdOf } from './channel-author.js';
+export { decideChannelGate } from './channel-gate.js';
 export { landingDriftRefusal, landingWorld } from './contract/drift.js';
 export { registerContractMeasureWorker } from './contract/land.js';
 export { interfaceContractsOf } from './interface-contracts.js';

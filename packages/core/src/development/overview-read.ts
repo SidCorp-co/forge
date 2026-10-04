@@ -9,6 +9,7 @@ import {
 } from '@forge/contracts/development-overview';
 import type { IssueStandingRow } from '@forge/contracts/issue-standing';
 import type { WorkStep } from '@forge/contracts/issue-vocabulary';
+import { slotsNoteOf } from '@forge/contracts/master-standing';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
@@ -16,7 +17,6 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { listIssueStanding, STANDING_LIMIT, type StandingViewer } from '../issues/standing-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readMasterStanding } from '../masters/read.js';
-import { slotsNoteOf } from '../masters/rules.js';
 import {
   type ContractChangeFact,
   type ContractWaitFact,

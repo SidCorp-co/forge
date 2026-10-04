@@ -15,9 +15,9 @@ import {
   restAuthored,
 } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { closeEscalationTasks } from '../notifications/close-escalation.js';
 import { logger } from '../observability/logger.js';
 import { requireHeld } from '../permissions/index.js';
+import { closeEscalationTasks } from './ports.js';
 import { decisionInProject, issueIsInProject, listPmDecisions, listPmPolicies } from './read.js';
 import {
   createPmPolicy,

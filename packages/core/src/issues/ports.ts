@@ -44,12 +44,6 @@ export interface RunnerAvailability {
   total: number;
 }
 
-export interface HoldReading {
-  reason: string;
-  heldAt: string;
-  autoRelease: boolean;
-}
-
 export type DispatchGateCode = 'WORKFLOW_DESIGN_NOT_APPROVED' | 'CONTRACT_WAIT_UNSETTLED';
 
 export interface DispatchGateError extends Error {
@@ -129,10 +123,7 @@ export interface IssuePorts {
   ) => Promise<object | null>;
 
   getLoopThresholds: () => { queueMs: number; heartbeatMs: number; ackMs: number };
-  noPromptMessage: (jobType: string) => string;
   extractStageStatus: (payload: unknown) => string | null;
-  readHoldState: (payload: unknown) => HoldReading | null;
-  holdReleasesItself: (hold: HoldReading | null, failureReason?: string | null) => boolean;
   freshRunnerAvailability: (projectId: string) => Promise<RunnerAvailability>;
   usageSessionMatch: (target: SQL) => SQL;
   usageTotalsSelection: () => UsageTotalsSelection;
@@ -259,14 +250,8 @@ export const liveReachOfIssue: IssuePorts['liveReachForIssue'] = (issue, prefixe
 
 export const getLoopThresholds: IssuePorts['getLoopThresholds'] = () =>
   issuePorts().getLoopThresholds();
-export const noPromptMessage: IssuePorts['noPromptMessage'] = (jobType) =>
-  issuePorts().noPromptMessage(jobType);
 export const extractStageStatus: IssuePorts['extractStageStatus'] = (payload) =>
   issuePorts().extractStageStatus(payload);
-export const readHoldState: IssuePorts['readHoldState'] = (payload) =>
-  issuePorts().readHoldState(payload);
-export const holdReleasesItself: IssuePorts['holdReleasesItself'] = (hold, failureReason) =>
-  issuePorts().holdReleasesItself(hold, failureReason);
 export const freshRunnerAvailability: IssuePorts['freshRunnerAvailability'] = (projectId) =>
   issuePorts().freshRunnerAvailability(projectId);
 export const usageSessionMatch: IssuePorts['usageSessionMatch'] = (target) =>

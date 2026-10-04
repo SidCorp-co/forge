@@ -1,3 +1,4 @@
+import { holdReleasesItself, readHoldState } from '@forge/contracts/jobs';
 import type { PauseResumer } from '../pipeline/run-pause.js';
 import type {
   PipelineGate,
@@ -7,7 +8,7 @@ import type {
   PipelineReading,
   PipelineWaitingReason,
 } from './pipeline-health-types.js';
-import { holdReleasesItself, type RunnerAvailability, readHoldState } from './ports.js';
+import type { RunnerAvailability } from './ports.js';
 
 const GATE_READINGS: Record<Exclude<PipelineWaitingReason, 'job_held'>, PipelineReading> = {
   issue_busy: {

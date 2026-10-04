@@ -11,22 +11,18 @@ import {
   type ScheduleDetailResponse,
   type ScheduleStanding,
 } from '@forge/contracts/automation-standing';
-import { readThresholds } from '../admin-thresholds/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { holds } from '../permissions/index.js';
-import { lastFires } from '../schedules/fires.js';
-import { readScheduleStreaks } from '../schedules/streak.js';
 import {
   type FireRow,
   fireFacts,
   producedItems,
   reportCounts,
   reportFacts,
-  reportRow,
-  reportRows,
   scheduleFacts,
   stewardActions,
 } from './facts.js';
+import { lastFires, readScheduleStreaks, readThresholds, reportRow, reportRows } from './ports.js';
 import {
   type AutomationViewer,
   fireProposals,

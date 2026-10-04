@@ -1,3 +1,4 @@
+import { PERSON_VIAS } from '@forge/contracts/ecosystem';
 import { z } from 'zod';
 import { SCHEMA_BASE, unique, uuid } from '../project-config/schema.js';
 import type { DocumentType } from './schema.js';
@@ -46,7 +47,7 @@ export const authorSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('person'),
     id: z.string().min(1).max(100),
-    via: z.enum(['assistant', 'web', 'cli']),
+    via: z.enum(PERSON_VIAS),
   }),
 ]);
 export type Author = z.infer<typeof authorSchema>;

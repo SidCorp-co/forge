@@ -9,6 +9,7 @@
  * here so the front-end stays a thin renderer.
  */
 
+import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '@forge/contracts/jobs';
 import { asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -41,13 +42,7 @@ export type {
   ResidentMaster,
 } from './runs-lane.js';
 
-import {
-  type RunGateReading,
-  readAutoRetryPayload,
-  readRunGate,
-  retryMaxRounds,
-  usageSessionMatch,
-} from './ports.js';
+import { type RunGateReading, readRunGate, usageSessionMatch } from './ports.js';
 
 export type PipelineStepStatus =
   | 'pending'
@@ -342,7 +337,7 @@ async function loadAttemptsForRun(runId: string): Promise<{
       retrySummary = {
         totalAttempts: attempts.length,
         round: ar.round,
-        maxRounds: retryMaxRounds(),
+        maxRounds: RETRY_MAX_ROUNDS,
         targetDeviceId: ar.target,
         targetDeviceName: ar.target ? (nameById.get(ar.target) ?? null) : null,
       };

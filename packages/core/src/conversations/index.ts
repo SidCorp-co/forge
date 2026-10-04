@@ -10,6 +10,7 @@ export {
   type ConversationAttachmentRef,
   listConversationAttachmentsByIds,
   loadConversationAttachment,
+  persistConversationAttachment,
 } from './attachment-service.js';
 export { collectInboundMessage } from './collect-inbound.js';
 export {
@@ -72,6 +73,7 @@ export { assertConversationReadable, assertConversationWritable, derivedScope } 
 export { linkedSpeakerOf } from './speaker.js';
 export {
   appendMessages,
+  appendMessagesIn,
   assistantSentExternalIds,
   type ConversationImage,
   type ConversationRow,
@@ -103,6 +105,7 @@ export {
   claimOf,
   closeWindow,
   listWindowsForConversation,
+  openOrExtendWindow,
   releaseWindow,
   reserveDelivery,
   splitWindowTail,

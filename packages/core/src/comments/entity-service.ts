@@ -11,10 +11,10 @@ import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { comments } from '../db/schema.js';
 import { commentEvents } from '../db/schema-comments.js';
-import type { ReadDoor } from '../feedback/egress.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { peopleOf } from '../lib/people.js';
-import { designNodesIn, nodeRefRefusal } from '../workflows/node-refs.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import {
   type CommentTarget,
   commentEgress,
@@ -24,6 +24,7 @@ import {
   entityCommentColumns,
   entityCommentView,
   notFound,
+  type ReadDoor,
   targetIn,
 } from './entity-read.js';
 import {
@@ -41,8 +42,7 @@ import {
   scopeRefusal,
   sitsOn,
 } from './entity-rules.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { lockXact } from '../lib/advisory-lock.js';
+import { designNodeRefusal } from './ports.js';
 
 export type EntityCommentOutcome =
   | { ok: true; comment: EntityCommentView; created: boolean }
@@ -80,8 +80,7 @@ async function nodeDecisionRefusals(
   if (!node) return [];
   const scoped = nodeDecisionScopeRefusal(target.scope, target.key, decision);
   if (scoped) return [scoped];
-  const nodes = await designNodesIn(tx, target.projectId, target.id);
-  const wrong = nodes ? nodeRefRefusal(nodes, node, '/decision/node') : null;
+  const wrong = await designNodeRefusal(tx, target.projectId, target.id, node, '/decision/node');
   return wrong ? [wrong as CommentRefusal] : [];
 }
 

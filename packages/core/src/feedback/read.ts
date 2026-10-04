@@ -14,9 +14,10 @@ import {
   type FeedbackRouteView,
   type FeedbackSummary,
   type FeedbackView,
+  feedbackKey,
 } from '@forge/contracts/feedback';
-import { requirementKey } from '@forge/contracts/requirements';
 import type { ActorAgency } from '@forge/contracts/permissions';
+import { requirementKey } from '@forge/contracts/requirements';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import { and, asc, count, desc, eq, ilike, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -55,7 +56,7 @@ export type Row = typeof feedback.$inferSelect;
 export const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-export const feedbackKey = (seq: number) => `FB-${seq}`;
+export { feedbackKey };
 
 /** An item of `projectId` by uuid, `FB-n` or `n`, locked for update when asked; 404 otherwise. */
 export async function rowIn(tx: Tx, projectId: string, ref: string, lock = false): Promise<Row> {

@@ -1,12 +1,9 @@
 import { and, desc, eq, gte, lte } from 'drizzle-orm';
-import {
-  CONVERSATION_AGENT_MARKER,
-  readConversationAgentMeta,
-} from '../agent-sessions/conversation-agent.js';
 import { agentSessions } from '../db/schema.js';
 import { conversationMessages, conversationWindows } from '../db/schema-conversations.js';
 import type { QuestionOrigin } from '../db/schema-questions.js';
 import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
+import { conversationTurnOf } from './ports.js';
 
 /** The pool, or a caller's open transaction — a park resolves its origin inside the transition's. */
 type QuestionExecutor = IssueDependencyExecutor;
@@ -27,10 +24,10 @@ export async function resolveAskOrigin(
     .limit(1);
   if (!session) return null;
 
-  const raw = (session.metadata as Record<string, unknown> | null)?.[CONVERSATION_AGENT_MARKER];
-  if (raw === undefined || raw === null) return null;
+  const turn = conversationTurnOf(session.metadata);
+  if (!turn) return null;
 
-  const meta = readConversationAgentMeta(session.metadata);
+  const { meta } = turn;
   if (!meta) {
     return {
       kind: 'unresolved',

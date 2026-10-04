@@ -78,10 +78,4 @@ export function slotsOf(
   };
 }
 
-export const NO_MASTER_SLOTS =
-  'No live master serves this project, so no box has declared slots for it.';
-
-export function slotsNoteOf(standing: Pick<MasterStanding, 'slots'>): string | null {
-  if (!standing.slots) return NO_MASTER_SLOTS;
-  return standing.slots.undeclared?.detail ?? null;
-}
+export { NO_MASTER_SLOTS, slotsNoteOf } from '@forge/contracts/master-standing';

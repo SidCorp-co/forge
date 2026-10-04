@@ -1,1 +1,1 @@
-export {};
+export { provideAutomationPorts } from './ports.js';

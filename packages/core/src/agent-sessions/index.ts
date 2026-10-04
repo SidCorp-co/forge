@@ -1,5 +1,7 @@
+export { persistSessionAttachment } from './attachment-service.js';
 export { runCanonicalBackfillOnce } from './backfill-canonical-transcripts.js';
 export { createChatSessionRow, dispatchChatTurn } from './chat-turn.js';
+export { CONVERSATION_AGENT_MARKER, readConversationAgentMeta } from './conversation-agent.js';
 export { agentSessionEventsRetention } from './retention.js';
 export {
   agentRefusalText,

@@ -1,14 +1,10 @@
+import { HOLD_PAYLOAD_KEY, holdReleasesItself, readHoldState } from '@forge/contracts/jobs';
 import { RESULT_QUIET_MINUTES } from '@forge/contracts/run-standing';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../observability/logger.js';
-import {
-  gateReasonsForQueuedJobsIn,
-  holdPayloadKey,
-  holdReleasesItself,
-  readHoldState,
-} from './ports.js';
+import { gateReasonsForQueuedJobsIn } from './ports.js';
 import { NO_PROGRESS_ROUNDS } from './reopen-policy.js';
 import { pauseResumesItself } from './run-pause.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
@@ -56,8 +52,8 @@ export async function alarmAgedHolds(now: Date = new Date()): Promise<Inv7AlarmR
            j.project_id,
            j.issue_id,
            j.type AS job_type,
-           j.payload -> ${holdPayloadKey()} ->> 'reason' AS hold_reason,
-           j.payload -> ${holdPayloadKey()} ->> 'heldAt' AS held_at,
+           j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'reason' AS hold_reason,
+           j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'heldAt' AS held_at,
            j.payload,
            j.failure_reason,
            i.iss_seq,
@@ -66,13 +62,13 @@ export async function alarmAgedHolds(now: Date = new Date()): Promise<Inv7AlarmR
     LEFT JOIN issues i ON i.id = j.issue_id
     JOIN projects p ON p.id = j.project_id
     WHERE j.status = 'held'
-      AND (j.payload -> ${holdPayloadKey()} ->> 'heldAt') < ${window.until}
+      AND (j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'heldAt') < ${window.until}
       ${
         window.after
-          ? sql`AND ((j.payload -> ${holdPayloadKey()} ->> 'heldAt'), j.id::text) > (${window.after.ts}, ${window.after.id})`
+          ? sql`AND ((j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'heldAt'), j.id::text) > (${window.after.ts}, ${window.after.id})`
           : sql``
       }
-    ORDER BY (j.payload -> ${holdPayloadKey()} ->> 'heldAt') ASC, j.id::text ASC
+    ORDER BY (j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'heldAt') ASC, j.id::text ASC
     LIMIT ${sql.raw(String(HELD_SCAN_LIMIT))}
   `);
 
