@@ -5,4 +5,4 @@ export { invitationRoutes } from './invitations-routes.js';
 export { masterCharterRoutes } from './master-charter-routes.js';
 export { memberRoutes } from './members-routes.js';
 export { projectRoutes } from './routes.js';
-export { findProjectOrgId } from './service.js';
+export { findProjectOrgId, projectDocumentNames, setProjectIssuePrefix } from './service.js';

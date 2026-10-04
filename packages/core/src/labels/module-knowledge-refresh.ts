@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, knowledgeEntries, labels } from '../db/schema.js';
+import { updateKnowledgeLinks } from '../knowledge/service.js';
 import { logger } from '../logger.js';
 import { type Actor, safeRecordActivity } from '../pipeline/activity.js';
 
@@ -110,10 +111,7 @@ async function appendRelatedIssue(
   const related = (Array.isArray(node.relatedIssueIds) ? node.relatedIssueIds : []) as string[];
   if (related.includes(issueId)) return { nodeId, appended: false };
 
-  await db
-    .update(knowledgeEntries)
-    .set({ relatedIssueIds: [...related, issueId], updatedAt: new Date() })
-    .where(eq(knowledgeEntries.id, nodeId));
+  await updateKnowledgeLinks(nodeId, { relatedIssueIds: [...related, issueId], at: new Date() });
   return { nodeId, appended: true };
 }
 
@@ -145,14 +143,11 @@ async function refreshPrimaryNode(
   const metadata = { ...((node.metadata as Record<string, unknown> | null) ?? {}) };
   metadata.moduleFlow = flow;
 
-  await db
-    .update(knowledgeEntries)
-    .set({
-      ...(appended ? { relatedIssueIds: [...related, issueId] } : {}),
-      metadata,
-      updatedAt: now,
-    })
-    .where(eq(knowledgeEntries.id, nodeId));
+  await updateKnowledgeLinks(nodeId, {
+    ...(appended ? { relatedIssueIds: [...related, issueId] } : {}),
+    metadata,
+    at: now,
+  });
   return { nodeId, appended, flow };
 }
 

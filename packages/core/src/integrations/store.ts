@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import {
   type BindingRole,
   type IntegrationOwnerType,
@@ -310,4 +310,30 @@ export async function listConnectionsForPrincipalUser(
       ),
     )
     .orderBy(desc(integrationConnections.createdAt));
+}
+
+/**
+ * A connection's sealed secrets replaced, with the health reading that came with the change when
+ * there is one, in the caller's transaction.
+ */
+export async function writeConnectionSecrets(
+  tx: Tx,
+  connectionId: string,
+  secretsEnc: ReturnType<typeof encryptJson>,
+  at: Date,
+  health?: {
+    status: NonNullable<(typeof integrationConnections.$inferInsert)['lastHealthStatus']>;
+    detail: string;
+  },
+): Promise<void> {
+  await tx
+    .update(integrationConnections)
+    .set({
+      secretsEnc,
+      updatedAt: at,
+      ...(health
+        ? { lastHealthStatus: health.status, lastHealthDetail: health.detail, lastHealthAt: at }
+        : {}),
+    })
+    .where(eq(integrationConnections.id, connectionId));
 }

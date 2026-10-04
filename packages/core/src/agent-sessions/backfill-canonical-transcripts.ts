@@ -1,4 +1,5 @@
 import type postgres from 'postgres';
+import { backfillMarked, markBackfill, unmarkBackfill } from '../db/backfill-markers.js';
 import { legacyEntryOf, toCanonicalEntry, toCanonicalMessages } from './canonical-legacy.js';
 
 /** What one pass rewrote. */
@@ -86,20 +87,16 @@ export type BackfillOnce =
   | { ran: true; report: BackfillReport };
 
 export async function runCanonicalBackfillOnce(sql: Sql): Promise<BackfillOnce> {
-  const marked = await sql<{ n: number }[]>`
-    SELECT count(*)::int AS n FROM backfill_markers WHERE key = ${CANONICAL_BACKFILL_KEY}
-  `;
-  if ((marked[0]?.n ?? 0) > 0) return { ran: false, reason: 'already-done' };
+  if (await backfillMarked(sql, CANONICAL_BACKFILL_KEY)) {
+    return { ran: false, reason: 'already-done' };
+  }
   const report = await backfillCanonicalTranscripts(sql);
-  await sql`
-    INSERT INTO backfill_markers (key) VALUES (${CANONICAL_BACKFILL_KEY})
-    ON CONFLICT (key) DO NOTHING
-  `;
+  await markBackfill(sql, CANONICAL_BACKFILL_KEY);
   return { ran: true, report };
 }
 
 export async function revertCanonicalTranscripts(sql: Sql): Promise<BackfillReport> {
-  await sql`DELETE FROM backfill_markers WHERE key = ${CANONICAL_BACKFILL_KEY}`;
+  await unmarkBackfill(sql, CANONICAL_BACKFILL_KEY);
   const sessionRows = await sql<{ id: string; messages: unknown }[]>`
     SELECT id, messages FROM agent_sessions
     WHERE jsonb_path_exists(messages, '$[*].__legacyEntry')

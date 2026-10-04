@@ -8,3 +8,4 @@ export {
 } from './master-holds.js';
 export { jobProjectRoutes, jobRoutes, jobTestingSecretsRoutes } from './routes.js';
 export { insertJobRow } from './writes.js';
+export { appendJobEvent } from './intervention-event.js';

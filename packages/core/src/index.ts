@@ -27,6 +27,7 @@ import {
   stopRocketChatManager,
 } from './integrations/rocketchat/index.js';
 import { closeBacklogStreams } from './issues/index.js';
+import { provideProjectOrg } from './lib/authz.js';
 import { logger } from './logger.js';
 import { registerChunkReindex, registerMemoryReconcileWorker } from './memory/index.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
@@ -42,6 +43,7 @@ import {
   registerPipelineOrchestrator,
   stopOutboxWorker,
 } from './pipeline/index.js';
+import { findProjectOrgId } from './projects/index.js';
 import { startBoss, stopBoss } from './queue/boss.js';
 import { registerReleaseBatchFinish } from './release-batch/index.js';
 import { mountRoutes } from './route-registry.js';
@@ -51,6 +53,8 @@ import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
 import { coreTimers } from './timer-registry.js';
 import { registerWebhookSubscribers } from './webhooks/index.js';
 import { attachWs, closeWs } from './ws/index.js';
+
+provideProjectOrg(findProjectOrgId);
 
 export const app = new Hono<{ Variables: RequestIdVars }>();
 

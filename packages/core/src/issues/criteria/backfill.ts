@@ -10,6 +10,7 @@
  */
 
 import { sql } from 'drizzle-orm';
+import { backfillMarkedIn, markBackfillIn } from '../../db/backfill-markers.js';
 import { db, type Tx } from '../../db/client.js';
 import { criterionVerdicts, issueCriteria } from '../../db/schema-issue-criteria.js';
 import { parseForgeRecord } from '../../messaging/forge-record.js';
@@ -242,15 +243,9 @@ export async function backfillCriteria(tx: Tx): Promise<CriteriaBackfillReport> 
 /** Run the backfill once per database; boot (`boot-backfills.ts`) logs the report, every refusal by name. */
 export async function runCriteriaBackfillOnce(): Promise<CriteriaBackfillReport | null> {
   return db.transaction(async (tx) => {
-    const marked = await rows<{ n: number }>(
-      tx,
-      sql`SELECT count(*)::int AS n FROM backfill_markers WHERE key = ${CRITERIA_BACKFILL_KEY}`,
-    );
-    if ((marked[0]?.n ?? 0) > 0) return null;
+    if (await backfillMarkedIn(tx, CRITERIA_BACKFILL_KEY)) return null;
     const done = await backfillCriteria(tx);
-    await tx.execute(
-      sql`INSERT INTO backfill_markers (key) VALUES (${CRITERIA_BACKFILL_KEY}) ON CONFLICT (key) DO NOTHING`,
-    );
+    await markBackfillIn(tx, CRITERIA_BACKFILL_KEY);
     return done;
   });
 }

@@ -10,3 +10,4 @@ export {
 } from './routes.js';
 export { runLedgerRoutes } from './run-ledger-routes.js';
 export { deviceSkillRoutes, deviceSkillStatusRoutes } from './skills-routes.js';
+export { setMaxJobPanes, stampGitCredentialRef } from './writes.js';

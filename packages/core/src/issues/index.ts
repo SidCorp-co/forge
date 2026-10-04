@@ -1,3 +1,4 @@
+export { insertActivityRow } from './activity-log.js';
 export { issueActivityRoutes, projectActivityRoutes } from './activity-routes.js';
 export { issueArchiveRoutes } from './archive-routes.js';
 export { attachmentRoutes, issueAttachmentRoutes } from './attachment-routes.js';

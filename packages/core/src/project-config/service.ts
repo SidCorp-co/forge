@@ -20,13 +20,10 @@ import {
 } from './schema.js';
 import {
   type CasResult,
-  type ConfigStore,
   drizzleConfigStore,
   type SecretName,
   type StoredDocument,
 } from './store.js';
-
-const store: ConfigStore = drizzleConfigStore;
 
 export interface Held<T> {
   revision: number;
@@ -101,16 +98,16 @@ export async function readProjectDocument(
 }
 
 export async function readProjectConfig(projectId: string): Promise<Held<ProjectDocument> | null> {
-  const stored = await store.readProject(projectId);
+  const stored = await drizzleConfigStore.readProject(projectId);
   return stored ? reread(projectDocumentSchema, stored, `project document of ${projectId}`) : null;
 }
 
 export async function readProjectRevisions(projectId: string) {
-  return store.listProjectRevisions(projectId);
+  return drizzleConfigStore.listProjectRevisions(projectId);
 }
 
 export async function readPolicy(projectId: string): Promise<Held<PolicyDocument> | null> {
-  const stored = await store.readPolicy(projectId);
+  const stored = await drizzleConfigStore.readPolicy(projectId);
   return stored ? reread(policyDocumentSchema, stored, `policy of ${projectId}`) : null;
 }
 
@@ -118,7 +115,7 @@ export async function readTestingProfile(
   projectId: string,
   profileId: string,
 ): Promise<Held<TestingProfile> | null> {
-  const stored = await store.readTestingProfile(projectId, profileId);
+  const stored = await drizzleConfigStore.readTestingProfile(projectId, profileId);
   return stored
     ? reread(testingProfileSchema, stored, `testing profile ${profileId} of ${projectId}`)
     : null;
@@ -127,7 +124,7 @@ export async function readTestingProfile(
 export async function listTestingProfiles(
   projectId: string,
 ): Promise<(Held<TestingProfile> & { profileId: string })[]> {
-  const rows = await store.listTestingProfiles(projectId);
+  const rows = await drizzleConfigStore.listTestingProfiles(projectId);
   return rows.map((row) => ({
     profileId: row.profileId,
     ...reread<TestingProfile>(
@@ -140,10 +137,10 @@ export async function listTestingProfiles(
 
 export async function buildProjectConfigContext(projectId: string): Promise<ProjectConfigContext> {
   const [bindings, profiles, policy, templatesInUse] = await Promise.all([
-    store.listActiveBindings(projectId),
-    store.listTestingProfiles(projectId),
+    drizzleConfigStore.listActiveBindings(projectId),
+    drizzleConfigStore.listTestingProfiles(projectId),
     readPolicy(projectId),
-    store.workflowTemplatesInUse(projectId),
+    drizzleConfigStore.workflowTemplatesInUse(projectId),
   ]);
   return {
     bindings: new Map(
@@ -172,7 +169,7 @@ export async function writeProjectConfig(input: {
   const { projectId, userId, baseRevision, raw } = input;
   const claimedId = isRecord(raw) && isRecord(raw.project) ? raw.project.id : undefined;
   return writeDocument({
-    current: await store.readProject(projectId),
+    current: await drizzleConfigStore.readProject(projectId),
     baseRevision,
     raw,
     schema: projectDocumentSchema,
@@ -189,7 +186,7 @@ export async function writeProjectConfig(input: {
         : [],
     async check(document) {
       const refusals: ApiRefusal[] = [];
-      const takenBy = await store.slugTakenBy(projectId, document.project.slug);
+      const takenBy = await drizzleConfigStore.slugTakenBy(projectId, document.project.slug);
       if (takenBy) {
         refusals.push({
           code: 'SLUG_TAKEN',
@@ -200,7 +197,7 @@ export async function writeProjectConfig(input: {
       refusals.push(...checkProjectConfig(document, await buildProjectConfigContext(projectId)));
       return refusals;
     },
-    cas: (document) => store.casProject({ projectId, baseRevision, document, userId }),
+    cas: (document) => drizzleConfigStore.casProject({ projectId, baseRevision, document, userId }),
   });
 }
 
@@ -212,13 +209,13 @@ export async function writePolicy(input: {
 }): Promise<WriteOutcome<PolicyDocument>> {
   const { projectId, userId, baseRevision, raw } = input;
   return writeDocument({
-    current: await store.readPolicy(projectId),
+    current: await drizzleConfigStore.readPolicy(projectId),
     baseRevision,
     raw,
     schema: policyDocumentSchema,
     what: 'policy',
     check: checkPolicy,
-    cas: (document) => store.casPolicy({ projectId, baseRevision, document, userId }),
+    cas: (document) => drizzleConfigStore.casPolicy({ projectId, baseRevision, document, userId }),
   });
 }
 
@@ -244,7 +241,7 @@ export async function writeTestingProfile(input: {
 }): Promise<WriteOutcome<TestingProfile>> {
   const { projectId, profileId, userId, baseRevision, raw } = input;
   return writeDocument({
-    current: await store.readTestingProfile(projectId, profileId),
+    current: await drizzleConfigStore.readTestingProfile(projectId, profileId),
     baseRevision,
     raw,
     schema: testingProfileSchema,
@@ -259,7 +256,7 @@ export async function writeTestingProfile(input: {
         });
       }
       const refs = credentialRefs(profile);
-      const present = await store.secretValues(
+      const present = await drizzleConfigStore.secretValues(
         projectId,
         refs.map((r) => r.ref),
       );
@@ -275,7 +272,13 @@ export async function writeTestingProfile(input: {
       return refusals;
     },
     cas: (document) =>
-      store.casTestingProfile({ projectId, profileId, baseRevision, document, userId }),
+      drizzleConfigStore.casTestingProfile({
+        projectId,
+        profileId,
+        baseRevision,
+        document,
+        userId,
+      }),
   });
 }
 
@@ -303,7 +306,7 @@ export async function deleteTestingProfile(
       })),
     };
   }
-  const deleted = await store.deleteTestingProfile(projectId, profileId);
+  const deleted = await drizzleConfigStore.deleteTestingProfile(projectId, profileId);
   return deleted ? { ok: true } : { ok: false, notFound: true };
 }
 
@@ -320,7 +323,7 @@ export async function putSecret(input: {
   value: string;
 }): Promise<SecretOutcome> {
   if (!isVaultConfigured()) return { ok: false, code: 'VAULT_NOT_CONFIGURED' };
-  const row = await store.putSecret({
+  const row = await drizzleConfigStore.putSecret({
     projectId: input.projectId,
     scope: input.scope,
     name: input.name,
@@ -330,18 +333,18 @@ export async function putSecret(input: {
 }
 
 export async function readSecretValues(projectId: string, refs: readonly string[]) {
-  return store.secretValues(projectId, refs);
+  return drizzleConfigStore.secretValues(projectId, refs);
 }
 
 export async function listSecretNames(projectId: string) {
-  const rows = await store.listSecretNames(projectId);
+  const rows = await drizzleConfigStore.listSecretNames(projectId);
   return rows.map((r) => ({ ...r, ref: secretRefOf(r.scope, r.name) }));
 }
 
 export async function readDeviceCheckout(projectId: string, deviceId: string) {
-  return store.deviceCheckout(projectId, deviceId);
+  return drizzleConfigStore.deviceCheckout(projectId, deviceId);
 }
 
 export async function listActiveBindings(projectId: string) {
-  return store.listActiveBindings(projectId);
+  return drizzleConfigStore.listActiveBindings(projectId);
 }
