@@ -1186,17 +1186,3 @@ alone.
 It audits shape, not worth: a repo can pass all twelve with an axis measuring something pointless. That
 is deliberate — choosing what to measure is the repo's call, and a tool that ruled on it would start
 dictating stacks.
-
-## upload-image.sh — attach images from a runner
-
-Uploads screenshots/images to a Forge issue or comment over REST. Exists because the MCP
-runner and CI hold a PAT or device token but **no user JWT**, which the browser upload path
-assumes.
-
-```bash
-upload-image.sh --issue   <issueId>   <file> [<file>...]
-upload-image.sh --comment <commentId> <file> [<file>...]
-```
-
-Requires `FORGE_API_URL` plus a token in the environment — see the script's own header for
-the exact variable names.
