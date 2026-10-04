@@ -1,7 +1,9 @@
 import type {
   MasterClosedPass,
   MasterOpenPass,
+  MasterPassList,
   MasterPassSkip,
+  MasterPassView,
   MasterStanding,
   MasterVerb,
 } from '@forge/contracts/master-standing';
@@ -184,5 +186,36 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
     pass,
     slots: device ? slotsOf({ name: device.name, maxJobPanes: master.max_job_panes }, inUse) : null,
     lastBeatAt: master.last_beat ? iso(master.last_beat) : null,
+  };
+}
+
+// cm:why a pass history page reads newest first by start, `before` the last start a page served, so a pass
+// opened between two reads never shifts a page the way an offset would
+export async function listMasterPasses(
+  projectId: string,
+  opts: { limit: number; before: string | null; sessionId: string | null },
+): Promise<MasterPassList> {
+  const rows = rowsOf<PassRow>(
+    await db.execute(sql`
+      SELECT ${PASS_COLUMNS}
+        FROM master_passes
+       WHERE project_id = ${projectId}
+         ${opts.before ? sql`AND started_at < ${opts.before}::timestamptz` : sql``}
+         ${opts.sessionId ? sql`AND master_session_id = ${opts.sessionId}::uuid` : sql``}
+       ORDER BY started_at DESC, id
+       LIMIT ${opts.limit + 1}`),
+  );
+  const page = rows.slice(0, opts.limit);
+  const items: MasterPassView[] = page.map((r) =>
+    r.ended_at === null ? openPassOf(r) : closedPassOf({ ...r, ended_at: r.ended_at }),
+  );
+  const last = items[items.length - 1];
+  return {
+    generatedAt: new Date().toISOString(),
+    projectId,
+    items,
+    limit: opts.limit,
+    hasMore: rows.length > opts.limit,
+    next: rows.length > opts.limit && last ? last.startedAt : null,
   };
 }

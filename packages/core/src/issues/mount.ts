@@ -4,6 +4,7 @@ import { developmentOverviewRoutes } from '../development/overview-routes.js';
 import { contractWaitRoutes } from '../ecosystem/waits/routes.js';
 import { masterStandingRoutes } from '../masters/routes.js';
 import type { RequestIdVars } from '../middleware/request-id.js';
+import { runStandingRoutes } from '../runs/routes.js';
 import { issueActivityRoutes } from './activity-routes.js';
 import { issueCriteriaRoutes } from './criteria/routes.js';
 import { issueDependencyRoutes } from './dependency-routes.js';
@@ -34,4 +35,5 @@ export function mountIssueProjectRoutes(app: Hono<{ Variables: RequestIdVars }>)
   app.route('/api/projects', developmentOverviewRoutes);
   app.route('/api/projects', needsYouRoutes);
   app.route('/api/projects', masterStandingRoutes);
+  app.route('/api/projects', runStandingRoutes);
 }

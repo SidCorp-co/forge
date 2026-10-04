@@ -312,6 +312,18 @@ pub fn short_id(id: &str) -> &str {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MasterPass {
+    pub project_id: String,
+    pub session_id: String,
+    pub pass_id: String,
+    pub verb: String,
+    pub issue_key: Option<String>,
+    pub opened_at: i64,
+    pub opened_by: String,
+    pub prompts_at_nudge: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MasterRow {
     pub project_id: String,
     pub pane_name: String,
@@ -626,6 +638,16 @@ CREATE TABLE IF NOT EXISTS master_standing (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS master_standing_open
   ON master_standing (project_id) WHERE stood_up_at IS NULL;
+CREATE TABLE IF NOT EXISTS master_passes (
+  project_id       TEXT PRIMARY KEY,
+  session_id       TEXT NOT NULL,
+  pass_id          TEXT NOT NULL,
+  verb             TEXT NOT NULL,
+  issue_key        TEXT,
+  opened_at        INTEGER NOT NULL,
+  opened_by        TEXT NOT NULL,
+  prompts_at_nudge INTEGER
+);
 CREATE TABLE IF NOT EXISTS master_authority (
   project_id      TEXT PRIMARY KEY,
   slug            TEXT NOT NULL,
@@ -732,6 +754,19 @@ fn map_authority(row: &rusqlite::Row<'_>) -> rusqlite::Result<MasterAuthority> {
         detail: row.get(5)?,
         since: row.get(6)?,
         seen_at: row.get(7)?,
+    })
+}
+
+fn map_master_pass(row: &rusqlite::Row<'_>) -> rusqlite::Result<MasterPass> {
+    Ok(MasterPass {
+        project_id: row.get(0)?,
+        session_id: row.get(1)?,
+        pass_id: row.get(2)?,
+        verb: row.get(3)?,
+        issue_key: row.get(4)?,
+        opened_at: row.get(5)?,
+        opened_by: row.get(6)?,
+        prompts_at_nudge: row.get::<_, Option<i64>>(7)?.map(|n| n.max(0) as u64),
     })
 }
 
@@ -1609,6 +1644,97 @@ impl Ledger {
             )
             .map_err(sql_err)?;
         Ok(())
+    }
+
+    pub fn open_master_pass(&self, pass: &MasterPass) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO master_passes (project_id, session_id, pass_id, verb, issue_key, opened_at, opened_by, prompts_at_nudge)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    pass.project_id,
+                    pass.session_id,
+                    pass.pass_id,
+                    pass.verb,
+                    pass.issue_key,
+                    pass.opened_at,
+                    pass.opened_by,
+                    pass.prompts_at_nudge.map(|n| n as i64),
+                ],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    pub fn master_passes(&self) -> Result<Vec<MasterPass>> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT project_id, session_id, pass_id, verb, issue_key, opened_at, opened_by, prompts_at_nudge
+                 FROM master_passes ORDER BY opened_at",
+            )
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map([], map_master_pass)
+            .map_err(sql_err)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(sql_err)?;
+        Ok(rows)
+    }
+
+    pub fn master_pass_for(&self, project_id: &str) -> Result<Option<MasterPass>> {
+        self.conn
+            .query_row(
+                "SELECT project_id, session_id, pass_id, verb, issue_key, opened_at, opened_by, prompts_at_nudge
+                 FROM master_passes WHERE project_id = ?1",
+                params![project_id],
+                map_master_pass,
+            )
+            .optional()
+            .map_err(sql_err)
+    }
+
+    pub fn renudge_master_pass(&self, pass_id: &str, prompts: Option<u64>) -> Result<bool> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE master_passes SET prompts_at_nudge = ?2 WHERE pass_id = ?1",
+                params![pass_id, prompts.map(|n| n as i64)],
+            )
+            .map_err(sql_err)?;
+        Ok(n == 1)
+    }
+
+    pub fn closed_master_pass(&self, pass_id: &str) -> Result<bool> {
+        let n = self
+            .conn
+            .execute(
+                "DELETE FROM master_passes WHERE pass_id = ?1",
+                params![pass_id],
+            )
+            .map_err(sql_err)?;
+        Ok(n == 1)
+    }
+
+    pub fn issues_declared_since(
+        &self,
+        master_session_id: &str,
+        since: i64,
+    ) -> Result<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT DISTINCT i.issue_key FROM run_issues i JOIN runs r ON r.run_id = i.run_id
+                 WHERE r.master_session_id = ?1 AND r.created_at >= ?2
+                 ORDER BY i.issue_key",
+            )
+            .map_err(sql_err)?;
+        let keys = stmt
+            .query_map(params![master_session_id, since], |r| r.get(0))
+            .map_err(sql_err)?
+            .collect::<rusqlite::Result<Vec<String>>>()
+            .map_err(sql_err)?;
+        Ok(keys)
     }
 
     /// What this box knows about one project's master pane.

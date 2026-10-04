@@ -156,6 +156,10 @@
   started, ended and why, and links its session; older runs are rebuilt. A run skipped for want of a
   box now counts toward the failing-automation alert.
 
+- **Each run says where it stands (ISS-108).** `GET /api/projects/:id/runs/standing` gives every run
+  its state, holder and when its hold ends, what it waits on, its outcome and attempt; master pass
+  history pages at `masters/passes`, both also over MCP.
+
 - **The menu counts what waits on you.** Requirements, Releases, Feedback, Issues and Contracts
   each show how many rows wait on you, with what they wait for in a tooltip, and the dashboard shows
   requirements in delivery and untriaged feedback. All come from `GET /api/projects/:id/needs-you`,

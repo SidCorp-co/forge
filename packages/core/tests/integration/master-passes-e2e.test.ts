@@ -143,15 +143,16 @@ describe('POST /api/devices/me/master-session declares the slots', () => {
     }
   });
 
-  it('lets a runner older than 0.18.0 register without the field (ISS-107 amnesty), its slots read undeclared', async () => {
+  it('refuses a runner older than 0.18.0 that declares no maxJobPanes, as it refuses every version', async () => {
     const old = await aBox('old-box', '0.17.0');
     const res = await register({}, old.auth);
-    expect(res.status).toBe(200);
-    expect(res.body.maxJobPanes).toBeNull();
-    const s = await standing();
-    const slots = s.slots as { max: number | null; undeclared: { code: string } | null };
-    expect(slots.max, 'no guessed number').toBeNull();
-    expect(slots.undeclared?.code).toBe('MASTER_SLOTS_UNDECLARED');
+    expect(res.status).toBe(422);
+    expect(res.body.error?.code).toBe('MASTER_SLOTS_UNDECLARED');
+    expect(
+      await count(
+        sql`SELECT count(*)::int AS n FROM agent_sessions WHERE device_id = ${old.id} AND kind = 'master'`,
+      ),
+    ).toBe(0);
   });
 });
 

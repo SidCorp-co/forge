@@ -363,6 +363,8 @@ describe('a call against the epoch its token was minted at', () => {
         'forge_feedback triage',
         'forge_guide delete',
         'forge_guide upsert',
+        'forge_masters passes',
+        'forge_masters standing',
         'forge_metrics.project_retry_rescues',
         'forge_metrics.project_step_durations',
         'forge_metrics.project_timeseries',

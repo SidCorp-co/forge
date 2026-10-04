@@ -116,6 +116,8 @@ export const PAT_NESTED_SURFACES = Object.freeze({
   '/api/projects/:id/analytics': '/api/pipeline',
   '/api/projects/:id/metrics/timeseries': '/api/usage-records',
   '/api/projects/:id/runners': '/api/runners',
+  '/api/projects/:id/masters/standing': '/api/agent-sessions',
+  '/api/projects/:id/masters/passes': '/api/agent-sessions',
   '/api/issues/:id/cost-summary': '/api/usage-records',
 } as const satisfies Record<string, PatPrefix>);
 

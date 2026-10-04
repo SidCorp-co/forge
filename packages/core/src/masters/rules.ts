@@ -6,24 +6,12 @@ import type {
   MasterStanding,
 } from '@forge/contracts/master-standing';
 import { MASTER_JOB_PANES_MAX } from '@forge/contracts/master-standing';
-import { atLeastVersion } from '../runners/device-cap.js';
-
-// cm:hack ISS-107 until:every bound runner reports agent_version >= MASTER_SLOTS_MIN_RUNNER — a runner that
-// predates the declaration registers its master with no maxJobPanes on every sweep; refusing it would stop
-// every live master within the 10-minute reap, so it registers and its slots read undeclared
-export const MASTER_SLOTS_MIN_RUNNER = '0.18.0';
-
-export function predatesSlotDeclaration(agentVersion: string | null | undefined): boolean {
-  if (!agentVersion || !/^[0-9]+\.[0-9]+\.[0-9]+$/.test(agentVersion)) return false;
-  return !atLeastVersion(agentVersion, MASTER_SLOTS_MIN_RUNNER);
-}
 
 export function slotsUndeclaredRefusal(args: {
   maxJobPanes: number | undefined;
   agentVersion: string | null;
 }): MasterRefusal | null {
   if (args.maxJobPanes !== undefined) return null;
-  if (predatesSlotDeclaration(args.agentVersion)) return null;
   return {
     code: 'MASTER_SLOTS_UNDECLARED',
     path: '/maxJobPanes',
@@ -34,6 +22,8 @@ export function slotsUndeclaredRefusal(args: {
 const passName = (p: Pick<MasterOpenPass, 'verb' | 'startedAt' | 'issueKey'>) =>
   `the ${p.verb} pass started ${p.startedAt}${p.issueKey ? ` on ${p.issueKey}` : ''}`;
 
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/master_pass.rs:named_pass_id — the runner reads the
+// open pass's id from `id <uuid>` in this detail to close a pass whose open answer it never received
 export function passAlreadyOpenRefusal(open: MasterOpenPass | null): MasterRefusal | null {
   if (!open) return null;
   return {

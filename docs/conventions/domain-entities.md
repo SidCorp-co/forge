@@ -362,7 +362,9 @@ Read at `origin/dev` `0b3a1069a`.
 
 Two owners appear here. **Review** is the review pass after the POC. A numbered slice is the next
 slice to touch that code. Items 1 and 13 were closed by ISS-61, 18 and 29 by the shared
-`StatusBadge`, and 19 by ISS-96; their numbers are not reused.
+`StatusBadge`, and 19 by ISS-96; their numbers are not reused. ISS-108 gave master passes their MCP door
+(`packages/core/src/mcp/tools/forge-masters.ts`) and the runs read model its own
+(`packages/core/src/mcp/tools/forge-runs.ts`), so item 43 keeps only the missing key.
 
 | # | Divergence | Owner |
 |---|---|---|
@@ -403,7 +405,7 @@ slice to touch that code. Items 1 and 13 were closed by ISS-61, 18 and 29 by the
 | 40 | `forge_issues`, `forge_feedback_items` and `forge_knowledge` take no `view`: their lists were already summaries and their writes answer one item, at most 3.5 KB as measured on dev on 2026-10-04. `forge_feedback_items` `propose_triage` answers the whole suggestion | review |
 | 41 | A projection runs after the whole read: a write still reads the full detail (`packages/core/src/requirements/read.ts:detailOf`, `packages/core/src/workflows/design-service.ts:designView`) and the door drops most of it | review |
 | 42 | `forge_suggestions` has no `get`: a suggestion's payload is read by `list` with `view: 'full'`, narrowed by target | review |
-| 43 | Master passes (ISS-106) have no MCP door: `GET /api/projects/:id/masters/standing` is REST only, and the pass and slot writes are device routes (`packages/core/src/masters/device-routes.ts`) a runner calls with its device credential, which no MCP tool holds. A master pass also has no key; it is named by its verb and start time in refusals | ISS-108 (the runs read model) |
+| 43 | A master pass has no key: refusals name it by its verb and start time, and its history (`GET /api/projects/:id/masters/passes`, `forge_masters` `passes`) pages by `before`, the last start a page served (`packages/core/src/masters/read.ts:listMasterPasses`), not by a key | review |
 | 44 | Agent-report triage (ISS-113) keeps its outcome on the report row (`packages/core/src/db/schema-agent-reports.ts:agentReports`, triage columns): a reopen clears it and a later triage overwrites it, with no row per decision, so a re-triaged report loses who decided before; writes serialise on a row lock (`packages/core/src/agent-reports/service.ts:triageReports`), not an advisory lock; reports migrated by 0368 carry no `triaged_by` | ISS-116 (the report History tab) |
 
 ## Honest costs

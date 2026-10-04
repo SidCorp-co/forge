@@ -33,6 +33,7 @@ use crate::daemon::job_unheard;
 use crate::daemon::master_exit::{self, Verdict};
 use crate::daemon::master_inbox::{self, WakeSource};
 use crate::daemon::master_limit;
+use crate::daemon::master_pass;
 use crate::daemon::pane_exit;
 use crate::daemon::pool_jobs::{self, JobPanes, Records};
 use crate::daemon::pool_reads;
@@ -1154,12 +1155,22 @@ pub async fn run(
             "[master] the control capability map cannot be resolved on this box — no master pane can be minted a capability, and none will be started"
         );
     }
+    let mut passes = tokio::time::interval(master_pass::TICK);
+    passes.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let sweep_due = tokio::time::sleep(delay);
+    tokio::pin!(sweep_due);
     loop {
         tokio::select! {
-            _ = tokio::time::sleep(delay) => {
+            _ = passes.tick() => {
+                if let Some(led) = ledger.as_mut() {
+                    master_pass::reconcile(&client, &shared.masters, &shared.activity, led, master_pass::this_process(), None).await;
+                }
+            }
+            _ = &mut sweep_due => {
                 delay = sweep(&client, &cfg, &shared.borrowed(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
                     .await;
                 last_sweep = Instant::now();
+                sweep_due.as_mut().reset(tokio::time::Instant::now() + delay);
             }
             Some(w) = wake.recv() => {
                 let since = last_sweep.elapsed();
@@ -1170,6 +1181,7 @@ pub async fn run(
                 delay = sweep(&client, &cfg, &shared.borrowed(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
                     .await;
                 last_sweep = Instant::now();
+                sweep_due.as_mut().reset(tokio::time::Instant::now() + delay);
             }
             _ = cancel.changed() => { if *cancel.borrow() { break; } }
         }
@@ -1412,6 +1424,7 @@ async fn sweep(
                 stood_down_told: &told,
                 started: &started,
                 hosts: &hosts,
+                slots: cfg.runner.max_job_panes.max(1),
             },
             placement,
             &CapabilityPorts {
@@ -1605,6 +1618,12 @@ async fn sweep(
         }
 
         let digest = work_digest(&admissible).wrapping_add(master_inbox::inbox_digest(&inbox));
+        let pass = NudgePass {
+            client,
+            shared: *shared,
+            project_id: &runner.project_id,
+            issue_key: master_pass::nudged_issue(&admissible, inbox.is_empty()),
+        };
         if masters.claim_nudge(
             &runner.project_id,
             digest,
@@ -1612,6 +1631,7 @@ async fn sweep(
             held.is_some(),
         ) {
             let slug = &resolved.slug;
+            pass.open(ledger).await;
             nudge_master(masters, &runner.project_id, slug, held.as_ref(), &inbox).await;
         }
     }
@@ -2869,6 +2889,7 @@ pub(crate) struct Carryover<'a> {
     /// The box's process table: where each inherited subagent runs, and what
     /// runs a conversation outside this box's panes.
     hosts: &'a dyn subagent_host::Hosts,
+    slots: u32,
 }
 
 /// The verdict `ensure_master` reached about the capability a pane holds, on
@@ -3093,7 +3114,7 @@ async fn ensure_master(
         return PaneState::Absent;
     }
 
-    let session = match master_api::register(client, project_id, &name).await {
+    let session = match master_api::register(client, project_id, &name, carry.slots).await {
         Ok(s) => s,
         Err(e) => {
             tracing::warn!("[master] {}: cannot register with core: {e}", resolved.slug);
@@ -4035,6 +4056,32 @@ async fn read_channel_inbox(
             }
             Vec::new()
         }
+    }
+}
+
+struct NudgePass<'a> {
+    client: &'a CoreClient,
+    shared: SweepShared<'a>,
+    project_id: &'a str,
+    issue_key: Option<&'a str>,
+}
+
+impl NudgePass<'_> {
+    async fn open(&self, ledger: &mut Option<Ledger>) {
+        let masters = self.shared.masters;
+        let (Some(led), Some((session_id, _))) = (ledger.as_mut(), masters.get(self.project_id))
+        else {
+            return;
+        };
+        let nudged = master_pass::Nudged {
+            project_id: self.project_id,
+            session_id: &session_id,
+            issue_key: self.issue_key,
+            prompts: self.shared.activity.get(&session_id).map(|a| a.prompts),
+        };
+        let process = master_pass::this_process();
+        let activity = self.shared.activity;
+        master_pass::open_for_nudge(self.client, masters, activity, led, process, &nudged).await;
     }
 }
 
@@ -10043,6 +10090,7 @@ mod servers_refusal_walk_tests {
                 stood_down_told: &told,
                 started: &std::sync::atomic::AtomicBool::new(false),
                 hosts,
+                slots: 2,
             },
             Placement::AdoptOrStart,
             &CapabilityPorts {

@@ -62,6 +62,10 @@
       "types": "./dist/master-standing.d.ts",
       "default": "./dist/master-standing.js"
     },
+    "./run-standing": {
+      "types": "./dist/run-standing.d.ts",
+      "default": "./dist/run-standing.js"
+    },
     "./issue-standing": {
       "types": "./dist/issue-standing.d.ts",
       "default": "./dist/issue-standing.js"
