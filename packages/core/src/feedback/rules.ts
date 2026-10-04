@@ -442,3 +442,41 @@ export const redactActRefusal = (facts: ActorFacts) =>
     "deleting a reporter's data",
     'a project admin person',
   );
+
+export interface PromoteFacts {
+  reportId: string;
+  reportProject: string;
+  project: string;
+  feedbackKey: string | null;
+  linkedIssueKey: string | null;
+}
+
+// cm:guard ISS-93: an agent report becomes feedback once, in its own project, and only while
+// nothing else carries it: a second promotion is FEEDBACK_SOURCE_ALREADY_PROMOTED naming the item it
+// became, another project FEEDBACK_SOURCE_NOT_IN_PROJECT (each project's data policy holds its own
+// text), a report already curated into an issue FEEDBACK_SOURCE_ROUTED_ELSEWHERE
+export function promoteRefusal(f: PromoteFacts): FeedbackRefusal | null {
+  const report = `agent report ${f.reportId}`;
+  if (f.reportProject !== f.project) {
+    return refusal(
+      'FEEDBACK_SOURCE_NOT_IN_PROJECT',
+      '/agentReport',
+      `${report} was filed on project ${f.reportProject}, not ${f.project}; promote it there. A report's text stays under the data policy of the project it was filed on, so it is never copied into another project's feedback.`,
+    );
+  }
+  if (f.feedbackKey) {
+    return refusal(
+      'FEEDBACK_SOURCE_ALREADY_PROMOTED',
+      '/agentReport',
+      `${report} already became ${f.feedbackKey}; open ${f.feedbackKey} instead of filing it twice.`,
+    );
+  }
+  if (f.linkedIssueKey) {
+    return refusal(
+      'FEEDBACK_SOURCE_ROUTED_ELSEWHERE',
+      '/agentReport',
+      `${report} was already curated into ${f.linkedIssueKey}; one report has one route. Track it on ${f.linkedIssueKey}, or file feedback of your own that links it.`,
+    );
+  }
+  return null;
+}

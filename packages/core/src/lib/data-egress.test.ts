@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { feedbackEgress } from '../feedback/read.js';
+import { feedbackEgress } from '../feedback/egress.js';
 import { questionnaireSurface } from '../questionnaires/read.js';
 import {
   EGRESS_SURFACES,

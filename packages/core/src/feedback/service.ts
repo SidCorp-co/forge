@@ -127,15 +127,26 @@ export async function closeClarification(tx: Tx, feedbackId: string, why: string
     .where(and(eq(agentQuestions.feedbackId, feedbackId), eq(agentQuestions.status, 'open')));
 }
 
-export async function createFeedback(input: {
-  projectId: string;
-  actor: FeedbackActor;
-  request: CreateFeedbackRequest;
-  /** E3's seam (ISS-61): a filer naming a key gets the one item already filed under it. */
-  dedupKey?: string | undefined;
-}): Promise<FeedbackOutcome> {
-  const { projectId, actor, request } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+export type NewFeedback = Omit<typeof feedback.$inferInsert, 'fbSeq'>;
+
+export async function insertFeedbackIn(tx: Tx, values: NewFeedback): Promise<string> {
+  const [{ next } = { next: 1 }] = await tx
+    .select({ next: sql<number>`coalesce(max(${feedback.fbSeq}), 0)::int + 1` })
+    .from(feedback)
+    .where(eq(feedback.projectId, values.projectId));
+  const [row] = await tx
+    .insert(feedback)
+    .values({ ...values, fbSeq: next })
+    .returning({ id: feedback.id });
+  if (!row) throw new Error('feedback: the insert returned no row');
+  return row.id;
+}
+
+export async function preparedFeedback(
+  projectId: string,
+  actor: FeedbackActor,
+  request: CreateFeedbackRequest,
+): Promise<{ ok: true; values: NewFeedback } | { ok: false; refusals: NamedRefusal[] }> {
   const count = targetCountRefusal(request, request.whereSeen);
   if (count) return { ok: false, refusals: [count] };
   const target = await resolveTarget(projectId, request, actor.userId);
@@ -145,6 +156,38 @@ export async function createFeedback(input: {
   const body = request.body?.trim() ? storedText(level, request.body) : null;
   const seen = target.screen ?? (request.whereSeen?.trim() || null);
   const whereSeen = seen ? storedText(level, seen) : null;
+  return {
+    ok: true,
+    values: {
+      projectId,
+      kind: request.kind,
+      severity: request.severity ?? 'medium',
+      title: title.text,
+      body: body?.text ?? null,
+      whereSeen: whereSeen?.text ?? null,
+      requirementId: target.requirementId,
+      issueId: target.issueId,
+      releaseRunId: target.releaseRunId,
+      workflowId: target.workflowId,
+      reportedBy: actor.userId,
+      reporterAgency: actor.agency,
+      scrubbed: title.scrubbed,
+      redactions: title.redactions + (body?.redactions ?? 0) + (whereSeen?.redactions ?? 0),
+    },
+  };
+}
+
+export async function createFeedback(input: {
+  projectId: string;
+  actor: FeedbackActor;
+  request: CreateFeedbackRequest;
+  /** E3's seam (ISS-61): a filer naming a key gets the one item already filed under it. */
+  dedupKey?: string | undefined;
+}): Promise<FeedbackOutcome> {
+  const { projectId, actor, request } = input;
+  await assertProjectAccess(projectId, actor.userId, 'member');
+  const prepared = await preparedFeedback(projectId, actor, request);
+  if (!prepared.ok) return prepared;
   let id = '';
   let created = true;
   const refusals = await inTx(async (tx) => {
@@ -160,33 +203,7 @@ export async function createFeedback(input: {
         return null;
       }
     }
-    const [{ next } = { next: 1 }] = await tx
-      .select({ next: sql<number>`coalesce(max(${feedback.fbSeq}), 0)::int + 1` })
-      .from(feedback)
-      .where(eq(feedback.projectId, projectId));
-    const [row] = await tx
-      .insert(feedback)
-      .values({
-        projectId,
-        fbSeq: next,
-        kind: request.kind,
-        severity: request.severity ?? 'medium',
-        title: title.text,
-        body: body?.text ?? null,
-        whereSeen: whereSeen?.text ?? null,
-        requirementId: target.requirementId,
-        issueId: target.issueId,
-        releaseRunId: target.releaseRunId,
-        workflowId: target.workflowId,
-        reportedBy: actor.userId,
-        reporterAgency: actor.agency,
-        scrubbed: title.scrubbed,
-        redactions: title.redactions + (body?.redactions ?? 0) + (whereSeen?.redactions ?? 0),
-        dedupKey: input.dedupKey ?? null,
-      })
-      .returning({ id: feedback.id });
-    if (!row) throw new Error('feedback: the insert returned no row');
-    id = row.id;
+    id = await insertFeedbackIn(tx, { ...prepared.values, dedupKey: input.dedupKey ?? null });
     return null;
   });
   if (refusals) return { ok: false, refusals };

@@ -4,6 +4,12 @@
 // labels, so one value keeps one badge on every screen.
 
 import { z } from "zod";
+import type {
+	FeedbackKind,
+	FeedbackPhase,
+	FeedbackRouteView,
+	FeedbackSeverity,
+} from "./feedback.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 
 export const REQUIREMENT_STATUSES = [
@@ -243,6 +249,29 @@ export interface RequirementFacts {
 	draftRevision: number | null;
 	/** Designs the latest baseline pins at an older revision than the one now approved. */
 	stalePins: { flow: string; pinned: number; approved: number }[];
+	feedbackOpen: number;
+	feedbackUntriaged: number;
+}
+
+export const REQUIREMENT_FEEDBACK_VIA = [
+	"requirement",
+	"issue",
+	"workflow",
+	"release",
+	"route",
+] as const;
+export type RequirementFeedbackVia = (typeof REQUIREMENT_FEEDBACK_VIA)[number];
+
+export interface RequirementFeedbackItem {
+	id: string;
+	key: string;
+	title: string;
+	kind: FeedbackKind;
+	severity: FeedbackSeverity;
+	phase: FeedbackPhase;
+	open: boolean;
+	via: { type: RequirementFeedbackVia; key: string };
+	route: FeedbackRouteView | null;
 }
 
 export interface CoverageIssue {

@@ -6,6 +6,7 @@ import {
   issueVisibleIn,
   listReports,
   readReport,
+  reportViews,
   stampReviewed,
 } from '../../agent-reports/service.js';
 import { env } from '../../config/env.js';
@@ -22,6 +23,7 @@ import {
   type ContextScopedMcpToolFactory,
   loadVisibleProjectIdsForPrincipal,
   type McpContext,
+  refusedAnswer,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
@@ -103,6 +105,7 @@ const DESCRIPTION =
   'scope="project" (default) reads the resolved project; scope="all" unions every project you own or are a member of and adds projectId/projectSlug to each row. ' +
   'EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete. `truncated:true` + `truncatedBy` say which cap bit (your limit, or the hard response-size cap). ' +
   'action=get: fetch one report by reportId, resolving its project from the row itself — no projectId needed. NOT_FOUND if missing or not visible to you. ' +
+  'A report promoted into product feedback carries `feedback` { key, phase, route } and stays reviewed: reviewed:false or a linkedIssueId on it is AGENT_REPORT_PROMOTED (promote with forge_feedback_items action=promote). ' +
   'action=review: stamp reviewedAt on report(s) once triaged/addressed (reviewed:false clears the stamp). ' +
   'reportId stamps a single report (unchanged single-project behaviour). ' +
   'When folding a report into an issue, also pass linkedIssueId (must belong to the same project as the report, or NOT_FOUND) — it is stamped atomically with reviewedAt and returned, so the report becomes traceable to what it became. ' +
@@ -216,7 +219,7 @@ async function handleAgentReport(ctx: McpContext, args: unknown) {
 
       return buildListEnvelope({
         key: 'reports',
-        items: rows.map((r) => frameReport(r)),
+        items: (await reportViews(rows)).map((r) => frameReport(r)),
         limit,
         hint: 'narrow with kind/target/severity/reviewed filters',
       });
@@ -232,7 +235,8 @@ async function handleAgentReport(ctx: McpContext, args: unknown) {
       // row's own project, resolved only after the row is known.
       await assertPrincipalIsMember(principal, row.projectId);
 
-      return { report: frameReport(row) };
+      const [view] = await reportViews([row]);
+      return { report: view ? frameReport(view) : null };
     }
 
     case 'review': {
@@ -267,13 +271,14 @@ async function handleAgentReport(ctx: McpContext, args: unknown) {
           if (ids.length === 0) {
             return { ok: true, count: 0, scope: 'all', linkedIssueId: null };
           }
-          const updated = await stampReviewed(
+          const out = await stampReviewed(
             [inArray(agentReports.projectId, ids), eq(agentReports.signalKey, input.signalKey)],
-            { reviewedAt: reviewed ? new Date() : null, ...(await linkPatch()) },
+            { reviewed, ...(await linkPatch()) },
           );
+          if (!out.ok) return refusedAnswer(out.refusals, 'AGENT_REPORT_REFUSED');
           return {
             ok: true,
-            count: updated.length,
+            count: out.rows.length,
             scope: 'all',
             linkedIssueId: reviewed ? (input.linkedIssueId ?? null) : null,
           };
@@ -281,13 +286,14 @@ async function handleAgentReport(ctx: McpContext, args: unknown) {
 
         const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
         await assertPrincipalIsMember(principal, projectId);
-        const updated = await stampReviewed(
+        const out = await stampReviewed(
           [eq(agentReports.projectId, projectId), eq(agentReports.signalKey, input.signalKey)],
-          { reviewedAt: reviewed ? new Date() : null, ...(await linkPatch()) },
+          { reviewed, ...(await linkPatch()) },
         );
+        if (!out.ok) return refusedAnswer(out.refusals, 'AGENT_REPORT_REFUSED');
         return {
           ok: true,
-          count: updated.length,
+          count: out.rows.length,
           scope: 'project',
           linkedIssueId: reviewed ? (input.linkedIssueId ?? null) : null,
         };
@@ -306,10 +312,12 @@ async function handleAgentReport(ctx: McpContext, args: unknown) {
 
       const patch = await linkPatch();
 
-      const [updated] = await stampReviewed(
+      const out = await stampReviewed(
         [eq(agentReports.id, input.reportId), eq(agentReports.projectId, projectId)],
-        { reviewedAt: reviewed ? new Date() : null, ...patch },
+        { reviewed, ...patch },
       );
+      if (!out.ok) return refusedAnswer(out.refusals, 'AGENT_REPORT_REFUSED');
+      const [updated] = out.rows;
 
       if (!updated) throw new Error('NOT_FOUND: agent report not found in this project');
       return {

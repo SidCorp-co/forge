@@ -49,7 +49,7 @@ export function RequirementPeek({
           />
           {banner ? <RequirementBanner standing={s} className="px-[18px]" /> : null}
           <div className="px-[18px] pb-4 pt-4">
-            <RequirementFacts d={d} projectId={projectId} slug={slug} />
+            <RequirementFacts d={d} slug={slug} />
           </div>
         </>
       )}

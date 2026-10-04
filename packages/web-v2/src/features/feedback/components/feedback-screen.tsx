@@ -5,7 +5,7 @@
 // whose turn it is or by what each item is about. Whose turn comes from core's read model
 // (`feedback/read.ts`); the URL carries the view (`?group=…&q=…&peek=FB-n`).
 
-import { FEEDBACK_ATTENTION, FEEDBACK_ATTENTION_LABELS, FEEDBACK_KINDS, FEEDBACK_PHASE_TONES, FEEDBACK_SEVERITIES, FEEDBACK_TARGET_TYPES } from "@forge/contracts/feedback";
+import { FEEDBACK_ATTENTION, FEEDBACK_ATTENTION_LABELS, FEEDBACK_PHASE_TONES, } from "@forge/contracts/feedback";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import {
@@ -14,20 +14,16 @@ import {
   EmptyState,
   enumLabel,
   ErrorState,
-  Field,
   GroupedList,
-  Input,
   ListSearch,
   LEGEND,
   type ListGroup,
   type ListRowView,
-  NativeSelect,
   PageTitle,
   ProjectLoader,
   rememberListOrigin,
   StatusBadge,
   statusReading,
-  Textarea,
   TopBarActions,
   useGroupFold,
   usePeek,
@@ -41,10 +37,10 @@ import {
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { formatAge, formatStamp } from "@/lib/utils/format";
-import { useCreateFeedback, useFeedbackList } from "../hooks";
+import { useFeedbackList } from "../hooks";
 import { FEEDBACK_LIST, feedbackHref } from "../routes";
-import type { CreateFeedbackRequest, FeedbackKind, FeedbackSeverity, FeedbackSummary, FeedbackTargetType } from "../types";
-import { RefusalLine } from "./feedback-actions";
+import type { FeedbackSummary } from "../types";
+import { FeedbackForm } from "./feedback-form";
 import { FeedbackPeek } from "./feedback-peek";
 
 const FUNNEL = ["new", "triaged", "planned", "resolved", "verified"] as const;
@@ -123,75 +119,6 @@ const rowOf =
     dim: r.attention === "done",
   });
 
-function CreateForm({ projectId, onDone }: { projectId: string; onDone: (key: string) => void }) {
-  const create = useCreateFeedback(projectId);
-  const [kind, setKind] = useState<FeedbackKind>("bug");
-  const [severity, setSeverity] = useState<FeedbackSeverity>("medium");
-  const [targetType, setTargetType] = useState<FeedbackTargetType>("requirement");
-  const [target, setTarget] = useState("");
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
-  return (
-    <form
-      className="grid max-w-2xl gap-3 bg-surface px-4 py-4 sm:px-7"
-      data-testid="feedback-create"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const request: CreateFeedbackRequest = {
-          kind,
-          severity,
-          title: title.trim(),
-          ...(body.trim() ? { body } : {}),
-          [targetType]: target.trim(),
-        };
-        create.mutate(request, { onSuccess: (r) => onDone(r.feedback.key) });
-      }}
-    >
-      <Field label="Title" required>
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
-      </Field>
-      <div className="grid gap-3 sm:grid-cols-[10rem_10rem_minmax(0,1fr)]">
-        <Field label="Kind">
-          <NativeSelect
-            value={kind}
-            onChange={(e) => setKind(e.target.value as FeedbackKind)}
-            options={FEEDBACK_KINDS.filter((k) => k !== "contract_change").map((k) => ({ value: k, label: enumLabel("feedbackKind", k) }))}
-          />
-        </Field>
-        <Field label="Severity">
-          <NativeSelect
-            value={severity}
-            onChange={(e) => setSeverity(e.target.value as FeedbackSeverity)}
-            options={FEEDBACK_SEVERITIES.map((v) => ({ value: v, label: statusReading("severity", v).label }))}
-          />
-        </Field>
-        <Field label="About" hint="REQ-3, ISS-12, a release version, a workflow flow, or a screen name">
-          <span className="flex gap-2">
-            <NativeSelect
-              value={targetType}
-              onChange={(e) => setTargetType(e.target.value as FeedbackTargetType)}
-              options={FEEDBACK_TARGET_TYPES.map((t) => ({ value: t, label: enumLabel("feedbackTarget", t) }))}
-            />
-            <Input value={target} onChange={(e) => setTarget(e.target.value)} />
-          </span>
-        </Field>
-      </div>
-      <Field label="What happened" hint="On a sensitive project personal data is scrubbed when it is saved">
-        <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} />
-      </Field>
-      <RefusalLine error={create.error} />
-      <div className="flex gap-2">
-        <Button type="submit" variant="primary" size="sm" loading={create.isPending} disabled={!title.trim() || !target.trim()}>
-          Send feedback
-        </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={() => onDone("")}>
-          Cancel
-        </Button>
-      </div>
-    </form>
-  );
-}
-
 export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: string }) {
   const q = useFeedbackList(projectId);
   const router = useRouter();
@@ -251,7 +178,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
     <div className="grid min-h-full content-start bg-app" data-testid="feedback-screen">
       {title}
       {creating ? (
-        <CreateForm
+        <FeedbackForm
           projectId={projectId}
           onDone={(key) => {
             setCreating(false);
