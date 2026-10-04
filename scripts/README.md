@@ -15,8 +15,8 @@ and `runner-platforms` (the runner's macOS and Windows legs) run on every push t
 nightly, never on a pull request, and sit outside `ci-passed`'s `needs`. A red there is fixed forward
 by whichever run lands next. The owner ruled it for forge-dev while it is a beta with no production;
 `.forge/conformance.json` `$postMerge` names the four, what the move costs and what ends it, and
-conformance-audit R12 fails on a job that is in neither list or in both. So the `flows` and
-`selection` rows below measure after the merge, not before it. The runner's trade is narrower: its
+conformance-audit R12 fails on a job that is in neither list or in both. So the `selection` row
+below measures after the merge, not before it. The runner's trade is narrower: its
 compile and lint errors for all three targets still gate the pull request, because the ubuntu
 `runner` job clippies `x86_64-pc-windows-gnu` and `x86_64-apple-darwin` too — the class of #816, an
 unused import behind `cfg(windows)`. Only runtime differences — CRLF, path separators, temp-dir
@@ -40,7 +40,7 @@ a sibling that stopped blocking, which is the whole failure mode here. `form` is
 `check-lint-budget` for `web-v2` and `core` · a bare `biome check scripts` for the checkers themselves ·
 `check-provider-literals` for where an integration provider may be named · `check-integration-declarations`
 for whether each provider declares the fields the generic paths read),
-`behaviour` three times (reachability · signal · flow coverage) and `knowledge` six (honest
+`behaviour` twice (reachability · signal) and `knowledge` six (honest
 costs · the mode-qualification of injected docs · the PAT permission surface · whether one question
 in the source has more than one answer · whether a document's citations of this repo's own files
 are still true · whether the published API and MCP contracts are what the code serves).
@@ -69,7 +69,6 @@ passed, because the external record of what shipped belonged to none of them.
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
 | selection | `check-whole-tree-gates` — `whole-tree`, after the merge | whether a test whose input is the whole repository runs on every change: it runs every test carrying `@gate-input whole-tree` under the vitest config that collects it, refuses a declared file that ran no case or failed to load, and refuses an undeclared test that builds a path to the root and lists a directory | which jobs `changes` selects for everything else, and what a declared test asserts |
 | behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
-| flows | `check-flow-coverage` — `core-integration`, after the merge | whether the integration suite ENTERS the function every declared `cm:flow` step sits on | whether the flow ran through it — a function-hit cannot tell; which flows exist, `checkers.flow-coverage.flows` declares |
 | language | `check-source-language` — `lang-check` | English-only source policy | everything else |
 | record | `check-release-record` — `lang-check` | whether `CHANGELOG.md` keeps the heading its five readers parse for, whether a published entry can leave without a declared reason, and what an added or corrected entry may spend | whether an entry is TRUE, or whether a change deserved one — that is review's |
 
@@ -131,17 +130,6 @@ expands it before the test runs and accepts only literals. The guard's own files
 outside its package is not this checker's, and neither is what no observer inside the test sees —
 native code, and a listing delegated to a process the test did not start. All three are recorded in
 `docs/proposals/a-test-reading-a-named-file-outside-its-package-is-not-selected-by-it.md`.
-
-### Why flows is where the two axes meet
-
-A `cm:flow` annotation says *which line is step 4 of the dispatch flow*; the integration suite's v8
-report says
-*which lines ran*. A step named in the map and executed by nothing is a step the next editor
-believes is defended. **A step reached only by unit tests does not count** — with 974 `vi.mock`
-calls in `packages/core`, a unit test can run a step's function with every neighbour stubbed, which
-proves the function runs, not that the flow connects. Nothing is self-reported: a
-`// covers dispatch/tick` comment in a test file would be the claim-instead-of-measurement the
-manifest exists to catch.
 
 ### Why lint debt and size are their own rows
 
@@ -1081,58 +1069,6 @@ on `packages/core`. Locally they need `turbo.json`'s `test.inputs`: without
 `$TURBO_ROOT$/scripts/**` a scripts-only change is outside `packages/core`, so `pnpm test` replays
 a cached log and reports green over tests it never ran. Measured 2026-08-30 on the same touched
 tree: cache HIT without that input, cache MISS with it.
-
-## check-flow-coverage.mjs — every declared flow step must be walked
-
-The join between the knowledge axis and the behaviour axis. A `cm:flow` annotation says *"this line
-is step 4 of the dispatch flow"*; a v8 coverage report says which lines a test executed. A step named in the map
-and executed by nothing is a step the next editor believes is defended.
-
-It is measured, never declared — a `// covers dispatch/tick` comment in a test file would be exactly
-the claim-instead-of-measurement that `conformance-status.mjs` exists to catch.
-
-**What the evidence is, exactly.** `f` — istanbul's per-function invocation count. A step counts
-as reached when the authoritative suite *entered* the function the annotation sits on, whatever
-that call then did. It is NOT proof the flow ran through the step, and the report says so in those
-words rather than calling it end-to-end (ISS-955: the summary used to read `N settled end-to-end`
-and each row `e2e`, which readers took for "the flow ran"). Marks are `fn:e2e` / `fn:unit` / `--`.
-
-The stronger reading — whether the annotated *statement* itself executed (`s`) — is measured on
-every run and printed as an advisory count, because moving the gate onto it re-opens every settled
-step at once and that is a decision about the gate. **Measured 2026-09-07 on a green 129-file
-integration suite: 0 of 7 reached steps fail the statement rule.** So the level is not what was
-wrong; `release/deploy`, the step that motivated ISS-955, has `fn=3 stmt=3` — the statement just
-below its annotation is the early return, which runs. Statement-level evidence would have caught
-nothing here.
-
-**Authoritative vs not.** A step reached only by unit tests is printed as `fn:unit` and does **not**
-count. With 974 `vi.mock` calls in `packages/core`, a unit test can execute a step's function with
-every neighbour stubbed out — that proves the function runs, not that the flow connects. Only
-sources marked `authoritative` in `.forge/conformance.json` (today: the integration suite) settle a
-step.
-
-The step list and the step **count** both come from one `git grep -n -I -- cm:flow` over the
-checkout (`check-flow-coverage.mjs:stepSites`). There is no second source, and so no
-disagreement to detect — what `.forge/conformance.json` declares for a flow is a name and a
-description, never a count. This paragraph claimed the count came from `cm flow <name>` and that a
-disagreement between the two exits `2`, which described a cross-check the file does not perform.
-Deleting the last annotation of a declared flow, or declaring a flow nobody annotated, does exit
-`2` — never `0`.
-
-```bash
-pnpm --filter @forge/core test:integration:coverage   # produces the authoritative report
-pnpm --filter @forge/core test:coverage               # optional, adds the UNIT column
-node scripts/check-flow-coverage.mjs --all
-```
-
-`--require-sources` (CI) turns a missing report from a skip into a failure. `pnpm verify` skips this
-check locally when no report is on disk; that skip is honest only because `core-integration` runs it
-with `--require-sources` — after the merge since ISS-1370, so a flow a change stops entering is
-found on `main` rather than on its pull request. It is the repo's only remaining `skipIf`, and it declares that step as its
-`coveredBy`, so the claim is read off `ci.yml` at startup rather than trusted.
-
-Uncovered steps freeze into `.forge/flow-coverage-baseline.json` via `--update-baseline`, so
-declaring a flow is never punished — the debt just shows up in the diff. Today the baseline is empty.
 
 ## conformance-audit.mjs — the only check whose subject is the setup
 

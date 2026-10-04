@@ -13,11 +13,11 @@ import {
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
-import { embeddingsConfigured, embedWithModel } from '../embeddings/index.js';
 import {
   EMBEDDING_PROVIDER_NOT_CONFIGURED,
   writeItemEmbedding,
 } from '../embeddings/item-writer.js';
+import { embeddingsConfigured, embedWithModel } from '../integrations/embeddings/index.js';
 import { dataPolicyOf, type EgressSurface, egressAt, egressText } from '../lib/data-egress.js';
 import { logger } from '../logger.js';
 import { requirementKey } from './read.js';
@@ -127,7 +127,10 @@ export async function similarRequirements(
   if (!embeddingsConfigured()) {
     return { status: 'provider_not_configured', message: EMBEDDING_PROVIDER_NOT_CONFIGURED };
   }
-  const { vector, model } = await embedWithModel(egress.text);
+  const { vector, model } = await embedWithModel(
+    { surface: querySurface, level, what: 'the text to compare' },
+    egress.text,
+  );
   const distance = cosineDistance(itemEmbeddings.embedding, vector);
   const rows = await db
     .select({

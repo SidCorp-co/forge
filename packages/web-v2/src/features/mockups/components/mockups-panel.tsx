@@ -32,6 +32,14 @@ function Preview({ m }: { m: MockupView }) {
     if (!q.data || m.kind === "image" || m.kind === "sketch") return;
     q.data.text().then(setText);
   }, [q.data, m.kind]);
+  const parsed = useMemo(() => {
+    if (m.kind !== "wireframe" || text === null) return null;
+    try {
+      return parseWireframe(JSON.parse(text));
+    } catch {
+      return null;
+    }
+  }, [m.kind, text]);
   if (!open) {
     return (
       <button type="button" className="w-fit text-13 font-medium text-accent-text hover:underline" onClick={() => setOpen(true)}>
@@ -47,13 +55,6 @@ function Preview({ m }: { m: MockupView }) {
   }
   if (text === null) return <p className="text-13 text-muted">Loading…</p>;
   if (m.kind === "wireframe") {
-    const parsed = (() => {
-      try {
-        return parseWireframe(JSON.parse(text));
-      } catch {
-        return null;
-      }
-    })();
     if (!parsed?.ok) return <p className="text-13 text-muted">The board could not be read as wireframe-v1.</p>;
     return (
       <div className="h-[420px] border border-line-subtle" data-testid="mockup-board">

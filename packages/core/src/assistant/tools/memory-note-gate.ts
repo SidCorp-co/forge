@@ -1,6 +1,6 @@
+import type { ChatMessage } from '../../integrations/llm/types.js';
 import type { CallToolResult } from '../../mcp/tool-result.js';
 import { NEAR_DUPLICATE_THRESHOLD } from '../../memory/thresholds.js';
-import type { ChatMessage } from '../providers/types.js';
 import type { PreCall } from '../run-turn-core.js';
 import { toolError } from './mcp-adapter.js';
 
