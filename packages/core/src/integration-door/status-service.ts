@@ -13,8 +13,7 @@ import {
   toIso,
 } from '../integrations/index.js';
 import { hostOfRepository } from '../integrations/source-host/index.js';
-import { readDeployMap } from '../project-config/release-path.js';
-import { readDeclaredSource, webUrlOf } from '../project-config/source.js';
+import { readDeclaredSource, readDeployMap, webUrlOf } from '../project-config/index.js';
 
 type CardStatus =
   | 'connected'

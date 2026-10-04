@@ -6,7 +6,7 @@ import type {
   ReviewEvent,
   SubmittedReview,
   WrittenComment,
-} from '../source-host/types.js';
+} from '../source-host/index.js';
 import type { GitHubAgentClient } from './agent-client.js';
 import { GitHubAgentCallError } from './agent-client.js';
 

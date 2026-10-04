@@ -12,7 +12,7 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { integrationBindings } from '../../db/schema.js';
 import { repoPullRequests } from '../../db/schema-repo-projection.js';
-import { readInboundDoorTraffic } from '../inbound-door.js';
+import { readInboundDoorTraffic } from '../index.js';
 
 /** How many inbound deliveries have come through one binding's door, and when the last one did. */
 export interface InboundDeliveryReport {

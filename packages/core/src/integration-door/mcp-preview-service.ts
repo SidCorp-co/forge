@@ -12,7 +12,7 @@ import {
   mcpServerNameFor,
   toIso,
 } from '../integrations/index.js';
-import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
+import { resolveSessionMcpServers } from '../jobs/index.js';
 import { refuser } from '../lib/refusal.js';
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');

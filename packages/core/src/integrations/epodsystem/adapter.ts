@@ -1,11 +1,12 @@
 import { logger } from '../../observability/logger.js';
-import { isPreviousCredentialValid } from '../rotation.js';
-import { findConnectionById, updateConnection } from '../store.js';
 import {
   declareIntegration,
+  findConnectionById,
   type HealthCheckResult,
   type IntegrationAdapterMethods,
-} from '../types.js';
+  isPreviousCredentialValid,
+  updateConnection,
+} from '../index.js';
 import { epodsystemGraphqlBase } from './endpoints.js';
 import { buildEpodsystemMcpEntry } from './resolver.js';
 import {

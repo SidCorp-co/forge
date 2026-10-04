@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../release-channel-schema.js';
+import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../index.js';
 
 export const rocketchatConfigBase = z.object({
   serverUrl: z.string().url().max(500),

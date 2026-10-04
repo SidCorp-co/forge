@@ -9,13 +9,14 @@
  */
 
 import { logger } from '../../observability/logger.js';
-import { isPreviousCredentialValid } from '../rotation.js';
-import { findConnectionById, updateConnection } from '../store.js';
 import {
   declareIntegration,
+  findConnectionById,
   type HealthCheckResult,
   type IntegrationAdapterMethods,
-} from '../types.js';
+  isPreviousCredentialValid,
+  updateConnection,
+} from '../index.js';
 import { googleAccessToken, parseServiceAccountKey } from './auth.js';
 import { getSpreadsheet } from './client.js';
 import {

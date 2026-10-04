@@ -315,7 +315,7 @@
     },
     "integration-declarations": {
       "$comment": "ISS-1071 \u2014 the registry is only a single door while every declaration behind it answers the questions the generic paths ask. A missing field does not fail to compile once a declaration reaches the registry through a widened type, and the reader then sees a provider that is inert rather than one that did not answer; five of seven adapters reached the old registry through `as any`. This walks the LIVE registry rather than the source, so the thing measured is what the process would hold at boot. `entrypoint` is imported under tsx with a synthetic env; its absence is exit 2, never a pass over an empty registry.",
-      "entrypoint": "packages/core/src/integrations/register-all.ts",
+      "entrypoint": "packages/core/src/integration-registry.ts",
       "registerFn": "registerAllIntegrations"
     },
     "lint-budget": {

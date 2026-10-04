@@ -3,8 +3,8 @@ import type {
   DeploymentRecord,
   DeploymentStatus,
   TargetedDeployAdapter,
-} from '../deploy/records.js';
-import type { AdapterContext } from '../types.js';
+} from '../deploy/index.js';
+import type { AdapterContext } from '../index.js';
 import type { CoolifyClient } from './client.js';
 import { buildClient } from './log-fetch.js';
 import type { CoolifyConfig, CoolifyDeploymentResponse, CoolifySecrets } from './types.js';
