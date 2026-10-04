@@ -76,15 +76,15 @@ The choices inside that, and why:
   than mapped, because a client that has to read four shapes reads none of them reliably.
 - **Permission is ADR 0007's**, not restated here: one `can()` replaces the agency rule table.
 
-**The rules are held by a script.** It ships without unit tests: the owner removed the test suites
-on dev on 2026-10-04 ("build trước đi đã test gọi QA test sau"), and QA verifies later.
-`scripts/check-module-shape.mjs` reads the kind declaration and archmap's import graph
+**The rules are measured by a script, on demand.** `scripts/check-module-shape.mjs` reads the kind declaration and archmap's import graph
 (`archmap graph --json`, so one resolver answers for both checks) and reports per module: kind,
 direction, public face, cycles, table writers, database calls in routes, refusal shape and status
-writes outside the kernel transition. It runs in `pnpm verify` **report-only**,
-its first reading frozen in `.forge/module-shape-baseline.json` under a priced amnesty in
-`.forge/conformance.json` that ISS-120 ends; `--markers` writes its findings as the Wrong markers of
-the reconciliation checklist. A rule flips to a gate once it reads zero across core.
+writes outside the kernel transition; `--markers` writes its findings as the Wrong markers of the
+reconciliation checklist, a JSON document the REQ-17/18 observation store can import. The owner
+ruled on 2026-10-04 that dev is code only and QA comes later ("build trước đi đã test gọi QA test
+sau"), so the orchestrator or QA runs it; it is wired into neither `pnpm verify` nor a hook, ships
+without unit tests, and the only check before a push on dev is `tsc` on the touched packages.
+Whether a rule later becomes a gate is a QA-phase decision.
 
 Two rules have no script yet: read models (web derivations) and permission. They are judged by the
 reconciliation decision on each module until a check exists.
@@ -107,5 +107,5 @@ reconciliation decision on each module until a check exists.
   mounting moves to the door registries and `refused` moves into platform beside the envelope.
 - **Two adapter shapes remain legal** (registry-bound and deployment-bound, ADR 0006); a caller
   imports the port's `index.ts` either way.
-- **The cost** is in pattern v2's Honest costs: most of core fails on day one, and until each rule
-  gates, a change can break it and stay green.
+- **The cost** is in pattern v2's Honest costs: most of core fails on day one, and because the
+  checker runs on demand, a change can break a rule and land until someone next runs it.

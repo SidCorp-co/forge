@@ -16,6 +16,20 @@ that is badly off is deleted and rebuilt to its design, not patched.
 - [x] Requirements (REQ-n with BCs), approved workflow designs and patterns
       (`docs/conventions/domain-entities.md`, the ADRs, ports and adapters) are named as the root.
       See [Phase 0 — the root list](#phase-0--the-root-list).
+- [x] **Patterns are a root, as pattern v2** (ISS-160): `docs/conventions/domain-entities.md` is
+      the one build pattern for every core module, REQ-12 revision 3 makes each rule a business
+      criterion (BC-8 widened; BC-11 module kinds, BC-12 dependency direction, BC-13 public face,
+      BC-14 table ownership, BC-15 no queries in routes, BC-16 one refusal body, BC-17 status
+      machines as data, BC-18 one durable outbox, BC-19 read models, BC-20 permission, BC-21 doors,
+      BC-22 adapters), and ADR 0008 (module kinds and dependency direction) records why, beside
+      ADR 0006 (adapters) and ADR 0007 (permission). A module that breaks a rule is a **Wrong**
+      marker, carried like a non-conforming workflow node; `node scripts/check-module-shape.mjs
+      --markers <file>` writes those markers as JSON in the shape the pilot's marks file uses
+      (`nodes.<module>.{kind, mark, aspects, rewriteDue, evidence}`), for the REQ-17/18 observation
+      store to import. It is run on demand by the orchestrator or QA. See
+      [Phase 0 — pattern v2 order](#phase-0--pattern-v2-order).
+- [ ] A component-level design of core draws the six kinds, so module boundaries have a design
+      root, and system-context's moved evidence and table count are fixed (ISS-171).
 - [x] Every workflow names the requirements it serves: every approved design links at least one
       requirement in the product (`requirement_workflows`), read on both the requirement and the
       design. The four proposed onboarding designs link when they are approved.
@@ -60,7 +74,8 @@ that is badly off is deleted and rebuilt to its design, not patched.
 Read from project forge on dev, 2026-10-04. A link is a `requirement_workflows` row
 (`POST /api/projects/:id/requirements/:req/workflows`); the requirement detail lists its designs and
 the design reads them back as `requirements`. Every row also answers to
-`docs/conventions/domain-entities.md` (REQ-12 BC-8), so it is not repeated per row.
+`docs/conventions/domain-entities.md`, pattern v2 (REQ-12 BC-8 and BC-11 to BC-22), so it is not
+repeated per row.
 
 | Requirement | Designs it serves (approved revision) | Patterns beyond domain-entities |
 |---|---|---|
@@ -75,7 +90,7 @@ the design reads them back as `requirements`. Every row also answers to
 | REQ-9 cross-project contract (draft) | none | no BCs yet |
 | REQ-10 onboarding | project-onboarding r1 | |
 | REQ-11 Development screens | requirement-to-delivery r2, issue-lifecycle r3 | ADR 0001–0005 (Releases) |
-| REQ-12 one set of conventions | none: it is the pattern root itself | domain-entities.md |
+| REQ-12 one set of conventions (r3) | none: it is the pattern root itself | domain-entities.md (pattern v2), ADR 0006, ADR 0007, ADR 0008 |
 | REQ-13 project's own rules | project-onboarding r1 | |
 | REQ-14 Development to prototype (draft) | none | no BCs yet |
 | REQ-15 Agents / Runs | agent-run-standing r1 | |
@@ -83,8 +98,8 @@ the design reads them back as `requirements`. Every row also answers to
 | REQ-17 step health (draft) | workflow-step-health (proposed, no approved revision) | |
 
 Links added in this pass: REQ-1, REQ-5, REQ-6, REQ-7, REQ-8 to requirement-to-delivery; REQ-4,
-REQ-6, REQ-11 to issue-lifecycle; REQ-8 to feedback-triage. The ports-and-adapters ADR is not on dev
-yet; it joins the pattern column when it lands.
+REQ-6, REQ-11 to issue-lifecycle; REQ-8 to feedback-triage. The ports-and-adapters ADR (0006) has
+landed and sits in REQ-12's pattern column.
 
 **Traceability gaps, owed to Phase 1:**
 
@@ -101,6 +116,82 @@ yet; it joins the pattern column when it lands.
    issue-lifecycle r3 in Phase 3, so every issue planned against the r2 baseline reads changed
    since plan until it is re-planned.
 6. REQ-9, REQ-14 and REQ-17 are drafts with no BCs.
+
+## Phase 0 — pattern v2 order
+
+The review (2026-10-04) read core against the pattern and found one import cycle over most of it,
+tables with no owner, and the same fact computed in several places. The owner froze features the
+same day so the kernel goes first. Each rebuild is a draft issue blocked by ISS-160; the edges
+below hold the order, and each kernel-first issue says in its description which of the others it
+may run beside.
+
+| Order | Issue | Rule | Runs beside |
+|---|---|---|---|
+| 1 | ISS-159 permission, one `can()` (already running) | BC-20 | table writers, read models |
+| 2 | ISS-161 issue, job, run and session machines as data under one kernel transition; the schema imports no domain | BC-17, BC-12 | nothing: runs alone, blocks 3–5 |
+| 3 | ISS-162 one refusal body, codes in contracts | BC-16 | ISS-163, ISS-164 |
+| 3 | ISS-163 one owner per table, comments first; the release hold a typed record | BC-14 | ISS-162, ISS-164 |
+| 3 | ISS-164 one Standing contract, needs-you in core, web derives nothing | BC-19 | ISS-162, ISS-163 |
+| 4 | ISS-166 one durable outbox, dead topics deleted | BC-18 | — |
+| 5 | ISS-167 adapters import no domain; ADR 0006 amnesties closed | BC-22 | — |
+| 5 | ISS-168 one route-mount registry, tools in their modules | BC-21 | — |
+| 5 | ISS-169 routes hold no queries; REST issue list on the list service | BC-15 | — |
+| — | ISS-170 one cron (agents into schedules) | BC-14 | any |
+| — | ISS-171 component design of core | BC-11, BC-12 | any |
+| QA | ISS-165 one "passing" predicate (draft until QA) | BC-19 | — |
+
+Carried by other issues, not filed again: the job-context loader from the baseline pins (ISS-150,
+chain A `build`), changed-since-plan computed twice (ISS-152, chain A `impact`), the system graph in
+web (ISS-153), the 17-to-10 legacy status map and the MCP tools the CLI or API replace (separate runs
+under the owner's 2026-10-04 decisions), and the forge-plugin side of the ten-status model
+(reported there).
+
+### Pattern divergences carried from pattern v1
+
+Pattern v1 kept these by hand. Pattern v2 states rules only, so each moves here until a rebuild or
+a decision clears it; "Absorbed by" names the issue whose rule covers it, else the owner v1 named.
+
+| # | Divergence | Absorbed by |
+|---|---|---|
+| 2 | `packages/core/src/workflows/service.ts:assertWriter` throws a 403 instead of returning `WORKFLOW_WRITER_NOT_PROJECT` | ISS-162 |
+| 3 | Record events refuse with a thrown 422 and criteria and verdicts with a thrown 400 or 409, each in the error handler's shape, not the envelope (`packages/core/src/issues/record-events/routes.ts:refusalHttp`, `packages/core/src/issues/criteria/store.ts:CriteriaRefused`, `:VerdictRefused`); `forge_criteria` takes a non-strict input, and `forge_issue_events` throws text | ISS-162 |
+| 4 | Requirement codes, statuses and views are declared in core (`packages/core/src/requirements/rules.ts:RequirementRefusalCode`, `packages/core/src/db/schema-requirements.ts:REVISION_STATES`) and redeclared in `packages/web-v2/src/features/requirements/types.ts`; the requirement spec and criterion schemas live in `packages/contracts/src/suggestions.ts` instead of a requirements module of its own in contracts; route bodies are built inline (`packages/core/src/requirements/routes.ts:revisionFields`) | ISS-162 (codes) |
+| 5 | Criteria verdict values are declared in core and redeclared in web (`packages/core/src/db/schema-issue-criteria.ts:verdictValues`). Design statuses moved to `packages/contracts/src/design-status.ts:DESIGN_STATUSES` and agent-report kinds to `packages/contracts/src/agent-reports.ts:AGENT_REPORT_KINDS` (ISS-93), which core re-exports | review |
+| 6 | Record-event kinds are declared twice, held by `packages/core/src/issues/record-events/kinds.test.ts` | review |
+| 7 | Workflow design state is one head status, not per-revision `REVISION_STATES`; a revision's state is derived on read (`packages/core/src/workflows/design-standing.ts:revisionStateOf`), never stored; `decided_by_user` / `proposed_by_user` naming | review (migration) |
+| 8 | `contract_versions.decided_as` says `person` (and carries `before-approval`); `actor_agency` and `author_agency` have no CHECK | review (migration) |
+| 9 | Criteria and verdict rows are insert-only by comment, with no trigger | review (migration) |
+| 10 | A re-proposal of a returned requirement revision overwrites `proposed_at` / `proposed_by`, with no row per proposal; returns have their own rows (walkthrough D6) | review |
+| 11 | Refusals name another requirement by uuid (`REQUIREMENT_ISSUE_LINKED_ELSEWHERE`, walkthrough D10) | ISS-162 |
+| 12 | Who-may-act codes predating the suffix: `WORKFLOW_DESIGN_APPROVER_NOT_*`, `CONTRACT_APPROVER_NOT_*`, `CONTRACT_BREAKING_NEEDS_PERSON`, `WORKFLOW_WRITER_NOT_PROJECT`, `LINK_WRITER_NOT_CONSUMER` | ISS-159 |
+| 14 | Agency checks older than the redesign: `packages/core/src/issues/transition-guards.ts`, `packages/core/src/issues/merge-marker.ts`, `packages/core/src/release-batch/approvals.ts`, `packages/core/src/issues/release-gate-hold.ts`, `packages/core/src/projects/master-charter-routes.ts` | ISS-159 |
+| 15 | Body validation outside `strictBody`: criteria and record events use `zValidator` + `flattenError` with no shape hint; agent-report triage bodies take `strictBody` since ISS-113 | review |
+| 16 | `forge_agent_report` is a singular name; its `submit` inserts through `packages/core/src/agent-reports/service.ts:insertReport` but checks its input inline, and the REST door has no submit | ISS-168 |
+| 17 | The ISS-54/55/56 `cm:hack` annotations carry no `ISS-n until:` (`packages/core/src/issues/legacy-status.ts`, `packages/core/src/issues/criteria/event-verdicts.ts`, `packages/core/src/issues/record-events/mirror.ts`, `packages/core/src/issues/record-events/history.ts:legacyCommentRecords`, `packages/core/src/comments/tree.ts:recordOf`, `packages/core/src/agent-reports/routes.ts:feedbackReportsAliasRoutes`, `packages/core/src/mcp/tools/forge-agent-report.ts:forgeFeedbackAliasTool`) | review |
+| 20 | The BA door posts a questionnaire through its bound tool (`packages/core/src/assistant/tools/ba-tools.ts`, `ba_send_questionnaire`) without the `PROJECT_AGENT_WRITE` rule REST and MCP posting take (`packages/core/src/questionnaires/rules.ts:posterRefusal`); the room binding stands in for it | ISS-159 |
+| 21 | FB-n's MCP tool is `forge_feedback_items`, because `forge_feedback` is still the agent-reports alias; the `feedback:*` token grant also still means agent reports, so FB-n routes ride `projects:*` (`cm:hack ISS-59` in `packages/core/src/auth/pat-permissions.ts`) | ISS-168 |
+| 22 | Feedback's target arc holds requirement, issue, release and workflow; a screen is `where_seen` text with no key, as the approved design has it, not the arc member REQ-7 BC-1 lists. A release is a `pipeline_runs` row | review |
+| 23 | Feedback's stored statuses are new, triaged, reopened, verified, declined; `planned` and `resolved` are derived on read from what the route carries (`packages/core/src/feedback/rules.ts:phaseOf`) | ISS-164 (a derived phase is a read-model value) |
+| 24 | The `answer` route stores its text on `feedback.answer`, not a decision comment; comments gained the feedback arc in ISS-83, and nothing moved the answer onto one | review |
+| 25 | Feedback gaps the POC left: an agent's clarification answer is not turned into a triage suggestion; a high or critical item does not wake the master; deleting a reporter's data does not reach text already copied into a filed draft issue; a person on the MCP door is treated as provider-bound; the scrubber recognises an unlabelled name only when it opens with a common Vietnamese surname (`packages/observability/src/personal-data.ts:scrubPersonalData` names the trade-off), so a name with a rarer surname still passes; a clarification answer (written by the questions module) and a triage suggestion's note are stored unscrubbed | review |
+| 26 | The conversation detail carries the room's questionnaire batches, and the list each room's `kind` and `threadStatus` (`packages/core/src/assistant/conversation-routes.ts`): a conversation route reading the onboarding and questionnaire rows instead of the client reading `/questionnaires/:bid` | review |
+| 27 | `onboardings.status` is set by each writer (start, post, submit, done), not derived on read from the batches and the job; the dashboard hint is derived (`packages/core/src/onboarding/read.ts:hintOf`) | ISS-161 |
+| 28 | `POST /api/projects/:id/onboarding/join` adds the caller to the onboarding room, which can turn a direct room into a group; no rule decides who may join beyond project access | ISS-159 |
+| 30 | Answering a questionnaire row through the questions route is refused `QUESTION_IN_QUESTIONNAIRE` as a thrown 409 in the questions slice's own shape (`packages/core/src/questions/write.ts:answerQuestion`), not the envelope | ISS-162 |
+| 31 | The data-flow guard reads the level itself (`packages/core/src/onboarding/read.ts:projectHoldsSensitiveData`) to decide whether a data-flow design is owed, which is not an egress decision | review |
+| 32 | `CONTRACT_PROVIDER_NOT_LIVE` answers in the release blockers' 409 shape (`packages/core/src/release-batch/blocker-errors.ts:releaseBlockerError`), not the envelope, as every release blocker does; and it refuses the whole release, the auto-release sweep included, not only the issue that waits | ISS-162 |
+| 33 | A contract wait is named by its uuid in refusals and routes, because a wait carries no key | review |
+| 34 | The admissible list holds a waiting issue by SQL (`packages/core/src/ecosystem/waits/gate.ts:waitUnsettledSql`) that mirrors `packages/core/src/ecosystem/waits/rules.ts:holdsDispatch`; only the predicate is unit-tested | ISS-164 |
+| 35 | A change request's channel decision document can still answer it in prose; only the draft requirement it landed as (`packages/core/src/ecosystem/requests/land.ts:landChangeRequestIn`) and the provider's approved versions gate anything | review (owner question) |
+| 36 | A provider's live version is derived, not recorded: its newest verified release identity matched to a contract measurement's commit (`packages/core/src/ecosystem/waits/live.ts:providerLiveVersion`). An uploaded version, an unprobed provider or a stale land reads as no version, so E4 refuses until the ecosystem sets `releases.providerLive` to `off` | review |
+| 37 | Comments (ISS-83): an issue decision stays prose, held only off issues by `comments_decision_fields_chk` (`cm:hack ISS-83` in `packages/core/src/db/schema.ts:comments`); the issue door keeps its untyped `comment.created` activity rows and writes no `comment_events`; `comments` has no `project_id` and no `author_agency` (the agency is read from the device or `users.kind`, as ISS-1137 decided); a comment on another entity is not screened by `packages/core/src/comments/screen.ts:screenAgentComment` and takes no mentions or attachments | ISS-163 |
+| 38 | REST and MCP answer different defaults: a REST read is full unless `?view=summary`, an MCP call a summary unless `view: 'full'`; REST writes take no view and answer the whole entity | ISS-168 |
+| 39 | The workflows list carries no `waitingOn`; only the design read does (`packages/core/src/workflows/design-standing.ts:designWaitingOn`, ISS-72) | ISS-164 |
+| 40 | `forge_issues`, `forge_feedback_items` and `forge_knowledge` take no `view`: their lists were already summaries and their writes answer one item, at most 3.5 KB as measured on dev on 2026-10-04. `forge_feedback_items` `propose_triage` answers the whole suggestion | ISS-168 |
+| 41 | A projection runs after the whole read: a write still reads the full detail (`packages/core/src/requirements/read.ts:detailOf`, `packages/core/src/workflows/design-service.ts:designView`) and the door drops most of it | review |
+| 42 | `forge_suggestions` has no `get`: a suggestion's payload is read by `list` with `view: 'full'`, narrowed by target | ISS-168 |
+| 43 | A master pass has no key: refusals name it by its verb and start time, and its history (`GET /api/projects/:id/masters/passes`, `forge_masters` `passes`) pages by `before`, the last start a page served (`packages/core/src/masters/read.ts:listMasterPasses`), not by a key | review |
+| 44 | Agent-report triage (ISS-113) keeps its outcome on the report row (`packages/core/src/db/schema-agent-reports.ts:agentReports`, triage columns): a reopen clears it and a later triage overwrites it, with no row per decision, so a re-triaged report loses who decided before; writes serialise on a row lock (`packages/core/src/agent-reports/service.ts:triageReports`), not an advisory lock; reports migrated by 0368 carry no `triaged_by` | ISS-116 |
 
 ## Phase 2 — pilot observation (requirement-to-delivery)
 
