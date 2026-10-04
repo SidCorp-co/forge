@@ -23,7 +23,7 @@ import {
 } from '../../lib/tool.js';
 import { requireCan } from '../../permissions/index.js';
 import { resolveEffectiveProjectId } from '../../projects/index.js';
-import { findLastOutbound } from '../deliveries.js';
+import { findLastOutbound } from '../index.js';
 import { requireCoolifyRun } from './access.js';
 import { CoolifyApiError } from './client.js';
 import {

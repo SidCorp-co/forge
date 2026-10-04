@@ -6,8 +6,15 @@ export { registerLiveReadingInvalidation } from './live-reading.js';
 export { masterCharterRoutes } from './master-charter-routes.js';
 export { memberRoutes } from './members-routes.js';
 export { resolveEffectiveProjectId, resolveProjectIdFromSlug } from './project-scope.js';
-export { projectRoutes } from './routes.js';
 export {
+  type CreateProjectInput,
+  createProjectSchema,
+  projectRoutes,
+  type UpdateProjectInput,
+  updateProjectSchema,
+} from './routes.js';
+export {
+  findProjectIdBySlug,
   findProjectOrgId,
   listVisibleProjectsWithRole,
   projectDocumentNames,

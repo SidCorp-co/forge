@@ -16,13 +16,13 @@ import {
   patEffectiveProjectIds,
   refusedAnswer,
 } from '../lib/tool.js';
+import { toolCallRefusal } from '../lib/tool-call-guard.js';
+import { assertToolDeclaresAccess } from '../lib/tool-grant.js';
+import { toToolCallContent } from '../lib/tool-result.js';
 import { resolveProjectIdFromSlug } from '../projects/index.js';
-import { resolveManagedMetaPrompts } from '../skills/effective.js';
+import { resolveManagedMetaPrompts } from '../skills/index.js';
 import { forgeMcpInstructions } from './instructions.js';
 import { MCP_TOOLS } from './registry.js';
-import { toolCallRefusal } from './tool-call-guard.js';
-import { assertToolDeclaresAccess } from './tool-grant.js';
-import { toToolCallContent } from './tool-result.js';
 
 function classifyError(err: unknown): { code: AuditResultCode; message: string } {
   const message = err instanceof Error ? err.message : String(err);

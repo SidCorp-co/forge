@@ -1,7 +1,7 @@
 import postgres from 'postgres';
-import { runCanonicalBackfillOnce } from './agent-sessions/backfill-canonical-transcripts.js';
+import { runCanonicalBackfillOnce } from './agent-sessions/index.js';
 import { env } from './config/env.js';
-import { runCriteriaBackfillOnce } from './issues/criteria/backfill.js';
+import { runCriteriaBackfillOnce } from './issues/index.js';
 import { logger } from './logger.js';
 
 /**

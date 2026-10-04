@@ -22,7 +22,7 @@ import {
 import { logger } from '../../observability/logger.js';
 import { requireCan } from '../../permissions/index.js';
 import { resolveEffectiveProjectId } from '../../projects/index.js';
-import { listIntegrations } from '../registry.js';
+import { listIntegrations } from '../index.js';
 import { SourceHostCallError, SourceHostInputRefusal, SourceHostUnavailable } from './errors.js';
 import { OpenedPullRequestIncomplete, projectOpenedPullRequest } from './opened-change-request.js';
 import { resolveSourceHost } from './resolve.js';

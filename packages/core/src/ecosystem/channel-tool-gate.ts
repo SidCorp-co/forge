@@ -2,7 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { RefusalError } from '../lib/refusal.js';
-import { answerAs } from '../questions/read.js';
+import { answerAs } from '../questions/index.js';
 import type { Writer } from './channel-author.js';
 import { readAs } from './channel-read.js';
 import { viewOf } from './channel-view.js';

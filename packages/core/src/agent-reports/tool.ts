@@ -16,7 +16,7 @@ import {
   agentReportTargets,
 } from '../db/schema.js';
 import { principalAgency } from '../issues/index.js';
-import { resolvePipelineContext } from '../jobs/active-job-context.js';
+import { resolvePipelineContext } from '../jobs/index.js';
 import { buildListEnvelope, overfetch } from '../lib/list-envelope.js';
 import {
   type ContextScopedMcpToolFactory,

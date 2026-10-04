@@ -24,7 +24,7 @@ enterHermeticEnv();
 
 const out = outDir(process.argv.slice(2));
 const { app } = await import('../index.js');
-const { mcpTools, toolListing } = await import('../mcp/server.js');
+const { mcpTools, toolListing } = await import('../mcp/index.js');
 const { buildApiContract, UNDECLARED_RESPONSE } = await import('./openapi.js');
 const { buildMcpContract } = await import('./mcp-tools.js');
 const { undeclaredSourceReads } = await import('./request-reads.js');

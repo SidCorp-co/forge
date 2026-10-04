@@ -4,7 +4,7 @@ import {
   CONTRACT_WAIT_LIMITS,
 } from '@forge/contracts/contract-waits';
 import { z } from 'zod';
-import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
+import { resolveIssueRouteRef } from '../issues/index.js';
 import { type McpContext, refusedAnswer } from '../lib/tool.js';
 import { requireCan } from '../permissions/index.js';
 import { listContractRequests } from './requests/read.js';

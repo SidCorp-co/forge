@@ -9,7 +9,7 @@
  */
 
 import { type ChatToolset, toolError } from '../assistant/tools/mcp-adapter.js';
-import type { CallToolResult } from '../mcp/tool-result.js';
+import type { CallToolResult } from '../lib/tool-result.js';
 import { RETRIEVAL_MAX_RESULTS, searchConversationTranscript } from './transcript-search.js';
 
 export const TRANSCRIPT_SEARCH_TOOL_NAME = 'conversation_transcript_search';
