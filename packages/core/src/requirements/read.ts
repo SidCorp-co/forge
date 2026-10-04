@@ -258,6 +258,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null, door: 
         providerProjectId: requirementBaselinePins.providerProjectId,
         contractSlug: requirementBaselinePins.contractSlug,
         contractVersion: requirementBaselinePins.contractVersion,
+        mockupId: requirementBaselinePins.mockupId,
       })
       .from(requirementBaselinePins)
       .leftJoin(projectWorkflows, eq(projectWorkflows.id, requirementBaselinePins.workflowId))
@@ -316,13 +317,18 @@ export async function detailOf(row: Row, viewer: RequirementActor | null, door: 
       pins: pins
         .filter((p) => p.revision === b.revision && p.baselineSeq === b.seq)
         .map((p) => ({
-          kind: p.workflowId ? ('workflow-design' as const) : ('contract-version' as const),
+          kind: p.workflowId
+            ? ('workflow-design' as const)
+            : p.mockupId
+              ? ('mockup' as const)
+              : ('contract-version' as const),
           workflowId: p.workflowId,
           flow: p.flow,
           designRevision: p.designRevision,
           providerProjectId: p.providerProjectId,
           contractSlug: p.contractSlug,
           contractVersion: p.contractVersion,
+          mockupId: p.mockupId,
         })),
     })),
     issues: linked.map((i) => ({
