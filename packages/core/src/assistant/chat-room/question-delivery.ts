@@ -246,7 +246,7 @@ async function noteFailure(
 /**
  * Deliver one owed round. Never throws — a failure is a record, not an exception.
  */
-export async function deliverOwedRound(
+async function deliverOwedRound(
   owed: OwedRound,
   now: Date = new Date(),
 ): Promise<'delivered' | 'failed' | 'undeliverable' | 'held'> {

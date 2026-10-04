@@ -1,12 +1,12 @@
 import { HTTPException } from 'hono/http-exception';
 
 /** The body every revisioned document write takes: the revision it was read at, and the whole document. */
-export type WriteEnvelope = { baseRevision: number | null; document: unknown };
+type WriteEnvelope = { baseRevision: number | null; document: unknown };
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
-export function parseWriteEnvelope(raw: unknown):
+function parseWriteEnvelope(raw: unknown):
   | { ok: true; value: WriteEnvelope }
   | {
       ok: false;

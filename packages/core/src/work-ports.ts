@@ -77,6 +77,7 @@ import {
   projectAdminUserIdsFor,
   resolveNotifications,
 } from './notifications/index.js';
+import { afterOnboardingSubmit, onboardingSubmittedIn } from './onboarding/index.js';
 import {
   closeOpenRunForIssue,
   getIssueContexts,
@@ -257,6 +258,8 @@ export function provideWorkPorts(): void {
     openOrExtendWindow,
     announceConversationChange: (conversationId, data) =>
       publishToConversationReaders(conversationId, { event: WEB_CONVERSATION_EVENT, data }),
+    onSubmittedIn: onboardingSubmittedIn,
+    afterSubmit: afterOnboardingSubmit,
   });
 
   provideQuestionPorts({

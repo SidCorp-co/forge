@@ -2,7 +2,7 @@
  * The shapes a Coolify connection and binding are allowed to hold.
  *
  * ISS-1071 moved them out of `provider-schemas.ts` and beside the provider's client, confirm and
- * health-gate modules, the way `google/schemas.ts` already sat. Nothing outside this directory
+ * health-gate modules. Nothing outside this directory
  * names `coolify` any more: the adapter's declaration carries these, and the generic create and
  * PATCH paths resolve them from the registry.
  */
@@ -25,7 +25,7 @@ const coolifyTargetSchema = z
     ...(t.healthUrl ? { healthUrl: t.healthUrl } : {}),
   }));
 
-export const COOLIFY_ROLLBACK_MODE = 'coolify-image' as const;
+const COOLIFY_ROLLBACK_MODE = 'coolify-image' as const;
 
 const COOLIFY_ROLLBACK_PROSE_REFUSAL =
   'rollback on a Coolify binding is an action, not a paragraph: Coolify exposes `GET /applications/{uuid}/rollback-images` and `POST /applications/{uuid}/rollback`, and Forge performs them. Send {"mode":"coolify-image"}. Free text is kept only for channels whose API cannot express a rollback (ISS-925).';

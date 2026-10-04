@@ -24,16 +24,6 @@ export function useCreateAgent(orgId: string | null) {
     onSuccess: () => qc.invalidateQueries({ queryKey: keys.list(orgId ?? "") }),
   });
 }
-
-export function useSetAgentProjects(orgId: string | null) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (args: { agentUserId: string; projectIds: string[] }) =>
-      agentAccountsApi.setProjects(orgId as string, args.agentUserId, args.projectIds),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.list(orgId ?? "") }),
-  });
-}
-
 export function useMintAgentCredential(orgId: string | null) {
   const qc = useQueryClient();
   return useMutation({

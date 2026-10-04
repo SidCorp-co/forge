@@ -27,11 +27,11 @@ import type {
 
 export const MAX_RETRIES = 2;
 
-export type ProviderOptions = Record<string, Record<string, JSONValue>>;
+type ProviderOptions = Record<string, Record<string, JSONValue>>;
 
 const DATA_URI = /^data:([^;,]+);base64,([\s\S]+)$/;
 
-export function flattenText(content: ChatMessage['content']): string {
+function flattenText(content: ChatMessage['content']): string {
   if (typeof content === 'string') return content;
   if (!content) return '';
   return content
@@ -70,7 +70,7 @@ function toolInput(argumentsJson: string): Record<string, unknown> {
   }
 }
 
-export interface MessageOptions {
+interface MessageOptions {
   /** Every system message joined into one leading system message carrying these options; otherwise each stays where it was. */
   hoistSystem?: { providerOptions?: ProviderOptions; extra?: string[] } | undefined;
   /** Drop assistant turns that come before the first user turn. */
@@ -180,7 +180,7 @@ export function badRequestBody(err: unknown): string | null {
 
 type CachedFromRaw = (raw: Record<string, unknown> | undefined) => number | undefined;
 
-export interface StreamBridge {
+interface StreamBridge {
   label: string;
   /** Opens one attempt; called again after `degrade` drops a field. */
   open: () => StreamTextResult<ToolSet, never, never>;

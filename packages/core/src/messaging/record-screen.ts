@@ -23,18 +23,6 @@ import {
 } from './verdict-contract.js';
 import { type DesignLookup, dbDesignLookup, verdictDesignRefusals } from './verdict-design.js';
 import { verdictIdentityRefusals } from './verdict-identity.js';
-
-/** The rules this module owns, for the document that has to name them all. */
-export const RECORD_RULE_IDS: readonly string[] = [
-  'field-budget',
-  'record-in-comment',
-  'record-fence-shape',
-  'verdict-identity',
-  'verdict-design',
-  'verdict-contract',
-  'verdict-evidence',
-];
-
 /** The guide that holds the whole table, named by every record-in-comment message. */
 export const RECORD_GUIDE_SLUG = 'records-and-comments';
 
@@ -44,19 +32,19 @@ export const RECORD_GUIDE_SLUG = 'records-and-comments';
  * `Map` because the kind is caller-supplied: `constructor` on an object literal answers off the
  * prototype instead of taking the unsupported-kind path.
  */
-export const RECORD_EVENTS_ROUTE = 'POST /api/issues/:id/events';
+const RECORD_EVENTS_ROUTE = 'POST /api/issues/:id/events';
 export const RECORD_DESTINATIONS: ReadonlyMap<string, string> = new Map(
   RECORD_EVENT_KINDS.map((kind) => [kind, RECORD_EVENTS_ROUTE]),
 );
 
 export const ISSUE_ASSERTION_ROUTE = 'POST /api/issues/:id/attributes';
 
-export function destinationFor(kind: string | null): string | null {
+function destinationFor(kind: string | null): string | null {
   return kind ? (RECORD_DESTINATIONS.get(kind) ?? null) : null;
 }
 
 /** One sentence, built once, served both as the refusal and as the warning, so the two cannot drift. */
-export function recordInCommentMessage(record: ForgeRecord): string {
+function recordInCommentMessage(record: ForgeRecord): string {
   const route = destinationFor(record.kind);
   const named = record.kind ? `a \`${record.kind}\` record` : 'a record';
   const where = route
@@ -126,7 +114,7 @@ function refusalFor(field: ForgeRecordField): MessageRefusal {
 }
 
 /** Every field of this record that is past the budget, in the order written. */
-export function budgetRefusals(record: ForgeRecord | null): MessageRefusal[] {
+function budgetRefusals(record: ForgeRecord | null): MessageRefusal[] {
   if (!record) return [];
   return record.fields.filter((f) => f.over > 0).map(refusalFor);
 }
@@ -172,20 +160,20 @@ export async function projectLens(projectId: string, executor?: Tx): Promise<Rec
 }
 
 /** The cell a lens names. The one place the two vocabularies meet. */
-export const audienceForLens = (lens: RecordLens): Audience =>
+const audienceForLens = (lens: RecordLens): Audience =>
   lens === 'technical' ? ROLE_TECHNICAL : ROLE_PRODUCT;
 
 /**
  * The same resolution the card is drawn under, as the audience a lead is read at.
  */
-export async function projectLeadAudience(projectId: string, executor?: Tx): Promise<Audience> {
+async function projectLeadAudience(projectId: string, executor?: Tx): Promise<Audience> {
   return audienceForLens(await projectLens(projectId, executor));
 }
 
 /**
  * The lead, screened alone, against the cell the project's lens names.
  */
-export function screenLead(lead: string, audience: Audience): MessageVerdict {
+function screenLead(lead: string, audience: Audience): MessageVerdict {
   return screenMessage({ audience, intent: 'report', segments: [lead] });
 }
 

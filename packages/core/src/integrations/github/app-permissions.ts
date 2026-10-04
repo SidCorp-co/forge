@@ -23,13 +23,13 @@
 // so a permission added here without being added there goes red naming it, and the reverse too.
 
 /** As GitHub spells an App permission level, weakest first. */
-export const PERMISSION_LEVELS = ['read', 'write', 'admin'] as const;
+const PERMISSION_LEVELS = ['read', 'write', 'admin'] as const;
 export type PermissionLevel = (typeof PERMISSION_LEVELS)[number];
 
 /** How a call proves who it is. Only `installation` spends a repository permission. */
-export type GitHubCallAuth = 'installation' | 'app-jwt' | 'none';
+type GitHubCallAuth = 'installation' | 'app-jwt' | 'none';
 
-export interface GitHubEndpoint {
+interface GitHubEndpoint {
   /** The path as the resolver spells it: every interpolated segment is `:p`, no query string. */
   path: string;
   method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
@@ -52,7 +52,7 @@ const REST = 'https://docs.github.com/en/rest';
  * permission levels, and a table keyed by path alone would let a write be added under a read row
  * without anything noticing.
  */
-export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
+const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
   {
     path: '/app-manifests/:p/conversions',
     method: 'POST',
@@ -261,7 +261,7 @@ export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
   },
 ] as const;
 
-export interface GitHubEventSubscription {
+interface GitHubEventSubscription {
   event: string;
   /** The permission GitHub requires before it will deliver this event to an App. */
   permission: string;
@@ -274,7 +274,7 @@ export interface GitHubEventSubscription {
 const EVENT_DOCS = 'https://docs.github.com/en/webhooks/webhook-events-and-payloads';
 
 /** Every webhook event the App subscribes to, and what GitHub charges for the subscription. */
-export const GITHUB_EVENT_SUBSCRIPTIONS: readonly GitHubEventSubscription[] = [
+const GITHUB_EVENT_SUBSCRIPTIONS: readonly GitHubEventSubscription[] = [
   {
     event: 'pull_request',
     permission: 'pull_requests',
@@ -305,7 +305,7 @@ export const GITHUB_EVENT_SUBSCRIPTIONS: readonly GitHubEventSubscription[] = [
   },
 ] as const;
 
-export interface GitHubNonRestUse {
+interface GitHubNonRestUse {
   permission: string;
   level: PermissionLevel;
   /** What needs it, as `file.ts:symbol`. */
@@ -317,7 +317,7 @@ export interface GitHubNonRestUse {
  * Permissions Forge needs for something that is not a REST call, so the surplus check has a place
  * to read them from rather than an exemption nobody wrote down.
  */
-export const GITHUB_NON_REST_USES: readonly GitHubNonRestUse[] = [
+const GITHUB_NON_REST_USES: readonly GitHubNonRestUse[] = [
   {
     permission: 'contents',
     level: 'write',
@@ -333,13 +333,13 @@ function rank(level: PermissionLevel): number {
 }
 
 /** Whether a grant at `held` covers a call that needs `needed`. */
-export function levelSatisfies(held: string | undefined, needed: PermissionLevel): boolean {
+function levelSatisfies(held: string | undefined, needed: PermissionLevel): boolean {
   const at = PERMISSION_LEVELS.indexOf(held as PermissionLevel);
   return at >= 0 && at >= rank(needed);
 }
 
 /** What the three tables add up to: one level per permission, the strongest anything needs. */
-export function requiredAppPermissions(): Map<string, PermissionLevel> {
+function requiredAppPermissions(): Map<string, PermissionLevel> {
   const out = new Map<string, PermissionLevel>();
   const take = (permission: string, level: PermissionLevel) => {
     const held = out.get(permission);

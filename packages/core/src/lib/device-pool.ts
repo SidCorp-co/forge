@@ -81,10 +81,7 @@ export async function findChatCapableDeviceForProject(
   return rows[0]?.device_id ?? null;
 }
 
-export async function resolveRunnerRepoPath(
-  projectId: string,
-  deviceId: string,
-): Promise<string | null> {
+async function resolveRunnerRepoPath(projectId: string, deviceId: string): Promise<string | null> {
   const [row] = await db
     .select({ repoPath: runners.repoPath })
     .from(runners)

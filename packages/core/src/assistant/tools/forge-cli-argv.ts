@@ -7,8 +7,7 @@
 
 import { withheldForJob } from 'forge-plugin/plugin/src/resolve/visibility.mjs';
 
-export const CHAT_JOB = 'ba';
-export const CHAT_JOB_VERBS: readonly string[] = [
+const CHAT_JOB_VERBS: readonly string[] = [
   'issue',
   'new',
   'comment',

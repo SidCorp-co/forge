@@ -1,7 +1,6 @@
 import type { HealthKey } from "@/design";
 
 export type RunnerBuildState = "current" | "behind" | "unknown";
-export type { ProjectGitAccessView, SshConnTestResult } from "@forge/contracts";
 
 /** A row of `GET /api/me/devices` (owner-scoped). */
 export interface DeviceRow {

@@ -3,7 +3,7 @@ import { db } from '../../db/client.js';
 import { type PullRequestState, repoPullRequests } from '../../db/schema-repo-projection.js';
 import { type CheckRollup, rollupOf } from './projection-shape.js';
 
-export interface IssuePullRequest {
+interface IssuePullRequest {
   number: number;
   repo: string;
   url: string | null;

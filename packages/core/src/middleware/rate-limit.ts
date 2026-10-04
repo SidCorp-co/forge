@@ -43,7 +43,7 @@ function limiterFor(max: number, windowMs: number): RateLimiterPostgres {
   return limiter;
 }
 
-export interface RateLimitOutcome {
+interface RateLimitOutcome {
   allowed: boolean;
   max: number;
   windowMs: number;
@@ -146,7 +146,7 @@ function deriveKey(
   return null;
 }
 
-export type RateLimitOptions = {
+type RateLimitOptions = {
   name?: string;
 };
 

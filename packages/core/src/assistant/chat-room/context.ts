@@ -17,7 +17,7 @@ import {
 import type { CallToolResult } from '../../lib/tool-result.js';
 import { type ChatToolset, toolError } from '../tools/mcp-adapter.js';
 
-export const SEED_MESSAGE_COUNT = 20;
+const SEED_MESSAGE_COUNT = 20;
 const HISTORY_MAX_PER_CALL = 50;
 const HISTORY_MAX_CALLS_PER_TURN = 3;
 /** Per-message + whole-block caps so a pasted log can't blow up the prompt. */
@@ -32,7 +32,7 @@ function clip(s: string, cap: number): string {
 const QUOTED_MSG_ID_RE = /\?msg=([A-Za-z0-9]+)/g;
 const MAX_QUOTED_FETCHES = 3;
 
-export function extractQuotedMessageIds(
+function extractQuotedMessageIds(
   texts: Array<string | undefined>,
   exclude: ReadonlySet<string>,
 ): string[] {
@@ -49,7 +49,7 @@ export function extractQuotedMessageIds(
 }
 
 /** Render REST messages as `[user]: text` lines (oldest first), dropping system messages, the bot's own replies unless `includeBot`, empty bodies and the messages that triggered this turn. Null when nothing remains. */
-export function formatConversationLines(
+function formatConversationLines(
   messages: RocketChatRestMessage[],
   opts: { botUserId: string; excludeMessageIds?: readonly string[]; includeBot?: boolean },
 ): string | null {
@@ -208,11 +208,11 @@ export function buildRocketChatHistoryToolset(auth: RocketChatRestAuth, rid: str
 }
 
 /** The quote-neighbour tool's bounds, every one enforced here and none by the model (ISS-1087). */
-export const QUOTE_CONTEXT_TOOL_NAME = 'rocketchat_quote_context';
-export const QUOTE_TARGETS_PER_TURN = 2;
-export const QUOTE_NEIGHBOURS_EACH_SIDE = 2;
-export const QUOTE_MESSAGES_PER_TURN = 10;
-export const QUOTE_TOKENS_PER_TURN = 2000;
+const QUOTE_CONTEXT_TOOL_NAME = 'rocketchat_quote_context';
+const QUOTE_TARGETS_PER_TURN = 2;
+const QUOTE_NEIGHBOURS_EACH_SIDE = 2;
+const QUOTE_MESSAGES_PER_TURN = 10;
+const QUOTE_TOKENS_PER_TURN = 2000;
 /** Replies fetched for a thread anchor; an anchor past this page is a stated limitation. */
 const QUOTE_THREAD_PAGE = 50;
 

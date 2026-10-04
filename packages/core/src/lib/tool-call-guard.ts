@@ -8,7 +8,7 @@ import {
   toolGrantRefusal,
 } from './tool-grant.js';
 
-export interface ToolCallBound {
+interface ToolCallBound {
   readonly grant: readonly string[] | null | undefined;
   readonly fence: readonly string[] | null;
   readonly grantEpoch: number | undefined;

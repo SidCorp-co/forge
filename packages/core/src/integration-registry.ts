@@ -3,7 +3,6 @@ import { coolifyIntegration } from './integrations/coolify/index.js';
 import { epodsystemIntegration } from './integrations/epodsystem/index.js';
 import { githubIntegration } from './integrations/github/index.js';
 import { gitlabIntegration } from './integrations/gitlab/index.js';
-import { googleIntegration } from './integrations/google/index.js';
 import {
   agentIntegration,
   type IntegrationDeclaration,
@@ -17,7 +16,6 @@ const ALL: readonly IntegrationDeclaration[] = [
   coolifyIntegration as IntegrationDeclaration,
   epodsystemIntegration as IntegrationDeclaration,
   sentryIntegration as IntegrationDeclaration,
-  googleIntegration as IntegrationDeclaration,
   rocketchatIntegration as IntegrationDeclaration,
   githubIntegration as IntegrationDeclaration,
   gitlabIntegration as IntegrationDeclaration,

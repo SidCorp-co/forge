@@ -22,7 +22,6 @@ export const ME_PREFERENCES = {
   theme: userPreferences.theme,
   language: userPreferences.language,
   notifyOnMention: userPreferences.notifyOnMention,
-  lastSeenWhatsNew: userPreferences.lastSeenWhatsNew,
   activeOrgId: userPreferences.activeOrgId,
   updatedAt: userPreferences.updatedAt,
 };
@@ -32,7 +31,6 @@ export const ME_PREFERENCE_DEFAULTS = {
   theme: 'system' as const,
   language: 'en' as const,
   notifyOnMention: true,
-  lastSeenWhatsNew: null as string | null,
   activeOrgId: null as string | null,
 };
 

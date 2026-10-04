@@ -11,7 +11,7 @@
 import { issueTokenRe } from './issue-tokens.js';
 
 /** What the tracker is asked about. Only what the tracker actually holds. */
-export type StatusClaim = 'merged' | 'closed';
+type StatusClaim = 'merged' | 'closed';
 
 export interface StatusAssertion {
   readonly seq: number;

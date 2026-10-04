@@ -18,7 +18,7 @@ function getFactory(): ZxcvbnFactory {
 
 export const MIN_PASSWORD_SCORE = 2;
 
-export interface PasswordStrength {
+interface PasswordStrength {
   score: 0 | 1 | 2 | 3 | 4;
   /** Best single-line piece of feedback to surface, e.g. "Add another word or two." */
   warning: string;

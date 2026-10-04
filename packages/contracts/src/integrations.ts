@@ -262,24 +262,6 @@ export type GitlabSecretsInput = {
 };
 
 /**
- * Google service-account config (ISS-1036). `clientEmail` and `projectId` are
- * READ BACK out of the stored key by the healthcheck, never typed;
- * `defaultSpreadsheetId` is binding-tier — one org account, one sheet per
- * project — and is the spreadsheet a `forge_google_sheets` call naming none
- * resolves to.
- */
-export type GoogleConfigInput = {
-  clientEmail?: string;
-  projectId?: string;
-  defaultSpreadsheetId?: string;
-};
-
-/** The service-account key file Google issued, whole and unmodified. */
-export type GoogleSecretsInput = {
-  serviceAccountJson: string;
-};
-
-/**
  * Body for `PATCH /:projectId/integrations/:id` — the connection tier (config, secrets) and the
  * binding's own switch and instructions. Binding-tier config and `agentAccess` are a binding-v1
  * document's (`PUT /api/projects/:projectId/bindings/:bindingId`), and refused here by name.

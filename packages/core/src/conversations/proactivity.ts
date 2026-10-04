@@ -8,18 +8,18 @@ import { readMessages, type StoredConversationMessage } from './store.js';
 import { recentDecisions } from './windows.js';
 
 /** A room nobody has spoken in for this long stops being spoken to. */
-export const DORMANT_MS = 24 * 60 * 60 * 1000;
+const DORMANT_MS = 24 * 60 * 60 * 1000;
 
 /** How many consecutive settled windows may find nothing to say before the room is paced. */
-export const BACKOFF_AFTER = 3;
+const BACKOFF_AFTER = 3;
 
 /**
  * How close two agent messages have to be for the second to count as a bounce.
  */
-export const LOOP_BOUNCE_MS = 5 * 60 * 1000;
+const LOOP_BOUNCE_MS = 5 * 60 * 1000;
 
 /** How many identifier-free agent messages in a row are a loop rather than a pause. */
-export const LOOP_LIMIT = 3;
+const LOOP_LIMIT = 3;
 
 /** How far back the guards read. Bounded, because every turn pays for this query. */
 export const GUARD_WINDOW = 60;
@@ -48,7 +48,7 @@ export interface ProactivityThresholds {
   loopLimit: number;
 }
 
-export const DEFAULT_THRESHOLDS: ProactivityThresholds = {
+const DEFAULT_THRESHOLDS: ProactivityThresholds = {
   dormantMs: DORMANT_MS,
   backoffAfter: BACKOFF_AFTER,
   loopBounceMs: LOOP_BOUNCE_MS,

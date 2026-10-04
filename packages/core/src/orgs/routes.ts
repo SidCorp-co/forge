@@ -373,4 +373,3 @@ orgRoutes.delete(
 orgRoutes.route('/', agentAccountRoutes);
 
 export { orgInvitationRoutes } from './invitations-routes.js';
-export { sshKeyRoutes } from './ssh-keys-routes.js';

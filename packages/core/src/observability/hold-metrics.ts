@@ -19,11 +19,3 @@ export function recordResumeDrop(reason: ResumeDropReason): void {
     state.resumeDrops.set(reason, { reason, count: 1 });
   }
 }
-
-export interface HoldMetricsSnapshot {
-  resumeDrops: ResumeDropCounters[];
-}
-
-export function getHoldMetricsSnapshot(): HoldMetricsSnapshot {
-  return { resumeDrops: [...state.resumeDrops.values()] };
-}

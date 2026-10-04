@@ -1,7 +1,7 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import { env } from '../../config/env.js';
 
-export interface MailMessage {
+interface MailMessage {
   to: string;
   subject: string;
   text: string;
@@ -32,8 +32,4 @@ export function mailDeliveryEnabled(): boolean {
 
 export async function sendMail(message: MailMessage): Promise<void> {
   await getTransport().sendMail({ from: env.SMTP_FROM ?? 'noreply@localhost', ...message });
-}
-
-export function __resetMailTransportForTests(): void {
-  transport = null;
 }

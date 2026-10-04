@@ -17,7 +17,7 @@ export interface PrepareInput {
   format?: BodyFormat | null | undefined;
 }
 
-export function resolveFormat(input: PrepareInput): BodyFormat {
+function resolveFormat(input: PrepareInput): BodyFormat {
   if (input.format) return input.format;
   const head = input.raw.trimStart();
   return head.startsWith('<forge-') ? 'html' : 'markdown';

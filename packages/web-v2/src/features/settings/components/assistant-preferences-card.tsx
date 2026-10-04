@@ -26,7 +26,7 @@ import {
   useUpdateAssistantPreferences,
 } from "../hooks";
 
-export const ANSWER_STYLE_OPTIONS: SelectOption[] = [
+const ANSWER_STYLE_OPTIONS: SelectOption[] = [
   { value: "default", label: "Default — let the assistant judge" },
   { value: "concise", label: "Concise — as few sentences as the question needs" },
   { value: "detailed", label: "Detailed — context, evidence and reasoning" },
@@ -44,7 +44,7 @@ const ACTOR_LABEL: Record<PreferenceChange["changedBy"], string> = {
 };
 
 /** One row of the trail, as a sentence a person can act on. */
-export function describeChange(change: PreferenceChange): string {
+function describeChange(change: PreferenceChange): string {
   const value = change.newValue === null || change.newValue === "" ? "cleared" : `set to “${change.newValue}”`;
   return `${FIELD_LABEL[change.field]} ${value} by ${ACTOR_LABEL[change.changedBy]}`;
 }

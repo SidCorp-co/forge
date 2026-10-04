@@ -137,7 +137,7 @@ export function buildContextFromBinding<
   };
 }
 
-export interface CreateConnectionInput {
+interface CreateConnectionInput {
   ownerType?: IntegrationOwnerType;
   ownerId: string;
   provider: IntegrationProvider;
@@ -165,7 +165,7 @@ export async function createConnection(
   return row;
 }
 
-export interface UpdateConnectionPatch {
+interface UpdateConnectionPatch {
   config?: Record<string, unknown>;
   secrets?: Record<string, unknown> | null;
   displayName?: string | null;

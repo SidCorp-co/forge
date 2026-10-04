@@ -8,11 +8,11 @@ import {
 } from '../index.js';
 
 /** Per the issue's AC: 3 consecutive failed outbound deliveries within 5 minutes trips the breaker. */
-export const BREAKER_FAILURE_THRESHOLD = 3;
-export const BREAKER_WINDOW_MS = 5 * 60_000;
-export const BREAKER_COOLDOWN_MS = 10 * 60_000;
+const BREAKER_FAILURE_THRESHOLD = 3;
+const BREAKER_WINDOW_MS = 5 * 60_000;
+const BREAKER_COOLDOWN_MS = 10 * 60_000;
 
-export interface BreakerEvaluation {
+interface BreakerEvaluation {
   tripped: boolean;
   consecutiveFailures: number;
 }
@@ -24,7 +24,7 @@ export interface BreakerEvaluation {
  * aggregating failures across sibling bindings of a shared connection is a
  * future concern.
  */
-export async function evaluateBreaker(bindingId: string): Promise<BreakerEvaluation> {
+async function evaluateBreaker(bindingId: string): Promise<BreakerEvaluation> {
   const recent = await recentOutboundDeliveries(
     bindingId,
     BREAKER_FAILURE_THRESHOLD,

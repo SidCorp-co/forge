@@ -1,4 +1,4 @@
-export type FindingSeverity = 'blocker' | 'warn';
+type FindingSeverity = 'blocker' | 'warn';
 
 export interface Finding {
   severity: FindingSeverity;

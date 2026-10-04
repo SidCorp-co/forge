@@ -16,7 +16,7 @@ import type {
 import { doorCell } from './doors.js';
 import { type MessageFacts, NO_FACTS } from './facts.js';
 
-export interface ScreenInput {
+interface ScreenInput {
   readonly audience: Audience;
   readonly intent: Intent;
   /**

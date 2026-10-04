@@ -36,7 +36,7 @@ export async function assertInTheRoom(
 /**
  * Who may change WHO IS IN a room: somebody already in it, whatever its shape.
  */
-export async function assertMembershipActor(
+async function assertMembershipActor(
   row: ConversationRow,
   userId: string,
   tx: Executor = defaultDb,

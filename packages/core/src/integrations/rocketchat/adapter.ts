@@ -122,5 +122,3 @@ export const rocketchatIntegration = declareIntegration<RocketChatConfig, Rocket
   },
   adapter: rocketChatAdapterMethods,
 });
-
-export const rocketChatAdapter = rocketChatAdapterMethods;

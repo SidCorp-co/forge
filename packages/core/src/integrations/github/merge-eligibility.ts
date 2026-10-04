@@ -29,7 +29,7 @@ export interface HeadCheck {
   conclusion: string | null;
 }
 
-export type MergeRefusalReason =
+type MergeRefusalReason =
   | 'already-merged'
   | 'not-open'
   | 'draft'
@@ -41,7 +41,7 @@ export type MergeRefusalReason =
   | 'protected-branch'
   | 'protection-unreadable';
 
-export type MergeDecision =
+type MergeDecision =
   | { kind: 'merge' }
   | { kind: 'already-merged' }
   | { kind: 'refuse'; reason: Exclude<MergeRefusalReason, 'already-merged'>; detail: string };

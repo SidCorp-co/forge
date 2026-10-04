@@ -8,7 +8,7 @@ import { assertVaultConfigured } from './route-helpers.js';
 import type { IntegrationDeclaration } from './types.js';
 
 /** The sentence a caller gets for a provider this deployment does not declare. */
-export function undeclaredProviderMessage(provider: string): string {
+function undeclaredProviderMessage(provider: string): string {
   return `\`${provider}\` is not an integration this deployment declares. Declared providers: ${providerNames().join(', ')}.`;
 }
 

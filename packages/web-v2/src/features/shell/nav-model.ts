@@ -11,8 +11,6 @@ export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   // (its live count rides on this row's badge).
   { key: "overview", label: "Overview", icon: "grid", href: "/" },
   { key: "runners", label: "Runners", icon: "server", href: "/runners" },
-  // ISS-628 — workspace resource management, first type = Private Keys.
-  { key: "resources", label: "Resources", icon: "lock", href: "/resources" },
   { key: "integrations", label: "Integrations", icon: "link", href: "/integrations" },
 ];
 
@@ -175,7 +173,6 @@ export function matchesSub(rest: string, sub: string): boolean {
  *  project-relative remainder (mirrors the old tab bar's matchesSub). Docs is
  *  lit on its own route. */
 export function buildActiveKey(pathname: string, slug: string | null): string {
-  if (pathname.startsWith("/whats-new")) return "whats-new";
   if (pathname.startsWith("/docs")) return "docs";
   const eco = ecosystemKey(pathname);
   if (eco) return eco;

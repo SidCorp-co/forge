@@ -16,16 +16,11 @@ export function register(id: string, factory: ChatProviderFactory): void {
   instances.delete(id);
 }
 
-export function clearProviders(): void {
-  factories.clear();
-  instances.clear();
-}
-
 export function listProviders(): string[] {
   return [...factories.keys()];
 }
 
-export function get(id: string): ChatProvider | undefined {
+function get(id: string): ChatProvider | undefined {
   let instance = instances.get(id);
   if (instance) return instance;
   const factory = factories.get(id);
@@ -38,12 +33,12 @@ export function get(id: string): ChatProvider | undefined {
 export const chatTurnKinds = ['agentic', 'relay'] as const;
 export type ChatTurnKind = (typeof chatTurnKinds)[number];
 
-export interface ResolvedChatProvider {
+interface ResolvedChatProvider {
   provider: ChatProvider;
   model: string;
 }
 
-export interface ResolveOptions {
+interface ResolveOptions {
   db?: typeof defaultDb | undefined;
   fallbackProviderId?: string | undefined;
   fallbackModel?: string | undefined;

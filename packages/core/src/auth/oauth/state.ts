@@ -9,9 +9,9 @@ const COOKIE_TTL_SECONDS = 300; // 5 min — generous for slow auth screens
 const ALG = 'HS256';
 const ISSUER = 'forge.oauth.state';
 
-export type StateMode = 'login' | 'reauth';
+type StateMode = 'login' | 'reauth';
 
-export interface StatePayload {
+interface StatePayload {
   /** Provider id this state belongs to. */
   p: ProviderId;
   /** The OAuth `state` the callback must echo. */

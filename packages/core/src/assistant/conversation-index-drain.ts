@@ -2,7 +2,7 @@ import { conversationsNeedingIndex, indexConversationOnce } from '../conversatio
 import { logger } from '../observability/logger.js';
 
 /** Rooms one tick takes. Each is a bounded pass of its own, so a busy fleet drains over ticks. */
-export const TRANSCRIPT_INDEX_ROOMS_PER_TICK = 20;
+const TRANSCRIPT_INDEX_ROOMS_PER_TICK = 20;
 
 /** Index every room that is behind, up to this tick's budget; returns the ones it advanced. */
 export async function runTranscriptIndexSweepOnce(): Promise<string[]> {
