@@ -11,7 +11,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import workerThreads from 'node:worker_threads';
 import { FS_LISTING_CALLS, fsListing, spawnCwd } from './whole-tree-gates.mjs';
-import { gitConfigFiles, physical, subprocessListing } from './whole-tree-shell.mjs';
+import { gitConfigFiles } from './whole-tree-git.mjs';
+import { physical } from './whole-tree-paths.mjs';
+import { subprocessListing } from './whole-tree-shell.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** The repository root by its realpath, the one spelling every placement is compared against. */
