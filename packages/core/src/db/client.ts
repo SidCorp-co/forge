@@ -16,7 +16,6 @@ import * as issueWorkStateSchema from './schema-issue-work-state.js';
 import * as journalSchema from './schema-journal.js';
 import * as masterCharterSchema from './schema-master-charter.js';
 import * as masterPassesSchema from './schema-master-passes.js';
-import * as memoryChunksSchema from './schema-memory-chunks.js';
 import * as memoryRevisionsSchema from './schema-memory-revisions.js';
 import * as projectConfigSchema from './schema-project-config.js';
 import * as questionsSchema from './schema-questions.js';
@@ -46,7 +45,6 @@ const schema = {
   ...agentSessionEventsSchema,
   ...backfillMarkersSchema,
   ...sessionInboxSchema,
-  ...memoryChunksSchema,
   ...memoryRevisionsSchema,
   ...deployLocksSchema,
   ...issueLeasesSchema,

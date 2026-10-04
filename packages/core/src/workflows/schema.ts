@@ -2,7 +2,6 @@ import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import {
   BAND_ID,
   EDGE_KIND_ID,
-  LEGACY_V2_TEMPLATE,
   NODE_TYPE_ID,
   TEMPLATE_ID,
   TEMPLATE_LIMITS,
@@ -217,15 +216,8 @@ export type AnyWorkflowStep = WorkflowStepV2;
 
 export const stepsOf = (doc: WorkflowWrite): readonly AnyWorkflowStep[] => doc.steps;
 
-// cm:hack dev-workflow-templates until:every stored workflow-v2 document and design revision carries `template` — a version 2 design written before templates names none, and it was drawn in HOP's journey vocabulary, which is `operational-flow@1`; it is read as that and never re-guessed, and a write still owes `template`
-function withLegacyTemplate(raw: unknown): unknown {
-  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return raw;
-  const doc = raw as Record<string, unknown>;
-  return doc.version === 2 && !('template' in doc) ? { ...doc, template: LEGACY_V2_TEMPLATE } : raw;
-}
-
 /** The stored document read back by the version it was written at; never a guess at another. */
 export function readStoredWorkflow(raw: unknown): WorkflowWrite | null {
-  const parsed = workflowWriteV2Schema.safeParse(withLegacyTemplate(raw));
+  const parsed = workflowWriteV2Schema.safeParse(raw);
   return parsed.success ? parsed.data : null;
 }

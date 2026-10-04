@@ -20,7 +20,6 @@ export default defineConfig({
     './src/db/schema-mockups.ts',
     './src/db/schema-agent-reports.ts',
     './src/db/schema-comments.ts',
-    './src/db/schema-contract-waits.ts',
     './src/db/schema-item-embeddings.ts',
     './src/db/schema-questions.ts',
     './src/db/schema-rocketchat.ts',
@@ -29,7 +28,6 @@ export default defineConfig({
     './src/db/schema-session-inbox.ts',
     './src/db/schema-rate-limits.ts',
     './src/db/schema-speaker-links.ts',
-    './src/db/schema-memory-chunks.ts',
     './src/db/schema-memory-revisions.ts',
     './src/db/schema-unaudited-transitions.ts',
     './src/db/schema-issue-leases.ts',
@@ -42,7 +40,6 @@ export default defineConfig({
     './src/db/schema-transcript-index.ts',
     './src/db/schema-agent-selves.ts',
     './src/db/schema-repo-projection.ts',
-    './src/db/schema-pat-fence-changes.ts',
   ],
   out: './drizzle/migrations',
   dbCredentials: {

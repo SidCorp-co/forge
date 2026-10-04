@@ -118,10 +118,6 @@
       "types": "./dist/field-changes.d.ts",
       "default": "./dist/field-changes.js"
     },
-    "./pat-fence": {
-      "types": "./dist/pat-fence.d.ts",
-      "default": "./dist/pat-fence.js"
-    },
     "./suggestions": {
       "types": "./dist/suggestions.d.ts",
       "default": "./dist/suggestions.js"

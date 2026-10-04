@@ -2542,6 +2542,13 @@
       "when": 1816992000000,
       "tag": "0394_features_with_no_design_and_no_use_are_dropped",
       "breakpoints": true
+    },
+    {
+      "idx": 395,
+      "version": "7",
+      "when": 1817078400000,
+      "tag": "0395_tables_and_columns_the_cleanup_made_dead_are_dropped",
+      "breakpoints": true
     }
   ]
 }

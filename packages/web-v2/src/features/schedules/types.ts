@@ -21,7 +21,6 @@ export interface ScheduleRow {
   templateKey: string | null;
   params: Record<string, unknown> | null;
   mode: "propose" | "auto" | null;
-  appliedMessageVersions: Record<string, number> | null;
   createdAt: string;
   updatedAt: string;
 }

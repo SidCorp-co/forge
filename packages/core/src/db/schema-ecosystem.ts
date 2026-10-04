@@ -251,49 +251,6 @@ export const contractVersions = pgTable(
   }),
 );
 
-export const contractMeasurements = pgTable(
-  'contract_measurements',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    providerProjectId: uuid('provider_project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    contractSlug: text('contract_slug').notNull(),
-    commitSha: text('commit_sha').notNull(),
-    branch: text('branch').notNull(),
-    environments: text('environments').array().notNull(),
-    outcome: text('outcome').notNull(),
-    version: text('version'),
-    reason: text('reason'),
-    observedAt: timestamp('observed_at', { withTimezone: true }).notNull().defaultNow(),
-    settledAt: timestamp('settled_at', { withTimezone: true }),
-  },
-  (t) => ({
-    landUq: uniqueIndex('contract_measurements_land_uq').on(
-      t.providerProjectId,
-      t.contractSlug,
-      t.commitSha,
-    ),
-    outcomeChk: check(
-      'contract_measurements_outcome_chk',
-      sql`${t.outcome} IN ('pending', 'recorded', 'unchanged', 'stale', 'refused')`,
-    ),
-    commitChk: check('contract_measurements_commit_chk', sql`${t.commitSha} ~ '^[0-9a-f]{40}$'`),
-    settledChk: check(
-      'contract_measurements_settled_chk',
-      sql`(${t.outcome} = 'pending') = (${t.settledAt} IS NULL)`,
-    ),
-    reasonChk: check(
-      'contract_measurements_reason_chk',
-      sql`${t.outcome} NOT IN ('refused', 'stale') OR ${t.reason} IS NOT NULL`,
-    ),
-    versionChk: check(
-      'contract_measurements_version_chk',
-      sql`(${t.outcome} = 'recorded') = (${t.version} IS NOT NULL)`,
-    ),
-  }),
-);
-
 export const channelCounters = pgTable(
   'channel_counters',
   {
