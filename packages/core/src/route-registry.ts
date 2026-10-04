@@ -180,7 +180,6 @@ import {
 import { suggestionRoutes } from './suggestions/routes.js';
 import { taskIssueRoutes, taskRoutes } from './tasks/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
-import { usageRecordRoutes } from './usage-records/routes.js';
 import { webhookInboundRoutes } from './webhooks/routes.js';
 import { workflowJsonSchemas } from './workflows/index.js';
 import { workflowRoutes, workflowTemplateCatalogueRoutes } from './workflows/routes.js';
@@ -400,7 +399,6 @@ function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', knowledgeRoutes);
   app.route('/api/knowledge-edges', knowledgeEdgeRoutes);
   app.route('/api/skills', skillCrudRoutes);
-  app.route('/api/usage-records', usageRecordRoutes);
   app.route('/api/app-config', memoryModelRoutes);
   app.route('/api/app-config', appConfigRoutes);
   app.route('/api/runners', runnerRoutes);

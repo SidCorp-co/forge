@@ -44,7 +44,6 @@ export const PAT_PERMISSION_RESOURCES = {
       '/api/issue-step-contexts': 1,
       '/api/agent-sessions': 2,
       '/api/pipeline': 2,
-      '/api/usage-records': 2,
     },
   },
   knowledge: {
@@ -114,12 +113,12 @@ export const PAT_NESTED_SURFACES = Object.freeze({
   '/api/projects/:id/metrics/retry-rescues': '/api/pipeline',
   '/api/projects/:id/metrics/interventions': '/api/pipeline',
   '/api/projects/:id/analytics': '/api/pipeline',
-  '/api/projects/:id/metrics/timeseries': '/api/usage-records',
+  '/api/projects/:id/metrics/timeseries': '/api/pipeline',
   '/api/projects/:id/runners': '/api/runners',
   '/api/projects/:id/masters/standing': '/api/agent-sessions',
   '/api/projects/:id/masters/passes': '/api/agent-sessions',
   '/api/projects/:id/automation': '/api/agent-reports',
-  '/api/issues/:id/cost-summary': '/api/usage-records',
+  '/api/issues/:id/cost-summary': '/api/pipeline',
 } as const satisfies Record<string, PatPrefix>);
 
 // cm:hack ISS-105 until:forge-plugin reads runner load at a route under /api/runners — GET
