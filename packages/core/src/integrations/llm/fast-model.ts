@@ -10,7 +10,7 @@
 import { env } from '../../config/env.js';
 import { type EgressScope, egressScoped } from '../../lib/data-egress.js';
 import { openAiCompatUrl } from '../../lib/openai-compat-url.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 
 /** Hard cap so a hung endpoint can never wedge a pg-boss worker. */
 const COMPLETION_TIMEOUT_MS = 60_000;

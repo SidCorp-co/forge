@@ -1,4 +1,4 @@
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
 import type { AdapterContext, InboundDispatchInput, InboundDispatchResult } from '../types.js';
 import { intakeSentryIssue, projectCreatedById, readSentryThresholds } from './intake-issue.js';

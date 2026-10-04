@@ -12,7 +12,7 @@
  */
 
 import type { agentSessions as agentSessionsTable } from '../../db/schema.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { problemsOf } from '../../messaging/contract.js';
 import type { ProgressFacts } from '../../messaging/facts.js';
 import { proven, wholeAgentText } from '../../messaging/proven.js';

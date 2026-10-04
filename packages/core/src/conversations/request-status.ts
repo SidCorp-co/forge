@@ -9,7 +9,7 @@
 
 import type { ConversationWindowDecision } from '../db/schema-conversations.js';
 import { logger } from '../logger.js';
-import { Sentry } from '../observability/sentry.js';
+import { reportFailure } from '../observability/sentry.js';
 import { nothingPostedStatus, uncertainStatus } from './fallback-replies.js';
 import {
   type ConversationTransport,
@@ -147,7 +147,7 @@ export async function postStatus(args: PostStatusArgs): Promise<PostedStatus> {
       { err, ...args.log, adapter: args.venue.adapter, externalId: args.venue.externalId },
       'conversations: the terminal status could not be delivered; nothing else will be tried',
     );
-    Sentry.captureException(err, {
+    reportFailure(err, {
       tags: { area: 'conversations', phase: 'status' },
       extra: { adapter: args.venue.adapter, externalId: args.venue.externalId, ...args.log },
     });

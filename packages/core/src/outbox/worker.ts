@@ -2,7 +2,7 @@ import type { OutboxEventType } from '@forge/contracts/outbox-events';
 import { sql } from 'drizzle-orm';
 import { db, listen } from '../db/client.js';
 import { logger } from '../logger.js';
-import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import { traceStep } from '../observability/sentry.js';
 import { consumersOf, type Delivery } from './consumers.js';
 import { OUTBOX_CHANNEL } from './emit.js';
 
@@ -130,13 +130,11 @@ export async function drainOutboxOnce(): Promise<{
        WHERE id = ${row.id}
     `);
     failed++;
-    if (isSentryEnabled()) {
-      Sentry.addBreadcrumb({
-        category: 'outbox.failed',
-        level: 'warning',
-        data: { eventId: row.id, type: row.type, attempts: row.attempts, lastError },
-      });
-    }
+    traceStep({
+      category: 'outbox.failed',
+      level: 'warning',
+      data: { eventId: row.id, type: row.type, attempts: row.attempts, lastError },
+    });
     if (row.attempts >= MAX_REDELIVERIES) await deadLetter(row, failures);
   }
   return { processed, failed, claimed: rows.length };

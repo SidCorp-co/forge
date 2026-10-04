@@ -19,8 +19,8 @@ import { collectInboundMessage } from '../../conversations/collect-inbound.js';
 import { registerConversationTransport } from '../../conversations/ports.js';
 import { db } from '../../db/client.js';
 import { integrationConnections } from '../../db/schema.js';
-import { logger } from '../../logger.js';
-import { Sentry } from '../../observability/sentry.js';
+import { logger } from '../../observability/logger.js';
+import { reportFailure } from '../../observability/sentry.js';
 import { decryptConnectionSecrets } from '../store.js';
 import { consumeIssueThreadReply } from './comment-inbound.js';
 import { runCommentMirrorDrain } from './comment-mirror.js';
@@ -220,7 +220,7 @@ class RocketChatConnectionManager {
       onError: (e) => {
         if (!isCurrent()) return;
         logger.warn({ err: e, connectionId }, 'rocketchat: DDP error');
-        Sentry.captureException(e, {
+        reportFailure(e, {
           tags: { area: 'rocketchat', phase: 'ddp' },
           extra: { connectionId },
         });
@@ -327,7 +327,7 @@ class RocketChatConnectionManager {
     await this.collect(ac, route, m, connectionId, shape).catch((err) => {
       ac.seenMessage.forget(m.id);
       logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: message collection failed');
-      Sentry.captureException(err, {
+      reportFailure(err, {
         tags: { area: 'rocketchat', phase: 'collect' },
         extra: { connectionId, rid: m.rid, projectId: route.projectId },
       });

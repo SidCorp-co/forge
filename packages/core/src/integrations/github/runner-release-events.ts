@@ -12,7 +12,7 @@
  * `attribute` for what a commit cannot say.
  */
 
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { buildRepoClient, GitHubClientError, type GitHubRepoClient } from './client.js';
 import type { DeliveryContext } from './projection-events.js';
 import {

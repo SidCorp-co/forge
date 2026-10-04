@@ -11,7 +11,7 @@ import { resolveSpeaker } from '../../assistant/identity/speaker-link.js';
 import { db } from '../../db/client.js';
 import { agentQuestions, isChoiceStep } from '../../db/schema-questions.js';
 import { rocketchatQuestionDeliveries } from '../../db/schema-rocketchat.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { screenForDoor } from '../../messaging/proven.js';
 import { answerAs } from '../../questions/read.js';
 import { isRefusal } from '../../lib/refusal.js';

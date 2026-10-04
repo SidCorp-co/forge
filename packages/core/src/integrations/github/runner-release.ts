@@ -16,7 +16,7 @@
  */
 
 import type { RunnerReleaseStep } from '../../db/schema-runner-release.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { GitHubClientError, type GitHubRepoClient, githubRepoClient } from './client.js';
 import {
   judgeCrateVersion,

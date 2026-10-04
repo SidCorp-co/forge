@@ -16,7 +16,7 @@ import {
 import { db } from '../../db/client.js';
 import { agentSessions } from '../../db/schema.js';
 import { transitionSessions } from '../../agent-sessions/session-transition.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { hasInFlightRoomSession } from './room-delivery.js';
 
 const ESCALATION_TITLE_MAX = 80;

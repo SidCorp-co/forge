@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull, lte, or } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { repoPullRequests } from '../../db/schema-repo-projection.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { GitHubClientError, GitHubReadError, type GitHubRepoClient } from './client.js';
 
 export const BASE_PUSH_REFRESH_CAP = 25;

@@ -9,7 +9,7 @@
  * surfaces the authenticated user back to the config UI.
  */
 
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { isPreviousCredentialValid } from '../rotation.js';
 import { updateConnection } from '../store.js';
 import {

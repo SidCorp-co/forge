@@ -33,4 +33,47 @@ export function isSentryEnabled(): boolean {
   return initialized;
 }
 
-export { Sentry };
+export type ReportLevel = 'fatal' | 'error' | 'warning' | 'info' | 'debug';
+
+export interface ReportContext {
+  level?: ReportLevel;
+  tags?: Record<string, string>;
+  extra?: Record<string, unknown>;
+}
+
+/** A failure Forge itself hit and could not recover from in place. Never throws. */
+export function reportFailure(err: unknown, context: ReportContext = {}): void {
+  if (!initialized) return;
+  try {
+    Sentry.captureException(err, context);
+  } catch {
+    // Reporting is best-effort: a failed report never becomes the caller's failure.
+  }
+}
+
+/** A condition worth an operator's attention that is not an exception. Never throws. */
+export function reportCondition(message: string, context: ReportContext = {}): void {
+  if (!initialized) return;
+  try {
+    Sentry.captureMessage(message, context);
+  } catch {
+    // Best-effort, as above.
+  }
+}
+
+/** A step recorded beside whatever failure is reported next in this process. */
+export function traceStep(step: {
+  category: string;
+  level?: ReportLevel;
+  message?: string;
+  data?: Record<string, unknown>;
+}): void {
+  if (!initialized) return;
+  Sentry.addBreadcrumb(step);
+}
+
+/** Waits for queued reports to leave, for a process about to exit. */
+export async function flushReports(timeoutMs: number): Promise<void> {
+  if (!initialized) return;
+  await Sentry.flush(timeoutMs);
+}

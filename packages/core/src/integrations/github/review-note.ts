@@ -2,7 +2,7 @@ import { and, eq, like } from 'drizzle-orm';
 import { insertComment } from '../../comments/index.js';
 import { db } from '../../db/client.js';
 import { comments, issues, projects } from '../../db/schema.js';
-import { logger } from '../../logger.js';
+import { logger } from '../../observability/logger.js';
 import { resolveIssueForHeadRef } from './issue-link.js';
 
 /** One review, in the shape both doors already hold it in. */
