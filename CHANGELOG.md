@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.4] - 2026-10-04
+
+One adapter per external system, and a system graph read from the server
+
+
 ### Changed
 
 - **Mail, sign-in, LLM, embeddings, outbound webhooks, GitHub releases and a deployed app's runtime
