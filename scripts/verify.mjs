@@ -241,19 +241,6 @@ const CHECKS = [
     scopeMayBeEmpty: true,
   },
   {
-    axis: 'comment',
-    label: 'comment-budget',
-    layer: 'entry',
-    reads: "each file's comment findings against its own frozen baseline entry",
-    cmd: ['node', 'scripts/check-comment-budget.mjs', '--all'],
-    scanned: /^comment-budget: (\d+) file\(s\) scanned/m,
-    scoped: {
-      cmd: ['node', 'scripts/check-comment-budget.mjs', '--changed'],
-      scopeMayBeEmpty: true,
-    },
-    needs: ['deps'],
-  },
-  {
     axis: 'meta',
     label: 'lockfile-transport',
     layer: 'entry',
@@ -321,7 +308,6 @@ const CI_COVERAGE = {
   'node scripts/check-integration-declarations.mjs --all': 'verify',
   'node scripts/check-lazy-module-init.mjs --all': 'verify',
   'node scripts/check-merged-at-writers.mjs --all': 'verify',
-  'node scripts/check-comment-budget.mjs --all': 'verify',
   'node scripts/check-migration-order.mjs': 'verify',
   'node scripts/conformance-status.mjs': 'verify',
   'node scripts/conformance-audit.mjs': 'verify',

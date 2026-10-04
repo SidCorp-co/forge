@@ -2,7 +2,7 @@
 
 Project-level utilities. Each script has a comment header explaining its contract. A checker whose verdict is worth testing keeps that half in `lib/` — the CLI spawns, reads the tree and exits, none of which a test can call.
 
-## Every gate, seven axes
+## Every gate, six axes
 
 Each gate sits in `ci-passed`'s `needs` **and** is named in its result loop. Both halves are
 load-bearing: `ci-passed` runs `if: always()`, so a job listed in `needs` but absent from the loop
@@ -43,7 +43,7 @@ for whether each provider declares the fields the generic paths read),
 `behaviour` three times (reachability · signal · flow coverage) and `knowledge` six (honest
 costs · the mode-qualification of injected docs · the PAT permission surface · whether one question
 in the source has more than one answer · whether a document's citations of this repo's own files
-are still true · whether the published API and MCP contracts are what the code serves). `comment` is gated once, by `check-comment-budget`.
+are still true · whether the published API and MCP contracts are what the code serves).
 
 **`record` is the axis that was missing.** The other five each own a property of the code, and on
 2026-08-28 commit `3df9a8e9` removed 1,034 lines from `CHANGELOG.md` inside a commit about dangling
@@ -72,7 +72,6 @@ passed, because the external record of what shipped belonged to none of them.
 | flows | `check-flow-coverage` — `core-integration`, after the merge | whether the integration suite ENTERS the function every declared `cm:flow` step sits on | whether the flow ran through it — a function-hit cannot tell; which flows exist, `checkers.flow-coverage.flows` declares |
 | language | `check-source-language` — `lang-check` | English-only source policy | everything else |
 | record | `check-release-record` — `lang-check` | whether `CHANGELOG.md` keeps the heading its five readers parse for, whether a published entry can leave without a declared reason, and what an added or corrected entry may spend | whether an entry is TRUE, or whether a change deserved one — that is review's |
-| comment | `check-comment-budget` — `conformance` | what a comment SAYS: density against the code around it, the length of one run, historical narration, and one comment restating another — the four rules `eslint.config.mjs` enables out of `.forge/code-quality`, frozen per (file, rule) | file or function LENGTH, which biome owns at 500/150; and the other halves of `pnpm lint:code-quality` — raw elements, pass-through wrappers, crowded directories, the design-token sweep — which belong to axes nobody has declared |
 
 ### Why `core` lint prints every diagnostic
 
@@ -181,15 +180,16 @@ meaning what its row says. Measured 2026-08-25.
 
 - **No ESLint on the LENGTH axis.** biome >= 2 covers `noExcessiveLinesPerFunction` and
   `noExcessiveLinesPerFile`, so `eslint.config.mjs` switches `max-lines` and
-  `max-lines-per-function` off. ESLint is here for comment content and nothing else; two linters
-  holding one axis means two configs drifting apart.
-- **No comment rules in biome.** A density or run-length rule cannot tell documentation from noise
-  on its own: the 19-line `/** */` block on `failReconcileRunIfNoVerdictRecorded` is documentation,
-  and 19 comment lines to a counter are not. The comment-grammar gate removed in ISS-1029 flagged
-  prose that was right more often than prose that was wrong, and a checker at that noise level
-  teaches the reader to skip it. What replaced it is baselined rather than absolute — a file may
-  keep what it has and may not gain — and it skips a comment that opens with a directive, because
-  `i18n-allow:` and `biome-ignore` are arguments other gates read and not writing (ISS-1105).
+  `max-lines-per-function` off, and its four comment-content rules are off too. ESLint holds only
+  the web-v2 design rules and `no-pass-through-wrapper`, run by `pnpm lint:code-quality`, which no
+  gate calls; two linters holding one axis means two configs drifting apart.
+- **No comment rules in biome, or anywhere.** A density or run-length rule cannot tell
+  documentation from noise on its own: the 19-line `/** */` block on
+  `failReconcileRunIfNoVerdictRecorded` is documentation, and 19 comment lines to a counter are not.
+  The comment-grammar gate removed in ISS-1029 flagged prose that was right more often than prose
+  that was wrong, and a checker at that noise level teaches the reader to skip it. The
+  comment-budget gate that followed it was removed by the owner on 2026-10-04 with the rest of
+  codemap. Comment content is review's.
 - **No `biome.json` comments.** A comment inside it makes biome **silently ignore the whole
   enclosing block** — no config error, the `overrides` just stop applying. Put the reasoning in the
   commit message.
@@ -364,8 +364,8 @@ its name or its cost:
   names by path (`ci-parity` reads two: `ci.yml` and the setup-workspace composite, both under the
   ineligible `.github/**`). A change cannot turn it red anywhere but in what it touched, so the
   developer's own run pays it.
-  A check declaring a `scoped` form runs that over the change: `comment-budget` lints the changed
-  files with `--changed` instead of 29 seconds of the tree with `--all`. One without runs over the
+  A check declaring a `scoped` form runs that over the change instead of the tree; none declares
+  one today. One without runs over the
   tree, as the whole gate does, and on a base the whole gate left green it can only report what the
   change touched; the rest cost about two seconds together, so none of them is scoped.
 - **`shared`** — a sweep whose verdict on one file depends on files the change never opened, or on

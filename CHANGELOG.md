@@ -2713,6 +2713,9 @@
   (ISS-1313)
 
 ### Removed
+- **Comments are no longer gated, and codemap is gone.** The comment-budget check, its
+  baseline and the `comment` conformance axis are removed, and no rule asks for `cm:` annotations;
+  existing ones stay as plain comments.
 - **`GET /api/schedules/:id/runs` is gone (ISS-114).** A schedule's fires are read at
   `GET /api/projects/:id/automation/schedules/:scheduleId`.
 - **An agent report has no reviewed flag (ISS-113).** `POST /api/agent-reports/:id/reviewed`,
