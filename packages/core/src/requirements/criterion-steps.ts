@@ -11,11 +11,11 @@ import {
   requirementCriterionSteps,
   requirementWorkflows,
 } from '../db/schema-requirements.js';
-import { designNodesIn, nodeSetRefusals } from '../workflows/node-refs.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { designNodesIn, nodeSetRefusals } from '../workflows/index.js';
 import { notFound, type RequirementActor, rowIn } from './read.js';
 import type { RequirementRefusal } from './rules.js';
 import { answer, inTx, lockRequirements, type RequirementOutcome } from './service.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 export async function putCriterionSteps(input: {
   projectId: string;

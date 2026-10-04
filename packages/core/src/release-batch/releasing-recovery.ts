@@ -3,14 +3,19 @@ import { postIssueNotice } from '../comments/index.js';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, projects } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
-import { accountActor } from '../issues/account-actor.js';
-import type { TransitionActor } from '../issues/actor-agency.js';
-import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
-import { releaseRunClaims } from '../issues/index.js';
-import { readWorkState, setWorkStep } from '../issues/work-state.js';
+import type { TransitionActor } from '../issues/index.js';
+import {
+  accountActor,
+  readWorkState,
+  releaseRunClaims,
+  setWorkStep,
+  TransitionError,
+  transitionIssueStatus,
+} from '../issues/index.js';
 import { isRefusal } from '../lib/refusal.js';
 import { logger } from '../observability/logger.js';
 import { resolveReleaseGate } from './gate.js';
+import { releaseBatchPorts } from './ports.js';
 import { FENCE_LOST } from './refuse.js';
 
 export interface RecoverStrandedReleasingResult {
@@ -213,15 +218,17 @@ async function releaseClaims(
   }
   const closed = rows.filter((r) => r.status === 'closed').map((r) => r.id);
   if (closed.length > 0) {
-    await tx.execute(sql`
-      UPDATE pipeline_runs
-      SET metadata = jsonb_set(coalesce(metadata, '{}'::jsonb), '{rosterClosed}', (
-            SELECT jsonb_agg(DISTINCT id) FROM jsonb_array_elements_text(
-              coalesce(metadata -> 'rosterClosed', '[]'::jsonb) || ${JSON.stringify(closed)}::jsonb
-            ) AS t(id))),
-          updated_at = now()
-      WHERE id = ${runId}
-    `);
+    await releaseBatchPorts().writeRunMetadata(
+      runId,
+      {
+        value: sql`jsonb_set(coalesce(metadata, '{}'::jsonb), '{rosterClosed}', (
+          SELECT jsonb_agg(DISTINCT id) FROM jsonb_array_elements_text(
+            coalesce(metadata -> 'rosterClosed', '[]'::jsonb) || ${JSON.stringify(closed)}::jsonb
+          ) AS t(id)))`,
+        touch: true,
+      },
+      tx,
+    );
   }
   return { cleared: rows.map((r) => r.id), closed };
 }

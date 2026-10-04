@@ -1,4 +1,4 @@
-import type { StorefrontTargetArgs } from '../types.js';
+import type { StorefrontTargetArgs } from '../index.js';
 import { autoflowGql } from './client.js';
 import { autoflowGraphqlUrl } from './endpoints.js';
 import { AUTOFLOW_REFRESH_MARGIN_MS, ensureFreshAutoflowToken } from './refresh.js';

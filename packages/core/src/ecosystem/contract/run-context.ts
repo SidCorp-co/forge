@@ -1,4 +1,5 @@
-import { callSiteAt, REPO_PATH } from '../link-schema.js';
+import { REPO_PATH } from '@forge/contracts/repo-path';
+import { callSiteAt } from '../link-schema.js';
 import type { ImpactCallSite, ImpactChange } from './impact.js';
 import { compareVersions, type Versioning } from './naming.js';
 

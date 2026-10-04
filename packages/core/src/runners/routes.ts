@@ -3,20 +3,25 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type RunnerStatus, type RunnerType, runnerStatuses, runnerTypes } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { projectRoom, roomManager } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 import { resolvedWindowDaysFor } from '../pipeline/retention/policy.js';
-import { projectRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
 import { runnerHealthWithBuild } from './build-comparison.js';
 import { clearRunnerQuarantine } from './quarantine.js';
-import { activeRunnersOf, listProjectRunners, type RunnerRow, runnerActivity, runnerRow } from './read.js';
+import {
+  activeRunnersOf,
+  listProjectRunners,
+  type RunnerRow,
+  runnerActivity,
+  runnerRow,
+} from './read.js';
 import { getRunnerAdapter, listRunnerTypes } from './registry.js';
 import { setRunnerStatus } from './runner-events.js';
 import { defaultRunnerCapabilities } from './select.js';
 import { deleteRunner, insertRunner, storeRunnerQuota, updateRunner } from './service.js';
 import type { Runner } from './types.js';
-import { requireHeld } from '../permissions/index.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -402,3 +407,5 @@ runnerRoutes.post(
     return c.json({ ok: true });
   },
 );
+
+export { projectRunnerRoutes } from './project-routes.js';

@@ -5,11 +5,12 @@ import { runAlertSweep } from './admin/index.js';
 import {
   drainRoomCommentMirror,
   drainRoomQuestions,
+  drainRoomWindows,
   drainWebConversationWindows,
   runAssistantWeeklyOnce,
   runTranscriptIndexSweepOnce,
 } from './assistant/index.js';
-import { drainRoomWindows, runHeartbeatTick } from './conversations/index.js';
+import { runHeartbeatTick } from './conversations/index.js';
 import {
   reapDeadMasterHolds,
   reapDeadRunSessions,

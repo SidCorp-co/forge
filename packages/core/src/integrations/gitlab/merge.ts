@@ -1,5 +1,5 @@
-import { SourceHostCallError } from '../source-host/errors.js';
-import type { HostMergeArgs, HostMergeResult } from '../source-host/types.js';
+import type { HostMergeArgs, HostMergeResult } from '../source-host/index.js';
+import { SourceHostCallError } from '../source-host/index.js';
 import type { GitLabClient } from './client.js';
 
 /** GitLab's two ways of landing a merge request through this API. Rebase is its own verb there. */

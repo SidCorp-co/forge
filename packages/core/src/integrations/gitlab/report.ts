@@ -1,17 +1,18 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
-import { grantHolds } from '../agent-access.js';
 import {
   describeInboundDoor,
+  effectiveConfig,
+  getIntegration,
+  grantHolds,
   healthWithInboundDoor,
   inboundDoorState,
   inboundWebhookUrl,
+  listBindingsForProject,
   readInboundDoorTraffic,
   resolveApiBaseUrl,
-} from '../inbound-door.js';
-import { getIntegration } from '../registry.js';
-import { effectiveConfig, listBindingsForProject } from '../store.js';
+} from '../index.js';
 import { type GitLabConfig, gitlabHostOf } from './types.js';
 
 const GITLAB_DELIVERY_LOG =

@@ -319,21 +319,6 @@ export function planCriteria(
   return { ok: true, plan };
 }
 
-// cm:why the flag is read, never stored: an issue's plan names the revision and the baseline it was
-// written against, and the requirement has changed since when its head is another revision, or
-// when that revision was re-pinned onto newly approved designs after the plan (ISS-86)
-export function changedSincePlan(input: {
-  plan: string | null;
-  plannedRevision: number | null;
-  currentRevision: number | null;
-  plannedBaselineSeq?: number | null | undefined;
-  latestBaselineSeq?: number | null | undefined;
-}): boolean {
-  if (!input.plan?.trim()) return false;
-  if (input.plannedRevision !== input.currentRevision) return true;
-  return (input.latestBaselineSeq ?? 1) > (input.plannedBaselineSeq ?? 1);
-}
-
 export interface BaselinePin {
   workflowId: string;
   designRevision: number;

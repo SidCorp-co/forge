@@ -1,18 +1,21 @@
 import type { ReleaseNotes } from '@forge/contracts/release-notes';
 import type { ReleaseCriterionView, ReleasePerson } from '@forge/contracts/releases';
 import type { RequirementState } from '@forge/contracts/requirements';
+import { requirementKey } from '@forge/contracts/requirements';
 import { criterionStandingOf, identityPhraseOf } from '@forge/contracts/verdict-identity';
 import { and, asc, eq, inArray, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, jobs, organizationMembers, projectMembers, projects } from '../db/schema.js';
 import { requirements } from '../db/schema-requirements.js';
-import { type CriterionWithVerdict, listCriteriaOf } from '../issues/criteria/store.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { reopenedAtOf } from '../issues/release-evidence.js';
+import {
+  activeIssuePrefix,
+  type CriterionWithVerdict,
+  listCriteriaOf,
+  reopenedAtOf,
+} from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
-import { requirementKey } from '../requirements/read.js';
-import { standingsOf } from '../requirements/standing-read.js';
+import { standingsOf } from '../requirements/index.js';
 import type { CompletionFacts } from './release-view.js';
 
 export interface IssueFact {

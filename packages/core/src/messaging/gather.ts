@@ -9,8 +9,6 @@
 import { and, eq, inArray, or } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { activeIssuePrefix, heldIssuePrefixes } from '../issues/issue-prefix-read.js';
-import { computeProjectProgress } from '../issues/progress.js';
 import { LEGACY_ISSUE_PREFIX } from '../lib/issue-ref.js';
 import { cellFor } from './cells.js';
 import type { Audience, FactKind, Intent } from './contract.js';
@@ -32,6 +30,29 @@ export interface GatherInput {
    * The handle to read through. A caller inside a transaction MUST pass its own.
    */
   readonly executor?: Tx;
+}
+
+/** The issue reads a screen needs, from the work kernel that owns them. */
+export interface IssueFactReads {
+  activeIssuePrefix(projectId: string, tx: Tx): Promise<string | null>;
+  heldIssuePrefixes(projectId: string, tx: Tx): Promise<readonly string[]>;
+  projectProgress(projectId: string, tx: Tx): Promise<ProgressFacts | null>;
+}
+
+let issueFactReads: IssueFactReads | null = null;
+
+/** The process entry provides the issue reads at boot, so the screen never imports the kernel above it. */
+export function provideIssueFactReads(reads: IssueFactReads): void {
+  issueFactReads = reads;
+}
+
+function reads(): IssueFactReads {
+  if (!issueFactReads) {
+    throw new Error(
+      'message screen: no issue reads were provided, so a claim cannot be checked against the tracker; the process entry calls provideIssueFactReads before it serves',
+    );
+  }
+  return issueFactReads;
 }
 
 const ANY_REFERENCE_RE = /\b[A-Za-z][A-Za-z0-9]{1,5}-\d{1,6}\b/;
@@ -98,8 +119,8 @@ async function activePrefixes(
   tx: Tx,
 ): Promise<[string | null, readonly string[]]> {
   const [active, held] = await Promise.all([
-    activeIssuePrefix(projectId, tx),
-    heldIssuePrefixes(projectId, tx),
+    reads().activeIssuePrefix(projectId, tx),
+    reads().heldIssuePrefixes(projectId, tx),
   ]);
   const prefix = active ?? LEGACY_ISSUE_PREFIX;
   return [prefix, [...new Set([prefix, ...held])]];
@@ -128,7 +149,7 @@ export async function gatherFacts(input: GatherInput): Promise<MessageFacts> {
 
   const progress = needs.has('progress')
     ? input.progress === 'compute'
-      ? await computeProjectProgress(input.projectId, tx)
+      ? await reads().projectProgress(input.projectId, tx)
       : (input.progress ?? null)
     : null;
 

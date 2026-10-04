@@ -1,4 +1,5 @@
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
+import { REPO_PATH_MAX, repoPath } from '@forge/contracts/repo-path';
 import { z } from 'zod';
 import { type STOREFRONT_PROVIDERS, slug, unique, uuid } from '../project-config/schema.js';
 
@@ -22,7 +23,7 @@ export const STEP_STATUSES = [
 export const FINDING_CLASSIFICATIONS = ['matched', 'outside_ecosystem', 'unknown'] as const;
 
 export const LIMITS = {
-  path: 400,
+  path: REPO_PATH_MAX,
   artefactId: 200,
   operation: 200,
   field: 200,
@@ -37,19 +38,12 @@ export const LIMITS = {
   links: 500,
 } as const;
 
-// cm:why a segment is anything but a separator, a backslash or a control character, and never `.` or `..`: the path names a file inside the checkout, so it neither starts at a root nor climbs out of one
-export const REPO_PATH =
-  /^(?![A-Za-z]:)(?!(?:.*\/)?\.{1,2}(?:\/|$))[^/\\\p{Cc}]+(?:\/[^/\\\p{Cc}]+)*$/u;
 const SHA = /^[0-9a-f]{40}$/;
 const HOST =
   /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
 
 const timestamp = () => z.iso.datetime({ offset: true });
 const sha = () => z.string().regex(SHA);
-export const REPO_PATH_MESSAGE =
-  'a repository-relative path: no leading `/` or drive, no `.` or `..` segment, no empty segment, no backslash';
-export const repoPath = () =>
-  z.string().min(1).max(LIMITS.path).regex(REPO_PATH, { message: REPO_PATH_MESSAGE });
 const operation = () => z.string().min(1).max(LIMITS.operation);
 
 /** The artefacts a storefront provider holds, which a gitless consumer's call site names in place of a file. */

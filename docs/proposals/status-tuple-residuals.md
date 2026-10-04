@@ -28,7 +28,7 @@ falsely, and the pairing would read as a finding about the wrong module.
 **One question has ten inline answers and two more under other names.** `['running', 'paused']`,
 which `LIVE_PIPELINE_RUN_STATUSES` names, is written inline in `pipeline/deploy-confirmations.ts`
 (twice), `pipeline/runs-control.ts`, `pipeline/runs.ts` (six times) and
-`projects/health-aggregates.ts`; it is declared a second time as
+`health/project-health.ts`; it is declared a second time as
 `release-batch/version-store.ts:OPEN_RUN_STATUSES`, and a third as `LIVE_RUN_STATUSES` in
 `packages/web-v2/src/features/project-dashboard/derive.ts`. That last one is the shape this whole
 axis exists to refuse: a browser copy of a core answer with no marker and nothing naming the two as

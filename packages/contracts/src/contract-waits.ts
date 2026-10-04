@@ -112,3 +112,22 @@ export interface ContractRequestView {
 export interface ContractRequestListResponse {
 	requests: ContractRequestView[];
 }
+
+/** A consumer issue whose wait the provider's production does not yet serve. */
+export interface LiveShortfall {
+	issueId: string;
+	issue: string;
+	contract: string;
+	needed: string;
+	live: string | null;
+}
+
+export function notLiveSentence(shortfalls: readonly LiveShortfall[]): string {
+	const each = shortfalls
+		.map(
+			(s) =>
+				`\`${s.issue}\` needs ${s.contract} >= ${s.needed}, and its provider's production serves ${s.live ?? "no version Forge could read"}`,
+		)
+		.join("; ");
+	return `A production release of this project waits for each provider to serve the contract version its issues wait on: ${each}. Release once the provider has, or take the issue out of this release; the ecosystem's steward can set releases.providerLive to "off" where this gate is not wanted.`;
+}

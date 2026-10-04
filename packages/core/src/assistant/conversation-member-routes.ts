@@ -14,17 +14,22 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { addableHandles, addablePeople, projectsNamed } from '../conversations/membership.js';
-import { listParticipants } from '../conversations/participants.js';
-import { derivedScope } from '../conversations/scope.js';
-import { getConversation } from '../conversations/store.js';
+import {
+  addableHandles,
+  addablePeople,
+  derivedScope,
+  getConversation,
+  listParticipants,
+  mayChangeMembership,
+  projectsNamed,
+  readableConversation,
+} from '../conversations/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { mayChangeMembership, readableConversation } from './conversation-access.js';
+import { requireHeld } from '../permissions/index.js';
 import { nameLostReaders, namePeople, withDisplayNames } from './conversation-people.js';
 import { addRoomHandle, addRoomPerson, removeRoomParticipant } from './service.js';
-import { requireHeld } from '../permissions/index.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 const projectQuerySchema = z.object({ projectId: z.uuid() }).strict();
@@ -163,4 +168,3 @@ conversationMemberRoutes.delete(
     return c.json(await membershipOf(id, actor));
   },
 );
-

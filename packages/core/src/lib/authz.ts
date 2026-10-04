@@ -70,7 +70,7 @@ export function provideProjectOrg(source: ProjectOrgSource): void {
   projectOrgSource = source;
 }
 
-function projectOrgOf(projectId: string): Promise<string | null> {
+export function projectOrgOf(projectId: string): Promise<string | null> {
   if (!projectOrgSource) {
     throw new Error(
       'permission check: no project org source was provided, so where a project sits cannot be read; the process entry calls provideProjectOrg(findProjectOrgId) from projects/service.ts before it serves',

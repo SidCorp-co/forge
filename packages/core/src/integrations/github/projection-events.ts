@@ -1,4 +1,5 @@
 import { logger } from '../../observability/logger.js';
+import type { InboundFact } from '../index.js';
 import {
   applyCheckRunEvent,
   applyPullRequestEvent,
@@ -15,8 +16,7 @@ import {
   type ReviewPayload,
   stateOf,
   storeRefreshRefusal,
-} from '../source-host/projection.js';
-import type { InboundFact } from '../types.js';
+} from '../source-host/index.js';
 import { buildRepoClient, GitHubClientError, type GitHubRepoClient } from './client.js';
 import { refreshStoredPullRequest } from './projection-refresh.js';
 import { applyWorkflowRunEvent, type WorkflowRunPayload } from './runner-release-events.js';

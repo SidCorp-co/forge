@@ -11,6 +11,7 @@ import {
   type BaselineReadiness,
   REQUIREMENT_READINESS_GATE_DEFAULT,
   type RequirementReadinessGate,
+  requirementKey,
 } from '@forge/contracts/requirements';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -23,10 +24,10 @@ import {
   requirements,
 } from '../db/schema-requirements.js';
 import { RefusalError } from '../lib/refusal.js';
-import { type KernelActor, movedRow, transition } from '../lifecycle/transition.js';
-import { readProjectDocument } from '../project-config/service.js';
-import { staleOnTargetRevised } from '../suggestions/stale.js';
+import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';
+import { readProjectDocument } from '../project-config/index.js';
 import { linkedContracts, writePinsIn } from './baselines.js';
+import { requirementDependents } from './dependents.js';
 import { embedRequirementHeadLater } from './embeddings.js';
 import {
   createRequirementIn,
@@ -44,6 +45,7 @@ export {
   type RevisionWrite,
 } from './revision-write.js';
 
+import { lockXact } from '../lib/advisory-lock.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import {
   detailOf,
@@ -54,7 +56,6 @@ import {
   type RevisionRow,
   type Row,
   readinessAt,
-  requirementKey,
   rowIn,
   signerRefusal,
 } from './read.js';
@@ -69,7 +70,6 @@ import {
   staleBaseRefusal,
   stateRefusal,
 } from './rules.js';
-import { lockXact } from '../lib/advisory-lock.js';
 
 async function readinessGateOf(projectId: string): Promise<RequirementReadinessGate> {
   const doc = await readProjectDocument(projectId);
@@ -395,7 +395,7 @@ export async function acceptRevision(input: {
       // its author's, already on the revision row
       await writeBaseline(tx, row.id, target.revision, designs, actor, acceptReason);
     }
-    await staleOnTargetRevised(tx, row.id, target.revision);
+    await requirementDependents().revised(tx, row.id, target.revision);
     return null;
   });
   if (!refusals) embedRequirementHeadLater(row.id);

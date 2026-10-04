@@ -1,8 +1,7 @@
 import type { ConsumedBy, OutboxConsumerOf } from '@forge/contracts/outbox-consumers';
 import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
+import { deviceRoom, globalRoom, projectRoom, roomManager, userRoom } from '../lib/rooms.js';
 import { consume } from '../outbox/index.js';
-import { deviceRoom, globalRoom, projectRoom, userRoom } from './rooms.js';
-import { roomManager } from './server.js';
 
 /**
  * The WebSocket push, a consumer of the outbox: each event becomes the cache-invalidation message

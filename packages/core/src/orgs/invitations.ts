@@ -2,12 +2,12 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type OrgMemberRole, orgInvitations } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
+import { generateInvitationToken, INVITATION_TTL_MS } from '../lib/invitation.js';
 import { addOrgMember } from '../permissions/index.js';
-import { generateToken, INVITATION_TTL_MS } from '../projects/invitation-token.js';
 
 /**
- * Org-tier email-token invitations — the exact mirror of the project
- * invitation mechanics (projects/invitation-token.ts), pointed at
+ * Org-tier email-token invitations — the mirror of the project invitation
+ * mechanics (projects/invitation-token.ts, sharing lib/invitation.ts), pointed at
  * org_invitations / organization_members. Issued only for emails with no
  * Forge account yet; registered users are direct-added.
  */
@@ -39,7 +39,7 @@ export async function issueOrgInvitationToken(
 
     let lastErr: unknown;
     for (let attempt = 0; attempt < MAX_INSERT_RETRIES; attempt++) {
-      const token = generateToken();
+      const token = generateInvitationToken();
       const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
       try {
         await tx.insert(orgInvitations).values({

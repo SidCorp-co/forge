@@ -1,5 +1,5 @@
 import { conversationAgentUnavailableReason } from '../agent-sessions/conversation-agent.js';
-import { type ConversationRow, effectiveConversationMode } from '../conversations/store.js';
+import { type ConversationRow, effectiveConversationMode } from '../conversations/index.js';
 
 export async function agentModeOffer(
   row: ConversationRow,

@@ -9,9 +9,11 @@ import { agrees } from '../lib/plural.js';
 import { RefusalError } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
-import { environmentsOf, readReleasePath } from '../project-config/release-path.js';
-import { readProjectDocument } from '../project-config/service.js';
+import { approvalRequired, environmentsOf, readReleasePath } from '../project-config/index.js';
 import { refuseRelease } from './refuse.js';
+
+// The issues kernel still reads the approval fact here; it is project-config's (`release-path.ts`).
+export { approvalRequired };
 
 const SHA = /^[0-9a-f]{40}$/;
 const ENV_NAME = /^[a-z][a-z0-9-]{0,62}$/;
@@ -231,12 +233,6 @@ export async function decideApproval(input: {
   }
   const [view] = await approvalViews([row]);
   return view as ApprovalView;
-}
-
-/** `release.approval.required` of the project document; a project with no document requires none. */
-export async function approvalRequired(projectId: string): Promise<boolean> {
-  const held = await readProjectDocument(projectId);
-  return held?.document.release?.approval.required === true;
 }
 
 // cm:guard an attempt on a run whose latest request is pending or returned is refused: the attempts of a release run are its production acts, and approval is what lets the master make them

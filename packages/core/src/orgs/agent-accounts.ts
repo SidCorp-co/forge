@@ -11,9 +11,8 @@
 import { randomBytes } from 'node:crypto';
 import { and, count, desc, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { insertAgentAccount, setUserDisplayName } from '../auth/agent-users.js';
-import { handleNameForProject } from '../conversations/handles.js';
-import { isAgentHandle } from '../credentials/agent-account.js';
+import { insertAgentAccount, setUserDisplayName } from '../auth/index.js';
+import { handleNameForProject, isAgentHandle } from '../credentials/agent-account.js';
 import { mintPat, refenceLiveTokens, revokeLiveTokens } from '../credentials/pat.js';
 import { patIsLive } from '../credentials/pat-live.js';
 import { db, type Tx } from '../db/client.js';

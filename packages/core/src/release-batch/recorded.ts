@@ -15,9 +15,13 @@ import { postIssueNotice } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
-import { accountActor } from '../issues/account-actor.js';
-import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
-import { claimIssuesForRelease, releaseRunClaims } from '../issues/index.js';
+import {
+  accountActor,
+  claimIssuesForRelease,
+  releaseRunClaims,
+  TransitionError,
+  transitionIssueStatus,
+} from '../issues/index.js';
 import { logger } from '../observability/logger.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { collectReleaseBlockers } from './blockers.js';

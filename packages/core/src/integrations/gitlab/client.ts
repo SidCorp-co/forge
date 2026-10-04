@@ -6,7 +6,7 @@
  */
 
 import { scrubLogText } from '@forge/observability';
-import { SourceHostCallError, SourceHostUnavailable } from '../source-host/errors.js';
+import { SourceHostCallError, SourceHostUnavailable } from '../source-host/index.js';
 import {
   GITLAB_DEFAULT_BASE_URL,
   type GitLabConfig,

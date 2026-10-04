@@ -4,7 +4,10 @@ import {
 } from '@forge/contracts/content-language';
 import { SENSITIVE_DATA_LEVELS } from '@forge/contracts/data-policy';
 import { deliveryPolicySchema } from '@forge/contracts/delivery-policy';
-import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import {
+  AUTONOMOUS_DRIVER_STATUSES,
+  ISSUE_TERMINAL_STATUSES,
+} from '@forge/contracts/issue-machine';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { REQUIREMENT_READINESS_GATES } from '@forge/contracts/requirements';
 import {
@@ -14,7 +17,6 @@ import {
 import { z } from 'zod';
 import { agentAccessValues } from '../db/release-axes.js';
 import type { IssueStatus } from '../db/schema.js';
-import { AUTONOMOUS_DRIVER_STATUSES } from '../pipeline/autonomous-mode.js';
 import { releaseRuleSchema } from './release-rule-schema.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -225,8 +227,8 @@ export const projectDocumentSchema = z.strictObject({
 export type ProjectDocument = z.infer<typeof projectDocumentSchema>;
 export type EnvironmentDeclaration = ProjectDocument['environments'][string];
 
-// cm:edge naming -> packages/core/src/pipeline/autonomous-mode.ts — the driver statuses minus the
-// terminal ones, not every status: nothing dispatches at `awaiting_release` or past it.
+// The driver statuses minus the terminal ones, not every status: nothing dispatches at
+// `awaiting_release` or past it.
 export const POLICY_STATE_STATUSES: readonly IssueStatus[] = AUTONOMOUS_DRIVER_STATUSES.filter(
   (s) => !ISSUE_TERMINAL_STATUSES.includes(s),
 );

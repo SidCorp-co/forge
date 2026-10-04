@@ -1,3 +1,4 @@
+import { DEPLOY_CONFIRM_WINDOW_MS } from '@forge/contracts/pipeline';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
@@ -5,7 +6,7 @@ import { pipelineRuns } from '../db/schema.js';
 export const DEPLOY_CONFIRM_METADATA_KEY = '__forge_deploy_confirm';
 export const DEPLOY_CLOSE_PENDING_METADATA_KEY = '__forge_deploy_close_pending';
 
-export const DEPLOY_CONFIRM_WINDOW_MS = 30 * 60_000;
+export { DEPLOY_CONFIRM_WINDOW_MS };
 
 export type DeployConfirmationStatus = 'pending' | 'succeeded' | 'failed';
 

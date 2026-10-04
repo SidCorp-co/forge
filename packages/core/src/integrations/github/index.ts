@@ -1,3 +1,4 @@
+export { githubIntegration } from './adapter.js';
 export {
   buildAppManifest,
   convertManifestCode,

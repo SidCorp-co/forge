@@ -22,8 +22,12 @@ import {
   projects,
   workspaceSshKeys,
 } from '../db/schema.js';
-import { assertSafeSshRepoUrl } from '../git/ssh-host-guard.js';
-import { derivePublicFromPrivate, generateSshKeypair, testSshConnection } from '../git/ssh-keys.js';
+import {
+  assertSafeSshRepoUrl,
+  derivePublicFromPrivate,
+  generateSshKeypair,
+  testSshConnection,
+} from '../git/index.js';
 import { decryptSecret, encryptSecret, isVaultConfigured } from '../integrations/index.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { RefusalError } from '../lib/refusal.js';

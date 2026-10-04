@@ -16,17 +16,16 @@ import {
 } from '../db/schema.js';
 import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
 import { buildChatPreamble, TOOL_REFERENCE } from '../lib/chat-preamble.js';
-import type { RefusalError } from '../lib/refusal.js';
 import {
   findAvailableDeviceForProject,
   findChatCapableDeviceForProject,
   resolveSessionRepoPathForDevice,
 } from '../lib/device-pool.js';
+import type { RefusalError } from '../lib/refusal.js';
+import { deviceRoom, projectRoom, roomManager } from '../lib/rooms.js';
 import { type KernelActor, movedRow } from '../lifecycle/transition.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import { isSlashCommandSkillName } from '../skills/skill-name.js';
-import { deviceRoom, projectRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
 import { listSessionAttachmentsByIds, type SessionAttachmentRef } from './attachment-service.js';
 import { applyAutoTitleAsync } from './auto-title.js';
 import { broadcastSession, broadcastTurnAppended } from './broadcast.js';
@@ -39,9 +38,9 @@ import {
 } from './page-context.js';
 import { refuseSession } from './refusals.js';
 import { seedTurn } from './session-events.js';
-import { transitionSessions } from './session-transition.js';
 import type { AgentSessionPatch } from './session-failure.js';
 import { readSessionModel } from './session-model.js';
+import { transitionSessions } from './session-transition.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 
 type AgentSessionRow = typeof agentSessions.$inferSelect;

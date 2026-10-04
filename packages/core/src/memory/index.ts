@@ -10,3 +10,5 @@ export { registerMemoryExtraction } from './extraction.js';
 export { registerMemoryIndexer } from './indexer.js';
 export type { MemoryHit } from './search.js';
 export { runMemorySearch } from './search-service.js';
+export { NEAR_DUPLICATE_THRESHOLD } from './thresholds.js';
+export { runMemoryWrite } from './write-service.js';

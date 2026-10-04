@@ -3,6 +3,7 @@ import type {
   ContractRequestView,
   ContractWaitAgency,
 } from '@forge/contracts/contract-waits';
+import { requirementKey } from '@forge/contracts/requirements';
 import { desc, eq, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../../db/client.js';
@@ -10,7 +11,6 @@ import { projects } from '../../db/schema.js';
 import { contractRequests } from '../../db/schema-contract-waits.js';
 import { channelDocuments } from '../../db/schema-ecosystem.js';
 import { requirements } from '../../db/schema-requirements.js';
-import { requirementKey } from '../../requirements/index.js';
 
 const consumer = alias(projects, 'consumer');
 const provider = alias(projects, 'provider');

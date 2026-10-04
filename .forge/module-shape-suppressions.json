@@ -1,0 +1,47 @@
+{
+  "packages/core/src/assistant/bench/client.ts": {
+    "module-shape/refusal": {
+      "count": 1
+    }
+  },
+  "packages/core/src/devices/run-session.ts": {
+    "module-shape/table-writer": {
+      "count": 1
+    }
+  },
+  "packages/core/src/ecosystem/waits/gate.ts": {
+    "module-shape/refusal": {
+      "count": 1
+    }
+  },
+  "packages/core/src/issues/apply-transition.ts": {
+    "module-shape/refusal": {
+      "count": 1
+    }
+  },
+  "packages/core/src/lifecycle/transition.ts": {
+    "module-shape/table-writer": {
+      "count": 1
+    }
+  },
+  "packages/core/src/outbox/worker.ts": {
+    "module-shape/refusal": {
+      "count": 1
+    }
+  },
+  "packages/core/src/pipeline/idle-issues.ts": {
+    "module-shape/table-writer": {
+      "count": 3
+    }
+  },
+  "packages/core/src/queue/v10-carry-over.ts": {
+    "module-shape/table-writer": {
+      "count": 1
+    }
+  },
+  "packages/core/src/workflows/design.ts": {
+    "module-shape/refusal": {
+      "count": 1
+    }
+  }
+}

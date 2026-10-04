@@ -1,4 +1,5 @@
 import { isPlainObject as isRecord } from '@forge/contracts/document-patch';
+import { REPO_PATH_MESSAGE } from '@forge/contracts/repo-path';
 import type { z } from 'zod';
 import { jsonPointer as pointer } from '../lib/refusal.js';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
@@ -16,7 +17,6 @@ import {
   LINK_STATES,
   type LinkWrite,
   linkWriteSchema,
-  REPO_PATH_MESSAGE,
   STEP_STATUSES,
 } from './link-schema.js';
 import type { Checked, EcosystemRefusal, LinkRefusalCode } from './refusals.js';

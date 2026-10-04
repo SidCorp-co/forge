@@ -40,7 +40,7 @@ export async function countClaimHeldIssues(
   return rows.filter((r) => leaseIsWorkInProgress(readClaim(r.lease, now, fanout).verdict)).length;
 }
 
-/** ISS-1273 — the same count for several projects at once, which `projects/health-routes.ts`
+/** ISS-1273 — the same count for several projects at once, which `health/project-health-routes.ts`
  *  needs: it is one of the two readers this pair got, the other being the tick log below. */
 export async function countClaimHeldIssuesByProject(
   projectIds: readonly string[],

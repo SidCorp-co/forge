@@ -7,6 +7,7 @@ import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { RequirementStanding } from '@forge/contracts/requirements';
+import { changedSincePlan, requirementKey } from '@forge/contracts/requirements';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
@@ -24,24 +25,18 @@ import {
 } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
-import type { ReadDoor } from '../feedback/egress.js';
+import type { ReadDoor } from '../feedback/index.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
-import { approvalRequired } from '../release-batch/approvals.js';
 import { linkedContracts } from './baselines.js';
 import { tracesOf } from './criterion-traces.js';
 import { deferralOf } from './deferral-read.js';
-import { requirementFeedbackAs } from './feedback-read.js';
+import { requirementDependents } from './dependents.js';
 import { historyOf } from './history-read.js';
-import {
-  changedSincePlan,
-  type LinkedDesign,
-  type ReadinessAtHead,
-  signoffRefusal,
-} from './rules.js';
-import { standingsOf } from './standing-read.js';
+import { type LinkedDesign, type ReadinessAtHead, signoffRefusal } from './rules.js';
+import { approvalRequiredIn, standingsOf } from './standing-read.js';
 
 export interface RequirementActor {
   userId: string;
@@ -61,8 +56,6 @@ export type CriterionRow = typeof requirementCriteria.$inferSelect;
 
 export const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-export const requirementKey = (seq: number) => `REQ-${seq}`;
 
 const NO_PERSON: RequirementActor = { userId: '', agency: 'agent' };
 
@@ -258,8 +251,8 @@ export async function detailOf(row: Row, viewer: RequirementActor | null, door: 
     historyOf(row.id, row.projectId),
     readinessOf(row),
     deferralOf(row.id, row.status),
-    approvalRequired(row.projectId),
-    requirementFeedbackAs(viewer ?? NO_PERSON, row.projectId, row.id, door),
+    approvalRequiredIn(row.projectId),
+    requirementDependents().feedbackOf(viewer ?? NO_PERSON, row.projectId, row.id, door),
     tracesOf(db, row.id),
     linkedContracts(db, row.id),
   ]);

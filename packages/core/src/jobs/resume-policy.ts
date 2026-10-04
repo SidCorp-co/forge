@@ -1,3 +1,4 @@
+import type { ResumeDropReason } from '@forge/contracts/resume-drop';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
@@ -7,22 +8,6 @@ import { traceStep } from '../observability/sentry.js';
 import { getTrippedDeviceIds } from '../runners/select.js';
 import { readAutoRetryPayload } from './retry.js';
 import { estimateIssueContextTokens, MAX_RESUME_TOKENS } from './session-resume.js';
-
-/**
- * Why a dispatch that HAD a prior session to continue started from an empty transcript instead.
- *
- * "No prior session existed" is not a member: it is the normal shape of a first attempt and
- * counting it would drown the losses that matter. `ResumeRecord.dropReason === null` with
- * `priorClaudeSessionId === null` is that case.
- */
-export type ResumeDropReason =
-  // cm:why history-only: rows written before per-state runner pools were deleted (ISS-5) carry it.
-  | 'stage_pool'
-  | 'resume_bound_tokens'
-  | 'resume_bound_reopen_cycles'
-  | 'rotation'
-  | 'failure_action'
-  | 'pin_stale';
 
 /** What this attempt did with the prior session, durable on `agent_sessions.metadata.resume`. */
 export interface ResumeRecord {

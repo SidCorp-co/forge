@@ -6,7 +6,8 @@ import { fromPage, listResponse } from '../lib/pagination.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { deliveryMembers, listDeliveries, openNotificationCount } from './read.js';
+import { listDeliveries } from './deliveries-read.js';
+import { deliveryMembers, openNotificationCount } from './read.js';
 import {
   closeDeliveryTasks,
   deleteDelivery,

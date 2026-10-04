@@ -1,3 +1,4 @@
+import { owedCloseResolutionKey, strandedResolutionKey } from '@forge/contracts/notifications';
 import { and, asc, eq, inArray, isNotNull, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses, issues, projects } from '../db/schema.js';
@@ -37,10 +38,6 @@ export interface StrandedIssuesResult {
   notified: number;
 }
 
-export function strandedResolutionKey(issueId: string): string {
-  return `issue:${issueId}:stranded`;
-}
-
 /**
  * ISS-1063 — the grouping key: one evaluation of one detector.
  *
@@ -51,10 +48,6 @@ export function strandedResolutionKey(issueId: string): string {
  */
 export function sweepGroupKey(detector: string, now: Date): string {
   return `sweep:${detector}:${Math.floor(now.getTime() / 60_000)}`;
-}
-
-export function owedCloseResolutionKey(issueId: string): string {
-  return `issue:${issueId}:owed-close`;
 }
 
 /**

@@ -4,11 +4,10 @@ import { deriveSessionFinal } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { issueStepContexts, jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
+import { projectRoom, roomManager } from '../lib/rooms.js';
 import { transition } from '../lifecycle/transition.js';
 import { logger } from '../observability/logger.js';
 import { materializeJobUsage } from '../usage-records/materialize.js';
-import { projectRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 
 type JobRow = typeof jobs.$inferSelect;

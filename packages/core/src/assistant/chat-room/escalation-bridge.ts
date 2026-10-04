@@ -7,7 +7,7 @@
 
 import { eq } from 'drizzle-orm';
 import { webBaseUrl } from '../../config/web-base-url.js';
-import { recordDeliveredReplyToVenue, rocketChatVenueId } from '../../conversations/index.js';
+import { recordDeliveredReplyToVenue } from '../../conversations/index.js';
 import {
   CHAT_TURN_MENU,
   mintTurnCredential,
@@ -36,6 +36,7 @@ import { buildChatToolContext } from '../tools/principal.js';
 import { buildProjectToolset } from '../tools/registry.js';
 import { ESCALATION_FALLBACK_REPLY } from './escalation.js';
 import { rocketChatPersona } from './persona.js';
+import { rocketChatVenueId } from './port.js';
 import {
   claimRoomReplyDelivery,
   extractFinalAssistantText,

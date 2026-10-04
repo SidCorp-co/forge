@@ -33,6 +33,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"source.reviewed",
 	"error.sighted",
 	"integration.changed",
+	"workflow.designDecided",
 ] as const;
 export type OutboxEventType = (typeof OUTBOX_EVENT_TYPES)[number];
 
@@ -313,6 +314,13 @@ export interface OutboxEventPayloads {
 		projectId: string;
 		bindingId?: string;
 		connectionId?: string;
+	};
+	/** The approver decided a design this project proposed: an approve unblocks its builds, a return owes a revision. */
+	"workflow.designDecided": {
+		projectId: string;
+		workflowId: string;
+		decision: "approve" | "return";
+		issueId: string | null;
 	};
 }
 

@@ -36,3 +36,4 @@ export {
   writeReleaseHolds,
 } from './hold.js';
 export { recoverUnstartedReleaseBatches } from './unstarted-recovery.js';
+export { provideReleaseBatchPorts } from './ports.js';

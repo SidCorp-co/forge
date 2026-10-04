@@ -5,13 +5,12 @@
  */
 
 import type { ContentLanguageWrite } from '@forge/contracts/content-language';
-import type { ApiRefusal } from '../project-config/documents.js';
-import type { ProjectDocument } from '../project-config/schema.js';
+import type { ApiRefusal, ProjectDocument } from '../project-config/index.js';
 import {
   readProjectConfig,
   type WriteOutcome,
   writeProjectConfig,
-} from '../project-config/service.js';
+} from '../project-config/index.js';
 
 export async function writeContentLanguage(input: {
   projectId: string;

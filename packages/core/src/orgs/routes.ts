@@ -8,8 +8,8 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
 import { actorFor, orgResource, requireOrgCan, requireOrgHeld } from '../permissions/index.js';
-import { sendOrgInvitationEmail } from '../projects/invitation-email.js';
 import { agentAccountRoutes } from './agent-accounts-routes.js';
+import { sendOrgInvitationEmail } from './invitation-email.js';
 import { issueOrgInvitationToken } from './invitations.js';
 import {
   listOrgProjects,

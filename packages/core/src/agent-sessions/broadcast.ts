@@ -1,6 +1,5 @@
 import type { AgentSessionTurnRole } from '../db/schema.js';
-import { deviceRoom, projectRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
+import { deviceRoom, projectRoom, roomManager } from '../lib/rooms.js';
 
 interface SessionLite {
   id: string;

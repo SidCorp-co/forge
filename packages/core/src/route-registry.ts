@@ -19,7 +19,7 @@ import {
   agentSessionRoutes,
 } from './agent-sessions/routes.js';
 import { agentRoutes } from './agents/routes.js';
-import { appConfigRoutes, memoryModelRoutes } from './app-config/routes.js';
+import { appConfigRoutes } from './app-config/routes.js';
 import {
   assistantWeeklyRoutes,
   baDoorRoutes,
@@ -57,6 +57,7 @@ import {
   runLedgerRoutes,
 } from './devices/routes.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
+import { ecosystemJsonSchemas } from './ecosystem/index.js';
 import {
   busRoutes,
   channelProjectRoutes,
@@ -72,7 +73,12 @@ import {
 import { feedbackRoutes } from './feedback/routes.js';
 import { deviceGitCredentialRoutes } from './git/routes.js';
 import { guideRoutes } from './guides/routes.js';
-import { opsHealthMeRoutes, opsHealthProjectRoutes, publicHealthRoutes } from './health/routes.js';
+import {
+  opsHealthMeRoutes,
+  opsHealthProjectRoutes,
+  projectHealthRoutes,
+  publicHealthRoutes,
+} from './health/routes.js';
 import { improvementMessageRoutes } from './improvement-messages/routes.js';
 import { installRoutes } from './install/routes.js';
 import {
@@ -121,6 +127,7 @@ import { meAttentionRoutes, mePulseRoutes, meRecentChangesRoutes } from './me/ro
 import {
   memoryListRoutes,
   memoryMineRoutes,
+  memoryModelRoutes,
   memorySearchRoutes,
   memoryWriteRoutes,
 } from './memory/routes.js';
@@ -144,7 +151,7 @@ import {
   stepHandoffRoutes,
 } from './pipeline/routes.js';
 import { pmReadRoutes, pmRoutes } from './pm/routes.js';
-import { preferenceRoutes } from './preferences/routes.js';
+import { orgMemberPreferenceRoutes, preferenceRoutes } from './preferences/routes.js';
 import {
   environmentStateRoutes,
   projectConfigRoutes,
@@ -156,7 +163,6 @@ import {
   invitationRoutes,
   masterCharterRoutes,
   memberRoutes,
-  projectHealthRoutes,
   projectRoutes,
 } from './projects/routes.js';
 import { promptRoutes } from './prompt/routes.js';
@@ -165,12 +171,13 @@ import { questionRoutes } from './questions/routes.js';
 import { releaseBatchRoutes } from './release-batch/routes.js';
 import { requirementRoutes } from './requirements/routes.js';
 import { mcpMessageBody, mcpNoBody, rootRoutes } from './root-routes.js';
-import { runnerRoutes } from './runners/routes.js';
+import { projectRunnerRoutes, runnerRoutes } from './runners/routes.js';
 import { runStandingRoutes } from './runs/routes.js';
 import { scheduleRoutes } from './schedules/routes.js';
 import { skillFactsRoutes } from './skill-facts/routes.js';
 import {
   divergenceCharterRoutes,
+  projectOnboardRoutes,
   reconcileRoutes,
   skillActivityRoutes,
   skillCrudRoutes,
@@ -186,6 +193,7 @@ import { updatePacketRoutes } from './update-packets/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
 import { usageRecordRoutes } from './usage-records/routes.js';
 import { webhookInboundRoutes } from './webhooks/routes.js';
+import { workflowJsonSchemas } from './workflows/index.js';
 import { workflowRoutes, workflowTemplateCatalogueRoutes } from './workflows/routes.js';
 
 export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
@@ -240,7 +248,7 @@ function mountAccountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
 
 /** The project document, its designs and the entity routes under a project. */
 function mountProjectDocumentRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
-  app.route('/api', projectConfigSchemaRoutes);
+  app.route('/api', projectConfigSchemaRoutes(ecosystemJsonSchemas, workflowJsonSchemas));
   app.route('/api/workflow-templates', workflowTemplateCatalogueRoutes);
   app.route('/api/projects', projectConfigRoutes);
   app.route('/api/projects', environmentStateRoutes);
@@ -274,10 +282,14 @@ function mountEcosystemRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
 /** Projects, orgs, integrations, members and skills. */
 function mountProjectAndOrgRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', projectRoutes);
+  // No auth of their own: they answer under projectRoutes' gate, mounted just above on the same prefix.
+  app.route('/api/projects', projectRunnerRoutes);
+  app.route('/api/projects', projectOnboardRoutes);
   app.route('/api/projects', assistantWeeklyRoutes);
   app.route('/api/orgs', orgRoutes);
-  // No auth of its own: it answers under orgRoutes' gate, mounted just above on the same prefix.
+  // No auth of their own: they answer under orgRoutes' gate, mounted just above on the same prefix.
   app.route('/api/orgs', deviceOrgRoutes);
+  app.route('/api/orgs', orgMemberPreferenceRoutes);
   app.route('/api/orgs', sshKeyRoutes);
   app.route('/api/org-invitations', orgInvitationRoutes);
   app.route('/api/projects', integrationsRoutes);

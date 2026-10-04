@@ -34,7 +34,7 @@ import {
   threadRootText,
 } from '../../integrations/rocketchat/index.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
-import { type KernelActor, transition } from '../../lifecycle/transition.js';
+import { type KernelActor, transition } from '../../lifecycle/index.js';
 import { problemsOf } from '../../messaging/contract.js';
 import { proven, wholeAgentText } from '../../messaging/proven.js';
 import { logger } from '../../observability/logger.js';

@@ -1,8 +1,18 @@
-import type { SpeakerResolution } from '../assistant/identity/speaker-link.js';
+import type { SpeakerRefusalCode } from '@forge/contracts/assistant';
 import type { ConversationAdapter, ConversationShape } from '../db/schema-conversations.js';
 import type { DoorId, MessageVerdict } from '../messaging/contract.js';
 import { problemsOf } from '../messaging/contract.js';
 import { type ProvenMessage, proven, wholeAgentText } from '../messaging/proven.js';
+
+export interface SpeakerRefusal {
+  code: SpeakerRefusalCode;
+  message: string;
+}
+
+/** Who a venue's speaker is in Forge, or the refusal that names why nobody is. */
+export type SpeakerResolution =
+  | { linked: true; userId: string }
+  | { linked: false; refusal: SpeakerRefusal };
 
 export interface ConversationVenue {
   adapter: ConversationAdapter;

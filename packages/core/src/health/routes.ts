@@ -94,3 +94,5 @@ opsHealthMeRoutes.get(
     );
   },
 );
+
+export { projectHealthRoutes } from './project-health-routes.js';

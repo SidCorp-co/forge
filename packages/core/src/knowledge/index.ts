@@ -1,2 +1,7 @@
 export { searchKnowledge } from './search.js';
-export { fillKnowledgeEmbedding, knowledgeEmbedInput } from './service.js';
+export {
+  fillKnowledgeEmbedding,
+  getKnowledgeEntry,
+  knowledgeEmbedInput,
+  selectAllSlugsFromKnowledge,
+} from './service.js';

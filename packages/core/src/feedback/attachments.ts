@@ -15,7 +15,7 @@ import { dataPolicyOf, egressAs } from '../lib/data-egress.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../observability/logger.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { askQuestion } from '../questions/write.js';
+import { askQuestion } from '../questions/index.js';
 import { getStorage } from '../storage/index.js';
 import { type FeedbackActor, feedbackKey, phaseOfRow, rowIn } from './read.js';
 import { clarificationRefusal, redactedRefusal } from './rules.js';

@@ -2,19 +2,13 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issuePrefixAliases } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { type IssuePrefixShapeError, validateIssuePrefix } from '../lib/issue-ref.js';
-import { setProjectIssuePrefix } from '../projects/index.js';
+import { validateIssuePrefix } from '../lib/issue-ref.js';
+import type { AssignPrefixResult, PrefixWriter } from '../projects/index.js';
 import { issuePrefixHolder } from './issue-prefix-read.js';
 
-export type PrefixWriter = Pick<typeof db, 'transaction' | 'select' | 'insert' | 'update'>;
-
-export type AssignPrefixResult =
-  | { ok: true; prefix: string }
-  | IssuePrefixShapeError
-  | { ok: false; reason: 'taken'; holderProjectId: string | null };
-
-/** Give a project a prefix, or move it back to one it already holds. */
-export async function assignIssuePrefix(
+/** Hold a prefix for a project, or find it already held by that project. The projects domain writes
+ *  the project's active prefix once this answers ok. */
+export async function claimIssuePrefix(
   projectId: string,
   raw: string,
   dbi: PrefixWriter = db,
@@ -37,22 +31,12 @@ export async function assignIssuePrefix(
       if (!held) {
         await tx.insert(issuePrefixAliases).values({ projectId, prefix });
       }
-      await setProjectIssuePrefix(projectId, prefix, tx);
       return { ok: true as const, prefix };
     });
   } catch (err) {
     if (!isUniqueViolation(err)) throw err;
     const holder = await issuePrefixHolder(prefix);
-    if (holder?.projectId === projectId) {
-      await setProjectIssuePrefix(projectId, prefix, dbi);
-      return { ok: true, prefix };
-    }
+    if (holder?.projectId === projectId) return { ok: true, prefix };
     return { ok: false, reason: 'taken', holderProjectId: holder?.projectId ?? null };
   }
-}
-
-/** Send a project back to the legacy `ISS`. The alias it held is NOT released — see the guard on
- *  `issuePrefixAliases`. */
-export async function retireIssuePrefix(projectId: string, dbi: PrefixWriter = db): Promise<void> {
-  await setProjectIssuePrefix(projectId, null, dbi);
 }

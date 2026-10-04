@@ -5,6 +5,7 @@ import type {
 } from '@forge/contracts/contract-waits';
 import { CONTRACT_WAIT_UNSETTLED } from '@forge/contracts/contract-waits';
 import type { ActorAgency } from '@forge/contracts/permissions';
+import { requirementKey } from '@forge/contracts/requirements';
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { db, type Tx } from '../../db/client.js';
 import { issues, projects } from '../../db/schema.js';
@@ -13,7 +14,6 @@ import { channelDocuments, contractVersions } from '../../db/schema-ecosystem.js
 import { requirements } from '../../db/schema-requirements.js';
 import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
-import { requirementKey } from '../../requirements/index.js';
 import { splitContractRef } from '../interface-rules.js';
 import { loadInterface } from '../interface-service.js';
 import { activeEcosystemIdsOf, projectsWhere } from '../store.js';

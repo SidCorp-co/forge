@@ -1,4 +1,4 @@
-import type { LiveDivergence, WaitingCommit } from '../source-host/types.js';
+import type { LiveDivergence, WaitingCommit } from '../source-host/index.js';
 import { GitHubClientError, GitHubReadError, type GitHubRepoClient } from './client.js';
 
 /** Commits per compare page, GitHub's own ceiling. */

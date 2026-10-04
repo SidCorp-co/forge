@@ -1,6 +1,7 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
+import { releaseBatchPorts } from './ports.js';
 
 /** What a release run says it is running under: a record nothing refuses on (ISS-1276). */
 export interface ReleaseMethod {
@@ -25,12 +26,7 @@ export async function announceMethod(args: {
     detail: args.detail ?? null,
     announcedAt: new Date().toISOString(),
   };
-  await db
-    .update(pipelineRuns)
-    .set({
-      metadata: sql`coalesce(${pipelineRuns.metadata}, '{}'::jsonb) || ${JSON.stringify({ method })}::jsonb`,
-    })
-    .where(eq(pipelineRuns.id, args.runId));
+  await releaseBatchPorts().writeRunMetadata(args.runId, { merge: { method }, touch: false });
   return method;
 }
 

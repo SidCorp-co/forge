@@ -1,3 +1,4 @@
+export { googleIntegration } from './adapter.js';
 export {
   GoogleCommandError,
   googleSheetsAppend,
