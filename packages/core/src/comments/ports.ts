@@ -3,6 +3,7 @@
 
 import type { NodeRef } from '@forge/contracts/workflow-health';
 import type { Tx } from '../db/client.js';
+import { portSlot } from '../lib/port-slot.js';
 import type { Refusal } from '../lib/refusal.js';
 
 interface CommentPorts {
@@ -26,29 +27,10 @@ interface CommentPorts {
   ) => Promise<Refusal | null>;
 }
 
-let provided: CommentPorts | null = null;
+const slot = portSlot<CommentPorts>('comments', 'provideCommentPorts');
+export const provideCommentPorts = slot.provide;
+const { port } = slot;
 
-export function provideCommentPorts(given: CommentPorts): void {
-  provided = given;
-}
-
-function commentPorts(): CommentPorts {
-  if (!provided) {
-    throw new Error(
-      'comments: no ports were provided; the process entry calls provideCommentPorts before it serves',
-    );
-  }
-  return provided;
-}
-
-export const requirementRowIn: CommentPorts['requirementRowIn'] = (tx, projectId, ref) =>
-  commentPorts().requirementRowIn(tx, projectId, ref);
-export const feedbackRowIn: CommentPorts['feedbackRowIn'] = (tx, projectId, ref) =>
-  commentPorts().feedbackRowIn(tx, projectId, ref);
-export const designNodeRefusal: CommentPorts['designNodeRefusal'] = (
-  tx,
-  projectId,
-  workflowRef,
-  node,
-  base,
-) => commentPorts().designNodeRefusal(tx, projectId, workflowRef, node, base);
+export const requirementRowIn = port('requirementRowIn');
+export const feedbackRowIn = port('feedbackRowIn');
+export const designNodeRefusal = port('designNodeRefusal');

@@ -7,6 +7,7 @@ import {
   type ModuleFact,
   type ModuleFeedbackRef,
   type ModulePurpose,
+  modulePaths,
 } from '@forge/contracts/modules';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -21,7 +22,6 @@ import {
   deriveStandings,
   keyPathsOf,
   landingsOf,
-  modulePaths,
   moduleRefs,
   railOrder,
   subtreesOf,

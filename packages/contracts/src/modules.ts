@@ -236,3 +236,23 @@ export interface CodeTraceResponse {
 	/** Units whose `serves` is empty. */
 	untraced: number;
 }
+
+/** Each module's path from its root (`parent/child`), by id; a parent cycle stops where it repeats. */
+export function modulePaths(
+	nodes: readonly { id: string; slug: string; parentId: string | null }[],
+): Map<string, string> {
+	const byId = new Map(nodes.map((n) => [n.id, n]));
+	const out = new Map<string, string>();
+	for (const node of nodes) {
+		const parts = [node.slug];
+		const seen = new Set([node.id]);
+		let at = node.parentId ? byId.get(node.parentId) : undefined;
+		while (at && !seen.has(at.id)) {
+			parts.unshift(at.slug);
+			seen.add(at.id);
+			at = at.parentId ? byId.get(at.parentId) : undefined;
+		}
+		out.set(node.id, parts.join("/"));
+	}
+	return out;
+}

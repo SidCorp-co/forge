@@ -6,6 +6,7 @@ import type { PersonVia } from '@forge/contracts/ecosystem';
 import type { Context } from 'hono';
 import type { Tx } from '../db/client.js';
 import type { ConversationAdapter } from '../db/schema-conversations.js';
+import { portSlot } from '../lib/port-slot.js';
 import type { AuthVars } from '../middleware/auth.js';
 
 /** The conversation turn a session ran for, as its own record names it. */
@@ -38,26 +39,11 @@ interface QuestionPorts {
   }) => Promise<{ boxes: number; delivered: number }>;
 }
 
-let provided: QuestionPorts | null = null;
+const slot = portSlot<QuestionPorts>('questions', 'provideQuestionPorts');
+export const provideQuestionPorts = slot.provide;
+const { port } = slot;
 
-export function provideQuestionPorts(given: QuestionPorts): void {
-  provided = given;
-}
-
-function questionPorts(): QuestionPorts {
-  if (!provided) {
-    throw new Error(
-      'questions: no ports were provided; the process entry calls provideQuestionPorts before it serves',
-    );
-  }
-  return provided;
-}
-
-export const decideChannelGate: QuestionPorts['decideChannelGate'] = (tx, args) =>
-  questionPorts().decideChannelGate(tx, args);
-export const doorOfRequest: QuestionPorts['doorOfRequest'] = (c) =>
-  questionPorts().doorOfRequest(c);
-export const conversationTurnOf: QuestionPorts['conversationTurnOf'] = (metadata) =>
-  questionPorts().conversationTurnOf(metadata);
-export const wakeMastersForAnswer: QuestionPorts['wakeMastersForAnswer'] = (args) =>
-  questionPorts().wakeMastersForAnswer(args);
+export const decideChannelGate = port('decideChannelGate');
+export const doorOfRequest = port('doorOfRequest');
+export const conversationTurnOf = port('conversationTurnOf');
+export const wakeMastersForAnswer = port('wakeMastersForAnswer');

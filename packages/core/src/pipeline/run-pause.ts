@@ -22,7 +22,7 @@ export {
 
 export type PipelineRunRow = typeof pipelineRuns.$inferSelect;
 
-function broadcastRunPause(run: PipelineRunRow): void {
+export function broadcastRunStatus(run: PipelineRunRow): void {
   roomManager.publish(projectRoom(run.projectId), {
     event: 'pipeline_run.status_changed',
     data: {
@@ -65,7 +65,7 @@ export async function pauseRun(args: {
     })
   ).rows;
   if (!row) return null;
-  broadcastRunPause(row);
+  broadcastRunStatus(row);
   return row;
 }
 
@@ -85,7 +85,7 @@ async function resumeRunsWhere(
     source: 'run-resume',
   });
   for (const row of rows) {
-    broadcastRunPause(row);
+    broadcastRunStatus(row);
   }
   return rows;
 }

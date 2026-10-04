@@ -11,6 +11,7 @@ import type { SQL, SQLWrapper } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import type { EgressScope } from '../lib/data-egress.js';
+import { portSlot } from '../lib/port-slot.js';
 import type { Refusal, RefusalError } from '../lib/refusal.js';
 import type { KernelActor } from '../lifecycle/index.js';
 
@@ -226,115 +227,58 @@ interface IssuePorts {
   ) => Promise<'settled' | 'deferred'>;
 }
 
-let ports: IssuePorts | null = null;
+const slot = portSlot<IssuePorts>('issues', 'provideIssuePorts');
+export const provideIssuePorts = slot.provide;
+const issuePorts = slot.get;
+const { port } = slot;
 
-export function provideIssuePorts(given: IssuePorts): void {
-  ports = given;
-}
+export const settleOpenQuestions = port('settleOpenQuestions');
+export const holdsOpenHumanQuestion = port('holdsOpenHumanQuestion');
+export const personOwesAnAnswer = port('personOwesAnAnswer');
+export const askParkQuestion = port('askParkQuestion');
+export const openHumanQuestionIdsOn = port('openHumanQuestionIdsOn');
+export const postIssueNotice = port('postIssueNotice');
+export const messageRefusalHttp = port('messageRefusalHttp');
 
-function issuePorts(): IssuePorts {
-  if (!ports) {
-    throw new Error(
-      'issues: no ports were provided; the process entry calls provideIssuePorts before it serves',
-    );
-  }
-  return ports;
-}
+export const readProjectDocument = port('readProjectDocument');
+export const planDriftOf = port('planDriftOf');
+export const readLandingBranches = port('readLandingBranches');
+export const issueRefPattern = port('issueRefPattern');
+export const declaredIssueSeqs = port('declaredIssueSeqs');
+export const subjectOf = port('subjectOf');
+export const liveReachOfIssue = port('liveReachForIssue');
 
-export const settleOpenQuestions: IssuePorts['settleOpenQuestions'] = (tx, args) =>
-  issuePorts().settleOpenQuestions(tx, args);
-export const holdsOpenHumanQuestion: IssuePorts['holdsOpenHumanQuestion'] = (issueId) =>
-  issuePorts().holdsOpenHumanQuestion(issueId);
-export const personOwesAnAnswer: IssuePorts['personOwesAnAnswer'] = (executor, issueId) =>
-  issuePorts().personOwesAnAnswer(executor, issueId);
-export const askParkQuestion: IssuePorts['askParkQuestion'] = (executor, input) =>
-  issuePorts().askParkQuestion(executor, input);
-export const openHumanQuestionIdsOn: IssuePorts['openHumanQuestionIdsOn'] = (executor, issueId) =>
-  issuePorts().openHumanQuestionIdsOn(executor, issueId);
-export const postIssueNotice: IssuePorts['postIssueNotice'] = (notice, tx) =>
-  issuePorts().postIssueNotice(notice, tx);
-export const messageRefusalHttp: IssuePorts['messageRefusalHttp'] = (err) =>
-  issuePorts().messageRefusalHttp(err);
-
-export const readProjectDocument: IssuePorts['readProjectDocument'] = (projectId) =>
-  issuePorts().readProjectDocument(projectId);
-export const planDriftOf: IssuePorts['planDriftOf'] = (executor, issueId) =>
-  issuePorts().planDriftOf(executor, issueId);
-export const readLandingBranches: IssuePorts['readLandingBranches'] = (projectId) =>
-  issuePorts().readLandingBranches(projectId);
-export const issueRefPattern: IssuePorts['issueRefPattern'] = (prefixes) =>
-  issuePorts().issueRefPattern(prefixes);
-export const declaredIssueSeqs: IssuePorts['declaredIssueSeqs'] = (message, pattern, base) =>
-  issuePorts().declaredIssueSeqs(message, pattern, base);
-export const subjectOf: IssuePorts['subjectOf'] = (message) => issuePorts().subjectOf(message);
-export const liveReachOfIssue: IssuePorts['liveReachForIssue'] = (issue, prefixes) =>
-  issuePorts().liveReachForIssue(issue, prefixes);
-
-export const getLoopThresholds: IssuePorts['getLoopThresholds'] = () =>
-  issuePorts().getLoopThresholds();
-export const extractStageStatus: IssuePorts['extractStageStatus'] = (payload) =>
-  issuePorts().extractStageStatus(payload);
-export const freshRunnerAvailability: IssuePorts['freshRunnerAvailability'] = (projectId) =>
-  issuePorts().freshRunnerAvailability(projectId);
-export const usageSessionMatch: IssuePorts['usageSessionMatch'] = (target) =>
-  issuePorts().usageSessionMatch(target);
-export const usageTotalsSelection: IssuePorts['usageTotalsSelection'] = () =>
-  issuePorts().usageTotalsSelection();
+export const getLoopThresholds = port('getLoopThresholds');
+export const extractStageStatus = port('extractStageStatus');
+export const freshRunnerAvailability = port('freshRunnerAvailability');
+export const usageSessionMatch = port('usageSessionMatch');
+export const usageTotalsSelection = port('usageTotalsSelection');
 export const emptyUsageTotals = (): UsageTotals => issuePorts().emptyUsageTotals;
-export const fireOfCaller: IssuePorts['fireOfCaller'] = (caller) =>
-  issuePorts().fireOfCaller(caller);
-export const issueDeleteRefusal: IssuePorts['issueDeleteRefusal'] = (issue) =>
-  issuePorts().issueDeleteRefusal(issue);
-export const steerIssue: IssuePorts['steerIssue'] = (issueId, body, opts) =>
-  issuePorts().steerIssue(issueId, body, opts);
+export const fireOfCaller = port('fireOfCaller');
+export const issueDeleteRefusal = port('issueDeleteRefusal');
+export const steerIssue = port('steerIssue');
 
-export const designUnapprovedSql: IssuePorts['designUnapprovedSql'] = (issueId) =>
-  issuePorts().designUnapprovedSql(issueId);
-export const assertDesignsApprovedForSeqs: IssuePorts['assertDesignsApprovedForSeqs'] = (
-  projectId,
-  seqs,
-) => issuePorts().assertDesignsApprovedForSeqs(projectId, seqs);
-export const assertDesignApprovedForIssue: IssuePorts['assertDesignApprovedForIssue'] = (
-  projectId,
-  issueId,
-  executor,
-) => issuePorts().assertDesignApprovedForIssue(projectId, issueId, executor);
-export const isDispatchGateError = (err: unknown): err is DispatchGateError =>
-  issuePorts().isDispatchGateError(err);
-export const buildsWorkflowOf: IssuePorts['buildsWorkflowOf'] = (issueId) =>
-  issuePorts().buildsWorkflowOf(issueId);
-export const proposesWorkflowOf: IssuePorts['proposesWorkflowOf'] = (issueId) =>
-  issuePorts().proposesWorkflowOf(issueId);
-export const requirementOfIssue: IssuePorts['requirementOfIssue'] = (issueId) =>
-  issuePorts().requirementOfIssue(issueId);
-export const plannedRevisionFor: IssuePorts['plannedRevisionFor'] = (tx, issueId, plan) =>
-  issuePorts().plannedRevisionFor(tx, issueId, plan);
-export const approvalRequired: IssuePorts['approvalRequired'] = (projectId) =>
-  issuePorts().approvalRequired(projectId);
-export const contractDrift: IssuePorts['contractDrift'] = (issue, landed) =>
-  issuePorts().contractDrift(issue, landed);
+export const designUnapprovedSql = port('designUnapprovedSql');
+export const assertDesignsApprovedForSeqs = port('assertDesignsApprovedForSeqs');
+export const assertDesignApprovedForIssue = port('assertDesignApprovedForIssue');
+export const isDispatchGateError = port('isDispatchGateError');
+export const buildsWorkflowOf = port('buildsWorkflowOf');
+export const proposesWorkflowOf = port('proposesWorkflowOf');
+export const requirementOfIssue = port('requirementOfIssue');
+export const plannedRevisionFor = port('plannedRevisionFor');
+export const approvalRequired = port('approvalRequired');
+export const contractDrift = port('contractDrift');
 
-export const guideRef: IssuePorts['guideRef'] = (slug) => issuePorts().guideRef(slug);
-export const deleteMemory: IssuePorts['deleteMemory'] = (projectId, source, sourceRef) =>
-  issuePorts().deleteMemory(projectId, source, sourceRef);
-export const runMemorySearch: IssuePorts['runMemorySearch'] = (input) =>
-  issuePorts().runMemorySearch(input);
-export const embedBatch: IssuePorts['embedBatch'] = (scope, texts) =>
-  issuePorts().embedBatch(scope, texts);
+export const guideRef = port('guideRef');
+export const deleteMemory = port('deleteMemory');
+export const runMemorySearch = port('runMemorySearch');
+export const embedBatch = port('embedBatch');
 
-export const getStorage: IssuePorts['getStorage'] = () => issuePorts().getStorage();
-export const isEnoent: IssuePorts['isEnoent'] = (err) => issuePorts().isEnoent(err);
-export const resolveSourceHost: IssuePorts['resolveSourceHost'] = (projectId, as) =>
-  issuePorts().resolveSourceHost(projectId, as);
-export const isSourceHostUnavailable = (err: unknown): err is Error =>
-  issuePorts().isSourceHostUnavailable(err);
-export const readStorefrontDraft: IssuePorts['readStorefrontDraft'] = (args) =>
-  issuePorts().readStorefrontDraft(args);
-export const handoffContextsOf: IssuePorts['handoffContextsOf'] = (projectId, issueId) =>
-  issuePorts().handoffContextsOf(projectId, issueId);
-export const setCurrentStepForOpenIssueRun: IssuePorts['setCurrentStepForOpenIssueRun'] = (
-  issueId,
-  step,
-) => issuePorts().setCurrentStepForOpenIssueRun(issueId, step);
-export const closeOpenRunForIssue: IssuePorts['closeOpenRunForIssue'] = (issueId, outcome) =>
-  issuePorts().closeOpenRunForIssue(issueId, outcome);
+export const getStorage = port('getStorage');
+export const isEnoent = port('isEnoent');
+export const resolveSourceHost = port('resolveSourceHost');
+export const isSourceHostUnavailable = port('isSourceHostUnavailable');
+export const readStorefrontDraft = port('readStorefrontDraft');
+export const handoffContextsOf = port('handoffContextsOf');
+export const setCurrentStepForOpenIssueRun = port('setCurrentStepForOpenIssueRun');
+export const closeOpenRunForIssue = port('closeOpenRunForIssue');

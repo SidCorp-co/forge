@@ -11,7 +11,6 @@ import { logger } from '../observability/logger.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { registerIssueAttributeRoutes } from './attributes/routes.js';
 import { heldTakeRefusal } from './blocked-by.js';
-import { hydrateCreatorsForIssues } from './creator.js';
 import { serializeIssue } from './detail-projection.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import {
@@ -20,16 +19,11 @@ import {
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
 import { assertAssigneeIsMember, refuseUpdate, toHttpCreateError } from './issue-write-refusals.js';
-import {
-  listIssueLabels,
-  type ResolvedLabelAttach,
-  resolveLabelIdsForWrite,
-} from './label-service.js';
+import { type ResolvedLabelAttach, resolveLabelIdsForWrite } from './label-service.js';
 import { readLandingShape } from './landing-evidence.js';
-import { liveReachForIssue } from './live-reach-read.js';
 import { isSelfReferentialBranch } from './metadata.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
-import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './pipeline-health.js';
+import { issueDetailOf } from './project-issue-routes.js';
 import { findIssueById, type IssueRow, jobHistoryForStep } from './read-service.js';
 import { issuePatchSchema } from './request-schemas.js';
 import { deleteIssue } from './service.js';
@@ -44,13 +38,7 @@ export {
 
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { requireHeld } from '../permissions/index.js';
-import {
-  buildsWorkflowOf,
-  deleteMemory,
-  issueDeleteRefusal,
-  proposesWorkflowOf,
-  requirementOfIssue,
-} from './ports.js';
+import { deleteMemory, issueDeleteRefusal } from './ports.js';
 
 export { bodyRoutes } from '../body/routes.js';
 
@@ -82,32 +70,13 @@ issueRoutes.get(
       resolved,
       rawId,
     );
-    const id = issue.id;
-
-    const labelRows = await listIssueLabels(id);
-
-    const healthMap = await safeHydratePipelineHealthForIssues(issue.projectId, [issue.id]);
-    const serialized = serializeIssue(
-      issue,
-      await activeIssuePrefix(issue.projectId),
-      await readLandingShape(issue.projectId),
+    const agentBucket = (await hydrateAgentSessionsForIssues(issue.projectId, [issue.id])).get(
+      issue.id,
     );
-    const agentMap = await hydrateAgentSessionsForIssues(issue.projectId, [issue.id]);
-    const agentBucket = agentMap.get(issue.id);
-    const creatorMap = await hydrateCreatorsForIssues([issue]);
     return c.json({
-      ...serialized,
-      ...creatorMap.get(issue.id),
+      ...(await issueDetailOf(issue)),
       agentSessions: agentBucket?.agentSessions ?? [],
       agentStatus: agentBucket?.agentStatus ?? null,
-      pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(issue.status),
-      liveReach: await liveReachForIssue(issue),
-      buildsWorkflow: await buildsWorkflowOf(issue.id),
-      proposesWorkflow: await proposesWorkflowOf(issue.id),
-      requirement: await requirementOfIssue(issue.id),
-      labels: labelRows,
-      comments: [],
-      activity: [],
     });
   },
 );

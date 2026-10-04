@@ -29,6 +29,29 @@ import { findIssueByDisplaySeq, type IssueRow } from './read-service.js';
 import { issueCreateSchema, issueFiltersSchema } from './request-schemas.js';
 import { refuseLegacyStatusFields } from './status-input.js';
 
+/** The one issue the detail page reads, whichever door it was resolved through. */
+export async function issueDetailOf(issue: IssueRow) {
+  const serialized = serializeIssue(
+    issue,
+    await activeIssuePrefix(issue.projectId),
+    await readLandingShape(issue.projectId),
+  );
+  const healthMap = await safeHydratePipelineHealthForIssues(issue.projectId, [issue.id]);
+  const creatorMap = await hydrateCreatorsForIssues([issue]);
+  return {
+    ...serialized,
+    ...creatorMap.get(issue.id),
+    pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(issue.status),
+    liveReach: await liveReachForIssue(issue),
+    buildsWorkflow: await buildsWorkflowOf(issue.id),
+    proposesWorkflow: await proposesWorkflowOf(issue.id),
+    requirement: await requirementOfIssue(issue.id),
+    labels: await listIssueLabels(issue.id),
+    comments: [],
+    activity: [],
+  };
+}
+
 export const issueProjectRoutes = new Hono<{ Variables: AuthVars }>();
 issueProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -104,27 +127,7 @@ issueProjectRoutes.get(
     if (!found) throw notFound('issue not found');
     const issue = await egressForRequest(restActor(c).agency, projectId, 'issue', found, displayId);
 
-    const labelRows = await listIssueLabels(issue.id);
-
-    const serialized = serializeIssue(
-      issue,
-      await activeIssuePrefix(projectId),
-      await readLandingShape(projectId),
-    );
-    const healthMap = await safeHydratePipelineHealthForIssues(projectId, [issue.id]);
-    const creatorMap = await hydrateCreatorsForIssues([issue]);
-    return c.json({
-      ...serialized,
-      ...creatorMap.get(issue.id),
-      pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(issue.status),
-      liveReach: await liveReachForIssue(issue),
-      buildsWorkflow: await buildsWorkflowOf(issue.id),
-      proposesWorkflow: await proposesWorkflowOf(issue.id),
-      requirement: await requirementOfIssue(issue.id),
-      labels: labelRows,
-      comments: [],
-      activity: [],
-    });
+    return c.json(await issueDetailOf(issue));
   },
 );
 

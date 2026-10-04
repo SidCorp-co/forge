@@ -27,7 +27,7 @@ const VIDEO_MIMES = ["video/mp4", "video/webm", "video/quicktime"];
 const DOC_EXTS = ".png,.jpg,.jpeg,.gif,.webp,.pdf,.html,.txt,.md,.csv,.docx,.xls,.xlsx,.log,.sql";
 const VIDEO_EXTS = ".mp4,.webm,.mov";
 
-function formatSize(bytes: number): string {
+export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;

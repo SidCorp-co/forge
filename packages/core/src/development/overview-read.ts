@@ -10,6 +10,7 @@ import {
 import type { IssueStandingRow } from '@forge/contracts/issue-standing';
 import type { WorkStep } from '@forge/contracts/issue-vocabulary';
 import { slotsNoteOf } from '@forge/contracts/master-standing';
+import { modulePaths } from '@forge/contracts/modules';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
@@ -107,18 +108,7 @@ async function moduleFacts(projectId: string) {
                           WHERE il.issue_id = i.id AND l.kind = 'module')`),
   ]);
   const all = rowsOf<ModuleRaw>(labels);
-  const byId = new Map(all.map((m) => [m.id, m]));
-  const pathOf = (m: ModuleRaw) => {
-    const parts = [m.slug];
-    const seen = new Set([m.id]);
-    let at = m.parent_id ? byId.get(m.parent_id) : undefined;
-    while (at && !seen.has(at.id)) {
-      parts.unshift(at.slug);
-      seen.add(at.id);
-      at = at.parent_id ? byId.get(at.parent_id) : undefined;
-    }
-    return parts.join('/');
-  };
+  const paths = modulePaths(all.map((m) => ({ id: m.id, slug: m.slug, parentId: m.parent_id })));
   const stat = new Map(
     rowsOf<{ module_id: string; shipped: number; last_landing: string | null }>(shipped).map(
       (s) => [s.module_id, s],
@@ -127,7 +117,7 @@ async function moduleFacts(projectId: string) {
   const iso = (t: string | null | undefined) => (t ? new Date(t).toISOString() : null);
   const modules: ModuleFact[] = all.map((m) => ({
     id: m.id,
-    path: pathOf(m),
+    path: paths.get(m.id) ?? m.slug,
     name: m.name,
     shipped: stat.get(m.id)?.shipped ?? 0,
     lastLandingAt: iso(stat.get(m.id)?.last_landing),

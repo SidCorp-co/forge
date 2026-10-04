@@ -7,6 +7,7 @@ import type {
   ScheduleRunStatus,
   ScheduleRunTrigger,
 } from '@forge/contracts/schedules';
+import { portSlot } from '../lib/port-slot.js';
 
 export interface LastFire {
   id: string;
@@ -49,30 +50,13 @@ interface AutomationPorts {
   ) => boolean;
 }
 
-let provided: AutomationPorts | null = null;
+const slot = portSlot<AutomationPorts>('automation', 'provideAutomationPorts');
+export const provideAutomationPorts = slot.provide;
+const { port } = slot;
 
-export function provideAutomationPorts(given: AutomationPorts): void {
-  provided = given;
-}
-
-function automationPorts(): AutomationPorts {
-  if (!provided) {
-    throw new Error(
-      'automation: no ports were provided; the process entry calls provideAutomationPorts before it serves',
-    );
-  }
-  return provided;
-}
-
-export const reportRows: AutomationPorts['reportRows'] = (scope) =>
-  automationPorts().reportRows(scope);
-export const reportRow: AutomationPorts['reportRow'] = (projectId, reportId) =>
-  automationPorts().reportRow(projectId, reportId);
-export const readThresholds: AutomationPorts['readThresholds'] = () =>
-  automationPorts().readThresholds();
-export const lastFires: AutomationPorts['lastFires'] = (projectId, scheduleIds) =>
-  automationPorts().lastFires(projectId, scheduleIds);
-export const readScheduleStreaks: AutomationPorts['readScheduleStreaks'] = (scope) =>
-  automationPorts().readScheduleStreaks(scope);
-export const streakFails: AutomationPorts['streakFails'] = (streak, schedule, failStreak, now) =>
-  automationPorts().streakFails(streak, schedule, failStreak, now);
+export const reportRows = port('reportRows');
+export const reportRow = port('reportRow');
+export const readThresholds = port('readThresholds');
+export const lastFires = port('lastFires');
+export const readScheduleStreaks = port('readScheduleStreaks');
+export const streakFails = port('streakFails');

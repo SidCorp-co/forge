@@ -1,5 +1,6 @@
 // The per-issue facts the standing read joins in: criteria tallies, requirement, module and feedback.
 
+import { modulePaths } from '@forge/contracts/modules';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
@@ -101,21 +102,12 @@ export async function modulesOf(projectId: string, ids: readonly string[]) {
        WHERE il.issue_id IN (${idList(ids)}) AND l.kind = 'module'
        ORDER BY il.is_primary DESC, l.name`),
   ]);
-  const byId = new Map(rowsOf<ModuleRaw>(all).map((m) => [m.id, m]));
-  const pathOf = (m: ModuleRaw) => {
-    const parts = [m.slug];
-    const seen = new Set([m.id]);
-    let at = m.parent_id ? byId.get(m.parent_id) : undefined;
-    while (at && !seen.has(at.id)) {
-      parts.unshift(at.slug);
-      seen.add(at.id);
-      at = at.parent_id ? byId.get(at.parent_id) : undefined;
-    }
-    return parts.join('/');
-  };
+  const paths = modulePaths(
+    rowsOf<ModuleRaw>(all).map((m) => ({ id: m.id, slug: m.slug, parentId: m.parent_id })),
+  );
   for (const l of rowsOf<ModuleRaw>(links)) {
     if (!l.issue_id || out.has(l.issue_id)) continue;
-    out.set(l.issue_id, { id: l.id, path: pathOf(l), name: l.name });
+    out.set(l.issue_id, { id: l.id, path: paths.get(l.id) ?? l.slug, name: l.name });
   }
   return out;
 }

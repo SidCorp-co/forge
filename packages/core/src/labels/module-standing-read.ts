@@ -3,6 +3,7 @@ import {
   type ModuleIssuesRead,
   type ModuleRollupResponse,
   type ModuleRollupRow,
+  modulePaths,
 } from '@forge/contracts/modules';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { type SQL, sql } from 'drizzle-orm';
@@ -16,7 +17,6 @@ import {
   deriveStandings,
   type LandingRow,
   type ModuleNode,
-  modulePaths,
   type OpenIssue,
   type TraceRow,
 } from './module-standing.js';

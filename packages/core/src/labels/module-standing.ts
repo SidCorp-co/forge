@@ -11,6 +11,7 @@ import {
   type ModuleRef,
   type ModuleRequirementTrace,
   type ModuleStanding,
+  modulePaths,
 } from '@forge/contracts/modules';
 import type { WaitingOn } from '@forge/contracts/standing';
 
@@ -46,23 +47,6 @@ export interface TraceRow {
   reqSeq: number;
   reqTitle: string;
   criterion: string | null;
-}
-
-export function modulePaths(nodes: readonly ModuleNode[]): Map<string, string> {
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  const out = new Map<string, string>();
-  for (const node of nodes) {
-    const parts = [node.slug];
-    const seen = new Set([node.id]);
-    let at = node.parentId ? byId.get(node.parentId) : undefined;
-    while (at && !seen.has(at.id)) {
-      parts.unshift(at.slug);
-      seen.add(at.id);
-      at = at.parentId ? byId.get(at.parentId) : undefined;
-    }
-    out.set(node.id, parts.join('/'));
-  }
-  return out;
 }
 
 export function moduleRefs(nodes: readonly ModuleNode[]): Map<string, ModuleRef> {

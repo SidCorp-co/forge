@@ -14,11 +14,10 @@ import { db } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
 import type { TransitionActor } from '../issues/index.js';
 import { transitionIssueStatus } from '../issues/index.js';
-import { projectRoom, roomManager } from '../lib/rooms.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
 import { refusePipeline } from './refuse.js';
-import { pauseRun, resumeRun } from './run-pause.js';
+import { broadcastRunStatus, pauseRun, resumeRun } from './run-pause.js';
 import { cascadeCancelChildJobs, type JobRow, requestKillsForCascade } from './runs-cascade.js';
 
 /**
@@ -80,22 +79,6 @@ function runTerminal(current: PipelineRunRow['status']): Error {
 async function selectRun(runId: string): Promise<PipelineRunRow | null> {
   const [row] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1);
   return row ?? null;
-}
-
-function broadcastRunStatus(run: PipelineRunRow): void {
-  roomManager.publish(projectRoom(run.projectId), {
-    event: 'pipeline_run.status_changed',
-    data: {
-      runId: run.id,
-      projectId: run.projectId,
-      issueId: run.issueId,
-      status: run.status,
-      kind: run.kind,
-      currentStep: run.currentStep,
-      startedAt: run.startedAt,
-      finishedAt: run.finishedAt,
-    },
-  });
 }
 
 /**

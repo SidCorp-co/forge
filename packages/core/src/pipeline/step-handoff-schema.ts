@@ -30,6 +30,11 @@ const clarifyHandoff = z.object({
   openQuestions: z.array(z.string().min(1)).max(10),
 });
 
+const filesModified = z
+  .array(z.object({ path: z.string().min(1), op: z.enum(['create', 'edit', 'delete']) }))
+  .max(50);
+const decisions = z.array(z.object({ what: z.string().min(1), why: z.string().min(1) })).max(10);
+
 const planHandoff = z.object({
   step: z.literal('plan'),
   schema_version: z.literal(1),
@@ -42,15 +47,8 @@ const planHandoff = z.object({
 const codeHandoff = z.object({
   step: z.literal('code'),
   schema_version: z.literal(1),
-  filesModified: z
-    .array(
-      z.object({
-        path: z.string().min(1),
-        op: z.enum(['create', 'edit', 'delete']),
-      }),
-    )
-    .max(50),
-  decisions: z.array(z.object({ what: z.string().min(1), why: z.string().min(1) })).max(10),
+  filesModified,
+  decisions,
   verificationCommands: z.array(z.string().min(1)).max(10),
   knownLimitations: z.array(z.string().min(1)).max(5),
   commitSha: z.string().optional(),
@@ -89,15 +87,8 @@ const testHandoff = z
 const fixHandoff = z.object({
   step: z.literal('fix'),
   schema_version: z.literal(1),
-  filesModified: z
-    .array(
-      z.object({
-        path: z.string().min(1),
-        op: z.enum(['create', 'edit', 'delete']),
-      }),
-    )
-    .max(50),
-  decisions: z.array(z.object({ what: z.string().min(1), why: z.string().min(1) })).max(10),
+  filesModified,
+  decisions,
   reviewItemsResolved: z.array(z.string().min(1)).max(20),
   knownLimitations: z.array(z.string().min(1)).max(5),
 });
