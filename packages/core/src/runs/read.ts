@@ -15,6 +15,7 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { killGraceMs } from '../jobs/kill-gate.js';
 import { getLoopThresholds } from '../jobs/loop-monitor-thresholds.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { readMasterStanding } from '../masters/read.js';
 import {
@@ -195,7 +196,7 @@ export async function readRunStanding(
     const seq = Number.parseInt(of.replace(/^[A-Za-z]+-/, ''), 10);
     const siblings = await baseRuns(
       projectId,
-      sql`(i.iss_seq = ${seq} OR r.metadata -> 'runGroup' ->> 0 = ${`ISS-${seq}`})`,
+      sql`(i.iss_seq = ${seq} OR r.metadata -> 'runGroup' ->> 0 = ${canonicalIssueKey(seq)})`,
       200,
       0,
     );

@@ -22,13 +22,7 @@ const GUIDE_CITATION =
   /forge_guide get `?([a-z0-9]+(?:-[a-z0-9]+)*)`?|\bguide `([a-z0-9]+(?:-[a-z0-9]+)+)`/g;
 const DESIGN_CITATION = /\b(?:workflows?|designs?) `?[a-z]+(?:-[a-z0-9]+)+`?/g;
 
-// cm:hack ISS-108 until:forge_masters and forge_runs cite a guide instead of "design agent-run-standing" —
-// both tools land with ISS-108 and are not this change's to edit, so their descriptions keep pointing another
-// project's agent at a design only one project holds, which it cannot read
-const AMNESTY: ReadonlyMap<string, string> = new Map([
-  ['forge_masters', 'design agent-run-standing'],
-  ['forge_runs', 'design agent-run-standing'],
-]);
+const AMNESTY: ReadonlyMap<string, string> = new Map();
 
 function referenceFaults(
   surface: string,

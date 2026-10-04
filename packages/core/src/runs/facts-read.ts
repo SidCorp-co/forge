@@ -121,26 +121,33 @@ async function latestFlips(entity: 'run' | 'session', ids: string[], to: readonl
 }
 
 // cm:why an attempt is a run: the nth run over the same issue in this project, its retryOf the run before it
-// (decision on agent-run-standing: the next attempt is a new run); a group run counts under its first issue
+// (decision on agent-run-standing: the next attempt is a new run); a group run counts under its first issue,
+// keyed by sequence number so the key itself is built only by `lib/issue-ref.ts`
 async function attemptsOf(projectId: string, ids: string[]) {
   const rows = await q(sql`
     WITH keyed AS (
       SELECT r.id, r.started_at,
-             CASE WHEN r.issue_id IS NOT NULL THEN 'ISS-' || i.iss_seq
-                  ELSE r.metadata -> ${RUN_GROUP_METADATA_KEY} ->> 0 END AS work_key
+             COALESCE(i.iss_seq, CASE
+               WHEN r.metadata -> ${RUN_GROUP_METADATA_KEY} ->> 0 ~ '^[A-Za-z]+-[0-9]+$'
+               THEN regexp_replace(r.metadata -> ${RUN_GROUP_METADATA_KEY} ->> 0, '^[A-Za-z]+-', '')::int
+             END) AS work_seq
         FROM pipeline_runs r LEFT JOIN issues i ON i.id = r.issue_id
        WHERE r.project_id = ${projectId} AND ${RUN_SCOPE_SQL}
     ), ranked AS (
-      SELECT id, work_key,
-             row_number() OVER (PARTITION BY work_key ORDER BY started_at, id) AS n,
-             lag(id) OVER (PARTITION BY work_key ORDER BY started_at, id) AS retry_of
-        FROM keyed WHERE work_key IS NOT NULL
+      SELECT id, work_seq,
+             row_number() OVER (PARTITION BY work_seq ORDER BY started_at, id) AS n,
+             lag(id) OVER (PARTITION BY work_seq ORDER BY started_at, id) AS retry_of
+        FROM keyed WHERE work_seq IS NOT NULL
     )
-    SELECT id, work_key, n, retry_of FROM ranked WHERE id IN (${uuids(ids)})`);
+    SELECT id, work_seq, n, retry_of FROM ranked WHERE id IN (${uuids(ids)})`);
   return new Map(
     rows.map((r) => [
       String(r.id),
-      { n: Number(r.n), retryOf: str(r.retry_of), workKey: String(r.work_key) },
+      {
+        n: Number(r.n),
+        retryOf: str(r.retry_of),
+        workKey: canonicalIssueKey(Number(r.work_seq)),
+      },
     ]),
   );
 }
