@@ -4,9 +4,9 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { parseMode, readManifest } from './lib/debt-ratchet.mjs';
-import { dieAs, ROOT } from './lib/gate.mjs';
 import { declarationFaults, unusableReport } from './lib/integration-declarations.mjs';
 import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequisite.mjs';
+import { dieAs, ROOT } from './lib/gate.mjs';
 
 const die = dieAs('check-integration-declarations');
 

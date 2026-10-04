@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { types } from 'node:util';
-import { climbsAfterMagic, globBase, physical } from './whole-tree-paths.mjs';
+import { climbsAfterMagic, globBase, physical } from './whole-tree-shell.mjs';
 
 export const DECLARATION_VALUES = ['whole-tree'];
 
