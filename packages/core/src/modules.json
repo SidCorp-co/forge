@@ -1518,9 +1518,6 @@
         "agent-run-standing#waiting_person"
       ]
     },
-    "recent-changes": {
-      "serves": []
-    },
     "releases": {
       "serves": [
         "REQ-11",
@@ -1533,9 +1530,6 @@
         "REQ-4",
         "REQ-12"
       ]
-    },
-    "resources": {
-      "serves": []
     },
     "runners": {
       "serves": [
@@ -1584,9 +1578,6 @@
       "serves": [
         "REQ-12"
       ]
-    },
-    "whats-new": {
-      "serves": []
     },
     "workflows": {
       "serves": [
