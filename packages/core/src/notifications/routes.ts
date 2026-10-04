@@ -1,25 +1,22 @@
-import { and, countDistinct, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { NotificationRefusalCode } from '@forge/contracts/notifications';
 import { z } from 'zod';
-import { db } from '../db/client.js';
 import type { NotificationType } from '../db/schema.js';
-import {
-  notificationDeliveries,
-  notificationDeliveryMembers,
-  notifications,
-  projects,
-} from '../db/schema.js';
-import { issueDisplayIds } from '../issues/display-ids.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { recordAndDeliver } from './deliver.js';
+import { deliveryMembers, listDeliveries, openNotificationCount } from './read.js';
+import {
+  closeDeliveryTasks,
+  deleteDelivery,
+  markAllDeliveriesRead,
+  setDeliveryRead,
+} from './service.js';
 import { silenceRoutes } from './silences-routes.js';
-import { deliveryLine, deliverySubject } from './subject.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -45,19 +42,6 @@ const notFound = (message: string) =>
 
 const refuse = refuser<NotificationRefusalCode>('NOTIFICATION_REFUSED');
 
-/**
- * ISS-1063 — what "still true for me" means, in one place.
- *
- * A `condition` that is `firing` and a `task` that is `open` or `acknowledged`. A
- * `signal` is never here: an event cannot stop having happened, so counting one as open
- * is what made the owner's bell read 5663 while 3914 of those rows were status changes.
- * A `pending` or `inhibited` condition is not here either — nobody was told about it.
- */
-const stillTrue = sql`(
-  (${notifications.kind} = 'condition' AND ${notifications.state} = 'firing')
-  OR (${notifications.kind} = 'task' AND ${notifications.state} IN ('open', 'acknowledged'))
-)`;
-
 export const notificationRoutes = new Hono<{ Variables: AuthVars }>();
 notificationRoutes.use('*', requireAuth(), assertEmailVerified());
 notificationRoutes.route('/silences', silenceRoutes);
@@ -80,25 +64,7 @@ notificationRoutes.get(
     const { projectId } = c.req.valid('query');
     const userId = c.get('userId');
 
-    const conditions = [
-      eq(notificationDeliveries.userId, userId),
-      eq(notificationDeliveries.resolvedNotice, false),
-      isNull(notifications.resolvedAt),
-      stillTrue,
-    ];
-    if (projectId) conditions.push(eq(notifications.projectId, projectId));
-
-    const [row] = await db
-      .select({ n: countDistinct(notifications.id) })
-      .from(notificationDeliveries)
-      .innerJoin(
-        notificationDeliveryMembers,
-        eq(notificationDeliveryMembers.deliveryId, notificationDeliveries.id),
-      )
-      .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
-      .where(and(...conditions));
-
-    return c.json({ count: row?.n ?? 0 });
+    return c.json({ count: await openNotificationCount(userId, projectId) });
   },
 );
 
@@ -109,12 +75,7 @@ notificationRoutes.post(
   }),
   async (c) => {
     const userId = c.get('userId');
-    const updated = await db
-      .update(notificationDeliveries)
-      .set({ readAt: new Date() })
-      .where(and(eq(notificationDeliveries.userId, userId), isNull(notificationDeliveries.readAt)))
-      .returning({ id: notificationDeliveries.id });
-    return c.json({ updated: updated.length });
+    return c.json({ updated: await markAllDeliveriesRead(userId) });
   },
 );
 
@@ -127,77 +88,8 @@ notificationRoutes.get(
     const { projectId, openOnly, page, pageSize } = c.req.valid('query');
     const userId = c.get('userId');
 
-    const conditions = [eq(notificationDeliveries.userId, userId)];
-    if (projectId) conditions.push(eq(notifications.projectId, projectId));
-    if (openOnly) {
-      conditions.push(isNull(notifications.resolvedAt));
-      conditions.push(stillTrue);
-    }
-    const where = and(...conditions);
-
-    const [totalRow] = await db
-      .select({ n: countDistinct(notificationDeliveries.id) })
-      .from(notificationDeliveries)
-      .innerJoin(
-        notificationDeliveryMembers,
-        eq(notificationDeliveryMembers.deliveryId, notificationDeliveries.id),
-      )
-      .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
-      .where(where);
-
-    const rows = await db
-      .select({
-        id: notificationDeliveries.id,
-        readAt: notificationDeliveries.readAt,
-        groupKey: notificationDeliveries.groupKey,
-        resolvedNotice: notificationDeliveries.resolvedNotice,
-        createdAt: notificationDeliveries.createdAt,
-        members: sql<number>`count(${notificationDeliveryMembers.notificationId})::int`,
-        openMembers: sql<number>`(count(*) FILTER (WHERE ${notifications.resolvedAt} IS NULL AND ${stillTrue}))::int`,
-        type: sql<string>`min(${notifications.type})`,
-        kind: sql<string>`min(${notifications.kind})`,
-        tier: sql<string>`min(${notifications.tier})`,
-        title: sql<string>`coalesce(${notificationDeliveries.title}, min(${notifications.title}))`,
-        body: sql<string | null>`min(${notifications.body})`,
-        severity: sql<string | null>`min(${notifications.severity})`,
-        projectId: sql<string | null>`min(${notifications.projectId}::text)`,
-        issueId: sql<string | null>`min(${notifications.issueId}::text)`,
-        secondaryIssueId: sql<string | null>`min(${notifications.secondaryIssueId}::text)`,
-        agentSessionId: sql<string | null>`min(${notifications.agentSessionId}::text)`,
-        notificationId: sql<string>`min(${notifications.id}::text)`,
-      })
-      .from(notificationDeliveries)
-      .innerJoin(
-        notificationDeliveryMembers,
-        eq(notificationDeliveryMembers.deliveryId, notificationDeliveries.id),
-      )
-      .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
-      .where(where)
-      .groupBy(notificationDeliveries.id, notificationDeliveries.title)
-      .orderBy(desc(notificationDeliveries.createdAt))
-      .limit(pageSize)
-      .offset((page - 1) * pageSize);
-
-    const distinct = (ids: (string | null)[]) => [
-      ...new Set(ids.filter((i): i is string => i !== null)),
-    ];
-    const projectIds = distinct(rows.map((r) => r.projectId));
-    const [issueKeys, slugRows] = await Promise.all([
-      issueDisplayIds(distinct(rows.map((r) => (r.members === 1 ? r.issueId : null)))),
-      projectIds.length
-        ? db
-            .select({ id: projects.id, slug: projects.slug })
-            .from(projects)
-            .where(inArray(projects.id, projectIds))
-        : Promise.resolve([]),
-    ]);
-    const slugs = new Map(slugRows.map((p) => [p.id, p.slug]));
-    const items = rows.map((r) => {
-      const subject = deliverySubject(r, issueKeys, slugs);
-      return { ...r, subject, line: deliveryLine(r.title, r.type, subject?.key ?? null) };
-    });
-
-    return c.json(listResponse(c, items, totalRow?.n ?? 0, fromPage(page, pageSize)));
+    const { items, total } = await listDeliveries(userId, { projectId, openOnly, page, pageSize });
+    return c.json(listResponse(c, items, total, fromPage(page, pageSize)));
   },
 );
 
@@ -221,12 +113,7 @@ notificationRoutes.patch(
     const { read } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const updated = await db
-      .update(notificationDeliveries)
-      .set({ readAt: read ? new Date() : null })
-      .where(and(eq(notificationDeliveries.id, id), eq(notificationDeliveries.userId, userId)))
-      .returning();
-    const row = updated[0];
+    const row = await setDeliveryRead(id, userId, read);
     if (!row) throw notFound('notification not found');
 
     if (read) await hooks.emit('notificationRead', { notificationId: row.id, userId });
@@ -251,73 +138,17 @@ notificationRoutes.get(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const [delivery] = await db
-      .select({ id: notificationDeliveries.id })
-      .from(notificationDeliveries)
-      .where(and(eq(notificationDeliveries.id, id), eq(notificationDeliveries.userId, userId)))
-      .limit(1);
-    if (!delivery) throw notFound('notification not found');
-
-    const rows = await db
-      .select({
-        id: notifications.id,
-        type: notifications.type,
-        kind: notifications.kind,
-        state: notifications.state,
-        title: notifications.title,
-        body: notifications.body,
-        severity: notifications.severity,
-        projectId: notifications.projectId,
-        issueId: notifications.issueId,
-        secondaryIssueId: notifications.secondaryIssueId,
-        resolvedAt: notifications.resolvedAt,
-        createdAt: notifications.createdAt,
-        open: sql<boolean>`(${notifications.resolvedAt} IS NULL AND ${stillTrue})`,
-      })
-      .from(notificationDeliveryMembers)
-      .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
-      .where(eq(notificationDeliveryMembers.deliveryId, id))
-      .orderBy(
-        desc(sql`(${notifications.resolvedAt} IS NULL AND ${stillTrue})`),
-        desc(notifications.createdAt),
-      );
-
+    const rows = await deliveryMembers(id, userId);
+    if (!rows) throw notFound('notification not found');
     return c.json(rows);
   },
 );
 
 /** Close the tasks this delivery carries. A condition is not reachable from here. */
 async function closeTasks(deliveryId: string, userId: string, to: 'done' | 'dismissed') {
-  const [delivery] = await db
-    .select({ id: notificationDeliveries.id })
-    .from(notificationDeliveries)
-    .where(
-      and(eq(notificationDeliveries.id, deliveryId), eq(notificationDeliveries.userId, userId)),
-    )
-    .limit(1);
-  if (!delivery) throw notFound('notification not found');
-
-  const memberIds = await db
-    .select({ id: notificationDeliveryMembers.notificationId })
-    .from(notificationDeliveryMembers)
-    .where(eq(notificationDeliveryMembers.deliveryId, deliveryId));
-  if (memberIds.length === 0) return { closed: 0 };
-
-  const closed = await db
-    .update(notifications)
-    .set({ state: to, resolvedAt: new Date() })
-    .where(
-      and(
-        inArray(
-          notifications.id,
-          memberIds.map((m) => m.id),
-        ),
-        eq(notifications.kind, 'task'),
-        isNull(notifications.resolvedAt),
-      ),
-    )
-    .returning({ id: notifications.id });
-  return { closed: closed.length };
+  const closed = await closeDeliveryTasks(deliveryId, userId, to);
+  if (!closed) throw notFound('notification not found');
+  return closed;
 }
 
 for (const [path, state] of [
@@ -341,27 +172,10 @@ notificationRoutes.delete(
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    const [own] = await db
-      .select({ id: notificationDeliveries.id })
-      .from(notificationDeliveries)
-      .where(and(eq(notificationDeliveries.id, id), eq(notificationDeliveries.userId, userId)))
-      .limit(1);
-    if (!own) throw notFound('notification not found');
-
-    const [live] = await db
-      .select({ title: notifications.title, type: notifications.type })
-      .from(notificationDeliveryMembers)
-      .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
-      .where(
-        and(
-          eq(notificationDeliveryMembers.deliveryId, id),
-          eq(notifications.kind, 'condition'),
-          isNull(notifications.resolvedAt),
-          inArray(notifications.state, ['pending', 'firing', 'inhibited']),
-        ),
-      )
-      .limit(1);
-    if (live) {
+    const outcome = await deleteDelivery(id, userId);
+    if (!outcome.ok && outcome.code === 'NOT_FOUND') throw notFound('notification not found');
+    if (!outcome.ok && outcome.code === 'CONDITION_STILL_TRUE') {
+      const { live } = outcome;
       throw refuse(
         'CONDITION_STILL_TRUE',
         `This notification carries a condition that is still true — '${live.title}' ` +
@@ -370,8 +184,6 @@ notificationRoutes.delete(
           'meanwhile, POST /api/notifications/silences with a matcher and an expiry.',
       );
     }
-
-    await db.delete(notificationDeliveries).where(eq(notificationDeliveries.id, id));
     return c.body(null, 204);
   },
 );

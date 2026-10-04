@@ -1,9 +1,6 @@
-import { and, asc, count, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { commentAttachments, comments, issues } from '../db/schema.js';
 import type { ActorRef } from '../issues/actor-identity.js';
 import { resolveActors } from '../issues/actor-resolution.js';
 import {
@@ -42,18 +39,24 @@ import {
   rethrowBodyInvalid,
 } from './body-input.js';
 import { type CommentCursor, decodeCommentCursor } from './cursor.js';
-import { commentRowIn, placeOfComment } from './entity-read.js';
 import { pgConstraintName, pgErrorCode } from './error-mapping.js';
+import {
+  attachmentsByComment,
+  countIssueComments,
+  issueProjectOf,
+  listReplies,
+  locateComment,
+  parentCommentOf,
+} from './read.js';
 import { messageRefusalHttp } from './screen.js';
 import {
-  commentThreadColumns,
   deleteComment,
   insertComment,
   intentRefusal,
   listIssueCommentPage,
   updateCommentBody,
 } from './service.js';
-import { attachAuthors, buildCommentTree, type CommentAttachmentLite } from './tree.js';
+import { attachAuthors, buildCommentTree } from './tree.js';
 import { requireHeld } from '../permissions/index.js';
 
 const refuse = refuser<CommentRefusalCode>('COMMENT_REFUSED');
@@ -74,32 +77,16 @@ const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 export async function loadIssue(issueId: string) {
-  const [row] = await db
-    .select({ id: issues.id, projectId: issues.projectId })
-    .from(issues)
-    .where(eq(issues.id, issueId))
-    .limit(1);
+  const row = await issueProjectOf(issueId);
   if (!row) throw notFound('issue not found');
   return row;
 }
 
 async function loadComment(commentId: string) {
-  const [row] = await db
-    .select({
-      id: comments.id,
-      issueId: issues.id,
-      authorId: comments.authorId,
-      body: comments.body,
-      projectId: issues.projectId,
-    })
-    .from(comments)
-    .innerJoin(issues, eq(comments.issueId, issues.id))
-    .where(eq(comments.id, commentId))
-    .limit(1);
-  if (row) return row;
-  const elsewhere = await commentRowIn(db, commentId);
-  if (!elsewhere) throw notFound('comment not found');
-  const place = await placeOfComment(db, elsewhere);
+  const located = await locateComment(commentId);
+  if (!located) throw notFound('comment not found');
+  if (located.onIssue) return located.onIssue;
+  const place = located.elsewhere;
   const segment = { requirement: 'requirements', workflow: 'workflows', feedback: 'feedback' }[
     place.scope
   ];
@@ -134,11 +121,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
       requireHeld(access, 'project.write');
 
       if (parentId) {
-        const [parent] = await db
-          .select({ id: comments.id, issueId: comments.issueId })
-          .from(comments)
-          .where(eq(comments.id, parentId))
-          .limit(1);
+        const parent = await parentCommentOf(parentId);
         if (!parent) throw notFound('parent comment not found');
         if (parent.issueId !== issueId) {
           throw new HTTPException(400, {
@@ -223,48 +206,12 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         after = decoded;
       }
 
-      const [{ n: total } = { n: 0 }] = await db
-        .select({ n: count() })
-        .from(comments)
-        .where(
-          intent
-            ? and(eq(comments.issueId, issueId), eq(comments.intent, intent))
-            : eq(comments.issueId, issueId),
-        );
+      const total = await countIssueComments(issueId, intent);
       const page = await listIssueCommentPage(issueId, { after, limit, intent });
       const rows = await commentsShown(c, issue.projectId, page.rows, `the comments on ${rawId}`);
 
-      // Join each comment's attachments in a single grouped query, keyed by
-      // commentId. Guard the empty-ids case so `inArray` never receives an
-      // empty list (which would build a malformed/`false` predicate).
-      const attachmentsByCommentId = new Map<string, CommentAttachmentLite[]>();
       const commentIds = rows.map((r) => r.id);
-      if (commentIds.length > 0) {
-        const attachmentRows = await db
-          .select({
-            id: commentAttachments.id,
-            commentId: commentAttachments.commentId,
-            name: commentAttachments.name,
-            mime: commentAttachments.mime,
-            size: commentAttachments.size,
-            createdAt: commentAttachments.createdAt,
-          })
-          .from(commentAttachments)
-          .where(inArray(commentAttachments.commentId, commentIds))
-          .orderBy(asc(commentAttachments.createdAt));
-        for (const a of attachmentRows) {
-          const list = attachmentsByCommentId.get(a.commentId) ?? [];
-          list.push({
-            id: a.id,
-            name: a.name,
-            mime: a.mime,
-            size: a.size,
-            createdAt: a.createdAt,
-            url: `/api/comments/attachments/${a.id}`,
-          });
-          attachmentsByCommentId.set(a.commentId, list);
-        }
-      }
+      const attachmentsByCommentId = await attachmentsByComment(commentIds);
 
       const tree = buildCommentTree(
         rows,
@@ -306,25 +253,10 @@ commentRoutes.get(
     const access = await loadProjectAccess(parent.projectId, userId);
     if (!access.role) throw forbidden('not a project member');
 
-    const [{ n } = { n: 0 }] = await db
-      .select({ n: count() })
-      .from(comments)
-      .where(eq(comments.parentId, id));
+    const page = await listReplies(id, limit, offset);
+    const rows = await commentsShown(c, parent.projectId, page.rows, `the replies to comment ${id}`);
 
-    const rows = await commentsShown(
-      c,
-      parent.projectId,
-      await db
-        .select(commentThreadColumns)
-        .from(comments)
-        .where(eq(comments.parentId, id))
-        .orderBy(asc(comments.createdAt))
-        .limit(limit)
-        .offset(offset),
-      `the replies to comment ${id}`,
-    );
-
-    return c.json(listResponse(c, rows, Number(n), { limit, offset }));
+    return c.json(listResponse(c, rows, page.total, { limit, offset }));
   },
 );
 
