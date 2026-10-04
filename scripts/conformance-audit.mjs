@@ -70,7 +70,8 @@ const claimed = manifest.profile ?? null;
 if (Object.keys(axes).length === 0)
   die('the manifest declares no axis — an audit over an empty set is not a pass');
 
-const verifySrc = read('scripts/verify.mjs') ?? '';
+// The entrypoint and the check table it runs (scripts/lib/verify-checks.mjs), read as one text.
+const verifySrc = ['scripts/verify.mjs', 'scripts/lib/verify-checks.mjs'].map((p) => read(p) ?? '').join('\n');
 const labels = [...verifySrc.matchAll(/label:\s*'([^']+)'/g)].map((m) => m[1]);
 const proven = [...verifySrc.matchAll(/label:\s*'([^']+)'[\s\S]{0,400}?scanned:/g)].map(
   (m) => m[1],
@@ -278,7 +279,7 @@ const RULES = [
     text: 'an entrypoint exists — one command runs every check',
     pass: labels.length > 0,
     detail: labels.length
-      ? `scripts/verify.mjs, ${labels.length} checks`
+      ? `scripts/verify.mjs (table in scripts/lib/verify-checks.mjs), ${labels.length} checks`
       : 'no scripts/verify.mjs, or it declares no check',
     why: 'a rule with no command to run it is not a rule; this repo had none for months',
   },
