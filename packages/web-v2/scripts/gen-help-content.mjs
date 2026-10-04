@@ -68,7 +68,7 @@ const out =
   banner +
   "export interface HelpDoc {\n" +
   "  slug: string;\n  title: string;\n  section: string;\n  order: number;\n" +
-  '  audience: "user" | "assistant-setup";\n  body: string;\n' +
+  '  audience: "user";\n  body: string;\n' +
   "}\n\n" +
   // A page may quote `${NAME}` (a config the reader pastes); as \u0024 it stays a plain string
   // to any reader of this file instead of looking like a template literal nobody interpolated.

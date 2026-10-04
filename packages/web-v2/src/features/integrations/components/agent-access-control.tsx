@@ -13,10 +13,13 @@ export const AGENT_ACCESS_CLOSED: AgentAccess = "none";
 
 export const GRANT_LABEL = "Agents on this project may use this";
 
-const KIND_COPY: Record<
-  Exclude<AgentPathKind, "none">,
-  { granted: string; withheld: string }
-> = {
+/** The agent paths a binding grant applies to; `none` has no agent path and `permission` is decided by a project permission. */
+type GrantedPathKind = Exclude<AgentPathKind, "none" | "permission">;
+
+const takesGrant = (pathKind: AgentPathKind): pathKind is GrantedPathKind =>
+  pathKind === "direct-mcp" || pathKind === "core-mediated";
+
+const KIND_COPY: Record<GrantedPathKind, { granted: string; withheld: string }> = {
   "direct-mcp": {
     granted:
       "This project's credential is handed to the runner box, and the agent calls the provider directly. Forge is outside that call path: it does not see the calls and cannot stop one.",
@@ -34,14 +37,14 @@ export function agentAccessBody(
   pathKind: AgentPathKind,
   value: AgentAccess,
 ): { agentAccess?: AgentAccess } {
-  return pathKind === "none" ? {} : { agentAccess: value };
+  return takesGrant(pathKind) ? { agentAccess: value } : {};
 }
 
 export function mayWriteAgentAccess(
   pathKind: AgentPathKind,
   perms: { canEditProject: boolean; isOrgAdmin: boolean },
 ): boolean {
-  if (pathKind === "none") return false;
+  if (!takesGrant(pathKind)) return false;
   if (!perms.canEditProject) return false;
   return pathKind === "direct-mcp" ? perms.isOrgAdmin : true;
 }
@@ -57,8 +60,8 @@ export function agentAccessDeniedReason(pathKind: AgentPathKind): string {
  * The control itself, with no opinion about where the value is stored — the connect forms drive it
  * from their own state, the binding rows drive it from a PATCH.
  *
- * Renders NOTHING when `pathKind` is `none`: that provider has no agent path, so the column is inert
- * and offering a switch would promise a thing granting it cannot do.
+ * Renders NOTHING when the provider takes no grant: with no agent path the column is inert, and on a
+ * `permission` path the project permission alone decides, so a switch would promise what it cannot do.
  */
 export function AgentAccessChoice({
   value,
@@ -78,7 +81,7 @@ export function AgentAccessChoice({
   busy?: boolean;
   failure?: string | null;
 }) {
-  const copy = pathKind === "none" ? undefined : KIND_COPY[pathKind];
+  const copy = takesGrant(pathKind) ? KIND_COPY[pathKind] : undefined;
   if (!copy) return null;
 
   const granted = value !== AGENT_ACCESS_CLOSED;

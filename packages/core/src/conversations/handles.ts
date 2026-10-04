@@ -1,7 +1,7 @@
 import { and, asc, eq, ne, notExists, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { HTTPException } from 'hono/http-exception';
-import { agentAccountRow, isAgentHandle } from '../auth/agent-account.js';
+import { agentAccountRow, isAgentHandle } from '../credentials/agent-account.js';
 import { organizationMembers, projectMembers, projects, users } from '../db/schema.js';
 import { addOrgMember, addProjectMembers } from '../permissions/index.js';
 import type { Executor } from './db-executor.js';

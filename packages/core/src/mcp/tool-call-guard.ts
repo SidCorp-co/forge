@@ -1,5 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
-import { runWithPatScope } from '../auth/pat-scope.js';
+import { runWithPatScope } from '../credentials/pat-scope.js';
 import { assertUnfenced } from '../lib/authz.js';
 import {
   type GrantedTool,

@@ -16,7 +16,7 @@ type Props = { searchParams: Promise<Record<string, string | string[] | undefine
 
 const SITE = "Forge documentation";
 const DESCRIPTION =
-  "Forge's documentation — for people using Forge, people connecting an AI assistant, and agents.";
+  "Forge's documentation — for people using Forge and for agents.";
 
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
   const asked = readPublicRequest(toSearchParams(await searchParams), HELP_SLUGS);

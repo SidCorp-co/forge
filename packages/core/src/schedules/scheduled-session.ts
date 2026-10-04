@@ -24,7 +24,7 @@ import {
   pickTurnCredentialDevice,
   type SessionAsker,
 } from '../agent-sessions/session-credential.js';
-import { turnAuthorityRefusalOf } from '../auth/turn-credential.js';
+import { turnAuthorityRefusalOf } from '../credentials/turn-credential.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';

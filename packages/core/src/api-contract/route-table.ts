@@ -2,7 +2,7 @@ import { enterHermeticEnv } from './hermetic-env.js';
 
 enterHermeticEnv();
 const { app } = await import('../index.js');
-const permissions = await import('../auth/pat-permissions.js');
+const permissions = await import('../credentials/pat-permissions.js');
 
 const table = {
   routes: app.routes.map((r) => ({ method: r.method, path: r.path })),

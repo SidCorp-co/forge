@@ -1,4 +1,4 @@
-import { fencedProjectIds } from '../auth/pat-scope.js';
+import { fencedProjectIds } from '../credentials/pat-scope.js';
 import { db } from '../db/client.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { forbidden, notFound, readerProjects } from './access.js';

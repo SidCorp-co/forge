@@ -1,4 +1,4 @@
-import type { DesignRevisionState } from "./design-status.js";
+import type { DesignRevisionState, DesignStatus } from "./design-status.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import type { WaitingKind, WaitingOn } from "./standing.js";
 
@@ -85,6 +85,13 @@ export interface DesignHead {
 	approvedRevision: number | null;
 	approver: string;
 	canDecide: boolean;
+	waitingOn: WaitingOn<DesignWaitingKind>;
+}
+
+/** How the workflows list reads one design: the status it shows and a newer revision waiting on its approver. */
+export interface DesignListReading {
+	shown: DesignStatus | null;
+	pendingRevision: number | null;
 	waitingOn: WaitingOn<DesignWaitingKind>;
 }
 

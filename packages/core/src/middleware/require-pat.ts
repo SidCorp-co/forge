@@ -1,9 +1,9 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { writeMcpAudit } from '../auth/mcp-audit.js';
-import { touchPatUsage, verifyPat } from '../auth/pat.js';
-import { isPatLike } from '../auth/pat-format.js';
-import { patPrincipalOf } from '../auth/pat-principal.js';
+import { writeMcpAudit } from '../credentials/mcp-audit.js';
+import { touchPatUsage, verifyPat } from '../credentials/pat.js';
+import { isPatLike } from '../credentials/pat-format.js';
+import { patPrincipalOf } from '../credentials/pat-principal.js';
 import { type PatRequestClass, patRuleFor } from '../config/rate-limits.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { userRoom } from '../ws/rooms.js';
@@ -16,7 +16,7 @@ export type PatPrincipal = {
   kind: 'pat';
   /**
    * Who acts with this token: `agent` for one bound to a paired box, else the
-   * `users.kind` of the account holding it (`auth/pat-principal.ts:credentialAgency`).
+   * `users.kind` of the account holding it (`credentials/pat-principal.ts:credentialAgency`).
    */
   agency: ActorAgency;
   agentUserId: string | null;

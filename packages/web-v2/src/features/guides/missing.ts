@@ -22,7 +22,7 @@ export interface Refusal {
   body: string;
 }
 
-const PICK_FROM_INDEX = "The index lists every page behind each of its three doors.";
+const PICK_FROM_INDEX = "The index lists every page behind each of its two doors.";
 
 export function missingPage(slug: string): Refusal {
   return {

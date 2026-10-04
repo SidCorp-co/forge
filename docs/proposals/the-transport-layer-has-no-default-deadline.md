@@ -1,4 +1,4 @@
-# Twelve transport modules can hold the caller open for as long as the socket stays open
+# Fourteen transport modules can hold the caller open for as long as the socket stays open
 
 **Removed when:** `CoreClient` cannot issue a request without a deadline: the client sets a default
 and the long routes name their own, which dev ISS-126 carries. The change that lands it deletes this
@@ -13,8 +13,8 @@ and several of the files are held by other runs' trees.
 `CoreClient::new` in `transport/mod.rs` builds `reqwest::Client::new()`, which carries no timeout,
 and the deadline is therefore per call: `transport::CALL_DEADLINE`, applied at the request builder
 with `.timeout(…)`. Five modules apply it — `heartbeat`, `master`, `mcp_servers`, `pool`,
-`runners`. Counted on 2026-09-26 at `23b0d882f` plus this change, twelve modules issue a request
-and apply none:
+`runners`. Counted by `.send()` calls on 2026-10-04 at `a99a6c43c`, fourteen modules issue a
+request and apply none:
 
 | module | requests with no deadline |
 |---|---|
@@ -22,20 +22,20 @@ and apply none:
 | `skills` | 4 |
 | `agent_sessions` | 3 |
 | `lifecycle`, `provision`, `questions` | 2 each |
-| `admissible`, `events`, `git_credential`, `inbox`, `plugins`, `protections` | 1 each |
+| `admissible`, `channel_inbox`, `comment_inbox`, `events`, `git_credential`, `inbox`, `plugins`, `protections` | 1 each |
 
-Twenty-six calls. Each of them is the fault ISS-1233 was filed over, one route across: a peer that
+Twenty-eight calls. Each of them is the fault ISS-1233 was filed over, one route across: a peer that
 accepts the connection and never answers holds the caller for as long as the socket stays open,
 with nothing recorded and nothing to read afterwards. `runners::list_me` was the one that held the
 whole master sweep; the others hold whatever their own caller was doing.
 
-## Why it is not twelve `.timeout(CALL_DEADLINE)` calls
+## Why it is not fourteen modules of `.timeout(CALL_DEADLINE)` calls
 
 Because fifteen seconds is the sweep's number, not everyone's, and applying it by search-and-replace
 would refuse work that is legitimately slower than a sweep:
 
 - `skills` and `plugins` move payloads, and a bundle on a slow link is not a hung peer.
-- `provision::pull_pending` already has a body-read deadline of its own on ISS-1206's branch, which
+- `provision::pull_pending` already has a body-read deadline of its own (`BODY_DEADLINE`), which
   is a different bound from the request deadline and would have to be reconciled rather than
   stacked.
 - `run_sessions` carries seven calls on the job lifecycle, where a deadline that fires turns a
@@ -54,11 +54,11 @@ refusal question answerable — a new route inherits the deadline instead of bei
 ## Honest costs
 
 - **Every long route has to be found and given its own number before the default goes in**, or the
-  default ships as a regression on whichever of the twenty-six is slowest. That search is the work,
+  default ships as a regression on whichever of the twenty-eight is slowest. That search is the work,
   and it is the reason this is a proposal rather than a patch.
 - **A deadline that fires is a new failure mode on paths that never had one.** `run_sessions` is the
   sharp end: the calls it makes are how a job's state reaches core, and a refused write there is a
   job whose record and whose reality have parted, which `VISION: state-never-lies` is about.
 - **Leaving it costs what ISS-1233 measured.** A held call is silent: no log line, no record, and a
-  heartbeat still going out saying the box is fine. The sweep half of that is fixed; twelve modules
+  heartbeat still going out saying the box is fine. The sweep half of that is fixed; fourteen modules
   of it are not.

@@ -14,7 +14,7 @@ export function GuideShell({ children }: { children: React.ReactNode }) {
             Forge documentation
           </Link>
           <span className="fg-caption text-subtle">
-            For people using Forge, people connecting an assistant, and agents.
+            For people using Forge and for agents.
           </span>
         </div>
       </header>

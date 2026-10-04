@@ -49,10 +49,9 @@ Need different pipeline behaviour for THIS project?
 
 1. Hardcoding mechanics (build/test/deploy commands) → breaks when the repo changes; violates rule 1.
 2. Restating preamble content → silent drift.
-3. **Double-merge:** the skill `git merge`s AND server `mergeStates` merges the same branch → empty-commit loop. Pick ONE merge mechanism.
-4. **Files without `encoding`:** when adding `references` (`files[]`), set `encoding:"utf8"` (or base64) — a missing encoding can break the runner's skill sync.
-5. Secrets inline; or putting a per-project value in the body instead of a knowledge entry.
-6. Over-splitting: moving decision logic into a reference the agent may skip. Keep gates inline.
+3. **Files without `encoding`:** when adding `references` (`files[]`), set `encoding:"utf8"` (or base64) — a missing encoding can break the runner's skill sync.
+4. Secrets inline; or putting a per-project value in the body instead of a knowledge entry.
+5. Over-splitting: moving decision logic into a reference the agent may skip. Keep gates inline.
 
 ## 5. Authoring workflow (read → draft → ship → verify)
 

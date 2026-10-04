@@ -1,9 +1,8 @@
 /**
  * The MCP tool surface this server is DECLARED to register.
  *
- * `integrations/github/agent-declaration.test.ts` reads it to refuse an integration that offers an
- * agent a tool the server does not serve: such a declaration advertises, in every prompt, a call
- * that answers `not_found`, which an agent reads as a credential fault and retries.
+ * An integration that offers an agent a tool the server does not serve advertises, in every prompt,
+ * a call that answers `not_found`, which an agent reads as a credential fault and retries.
  */
 
 export const REGISTERED_TOOLS = [

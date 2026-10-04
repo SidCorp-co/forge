@@ -2,8 +2,7 @@
 
 `runner_events` is the audit of `runners.status`, and it answers for the decisions rather than for
 the column. Every operator act writes one — `runners/routes.ts` for the PATCH, the exclude and the
-include, `runners/ghost-reaper.ts` for the days-absent sweep, and
-`mcp/tools/forge-runners.ts` for retire and restore, all through
+include, and `runners/ghost-reaper.ts` for the days-absent sweep, all through
 `runners/runner-events.ts:setRunnerStatus`.
 
 `runners/heartbeat-ws.ts` does not. It sets `online` on a register retry and `offline` on
@@ -17,10 +16,9 @@ from the status column alone. An independent judging run read `sid-xeon-1` at pr
 `disabled` with no `runner_events` row after 2026-09-20T17:35Z, whose reason was `mcp_restore`.
 Whatever wrote `disabled` left no trace, and the sentence told the operator an operator had done it.
 
-Two halves of that are closed. The MCP retire path wrote the column through the UNAUDITED setter
-while restore, one action below it in the same file, used the audited one — both now audit under
-`mcp_retire`, and the unaudited `runners/service.ts:setRunnerStatus` is deleted so the pair cannot
-come back. The clause now names the status it read rather than who set it.
+Two halves of that are closed. The unaudited `runners/service.ts:setRunnerStatus` is deleted, and
+no MCP tool writes `runners.status` any more. The clause
+(`runners/ineligible.ts`) now names the status it read rather than who set it.
 
 ## The residual, and why it is not taken here
 

@@ -16,7 +16,6 @@ import {
 } from '../db/schema.js';
 import {
   assertUnfenced,
-  loadPersonalOrgId,
   loadProjectAccess,
   maxProjectRole,
   orgDerivedProjectRole,
@@ -25,6 +24,7 @@ import {
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, flatten, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { findPersonalOrgId } from '../orgs/service.js';
 import { requireHeld, requireOrgCan, requireOrgHeld } from '../permissions/index.js';
 import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
 import { readDeclaredSource } from '../project-config/source.js';
@@ -118,7 +118,7 @@ projectRoutes.post(
       await requireOrgCan({ userId }, 'org.read', requestedOrgId);
       orgId = requestedOrgId;
     } else {
-      const personal = await loadPersonalOrgId(userId);
+      const personal = await findPersonalOrgId(userId);
       if (!personal) {
         throw new HTTPException(500, {
           message: 'personal org missing — run migrations',

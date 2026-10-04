@@ -7,7 +7,7 @@ export const CAPABILITY_BOOLEANS = [
   'multiBinding',
 ];
 
-export const AGENT_PATH_KINDS = ['none', 'core-mediated', 'direct-mcp'];
+export const AGENT_PATH_KINDS = ['none', 'core-mediated', 'permission', 'direct-mcp'];
 
 /** The six zod schemas every provider declares, whatever it integrates. */
 export const SCHEMA_OBJECTS = [
@@ -55,6 +55,9 @@ function agentPathReasons(path) {
     reasons.push(
       `a ${path.kind} agentPath carries tools: ${path.toolsType ?? 'missing'}, not an array`,
     );
+  }
+  if (path.kind === 'permission' && !nonEmptyString(path.permission)) {
+    reasons.push('a permission agentPath names no `permission` that decides who may use its tools');
   }
   if (path.kind !== 'direct-mcp') return reasons;
 

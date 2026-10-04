@@ -186,7 +186,7 @@ repositories.
 
 **Direction, not yet reached.** Routing by expertise and authority is the destination this document
 describes, and `route-judgment-not-bottlenecks` is the commitment to it. What is built today, and
-what is next, belong to the [roadmap](../README.md#roadmap) and the issue tracker — never here.
+what is next, belong to the issue tracker — never here.
 
 ---
 

@@ -78,7 +78,7 @@ Summarize what you plan to write, grouped by target, then ask "Write this?" (rul
   padded one. Set `authoredBy: "agent"`.
 - **Seed memory** (`forge-runner api memory -X POST`) — a handful of durable, non-obvious facts a future
   agent session would otherwise have to rediscover (a real gotcha, a firm convention, a pointer to
-  where truth lives). Follow the `forge-memory-curator` contract: the 3-question gate (worth it? /
+  where truth lives). Hold each one to the 3-question gate (worth it? /
   right place — not already in code or CLAUDE.md? / safe & findable as one secret-free fact under a
   stable slug?), taxonomy (`policy` for working rules, `knowledge` for durable facts/pointers,
   `decision` for a dated architectural choice), dense `textContent` (~150–800 chars, lead line

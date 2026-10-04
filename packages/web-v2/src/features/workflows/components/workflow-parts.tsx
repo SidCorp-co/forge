@@ -24,12 +24,12 @@ export function DesignPill({ status, reason }: { status: DesignStatus; reason?: 
 
 /** A newer revision waiting on its approver while an older one stays the approved design; nothing when there is none. */
 export function ProposedMarker({ r }: { r: WorkflowRecord }) {
-  const approved = r.design.approvedRevision;
-  if (r.design.status !== "proposed" || approved === null || r.revision <= approved) return null;
+  const pending = r.design.pendingRevision;
+  if (pending === null) return null;
   return (
-    <Tooltip label={`Revision ${r.revision} is waiting on its approver; revision ${approved} stays the approved design until then`} side="bottom" multiline>
+    <Tooltip label={`Revision ${pending} is waiting on its approver; revision ${r.design.approvedRevision} stays the approved design until then`} side="bottom" multiline>
       <span className="whitespace-nowrap font-mono text-11-5 font-semibold" style={{ color: TONE_META.attention.fg }} data-testid="proposed-marker">
-        r{r.revision} proposed
+        r{pending} proposed
       </span>
     </Tooltip>
   );

@@ -4,11 +4,6 @@
 > shipped. It is one of four documentation homes, and which page belongs in which is stated once,
 > in [modules/guides/where-a-page-lives.md](modules/guides/where-a-page-lives.md).
 
-One folder carries the system's description, and it is the only one. The per-domain module docs,
-the architecture set, the RFC folder and the loose proposal notes were deleted on 2026-09-20: they
-were written once and consulted rarely, drifted from the code without anything noticing, and
-answered the same question in several places at once. Better no document than a wrong one.
-
 ## Where to go
 
 | I want to | Go here |
@@ -18,9 +13,7 @@ answered the same question in several places at once. Better no document than a 
 | Understand the system, and where it is going | [proposals/destination/](proposals/destination/) |
 | Know which CLI is mine — I write skills, or I write the daemon | [proposals/destination/plugin-core.html](proposals/destination/plugin-core.html) |
 | Know which surface answers which question | [proposals/destination/one-question-one-answer.md](proposals/destination/one-question-one-answer.md) |
-| See what the tree does instead of what the set describes | [proposals/destination/module-1-work-lifecycle.md](proposals/destination/module-1-work-lifecycle.md) |
-| Know how much of the system the set actually covers | [proposals/destination/coverage.md](proposals/destination/coverage.md) |
-| Build a domain entity (a table, its routes, MCP tool and web module) the way every other one is built | [conventions/domain-entities.md](conventions/domain-entities.md) — the pattern, not a description: each rule names its reference code, and what does not meet it yet is listed with an owner |
+| Build a core module (its tables, routes and web module) the way every other one is built | [conventions/domain-entities.md](conventions/domain-entities.md) — the pattern, not a description: each rule names its reference code, and `scripts/check-module-shape.mjs` measures the rules a script can read |
 
 ## Rules for this tree
 
@@ -30,11 +23,8 @@ answered the same question in several places at once. Better no document than a 
 - **Deleting a wrong doc is `CLAUDE.md` §"Documentation is deleted, not carried", not a rule of
   this folder.** It is stated once, there, and restating it here would be the second copy that
   rule exists to forbid.
-- **The set states its own coverage.** It is silent on plenty, and an audit run against it must
-  not read that silence as approval.
-- **Every document here prices what adopting it costs, under `## Honest costs`.** `VISION.md` and
-  every file under `proposals/` carries one; a `README.md` at any depth carries this rule instead
-  of a price of its own. The section holds the price of the choices the document makes, not the
+- **`VISION.md` and every file under `proposals/` price what adopting them costs, under
+  `## Honest costs`**; a `README.md` at any depth carries this rule instead of a price of its own. The section holds the price of the choices the document makes, not the
   boundaries it draws — one cost per row, as a table or a list, at least twelve words across it,
   and never `TBD`, `none` or `n/a`. A cost nobody has worked out is not a priced trade-off, and a
   section that is present and says nothing is the shape this rule exists to refuse.

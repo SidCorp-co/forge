@@ -8,7 +8,7 @@
  * `changedBy: 'assistant'` says it was made through a room.
  */
 import { z } from 'zod';
-import { writeAssistantPreferences } from '../../auth/preference-changes.js';
+import { writeAssistantPreferences } from '../../preferences/index.js';
 import { answerStyles } from '../../db/schema.js';
 import type { ContextScopedMcpToolFactory } from '../../mcp/tools/lib.js';
 

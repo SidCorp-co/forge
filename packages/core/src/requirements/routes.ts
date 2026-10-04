@@ -330,7 +330,7 @@ requirementRoutes.post(
   reqParam,
   strictBody(
     z.strictObject({ issue: z.string().trim().min(1).max(200), adoptPlan: z.boolean().optional() }),
-    '{ issue, adoptPlan? } names the issue, by key or uuid; adoptPlan (a person) records its existing plan as written against the current revision',
+    '{ issue, adoptPlan? } names the issue, by key or uuid; adoptPlan (needs requirements.approve) records its existing plan as written against the current revision',
   ),
   async (c) => {
     const { id, req } = c.req.valid('param');

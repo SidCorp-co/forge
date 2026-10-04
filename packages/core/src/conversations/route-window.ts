@@ -11,7 +11,7 @@
  * is the piece between them that decides whether to take one at all.
  */
 
-import { resolveTurnAuthority, type TurnAuthority } from '../auth/turn-credential.js';
+import type { TurnAuthority } from '../credentials/turn-credential.js';
 import type {
   ConversationMode,
   ConversationWindowCutReason,
@@ -19,6 +19,7 @@ import type {
 } from '../db/schema-conversations.js';
 import { logger } from '../logger.js';
 import { readSelvesFor } from '../orgs/agent-selves.js';
+import { resolveTurnAuthority } from '../permissions/index.js';
 import { acknowledgeRequest } from './acknowledgement.js';
 import { refuseAuthority } from './authority-refusal.js';
 import { handleForProject, personCount, roomHandles } from './participants.js';

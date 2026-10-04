@@ -4,8 +4,8 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { countActivePatsForUser, mintPat, revokePat, rotatePat } from '../auth/pat.js';
-import { coreTokenNamePrefixOf } from '../auth/pat-format.js';
+import { countActivePatsForUser, mintPat, revokePat, rotatePat } from '../credentials/pat.js';
+import { coreTokenNamePrefixOf } from '../credentials/pat-format.js';
 import {
   PAT_ACCOUNT_ONLY_PERMISSIONS,
   PAT_EXPLICIT_PERMISSIONS,
@@ -14,7 +14,7 @@ import {
   PAT_PERMISSION_NAMES,
   patGrantIsLegacy,
   patGrantIsStatedFull,
-} from '../auth/pat-permissions.js';
+} from '../credentials/pat-permissions.js';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { mcpAuditLog, personalAccessTokens } from '../db/schema.js';

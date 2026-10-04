@@ -3,7 +3,7 @@
 /** The audiences a page in content/help/ may be written for. `agent` is not one: pages for
  *  agents are the guide corpus core serves, and the public agent door promises each of them
  *  as markdown at `/api/guides/<slug>.md`, which a page here could not keep. */
-export const HELP_AUDIENCES = ["user", "assistant-setup"];
+export const HELP_AUDIENCES = ["user"];
 
 export function parseFrontmatter(raw) {
   const m = /^---\n([\s\S]*?)\n---\n?/.exec(raw);

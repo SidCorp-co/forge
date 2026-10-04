@@ -183,13 +183,16 @@ Remove the two settings and nothing else, and:
   'typescript'`; and `form lint-budget`, `form integration-declarations`, `relations archmap`,
   `meta conformance levels` and `meta conformance audit` each report that they could not run.
   Twenty-five verdicts pass under hoisting at the same head and in the same clone.
-- **`pnpm build` fails**, at `web-v2`'s `next build`: `src/vitest.setup.ts(2,27): error TS2307:
-  Cannot find module '@testing-library/dom' or its corresponding type declarations.` Run `--force`
-  against an empty cache, `0 cached, 4 total`. This is the claim the first version of this page got
-  exactly backwards, and it got it backwards because the parent checkout supplied the package.
-- **`pnpm test` fails**, at `web-v2#test`, on the same import in the same setup file: `Failed to
-  resolve import "@testing-library/dom" from "src/vitest.setup.ts"`. Also `--force`,
-  `0 cached, 6 total`.
+- **`pnpm build` failed at `5b06318a5`**, at `web-v2`'s `next build`: `src/vitest.setup.ts(2,27):
+  error TS2307: Cannot find module '@testing-library/dom' or its corresponding type declarations.`
+  Run `--force` against an empty cache, `0 cached, 4 total`. This is the claim the first version of
+  this page got exactly backwards, and it got it backwards because the parent checkout supplied the
+  package. On dev, `next build` no longer runs its TypeScript pass (`452be8dce`), so this failure is
+  not reached there; the undeclared import in `src/vitest.setup.ts` stands.
+- **`pnpm test` failed at `5b06318a5`**, at `web-v2#test`, on the same import in the same setup file:
+  `Failed to resolve import "@testing-library/dom" from "src/vitest.setup.ts"`. Also `--force`,
+  `0 cached, 6 total`. On dev the TypeScript tests are deleted, so this is not reached there until
+  ISS-172 restores them.
 - **`pnpm deploy --filter=@forge/core --prod` succeeds.** The line `packages/core/Dockerfile`
   builds the production image with is the one thing measured here that does not need hoisting.
 
@@ -227,8 +230,8 @@ checker make. That is the next piece of work on this, and it is the one that sto
 
 The isolated linker is what would catch all of it, and this measurement says the disk cost is
 affordable — 13 MB and about five thousand directory entries per worktree, not gigabytes. What it
-is not is cheap in work: seven verify verdicts, `pnpm build` and `pnpm test` have to be repaired
-first, `@testing-library/dom` has to be declared by `web-v2`, and the `hono/*` repair means editing
+is not is cheap in work: seven verify verdicts (and, wherever they run, `pnpm build`'s type pass and
+`pnpm test`) have to be repaired first, `@testing-library/dom` has to be declared by `web-v2`, and the `hono/*` repair means editing
 the resolution map that `.arch-tsconfig.json`'s own opening records as having silently emptied
 three locked contracts once before.
 

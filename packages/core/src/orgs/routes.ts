@@ -29,7 +29,7 @@ import { sendOrgInvitationEmail } from '../projects/invitation-email.js';
 import { agentAccountRoutes } from './agent-accounts-routes.js';
 import { issueOrgInvitationToken } from './invitations.js';
 import { refuse } from './refuse.js';
-import { listOrgMembers, listOrgsForUser } from './service.js';
+import { isPersonalOrg, listOrgMembers, listOrgsForUser } from './service.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -158,8 +158,8 @@ orgRoutes.delete(
     const { orgId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const org = await requireOrgCan({ userId }, 'org.own', orgId);
-    if (org.isPersonal) {
+    await requireOrgCan({ userId }, 'org.own', orgId);
+    if (await isPersonalOrg(orgId)) {
       throw refuse('PERSONAL_ORG_IMMUTABLE', 'a personal org cannot be deleted');
     }
     const [projectCount] = await db
@@ -238,7 +238,7 @@ orgRoutes.post(
 
     const caller = await requireOrgCan({ userId: callerId }, 'org.admin', orgId);
     if (role === 'owner') requireOrgHeld(orgId, caller.role, 'org.own');
-    if (caller.isPersonal) {
+    if (await isPersonalOrg(orgId)) {
       throw refuse('PERSONAL_ORG_IMMUTABLE', 'a personal org cannot have additional members');
     }
 

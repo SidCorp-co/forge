@@ -127,8 +127,8 @@ may run beside.
 
 | Order | Issue | Rule | Runs beside |
 |---|---|---|---|
-| 1 | ISS-159 permission, one `can()` (already running) | BC-20 | table writers, read models |
-| 2 | ISS-161 issue, job, run and session machines as data under one kernel transition; the schema imports no domain | BC-17, BC-12 | nothing: runs alone, blocks 3–5 |
+| 1 | ISS-159 permission, one `can()` (landed on dev) | BC-20 | table writers, read models |
+| 2 | ISS-161 issue, job, run and session machines as data under one kernel transition; the schema imports no domain (landed on dev) | BC-17, BC-12 | nothing: runs alone, blocks 3–5 |
 | 3 | ISS-162 one refusal body, codes in contracts | BC-16 | ISS-163, ISS-164 |
 | 3 | ISS-163 one owner per table, comments first; the release hold a typed record | BC-14 | ISS-162, ISS-164 |
 | 3 | ISS-164 one Standing contract, needs-you in core, web derives nothing | BC-19 | ISS-162, ISS-163 |
@@ -136,15 +136,14 @@ may run beside.
 | 5 | ISS-167 adapters import no domain; ADR 0006 amnesties closed | BC-22 | — |
 | 5 | ISS-168 one route-mount registry, tools in their modules | BC-21 | — |
 | 5 | ISS-169 routes hold no queries; REST issue list on the list service | BC-15 | — |
-| — | ISS-170 one cron (agents into schedules) | BC-14 | any |
-| — | ISS-171 component design of core | BC-11, BC-12 | any |
+| — | ISS-170 one cron (agents into schedules) (landed on dev) | BC-14 | any |
+| — | ISS-171 component design of core (landed on dev) | BC-11, BC-12 | any |
 | QA | ISS-165 one "passing" predicate (draft until QA) | BC-19 | — |
 
 Carried by other issues, not filed again: the job-context loader from the baseline pins (ISS-150,
 chain A `build`), changed-since-plan computed twice (ISS-152, chain A `impact`), the system graph in
-web (ISS-153), the 17-to-10 legacy status map and the MCP tools the CLI or API replace (separate runs
-under the owner's 2026-10-04 decisions), and the forge-plugin side of the ten-status model
-(reported there).
+web (ISS-153), the 17-to-10 legacy status map (ISS-174) and the MCP tools the CLI or API replace
+(ISS-176) — all landed on dev — and the forge-plugin side of the ten-status model (reported there).
 
 ### Pattern divergences carried from pattern v1
 
@@ -153,34 +152,30 @@ a decision clears it; "Absorbed by" names the issue whose rule covers it, else t
 
 | # | Divergence | Absorbed by |
 |---|---|---|
-| 4 | Requirement statuses and views are declared in core (`packages/core/src/db/schema-requirements.ts:REVISION_STATES`) and redeclared in `packages/web-v2/src/features/requirements/types.ts`; the requirement spec and criterion schemas live in `packages/contracts/src/suggestions.ts` instead of a requirements module of its own in contracts; route bodies are built inline (`packages/core/src/requirements/routes.ts:revisionFields`) | review |
-| 5 | Criteria verdict values are declared in core and redeclared in web (`packages/core/src/db/schema-issue-criteria.ts:verdictValues`). Design statuses moved to `packages/contracts/src/design-status.ts:DESIGN_STATUSES` and agent-report kinds to `packages/contracts/src/agent-reports.ts:AGENT_REPORT_KINDS` (ISS-93), which core re-exports | review |
-| 6 | Record-event kinds are declared twice, held by `packages/core/src/issues/record-events/kinds.test.ts` | review |
+| 4 | Revision states moved to `packages/contracts/src/requirements.ts:REVISION_STATES`, which `packages/core/src/db/schema-requirements.ts` re-exports, but `packages/web-v2/src/features/requirements/types.ts` still redeclares `RevisionState`; the requirement spec and criterion schemas live in `packages/contracts/src/suggestions.ts` rather than in contracts' requirements module; route bodies are built inline (`packages/core/src/requirements/routes.ts:revisionFields`) | review |
+| 5 | Criteria verdict values are declared once in `packages/contracts/src/verdict-identity.ts:VERDICT_VALUES`, which core re-exports (`packages/core/src/db/schema-issue-criteria.ts:verdictValues`), and redeclared as a literal union in web (`packages/web-v2/src/features/issues/criteria.ts`). Design statuses moved to `packages/contracts/src/design-status.ts:DESIGN_STATUSES` and agent-report kinds to `packages/contracts/src/agent-reports.ts:AGENT_REPORT_KINDS` (ISS-93), which core re-exports | review |
 | 7 | Workflow design state is one head status, not per-revision `REVISION_STATES`; a revision's state is derived on read (`packages/core/src/workflows/design-standing.ts:revisionStateOf`), never stored; `decided_by_user` / `proposed_by_user` naming | review (migration) |
 | 8 | `contract_versions.decided_as` says `person` (and carries `before-approval`); `actor_agency` and `author_agency` have no CHECK | review (migration) |
 | 9 | Criteria and verdict rows are insert-only by comment, with no trigger | review (migration) |
 | 10 | A re-proposal of a returned requirement revision overwrites `proposed_at` / `proposed_by`, with no row per proposal; returns have their own rows (walkthrough D6) | review |
-| 12 | Who-may-act codes predating the suffix: `WORKFLOW_DESIGN_APPROVER_NOT_*`, `CONTRACT_APPROVER_NOT_*`, `CONTRACT_BREAKING_NEEDS_PERSON`, `WORKFLOW_WRITER_NOT_PROJECT`, `LINK_WRITER_NOT_CONSUMER` | ISS-159 |
-| 14 | Agency checks older than the redesign: `packages/core/src/issues/transition-guards.ts`, `packages/core/src/issues/merge-marker.ts`, `packages/core/src/release-batch/approvals.ts`, `packages/core/src/issues/release-gate-hold.ts`, `packages/core/src/projects/master-charter-routes.ts` | ISS-159 |
+| 14 | An agency check older than the redesign: `packages/core/src/issues/merge-marker.ts:applyMergeMarker` asks an actor whose agency is `agent` for work evidence a person is not asked for | review (still standing after ISS-159) |
 | 15 | Body validation outside `strictBody`: criteria and record events use `zValidator` + `flattenError` with no shape hint; agent-report triage bodies take `strictBody` since ISS-113 | review |
 | 16 | `forge_agent_report` is a singular name; its `submit` inserts through `packages/core/src/agent-reports/service.ts:insertReport` but checks its input inline, and the REST door has no submit | ISS-168 |
-| 17 | The ISS-54/55/56 `cm:hack` annotations carry no `ISS-n until:` (`packages/core/src/issues/legacy-status.ts`, `packages/core/src/issues/criteria/event-verdicts.ts`, `packages/core/src/issues/record-events/mirror.ts`, `packages/core/src/issues/record-events/history.ts:legacyCommentRecords`, `packages/core/src/comments/tree.ts:recordOf`, `packages/core/src/agent-reports/routes.ts:feedbackReportsAliasRoutes`, `packages/core/src/mcp/tools/forge-agent-report.ts:forgeFeedbackAliasTool`) | review |
-| 20 | The BA door posts a questionnaire through its bound tool (`packages/core/src/assistant/tools/ba-tools.ts`, `ba_send_questionnaire`) without the `PROJECT_AGENT_WRITE` rule REST and MCP posting take (`packages/core/src/questionnaires/rules.ts:posterRefusal`); the room binding stands in for it | ISS-159 |
-| 21 | The `feedback:*` token grant still means agent reports, so FB-n routes ride `projects:*` (`cm:hack ISS-59` in `packages/core/src/auth/pat-permissions.ts`) | ISS-168 |
+| 17 | The ISS-54/55/56 `cm:hack` annotations carry no `ISS-n until:` (`packages/core/src/issues/criteria/event-verdicts.ts`, `packages/core/src/issues/record-events/mirror.ts`, `packages/core/src/issues/record-events/history.ts:legacyCommentRecords`, `packages/core/src/comments/tree.ts:recordOf`, `packages/core/src/agent-reports/routes.ts:feedbackReportsAliasRoutes`) | review |
+| 20 | The BA door posts a questionnaire through its bound tool (`packages/core/src/assistant/tools/ba-tools.ts`, `ba_send_questionnaire`) without the `questionnaires.write` permission REST posting takes (`packages/core/src/questionnaires/rules.ts:posterRefusal`); the room binding stands in for it | review (still standing after ISS-159) |
+| 21 | The `feedback:*` token grant still means agent reports, so FB-n routes ride `projects:*` (`cm:hack ISS-59` in `packages/core/src/credentials/pat-permissions.ts`) | ISS-168 |
 | 22 | Feedback's target arc holds requirement, issue, release and workflow; a screen is `where_seen` text with no key, as the approved design has it, not the arc member REQ-7 BC-1 lists. A release is a `pipeline_runs` row | review |
-| 23 | Feedback's stored statuses are new, triaged, reopened, verified, declined; `planned` and `resolved` are derived on read from what the route carries (`packages/core/src/feedback/rules.ts:phaseOf`) | ISS-164 (a derived phase is a read-model value) |
 | 24 | The `answer` route stores its text on `feedback.answer`, not a decision comment; comments gained the feedback arc in ISS-83, and nothing moved the answer onto one | review |
 | 25 | Feedback gaps the POC left: an agent's clarification answer is not turned into a triage suggestion; a high or critical item does not wake the master; deleting a reporter's data does not reach text already copied into a filed draft issue; a person on the MCP door is treated as provider-bound; the scrubber recognises an unlabelled name only when it opens with a common Vietnamese surname (`packages/observability/src/personal-data.ts:scrubPersonalData` names the trade-off), so a name with a rarer surname still passes; a clarification answer (written by the questions module) and a triage suggestion's note are stored unscrubbed | review |
 | 26 | The conversation detail carries the room's questionnaire batches, and the list each room's `kind` and `threadStatus` (`packages/core/src/assistant/conversation-routes.ts`): a conversation route reading the onboarding and questionnaire rows instead of the client reading `/questionnaires/:bid` | review |
-| 28 | `POST /api/projects/:id/onboarding/join` adds the caller to the onboarding room, which can turn a direct room into a group; no rule decides who may join beyond project access | ISS-159 |
+| 28 | `POST /api/projects/:id/onboarding/join` adds the caller to the onboarding room, which can turn a direct room into a group; joining takes `project.write` (`packages/core/src/onboarding/service.ts:joinOnboarding`) | review |
 | 31 | The data-flow guard reads the level itself (`packages/core/src/onboarding/read.ts:projectHoldsSensitiveData`) to decide whether a data-flow design is owed, which is not an egress decision | review |
 | 33 | A contract wait is named by its uuid in refusals and routes, because a wait carries no key | review |
-| 34 | The admissible list holds a waiting issue by SQL (`packages/core/src/ecosystem/waits/gate.ts:waitUnsettledSql`) that mirrors `packages/core/src/ecosystem/waits/rules.ts:holdsDispatch`; only the predicate is unit-tested | ISS-164 |
+| 34 | The admissible list holds a waiting issue by SQL (`packages/core/src/ecosystem/waits/gate.ts:waitUnsettledSql`) that mirrors `packages/core/src/ecosystem/waits/rules.ts:holdsDispatch`, with nothing holding the two together | ISS-164 |
 | 35 | A change request's channel decision document can still answer it in prose; only the draft requirement it landed as (`packages/core/src/ecosystem/requests/land.ts:landChangeRequestIn`) and the provider's approved versions gate anything | review (owner question) |
 | 36 | A provider's live version is derived, not recorded: its newest verified release identity matched to a contract measurement's commit (`packages/core/src/ecosystem/waits/live.ts:providerLiveVersion`). An uploaded version, an unprobed provider or a stale land reads as no version, so E4 refuses until the ecosystem sets `releases.providerLive` to `off` | review |
 | 37 | Comments (ISS-83): an issue decision stays prose, held only off issues by `comments_decision_fields_chk` (`cm:hack ISS-83` in `packages/core/src/db/schema.ts:comments`); the issue door keeps its untyped `comment.created` activity rows and writes no `comment_events`; `comments` has no `project_id` and no `author_agency` (the agency is read from the device or `users.kind`, as ISS-1137 decided); a comment on another entity is not screened by `packages/core/src/comments/screen.ts:screenAgentComment` and takes no mentions or attachments | ISS-163 |
 | 38 | REST and MCP answer different defaults: a REST read is full unless `?view=summary`, an MCP call a summary unless `view: 'full'`; REST writes take no view and answer the whole entity | ISS-168 |
-| 39 | The workflows list carries no `waitingOn`; only the design read does (`packages/core/src/workflows/design-standing.ts:designWaitingOn`, ISS-72) | ISS-164 |
 | 40 | Closed: the MCP tools it named (`forge_issues`, `forge_feedback_items`, `forge_knowledge`) are not served since the MCP slimming of 2026-10-04 | ISS-168 |
 | 41 | A projection runs after the whole read: a write still reads the full detail (`packages/core/src/requirements/read.ts:detailOf`, `packages/core/src/workflows/design-service.ts:designView`) and the door drops most of it | review |
 | 42 | Closed: `forge_suggestions` is not served since the MCP slimming of 2026-10-04; suggestions are `/api/projects/:id/suggestions` | ISS-168 |
@@ -239,7 +234,7 @@ Upcoming steps are recommended **rewrite**, which here means building the node t
 | `contract-recorded` | Wrong | data | `ecosystem/contract/record.ts:recordVersion` | **keep**: Same as drafted. |
 | `delivered` | Wrong | behaviour | `requirements/standing.ts:deliveryOf` | **rewrite**: Write the requirement.delivered notice the acceptance case opens from. |
 | `drafted` | Wrong | data | `requirements/service.ts:writeRevision` | **keep**: The row is the record and nothing consumes the event; revise the design to say so (one revision for the four event nodes). |
-| `fb-case` | Wrong | behaviour, wiring | `feedback/rules.ts:phaseOf` | **rewrite** (due): Threshold reached; build the case the design draws, or the orchestrator revises the design to make the FB-n row the case. |
+| `fb-case` | Wrong | behaviour, wiring | `feedback/standing.ts:phaseOf` | **rewrite** (due): Threshold reached; build the case the design draws, or the orchestrator revises the design to make the FB-n row the case. |
 | `fb-filed` | Wrong | data | `feedback/service.ts:createFeedback` | **keep**: Same as drafted. |
 | `impact` | Wrong | behaviour, data, wiring | `requirements/rules.ts:changedSincePlan` | **rewrite** (due): Differs in behaviour, data and wiring; delete the flag-only code and the second computation, build impact on read with the gate the design draws. |
 | `pins` | Wrong | data, wiring | `requirements/baselines.ts:latestBaselineIn` | **rewrite** (due): Contract pins are never written and bindings never read; build the pin set to the design with req-head and agreed. |
@@ -271,7 +266,7 @@ Upcoming steps are recommended **rewrite**, which here means building the node t
 | `obs-link-build` | `suggestions/breakdown.ts:breakdownEffect` | Each breakdown issue is linked as a build of one pinned design (SUGGESTION_BUILD_UNNAMED, SUGGESTION_BUILD_UNPINNED); issues are filed at draft. | **keep**: Traceability step markers need; draw it, and decide whether draft issues wait on a promote. |
 | `obs-context-budget` | `workflows/run-context.ts:ARTIFACT_CONTEXT_CAP_CHARS` | 24k design and 12k requirement budgets with named trims (ARTIFACT_CONTEXT_OVER_BUDGET); egress checks the blocks. | **keep**: REQ-1 BC-5. |
 | `obs-contract-wait` | `ecosystem/waits/gate.ts:assertWaitsSettledForIssue` | An issue waiting on a contract version is held from claim until the provider approves it (CONTRACT_WAIT_UNSETTLED). | **rewrite**: Contradicts the design, which builds both sides in parallel against the generated mock; rebuild with contract-first. |
-| `obs-named-contracts` | `ecosystem/contract/named-context.ts:loadNamedContracts` | A job gets the contract versions its issue text names, and a link-pin diff (ecosystem/contract/run-context-service.ts:loadContractContext). | **delete**: A second pin path beside the baseline; removed when build loads contract pins. |
+| `obs-named-contracts` | `ecosystem/contract/named-context.ts:loadNamedContracts` (deleted by ISS-150) | A job gets the contract versions its issue text names, and a link-pin diff (ecosystem/contract/run-context-service.ts:loadContractContext). | **delete**: A second pin path beside the baseline; removed when build loads contract pins. |
 | `obs-release-hold` | `release-batch/hold.ts:criteriaHold` | RELEASE_CRITERIA_UNEARNED re-checks verdicts against the serving runtime. | **keep**: Guards released; draw it on release-gate. |
 | `obs-contract-approve` | `ecosystem/contract/decide.ts:decideContractVersion` | A recorded version is proposed until approved or returned; breaking needs a person. | **keep**: REQ-5 BC-5 to BC-10; the publish node owes the approval. |
 | `obs-breaking-feedback` | `ecosystem/contract/announce.ts:fileBreakingIn` | Approving a breaking version files feedback per consumer with the commitment window. | **keep**: Design files it at record; draw it at approval. |
@@ -293,6 +288,12 @@ Upcoming steps are recommended **rewrite**, which here means building the node t
    not the one both sides built against.
 5. **`breakdown`, `triage`, `fb-case`, `check`**: past the threshold; each differs in behaviour and
    data from its rule table.
+
+Since this observation, chain A has landed on dev: `build` (ISS-150, which deleted
+`obs-named-contracts`), `verdict-result` (ISS-151) and `impact` (ISS-152, after which
+`issues/standing-read.ts` reads the one `requirements/rules.ts:changedSincePlan`). Chain B's
+`breakdown` (ISS-154), `triage` and `fb-case` (ISS-155) and `check` (ISS-156) are merged and await
+release. None has been re-observed (Phase 5).
 
 **Keep, revise the design:** the four event nodes (the row is the record; nothing consumes an
 event), `ready` (REQ-4 BC-4 lets any person member sign), and `routed` / `route-result` (take them

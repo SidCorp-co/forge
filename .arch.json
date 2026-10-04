@@ -41,6 +41,9 @@
     "core-conversations": [
       "packages/core/src/conversations/**"
     ],
+    "core-credentials": [
+      "packages/core/src/credentials/**"
+    ],
     "core-db": [
       "packages/core/src/db/**"
     ],
@@ -136,6 +139,9 @@
     ],
     "core-pm": [
       "packages/core/src/pm/**"
+    ],
+    "core-preferences": [
+      "packages/core/src/preferences/**"
     ],
     "core-projects": [
       "packages/core/src/projects/**"
