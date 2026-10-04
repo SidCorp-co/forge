@@ -171,6 +171,7 @@ export async function handleSentryWebhook(
       createdById,
       thresholds: await readSentryThresholds(),
       target,
+      scheduleRunId: null,
     });
 
     if (outcome.kind === 'refused') return await refuse(outcome.reason);

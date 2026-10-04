@@ -80,7 +80,7 @@ export async function routeScheduleReleaseBatchFire(
   }
   return {
     result: { ok: true, sessionId: null, status: 'success', resolvedProjectId: projectId },
-    settle: { status: 'success', output: outcome.output },
+    settle: { status: 'success', output: outcome.output, pipelineRunId: outcome.runId ?? null },
   };
 }
 

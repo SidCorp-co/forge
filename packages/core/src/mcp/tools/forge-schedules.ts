@@ -1,10 +1,12 @@
 import { z } from 'zod';
+import { automationViewerOf, readScheduleDetail } from '../../automation/read.js';
+import { scheduleKinds } from '../../db/schema.js';
+import { egressDeep, egressOr } from '../../lib/data-egress.js';
 import { listImprovementMessages } from '../../schedules/messages/registry.js';
 import {
   createSchedule,
   deleteSchedule,
   getSchedule,
-  listScheduleRuns,
   listSchedulesForMcp,
   readScheduleProjectId,
   runScheduleNow,
@@ -23,8 +25,7 @@ import {
 // (assertPrincipalIsMember); viewer-only PAT callers are not a supported
 // MCP persona so member is an acceptable tightening for the MCP surface.
 const scheduleMode = z.enum(['propose', 'auto']);
-// ISS-618 — 'script' runs a standalone sandboxed Node.js script, no agent/LLM.
-const apiScheduleKind = z.enum(['prompt', 'script']);
+const apiScheduleKind = z.enum(scheduleKinds);
 
 const inputSchema = z
   .object({
@@ -70,8 +71,10 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Requires device or PAT principal. Gate: list/get/runs/catalog → member; create/update/delete → admin; run → writer. ' +
     'list returns a body-free projection (no prompt/script field) to stay under the MCP output cap. ' +
     'catalog returns the full improvement-message registry (static list, no prompt 20k). ' +
+    "runs answers the schedule's fires as forge_automation action=schedule reads them (status, why, produced), newest first, limit (default 20). " +
     "kind='script' runs a standalone sandboxed Node.js script (ctx.log/ctx.http.fetch/ctx.notify/ctx.params) " +
     'on the cron cadence with no agent session and no Claude session — pass `script` instead of `prompt`/`templateKey`. ' +
+    "kind='release_batch' cuts whatever waits at the release gate and kind='sentry_pull' pulls the project's Sentry binding; both take no prompt, script or templateKey. " +
     'Mirrors REST /api/schedules but accepts device/PAT principals without a user JWT.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
@@ -101,7 +104,15 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
           throw new Error('BAD_REQUEST: scheduleId is required for action=runs');
         const projectId = await readScheduleProjectId(input.scheduleId);
         await assertPrincipalIsMember(principal, projectId);
-        return listScheduleRuns(input.scheduleId, userId, input.limit);
+        const viewer = await automationViewerOf(projectId, userId);
+        if (!viewer) throw new Error(`FORBIDDEN: not a member of project ${projectId}`);
+        const detail = await readScheduleDetail(projectId, input.scheduleId, viewer, {
+          firesLimit: input.limit ?? 20,
+        });
+        if (!detail) throw new Error(`NOT_FOUND: schedule ${input.scheduleId}`);
+        return egressOr(await egressDeep(projectId, 'issue', detail, 'schedule fires'), {
+          scheduleId: input.scheduleId,
+        });
       }
 
       case 'create': {
@@ -109,13 +120,6 @@ export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
           throw new Error('BAD_REQUEST: projectId is required for action=create');
         if (!input.name) throw new Error('BAD_REQUEST: name is required for action=create');
         if (!input.cron) throw new Error('BAD_REQUEST: cron is required for action=create');
-        const kind = input.kind ?? 'prompt';
-        if (kind === 'script' && !input.script) {
-          throw new Error('BAD_REQUEST: script is required for action=create when kind="script"');
-        }
-        if (kind === 'prompt' && !input.prompt) {
-          throw new Error('BAD_REQUEST: prompt is required for action=create when kind="prompt"');
-        }
         await assertPrincipalIsAdmin(principal, input.projectId);
         const inserted = await createSchedule(
           {

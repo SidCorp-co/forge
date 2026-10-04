@@ -40,13 +40,6 @@ export const AGENT_REPORT_TRIAGES = [
 ] as const;
 export type AgentReportTriage = (typeof AGENT_REPORT_TRIAGES)[number];
 
-export const AGENT_REPORT_TRIAGE_LABELS: Record<AgentReportTriage, string> = {
-	new: "New",
-	filed: "Filed",
-	dismissed: "Dismissed",
-	duplicate: "Duplicate",
-};
-
 export const AGENT_REPORT_TRIAGE_ACTS = [
 	"file",
 	"dismiss",

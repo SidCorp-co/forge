@@ -1,5 +1,5 @@
 import { apiClient } from "@/lib/api/client";
-import type { ScheduleRow, ScheduleRun } from "./types";
+import type { ScheduleRow } from "./types";
 
 export const schedulesApi = {
   list: (projectId: string) =>
@@ -14,11 +14,6 @@ export const schedulesApi = {
   run: (id: string) =>
     apiClient<{ fireId: string; sessionId: string | null; message: string }>(`/schedules/${id}/run`, { method: "POST" }),
 
-  /** `GET /api/schedules/:id/runs?limit=` — recent run history (newest first). */
-  runs: (id: string, limit = 20) =>
-    apiClient<{ runs: ScheduleRun[] }>(
-      `/schedules/${id}/runs?limit=${encodeURIComponent(limit)}`,
-    ),
 
   /** `DELETE /api/schedules/:id` — 204 No Content. */
   remove: (id: string) => apiClient<void>(`/schedules/${id}`, { method: "DELETE" }),

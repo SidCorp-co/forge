@@ -134,7 +134,7 @@ function routeFire(input: DispatchScheduleInput, fireId: string): Promise<Routed
     case 'release_batch':
       return routeScheduleReleaseBatchFire(input, fireId);
     case 'sentry_pull':
-      return routeScheduleSentryPullFire(input);
+      return routeScheduleSentryPullFire(input, fireId);
     default:
       return routePromptFire(input, fireId);
   }

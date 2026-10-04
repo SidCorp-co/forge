@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
-import { pmApi } from "./api";
+import { automationApi, pmApi } from "./api";
 import type { PmConfigPatch } from "./types";
 
 export function usePmConfig(projectId: string | undefined) {
@@ -49,5 +49,24 @@ export function useRunPm(projectId: string | undefined) {
     onError: (err) => {
       toast({ title: "Couldn't run the PM sweep", description: formatApiError(err), tone: "error" });
     },
+  });
+}
+
+/** Every key the automation read model answers under; a write that moves a schedule, a fire or a report invalidates it. */
+export const automationKey = (projectId: string | undefined) => ["automation", projectId] as const;
+
+export function useAutomationStanding(projectId: string | undefined) {
+  return useQuery({
+    queryKey: [...automationKey(projectId), "standing"],
+    queryFn: () => automationApi.standing(projectId as string),
+    enabled: !!projectId,
+  });
+}
+
+export function useScheduleDetail(projectId: string | undefined, scheduleId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: [...automationKey(projectId), "schedule", scheduleId],
+    queryFn: () => automationApi.schedule(projectId as string, scheduleId),
+    enabled: enabled && !!projectId && !!scheduleId,
   });
 }

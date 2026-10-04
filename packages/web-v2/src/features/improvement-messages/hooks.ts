@@ -5,6 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
+import { automationKey } from "@/features/automation/hooks";
 import { improvementMessagesApi } from "./api";
 import type { ImprovementMessageEntry } from "./types";
 
@@ -13,18 +14,6 @@ export function useImprovementMessages(projectId: string | undefined) {
     queryKey: ["improvement-messages", projectId],
     queryFn: () => improvementMessagesApi.list(projectId as string),
     enabled: !!projectId,
-  });
-}
-
-export function useImprovementMessageRuns(
-  projectId: string | undefined,
-  scheduleId: string,
-  enabled: boolean,
-) {
-  return useQuery({
-    queryKey: ["improvement-messages", projectId, "runs", scheduleId],
-    queryFn: () => improvementMessagesApi.runs(scheduleId),
-    enabled: enabled && !!projectId && !!scheduleId,
   });
 }
 
@@ -40,6 +29,7 @@ export function useEnableImprovementMessage(projectId: string | undefined) {
     }) => improvementMessagesApi.enable(payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["improvement-messages", projectId] });
+      qc.invalidateQueries({ queryKey: automationKey(projectId) });
       toast({ title: "Message enabled", tone: "success" });
     },
     onError: (err) => {
@@ -89,6 +79,7 @@ export function useToggleImprovementMessage(projectId: string | undefined) {
 
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["improvement-messages", projectId] });
+      qc.invalidateQueries({ queryKey: automationKey(projectId) });
     },
   });
 }
@@ -106,6 +97,7 @@ export function useUpdateImprovementMessage(projectId: string | undefined) {
     }) => improvementMessagesApi.update(scheduleId, patch),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["improvement-messages", projectId] });
+      qc.invalidateQueries({ queryKey: automationKey(projectId) });
       toast({ title: "Message updated", tone: "success" });
     },
     onError: (err) => {
@@ -121,6 +113,7 @@ export function useRunImprovementMessage(projectId: string | undefined) {
     mutationFn: (scheduleId: string) => improvementMessagesApi.run(scheduleId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["improvement-messages", projectId] });
+      qc.invalidateQueries({ queryKey: automationKey(projectId) });
       toast({ title: "Run triggered", tone: "success" });
     },
     onError: (err) => {

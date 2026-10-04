@@ -1,10 +1,4 @@
-import type {
-  AgentReportKind,
-  AgentReportSeverity,
-  AgentReportTarget,
-  AgentReportTriage,
-  AgentReportView,
-} from "@forge/contracts/agent-reports";
+import type { AgentReportView } from "@forge/contracts/agent-reports";
 
 export type {
   AgentReportFeedbackLink,
@@ -15,10 +9,3 @@ export type {
 } from "@forge/contracts/agent-reports";
 
 export type AgentReport = AgentReportView;
-
-export interface AgentReportFilters {
-  kind?: AgentReportKind;
-  severity?: AgentReportSeverity;
-  target?: AgentReportTarget;
-  triage?: AgentReportTriage;
-}
