@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
-import { mergedMetadata, writeRunMetadata } from '../pipeline/index.js';
+import { releaseBatchPorts } from './ports.js';
 
 /** What a release run says it is running under: a record nothing refuses on (ISS-1276). */
 export interface ReleaseMethod {
@@ -26,7 +26,7 @@ export async function announceMethod(args: {
     detail: args.detail ?? null,
     announcedAt: new Date().toISOString(),
   };
-  await writeRunMetadata(args.runId, { value: mergedMetadata({ method }), touch: false });
+  await releaseBatchPorts().writeRunMetadata(args.runId, { merge: { method }, touch: false });
   return method;
 }
 

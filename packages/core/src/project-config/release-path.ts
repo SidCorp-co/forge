@@ -128,3 +128,9 @@ export async function readDeployMap(projectId: string): Promise<DeployMap> {
   const production = productionOf(held.document);
   return { productionBinding: production ? bindingOf(production) : null, environments };
 }
+
+/** `release.approval.required` of the project document; a project with no document requires none. */
+export async function approvalRequired(projectId: string): Promise<boolean> {
+  const held = await readProjectDocument(projectId);
+  return held?.document.release?.approval.required === true;
+}

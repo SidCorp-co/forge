@@ -6,14 +6,21 @@ import { and, eq, isNotNull, isNull, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 
-export interface RunMetadataWrite {
-  /** The new `metadata`, as an expression that may read the row's current `metadata`. */
-  value: SQL;
+export type RunMetadataWrite = (
+  | {
+      /** The new `metadata`, as an expression that may read the row's current `metadata`. */
+      value: SQL;
+    }
+  | {
+      /** Keys merged over the current `metadata` at the top level. */
+      merge: Record<string, unknown>;
+    }
+) & {
   /** A further condition the row must meet; no row is written when it does not. */
   when?: SQL | undefined;
   /** Whether the write also moves `updated_at`. */
   touch: boolean;
-}
+};
 
 /** Write a run's metadata; false when no row met the condition. */
 export async function writeRunMetadata(
@@ -21,17 +28,16 @@ export async function writeRunMetadata(
   write: RunMetadataWrite,
   executor: Tx = db,
 ): Promise<boolean> {
+  const metadata =
+    'value' in write
+      ? write.value
+      : sql`coalesce(${pipelineRuns.metadata}, '{}'::jsonb) || ${JSON.stringify(write.merge)}::jsonb`;
   const rows = await executor
     .update(pipelineRuns)
-    .set(write.touch ? { metadata: write.value, updatedAt: sql`now()` } : { metadata: write.value })
+    .set(write.touch ? { metadata, updatedAt: sql`now()` } : { metadata })
     .where(and(eq(pipelineRuns.id, runId), write.when))
     .returning({ id: pipelineRuns.id });
   return rows.length > 0;
-}
-
-/** Merge `patch` over a run's metadata, key by key at the top level. */
-export function mergedMetadata(patch: Record<string, unknown>): SQL {
-  return sql`coalesce(${pipelineRuns.metadata}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`;
 }
 
 /** Give a release run its version, once; false when the run already carries one. */

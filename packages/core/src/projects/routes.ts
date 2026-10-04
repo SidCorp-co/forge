@@ -11,10 +11,16 @@ import {
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { findPersonalOrgId } from '../orgs/service.js';
-import { actorFor, orgResource, requireHeld, requireOrgCan, requireOrgHeld } from '../permissions/index.js';
+import { findPersonalOrgId } from '../orgs/index.js';
+import {
+  actorFor,
+  orgResource,
+  requireHeld,
+  requireOrgCan,
+  requireOrgHeld,
+} from '../permissions/index.js';
 import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
-import { readDeclaredSource } from '../project-config/source.js';
+import { readDeclaredSource } from '../project-config/index.js';
 import { type AgentConfigKeyPatch, patchAgentConfigKeys, readAgentConfig } from './agent-config.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
 import { listVisibleProjectRows, projectDetail } from './read.js';
@@ -301,7 +307,6 @@ projectRoutes.get(
     return c.json(resolved);
   },
 );
-
 
 export { collaboratorsMeRoutes } from './collaborators-routes.js';
 export { gitCredentialRoutes } from './git-credential-routes.js';

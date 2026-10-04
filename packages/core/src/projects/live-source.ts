@@ -9,7 +9,7 @@ import {
   type SourceHost,
   SourceHostUnavailable,
 } from '../integrations/source-host/index.js';
-import { readDeclaredSource, remoteOf } from '../project-config/source.js';
+import { readDeclaredSource, remoteOf } from '../project-config/index.js';
 
 /** Where a project's branches are read from, or why they cannot be. */
 export type LiveSource =

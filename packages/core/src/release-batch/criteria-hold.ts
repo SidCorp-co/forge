@@ -1,5 +1,8 @@
-import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/criteria-verdicts.js';
-import { issueDisplayIds } from '../issues/display-ids.js';
+import {
+  type IssueCriteriaReport,
+  issueDisplayIds,
+  unearnedCriteriaReports,
+} from '../issues/index.js';
 import { productionDeploysOnLand } from '../pipeline/production-trigger.js';
 import { attempt, blocker, evaluate } from './blocker-kit.js';
 import {

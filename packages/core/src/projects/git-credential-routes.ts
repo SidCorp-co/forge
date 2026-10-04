@@ -7,9 +7,9 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
-import { getOrgSshKey } from '../orgs/ssh-keys-service.js';
+import { getOrgSshKey } from '../orgs/index.js';
 import { requireHeld } from '../permissions/index.js';
-import { NO_REPOSITORY, readDeclaredSource, remoteOf } from '../project-config/source.js';
+import { NO_REPOSITORY, readDeclaredSource, remoteOf } from '../project-config/index.js';
 import { projectGitKeyId, projectGitPrivateKeyEnc } from './read.js';
 import { clearProjectGitKey, pickProjectGitKey } from './service.js';
 

@@ -15,21 +15,20 @@
 import { eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
-import type { TransitionActor } from '../issues/actor-agency.js';
-import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
-import { claimIssuesForRelease } from '../issues/index.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { setWorkStep } from '../issues/work-state.js';
+import type { TransitionActor } from '../issues/index.js';
+import {
+  activeIssuePrefix,
+  claimIssuesForRelease,
+  setWorkStep,
+  TransitionError,
+  transitionIssueStatus,
+} from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { isRefusal } from '../lib/refusal.js';
 import { logger } from '../observability/logger.js';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
-import {
-  cancelConcludedRun,
-  closeRunIfOneShot,
-  insertOneShotRun,
-  type OneShotRunSpec,
-} from '../pipeline/runs.js';
+import type { OneShotRunSpec } from '../pipeline/index.js';
+import { cancelConcludedRun, closeRunIfOneShot, insertOneShotRun } from '../pipeline/runs.js';
 import {
   abortedError,
   batchAborted,

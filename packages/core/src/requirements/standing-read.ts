@@ -21,7 +21,7 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
-import { approvalRequired } from '../release-batch/approvals.js';
+import { approvalRequired } from '../project-config/index.js';
 import { linkedContractsOf } from './baselines.js';
 import { feedbackCountsOf, feedbackLinksOf } from './feedback-links.js';
 import { changedSincePlan, staleContractPinsOf, stalePinsOf } from './rules.js';

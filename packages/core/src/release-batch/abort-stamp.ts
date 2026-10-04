@@ -7,10 +7,10 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
-import { issueDisplayIds } from '../issues/display-ids.js';
+import { issueDisplayIds } from '../issues/index.js';
 import { agrees } from '../lib/plural.js';
 import type { RefusalError } from '../lib/refusal.js';
-import { writeRunMetadata } from '../pipeline/index.js';
+import { releaseBatchPorts } from './ports.js';
 import { refuseRelease } from './refuse.js';
 import { closedOnRoster, runRecordedPromotion } from './releasing-recovery.js';
 
@@ -66,7 +66,7 @@ export async function stampAbort(
     roster: held ? 'held' : 'returning',
     closed: null,
   };
-  await writeRunMetadata(runId, {
+  await releaseBatchPorts().writeRunMetadata(runId, {
     value: sql`coalesce(metadata, '{}'::jsonb) || jsonb_build_object('abort',
       ${JSON.stringify(record)}::jsonb
       || jsonb_build_object('closed', coalesce(metadata -> 'abort' -> 'closed', 'null'::jsonb)))`,
@@ -86,7 +86,7 @@ export async function settleAbortStamp(
   settled: { roster: 'held' | 'released'; closed: string[] },
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    await writeRunMetadata(
+    await releaseBatchPorts().writeRunMetadata(
       runId,
       {
         value: sql`jsonb_set(metadata, '{abort}', (metadata -> 'abort') || jsonb_build_object(
@@ -122,7 +122,7 @@ export async function rewordStoredAbort(runId: string, executor?: Tx): Promise<v
   if (row?.code !== ABORTED_CODE || row.reason !== RETURNING_SENTENCE) return;
   const reason = abortedSentence(await abortedFacts(runId, executor));
   if (reason === row.reason) return;
-  await writeRunMetadata(
+  await releaseBatchPorts().writeRunMetadata(
     runId,
     {
       value: sql`jsonb_set(metadata, '{finish}', (metadata -> 'finish') || jsonb_build_object(

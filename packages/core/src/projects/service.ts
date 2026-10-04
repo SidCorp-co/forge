@@ -29,9 +29,7 @@ import {
   removeProjectMember,
   updateProjectMember,
 } from '../permissions/index.js';
-import { DEFAULT_POLICY } from '../project-config/default-policy.js';
-import { readDeclaredSource } from '../project-config/source.js';
-import { seedProjectPolicy } from '../project-config/store.js';
+import { readDeclaredSource, seedProjectPolicy } from '../project-config/index.js';
 import { type AgentConfigKeyPatch, patchAgentConfigKeys } from './agent-config.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { PATCHED_PROJECT } from './projections.js';
@@ -104,7 +102,7 @@ export async function createProject(input: NewProject) {
       await addProjectMembers(tx, [
         { userId: input.createdBy, projectId: project.id, role: 'admin' },
       ]);
-      await seedProjectPolicy(tx, project.id, DEFAULT_POLICY, input.createdBy);
+      await seedProjectPolicy(tx, project.id, input.createdBy);
       return project;
     });
   } catch (err) {

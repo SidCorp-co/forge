@@ -4,14 +4,15 @@ export { registerPausedRunWedgeResolve } from './paused-run-wedge-resolve.js';
 export { backfillPhaseJournal } from './phase-journal-backfill.js';
 export { registerPhaseJournalClose } from './phase-journal-close.js';
 export { runReconcilerOnce } from './reconciler.js';
+export type { DispatchOutcome } from './release-coolify.js';
 export { runRetentionSweep } from './retention/sweep.js';
-export { registerActivitySubscribers } from './subscribers.js';
-export { runPipelineSweep } from './sweeper.js';
-export { firstShipped } from './shipped-at.js';
 export {
-  mergedMetadata,
   type RunMetadataWrite,
   stampReleaseShipped,
   stampReleaseVersion,
   writeRunMetadata,
 } from './run-records.js';
+export type { OneShotRunSpec } from './runs.js';
+export { firstShipped } from './shipped-at.js';
+export { registerActivitySubscribers } from './subscribers.js';
+export { runPipelineSweep } from './sweeper.js';

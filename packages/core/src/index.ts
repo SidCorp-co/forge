@@ -44,6 +44,7 @@ import {
   stopOutboxWorker,
 } from './outbox/index.js';
 import { registerOutboxConsumers } from './outbox-consumers.js';
+import { stampReleaseShipped, stampReleaseVersion, writeRunMetadata } from './pipeline/index.js';
 import { provideProjectConfigPorts, readDeclaredSource } from './project-config/index.js';
 import { findProjectOrgId, projectDocumentNames, provideProjectsPorts } from './projects/index.js';
 import { startBoss, stopBoss } from './queue/boss.js';
@@ -72,7 +73,12 @@ provideProjectConfigPorts({
   recordSecretResolve,
   rememberHandedOut,
 });
-provideReleaseBatchPorts({ contractProviderShortfalls });
+provideReleaseBatchPorts({
+  contractProviderShortfalls,
+  writeRunMetadata,
+  stampReleaseVersion,
+  stampReleaseShipped,
+});
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,
   issueForHeadRef: (projectId, headRef) => resolveIssueForHeadRef({ projectId, headRef }),

@@ -11,6 +11,7 @@ import {
 } from '../db/schema-project-config.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
+import { DEFAULT_POLICY } from './default-policy.js';
 import { type ApiRefusal, parseSecretRef, secretRefOf } from './documents.js';
 import { projectConfigPorts } from './ports.js';
 import type { ProjectDocument } from './schema.js';
@@ -375,11 +376,9 @@ export const drizzleConfigStore: ConfigStore = {
 };
 
 /** A new project's first policy revision. */
-export async function seedProjectPolicy(
-  tx: Tx,
-  projectId: string,
-  document: unknown,
-  userId: string,
-): Promise<void> {
-  await tx.insert(projectPolicies).values({ projectId, revision: 1, document, updatedBy: userId });
+/** A new project's policy, revision 1: the default, so no default is invented later. */
+export async function seedProjectPolicy(tx: Tx, projectId: string, userId: string): Promise<void> {
+  await tx
+    .insert(projectPolicies)
+    .values({ projectId, revision: 1, document: DEFAULT_POLICY, updatedBy: userId });
 }

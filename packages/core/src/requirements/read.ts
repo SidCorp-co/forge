@@ -29,7 +29,7 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
-import { approvalRequired } from '../release-batch/approvals.js';
+import { approvalRequired } from '../project-config/index.js';
 import { linkedContracts } from './baselines.js';
 import { tracesOf } from './criterion-traces.js';
 import { deferralOf } from './deferral-read.js';

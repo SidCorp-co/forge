@@ -2,11 +2,7 @@ import type { BranchRefs } from '../git/index.js';
 import type { LiveDivergence } from '../integrations/source-host/index.js';
 import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
-import {
-  crossesByCherryPick,
-  promotedBranch,
-  readReleasePath,
-} from '../project-config/release-path.js';
+import { crossesByCherryPick, promotedBranch, readReleasePath } from '../project-config/index.js';
 import type { LiveReading } from './live-reach.js';
 import { readProjectDivergence } from './live-source.js';
 
