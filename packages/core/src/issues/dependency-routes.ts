@@ -7,11 +7,9 @@
  */
 
 import type { DependencyRefusalCode } from '@forge/contracts/issues';
-import { eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { issueDependencies, issueDependencyKinds, issues } from '../db/schema.js';
+import { issueDependencyKinds } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
@@ -20,8 +18,16 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
-import { loadIssueDependencyEdges } from './dependency-read.js';
-import { type SetIssueDependencyInput, setIssueDependency } from './dependency-service.js';
+import {
+  dependencyEdgeById,
+  issueProjectsOf,
+  loadIssueDependencyEdges,
+} from './dependency-read.js';
+import {
+  deleteIssueDependency,
+  type SetIssueDependencyInput,
+  setIssueDependency,
+} from './dependency-service.js';
 import {
   issueRouteIdParamSchema,
   projectScopeQuerySchema,
@@ -97,10 +103,7 @@ issueDependencyRoutes.post(
       );
     }
 
-    const sides = await db
-      .select({ id: issues.id, projectId: issues.projectId })
-      .from(issues)
-      .where(inArray(issues.id, [fromIssueId, toIssueId]));
+    const sides = await issueProjectsOf([fromIssueId, toIssueId]);
     if (sides.length !== 2) throw notFound('one or both issues not found');
     const [a, b] = sides;
     if (!a || !b) throw notFound('one or both issues not found');
@@ -145,11 +148,7 @@ issueDependencyRoutes.delete(
     const { id: issueId, edgeId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const [edge] = await db
-      .select()
-      .from(issueDependencies)
-      .where(eq(issueDependencies.id, edgeId))
-      .limit(1);
+    const edge = await dependencyEdgeById(edgeId);
     if (!edge) throw notFound('edge not found');
 
     // Membership check BEFORE the EDGE_MISMATCH check — otherwise a non-member
@@ -162,7 +161,7 @@ issueDependencyRoutes.delete(
       throw badRequest({ message: 'edge does not involve this issue' }, 'EDGE_MISMATCH');
     }
 
-    await db.delete(issueDependencies).where(eq(issueDependencies.id, edgeId));
+    await deleteIssueDependency(edgeId);
 
     await hooks.emit('dependencyChanged', {
       projectId: edge.projectId,

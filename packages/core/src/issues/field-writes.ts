@@ -15,6 +15,14 @@ export async function setIssueTriage(tx: Tx, issueId: string, set: IssueTriage):
     .where(eq(issues.id, issueId));
 }
 
+/** A batch edit's plain fields, stamped with the database clock. */
+export async function setIssueBatchFields(issueId: string, set: IssueTriage): Promise<void> {
+  await db
+    .update(issues)
+    .set({ ...set, updatedAt: sql`now()` })
+    .where(eq(issues.id, issueId));
+}
+
 /**
  * Replace an issue's metadata with `next`, an expression over the stored `metadata` (a merge or a
  * `jsonb_set`), so a writer that owns one key leaves the others as they stand.

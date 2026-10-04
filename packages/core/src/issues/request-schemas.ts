@@ -48,17 +48,40 @@ const issueKeyFilterSchema = z
     'expected a display id like `ISS-42`, or its bare sequence number',
   );
 
+const oneOrMany = <T extends z.ZodType>(item: T) =>
+  z
+    .union([item, z.array(item)])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : Array.isArray(v) ? v : [v]));
+
+const instantSchema = z
+  .union([z.iso.date(), z.iso.datetime({ offset: true })])
+  .transform((v) => new Date(v));
+
+/** The issue-list filters `issues/list-service.ts:listIssues` reads, as both REST lists take them. */
+export const issueListFilterFields = {
+  status: oneOrMany(z.enum(issueStatuses)),
+  statusNot: oneOrMany(z.enum(issueStatuses)),
+  priority: oneOrMany(z.enum(issuePriorities)),
+  category: z.string().trim().min(1).max(100).optional(),
+  complexity: z.enum(issueComplexities).optional(),
+  createdAfter: instantSchema.optional(),
+  createdBefore: instantSchema.optional(),
+  updatedAfter: instantSchema.optional(),
+  label: oneOrMany(z.string().trim().min(1)),
+  module: oneOrMany(z.string().trim().min(1)),
+  sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
+  withAgentSessions: z.coerce.boolean().optional().default(false),
+  /** ISS-1237 — archived issues are left out unless asked for; a `key` is retrieval and always answers. */
+  includeArchived: z.stringbool().optional(),
+};
+
 export const issueFiltersSchema = paginationSchema
   .extend({
-    status: z.enum(issueStatuses).optional(),
-    priority: z.enum(issuePriorities).optional(),
+    ...issueListFilterFields,
     assigneeId: z.uuid().optional(),
-    category: z.string().trim().min(1).max(100).optional(),
     key: issueKeyFilterSchema.optional(),
-    sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
-    withAgentSessions: z.coerce.boolean().optional().default(false),
-    /** ISS-1237 — archived issues are left out unless asked for; a `key` is retrieval and always answers. */
-    includeArchived: z.stringbool().optional(),
+    search: z.string().trim().min(1).max(200).optional(),
   })
   .strict();
 

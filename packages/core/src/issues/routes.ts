@@ -1,6 +1,5 @@
 import { diffFieldValue } from '@forge/contracts/field-changes';
 import type { IssueUpdateRefusalCode } from '@forge/contracts/issues';
-import { and, count, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { fireOfCaller, issueDeleteRefusal } from '../agent-reports/service.js';
@@ -8,15 +7,7 @@ import { BodyInvalidError } from '../body/errors.js';
 import { BODY_FORMATS } from '../body/formats.js';
 import { bodyInvalidHttp } from '../body/http-error.js';
 import { registerIssueCommentRoutes } from '../comments/routes.js';
-import { db } from '../db/client.js';
-import {
-  type IssueStatus,
-  issueComplexities,
-  issuePriorities,
-  issues,
-  jobTypes,
-  projectMembers,
-} from '../db/schema.js';
+import { type IssueStatus, issueComplexities, issuePriorities, jobTypes } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
@@ -31,7 +22,6 @@ import { hooks } from '../pipeline/hooks.js';
 import { requirementOfIssue } from '../requirements/issue-links.js';
 import { proposesWorkflowOf } from '../workflows/design-issue.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
-import { issueArchiveSide } from './archive.js';
 import { registerIssueAttributeRoutes } from './attributes/routes.js';
 import { heldTakeRefusal } from './blocked-by.js';
 import { CREATE_ENTRY_STATUSES, createIssue } from './create-service.js';
@@ -51,17 +41,23 @@ import {
   resolveLabelIdsForWrite,
 } from './label-service.js';
 import { readLandingShape } from './landing-evidence.js';
-import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
+import { serializeRestListRow } from './list-projection.js';
+import { listIssues } from './list-service.js';
 import { liveReachForIssue } from './live-reach-read.js';
 import { isSelfReferentialBranch } from './metadata.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
 import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './pipeline-health.js';
-import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
+import {
+  findIssueByDisplaySeq,
+  findIssueById,
+  type IssueRow,
+  isProjectMember,
+  jobHistoryForStep,
+} from './read-service.js';
 import { issueRelationInputSchema } from './relations-service.js';
 import { issueFiltersSchema, issuePatchSchema } from './request-schemas.js';
-import { jobHistoryForStep } from './search.js';
-import { buildIssueOrderBy } from './sort.js';
 import { refuseLegacyStatusFields } from './status-input.js';
+import { deleteIssue } from './service.js';
 import { updateIssueFields } from './update-service.js';
 
 export {
@@ -71,7 +67,6 @@ export {
   issueMetadataSchema,
 } from './metadata.js';
 
-import { withKernelMarker } from '../db/kernel-marker.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { requireHeld } from '../permissions/index.js';
 
@@ -106,12 +101,7 @@ const projectIdParamSchema = z.object({ id: z.uuid() });
 const issueIdParamSchema = z.object({ id: z.uuid() });
 
 async function assertAssigneeIsMember(projectId: string, assigneeId: string): Promise<void> {
-  const [row] = await db
-    .select({ userId: projectMembers.userId })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, assigneeId)))
-    .limit(1);
-  if (!row) {
+  if (!(await isProjectMember(projectId, assigneeId))) {
     throw refuseUpdate(
       'ASSIGNEE_NOT_MEMBER',
       'the assignee is not a member of this project; assign someone who is',
@@ -169,7 +159,7 @@ issueProjectRoutes.post(
     const response: Record<string, unknown> = serializeIssue(
       result.issue as IssueRow,
       await activeIssuePrefix(projectId),
-      await readLandingShape(db, projectId),
+      await readLandingShape(projectId),
     );
     response.attachments = result.attachments;
     if (result.attachmentErrors.length > 0) response.attachmentErrors = result.attachmentErrors;
@@ -215,7 +205,7 @@ issueProjectRoutes.get(
     const serialized = serializeIssue(
       issue,
       await activeIssuePrefix(projectId),
-      await readLandingShape(db, projectId),
+      await readLandingShape(projectId),
     );
     const healthMap = await safeHydratePipelineHealthForIssues(projectId, [issue.id]);
     const creatorMap = await hydrateCreatorsForIssues([issue]);
@@ -241,7 +231,7 @@ issueProjectRoutes.get(
   }),
   zValidator('query', issueFiltersSchema, (r) => {
     if (!r.success) {
-      refuseLegacyStatusFields(r.data, 'query', ['status']);
+      refuseLegacyStatusFields(r.data, 'query', ['status', 'statusNot']);
       throw queryBadRequest(issueFiltersSchema, r.error);
     }
   }),
@@ -253,38 +243,16 @@ issueProjectRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    const conditions = [eq(issues.projectId, projectId)];
-    if (q.status) conditions.push(eq(issues.status, q.status));
-    if (q.priority) conditions.push(eq(issues.priority, q.priority));
-    if (q.assigneeId) conditions.push(eq(issues.assigneeId, q.assigneeId));
-    if (q.category) conditions.push(eq(issues.category, q.category));
-    if (q.key !== undefined) {
-      const parsed = parseIssueRef(
-        q.key,
-        issueRefNeedsHeldPrefixes(q.key) ? await heldIssuePrefixes(projectId) : [],
-      );
-      if (!parsed.ok) throw badRequest({ formErrors: [parsed.message], fieldErrors: {} });
-      conditions.push(eq(issues.issSeq, parsed.issSeq));
-    }
-    conditions.push(...issueArchiveSide(q.includeArchived === true || q.key !== undefined));
-    const where = conditions.length === 1 ? conditions[0] : and(...conditions);
-
-    const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(issues).where(where);
-
+    const listed = await listIssues(projectId, q, q);
+    if (!listed.ok) throw badRequest({ formErrors: [listed.message], fieldErrors: {} });
     const rows = await egressForRequest(
       restActor(c).agency,
       projectId,
       'issue',
-      await issueListPageQuery({
-        where,
-        orderBy: buildIssueOrderBy(q.sort),
-        limit: q.limit,
-        offset: q.offset,
-      }),
+      listed.rows,
       'the issue list',
     );
-
-    const total = Number(n);
+    const total = listed.total;
 
     const listPrefix = await activeIssuePrefix(projectId);
     const serialized = rows.map((r) => serializeRestListRow(r, listPrefix));
@@ -373,7 +341,7 @@ issueRoutes.get(
     const serialized = serializeIssue(
       issue,
       await activeIssuePrefix(issue.projectId),
-      await readLandingShape(db, issue.projectId),
+      await readLandingShape(issue.projectId),
     );
     const agentMap = await hydrateAgentSessionsForIssues(issue.projectId, [issue.id]);
     const agentBucket = agentMap.get(issue.id);
@@ -513,7 +481,7 @@ issueRoutes.patch(
     const patched = serializeIssue(
       updated,
       await activeIssuePrefix(issue.projectId),
-      await readLandingShape(db, issue.projectId),
+      await readLandingShape(issue.projectId),
     );
     return c.json(
       collected.warnings.length > 0 ? { ...patched, warnings: collected.warnings } : patched,
@@ -537,7 +505,7 @@ issueRoutes.delete(
     const carried = await issueDeleteRefusal(issue);
     if (carried) return c.json(refusalEnvelope([carried], carried.code), 422);
 
-    await withKernelMarker(db, async (tx) => tx.delete(issues).where(eq(issues.id, id)));
+    await deleteIssue(id);
 
     queueMicrotask(() => {
       deleteMemory(issue.projectId, 'issue', id).catch((err) => {

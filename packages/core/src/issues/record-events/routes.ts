@@ -6,12 +6,9 @@ import {
   RECORD_EVENT_KINDS,
   type RecordEventRefusalCode,
 } from '@forge/contracts/record-events';
-import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { messageRefusalHttp } from '../../comments/screen.js';
-import { db } from '../../db/client.js';
-import { issues } from '../../db/schema.js';
 import { loadProjectAccess } from '../../lib/authz.js';
 import { refuser } from '../../lib/refusal.js';
 import {
@@ -24,6 +21,7 @@ import { badRequest, idParamSchema, notFound } from '../../middleware/route-erro
 import { zValidator } from '../../middleware/zod-validator.js';
 import { requireHeld } from '../../permissions/index.js';
 import type { Actor } from '../../pipeline/activity.js';
+import { issueScopeOf } from '../read-service.js';
 import { listRecordEvents, type RecordEvent } from './store.js';
 import { writeScreenedRecordEvent } from './write.js';
 
@@ -53,15 +51,11 @@ async function loadIssueForEvents(
   userId: string,
   permission: 'project.read' | 'project.write',
 ) {
-  const [issue] = await db
-    .select({ id: issues.id, projectId: issues.projectId })
-    .from(issues)
-    .where(eq(issues.id, issueId))
-    .limit(1);
+  const issue = await issueScopeOf(issueId);
   if (!issue) throw notFound('issue not found');
   const access = await loadProjectAccess(issue.projectId, userId);
   requireHeld(access, permission);
-  return issue;
+  return { id: issue.id, projectId: issue.projectId };
 }
 
 const refuseEvent = refuser<RecordEventRefusalCode>('EVENT_REFUSED');

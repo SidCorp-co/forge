@@ -253,3 +253,8 @@ async function refreshDependentHealth(
   if (input.kind !== 'blocks') return;
   await publishPipelineHealthChanged(input.projectId, [input.toIssueId]);
 }
+
+/** Removes one dependency edge. */
+export async function deleteIssueDependency(edgeId: string): Promise<void> {
+  await db.delete(issueDependencies).where(eq(issueDependencies.id, edgeId));
+}
