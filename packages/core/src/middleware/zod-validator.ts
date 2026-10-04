@@ -2,7 +2,6 @@ import { zValidator as honoZodValidator } from '@hono/zod-validator';
 import type { Context, MiddlewareHandler, Next } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { z } from 'zod';
-import { flatten } from './route-errors.js';
 
 type Args = Parameters<typeof honoZodValidator>;
 
@@ -18,11 +17,22 @@ export const declaredRawBodies: Pick<WeakMap<object, DeclaredRawBody>, 'get'> = 
 
 // cm:why the API contract reads a route's inputs off its middleware, not off a second description
 export const zValidator = ((...args: Args) => {
-  const middleware = honoZodValidator(...args);
+  const [target, schema, hook, ...rest] = args;
+  const middleware = honoZodValidator(target, schema, hook ?? refuseInvalid, ...rest);
   const guarded = args[0] === 'json' ? refuseUndeclaredBodyType(middleware) : middleware;
   declared.set(guarded, { target: args[0], schema: args[1] });
   return guarded;
 }) as typeof honoZodValidator;
+
+// hono's own default answers `{ success, error }`; a validator with no hook answers refusal rows
+const refuseInvalid = ((r: { success: boolean; error?: unknown }) => {
+  if (!r.success) {
+    throw new HTTPException(400, {
+      message: 'Invalid input',
+      cause: { code: 'BAD_REQUEST', details: r.error },
+    });
+  }
+}) as NonNullable<Args[2]>;
 
 const JSON_TYPE = /^application\/([a-z0-9.+-]*\+)?json(\s*;|$)/i;
 
@@ -64,7 +74,7 @@ export function strictBody<T extends z.ZodType>(schema: T, hint: string) {
     if (!r.success) {
       throw new HTTPException(400, {
         message: `invalid body: ${hint}`,
-        cause: { code: 'BAD_REQUEST', details: flatten(r.error) },
+        cause: { code: 'BAD_REQUEST', details: r.error },
       });
     }
   });

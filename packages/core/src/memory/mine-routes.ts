@@ -23,7 +23,7 @@ memoryMineRoutes.use('*', requireAuth(), assertEmailVerified());
 memoryMineRoutes.get(
   '/mine',
   zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('query');
@@ -46,7 +46,7 @@ memoryMineRoutes.get(
 memoryMineRoutes.delete(
   '/mine/:id',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

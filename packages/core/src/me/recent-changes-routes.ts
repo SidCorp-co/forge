@@ -39,7 +39,7 @@ meRecentChangesRoutes.use('/recent-changes', requireAuth(), assertEmailVerified(
 meRecentChangesRoutes.get(
   '/recent-changes',
   zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { limit } = c.req.valid('query');

@@ -1,0 +1,56 @@
+// Every module's non-422 refusal codes in one table, read by both doors of core.
+import { AGENT_SESSION_REFUSAL_STATUSES } from "./agent-sessions.js";
+import { AUTH_REFUSAL_STATUSES } from "./auth.js";
+import { ECOSYSTEM_REFUSAL_STATUSES } from "./ecosystem.js";
+import { ISSUE_TRANSITION_REFUSAL_STATUSES } from "./issue-machine.js";
+import { ISSUE_TAKE_REFUSAL_STATUSES } from "./issues.js";
+import { MOCKUP_REFUSAL_STATUSES } from "./mockups.js";
+import { PIPELINE_REFUSAL_STATUSES } from "./pipeline.js";
+import { PROJECT_CONFIG_REFUSAL_STATUSES } from "./project-config.js";
+import { QUESTION_REFUSAL_STATUSES } from "./questions.js";
+import type { RefusalStatus } from "./refusal.js";
+import { RELEASE_REFUSAL_STATUSES } from "./releases.js";
+import { REQUIREMENT_REFUSAL_STATUSES } from "./requirements.js";
+import { SUGGESTION_REFUSAL_STATUSES } from "./suggestions.js";
+import { DESIGN_REFUSAL_STATUSES } from "./workflows.js";
+
+/** The request-shape answer core builds from a failed validator. */
+export const REQUEST_REFUSAL_STATUSES = { BAD_REQUEST: 400 } as const;
+
+const DECLARED: ReadonlyArray<Readonly<Record<string, Exclude<RefusalStatus, 422>>>> = [
+	REQUEST_REFUSAL_STATUSES,
+	AGENT_SESSION_REFUSAL_STATUSES,
+	AUTH_REFUSAL_STATUSES,
+	ECOSYSTEM_REFUSAL_STATUSES,
+	ISSUE_TRANSITION_REFUSAL_STATUSES,
+	ISSUE_TAKE_REFUSAL_STATUSES,
+	MOCKUP_REFUSAL_STATUSES,
+	PIPELINE_REFUSAL_STATUSES,
+	PROJECT_CONFIG_REFUSAL_STATUSES,
+	QUESTION_REFUSAL_STATUSES,
+	RELEASE_REFUSAL_STATUSES,
+	REQUIREMENT_REFUSAL_STATUSES,
+	SUGGESTION_REFUSAL_STATUSES,
+	DESIGN_REFUSAL_STATUSES,
+];
+
+function collect(): ReadonlyMap<string, Exclude<RefusalStatus, 422>> {
+	const out = new Map<string, Exclude<RefusalStatus, 422>>();
+	for (const table of DECLARED) {
+		for (const [code, status] of Object.entries(table)) {
+			const held = out.get(code);
+			if (held !== undefined && held !== status) {
+				throw new Error(`refusal code ${code} is declared ${held} in one module and ${status} in another`);
+			}
+			out.set(code, status);
+		}
+	}
+	return out;
+}
+
+export const REFUSAL_STATUS = collect();
+
+/** The status a refusal code answers: as declared, 403 for any `_FORBIDDEN` code, else 422. */
+export function refusalStatusOf(code: string): RefusalStatus {
+	return REFUSAL_STATUS.get(code) ?? (code.endsWith("_FORBIDDEN") ? 403 : 422);
+}

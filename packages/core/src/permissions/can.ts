@@ -132,7 +132,7 @@ function orgRefusal(
 
 const noAccess = (what: string) => forbidden(`not a member of this ${what}`);
 
-/** Throw unless the resolved access holds the permission: 403 with no role at all, else the 422 refusal. */
+/** Throw unless the resolved access holds the permission: 403 with no role at all, else the 403 refusal. */
 export function requireHeld(
   access: PermissionFacts,
   permission: ProjectPermission,

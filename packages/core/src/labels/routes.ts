@@ -88,10 +88,10 @@ labelProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 labelProjectRoutes.post(
   '/:id/labels',
   zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', labelCreateSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
@@ -130,7 +130,7 @@ labelProjectRoutes.post(
 labelProjectRoutes.get(
   '/:id/labels',
   zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
@@ -146,10 +146,10 @@ labelProjectRoutes.get(
 labelProjectRoutes.get(
   '/:id/modules/rollup',
   zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', rollupQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
@@ -172,7 +172,7 @@ labelProjectRoutes.get(
 labelProjectRoutes.get(
   '/:id/modules/:module/detail',
   zValidator('param', moduleDetailParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: projectId, module } = c.req.valid('param');
@@ -189,10 +189,10 @@ const driftQuerySchema = z
 labelProjectRoutes.get(
   '/:id/modules/drift',
   zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', driftQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
@@ -218,10 +218,10 @@ async function loadLabel(labelId: string) {
 labelRoutes.patch(
   '/:id',
   zValidator('param', labelIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', labelPatchSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -271,7 +271,7 @@ labelRoutes.patch(
 labelRoutes.delete(
   '/:id',
   zValidator('param', labelIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

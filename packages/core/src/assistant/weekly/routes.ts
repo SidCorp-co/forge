@@ -9,6 +9,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
+import { badRequest, notFound } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { weeklyProjectOf } from '../read.js';
 import { refuseAssistant } from '../refusals.js';
@@ -23,19 +24,15 @@ assistantWeeklyRoutes.use('*', requireAuth(), assertEmailVerified());
 
 assistantWeeklyRoutes.post(
   '/:id/assistant-weekly/run',
-  zValidator('param', idParamSchema, (result, c) => {
-    if (!result.success)
-      return c.json(
-        { code: 'BAD_REQUEST', message: 'Invalid input', details: z.flattenError(result.error) },
-        400,
-      );
+  zValidator('param', idParamSchema, (result) => {
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
     const access = await loadProjectAccess(id, c.get('userId'));
     requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
     const row = await weeklyProjectOf(id);
-    if (!row) return c.json({ code: 'NOT_FOUND', message: 'project not found' }, 404);
+    if (!row) throw notFound();
     const config = readAssistantWeekly(row.agentConfig);
     if (!config)
       throw refuseAssistant(

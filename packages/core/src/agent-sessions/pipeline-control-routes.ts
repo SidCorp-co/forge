@@ -37,7 +37,7 @@ export const agentSessionPipelineControlRoutes = new Hono<{ Variables: AuthVars 
 agentSessionPipelineControlRoutes.get(
   '/:id/pipeline-control',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -52,10 +52,10 @@ agentSessionPipelineControlRoutes.get(
 agentSessionPipelineControlRoutes.post(
   '/:id/pipeline-control',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', pipelineControlInputSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -102,7 +102,7 @@ agentSessionPipelineControlRoutes.post(
 agentSessionPipelineControlRoutes.get(
   '/:id/pipeline-health',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -120,10 +120,10 @@ agentSessionPipelineControlRoutes.get(
 agentSessionPipelineControlRoutes.post(
   '/:id/pipeline-health',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', pipelineHealthInputSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -145,7 +145,7 @@ agentSessionPipelineControlRoutes.post(
 agentSessionPipelineControlRoutes.get(
   '/:id/pipeline-telemetry',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -160,10 +160,10 @@ agentSessionPipelineControlRoutes.get(
 agentSessionPipelineControlRoutes.post(
   '/:id/pipeline-telemetry',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', pipelineTelemetrySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

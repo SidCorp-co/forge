@@ -46,7 +46,7 @@ deviceRunSessionRoutes.post(
   '/me/run-sessions',
   requireDevice(),
   zValidator('json', runSessionBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const body = c.req.valid('json');
@@ -84,10 +84,10 @@ deviceRunSessionRoutes.post(
   '/me/run-sessions/:sessionId/close',
   requireDevice(),
   zValidator('param', sessionParamsSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', closeBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { sessionId } = c.req.valid('param');
@@ -113,10 +113,10 @@ deviceRunSessionRoutes.post(
   '/me/run-sessions/:sessionId/held-worktree',
   requireDevice(),
   zValidator('param', sessionParamsSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', heldWorktreeSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { sessionId } = c.req.valid('param');
@@ -134,10 +134,10 @@ deviceRunSessionRoutes.post(
   '/me/run-sessions/:sessionId/resume-choice',
   requireDevice(),
   zValidator('param', sessionParamsSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', resumeChoiceSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { sessionId } = c.req.valid('param');

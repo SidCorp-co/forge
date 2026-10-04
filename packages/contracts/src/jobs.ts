@@ -1,4 +1,4 @@
-// The codes a job is refused by, in the 422 envelope.
+// The codes a job is refused by, in the refusal envelope.
 
 export const JOB_REFUSAL_CODES = [
 	"JOB_REFUSED",

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
+import { refusalFact } from "@/lib/api/refusals";
 import { useToast } from "@/providers/toast-provider";
 import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, issuesApi, releaseBatchApi } from "./api";
 import type { IssueStandingScope } from "@forge/contracts/issue-standing";
@@ -228,7 +229,7 @@ type TransitionArgs = {
  */
 export function openQuestionIdsOf(err: unknown): string[] | null {
   if (!(err instanceof ApiError) || err.code !== "OPEN_QUESTIONS") return null;
-  const ids = (err.details as { openQuestionIds?: unknown } | undefined)?.openQuestionIds;
+  const ids = refusalFact(err, "openQuestionIds");
   return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string") : [];
 }
 
@@ -375,8 +376,8 @@ export function useBatchRelease(projectId: string, { showsRefusal }: { showsRefu
   });
 }
 
-/** Outcome tally of a bulk apply. `skipped` = the server rejected the change
- *  with a 422 refusal (invalid transition / no-op / stale) — surfaced, not failed. */
+/** Outcome tally of a bulk apply. `skipped` = the server refused the change
+ *  (403 permission, 409 stale, 422 invalid transition / no-op) — surfaced, not failed. */
 export interface BulkSummary {
   updated: number;
   skipped: number;
@@ -401,7 +402,7 @@ export function useBulkUpdateIssues() {
         const results = await Promise.allSettled(ids.slice(i, i + BULK_CHUNK).map(apply));
         for (const r of results) {
           if (r.status === "fulfilled") summary.updated++;
-          else if (r.reason instanceof ApiError && (r.reason.status === 409 || r.reason.status === 422)) summary.skipped++;
+          else if (r.reason instanceof ApiError && [403, 409, 422].includes(r.reason.status)) summary.skipped++;
           else summary.failed++;
         }
       }

@@ -87,10 +87,10 @@ taskIssueRoutes.use('*', requireAuth(), assertEmailVerified());
 taskIssueRoutes.post(
   '/:id/tasks',
   zValidator('param', issueIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', taskCreateSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: issueId } = c.req.valid('param');
@@ -128,10 +128,10 @@ taskIssueRoutes.post(
 taskIssueRoutes.get(
   '/:id/tasks',
   zValidator('param', issueRouteIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', projectScopeQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: rawId } = c.req.valid('param');
@@ -151,10 +151,10 @@ taskIssueRoutes.get(
 taskIssueRoutes.post(
   '/:id/tasks/reorder',
   zValidator('param', issueIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', taskReorderSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: issueId } = c.req.valid('param');
@@ -207,7 +207,7 @@ async function loadTask(taskId: string) {
 taskRoutes.get(
   '/:taskId',
   zValidator('param', taskIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { taskId } = c.req.valid('param');
@@ -224,10 +224,10 @@ taskRoutes.get(
 taskRoutes.patch(
   '/:taskId',
   zValidator('param', taskIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', taskPatchSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { taskId } = c.req.valid('param');
@@ -256,7 +256,7 @@ taskRoutes.patch(
 taskRoutes.delete(
   '/:taskId',
   zValidator('param', taskIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { taskId } = c.req.valid('param');

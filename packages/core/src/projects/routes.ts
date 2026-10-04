@@ -9,7 +9,7 @@ import {
   orgDerivedProjectRole,
 } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest, flatten, idParamSchema, notFound } from '../middleware/route-errors.js';
+import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { findPersonalOrgId } from '../orgs/service.js';
 import { actorFor, orgResource, requireHeld, requireOrgCan, requireOrgHeld } from '../permissions/index.js';
@@ -39,7 +39,7 @@ projectRoutes.post(
   '/',
   zValidator('json', createProjectBodySchema, (result) => {
     if (!result.success) {
-      throw badRequest(flatten(result.error));
+      throw badRequest(result.error);
     }
   }),
   async (c) => {
@@ -106,7 +106,7 @@ projectRoutes.get('/', listQuery, async (c) => {
 projectRoutes.get(
   '/:id',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(flatten(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -133,11 +133,11 @@ projectRoutes.get(
 projectRoutes.patch(
   '/:id',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(flatten(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', updateProjectPatchSchema, (result) => {
     if (result.success) return;
-    throw badRequest(flatten(result.error));
+    throw badRequest(result.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -179,7 +179,7 @@ projectRoutes.route('/', projectRunnerRoutes);
 projectRoutes.delete(
   '/:id',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(flatten(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -205,7 +205,7 @@ projectRoutes.delete(
 projectRoutes.post(
   '/:id/archive',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(flatten(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -223,7 +223,7 @@ projectRoutes.post(
 projectRoutes.post(
   '/:id/unarchive',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(flatten(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -241,10 +241,10 @@ projectRoutes.post(
 projectRoutes.patch(
   '/:id/plugins',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(flatten(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', z.object({ plugins: pluginDesignationsPatchSchema }), (result) => {
-    if (!result.success) throw badRequest(flatten(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -275,7 +275,7 @@ const branchConfigParamSchema = z.object({
 projectRoutes.get(
   '/:id/issues/:issueId/branch-config',
   zValidator('param', branchConfigParamSchema, (result) => {
-    if (!result.success) throw badRequest(flatten(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { id, issueId } = c.req.valid('param');

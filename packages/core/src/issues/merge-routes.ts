@@ -114,10 +114,10 @@ async function runMergeMarker(
 
 const mergeMarkerValidators = [
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', mergeMarkerBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
 ] as const;
 
@@ -187,10 +187,10 @@ async function resolveStoredPullRequest(
 issueMergeRoutes.post(
   '/:id/merge-pull-request',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', kernelMergeBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: issueId } = c.req.valid('param' as never) as { id: string };

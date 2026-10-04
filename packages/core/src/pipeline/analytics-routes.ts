@@ -50,7 +50,7 @@ pipelineAnalyticsRoutes.use('*', requireAuth(), assertEmailVerified());
 pipelineAnalyticsRoutes.get(
   '/throughput',
   zValidator('query', querySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { days, projectId } = c.req.valid('query');
@@ -77,7 +77,7 @@ pipelineAnalyticsRoutes.get(
 pipelineAnalyticsRoutes.get(
   '/cycle-time',
   zValidator('query', cycleTimeQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { days, projectId } = c.req.valid('query');
@@ -93,7 +93,7 @@ pipelineAnalyticsRoutes.get(
 pipelineAnalyticsRoutes.get(
   '/step-durations',
   zValidator('query', stepDurationsQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { days, projectId, step } = c.req.valid('query');
@@ -118,7 +118,7 @@ pipelineAnalyticsRoutes.get(
 pipelineAnalyticsRoutes.get(
   '/retry-rescues',
   zValidator('query', querySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { days, projectId } = c.req.valid('query');
@@ -133,7 +133,7 @@ pipelineAnalyticsRoutes.get(
 pipelineAnalyticsRoutes.get(
   '/interventions',
   zValidator('query', querySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { days, projectId } = c.req.valid('query');
@@ -170,10 +170,10 @@ const outliersQuerySchema = z.object({
 projectCostAnalyticsRoutes.get(
   '/:id/analytics/cost-summary',
   zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', costSummaryQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -192,10 +192,10 @@ projectCostAnalyticsRoutes.get(
 projectCostAnalyticsRoutes.get(
   '/:id/analytics/cost-trend',
   zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', costTrendQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -215,10 +215,10 @@ projectCostAnalyticsRoutes.get(
 projectCostAnalyticsRoutes.get(
   '/:id/analytics/outliers',
   zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', outliersQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -233,7 +233,7 @@ projectCostAnalyticsRoutes.get(
 pipelineAnalyticsRoutes.get(
   '/driver-comparison',
   zValidator('query', querySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { days, projectId } = c.req.valid('query');

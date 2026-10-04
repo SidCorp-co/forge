@@ -47,10 +47,10 @@ async function assertMember(projectId: string, userId: string): Promise<void> {
 agentSessionProjectReadRoutes.get(
   '/:id/agent-sessions',
   zValidator('param', paramSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -78,7 +78,7 @@ agentSessionProjectReadRoutes.get(
 agentSessionProjectReadRoutes.get(
   '/:id/agent-sessions/:sessionId',
   zValidator('param', sessionParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id, sessionId } = c.req.valid('param');

@@ -75,7 +75,7 @@ chatLogRoutes.use('*', requireAuth(), assertEmailVerified());
 chatLogRoutes.get(
   '/',
   zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectSlug, source, qaRating, dateFrom, dateTo, page, pageSize } =
@@ -112,7 +112,7 @@ chatLogRoutes.get(
 chatLogRoutes.get(
   '/recent',
   zValidator('query', recentQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectSlug, limit } = c.req.valid('query');
@@ -134,7 +134,7 @@ chatLogRoutes.get(
 chatLogRoutes.get(
   '/flagged',
   zValidator('query', flaggedQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectSlug, limit } = c.req.valid('query');
@@ -151,7 +151,7 @@ chatLogRoutes.get(
 chatLogRoutes.get(
   '/:id',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -168,10 +168,10 @@ chatLogRoutes.get(
 chatLogRoutes.patch(
   '/:id',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', patchSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

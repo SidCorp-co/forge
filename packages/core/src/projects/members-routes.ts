@@ -92,7 +92,7 @@ memberRoutes.use('*', requireAuth(), assertEmailVerified());
 memberRoutes.get(
   '/:projectId/members',
   zValidator('param', projectParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -112,7 +112,7 @@ memberRoutes.get(
 memberRoutes.get(
   '/:projectId/members/invitations',
   zValidator('param', projectParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -133,10 +133,10 @@ memberRoutes.get(
 memberRoutes.post(
   '/:projectId/members',
   zValidator('param', projectParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', directAddSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -178,10 +178,10 @@ memberRoutes.post(
 memberRoutes.post(
   '/:projectId/members/invite',
   zValidator('param', projectParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', inviteSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -256,10 +256,10 @@ memberRoutes.post(
 memberRoutes.patch(
   '/:projectId/members/:userId',
   zValidator('param', memberParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', patchMemberSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { projectId, userId: targetUserId } = c.req.valid('param');
@@ -287,10 +287,10 @@ memberRoutes.patch(
 memberRoutes.delete(
   '/:projectId/members/invitations',
   zValidator('param', projectParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('query', revokeInvitationQuerySchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -310,7 +310,7 @@ memberRoutes.delete(
 memberRoutes.delete(
   '/:projectId/members/:userId',
   zValidator('param', memberParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { projectId, userId: targetUserId } = c.req.valid('param');

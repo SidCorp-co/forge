@@ -26,7 +26,7 @@ skillSmokeVerifyRoutes.use('/:projectId/skills/smoke-verify', requireAuth(), ass
 skillSmokeVerifyRoutes.get(
   '/:projectId/skills/smoke-verify',
   zValidator('param', projectParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -42,10 +42,10 @@ skillSmokeVerifyRoutes.get(
 skillSmokeVerifyRoutes.post(
   '/:projectId/skills/smoke-verify',
   zValidator('param', projectParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', postBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');

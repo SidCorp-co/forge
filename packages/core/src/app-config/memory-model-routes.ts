@@ -36,7 +36,7 @@ export const memoryModelRoutes = new Hono<{ Variables: AuthVars }>();
 memoryModelRoutes.use('*', requireAuth(), assertEmailVerified());
 
 const validParam = zValidator('param', paramSchema, (r) => {
-  if (!r.success) throw badRequest(z.flattenError(r.error));
+  if (!r.success) throw badRequest(r.error);
 });
 
 memoryModelRoutes.get('/:projectId/memory-model/estimate', validParam, async (c) => {
@@ -58,7 +58,7 @@ memoryModelRoutes.post(
   '/:projectId/memory-model',
   validParam,
   zValidator('json', flipSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');

@@ -44,7 +44,7 @@ adminThresholdRoutes.get('/thresholds', async (c) => c.json(await readThresholds
 adminThresholdRoutes.put(
   '/thresholds',
   zValidator('json', thresholdsBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     return c.json(await saveThresholds(c.req.valid('json'), c.get('userId')));

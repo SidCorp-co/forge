@@ -36,7 +36,7 @@ export const agentSessionInteractiveRoutes = new Hono<{ Variables: AuthVars }>()
 agentSessionInteractiveRoutes.post(
   '/',
   zValidator('json', createSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const input = c.req.valid('json');
@@ -72,7 +72,7 @@ agentSessionInteractiveRoutes.post(
 agentSessionInteractiveRoutes.post(
   '/start',
   zValidator('json', startBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const input = c.req.valid('json');
@@ -164,7 +164,7 @@ agentSessionInteractiveRoutes.post(
 agentSessionInteractiveRoutes.post(
   '/send',
   zValidator('json', sendBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const input = c.req.valid('json');

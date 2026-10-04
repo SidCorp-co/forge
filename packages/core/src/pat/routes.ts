@@ -113,7 +113,7 @@ patRoutes.post(
   '/pat',
   requireFreshAuth(5),
   zValidator('json', createBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const userId = c.get('userId');
@@ -190,10 +190,7 @@ patRoutes.post(
     }
 
     if (body.boundProjectId && body.projectIds && body.projectIds.length > 0) {
-      throw badRequest({
-        formErrors: ['boundProjectId and projectIds are mutually exclusive'],
-        fieldErrors: {},
-      });
+      throw badRequest('boundProjectId and projectIds are mutually exclusive');
     }
 
     const referenced = [
@@ -242,7 +239,7 @@ patRoutes.post(
 patRoutes.delete(
   '/pat/:id',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const userId = c.get('userId');
@@ -261,10 +258,10 @@ patRoutes.delete(
 patRoutes.get(
   '/pat/:id/audit',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', auditQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const userId = c.get('userId');
@@ -280,10 +277,10 @@ patRoutes.post(
   '/pat/:id/rotate',
   requireFreshAuth(5),
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', rotateBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const userId = c.get('userId');
@@ -314,7 +311,7 @@ patRoutes.put(
   },
   requireFreshAuth(5),
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   strictBody(setPatFenceRequestSchema, SET_PAT_FENCE_SHAPE),
   async (c) => {
@@ -345,10 +342,10 @@ patRoutes.put(
 patRoutes.get(
   '/pat/:id/fence-changes',
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', auditQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

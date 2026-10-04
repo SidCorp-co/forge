@@ -51,7 +51,7 @@ const speakerBody = zValidator('json', speakerBodySchema, (result) => {
 
 const refuseSpeaker = refuser<SpeakerRefusalCode>('SPEAKER_SOURCE_UNKNOWN');
 
-/** A speaker refusal in the one envelope: 422, nothing written. */
+/** A speaker refusal in the one envelope, nothing written. */
 const refused = (refusal: SpeakerRefusal, path = ''): RefusalError =>
   refuseSpeaker(refusal.code, refusal.message, path);
 

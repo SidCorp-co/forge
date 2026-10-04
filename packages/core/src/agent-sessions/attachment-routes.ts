@@ -56,7 +56,7 @@ agentSessionAttachmentRoutes.post(
     throw badRequest('file too large', 'FILE_TOO_LARGE');
   }),
   zValidator('param', sessionIdParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid sessionId', 'BAD_REQUEST', z.flattenError(r.error));
+    if (!r.success) throw badRequest('invalid sessionId', 'BAD_REQUEST', r.error);
   }),
   rawBody(
     'multipart/form-data',
@@ -91,7 +91,7 @@ agentSessionAttachmentRoutes.post(
 agentSessionAttachmentRoutes.get(
   '/:sessionId/attachments/:id/download',
   zValidator('param', downloadParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid params', 'BAD_REQUEST', z.flattenError(r.error));
+    if (!r.success) throw badRequest('invalid params', 'BAD_REQUEST', r.error);
   }),
   async (c) => {
     const { sessionId, id } = c.req.valid('param');

@@ -60,10 +60,10 @@ opsHealthProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 opsHealthProjectRoutes.get(
   '/:id/ops-health',
   zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', staleQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
@@ -83,7 +83,7 @@ opsHealthMeRoutes.use('/ops-health', requireAuth(), assertEmailVerified());
 opsHealthMeRoutes.get(
   '/ops-health',
   zValidator('query', staleQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { staleJobThresholdSeconds } = c.req.valid('query');

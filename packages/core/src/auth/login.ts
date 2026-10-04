@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { assertNotAgent } from '../credentials/agent-account.js';
 import { setAuthCookie, setRefreshCookie } from '../credentials/cookie.js';
@@ -25,7 +24,7 @@ loginRoutes.post(
     if (!result.success) {
       throw new HTTPException(400, {
         message: 'Invalid login input',
-        cause: { code: 'BAD_REQUEST', details: z.flattenError(result.error) },
+        cause: { code: 'BAD_REQUEST', details: result.error },
       });
     }
   }),

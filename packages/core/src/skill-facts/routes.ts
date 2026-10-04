@@ -25,7 +25,7 @@ const validQuery = zValidator('query', querySchema, (result) => {
   if (!result.success) {
     throw new HTTPException(400, {
       message: 'Invalid input',
-      cause: { code: 'BAD_REQUEST', details: z.flattenError(result.error) },
+      cause: { code: 'BAD_REQUEST', details: result.error },
     });
   }
 });

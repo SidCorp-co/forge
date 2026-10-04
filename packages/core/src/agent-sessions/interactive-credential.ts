@@ -35,7 +35,8 @@ const INTERACTIVE_TURN_CREDENTIAL_TTL_MS = 8 * 60 * 60 * 1000;
 
 /**
  * Why a session will not run as the person it would act as. `noRole` marks the one that is
- * transport: a person with no role on the project is answered 403, every other refusal 422.
+ * transport: a person with no role on the project is answered 403, every other refusal in the
+ * envelope under its declared status.
  */
 export interface SessionRefusal {
   code: string;

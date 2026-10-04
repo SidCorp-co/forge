@@ -1,5 +1,6 @@
 // One declaration of the codes a question write is refused with; core throws them and both doors
 // answer them in the refusal envelope.
+import type { RefusalStatuses } from "./refusal.js";
 
 export const QUESTION_REFUSAL_CODES = [
 	"QUESTION_REFUSED",
@@ -21,3 +22,6 @@ export const QUESTION_REFUSAL_CODES = [
 	"QUESTION_IN_QUESTIONNAIRE",
 ] as const;
 export type QuestionRefusalCode = (typeof QUESTION_REFUSAL_CODES)[number];
+export const QUESTION_REFUSAL_STATUSES = {
+	QUESTION_ROUND_STALE: 409,
+} as const satisfies RefusalStatuses<QuestionRefusalCode>;

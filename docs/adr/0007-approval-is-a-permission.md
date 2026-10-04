@@ -53,7 +53,7 @@ agent access token holding the permission approves too).
   what.
 - **No author rule.** The author of a proposal, the asker of a release and the producer of a
   suggestion approve their own when they hold the permission.
-- **One refusal**: `PERMISSION_FORBIDDEN`, 422 in the envelope, carrying `permission` and `scope`
+- **One refusal**: `PERMISSION_FORBIDDEN`, 403 in the envelope, carrying `permission` and `scope`
   beside `code`, `path` and `detail`, the same refusal every missing permission answers. The old
   codes are deleted:
   `MOCKUP_DECIDE_FORBIDDEN`, `MOCKUP_ACCEPT_OWN_FORBIDDEN`, `REQUIREMENT_SIGNOFF_FORBIDDEN`,

@@ -62,10 +62,10 @@ jobEventsListRoutes.get(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', jobIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', eventsListQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: jobId } = c.req.valid('param');
@@ -132,10 +132,10 @@ jobEventsRoutes.post(
   '/:id/events',
   requireDevice(),
   zValidator('param', jobIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', eventBatchSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: jobId } = c.req.valid('param');

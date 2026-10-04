@@ -33,7 +33,7 @@ domainTemplateRoutes.get('/', async (c) => {
 domainTemplateRoutes.get(
   '/:key',
   zValidator('param', keyParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { key } = c.req.valid('param');
@@ -46,7 +46,7 @@ domainTemplateRoutes.get(
 domainTemplateRoutes.post(
   '/apply',
   zValidator('json', applyBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, templateKey } = c.req.valid('json');

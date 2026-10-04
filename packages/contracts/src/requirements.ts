@@ -19,6 +19,7 @@ import type {
 	WaitingKind,
 	WaitingOn,
 } from "./standing.js";
+import type { RefusalStatuses } from "./refusal.js";
 
 export const REQUIREMENT_STATUSES = [
 	"draft",
@@ -570,3 +571,6 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	...PERMISSION_REFUSAL_CODES,
 ] as const;
 export type RequirementRefusalCode = (typeof REQUIREMENT_REFUSAL_CODES)[number];
+export const REQUIREMENT_REFUSAL_STATUSES = {
+	REQUIREMENT_REVISION_STALE: 409,
+} as const satisfies RefusalStatuses<RequirementRefusalCode>;

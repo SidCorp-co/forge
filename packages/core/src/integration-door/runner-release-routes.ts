@@ -49,10 +49,10 @@ const REFUSAL_CODE = {
 runnerReleaseRoutes.post(
   '/:projectId/runner-releases',
   zValidator('param', projectParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', startBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -83,7 +83,7 @@ runnerReleaseRoutes.post(
 runnerReleaseRoutes.get(
   '/:projectId/runner-releases',
   zValidator('param', projectParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('param');
@@ -95,7 +95,7 @@ runnerReleaseRoutes.get(
 runnerReleaseRoutes.get(
   '/:projectId/runner-releases/:id',
   zValidator('param', releaseParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId, id } = c.req.valid('param');

@@ -31,10 +31,10 @@ export function registerIssueAttributeRoutes(router: Hono<{ Variables: AuthVars 
   router.post(
     '/:id/attributes',
     zValidator('param', idParamSchema, (r) => {
-      if (!r.success) throw badRequest(z.flattenError(r.error));
+      if (!r.success) throw badRequest(r.error);
     }),
     zValidator('json', writeBodySchema, (r) => {
-      if (!r.success) throw badRequest(z.flattenError(r.error));
+      if (!r.success) throw badRequest(r.error);
     }),
     async (c) => {
       const { id: issueId } = c.req.valid('param');
@@ -59,7 +59,7 @@ export function registerIssueAttributeRoutes(router: Hono<{ Variables: AuthVars 
   router.get(
     '/:id/attributes',
     zValidator('param', idParamSchema, (r) => {
-      if (!r.success) throw badRequest(z.flattenError(r.error));
+      if (!r.success) throw badRequest(r.error);
     }),
     async (c) => {
       const { id: issueId } = c.req.valid('param');

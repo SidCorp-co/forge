@@ -1,6 +1,7 @@
 import type { DesignRevisionState, DesignStatus } from "./design-status.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import type { WaitingKind, WaitingOn } from "./standing.js";
+import type { RefusalStatuses } from "./refusal.js";
 
 // cm:why the answer shapes a workflow and its design are read in when the whole document is not
 // asked for (ISS-87)
@@ -221,6 +222,9 @@ export const DESIGN_REFUSAL_CODES = [
 	...PERMISSION_REFUSAL_CODES,
 ] as const;
 export type DesignRefusalCode = (typeof DESIGN_REFUSAL_CODES)[number];
+export const DESIGN_REFUSAL_STATUSES = {
+	WORKFLOW_DESIGN_REVISION_STALE: 409,
+} as const satisfies RefusalStatuses<DesignRefusalCode>;
 
 /** A traced design, requirement or pinned contract a job cannot be given; the job is refused by name. */
 export const ARTIFACT_CONTEXT_REFUSAL_CODES = [

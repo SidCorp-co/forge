@@ -97,7 +97,7 @@ runnerRoutes.get('/types', async (c) => {
 runnerRoutes.get(
   '/',
   zValidator('query', listQuery, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const userId = c.get('userId');
@@ -118,7 +118,7 @@ const activeQuery = z.object({ projectId: z.uuid() });
 runnerRoutes.get(
   '/active',
   zValidator('query', activeQuery, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const userId = c.get('userId');
@@ -133,7 +133,7 @@ runnerRoutes.get(
 runnerRoutes.get(
   '/:id',
   zValidator('param', idParam, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const userId = c.get('userId');
@@ -160,10 +160,10 @@ const activityQuery = z.object({
 runnerRoutes.get(
   '/:id/activity',
   zValidator('param', idParam, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', activityQuery, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const userId = c.get('userId');
@@ -187,7 +187,7 @@ runnerRoutes.get(
 runnerRoutes.post(
   '/',
   zValidator('json', createBody, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const userId = c.get('userId');
@@ -223,10 +223,10 @@ runnerRoutes.post(
 runnerRoutes.patch(
   '/:id',
   zValidator('param', idParam, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', patchBody, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const userId = c.get('userId');
@@ -281,7 +281,7 @@ runnerRoutes.patch(
 runnerRoutes.delete(
   '/:id',
   zValidator('param', idParam, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const userId = c.get('userId');
@@ -302,7 +302,7 @@ runnerRoutes.delete(
 runnerRoutes.post(
   '/:id/health-check',
   zValidator('param', idParam, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const userId = c.get('userId');
@@ -320,7 +320,7 @@ runnerRoutes.post(
 runnerRoutes.post(
   '/:id/refresh-quota',
   zValidator('param', idParam, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const userId = c.get('userId');
@@ -344,7 +344,7 @@ runnerRoutes.post(
 runnerRoutes.post(
   '/:id/exclude',
   zValidator('param', idParam, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const userId = c.get('userId');
@@ -367,7 +367,7 @@ runnerRoutes.post(
 runnerRoutes.post(
   '/:id/include',
   zValidator('param', idParam, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const userId = c.get('userId');
@@ -389,7 +389,7 @@ runnerRoutes.post(
 runnerRoutes.post(
   '/:id/clear-quarantine',
   zValidator('param', idParam, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const userId = c.get('userId');

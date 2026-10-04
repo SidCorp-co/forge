@@ -12,6 +12,7 @@ import type {
 	WaitingKind,
 	WaitingOn,
 } from "./standing.js";
+import type { RefusalStatuses } from "./refusal.js";
 
 export const VERSION_STATUSES = [
 	"in_progress",
@@ -394,7 +395,7 @@ export const RELEASE_APPROVAL_REFUSAL_CODES = [
 ] as const;
 export type ReleaseApprovalRefusalCode = (typeof RELEASE_APPROVAL_REFUSAL_CODES)[number];
 
-/** Every code a release door refuses with, in the one 422 envelope; `RELEASE_REFUSED` when several differ. */
+/** Every code a release door refuses with, in the one refusal envelope; `RELEASE_REFUSED` when several differ. */
 export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_REFUSED",
 	...RELEASE_BLOCKER_CODES,
@@ -417,3 +418,9 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_NOTHING_RECORDED",
 ] as const;
 export type ReleaseRefusalCode = (typeof RELEASE_REFUSAL_CODES)[number];
+export const RELEASE_REFUSAL_STATUSES = {
+	RELEASE_CLAIM_LOST: 409,
+	RELEASE_FINISH_LEASE_LOST: 409,
+	RELEASE_VERSION_CONFLICT: 409,
+	CLAIM_CONFLICT: 409,
+} as const satisfies RefusalStatuses<ReleaseRefusalCode | ReleaseBlockerCode>;

@@ -1,3 +1,4 @@
+import { PROBLEM_CONTENT_TYPE, REFUSAL_STATUSES } from '@forge/contracts';
 import { COMPOSED_HANDLER } from 'hono/utils/constants';
 import { z } from 'zod';
 import { AUTH_GATES, type AuthGate, declaredGates } from '../middleware/declared-gate.js';
@@ -18,6 +19,58 @@ export type ApiContract = { document: JsonSchema; operations: number; refusals: 
 
 export const UNDECLARED_RESPONSE =
   'Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers.';
+
+const REFUSAL_SCHEMA: JsonSchema = {
+  type: 'object',
+  required: ['code', 'path', 'detail'],
+  properties: {
+    code: { type: 'string' },
+    path: {
+      type: 'string',
+      description: "A JSON pointer into the request, '' for the whole of it.",
+    },
+    detail: { type: 'string' },
+  },
+};
+
+const PROBLEM_SCHEMA: JsonSchema = {
+  type: 'object',
+  description:
+    'RFC 9457 problem details. A refusal carries `error`, its `refusals` ordered most relevant first; ' +
+    'any other error carries `code`, `message` and `details` instead.',
+  required: ['type', 'title', 'status', 'detail'],
+  properties: {
+    type: { type: 'string', description: 'urn:forge:refusal:<code>' },
+    title: { type: 'string' },
+    status: { type: 'integer' },
+    detail: { type: 'string' },
+    error: {
+      type: 'object',
+      required: ['code', 'message', 'refusals'],
+      properties: {
+        code: { type: 'string' },
+        message: { type: 'string' },
+        refusals: { type: 'array', minItems: 1, items: { $ref: '#/components/schemas/Refusal' } },
+      },
+    },
+    code: { type: 'string' },
+    message: { type: 'string' },
+    details: {},
+  },
+};
+
+const COMPONENTS: JsonSchema = {
+  schemas: { Refusal: REFUSAL_SCHEMA, Problem: PROBLEM_SCHEMA },
+  responses: {
+    Problem: {
+      description:
+        `Refused or failed. A refusal answers ${REFUSAL_STATUSES.join(', ')} by what the client ` +
+        'should do: 400 fix the request, 403 stop, 404 not there for it, 409 re-read and retry, ' +
+        '422 change what the rule names.',
+      content: { [PROBLEM_CONTENT_TYPE]: { schema: { $ref: '#/components/schemas/Problem' } } },
+    },
+  },
+};
 
 const INPUT_TARGETS = ['json', 'param', 'query'] as const;
 type InputTarget = (typeof INPUT_TARGETS)[number];
@@ -279,7 +332,11 @@ function describe(shape: PathShape, endpoint: Endpoint): Described {
   const operation: Operation = {
     'x-forge-auth': endpoint.gates,
     'x-forge-validated': INPUT_TARGETS.filter((t) => schemas.has(t)),
-    responses: { default: { description: UNDECLARED_RESPONSE } },
+    responses: {
+      '4XX': { $ref: '#/components/responses/Problem' },
+      '5XX': { $ref: '#/components/responses/Problem' },
+      default: { description: UNDECLARED_RESPONSE },
+    },
   };
   if (parameters.length > 0) operation.parameters = parameters;
   if (query !== undefined && query.additionalProperties === false) {
@@ -393,6 +450,12 @@ export function buildApiContract(routes: MountedRoute[], info: JsonSchema): ApiC
     paths[shape.template] = item;
     operations += 1;
   }
-  const document = { openapi: '3.1.0', info, 'x-forge-auth-gates': AUTH_GATES, paths };
+  const document = {
+    openapi: '3.1.0',
+    info,
+    'x-forge-auth-gates': AUTH_GATES,
+    paths,
+    components: COMPONENTS,
+  };
   return { document, operations, refusals };
 }

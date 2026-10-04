@@ -76,7 +76,7 @@ devicePublicRoutes.post(
   '/pair',
   rateLimit(() => RULES.devicesPair, { name: 'devices:pair' }),
   zValidator('json', pairBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const input = c.req.valid('json');
@@ -114,7 +114,7 @@ const ownerDevicesQuery = z.object({ orgId: z.uuid().optional() });
 deviceOwnerRoutes.get(
   '/me/devices',
   zValidator('query', ownerDevicesQuery, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const userId = c.get('userId');
@@ -154,10 +154,10 @@ const updateDeviceSchema = z
 deviceOwnerRoutes.patch(
   '/devices/:id',
   zValidator('param', deviceIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', updateDeviceSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -205,7 +205,7 @@ deviceOwnerRoutes.patch(
 deviceOwnerRoutes.delete(
   '/devices/:id',
   zValidator('param', deviceIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -240,7 +240,7 @@ deviceOwnerRoutes.delete(
 deviceOwnerRoutes.get(
   '/devices/:id/runners',
   zValidator('param', deviceIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -261,7 +261,7 @@ deviceUserRoutes.use('*', requireAuth(), assertEmailVerified());
 deviceUserRoutes.post(
   '/:id/devices/pairing-codes',
   zValidator('param', mintCodeParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
@@ -286,7 +286,7 @@ deviceAuthRoutes.post(
   '/heartbeat',
   requireDevice(),
   zValidator('json', heartbeatBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const device = c.get('device');
@@ -361,10 +361,10 @@ deviceAuthRoutes.patch(
   '/me/runners/:runnerId',
   requireDevice(),
   zValidator('param', z.object({ runnerId: z.uuid() }), (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', meRunnerPatchSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const device = c.get('device');
@@ -398,10 +398,10 @@ deviceAuthRoutes.post(
   '/me/runners/:runnerId/provision-status',
   requireDevice(),
   zValidator('param', z.object({ runnerId: z.uuid() }), (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', provisionStatusSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const device = c.get('device');

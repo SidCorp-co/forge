@@ -103,7 +103,7 @@ devicePoolRoutes.get(
   '/me/pool',
   requireDevice(),
   zValidator('query', poolQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { limit, projectId } = c.req.valid('query');
@@ -117,7 +117,7 @@ devicePoolRoutes.get(
   '/me/issues/admissible',
   requireDevice(),
   zValidator('query', poolQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('query');
@@ -150,7 +150,7 @@ devicePoolRoutes.get(
   '/me/run-sessions/:sessionId',
   requireDevice(),
   zValidator('param', sessionParamsSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { sessionId } = c.req.valid('param');
@@ -164,10 +164,10 @@ devicePoolRoutes.get(
   '/me/issue-leases/:issueKey',
   requireDevice(),
   zValidator('param', leaseParamsSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', leaseQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const key = await leaseKeyOf(c.req.valid('param').issueKey, c.req.valid('query').projectId);
@@ -189,10 +189,10 @@ devicePoolRoutes.delete(
   '/me/issue-leases/:issueKey',
   requireDevice(),
   zValidator('param', leaseParamsSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', leaseQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const rawKey = c.req.valid('param').issueKey;
@@ -239,7 +239,7 @@ devicePoolRoutes.post(
   '/me/pool/prepare',
   requireDevice(),
   zValidator('json', claimBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { jobId, sessionId } = c.req.valid('json');
@@ -253,7 +253,7 @@ devicePoolRoutes.post(
   '/me/pool/start',
   requireDevice(),
   zValidator('json', claimBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { jobId, sessionId } = c.req.valid('json');
@@ -271,7 +271,7 @@ devicePoolRoutes.post(
   '/me/pool/release',
   requireDevice(),
   zValidator('json', releaseBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { jobId, sessionId } = c.req.valid('json');
@@ -292,7 +292,7 @@ devicePoolRoutes.get(
   '/me/load',
   requireDevice(),
   zValidator('query', loadQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { projectId } = c.req.valid('query');
@@ -317,7 +317,7 @@ devicePoolRoutes.post(
   '/me/master-session/close',
   requireDevice(),
   zValidator('json', masterCloseBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const { sessionId, reason } = c.req.valid('json');
@@ -345,7 +345,7 @@ devicePoolRoutes.post(
   '/me/questions',
   requireDevice(),
   zValidator('json', askBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error.issues[0]?.message ?? z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const body = c.req.valid('json');
@@ -369,7 +369,7 @@ devicePoolRoutes.get(
   '/me/questions/:questionId',
   requireDevice(),
   zValidator('query', answerQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const questionId = c.req.param('questionId');
@@ -398,7 +398,7 @@ devicePoolRoutes.post(
   '/me/limit',
   requireDevice(),
   zValidator('json', masterLimitSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
     const body = c.req.valid('json');

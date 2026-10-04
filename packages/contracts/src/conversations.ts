@@ -1,4 +1,4 @@
-// The codes a conversation write is refused under, at REST and MCP alike (the 422 envelope).
+// The codes a conversation write is refused under, at REST and MCP alike (the refusal envelope).
 
 export const CONVERSATION_REFUSAL_CODES = [
 	"CONVERSATION_REFUSED",

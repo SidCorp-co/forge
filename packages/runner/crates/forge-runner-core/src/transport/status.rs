@@ -114,10 +114,13 @@ pub(crate) fn refused(what: &str, status: u16, text: &str) -> String {
 
 /// The constraints a refusal names, where it names any.
 ///
-/// Core validates every device body with zod and answers `z.flattenError`
-/// under `details` (`devices/route-errors.ts:badRequest`), so a violated rule
-/// arrives as `details.fieldErrors.<field>` or as `details.formErrors`. That is
-/// a statement about the bytes that were sent and not about the moment they
+/// Core answers a body no validator accepts with `400` in the refusal envelope,
+/// one row per violated rule under `error.refusals`, each at a JSON pointer
+/// into the request (`lib/refusal.ts:requestRefusals`). A core from before
+/// ISS-186 answers `z.flattenError` under `details` instead, as
+/// `details.fieldErrors.<field>` or `details.formErrors`, and both are read
+/// until every core this runner pairs with serves the envelope. Either is a
+/// statement about the bytes that were sent and not about the moment they
 /// were sent in: a caller re-sending them is refused exactly as it was the
 /// first time, which is how one run spent 240 attempts on one declaration
 /// (ISS-1284).
@@ -132,25 +135,40 @@ pub(crate) fn constraints(status: u16, body: &str) -> Option<Vec<String>> {
         return None;
     }
     let parsed: serde_json::Value = serde_json::from_str(body).ok()?;
-    let details = parsed.get("details")?;
     let mut named = Vec::new();
-    if let Some(fields) = details.get("fieldErrors").and_then(|v| v.as_object()) {
-        for (field, said) in fields {
-            for one in said.as_array().into_iter().flatten() {
-                if let Some(text) = one.as_str() {
-                    named.push(format!("{field}: {text}"));
-                }
-            }
-        }
-    }
-    for one in details
-        .get("formErrors")
+    for row in parsed
+        .pointer("/error/refusals")
         .and_then(|v| v.as_array())
         .into_iter()
         .flatten()
     {
-        if let Some(text) = one.as_str() {
-            named.push(format!("the request itself: {text}"));
+        let Some(text) = row.get("detail").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        match row.get("path").and_then(|v| v.as_str()).unwrap_or_default() {
+            "" => named.push(format!("the request itself: {text}")),
+            path => named.push(format!("{}: {text}", path.trim_start_matches('/'))),
+        }
+    }
+    if let Some(details) = parsed.get("details") {
+        if let Some(fields) = details.get("fieldErrors").and_then(|v| v.as_object()) {
+            for (field, said) in fields {
+                for one in said.as_array().into_iter().flatten() {
+                    if let Some(text) = one.as_str() {
+                        named.push(format!("{field}: {text}"));
+                    }
+                }
+            }
+        }
+        for one in details
+            .get("formErrors")
+            .and_then(|v| v.as_array())
+            .into_iter()
+            .flatten()
+        {
+            if let Some(text) = one.as_str() {
+                named.push(format!("the request itself: {text}"));
+            }
         }
     }
     (!named.is_empty()).then_some(named)

@@ -88,7 +88,7 @@ orgRoutes.get('/', async (c) => {
 orgRoutes.post(
   '/',
   zValidator('json', createOrgSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { slug, name } = c.req.valid('json');
@@ -108,10 +108,10 @@ orgRoutes.post(
 orgRoutes.patch(
   '/:orgId',
   zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', patchOrgSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');
@@ -131,7 +131,7 @@ orgRoutes.patch(
 orgRoutes.delete(
   '/:orgId',
   zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');
@@ -159,7 +159,7 @@ orgRoutes.delete(
 orgRoutes.get(
   '/:orgId/projects',
   zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');
@@ -174,7 +174,7 @@ orgRoutes.get(
 orgRoutes.get(
   '/:orgId/members',
   zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');
@@ -191,10 +191,10 @@ orgRoutes.get(
 orgRoutes.post(
   '/:orgId/members',
   zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', addMemberSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');
@@ -252,7 +252,7 @@ orgRoutes.post(
 orgRoutes.get(
   '/:orgId/invitations',
   zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');
@@ -269,13 +269,13 @@ orgRoutes.get(
 orgRoutes.delete(
   '/:orgId/invitations',
   zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator(
     'query',
     z.object({ email: z.string().trim().toLowerCase().pipe(z.email().max(254)) }),
     (result) => {
-      if (!result.success) throw badRequest(z.flattenError(result.error));
+      if (!result.success) throw badRequest(result.error);
     },
   ),
   async (c) => {
@@ -294,10 +294,10 @@ orgRoutes.delete(
 orgRoutes.patch(
   '/:orgId/members/:userId',
   zValidator('param', memberParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   zValidator('json', patchMemberSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId, userId: targetUserId } = c.req.valid('param');
@@ -339,7 +339,7 @@ orgRoutes.patch(
 orgRoutes.delete(
   '/:orgId/members/:userId',
   zValidator('param', memberParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(result.error);
   }),
   async (c) => {
     const { orgId, userId: targetUserId } = c.req.valid('param');
