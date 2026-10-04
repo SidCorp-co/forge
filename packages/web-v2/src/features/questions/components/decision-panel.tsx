@@ -1,6 +1,6 @@
 "use client";
 
-
+import type { ParkThreadQuestion } from "@forge/contracts";
 import { useState } from "react";
 import {
   Button,
@@ -63,16 +63,6 @@ function NothingToAnswer() {
   );
 }
 
-/** A question an issue asked only in the thread: no question row carries it (ISS-1310). */
-export interface ThreadQuestion {
-  /** The sentence the run stopped with. */
-  prompt: string | null;
-  /** Why the work stopped, where it says more than the sentence. */
-  why: string | null;
-  readings: Array<{ choice: string; outcome: string | null }>;
-  answer: { commentId: string; postedAt: string; text: string } | null;
-}
-
 /**
  * The question as the run wrote it in the thread, answered where it is shown. The run reads a
  * person's comment posted after it stopped as the answer, so the answer goes up as that comment,
@@ -82,7 +72,7 @@ function ThreadQuestionCard({
   question,
   onAnswer,
 }: {
-  question: ThreadQuestion;
+  question: ParkThreadQuestion;
   /** Absent for a reader who may not write: the question is shown, and no box. */
   onAnswer?: ((text: string) => Promise<unknown>) | undefined;
 }) {
@@ -175,7 +165,7 @@ export function DecisionPanel({
 }: {
   issueId: string;
   parkedForInfo?: boolean;
-  threadQuestion?: ThreadQuestion | null;
+  threadQuestion?: ParkThreadQuestion | null;
   onAnswerInThread?: (text: string) => Promise<unknown>;
 }) {
   const { data, isLoading, isError, error, refetch } = useIssueQuestions(issueId);

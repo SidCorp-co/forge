@@ -8,9 +8,9 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { holds, requireHeld } from '../permissions/index.js';
-import { isMetaSkillName } from './meta-skills.js';
-import { registerSkillForProject, SkillNotProjectScopedError } from './registration-service.js';
+import { requireHeld } from '../permissions/index.js';
+import { isMetaSkillName, metaSkillReserved } from './meta-skills.js';
+import { registerSkillForProject } from './registration-service.js';
 import { getSkillForProject } from './service.js';
 import { computeSkillDiff } from './sync.js';
 
@@ -49,16 +49,13 @@ const badRequest = (details: unknown) =>
 const notFound = (code = 'NOT_FOUND', message = 'not found') =>
   new HTTPException(404, { message, cause: { code } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
-async function loadDeviceProjectRole(
+async function requireDeviceSync(
   deviceOwnerId: string,
   projectId: string,
-): Promise<{ isAdmin: boolean }> {
+  mode: string,
+): Promise<void> {
   const access = await loadProjectAccess(projectId, deviceOwnerId);
-  requireHeld(access, 'project.read');
-  return { isAdmin: holds(access, 'project.admin') };
+  requireHeld(access, mode === 'full' ? 'project.admin' : 'project.read', `A ${mode} skill sync`);
 }
 
 export const skillSyncRoutes = new Hono<{ Variables: DeviceVars }>();
@@ -76,10 +73,7 @@ skillSyncRoutes.post(
     const body = c.req.valid('json');
     const device = c.get('device');
 
-    const { isAdmin } = await loadDeviceProjectRole(device.ownerId, projectId);
-    if (body.mode === 'full' && !isAdmin) {
-      throw forbidden("mode 'full' requires a project-admin device");
-    }
+    await requireDeviceSync(device.ownerId, projectId, body.mode);
 
     // Meta skills (plugin channel) are Forge-owned and non-overridable — a
     // device must never author/overwrite one via this manifest push. The
@@ -87,11 +81,7 @@ skillSyncRoutes.post(
     // (`createProjectSkill`); this device-token path writes `skills` directly,
     // so it must enforce the same reservation here (ISS-741 / task 703cc186).
     const reserved = body.skills.find((s) => isMetaSkillName(s.name));
-    if (reserved) {
-      throw forbidden(
-        `'${reserved.name}' is a Forge meta skill delivered via the plugin channel and cannot be authored per-project`,
-      );
-    }
+    if (reserved) throw metaSkillReserved(reserved.name);
 
     // Single SERIALIZABLE transaction: read existing inside the tx, categorise,
     // then upsert. Concurrent writers either see the same baseline and both
@@ -190,23 +180,13 @@ skillRegisterRoutes.post(
     const skill = await getSkillForProject(skillId, projectId);
     if (!skill) throw notFound('NOT_FOUND', 'skill not found');
 
-    try {
-      const result = await registerSkillForProject({
-        projectId,
-        skillId,
-        stage,
-        actorUserId: userId,
-      });
-      return c.json(result);
-    } catch (err) {
-      if (err instanceof SkillNotProjectScopedError) {
-        throw new HTTPException(400, {
-          message: err.message,
-          cause: { code: err.code },
-        });
-      }
-      throw err;
-    }
+    const result = await registerSkillForProject({
+      projectId,
+      skillId,
+      stage,
+      actorUserId: userId,
+    });
+    return c.json(result);
   },
 );
 

@@ -1,10 +1,11 @@
+import { type IssueMove, type IssueStatus, issueMovesFrom } from '@forge/contracts/issue-machine';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type MergeMarkColumns, type MergeMarkKind, mergeMarkKindOf } from './merge-record.js';
 import type { IssueSearchField } from './search-predicate.js';
-import { workStateListSql } from './work-state.js';
+import { type WorkStateListView, workStateListSql } from './work-state.js';
 
 /**
  * The columns both REST issue lists select. Heavy TOAST columns
@@ -66,14 +67,21 @@ export const REST_ISSUE_LIST_OMITTED = [
  * legible. The reading is `merge-record.ts`'s, so a list row and the issue detail cannot disagree
  * about which kind of mark the same issue carries.
  */
-export function serializeRestListRow<T extends { issSeq: number } & MergeMarkColumns>(
+export function serializeRestListRow<
+  T extends {
+    issSeq: number;
+    status: IssueStatus;
+    workState: Pick<WorkStateListView, 'leftStatus'> | null;
+  } & MergeMarkColumns,
+>(
   row: T,
   prefix: string | null,
-): T & { displayId: string; mergeMark: MergeMarkKind } {
+): T & { displayId: string; mergeMark: MergeMarkKind; moves: IssueMove[] } {
   return {
     ...row,
     displayId: formatIssueRef(prefix, row.issSeq),
     mergeMark: mergeMarkKindOf(row),
+    moves: issueMovesFrom(row.status, row.workState?.leftStatus ?? null),
   };
 }
 

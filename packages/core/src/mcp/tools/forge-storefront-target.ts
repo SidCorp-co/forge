@@ -1,3 +1,4 @@
+import type { StorefrontRefusalCode } from '@forge/contracts/storefront';
 import { z } from 'zod';
 import { buildMcpPreview } from '../../integrations/mcp-preview-service.js';
 import { listIntegrations } from '../../integrations/registry.js';
@@ -8,12 +9,15 @@ import {
   listActiveBindingsForProjectProvider,
 } from '../../integrations/store.js';
 import type { IntegrationDeclaration } from '../../integrations/types.js';
+import { refuser } from '../../lib/refusal.js';
 import {
   type ContextScopedMcpToolFactory,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
 import { requireCan } from '../../permissions/index.js';
+
+const refuse = refuser<StorefrontRefusalCode>('STOREFRONT_REFUSED');
 
 const inputSchema = z
   .object({
@@ -117,8 +121,10 @@ export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = (ctx) => (
     if (input.provider !== undefined) {
       providers = served.filter((d) => d.provider === input.provider);
       if (providers.length === 0) {
-        throw new Error(
-          `STOREFRONT_PROVIDER_UNKNOWN: "${input.provider}" is not a storefront provider; provider is one of ${served.map((d) => d.provider).join(', ')}.`,
+        throw refuse(
+          'STOREFRONT_PROVIDER_UNKNOWN',
+          `"${input.provider}" is not a storefront provider; provider is one of ${served.map((d) => d.provider).join(', ')}.`,
+          '/provider',
         );
       }
     }
@@ -148,8 +154,10 @@ export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = (ctx) => (
     );
 
     if (bound.length > 1) {
-      throw new Error(
-        `STOREFRONT_PROVIDER_AMBIGUOUS: this project binds storefronts of ${bound.map((b) => b.decl.provider).join(' and ')}; pass provider (one of ${bound.map((b) => b.decl.provider).join(', ')}) to say which.`,
+      throw refuse(
+        'STOREFRONT_PROVIDER_AMBIGUOUS',
+        `this project binds storefronts of ${bound.map((b) => b.decl.provider).join(' and ')}; pass provider (one of ${bound.map((b) => b.decl.provider).join(', ')}) to say which.`,
+        '/provider',
       );
     }
     const [{ decl, pairs }] = bound as [(typeof bound)[number]];

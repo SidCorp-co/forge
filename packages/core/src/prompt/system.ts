@@ -61,8 +61,7 @@ const BRANCH_SENTINEL = '<detect-from-git>';
 // Canonical text for these two mandatory blocks now lives in the Forge Facts
 // registry (`./facts/registry.ts`) so author-time surfaces and the runtime
 // preamble share one source. Re-exported here unchanged for existing callers
-// (chat-preamble shim, schedules, agent-sessions); a parity test in
-// system.test.ts pins the rendered text.
+// (chat-preamble shim, schedules, agent-sessions).
 export { PIPELINE_RULES, TOOL_REFERENCE } from './facts/mandatory-blocks.js';
 
 const CHAT_ORIENTATION = `## Project Orientation
@@ -84,8 +83,6 @@ When the conversation produces work to track, capture **one coherent request as 
  *                              historical default — unchanged for members with
  *                              no lens assigned).
  *   - both                   → lead with outcome, then concise technical detail.
- *
- * Exported for a focused unit test on the wording per lens.
  */
 export function buildChatRoleSection(lenses: readonly MemberLens[]): string {
   const tech = lenses.includes('technical');

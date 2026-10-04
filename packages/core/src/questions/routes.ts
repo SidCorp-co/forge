@@ -1,13 +1,9 @@
 // A parked decision over HTTP: ask one, list a project's or an issue's, read one, answer one, void one.
 //
-// Every refusal here leaves as `{ code, message }`, the body `middleware/error.ts`
-// builds for every other route, because the browser's `formatApiError` reads
-// `code` first and `message` second and can read neither out of a hand-rolled
-// `{ error }` (ISS-980 criterion 40).
+// A rule refusal leaves as the 422 envelope `middleware/error.ts` answers a thrown refusal with.
 
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { z } from 'zod';
 import {
   optionAuthorities,
@@ -16,13 +12,12 @@ import {
   questionBlockerKinds,
   questionStatuses,
 } from '../db/schema-questions.js';
-import { Refused } from '../ecosystem/channel-act.js';
 import { doorOf, tokenIdOf } from '../ecosystem/channel-author.js';
-import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { egressAs } from '../lib/data-egress.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { refused as refusedByName } from '../project-config/respond.js';
 import {
   answerAs,
   askAs,
@@ -32,7 +27,7 @@ import {
   readQuestionFor,
   readQuestionsForIssue,
 } from './read.js';
-import { type QuestionRefusalCode, QuestionRefused, voidQuestion } from './write.js';
+import { voidQuestion } from './write.js';
 
 const uuid = z.uuid();
 
@@ -163,34 +158,11 @@ function questionId(c: { req: { param: (k: string) => string } }): string {
   return id;
 }
 
-const REFUSAL_STATUS: Record<QuestionRefusalCode, ContentfulStatusCode> = {
-  QUESTION_REFUSED: 403,
-  QUESTION_NOT_FOUND: 404,
-  QUESTION_NOT_OPEN: 409,
-  QUESTION_EXPIRED: 409,
-  QUESTION_ROUND_STALE: 409,
-  QUESTION_OPTION_UNKNOWN: 400,
-  QUESTION_ISSUE_ELSEWHERE: 400,
-  QUESTION_ISSUE_TERMINAL: 409,
-  QUESTION_REASON_REQUIRED: 400,
-  QUESTION_OPTIONS_REQUIRED: 400,
-  QUESTION_RECOMMENDED_UNKNOWN: 400,
-  QUESTION_OPTION_IDS_DUPLICATE: 400,
-  QUESTION_SHAPE_INVALID: 400,
-  QUESTION_ANSWER_WRONG_SHAPE: 400,
-  QUESTION_MESSAGE_REFUSED: 400,
-  QUESTION_CURSOR_INVALID: 400,
-  QUESTION_NOTE_NOT_TAKEN: 400,
-  QUESTION_IN_QUESTIONNAIRE: 409,
-};
-
 const sessionOnly = (verb: string) =>
-  new HTTPException(403, {
-    message:
-      `a question is ${verb} by a person in a session, and this request carries a personal ` +
+  forbidden(
+    `a question is ${verb} by a person in a session, and this request carries a personal ` +
       'access token. Sign in to answer it, or reply in the room the question was delivered to.',
-    cause: { code: 'QUESTION_NEEDS_SESSION' },
-  });
+  );
 
 /**
  * A question whose blocker is another agent, answered by a credential that
@@ -202,18 +174,13 @@ const sessionOnly = (verb: string) =>
  * blocked park could only ever be cleared by a person standing in for the peer.
  */
 const peerBlockedOnly = () =>
-  new HTTPException(403, {
-    message:
-      'this question is blocked on another agent, and this request carries a personal access ' +
+  forbidden(
+    'this question is blocked on another agent, and this request carries a personal access ' +
       'token owned by a person, which establishes nobody: a borrowed credential may act but may ' +
       'not say who is speaking. Answer it with the agent’s OWN Agent Access Token — an org admin ' +
       'mints one for an existing agent at POST /api/orgs/:orgId/agents/:agentUserId/tokens. Or ' +
       'sign in and answer it as a person.',
-    cause: { code: 'QUESTION_NEEDS_AGENT_CREDENTIAL' },
-  });
-
-const refused = (e: QuestionRefused) =>
-  new HTTPException(REFUSAL_STATUS[e.code], { message: e.message, cause: { code: e.code } });
+  );
 
 export const questionRoutes = new Hono<{ Variables: AuthVars }>();
 questionRoutes.use('/', requireAuth(), assertEmailVerified());
@@ -226,26 +193,21 @@ questionRoutes.get('/', zValidator('query', listQuery, refuseQuery), async (c) =
     throw badRequest('name issueId or projectId, not both — they are two different questions');
   }
   if (projectId) {
-    try {
-      const open = await projectQuestionsFor(
-        projectId,
-        c.get('userId'),
-        status,
-        { limit, cursor },
-        issueScope === 'none',
-      );
-      if (!open) throw notFound();
-      const agency = c.get('agency');
-      return c.json({
-        ...open,
-        questions: await Promise.all(
-          open.questions.map((q) => shown(agency, q as typeof q & ShownQuestion)),
-        ),
-      });
-    } catch (e) {
-      if (e instanceof QuestionRefused) throw refused(e);
-      throw e;
-    }
+    const open = await projectQuestionsFor(
+      projectId,
+      c.get('userId'),
+      status,
+      { limit, cursor },
+      issueScope === 'none',
+    );
+    if (!open) throw notFound();
+    const agency = c.get('agency');
+    return c.json({
+      ...open,
+      questions: await Promise.all(
+        open.questions.map((q) => shown(agency, q as typeof q & ShownQuestion)),
+      ),
+    });
   }
   const seen = await readQuestionsForIssue(issueId as string, c.get('userId'));
   if (!seen) throw notFound();
@@ -256,24 +218,19 @@ questionRoutes.get('/', zValidator('query', listQuery, refuseQuery), async (c) =
 questionRoutes.post('/', zValidator('json', askSchema, refuseBody), async (c) => {
   const { parkDeadlineAt, blockerKind, options, recommendedOptionId, ...rest } =
     c.req.valid('json');
-  try {
-    const asked = await askAs({
-      ...rest,
-      answer: {
-        shape: 'choice',
-        options: options.map(({ fingerprint, ...o }) => (fingerprint ? { ...o, fingerprint } : o)),
-        recommendedOptionId,
-      },
-      blockerKind: blockerKind ?? 'human',
-      parkDeadlineAt: parkDeadlineAt ? new Date(parkDeadlineAt) : undefined,
-      userId: c.get('userId'),
-    });
-    if (!asked) throw notFound('issue');
-    return c.json(asked, 201);
-  } catch (e) {
-    if (e instanceof QuestionRefused) throw refused(e);
-    throw e;
-  }
+  const asked = await askAs({
+    ...rest,
+    answer: {
+      shape: 'choice',
+      options: options.map(({ fingerprint, ...o }) => (fingerprint ? { ...o, fingerprint } : o)),
+      recommendedOptionId,
+    },
+    blockerKind: blockerKind ?? 'human',
+    parkDeadlineAt: parkDeadlineAt ? new Date(parkDeadlineAt) : undefined,
+    userId: c.get('userId'),
+  });
+  if (!asked) throw notFound('issue');
+  return c.json(asked, 201);
 });
 
 questionRoutes.get('/:id', async (c) => {
@@ -301,25 +258,19 @@ questionRoutes.post(
     const hasText = typeof body.text === 'string' && body.text.trim().length > 0;
     if (hasOption && hasText) throw badRequest('send optionId or text, never both');
     if (!hasOption && !hasText) throw badRequest('optionId or text is required');
-    try {
-      return c.json(
-        await answerAs({
-          questionId: questionId(c),
-          answer: hasOption
-            ? { kind: 'option', optionId: body.optionId as string }
-            : { kind: 'text', text: body.text as string },
-          round: body.round,
-          userId: c.get('userId'),
-          agency: restActor(c).agency,
-          via: await doorOf(tokenIdOf(c)),
-          ...(body.note === undefined ? {} : { note: body.note }),
-        }),
-      );
-    } catch (e) {
-      if (e instanceof QuestionRefused) throw refused(e);
-      if (e instanceof Refused) return refusedByName(c, e.refusals);
-      throw e;
-    }
+    return c.json(
+      await answerAs({
+        questionId: questionId(c),
+        answer: hasOption
+          ? { kind: 'option', optionId: body.optionId as string }
+          : { kind: 'text', text: body.text as string },
+        round: body.round,
+        userId: c.get('userId'),
+        agency: restActor(c).agency,
+        via: await doorOf(tokenIdOf(c)),
+        ...(body.note === undefined ? {} : { note: body.note }),
+      }),
+    );
   },
 );
 
@@ -335,12 +286,7 @@ questionRoutes.post(
     const id = questionId(c);
     const seen = await readQuestionFor(id, c.get('userId'));
     if (!seen) throw notFound();
-    try {
-      await voidQuestion({ questionId: id, reason: body.reason ?? '', actor: restActor(c) });
-      return c.json({ ok: true });
-    } catch (e) {
-      if (e instanceof QuestionRefused) throw refused(e);
-      throw e;
-    }
+    await voidQuestion({ questionId: id, reason: body.reason ?? '', actor: restActor(c) });
+    return c.json({ ok: true });
   },
 );

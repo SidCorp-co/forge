@@ -67,7 +67,7 @@ async fn post_chunk(client: &CoreClient, session_id: &str, events: &[LineEvent])
                 if status.is_success() {
                     return Ok(());
                 }
-                if status.as_u16() == 409 {
+                if matches!(status.as_u16(), 409 | 422) {
                     return Err(Error::Other("SESSION_TERMINATED".into()));
                 }
                 if status.is_client_error() {
@@ -184,7 +184,7 @@ pub async fn ack_session(client: &CoreClient, session_id: &str) -> Result<()> {
 }
 
 /// `PATCH /api/agent-sessions/:id` with the same exponential backoff as
-/// `post_job_events`. A 409 means the session is terminal (e.g. user cancelled)
+/// `post_job_events`. A 409 (422 from ISS-162 on) means the session is terminal (e.g. user cancelled)
 /// — surfaced as a distinct error so the caller can stop streaming.
 pub async fn patch_session(
     client: &CoreClient,
@@ -207,7 +207,7 @@ pub async fn patch_session(
                 if status.is_success() {
                     return Ok(());
                 }
-                if status.as_u16() == 409 {
+                if matches!(status.as_u16(), 409 | 422) {
                     return Err(Error::Other("SESSION_TERMINATED".into()));
                 }
                 if status.is_client_error() {

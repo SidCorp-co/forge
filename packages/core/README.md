@@ -5,9 +5,8 @@ Forge core API — Hono + Drizzle backend. A single Node process serves REST, We
 ## Prerequisites
 
 - **Node** `>=20` (enforced via `engines.node`)
-- **pnpm** — the repo's `packages/*` workspace (`contracts`, `core`, `dev`, `observability`, `web-v2`, plus the Rust `runner` Cargo workspace and a `tests` dir)
+- **pnpm** — the repo's `packages/*` workspace (`contracts`, `core`, `observability`, `web-v2`, plus the Rust `runner` Cargo workspace)
 - **Postgres 17** — the compose stack at the repo root gives you one preconfigured (`forge` DB, user `forge`, password `forge_secret`)
-- **Docker** — only needed if you run integration tests in `container` mode
 
 ## Install
 
@@ -16,7 +15,7 @@ Forge core API — Hono + Drizzle backend. A single Node process serves REST, We
 pnpm install
 ```
 
-Install from the repo root, not from inside `packages/core/`. The pnpm workspace links the active packages (`contracts`, `core`, `dev`, `observability`, `web-v2`) together.
+Install from the repo root, not from inside `packages/core/`. The pnpm workspace links the packages (`contracts`, `core`, `observability`, `web-v2`) together.
 
 ## Environment
 
@@ -71,36 +70,6 @@ cd packages/core
 pnpm build && pnpm start
 ```
 
-## Tests
-
-### Unit (no DB, safe anywhere)
-
-```bash
-pnpm --filter @forge/core test
-```
-
-### Integration — local schema mode (fast)
-
-```bash
-# From the repo root
-docker compose up -d postgres
-
-export TEST_DATABASE_URL="postgres://forge:forge_secret@localhost:5432/forge"
-pnpm --filter @forge/core test:integration
-```
-
-Each run creates its own disposable schema inside the target DB and drops it after.
-
-### Integration — CI-style (self-contained, Testcontainers)
-
-```bash
-pnpm --filter @forge/core test:integration:ci
-```
-
-Needs a local Docker daemon. No shared Postgres required.
-
-→ See [tests/README.md](./tests/README.md) for the hybrid test DB decision, writing new integration tests, factories, and timing targets.
-
 ## Database workflow
 
 ```bash
@@ -116,8 +85,7 @@ pnpm db:studio     # drizzle-kit studio — browse the DB in a UI
 
 | Script | Purpose |
 |---|---|
-| `pnpm lint` | Biome check over `src` and `tests` |
+| `pnpm lint` | Biome check over `src` |
 | `pnpm lint:fix` | Biome check with `--write` |
 | `pnpm typecheck` | `tsc --noEmit` |
-| `pnpm test:watch` | Vitest in watch mode |
 | `pnpm clean` | `rm -rf dist` |

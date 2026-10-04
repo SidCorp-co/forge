@@ -1,11 +1,10 @@
 import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { fencedProjectIds } from '../auth/pat-scope.js';
+import { fencedProjectIds } from '../credentials/pat-scope.js';
 import { db } from '../db/client.js';
 import {
   type OrgMemberRole,
   organizationMembers,
-  organizations,
   type ProjectMemberRole,
   projectMembers,
   projects,
@@ -57,8 +56,31 @@ export function maxProjectRole(
   return PROJECT_ROLE_RANK[a] >= PROJECT_ROLE_RANK[b] ? a : b;
 }
 
+/** Where a project sits: its org, or null when the project does not exist. */
+export type ProjectOrgSource = (projectId: string) => Promise<string | null>;
+
+let projectOrgSource: ProjectOrgSource | null = null;
+
 /**
- * Non-throwing resolver — the single query behind every gate. Returns null
+ * The projects domain hands the permission check where a project sits, so the check reads only
+ * its own membership tables and never `projects` (ADR 0008 Amendment). The HTTP door provides it
+ * at boot.
+ */
+export function provideProjectOrg(source: ProjectOrgSource): void {
+  projectOrgSource = source;
+}
+
+function projectOrgOf(projectId: string): Promise<string | null> {
+  if (!projectOrgSource) {
+    throw new Error(
+      'permission check: no project org source was provided, so where a project sits cannot be read; the process entry calls provideProjectOrg(findProjectOrgId) from projects/service.ts before it serves',
+    );
+  }
+  return projectOrgSource(projectId);
+}
+
+/**
+ * Non-throwing resolver — the single read behind every gate. Returns null
  * when the project does not exist.
  *
  * `userId` may be absent: `requireUserOrDevice()` leaves it unset for device
@@ -71,40 +93,23 @@ export async function effectiveProjectRole(
 ): Promise<ProjectAccess | null> {
   const fence = fencedProjectIds();
   if (fence && !fence.includes(projectId)) return null;
-  if (!userId) {
-    const [row] = await db
-      .select({ orgId: projects.orgId })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-    if (!row) return null;
-    return { projectId, orgId: row.orgId, role: null, orgRole: null, grants: [] };
-  }
-  const [row] = await db
-    .select({
-      orgId: projects.orgId,
-      memberRole: projectMembers.role,
-      grants: projectMembers.grants,
-      orgRole: organizationMembers.role,
-    })
-    .from(projects)
-    .leftJoin(
-      projectMembers,
-      and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId)),
-    )
-    .leftJoin(
-      organizationMembers,
-      and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
-    )
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!row) return null;
+  const orgId = await projectOrgOf(projectId);
+  if (orgId === null) return null;
+  if (!userId) return { projectId, orgId, role: null, orgRole: null, grants: [] };
+  const [[member], orgRole] = await Promise.all([
+    db
+      .select({ role: projectMembers.role, grants: projectMembers.grants })
+      .from(projectMembers)
+      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
+      .limit(1),
+    loadOrgRole(orgId, userId),
+  ]);
   return {
     projectId,
-    orgId: row.orgId,
-    role: maxProjectRole(row.memberRole ?? null, orgDerivedProjectRole(row.orgRole ?? null)),
-    orgRole: row.orgRole ?? null,
-    grants: row.grants ?? [],
+    orgId,
+    role: maxProjectRole(member?.role ?? null, orgDerivedProjectRole(orgRole)),
+    orgRole,
+    grants: member?.grants ?? [],
   };
 }
 
@@ -176,15 +181,4 @@ export async function loadVisibleProjectIds(userId: string | null | undefined): 
     )
     .where(and(...visibleProjectsWhere()));
   return rows.map((r) => r.id);
-}
-
-/** The user's personal org (auto-created at signup / by migration 0106). */
-export async function loadPersonalOrgId(userId: string | null | undefined): Promise<string | null> {
-  if (!userId) return null;
-  const [row] = await db
-    .select({ id: organizations.id })
-    .from(organizations)
-    .where(and(eq(organizations.createdBy, userId), eq(organizations.isPersonal, true)))
-    .limit(1);
-  return row?.id ?? null;
 }

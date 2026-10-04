@@ -7,9 +7,9 @@ import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { assertNotAgent } from './agent-account.js';
-import { setAuthCookie, setRefreshCookie } from './cookie.js';
-import { signUserToken } from './jwt.js';
+import { assertNotAgent } from '../credentials/agent-account.js';
+import { setAuthCookie, setRefreshCookie } from '../credentials/cookie.js';
+import { signUserToken } from '../credentials/jwt.js';
 import { getDummyPasswordHash, verifyPassword } from './password.js';
 import { issueRefreshToken } from './refresh.js';
 

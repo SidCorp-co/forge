@@ -10,6 +10,7 @@ import {
   POST_QUESTIONNAIRE_SHAPE,
   postQuestionnaireRequestSchema,
   QUESTIONNAIRE_MAX_ROUNDS,
+  type QuestionnaireRefusalCode,
 } from '@forge/contracts/onboarding';
 import { SUGGESTION_KINDS } from '@forge/contracts/suggestions';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
@@ -24,10 +25,12 @@ import { resolveForProject } from '../../integrations/llm/registry.js';
 import { resolveIssueRouteRef } from '../../issues/issue-route-ref.js';
 import { dataPolicyOf, egressAt, egressDeep, egressOr, MCP_DOOR } from '../../lib/data-egress.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
+import { refuser } from '../../lib/refusal.js';
 import {
   type ContextScopedMcpToolFactory,
   type McpContext,
   principalAgency,
+  refusedAnswer,
 } from '../../mcp/tools/lib.js';
 import { roundsInConversation } from '../../questionnaires/read.js';
 import { roundsRefusal } from '../../questionnaires/rules.js';
@@ -251,9 +254,7 @@ const suggest =
         conversationMessageId: await latestMessageId(ctx.turn?.conversationId),
       });
       if (!outcome.ok) {
-        throw new Error(
-          `${outcome.refusals.map((r) => `${r.code}: ${r.detail}`).join(' | ')} — nothing was written`,
-        );
+        return refusedAnswer(outcome.refusals, 'ASSISTANT_REFUSED');
       }
       return {
         suggestion: {
@@ -311,9 +312,7 @@ const sendQuestionnaire =
         return null;
       });
       if (refused) {
-        throw new Error(
-          `${refused.map((r) => `${r.code} at ${r.path || '/'}: ${r.detail}`).join(' | ')} — nothing was written`,
-        );
+        return refusedAnswer(refused, 'ASSISTANT_REFUSED');
       }
       await announce(conversationId, messageId, 'assistant');
       return {
@@ -337,6 +336,8 @@ async function openBatchOnRequirement(requirementId: string) {
   return b?.id ?? null;
 }
 
+const refuseAsk = refuser<QuestionnaireRefusalCode>('CLARIFICATION_ALREADY_OPEN');
+
 const clarifyInput = z.strictObject({
   prompt: z.string().trim().min(5).max(2_000),
   needed: z.string().trim().min(3).max(1_000),
@@ -356,8 +357,9 @@ const askClarification =
       const input = clarifyInput.parse(args);
       const batch = await openBatchOnRequirement(room.requirementId);
       if (batch) {
-        throw new Error(
-          `CLARIFICATION_ALREADY_OPEN: questionnaire ${batch} is still open on this requirement; at most one ask is open per item — wait for its answers.`,
+        throw refuseAsk(
+          'CLARIFICATION_ALREADY_OPEN',
+          `questionnaire ${batch} is still open on this requirement; at most one ask is open per item — wait for its answers.`,
         );
       }
       try {
@@ -373,8 +375,9 @@ const askClarification =
       } catch (err) {
         if (!isUniqueViolation(err)) throw err;
         const open = await clarificationOf(room.requirementId);
-        throw new Error(
-          `CLARIFICATION_ALREADY_OPEN: question ${open?.id ?? '(unknown)'} is still open on this requirement; at most one is open per item — wait for its answer.`,
+        throw refuseAsk(
+          'CLARIFICATION_ALREADY_OPEN',
+          `question ${open?.id ?? '(unknown)'} is still open on this requirement; at most one is open per item — wait for its answer.`,
         );
       }
     },

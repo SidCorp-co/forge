@@ -23,14 +23,10 @@ export const OASDIFF_RELEASES: Readonly<Record<string, string>> = {
 
 export const IMAGE_OASDIFF = '/usr/local/bin/oasdiff';
 
-export class DifferUnavailable extends Error {
-  readonly code = 'DIFFER_UNAVAILABLE';
-}
-
 function asset(platform: string): { name: string; sha256: string } {
   const sha256 = OASDIFF_RELEASES[platform];
   if (!sha256) {
-    throw new DifferUnavailable(
+    throw new Error(
       `oasdiff ${OASDIFF_VERSION} has no pinned release for ${platform}; pinned: ${Object.keys(OASDIFF_RELEASES).join(', ')}.`,
     );
   }
@@ -52,13 +48,13 @@ const verified = new Map<string, Promise<string>>();
 // cm:why a binary of another version measures with other checks, so a land is refused rather than measured by a differ nobody pinned
 async function verify(bin: string): Promise<string> {
   if (!existsSync(bin)) {
-    throw new DifferUnavailable(
+    throw new Error(
       `oasdiff is not at ${bin}; the core image installs ${OASDIFF_VERSION} there, and anywhere else OASDIFF_BIN names it (fetch it with \`pnpm --filter @forge/core oasdiff:fetch\`).`,
     );
   }
   const { stdout } = await run(bin, ['--version'], { timeout: 10_000 });
   if (!stdout.includes(`version ${OASDIFF_VERSION}`)) {
-    throw new DifferUnavailable(
+    throw new Error(
       `${bin} reports "${stdout.trim()}", and core is pinned to oasdiff ${OASDIFF_VERSION}.`,
     );
   }
@@ -84,11 +80,11 @@ export async function fetchOasdiff(
   if (existsSync(target)) return verify(target);
   const url = releaseDownloadUrl('oasdiff/oasdiff', `v${OASDIFF_VERSION}`, name);
   const download = await downloadReleaseAsset(url, { timeoutMs: 120_000 });
-  if (!download.ok) throw new DifferUnavailable(`GET ${url} answered HTTP ${download.status}`);
+  if (!download.ok) throw new Error(`GET ${url} answered HTTP ${download.status}`);
   const bytes = download.bytes;
   const got = createHash('sha256').update(bytes).digest('hex');
   if (got !== sha256) {
-    throw new DifferUnavailable(`${name} hashes ${got}; the pin is ${sha256}.`);
+    throw new Error(`${name} hashes ${got}; the pin is ${sha256}.`);
   }
   const work = await mkdtemp(join(tmpdir(), 'oasdiff-'));
   try {

@@ -76,7 +76,7 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
     .limit(1);
 
   // An operator's drain or disable survives the box registering again, as it survives a heartbeat
-  // (`devices/heartbeat-runner-mirror.ts`): only an offline runner comes online here.
+  // (`runners/heartbeat-mirror.ts`): only an offline runner comes online here.
   const comeOnline = (id: string) =>
     transition(db, RUNNER_MACHINE, {
       to: 'online',

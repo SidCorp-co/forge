@@ -469,7 +469,7 @@ async fn cleanup_attachments(dir: Option<&std::path::Path>) {
 /// transcript held no tool call, no todo list, no run total and no pause —
 /// measured on forge-dev, session 5250d5e1: 17 assistant turns over dozens of
 /// tool calls, zero tool frames stored. The lines go to core whole and
-/// `jobs/session-transcript.ts` folds them with the parser every other producer
+/// `agent-sessions/session-transcript.ts` folds them with the parser every other producer
 /// already goes through.
 async fn consume(
     client: &CoreClient,

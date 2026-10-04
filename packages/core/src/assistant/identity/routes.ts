@@ -8,12 +8,15 @@
  * unlink are the person's own and name no project.
  */
 
+import type { SpeakerRefusalCode } from '@forge/contracts/assistant';
 import { and, desc, eq } from 'drizzle-orm';
 import { Hono, type MiddlewareHandler } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import type { ConversationAdapter } from '../../db/schema-conversations.js';
 import { assistantSpeakerLinks } from '../../db/schema-speaker-links.js';
+import { type RefusalError, refuser } from '../../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { proposeCandidates, type SpeakerCandidate } from './candidates.js';
@@ -38,11 +41,20 @@ const SPEAKER_BODY_REQUIRED: SpeakerRefusal = {
     'both "source" and "externalId" are required. "source" is the chat channel, "externalId" is that channel\'s own user id for the speaker — never their display name.',
 };
 
-const speakerBody = zValidator('json', speakerBodySchema, (result, c) => {
+const speakerBody = zValidator('json', speakerBodySchema, (result) => {
   if (!result.success) {
-    return c.json({ error: SPEAKER_BODY_REQUIRED.message, code: SPEAKER_BODY_REQUIRED.code }, 400);
+    throw new HTTPException(400, {
+      message: `invalid body: ${SPEAKER_BODY_REQUIRED.message}`,
+      cause: { code: 'BAD_REQUEST' },
+    });
   }
 });
+
+const refuseSpeaker = refuser<SpeakerRefusalCode>('SPEAKER_SOURCE_UNKNOWN');
+
+/** A speaker refusal in the one envelope: 422, nothing written. */
+const refused = (refusal: SpeakerRefusal, path = ''): RefusalError =>
+  refuseSpeaker(refusal.code, refusal.message, path);
 
 // cm:why project access is refused before the body is read, so a stranger learns nothing from a 400
 const projectAccess: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
@@ -119,9 +131,9 @@ speakerLinkProjectRoutes.post(
     const userId = c.get('userId');
     const projectId = c.req.param('projectId');
     const body = readBody(c.req.valid('json'));
-    if (isRefusal(body)) return c.json({ error: body.message, code: body.code }, 400);
+    if (isRefusal(body)) throw refused(body, '/source');
     const found = await profileAndCandidates(projectId, body.source, body.externalId);
-    if (isRefusal(found)) return c.json({ error: found.message, code: found.code }, 404);
+    if (isRefusal(found)) throw refused(found, '/externalId');
     return c.json(describe(found.profile, found.candidates, userId));
   },
 );
@@ -134,29 +146,23 @@ speakerLinkProjectRoutes.post(
     const userId = c.get('userId');
     const projectId = c.req.param('projectId');
     const body = readBody(c.req.valid('json'));
-    if (isRefusal(body)) return c.json({ error: body.message, code: body.code }, 400);
+    if (isRefusal(body)) throw refused(body, '/source');
     const found = await profileAndCandidates(projectId, body.source, body.externalId);
-    if (isRefusal(found)) return c.json({ error: found.message, code: found.code }, 404);
+    if (isRefusal(found)) throw refused(found, '/externalId');
     const { profile, candidates } = found;
 
     const mine = candidates.filter((cand) => cand.userId === userId);
     if (!mine.some((cand) => cand.confirmable)) {
       const near = mine.find((cand) => cand.matchedOn === 'local-part');
       if (near) {
-        return c.json(
-          {
-            code: 'SPEAKER_ADDRESS_DIFFERS',
-            error: `${profile.source} reports ${profile.email} for that speaker, and your Forge address is ${near.email}. The local parts match but the domains do not, which proposes a link and cannot confirm one. Make the two addresses the same, on either side, and confirm again.`,
-          },
-          403,
+        throw refuseSpeaker(
+          'SPEAKER_ADDRESS_DIFFERS',
+          `${profile.source} reports ${profile.email} for that speaker, and your Forge address is ${near.email}. The local parts match but the domains do not, which proposes a link and cannot confirm one. Make the two addresses the same, on either side, and confirm again.`,
         );
       }
-      return c.json(
-        {
-          code: 'SPEAKER_NOT_THE_TARGET',
-          error: `${profile.source} reports ${profile.email} for that speaker, which is not your Forge address. A link is confirmed by the person being mapped, signed in themselves — never by an administrator on their behalf, because the authority checked afterwards is the mapped user's and not the confirmer's.`,
-        },
-        403,
+      throw refuseSpeaker(
+        'SPEAKER_NOT_THE_TARGET',
+        `${profile.source} reports ${profile.email} for that speaker, which is not your Forge address. A link is confirmed by the person being mapped, signed in themselves — never by an administrator on their behalf, because the authority checked afterwards is the mapped user's and not the confirmer's.`,
       );
     }
 
@@ -184,15 +190,11 @@ speakerLinkProjectRoutes.post(
           ),
         )
         .limit(1);
-      return c.json(
-        {
-          code: 'SPEAKER_ALREADY_LINKED',
-          error:
-            held?.userId === userId
-              ? 'that speaker is already linked to you. Unlink it first if you mean to re-make the link.'
-              : 'that speaker is already linked to another Forge user. Whoever holds the link unlinks it before it can be re-made.',
-        },
-        409,
+      throw refuseSpeaker(
+        'SPEAKER_ALREADY_LINKED',
+        held?.userId === userId
+          ? 'that speaker is already linked to you. Unlink it first if you mean to re-make the link.'
+          : 'that speaker is already linked to another Forge user. Whoever holds the link unlinks it before it can be re-made.',
       );
     }
     return c.json({ link: row }, 201);
@@ -215,8 +217,7 @@ speakerLinkMeRoutes.get('/me/speaker-links', async (c) => {
 speakerLinkMeRoutes.delete('/me/speaker-links/:source/:namespace/:externalId', async (c) => {
   const source = c.req.param('source');
   if (!isConversationAdapter(source)) {
-    const refusal = sourceUnknownRefusal(source);
-    return c.json({ error: refusal.message, code: refusal.code }, 400);
+    throw refused(sourceUnknownRefusal(source), '/source');
   }
   const deleted = await db
     .delete(assistantSpeakerLinks)
@@ -230,13 +231,10 @@ speakerLinkMeRoutes.delete('/me/speaker-links/:source/:namespace/:externalId', a
     )
     .returning({ id: assistantSpeakerLinks.id });
   if (deleted.length === 0) {
-    return c.json(
-      {
-        code: 'SPEAKER_UNLINKED',
-        error: 'you hold no link for that speaker, so there is nothing to unlink.',
-      },
-      404,
-    );
+    throw new HTTPException(404, {
+      message: 'you hold no link for that speaker, so there is nothing to unlink.',
+      cause: { code: 'SPEAKER_UNLINKED' },
+    });
   }
   return c.json({ unlinked: deleted.length });
 });

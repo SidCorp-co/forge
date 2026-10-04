@@ -3,8 +3,8 @@ import type { BindingRole } from '../db/release-axes.js';
 import {
   AGENT_ACCESS_CLOSED,
   type AgentAccess,
+  agentAccessRefusedMessage,
   agentAccessTier,
-  noAgentPathMessage,
 } from '../integrations/agent-access.js';
 import { getAdapter, getIntegration } from '../integrations/registry.js';
 import {
@@ -55,12 +55,13 @@ export const bindEffects: BindEffects = {
       });
     }
     if (agentAccess === AGENT_ACCESS_CLOSED) return out;
-    const tier = agentAccessTier(getIntegration(provider));
+    const decl = getIntegration(provider);
+    const tier = agentAccessTier(decl);
     if (tier === 'refused') {
       out.push({
         code: 'AGENT_ACCESS_UNSUPPORTED',
         path: '/agentAccess',
-        detail: noAgentPathMessage(provider),
+        detail: agentAccessRefusedMessage(provider, decl),
       });
     } else if (tier === 'org-admin') {
       const access = await effectiveProjectRole(userId, projectId);

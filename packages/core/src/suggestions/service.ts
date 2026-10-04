@@ -10,9 +10,9 @@
 
 import { SUGGESTION_MACHINE } from '@forge/contracts/suggestion-machine';
 import { SUGGESTION_PAYLOADS } from '@forge/contracts/suggestions';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
@@ -24,7 +24,8 @@ import {
   writeIssueRelations,
 } from '../issues/relations-service.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { notAnEdgeError, transition } from '../lifecycle/transition.js';
+import { RefusalError } from '../lib/refusal.js';
+import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
 import { permissionRefusalFor, requireCan } from '../permissions/index.js';
 import { lockRequirements } from '../requirements/service.js';
 import { type AcceptChannel, type Effect, type EffectWritten, writeEffect } from './effects.js';
@@ -42,7 +43,6 @@ import {
   inTx,
   lockTarget,
   movedBase,
-  Refused,
   recordDecision,
   type SuggestionOutcome,
 } from './write.js';
@@ -122,7 +122,7 @@ async function acceptDuplicateOfIssue(
           await lockTarget(tx, projectId, target);
           const row = await rowOf(tx, projectId, first.id, true);
           const decided = decidedRefusal(row.status);
-          if (decided) throw new Refused([decided]);
+          if (decided) throw new RefusalError([decided], 'SUGGESTION_REFUSED');
           relations = await writeIssueRelations(
             {
               actor: { type: 'user', id: actor.userId, agency: actor.agency },
@@ -151,7 +151,7 @@ async function acceptDuplicateOfIssue(
       },
     );
   } catch (err) {
-    if (err instanceof Refused) return { ok: false, refusals: err.refusals };
+    if (err instanceof RefusalError) return { ok: false, refusals: [...err.refusals] };
     if (err instanceof TransitionError) {
       return { ok: false, refusals: [{ code: err.code, path: '', detail: err.detail }] };
     }
@@ -312,4 +312,38 @@ export async function withdrawSuggestion(input: {
   });
   if (refusals) return { ok: false, refusals };
   return answer(input.id);
+}
+
+/**
+ * A feedback's reporter data is deleted (UC15): its proposed suggestions are withdrawn, a decided
+ * one's payload is purged, and an accepted one keeps only that it was redacted.
+ */
+export async function redactFeedbackSuggestions(
+  tx: Tx,
+  feedbackId: string,
+  args: { why: string; now: Date; actor: KernelActor },
+): Promise<void> {
+  await transition(tx, SUGGESTION_MACHINE, {
+    to: 'withdrawn',
+    from: 'proposed',
+    set: { decidedAt: args.now, reason: args.why },
+    where: eq(suggestions.feedbackId, feedbackId),
+    reason: args.why,
+    actor: args.actor,
+    source: 'feedback-redact',
+    returning: ['id'],
+  });
+  await tx
+    .update(suggestions)
+    .set({ payload: null, payloadPurgedAt: args.now })
+    .where(
+      and(
+        eq(suggestions.feedbackId, feedbackId),
+        inArray(suggestions.status, ['rejected', 'stale', 'withdrawn']),
+      ),
+    );
+  await tx
+    .update(suggestions)
+    .set({ payload: { redacted: true } })
+    .where(and(eq(suggestions.feedbackId, feedbackId), eq(suggestions.status, 'accepted')));
 }

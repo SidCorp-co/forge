@@ -7,12 +7,11 @@
  * the node it claims to render, because there is nothing between the two to go stale.
  */
 
-import {
-  type FlowArrow,
-  type ModuleFlow,
-  ModuleFlowParseError,
-  parseModuleFlow,
-} from './module-diagram-flow.js';
+import type { LabelRefusalCode } from '@forge/contracts/labels';
+import { refuser } from '../lib/refusal.js';
+import { type FlowArrow, type ModuleFlow, parseModuleFlow } from './module-diagram-flow.js';
+
+const refuse = refuser<LabelRefusalCode>('LABEL_REFUSED');
 
 export const moduleDiagramKinds = ['mindmap', 'context', 'user-flow', 'swimlane'] as const;
 export type ModuleDiagramKind = (typeof moduleDiagramKinds)[number];
@@ -50,18 +49,6 @@ export interface ModuleDiagramSnapshot {
   modules: ModuleSnapshot[];
   coOccurrences: CoOccurrence[];
   declaredEdges: DeclaredModuleEdge[];
-}
-
-export type ModuleDiagramErrorCode = 'NO_MODULES' | 'NO_MODULE_FLOWS' | 'UNPARSABLE_MODULE_FLOW';
-
-export class ModuleDiagramError extends Error {
-  constructor(
-    readonly code: ModuleDiagramErrorCode,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'ModuleDiagramError';
-  }
 }
 
 /** Mermaid node ids are generated, never taken from user text — a slug may hold characters mermaid reads as syntax. */
@@ -141,20 +128,17 @@ function parseFlows(modules: ModuleSnapshot[]): ParsedModule[] {
   const parsed: ParsedModule[] = [];
   for (const module of modules) {
     if (!module.node) continue;
-    let flow: ModuleFlow | null;
-    try {
-      flow = parseModuleFlow(module.node.body);
-    } catch (err) {
-      if (!(err instanceof ModuleFlowParseError)) throw err;
-      throw new ModuleDiagramError(
+    const flow = parseModuleFlow(module.node.body);
+    if (flow && 'unreadable' in flow) {
+      throw refuse(
         'UNPARSABLE_MODULE_FLOW',
-        `module \`${module.slug}\` stores a flow this generator cannot read: ${err.message}`,
+        `module \`${module.slug}\` stores a flow this generator cannot read: ${flow.unreadable}`,
       );
     }
     if (flow) parsed.push({ module, flow });
   }
   if (parsed.length === 0) {
-    throw new ModuleDiagramError(
+    throw refuse(
       'NO_MODULE_FLOWS',
       'no module of this project stores a Mermaid flow in its knowledge node',
     );
@@ -241,7 +225,7 @@ export function generateModuleDiagram(
   snapshot: ModuleDiagramSnapshot,
 ): string {
   if (snapshot.modules.length === 0) {
-    throw new ModuleDiagramError(
+    throw refuse(
       'NO_MODULES',
       'this project has no modules, so there is no taxonomy to draw',
     );

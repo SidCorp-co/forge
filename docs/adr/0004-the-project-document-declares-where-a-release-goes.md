@@ -62,6 +62,5 @@ read from `scripts/export-legacy-project-config.mjs` run against the database be
   is the target its issue's merge mark recorded, audits each read and scrubs each value from that
   job's output.
 - **forge-plugin reads the deleted fields.** It reads `releaseModel`, `liveBranch`,
-  `releaseStrategy` and `environments` from `forge_projects.get` and `forge_config`, and `stages`
-  from `forge_coolify_deploy list`. Those readers break until that repository moves to the
+  `releaseStrategy`, `environments` and a binding's `stages`. Those readers break until that repository moves to the
   document. This is a boundary, not an amnesty: this repository cannot edit it.

@@ -32,8 +32,6 @@ export const HISTORY_USAGE = [
   'bench:assistant harvest <history.json> --out <dir>',
 ];
 
-export class HistoryRefusal extends Error {}
-
 interface Flags {
   values: Record<string, string>;
   excludes: string[];
@@ -44,14 +42,14 @@ function flags(argv: string[]): Flags {
   const out: Flags = { values: {}, excludes: [], resolve: false };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] ?? '';
-    if (!arg.startsWith('--')) throw new HistoryRefusal(`unexpected argument ${arg}`);
+    if (!arg.startsWith('--')) throw new Error(`unexpected argument ${arg}`);
     if (arg === '--resolve') {
       out.resolve = true;
       continue;
     }
     const value = argv[i + 1];
     if (value === undefined || value.startsWith('--'))
-      throw new HistoryRefusal(`${arg} needs a value`);
+      throw new Error(`${arg} needs a value`);
     if (arg === '--exclude') out.excludes.push(value);
     else out.values[arg.slice(2)] = value;
     i += 1;
@@ -63,14 +61,14 @@ function positive(name: string, raw: string | undefined, fallback: number): numb
   if (raw === undefined) return fallback;
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0)
-    throw new HistoryRefusal(`--${name} must be a positive number, got ${raw}`);
+    throw new Error(`--${name} must be a positive number, got ${raw}`);
   return n;
 }
 
 function positiveInt(name: string, raw: string | undefined, fallback: number): number {
   const n = positive(name, raw, fallback);
   if (!Number.isInteger(n))
-    throw new HistoryRefusal(`--${name} must be a positive integer, got ${raw}`);
+    throw new Error(`--${name} must be a positive integer, got ${raw}`);
   return n;
 }
 
@@ -89,7 +87,7 @@ async function judgeHistory(
 ): Promise<HistoryJudge> {
   const same = groups.find((g) => g.model === judge.model);
   if (same)
-    throw new HistoryRefusal(
+    throw new Error(
       `judge ${judge.model} is a model under test (group ${same.model} / ${same.source}); no row judged`,
     );
   const picked = [...graded].sort((x, y) => newestFirst(x.row, y.row)).slice(0, sample);
@@ -138,7 +136,7 @@ async function signIn(client: BenchClient, env: Env): Promise<void> {
     await client.signIn(env.FORGE_BENCH_EMAIL, env.FORGE_BENCH_PASSWORD);
     return;
   }
-  throw new HistoryRefusal(
+  throw new Error(
     'no credential: set FORGE_BENCH_TOKEN, or both FORGE_BENCH_EMAIL and FORGE_BENCH_PASSWORD (read from the environment only)',
   );
 }
@@ -178,12 +176,12 @@ async function history(argv: string[], env: Env, deps: CliDeps): Promise<number>
   const f = flags(argv);
   for (const need of ['api', 'project', 'from', 'to', 'out']) {
     if (!f.values[need])
-      throw new HistoryRefusal(`--${need} is required\n${HISTORY_USAGE.join('\n')}`);
+      throw new Error(`--${need} is required\n${HISTORY_USAGE.join('\n')}`);
   }
   const budgetSeconds = positive('budget-seconds', f.values['budget-seconds'], 60);
   const maxIterations = positive('max-iterations', f.values['max-iterations'], 8);
   if (f.values['judge-sample'] !== undefined && !f.values.judge)
-    throw new HistoryRefusal('--judge-sample needs --judge <model>');
+    throw new Error('--judge-sample needs --judge <model>');
   const judgeSample = positiveInt('judge-sample', f.values['judge-sample'], 40);
   const judge = f.values.judge ? judgeFromEnv(env, f.values.judge, deps.fetch) : undefined;
   const window = {
@@ -267,10 +265,10 @@ async function history(argv: string[], env: Env, deps: CliDeps): Promise<number>
 async function harvestFile(argv: string[], deps: CliDeps): Promise<number> {
   const [file, ...rest] = argv;
   if (!file || file.startsWith('--'))
-    throw new HistoryRefusal(`harvest needs a history file\n${HISTORY_USAGE.join('\n')}`);
+    throw new Error(`harvest needs a history file\n${HISTORY_USAGE.join('\n')}`);
   const f = flags(rest);
   const dir = f.values.out;
-  if (!dir) throw new HistoryRefusal(`--out is required\n${HISTORY_USAGE.join('\n')}`);
+  if (!dir) throw new Error(`--out is required\n${HISTORY_USAGE.join('\n')}`);
   const result = readHistoryResult(await deps.readFile(file), file);
   const out = harvest(result, loadTasks(), file);
   await deps.mkdir(dir);
@@ -280,7 +278,7 @@ async function harvestFile(argv: string[], deps: CliDeps): Promise<number> {
       await deps.writeNew(path, c.source);
     } catch (err) {
       if ((err as { code?: string }).code === 'EEXIST')
-        throw new HistoryRefusal(
+        throw new Error(
           `${path} exists and a candidate is never overwritten; move or delete it first (nothing after it was written)`,
         );
       throw err;
@@ -293,7 +291,7 @@ async function harvestFile(argv: string[], deps: CliDeps): Promise<number> {
 async function compareFiles(argv: string[], deps: CliDeps): Promise<number> {
   const [before, after] = argv;
   if (!before || !after)
-    throw new HistoryRefusal(
+    throw new Error(
       `compare-history needs two history files\n${HISTORY_USAGE.join('\n')}`,
     );
   const a = readHistoryResult(await deps.readFile(before), before);
@@ -313,7 +311,7 @@ export async function historyMain(
     if (verb === 'history') return await history(rest, env, deps);
     if (verb === 'compare-history') return await compareFiles(rest, deps);
     if (verb === 'harvest') return await harvestFile(rest, deps);
-    throw new HistoryRefusal(HISTORY_USAGE.join('\n'));
+    throw new Error(HISTORY_USAGE.join('\n'));
   } catch (err) {
     deps.stderr(err instanceof Error ? err.message : String(err));
     return 1;

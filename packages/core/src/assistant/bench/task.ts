@@ -131,13 +131,6 @@ export interface Task {
   turns: Turn[];
 }
 
-export class TaskLoadError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'TaskLoadError';
-  }
-}
-
 const PLACEHOLDER_RE = /\{(\w+)\}/g;
 
 function placeholdersIn(text: string): string[] {
@@ -170,49 +163,49 @@ export function validateTasks(list: readonly Task[]): Task[] {
   const seen = new Set<string>();
   const kinds = new Set<string>(CHECK_KINDS);
   for (const task of list) {
-    if (seen.has(task.id)) throw new TaskLoadError(`task id ${task.id} appears twice`);
+    if (seen.has(task.id)) throw new Error(`task id ${task.id} appears twice`);
     seen.add(task.id);
-    if (!task.intent?.trim()) throw new TaskLoadError(`task ${task.id} carries no intent line`);
+    if (!task.intent?.trim()) throw new Error(`task ${task.id} carries no intent line`);
     if (!(CAPABILITIES as readonly string[]).includes(task.capability))
-      throw new TaskLoadError(
+      throw new Error(
         `task ${task.id} names capability ${String(task.capability)}, not one of ${CAPABILITIES.join(', ')}`,
       );
     if (
       task.judgeRubric !== undefined &&
       (/\n/.test(task.judgeRubric) || task.judgeRubric.length > 300)
     )
-      throw new TaskLoadError(`task ${task.id} judgeRubric must be one line under 300 characters`);
+      throw new Error(`task ${task.id} judgeRubric must be one line under 300 characters`);
     if (
       task.judgeRubric !== undefined &&
       task.turns.length > 1 &&
       !TURN_SCOPED.test(task.judgeRubric)
     )
-      throw new TaskLoadError(
+      throw new Error(
         `task ${task.id} judgeRubric is handed to every one of its ${task.turns.length} turns, so it must name the turn each requirement belongs to ("on the first turn…", "on a turn that…", "on each turn…")`,
       );
     if (!(task.budgetSeconds > 0))
-      throw new TaskLoadError(`task ${task.id} names no budget in seconds`);
-    if (task.turns.length === 0) throw new TaskLoadError(`task ${task.id} has no turn`);
+      throw new Error(`task ${task.id} names no budget in seconds`);
+    if (task.turns.length === 0) throw new Error(`task ${task.id} has no turn`);
     const filled = new Set((task.fixtures ?? []).flatMap((f) => FIXTURE_KEYS[f]));
     task.turns.forEach((turn, index) => {
       const where = `task ${task.id} turn ${index + 1}`;
-      if (turn.checks.length === 0) throw new TaskLoadError(`${where} carries no check`);
+      if (turn.checks.length === 0) throw new Error(`${where} carries no check`);
       if (index === 0 && turn.room === 'new')
-        throw new TaskLoadError(`${where} asks for a new room, and the first turn opens the room`);
+        throw new Error(`${where} asks for a new room, and the first turn opens the room`);
       for (const check of turn.checks) {
         if (!kinds.has(check.kind))
-          throw new TaskLoadError(
+          throw new Error(
             `${where} names check kind ${String(check.kind)}, not in the vocabulary`,
           );
       }
       const texts = [turn.message, ...turn.checks.flatMap(literalPatterns)];
       for (const key of texts.flatMap(placeholdersIn)) {
         if (!filled.has(key))
-          throw new TaskLoadError(`${where} reads {${key}}, which no fixture of the task fills`);
+          throw new Error(`${where} reads {${key}}, which no fixture of the task fills`);
       }
     });
     if (movesPreferences(task) && task.preference?.restore !== 'baseline')
-      throw new TaskLoadError(`task ${task.id} moves a preference and names no restore`);
+      throw new Error(`task ${task.id} moves a preference and names no restore`);
   }
   return [...list];
 }
@@ -221,7 +214,7 @@ export function validateTasks(list: readonly Task[]): Task[] {
 export function fill(text: string, values: Record<string, string>): string {
   return text.replace(PLACEHOLDER_RE, (_, key: string) => {
     const value = values[key];
-    if (value === undefined) throw new TaskLoadError(`placeholder {${key}} has no value`);
+    if (value === undefined) throw new Error(`placeholder {${key}} has no value`);
     return value;
   });
 }

@@ -18,6 +18,7 @@
  * `member` for both.
  */
 
+import type { MergeRefusalCode } from '@forge/contracts/issues';
 import { and, eq } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -38,12 +39,15 @@ import {
   mergeStoredChangeRequest,
 } from '../integrations/source-host/merge.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { mergedLandingSchema } from './landing-evidence.js';
-import { applyMergeMarker, MergeMarkerError, mergedCommitShaSchema } from './merge-marker.js';
 import { requireHeld } from '../permissions/index.js';
+import { mergedLandingSchema } from './landing-evidence.js';
+import { applyMergeMarker, mergedCommitShaSchema } from './merge-marker.js';
+
+const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
 
 export const issueMergeRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -84,42 +88,26 @@ async function runMergeMarker(
   requireHeld(access, 'project.write');
 
   const actor = restActor(c);
-  try {
-    const { action, mark, markDetail } = await applyMergeMarker({
-      issue,
-      op,
-      ...(body.target ? { target: body.target } : {}),
-      ...(body.note ? { note: body.note } : {}),
-      ...(body.commit ? { commit: body.commit } : {}),
-      ...(body.landing ? { landing: body.landing } : {}),
-      ...(body.mergedAt ? { mergedAt: new Date(body.mergedAt) } : {}),
-      ...(body.contracts ? { contracts: body.contracts } : {}),
-      actor: {
-        agency: actor.agency,
-        commentAuthorId: userId,
-        hookActor: { type: actor.type, id: actor.id, agency: actor.agency },
-      },
-    });
-    // ISS-1126 — `mark` and `detail` say which kind of record this call left. Without them a
-    // caller reads `action: 'merged'` and has no way to learn that what it wrote is a claim
-    // Forge did not observe; the sentence has been composed for the audit trail since ISS-959
-    // and never reached the one party that could act on it.
-    return c.json({ id: issueId, action, mark, detail: markDetail });
-  } catch (err) {
-    if (err instanceof MergeMarkerError) {
-      if (err.code === 'ISSUE_NOT_FOUND') throw notFound('issue not found');
-      // Whether a target is owed is the project's shape (`landing-evidence.ts`); the body is
-      // the one this door has always answered a missing target with.
-      if (err.code === 'TARGET_REQUIRED') {
-        throw badRequest({ formErrors: ['target is required'], fieldErrors: {} });
-      }
-      throw new HTTPException(422, {
-        message: err.message,
-        cause: { code: err.code, ...(err.details ? { details: err.details } : {}) },
-      });
-    }
-    throw err;
-  }
+  const { action, mark, markDetail } = await applyMergeMarker({
+    issue,
+    op,
+    ...(body.target ? { target: body.target } : {}),
+    ...(body.note ? { note: body.note } : {}),
+    ...(body.commit ? { commit: body.commit } : {}),
+    ...(body.landing ? { landing: body.landing } : {}),
+    ...(body.mergedAt ? { mergedAt: new Date(body.mergedAt) } : {}),
+    ...(body.contracts ? { contracts: body.contracts } : {}),
+    actor: {
+      agency: actor.agency,
+      commentAuthorId: userId,
+      hookActor: { type: actor.type, id: actor.id, agency: actor.agency },
+    },
+  });
+  // ISS-1126 — `mark` and `detail` say which kind of record this call left. Without them a
+  // caller reads `action: 'merged'` and has no way to learn that what it wrote is a claim
+  // Forge did not observe; the sentence has been composed for the audit trail since ISS-959
+  // and never reached the one party that could act on it.
+  return c.json({ id: issueId, action, mark, detail: markDetail });
 }
 
 const mergeMarkerValidators = [
@@ -168,7 +156,7 @@ async function resolveStoredPullRequest(
   projectId: string,
   issueId: string,
   number: number | undefined,
-): Promise<{ id: string } | { refusal: string; code: string }> {
+): Promise<{ id: string } | { refusal: string; code: 'NO_PULL_REQUEST' | 'PROJECTION_EMPTY' }> {
   if (number !== undefined) {
     const [row] = await db
       .select({ id: repoPullRequests.id })
@@ -223,10 +211,7 @@ issueMergeRoutes.post(
 
     const stored = await resolveStoredPullRequest(issue.projectId, issueId, body.pullRequest);
     if ('refusal' in stored) {
-      throw new HTTPException(422, {
-        message: stored.refusal,
-        cause: { code: stored.code },
-      });
+      throw refuse(stored.code, stored.refusal, '/pullRequest');
     }
 
     const actor = restActor(c);
@@ -240,10 +225,7 @@ issueMergeRoutes.post(
       });
       if (!outcome) throw notFound('pull request not found');
       if (outcome.kind === 'refused') {
-        throw new HTTPException(422, {
-          message: outcome.detail,
-          cause: { code: 'MERGE_REFUSED', reason: outcome.reason },
-        });
+        throw refuse('MERGE_REFUSED', `${outcome.detail} (${outcome.reason})`);
       }
       return c.json({
         id: issueId,
@@ -262,7 +244,7 @@ issueMergeRoutes.post(
         });
       }
       if (err instanceof SourceHostUnavailable) {
-        throw new HTTPException(422, { message: err.message, cause: { code: 'NO_BINDING' } });
+        throw refuse('NO_BINDING', err.message);
       }
       throw err;
     }

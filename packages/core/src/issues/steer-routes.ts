@@ -11,7 +11,7 @@ import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { SteerError, steerIssue } from '../agent-sessions/steer-session.js';
+import { steerIssue } from '../agent-sessions/steer-session.js';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
@@ -26,12 +26,6 @@ const steerBodySchema = z
     reason: z.string().trim().min(1).max(500).optional(),
   })
   .strict();
-
-const STATUS: Record<SteerError['code'], 404 | 409> = {
-  NO_LIVE_SESSION: 404,
-  SESSION_PARKED: 409,
-  NO_DEVICE: 409,
-};
 
 export const issueSteerRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -68,23 +62,13 @@ issueSteerRoutes.post(
     const access = await loadProjectAccess(issue.projectId, userId);
     requireHeld(access, 'project.write');
 
-    try {
-      return c.json(
-        await steerIssue(id, body, {
-          actorUserId: userId,
-          actorAgency: restActor(c).agency,
-          reason: reason ?? 'steer (REST)',
-          source: 'rest',
-        }),
-      );
-    } catch (e) {
-      if (e instanceof SteerError) {
-        throw new HTTPException(STATUS[e.code], {
-          message: e.message,
-          cause: { code: e.code },
-        });
-      }
-      throw e;
-    }
+    return c.json(
+      await steerIssue(id, body, {
+        actorUserId: userId,
+        actorAgency: restActor(c).agency,
+        reason: reason ?? 'steer (REST)',
+        source: 'rest',
+      }),
+    );
   },
 );

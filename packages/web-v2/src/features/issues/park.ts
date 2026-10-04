@@ -4,13 +4,9 @@
 // more click (ISS-1310). The park view is read once and every surface below takes it from here.
 
 import { useQuery } from "@tanstack/react-query";
+import type { IssueMove } from "@forge/contracts/issue-machine";
 import type { MenuItem } from "@/design";
-import {
-	allowedTransitions,
-	type ParkReading,
-	parkAsksAQuestion,
-	statusLabel,
-} from "./derive";
+import { type ParkReading, statusLabel } from "./derive";
 import { issueDetailApi } from "./detail-api";
 import type { IssuePark, IssueStatus } from "./types";
 
@@ -63,15 +59,15 @@ const SET_DOWN: IssueStatus[] = ["on_hold", "dropped"];
  */
 export function parkMenuItems(args: {
 	status: IssueStatus;
-	/** The status the park left (`workState.leftStatus`): what the map returns it to. */
-	leftStatus?: IssueStatus | null;
+	/** Core's moves from this status, the park's return first. */
+	moves: readonly IssueMove[];
 	reading: ParkReading;
 	ordinary: MenuItem[];
 	actions: ParkMenuActions;
 }): MenuItem[] | null {
-	const { status, leftStatus = null, reading, ordinary, actions } = args;
+	const { status, moves, reading, ordinary, actions } = args;
 	const parked = PARKED.has(status);
-	const map = allowedTransitions(status, leftStatus);
+	const map = moves.map((m) => m.to);
 	const anyway: MenuItem[] = [
 		{
 			label: MOVE_ANYWAY_LABEL,
@@ -87,7 +83,7 @@ export function parkMenuItems(args: {
 	}
 	const park = reading.park;
 	if (!park) return null;
-	const asks = parkAsksAQuestion(park);
+	const asks = park.asks;
 	const answer: MenuItem[] = asks ? [{ label: ANSWER_LABEL, onSelect: actions.answer }] : [];
 	if (park.shape === "question") {
 		const below = ordinary.map((item, i) => (i === 0 ? { ...item, separatorBefore: true } : item));

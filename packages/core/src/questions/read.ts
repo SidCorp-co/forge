@@ -23,6 +23,7 @@ import type { PersonVia } from '../ecosystem/channel-schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import type { EgressSurface } from '../lib/data-egress.js';
+import { notFound } from '../middleware/route-errors.js';
 import { type PermissionFacts, requireHeld } from '../permissions/index.js';
 import { questionnaireSurface } from '../questionnaires/read.js';
 import {
@@ -33,7 +34,7 @@ import {
   type GivenAnswer,
   mayAnswerFreeText,
   mayChoose,
-  QuestionRefused,
+  refuseQuestion,
 } from './write.js';
 
 export type VisibleOption = QuestionOption & { locked: boolean };
@@ -151,9 +152,10 @@ function cursorPredicate(cursor: QuestionCursor | undefined) {
   if (!cursor) return undefined;
   const key = decodeCursor(cursor);
   if (!key) {
-    throw new QuestionRefused(
-      'the cursor does not decode to a `(created_at, id)` key: send back the `nextCursor` of the previous page exactly as it arrived',
+    throw refuseQuestion(
       'QUESTION_CURSOR_INVALID',
+      'the cursor does not decode to a `(created_at, id)` key: send back the `nextCursor` of the previous page exactly as it arrived',
+      '/cursor',
     );
   }
   return sql`(${agentQuestions.createdAt}, ${agentQuestions.id}) < (${key.at}::timestamptz, ${key.id}::uuid)`;
@@ -296,10 +298,10 @@ export async function answerAs(args: {
     .where(eq(agentQuestions.id, args.questionId))
     .limit(1);
   if (!row?.projectId) {
-    throw new QuestionRefused(`no question ${args.questionId}`, 'QUESTION_NOT_FOUND');
+    throw notFound(`no question ${args.questionId}`);
   }
   const access = await accessOn(row.projectId, args.userId);
-  if (!access) throw new QuestionRefused(`no question ${args.questionId}`, 'QUESTION_NOT_FOUND');
+  if (!access) throw notFound(`no question ${args.questionId}`);
   return answerQuestion({
     questionId: args.questionId,
     answer: args.answer,

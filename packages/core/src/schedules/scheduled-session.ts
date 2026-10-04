@@ -24,7 +24,7 @@ import {
   pickTurnCredentialDevice,
   type SessionAsker,
 } from '../agent-sessions/session-credential.js';
-import { TurnAuthorityRefused } from '../auth/turn-credential.js';
+import { turnAuthorityRefusalOf } from '../credentials/turn-credential.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
@@ -34,7 +34,6 @@ import { logger } from '../logger.js';
 type AgentSessionRow = typeof agentSessions.$inferSelect;
 
 export const SCHEDULE_OWNER_GONE_REFUSAL: SessionRefusal = {
-  status: 409,
   code: 'SCHEDULE_OWNER_GONE',
   message:
     'This schedule has no owner to run as: the account that saved it is gone. A project admin can save the schedule again to run it as themselves.',
@@ -82,8 +81,8 @@ export async function authorizeScheduledRun(args: {
 
 /** A mint that finds nothing to grant refuses inside the dispatch; it is the run's refusal too. */
 export function refusalOfMint(err: unknown): SessionRefusal | null {
-  if (!(err instanceof TurnAuthorityRefused)) return null;
-  return { status: 403, code: err.code, message: err.message };
+  const refused = turnAuthorityRefusalOf(err);
+  return refused ? { code: refused.code, message: refused.message } : null;
 }
 
 /**

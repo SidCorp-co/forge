@@ -5,12 +5,8 @@ import { issueStatuses } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import {
-  buildSmokeVerifyReport,
-  dispatchSmokeCanaries,
-  NoRunnerOnlineError,
-} from './smoke-verify.js';
 import { requireHeld } from '../permissions/index.js';
+import { buildSmokeVerifyReport, dispatchSmokeCanaries } from './smoke-verify.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
 
@@ -61,17 +57,7 @@ skillSmokeVerifyRoutes.post(
 
     let canary = null;
     if (tier === 2) {
-      try {
-        canary = await dispatchSmokeCanaries({ projectId, userId, stages });
-      } catch (err) {
-        if (err instanceof NoRunnerOnlineError) {
-          throw new HTTPException(409, {
-            message: err.message,
-            cause: { code: err.code },
-          });
-        }
-        throw err;
-      }
+      canary = await dispatchSmokeCanaries({ projectId, userId, stages });
     }
 
     // Freshly dispatched canaries surface as PENDING tier-2 entries.

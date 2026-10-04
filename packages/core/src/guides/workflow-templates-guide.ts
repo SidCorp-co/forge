@@ -3,8 +3,7 @@
 //
 // The vocabulary tables are rendered from the built-in registry itself, so the guide cannot list a
 // node type, a required field or an edge kind the kernel does not hold; only the choice table and
-// the sketches are written by hand, and `workflow-templates-guide.test.ts` holds a sketch to every
-// built-in.
+// the sketches are written by hand.
 
 import {
   BUILTIN_WORKFLOW_TEMPLATES,

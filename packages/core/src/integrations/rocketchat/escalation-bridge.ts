@@ -15,9 +15,8 @@ import { buildProjectToolset } from '../../assistant/tools/registry.js';
 import {
   CHAT_TURN_MENU,
   mintTurnCredential,
-  resolveTurnAuthority,
   type TurnCredential,
-} from '../../auth/turn-credential.js';
+} from '../../credentials/turn-credential.js';
 import { recordDeliveredReplyToVenue } from '../../conversations/transcript.js';
 import { db } from '../../db/client.js';
 import { type agentSessions as agentSessionsTable, projects } from '../../db/schema.js';
@@ -26,6 +25,7 @@ import { type MessageVerdict, problemsOf } from '../../messaging/contract.js';
 import { proven, wholeAgentText } from '../../messaging/proven.js';
 import { withRepairs } from '../../messaging/repairs.js';
 import { screenReplyAtDoor } from '../../messaging/reply-screen.js';
+import { resolveTurnAuthority } from '../../permissions/index.js';
 import { webBaseUrl } from './connection-manager.js';
 import { rocketChatVenueId } from './conversation-port.js';
 import { ESCALATION_FALLBACK_REPLY } from './escalation.js';

@@ -55,6 +55,6 @@ The price of doing this, not of leaving it:
 | Cost | What it takes |
 |---|---|
 | A token clients hold has to change | The era cannot go into `cursorKeyExpr` alone. `decodeCommentCursor` has to accept both spellings for a window, or the token has to carry a version byte, and either way a cursor minted before the change and replayed after it is a case somebody has to decide about rather than discover. |
-| A test that cannot be written from the product | Nothing that writes a comment can produce a BC `created_at`, so the case is planted with raw SQL. That is the same shape as ISS-1173's own boundary tests, and the same objection applies to it: the reproduction proves the pager, not that anything reaches the pager this way. |
+| A test that cannot be written from the product | Nothing that writes a comment can produce a BC `created_at`, so the case is planted with raw SQL, and the reproduction proves the pager, not that anything reaches the pager this way. |
 | It buys nothing anyone has hit | No comment in any deployment carries a BC or infinite `created_at`, and no writer can make one. This is a spelling made consistent before it is needed, which is the only moment it is cheap and also the hardest moment to justify spending a round on. |
 | Two spellings meanwhile | Until it is taken, `page-read.ts` and `comments/service.ts` hold visibly different formats for one idea, and a reader comparing them has to find this file to learn which is right and why. That is the cost of recording it here instead of fixing it. |

@@ -1,6 +1,7 @@
 import { and, countDistinct, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import type { NotificationRefusalCode } from '@forge/contracts/notifications';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import type { NotificationType } from '../db/schema.js';
@@ -12,6 +13,7 @@ import {
 } from '../db/schema.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
+import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { emitEvent } from '../outbox/index.js';
@@ -41,8 +43,7 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-const conflict = (message: string) =>
-  new HTTPException(409, { message, cause: { code: 'CONDITION_STILL_TRUE' } });
+const refuse = refuser<NotificationRefusalCode>('NOTIFICATION_REFUSED');
 
 /**
  * ISS-1063 — what "still true for me" means, in one place.
@@ -364,7 +365,8 @@ notificationRoutes.delete(
       )
       .limit(1);
     if (live) {
-      throw conflict(
+      throw refuse(
+        'CONDITION_STILL_TRUE',
         `This notification carries a condition that is still true — '${live.title}' ` +
           `(${live.type}) — and deleting it would only mean being told again on the next ` +
           'sweep. A condition ends when the system sees it end. To stop hearing about it ' +

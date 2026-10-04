@@ -61,13 +61,13 @@ a{color:var(--acc)}
 <path d="M346 176 L204 176" stroke="var(--acc)" stroke-width="2" marker-end="url(#c)"/>
 <text x="275" y="146" font-size="11.5" font-weight="650" text-anchor="middle" fill="var(--acc)">device transport</text>
 <text x="275" y="200" font-size="10.5" text-anchor="middle" fill="var(--mut)">HTTPS · credential carries device_id</text>
-<text x="275" y="216" font-size="10.5" text-anchor="middle" font-weight="650" fill="var(--acc)">20 endpoints</text>
+<text x="275" y="216" font-size="10.5" text-anchor="middle" font-weight="650" fill="var(--acc)">/api/devices/me/…</text>
 
 <path d="M524 140 L666 88" stroke="var(--warn)" stroke-width="2" marker-end="url(#a)"/>
 <path d="M666 72 L524 124" stroke="var(--warn)" stroke-width="2" marker-end="url(#a)"/>
 <text x="600" y="66" font-size="11.5" font-weight="650" text-anchor="middle" fill="var(--warn)">control socket</text>
 <text x="600" y="120" font-size="10.5" text-anchor="middle" fill="var(--mut)">unix · typed frames</text>
-<text x="600" y="136" font-size="10.5" text-anchor="middle" font-weight="650" fill="var(--warn)">4 verbs</text>
+<text x="600" y="136" font-size="10.5" text-anchor="middle" font-weight="650" fill="var(--warn)">5 requests</text>
 
 <path d="M755 110 L755 204" stroke="var(--bad)" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#d)"/>
 <text x="768" y="152" font-size="11.5" font-weight="650" fill="var(--bad)">assignment</text>
@@ -83,8 +83,8 @@ a{color:var(--acc)}
 <table>
 <thead><tr><th style="width:20%">Wire</th><th style="width:22%">Vocabulary today</th><th style="width:20%">Refused by</th><th>Carries</th></tr></thead>
 <tbody>
-<tr><td><b>device transport</b></td><td>20 endpoints under <code>/api/devices/me/…</code></td><td class="ok">core</td><td>work, credentials, plugins, questions, leases</td></tr>
-<tr><td><b>control socket</b></td><td class="warn">exactly 4: <code>AgentEvent</code> · <code>RunDeclare</code> · <code>RunChoice</code> · <code>RunClose</code></td><td class="ok">the frame decoder</td><td>what the master tells the box it is doing</td></tr>
+<tr><td><b>device transport</b></td><td>the routes under <code>/api/devices/me/…</code></td><td class="ok">core</td><td>work, credentials, plugins, questions, leases</td></tr>
+<tr><td><b>control socket</b></td><td class="warn">exactly 5 (<code>daemon/control.rs:Request</code>): <code>AgentEvent</code> · <code>RunDeclare</code> · <code>RunChoice</code> · <code>DispatchGate</code> · <code>RunClose</code></td><td class="ok">the frame decoder</td><td>what the master tells the box it is doing</td></tr>
 <tr><td><b>assignment</b></td><td>a function call</td><td class="bad">nobody — only the master validating a report</td><td>work, and nothing else may ride on it</td></tr>
 <tr><td><b>facts</b></td><td>the agent's own scoped token</td><td class="ok">core's insert-time gates</td><td>every durable claim</td></tr>
 </tbody>
@@ -210,8 +210,7 @@ write-before-return becomes an optimisation rather than the guarantee.</div>
 </tbody>
 </table>
 
-<p class="note" style="margin-top:30px">Measured at HEAD, 2026-09-19: 20 device endpoints, 4 control-socket
-verbs. Next drill-downs from <a href="index.html">the overview</a>: session tree · fact &amp; projection ·
+<p class="note" style="margin-top:30px">Next drill-downs from <a href="index.html">the overview</a>: session tree · fact &amp; projection ·
 question · the floor.</p>
 
 </main>

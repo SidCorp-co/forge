@@ -1,10 +1,11 @@
 import { and, asc, eq, ne, notExists, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { HTTPException } from 'hono/http-exception';
-import { agentAccountRow, isAgentHandle } from '../auth/agent-account.js';
+import { agentAccountRow, isAgentHandle } from '../credentials/agent-account.js';
 import { organizationMembers, projectMembers, projects, users } from '../db/schema.js';
 import { addOrgMember, addProjectMembers } from '../permissions/index.js';
 import type { Executor } from './db-executor.js';
+import { refuseConversation } from './refusals.js';
 
 const LOCK_NAMESPACE = 'forge:conversation-handle';
 
@@ -78,10 +79,10 @@ export async function resolveProjectHandle(
   }
   if (existing) {
     // A misconfigured handle is a state of this project, named and answered, not a crash (ISS-34).
-    throw new HTTPException(409, {
-      message: `project ${projectId} has agent ${existing.userId} as its handle but that agent carries no handle on its org membership, so it has no address to be reached at`,
-      cause: { code: 'HANDLE_HAS_NO_NAME' },
-    });
+    throw refuseConversation(
+      'HANDLE_HAS_NO_NAME',
+      `project ${projectId} has agent ${existing.userId} as its handle but that agent carries no handle on its org membership, so it has no address to be reached at`,
+    );
   }
 
   const [project] = await tx

@@ -52,12 +52,8 @@
       "kind": "door",
       "owns": [
         "emailVerificationTokens",
-        "mcpAuditLog",
         "oauthAccounts",
-        "personalAccessTokens",
-        "preferenceChanges",
         "refreshTokens",
-        "userPreferences",
         "users"
       ]
     },
@@ -101,6 +97,13 @@
         "conversationPassages",
         "conversationWindows",
         "conversations"
+      ]
+    },
+    "credentials": {
+      "kind": "platform",
+      "owns": [
+        "mcpAuditLog",
+        "personalAccessTokens"
       ]
     },
     "db": {
@@ -397,8 +400,7 @@
         "issueStepContexts",
         "phaseJournal",
         "pipelineRuns",
-        "queueSnapshots",
-        "runnerEvents"
+        "queueSnapshots"
       ]
     },
     "plugins": {
@@ -410,6 +412,13 @@
         "pmConfig",
         "pmDecisions",
         "pmPolicies"
+      ]
+    },
+    "preferences": {
+      "kind": "domain",
+      "owns": [
+        "preferenceChanges",
+        "userPreferences"
       ]
     },
     "project-config": {
@@ -455,7 +464,8 @@
       "kind": "domain",
       "owns": [
         "releaseApprovals",
-        "releaseAttempts"
+        "releaseAttempts",
+        "releaseHolds"
       ]
     },
     "requirements": {
@@ -476,6 +486,7 @@
     "runners": {
       "kind": "kernel",
       "owns": [
+        "runnerEvents",
         "runners"
       ]
     },

@@ -253,6 +253,114 @@
     "./machines": {
       "types": "./dist/machines.d.ts",
       "default": "./dist/machines.js"
+    },
+    "./agent-sessions": {
+      "types": "./dist/agent-sessions.d.ts",
+      "default": "./dist/agent-sessions.js"
+    },
+    "./app-config": {
+      "types": "./dist/app-config.d.ts",
+      "default": "./dist/app-config.js"
+    },
+    "./assistant": {
+      "types": "./dist/assistant.d.ts",
+      "default": "./dist/assistant.js"
+    },
+    "./auth": {
+      "types": "./dist/auth.d.ts",
+      "default": "./dist/auth.js"
+    },
+    "./conversations": {
+      "types": "./dist/conversations.d.ts",
+      "default": "./dist/conversations.js"
+    },
+    "./devices": {
+      "types": "./dist/devices.d.ts",
+      "default": "./dist/devices.js"
+    },
+    "./ecosystem": {
+      "types": "./dist/ecosystem.d.ts",
+      "default": "./dist/ecosystem.js"
+    },
+    "./issues": {
+      "types": "./dist/issues.d.ts",
+      "default": "./dist/issues.js"
+    },
+    "./jobs": {
+      "types": "./dist/jobs.d.ts",
+      "default": "./dist/jobs.js"
+    },
+    "./knowledge": {
+      "types": "./dist/knowledge.d.ts",
+      "default": "./dist/knowledge.js"
+    },
+    "./labels": {
+      "types": "./dist/labels.d.ts",
+      "default": "./dist/labels.js"
+    },
+    "./memory": {
+      "types": "./dist/memory.d.ts",
+      "default": "./dist/memory.js"
+    },
+    "./messaging": {
+      "types": "./dist/messaging.d.ts",
+      "default": "./dist/messaging.js"
+    },
+    "./orgs": {
+      "types": "./dist/orgs.d.ts",
+      "default": "./dist/orgs.js"
+    },
+    "./pat": {
+      "types": "./dist/pat.d.ts",
+      "default": "./dist/pat.js"
+    },
+    "./pipeline": {
+      "types": "./dist/pipeline.d.ts",
+      "default": "./dist/pipeline.js"
+    },
+    "./plugins": {
+      "types": "./dist/plugins.d.ts",
+      "default": "./dist/plugins.js"
+    },
+    "./project-config": {
+      "types": "./dist/project-config.d.ts",
+      "default": "./dist/project-config.js"
+    },
+    "./projects": {
+      "types": "./dist/projects.d.ts",
+      "default": "./dist/projects.js"
+    },
+    "./prompt": {
+      "types": "./dist/prompt.d.ts",
+      "default": "./dist/prompt.js"
+    },
+    "./questions": {
+      "types": "./dist/questions.d.ts",
+      "default": "./dist/questions.js"
+    },
+    "./runners": {
+      "types": "./dist/runners.d.ts",
+      "default": "./dist/runners.js"
+    },
+    "./skills": {
+      "types": "./dist/skills.d.ts",
+      "default": "./dist/skills.js"
+    },
+    "./storefront": {
+      "types": "./dist/storefront.d.ts",
+      "default": "./dist/storefront.js"
+    },
+    "./integrations": {
+      "types": "./src/integrations.ts",
+      "default": "./src/integrations.ts"
+    },
+    "./git": {
+      "types": "./dist/git.d.ts",
+      "default": "./dist/git.js"
+    },
+    "./pm": {
+      "types": "./dist/pm.d.ts",
+      "default": "./dist/pm.js"
     }
   },
   "types": "./src/index.ts",

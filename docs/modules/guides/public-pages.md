@@ -1,14 +1,14 @@
 # The public guide pages
 
 `/guides` and `/guides/<slug>` in `packages/web-v2` are Forge's public documentation: one set of
-pages from two homes, behind three doors named for the reader. Both homes are unauthenticated —
+pages from two homes, behind two doors named for the reader. Both homes are unauthenticated —
 `guideRoutes` in `packages/core/src/guides/routes.ts` applies `requireAuth()` only to its `/orgs`
-sub-tree, and the help pages are a static module bundled into the web build — and the routes sit
+and `/projects` sub-trees, and the help pages are a static module bundled into the web build — and the routes sit
 outside the `(workspace)` group, whose layout redirects a signed-out visitor to `/login`.
 
 | Home | Audience | Read at |
 |---|---|---|
-| `packages/web-v2/content/help/*.md`, bundled as `HELP_DOCS` | `user`, `assistant-setup` — each page's own front-matter | `/guides?path=<slug>` |
+| `packages/web-v2/content/help/*.md`, bundled as `HELP_DOCS` | `user` — each page's own front-matter | `/guides?path=<slug>` |
 | `packages/core/src/guides/registry.ts`, fetched from `GET <core>/api/guides` | `agent` | `/guides/<slug>`, and as markdown at `<core>/api/guides/<slug>.md` |
 
 These are two of Forge's four documentation homes; which page belongs in which is
@@ -22,7 +22,7 @@ Each guide carries the `audience` core declared for it, which `fromGuide` reads 
 is not `agent`.
 
 The addresses: `/guides` is the landing — the sentence saying the corpus is one, the search, the
-three doors. `/guides?for=<audience>` is a door. `/guides?path=<slug>` is a help page, the same
+two doors. `/guides?for=<audience>` is a door. `/guides?path=<slug>` is a help page, the same
 `?path=` form help pages already link each other by, resolved there by `Markdown`'s `docRoute`.
 `/guides/<slug>` is an agent guide at the address it always had. The reader is the in-app `/docs`
 screen's own furniture, `packages/web-v2/src/features/docs/components/docs-reader.tsx`, not a second reading UI.

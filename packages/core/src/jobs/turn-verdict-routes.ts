@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issues, jobs } from '../db/schema.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { AUTONOMOUS_QUESTION_STATUS } from '../pipeline/autonomous-mode.js';
 
@@ -12,8 +13,6 @@ const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
 export const jobTurnVerdictRoutes = new Hono<{ Variables: DeviceVars }>();
 

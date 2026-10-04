@@ -6,7 +6,7 @@
 
 import type { IssueStatus } from '../db/schema.js';
 import type { WorkStep } from '../db/schema-issue-work-state.js';
-import type { ReleaseHold } from './release-hold.js';
+import type { ReleaseHold } from '../release-batch/index.js';
 import type { LeaseReading } from './session-claim.js';
 
 /** Whose move it is for a stranded row to leave the status it is stuck at. */
@@ -102,7 +102,7 @@ export interface StrandEvidence {
   /** Whether this project has a runner admitted to the job pool. */
   poolHasRunner: boolean;
   lease: LeaseReading;
-  /** What the automatic release wrote on the row about why it is not taking it (ISS-1215). */
+  /** The automatic release's standing hold on the row, why it is not taking it (ISS-1215). */
   releaseHold?: ReleaseHold | null;
   step?: WorkStep | null;
 }

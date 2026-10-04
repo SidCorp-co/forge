@@ -19,7 +19,6 @@ import {
   deleteKnowledgeEntry,
   getKnowledgeEntry,
   listKnowledgeEntries,
-  ReadWhenShapeError,
   slugSchema,
   upsertKnowledgeEntry,
   upsertKnowledgeInputSchema,
@@ -183,12 +182,6 @@ knowledgeRoutes.put(
         throw new HTTPException(503, {
           message: 'embeddings service unavailable',
           cause: { code: 'EMBEDDING_UNAVAILABLE' },
-        });
-      }
-      if (err instanceof ReadWhenShapeError) {
-        throw new HTTPException(400, {
-          message: err.refusal.message,
-          cause: { code: 'KNOWLEDGE_READ_WHEN_SHAPE', details: { field: err.refusal.field } },
         });
       }
       throw err;

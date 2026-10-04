@@ -10,11 +10,9 @@ import {
 import { useRouter } from "next/navigation";
 import type { PatchIssueInput } from "../api";
 import {
-  type BlockingRef,
   COMPLEXITY_LABELS,
   PRIORITY_LABELS,
   liveDependencies,
-  openBlockingRefs,
 } from "../derive";
 import type {
   IssueDependencies,
@@ -144,12 +142,7 @@ export function DepBadges({
   const subtasks = outgoing.filter((e) => isParentEdge(e.kind));
   const parents = incoming.filter((e) => isParentEdge(e.kind));
 
-  const openBlockers = openBlockingRefs(deps);
-  const refToMenuItem = (r: BlockingRef): MenuItem => ({
-    label: r.title ? `${r.displayId} · ${r.title}` : r.displayId,
-    icon: "arrowRight",
-    onSelect: () => navigate(r.id),
-  });
+  const openBlockers = blockedBy.filter((e) => e.holds);
 
   if (
     !blockedBy.length &&
@@ -167,10 +160,10 @@ export function DepBadges({
           tone="danger"
           label={
             openBlockers.length === 1
-              ? `Blocked by ${openBlockers[0].displayId}${openBlockers[0].merged ? " · landed" : ""}`
+              ? `Blocked by ${openBlockers[0].fromDisplayId ?? "an issue"}${openBlockers[0].fromMergedAt ? " · landed" : ""}`
               : `Blocked by ${openBlockers.length}`
           }
-          items={openBlockers.map(refToMenuItem)}
+          items={openBlockers.map((e) => edgeToMenuItem(e, "in", navigate))}
         />
       ) : (
         <RelationChip

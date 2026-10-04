@@ -1,5 +1,5 @@
 import { RUNNER_MACHINE, RUNNER_PROVISION_MACHINE } from '@forge/contracts/runner-machine';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -15,6 +15,7 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { emitEvent } from '../outbox/index.js';
 import { requireHeld } from '../permissions/index.js';
 import { clearRunnerFaultFlags } from '../runners/clear-fault-flags.js';
+import { deleteProjectRunner, patchProjectRunner, upsertDeviceRunner } from '../runners/index.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
 import { defaultRunnerCapabilities } from '../runners/select.js';
 
@@ -136,43 +137,16 @@ projectRunnerRoutes.post(
 
     const now = new Date();
     const bound = await db.transaction(async (tx) => {
-      const [row] = await tx
-        .insert(runners)
-        .values({
-          projectId: id,
-          type: 'claude-code',
-          deviceId,
-          name: device.name,
-          capabilities: defaultRunnerCapabilities('claude-code', capabilities),
-          ...(repoPath !== undefined ? { repoPath } : {}),
-          ...(branch !== undefined ? { branch } : {}),
-          status,
-          // Queue workspace provisioning — the device picks this up on its next
-          // GET /api/devices/me/provisions (online or whenever it reconnects).
-          provisionStatus: 'queued',
-          provisionRequestedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: [runners.projectId, runners.deviceId, runners.type],
-          targetWhere: sql`device_id IS NOT NULL`,
-          set: {
-            updatedAt: now,
-            ...(capabilities ? { capabilities } : {}),
-            ...(repoPath !== undefined ? { repoPath } : {}),
-            ...(branch !== undefined ? { branch } : {}),
-            provisionDetail: null,
-            provisionRequestedAt: now,
-          },
-        })
-        .returning({
-          id: runners.id,
-          projectId: runners.projectId,
-          deviceId: runners.deviceId,
-          repoPath: runners.repoPath,
-          branch: runners.branch,
-          labels: runners.labels,
-          status: runners.status,
-        });
+      const row = await upsertDeviceRunner(tx, {
+        projectId: id,
+        deviceId,
+        name: device.name,
+        capabilities: defaultRunnerCapabilities('claude-code', capabilities),
+        capabilitiesSent: capabilities,
+        checkout: { repoPath, branch },
+        status,
+        now,
+      });
       if (!row) return null;
       // Re-bind re-queues provisioning (path/url may have changed), and the runner takes its device's
       // liveness; an operator's drain or disable is left standing.
@@ -258,25 +232,12 @@ projectRunnerRoutes.patch(
     const access = await loadProjectAccess(id, userId);
     requireHeld(access, 'project.admin');
 
-    const [runner] = await db
-      .update(runners)
-      .set({
-        updatedAt: new Date(),
-        ...(repoPath !== undefined ? { repoPath } : {}),
-        ...(branch !== undefined ? { branch } : {}),
-        ...(capabilities ? { capabilities } : {}),
-        ...(labels !== undefined ? { labels } : {}),
-      })
-      .where(and(eq(runners.id, runnerId), eq(runners.projectId, id)))
-      .returning({
-        id: runners.id,
-        projectId: runners.projectId,
-        deviceId: runners.deviceId,
-        repoPath: runners.repoPath,
-        branch: runners.branch,
-        labels: runners.labels,
-        status: runners.status,
-      });
+    const runner = await patchProjectRunner(id, runnerId, {
+      repoPath,
+      branch,
+      capabilities,
+      labels,
+    });
 
     if (!runner) {
       throw new HTTPException(404, {
@@ -332,7 +293,7 @@ projectRunnerRoutes.delete(
 
     // Idempotent: 204 whether the runner existed or not, mirroring the old
     // PUT/DELETE /:id/devices/:deviceId contract.
-    await db.delete(runners).where(and(eq(runners.id, runnerId), eq(runners.projectId, id)));
+    await deleteProjectRunner(id, runnerId);
     return c.body(null, 204);
   },
 );

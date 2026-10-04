@@ -24,15 +24,6 @@ Three boundaries hold the shape:
   [`SidCorp-co/forge-plugin`](https://github.com/SidCorp-co/forge-plugin) ships the CLI, the
   session hooks and the driver skill on its own clock.
 
-### The plugin boundary, close up
-
-The driver skill, the `forge` CLI and the session hooks live in a second repository on its own
-clock. The CLI is not `forge-runner` — it carries its own HTTP client and its own declared route
-table, and reaches REST with a Bearer PAT. This is the surface those three reach core through, the
-one thing in it that carries a version, and the place an agent can pick the wrong tool:
-
-<img src="docs/assets/plugin-core.svg" alt="forge-plugin and forge core: three callers with three credentials reach core - the agent session over MCP, the plugin’s own forge CLI over REST with a Bearer PAT and its own declared route table, and the forge-runner daemon over the device API. All nine CLI capability families carry the same names as core MCP tools, so the agent has two routes to the same data under one name. Of five contract items only pinnedRef carries a version, and it is set to null when two projects designate different SHAs, after which the box installs plugin HEAD." width="100%">
-
 The agent's surface, the data plane and where both are going: [`docs/proposals/destination/`](docs/proposals/destination/) — one set, measured, with its own coverage stated.
 
 ## Quickstart
@@ -56,6 +47,7 @@ Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
 | [`packages/web-v2/`](packages/web-v2/) | Next.js dashboard — kanban, replay, pipeline health, devices |
 | [`packages/runner/`](packages/runner/) | `forge-runner` — the Rust device agent |
 | [`packages/contracts/`](packages/contracts/) | Types and registries shared across apps |
+| [`packages/observability/`](packages/observability/) | Shared telemetry helpers, including the secret scrubber |
 
 ## Documentation
 

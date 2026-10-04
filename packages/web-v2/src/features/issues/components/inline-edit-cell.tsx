@@ -1,5 +1,6 @@
 "use client";
 
+import type { IssueMove } from "@forge/contracts/issue-machine";
 // Inline-edit primitives shared by the table row + mobile card. `InlineSelect`
 // commits a priority/complexity/assignee change (PATCH); `StatusEdit` shows the
 // StatusBadge and opens a status menu (transition — 409 surfaces as a toast via
@@ -7,7 +8,7 @@
 
 import type { WorkStep } from "@forge/contracts/issue-vocabulary";
 import { Menu, NativeSelect, Select, StatusBadge, type MenuItem, type SelectOption } from "@/design";
-import { groupedTransitions, statusLabel, transitionLabels } from "../derive";
+import { statusLabel, transitionLabels } from "../derive";
 import { AGENT_HOLDS_MOVE, heldByAgent } from "../edit-lock";
 import { useStatusTone } from "../release-approval";
 import type { ParkReading } from "../derive";
@@ -68,7 +69,7 @@ export function InlineSelect({
 /** The map's own moves from this rung, or the one inert line that says why there are none. */
 function ordinaryItems(args: {
   status: IssueStatus;
-  grouped: ReturnType<typeof groupedTransitions>;
+  grouped: readonly IssueMove[];
   onTransition: (toStatus: IssueStatus) => void;
 }): MenuItem[] {
   const { status, grouped, onTransition } = args;
@@ -88,8 +89,8 @@ interface StatusEditProps {
   status: IssueStatus;
   /** The run's step inside `in_progress` (`workState.step`), which the chip names where it has one. */
   step?: WorkStep | null;
-  /** The status a park left (`workState.leftStatus`), which the menu offers to return to. */
-  leftStatus?: IssueStatus | null;
+  /** Core's moves from this status (`IssueStanding.moves`, a list row's `moves`), forward first. */
+  moves: readonly IssueMove[];
   agentStatus?: IssueAgentStatus;
   onTransition: (toStatus: IssueStatus) => void;
   disabled?: boolean;
@@ -106,7 +107,7 @@ interface StatusEditProps {
 export function StatusEdit({
   status,
   step,
-  leftStatus = null,
+  moves,
   agentStatus,
   onTransition,
   disabled,
@@ -114,7 +115,7 @@ export function StatusEdit({
   park,
 }: StatusEditProps) {
   const tone = useStatusTone(status);
-  const grouped = groupedTransitions(status, leftStatus);
+  const grouped = moves;
   const held = heldByAgent(status, agentStatus);
   let items: MenuItem[];
   if (held) {
@@ -124,7 +125,7 @@ export function StatusEdit({
     const parkItems = park
       ? parkMenuItems({
           status,
-          leftStatus,
+          moves,
           reading: park.reading,
           ordinary: items,
           actions: park.actions,

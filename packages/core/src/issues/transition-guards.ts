@@ -7,8 +7,8 @@
  *   any (edge)         the move is an edge of the lifecycle                      ILLEGAL_TRANSITION
  *   open, from draft   the actor holds `issues.admit`                            PERMISSION_FORBIDDEN
  *   in_progress        a run or lease holds it; nothing admissible holds out     NO_HOLDER, ISSUE_BLOCKED, WORKFLOW_DESIGN_NOT_APPROVED, CONTRACT_WAIT_UNSETTLED
- *   approved           plan and criteria written; a person made the move where   PLAN_REQUIRED
- *                      the project document sets `plan.approval.required`
+ *   approved           plan and criteria written; the actor holds `plans.approve`  PLAN_REQUIRED
+ *                      where the project document sets `plan.approval.required`
  *   awaiting_release   the merge is recorded (a landing moves no status)          MERGE_NOT_RECORDED
  *                      every criterion's latest verdict passes, with an          NO_WORK_EVIDENCE,
  *                      admissible identity, recorded after the latest reopen     VERDICT_IDENTITY_REQUIRED, VERDICT_PREDATES_REOPEN, VERDICT_IDENTITY_NOT_ADMISSIBLE, VERDICT_DRAFT_SUPERSEDED, VERDICT_UNCORROBORATED
@@ -41,7 +41,8 @@ import { permissionRefusalFor } from '../permissions/index.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { planDriftOf } from '../requirements/plan-drift.js';
 import type { ActorAgency } from './actor-agency.js';
-import { IssueBlockedError, refuseHeldTake } from './blocked-by.js';
+import { refuseHeldTake } from './blocked-by.js';
+import { isRefusal } from '../lib/refusal.js';
 import type { DraftReader } from './criteria/storefront-draft.js';
 import { isDispatchGateError } from './dispatch-gates.js';
 import { type CriteriaEvidence, type SourceType, unpassedCriteria } from './release-evidence.js';
@@ -195,11 +196,11 @@ async function heldTakeGuard(ctx: GuardContext): Promise<GuardFault | null> {
     await refuseHeldTake(ctx.executor, ctx.issue.id, 'a move to `in_progress`');
     return null;
   } catch (err) {
-    if (err instanceof IssueBlockedError) {
+    if (isRefusal(err, 'ISSUE_BLOCKED')) {
       return {
-        code: err.code,
-        detail: err.message.replace(/^ISSUE_BLOCKED: /, ''),
-        details: { from: ctx.from, to: ctx.to, blocked: err.blocked },
+        code: 'ISSUE_BLOCKED',
+        detail: err.refusals.map((r) => r.detail).join(' '),
+        details: { from: ctx.from, to: ctx.to },
       };
     }
     if (isDispatchGateError(err)) {

@@ -7,11 +7,12 @@
 import { eq } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
+import { isRefusal, type RefusalError } from '../../lib/refusal.js';
 import { type MessageRefusal, MessageRefusedError } from '../../messaging/contract.js';
 import type { ForgeRecord } from '../../messaging/forge-record.js';
 import { criterionBlocksIn } from '../../messaging/verdict-identity.js';
 import type { Actor } from '../../pipeline/activity.js';
-import { recordVerdict, type VerdictAuthor, VerdictRefused } from './store.js';
+import { recordVerdict, type VerdictAuthor } from './store.js';
 import { draftFromBlock } from './verdict-input.js';
 
 const SHAPE =
@@ -26,11 +27,12 @@ const EXAMPLE = [
   '```',
 ].join('\n');
 
-function asMessageRefusal(err: VerdictRefused): MessageRefusal {
+function asMessageRefusal(err: RefusalError, criterion: number): MessageRefusal {
+  const [refusal] = err.refusals;
   return {
-    rule: err.refusal.code,
-    why: err.refusal.detail,
-    quote: `criterion: ${err.refusal.criterion}`,
+    rule: refusal?.code ?? err.fallbackCode,
+    why: refusal?.detail ?? err.message,
+    quote: `criterion: ${criterion}`,
     shape: SHAPE,
     example: EXAMPLE,
   };
@@ -61,17 +63,18 @@ export async function recordEventVerdicts(
   const refusals: MessageRefusal[] = [];
   let written = 0;
   for (const block of blocks) {
+    const draft = draftFromBlock({ ...block, verdict: block.verdict as string });
     try {
       await recordVerdict(tx, {
         issue,
-        draft: draftFromBlock({ ...block, verdict: block.verdict as string }),
+        draft,
         author: authorOfActor(event.actor),
         commentId: event.commentId,
       });
       written += 1;
     } catch (err) {
-      if (!(err instanceof VerdictRefused)) throw err;
-      refusals.push(asMessageRefusal(err));
+      if (!isRefusal(err)) throw err;
+      refusals.push(asMessageRefusal(err, draft.criterion));
     }
   }
   if (refusals.length > 0) {

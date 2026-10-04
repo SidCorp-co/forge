@@ -25,8 +25,7 @@ function size(r: WorkflowRecord): string {
 
 function Row({ r, slug, templates }: { r: WorkflowRecord; slug: string; templates: readonly WorkflowTemplate[] }) {
   const w = r.document;
-  // An approved design with a newer revision waiting reads as approved; the marker says what waits.
-  const status = r.design.status === "proposed" && r.design.approvedRevision !== null ? "approved" : r.design.status;
+  const status = r.design.shown;
   return (
     <Link
       href={workflowHref(slug, w.flow)}
@@ -60,7 +59,7 @@ function Row({ r, slug, templates }: { r: WorkflowRecord; slug: string; template
 /** A design in the narrow list beside the overview: its title and state, then what it is drawn in, its size and age. */
 function NarrowRow({ r, slug, templates }: { r: WorkflowRecord; slug: string; templates: readonly WorkflowTemplate[] }) {
   const w = r.document;
-  const status = r.design.status === "proposed" && r.design.approvedRevision !== null ? "approved" : r.design.status;
+  const status = r.design.shown;
   return (
     <Link
       href={workflowHref(slug, w.flow)}

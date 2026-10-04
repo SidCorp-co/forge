@@ -1,3 +1,4 @@
+import type { IssueMove } from "@forge/contracts/issue-machine";
 
 import type {
   BodyNode,
@@ -52,7 +53,15 @@ export interface IssueAgentSession {
   lastHeartbeatAt?: string | null;
   pipelineRunId?: string | null;
   claudeSessionId?: string | null;
+  /** Core's reading of `lastHeartbeatAt` against the loop monitor's heartbeat timeout. */
+  heartbeat: "alive" | "stale" | "unknown";
+  /** Whether it resumed its group's Claude session or started fresh, and why (core's). */
+  continuity: SessionContinuity;
+  freshReason: FreshReason | null;
 }
+
+export type SessionContinuity = "resumed" | "fresh" | "unknown";
+export type FreshReason = "first-in-group" | "different-device" | "prior-failed" | "new-session";
 
 /** ISS-700 — the latest failed job for this issue, present when the search
  *  call opts in with `withFailureInfo=1` (the list always does). `null` means
@@ -141,6 +150,8 @@ export interface IssueRow {
   dependencies?: IssueDependencies;
   /** ISS-54 — the run's step and the status a park left; absent from a server older than ISS-54. */
   workState?: IssueWorkStateRow | null;
+  /** The moves a person may offer from its status, from core's list read. */
+  moves: IssueMove[];
 }
 
 /** Project member row from `GET /api/projects/:projectId/members`. */
@@ -185,6 +196,8 @@ export interface IssueDependencyEdge {
   validUntil?: string | null;
   /** Retracted: `validUntil` has passed. The server decides it; an expired edge counts as nothing. */
   expired: boolean;
+  /** A live `blocks` edge whose blocker still holds this issue back; core decides it. */
+  holds: boolean;
   fromDisplayId?: string | null;
   fromTitle?: string | null;
   fromStatus?: IssueStatus | null;
@@ -301,7 +314,7 @@ export interface PipelineHealthQueuedStep {
 export interface PipelineHealth {
   stage: string;
   activeSession?: { id: string; status: "queued" | "running"; skill: string };
-  waitingOn?: { reason: WaitingReason; since: string; details: Record<string, unknown> };
+  waitingOn?: { reason: WaitingReason; since: string; details: Record<string, unknown>; reading: PipelineReading };
   queuedAt?: string;
   queuedStep?: PipelineHealthQueuedStep;
   /** Only set when `stage === "needs_info"`: what the park is stopped on. */
@@ -314,6 +327,14 @@ export interface PipelineHealth {
 
 export type PauseResumer = "operator" | "machine" | "sweeper";
 
+/** A gate or a pause as core reads it to a person: what holds the step, who acts, whether it clears itself. */
+export interface PipelineReading {
+  short: string;
+  detail: string;
+  who: string;
+  needsAction: boolean;
+}
+
 export interface PipelineHealthPausedRun {
   runId: string;
   pauseReason: string | null;
@@ -321,34 +342,7 @@ export interface PipelineHealthPausedRun {
   detail: string | null;
   resumer: PauseResumer;
   since: string;
-}
-
-/** One step-handoff row from `GET /api/issue-step-contexts` (kind=handoff).
- *  `payload` is free-form jsonb — render defensively. */
-export interface StepHandoffRow {
-  id: string;
-  projectId: string;
-  issueId: string;
-  pipelineRunId: string | null;
-  kind: string;
-  step: string;
-  attempt: number;
-  payload: Record<string, unknown> | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/** One row from `GET /api/pipeline/step-durations` (project-window, filtered to
- *  this issue client-side). Per-stage duration + cost source (ISS-377 gap E). */
-export interface StepDurationRow {
-  runId: string;
-  issueId: string | null;
-  projectId: string;
-  step: string;
-  startedAt: string;
-  finishedAt: string;
-  durationSeconds: number;
-  costUsd: number;
+  reading: PipelineReading;
 }
 
 /** Attachment carried on a comment node (ISS-363) — `url` is the download path,

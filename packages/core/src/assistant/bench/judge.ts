@@ -48,9 +48,6 @@ export type JudgeResult = Verdict | { error: string };
 
 export const isVerdict = (r: JudgeResult): r is Verdict => !('error' in r);
 
-export class JudgeRefusal extends Error {}
-export class JudgeParseError extends Error {}
-
 export const NO_REPLY = 'no reply was delivered';
 export const ASKED_HEADER = 'Person asked:';
 export const CALLS_HEADER = 'Tool calls the assistant made:';
@@ -130,22 +127,22 @@ export function parseVerdict(text: string, reply: string | null): Verdict {
   try {
     parsed = JSON.parse(unwrap(text));
   } catch {
-    throw new JudgeParseError(`judge answer is not JSON: ${head(fold(text))}`);
+    throw new Error(`judge answer is not JSON: ${head(fold(text))}`);
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
-    throw new JudgeParseError('judge answer is not an object');
+    throw new Error('judge answer is not an object');
   const obj = parsed as Record<string, unknown>;
   for (const key of KEYS) {
-    if (typeof obj[key] !== 'string') throw new JudgeParseError(`judge answer lacks ${key}`);
+    if (typeof obj[key] !== 'string') throw new Error(`judge answer lacks ${key}`);
   }
   const served = obj.served as string;
   if (!(SERVED as readonly string[]).includes(served))
-    throw new JudgeParseError(`judge served is ${head(served)}, not yes, partial or no`);
+    throw new Error(`judge served is ${head(served)}, not yes, partial or no`);
   const quote = obj.quote as string;
   if (reply === null) {
-    if (quote !== '') throw new JudgeParseError('judge quoted a reply that was never delivered');
+    if (quote !== '') throw new Error('judge quoted a reply that was never delivered');
   } else if (quote !== '' && !fold(reply).includes(fold(quote))) {
-    throw new JudgeParseError(`judge quote is not in the reply: ${head(fold(quote))}`);
+    throw new Error(`judge quote is not in the reply: ${head(fold(quote))}`);
   }
   return {
     intent: obj.intent as string,
@@ -272,7 +269,7 @@ export function judgeFromEnv(
   const baseUrl = env.FORGE_BENCH_JUDGE_URL;
   const apiKey = env.FORGE_BENCH_JUDGE_KEY;
   if (!baseUrl || !apiKey)
-    throw new JudgeRefusal(
+    throw new Error(
       'no judge credential: set FORGE_BENCH_JUDGE_URL and FORGE_BENCH_JUDGE_KEY (read from the environment only)',
     );
   return createJudge({ baseUrl, apiKey, model, fetch });

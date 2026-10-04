@@ -144,13 +144,6 @@ export interface Skipped {
   reason: string;
 }
 
-export class HarvestRefusal extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'HarvestRefusal';
-  }
-}
-
 const oneLine = (s: string): string => s.replace(/\s+/g, ' ').trim();
 
 const camel = (id: string): string =>
@@ -199,12 +192,12 @@ export function harvest(
 ): { candidates: Candidate[]; skipped: Skipped[] } {
   const judge = result.judge;
   if (!judge)
-    throw new HarvestRefusal(`${file} carries no judge; run history --judge on the window first`);
+    throw new Error(`${file} carries no judge; run history --judge on the window first`);
   const candidates: Candidate[] = [];
   const skipped: Skipped[] = [];
   for (const row of judge.rows) {
     if (row.query === undefined)
-      throw new HarvestRefusal(
+      throw new Error(
         `${file} was judged before ISS-1055 and its rows carry no query; run history --judge on the window again`,
       );
     if (!isVerdict(row.judge)) {

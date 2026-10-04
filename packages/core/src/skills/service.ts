@@ -1,12 +1,26 @@
 import { and, eq, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects, runners, type SkillTarget, skills } from '../db/schema.js';
+import { RefusalError } from '../lib/refusal.js';
 import { logger } from '../logger.js';
 import { emitEvent } from '../outbox/index.js';
-import { SkillContentBlockedError } from '../security/findings.js';
+import type { Finding } from '../security/findings.js';
 import { scanSkillContent } from '../security/skill-content-scanner.js';
 import { hashSkillBody } from './hash.js';
-import { isMetaSkillName, MetaSkillReservedError } from './meta-skills.js';
+import { isMetaSkillName, metaSkillReserved } from './meta-skills.js';
+import { refuse } from './refuse.js';
+
+/** Each blocking finding of the content scan, as one refusal of the write. */
+function contentBlocked(blockers: Finding[]): RefusalError {
+  return new RefusalError(
+    blockers.map((f) => ({
+      code: 'SKILL_CONTENT_BLOCKED',
+      path: `/${f.field}`,
+      detail: `${f.rule}: ${f.message} (${f.excerpt})`,
+    })),
+    'SKILL_CONTENT_BLOCKED',
+  );
+}
 
 export interface SkillFileInput {
   path: string;
@@ -132,7 +146,7 @@ export interface CreateProjectSkillInput {
 
 export async function createProjectSkill(input: CreateProjectSkillInput): Promise<SkillRow> {
   if (!input.allowReservedMetaName && isMetaSkillName(input.name)) {
-    throw new MetaSkillReservedError(input.name);
+    throw metaSkillReserved(input.name);
   }
 
   const scanFindings = scanSkillContent({
@@ -141,7 +155,7 @@ export async function createProjectSkill(input: CreateProjectSkillInput): Promis
     skillMd: input.skillMd,
   });
   const blockers = scanFindings.filter((f) => f.severity === 'blocker');
-  if (blockers.length > 0) throw new SkillContentBlockedError(blockers);
+  if (blockers.length > 0) throw contentBlocked(blockers);
   const warns = scanFindings.filter((f) => f.severity === 'warn');
   if (warns.length > 0) {
     logger.warn(
@@ -201,7 +215,7 @@ export async function updateProjectSkill(
   patch: UpdateProjectSkillPatch,
 ): Promise<SkillRow> {
   if (patch.name !== undefined && patch.name !== existing.name && isMetaSkillName(patch.name)) {
-    throw new MetaSkillReservedError(patch.name);
+    throw metaSkillReserved(patch.name);
   }
 
   const hasTextPatch =
@@ -213,7 +227,7 @@ export async function updateProjectSkill(
       skillMd: patch.skillMd ?? existing.skillMd ?? existing.prompt ?? '',
     });
     const blockers = scanFindings.filter((f) => f.severity === 'blocker');
-    if (blockers.length > 0) throw new SkillContentBlockedError(blockers);
+    if (blockers.length > 0) throw contentBlocked(blockers);
     const warns = scanFindings.filter((f) => f.severity === 'warn');
     if (warns.length > 0) {
       logger.warn(
@@ -289,7 +303,7 @@ export async function applyGlobalSkillDefault(input: {
     )
     .limit(1);
   if (existing) {
-    throw new SkillAlreadyShadowedError(global.name);
+    throw refuse('ALREADY_SHADOWED', `a project skill named '${global.name}' already exists`);
   }
   const files = (Array.isArray(global.files) ? global.files : []) as SkillFileInput[];
   return createProjectSkill({
@@ -302,14 +316,6 @@ export async function applyGlobalSkillDefault(input: {
     basedOnGlobalSkillId: global.id,
     basedOnGlobalVersion: global.version,
   });
-}
-
-export class SkillAlreadyShadowedError extends Error {
-  readonly code = 'ALREADY_SHADOWED';
-  constructor(name: string) {
-    super(`ALREADY_SHADOWED: a project skill named '${name}' already exists`);
-    this.name = 'SkillAlreadyShadowedError';
-  }
 }
 
 /**

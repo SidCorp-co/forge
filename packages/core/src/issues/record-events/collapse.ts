@@ -4,10 +4,6 @@
 // touched: the collapse set is `NARRATION_RECORD_KINDS`, typed so that it cannot name one.
 
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
-import { db } from '../../db/client.js';
-import { issues } from '../../db/schema.js';
-import { activityLog } from '../../db/schema-activity.js';
 import {
   KERNEL_RECORD_KINDS,
   NARRATION_COLLAPSE_DAYS,
@@ -16,6 +12,10 @@ import {
   RECORD_DIGEST_KIND,
   recordAction,
 } from '@forge/contracts/record-events';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { db } from '../../db/client.js';
+import { issues } from '../../db/schema.js';
+import { activityLog } from '../../db/schema-activity.js';
 
 /** How many issues one pass collapses, so a first run over years of history is bounded. */
 const ISSUES_PER_PASS = 500;
@@ -31,7 +31,7 @@ export function collapsibleActions(
   const named = narration.filter((kind) => kernel.has(kind));
   if (named.length > 0) {
     throw new Error(
-      `NARRATION_COLLAPSE_KERNEL_KIND: ${named.join(', ')} is kernel evidence and is kept for good — it may not be in the narration collapse set`,
+      `narration collapse set names ${named.join(', ')}, which is kernel evidence and is kept for good — it may not be in the narration collapse set`,
     );
   }
   return narration.map((kind) => `${RECORD_ACTION_PREFIX}${kind}`);

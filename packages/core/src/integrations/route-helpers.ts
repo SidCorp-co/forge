@@ -25,8 +25,6 @@ export function assertVaultConfigured(): void {
   }
 }
 
-export const forbidden = () =>
-  new HTTPException(403, { message: 'forbidden', cause: { code: 'FORBIDDEN' } });
 export const notFound = (entity = 'integration') =>
   new HTTPException(404, { message: `${entity} not found`, cause: { code: 'NOT_FOUND' } });
 

@@ -11,9 +11,9 @@
  * Nothing here checks membership.
  */
 
-import { HTTPException } from 'hono/http-exception';
+import type { CoolifyRefusalCode } from '@forge/contracts/integrations';
 import { effectiveConfig, listActiveDeployBindingsForProvider } from '../../integrations/store.js';
-import { DeployEnvironmentLockedError } from '../../pipeline/deploy-lock.js';
+import { refuser } from '../../lib/refusal.js';
 import {
   type DispatchOutcome,
   dispatchCoolifyDeployDirect,
@@ -24,12 +24,15 @@ import {
 import { readDeployMap } from '../../project-config/release-path.js';
 import { approvalRequired, assertApprovalAllowsAttempt } from '../../release-batch/approvals.js';
 import { readRunMethod } from '../../release-batch/method.js';
+import { refuseRelease } from '../../release-batch/refuse.js';
 import { isOpenReleaseBatchRun } from '../../release-batch/service.js';
-import { grantHolds, notGrantedMessage } from '../agent-access.js';
 import { findLastOutbound, findLastOutboundForTarget } from '../deliveries.js';
-import { getIntegration } from '../registry.js';
 import type { CoolifyConfig } from './types.js';
 
+/** A Coolify rule refused by name, in the one 422 envelope. */
+export const refuseCoolify = refuser<CoolifyRefusalCode>('COOLIFY_REFUSED');
+
+/** A call that names the wrong integration or target: the request's to correct, answered 400. */
 export class CoolifyCommandError extends Error {
   constructor(message: string) {
     super(message);
@@ -61,25 +64,6 @@ export async function activeCoolifyIntegrations(projectId: string) {
 }
 
 export type CoolifyIntegrationRow = Awaited<ReturnType<typeof activeCoolifyIntegrations>>[number];
-
-export function assertAgentMayDeployCoolify(
-  rows: CoolifyIntegrationRow[],
-  integrationId: string | undefined,
-): void {
-  if (rows.length === 0) return;
-  const candidates = integrationId ? rows.filter((r) => r.id === integrationId) : rows;
-  if (candidates.length === 0) return;
-  const decl = getIntegration('coolify');
-  // EVERY candidate, not `some`. Without an id, `status`, `logs`, `cancel` and `rollback` read the
-  // project's whole Coolify set, so one granted binding letting the action through would hand the
-  // agent an ungranted binding's deliveries — a per-binding switch that only holds per project.
-  const ungranted = candidates.find((r) => !grantHolds(decl, r.pair.binding));
-  if (!ungranted) return;
-  if (integrationId) throw new CoolifyCommandError(notGrantedMessage('coolify', ungranted.id));
-  throw new CoolifyCommandError(
-    `${notGrantedMessage('coolify', ungranted.id)} This call named no integrationId, so it would have read every Coolify binding on the project, that one included. Name the binding you mean with integrationId and a granted one still answers.`,
-  );
-}
 
 /**
  * Pick the one integration the caller means: an explicit `integrationId`, else
@@ -137,7 +121,7 @@ const shape = (outcome: DispatchOutcome) => ({
  * this to say what it checks — a run announcing that its method would not load still deploys.
  */
 export const RELEASE_DEPLOY_BEFORE_RECORDING =
-  'RELEASE_NOTHING_RECORDED: this release run has recorded nothing on its release batch, so nothing ' +
+  'this release run has recorded nothing on its release batch, so nothing ' +
   'shows the credential it runs on can record what this deploy would do. Make one call first — POST .../method ' +
   'says what you are working from, and `loaded: false` with a detail is a valid answer — then deploy. ' +
   'A release deploy is refused before production changes, never after.';
@@ -152,42 +136,29 @@ export async function runCoolifyDeploy(input: {
 
   if (input.pipelineRunId && !input.issueId) {
     if (!(await isOpenReleaseBatchRun(projectId, input.pipelineRunId))) {
-      throw new CoolifyCommandError(
-        'pipelineRunId is not an open release-batch run for this project',
+      throw refuseRelease(
+        'RELEASE_RUN_NOT_OPEN',
+        `pipelineRunId ${input.pipelineRunId} is not an open release-batch run for this project`,
+        '/pipelineRunId',
       );
     }
     if ((await readRunMethod(input.pipelineRunId)) === null) {
-      throw new CoolifyCommandError(RELEASE_DEPLOY_BEFORE_RECORDING);
+      throw refuseRelease('RELEASE_NOTHING_RECORDED', RELEASE_DEPLOY_BEFORE_RECORDING);
     }
     // A release run's deploy is one of its production acts, held to the same approval its attempts are.
-    try {
-      await assertApprovalAllowsAttempt(input.pipelineRunId, projectId);
-    } catch (err) {
-      if (err instanceof HTTPException) {
-        const code = (err.cause as { code?: string } | undefined)?.code;
-        throw new CoolifyCommandError(`${code}: ${err.message}`);
-      }
-      throw err;
-    }
+    await assertApprovalAllowsAttempt(input.pipelineRunId, projectId);
     // ISS-1279 — the release path, and the only caller that takes the deploy lock: a release
     // reaching an environment another is mid-deploy to is refused rather than queued.
-    try {
-      return shape(
-        await tryDispatchCoolifyRelease({
-          projectId,
-          issueId: null,
-          runId: input.pipelineRunId,
-          integrationId: input.integrationId ?? null,
-          allowLive: true,
-          takeEnvironmentLock: true,
-        }),
-      );
-    } catch (err) {
-      if (err instanceof DeployEnvironmentLockedError) {
-        throw new CoolifyCommandError(err.message);
-      }
-      throw err;
-    }
+    return shape(
+      await tryDispatchCoolifyRelease({
+        projectId,
+        issueId: null,
+        runId: input.pipelineRunId,
+        integrationId: input.integrationId ?? null,
+        allowLive: true,
+        takeEnvironmentLock: true,
+      }),
+    );
   }
 
   if (input.issueId) {
@@ -202,8 +173,9 @@ export async function runCoolifyDeploy(input: {
     }
     const allowLive = await isIssueAtReleaseStage(input.issueId);
     if (allowLive && (await approvalRequired(projectId))) {
-      throw new CoolifyCommandError(
-        `RELEASE_APPROVAL_REQUIRED: project ${projectId} requires release approval (project document \`release.approval.required\`), so an issue at its release stage reaches production only through a release batch an admin approved — cut one with POST /api/projects/${projectId}/release-batches and deploy it by its pipelineRunId`,
+      throw refuseRelease(
+        'RELEASE_APPROVAL_REQUIRED',
+        `project ${projectId} requires release approval (project document \`release.approval.required\`), so an issue at its release stage reaches production only through a release batch an admin approved — cut one with POST /api/projects/${projectId}/release-batches and deploy it by its pipelineRunId`,
       );
     }
     return shape(

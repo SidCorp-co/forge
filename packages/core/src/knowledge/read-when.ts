@@ -1,5 +1,9 @@
+import type { KnowledgeRefusalCode } from '@forge/contracts/knowledge';
 import { type IssueStatus, issueStatuses } from '../db/schema.js';
 import { type MasterVerb, masterVerbs } from '../db/schema-master-charter.js';
+import { type RefusalError, refuser } from '../lib/refusal.js';
+
+const refuse = refuser<KnowledgeRefusalCode>('KNOWLEDGE_REFUSED');
 
 /** When an entry is worth reading — the verb a master is performing or the board state it is
  *  looking at, never a file glob — a second axis beside `injection` (ISS-1313). */
@@ -126,13 +130,8 @@ export function parseReadWhen(raw: unknown): ParsedReadWhen {
   return { ok: true, value: { ...(verbs ? { verbs } : {}), ...(statuses ? { statuses } : {}) } };
 }
 
-/** Thrown by `upsertKnowledgeEntries` for a `readWhen` that does not parse — caught at the route
- *  and turned into a 400 naming `refusal.field` and `refusal.message`, never trimmed or guessed. */
-export class ReadWhenShapeError extends Error {
-  readonly refusal: ReadWhenRefusal;
-  constructor(refusal: ReadWhenRefusal) {
-    super(refusal.message);
-    this.name = 'ReadWhenShapeError';
-    this.refusal = refusal;
-  }
+/** The refusal `upsertKnowledgeEntries` throws for a `readWhen` that does not parse, never trimmed or guessed. */
+export function readWhenRefusal(refusal: ReadWhenRefusal): RefusalError {
+  const at = refusal.field.startsWith('readWhen') ? refusal.field : `readWhen.${refusal.field}`;
+  return refuse('KNOWLEDGE_READ_WHEN_SHAPE', refusal.message, `/${at.split('.').join('/')}`);
 }

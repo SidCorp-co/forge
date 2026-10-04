@@ -1,7 +1,7 @@
 import { diffFieldValue } from '@forge/contracts/field-changes';
+import type { IssueUpdateRefusalCode } from '@forge/contracts/issues';
 import { and, count, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { fireOfCaller, issueDeleteRefusal } from '../agent-reports/service.js';
 import { BodyInvalidError } from '../body/errors.js';
@@ -22,7 +22,7 @@ import { egressForRequest } from '../lib/data-egress.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
-import { refusalEnvelope } from '../lib/refusal.js';
+import { refusalEnvelope, refuser } from '../lib/refusal.js';
 import { logger } from '../logger.js';
 import { deleteMemory } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
@@ -31,12 +31,10 @@ import { requirementOfIssue } from '../requirements/issue-links.js';
 import { proposesWorkflowOf } from '../workflows/design-issue.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { issueArchiveSide } from './archive.js';
-import { AttachmentError } from './attachment-service.js';
 import { registerIssueAttributeRoutes } from './attributes/routes.js';
-import { CREATE_ENTRY_STATUSES, createIssue, IssueCreateError } from './create-service.js';
+import { heldTakeRefusal } from './blocked-by.js';
+import { CREATE_ENTRY_STATUSES, createIssue } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
-import { toHttpDependencyError } from './dependency-routes.js';
-import { IssueDependencyError } from './dependency-service.js';
 import { serializeIssue } from './detail-projection.js';
 import { dispatchGatesOf } from './dispatch-gates.js';
 import { attachmentInputSchema, labelAttachItemSchema } from './input-schemas.js';
@@ -47,9 +45,7 @@ import {
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
 import {
-  LabelResolutionError,
   listIssueLabels,
-  PrimaryModuleError,
   type ResolvedLabelAttach,
   resolveLabelIdsForWrite,
 } from './label-service.js';
@@ -65,7 +61,6 @@ import { issueFiltersSchema, issuePatchSchema } from './request-schemas.js';
 import { jobHistoryForStep } from './search.js';
 import { buildIssueOrderBy } from './sort.js';
 import { refuseLegacyStatusFields } from './status-input.js';
-import { heldTakeHttp, toHttpUpdateError } from './update-errors-http.js';
 import { updateIssueFields } from './update-service.js';
 
 export {
@@ -116,14 +111,17 @@ async function assertAssigneeIsMember(projectId: string, assigneeId: string): Pr
     .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, assigneeId)))
     .limit(1);
   if (!row) {
-    throw new HTTPException(400, {
-      message: 'assignee must be a project member',
-      cause: { code: 'ASSIGNEE_NOT_MEMBER' },
-    });
+    throw refuseUpdate(
+      'ASSIGNEE_NOT_MEMBER',
+      'the assignee is not a member of this project; assign someone who is',
+      '/assigneeId',
+    );
   }
 }
 
 export { bodyRoutes } from '../body/routes.js';
+
+const refuseUpdate = refuser<IssueUpdateRefusalCode>('ISSUE_UPDATE_REFUSED');
 
 export const issueProjectRoutes = new Hono<{ Variables: AuthVars }>();
 issueProjectRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -182,26 +180,7 @@ issueProjectRoutes.post(
 
 function toHttpCreateError(err: unknown): unknown {
   if (err instanceof BodyInvalidError) return bodyInvalidHttp(err);
-  const held = heldTakeHttp(err);
-  if (held) return held;
-  if (err instanceof IssueDependencyError) return toHttpDependencyError(err);
-  if (err instanceof LabelResolutionError) {
-    return new HTTPException(400, {
-      message: 'one or more labels do not exist in this project',
-      cause: { code: 'INVALID_LABELS', details: { missing: err.missing } },
-    });
-  }
-  if (err instanceof PrimaryModuleError) {
-    return new HTTPException(400, { message: err.message, cause: { code: err.code } });
-  }
-  if (err instanceof AttachmentError) {
-    return new HTTPException(400, { message: err.message, cause: { code: err.code } });
-  }
-  if (err instanceof IssueCreateError) {
-    const code = err.code;
-    return new HTTPException(400, { message: `${code}: ${err.value}`, cause: { code } });
-  }
-  return err;
+  return heldTakeRefusal(err) ?? err;
 }
 
 const displayIdParamSchema = z.object({
@@ -493,10 +472,11 @@ issueRoutes.patch(
     if (patch.metadata !== undefined) {
       const baseRaw = patch.metadata?.branchConfig?.baseBranch;
       if (typeof baseRaw === 'string' && isSelfReferentialBranch(baseRaw, issue.issSeq)) {
-        throw new HTTPException(400, {
-          message: "baseBranch must not reference this issue's own branch",
-          cause: { code: 'BRANCH_SELF_REFERENCE' },
-        });
+        throw refuseUpdate(
+          'BRANCH_SELF_REFERENCE',
+          "baseBranch must not reference this issue's own branch; name the branch this work is based on",
+          '/metadata/branchConfig/baseBranch',
+        );
       }
       updates.metadata = patch.metadata;
       track('metadata', patch.metadata);
@@ -516,7 +496,7 @@ issueRoutes.patch(
         changes: { fields: changedFields, before, after },
       });
     } catch (err) {
-      throw toHttpUpdateError(err);
+      throw heldTakeRefusal(err) ?? err;
     }
 
     const patched = serializeIssue(

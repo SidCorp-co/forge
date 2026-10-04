@@ -1,4 +1,4 @@
-import { readAssistantPreferences } from '../auth/preference-changes.js';
+import { readAssistantPreferences } from '../preferences/index.js';
 import { db as defaultDb } from '../db/client.js';
 import { readSelvesFor } from '../orgs/agent-selves.js';
 import { speakerSection } from './preference-line.js';

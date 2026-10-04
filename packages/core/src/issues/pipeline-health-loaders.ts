@@ -8,6 +8,7 @@
  * the incident that mirror came from.
  */
 
+import { pauseReading } from './pipeline-health-reasons.js';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs, pipelineRuns } from '../db/schema.js';
@@ -108,6 +109,7 @@ export async function loadPausedRunsByIssue(
       detail,
       resumer,
       since: (r.updatedAt ?? new Date()).toISOString(),
+      reading: pauseReading({ resumer, kind, detail }),
     });
   }
   return byIssue;

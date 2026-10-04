@@ -9,10 +9,10 @@ import type {
   ObservationView,
 } from '@forge/contracts/workflow-health';
 import { and, desc, eq } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { projectWorkflowObservations, projectWorkflows } from '../db/schema-workflows.js';
 import { peopleOf } from '../lib/people.js';
+import { notFound } from '../middleware/route-errors.js';
 import { permissionRefusalFor } from '../permissions/index.js';
 import { type ObservationRefusal, observationRefusals } from './observation-rules.js';
 import {
@@ -27,9 +27,6 @@ import { designsOf, lockWorkflows } from './store.js';
 export type ObservationOutcome =
   | { ok: true; observation: ObservationView; created: boolean }
   | { ok: false; refusals: ObservationRefusal[] };
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 type Row = typeof projectWorkflowObservations.$inferSelect;
 
@@ -75,13 +72,9 @@ function documentOf(row: Row): ObservationDocument {
   if (!parsed.success) {
     const [first] = parsed.error.issues;
     const field = `/${(first?.path ?? []).map(String).join('/')}`;
-    throw new HTTPException(422, {
-      message: `OBSERVATION_UNPARSEABLE: observation ${row.id} holds ${field}, which no longer parses as an observation document (${first?.message ?? 'unknown'}); the stored row is repaired, never guessed at.`,
-      cause: {
-        code: 'OBSERVATION_UNPARSEABLE',
-        details: { observationId: row.id, field, issue: first?.message ?? null },
-      },
-    });
+    throw new Error(
+      `observation ${row.id} holds ${field}, which no longer parses as an observation document (${first?.message ?? 'unknown'}); the stored row is repaired, never guessed at.`,
+    );
   }
   return parsed.data;
 }

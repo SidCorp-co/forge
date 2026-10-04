@@ -5,14 +5,14 @@ Start from this skeleton. Delete sections that don't apply. Keep the body lean (
 ```markdown
 ---
 name: forge-<purpose>
-description: "<one line: what it does + when Forge dispatches it + trigger phrases>. Also use when the pipeline needs to move an issue from <fromStatus> to <toStatus>."
+description: "<one line: what it does + when to invoke it by name + trigger phrases>."
 user_invocable: true
 arguments: "documentId"
 ---
 
-# Forge <Stage> — <project>
+# Forge <Purpose> — <project>
 
-<1–2 sentences: which transition this owns (`<from> → <to>`) and the ONE thing it must get right for this project.>
+<1–2 sentences: what this skill does when invoked and the ONE thing it must get right for this project.>
 
 ## Tools
 - `forge-runner api` for the issue and its comments (+ the project-specific tools: e.g. a vendor MCP, forge_coolify_deploy, Bash)

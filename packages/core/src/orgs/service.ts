@@ -3,6 +3,29 @@ import { db, type Tx } from '../db/client.js';
 import { organizationMembers, organizations, users } from '../db/schema.js';
 import { addOrgMember } from '../permissions/index.js';
 
+/** The user's personal org (created at signup, or by migration 0106 for older users). */
+export async function findPersonalOrgId(
+  userId: string | null | undefined,
+  dbh: Tx = db,
+): Promise<string | null> {
+  if (!userId) return null;
+  const [row] = await dbh
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(and(eq(organizations.createdBy, userId), eq(organizations.isPersonal, true)))
+    .limit(1);
+  return row?.id ?? null;
+}
+
+export async function isPersonalOrg(orgId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ isPersonal: organizations.isPersonal })
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+    .limit(1);
+  return row?.isPersonal ?? false;
+}
+
 /**
  * Idempotently provision the user's personal org (one per user, enforced by
  * the `organizations_personal_owner_uq` partial unique). Called at signup
@@ -14,13 +37,8 @@ export async function ensurePersonalOrg(
   userId: string,
   email: string,
 ): Promise<string> {
-  const existing = await dbh
-    .select({ id: organizations.id })
-    .from(organizations)
-    .where(and(eq(organizations.createdBy, userId), eq(organizations.isPersonal, true)))
-    .limit(1);
-  const found = existing.find(() => true);
-  if (found) return found.id;
+  const found = await findPersonalOrgId(userId, dbh);
+  if (found) return found;
 
   const inserted = await dbh
     .insert(organizations)
@@ -34,13 +52,9 @@ export async function ensurePersonalOrg(
     .returning({ id: organizations.id });
   const org = inserted[0];
   if (!org) {
-    const [row] = await dbh
-      .select({ id: organizations.id })
-      .from(organizations)
-      .where(and(eq(organizations.createdBy, userId), eq(organizations.isPersonal, true)))
-      .limit(1);
-    if (!row) throw new Error('ensurePersonalOrg: insert and re-read both failed');
-    return row.id;
+    const raced = await findPersonalOrgId(userId, dbh);
+    if (!raced) throw new Error('ensurePersonalOrg: insert and re-read both failed');
+    return raced;
   }
 
   await addOrgMember(dbh, { orgId: org.id, userId, role: 'owner' }, { ifAbsent: true });

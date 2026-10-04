@@ -28,7 +28,7 @@ import { loginRoutes } from './auth/login.js';
 import { logoutRoutes } from './auth/logout.js';
 import { meRoutes } from './auth/me.js';
 import { oauthRoutes } from './auth/oauth/routes.js';
-import { preferenceRoutes } from './auth/preferences.js';
+import { routes as preferenceRoutes } from './preferences/index.js';
 import { reauthRoutes } from './auth/reauth.js';
 import { refreshRoutes } from './auth/refresh.js';
 import { authRoutes } from './auth/register.js';
@@ -89,6 +89,7 @@ import { knowledgeRoutes } from './knowledge/routes.js';
 import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
 import { moduleDiagramRoutes } from './labels/module-diagram-routes.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
+import { provideProjectOrg } from './lib/authz.js';
 import { isEnabled } from './lib/feature-flags.js';
 import { logger } from './logger.js';
 import { mcpHandler } from './mcp/handler.js';
@@ -134,6 +135,7 @@ import { invitationRoutes } from './projects/invitations-routes.js';
 import { masterCharterRoutes } from './projects/master-charter-routes.js';
 import { memberRoutes } from './projects/members-routes.js';
 import { projectRoutes } from './projects/routes.js';
+import { findProjectOrgId } from './projects/service.js';
 import { promptRoutes } from './prompt/routes.js';
 import { questionRoutes } from './questions/routes.js';
 import { startBoss, stopBoss } from './queue/boss.js';
@@ -162,6 +164,8 @@ import { uploadRoutes } from './uploads/routes.js';
 import { usageRecordRoutes } from './usage-records/routes.js';
 import { webhookInboundRoutes } from './webhooks/inbound-routes.js';
 import { attachWs, closeWs } from './ws/server.js';
+
+provideProjectOrg(findProjectOrgId);
 
 export const app = new Hono<{ Variables: RequestIdVars }>();
 

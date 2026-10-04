@@ -74,7 +74,7 @@ async fn post_batch(client: &CoreClient, job_id: &str, events: &[JobEventInput])
                     return Ok(events.len());
                 }
                 let said = super::status::named(status.as_u16());
-                if status.as_u16() == 409 || status.as_u16() == 403 {
+                if matches!(status.as_u16(), 403 | 409 | 422) {
                     return Err(Error::Other(format!("{DISOWNED}: {said}")));
                 }
                 if status.is_client_error() {

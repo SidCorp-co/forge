@@ -15,8 +15,8 @@ import {
   patPermissionWanted,
   patPrefixForPath,
   patUngrantableFor,
-} from '../auth/pat-permissions.js';
-import type { PatScope } from '../auth/pat-scope.js';
+} from '../credentials/pat-permissions.js';
+import type { PatScope } from '../credentials/pat-scope.js';
 import { patEffectiveProjectIds } from '../mcp/tools/project-scope.js';
 import { authenticatePat, type PatPrincipal } from './require-pat.js';
 

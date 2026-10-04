@@ -3,15 +3,13 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { oauthAccounts, userPreferences, users } from '../db/schema.js';
+import { oauthAccounts, users } from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireOrgCan } from '../permissions/index.js';
 
 export const meRoutes = new Hono<{ Variables: AuthVars }>();
 
 meRoutes.use('/me', requireAuth());
-meRoutes.use('/me/*', requireAuth());
 
 meRoutes.get('/me', async (c) => {
   const userId = c.get('userId');
@@ -88,119 +86,6 @@ meRoutes.patch(
         cause: { code: 'UNAUTHENTICATED' },
       });
     }
-    return c.json(row);
-  },
-);
-
-// `system` follows the OS preference at render time; the value just gets
-// echoed back to the client. Languages enumerated narrowly so a typo on the
-// client doesn't silently break the i18n loader.
-const themes = ['system', 'light', 'dark'] as const;
-const languages = ['en', 'vi'] as const;
-
-const preferencesSchema = z
-  .object({
-    theme: z.enum(themes).optional(),
-    language: z.enum(languages).optional(),
-    notifyOnMention: z.boolean().optional(),
-    // Identity of the newest "What's New" entry the user has seen (changelog
-    // version or `unreleased:<hash>`). Opaque to the server (ISS-384).
-    lastSeenWhatsNew: z.string().max(200).optional(),
-    // The org the user is currently "working in" (ISS-469). `null` clears it
-    // back to "no explicit choice" (the client resolves that to the personal
-    // org). A non-null value is membership-checked below before it is stored.
-    activeOrgId: z.string().uuid().nullable().optional(),
-  })
-  .strict();
-
-const DEFAULT_PREFS = {
-  theme: 'system' as const,
-  language: 'en' as const,
-  notifyOnMention: true,
-  lastSeenWhatsNew: null as string | null,
-  activeOrgId: null as string | null,
-};
-
-meRoutes.get('/me/preferences', async (c) => {
-  const userId = c.get('userId');
-  const [row] = await db
-    .select({
-      theme: userPreferences.theme,
-      language: userPreferences.language,
-      notifyOnMention: userPreferences.notifyOnMention,
-      lastSeenWhatsNew: userPreferences.lastSeenWhatsNew,
-      activeOrgId: userPreferences.activeOrgId,
-      updatedAt: userPreferences.updatedAt,
-    })
-    .from(userPreferences)
-    .where(eq(userPreferences.userId, userId))
-    .limit(1);
-  if (!row) {
-    return c.json({ ...DEFAULT_PREFS, updatedAt: null });
-  }
-  return c.json(row);
-});
-
-meRoutes.patch(
-  '/me/preferences',
-  zValidator('json', preferencesSchema, (r) => {
-    if (!r.success) {
-      throw new HTTPException(400, {
-        message: 'Invalid input',
-        cause: { code: 'BAD_REQUEST', details: z.flattenError(r.error) },
-      });
-    }
-  }),
-  async (c) => {
-    const userId = c.get('userId');
-    const patch = c.req.valid('json');
-    if (Object.keys(patch).length === 0) {
-      throw new HTTPException(400, {
-        message: 'no fields to update',
-        cause: { code: 'BAD_REQUEST' },
-      });
-    }
-
-    if (patch.activeOrgId != null) {
-      await requireOrgCan({ userId }, 'org.read', patch.activeOrgId);
-    }
-
-    // Insert a row if missing, otherwise patch only the keys the caller sent.
-    // postgres `INSERT ... ON CONFLICT DO UPDATE` keeps this single round-trip.
-    const [row] = await db
-      .insert(userPreferences)
-      .values({
-        userId,
-        theme: patch.theme ?? DEFAULT_PREFS.theme,
-        language: patch.language ?? DEFAULT_PREFS.language,
-        notifyOnMention: patch.notifyOnMention ?? DEFAULT_PREFS.notifyOnMention,
-        lastSeenWhatsNew: patch.lastSeenWhatsNew ?? DEFAULT_PREFS.lastSeenWhatsNew,
-        activeOrgId: patch.activeOrgId ?? DEFAULT_PREFS.activeOrgId,
-      })
-      .onConflictDoUpdate({
-        target: userPreferences.userId,
-        set: {
-          ...(patch.theme !== undefined ? { theme: patch.theme } : {}),
-          ...(patch.language !== undefined ? { language: patch.language } : {}),
-          ...(patch.notifyOnMention !== undefined
-            ? { notifyOnMention: patch.notifyOnMention }
-            : {}),
-          ...(patch.lastSeenWhatsNew !== undefined
-            ? { lastSeenWhatsNew: patch.lastSeenWhatsNew }
-            : {}),
-          ...(patch.activeOrgId !== undefined ? { activeOrgId: patch.activeOrgId } : {}),
-          updatedAt: new Date(),
-        },
-      })
-      .returning({
-        theme: userPreferences.theme,
-        language: userPreferences.language,
-        notifyOnMention: userPreferences.notifyOnMention,
-        lastSeenWhatsNew: userPreferences.lastSeenWhatsNew,
-        activeOrgId: userPreferences.activeOrgId,
-        updatedAt: userPreferences.updatedAt,
-      });
-
     return c.json(row);
   },
 );

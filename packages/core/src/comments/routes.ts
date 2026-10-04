@@ -1,4 +1,3 @@
-import { isCommentIntent } from '@forge/contracts/record-events';
 import { and, asc, count, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -12,8 +11,11 @@ import {
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from '../issues/issue-route-ref.js';
+import type { CommentRefusalCode } from '@forge/contracts/comments';
+import { isCommentIntent } from '@forge/contracts/record-events';
 import { mirroredEventsFor } from '../issues/record-events/store.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { refuser } from '../lib/refusal.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
 import { projectLens } from '../messaging/record-screen.js';
@@ -29,8 +31,8 @@ import {
   declares,
   RECORD_ROUTE_CAPABILITY,
 } from '../middleware/client-capabilities.js';
+import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { holds, requireHeld } from '../permissions/index.js';
 import { commentAttachmentRoutes } from './attachment-routes.js';
 import {
   bodyRefusalHttp,
@@ -38,19 +40,22 @@ import {
   commentCreateSchema,
   rethrowBodyInvalid,
 } from './body-input.js';
-import { CommentCursorInvalidError, decodeCommentCursor } from './cursor.js';
+import { type CommentCursor, decodeCommentCursor } from './cursor.js';
 import { commentRowIn, placeOfComment } from './entity-read.js';
 import { pgConstraintName, pgErrorCode } from './error-mapping.js';
 import { messageRefusalHttp } from './screen.js';
 import {
-  CommentIntentRefused,
   commentThreadColumns,
   deleteComment,
   insertComment,
+  intentRefusal,
   listIssueCommentPage,
   updateCommentBody,
 } from './service.js';
 import { attachAuthors, buildCommentTree, type CommentAttachmentLite } from './tree.js';
+import { requireHeld } from '../permissions/index.js';
+
+const refuse = refuser<CommentRefusalCode>('COMMENT_REFUSED');
 
 /** The comment projection every REST response here shares. */
 const idParamSchema = z.object({ id: z.uuid() });
@@ -61,20 +66,11 @@ const threadQuerySchema = paginationSchema.extend({
   intent: z.string().max(64).optional(),
 });
 
-/** A refused intent, as the 422 that names the valid set. */
-function intentRefusalHttp(err: unknown): HTTPException | null {
-  if (!(err instanceof CommentIntentRefused)) return null;
-  return new HTTPException(422, { message: err.message, cause: { code: err.code } });
-}
-
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
 export async function loadIssue(issueId: string) {
   const [row] = await db
@@ -165,14 +161,15 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
           announce: { actor: restActor(c), authored: restAuthored(c) },
         });
       } catch (err) {
-        const refusal = bodyRefusalHttp(err) ?? messageRefusalHttp(err) ?? intentRefusalHttp(err);
+        const refusal = bodyRefusalHttp(err) ?? messageRefusalHttp(err);
         if (refusal) throw refusal;
         const pgCode = pgErrorCode(err);
         if (pgCode === '23514') {
-          throw new HTTPException(400, {
-            message: 'comment depth exceeds 3',
-            cause: { code: 'DEPTH_EXCEEDED' },
-          });
+          throw refuse(
+            'COMMENT_DEPTH_EXCEEDED',
+            'a reply sits at most 3 deep; reply to a comment higher in the thread',
+            '/parentId',
+          );
         }
         if (pgCode === '23503' && parentId) {
           const constraint = pgConstraintName(err);
@@ -204,20 +201,17 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
       const { limit, cursor, projectId: projectIdQuery, intent } = c.req.valid('query');
       const userId = c.get('userId');
       if (intent !== undefined && !isCommentIntent(intent)) {
-        throw intentRefusalHttp(new CommentIntentRefused(intent)) as HTTPException;
+        throw intentRefusal(intent);
       }
 
       const issue = await resolveIssueRouteRef(rawId, projectIdQuery, userId);
       const issueId = issue.id;
 
-      let after: ReturnType<typeof decodeCommentCursor> | undefined;
+      let after: CommentCursor | undefined;
       if (cursor !== undefined) {
-        try {
-          after = decodeCommentCursor(cursor);
-        } catch (err) {
-          if (err instanceof CommentCursorInvalidError) throw badRequest({ cursor: err.message });
-          throw err;
-        }
+        const decoded = decodeCommentCursor(cursor);
+        if ('invalid' in decoded) throw badRequest({ cursor: decoded.invalid });
+        after = decoded;
       }
 
       const [{ n: total } = { n: 0 }] = await db
@@ -343,9 +337,7 @@ commentRoutes.patch(
     const comment = await loadComment(id);
     if (comment.authorId !== userId) {
       const access = await loadProjectAccess(comment.projectId, userId);
-      if (!holds(access, 'project.admin')) {
-        throw forbidden('not comment author or project admin');
-      }
+      requireHeld(access, 'project.admin', "changing another person's comment");
     }
 
     let written: Awaited<ReturnType<typeof updateCommentBody>>;
@@ -382,9 +374,7 @@ commentRoutes.delete(
     const comment = await loadComment(id);
     if (comment.authorId !== userId) {
       const access = await loadProjectAccess(comment.projectId, userId);
-      if (!holds(access, 'project.admin')) {
-        throw forbidden('not comment author or project admin');
-      }
+      requireHeld(access, 'project.admin', "deleting another person's comment");
     }
 
     await deleteComment(id, {

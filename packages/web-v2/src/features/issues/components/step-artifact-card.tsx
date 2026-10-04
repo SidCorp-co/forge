@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { enumLabel, Icon } from "@/design";
 import { stageColor } from "@/design/stages";
-import type { StepOutcome, StepState } from "../derive";
+import type { IssueStepOutcome as StepOutcome, IssueStepState as StepState } from "@forge/contracts/issue-standing";
 
 interface StepArtifactCardProps {
   outcome: StepOutcome;

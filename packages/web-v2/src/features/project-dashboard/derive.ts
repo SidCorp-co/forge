@@ -1,11 +1,8 @@
 
 import { type StageKey, stageColor } from "@/design/stages";
 import { TONE_META, type SemanticTone } from "@/design/status";
-import { statusReading } from "@/design/vocabulary";
-import type { AttentionView } from "@/features/attention/types";
 import { jobTypeToStage } from "@/features/pipeline/derive";
 import type { PipelineRunListItem, StepDurationRow } from "@/features/pipeline/types";
-import type { ProjectHealthRow } from "@/features/projects/types";
 import {
   type ActiveRunner,
   type ProjectRunner,
@@ -169,79 +166,6 @@ export function inFlightSpend(runs: PipelineRunListItem[] | undefined): number {
 /** Sum of estimated cost across genuinely-active runs only. */
 export function activeSpend(runs: PipelineRunListItem[] | undefined): number {
   return activeRuns(runs).reduce((sum, r) => sum + (r.cost?.estimatedCost ?? 0), 0);
-}
-
-/* ------------------------------------------------------------------ *
- * Needs-your-attention queue (AC#2)
- * ------------------------------------------------------------------ */
-
-export type AttentionActionKind = "retry" | "diff" | "input" | "chain";
-
-export interface DashboardAttentionItem {
-  key: string;
-  actionKind: AttentionActionKind;
-  /** Primary-action button label. */
-  actionLabel: string;
-  /** What is wrong + at which step. */
-  title: string;
-  issueRef?: string;
-  /** basePath-relative destination (Next prepends `/v2`). */
-  link: string;
-  since?: string;
-  status?: string;
-}
-
-function mapAttention(
-  items: AttentionView["failedJobs"],
-  slug: string,
-  actionKind: AttentionActionKind,
-  actionLabel: string,
-): DashboardAttentionItem[] {
-  return items
-    .filter((it) => it.projectSlug === slug)
-    .map((it, i) => ({
-      key: `${actionKind}-${it.link}-${i}`,
-      actionKind,
-      actionLabel,
-      title: it.title,
-      issueRef: it.issueRef,
-      link: it.link,
-      since: it.since,
-      status: it.status,
-    }));
-}
-
-/**
- * The project's actionable items: failed jobs (Approve & retry), review-requested
- * changes (Open diff), awaiting-input (Provide info), and blocked-on-dependency
- * issues (View chain) derived from `health.blockers`. Attention items are
- * filtered to this project by `projectSlug`; blockers are already per-project.
- */
-export function projectAttention(
-  view: AttentionView | undefined,
-  slug: string,
-  blockers: ProjectHealthRow["blockers"] | undefined,
-): DashboardAttentionItem[] {
-  const out: DashboardAttentionItem[] = [];
-  if (view) {
-    out.push(
-      ...mapAttention(view.failedJobs, slug, "retry", "Approve & retry"),
-      ...mapAttention(view.needsReview, slug, "diff", "Open diff"),
-      ...mapAttention(view.awaitingInput, slug, "input", "Provide info"),
-    );
-  }
-  for (const b of blockers ?? []) {
-    out.push({
-      key: `chain-${b.documentId}`,
-      actionKind: "chain",
-      actionLabel: "View chain",
-      title: `Blocked — waiting at ${statusReading("issue", b.status).label}`,
-      issueRef: b.issueId,
-      link: `/projects/${slug}/issues/${b.documentId}`,
-      status: b.status,
-    });
-  }
-  return out;
 }
 
 /* ------------------------------------------------------------------ *

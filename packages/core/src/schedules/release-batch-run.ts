@@ -8,19 +8,14 @@
 // normal state of a healthy project, and a nightly cron that reports failure on
 // a quiet night trains everyone to ignore it.
 
+import { RELEASE_BLOCKER_CODES } from '@forge/contracts/releases';
 import { counted } from '../lib/plural.js';
+import { RefusalError } from '../lib/refusal.js';
 import { logger } from '../logger.js';
-import { blockersOf, RELEASE_ROSTER_LIMIT } from '../release-batch/blocker-sentences.js';
+import { RELEASE_ROSTER_LIMIT } from '../release-batch/blocker-sentences.js';
 import { loadReleaseRoster } from '../release-batch/queries.js';
-import {
-  BatchInFlightError,
-  ClaimConflictError,
-  createReleaseBatch,
-  NoReleaseGateError,
-  NoRunnerOnlineError,
-  ReleasePoolEmptyError,
-  ReleaseRecordMissingError,
-} from '../release-batch/service.js';
+import { heldBackByProviders } from '../release-batch/refuse.js';
+import { createReleaseBatch } from '../release-batch/service.js';
 
 export interface ScheduledCutOutcome {
   status: 'success' | 'skipped' | 'failed';
@@ -36,19 +31,16 @@ export interface ScheduledCutOutcome {
   runId?: string;
 }
 
-// Carrying a readiness blocker makes an error a refusal; these classes name one thrown without.
-const CLASSIFIED_REFUSALS: ReadonlyArray<readonly [new (...args: never[]) => Error, string]> = [
-  [BatchInFlightError, 'BATCH_IN_FLIGHT'],
-  [ClaimConflictError, 'CLAIM_CONFLICT'],
-  [NoRunnerOnlineError, 'NO_RUNNER_ONLINE'],
-  [ReleasePoolEmptyError, 'RELEASE_POOL_EMPTY'],
-  [NoReleaseGateError, 'NO_RELEASE_GATE'],
-  [ReleaseRecordMissingError, 'RELEASE_RECORD_MISSING'],
-];
+const BLOCKERS: ReadonlySet<string> = new Set(RELEASE_BLOCKER_CODES);
+
+/** A refusal led by a release blocker skips the tick; any other failure fails it. */
+function blockerCodeOf(err: unknown): string | null {
+  const head = err instanceof RefusalError ? err.refusals[0]?.code : undefined;
+  return head && BLOCKERS.has(head) ? head : null;
+}
 
 function reasonsOf(err: unknown): string[] {
-  const carried = blockersOf(err).map((b) => b.message);
-  if (carried.length > 0) return carried;
+  if (err instanceof RefusalError) return err.refusals.map((r) => r.detail);
   return [err instanceof Error ? err.message : String(err)];
 }
 
@@ -62,12 +54,17 @@ export async function cutWaitingRelease(args: {
     return { status: 'skipped', output: 'nothing is waiting at the release gate', named: [] };
   }
 
-  const named = args.issueIds.slice(0, RELEASE_ROSTER_LIMIT);
+  let named = args.issueIds.slice(0, RELEASE_ROSTER_LIMIT);
   try {
-    const result = await createReleaseBatch({
-      projectId: args.projectId,
-      issueIds: named,
-      userId: args.userId,
+    const cut = (issueIds: string[]) =>
+      createReleaseBatch({ projectId: args.projectId, issueIds, userId: args.userId });
+    const result = await cut(named).catch((err: unknown) => {
+      // A provider not yet live holds back only the issue that waits on it; the rest still ship.
+      const held = heldBackByProviders(err, named);
+      const rest = held ? named.filter((id) => !held.includes(id)) : [];
+      if (rest.length === 0) throw err;
+      named = rest;
+      return cut(rest);
     });
     return {
       status: 'success',
@@ -76,12 +73,11 @@ export async function cutWaitingRelease(args: {
       runId: result.runId,
     };
   } catch (err) {
-    const code =
-      blockersOf(err)[0]?.code ?? CLASSIFIED_REFUSALS.find(([cls]) => err instanceof cls)?.[1];
+    const code = blockerCodeOf(err);
     if (code) {
       return {
         status: 'skipped',
-        output: `no cut this tick: ${err instanceof Error ? err.message : String(err)}`,
+        output: `no cut this tick: ${reasonsOf(err)[0] ?? code}`,
         named,
         code,
         reasons: reasonsOf(err),
@@ -91,7 +87,7 @@ export async function cutWaitingRelease(args: {
     return {
       status: 'failed',
       output: 'the scheduled cut failed',
-      error: err instanceof Error ? err.message : String(err),
+      error: reasonsOf(err).join(' '),
       named,
       reasons: reasonsOf(err),
     };

@@ -17,7 +17,7 @@ export const AUTHORITY_REFUSED_REPLY =
 
 /**
  * Refuse a turn by name, durably and at most once: a speaker linked to nobody, or one the
- * turn may not act as (`auth/turn-credential.ts`).
+ * turn may not act as (`credentials/turn-credential.ts`).
  */
 export async function refuseAuthority(
   args: RouteWindowArgs,

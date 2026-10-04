@@ -11,14 +11,14 @@ import type { CoreGuide } from './types.js';
 export const SUGGESTIONS_GUIDE: CoreGuide = {
   slug: 'suggestions',
   audience: 'agent',
-  title: 'Suggestions: propose, and let a person decide',
+  title: 'Suggestions: propose, and let an approver decide',
   summary:
     'What an agent writes instead of changing a requirement, an issue or a feedback item it may not decide: the seven kinds and their targets, the base revision a suggestion is checked against twice, the open-queue cap, who accepts, and what accepting each kind writes.',
   version: 1,
-  body: `## Suggestions: propose, and let a person decide
+  body: `## Suggestions: propose, and let an approver decide
 
-A suggestion is a proposed change that waits on a person instead of changing anything. An agent, the
-BA assistant or a person writes one; a person of the project accepts or rejects it; its
+A suggestion is a proposed change that waits on a decision instead of changing anything. An agent, the
+BA assistant or a person writes one; a holder of \`suggestions.approve\` on the project accepts or rejects it; its
 effect is written in the accept's own transaction and points back at it. The door is
 \`/api/projects/:id/suggestions\` (\`POST\` writes, \`GET\` lists) and
 \`…/suggestions/:sid/accept|reject|revise|withdraw\`.
@@ -29,7 +29,7 @@ effect is written in the accept's own transaction and points back at it. The doo
 | \`revision_diff\` | a requirement | a new **draft** revision on that requirement, authored by the producer; never a current one, so the requirement's own propose and accept still follow |
 | \`requirement_draft\` | an issue | a new requirement at revision 1, a draft |
 | \`readiness\` | a requirement | the readiness result at its base revision, which an agree reads when the project gates on readiness |
-| \`breakdown\` | a requirement | every proposed issue, filed at **draft** with its complexity, priority and category, linked to the requirement, traced to its BCs, edged by \`blockedBy\` and linked as the build of the pinned design it builds, in one transaction; nothing dispatches until a person promotes them, and the build gate holds each until its design is approved |
+| \`breakdown\` | a requirement | every proposed issue, filed at **draft** with its complexity, priority and category, linked to the requirement, traced to its BCs, edged by \`blockedBy\` and linked as the build of the pinned design it builds, in one transaction; nothing dispatches until they are promoted, and the build gate holds each until its design is approved |
 | \`triage\` | an issue | the issue's priority, category and complexity; a free-text \`route\` is kept as a note comment on the issue |
 | \`duplicate\` | an issue or a requirement | on an issue, drops it naming the root, with a relates edge to it; on a requirement it is refused \`SUGGESTION_EFFECT_UNDECIDED\`, because no effect is defined for it |
 | \`feedback_triage\` | a feedback item | the route on the item (${guideRef('feedback-triage')}) |
@@ -50,7 +50,7 @@ the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
 - An open suggestion of the same kind proposing the same change on the same target is
   \`SUGGESTION_DUPLICATE\`, naming it: the comparison ignores key order.
 - At most ${SUGGESTION_MAX_OPEN_PER_TARGET} proposed suggestions wait on one target; another is
-  \`SUGGESTION_QUEUE_FULL\` until a person decides one.
+  \`SUGGESTION_QUEUE_FULL\` until one is decided.
 - A \`breakdown\` is the project master's to propose (workflow requirement-to-delivery step
   \`breakdown\`): proposing or revising one takes \`suggestions.write\` (project member), and
   without it the call is \`PERMISSION_FORBIDDEN\`. A requirement revision holds one open breakdown; a
@@ -72,12 +72,12 @@ the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
   \`SUGGESTION_BUILD_UNNAMED\`, and a flow the baseline does not pin \`SUGGESTION_BUILD_UNPINNED\`.
 
 ### Deciding
-- **accept** \`{ suggestionId, reason? }\` and **reject** \`{ suggestionId, reason }\` take
+- **accept** \`{ reason? }\` and **reject** \`{ reason }\` take
   \`suggestions.approve\` on the project (project admin, or an org owner or admin), person or agent alike,
   its producer included; without it the call is refused \`PERMISSION_FORBIDDEN\`. An accept's reason is kept on the suggestion and is where the authority
   behind it is named. A rejection must say why (\`SUGGESTION_REJECT_REASON_REQUIRED\`), and that reason
   is what keeps the next suggestion on the target from repeating it.
-- **revise** \`{ suggestionId, payload, reason }\` is a reviewer's edit. The original is rejected with
+- **revise** \`{ payload, reason }\` is a reviewer's edit. The original is rejected with
   the reason, and a new suggestion carrying the whole new payload is proposed by the reviewer in the
   same write, naming the original in \`revises\`; every check a new suggestion takes applies to it.
   Revising rejects the original, so it takes \`suggestions.approve\` like any decision
@@ -92,8 +92,8 @@ the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
   decision.
 
 ### Reading them
-\`list\` takes \`{ requirement | issue, status? }\` and answers summaries without payloads; ask for
-\`view: 'full'\` when you need what a suggestion proposed. Statuses: \`proposed\` (waits on a person),
+\`GET …/suggestions\` takes \`?requirement=\`, \`issue\`, \`feedback\` or \`workflow\`, and \`status\` (comma-separated);
+it answers each suggestion whole, and \`view=summary\` leaves the payloads out. Statuses: \`proposed\` (waits on a decision),
 \`accepted\`, \`rejected\`, \`stale\`, \`withdrawn\`. Requirement revisions themselves are in
 ${guideRef('requirement-lifecycle')}.`,
 };

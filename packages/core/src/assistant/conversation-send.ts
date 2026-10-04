@@ -19,6 +19,7 @@ import { agentRefusalText } from '../agent-sessions/session-credential.js';
 import { collectInboundMessage } from '../conversations/collect-inbound.js';
 import { type ProjectHandle, resolveProjectHandle } from '../conversations/handles.js';
 import { type ConversationVenue, codeAuthored } from '../conversations/ports.js';
+import { refuseConversation } from '../conversations/refusals.js';
 import { routeWindow, type WindowTurnInputs } from '../conversations/route-window.js';
 import {
   type ConversationImage,
@@ -235,19 +236,6 @@ export interface WebSendResult {
 }
 
 /**
- * The first send lost the race to settle this room's mode.
- */
-export class ConversationModeSettledError extends Error {
-  readonly code = 'CONVERSATION_MODE_SETTLED' as const;
-  constructor(readonly settled: ConversationMode) {
-    super(
-      `this conversation already answers in ${settled} mode; a room's mode is written by its first message and never changes, so open another conversation to talk to the other one`,
-    );
-    this.name = 'ConversationModeSettledError';
-  }
-}
-
-/**
  * Take one typed message and answer it.
  */
 export async function sendWebConversationMessage(args: {
@@ -286,7 +274,10 @@ export async function sendWebConversationMessage(args: {
       if (seq === 0 && (await settleConversationMode(tx, conversationId, args.mode))) return;
       if (seq !== 0 && !args.namedMode) return;
       const row = await getConversation(conversationId, tx);
-      throw new ConversationModeSettledError(effectiveConversationMode(row ?? { mode: null }));
+      throw refuseConversation(
+        'CONVERSATION_MODE_SETTLED',
+        `conversation ${conversationId} was opened in ${effectiveConversationMode(row ?? { mode: null })} mode by a message that landed first; this one was not taken in — send it again, or open another conversation to talk to the other mode`,
+      );
     },
   });
   if (collected.kind !== 'collected') {

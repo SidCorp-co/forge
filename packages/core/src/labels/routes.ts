@@ -1,10 +1,12 @@
 import { count, eq } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import type { LabelRefusalCode } from '@forge/contracts/labels';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issueLabels, labelKinds, labels } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { type RefusalError, refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { moduleDrift } from './module-drift.js';
@@ -17,13 +19,8 @@ import {
   assertParentIsLegal,
   autoModuleColor,
   deriveModuleSlug,
-  ModuleHierarchyError,
 } from './module-service.js';
-import {
-  ModuleNotFoundError,
-  moduleDetailOf,
-  moduleRollupWithStanding,
-} from './module-standing-read.js';
+import { moduleDetailOf, moduleRollupWithStanding } from './module-standing-read.js';
 import { labelUniqueConflict } from './unique-conflicts.js';
 import { requireHeld } from '../permissions/index.js';
 
@@ -79,12 +76,11 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-const conflict = (message: string, code: string) =>
-  new HTTPException(409, { message, cause: { code } });
+const refuse = refuser<LabelRefusalCode>('LABEL_REFUSED');
 
-const uniqueConflict = (err: unknown): HTTPException | undefined => {
+const uniqueConflict = (err: unknown): RefusalError | undefined => {
   const named = labelUniqueConflict(err);
-  return named && conflict(named.message, named.code);
+  return named && refuse(named.code, named.message);
 };
 
 const labelColumns = {
@@ -99,11 +95,6 @@ const labelColumns = {
   description: labels.description,
   createdAt: labels.createdAt,
 };
-
-const moduleError = (err: unknown) =>
-  err instanceof ModuleHierarchyError
-    ? new HTTPException(400, { message: err.message, cause: { code: err.code } })
-    : err;
 
 export const labelProjectRoutes = new Hono<{ Variables: AuthVars }>();
 labelProjectRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -125,17 +116,13 @@ labelProjectRoutes.post(
     requireHeld(access, 'project.admin');
 
     const isModule = (kind ?? 'label') === 'module';
-    try {
-      if (parentId) {
-        assertParentIsForModule(isModule);
-        await assertParentIsLegal(projectId, parentId, undefined);
-      }
-      if (knowledgeEntryId) {
-        assertKnowledgeNodeIsForModule(isModule);
-        await assertKnowledgeNodeIsLegal(projectId, knowledgeEntryId, undefined);
-      }
-    } catch (err) {
-      throw moduleError(err);
+    if (parentId) {
+      assertParentIsForModule(isModule);
+      await assertParentIsLegal(projectId, parentId, undefined);
+    }
+    if (knowledgeEntryId) {
+      assertKnowledgeNodeIsForModule(isModule);
+      await assertKnowledgeNodeIsLegal(projectId, knowledgeEntryId, undefined);
     }
 
     try {
@@ -213,12 +200,7 @@ labelProjectRoutes.get(
     const { id: projectId, module } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
     requireHeld(access, 'project.read');
-    try {
-      return c.json(await moduleDetailOf(projectId, module, viewerOf(c)));
-    } catch (err) {
-      if (err instanceof ModuleNotFoundError) throw notFound(err.message);
-      throw err;
-    }
+    return c.json(await moduleDetailOf(projectId, module, viewerOf(c)));
   },
 );
 
@@ -286,17 +268,13 @@ labelRoutes.patch(
     const nextParentId = patch.parentId !== undefined ? patch.parentId : label.parentId;
     const isPromotion = nextKind === 'module' && label.kind === 'label';
     const isDemotion = nextKind === 'label' && label.kind === 'module';
-    try {
-      if (nextParentId) assertParentIsForModule(nextKind === 'module');
-      if (patch.parentId) await assertParentIsLegal(label.projectId, patch.parentId, id);
-      if (patch.knowledgeEntryId) {
-        assertKnowledgeNodeIsForModule(nextKind === 'module');
-        await assertKnowledgeNodeIsLegal(label.projectId, patch.knowledgeEntryId, id);
-      }
-      if (isDemotion) await assertDemotionIsLegal(id);
-    } catch (err) {
-      throw moduleError(err);
+    if (nextParentId) assertParentIsForModule(nextKind === 'module');
+    if (patch.parentId) await assertParentIsLegal(label.projectId, patch.parentId, id);
+    if (patch.knowledgeEntryId) {
+      assertKnowledgeNodeIsForModule(nextKind === 'module');
+      await assertKnowledgeNodeIsLegal(label.projectId, patch.knowledgeEntryId, id);
     }
+    if (isDemotion) await assertDemotionIsLegal(id);
 
     const updates: Record<string, unknown> = {};
     if (patch.name !== undefined) updates.name = patch.name;
@@ -344,7 +322,10 @@ labelRoutes.delete(
       .from(issueLabels)
       .where(eq(issueLabels.labelId, id));
     if ((attached?.n ?? 0) > 0) {
-      throw conflict('label is attached to issues', 'LABEL_IN_USE');
+      throw refuse(
+        'LABEL_IN_USE',
+        'this label is attached to issues; detach it from every issue before deleting it',
+      );
     }
 
     await db.delete(labels).where(eq(labels.id, id));

@@ -14,30 +14,13 @@ const EXT = new Set(['.ts', '.tsx', '.mjs', '.js', '.rs']);
 const TS_EXT = new Set(['.ts', '.tsx', '.mjs', '.js']);
 
 const ALLOW = [
-  /^packages\/core\/tests\/integration\/release-axes-migration-ground\.ts$/,
-  /^packages\/core\/tests\/integration\/release-axes-migration-e2e\.test\.ts$/,
-  /^packages\/core\/tests\/integration\/release-axes-constraints-e2e\.test\.ts$/,
-  /^packages\/core\/tests\/integration\/release-axes-window-e2e\.test\.ts$/,
-  /^packages\/core\/src\/db\/retired-model-audit\.test\.ts$/,
   /^packages\/core\/src\/projects\/agent-config-schema\.ts$/,
-  /^packages\/core\/src\/projects\/agent-config-doors\.test\.ts$/,
-  /^packages\/core\/tests\/integration\/agent-config-doors-e2e\.test\.ts$/,
-  /^packages\/core\/tests\/integration\/agent-config-shadow-keys\.test\.ts$/,
   // This checker names what it hunts.
   /^scripts\/check-retired-model\.mjs$/,
-  /^packages\/core\/tests\/integration\/release-chain-migration-ground\.ts$/,
-  /^packages\/core\/tests\/integration\/landing-deploy-key-removed-e2e\.test\.ts$/,
   // ISS-16 — the read-only export reads the dropped columns of a database that still has them.
   /^scripts\/export-legacy-project-config\.mjs$/,
-  /^packages\/core\/tests\/integration\/legacy-config-export-e2e\.test\.ts$/,
-  /^packages\/core\/tests\/integration\/base-branch-drop-migration-e2e\.test\.ts$/,
-  // ISS-12 — each spells a deleted key to prove the door refuses it by name.
-  /^packages\/core\/src\/projects\/routes\.test\.ts$/,
-  /^packages\/core\/src\/issues\/metadata-schema\.test\.ts$/,
-  /^packages\/core\/src\/project-config\/(?:routes|schema|schema-plants)\.test\.ts$/,
-  /^packages\/core\/tests\/integration\/release-chain-migration-e2e\.test\.ts$/,
+  // ISS-12 — spells a deleted key to prove the door refuses it by name.
   /^packages\/core\/src\/projects\/retired-project-keys\.ts$/,
-  /^packages\/core\/src\/db\/schema\.test\.ts$/,
 ];
 
 // One exact line, not a file: the rest of the file stays under every rule.
@@ -47,12 +30,6 @@ export const ALLOW_LINES = [
     rule: 'release-path-keys',
     text: '"testCredentials",',
     why: 'the scrubber filters a retired secret-bearing key for ever: old clients, logs and replays still send it, and dropping the key sends their credentials out unscrubbed.',
-  },
-  {
-    file: 'packages/web-v2/src/lib/sentry-scrub.test.ts',
-    rule: 'release-path-keys',
-    text: 'const RETIRED = "testCredentials";',
-    why: 'the plant that proves the scrubber still filters the retired key has to spell it once.',
   },
 ];
 

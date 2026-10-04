@@ -18,6 +18,7 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { pauseRun, resumeRun } from './run-pause.js';
 import { cascadeCancelChildJobs, type JobRow, requestKillsForCascade } from './runs-cascade.js';
+import { refusePipeline } from './refuse.js';
 
 /**
  * ISS-411 — issue statuses an operator cancel must NOT disturb. `on_hold` is
@@ -68,8 +69,11 @@ function notFound(): Error {
   return new Error('NOT_FOUND: pipeline run not found');
 }
 
-function conflict(current: PipelineRunRow['status']): Error {
-  return new Error(`CONFLICT: run already ${current}`);
+function runTerminal(current: PipelineRunRow['status']): Error {
+  return refusePipeline(
+    'PIPELINE_RUN_TERMINAL',
+    `this run is already ${current}, so it is neither paused, resumed nor cancelled again`,
+  );
 }
 
 async function selectRun(runId: string): Promise<PipelineRunRow | null> {
@@ -95,7 +99,7 @@ function broadcastRunStatus(run: PipelineRunRow): void {
 
 /**
  * Flip a running run to `paused`. Idempotent on already-`paused` runs.
- * Throws `CONFLICT` for any terminal status (`completed`, `failed`,
+ * Refuses `PIPELINE_RUN_TERMINAL` for any terminal status (`completed`, `failed`,
  * `cancelled`). Write + side effects via the shared pause writer
  * (`run-pause.ts`).
  */
@@ -105,7 +109,7 @@ export async function pausePipelineRun(runId: string, actor: KernelActor): Promi
   const current = await selectRun(runId);
   if (!current) throw notFound();
   if (current.status === 'paused') return current;
-  throw conflict(current.status);
+  throw runTerminal(current.status);
 }
 
 export async function resumePipelineRun(
@@ -117,7 +121,7 @@ export async function resumePipelineRun(
   const current = await selectRun(runId);
   if (!current) throw notFound();
   if (current.status === 'running') return current;
-  throw conflict(current.status);
+  throw runTerminal(current.status);
 }
 
 /**
@@ -207,7 +211,7 @@ export async function cancelPipelineRun(
           killableJobs: [] as JobRow[],
         };
       }
-      throw conflict(current.status);
+      throw runTerminal(current.status);
     }
 
     const cascade = await cascadeCancelChildJobs(tx, runId, FAILURE_REASON_PIPELINE_CANCELLED);

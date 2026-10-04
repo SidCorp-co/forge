@@ -34,7 +34,7 @@ CORS_ORIGINS=http://localhost:3000
 APP_BASE_URL=http://localhost:3000
 NEXT_PUBLIC_API_URL=http://localhost:8080/api
 
-# SMTP — required by core schema; leave blank for dev (set SMTP_DEBUG=true to log
+# SMTP — optional in the core env schema; leave blank for dev (set SMTP_DEBUG=true to log
 # verification links to container logs instead of sending email)
 SMTP_HOST=
 SMTP_PORT=

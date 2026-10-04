@@ -1,3 +1,4 @@
+import type { AuthRefusalCode } from '@forge/contracts/auth';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -5,6 +6,7 @@ import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
+import { refuser } from '../lib/refusal.js';
 import { logger } from '../logger.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -13,6 +15,8 @@ import { sendVerificationEmail } from './email.js';
 import { hashPassword } from './password.js';
 import { evaluatePasswordStrength, MIN_PASSWORD_SCORE } from './password-strength.js';
 import { issueVerificationToken } from './verification-token.js';
+
+const refuse = refuser<AuthRefusalCode>('AUTH_REFUSED');
 
 export const registerSchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email().max(254)),
@@ -93,10 +97,11 @@ authRoutes.post(
       return c.json(row, 201);
     } catch (err: unknown) {
       if (isUniqueViolation(err)) {
-        throw new HTTPException(409, {
-          message: 'Email already registered',
-          cause: { code: 'CONFLICT' },
-        });
+        throw refuse(
+          'EMAIL_ALREADY_REGISTERED',
+          'this email is already registered; sign in instead',
+          '/email',
+        );
       }
       throw err;
     }

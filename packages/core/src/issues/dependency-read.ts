@@ -18,6 +18,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { DISPATCH_GATING_KIND } from './dependency-effects.js';
 import { designHoldPhrase, designHoldsOf } from './design-delivery.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
+import { holdsBack } from './standing.js';
 
 export type IssueDependencyEdge = {
   id: string;
@@ -31,6 +32,8 @@ export type IssueDependencyEdge = {
   validUntil: Date | null;
   /** `valid_until` has passed: the edge is retracted, shown as such and counted as nothing. */
   expired: boolean;
+  /** A live `blocks` edge whose blocker still holds this issue back (`standing.ts:holdsBack`). */
+  holds: boolean;
   fromTitle: string | null;
   fromStatus: string | null;
   fromMergedAt: Date | null;
@@ -128,6 +131,7 @@ export async function loadIssueDependencyEdgesForIssues(
     T extends {
       validUntil: Date | null;
       fromIssueId: string;
+      fromStatus: string | null;
       kind: IssueDependencyKind;
       fromIssSeq: number | null;
       toIssSeq: number | null;
@@ -138,10 +142,16 @@ export async function loadIssueDependencyEdgesForIssues(
     edge: T,
   ) => {
     const { fromIssSeq, toIssSeq, fromProjectId, toProjectId, ...rest } = edge;
+    const expired = rest.validUntil != null && rest.validUntil.getTime() <= now;
+    const fromDesignHold = rest.kind === DISPATCH_GATING_KIND ? holdOf(rest.fromIssueId) : null;
     return {
       ...rest,
-      expired: rest.validUntil != null && rest.validUntil.getTime() <= now,
-      fromDesignHold: rest.kind === DISPATCH_GATING_KIND ? holdOf(rest.fromIssueId) : null,
+      expired,
+      holds:
+        !expired &&
+        rest.kind === DISPATCH_GATING_KIND &&
+        holdsBack(rest.fromStatus ?? '', fromDesignHold !== null),
+      fromDesignHold,
       fromDisplayId:
         fromIssSeq != null
           ? formatIssueRef(prefixOf.get(fromProjectId ?? '') ?? null, fromIssSeq)

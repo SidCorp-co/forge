@@ -1,3 +1,4 @@
+import type { TestingSecretsRefusalCode } from '@forge/contracts/project-config';
 import { SCRUB_MIN_SECRET_LENGTH } from '@forge/observability';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -30,26 +31,8 @@ export const JUDGING_JOB_TYPES = [
 
 export const SELF_JOB = 'self';
 
-export type TestingSecretsRefusalCode =
-  | 'TESTING_SECRETS_NOT_A_JOB_CREDENTIAL'
-  | 'TESTING_SECRETS_JOB_AMBIGUOUS'
-  | 'TESTING_SECRETS_FOREIGN_JOB'
-  | 'TESTING_SECRETS_JOB_NOT_JUDGING'
-  | 'TESTING_SECRETS_NO_PROJECT_DOCUMENT'
-  | 'TESTING_SECRETS_NOT_LANDED'
-  | 'TESTING_SECRETS_NO_ENVIRONMENT_FOR_TARGET'
-  | 'TESTING_SECRETS_ENVIRONMENT_AMBIGUOUS'
-  | 'TESTING_SECRETS_NO_TESTING_PROFILE'
-  | 'TESTING_PROFILE_NOT_NAMED'
-  | 'TESTING_PROFILE_NOT_DECLARED'
-  | 'SECRET_NOT_NAMED'
-  | 'SECRET_VALUE_MISSING'
-  | 'SECRET_VALUE_UNREADABLE'
-  | 'SECRET_TOO_SHORT_TO_SCRUB'
-  | 'VAULT_NOT_CONFIGURED';
-
 export interface TestingSecretsRefusal {
-  status: 403 | 404 | 409 | 503;
+  status: 403 | 404 | 422 | 503;
   code: TestingSecretsRefusalCode;
   message: string;
   details?: Record<string, unknown>;
@@ -91,7 +74,7 @@ export async function resolveTestingSecrets(args: {
   const context = await resolvePipelineContext(principal);
   if (!context.ok) {
     return context.reason === 'ambiguous_pipeline_context'
-      ? refuse(409, 'TESTING_SECRETS_JOB_AMBIGUOUS', `${context.detail} Nothing was read.`)
+      ? refuse(422, 'TESTING_SECRETS_JOB_AMBIGUOUS', `${context.detail} Nothing was read.`)
       : refuse(
           403,
           'TESTING_SECRETS_NOT_A_JOB_CREDENTIAL',
@@ -125,7 +108,7 @@ export async function resolveTestingSecrets(args: {
   }
   if (!(JUDGING_JOB_TYPES as readonly string[]).includes(job.type)) {
     return refuse(
-      403,
+      422,
       'TESTING_SECRETS_JOB_NOT_JUDGING',
       `job ${jobId} is a \`${job.type}\` job, which judges no deployment; only ${JUDGING_JOB_TYPES.join(', ')} jobs read testing secrets.`,
     );
@@ -134,7 +117,7 @@ export async function resolveTestingSecrets(args: {
   const project = await readProjectConfig(job.projectId);
   if (!project) {
     return refuse(
-      409,
+      422,
       'TESTING_SECRETS_NO_PROJECT_DOCUMENT',
       `project ${job.projectId} declares no project document, so no environment names a testing profile.`,
     );
@@ -144,7 +127,7 @@ export async function resolveTestingSecrets(args: {
   const { environment, testing } = judged;
   if (testing !== profileId) {
     return refuse(
-      403,
+      422,
       'TESTING_PROFILE_NOT_NAMED',
       `environment \`${environment}\`, which job ${jobId} judges, names testing profile \`${testing}\`, not \`${profileId}\`.`,
     );
@@ -153,7 +136,7 @@ export async function resolveTestingSecrets(args: {
   const profile = await readTestingProfile(job.projectId, profileId);
   if (!profile) {
     return refuse(
-      409,
+      422,
       'TESTING_PROFILE_NOT_DECLARED',
       `environment \`${environment}\` names testing profile \`${profileId}\`, and this project holds no profile of that id.`,
     );
@@ -163,7 +146,7 @@ export async function resolveTestingSecrets(args: {
   const unnamed = wanted.filter((r) => !named.includes(r));
   if (unnamed.length > 0) {
     return refuse(
-      403,
+      422,
       'SECRET_NOT_NAMED',
       `testing profile \`${profileId}\` names none of ${unnamed.join(', ')}; it names ${named.join(', ') || 'no secret'}.`,
       { unnamed },
@@ -181,7 +164,7 @@ export async function resolveTestingSecrets(args: {
   const missing = wanted.filter((r) => !stored.has(r));
   if (missing.length > 0) {
     return refuse(
-      409,
+      422,
       'SECRET_VALUE_MISSING',
       `testing profile \`${profileId}\` names ${missing.join(', ')}, and this project stores no value for it; PUT /api/projects/${job.projectId}/secrets/<scope>/<name> first.`,
       { missing },
@@ -195,14 +178,14 @@ export async function resolveTestingSecrets(args: {
       value = decryptSecret(stored.get(ref) as Buffer);
     } catch (err) {
       return refuse(
-        409,
+        422,
         'SECRET_VALUE_UNREADABLE',
         `${ref} is stored but does not decrypt under this core's INTEGRATION_MASTER_KEY (${err instanceof Error ? err.message : String(err)}); write it again.`,
       );
     }
     if (value.length < SCRUB_MIN_SECRET_LENGTH) {
       return refuse(
-        409,
+        422,
         'SECRET_TOO_SHORT_TO_SCRUB',
         `${ref} holds a value shorter than ${SCRUB_MIN_SECRET_LENGTH} characters, which the secret scrubber does not replace, so it would reach this job's log in plain text; store a longer one.`,
       );
@@ -240,7 +223,7 @@ async function judgedEnvironment(
     : [];
   if (!issue) {
     return refuse(
-      409,
+      422,
       'TESTING_SECRETS_NOT_LANDED',
       `job ${jobId} works no issue, so no landed work names the environment it judges.`,
     );
@@ -250,7 +233,7 @@ async function judgedEnvironment(
       ? 'its merge mark names no target branch'
       : 'its work has not landed (no merge mark)';
     return refuse(
-      409,
+      422,
       'TESTING_SECRETS_NOT_LANDED',
       `issue ${issueId}: ${why}, so no environment deploying it can be named. Mark it merged with its target first.`,
     );
@@ -260,7 +243,7 @@ async function judgedEnvironment(
   const [only, ...others] = deploying;
   if (!only) {
     return refuse(
-      409,
+      422,
       'TESTING_SECRETS_NO_ENVIRONMENT_FOR_TARGET',
       `issue ${issueId} landed on \`${target}\`, and no environment of this project deploys from it.`,
       { target },
@@ -268,7 +251,7 @@ async function judgedEnvironment(
   }
   if (others.length > 0) {
     return refuse(
-      409,
+      422,
       'TESTING_SECRETS_ENVIRONMENT_AMBIGUOUS',
       `${deploying.length} environments deploy from \`${target}\` (${deploying.map((e) => e.name).join(', ')}), so the one issue ${issueId} is judged on cannot be named.`,
       { target, environments: deploying.map((e) => e.name) },

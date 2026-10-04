@@ -6,15 +6,14 @@ import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
+import { forbidden } from '../middleware/route-errors.js';
 import { holds, type ProjectPermission, requireHeld } from '../permissions/index.js';
+import { refuseSession } from './refusals.js';
 
 export const idParamSchema = z.object({ id: z.uuid() });
 
 export const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-export const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
 export const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
@@ -59,7 +58,10 @@ export function assertSessionOwnerOrAdmin(
   userId: string,
 ) {
   if (session.userId && session.userId !== userId && !holds(access, 'project.admin')) {
-    throw forbidden('not the session owner');
+    throw refuseSession(
+      'SESSION_OWNER_FORBIDDEN',
+      "only the session's owner or a holder of project.admin acts on another person's session",
+    );
   }
 }
 
@@ -81,7 +83,10 @@ export function assertAgentChatOwner(
   const isAgentChat = (session.metadata as { type?: string } | null)?.type === 'agent';
   if (!isAgentChat) return;
   if (session.userId !== userId && !holds(access, 'project.admin')) {
-    throw forbidden('not the conversation owner');
+    throw refuseSession(
+      'AGENT_CHAT_OWNER_FORBIDDEN',
+      "only the conversation's owner or a holder of project.admin acts on another person's agent chat",
+    );
   }
 }
 

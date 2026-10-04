@@ -1,8 +1,8 @@
 import type { MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { verifyUserToken } from '../auth/jwt.js';
-import { isPatLike } from '../auth/pat-format.js';
-import { runWithPatScope } from '../auth/pat-scope.js';
+import { verifyUserToken } from '../credentials/jwt.js';
+import { isPatLike } from '../credentials/pat-format.js';
+import { runWithPatScope } from '../credentials/pat-scope.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { readBearerToken } from './bearer.js';
 import { declareGate } from './declared-gate.js';

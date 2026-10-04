@@ -37,7 +37,7 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mut)
 
 <h1>The Witness Plane</h1>
 <p class="lead">Core ⇄ runner ⇄ the outside world. Third companion to
-<a href="vision.html">destination.html</a> and
+<a href="vision.html">vision.html</a> and
 <a href="architecture.html">architecture.html</a>, and the part they left
 blank — which is awkward, because it is the busiest module in the repo and it is where the
 deterministic floor gets its evidence.</p>
@@ -371,8 +371,10 @@ only in the dispatch path.</p>
 </tbody>
 </table>
 
-<p class="note" style="margin-top:32px">2026-09-19. Grounded on the current
-<code>packages/core/src/integrations</code> — eight declared providers, the declaration registry, the
-connection/binding split, the delivery log, and Coolify's circuit breaker.</p>
+<p class="note" style="margin-top:32px">Grounded on <code>packages/core/src/integrations</code> — the
+providers <code>register-all.ts:registerAllIntegrations</code> declares, the declaration registry, the
+connection/binding split, the delivery log, and Coolify's circuit breaker. Every external system is
+reached through one adapter there (<code>docs/adr/0006</code>). gitlab and autoflow are declared and not
+yet placed in the role table above.</p>
 
 </main>

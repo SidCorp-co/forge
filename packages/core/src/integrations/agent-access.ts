@@ -10,6 +10,7 @@ export function grantHolds(
   binding: { agentAccess: string },
 ): boolean {
   if (!decl || decl.capabilities.agentPath.kind === 'none') return false;
+  if (decl.capabilities.agentPath.kind === 'permission') return true;
   return binding.agentAccess === 'all';
 }
 
@@ -18,12 +19,19 @@ export function agentAccessTier(
   decl: Pick<IntegrationDeclaration, 'capabilities'> | undefined,
 ): 'project-admin' | 'org-admin' | 'refused' {
   const kind: AgentPathKind | undefined = decl?.capabilities.agentPath.kind;
-  if (!decl || kind === 'none' || kind === undefined) return 'refused';
+  if (!decl || kind === 'none' || kind === 'permission' || kind === undefined) return 'refused';
   return kind === 'direct-mcp' ? 'org-admin' : 'project-admin';
 }
 
-/** The sentence a caller gets for granting access on a provider no agent can reach. */
-export function noAgentPathMessage(provider: string): string {
+/** The sentence a caller gets for granting access on a provider that takes no grant. */
+export function agentAccessRefusedMessage(
+  provider: string,
+  decl: Pick<IntegrationDeclaration, 'capabilities'> | undefined,
+): string {
+  const path = decl?.capabilities.agentPath;
+  if (path?.kind === 'permission') {
+    return `\`${provider}\` takes no agent access grant: whoever holds \`${path.permission}\` on the project may use it, agent or person, and nothing on the binding narrows that. Leave \`agentAccess\` out or send \`none\`.`;
+  }
   return `\`${provider}\` declares no agent path, so there is nothing for an agent to be granted. Whether agents may use an integration is only a question for a provider core answers tools from, or one whose credential reaches the runner.`;
 }
 

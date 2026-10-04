@@ -1,3 +1,4 @@
+import type { PmRefusalCode } from '@forge/contracts/pm';
 import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -18,6 +19,7 @@ import {
 } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { closeEscalationTasks } from '../notifications/close-escalation.js';
+import { refuser } from '../lib/refusal.js';
 import { requireHeld } from '../permissions/index.js';
 import { PM_NO_PROMPT_MESSAGE, type SpawnPmSessionResult, spawnPmSession } from './spawner.js';
 
@@ -87,15 +89,21 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-/** A refused operator spawn: rate limit 429, no pool prompt 422, every other guard 409. */
-function spawnRefusal(reason: Exclude<SpawnPmSessionResult, { ok: true }>['reason']) {
-  const status = reason === 'rate-limited' ? 429 : reason === 'pool-job-no-prompt' ? 422 : 409;
-  const message = reason === 'pool-job-no-prompt' ? PM_NO_PROMPT_MESSAGE : reason;
-  return new HTTPException(status, { message, cause: { code: reasonToCode(reason) } });
-}
+const refuse = refuser<PmRefusalCode>('PM_REFUSED');
 
-function reasonToCode(reason: Exclude<SpawnPmSessionResult, { ok: true }>['reason']): string {
-  return reason.toUpperCase().replace(/-/g, '_');
+const SPAWN_REFUSALS = {
+  disabled: ['DISABLED', 'PM is disabled for this project; enable it in the project settings.'],
+  'trigger-masked': ['TRIGGER_MASKED', 'this trigger is masked in the project PM settings.'],
+  'pool-job-no-prompt': ['POOL_JOB_NO_PROMPT', PM_NO_PROMPT_MESSAGE],
+} as const satisfies Record<string, readonly [PmRefusalCode, string]>;
+
+/** A refused operator spawn: a rate limit is transport 429, every other guard the envelope. */
+function spawnRefusal(reason: Exclude<SpawnPmSessionResult, { ok: true }>['reason']) {
+  if (reason === 'rate-limited') {
+    return new HTTPException(429, { message: reason, cause: { code: 'RATE_LIMITED' } });
+  }
+  const [code, detail] = SPAWN_REFUSALS[reason];
+  return refuse(code, detail);
 }
 
 function detachIndex(fn: () => Promise<void>): void {
@@ -113,7 +121,7 @@ export const pmRoutes = new Hono<{ Variables: AuthVars }>();
  * membership. Operator-cause spawns bypass both the trigger mask and the
  * `max_runs_per_hour` rate limit so a human can always force a run during
  * triage. The dedup unique index still applies — a second click while a
- * PM job is in flight returns 409.
+ * PM job is in flight is refused.
  */
 pmRoutes.post(
   '/:projectId/pm/run',

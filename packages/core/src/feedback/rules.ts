@@ -1,8 +1,7 @@
 /**
  * The guards of feedback as pure functions over what the service read: workflows
  * `feedback-lifecycle`, `feedback-triage` r3 and requirement-to-delivery r2 (`triage`, `fb-case`,
- * `route`), and the phase a reader sees: `planned` and `resolved` are read from the linked work,
- * never stored (Q1), and nothing here ever reads an item as verified on its own.
+ * `route`). The phase a reader sees is the read model's (`standing.ts:phaseOf`).
  */
 
 import {
@@ -32,48 +31,6 @@ const refusal = (code: FeedbackRefusalCode, path: string, detail: string): Feedb
   path,
   detail,
 });
-
-/** What the linked work reads, for the phase of a triaged item. */
-export interface PhaseFacts {
-  status: FeedbackStatus;
-  route: FeedbackRoute | null;
-  routedIssueStatus: string | null;
-  suggestion: { status: SuggestionStatus; revisionLive: boolean; delivered: boolean } | null;
-  routedRequirementStatus: string | null;
-  /** The routed requirement reads delivered (requirement_delivery) or was accepted. */
-  routedRequirementDelivered: boolean;
-  rootPhase: FeedbackPhase | null;
-}
-
-// planned and resolved are computed on read from the linked work (Q1); a route whose
-// carrier died (issue dropped, suggestion rejected, requirement dropped) reads triaged, so a person
-// routes it again. verified is only ever the stored decision of a person
-export function phaseOf(f: PhaseFacts): FeedbackPhase {
-  if (f.status !== 'triaged') return f.status;
-  switch (f.route) {
-    case 'issue':
-      if (f.routedIssueStatus === 'closed') return 'resolved';
-      return f.routedIssueStatus === 'dropped' ? 'triaged' : 'planned';
-    case 'revision':
-      if (!f.suggestion) return 'triaged';
-      if (f.suggestion.status === 'accepted') {
-        return f.suggestion.revisionLive && f.suggestion.delivered ? 'resolved' : 'planned';
-      }
-      return f.suggestion.status === 'proposed' ? 'planned' : 'triaged';
-    // workflow feedback-lifecycle edge planned → resolved: the linked requirement reads
-    // delivered; agreeing it only plans the work, so an agreed requirement keeps the item planned
-    case 'new_requirement':
-      if (f.routedRequirementDelivered) return 'resolved';
-      return f.routedRequirementStatus === 'dropped' ? 'triaged' : 'planned';
-    case 'answer':
-      return 'resolved';
-    case 'duplicate':
-      if (f.rootPhase === 'resolved' || f.rootPhase === 'verified') return 'resolved';
-      return f.rootPhase === 'declined' ? 'declined' : 'planned';
-    default:
-      return 'triaged';
-  }
-}
 
 // a text search over content the viewer may not read is refused by name: matching titles
 // would answer what the policy withholds, and dropping `q` would list every item as a match

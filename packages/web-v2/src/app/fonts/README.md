@@ -7,8 +7,7 @@ web-only font fetch takes the **backend** deploy down with it. That happened on 
 (deploy `zs4ocksc8sokkcw0g0g0w4s0`, exit 1; a core-only fix sat merged-but-not-live for
 ~90 minutes and needed a hand re-dispatch). ISS-854.
 
-`../layout.tsx` declares them through `next/font/local`, and `../fonts.test.ts` fails if the
-`next/font/google` import comes back.
+`../layout.tsx` declares them through `next/font/local`.
 
 ## What these files are
 

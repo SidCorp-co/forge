@@ -167,7 +167,7 @@ export function standingMarkRefusal(args: {
   sent: string | null;
   wrote: boolean;
   held: MergeMarkColumns;
-}): { code: 'MARK_ALREADY_STANDS'; detail: string; details: Record<string, unknown> } | null {
+}): { code: 'MARK_ALREADY_STANDS'; detail: string } | null {
   if (!args.sent || args.wrote) return null;
   const heldLanding = args.held.mergedLanding ?? null;
   if (heldLanding === args.sent) return null;
@@ -181,7 +181,6 @@ export function standingMarkRefusal(args: {
       `${stands}, and the first mark stands, so ${args.sent} was not recorded and nothing ` +
       'changed. To change it, `unmark` (Unmark on the rail), then mark again with the landing ' +
       'that is right.',
-    details: { heldLanding, heldKind, sentLanding: args.sent, route: ['unmark', 'mark_merged'] },
   };
 }
 

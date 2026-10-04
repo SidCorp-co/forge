@@ -36,3 +36,15 @@ export const ATTACHMENT_NAME_MAX_BYTES = 180;
 export function attachmentNameExceedsBudget(name: string): boolean {
   return new TextEncoder().encode(name).length > ATTACHMENT_NAME_MAX_BYTES;
 }
+
+/** What every attachment write (issue, comment, session, conversation, upload ticket) refuses. */
+export const ATTACHMENT_REFUSAL_CODES = [
+	"ATTACHMENT_REFUSED",
+	"MIME_NOT_ALLOWED",
+	"FILE_TOO_LARGE",
+	"EMPTY_FILE",
+	"INVALID_NAME",
+	"ATTACHMENT_NAME_TAKEN",
+] as const;
+
+export type AttachmentRefusalCode = (typeof ATTACHMENT_REFUSAL_CODES)[number];

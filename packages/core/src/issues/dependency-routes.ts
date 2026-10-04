@@ -2,36 +2,33 @@
  * ISS-40 PR-E — HTTP CRUD for issue_dependencies edges, exposed to non-PM
  * clients (web UI).
  *
- * ISS-889 — the edge write itself lives in `dependency-service.ts`, shared
- * with MCP. What stays here is transport: authz against the project role, and
- * the mapping from the service's neutral error codes to this surface's
- * status codes and wording.
+ * ISS-889 — the edge write itself lives in `dependency-service.ts`, which refuses its rules in
+ * the envelope. What stays here is transport: authz against the project role.
  */
 
+import type { DependencyRefusalCode } from '@forge/contracts/issues';
 import { eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issueDependencies, issueDependencyKinds, issues } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { badRequest, conflict, idParamSchema, notFound } from '../middleware/route-errors.js';
+import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { emitEvent } from '../outbox/index.js';
 import { requireHeld } from '../permissions/index.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { loadIssueDependencyEdges } from './dependency-read.js';
-import {
-  IssueDependencyError,
-  type SetIssueDependencyInput,
-  setIssueDependency,
-} from './dependency-service.js';
+import { type SetIssueDependencyInput, setIssueDependency } from './dependency-service.js';
 import {
   issueRouteIdParamSchema,
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
+
+const refuse = refuser<DependencyRefusalCode>('DEPENDENCY_REFUSED');
 
 const edgeParamSchema = z.object({ id: z.uuid(), edgeId: z.uuid() });
 
@@ -93,7 +90,11 @@ issueDependencyRoutes.post(
     const userId = c.get('userId');
 
     if (fromIssueId === toIssueId) {
-      throw badRequest({ message: 'self-edge not allowed' }, 'SELF_DEP');
+      throw refuse(
+        'SELF_DEP',
+        'an issue cannot depend on itself: name two different issues',
+        '/dependsOnId',
+      );
     }
 
     const sides = await db
@@ -104,9 +105,10 @@ issueDependencyRoutes.post(
     const [a, b] = sides;
     if (!a || !b) throw notFound('one or both issues not found');
     if (a.projectId !== b.projectId) {
-      throw badRequest(
-        { message: 'cross-project edges not supported via this route' },
+      throw refuse(
         'CROSS_PROJECT',
+        'both issues of an edge are in one project; cross-project edges are not supported',
+        '/dependsOnId',
       );
     }
 
@@ -121,52 +123,13 @@ issueDependencyRoutes.post(
       reason,
       validUntil,
     };
-    try {
-      const result = await setIssueDependency(input, {
-        actor: restActor(c),
-        createdById: userId,
-      });
-      return c.json(result, result.created ? 201 : 200);
-    } catch (err) {
-      throw toHttpDependencyError(err, input);
-    }
+    const result = await setIssueDependency(input, {
+      actor: restActor(c),
+      createdById: userId,
+    });
+    return c.json(result, result.created ? 201 : 200);
   },
 );
-
-/**
- * The REST refusal for an edge write. The create route's `relations` shares it and passes no
- * `input`: the new issue has no id to name until the write it is refusing commits.
- */
-export function toHttpDependencyError(
-  err: unknown,
-  input?: Pick<SetIssueDependencyInput, 'fromIssueId' | 'toIssueId'>,
-): unknown {
-  if (!(err instanceof IssueDependencyError)) return err;
-  const edge = input ? { fromIssueId: input.fromIssueId, toIssueId: input.toIssueId } : undefined;
-  switch (err.code) {
-    case 'SELF_DEP':
-      return badRequest({ message: 'self-edge not allowed' }, 'SELF_DEP');
-    case 'NOT_FOUND':
-      return notFound('one or both issues not found');
-    case 'CROSS_PROJECT':
-      return badRequest(
-        { message: 'cross-project edges not supported via this route' },
-        'CROSS_PROJECT',
-      );
-    case 'CYCLE_DETECTED':
-      return conflict(
-        'CYCLE_DETECTED',
-        'cycle detected — adding this edge would form a loop',
-        edge,
-      );
-    case 'CYCLE_DEPTH_EXCEEDED':
-      return conflict('CYCLE_DEPTH_EXCEEDED', 'cycle detection depth exceeded');
-    case 'ISSUE_ARCHIVED':
-      return conflict('ISSUE_ARCHIVED', err.detail ?? 'an issue this edge names is archived', edge);
-    default:
-      return new HTTPException(500, { message: err.code });
-  }
-}
 
 /**
  * DELETE /api/issues/:id/dependencies/:edgeId — remove an edge. The `:id`

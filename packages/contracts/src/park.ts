@@ -36,6 +36,23 @@ export interface IssuePark {
   /** `null` until a person replies after the park record, and always where there is no record. */
   answer: ParkAnswerView | null;
   openQuestionIds: string[];
+  /** A question nobody has answered yet: an open question row, or the thread question unanswered. */
+  asks: boolean;
+  /** The question a `needs_info` park asked only in the thread; null where a question row carries it. */
+  threadQuestion: ParkThreadQuestion | null;
+}
+
+/** One reading the run wrote, `reading -> outcome`, split into the choice and where it leads. */
+export interface ParkQuestionReading {
+  choice: string;
+  outcome: string | null;
+}
+
+export interface ParkThreadQuestion {
+  prompt: string | null;
+  why: string | null;
+  readings: ParkQuestionReading[];
+  answer: ParkAnswerView | null;
 }
 
 export interface IssueParkResponse {

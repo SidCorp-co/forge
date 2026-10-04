@@ -2,7 +2,7 @@
 
 // The proof behind the PAT permission menu.
 //
-// `PAT_PERMISSION_RESOURCES` (packages/core/src/auth/pat-permissions.ts) declares which REST
+// `PAT_PERMISSION_RESOURCES` (packages/core/src/credentials/pat-permissions.ts) declares which REST
 // prefixes a personal access token may reach. A project-reach prefix is admissible only when a
 // project-scoped token is FENCED on every route under it, and the fence is one function:
 // `fencedProjectIds`, the read of the token's projects out of AsyncLocalStorage. The declaration
@@ -29,7 +29,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CORE = join(ROOT, 'packages', 'core');
 const TSX = join(ROOT, 'node_modules', '.bin', 'tsx');
 const ROUTE_TABLE = join(CORE, 'src', 'api-contract', 'route-table.ts');
-const FENCE = { file: 'auth/pat-scope.ts', name: 'fencedProjectIds' };
+const FENCE = { file: 'credentials/pat-scope.ts', name: 'fencedProjectIds' };
 
 function die(msg) {
   console.error(`pat-surface: ${msg}`);
@@ -118,7 +118,7 @@ function patternMatches(pattern, path) {
   return want.every((seg, i) => (seg.startsWith(':') ? (have[i] ?? '') !== '' : seg === have[i]));
 }
 
-const declared = (route, why) => ({ route, where: 'auth/pat-permissions.ts', why });
+const declared = (route, why) => ({ route, where: 'credentials/pat-permissions.ts', why });
 
 function declarationFindings(resources, excluded) {
   const found = [];
@@ -273,7 +273,7 @@ if (findings.length) {
     `\npat-surface: ${findings.length} finding(s).` +
       '\nFor an unfenced route: route the handler through' +
       '\n`loadProjectAccess`/`effectiveProjectRole`, drop the prefix from its resource in' +
-      '\n`packages/core/src/auth/pat-permissions.ts`, keep the path out with a reason in' +
+      '\n`packages/core/src/credentials/pat-permissions.ts`, keep the path out with a reason in' +
       '\n`PAT_UNGRANTABLE`, or — only if it reads no project-scoped data — add it to EXEMPT' +
       '\nhere with the reason.' +
       '\nFor a declaration finding: fix PAT_PERMISSION_RESOURCES or PAT_UNGRANTABLE, which are' +
