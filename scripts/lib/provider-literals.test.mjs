@@ -3,8 +3,12 @@ import {
   allowedFaults,
   byFile,
   coverageFaults,
+  globalFetchLines,
   globToRegExp,
+  importedModules,
   isAllowed,
+  isVendorModule,
+  scanEgress,
   scanEntries,
   stringLiterals,
 } from './provider-literals.mjs';
@@ -221,5 +225,88 @@ describe('byFile', () => {
       { path: 'a.ts', providers: ['coolify', 'github'], lines: [2, 9] },
       { path: 'b.ts', providers: ['sentry'], lines: [3] },
     ]);
+  });
+});
+
+describe('globalFetchLines', () => {
+  it('finds a call and the global handed on as a value', () => {
+    const text = 'await fetch(url);\nconst impl = opts.fetchImpl ?? fetch;\n';
+    expect(globalFetchLines(text)).toEqual([1, 2]);
+  });
+
+  it('ignores comments, strings, members, keys and type positions', () => {
+    const text =
+      "// fetch(x)\nconst s = 'fetch(';\nclient.fetch(1);\nconst o = { fetch: 1 };\nlet f: typeof fetch;\n";
+    expect(globalFetchLines(text)).toEqual([]);
+  });
+
+  it('reads a file that binds its own fetch as not using the global', () => {
+    expect(globalFetchLines('const fetch = fake();\nreturn { fetch };\n')).toEqual([]);
+    expect(
+      globalFetchLines('function make(model: string, fetch: FetchLike) {\n  go({ fetch });\n}\n'),
+    ).toEqual([]);
+  });
+});
+
+describe('importedModules', () => {
+  it('reads static, type-only and dynamic imports with their lines', () => {
+    const text =
+      "import a from 'nodemailer';\nimport type { T } from '@sentry/node';\nconst b = await import('stripe');\n";
+    expect(importedModules(text).map((m) => [m.module, m.line])).toEqual([
+      ['nodemailer', 1],
+      ['@sentry/node', 2],
+      ['stripe', 3],
+    ]);
+  });
+
+  it('skips an import written inside a comment', () => {
+    expect(importedModules("// import a from 'nodemailer'\n")).toEqual([]);
+  });
+});
+
+describe('isVendorModule', () => {
+  it('matches a package, its subpaths, and a whole scope named with a trailing slash', () => {
+    expect(isVendorModule('nodemailer/lib/x', ['nodemailer'])).toBe(true);
+    expect(isVendorModule('@aws-sdk/client-s3', ['@aws-sdk/'])).toBe(true);
+    expect(isVendorModule('nodemailer-mock', ['nodemailer'])).toBe(false);
+  });
+});
+
+describe('scanEgress', () => {
+  const config = {
+    adapters: 'packages/core/src/integrations/**',
+    vendorSdks: ['nodemailer'],
+    exceptions: [
+      { glob: 'packages/core/src/schedules/script/worker-entry.ts', why: 'the sandbox' },
+    ],
+  };
+
+  it('refuses a fetch or an SDK import outside the adapters, by file and line', () => {
+    const { offenders } = scanEgress(
+      [
+        { path: 'packages/core/src/memory/llm.ts', text: 'await fetch(url);\n' },
+        { path: 'packages/core/src/auth/email.ts', text: "import m from 'nodemailer';\n" },
+      ],
+      config,
+    );
+    expect(offenders).toEqual([
+      { path: 'packages/core/src/memory/llm.ts', line: 1, what: 'fetch' },
+      { path: 'packages/core/src/auth/email.ts', line: 1, what: 'nodemailer' },
+    ]);
+  });
+
+  it('lets the adapters and a named exception call out, and counts only what it judged', () => {
+    const { scanned, offenders } = scanEgress(
+      [
+        {
+          path: 'packages/core/src/integrations/mail/smtp.ts',
+          text: "import m from 'nodemailer';\n",
+        },
+        { path: 'packages/core/src/schedules/script/worker-entry.ts', text: 'fetch(u);\n' },
+      ],
+      config,
+    );
+    expect(offenders).toEqual([]);
+    expect(scanned).toBe(1);
   });
 });

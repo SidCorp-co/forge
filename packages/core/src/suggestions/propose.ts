@@ -14,6 +14,7 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { personActRefusalFor } from '../lib/person-act.js';
 import type { NamedRefusal } from '../project-config/respond.js';
+import { designNodesIn, nodeSetRefusals } from '../workflows/node-refs.js';
 import { breakdownGuardIn } from './breakdown.js';
 import {
   headOf,
@@ -77,6 +78,13 @@ async function proposeIn(
     );
     if (guard.refusals.length) return { refusals: guard.refusals };
   }
+  if (p.kind === 'design_change' && p.target.type === 'workflow') {
+    const nodes = await designNodesIn(tx, p.projectId, p.target.id);
+    const wrong = nodes
+      ? nodeSetRefusals(nodes, SUGGESTION_PAYLOADS.design_change.schema.parse(p.payload), '/payload')
+      : [];
+    if (wrong.length) return { refusals: wrong };
+  }
   const open = await tx
     .select({ id: suggestions.id, kind: suggestions.kind, fingerprint: suggestions.fingerprint })
     .from(suggestions)
@@ -98,6 +106,7 @@ async function proposeIn(
       requirementId: p.target.type === 'requirement' ? p.target.id : null,
       issueId: p.target.type === 'issue' ? p.target.id : null,
       feedbackId: p.target.type === 'feedback' ? p.target.id : null,
+      workflowId: p.target.type === 'workflow' ? p.target.id : null,
       baseRevision: p.baseRevision,
       payload: p.payload,
       fingerprint: p.fingerprint,

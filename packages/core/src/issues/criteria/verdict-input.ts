@@ -59,6 +59,7 @@ export type VerdictRefusalCode =
   | 'VERDICT_CONTRACT_SHAPE'
   | 'VERDICT_CRITERION_UNKNOWN'
   | 'VERDICT_DESIGN_UNKNOWN'
+  | 'VERDICT_DESIGN_UNAPPROVED'
   | 'VERDICT_CONTRACT_UNKNOWN'
   | StorefrontDraftRefusalCode;
 

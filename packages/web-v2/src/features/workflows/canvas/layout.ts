@@ -69,8 +69,10 @@ export async function layoutView(input: {
           id: e.key,
           sources: [e.from],
           targets: [e.to],
+          // A merged line's label carries its first line's words, wider than a card gap; at its tail it
+          // leaves each layer centred on one axis (hop-layout.test.ts).
           labels: text
-            ? [{ text, ...labelBox(text), layoutOptions: { "elk.edgeLabels.placement": "CENTER" } }]
+            ? [{ text, ...labelBox(text), layoutOptions: { "elk.edgeLabels.placement": e.merged ? "TAIL" : "CENTER" } }]
             : [],
         };
       }),

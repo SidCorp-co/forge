@@ -20,6 +20,7 @@ import { issues, projects, users } from './schema.js';
 import { conversationMessages } from './schema-conversations.js';
 import { feedback } from './schema-feedback.js';
 import { requirements } from './schema-requirements.js';
+import { projectWorkflows } from './schema-workflows.js';
 
 export {
   SUGGESTION_KINDS,
@@ -48,6 +49,9 @@ export const suggestions = pgTable(
     feedbackId: uuid('feedback_id').references((): AnyPgColumn => feedback.id, {
       onDelete: 'cascade',
     }),
+    workflowId: uuid('workflow_id').references((): AnyPgColumn => projectWorkflows.id, {
+      onDelete: 'cascade',
+    }),
     baseRevision: integer('base_revision'),
     payload: jsonb('payload'),
     payloadVersion: integer('payload_version').notNull().default(1),
@@ -72,7 +76,7 @@ export const suggestions = pgTable(
   (t) => ({
     arcChk: check(
       'suggestions_arc_chk',
-      sql`num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.feedbackId}) = 1`,
+      sql`num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.feedbackId}, ${t.workflowId}) = 1`,
     ),
     kindChk: check(
       'suggestions_kind_chk',
@@ -101,7 +105,11 @@ export const suggestions = pgTable(
     // cm:why one open row per target, kind and fingerprint (SUGGESTION_DUPLICATE), so a retry or a
     // second turn saying the same thing does not queue a twin
     openTwinUq: uniqueIndex('suggestions_open_twin_uq')
-      .on(t.kind, sql`coalesce(${t.requirementId}, ${t.issueId}, ${t.feedbackId})`, t.fingerprint)
+      .on(
+        t.kind,
+        sql`coalesce(${t.requirementId}, ${t.issueId}, ${t.feedbackId}, ${t.workflowId})`,
+        t.fingerprint,
+      )
       .where(sql`status = 'proposed'`),
     requirementIdx: index('suggestions_requirement_idx')
       .on(t.requirementId, t.status)
@@ -112,6 +120,9 @@ export const suggestions = pgTable(
     feedbackIdx: index('suggestions_feedback_idx')
       .on(t.feedbackId, t.status)
       .where(sql`feedback_id IS NOT NULL`),
+    workflowIdx: index('suggestions_workflow_idx')
+      .on(t.workflowId, t.status)
+      .where(sql`workflow_id IS NOT NULL`),
     sweepIdx: index('suggestions_status_created_idx').on(t.status, t.createdAt),
     revisesUq: uniqueIndex('suggestions_revises_uq')
       .on(t.revisesId)

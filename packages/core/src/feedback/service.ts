@@ -5,6 +5,8 @@
  * the clarification `attachments.ts`. Every decision is a `feedback_decisions` row.
  */
 
+import type { NodeRef } from '@forge/contracts/workflow-health';
+import { designNodesIn, nodeRefRefusal } from '../workflows/node-refs.js';
 import type {
   CreateFeedbackRequest,
   FeedbackTriage,
@@ -143,6 +145,32 @@ export async function insertFeedbackIn(tx: Tx, values: NewFeedback): Promise<str
   return row.id;
 }
 
+async function nodeColumns(
+  projectId: string,
+  workflowId: string | null,
+  node: NodeRef | undefined,
+): Promise<{ columns: Partial<NewFeedback> } | { refusal: NamedRefusal }> {
+  if (!node) return { columns: {} };
+  if (!workflowId) {
+    return {
+      refusal: {
+        code: 'FEEDBACK_NODE_NEEDS_WORKFLOW',
+        path: '/node',
+        detail: 'a node names a step or edge of a workflow; send it with a workflow target, or drop it',
+      },
+    };
+  }
+  const nodes = await designNodesIn(db, projectId, workflowId);
+  const wrong = nodes ? nodeRefRefusal(nodes, node, '/node') : null;
+  if (wrong) return { refusal: wrong };
+  return {
+    columns:
+      'step' in node
+        ? { stepId: node.step }
+        : { edgeFrom: node.edge.from, edgeTo: node.edge.to, edgeLabel: node.edge.label ?? null },
+  };
+}
+
 export async function preparedFeedback(
   projectId: string,
   actor: FeedbackActor,
@@ -152,6 +180,8 @@ export async function preparedFeedback(
   if (count) return { ok: false, refusals: [count] };
   const target = await resolveTarget(projectId, request, actor.userId);
   if (isRefusal(target)) return { ok: false, refusals: [target] };
+  const node = await nodeColumns(projectId, target.workflowId, request.node);
+  if ('refusal' in node) return { ok: false, refusals: [node.refusal] };
   const level = await dataPolicyOf(projectId);
   const title = storedText(level, request.title.trim());
   const body = request.body?.trim() ? storedText(level, request.body) : null;
@@ -170,6 +200,7 @@ export async function preparedFeedback(
       issueId: target.issueId,
       releaseRunId: target.releaseRunId,
       workflowId: target.workflowId,
+      ...node.columns,
       reportedBy: actor.userId,
       reporterAgency: actor.agency,
       scrubbed: title.scrubbed,

@@ -207,3 +207,107 @@ export function byFile(offenders) {
       lines: [...new Set(v.lines)].sort((a, b) => a - b),
     }));
 }
+
+/**
+ * The source with every comment and every string or template literal blanked to spaces, newlines
+ * kept, so a match in what is left is code and its line number is still right. A template's
+ * substitutions are blanked with it.
+ */
+export function codeOnly(text) {
+  let out = '';
+  let i = 0;
+  const blank = (s) => s.replace(/[^\n]/g, ' ');
+  while (i < text.length) {
+    const c = text[i];
+    const d = text[i + 1];
+    let end = -1;
+    if (c === '/' && d === '/') {
+      end = text.indexOf('\n', i);
+      if (end === -1) end = text.length;
+    } else if (c === '/' && d === '*') {
+      end = text.indexOf('*/', i + 2);
+      end = end === -1 ? text.length : end + 2;
+    } else if (c === "'" || c === '"' || c === '`') {
+      end = i + 1;
+      while (end < text.length && text[end] !== c) {
+        if (text[end] === '\\') end++;
+        else if (c !== '`' && text[end] === '\n') break;
+        end++;
+      }
+      end = Math.min(end + 1, text.length);
+    }
+    if (end === -1) {
+      out += c;
+      i++;
+      continue;
+    }
+    out += blank(text.slice(i, end));
+    i = end;
+  }
+  return out;
+}
+
+const GLOBAL_FETCH = /(?<![\w$.])fetch(?![\w$])/g;
+const LOCAL_FETCH =
+  /\b(?:const|let|var|function)\s+fetch\b|[(,]\s*fetch\s*\??\s*:\s*[A-Z][\w.]*(?:\[[^\]\n]*\])?\s*[,)=]/;
+
+/**
+ * Each reference to the global `fetch` in code: a call, or the function handed on as a value. A
+ * file that binds its own `fetch` (a declaration, or a typed parameter) is read as not using the
+ * global one at all, which is this scan's one bound: no scope analysis, so such a file reaching
+ * the global too would go unseen.
+ */
+export function globalFetchLines(text) {
+  const code = codeOnly(text);
+  if (LOCAL_FETCH.test(code)) return [];
+  const lines = [];
+  for (const m of code.matchAll(GLOBAL_FETCH)) {
+    const before = code.slice(Math.max(0, m.index - 16), m.index);
+    const after = code.slice(m.index + 5, m.index + 8);
+    if (/typeof\s+$/.test(before)) continue;
+    if (/^\s*\??:/.test(after)) continue;
+    lines.push(code.slice(0, m.index).split('\n').length);
+  }
+  return lines;
+}
+
+/** Each module a file imports, statically or dynamically, with the line it is named on. */
+export function importedModules(text) {
+  const code = codeOnly(text);
+  const out = [];
+  const pattern = /\b(?:from|import|require)\s*\(?\s*(['"])([^'"\n]+)\1/g;
+  for (const m of text.matchAll(pattern)) {
+    if (code[m.index] === ' ') continue;
+    out.push({ module: m[2], line: text.slice(0, m.index).split('\n').length });
+  }
+  return out;
+}
+
+/** True when `module` is `sdk` or a subpath of it; an `sdk` ending in `/` names a whole scope. */
+export function isVendorModule(module, sdks) {
+  return sdks.some((sdk) =>
+    sdk.endsWith('/') ? module.startsWith(sdk) : module === sdk || module.startsWith(`${sdk}/`),
+  );
+}
+
+/**
+ * The external calls in a set of already-read sources that sit outside the adapters: a global
+ * `fetch` or a vendor SDK import, in a file that is neither under `adapters` nor a named exception.
+ *
+ * @returns `{scanned, offenders: Array<{path, line, what}>}`
+ */
+export function scanEgress(entries, { adapters, vendorSdks, exceptions }) {
+  const adapterGlob = globToRegExp(adapters);
+  const offenders = [];
+  let scanned = 0;
+  for (const { path, text } of entries) {
+    if (adapterGlob.test(path)) continue;
+    scanned += 1;
+    if (isAllowed(path, exceptions)) continue;
+    for (const line of globalFetchLines(text)) offenders.push({ path, line, what: 'fetch' });
+    for (const { module, line } of importedModules(text)) {
+      if (isVendorModule(module, vendorSdks)) offenders.push({ path, line, what: module });
+    }
+  }
+  return { scanned, offenders };
+}

@@ -76,7 +76,7 @@ function readingOf(raw: unknown): ProbeReading {
  */
 export async function readRuntimeProbe(
   probe: RuntimeProbeTarget,
-  options: { timeoutMs?: number; fetch?: typeof fetch } = {},
+  options: { timeoutMs?: number; fetch?: typeof fetch | undefined } = {},
 ): Promise<ProbeReading> {
   const url = new URL(probe.url);
   url.searchParams.set('_forge_cb', String(Math.random()).slice(2));

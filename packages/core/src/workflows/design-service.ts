@@ -18,6 +18,8 @@ import { baseApprovalRefusal, basesOfStored, readBases } from './design-bases.js
 import { type DesignIssueOutcome, settleDesignIssue } from './design-issue.js';
 import { designRequirementsOf } from './design-requirements.js';
 import { buildGateOf, designWaitingOn, revisionStateOf } from './design-standing.js';
+import { nodeSetRefusals, nodesOfDocument } from './node-refs.js';
+import { readStoredWorkflow } from './schema.js';
 import { assertWriter, storedWorkflow, userNames, type WorkflowWriter } from './service.js';
 import {
   buildOfIssue,
@@ -29,6 +31,7 @@ import {
   lockWorkflows,
   readWorkflow,
   type StoredWorkflow,
+  setBuildSteps,
   setDesignState,
   unlinkBuild,
   workflowsOf,
@@ -292,6 +295,7 @@ export async function linkBuildAs(input: {
   id: string;
   actor: WorkflowWriter;
   issue: string;
+  steps?: string[] | undefined;
 }): Promise<DesignOutcome> {
   const { projectId, id, actor } = input;
   await assertProjectAccess(projectId, actor.userId, 'member');
@@ -305,8 +309,17 @@ export async function linkBuildAs(input: {
     if (!row || row.projectId !== projectId) {
       throw notFound(`project ${projectId} holds no workflow ${id}`);
     }
+    const steps = input.steps ? [...new Set(input.steps)] : null;
+    if (steps) {
+      const nodes = nodesOfDocument(row.id, row.flow, row.revision, readStoredWorkflow(row.document));
+      const [wrong] = nodeSetRefusals(nodes, { steps }, '');
+      if (wrong) return wrong as DesignRefusal;
+    }
     const held = await buildOfIssue(tx, issue.id);
-    if (held?.workflowId === id) return null;
+    if (held?.workflowId === id) {
+      if (steps) await setBuildSteps(tx, issue.id, steps);
+      return null;
+    }
     if ((await designsOf(tx, id))[0]?.designIssueId === issue.id) {
       return {
         code: 'WORKFLOW_DESIGN_ISSUE_IS_BUILD',
@@ -321,7 +334,13 @@ export async function linkBuildAs(input: {
         detail: `${input.issue} already builds workflow ${held.workflowId}; an issue builds one workflow, so its approver unlinks that one first.`,
       };
     }
-    await linkBuild(tx, { issueId: issue.id, workflowId: id, projectId, userId: actor.userId });
+    await linkBuild(tx, {
+      issueId: issue.id,
+      workflowId: id,
+      projectId,
+      userId: actor.userId,
+      stepIds: steps,
+    });
     return null;
   });
   if (refusal) return { ok: false, refusals: [refusal] };

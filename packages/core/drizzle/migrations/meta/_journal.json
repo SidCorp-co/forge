@@ -2395,6 +2395,13 @@
       "when": 1815177600000,
       "tag": "0373_a_mockup_is_a_proposal_pinned_beside_the_designs",
       "breakpoints": true
+    },
+    {
+      "idx": 374,
+      "version": "7",
+      "when": 1815264000000,
+      "tag": "0374_a_record_names_the_step_or_edge_it_is_about",
+      "breakpoints": true
     }
   ]
 }
