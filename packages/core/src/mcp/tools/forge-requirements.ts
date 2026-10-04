@@ -5,11 +5,12 @@
  * The REST routes in `requirements/routes.ts` are the same services.
  */
 
-import type { RequirementAct } from '@forge/contracts/requirements';
+import { REQUIREMENT_CONTRACT_REF, type RequirementAct } from '@forge/contracts/requirements';
 import { z } from 'zod';
 import { guideRef } from '../../guides/guide-ref.js';
 import { egressShown, MCP_DOOR } from '../../lib/data-egress.js';
 import type { NamedRefusal } from '../../project-config/respond.js';
+import { linkContract, unlinkContract } from '../../requirements/contract-links.js';
 import { deferRequirement, undeferRequirement } from '../../requirements/deferral.js';
 import { requirementFeedbackAs } from '../../requirements/feedback-read.js';
 import {
@@ -62,6 +63,8 @@ const ACTIONS = [
   'unlink_issue',
   'link_workflow',
   'unlink_workflow',
+  'link_contract',
+  'unlink_contract',
 ] as const;
 
 const inputSchema = z
@@ -83,6 +86,8 @@ const inputSchema = z
     issue: z.string().trim().min(1).max(200).optional(),
     adoptPlan: z.boolean().optional(),
     workflowId: z.uuid().optional(),
+    /** link_contract / unlink_contract: `<project>/<contract>`. */
+    contract: z.string().regex(REQUIREMENT_CONTRACT_REF).optional(),
     targetPhase: z.string().trim().min(1).max(200).optional(),
     view: viewInput,
   })
@@ -109,6 +114,8 @@ const GRANTS = {
     unlink_issue: write,
     link_workflow: write,
     unlink_workflow: write,
+    link_contract: write,
+    unlink_contract: write,
   },
 } as const;
 
@@ -124,7 +131,7 @@ const DESCRIPTION =
   'Statement form is the default; form "scenario" must read Given / When / Then (CRITERION_SCENARIO_UNPARSEABLE). ' +
   'accept: { requirement, revision, reason? } makes a proposed revision current (the head) and supersedes the previous ' +
   'one (reason is the re-baseline sign-off on an agreed requirement); return: { requirement, revision, reason } sends it back to draft; agree: { requirement, revision } ' +
-  'signs the head off and writes a baseline pinning every linked design, refused REQUIREMENT_DESIGN_UNAPPROVED ' +
+  'signs the head off and writes a baseline pinning every linked design and every linked contract\'s current version, refused REQUIREMENT_DESIGN_UNAPPROVED ' +
   'naming each unapproved design and REQUIREMENT_REVISION_NOT_CURRENT unless the head is current. accept, return ' +
   'and agree are a person’s acts: an agent is refused REQUIREMENT_SIGNOFF_FORBIDDEN. ' +
   'repin: { requirement, revision, reason? } writes a new baseline of the head pinning each linked design’s approved ' +
@@ -140,6 +147,8 @@ const DESCRIPTION =
   'A plan written before the link reads changed-since-plan unless a person passes adoptPlan: true, attesting it ' +
   'already satisfies the current revision (REQUIREMENT_NO_PLAN_TO_ADOPT when the issue has no plan). ' +
   'link_workflow: { requirement, workflowId } names a design the next agree pins. ' +
+  'link_contract: { requirement, contract: "<project>/<contract>" } names a contract this project publishes or consumes ' +
+  '(REQUIREMENT_CONTRACT_UNKNOWN otherwise); the next agree or repin pins its current version, and none while no version is approved. ' +
   'get: revisions with their criteria, baselines with pins, linked designs and issues, and the delivery phase ' +
   '(agreed | in_delivery | delivered), computed on read. ' +
   'list answers each requirement as { id, key, title, status, state, currentRevision, latestRevision, counts, ' +
@@ -147,7 +156,7 @@ const DESCRIPTION =
   'currentRevision, latestRevision, updatedAt } } and what it changed: create / revise / edit the written ' +
   'revision with its criteria codes, propose / accept / return / agree the decided revision (agree also the ' +
   'baseline), repin the latest baseline, link_issue / unlink_issue the linked issues, link_workflow / ' +
-  'unlink_workflow the linked designs; defer and undefer answer the requirement alone. ' +
+  'unlink_workflow the linked designs, link_contract / unlink_contract the linked contracts; defer and undefer answer the requirement alone. ' +
   VIEW_RULE;
 
 function need<K extends keyof Input>(input: Input, key: K): NonNullable<Input[K]> {
@@ -316,6 +325,10 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
       return done(await linkWorkflow({ ...on(), workflowId: need(input, 'workflowId') }));
     case 'unlink_workflow':
       return done(await unlinkWorkflow({ ...on(), workflowId: need(input, 'workflowId') }));
+    case 'link_contract':
+      return done(await linkContract({ ...on(), contract: need(input, 'contract') }));
+    case 'unlink_contract':
+      return done(await unlinkContract({ ...on(), contract: need(input, 'contract') }));
   }
 }
 

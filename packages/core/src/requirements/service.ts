@@ -16,7 +16,6 @@ import { db, type Tx } from '../db/client.js';
 import {
   type RequirementStatus,
   type RevisionState,
-  requirementBaselinePins,
   requirementBaselines,
   requirementReturns,
   requirementRevisions,
@@ -25,7 +24,7 @@ import {
 import { assertProjectAccess } from '../lib/authz.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { staleOnTargetRevised } from '../suggestions/stale.js';
-import { acceptedMockupIds } from './baselines.js';
+import { linkedContracts, writePinsIn } from './baselines.js';
 import { embedRequirementHeadLater } from './embeddings.js';
 import {
   createRequirementIn,
@@ -303,7 +302,7 @@ export async function returnRevision(input: {
   return answer(projectId, row.id, actor, refusals);
 }
 
-/** Writes the baseline of `revision`: a pin per linked design's approved revision and accepted mockup. */
+/** Writes the agree's baseline of `revision` (seq 1) and its pins. */
 async function writeBaseline(
   tx: Tx,
   requirementId: string,
@@ -313,29 +312,17 @@ async function writeBaseline(
   reason: string | null,
   readiness: BaselineReadiness | null = null,
 ) {
-  await tx
+  const [baseline] = await tx
     .insert(requirementBaselines)
-    .values({ requirementId, revision, agreedBy: actor.userId, reason, readiness });
-  const pins = [
-    ...designs.flatMap((d) =>
-      d.approvedRevision === null
-        ? []
-        : [
-            {
-              requirementId,
-              revision,
-              workflowId: d.workflowId,
-              designRevision: d.approvedRevision,
-            },
-          ],
-    ),
-    ...(await acceptedMockupIds(tx, requirementId, revision)).map((mockupId) => ({
-      requirementId,
-      revision,
-      mockupId,
-    })),
-  ];
-  if (pins.length) await tx.insert(requirementBaselinePins).values(pins);
+    .values({ requirementId, revision, agreedBy: actor.userId, reason, readiness })
+    .returning({ seq: requirementBaselines.seq });
+  if (!baseline) throw new Error(`requirements: no baseline row returned for ${requirementId}`);
+  await writePinsIn(
+    tx,
+    { requirementId, revision, seq: baseline.seq },
+    designs,
+    await linkedContracts(tx, requirementId),
+  );
 }
 
 /**
@@ -407,7 +394,7 @@ export async function acceptRevision(input: {
   return answer(projectId, row.id, actor, refusals);
 }
 
-/** A person signs the head off: draft → agreed, with a baseline pinning every linked design. */
+/** A person signs the head off: draft → agreed, with a baseline pinning every linked design and contract. */
 export async function agreeRequirement(input: {
   projectId: string;
   ref: string;

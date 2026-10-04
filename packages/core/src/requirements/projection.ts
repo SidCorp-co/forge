@@ -82,5 +82,6 @@ export function requirementActAnswerOf(
   }
   if (act === 'link_issue' || act === 'unlink_issue') answer.issues = detail.issues;
   if (act === 'link_workflow' || act === 'unlink_workflow') answer.workflows = detail.workflows;
+  if (act === 'link_contract' || act === 'unlink_contract') answer.contracts = detail.contracts;
   return answer;
 }
