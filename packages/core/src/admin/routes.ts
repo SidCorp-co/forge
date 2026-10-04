@@ -1,19 +1,7 @@
-import { and, count, desc, eq, gte, ilike, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import {
-  activityLog,
-  type DeviceStatus,
-  deviceStatuses,
-  devices,
-  projectMembers,
-  projects,
-  retrievalAnalytics,
-  users,
-} from '../db/schema.js';
-import { buildIlikePattern } from '../issues/search-predicate.js';
+import { deviceStatuses } from '../db/schema.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import {
   type AuthVars,
@@ -23,6 +11,13 @@ import {
 } from '../middleware/auth.js';
 import { onAdminList, requireAdmin } from '../middleware/require-admin.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import {
+  listAdminAudit,
+  listAdminDevices,
+  listAdminProjects,
+  listAdminUsers,
+  readRetrievalBreakdown,
+} from './read.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -52,9 +47,6 @@ const adminProtected = new Hono<{ Variables: AuthVars }>();
 adminProtected.use('*', requireAuth(), assertEmailVerified(), requireAdmin());
 
 const RETRIEVAL_BREAKDOWN_DEFAULT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-const metadataInt = (key: string) =>
-  sql<number>`coalesce(sum((${retrievalAnalytics.metadata} ->> ${key})::int), 0)`.mapWith(Number);
-const strategyOf = sql<string>`coalesce(${retrievalAnalytics.metadata} ->> 'strategy', 'unknown')`;
 
 adminProtected.get(
   '/retrieval/breakdown',
@@ -66,24 +58,7 @@ adminProtected.get(
     const sinceDate = since
       ? new Date(since)
       : new Date(Date.now() - RETRIEVAL_BREAKDOWN_DEFAULT_WINDOW_MS);
-    const rows = await db
-      .select({
-        strategy: strategyOf,
-        searches: count(),
-        avgHitCount: sql<number>`coalesce(avg(${retrievalAnalytics.hitCount}), 0)`.mapWith(Number),
-        semanticHits: metadataInt('semanticHits'),
-        keywordHits: metadataInt('keywordHits'),
-        overlap: metadataInt('overlap'),
-      })
-      .from(retrievalAnalytics)
-      .where(
-        and(
-          eq(retrievalAnalytics.projectId, projectId),
-          gte(retrievalAnalytics.createdAt, sinceDate),
-        ),
-      )
-      .groupBy(strategyOf)
-      .orderBy(strategyOf);
+    const rows = await readRetrievalBreakdown(projectId, sinceDate);
     return c.json({ projectId, since: sinceDate.toISOString(), strategies: rows });
   },
 );
@@ -95,23 +70,8 @@ adminProtected.get(
   }),
   async (c) => {
     const { limit, offset, q } = c.req.valid('query');
-    const where = q ? ilike(users.email, buildIlikePattern(q)) : undefined;
-
-    const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(users).where(where);
-    const rows = await db
-      .select({
-        id: users.id,
-        email: users.email,
-        emailVerifiedAt: users.emailVerifiedAt,
-        createdAt: users.createdAt,
-      })
-      .from(users)
-      .where(where)
-      .orderBy(desc(users.createdAt))
-      .limit(limit)
-      .offset(offset);
-
-    return c.json(listResponse(c, rows, Number(n), { limit, offset }));
+    const { rows, total } = await listAdminUsers({ limit, offset, q });
+    return c.json(listResponse(c, rows, total, { limit, offset }));
   },
 );
 
@@ -122,51 +82,8 @@ adminProtected.get(
   }),
   async (c) => {
     const { limit, offset, q } = c.req.valid('query');
-    const pattern = q ? buildIlikePattern(q) : undefined;
-
-    const countWhere = pattern
-      ? sql`${projects.slug} ILIKE ${pattern} ESCAPE '\\' OR ${projects.name} ILIKE ${pattern} ESCAPE '\\'`
-      : undefined;
-    const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(projects).where(countWhere);
-
-    const memberCountSq = db
-      .select({
-        projectId: projectMembers.projectId,
-        n: count().as('member_count'),
-      })
-      .from(projectMembers)
-      .groupBy(projectMembers.projectId)
-      .as('mc');
-
-    const rows = await db
-      .select({
-        id: projects.id,
-        slug: projects.slug,
-        name: projects.name,
-        createdBy: projects.createdBy,
-        creatorEmail: users.email,
-        memberCount: memberCountSq.n,
-        createdAt: projects.createdAt,
-      })
-      .from(projects)
-      .leftJoin(users, eq(users.id, projects.createdBy))
-      .leftJoin(memberCountSq, eq(memberCountSq.projectId, projects.id))
-      .where(countWhere)
-      .orderBy(desc(projects.createdAt))
-      .limit(limit)
-      .offset(offset);
-
-    return c.json(
-      listResponse(
-        c,
-        rows.map((r) => ({
-          ...r,
-          memberCount: Number(r.memberCount ?? 0),
-        })),
-        Number(n),
-        { limit, offset },
-      ),
-    );
+    const { rows, total } = await listAdminProjects({ limit, offset, q });
+    return c.json(listResponse(c, rows, total, { limit, offset }));
   },
 );
 
@@ -177,18 +94,8 @@ adminProtected.get(
   }),
   async (c) => {
     const { limit, offset, status } = c.req.valid('query');
-    const where = status ? eq(devices.status, status as DeviceStatus) : undefined;
-
-    const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(devices).where(where);
-    const rows = await db
-      .select()
-      .from(devices)
-      .where(where)
-      .orderBy(desc(devices.createdAt))
-      .limit(limit)
-      .offset(offset);
-
-    return c.json(listResponse(c, rows, Number(n), { limit, offset }));
+    const { rows, total } = await listAdminDevices({ limit, offset, status });
+    return c.json(listResponse(c, rows, total, { limit, offset }));
   },
 );
 
@@ -199,24 +106,14 @@ adminProtected.get(
   }),
   async (c) => {
     const { limit, offset, action, actorId, since } = c.req.valid('query');
-
-    const where: ReturnType<typeof and>[] = [];
-    if (action) where.push(eq(activityLog.action, action));
-    if (actorId) where.push(eq(activityLog.actorId, actorId));
-    if (since) where.push(sql`${activityLog.createdAt} >= ${new Date(since)}`);
-    const whereExpr =
-      where.length === 0 ? undefined : where.length === 1 ? where[0] : and(...where);
-
-    const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(activityLog).where(whereExpr);
-    const rows = await db
-      .select()
-      .from(activityLog)
-      .where(whereExpr)
-      .orderBy(desc(activityLog.createdAt))
-      .limit(limit)
-      .offset(offset);
-
-    return c.json(listResponse(c, rows, Number(n), { limit, offset }));
+    const { rows, total } = await listAdminAudit({
+      limit,
+      offset,
+      action,
+      actorId,
+      since: since ? new Date(since) : undefined,
+    });
+    return c.json(listResponse(c, rows, total, { limit, offset }));
   },
 );
 

@@ -1,14 +1,15 @@
-import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { memories, memorySources } from '../db/schema.js';
+import { memorySources } from '../db/schema.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { runMemoryGet } from './get-service.js';
+import { deleteMemory } from './indexer.js';
+import { memoryProject } from './read.js';
 import { memoryRevisionsInputSchema, runMemoryRevisions } from './revisions-service.js';
+import { deleteMemoryById } from './service.js';
 import { requireCan } from '../permissions/index.js';
 
 const listQuerySchema = paginationSchema.extend({
@@ -95,18 +96,7 @@ memoryListRoutes.delete(
     const userId = c.get('userId');
     await requireCan({ userId }, 'project.write', projectId);
 
-    const result = await db
-      .delete(memories)
-      .where(
-        and(
-          eq(memories.projectId, projectId),
-          eq(memories.source, source),
-          eq(memories.sourceRef, sourceRef),
-        ),
-      )
-      .returning({ id: memories.id });
-
-    return c.json({ deleted: result.length });
+    return c.json({ deleted: await deleteMemory(projectId, source, sourceRef) });
   },
 );
 
@@ -124,20 +114,16 @@ memoryListRoutes.delete(
     // Idempotent delete. Always return 204 for any (id, caller) pair where the
     // caller is not authorised — never reveal whether a memory id exists in a
     // project the caller cannot see. Only members observe an actual delete.
-    const [row] = await db
-      .select({ projectId: memories.projectId })
-      .from(memories)
-      .where(eq(memories.id, id))
-      .limit(1);
-    if (!row) return c.body(null, 204);
+    const projectId = await memoryProject(id);
+    if (!projectId) return c.body(null, 204);
 
     try {
-      await requireCan({ userId }, 'project.write', row.projectId);
+      await requireCan({ userId }, 'project.write', projectId);
     } catch {
       return c.body(null, 204);
     }
 
-    await db.delete(memories).where(eq(memories.id, id));
+    await deleteMemoryById(id);
     return c.body(null, 204);
   },
 );

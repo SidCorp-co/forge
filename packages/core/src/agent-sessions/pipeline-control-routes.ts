@@ -1,8 +1,5 @@
-import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { agentSessions } from '../db/schema.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
@@ -17,6 +14,7 @@ import {
   pipelineControlInputSchema,
   pipelineHealthInputSchema,
 } from './pipeline-control-types.js';
+import { setPipelineControl, setPipelineHealth, setPipelineTelemetry } from './service.js';
 import {
   badRequest,
   ensureSessionMember,
@@ -71,11 +69,7 @@ agentSessionPipelineControlRoutes.post(
     const prev = existing.pipelineControl as PipelineControl | null;
     const merged = buildPipelineControl(prev, input, userId);
 
-    const [updated] = await db
-      .update(agentSessions)
-      .set({ pipelineControl: merged, updatedAt: new Date() })
-      .where(eq(agentSessions.id, id))
-      .returning();
+    const updated = await setPipelineControl(id, merged);
     if (!updated) throw notFound('agent session not found');
 
     broadcastSession(updated, 'agent-session.pipeline-control', {
@@ -140,11 +134,7 @@ agentSessionPipelineControlRoutes.post(
 
     const merged = buildPipelineHealth(existing.pipelineHealth as PipelineHealth | null, input);
 
-    const [updated] = await db
-      .update(agentSessions)
-      .set({ pipelineHealth: merged, updatedAt: new Date() })
-      .where(eq(agentSessions.id, id))
-      .returning();
+    const updated = await setPipelineHealth(id, merged);
     if (!updated) throw notFound('agent session not found');
 
     broadcastSession(updated, 'agent-session.pipeline-health', { health: merged });
@@ -182,11 +172,7 @@ agentSessionPipelineControlRoutes.post(
 
     await ensureSessionRole(id, userId, 'project.write');
 
-    const [updated] = await db
-      .update(agentSessions)
-      .set({ pipelineTelemetry: telemetry as never, updatedAt: new Date() })
-      .where(eq(agentSessions.id, id))
-      .returning();
+    const updated = await setPipelineTelemetry(id, telemetry);
     if (!updated) throw notFound('agent session not found');
 
     broadcastSession(updated, 'agent-session.pipeline-telemetry', { telemetry });

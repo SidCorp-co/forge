@@ -11,6 +11,7 @@ import { db } from '../db/client.js';
 import { type RunnerStatus, type RunnerType, runners } from '../db/schema.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
+import type { QuotaResult } from './types.js';
 
 export type NewRunner = {
   projectId: string;
@@ -90,4 +91,36 @@ async function readBinding(input: NewRunner) {
     )
     .limit(1);
   return row ?? null;
+}
+
+/** A runner takes these values; null when it is gone. */
+export async function updateRunner(id: string, update: Partial<typeof runners.$inferInsert>) {
+  const [row] = await db
+    .update(runners)
+    .set({ ...update, updatedAt: new Date() })
+    .where(eq(runners.id, id))
+    .returning();
+  return row ?? null;
+}
+
+/** A runner is removed. */
+export async function deleteRunner(id: string): Promise<void> {
+  await db.delete(runners).where(eq(runners.id, id));
+}
+
+/** A refreshed quota reading is merged into the runner's config. */
+export async function storeRunnerQuota(
+  id: string,
+  config: Record<string, unknown>,
+  quota: QuotaResult,
+): Promise<void> {
+  const next = {
+    ...config,
+    quota: {
+      ...(config.quota as object | undefined),
+      ...quota,
+      refreshedAt: new Date().toISOString(),
+    },
+  };
+  await db.update(runners).set({ config: next, updatedAt: new Date() }).where(eq(runners.id, id));
 }

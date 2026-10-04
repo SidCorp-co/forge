@@ -1,14 +1,6 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import {
-  type IssueStatus,
-  issueDependencies,
-  issueStatuses,
-  issues,
-  waitingKinds,
-} from '../db/schema.js';
+import { type IssueStatus, issueStatuses, waitingKinds } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
@@ -22,10 +14,12 @@ import {
   TransitionError,
   transitionIssueStatus,
 } from './apply-transition.js';
+import { liveBlockedDependentsOf } from './dependency-read.js';
 import type { UnblockedDependent } from './drop-cascade.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { parkQuestionNotMinted } from './park-question.js';
 import { issueParkRoutes } from './park-routes.js';
+import { transitionIssueRow } from './read-service.js';
 import { recordEventRoutes } from './record-events/routes.js';
 import { refuseOffRecoveryEdge, withRecoveryHint } from './recovery-move.js';
 import { refuseLegacyStatusFields } from './status-input.js';
@@ -113,25 +107,7 @@ export async function triggerTerminalDispatch(
     }
 
     const issueIds = terminal.filter((t) => !t.dependents).map((t) => t.issueId);
-    const dependents =
-      issueIds.length === 0
-        ? []
-        : await db
-            .select({
-              fromIssueId: issueDependencies.fromIssueId,
-              toIssueId: issueDependencies.toIssueId,
-              depProjectId: issueDependencies.projectId,
-              toIssSeq: issues.issSeq,
-            })
-            .from(issueDependencies)
-            .innerJoin(issues, eq(issues.id, issueDependencies.toIssueId))
-            .where(
-              and(
-                inArray(issueDependencies.fromIssueId, issueIds),
-                eq(issueDependencies.kind, 'blocks'),
-                sql`(${issueDependencies.validUntil} IS NULL OR ${issueDependencies.validUntil} > now())`,
-              ),
-            );
+    const dependents = await liveBlockedDependentsOf(issueIds);
 
     for (const row of dependents) {
       noteChild(row.depProjectId, row.fromIssueId);
@@ -207,17 +183,7 @@ transitionRoutes.post(
     const { toStatus, reason, waitingKind, needs, voidQuestions, recovery } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const [issue] = await db
-      .select({
-        id: issues.id,
-        projectId: issues.projectId,
-        status: issues.status,
-        reopenCount: issues.reopenCount,
-        issSeq: issues.issSeq,
-      })
-      .from(issues)
-      .where(eq(issues.id, id))
-      .limit(1);
+    const issue = await transitionIssueRow(id);
     if (!issue) throw notFound('issue not found');
 
     const fromStatus = issue.status as IssueStatus;

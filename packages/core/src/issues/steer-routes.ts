@@ -7,18 +7,16 @@
  * the other cannot reach.
  */
 
-import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { steerIssue } from '../agent-sessions/steer-session.js';
-import { db } from '../db/client.js';
-import { issues } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
+import { issueScopeOf } from './read-service.js';
 
 const steerBodySchema = z
   .object({
@@ -52,11 +50,7 @@ issueSteerRoutes.post(
     const { body, reason } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const [issue] = await db
-      .select({ projectId: issues.projectId })
-      .from(issues)
-      .where(eq(issues.id, id))
-      .limit(1);
+    const issue = await issueScopeOf(id);
     if (!issue) throw new HTTPException(404, { message: 'issue not found' });
 
     const access = await loadProjectAccess(issue.projectId, userId);

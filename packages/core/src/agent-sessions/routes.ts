@@ -1,24 +1,17 @@
-import { and, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { SESSION_MACHINE } from '@forge/contracts/session-machine';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { withKernelMarker } from '../db/kernel-marker.js';
-import { notAnEdgeError } from '../lifecycle/transition.js';
 import {
   type AgentSessionStatus,
   agentSessionStatuses,
-  agentSessions,
-  agentSessionTurns,
-  issues,
   sessionRuntimeStates,
   terminalAgentSessionStatuses,
-  usageRecords,
 } from '../db/schema.js';
 import { isPipelineSessionKind } from '../jobs/session-kinds.js';
 import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
+import { notAnEdgeError } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import {
   type AuthVars,
@@ -28,30 +21,30 @@ import {
 } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import {
-  canonicalSessionId,
-  EMPTY_USAGE_TOTALS,
-  usageSessionMatch,
-  usageTotalsSelection,
-} from '../usage-records/rollup.js';
+import { requireHeld } from '../permissions/index.js';
 import { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } from './broadcast.js';
-import { extractTurnPreview } from './chat-preview.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
 import { agentSessionEventsRoutes } from './events-routes.js';
 import { agentSessionInboxRoutes } from './inbox-routes.js';
 import { agentSessionInteractiveRoutes } from './interactive-routes.js';
 import { kindFromQuery } from './kind-query.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
-import { transitionSessions } from './session-transition.js';
 import { applyTranscriptPatch } from './patch-transcript.js';
 import { agentSessionPipelineControlRoutes } from './pipeline-control-routes.js';
+import {
+  type AgentSessionListFilter,
+  linkedIssueOf,
+  listAgentSessionsPage,
+  sessionCost,
+  sessionQueueDepth,
+} from './read.js';
+import { refuseSession } from './refusals.js';
 import {
   BLIND_SCHEDULE_RUN_REASON,
   countTranscriptToolCalls,
   isBlindScheduleRun,
 } from './schedule-evidence.js';
-import { refuseSession } from './refusals.js';
-import { agentSessionListColumns } from './service.js';
+import { deleteSession, markSessionAcked, writeSessionPatch } from './service.js';
 import {
   assertAgentChatOwner,
   assertDeviceOwnsSession,
@@ -62,17 +55,13 @@ import {
   ensureSessionRole,
   idParamSchema,
   loadSessionOr404,
-  notFound,
 } from './session-access.js';
-import { recordReportedTranscript } from './session-events.js';
 import {
   type AgentSessionPatch,
   detectUnexpandedSkillFailure,
   finalizeScheduleSessionFailure,
 } from './session-failure.js';
-import { syncTurnsWithMessages } from './turns-helpers.js';
 import { agentSessionTurnsRoutes } from './turns-routes.js';
-import { requireHeld } from '../permissions/index.js';
 
 const listQuerySchema = z
   .object({
@@ -154,11 +143,7 @@ agentSessionRoutes.post(
       });
     }
 
-    const [issue] = await db
-      .select({ id: issues.id, status: issues.status, projectId: issues.projectId })
-      .from(issues)
-      .where(eq(issues.id, meta.issueId))
-      .limit(1);
+    const issue = await linkedIssueOf(meta.issueId);
     if (!issue) {
       throw new HTTPException(404, {
         message: 'linked issue not found',
@@ -191,29 +176,8 @@ agentSessionRoutes.get(
 
     const { session } = await ensureSessionMember(id, userId);
 
-    const sessionMatch = usageSessionMatch(sql`= ${canonicalSessionId(id)}`);
-
-    const [totals] = await db.select(usageTotalsSelection()).from(usageRecords).where(sessionMatch);
-
-    // Per-model breakdown for the detail rail's "Model" stat (one row per model
-    // this session billed against), ordered by spend.
-    const models = await db
-      .select({
-        model: usageRecords.model,
-        cost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
-        requests: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
-      })
-      .from(usageRecords)
-      .where(sessionMatch)
-      .groupBy(usageRecords.model)
-      .orderBy(desc(sql`sum(${usageRecords.estimatedCost})`));
-
-    return c.json({
-      sessionId: id,
-      projectId: session.projectId,
-      ...(totals ?? EMPTY_USAGE_TOTALS),
-      models,
-    });
+    const { totals, models } = await sessionCost(id);
+    return c.json({ sessionId: id, projectId: session.projectId, ...totals, models });
   },
 );
 
@@ -238,20 +202,7 @@ agentSessionRoutes.get(
 
     // Group counts by deviceId × status. Devices without any active session
     // simply don't appear; the UI lists those via the standard devices API.
-    const rows = await db
-      .select({
-        deviceId: agentSessions.deviceId,
-        status: agentSessions.status,
-        count: count(),
-      })
-      .from(agentSessions)
-      .where(
-        and(
-          eq(agentSessions.projectId, projectId),
-          inArray(agentSessions.status, ['queued', 'running']),
-        ),
-      )
-      .groupBy(agentSessions.deviceId, agentSessions.status);
+    const rows = await sessionQueueDepth(projectId);
 
     type Bucket = { deviceId: string | null; queued: number; running: number };
     const buckets = new Map<string, Bucket>();
@@ -303,129 +254,31 @@ agentSessionRoutes.get(
       c.req.valid('query');
     const userId = c.get('userId');
 
-    const conditions: SQL[] = [];
-
+    let scope: AgentSessionListFilter['scope'];
     if (projectId) {
       const access = await loadProjectAccess(projectId, userId);
       requireHeld(access, 'project.read');
-      conditions.push(eq(agentSessions.projectId, projectId));
-    } else if (deviceId) {
-      // Scope a deviceId listing to caller-visible projects, like the
-      // cross-project branch below — otherwise any authenticated user could
-      // dump every session (incl. full messages[]) for a device across all
-      // tenants (ISS-492). agentSessions.projectId is NOT NULL, so this fully
-      // scopes the rows.
+      scope = { projectId };
+    } else {
+      // A deviceId listing is scoped to caller-visible projects too, or any
+      // authenticated user could dump a device's sessions across tenants (ISS-492).
       const visible = await loadVisibleProjectIds(userId);
       if (visible.length === 0) {
         return c.json(listResponse(c, [], 0, fromPage(page, pageSize)));
       }
-      conditions.push(eq(agentSessions.deviceId, deviceId));
-      conditions.push(inArray(agentSessions.projectId, visible));
-    } else {
-      // Cross-project view: restrict to caller-visible projects (explicit
-      // membership of any role, or org owner/admin).
-      const visible = await loadVisibleProjectIds(userId);
-
-      if (visible.length === 0) {
-        return c.json(listResponse(c, [], 0, fromPage(page, pageSize)));
-      }
-
-      conditions.push(inArray(agentSessions.projectId, visible));
+      scope = { visibleProjectIds: visible, deviceId };
     }
 
-    if (status) conditions.push(eq(agentSessions.status, status));
-    if (metadataType)
-      conditions.push(eq(agentSessions.kind, kindFromQuery(metadataType, badRequest)));
-    if (issueId) {
-      conditions.push(sql`${agentSessions.metadata}->>'issueId' = ${issueId}`);
-    }
-    // ISS-465 — default to excluding archived chats (metadata.archived='true').
-    // `IS DISTINCT FROM` keeps rows whose metadata has no `archived` key, so
-    // pipeline/pm rows and unarchived chats stay in the active list.
-    if (archived === 'true') {
-      conditions.push(sql`${agentSessions.metadata}->>'archived' = 'true'`);
-    } else {
-      conditions.push(sql`(${agentSessions.metadata}->>'archived') IS DISTINCT FROM 'true'`);
-    }
-
-    const where = conditions.length > 0 ? and(...conditions) : undefined;
-
-    const [totalRow] = await db
-      .select({ n: count() })
-      .from(agentSessions)
-      .where(where ?? undefined);
-    const rows = await db
-      .select(agentSessionListColumns)
-      .from(agentSessions)
-      .where(where ?? undefined)
-      .orderBy(desc(agentSessions.updatedAt))
-      .limit(pageSize)
-      .offset((page - 1) * pageSize);
-
-    // Per-row dollar cost (ISS-391): the session row carries no cost — it lives
-    // in usage_records keyed by session_id. Roll it up in ONE bounded query over
-    // just this page's session ids (no per-row N+1), grouped by session_id.
-    // Each page id goes in through `canonicalSessionId` (mirrors the /:id/cost
-    // route), so the IN list is canonical text and the column stays uncast and
-    // index-served. usage_records.session_id = agent_sessions.id (NOT the job
-    // id), so filtering directly by the page's ids is correct and does not fan
-    // out the way a join through jobs would.
-    const costById = new Map<string, number>();
-    // page's ids, mirroring the cost rollup above — no per-row N+1. Excludes
-    // `tool` turns (no text to preview); a session with no user/assistant text
-    // turn yet (e.g. only a materialized-jsonb legacy row) resolves to null.
-    const previewById = new Map<string, string>();
-    const pageIds = rows.map((r) => r.id);
-    if (pageIds.length > 0) {
-      const idList = sql.join(
-        pageIds.map((id) => sql`${id}::uuid`),
-        sql`, `,
-      );
-      const sessionIdList = sql.join(
-        pageIds.map((id) => canonicalSessionId(id)),
-        sql`, `,
-      );
-      const costRows = await db
-        .select({
-          sessionId: usageRecords.sessionId,
-          estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(
-            Number,
-          ),
-        })
-        .from(usageRecords)
-        .where(usageSessionMatch(sql`IN (${sessionIdList})`))
-        .groupBy(usageRecords.sessionId);
-      for (const cr of costRows) {
-        if (cr.sessionId) costById.set(cr.sessionId, cr.estimatedCost);
-      }
-
-      const previewRows = (await db.execute(sql`
-        SELECT DISTINCT ON (${agentSessionTurns.agentSessionId}) ${agentSessionTurns.agentSessionId} AS session_id, ${agentSessionTurns.content} AS content
-        FROM ${agentSessionTurns}
-        WHERE ${agentSessionTurns.agentSessionId} IN (${idList}) AND ${agentSessionTurns.role} <> 'tool'
-        ORDER BY ${agentSessionTurns.agentSessionId}, ${agentSessionTurns.turnIndex} DESC
-      `)) as unknown as Array<{ session_id: string; content: unknown }>;
-      for (const pr of previewRows) {
-        // Row storage wraps the original message entry as `{ value: entry }`
-        // (see normalizeTurnContent in turns-helpers.ts); the entry itself is
-        // `{ role/type, content, ... }`, so the previewable text is one level
-        // further in at `value.content`, not `value` itself.
-        const entryValue = (pr.content as { value?: unknown } | null)?.value;
-        const entryContent =
-          entryValue && typeof entryValue === 'object'
-            ? (entryValue as { content?: unknown }).content
-            : undefined;
-        const preview = extractTurnPreview(entryContent);
-        if (preview) previewById.set(pr.session_id, preview);
-      }
-    }
-
-    const items = rows.map((r) => ({
-      ...r,
-      estimatedCost: costById.get(r.id) ?? 0,
-      lastMessagePreview: previewById.get(r.id) ?? null,
-    }));
-    return c.json(listResponse(c, items, totalRow?.n ?? 0, fromPage(page, pageSize)));
+    const { items, total } = await listAgentSessionsPage({
+      scope,
+      status,
+      kind: metadataType ? kindFromQuery(metadataType, badRequest) : undefined,
+      issueId,
+      archived: archived === 'true',
+      page,
+      pageSize,
+    });
+    return c.json(listResponse(c, items, total, fromPage(page, pageSize)));
   },
 );
 
@@ -479,12 +332,7 @@ agentSessionRoutes.post(
     assertDeviceOwnsSession(c, existing);
     const meta = (existing.metadata ?? {}) as Record<string, unknown>;
     const already = meta.acked === true;
-    if (existing.status === 'running' && !already) {
-      await db
-        .update(agentSessions)
-        .set({ metadata: { ...meta, acked: true, ackedAt: new Date().toISOString() } })
-        .where(and(eq(agentSessions.id, id), eq(agentSessions.status, 'running')));
-    }
+    if (existing.status === 'running' && !already) await markSessionAcked(id, meta);
     return c.json({ sessionId: id, acked: existing.status === 'running', already });
   },
 );
@@ -663,54 +511,24 @@ agentSessionRoutes.patch(
       updates.failureDetail = null;
     }
 
-    // Dual-write: when the worker PATCHes the messages array we mirror append /
-    // truncate into agent_session_turns inside the same transaction so the
-    // legacy blob and turn rows can never diverge. Streaming-tail debounce is
-    // handled by broadcastTurnAppended so we don't spam clients while the
-    // runner streams.
-    const messagesPatched = patch.messages !== undefined;
-    type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-    const mirror = async (tx: Tx, rowId: string) => {
-      if (transcript.snapshot && patchedMessages) {
-        await recordReportedTranscript(tx, id, patchedMessages, patchNow);
-      }
-      if (!messagesPatched) return null;
-      const prevMessages = Array.isArray(existing.messages) ? existing.messages : [];
-      return syncTurnsWithMessages(rowId, prevMessages, patchedMessages ?? [], tx);
-    };
+    // Dual-write: the messages array and agent_session_turns are written in one
+    // transaction so the legacy blob and turn rows can never diverge.
     const { status: nextStatus, ...columns } = updates;
-    let sync = null as Awaited<ReturnType<typeof mirror>>;
-    let updated: typeof existing;
-    if (nextStatus !== undefined && nextStatus !== existing.status) {
-      const [row] = (
-        await transitionSessions(db, {
-          to: nextStatus,
-          set: columns,
-          where: eq(agentSessions.id, id),
-          actor:
-            c.get('principal') === 'device'
-              ? { type: 'runner', id: existing.deviceId }
-              : restActor(c),
-          source: 'session-patch',
-          afterWrite: async (tx, rows) => {
-            if (rows[0]) sync = await mirror(tx, rows[0].id);
-          },
-        })
-      ).rows;
-      if (!row) throw notAnEdgeError(SESSION_MACHINE, existing.status, nextStatus);
-      updated = row;
-    } else {
-      updated = await db.transaction(async (tx) => {
-        const [row] = await tx
-          .update(agentSessions)
-          .set(columns)
-          .where(eq(agentSessions.id, id))
-          .returning();
-        if (!row) throw notFound('agent session not found');
-        sync = await mirror(tx, row.id);
-        return row;
-      });
+    const { updated: written, sync } = await writeSessionPatch({
+      sessionId: id,
+      existing,
+      columns,
+      to: nextStatus,
+      actor:
+        c.get('principal') === 'device' ? { type: 'runner', id: existing.deviceId } : restActor(c),
+      snapshot: transcript.snapshot && patchedMessages ? patchedMessages : null,
+      messages: patch.messages !== undefined ? (patchedMessages ?? []) : null,
+      at: patchNow,
+    });
+    if (!written) {
+      throw notAnEdgeError(SESSION_MACHINE, existing.status, nextStatus ?? existing.status);
     }
+    const updated = written;
 
     if (sync) {
       // First new turn fires immediately so the client learns the turn id.
@@ -763,9 +581,7 @@ agentSessionRoutes.delete(
     // own chat; project owners/admins can delete any session.
     const { session: existing } = await ensureSessionOwnerOrAdmin(id, userId);
 
-    await withKernelMarker(db, async (tx) =>
-      tx.delete(agentSessions).where(eq(agentSessions.id, id)),
-    );
+    await deleteSession(id);
     broadcastSession(existing, 'agent-session.deleted');
     return c.body(null, 204);
   },

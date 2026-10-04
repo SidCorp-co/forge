@@ -5,11 +5,9 @@
  * reads on every message, rebuilt whenever a connection or a binding changes.
  */
 
-import { inArray } from 'drizzle-orm';
-import { db } from '../../db/client.js';
-import { projects } from '../../db/schema.js';
 import { logger } from '../../observability/logger.js';
 import { listBindingsForConnection } from '../store.js';
+import { projectNamesOf } from './read.js';
 import type { RocketChatBindingConfig } from './types.js';
 
 /** One bound room, and the project whose handle answers in it. */
@@ -30,10 +28,7 @@ export async function buildRoutes(connectionId: string): Promise<Map<string, Rou
     .filter(({ b, rids }) => b.active && rids.length > 0);
   if (active.length === 0) return routes;
 
-  const projectRows = await db
-    .select({ id: projects.id, slug: projects.slug, name: projects.name })
-    .from(projects)
-    .where(inArray(projects.id, [...new Set(active.map(({ b }) => b.projectId))]));
+  const projectRows = await projectNamesOf([...new Set(active.map(({ b }) => b.projectId))]);
   const projectById = new Map(projectRows.map((p) => [p.id, p]));
 
   for (const { b, rids } of active) {

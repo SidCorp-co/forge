@@ -22,6 +22,7 @@ import { questionnaireBatches } from '../../db/schema-onboarding.js';
 import { agentQuestions } from '../../db/schema-questions.js';
 import { defaultChatProviderId } from '../../integrations/llm/bootstrap.js';
 import { resolveForProject } from '../../integrations/llm/registry.js';
+import { principalAgency } from '../../issues/index.js';
 import { resolveIssueRouteRef } from '../../issues/issue-route-ref.js';
 import { dataPolicyOf, egressAt, egressDeep, egressOr, MCP_DOOR } from '../../lib/data-egress.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
@@ -29,9 +30,8 @@ import { refuser } from '../../lib/refusal.js';
 import {
   type ContextScopedMcpToolFactory,
   type McpContext,
-  principalAgency,
   refusedAnswer,
-} from '../../mcp/tools/lib.js';
+} from '../../lib/tool.js';
 import { roundsInConversation } from '../../questionnaires/read.js';
 import { roundsRefusal } from '../../questionnaires/rules.js';
 import { announce, inTx, postQuestionnaireIn } from '../../questionnaires/service.js';

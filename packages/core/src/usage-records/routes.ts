@@ -1,15 +1,13 @@
-import { and, count, desc, eq, gte, lte, type SQL, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { usageRecords, usageSources } from '../db/schema.js';
+import { usageSources } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse } from '../lib/pagination.js';
-import { utcDayText } from '../lib/time-buckets.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { estimateCost } from './pricing.js';
+import { findUsageRecord, listUsageRecords, readUsageSummary } from './read.js';
+import { recordUsage, recordUsageBatch } from './service.js';
 import { requireHeld } from '../permissions/index.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -91,29 +89,17 @@ usageRecordRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    const conditions: SQL[] = [eq(usageRecords.projectId, projectId)];
-    if (source) conditions.push(eq(usageRecords.source, source));
-    if (model) conditions.push(eq(usageRecords.model, model));
-    if (from) conditions.push(gte(usageRecords.recordedAt, from));
-    if (to) conditions.push(lte(usageRecords.recordedAt, to));
-
     const offset = (page - 1) * pageSize;
-
-    const [rows, [totalRow]] = await Promise.all([
-      db
-        .select()
-        .from(usageRecords)
-        .where(and(...conditions))
-        .orderBy(desc(usageRecords.recordedAt))
-        .limit(pageSize)
-        .offset(offset),
-      db
-        .select({ n: count() })
-        .from(usageRecords)
-        .where(and(...conditions)),
-    ]);
-
-    return c.json(listResponse(c, rows, totalRow?.n ?? 0, { limit: pageSize, offset }));
+    const { rows, total } = await listUsageRecords({
+      projectId,
+      source,
+      model,
+      from,
+      to,
+      limit: pageSize,
+      offset,
+    });
+    return c.json(listResponse(c, rows, total, { limit: pageSize, offset }));
   },
 );
 
@@ -129,66 +115,7 @@ usageRecordRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-
-    const conditions = [
-      eq(usageRecords.projectId, projectId),
-      gte(usageRecords.recordedAt, fromDate),
-    ];
-
-    const [totals] = await db
-      .select({
-        inputTokens: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
-        outputTokens: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)`.mapWith(Number),
-        estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
-        requests: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
-      })
-      .from(usageRecords)
-      .where(and(...conditions));
-
-    const daily = await db
-      .select({
-        date: sql<string>`${utcDayText(sql`${usageRecords.recordedAt}`)}`,
-        input: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
-        output: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)`.mapWith(Number),
-        cost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
-        requests: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
-      })
-      .from(usageRecords)
-      .where(and(...conditions))
-      .groupBy(utcDayText(sql`${usageRecords.recordedAt}`))
-      .orderBy(utcDayText(sql`${usageRecords.recordedAt}`));
-
-    const byModel = await db
-      .select({
-        model: usageRecords.model,
-        input: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
-        output: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)`.mapWith(Number),
-        cost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
-        requests: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
-      })
-      .from(usageRecords)
-      .where(and(...conditions))
-      .groupBy(usageRecords.model);
-
-    const bySource = await db
-      .select({
-        source: usageRecords.source,
-        input: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
-        output: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)`.mapWith(Number),
-        cost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
-        requests: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
-      })
-      .from(usageRecords)
-      .where(and(...conditions))
-      .groupBy(usageRecords.source);
-
-    return c.json({
-      totals: totals ?? { inputTokens: 0, outputTokens: 0, estimatedCost: 0, requests: 0 },
-      daily,
-      byModel,
-      bySource,
-    });
+    return c.json(await readUsageSummary(projectId, days));
   },
 );
 
@@ -201,7 +128,7 @@ usageRecordRoutes.get(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const [row] = await db.select().from(usageRecords).where(eq(usageRecords.id, id)).limit(1);
+    const row = await findUsageRecord(id);
     if (!row) throw notFound('usage record not found');
 
     if (!row.projectId) throw notFound('usage record not found');
@@ -228,35 +155,7 @@ usageRecordRoutes.post(
     const access = await loadProjectAccess(input.projectId, userId);
     requireHeld(access, 'project.write');
 
-    const cost =
-      input.estimatedCost ??
-      estimateCost(input.model, {
-        inputTokens: input.inputTokens,
-        outputTokens: input.outputTokens,
-        cacheReadTokens: input.cacheReadTokens,
-        cacheCreationTokens: input.cacheCreationTokens,
-      });
-
-    const [inserted] = await db
-      .insert(usageRecords)
-      .values({
-        projectId: input.projectId ?? null,
-        source: input.source,
-        model: input.model,
-        inputTokens: input.inputTokens,
-        outputTokens: input.outputTokens,
-        cacheReadTokens: input.cacheReadTokens,
-        cacheCreationTokens: input.cacheCreationTokens,
-        estimatedCost: cost,
-        requestCount: input.requestCount,
-        sessionId: input.sessionId ?? null,
-        projectName: input.projectName ?? null,
-        recordedAt: input.recordedAt,
-      })
-      .returning();
-    if (!inserted) throw new Error('usage_records: insert returned no row');
-
-    return c.json(inserted, 201);
+    return c.json(await recordUsage(input), 201);
   },
 );
 
@@ -277,33 +176,7 @@ usageRecordRoutes.post(
       requireHeld(access, 'project.write');
     }
 
-    const values = records.map((r) => ({
-      projectId: r.projectId ?? null,
-      source: r.source,
-      model: r.model,
-      inputTokens: r.inputTokens,
-      outputTokens: r.outputTokens,
-      cacheReadTokens: r.cacheReadTokens,
-      cacheCreationTokens: r.cacheCreationTokens,
-      estimatedCost:
-        r.estimatedCost ??
-        estimateCost(r.model, {
-          inputTokens: r.inputTokens,
-          outputTokens: r.outputTokens,
-          cacheReadTokens: r.cacheReadTokens,
-          cacheCreationTokens: r.cacheCreationTokens,
-        }),
-      requestCount: r.requestCount,
-      sessionId: r.sessionId ?? null,
-      projectName: r.projectName ?? null,
-      recordedAt: r.recordedAt,
-    }));
-
-    const inserted = await db
-      .insert(usageRecords)
-      .values(values)
-      .returning({ id: usageRecords.id });
-    return c.json({ count: inserted.length });
+    return c.json({ count: await recordUsageBatch(records) });
   },
 );
 
@@ -324,32 +197,7 @@ usageRecordRoutes.post(
       requireHeld(access, 'project.write');
     }
 
-    const values = records.map((r) => ({
-      projectId: r.projectId ?? null,
-      source: 'cli' as const,
-      model: r.model,
-      inputTokens: r.inputTokens,
-      outputTokens: r.outputTokens,
-      cacheReadTokens: r.cacheReadTokens,
-      cacheCreationTokens: r.cacheCreationTokens,
-      estimatedCost:
-        r.estimatedCost ??
-        estimateCost(r.model, {
-          inputTokens: r.inputTokens,
-          outputTokens: r.outputTokens,
-          cacheReadTokens: r.cacheReadTokens,
-          cacheCreationTokens: r.cacheCreationTokens,
-        }),
-      requestCount: r.requestCount,
-      sessionId: r.sessionId ?? null,
-      projectName: r.projectName ?? null,
-      recordedAt: r.recordedAt,
-    }));
-
-    const inserted = await db
-      .insert(usageRecords)
-      .values(values)
-      .returning({ id: usageRecords.id });
-    return c.json({ ingested: inserted.length, scanned: records.length });
+    const ingested = await recordUsageBatch(records, 'cli');
+    return c.json({ ingested, scanned: records.length });
   },
 );

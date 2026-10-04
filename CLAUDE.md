@@ -11,7 +11,7 @@ number.
 
 | Package | What |
 |---|---|
-| `packages/core` | Hono backend over Drizzle/Postgres, mounting per-domain routes from `packages/core/src/index.ts`; also the WebSocket server, the MCP server, and the job pool a master agent claims from. |
+| `packages/core` | Hono backend over Drizzle/Postgres, mounting every module's routes from `packages/core/src/route-registry.ts`; also the WebSocket server, the MCP server, and the job pool a master agent claims from. |
 | `packages/web-v2` | Next.js cloud UI, canonical at `/`. Feature modules under `src/features/<domain>/`. |
 | `packages/runner` | Headless Rust `forge-runner` CLI daemon for servers/CI; pairs as a device. |
 | `packages/contracts` | Shared cross-app TS types & registries, under `packages/contracts/src/`. |

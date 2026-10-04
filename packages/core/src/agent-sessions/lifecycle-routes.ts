@@ -1,51 +1,44 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { SESSION_MACHINE } from '@forge/contracts/session-machine';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { agentSessions, devices, projects, runners } from '../db/schema.js';
 import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import {
   findAvailableDeviceForProject,
   findChatCapableDeviceForProject,
   resolveSessionRepoPathForDevice,
 } from '../lib/device-pool.js';
-import { LIVE_SESSION_STATUSES, SESSION_MACHINE } from '@forge/contracts/session-machine';
 import { notAnEdgeError } from '../lifecycle/transition.js';
-import { refuseSession } from './refusals.js';
-import { transitionSessions } from './session-transition.js';
 import { logger } from '../logger.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { holds } from '../permissions/index.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { extractReportFromMessages } from '../schedules/messages/skill-improve-prompt.js';
-import { mergeAppliedMessageVersions } from '../schedules/service.js';
 import { extractStewardReportFromMessages } from '../schedules/messages/skill-steward-prompt.js';
+import { mergeAppliedMessageVersions } from '../schedules/service.js';
 import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { broadcastSession } from './broadcast.js';
 import { checkoutUnbound, noClaudeClient } from './chat-turn.js';
 import { abortBodySchema, desktopStatusSchema, setRunnerBodySchema } from './lifecycle-schemas.js';
+import { deviceLiveness, deviceServesAnyOf, loadProjectBySlug } from './read.js';
+import { refuseSession } from './refusals.js';
+import {
+  abortSession,
+  cancelSession,
+  rebindSessionRunner,
+  setDesktopSessionStatus,
+  setSessionMetadata,
+} from './service.js';
 import {
   badRequest,
   ensureSessionOwnerOrAdmin,
   ensureSessionRole,
   idParamSchema,
+  loadSessionOr404,
   notFound,
 } from './session-access.js';
 import { type AgentSessionPatch, finalizeScheduleSessionFailure } from './session-failure.js';
-import { holds } from '../permissions/index.js';
-
-export async function loadProjectBySlug(slug: string) {
-  const [row] = await db
-    .select({
-      id: projects.id,
-      slug: projects.slug,
-    })
-    .from(projects)
-    .where(eq(projects.slug, slug))
-    .limit(1);
-  return row ?? null;
-}
 
 export const agentSessionLifecycleRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -60,15 +53,7 @@ agentSessionLifecycleRoutes.post(
 
     const { session } = await ensureSessionOwnerOrAdmin(input.sessionId, userId);
 
-    const [updated] = (
-      await transitionSessions(db, {
-        to: 'idle',
-        set: { updatedAt: new Date() },
-        where: eq(agentSessions.id, input.sessionId),
-        actor: restActor(c),
-        source: 'session-abort',
-      })
-    ).rows;
+    const updated = await abortSession(input.sessionId, restActor(c));
     if (!updated) throw notAnEdgeError(SESSION_MACHINE, session.status, 'idle');
 
     // Aborting a pipeline session just flips it to `idle`; the failure path
@@ -112,32 +97,10 @@ agentSessionLifecycleRoutes.post(
       return c.json(session);
     }
 
-    const cancelNow = new Date();
-    // CAS on the active statuses we observed: a worker write that lands
-    // between the SELECT and this UPDATE will not be in queued/running
-    // anymore, and we'd silently no-op rather than stomp it.
-    const [updated] = (
-      await transitionSessions(db, {
-        to: 'failed',
-        set: {
-          failureReason: 'user_cancelled',
-          updatedAt: cancelNow,
-        },
-        where: and(eq(agentSessions.id, id), inArray(agentSessions.status, LIVE_SESSION_STATUSES)),
-        reason: 'user_cancelled',
-        actor: restActor(c),
-        source: 'session-cancel',
-      })
-    ).rows;
+    const updated = await cancelSession(id, restActor(c));
     if (!updated) {
       // CAS lost — return the current row so the client can re-render.
-      const [current] = await db
-        .select()
-        .from(agentSessions)
-        .where(eq(agentSessions.id, id))
-        .limit(1);
-      if (!current) throw notFound('agent session not found');
-      return c.json(current);
+      return c.json(await loadSessionOr404(id));
     }
 
     // ISS-101 — close the one-shot run for cancelled interactive sessions.
@@ -174,7 +137,10 @@ agentSessionLifecycleRoutes.post(
     const { session } = await ensureSessionOwnerOrAdmin(id, userId);
 
     if (session.status === 'running' || session.status === 'queued') {
-      throw refuseSession('SESSION_BUSY', 'The agent is still working on this conversation. Wait for it to finish or stop it, then switch runner.');
+      throw refuseSession(
+        'SESSION_BUSY',
+        'The agent is still working on this conversation. Wait for it to finish or stop it, then switch runner.',
+      );
     }
 
     const prevMeta = (session.metadata ?? {}) as Record<string, unknown> & {
@@ -198,17 +164,11 @@ agentSessionLifecycleRoutes.post(
       : null;
     if (picked && !repoPath) throw checkoutUnbound(session.projectId, picked);
 
-    const [updated] = await db
-      .update(agentSessions)
-      .set({
-        deviceId: picked,
-        metadata: nextMeta as never,
-        claudeSessionId: null,
-        repoPath,
-        updatedAt: new Date(),
-      })
-      .where(eq(agentSessions.id, id))
-      .returning();
+    const updated = await rebindSessionRunner(id, {
+      deviceId: picked,
+      metadata: nextMeta,
+      repoPath,
+    });
     if (!updated) throw notFound('agent session not found');
 
     broadcastSession(updated, 'agent-session.updated');
@@ -241,15 +201,7 @@ agentSessionLifecycleRoutes.post(
         : null;
 
     const { status: _to, ...columns } = statusSet;
-    const [updated] = (
-      await transitionSessions(db, {
-        to: status,
-        set: columns,
-        where: eq(agentSessions.id, sessionId),
-        actor: restActor(c),
-        source: 'desktop-status',
-      })
-    ).rows;
+    const updated = await setDesktopSessionStatus(sessionId, status, columns, restActor(c));
     if (!updated) throw notAnEdgeError(SESSION_MACHINE, existing.status, status);
 
     // ISS-101 — close one-shot runs on terminal status writes. No-op on
@@ -283,11 +235,7 @@ agentSessionLifecycleRoutes.post(
             // session metadata. No appliedMessageVersions write (fires every run).
             const stewardReport = extractStewardReportFromMessages(messages);
             if (stewardReport) {
-              const updatedMeta = { ...(meta ?? {}), stewardReport };
-              await db
-                .update(agentSessions)
-                .set({ metadata: updatedMeta })
-                .where(eq(agentSessions.id, sessionId));
+              await setSessionMetadata(sessionId, { ...(meta ?? {}), stewardReport });
             }
           } else {
             // ISS-548 — one-shot skill-improve: update appliedMessageVersions gate.
@@ -297,11 +245,10 @@ agentSessionLifecycleRoutes.post(
             }
             // Always persist the report in session metadata for the UI.
             if (report) {
-              const updatedMeta = { ...(meta ?? {}), skillImproveReport: report.entries };
-              await db
-                .update(agentSessions)
-                .set({ metadata: updatedMeta })
-                .where(eq(agentSessions.id, sessionId));
+              await setSessionMetadata(sessionId, {
+                ...(meta ?? {}),
+                skillImproveReport: report.entries,
+              });
             }
           }
         } catch (err) {
@@ -347,11 +294,7 @@ agentSessionLifecycleRoutes.get(
     const notConnected = () => c.json({ data: { connected: false } });
 
     if (deviceId) {
-      const [row] = await db
-        .select({ status: devices.status, ownerId: devices.ownerId })
-        .from(devices)
-        .where(eq(devices.id, deviceId))
-        .limit(1);
+      const row = await deviceLiveness(deviceId);
       if (!row) return notConnected();
 
       // Reveal the real liveness bit only to the device owner, or to a caller
@@ -360,12 +303,7 @@ agentSessionLifecycleRoutes.get(
       if (!allowed) {
         const visible = await loadVisibleProjectIds(userId);
         if (visible.length > 0) {
-          const [served] = await db
-            .select({ id: runners.id })
-            .from(runners)
-            .where(and(eq(runners.deviceId, deviceId), inArray(runners.projectId, visible)))
-            .limit(1);
-          allowed = served !== undefined;
+          allowed = await deviceServesAnyOf(deviceId, visible);
         }
       }
       if (!allowed) return notConnected();

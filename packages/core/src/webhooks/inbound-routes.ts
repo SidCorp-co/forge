@@ -1,8 +1,5 @@
-import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { db } from '../db/client.js';
-import { projects } from '../db/schema.js';
 import { recordTurnedAwayInboundCall } from '../integrations/inbound-door.js';
 import { getAdapter, listIntegrations } from '../integrations/registry.js';
 import {
@@ -11,8 +8,10 @@ import {
   listActiveBindingsForProjectProvider,
 } from '../integrations/store.js';
 import type { IntegrationProvider } from '../integrations/types.js';
+import { db } from '../db/client.js';
 import { logger } from '../observability/logger.js';
 import { emitEvents } from '../outbox/index.js';
+import { findProjectIdBySlug } from '../projects/service.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { rawBody } from '../middleware/zod-validator.js';
 import { verifyHmacSignature, verifySharedToken } from '../lib/hmac.js';
@@ -110,19 +109,15 @@ webhookInboundRoutes.post(
     // Raw body first — HMAC covers the untouched bytes.
     const rawBody = await c.req.raw.clone().text();
 
-    const [project] = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(eq(projects.slug, slug))
-      .limit(1);
-    if (!project) throw notFound();
+    const projectId = await findProjectIdBySlug(slug);
+    if (!projectId) throw notFound();
 
     for (const map of providerHeaderMap()) {
       if (!c.req.header(map.header)) continue;
       const adapter = getAdapter(map.provider);
       if (!adapter) throw badRequest({ provider: map.provider }, 'ADAPTER_NOT_REGISTERED');
 
-      const candidatePairs = await listActiveBindingsForProjectProvider(project.id, map.provider);
+      const candidatePairs = await listActiveBindingsForProjectProvider(projectId, map.provider);
       if (candidatePairs.length === 0) {
         throw badRequest({ provider: map.provider }, 'INTEGRATION_NOT_CONFIGURED');
       }

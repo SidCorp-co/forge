@@ -9,10 +9,10 @@
  */
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { type ContextScopedMcpToolFactory } from '../../mcp/tools/lib.js';
+import type { ContextScopedMcpToolFactory } from '../../lib/tool.js';
 import { runMemoryWrite } from '../../memory/write-service.js';
-import { NOTE_TEXT_MAX } from './memory-note-gate.js';
 import { requireCan } from '../../permissions/index.js';
+import { NOTE_TEXT_MAX } from './memory-note-gate.js';
 
 export { NOTE_TEXT_MAX };
 

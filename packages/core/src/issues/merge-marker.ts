@@ -128,7 +128,7 @@ export async function applyMergeMarker(args: {
   let readFrom: Extract<CommitLanding, { ok: true }> | null = null;
   let shape: Awaited<ReturnType<typeof readLandingShape>> = null;
   if (args.op === 'mark') {
-    shape = await readLandingShape(db, before.projectId);
+    shape = await readLandingShape(before.projectId, db);
     if (shape === null) throw refuse('PROJECT_DOCUMENT_NOT_FOUND', SOURCE_UNDECLARED);
     // A landing on a git project is refused below whatever the target, and that refusal names the
     // real fault, so the missing target is not reported ahead of it.

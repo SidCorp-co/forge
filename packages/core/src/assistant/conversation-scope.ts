@@ -1,14 +1,12 @@
-import { and, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
 import { refuseConversation } from '../conversations/refusals.js';
-import { conversationPins } from '../db/schema-conversations.js';
-import { isActiveMember } from '../ecosystem/store.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { readableConversation } from './conversation-access.js';
+import { homeIsEcosystemMember } from './read.js';
+import { pinConversation, unpinConversation } from './service.js';
 
 export const conversationScopeSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('project') }).strict(),
@@ -22,7 +20,7 @@ export async function ecosystemOfScope(
   scope: ConversationScope | undefined,
 ): Promise<string | null> {
   if (!scope || scope.kind === 'project') return null;
-  if (await isActiveMember(db, homeProjectId, scope.ecosystemId)) return scope.ecosystemId;
+  if (await homeIsEcosystemMember(homeProjectId, scope.ecosystemId)) return scope.ecosystemId;
   throw refuseConversation(
     'ECOSYSTEM_NOT_MEMBER',
     `project ${homeProjectId} is not an active member of ecosystem ${scope.ecosystemId}, so a chat opened under it cannot read at that ecosystem's scope — open it under a member project, or at project scope`,
@@ -36,17 +34,6 @@ export const scopeIsFixed = (id: string) =>
     `conversation ${id}'s scope was set when it was opened and never changes — open another conversation at the scope you want`,
     '/scope',
   );
-
-export async function pinnedBy(userId: string, ids: readonly string[]): Promise<Set<string>> {
-  if (ids.length === 0) return new Set();
-  const rows = await db
-    .select({ id: conversationPins.conversationId })
-    .from(conversationPins)
-    .where(
-      and(eq(conversationPins.userId, userId), inArray(conversationPins.conversationId, [...ids])),
-    );
-  return new Set(rows.map((r) => r.id));
-}
 
 export const conversationPinRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -62,7 +49,7 @@ conversationPinRoutes.put('/:id/pin', idParam, async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
   await readableConversation(id, userId);
-  await db.insert(conversationPins).values({ userId, conversationId: id }).onConflictDoNothing();
+  await pinConversation(userId, id);
   return c.json({ conversationId: id, pinned: true });
 });
 
@@ -70,8 +57,6 @@ conversationPinRoutes.delete('/:id/pin', idParam, async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
   await readableConversation(id, userId);
-  await db
-    .delete(conversationPins)
-    .where(and(eq(conversationPins.userId, userId), eq(conversationPins.conversationId, id)));
+  await unpinConversation(userId, id);
   return c.json({ conversationId: id, pinned: false });
 });

@@ -11,37 +11,19 @@
 // room as it was for as long as the second request took, which is the moment a
 // person is looking hardest at what they just changed.
 
-import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { resolveProjectHandle } from '../conversations/handles.js';
-import {
-  addableHandles,
-  addablePeople,
-  assertPersonReachesScope,
-  personLabel,
-  projectsNamed,
-  settleShape,
-} from '../conversations/membership.js';
-import {
-  addHandle,
-  addPerson,
-  listParticipants,
-  removeParticipant,
-} from '../conversations/participants.js';
+import { addableHandles, addablePeople, projectsNamed } from '../conversations/membership.js';
+import { listParticipants } from '../conversations/participants.js';
 import { derivedScope } from '../conversations/scope.js';
 import { getConversation } from '../conversations/store.js';
-import { conversationParticipants } from '../db/schema-conversations.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import {
-  mayChangeMembership,
-  readableConversation,
-  withMembershipLock,
-} from './conversation-access.js';
+import { mayChangeMembership, readableConversation } from './conversation-access.js';
 import { nameLostReaders, namePeople, withDisplayNames } from './conversation-people.js';
+import { addRoomHandle, addRoomPerson, removeRoomParticipant } from './service.js';
 import { requireHeld } from '../permissions/index.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -141,15 +123,7 @@ conversationMemberRoutes.post(
     const { id } = c.req.valid('param');
     const { userId: joining } = c.req.valid('json');
     const actor = c.get('userId');
-    await withMembershipLock(id, actor, async (tx, _room, scope) => {
-      await assertPersonReachesScope(joining, scope, tx);
-      await addPerson({ conversationId: id, userId: joining, actorUserId: actor, tx });
-      await settleShape(tx, id, {
-        kind: 'person',
-        label: await personLabel(tx, joining),
-        verb: 'joined',
-      });
-    });
+    await addRoomPerson(id, actor, joining);
     return c.json(await membershipOf(id, actor), 201);
   },
 );
@@ -169,11 +143,7 @@ conversationMemberRoutes.post(
     const { id } = c.req.valid('param');
     const { userId, projectId } = c.req.valid('json');
     const actor = c.get('userId');
-    await withMembershipLock(id, actor, async (tx) => {
-      const handleUserId = userId ?? (await resolveProjectHandle(tx, projectId)).userId;
-      await addHandle({ conversationId: id, handleUserId, projectId, actorUserId: actor, tx });
-      await settleShape(tx, id);
-    });
+    await addRoomHandle(id, actor, projectId, userId);
     return c.json(await membershipOf(id, actor), 201);
   },
 );
@@ -189,41 +159,8 @@ conversationMemberRoutes.delete(
   async (c) => {
     const { id, participantId } = c.req.valid('param');
     const actor = c.get('userId');
-    await withMembershipLock(id, actor, async (tx) => {
-      const leaving = await participantLabel(tx, id, participantId);
-      await removeParticipant({ conversationId: id, participantId, tx: tx as never });
-      if (leaving) await settleShape(tx, id, { ...leaving, verb: 'left' });
-    });
+    await removeRoomParticipant(id, actor, participantId);
     return c.json(await membershipOf(id, actor));
   },
 );
 
-/** Who a participant row is, for the line the room is told when they leave. */
-async function participantLabel(
-  tx: Parameters<typeof settleShape>[0],
-  conversationId: string,
-  participantId: string,
-): Promise<{ kind: 'person' | 'handle'; label: string } | null> {
-  const [row] = await tx
-    .select({
-      kind: conversationParticipants.kind,
-      userId: conversationParticipants.userId,
-      label: conversationParticipants.label,
-      externalKey: conversationParticipants.externalKey,
-    })
-    .from(conversationParticipants)
-    .where(
-      and(
-        eq(conversationParticipants.id, participantId),
-        eq(conversationParticipants.conversationId, conversationId),
-      ),
-    )
-    .limit(1);
-  if (!row) return null;
-  if (row.kind === 'handle')
-    return { kind: 'handle', label: row.label ?? row.userId ?? participantId };
-  const label = row.userId
-    ? await personLabel(tx, row.userId)
-    : (row.label ?? row.externalKey ?? participantId);
-  return { kind: 'person', label };
-}

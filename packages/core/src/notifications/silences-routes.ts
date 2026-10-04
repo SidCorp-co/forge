@@ -8,14 +8,14 @@
  * long is still readable afterwards.
  */
 
-import { and, desc, eq, gt } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { notificationSilences, notificationTypes } from '../db/schema.js';
+import { notificationTypes } from '../db/schema.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { listActiveSilences } from './read.js';
+import { createSilence, endSilence } from './service.js';
 
 const MAX_SILENCE_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -34,19 +34,7 @@ const badRequest = (details: unknown) =>
 
 export const silenceRoutes = new Hono<{ Variables: AuthVars }>();
 
-silenceRoutes.get('/', async (c) => {
-  const rows = await db
-    .select()
-    .from(notificationSilences)
-    .where(
-      and(
-        eq(notificationSilences.createdBy, c.get('userId')),
-        gt(notificationSilences.expiresAt, new Date()),
-      ),
-    )
-    .orderBy(desc(notificationSilences.createdAt));
-  return c.json(rows);
-});
+silenceRoutes.get('/', async (c) => c.json(await listActiveSilences(c.get('userId'))));
 
 silenceRoutes.post(
   '/',
@@ -63,17 +51,14 @@ silenceRoutes.post(
           'must be in the future and no more than 7 days out — a silence with no end is a type turned off with nobody accountable for turning it back on',
       });
     }
-    const [row] = await db
-      .insert(notificationSilences)
-      .values({
-        createdBy: c.get('userId'),
-        type: body.type ?? null,
-        projectId: body.projectId ?? null,
-        resolutionKey: body.resolutionKey ?? null,
-        reason: body.reason,
-        expiresAt,
-      })
-      .returning();
+    const row = await createSilence({
+      createdBy: c.get('userId'),
+      type: body.type ?? null,
+      projectId: body.projectId ?? null,
+      resolutionKey: body.resolutionKey ?? null,
+      reason: body.reason,
+      expiresAt,
+    });
     return c.json(row, 201);
   },
 );
@@ -84,17 +69,8 @@ silenceRoutes.delete(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    const updated = await db
-      .update(notificationSilences)
-      .set({ expiresAt: new Date() })
-      .where(
-        and(
-          eq(notificationSilences.id, c.req.valid('param').id),
-          eq(notificationSilences.createdBy, c.get('userId')),
-        ),
-      )
-      .returning({ id: notificationSilences.id });
-    if (updated.length === 0) {
+    const ended = await endSilence(c.req.valid('param').id, c.get('userId'));
+    if (!ended) {
       throw new HTTPException(404, { message: 'silence not found', cause: { code: 'NOT_FOUND' } });
     }
     return c.body(null, 204);

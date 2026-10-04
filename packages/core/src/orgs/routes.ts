@@ -1,34 +1,38 @@
-import { and, count, eq, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { env } from '../config/env.js';
-import { db } from '../db/client.js';
-import {
-  memberLenses,
-  organizationMembers,
-  organizations,
-  orgInvitations,
-  orgMemberRoles,
-  projects,
-  users,
-} from '../db/schema.js';
+import { memberLenses, orgMemberRoles } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import {
-  addOrgMember,
-  removeOrgMember,
-  requireOrgCan,
-  requireOrgHeld,
-  updateOrgMember,
-} from '../permissions/index.js';
+import { requireOrgCan, requireOrgHeld } from '../permissions/index.js';
 import { sendOrgInvitationEmail } from '../projects/invitation-email.js';
 import { agentAccountRoutes } from './agent-accounts-routes.js';
 import { issueOrgInvitationToken } from './invitations.js';
 import { refuse } from './refuse.js';
-import { isPersonalOrg, listOrgMembers, listOrgsForUser } from './service.js';
+import {
+  listOrgProjects,
+  listPendingOrgInvitations,
+  orgInvitationContext,
+  orgMemberRole,
+  orgOwnerCount,
+  orgProjectCount,
+  userIdByEmail,
+} from './read.js';
+import {
+  addExistingOrgMember,
+  changeOrgMember,
+  createTeamOrg,
+  deleteOrg,
+  dropOrgMember,
+  isPersonalOrg,
+  listOrgMembers,
+  listOrgsForUser,
+  revokeOrgInvitation,
+  updateOrg,
+} from './service.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -90,21 +94,7 @@ orgRoutes.post(
     const { slug, name } = c.req.valid('json');
     const userId = c.get('userId');
     try {
-      const created = await db.transaction(async (tx) => {
-        const [org] = await tx
-          .insert(organizations)
-          .values({ slug, name, isPersonal: false, createdBy: userId })
-          .returning({
-            id: organizations.id,
-            slug: organizations.slug,
-            name: organizations.name,
-            isPersonal: organizations.isPersonal,
-            createdAt: organizations.createdAt,
-          });
-        if (!org) throw new Error('organizations: insert returned no row');
-        await addOrgMember(tx, { orgId: org.id, userId, role: 'owner' });
-        return org;
-      });
+      const created = await createTeamOrg(userId, { slug, name });
       return c.json({ ...created, role: 'owner' as const }, 201);
     } catch (err) {
       if (isUniqueViolation(err)) {
@@ -130,17 +120,7 @@ orgRoutes.patch(
 
     await requireOrgCan({ userId }, 'org.own', orgId);
 
-    const [updated] = await db
-      .update(organizations)
-      .set({ ...(patch.name !== undefined ? { name: patch.name } : {}) })
-      .where(eq(organizations.id, orgId))
-      .returning({
-        id: organizations.id,
-        slug: organizations.slug,
-        name: organizations.name,
-        isPersonal: organizations.isPersonal,
-        createdAt: organizations.createdAt,
-      });
+    const updated = await updateOrg(orgId, patch);
     if (!updated) throw notFound('organization not found');
     return c.json(updated);
   },
@@ -161,18 +141,14 @@ orgRoutes.delete(
     if (await isPersonalOrg(orgId)) {
       throw refuse('PERSONAL_ORG_IMMUTABLE', 'a personal org cannot be deleted');
     }
-    const [projectCount] = await db
-      .select({ n: count() })
-      .from(projects)
-      .where(eq(projects.orgId, orgId));
-    if (Number(projectCount?.n ?? 0) > 0) {
+    if ((await orgProjectCount(orgId)) > 0) {
       throw refuse(
         'ORG_NOT_EMPTY',
         'the org still has projects; delete or move its projects first',
       );
     }
 
-    await db.delete(organizations).where(eq(organizations.id, orgId));
+    await deleteOrg(orgId);
     return c.body(null, 204);
   },
 );
@@ -191,17 +167,7 @@ orgRoutes.get(
 
     await requireOrgCan({ userId }, 'org.read', orgId);
 
-    const rows = await db
-      .select({
-        id: projects.id,
-        slug: projects.slug,
-        name: projects.name,
-        archivedAt: projects.archivedAt,
-        createdAt: projects.createdAt,
-      })
-      .from(projects)
-      .where(eq(projects.orgId, orgId));
-    return c.json(rows);
+    return c.json(await listOrgProjects(orgId));
   },
 );
 
@@ -241,15 +207,11 @@ orgRoutes.post(
       throw refuse('PERSONAL_ORG_IMMUTABLE', 'a personal org cannot have additional members');
     }
 
-    const [target] = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.email, email))
-      .limit(1);
+    const targetId = await userIdByEmail(email);
 
     // No account yet → fall back to an email-token invitation (accepting
     // after signup inserts the membership). 'owner' is never invitable.
-    if (!target) {
+    if (!targetId) {
       if (role === 'owner') {
         throw refuse(
           'OWNER_NOT_INVITABLE',
@@ -257,16 +219,7 @@ orgRoutes.post(
           '/role',
         );
       }
-      const [org] = await db
-        .select({ name: organizations.name })
-        .from(organizations)
-        .where(eq(organizations.id, orgId))
-        .limit(1);
-      const [inviter] = await db
-        .select({ email: users.email })
-        .from(users)
-        .where(eq(users.id, callerId))
-        .limit(1);
+      const invite = await orgInvitationContext(orgId, callerId);
       const { token, expiresAt } = await issueOrgInvitationToken({
         orgId,
         inviterId: callerId,
@@ -275,8 +228,8 @@ orgRoutes.post(
       });
       try {
         await sendOrgInvitationEmail(email, {
-          orgName: org?.name ?? 'an organization',
-          inviterEmail: inviter?.email ?? 'a teammate',
+          orgName: invite.orgName ?? 'an organization',
+          inviterEmail: invite.inviterEmail ?? 'a teammate',
           token,
         });
       } catch (sendErr) {
@@ -287,7 +240,7 @@ orgRoutes.post(
       return c.json(body, 202);
     }
 
-    const inserted = await addOrgMember(db, { orgId, userId: target.id, role }, { ifAbsent: true });
+    const inserted = await addExistingOrgMember(orgId, targetId, role);
     if (!inserted) throw refuse('ALREADY_MEMBER', 'this user is already an org member', '/email');
     return c.json(
       { userId: inserted.userId, role: inserted.role, createdAt: inserted.createdAt, email },
@@ -306,17 +259,7 @@ orgRoutes.get(
     const userId = c.get('userId');
     await requireOrgCan({ userId }, 'org.admin', orgId);
 
-    const rows = await db
-      .select({
-        email: orgInvitations.email,
-        role: orgInvitations.role,
-        expiresAt: orgInvitations.expiresAt,
-        createdAt: orgInvitations.createdAt,
-        inviterEmail: users.email,
-      })
-      .from(orgInvitations)
-      .innerJoin(users, eq(users.id, orgInvitations.inviterId))
-      .where(and(eq(orgInvitations.orgId, orgId), isNull(orgInvitations.acceptedAt)));
+    const rows = await listPendingOrgInvitations(orgId);
 
     const now = Date.now();
     return c.json(rows.map((r) => ({ ...r, expired: new Date(r.expiresAt).getTime() < now })));
@@ -341,17 +284,7 @@ orgRoutes.delete(
     const userId = c.get('userId');
     await requireOrgCan({ userId }, 'org.admin', orgId);
 
-    const deleted = await db
-      .delete(orgInvitations)
-      .where(
-        and(
-          eq(orgInvitations.orgId, orgId),
-          eq(orgInvitations.email, email),
-          isNull(orgInvitations.acceptedAt),
-        ),
-      )
-      .returning({ token: orgInvitations.token });
-    if (deleted.length === 0) {
+    if (!(await revokeOrgInvitation(orgId, email))) {
       throw notFound('pending invitation not found', 'INVITATION_NOT_FOUND');
     }
     return c.body(null, 204);
@@ -373,28 +306,18 @@ orgRoutes.patch(
 
     const caller = await requireOrgCan({ userId: callerId }, 'org.admin', orgId);
 
-    const [target] = await db
-      .select({ role: organizationMembers.role })
-      .from(organizationMembers)
-      .where(
-        and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.userId, targetUserId)),
-      )
-      .limit(1);
-    if (!target) throw notFound('membership not found');
+    const targetRole = await orgMemberRole(orgId, targetUserId);
+    if (!targetRole) throw notFound('membership not found');
 
     // Owner-tier + last-owner guards apply ONLY to a permission `role` change.
     // A lenses-only patch is a soft attribute (no permission effect), so it must
     // NOT be blocked on an owner-tier target.
     if (role !== undefined) {
       // Touching the owner tier (granting or revoking) is owner-only.
-      if (role === 'owner' || target.role === 'owner')
+      if (role === 'owner' || targetRole === 'owner')
         requireOrgHeld(orgId, caller.role, 'org.own');
-      if (target.role === 'owner' && role !== 'owner') {
-        const [ownerCount] = await db
-          .select({ n: count() })
-          .from(organizationMembers)
-          .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.role, 'owner')));
-        if (Number(ownerCount?.n ?? 0) <= 1) {
+      if (targetRole === 'owner' && role !== 'owner') {
+        if ((await orgOwnerCount(orgId)) <= 1) {
           throw refuse(
             'LAST_OWNER',
             'the org must keep at least one owner; promote another owner first',
@@ -403,7 +326,7 @@ orgRoutes.patch(
       }
     }
 
-    const updated = await updateOrgMember(db, orgId, targetUserId, { role, lenses });
+    const updated = await changeOrgMember(orgId, targetUserId, { role, lenses });
     if (!updated) throw notFound('membership not found');
     return c.json({
       userId: updated.userId,
@@ -430,22 +353,12 @@ orgRoutes.delete(
       orgId,
     );
 
-    const [target] = await db
-      .select({ role: organizationMembers.role })
-      .from(organizationMembers)
-      .where(
-        and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.userId, targetUserId)),
-      )
-      .limit(1);
-    if (!target) throw notFound('membership not found');
+    const targetRole = await orgMemberRole(orgId, targetUserId);
+    if (!targetRole) throw notFound('membership not found');
 
-    if (target.role === 'owner') {
+    if (targetRole === 'owner') {
       if (!selfLeave) requireOrgHeld(orgId, caller.role, 'org.own');
-      const [ownerCount] = await db
-        .select({ n: count() })
-        .from(organizationMembers)
-        .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.role, 'owner')));
-      if (Number(ownerCount?.n ?? 0) <= 1) {
+      if ((await orgOwnerCount(orgId)) <= 1) {
         throw refuse(
           'LAST_OWNER',
           'the org must keep at least one owner; promote another owner first',
@@ -453,7 +366,7 @@ orgRoutes.delete(
       }
     }
 
-    await removeOrgMember(db, orgId, targetUserId);
+    await dropOrgMember(orgId, targetUserId);
     return c.body(null, 204);
   },
 );

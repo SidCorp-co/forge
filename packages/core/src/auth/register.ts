@@ -3,17 +3,15 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
-import { db } from '../db/client.js';
-import { users } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { refuser } from '../lib/refusal.js';
 import { logger } from '../logger.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { ensurePersonalOrg } from '../orgs/service.js';
 import { sendVerificationEmail } from './email.js';
 import { hashPassword } from './password.js';
 import { evaluatePasswordStrength, MIN_PASSWORD_SCORE } from './password-strength.js';
+import { registerUser } from './service.js';
 import { issueVerificationToken } from './verification-token.js';
 
 const refuse = refuser<AuthRefusalCode>('AUTH_REFUSED');
@@ -70,20 +68,7 @@ authRoutes.post(
     const passwordHash = await hashPassword(password);
 
     try {
-      // User + personal org are one atomic unit — a half-provisioned user
-      // (no personal org) would 500 every project create later.
-      const row = await db.transaction(async (tx) => {
-        const inserted = await tx
-          .insert(users)
-          .values({ email, passwordHash })
-          .returning({ userId: users.id, email: users.email });
-        const created = inserted[0];
-        if (!created) {
-          throw new Error('register: insert returned no row');
-        }
-        await ensurePersonalOrg(tx, created.userId, created.email);
-        return created;
-      });
+      const row = await registerUser(email, passwordHash);
 
       try {
         const token = await issueVerificationToken(row.userId);

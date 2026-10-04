@@ -1,5 +1,5 @@
 import type { TurnCredential } from '../../credentials/turn-credential.js';
-import type { ChatTurnFacts, McpContext } from '../../mcp/tools/lib.js';
+import type { ChatTurnFacts, McpContext } from '../../lib/tool.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 
 /** A chat turn's tools run as the token minted for the person the turn answers (ISS-17). */

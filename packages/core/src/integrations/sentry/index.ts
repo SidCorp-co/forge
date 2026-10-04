@@ -20,3 +20,4 @@ export { isSentryRefusal, SentryRefusal, type SentryRefusalReason } from './refu
 export { resolveSentryTargets } from './targets.js';
 export type { SentryConfig, SentryIssueDetail, SentrySecrets, SentryTarget } from './types.js';
 export { settleSentryDelivery } from './webhook.js';
+export { forgeSentryTool } from './tool.js';

@@ -1,6 +1,18 @@
-import { and, eq, getTableColumns, sql } from 'drizzle-orm';
+import { and, asc, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues } from '../db/schema.js';
+import {
+  issueAttachments,
+  issues,
+  type JobType,
+  jobs,
+  projectMembers,
+  usageRecords,
+} from '../db/schema.js';
+import {
+  EMPTY_USAGE_TOTALS,
+  usageSessionMatch,
+  usageTotalsSelection,
+} from '../usage-records/rollup.js';
 import { type WorkStateView, workStateViewSql } from './work-state.js';
 
 /**
@@ -42,6 +54,137 @@ export async function findIssueByDisplaySeq(
     .select(ISSUE_READ_COLUMNS)
     .from(issues)
     .where(and(eq(issues.projectId, projectId), eq(issues.issSeq, issSeq)))
+    .limit(1);
+  return row ?? null;
+}
+
+/** Whether `userId` is a member of the project. */
+export async function isProjectMember(projectId: string, userId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ userId: projectMembers.userId })
+    .from(projectMembers)
+    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
+    .limit(1);
+  return row !== undefined;
+}
+
+/** Every job an issue ran at one step, newest first, with the tokens and cost its session used. */
+export async function jobHistoryForStep(issueId: string, step: JobType) {
+  return db
+    .select({
+      jobId: jobs.id,
+      status: jobs.status,
+      model: jobs.modelUsed,
+      startedAt: jobs.dispatchedAt,
+      finishedAt: jobs.finishedAt,
+      estTokens: jobs.promptInputTokenEst,
+      tokens: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
+      cost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
+    })
+    .from(jobs)
+    .leftJoin(usageRecords, usageSessionMatch(sql`= ${jobs.agentSessionId}::text`))
+    .where(and(eq(jobs.issueId, issueId), eq(jobs.type, step)))
+    .groupBy(jobs.id)
+    .orderBy(sql`coalesce(${jobs.dispatchedAt}, ${jobs.queuedAt}) desc`);
+}
+
+export type IssueScope = Pick<IssueRow, 'id' | 'projectId' | 'status' | 'mergedAt'>;
+
+/** The few columns a route needs to gate on an issue before acting on it. */
+export async function issueScopeOf(issueId: string): Promise<IssueScope | null> {
+  const [row] = await db
+    .select({
+      id: issues.id,
+      projectId: issues.projectId,
+      status: issues.status,
+      mergedAt: issues.mergedAt,
+    })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  return row ?? null;
+}
+
+/** An issue's attachments, oldest first, without their storage paths. */
+export async function listIssueAttachments(issueId: string) {
+  return db
+    .select({
+      id: issueAttachments.id,
+      issueId: issueAttachments.issueId,
+      uploaderId: issueAttachments.uploaderId,
+      name: issueAttachments.name,
+      mime: issueAttachments.mime,
+      size: issueAttachments.size,
+      createdAt: issueAttachments.createdAt,
+    })
+    .from(issueAttachments)
+    .where(eq(issueAttachments.issueId, issueId))
+    .orderBy(asc(issueAttachments.createdAt));
+}
+
+/** One attachment with its storage path and the project of the issue it hangs on. */
+export async function attachmentWithProject(attachmentId: string) {
+  const [row] = await db
+    .select({
+      id: issueAttachments.id,
+      issueId: issueAttachments.issueId,
+      uploaderId: issueAttachments.uploaderId,
+      name: issueAttachments.name,
+      mime: issueAttachments.mime,
+      path: issueAttachments.path,
+      projectId: issues.projectId,
+    })
+    .from(issueAttachments)
+    .innerJoin(issues, eq(issues.id, issueAttachments.issueId))
+    .where(eq(issueAttachments.id, attachmentId))
+    .limit(1);
+  return row ?? null;
+}
+
+/** The columns a batch edit reads for each named issue that exists. */
+export async function batchIssueRows(issueIds: string[]) {
+  return db
+    .select({
+      id: issues.id,
+      issSeq: issues.issSeq,
+      projectId: issues.projectId,
+      status: issues.status,
+      priority: issues.priority,
+      category: issues.category,
+      complexity: issues.complexity,
+      reopenCount: issues.reopenCount,
+    })
+    .from(issues)
+    .where(inArray(issues.id, issueIds));
+}
+
+/** The usage totals of every session an issue's jobs ran in. */
+export async function issueUsageTotals(issueId: string) {
+  const sessionIdSubquery = sql`(
+      SELECT DISTINCT ${jobs.agentSessionId}::text
+      FROM ${jobs}
+      WHERE ${jobs.issueId} = ${issueId}
+        AND ${jobs.agentSessionId} IS NOT NULL
+    )`;
+  const [totals] = await db
+    .select(usageTotalsSelection())
+    .from(usageRecords)
+    .where(usageSessionMatch(sql`IN ${sessionIdSubquery}`));
+  return totals ?? EMPTY_USAGE_TOTALS;
+}
+
+/** What a status move reads of the issue before it gates and applies. */
+export async function transitionIssueRow(issueId: string) {
+  const [row] = await db
+    .select({
+      id: issues.id,
+      projectId: issues.projectId,
+      status: issues.status,
+      reopenCount: issues.reopenCount,
+      issSeq: issues.issSeq,
+    })
+    .from(issues)
+    .where(eq(issues.id, issueId))
     .limit(1);
   return row ?? null;
 }

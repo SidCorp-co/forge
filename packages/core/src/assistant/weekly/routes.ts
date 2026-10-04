@@ -5,14 +5,12 @@
  * and the same already-posted check — so pressing it twice posts once.
  */
 
-import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
-import { projects } from '../../db/schema.js';
 import { loadProjectAccess } from '../../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
+import { weeklyProjectOf } from '../read.js';
 import { refuseAssistant } from '../refusals.js';
 import { readAssistantWeekly } from './config.js';
 import { realDeps, runAssistantWeeklyForProject } from './run.js';
@@ -36,15 +34,7 @@ assistantWeeklyRoutes.post(
     const { id } = c.req.valid('param');
     const access = await loadProjectAccess(id, c.get('userId'));
     requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
-    const [row] = await db
-      .select({
-        id: projects.id,
-        slug: projects.slug,
-        agentConfig: projects.agentConfig,
-      })
-      .from(projects)
-      .where(eq(projects.id, id))
-      .limit(1);
+    const row = await weeklyProjectOf(id);
     if (!row) return c.json({ code: 'NOT_FOUND', message: 'project not found' }, 404);
     const config = readAssistantWeekly(row.agentConfig);
     if (!config)

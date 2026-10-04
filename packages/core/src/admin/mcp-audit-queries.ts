@@ -1,6 +1,6 @@
+import { MCP_TOOL_NAMES } from '@forge/contracts/mcp-tools';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { REGISTERED_TOOLS } from '../mcp/registered-tools.js';
 import { retentionRuleFor } from '../pipeline/retention/policy.js';
 
 /** One tool's lifetime call counts, split by the credential that made the call. */
@@ -81,14 +81,14 @@ export async function mcpToolCallCounts(): Promise<McpAuditToolsReport> {
     generatedAt: new Date().toISOString(),
     oldestRow: iso(oldest?.oldest),
     retention: { days: rule?.days ?? null, why: rule?.why ?? '' },
-    registeredCount: REGISTERED_TOOLS.length,
+    registeredCount: MCP_TOOL_NAMES.length,
     rows: rows.map(toCounts),
   };
 }
 
 function registryArray(): SQL {
   return sql`ARRAY[${sql.join(
-    REGISTERED_TOOLS.map((t) => sql`${t}`),
+    MCP_TOOL_NAMES.map((t) => sql`${t}`),
     sql`, `,
   )}]::text[]`;
 }

@@ -7,12 +7,9 @@
  * for the reason the block below states.
  */
 
-import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { commentAttachments, comments, issues } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
@@ -22,6 +19,7 @@ import { requireAnyAuth } from '../middleware/require-any-auth.js';
 import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import { persistCommentAttachment } from './attachment-service.js';
+import { commentAttachmentFile, issueCommentForAttachment } from './read.js';
 import { requireHeld } from '../permissions/index.js';
 
 const notFound = (message: string) =>
@@ -61,12 +59,7 @@ commentAttachmentRoutes.post(
     const { commentId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const [comment] = await db
-      .select({ id: comments.id, issueId: comments.issueId, projectId: issues.projectId })
-      .from(comments)
-      .innerJoin(issues, eq(issues.id, comments.issueId))
-      .where(eq(comments.id, commentId))
-      .limit(1);
+    const comment = await issueCommentForAttachment(commentId);
     if (!comment) throw notFound('comment not found');
 
     const access = await loadProjectAccess(comment.projectId, userId);
@@ -102,19 +95,7 @@ commentAttachmentRoutes.get(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const [row] = await db
-      .select({
-        id: commentAttachments.id,
-        path: commentAttachments.path,
-        mime: commentAttachments.mime,
-        name: commentAttachments.name,
-        projectId: issues.projectId,
-      })
-      .from(commentAttachments)
-      .innerJoin(comments, eq(comments.id, commentAttachments.commentId))
-      .innerJoin(issues, eq(issues.id, comments.issueId))
-      .where(eq(commentAttachments.id, id))
-      .limit(1);
+    const row = await commentAttachmentFile(id);
     if (!row) throw notFound('attachment not found');
 
     const access = await loadProjectAccess(row.projectId, userId);

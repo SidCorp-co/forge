@@ -9,3 +9,4 @@ export { pipelineRunProjectRoutes, pipelineRunReadRoutes } from './runs-read-rou
 export { pipelineRunRoutes } from './runs-routes.js';
 export { stepHandoffRoutes } from './step-handoff-routes.js';
 export { registerActivitySubscribers } from './subscribers.js';
+export { forgeProjectPipelineRunsTool } from './tool.js';

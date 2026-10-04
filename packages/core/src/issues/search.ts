@@ -1,234 +1,44 @@
-import {
-  and,
-  count,
-  desc,
-  eq,
-  exists,
-  inArray,
-  isNotNull,
-  notInArray,
-  or,
-  type SQL,
-  sql,
-} from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import {
-  type IssueStatus,
-  issueLabels,
-  issuePriorities,
-  issueStatuses,
-  issues,
-  type JobType,
-  jobs,
-  usageRecords,
-} from '../db/schema.js';
+import type { IssueStatus } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
-import { usageSessionMatch } from '../usage-records/rollup.js';
+import { requireHeld } from '../permissions/index.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
-import { issueArchiveSide } from './archive.js';
-import {
-  buildCreatedByCondition,
-  buildOriginCondition,
-  hydrateCreatorsForIssues,
-} from './creator.js';
+import { hydrateCreatorsForIssues } from './creator.js';
 import { loadIssueDependencyEdgesForIssues } from './dependency-read.js';
 import { hydrateHeldForIssues } from './held-hydrator.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
-import { listModulesForIssues, resolveModuleIdsTolerant } from './label-service.js';
-import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
+import { listModulesForIssues } from './label-service.js';
+import { serializeRestListRow } from './list-projection.js';
+import { latestFailedJobByIssue, listIssues, sumCostByIssue } from './list-service.js';
 import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './pipeline-health.js';
-import { buildIssueSearchCondition, matchedSearchFieldsSql } from './search-predicate.js';
-import { buildIssueOrderBy, issueSortValues } from './sort.js';
+import { issueListFilterFields } from './request-schemas.js';
 import { refuseLegacyStatusFields } from './status-input.js';
-import { requireHeld } from '../permissions/index.js';
 
-export interface IssueBuckets {
-  /** How many issues sit at each kernel status, under every filter except status and origin. */
-  readonly byStatus: Record<string, number>;
-  /** Machine-filed issues (a detectorKey), at any status. */
-  readonly detector: number;
-  /** Drafts a person filed, which is what the Draft tab means. */
-  readonly humanDraft: number;
-  /** Issues a person owes an answer (an open `human` question), by status, once each. */
-  readonly waitingOnPersonByStatus: Record<string, number>;
-}
-
-async function countBuckets(axisFree: SQL[]): Promise<IssueBuckets> {
-  const base = axisFree.length === 1 ? axisFree[0] : and(...axisFree);
-  const byStatusOf = (where: SQL | undefined) =>
-    db
-      .select({ status: issues.status, n: count() })
-      .from(issues)
-      .where(where)
-      .groupBy(issues.status);
-  const [rows, marked, [detector] = [{ n: 0 }], [humanDraft] = [{ n: 0 }]] = await Promise.all([
-    byStatusOf(base),
-    byStatusOf(and(base, holdsOpenHumanQuestion(issues.id))),
-    db
-      .select({ n: count() })
-      .from(issues)
-      .where(and(base, buildOriginCondition('detector'))),
-    db
-      .select({ n: count() })
-      .from(issues)
-      .where(and(base, eq(issues.status, 'draft'), buildOriginCondition('human'))),
-  ]);
-  const tally = (rs: Array<{ status: string; n: number }>) =>
-    Object.fromEntries(rs.map((r) => [r.status, Number(r.n)]));
-  return {
-    byStatus: tally(rows),
-    detector: Number(detector?.n ?? 0),
-    humanDraft: Number(humanDraft?.n ?? 0),
-    waitingOnPersonByStatus: tally(marked),
-  };
-}
-
-const coerceArray = <T>(v: T | T[] | undefined): T[] | undefined =>
-  v === undefined ? undefined : Array.isArray(v) ? v : [v];
-
+export type { IssueBuckets } from './list-service.js';
 export type { IssueSort } from './sort.js';
 export { issueSortValues } from './sort.js';
 
 const searchQuerySchema = z
   .object({
+    ...issueListFilterFields,
     q: z.string().trim().min(1).max(200).optional(),
-    status: z
-      .union([z.enum(issueStatuses), z.array(z.enum(issueStatuses))])
-      .optional()
-      .transform(coerceArray),
-    statusNot: z
-      .union([z.enum(issueStatuses), z.array(z.enum(issueStatuses))])
-      .optional()
-      .transform(coerceArray),
-    priority: z
-      .union([z.enum(issuePriorities), z.array(z.enum(issuePriorities))])
-      .optional()
-      .transform(coerceArray),
-    label: z
-      .union([z.uuid(), z.array(z.uuid())])
-      .optional()
-      .transform(coerceArray),
-    module: z
-      .union([z.string().trim().min(1), z.array(z.string().trim().min(1))])
-      .optional()
-      .transform(coerceArray),
     assignee: z.uuid().optional(),
-    createdBy: z.union([z.uuid(), z.literal('agent')]).optional(),
-    origin: z.enum(['detector', 'human']).optional(),
-    /** ISS-1257 — widen `status` to also match an issue a person owes an answer, whatever its status. */
-    orWaitingOnPerson: z.stringbool().optional(),
-    category: z.string().trim().min(1).max(100).optional(),
-    sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
     limit: z.coerce.number().int().min(1).max(200).default(50),
     offset: z.coerce.number().int().min(0).default(0),
-    withAgentSessions: z.coerce.boolean().optional().default(false),
     withCost: z.coerce.boolean().optional().default(false),
     withFailureInfo: z.coerce.boolean().optional().default(false),
     withPipelineHealth: z.coerce.boolean().optional().default(false),
     withBuckets: z.coerce.boolean().optional().default(false),
     withDependencies: z.coerce.boolean().optional().default(false),
     withModules: z.coerce.boolean().optional().default(false),
-    /** ISS-1237 — archived issues are out of search unless asked for, in the page, total and buckets alike. */
-    includeArchived: z.stringbool().optional(),
   })
   .strict();
-
-export function issueCostRollupQuery(issueIds: string[]) {
-  const pairs = db
-    .selectDistinct({
-      issueId: jobs.issueId,
-      sessionId: jobs.agentSessionId,
-    })
-    .from(jobs)
-    .where(and(inArray(jobs.issueId, issueIds), isNotNull(jobs.agentSessionId)))
-    .as('issue_sessions');
-  return db
-    .select({
-      issueId: pairs.issueId,
-      estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
-    })
-    .from(pairs)
-    .innerJoin(usageRecords, usageSessionMatch(sql`= ${pairs.sessionId}::text`))
-    .groupBy(pairs.issueId);
-}
-
-async function sumCostByIssue(issueIds: string[]): Promise<Map<string, number>> {
-  if (issueIds.length === 0) return new Map();
-  const rows = await issueCostRollupQuery(issueIds);
-  return new Map(rows.map((r) => [r.issueId as string, r.estimatedCost]));
-}
-
-export async function jobHistoryForStep(issueId: string, step: JobType) {
-  return db
-    .select({
-      jobId: jobs.id,
-      status: jobs.status,
-      model: jobs.modelUsed,
-      startedAt: jobs.dispatchedAt,
-      finishedAt: jobs.finishedAt,
-      estTokens: jobs.promptInputTokenEst,
-      tokens: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
-      cost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
-    })
-    .from(jobs)
-    .leftJoin(usageRecords, usageSessionMatch(sql`= ${jobs.agentSessionId}::text`))
-    .where(and(eq(jobs.issueId, issueId), eq(jobs.type, step)))
-    .groupBy(jobs.id)
-    .orderBy(sql`coalesce(${jobs.dispatchedAt}, ${jobs.queuedAt}) desc`);
-}
-
-/**
- * ISS-700 — the most recent failed job per issue, in ONE grouped query, to
- * back the issues-list row's Failed-badge tooltip. Mirrors `sumCostByIssue`'s
- * shape/convention exactly. `selectDistinctOn` requires the leading ORDER BY
- * column to match the DISTINCT ON column (`issueId`); `desc(finishedAt)` then
- * picks the newest failed job per issue.
- */
-async function latestFailedJobByIssue(issueIds: string[]): Promise<
-  Map<
-    string,
-    {
-      failedStep: string;
-      failureReason: string | null;
-      failureKind: string | null;
-      failedAt: string;
-    }
-  >
-> {
-  if (issueIds.length === 0) return new Map();
-  const rows = await db
-    .selectDistinctOn([jobs.issueId], {
-      issueId: jobs.issueId,
-      failedStep: jobs.type,
-      failureReason: jobs.failureReason,
-      failureKind: jobs.failureKind,
-      finishedAt: jobs.finishedAt,
-    })
-    .from(jobs)
-    .where(and(inArray(jobs.issueId, issueIds), eq(jobs.status, 'failed'), isNotNull(jobs.issueId)))
-    .orderBy(jobs.issueId, desc(jobs.finishedAt));
-  return new Map(
-    rows
-      .filter((r): r is typeof r & { issueId: string } => r.issueId !== null)
-      .map((r) => [
-        r.issueId,
-        {
-          failedStep: r.failedStep,
-          failureReason: r.failureReason,
-          failureKind: r.failureKind,
-          failedAt: r.finishedAt?.toISOString() ?? new Date(0).toISOString(),
-        },
-      ]),
-  );
-}
 
 export const searchRoutes = new Hono<{ Variables: AuthVars }>();
 searchRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -252,91 +62,9 @@ searchRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    const conditions = [eq(issues.projectId, projectId)];
-    const axisFree = [eq(issues.projectId, projectId)];
-    const both = (c: SQL) => {
-      conditions.push(c);
-      axisFree.push(c);
-    };
-
-    for (const side of issueArchiveSide(q.includeArchived)) both(side);
-    if (q.q) {
-      both(buildIssueSearchCondition(q.q));
-    }
-    if (q.orWaitingOnPerson && !q.status?.length) {
-      throw badRequest({
-        orWaitingOnPerson:
-          'widens a `status` filter to also match an issue a person owes an answer, and this request names no `status`. Send it with `status`, or send neither',
-      });
-    }
-    if (q.status && q.status.length > 0) {
-      const atStatus = inArray(issues.status, q.status);
-      conditions.push(
-        q.orWaitingOnPerson ? (or(atStatus, holdsOpenHumanQuestion(issues.id)) as SQL) : atStatus,
-      );
-    }
-    if (q.statusNot && q.statusNot.length > 0) {
-      conditions.push(notInArray(issues.status, q.statusNot));
-    }
-    if (q.priority && q.priority.length > 0) {
-      both(inArray(issues.priority, q.priority));
-    }
-    if (q.assignee) {
-      both(eq(issues.assigneeId, q.assignee));
-    }
-    if (q.createdBy) {
-      both(buildCreatedByCondition(q.createdBy));
-    }
-    if (q.origin) {
-      conditions.push(buildOriginCondition(q.origin));
-    }
-    if (q.category) {
-      both(eq(issues.category, q.category));
-    }
-    if (q.label && q.label.length > 0) {
-      const labelIds = q.label;
-      both(
-        exists(
-          db
-            .select({ one: sql`1` })
-            .from(issueLabels)
-            .where(and(eq(issueLabels.issueId, issues.id), inArray(issueLabels.labelId, labelIds))),
-        ),
-      );
-    }
-
-    if (q.module && q.module.length > 0) {
-      const moduleIds = await resolveModuleIdsTolerant(projectId, q.module);
-      if (moduleIds.length === 0) {
-        return c.json(listResponse(c, [], 0, { limit: q.limit, offset: q.offset }));
-      }
-      both(
-        exists(
-          db
-            .select({ one: sql`1` })
-            .from(issueLabels)
-            .where(
-              and(eq(issueLabels.issueId, issues.id), inArray(issueLabels.labelId, moduleIds)),
-            ),
-        ),
-      );
-    }
-
-    const where = conditions.length === 1 ? conditions[0] : and(...conditions);
-
-    const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(issues).where(where);
-
-    const buckets = q.withBuckets ? await countBuckets(axisFree) : null;
-
-    const rows = await issueListPageQuery({
-      where,
-      orderBy: buildIssueOrderBy(q.sort),
-      limit: q.limit,
-      offset: q.offset,
-      matchedFields: q.q ? matchedSearchFieldsSql(q.q) : null,
-    });
-
-    const total = Number(n);
+    const listed = await listIssues(projectId, { ...q, search: q.q, assigneeId: q.assignee }, q);
+    if (!listed.ok) throw badRequest({ [listed.field]: listed.message });
+    const { rows, total, buckets } = listed;
 
     const searchPrefix = await activeIssuePrefix(projectId);
     let serialized: Record<string, unknown>[] = rows.map((r) => ({

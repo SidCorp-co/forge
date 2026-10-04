@@ -105,9 +105,9 @@ reconciliation decision on each module until a check exists.
   issue blocks record.
 - **archmap keeps its own contracts.** Its purity and fan-out contracts in `.arch.json` stay; the
   kinds are not restated as archmap `layers`, because that would declare every kind twice.
-- **`packages/core/src/project-config/mount.ts`, `packages/core/src/issues/mount.ts` and
-  `packages/core/src/project-config/respond.ts` stop being hubs**:
-  mounting moves to the door registries and `refused` moves into platform beside the envelope.
+- **`project-config` and `issues` stop being hubs**: their slice mounts are deleted, every router
+  is mounted by `packages/core/src/route-registry.ts`, and `refused` lives beside the envelope in
+  `packages/core/src/lib/refusal.ts`.
 - **Two adapter shapes remain legal** (registry-bound and deployment-bound, ADR 0006); a caller
   imports the port's **index.ts** either way.
 - **The cost** is in pattern v2's Honest costs: most of core fails on day one, and because the

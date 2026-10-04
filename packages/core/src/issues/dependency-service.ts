@@ -257,3 +257,23 @@ async function refreshDependentHealth(
   if (input.kind !== 'blocks') return;
   await publishPipelineHealthChanged(input.projectId, [input.toIssueId]);
 }
+
+/** Removes one dependency edge and records `dependency.changed` with it. */
+export async function deleteIssueDependency(edge: {
+  id: string;
+  projectId: string;
+  fromIssueId: string;
+  toIssueId: string;
+  kind: IssueDependencyKind;
+}): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.delete(issueDependencies).where(eq(issueDependencies.id, edge.id));
+    await emitEvent(tx, 'dependency.changed', {
+      projectId: edge.projectId,
+      edgeId: edge.id,
+      fromIssueId: edge.fromIssueId,
+      toIssueId: edge.toIssueId,
+      kind: edge.kind,
+    });
+  });
+}

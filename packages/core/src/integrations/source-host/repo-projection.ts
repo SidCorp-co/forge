@@ -79,6 +79,16 @@ export async function readPullRequestsForIssues(
   return out;
 }
 
+/** The stored pull request numbered `number` for the issue, or null. */
+export async function pullRequestNumbered(issueId: string, number: number): Promise<string | null> {
+  const [row] = await db
+    .select({ id: repoPullRequests.id })
+    .from(repoPullRequests)
+    .where(and(eq(repoPullRequests.issueId, issueId), eq(repoPullRequests.number, number)))
+    .limit(1);
+  return row?.id ?? null;
+}
+
 /** Every open pull request this issue has, oldest first. */
 export async function openPullRequestsForIssue(issueId: string): Promise<string[]> {
   const rows = await db

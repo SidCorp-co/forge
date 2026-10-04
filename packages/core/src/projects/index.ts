@@ -5,5 +5,12 @@ export { invitationRoutes } from './invitations-routes.js';
 export { registerLiveReadingInvalidation } from './live-reading.js';
 export { masterCharterRoutes } from './master-charter-routes.js';
 export { memberRoutes } from './members-routes.js';
+export { resolveEffectiveProjectId, resolveProjectIdFromSlug } from './project-scope.js';
 export { projectRoutes } from './routes.js';
-export { findProjectOrgId, projectDocumentNames, setProjectIssuePrefix } from './service.js';
+export {
+  findProjectOrgId,
+  listVisibleProjectsWithRole,
+  projectDocumentNames,
+  setProjectIssuePrefix,
+  type VisibleProjectWithRole,
+} from './service.js';

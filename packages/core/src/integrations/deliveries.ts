@@ -126,6 +126,18 @@ export async function findLastOutboundForTarget(
   return rows[0] ?? null;
 }
 
+/** A binding's latest 50 deliveries, newest first. */
+export async function listBindingDeliveries(
+  bindingId: string,
+): Promise<(typeof integrationDeliveries.$inferSelect)[]> {
+  return db
+    .select()
+    .from(integrationDeliveries)
+    .where(eq(integrationDeliveries.bindingId, bindingId))
+    .orderBy(desc(integrationDeliveries.createdAt))
+    .limit(50);
+}
+
 /** Looks up a single delivery by its primary key. Returns the row or null. */
 export async function findDeliveryById(
   id: string,

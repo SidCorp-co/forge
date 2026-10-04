@@ -321,3 +321,8 @@ export async function persistDecodedIssueAttachments(
   }
   return { persisted, errors };
 }
+
+/** Removes one attachment's row; its stored file is the caller's to delete first. */
+export async function deleteIssueAttachment(attachmentId: string): Promise<void> {
+  await db.delete(issueAttachments).where(eq(issueAttachments.id, attachmentId));
+}

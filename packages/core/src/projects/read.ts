@@ -1,0 +1,329 @@
+import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import {
+  devices,
+  labels,
+  organizationMembers,
+  organizations,
+  orgInvitations,
+  projectGitCredentials,
+  projectInvitations,
+  projectMembers,
+  projects,
+  runners,
+  users,
+  workspaceSshKeys,
+} from '../db/schema.js';
+import { residentMasterSql } from '../devices/master-session.js';
+import { visibleProjectsWhere } from '../lib/authz.js';
+import { PROJECT_DETAIL } from './projections.js';
+
+/** A project's id and slug, or null. */
+export async function projectHead(projectId: string) {
+  const [row] = await db
+    .select({ id: projects.id, slug: projects.slug })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  return row ?? null;
+}
+
+/** The name of a project, or null. */
+export async function projectName(projectId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ name: projects.name })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  return row?.name ?? null;
+}
+
+/** Id, slug and name of each of these projects. */
+export async function listProjectHeads(projectIds: readonly string[]) {
+  return db
+    .select({ id: projects.id, slug: projects.slug, name: projects.name })
+    .from(projects)
+    .where(inArray(projects.id, [...projectIds]));
+}
+
+/**
+ * Every project `userId` sees (explicit membership or org owner/admin), one row each with the
+ * caller's membership and org roles, ordered by id.
+ */
+export async function listVisibleProjectRows(userId: string, includeArchived: boolean) {
+  return (
+    db
+      .selectDistinctOn([projects.id], {
+        id: projects.id,
+        slug: projects.slug,
+        name: projects.name,
+        orgId: projects.orgId,
+        orgName: organizations.name,
+        orgIsPersonal: organizations.isPersonal,
+        createdBy: projects.createdBy,
+        memberRole: projectMembers.role,
+        orgRole: organizationMembers.role,
+        issuePrefix: projects.issuePrefix,
+        archivedAt: projects.archivedAt,
+        createdAt: projects.createdAt,
+      })
+      .from(projects)
+      .innerJoin(organizations, eq(organizations.id, projects.orgId))
+      .leftJoin(
+        projectMembers,
+        and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId)),
+      )
+      .leftJoin(
+        organizationMembers,
+        and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
+      )
+      .where(
+        and(...visibleProjectsWhere(), ...(includeArchived ? [] : [isNull(projects.archivedAt)])),
+      )
+      // DISTINCT ON needs its leading ORDER BY to match the distinct column; without it the order
+      // varied run to run and the rail's raw-order fallback (ISS-734) jumped tabs on a refetch.
+      .orderBy(projects.id)
+  );
+}
+
+/** The project detail: its row, members, labels and claude-code device pool; null when gone. */
+export async function projectDetail(projectId: string) {
+  const [project] = await db
+    .select(PROJECT_DETAIL)
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  if (!project) return null;
+
+  const members = await db
+    .select({ userId: projectMembers.userId, role: projectMembers.role })
+    .from(projectMembers)
+    .where(eq(projectMembers.projectId, projectId));
+
+  const labelRows = await db
+    .select({ id: labels.id, name: labels.name, color: labels.color })
+    .from(labels)
+    .where(eq(labels.projectId, projectId));
+
+  const devicePool = await db
+    .select({
+      id: devices.id,
+      name: devices.name,
+      platform: devices.platform,
+      status: devices.status,
+      lastSeenAt: devices.lastSeenAt,
+      runnerId: runners.id,
+    })
+    .from(runners)
+    .innerJoin(devices, eq(devices.id, runners.deviceId))
+    .where(and(eq(runners.projectId, projectId), eq(runners.type, 'claude-code')));
+
+  return { project, members, labels: labelRows, devicePool };
+}
+
+/** A project's members with each one's account email, display name and kind. */
+export async function listProjectMembers(projectId: string) {
+  return db
+    .select({
+      userId: projectMembers.userId,
+      email: users.email,
+      displayName: users.displayName,
+      kind: users.kind,
+      role: projectMembers.role,
+      grants: projectMembers.grants,
+      createdAt: projectMembers.createdAt,
+    })
+    .from(projectMembers)
+    .innerJoin(users, eq(users.id, projectMembers.userId))
+    .where(eq(projectMembers.projectId, projectId));
+}
+
+/** The role `userId` holds on the project, or null when they are not a member. */
+export async function projectMemberRole(projectId: string, userId: string) {
+  const [row] = await db
+    .select({ role: projectMembers.role })
+    .from(projectMembers)
+    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
+    .limit(1);
+  return row?.role ?? null;
+}
+
+/** The account registered under `email`, or null. */
+export async function accountIdByEmail(email: string): Promise<string | null> {
+  const [row] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+  return row?.id ?? null;
+}
+
+/** The project's invitations nobody has accepted yet, each with its inviter's email. */
+export async function listPendingProjectInvitations(projectId: string) {
+  return db
+    .select({
+      email: projectInvitations.email,
+      role: projectInvitations.role,
+      expiresAt: projectInvitations.expiresAt,
+      createdAt: projectInvitations.createdAt,
+      inviterEmail: users.email,
+    })
+    .from(projectInvitations)
+    .innerJoin(users, eq(users.id, projectInvitations.inviterId))
+    .where(
+      and(eq(projectInvitations.projectId, projectId), isNull(projectInvitations.acceptedAt)),
+    );
+}
+
+/** The live project and org invitations sent to `email`, newest first. */
+export async function listPendingInvitationsFor(email: string) {
+  const now = new Date();
+
+  const projectRows = await db
+    .select({
+      token: projectInvitations.token,
+      name: projects.name,
+      inviterEmail: users.email,
+      role: projectInvitations.role,
+      expiresAt: projectInvitations.expiresAt,
+      createdAt: projectInvitations.createdAt,
+    })
+    .from(projectInvitations)
+    .innerJoin(projects, eq(projects.id, projectInvitations.projectId))
+    .innerJoin(users, eq(users.id, projectInvitations.inviterId))
+    .where(
+      and(
+        sql`lower(${projectInvitations.email}) = lower(${email})`,
+        isNull(projectInvitations.acceptedAt),
+        isNull(projectInvitations.dismissedAt),
+        gt(projectInvitations.expiresAt, now),
+      ),
+    );
+
+  const orgRows = await db
+    .select({
+      token: orgInvitations.token,
+      name: organizations.name,
+      inviterEmail: users.email,
+      role: orgInvitations.role,
+      expiresAt: orgInvitations.expiresAt,
+      createdAt: orgInvitations.createdAt,
+    })
+    .from(orgInvitations)
+    .innerJoin(organizations, eq(organizations.id, orgInvitations.orgId))
+    .innerJoin(users, eq(users.id, orgInvitations.inviterId))
+    .where(
+      and(
+        sql`lower(${orgInvitations.email}) = lower(${email})`,
+        isNull(orgInvitations.acceptedAt),
+        isNull(orgInvitations.dismissedAt),
+        gt(orgInvitations.expiresAt, now),
+      ),
+    );
+
+  return [
+    ...projectRows.map((r) => ({ kind: 'project' as const, ...r })),
+    ...orgRows.map((r) => ({ kind: 'org' as const, ...r })),
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+/** The project invitation a token names, with the project's name and inviter's email, or null. */
+export async function projectInvitationByToken(token: string) {
+  const [row] = await db
+    .select({
+      email: projectInvitations.email,
+      role: projectInvitations.role,
+      expiresAt: projectInvitations.expiresAt,
+      acceptedAt: projectInvitations.acceptedAt,
+      projectName: projects.name,
+      inviterEmail: users.email,
+    })
+    .from(projectInvitations)
+    .innerJoin(projects, eq(projects.id, projectInvitations.projectId))
+    .innerJoin(users, eq(users.id, projectInvitations.inviterId))
+    .where(eq(projectInvitations.token, token))
+    .limit(1);
+  return row ?? null;
+}
+
+/** The pool key the project picked for git, or null. */
+export async function projectGitKeyId(projectId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ sshKeyId: projectGitCredentials.sshKeyId })
+    .from(projectGitCredentials)
+    .where(eq(projectGitCredentials.projectId, projectId))
+    .limit(1);
+  return row?.sshKeyId ?? null;
+}
+
+/** The encrypted private key of the project's picked pool key, or null. */
+export async function projectGitPrivateKeyEnc(projectId: string): Promise<Buffer | null> {
+  const [row] = await db
+    .select({ privateKeyEnc: workspaceSshKeys.privateKeyEnc })
+    .from(projectGitCredentials)
+    .innerJoin(workspaceSshKeys, eq(workspaceSshKeys.id, projectGitCredentials.sshKeyId))
+    .where(eq(projectGitCredentials.projectId, projectId))
+    .limit(1);
+  return row?.privateKeyEnc ?? null;
+}
+
+/** The device pools serving the project, with device identity and provision status. */
+export async function listProjectRunners(projectId: string) {
+  return db
+    .select({
+      runnerId: runners.id,
+      deviceId: runners.deviceId,
+      deviceName: devices.name,
+      platform: devices.platform,
+      deviceStatus: devices.status,
+      // The version the device's binary reported is this runner's; read from the device rather
+      // than mirrored, so a missed heartbeat cannot leave two copies disagreeing (ISS-1119).
+      agentVersion: devices.agentVersion,
+      // A disabled device's runner still heartbeats online; this says why it receives no jobs.
+      deviceDisabledAt: devices.disabledAt,
+      runnerStatus: runners.status,
+      lastError: runners.lastError,
+      limitReason: runners.limitReason,
+      rateLimitedUntil: runners.rateLimitedUntil,
+      limitDetail: runners.limitDetail,
+      repoPath: runners.repoPath,
+      branch: runners.branch,
+      labels: runners.labels,
+      lastSeenAt: runners.lastSeenAt,
+      provisionStatus: runners.provisionStatus,
+      provisionDetail: runners.provisionDetail,
+      provisionedAt: runners.provisionedAt,
+      poolRead: runners.poolRead,
+      // ISS-1118 — whether a resident master for this project runs on the box.
+      residentMaster: residentMasterSql(runners.deviceId, runners.projectId),
+    })
+    .from(runners)
+    .leftJoin(devices, eq(devices.id, runners.deviceId))
+    .where(and(eq(runners.projectId, projectId), eq(runners.type, 'claude-code')))
+    .orderBy(runners.createdAt);
+}
+
+/** The device a bind names, or null. */
+export async function deviceForBind(deviceId: string) {
+  const [row] = await db
+    .select({
+      id: devices.id,
+      name: devices.name,
+      status: devices.status,
+      lastSeenAt: devices.lastSeenAt,
+    })
+    .from(devices)
+    .where(eq(devices.id, deviceId))
+    .limit(1);
+  return row ?? null;
+}
+
+/** Whether runner `runnerId` belongs to the project. */
+export async function projectHasRunner(projectId: string, runnerId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: runners.id })
+    .from(runners)
+    .where(and(eq(runners.id, runnerId), eq(runners.projectId, projectId)))
+    .limit(1);
+  return row !== undefined;
+}

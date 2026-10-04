@@ -1,11 +1,8 @@
 import type { PmRefusalCode } from '@forge/contracts/pm';
-import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { postIssueNotice } from '../comments/index.js';
-import { db } from '../db/client.js';
-import { issues, pmConfig, pmDecisions, pmPolicies } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { logger } from '../logger.js';
@@ -20,8 +17,21 @@ import {
 import { zValidator } from '../middleware/zod-validator.js';
 import { closeEscalationTasks } from '../notifications/close-escalation.js';
 import { refuser } from '../lib/refusal.js';
-import { requireHeld } from '../permissions/index.js';
+import {
+  decisionInProject,
+  issueIsInProject,
+  listPmDecisions,
+  listPmPolicies,
+} from './read.js';
+import {
+  createPmPolicy,
+  deletePmPolicy,
+  ensurePmConfig,
+  updatePmConfig,
+  updatePmPolicy,
+} from './service.js';
 import { PM_NO_PROMPT_MESSAGE, type SpawnPmSessionResult, spawnPmSession } from './spawner.js';
+import { requireHeld } from '../permissions/index.js';
 
 const projectIdParam = z.object({ projectId: z.uuid() });
 
@@ -171,23 +181,14 @@ pmRoutes.post(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.write');
 
-    const [decision] = await db
-      .select({ id: pmDecisions.id, eventRef: pmDecisions.eventRef })
-      .from(pmDecisions)
-      .where(and(eq(pmDecisions.id, decisionId), eq(pmDecisions.projectId, projectId)))
-      .limit(1);
+    const decision = await decisionInProject(projectId, decisionId);
     if (!decision) throw notFound('pm decision not found');
 
     const issueIds = extractIssueIds(decision.eventRef);
 
     const body = formatOperatorReply({ choice, payload, comment });
     for (const issueId of issueIds) {
-      const [issue] = await db
-        .select({ id: issues.id, projectId: issues.projectId })
-        .from(issues)
-        .where(eq(issues.id, issueId))
-        .limit(1);
-      if (!issue || issue.projectId !== projectId) continue;
+      if (!(await issueIsInProject(issueId, projectId))) continue;
 
       await postIssueNotice({
         issueId,
@@ -231,25 +232,7 @@ pmRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    const [existing] = await db
-      .select()
-      .from(pmConfig)
-      .where(eq(pmConfig.projectId, projectId))
-      .limit(1);
-    if (existing) return c.json(existing);
-
-    const [inserted] = await db
-      .insert(pmConfig)
-      .values({ projectId })
-      .onConflictDoNothing({ target: pmConfig.projectId })
-      .returning();
-    if (inserted) return c.json(inserted);
-
-    const [row] = await db
-      .select()
-      .from(pmConfig)
-      .where(eq(pmConfig.projectId, projectId))
-      .limit(1);
+    const row = await ensurePmConfig(projectId);
     if (!row) throw new HTTPException(500, { message: 'pm_config lazy-create failed' });
     return c.json(row);
   },
@@ -272,16 +255,7 @@ pmRoutes.put(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.admin');
 
-    await db
-      .insert(pmConfig)
-      .values({ projectId })
-      .onConflictDoNothing({ target: pmConfig.projectId });
-
-    const [updated] = await db
-      .update(pmConfig)
-      .set({ ...patch, updatedAt: sql`now()` })
-      .where(eq(pmConfig.projectId, projectId))
-      .returning();
+    const updated = await updatePmConfig(projectId, patch);
     if (!updated) throw new HTTPException(500, { message: 'pm_config update failed' });
     return c.json(updated);
   },
@@ -300,21 +274,7 @@ pmRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    const rows = await db
-      .select({
-        id: pmPolicies.id,
-        projectId: pmPolicies.projectId,
-        name: pmPolicies.name,
-        body: pmPolicies.body,
-        enabled: pmPolicies.enabled,
-        priority: pmPolicies.priority,
-        createdAt: pmPolicies.createdAt,
-        updatedAt: pmPolicies.updatedAt,
-      })
-      .from(pmPolicies)
-      .where(eq(pmPolicies.projectId, projectId))
-      .orderBy(desc(pmPolicies.priority), desc(pmPolicies.createdAt));
-    return c.json(rows);
+    return c.json(await listPmPolicies(projectId));
   },
 );
 
@@ -335,25 +295,7 @@ pmRoutes.post(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.admin');
 
-    const [inserted] = await db
-      .insert(pmPolicies)
-      .values({
-        projectId,
-        name: input.name,
-        body: input.body,
-        enabled: input.enabled ?? true,
-        priority: input.priority ?? 0,
-      })
-      .returning({
-        id: pmPolicies.id,
-        projectId: pmPolicies.projectId,
-        name: pmPolicies.name,
-        body: pmPolicies.body,
-        enabled: pmPolicies.enabled,
-        priority: pmPolicies.priority,
-        createdAt: pmPolicies.createdAt,
-        updatedAt: pmPolicies.updatedAt,
-      });
+    const inserted = await createPmPolicy(projectId, input);
     if (!inserted) throw new HTTPException(500, { message: 'pm_policy insert failed' });
 
     detachIndex(() =>
@@ -387,20 +329,7 @@ pmRoutes.patch(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.admin');
 
-    const [updated] = await db
-      .update(pmPolicies)
-      .set({ ...patch, updatedAt: sql`now()` })
-      .where(and(eq(pmPolicies.id, id), eq(pmPolicies.projectId, projectId)))
-      .returning({
-        id: pmPolicies.id,
-        projectId: pmPolicies.projectId,
-        name: pmPolicies.name,
-        body: pmPolicies.body,
-        enabled: pmPolicies.enabled,
-        priority: pmPolicies.priority,
-        createdAt: pmPolicies.createdAt,
-        updatedAt: pmPolicies.updatedAt,
-      });
+    const updated = await updatePmPolicy(projectId, id, patch);
     if (!updated) throw notFound('pm_policy not found');
 
     if (patch.body !== undefined || patch.name !== undefined || patch.priority !== undefined) {
@@ -432,11 +361,7 @@ pmRoutes.delete(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.admin');
 
-    const deleted = await db
-      .delete(pmPolicies)
-      .where(and(eq(pmPolicies.id, id), eq(pmPolicies.projectId, projectId)))
-      .returning({ id: pmPolicies.id });
-    if (deleted.length === 0) throw notFound('pm_policy not found');
+    if (!(await deletePmPolicy(projectId, id))) throw notFound('pm_policy not found');
 
     detachIndex(async () => {
       await deleteMemory(projectId, 'policy', id);
@@ -462,31 +387,8 @@ pmRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    const conditions = [eq(pmDecisions.projectId, projectId)];
-    if (cause) conditions.push(eq(pmDecisions.cause, cause));
-    const where = and(...conditions);
-
-    const [totalRow] = await db.select({ n: count() }).from(pmDecisions).where(where);
-
-    const rows = await db
-      .select({
-        id: pmDecisions.id,
-        projectId: pmDecisions.projectId,
-        cause: pmDecisions.cause,
-        summary: pmDecisions.summary,
-        actions: pmDecisions.actions,
-        confidence: pmDecisions.confidence,
-        modelTier: pmDecisions.modelTier,
-        tookMs: pmDecisions.tookMs,
-        createdAt: pmDecisions.createdAt,
-      })
-      .from(pmDecisions)
-      .where(where)
-      .orderBy(desc(pmDecisions.createdAt))
-      .limit(pageSize)
-      .offset((page - 1) * pageSize);
-
-    return c.json(listResponse(c, rows, totalRow?.n ?? 0, fromPage(page, pageSize)));
+    const { rows, total } = await listPmDecisions(projectId, { cause, page, pageSize });
+    return c.json(listResponse(c, rows, total, fromPage(page, pageSize)));
   },
 );
 

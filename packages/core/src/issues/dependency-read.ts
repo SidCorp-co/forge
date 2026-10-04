@@ -5,7 +5,7 @@
  * `ISS-<seq>` without N extra round-trips (ISS-331).
  */
 
-import { and, eq, inArray, or } from 'drizzle-orm';
+import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
 import {
@@ -272,4 +272,43 @@ export async function loadIssueRelationsForIssues(
     out.set(issueId, relations);
   }
   return out;
+}
+
+/** The id and project of each named issue that exists. */
+export async function issueProjectsOf(issueIds: string[]) {
+  return db
+    .select({ id: issues.id, projectId: issues.projectId })
+    .from(issues)
+    .where(inArray(issues.id, issueIds));
+}
+
+/** One dependency edge by id, or null. */
+export async function dependencyEdgeById(edgeId: string) {
+  const [edge] = await db
+    .select()
+    .from(issueDependencies)
+    .where(eq(issueDependencies.id, edgeId))
+    .limit(1);
+  return edge ?? null;
+}
+
+/** The live `blocks` edges out of the named blockers, each with its dependent's sequence number. */
+export async function liveBlockedDependentsOf(blockerIds: string[]) {
+  if (blockerIds.length === 0) return [];
+  return db
+    .select({
+      fromIssueId: issueDependencies.fromIssueId,
+      toIssueId: issueDependencies.toIssueId,
+      depProjectId: issueDependencies.projectId,
+      toIssSeq: issues.issSeq,
+    })
+    .from(issueDependencies)
+    .innerJoin(issues, eq(issues.id, issueDependencies.toIssueId))
+    .where(
+      and(
+        inArray(issueDependencies.fromIssueId, blockerIds),
+        eq(issueDependencies.kind, 'blocks'),
+        sql`(${issueDependencies.validUntil} IS NULL OR ${issueDependencies.validUntil} > now())`,
+      ),
+    );
 }

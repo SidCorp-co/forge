@@ -1,33 +1,24 @@
-import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import {
-  devices,
-  issues,
-  jobStatuses,
-  jobs,
-  jobTypes,
-  modelTiers,
-  promptBlobs,
-  usageRecords,
-} from '../db/schema.js';
+import { jobStatuses, jobTypes, modelTiers } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { openIssueRun, openOneShotRun } from '../pipeline/runs.js';
-import { canonicalSessionId, usageSessionMatch } from '../usage-records/rollup.js';
 import { readJob } from './job-queries.js';
 import { refuseJob } from './refusals.js';
 import { noPromptMessage, poolPrompt } from './pool-served.js';
+import { extractPayloadExtras, extractResolvedFlags, type PromptEnvelope } from './prompt-route.js';
 import {
-  type ActualUsage,
-  extractPayloadExtras,
-  extractResolvedFlags,
-  type PromptEnvelope,
-} from './prompt-route.js';
+  issueProjectId,
+  jobActualUsage,
+  jobDeviceSummary,
+  listProjectJobs,
+  promptBlobContent,
+} from './read.js';
+import { createQueuedJob, patchJob } from './service.js';
 import { requireHeld } from '../permissions/index.js';
 
 const badRequest = (details: unknown) =>
@@ -63,49 +54,15 @@ const projectIdParamSchema = z.object({ id: z.uuid() });
 const jobIdParamSchema = z.object({ id: z.uuid() });
 
 async function assertIssueInProject(projectId: string, issueId: string): Promise<void> {
-  const [row] = await db
-    .select({ id: issues.id, projectId: issues.projectId })
-    .from(issues)
-    .where(eq(issues.id, issueId))
-    .limit(1);
-  if (!row) throw badRequest({ issueId: 'not found' });
-  if (row.projectId !== projectId) throw badRequest({ issueId: 'does not belong to this project' });
+  const issueProject = await issueProjectId(issueId);
+  if (!issueProject) throw badRequest({ issueId: 'not found' });
+  if (issueProject !== projectId) throw badRequest({ issueId: 'does not belong to this project' });
 }
 
 async function loadJob(jobId: string) {
   const row = await readJob(jobId);
   if (!row) throw notFound('job not found');
   return row;
-}
-
-// Roll up usage_records for a job. Repo convention (see runs-rollup.ts) is
-// `usage_records.session_id::uuid = jobs.id` — usage rows are tagged with the
-// job id, not the observability agent_sessions row id. Returns null when no
-// rows match.
-async function loadActualUsage(agentSessionId: string): Promise<ActualUsage | null> {
-  const [row] = await db
-    .select({
-      input: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
-      output: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)`.mapWith(Number),
-      cached: sql<number>`coalesce(sum(${usageRecords.cacheReadTokens}), 0)`.mapWith(Number),
-      cacheCreation: sql<number>`coalesce(sum(${usageRecords.cacheCreationTokens}), 0)`.mapWith(
-        Number,
-      ),
-      cost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
-      count: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
-      samples: sql<number>`count(${usageRecords.id})`.mapWith(Number),
-    })
-    .from(usageRecords)
-    .where(usageSessionMatch(sql`= ${canonicalSessionId(agentSessionId)}`));
-  if (!row || row.samples === 0) return null;
-  return {
-    input: row.input,
-    output: row.output,
-    cached: row.cached,
-    cacheCreation: row.cacheCreation,
-    cost: row.cost,
-    count: row.count,
-  };
 }
 
 export const jobProjectRoutes = new Hono<{ Variables: AuthVars }>();
@@ -142,20 +99,15 @@ jobProjectRoutes.post(
           metadata: { source: 'jobs.create', type: input.type },
         });
 
-    const [inserted] = await db
-      .insert(jobs)
-      .values({
-        projectId,
-        issueId: input.issueId ?? null,
-        pipelineRunId: run.id,
-        createdBy: userId,
-        type: input.type,
-        payload: input.payload ?? {},
-        modelTier: input.modelTier ?? null,
-        status: 'queued',
-      })
-      .returning();
-    if (!inserted) throw new Error('jobs: insert returned no row');
+    const inserted = await createQueuedJob({
+      projectId,
+      issueId: input.issueId ?? null,
+      pipelineRunId: run.id,
+      createdBy: userId,
+      type: input.type,
+      payload: input.payload ?? {},
+      modelTier: input.modelTier ?? null,
+    });
 
     return c.json(inserted, 201);
   },
@@ -177,23 +129,13 @@ jobProjectRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    const conditions = [eq(jobs.projectId, projectId)];
-    if (q.status) conditions.push(eq(jobs.status, q.status));
-    if (q.type) conditions.push(eq(jobs.type, q.type));
-    if (q.issueId) conditions.push(eq(jobs.issueId, q.issueId));
-    const where = conditions.length === 1 ? conditions[0] : and(...conditions);
+    const { rows, total } = await listProjectJobs(
+      projectId,
+      { status: q.status, type: q.type, issueId: q.issueId },
+      { limit: q.limit, offset: q.offset },
+    );
 
-    const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(jobs).where(where);
-
-    const rows = await db
-      .select()
-      .from(jobs)
-      .where(where)
-      .orderBy(desc(jobs.queuedAt))
-      .limit(q.limit)
-      .offset(q.offset);
-
-    return c.json(listResponse(c, rows, Number(n), q));
+    return c.json(listResponse(c, rows, total, q));
   },
 );
 
@@ -217,15 +159,7 @@ jobRoutes.get(
     const access = await loadProjectAccess(job.projectId, userId);
     requireHeld(access, 'project.read');
 
-    let device: { id: string; name: string; status: string } | null = null;
-    if (job.deviceId) {
-      const [d] = await db
-        .select({ id: devices.id, name: devices.name, status: devices.status })
-        .from(devices)
-        .where(eq(devices.id, job.deviceId))
-        .limit(1);
-      device = d ?? null;
-    }
+    const device = job.deviceId ? await jobDeviceSummary(job.deviceId) : null;
 
     return c.json({ ...job, device });
   },
@@ -254,14 +188,10 @@ jobRoutes.patch(
       throw refuseJob('JOB_NOT_QUEUED', 'jobs can only be patched while queued');
     }
 
-    const [updated] = await db
-      .update(jobs)
-      .set({
-        ...(patch.payload !== undefined ? { payload: patch.payload } : {}),
-        ...(patch.modelTier !== undefined ? { modelTier: patch.modelTier } : {}),
-      })
-      .where(eq(jobs.id, id))
-      .returning();
+    const updated = await patchJob(id, {
+      ...(patch.payload !== undefined ? { payload: patch.payload } : {}),
+      ...(patch.modelTier !== undefined ? { modelTier: patch.modelTier } : {}),
+    });
     if (!updated) throw notFound('job not found');
     return c.json(updated);
   },
@@ -290,21 +220,15 @@ jobRoutes.get(
       return c.json({ archived: true, path: job.archivePath }, 410);
     }
 
-    let systemPrompt: string | null = null;
-    if (job.systemPromptHash) {
-      const [blob] = await db
-        .select({ content: promptBlobs.content })
-        .from(promptBlobs)
-        .where(eq(promptBlobs.hash, job.systemPromptHash))
-        .limit(1);
-      systemPrompt = blob?.content ?? null;
-    }
+    const systemPrompt = job.systemPromptHash
+      ? await promptBlobContent(job.systemPromptHash)
+      : null;
 
     if (!systemPrompt && !job.userPromptSnapshot) {
       throw notFound('prompt snapshot not stored (pre-v0.1.35 job)');
     }
 
-    const actualUsage = job.agentSessionId ? await loadActualUsage(job.agentSessionId) : null;
+    const actualUsage = job.agentSessionId ? await jobActualUsage(job.agentSessionId) : null;
 
     const payload = (job.payload ?? {}) as Record<string, unknown>;
 

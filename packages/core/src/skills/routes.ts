@@ -1,9 +1,7 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { issueStatuses, skillRegistrations, skills } from '../db/schema.js';
+import { issueStatuses } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
@@ -11,8 +9,8 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { isMetaSkillName, metaSkillReserved } from './meta-skills.js';
 import { registerSkillForProject } from './registration-service.js';
-import { getSkillForProject } from './service.js';
-import { computeSkillDiff } from './sync.js';
+import { listSkillRegistrations, registeredSkillIdAt } from './read.js';
+import { getSkillForProject, syncProjectSkillManifests } from './service.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
 const skillParamSchema = z.object({ projectId: z.uuid(), skillId: z.uuid() });
@@ -83,73 +81,13 @@ skillSyncRoutes.post(
     const reserved = body.skills.find((s) => isMetaSkillName(s.name));
     if (reserved) throw metaSkillReserved(reserved.name);
 
-    // Single SERIALIZABLE transaction: read existing inside the tx, categorise,
-    // then upsert. Concurrent writers either see the same baseline and both
-    // arrive at the same result, or the second serialises behind the first.
-    // Unique index (project_id, name) WHERE scope='project' also guards
-    // insert-race by collapsing to UPDATE via ON CONFLICT.
-    const { diff, added, updated } = await db.transaction(async (tx) => {
-      const existing = await tx
-        .select({ name: skills.name, contentHash: skills.contentHash })
-        .from(skills)
-        .where(and(eq(skills.projectId, projectId), eq(skills.scope, 'project')));
-
-      const d = computeSkillDiff(existing, body.skills, body.mode);
-
-      // Insert + update in one upsert. `toInsert` and `toUpdate` are both
-      // project-scoped rows on (projectId, name); the partial-unique index is
-      // the conflict target.
-      const writes = [...d.toInsert, ...d.toUpdate];
-      if (writes.length > 0) {
-        await tx
-          .insert(skills)
-          .values(
-            writes.map((m) => ({
-              name: m.name,
-              description: m.description ?? '',
-              scope: 'project' as const,
-              projectId,
-              prompt: m.prompt,
-              tools: m.tools,
-              manifest: {},
-              source: 'user' as const,
-              contentHash: m.hash,
-            })),
-          )
-          .onConflictDoUpdate({
-            target: [skills.projectId, skills.name],
-            targetWhere: sql`scope = 'project'`,
-            // Only change fields the caller actually supplied; preserve prior
-            // description if the incoming manifest omits it.
-            set: {
-              prompt: sql`excluded.prompt`,
-              tools: sql`excluded.tools`,
-              contentHash: sql`excluded.content_hash`,
-              description: sql`CASE WHEN excluded.description = '' THEN ${skills.description} ELSE excluded.description END`,
-              version: sql`${skills.version} + 1`,
-              updatedAt: sql`now()`,
-            },
-          });
-      }
-
-      if (d.toRemove.length > 0) {
-        await tx
-          .delete(skills)
-          .where(
-            and(
-              eq(skills.projectId, projectId),
-              eq(skills.scope, 'project'),
-              inArray(skills.name, d.toRemove),
-            ),
-          );
-      }
-
-      return {
-        diff: d,
-        added: d.toInsert.map((m) => m.name),
-        updated: d.toUpdate.map((m) => m.name),
-      };
-    });
+    // One transaction reads the baseline, categorises and upserts; the partial-unique index
+    // (project_id, name) WHERE scope='project' collapses an insert race into an update.
+    const { diff, added, updated } = await syncProjectSkillManifests(
+      projectId,
+      body.mode,
+      body.skills,
+    );
 
     return c.json({ added, updated, unchanged: diff.unchanged, removed: diff.toRemove });
   },
@@ -206,18 +144,7 @@ skillRegisterRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    const rows = await db
-      .select({
-        stage: skillRegistrations.stage,
-        skillId: skillRegistrations.skillId,
-        skillName: skills.name,
-        skillScope: skills.scope,
-        registeredBy: skillRegistrations.registeredBy,
-        createdAt: skillRegistrations.createdAt,
-      })
-      .from(skillRegistrations)
-      .innerJoin(skills, eq(skills.id, skillRegistrations.skillId))
-      .where(eq(skillRegistrations.projectId, projectId));
+    const rows = await listSkillRegistrations(projectId);
     return c.json({ registrations: rows });
   },
 );
@@ -243,16 +170,12 @@ skillRegisterRoutes.delete(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.admin');
 
-    const [row] = await db
-      .select({ skillId: skillRegistrations.skillId })
-      .from(skillRegistrations)
-      .where(and(eq(skillRegistrations.projectId, projectId), eq(skillRegistrations.stage, stage)))
-      .limit(1);
-    if (!row) return c.json({ deleted: false, stage });
+    const registeredSkillId = await registeredSkillIdAt(projectId, stage);
+    if (!registeredSkillId) return c.json({ deleted: false, stage });
 
     await registerSkillForProject({
       projectId,
-      skillId: row.skillId,
+      skillId: registeredSkillId,
       stage: null,
       actorUserId: userId,
     });

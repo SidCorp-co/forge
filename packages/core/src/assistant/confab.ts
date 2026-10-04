@@ -1,4 +1,4 @@
-import { CHANNEL_WRITES } from './tools/forge-channel-args.js';
+import { CHANNEL_WRITES } from '../ecosystem/index.js';
 
 /** What the claim check reads of an audited call; a `ToolCallRecord` is one. */
 export interface ClaimCall {
