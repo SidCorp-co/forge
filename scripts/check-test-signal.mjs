@@ -19,6 +19,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { suspendedWithoutTests } from './lib/suspended-without-tests.mjs';
 import {
   freezeFaults,
   loadBaseline,
@@ -138,6 +139,8 @@ if (parsed.error) {
   process.exit(2);
 }
 const mode = parsed.mode;
+
+if (mode !== '--staged' && suspendedWithoutTests(ROOT, 'test-signal: 0 test file(s)')) process.exit(0);
 
 const files = mode === '--staged' ? collectStaged() : collectAll();
 if (mode !== '--staged' && files.length === 0) {

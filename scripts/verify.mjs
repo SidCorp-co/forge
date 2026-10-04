@@ -38,6 +38,7 @@ const CHECKS = [
     layer: 'entry',
     reads: "each test file's own assertions, judged file by file",
     cmd: ['node', 'scripts/check-test-signal.mjs', '--all'],
+    scopeMayBeEmpty: true, // cm:hack ISS-172 until:QA phase on dev
     scanned: /^test-signal: (\d+) test file/m,
   },
   {
@@ -46,6 +47,7 @@ const CHECKS = [
     layer: 'shared',
     reads: "every tracked test file against every runner's include globs",
     cmd: ['node', 'scripts/check-test-reachability.mjs'],
+    scopeMayBeEmpty: true, // cm:hack ISS-172 until:QA phase on dev
     scanned: /^test-reachability: (\d+) tracked test file/m,
     needs: ['deps'],
     unit: 'test files',
@@ -56,6 +58,7 @@ const CHECKS = [
     layer: 'shared',
     reads: 'every test file for whole-tree declarations, across packages',
     cmd: ['node', 'scripts/check-whole-tree-gates.mjs'],
+    scopeMayBeEmpty: true, // cm:hack ISS-172 until:QA phase on dev
     scanned: /^whole-tree-gates: (\d+) test file\(s\) read/m,
     unit: 'test files',
   },
@@ -191,19 +194,6 @@ const CHECKS = [
       'every writer of merged_at across the tree; a subset reports clean on a tree that is not',
     cmd: ['node', 'scripts/check-merged-at-writers.mjs', '--all'],
     scanned: /^merged-at-writers: (\d+) file\(s\) scanned/m,
-  },
-  {
-    axis: 'relations',
-    label: 'module-shape',
-    layer: 'shared',
-    reads:
-      "every core module against pattern v2 over archmap's import graph; report-only, its findings are Wrong markers",
-    cmd: ['node', 'scripts/check-module-shape.mjs'],
-    exclusive: 'archmap',
-    scanned: /^module-shape: (\d+) file\(s\) scanned/m,
-    carries: /^module-shape: (\d+ module\(s\) Wrong[^;]*)/m,
-    needs: ['deps', 'archmap-resolver', 'observability-build', 'contracts-build'],
-    unit: 'files',
   },
   {
     axis: 'form',

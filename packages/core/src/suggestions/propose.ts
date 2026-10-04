@@ -11,6 +11,7 @@ import {
 import { and, eq, ne } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
+import { nearestFeedbackOf } from '../feedback/embeddings.js';
 import { approvalRefusalFor } from '../lib/approval.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import type { NamedRefusal } from '../project-config/respond.js';
@@ -156,7 +157,12 @@ export async function createSuggestion(input: {
   const target = await resolveTarget(projectId, input.target, input.actor.userId);
   const invalid = payloadRefusal(kind, target.type, input.payload);
   if (invalid) return { ok: false, refusals: [invalid] };
-  const payload = SUGGESTION_PAYLOADS[kind].schema.parse(input.payload);
+  const parsed = SUGGESTION_PAYLOADS[kind].schema.parse(input.payload);
+  // step triage takes the nearest item as an input: core stamps it, or says dedup did not run
+  const payload =
+    kind === 'feedback_triage' && target.type === 'feedback'
+      ? { ...parsed, dedup: await nearestFeedbackOf(projectId, target.id) }
+      : parsed;
   let id = '';
   const refusals = await inTx(async (tx) => {
     await lockTarget(tx, projectId, target);
@@ -171,7 +177,7 @@ export async function createSuggestion(input: {
         target,
         baseRevision: input.baseRevision,
         payload,
-        fingerprint: fingerprintOf(kind, payload),
+        fingerprint: fingerprintOf(kind, parsed),
         producerKind: input.producerKind,
         producerId: input.producerId,
         model: input.model ?? null,
@@ -203,7 +209,10 @@ export async function reviseSuggestion(input: {
   const first = await rowOf(db, projectId, input.id);
   if (first.kind === 'breakdown') {
     const access = await effectiveProjectRole(actor.userId, projectId);
-    const refusal = breakdownProposerRefusal({ ...actor, role: access?.role ?? null }, 'person');
+    const refusal = breakdownProposerRefusal(
+      { ...actor, role: access?.role ?? null },
+      actor.agency === 'agent' ? 'agent' : 'person',
+    );
     if (refusal) return { ok: false, refusals: [refusal] };
   }
   const forbidden = await approvalRefusalFor(
@@ -245,7 +254,7 @@ export async function reviseSuggestion(input: {
         baseRevision: row.baseRevision,
         payload,
         fingerprint,
-        producerKind: 'person',
+        producerKind: actor.agency === 'agent' ? 'agent' : 'person',
         producerId: actor.userId,
         model: null,
         conversationMessageId: null,

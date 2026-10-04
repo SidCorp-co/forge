@@ -166,10 +166,13 @@ export async function writeEffect(
 ): Promise<EffectWritten> {
   const target = targetOfRow(row);
   if (row.kind === 'feedback_triage' && target.type === 'feedback') {
+    const { dedup: _dedup, ...triage } = SUGGESTION_PAYLOADS.feedback_triage.schema.parse(
+      row.payload,
+    );
     const written = await triageIn(tx, {
       projectId,
       row: await feedbackRowIn(tx, projectId, target.id, true),
-      triage: SUGGESTION_PAYLOADS.feedback_triage.schema.parse(row.payload),
+      triage,
       actor,
       channel,
       fromSuggestionId: row.id,

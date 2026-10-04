@@ -1,3 +1,4 @@
+import { VERDICTS_WAIVED_FIELD } from '@forge/contracts/delivery-policy';
 import type { Tx } from '../../db/client.js';
 import type { IssueStatus, WaitingKind } from '../../db/schema.js';
 import type { WorkStep } from '../../db/schema-issue-work-state.js';
@@ -20,9 +21,15 @@ export interface MoveRecord {
   readonly leftStatus: IssueStatus | null;
   readonly waitingKind: WaitingKind | null;
   readonly needs: string | null;
+  /** The move passed the verdict gate only because the project does not require verdicts. */
+  readonly verdictsWaived?: boolean;
 }
 
-export function moveOf(input: TransitionWriteInput, reopenCount: number): MoveRecord {
+export function moveOf(
+  input: TransitionWriteInput,
+  reopenCount: number,
+  verdictsWaived = false,
+): MoveRecord {
   const { actor, options, fromStatus, toStatus } = input;
   return {
     issueId: input.issue.id,
@@ -37,6 +44,7 @@ export function moveOf(input: TransitionWriteInput, reopenCount: number): MoveRe
     leftStatus: PARK_STATUSES.includes(fromStatus) ? input.leftStatus : fromStatus,
     waitingKind: toStatus === 'needs_info' ? (options.waitingKind ?? null) : null,
     needs: options.needs?.trim() || null,
+    verdictsWaived,
   };
 }
 
@@ -52,6 +60,7 @@ export function transitionRecordFields(move: MoveRecord): RecordEventField[] {
     ...field('step', move.step),
     ...field('reason', move.reason),
     ...field('recovery', move.recovery ? 'true' : null),
+    ...field(VERDICTS_WAIVED_FIELD, move.verdictsWaived ? 'true' : null),
   ];
 }
 
