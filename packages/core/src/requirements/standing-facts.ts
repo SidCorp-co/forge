@@ -22,7 +22,7 @@ export async function issueCriteriaOf(
 ): Promise<StandingIssueCriterion[]> {
   if (issueIds.length === 0) return [];
   const rows = (await db.execute(sql`
-    SELECT c.issue_id, c.n, c.requirement_criterion_id, v.verdict
+    SELECT c.issue_id, c.n, c.requirement_criterion_id, v.verdict, v.verdict_at
       FROM issue_criteria c
       LEFT JOIN LATERAL (
         SELECT cv.verdict, cv.created_at AS verdict_at FROM criterion_verdicts cv
@@ -48,6 +48,7 @@ export async function issueCriteriaOf(
       n: r.n,
       requirementCriterionId: r.requirement_criterion_id,
       verdict: voided ? null : r.verdict,
+      verdictAt: voided || !r.verdict_at ? null : new Date(r.verdict_at),
     };
   });
 }
@@ -111,4 +112,20 @@ export async function latestContractPinsOf(ids: readonly string[]) {
     contractSlug: r.contract_slug,
     contractVersion: r.contract_version,
   }));
+}
+
+/** When each closed issue last moved to closed, from its kernel transitions. */
+export async function closedAtOf(issueIds: readonly string[]): Promise<Map<string, Date>> {
+  if (issueIds.length === 0) return new Map();
+  const rows = (await db.execute(sql`
+    SELECT entity_id, max(created_at) AS at
+      FROM kernel_transitions
+     WHERE entity = 'issue'
+       AND to_status = 'closed'
+       AND entity_id IN (${sql.join(
+         issueIds.map((id) => sql`${id}::uuid`),
+         sql`, `,
+       )})
+     GROUP BY entity_id`)) as unknown as Array<{ entity_id: string; at: Date | string }>;
+  return new Map([...rows].map((r) => [r.entity_id, new Date(r.at)]));
 }
