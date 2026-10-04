@@ -1,13 +1,26 @@
-// Listwise rerank of a fused hybrid candidate set by the system-job fast model
-// (retrieval v3 phase 1, ISS-905). One chat completion orders every candidate;
-// `topK` is applied here, after the model answered. Anything the model gets
-// wrong — prose, an index out of range, a duplicate, a transport failure —
-// leaves the RRF order untouched and is reported as `reranked: false`; this
-// module never throws.
+// Pointwise rerank of a fused hybrid candidate set by the system-job fast model. Each candidate is
+// graded on its own against the query, as a typed answer the AI SDK parses through a zod schema, so
+// one unreadable answer costs that candidate's grade and never the reading of a whole list. The
+// hits are ordered by grade only when every candidate was graded; otherwise they keep the fused
+// (RRF) order and the result says so as a degraded rerank, with the reason and how many went
+// ungraded. Either way the result names the path that ordered it and the model version that graded.
+// This module never throws.
 
 import { createHash, randomInt } from 'node:crypto';
+import {
+  RERANK_GRADES,
+  type RerankDegradedReason,
+  type RerankGrade,
+  type RerankReport,
+} from '@forge/contracts/memory';
+import { z } from 'zod';
 import { env } from '../config/env.js';
-import { callFastModel, fastModelName } from '../integrations/llm/index.js';
+import {
+  callFastModelObject,
+  type FastModelMiss,
+  fastModelName,
+} from '../integrations/llm/index.js';
+import { createLimiter } from '../lib/bounded-concurrency.js';
 import { logger } from '../observability/logger.js';
 import type { MemoryHit } from './search.js';
 
@@ -15,8 +28,12 @@ export const RERANK_POOL_FACTOR = 3;
 export const RERANK_POOL_CAP = 50;
 export const RERANK_HOLDOUT_ONE_IN = 5;
 const CANDIDATE_CHARS = 1500;
+const GRADE_MAX_TOKENS = 64;
+const CONCURRENT_GRADES = 8;
 const CACHE_TTL_MS = 5 * 60_000;
-const CACHE_MAX = 500;
+const CACHE_MAX = 2000;
+
+const gradeAnswer = z.strictObject({ relevance: z.enum(RERANK_GRADES) });
 
 export interface RerankInput {
   query: string;
@@ -26,7 +43,7 @@ export interface RerankInput {
 
 export interface RerankResult {
   hits: MemoryHit[];
-  reranked: boolean;
+  report: RerankReport;
   rerankMs: number;
 }
 
@@ -35,7 +52,7 @@ export function rerankModel(): string {
   return env.RERANK_MODEL ?? fastModelName();
 }
 
-/** How many fused candidates to rank so the model can lift a hit RRF left just outside `topK`. */
+/** How many fused candidates to grade so the model can lift a hit RRF left just outside `topK`. */
 export function rerankPoolSize(topK: number): number {
   return Math.min(topK * RERANK_POOL_FACTOR, RERANK_POOL_CAP);
 }
@@ -48,61 +65,40 @@ export function shownText(hit: MemoryHit): string {
   return hit.matchedChunk?.text ?? hit.text;
 }
 
-export function buildRerankPrompt(query: string, texts: string[]): string {
-  const blocks = texts.map((t, i) => `[${i + 1}]\n${t.slice(0, CANDIDATE_CHARS)}`).join('\n\n');
+export function buildGradePrompt(query: string, text: string): string {
   return [
-    'Rank the numbered passages by how well each answers the query. Reply with ONLY a JSON array of passage numbers, most relevant first. Leave out a number only when its passage has nothing to do with the query.',
+    'Grade how well the passage answers the query.',
+    `Answer with ONLY a JSON object of the form {"relevance": "<grade>"}, where <grade> is one of ${RERANK_GRADES.map((g) => `"${g}"`).join(', ')}: "none" when the passage has nothing to do with the query, "strong" when it answers it directly.`,
     `Query: ${query}`,
-    'Passages:',
-    blocks,
-    'JSON array:',
+    `Passage:\n${text.slice(0, CANDIDATE_CHARS)}`,
   ].join('\n\n');
 }
 
-/** Parse the model's answer into 0-based positions; null when it is not a clean permutation of a subset of 1..count. */
-export function parseRerankOutput(raw: string, count: number): number[] | null {
-  const match = raw.match(/\[[\d,\s]*\]/);
-  if (!match) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(match[0]);
-  } catch {
-    return null;
-  }
-  if (!Array.isArray(parsed)) return null;
-  const seen = new Set<number>();
-  const order: number[] = [];
-  for (const n of parsed) {
-    if (typeof n !== 'number' || !Number.isInteger(n) || n < 1 || n > count || seen.has(n)) {
-      return null;
-    }
-    seen.add(n);
-    order.push(n - 1);
-  }
-  return order;
+/** Candidates by grade, strongest first; equal grades keep their fused (RRF) order. */
+export function orderByGrade<T>(candidates: T[], grades: RerankGrade[]): T[] {
+  const rank = (g: RerankGrade) => RERANK_GRADES.indexOf(g);
+  return candidates
+    .map((c, i) => ({ c, i, r: rank(grades[i] as RerankGrade) }))
+    .sort((a, b) => b.r - a.r || a.i - b.i)
+    .map((x) => x.c);
 }
 
-/** Ranked candidates first in the model's order, then every omitted one in its original (RRF) order. */
-export function applyRerankOrder<T>(candidates: T[], order: number[]): T[] {
-  const placed = new Set(order);
-  const ranked = order.map((i) => candidates[i]).filter((c): c is T => c !== undefined);
-  const omitted = candidates.filter((_, i) => !placed.has(i));
-  return [...ranked, ...omitted];
+export function gradeCacheKey(model: string, query: string, hit: MemoryHit): string {
+  return createHash('sha256')
+    .update(model)
+    .update('|')
+    .update(query)
+    .update('|')
+    .update(hit.id)
+    .update(':')
+    .update(shownText(hit))
+    .digest('hex');
 }
 
-export function rerankCacheKey(model: string, query: string, hits: MemoryHit[]): string {
-  const h = createHash('sha256');
-  h.update(model).update('|').update(query);
-  for (const hit of hits) {
-    h.update('|').update(hit.id).update(':');
-    h.update(createHash('sha256').update(shownText(hit)).digest('hex'));
-  }
-  return h.digest('hex');
-}
+type Graded = { grade: RerankGrade; modelId: string };
+const cache = new Map<string, Graded & { at: number }>();
 
-const cache = new Map<string, { order: number[]; at: number }>();
-
-function cacheGet(key: string, now: number): number[] | undefined {
+function cacheGet(key: string, now: number): Graded | undefined {
   const entry = cache.get(key);
   if (!entry) return undefined;
   if (now - entry.at > CACHE_TTL_MS) {
@@ -111,11 +107,11 @@ function cacheGet(key: string, now: number): number[] | undefined {
   }
   cache.delete(key);
   cache.set(key, entry);
-  return entry.order;
+  return entry;
 }
 
-function cacheSet(key: string, order: number[], now: number): void {
-  cache.set(key, { order, at: now });
+function cacheSet(key: string, graded: Graded, now: number): void {
+  cache.set(key, { ...graded, at: now });
   if (cache.size > CACHE_MAX) {
     const oldest = cache.keys().next().value;
     if (oldest !== undefined) cache.delete(oldest);
@@ -126,42 +122,77 @@ export function resetRerankCache(): void {
   cache.clear();
 }
 
-export function maxTokensFor(count: number): number {
-  return Math.max(32, count * 4 + 16);
-}
+const limiter = createLimiter(CONCURRENT_GRADES);
 
-async function orderFromModel(query: string, hits: MemoryHit[]): Promise<number[] | null> {
-  const model = rerankModel();
-  const key = rerankCacheKey(model, query, hits);
-  const now = Date.now();
-  const cached = cacheGet(key, now);
+async function gradeOne(
+  model: string,
+  query: string,
+  hit: MemoryHit,
+): Promise<Graded | { miss: FastModelMiss; detail: string }> {
+  const key = gradeCacheKey(model, query, hit);
+  const cached = cacheGet(key, Date.now());
   if (cached) return cached;
-  const raw = await callFastModel(
-    { surface: 'memory' },
-    buildRerankPrompt(query, hits.map(shownText)),
-    maxTokensFor(hits.length),
-    { model },
+  const answer = await limiter.run(() =>
+    callFastModelObject({ surface: 'memory' }, buildGradePrompt(query, shownText(hit)), gradeAnswer, {
+      maxTokens: GRADE_MAX_TOKENS,
+      model,
+    }),
   );
-  if (raw === null) return null;
-  const order = parseRerankOutput(raw, hits.length);
-  if (order === null) {
-    logger.warn({ model, sample: raw.slice(0, 120) }, 'memory.rerank: output was not a ranking');
-    return null;
-  }
-  cacheSet(key, order, now);
-  return order;
+  if (!answer.ok) return { miss: answer.miss, detail: answer.detail };
+  const graded = { grade: answer.value.relevance, modelId: answer.modelId };
+  cacheSet(key, graded, Date.now());
+  return graded;
 }
 
-/** Rerank `hits` and cut to `topK`; on any failure the RRF order is cut to `topK` instead. */
+/** The commonest miss names the degradation; a tie goes to the first one met. */
+function dominantMiss(misses: FastModelMiss[]): RerankDegradedReason {
+  const counts = new Map<FastModelMiss, number>();
+  for (const m of misses) counts.set(m, (counts.get(m) ?? 0) + 1);
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] as RerankDegradedReason;
+}
+
+/** Grade `hits` and cut to `topK`; when any candidate went ungraded the RRF order is cut instead and reported as degraded. */
 export async function rerankHits(input: RerankInput): Promise<RerankResult> {
   const startedAt = Date.now();
-  const order = input.hits.length > 1 ? await orderFromModel(input.query, input.hits) : null;
-  const rerankMs = Date.now() - startedAt;
-  if (order === null) {
-    return { hits: input.hits.slice(0, input.topK), reranked: false, rerankMs };
+  const model = rerankModel();
+  if (input.hits.length <= 1) {
+    return {
+      hits: input.hits.slice(0, input.topK),
+      report: { path: 'rrf' },
+      rerankMs: Date.now() - startedAt,
+    };
   }
-  const hits = applyRerankOrder(input.hits, order)
+  const outcomes = await Promise.all(input.hits.map((hit) => gradeOne(model, input.query, hit)));
+  const rerankMs = Date.now() - startedAt;
+  const grades: RerankGrade[] = [];
+  const misses: FastModelMiss[] = [];
+  let modelId = model;
+  for (const o of outcomes) {
+    if ('miss' in o) misses.push(o.miss);
+    else {
+      grades.push(o.grade);
+      modelId = o.modelId;
+    }
+  }
+  if (misses.length > 0) {
+    const reason = dominantMiss(misses);
+    const first = outcomes.find((o): o is { miss: FastModelMiss; detail: string } => 'miss' in o);
+    logger.warn(
+      { model, reason, unscored: misses.length, candidates: input.hits.length, detail: first?.detail },
+      'memory.rerank: degraded to the fused order, a candidate went ungraded',
+    );
+    return {
+      hits: input.hits.slice(0, input.topK),
+      report: {
+        path: 'rrf',
+        model: modelId,
+        degraded: { reason, unscored: misses.length, candidates: input.hits.length },
+      },
+      rerankMs,
+    };
+  }
+  const hits = orderByGrade(input.hits, grades)
     .slice(0, input.topK)
     .map((hit, i) => ({ ...hit, rerankPosition: i }));
-  return { hits, reranked: true, rerankMs };
+  return { hits, report: { path: 'model', model: modelId }, rerankMs };
 }
