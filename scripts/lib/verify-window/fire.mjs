@@ -1,6 +1,6 @@
 /**
  * Whether a window fires, and on what. The thresholds are the project's, named as the release train
- * names them (`docs/proposals/release-train.md`): `size`, `minutes`, and an optional `maxSize`
+ * names them: `size`, `minutes`, and an optional `maxSize`
  * ceiling. Where the project declares none there is no answer, because a default would silently
  * change a project that never asked for one.
  */

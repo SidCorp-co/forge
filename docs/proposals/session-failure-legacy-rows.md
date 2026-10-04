@@ -1,5 +1,9 @@
 # Session rows written before the cause set still hold prose in `failure_reason`
 
+**Removed when:** one migration moves every legacy `failure_reason` sentence into `failure_detail`
+and the read-time fold is removed, which dev ISS-143 carries. The change that lands it deletes this
+file.
+
 **Status:** owed, unbuilt. ISS-1157 took it off the org Overview by folding at read time. The rows
 themselves are unchanged.
 

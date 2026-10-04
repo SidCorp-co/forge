@@ -1,5 +1,9 @@
 # What the conversation surface still loses around a turn
 
+**Removed when:** a turn abandoned at its timeout writes its own `timed-out` window decision, the
+fallback reply follows the room's language, and the person-stop and dock-draft questions are
+answered on that issue, which dev ISS-129 carries. The change that lands it deletes this file.
+
 ISS-1146's independent judge, at deployment `5adef4c`, recorded three losses. None of them fails a
 criterion, and none of them is repaired on `ISS-1146-pair-stop`. The rules do not allow a residual
 to be filed as a new issue, so they are written here, each with the reason the repair branch left it.

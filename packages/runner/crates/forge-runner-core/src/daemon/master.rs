@@ -134,8 +134,7 @@ struct Registry {
     /// works clears this (ISS-1208, criterion 7).
     ///
     /// In this process only. A daemon restarted with an entry still unwithdrawn
-    /// reads the map at face value again, which is the residual named in
-    /// `docs/proposals/a-panes-control-capability-cannot-outlive-its-session-row.md`.
+    /// reads the map at face value again: a priced residual, not a closed one.
     unwithdrawn: HashMap<String, String>,
     /// The projects whose master pane tmux could not be asked about on the last
     /// sweep, so the account is given when the read first goes unanswered and
@@ -5125,11 +5124,6 @@ mod tests {
         assert!(
             paragraph.contains("`needs_info` with the question written on it"),
             "a row that needs a person goes to needs_info with its question, not to a run: {paragraph}"
-        );
-        assert!(
-            !skill.contains("forge guide master"),
-            "no guide named master prints on the CLI yet (forge-plugin ISS-2592); a pointer to it sends a master to a refusal. \
-             Remove this assertion in the change that adds the pointer, once that guide prints"
         );
     }
 

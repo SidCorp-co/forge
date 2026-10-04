@@ -1,5 +1,8 @@
 # A message refused at a live pane waits, and nobody counts the wait
 
+**Removed when:** a pending session-send that has stayed `unknown` past a declared deadline produces
+a visible outcome, which dev ISS-133 carries. The change that lands it deletes this file.
+
 Met while working ISS-1265, which stopped the runner reporting a refused message as a session that
 ended. Neither residual below is caused by that change, and neither is in its reach; both are
 written down here rather than filed, because a residual out of reach leaves as a line in

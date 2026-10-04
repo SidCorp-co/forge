@@ -7,7 +7,7 @@ import type { ResidentMaster as ResidentMasterRow } from "../types";
  * The resident master, on the surface that governs the box (ISS-1118). What
  * core holds is a REGISTRATION and not a pane, so "last reported" is printed
  * rather than smoothed into a green dot; the control is named and not offered,
- * and `docs/proposals/master-standing-at-core.md` says why.
+ * because the box ledger is the only writer of a master's standing.
  */
 export function ResidentMaster({
 	master,

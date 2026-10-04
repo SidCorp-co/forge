@@ -1,5 +1,9 @@
 # A presigned upload whose response is lost is stored twice
 
+**Removed when:** the upload ticket carries a caller-minted operation id and the door answers a
+replay with the attachment it already stored, which dev ISS-131 carries. The change that lands it
+deletes this file.
+
 ISS-1146 gave web conversations a file door built on the presigned ticket service that issues,
 comments and agent sessions already use. A review of that change (consult `3d3fbe`, finding F7)
 found a defect in the door itself rather than in the conversation half of it. It is not a new
