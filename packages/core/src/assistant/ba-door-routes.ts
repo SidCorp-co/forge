@@ -10,7 +10,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { openRequirementRoom } from './service.js';
 
 export const baDoorRoutes = new Hono<{ Variables: AuthVars }>();
@@ -32,7 +32,7 @@ const param = zValidator(
 baDoorRoutes.post('/:id/requirements/:req/assistant', param, async (c) => {
   const { id: projectId, req } = c.req.valid('param');
   const userId = c.get('userId');
-  await requireCan({ userId }, 'project.write', projectId);
+  await requireCan(actorFor(userId), 'project.write', projectResource(projectId));
   const { conversation, reused } = await openRequirementRoom(projectId, req, userId);
   return c.json({ conversation, reused }, reused ? 200 : 201);
 });

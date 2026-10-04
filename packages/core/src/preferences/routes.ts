@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { answerStyles } from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireOrgCan } from '../permissions/index.js';
+import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import { readMePreferences, readPreferences } from './read.js';
 import {
   listPreferenceChanges,
@@ -138,7 +138,7 @@ preferenceRoutes.patch(
     }
 
     if (patch.activeOrgId != null) {
-      await requireOrgCan({ userId }, 'org.read', patch.activeOrgId);
+      await requireOrgCan(actorFor(userId), 'org.read', orgResource(patch.activeOrgId));
     }
 
     return c.json(await writeMePreferences(userId, patch));

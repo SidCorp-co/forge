@@ -139,6 +139,9 @@ export function createMcpServer(ctx: McpContext): Server {
     const patScope = {
       projectIds: allow,
       tokenId: principal.tokenId,
+      userId: principal.userId,
+      agency: principal.agency,
+      onBehalfOf: principal.onBehalfOf,
       grant: principal.permissions ?? null,
       scopes: principal.scopes,
     };

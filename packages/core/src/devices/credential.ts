@@ -4,7 +4,11 @@ import { deviceTokenNameFor } from '../credentials/pat-format.js';
 import { PAT_GRANT_ALL } from '../credentials/pat-permissions.js';
 import { env } from '../config/env.js';
 import { db, type Tx } from '../db/client.js';
-import { agentCredentialFence, withAgentFenceLock } from '../orgs/agent-fence.js';
+import {
+  agentCredentialFence,
+  agentCredentialGrant,
+  withAgentFenceLock,
+} from '../orgs/agent-fence.js';
 
 const DEVICE_TOKEN_RATE_LIMIT_PER_MINUTE = 600;
 
@@ -48,7 +52,7 @@ export async function issueDeviceCredential(args: {
     return db.transaction(async (tx) => {
       await supersede(tx);
       const { plaintext } = await mintPat(
-        { ...common, permissions: PAT_GRANT_ALL, projectIds: [] },
+        { ...common, permissions: PAT_GRANT_ALL, projectIds: [], onBehalfOf: args.holderUserId },
         tx,
       );
       return plaintext;
@@ -57,7 +61,8 @@ export async function issueDeviceCredential(args: {
   return withAgentFenceLock(args.holderUserId, async (tx) => {
     await supersede(tx);
     const fence = await agentCredentialFence(args.holderUserId, tx);
-    const { plaintext } = await mintPat({ ...common, permissions: PAT_GRANT_ALL, ...fence }, tx);
+    const permissions = await agentCredentialGrant(args.holderUserId, tx);
+    const { plaintext } = await mintPat({ ...common, permissions, ...fence }, tx);
     return plaintext;
   });
 }

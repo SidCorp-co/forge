@@ -14,7 +14,7 @@ import { allowedSetForTarget, resolveAttachmentMime, safeName } from '../lib/att
 import { dataPolicyOf, egressAs } from '../lib/data-egress.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../observability/logger.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { askQuestion } from '../questions/write.js';
 import { getStorage } from '../storage/index.js';
 import { type FeedbackActor, feedbackKey, phaseOfRow, rowIn } from './read.js';
@@ -30,7 +30,7 @@ export async function askClarification(input: {
   needed: string;
 }): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
-  await requireCan({ userId: actor.userId }, 'project.write', projectId);
+  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const row = await rowIn(db, projectId, input.ref);
   const [open] = await db
     .select({ id: agentQuestions.id })
@@ -65,7 +65,7 @@ export async function addAttachment(input: {
   contentBase64: string;
 }): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
-  await requireCan({ userId: actor.userId }, 'project.write', projectId);
+  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const row = await rowIn(db, projectId, input.ref);
   const invalid = (detail: string): FeedbackOutcome => ({
     ok: false,
@@ -149,7 +149,7 @@ export async function attachmentBytes(input: {
   userId: string;
   agency: ActorAgency;
 }) {
-  await requireCan({ userId: input.userId }, 'project.read', input.projectId);
+  await requireCan(actorFor(input.userId), 'project.read', projectResource(input.projectId));
   const row = await rowIn(db, input.projectId, input.ref);
   const [a] = await db
     .select()

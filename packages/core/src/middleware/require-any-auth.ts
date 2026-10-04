@@ -13,6 +13,8 @@ export type AnyAuthVars = {
   agency?: ActorAgency;
   principal?: 'user' | 'device' | 'pat';
   patDeviceId?: string;
+  patTokenId?: string;
+  onBehalfOf?: string;
 };
 
 const unauth = (message: string) =>
@@ -27,7 +29,9 @@ export function requireAnyAuth(): MiddlewareHandler<{ Variables: AnyAuthVars }> 
       c.set('userId', principal.userId);
       c.set('principal', 'pat');
       c.set('agency', principal.agency);
+      c.set('patTokenId', principal.tokenId);
       if (principal.deviceId) c.set('patDeviceId', principal.deviceId);
+      if (principal.onBehalfOf) c.set('onBehalfOf', principal.onBehalfOf);
       return runWithPatScope(scope, () => next());
     }
 

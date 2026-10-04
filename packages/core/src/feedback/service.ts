@@ -25,7 +25,7 @@ import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
 import { deleteFeedbackMockups } from '../mockups/index.js';
 import { logger } from '../observability/logger.js';
-import { permissionFactsOf, requireCan } from '../permissions/index.js';
+import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { deleteFeedbackQuestions } from '../questions/index.js';
 import { getStorage } from '../storage/index.js';
 import { redactFeedbackSuggestions } from '../suggestions/index.js';
@@ -217,7 +217,7 @@ export async function createFeedback(input: {
   dedupKey?: string | undefined;
 }): Promise<FeedbackOutcome> {
   const { projectId, actor, request } = input;
-  await requireCan({ userId: actor.userId }, 'project.write', projectId);
+  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const prepared = await preparedFeedback(projectId, actor, request);
   if (!prepared.ok) return prepared;
   let id = '';
@@ -272,7 +272,7 @@ async function personalAct(
   act: 'verified' | 'reopened',
 ): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
-  await requireCan({ userId: actor.userId }, 'project.read', projectId);
+  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
   const forbidden = verifyActRefusal(
     await roleFacts(actor, projectId),
     act === 'verified' ? 'verifying feedback' : 'reopening feedback',
@@ -335,7 +335,7 @@ export async function redactReporterData(input: {
   actor: FeedbackActor;
 }): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
-  await requireCan({ userId: actor.userId }, 'project.read', projectId);
+  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
   const forbidden = redactActRefusal(await roleFacts(actor, projectId));
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const first = await rowIn(db, projectId, input.ref);

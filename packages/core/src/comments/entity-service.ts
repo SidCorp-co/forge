@@ -41,7 +41,7 @@ import {
   scopeRefusal,
   sitsOn,
 } from './entity-rules.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 
 export type EntityCommentOutcome =
@@ -130,7 +130,7 @@ async function viewIn(
 }
 
 const factsOf = (actor: EntityCommentActor, projectId: string) =>
-  requireCan({ userId: actor.userId }, 'project.read', projectId);
+  requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
 
 export async function postEntityComment(input: {
   projectId: string;

@@ -9,7 +9,7 @@ import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { DESIGN_DECISIONS, DESIGN_REASON_MAX } from './design.js';
 import {
   type DesignOutcome,
@@ -355,7 +355,7 @@ workflowRoutes.post(
 
 workflowRoutes.get('/:id/workflows/:workflow/observations', workflowRefParam, async (c) => {
   const { id, workflow } = c.req.valid('param');
-  await requireCan({ userId: c.get('userId') }, 'project.read', id);
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   return c.json(await listObservations(id, workflow));
 });
 
@@ -377,7 +377,7 @@ workflowRoutes.get(
   ),
   async (c) => {
     const { id, workflow, at } = c.req.valid('param');
-    await requireCan({ userId: c.get('userId') }, 'project.read', id);
+    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
     return c.json({
       observation: await egressForRequest(
         c.get('agency'),

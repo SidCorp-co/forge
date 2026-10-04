@@ -5,7 +5,7 @@ import type {
 import type { OutboxEventType } from '@forge/contracts/outbox-events';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 type PgTime = Date | string;
 
@@ -65,7 +65,7 @@ export async function listDeadDeliveries(input: {
   limit: number;
   offset: number;
 }): Promise<DeadOutboxDeliveriesResponse> {
-  await requireCan({ userId: input.userId }, 'project.read', input.projectId);
+  await requireCan(actorFor(input.userId), 'project.read', projectResource(input.projectId));
   return readDead(input.projectId, input.limit, input.offset);
 }
 

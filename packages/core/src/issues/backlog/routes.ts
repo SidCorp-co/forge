@@ -24,7 +24,7 @@ import { Cancellation } from './cancellation.js';
 import { emitBacklogStream } from './emitter.js';
 import { orderingSource } from './ordering-source.js';
 import { countMatching } from './page-read.js';
-import { requireCan } from '../../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
 
 /** What `forge alike` calls open: everything the tracker has not settled. */
 export const UNSETTLED_STATUSES: IssueStatus[] = issueStatuses.filter(
@@ -120,7 +120,7 @@ backlogStreamRoutes.get(
   async (c) => {
     const { id } = c.req.valid('param');
     const q = c.req.valid('query');
-    await requireCan({ userId: c.get('userId') }, 'project.read', id);
+    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
 
     const statuses = q.status ?? [...TAKEABLE_STATUSES];
     const total = await countMatching(id, statuses);
@@ -151,7 +151,7 @@ backlogStreamRoutes.get(
   async (c) => {
     const { id } = c.req.valid('param');
     const q = c.req.valid('query');
-    await requireCan({ userId: c.get('userId') }, 'project.read', id);
+    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
 
     const statuses = q.status ?? UNSETTLED_STATUSES;
     const total = await countMatching(id, statuses);

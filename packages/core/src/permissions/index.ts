@@ -1,25 +1,31 @@
 export type {
   ApprovalResource,
   OrgPermission,
+  OrgResource,
   Permission,
   PermissionRefusal,
-  PermissionScope,
+  PermissionResource,
   ProjectPermission,
+  ProjectResource,
 } from '@forge/contracts/permissions';
+export { type Actor, actorFor } from './actor.js';
 export {
   can,
   heldPermissions,
   holds,
   holdsOrg,
+  orgResource,
   type PermissionActor,
   type PermissionFacts,
   permissionFactsOf,
   permissionRefusal,
   permissionRefusalFor,
+  projectResource,
   requireCan,
   requireHeld,
   requireOrgCan,
   requireOrgHeld,
+  visibleFilter,
 } from './can.js';
 export {
   addOrgMember,

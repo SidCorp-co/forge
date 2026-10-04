@@ -2,7 +2,7 @@ import { findTemplate, type WorkflowTemplate } from '@forge/contracts/workflow-t
 import { HTTPException } from 'hono/http-exception';
 import { templatesOf } from './service.js';
 import { TEMPLATE_EXAMPLES } from './template-examples.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 /** One template as served: the template, the built-in example drawn in it (if any), and whose it is. */
 export function templateView(template: WorkflowTemplate, origin: 'builtin' | 'project') {
@@ -28,7 +28,7 @@ export function templateNotFound(id: string, version: string, known: readonly Wo
 
 /** The templates a project may draw in — the built-ins, then its own — read with its access. */
 export async function listProjectTemplatesAs(userId: string, projectId: string) {
-  await requireCan({ userId }, 'project.read', projectId);
+  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
   const { templates, projectKeys } = await templatesOf(projectId);
   return templates.map((t) =>
     templateSummary(t, projectKeys.has(`${t.id}@${t.version}`) ? 'project' : 'builtin'),
@@ -41,7 +41,7 @@ export async function readProjectTemplateAs(
   templateId: string,
   version: string,
 ) {
-  await requireCan({ userId }, 'project.read', projectId);
+  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
   const { templates, projectKeys } = await templatesOf(projectId);
   const found = /^[1-9][0-9]*$/.test(version)
     ? findTemplate(templates, { id: templateId, version: Number(version) })

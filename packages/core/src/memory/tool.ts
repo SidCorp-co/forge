@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { memorySources } from '../db/schema.js';
 import { EmbeddingUnavailableError } from '../integrations/embeddings/index.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { memoryFeedbackInputSchema, runMemoryFeedback } from './feedback-service.js';
 import { getMemoryInputSchema, runMemoryGet } from './get-service.js';
 import { deleteMemory } from './indexer.js';
@@ -75,7 +75,7 @@ export const forgeMemoryTool: ContextScopedMcpToolFactory = ({ principal }) => (
 
     if (action === 'search') {
       const input = searchInputSchema.parse(rest);
-      await requireCan({ userId: principal.userId }, 'project.read', input.projectId);
+      await requireCan(actorFor(principal.userId), 'project.read', projectResource(input.projectId));
       try {
         return await runMemorySearch({ ...input, surface: 'agent' });
       } catch (err) {
@@ -87,25 +87,25 @@ export const forgeMemoryTool: ContextScopedMcpToolFactory = ({ principal }) => (
 
     if (action === 'get') {
       const input = getMemoryInputSchema.parse(rest);
-      await requireCan({ userId: principal.userId }, 'project.read', input.projectId);
+      await requireCan(actorFor(principal.userId), 'project.read', projectResource(input.projectId));
       return runMemoryGet(input);
     }
 
     if (action === 'delete') {
       const input = deleteInputSchema.parse(rest);
-      await requireCan({ userId: principal.userId }, 'project.write', input.projectId);
+      await requireCan(actorFor(principal.userId), 'project.write', projectResource(input.projectId));
       const removed = await deleteMemory(input.projectId, input.source, input.sourceRef);
       return { deleted: removed > 0 };
     }
 
     if (action === 'feedback') {
       const input = memoryFeedbackInputSchema.parse(rest);
-      await requireCan({ userId: principal.userId }, 'project.write', input.projectId);
+      await requireCan(actorFor(principal.userId), 'project.write', projectResource(input.projectId));
       return await runMemoryFeedback(input);
     }
 
     const input = writeMemoryInputSchema.parse(rest);
-    await requireCan({ userId: principal.userId }, 'project.write', input.projectId);
+    await requireCan(actorFor(principal.userId), 'project.write', projectResource(input.projectId));
     try {
       return await runMemoryWrite(input);
     } catch (err) {

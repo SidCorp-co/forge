@@ -25,7 +25,7 @@ import {
   SentryRefusal,
 } from '../integrations/sentry/index.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { resolveEffectiveProjectId } from '../projects/index.js';
 
 const inputSchema = z
@@ -137,7 +137,7 @@ async function dispatchAction(input: Input, ctx: McpContext): Promise<Record<str
     );
   }
   const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-  await requireCan({ userId: ctx.principal.userId }, 'project.read', projectId);
+  await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(projectId));
 
   if (input.action === 'get') {
     const issue = await readProjectSentryIssue({

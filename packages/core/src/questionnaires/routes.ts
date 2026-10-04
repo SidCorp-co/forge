@@ -13,7 +13,7 @@ import { actorOf, refusedOnboarding } from '../onboarding/routes.js';
 import { afterOnboardingSubmit, onboardingSubmittedIn } from '../onboarding/service.js';
 import { batchIn, batchView, questionnairesAs } from './read.js';
 import { submitAnswers } from './service.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 export const questionnaireRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -29,7 +29,7 @@ const batchParam = zValidator('param', z.object({ id: z.uuid(), bid: z.uuid() })
 
 questionnaireRoutes.get('/:id/questionnaires/:bid', batchParam, async (c) => {
   const { id, bid } = c.req.valid('param');
-  await requireCan({ userId: c.get('userId') }, 'project.read', id);
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const out = await questionnairesAs(actorOf(c), id, [await batchView(db, id, bid)]);
   if (!out.ok) return refusedOnboarding(c, [out.refusal]);
   const [questionnaire] = out.value;

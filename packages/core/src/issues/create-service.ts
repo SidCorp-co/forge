@@ -8,7 +8,7 @@ import { type IssueStatus, issueLabels, issues } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
-import { permissionRefusalFor } from '../permissions/index.js';
+import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
 import type { Actor } from '../pipeline/activity.js';
 import { leaseWriteTakes } from '../pipeline/session-claim.js';
 import {
@@ -146,9 +146,9 @@ async function birthStatus(
 ): Promise<CreateEntryStatus> {
   if (named === 'draft') return 'draft';
   const denied = await permissionRefusalFor(
-    { userId },
-    projectId,
+    actorFor(userId),
     ISSUE_ADMIT_PERMISSION,
+    projectResource(projectId),
     'filing an issue at `open`',
   );
   if (!denied) return 'open';

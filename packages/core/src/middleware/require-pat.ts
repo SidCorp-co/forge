@@ -37,6 +37,8 @@ export type PatPrincipal = {
    * a device is a registry row rather than a credential (ISS-932).
    */
   deviceId: string | null;
+  /** The person this token acts for, where it is not its holder's own (`personalAccessTokens.onBehalfOf`). */
+  onBehalfOf: string | null;
 };
 
 export type McpPrincipal = PatPrincipal;

@@ -24,7 +24,7 @@ import { dataPolicyOf, egressAt, storedText } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { Refusal } from '../lib/refusal.js';
 import { transition } from '../lifecycle/transition.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { requirementKey, rowIn as requirementRowIn } from '../requirements/read.js';
 import { linkIssueRefusal } from '../requirements/rules.js';
 import { createRequirementIn, lockRequirements } from '../requirements/service.js';
@@ -428,7 +428,7 @@ export async function triageFeedback(input: {
   channel: FeedbackChannel;
 }): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
-  await requireCan({ userId: actor.userId }, 'project.read', projectId);
+  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
   const forbidden = decideActRefusal(await roleFacts(actor, projectId), 'picking a feedback route');
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const first = await rowIn(db, projectId, input.ref);
@@ -457,7 +457,7 @@ export async function routeFeedback(input: {
   channel: FeedbackChannel;
 }): Promise<FeedbackOutcome> {
   const { projectId, actor, write } = input;
-  await requireCan({ userId: actor.userId }, 'project.read', projectId);
+  await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
   const forbidden = decideActRefusal(
     await roleFacts(actor, projectId),
     "writing a feedback case's route",

@@ -10,7 +10,7 @@ import { principalAgency } from '../issues/index.js';
 import { buildListEnvelope, overfetch } from '../lib/list-envelope.js';
 import { principalUserId } from '../lib/tool.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { countRunJobsByStatus, listPipelineRuns, readPipelineRun } from './runs.js';
 import { cancelPipelineRun, pausePipelineRun, resumePipelineRun } from './runs-control.js';
 import { laneOf } from './runs-lane.js';
@@ -34,7 +34,7 @@ export const pipelineRunsCancelInputSchema = z
 async function loadRunForPrincipal(principal: McpPrincipal, runId: string) {
   const row = await readPipelineRun(runId);
   if (!row) throw new Error('NOT_FOUND: pipeline run not found');
-  await requireCan({ userId: principal.userId }, 'project.read', row.projectId);
+  await requireCan(actorFor(principal.userId), 'project.read', projectResource(row.projectId));
   return row;
 }
 
@@ -42,7 +42,7 @@ export async function pipelineRunsListHandler(
   principal: McpPrincipal,
   input: z.infer<typeof pipelineRunsListInputSchema>,
 ) {
-  await requireCan({ userId: principal.userId }, 'project.read', input.projectId);
+  await requireCan(actorFor(principal.userId), 'project.read', projectResource(input.projectId));
 
   const runsLimit = input.limit ?? 50;
   const rows = await listPipelineRuns({
@@ -88,7 +88,7 @@ export async function pipelineRunsPauseHandler(
   input: z.infer<typeof pipelineRunsRunIdInputSchema>,
 ) {
   const loaded = await loadRunForPrincipal(principal, input.runId);
-  await requireCan({ userId: principal.userId }, 'project.write', loaded.projectId);
+  await requireCan(actorFor(principal.userId), 'project.write', projectResource(loaded.projectId));
   const run = await pausePipelineRun(input.runId, {
     type: 'user',
     id: principalUserId(principal),
@@ -102,7 +102,7 @@ export async function pipelineRunsResumeHandler(
   input: z.infer<typeof pipelineRunsRunIdInputSchema>,
 ) {
   const loaded = await loadRunForPrincipal(principal, input.runId);
-  await requireCan({ userId: principal.userId }, 'project.write', loaded.projectId);
+  await requireCan(actorFor(principal.userId), 'project.write', projectResource(loaded.projectId));
   const run = await resumePipelineRun(input.runId, {
     type: 'user',
     id: principalUserId(principal),
@@ -116,7 +116,7 @@ export async function pipelineRunsCancelHandler(
   input: z.infer<typeof pipelineRunsCancelInputSchema>,
 ) {
   const loaded = await loadRunForPrincipal(principal, input.runId);
-  await requireCan({ userId: principal.userId }, 'project.write', loaded.projectId);
+  await requireCan(actorFor(principal.userId), 'project.write', projectResource(loaded.projectId));
   return cancelPipelineRun(input.runId, {
     actorUserId: principalUserId(principal),
     actorAgency: principalAgency(principal),

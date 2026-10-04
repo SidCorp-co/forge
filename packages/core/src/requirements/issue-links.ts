@@ -18,7 +18,7 @@ import {
   unlinkIssueFromRequirement,
 } from '../issues/index.js';
 import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { plannedBaselineSeqIn } from './baselines.js';
 import { planDriftOf } from './plan-drift.js';
 import { notFound, type RequirementActor, requirementKey, rowIn, signerRefusal } from './read.js';
@@ -42,7 +42,7 @@ export async function linkIssue(input: {
   adoptPlan?: boolean | undefined;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await requireCan({ userId: actor.userId }, 'project.write', projectId);
+  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const row = await rowIn(db, projectId, input.ref);
   const issue = await issueIn(projectId, input.issue, actor.userId);
   if (input.adoptPlan) {
@@ -106,7 +106,7 @@ export async function unlinkIssue(input: {
   issue: string;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await requireCan({ userId: actor.userId }, 'project.write', projectId);
+  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const row = await rowIn(db, projectId, input.ref);
   const issue = await issueIn(projectId, input.issue, actor.userId);
   await unlinkIssueFromRequirement(issue.id, row.id);
@@ -121,7 +121,7 @@ export async function linkWorkflow(input: {
   workflowId: string;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await requireCan({ userId: actor.userId }, 'project.write', projectId);
+  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const row = await rowIn(db, projectId, input.ref);
   const [wf] = await db
     .select({ projectId: projectWorkflows.projectId })
@@ -144,7 +144,7 @@ export async function unlinkWorkflow(input: {
   workflowId: string;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await requireCan({ userId: actor.userId }, 'project.write', projectId);
+  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const row = await rowIn(db, projectId, input.ref);
   await db
     .delete(requirementWorkflows)

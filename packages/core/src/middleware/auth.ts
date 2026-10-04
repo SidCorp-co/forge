@@ -27,20 +27,33 @@ export type AuthVars = {
   patDeviceId?: string;
   agentUserId?: string;
   patTokenId?: string;
+  /** The person the token acts for (`personalAccessTokens.onBehalfOf`). */
+  onBehalfOf?: string;
 };
 
+/** The request's actor, with the credential it arrived on and whom that credential acts for. */
 export function restActor(c: Context<{ Variables: RestActorVars }>): {
   type: 'user';
   id: string;
   agency: ActorAgency;
+  tokenId: string | null;
+  onBehalfOf: string | null;
 } {
-  return { type: 'user', id: c.get('userId'), agency: restAgency(c) };
+  return {
+    type: 'user',
+    id: c.get('userId'),
+    agency: restAgency(c),
+    tokenId: c.get('patTokenId') ?? null,
+    onBehalfOf: c.get('onBehalfOf') ?? null,
+  };
 }
 
 type RestActorVars = {
   userId: string;
   agency?: ActorAgency;
   principal?: 'user' | 'device' | 'pat';
+  patTokenId?: string;
+  onBehalfOf?: string;
 };
 
 /**
@@ -88,6 +101,7 @@ async function admitPat(
   if (principal.agentUserId) c.set('agentUserId', principal.agentUserId);
   c.set('patTokenId', principal.tokenId);
   if (principal.deviceId) c.set('patDeviceId', principal.deviceId);
+  if (principal.onBehalfOf) c.set('onBehalfOf', principal.onBehalfOf);
   return runWithPatScope(scope, () => next());
 }
 

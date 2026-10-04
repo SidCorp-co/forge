@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { type ContextScopedMcpToolFactory, type McpContext, refusedAnswer } from '../lib/tool.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { supersedeBuilderRun } from './builder-supersede.js';
 import {
   CONTRACT_DECISION_REASON_MAX,
@@ -216,7 +216,7 @@ const HANDLERS: Record<
   (ctx: McpContext, side: string, a: Args) => Promise<Answer>
 > = {
   interface: async (ctx, side) => {
-    await requireCan({ userId: ctx.principal.userId }, 'project.read', side);
+    await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(side));
     const held = await loadInterface(side);
     return held
       ? {
@@ -238,7 +238,7 @@ const HANDLERS: Record<
   },
   builder_run: async (ctx, side, a) => readBuilderRunAs(ctx.principal.userId, side, String(a.run)),
   context: async (ctx, side, a) => {
-    await requireCan({ userId: ctx.principal.userId }, 'project.read', side);
+    await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(side));
     const session = typeof a.session === 'string' ? a.session : null;
     if (session && !(await sessionOf(side, session))) {
       return one(
