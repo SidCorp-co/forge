@@ -17,9 +17,7 @@ use serde::Deserialize;
 pub struct GitCredentialGrant {
     pub username: String,
     pub password: String,
-    /// RFC3339 instant the token stops working. `None` on a core that predates
-    /// the field.
-    #[serde(default)]
+    /// RFC3339 instant the token stops working.
     pub expires_at: Option<String>,
 }
 

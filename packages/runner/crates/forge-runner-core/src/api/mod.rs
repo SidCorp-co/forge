@@ -17,5 +17,5 @@ mod exit;
 mod request;
 
 pub use build::{build, RequestSpec, SlugSources};
-pub use exit::{classify, is_json, usage_failure, Outcome, EXIT_TAXONOMY};
-pub use request::{run, Request, Response};
+pub use exit::{usage_failure, EXIT_TAXONOMY};
+pub use request::run;

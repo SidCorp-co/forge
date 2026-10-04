@@ -79,11 +79,5 @@ pub async fn run(ctx: Ctx, _args: Args) -> anyhow::Result<()> {
             "  (none — bind a device in the web UI, then `forge-runner bind <slug> --path <dir>`)"
         );
     }
-
-    if !cfg.runner.register_enabled {
-        println!(
-            "\nNote: register_enabled=off → using the device-room (runnerFramework not enabled)."
-        );
-    }
     Ok(())
 }

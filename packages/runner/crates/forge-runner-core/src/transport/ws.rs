@@ -22,20 +22,10 @@ use super::frames::Frame;
 const PING_INTERVAL: Duration = Duration::from_secs(25);
 const PONG_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// A `runner:register` payload sent on connect (one per bound project).
-#[derive(Clone)]
-pub struct RunnerRegistration {
-    pub project_id: String,
-    pub name: String,
-    pub runner_type: String,
-}
-
 pub struct WsConfig {
     pub url: String,
     pub device_token: String,
     pub device_id: String,
-    pub registrations: Vec<RunnerRegistration>,
-    pub register_enabled: bool,
 }
 
 pub type Outbound = watch::Receiver<Option<String>>;
@@ -88,23 +78,6 @@ pub async fn connect(
                     .is_err()
                 {
                     return; // consumer gone — stop entirely
-                }
-
-                // Register one runner per bound project (gated by the flag).
-                if cfg.register_enabled {
-                    for reg in &cfg.registrations {
-                        let msg = serde_json::json!({
-                            "type": "runner:register",
-                            "data": {
-                                "type": reg.runner_type,
-                                "name": reg.name,
-                                "projectId": reg.project_id,
-                                "capabilities": { "maxConcurrent": 1 }
-                            }
-                        })
-                        .to_string();
-                        let _ = write.send(Message::Text(msg.into())).await;
-                    }
                 }
 
                 outbound.mark_unchanged();
@@ -210,120 +183,5 @@ pub async fn connect(
             _ = cancel.changed() => { if *cancel.borrow() { break; } }
         }
         retry_delay = (retry_delay * 2).min(30);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tokio::net::TcpListener;
-    use tokio_tungstenite::accept_async;
-
-    async fn collect(listener: TcpListener, want: usize) -> Vec<String> {
-        let (stream, _) = listener.accept().await.unwrap();
-        let mut ws = accept_async(stream).await.unwrap();
-        let mut out = Vec::new();
-        while out.len() < want {
-            let next = tokio::time::timeout(Duration::from_secs(3), ws.next()).await;
-            match next {
-                Ok(Some(Ok(Message::Text(t)))) => out.push(t.to_string()),
-                Ok(Some(Ok(_))) => {}
-                Err(_) => break,
-                _ => break,
-            }
-        }
-        out
-    }
-
-    fn cfg(port: u16) -> WsConfig {
-        WsConfig {
-            url: format!("ws://127.0.0.1:{port}"),
-            device_token: "tok".into(),
-            device_id: "dev-1".into(),
-            registrations: Vec::new(),
-            register_enabled: false,
-        }
-    }
-
-    #[tokio::test]
-    async fn a_snapshot_already_held_goes_out_as_soon_as_the_socket_opens() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let server = tokio::spawn(collect(listener, 2));
-
-        let (out_tx, out_rx) = watch::channel(Some("{\"type\":\"runner:sessions\"}".to_string()));
-        let (frame_tx, _frame_rx) = mpsc::channel(8);
-        let (cancel_tx, cancel_rx) = watch::channel(false);
-        let client = tokio::spawn(connect(cfg(port), frame_tx, out_rx, cancel_rx));
-
-        let frames = server.await.unwrap();
-        let _ = cancel_tx.send(true);
-        client.abort();
-        drop(out_tx);
-
-        assert_eq!(
-            frames.len(),
-            2,
-            "the subscribe and the snapshot both, within the read window: {frames:?}"
-        );
-        assert!(
-            frames[0].contains("\"type\":\"subscribe\""),
-            "the device room subscribe still comes first: {frames:?}"
-        );
-        assert!(
-            frames[1].contains("runner:sessions"),
-            "the current snapshot must follow the subscribe on the same connection: {frames:?}"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_publisher_that_goes_away_does_not_flood_the_socket() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let server = tokio::spawn(collect(listener, 8));
-
-        let (out_tx, out_rx) = watch::channel(Some("only".to_string()));
-        let (frame_tx, _frame_rx) = mpsc::channel(8);
-        let (cancel_tx, cancel_rx) = watch::channel(false);
-        let client = tokio::spawn(connect(cfg(port), frame_tx, out_rx, cancel_rx));
-
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        drop(out_tx);
-
-        let frames = server.await.unwrap();
-        let _ = cancel_tx.send(true);
-        client.abort();
-
-        assert_eq!(
-            frames.len(),
-            2,
-            "the subscribe and ONE snapshot; anything more is the dead publisher being resent: {frames:?}"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_newer_snapshot_replaces_the_last_one_on_the_live_socket() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let server = tokio::spawn(collect(listener, 3));
-
-        let (out_tx, out_rx) = watch::channel(Some("first".to_string()));
-        let (frame_tx, _frame_rx) = mpsc::channel(8);
-        let (cancel_tx, cancel_rx) = watch::channel(false);
-        let client = tokio::spawn(connect(cfg(port), frame_tx, out_rx, cancel_rx));
-
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        out_tx.send(Some("second".to_string())).unwrap();
-
-        let frames = server.await.unwrap();
-        let _ = cancel_tx.send(true);
-        client.abort();
-
-        assert_eq!(
-            frames.len(),
-            3,
-            "subscribe, then both snapshots — a value published while the socket is up must reach it: {frames:?}"
-        );
-        assert_eq!(frames[2], "second");
     }
 }
