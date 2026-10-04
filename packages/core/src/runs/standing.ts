@@ -3,10 +3,12 @@
 
 import type {
   RunAttempt,
+  RunGroup,
   RunLane,
   RunMasterRef,
   RunRelease,
   RunStanding,
+  RunState,
   RunStep,
 } from '@forge/contracts/run-standing';
 import { stepOf } from '../pipeline/runs-lane.js';
@@ -96,6 +98,22 @@ function asStuck(f: RunFacts, base: Derived, reading: StuckReading): Derived {
   };
 }
 
+const GROUP_OF: Record<RunState, RunGroup> = {
+  queued: 'queued',
+  claimed: 'running',
+  running: 'running',
+  waiting_person: 'waiting',
+  waiting_gate: 'waiting_gate',
+  stuck: 'stuck',
+  done: 'finished',
+  failed: 'finished',
+  cancelled: 'finished',
+  handed_back: 'finished',
+};
+
+export const runGroupOf = (state: RunState, needsViewer: boolean): RunGroup =>
+  needsViewer ? 'needs_you' : GROUP_OF[state];
+
 function rootSessionOf(f: RunFacts): string | null {
   return f.session?.id ?? f.job?.agentSessionId ?? null;
 }
@@ -107,6 +125,7 @@ export function runStandingOf(f: RunFacts, ctx: StandingContext): RunStanding {
   const lane = laneOfRun(f);
   const live = derived.outcome === null;
   const holder = holderOf(f, ctx, derived.state);
+  const needsViewer = derived.waitingOn.kind === 'person' && derived.waitingOn.isViewer;
   return {
     id: f.run.id,
     projectId: f.run.projectId,
@@ -125,7 +144,8 @@ export function runStandingOf(f: RunFacts, ctx: StandingContext): RunStanding {
     device: f.session?.device ?? f.job?.device ?? null,
     holder,
     waitingOn: derived.waitingOn,
-    needsViewer: derived.waitingOn.kind === 'person' && derived.waitingOn.isViewer,
+    needsViewer,
+    attentionGroup: runGroupOf(derived.state, needsViewer),
     outcome: derived.outcome,
     master: masterOf(f),
     stuck: stuckField(reading, derived, holder, ctx),
@@ -138,6 +158,7 @@ export function runStandingOf(f: RunFacts, ctx: StandingContext): RunStanding {
       reclaimedFromRunId: l.reclaimedFromRunId,
     })),
     pipelineStatus: f.run.status,
+    job: f.job ? { id: f.job.id, type: f.job.type, status: f.job.status } : null,
     startedAt: f.run.startedAt.toISOString(),
     finishedAt: iso(f.run.finishedAt),
   };

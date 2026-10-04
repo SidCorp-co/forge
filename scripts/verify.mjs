@@ -168,7 +168,7 @@ const CHECKS = [
     axis: 'form',
     label: 'provider-literals',
     layer: 'entry',
-    reads: "each file's own provider literals, judged file by file",
+    reads: "each file's own provider literals and external calls, judged file by file",
     cmd: ['node', 'scripts/check-provider-literals.mjs', '--all'],
     scanned: /^provider-literals: (\d+) file\(s\) scanned/m,
     unit: 'files',

@@ -1,7 +1,11 @@
 import {
+  RUN_EVENTS_MAX,
   RUN_LIVE_STATES,
   RUN_STUCK_AFTER_MS,
+  type RunActorType,
   type RunAttemptRow,
+  type RunEvent,
+  type RunEventEntity,
   type RunLiveState,
   type RunStanding,
   type RunStandingDetail,
@@ -163,6 +167,7 @@ export async function listRunStanding(
       finished: counts.finished,
       liveByState,
       needsViewer: live.filter((r) => r.needsViewer).length,
+      held: live.filter((r) => r.holder.source === 'held').length,
     },
     excluded: [
       {
@@ -178,6 +183,42 @@ export async function listRunStanding(
     ],
     master,
   };
+}
+
+async function eventsOf(run: RunStanding): Promise<{ events: RunEvent[]; hasMore: boolean }> {
+  const arms: SQL[] = [sql`(entity = 'run' AND entity_id = ${run.id}::uuid)`];
+  if (run.sessionId) arms.push(sql`(entity = 'session' AND entity_id = ${run.sessionId}::uuid)`);
+  if (run.job) arms.push(sql`(entity = 'job' AND entity_id = ${run.job.id}::uuid)`);
+  const rows = rowsOf<Record<string, unknown>>(
+    await db.execute(sql`
+      SELECT id, entity, from_status, to_status, reason, actor_type, actor_agency, actor_id, source, created_at
+        FROM kernel_transitions
+       WHERE ${sql.join(arms, sql` OR `)}
+       ORDER BY created_at, id
+       LIMIT ${RUN_EVENTS_MAX + 1}`),
+  );
+  const users = rows.flatMap((r) => (r.actor_type === 'user' && r.actor_id ? [String(r.actor_id)] : []));
+  const names = await peopleOf(users);
+  const events = rows.slice(0, RUN_EVENTS_MAX).map(
+    (r): RunEvent => ({
+      id: String(r.id),
+      at: new Date(String(r.created_at)).toISOString(),
+      entity: r.entity as RunEventEntity,
+      from: r.from_status == null ? null : String(r.from_status),
+      to: String(r.to_status),
+      reason: r.reason == null ? null : String(r.reason),
+      actor: {
+        type: r.actor_type as RunActorType,
+        agency: r.actor_agency === 'human' ? 'human' : 'agent',
+        name:
+          r.actor_type === 'user' && r.actor_id
+            ? (names.get(String(r.actor_id))?.name ?? null)
+            : null,
+      },
+      source: String(r.source),
+    }),
+  );
+  return { events, hasMore: rows.length > RUN_EVENTS_MAX };
 }
 
 export async function readRunStanding(
@@ -212,5 +253,6 @@ export async function readRunStanding(
       }))
       .sort((a, b) => b.n - a.n);
   }
-  return { generatedAt: ctx.now.toISOString(), run, attempts };
+  const { events, hasMore } = await eventsOf(run);
+  return { generatedAt: ctx.now.toISOString(), run, attempts, events, eventsHasMore: hasMore };
 }

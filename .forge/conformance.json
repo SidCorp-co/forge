@@ -224,6 +224,10 @@
           "why": "`github` and `google` here are LOGIN identity providers \u2014 a different namespace that happens to share two words with the integration vocabulary. `providers.ts` answers /api/auth/oauth/providers, which never touches an integration binding, so a registry lookup here would be the wrong answer rather than a tidier one."
         },
         {
+          "glob": "packages/core/src/integrations/identity/**",
+          "why": "The identity port (ADR 0006): the GitHub OAuth and OIDC login providers auth/oauth signs people in through. `github` and `google` here are the same LOGIN identity namespace as auth/oauth, not integration-provider names, and nothing here touches an integration binding."
+        },
+        {
           "glob": "packages/web-v2/src/features/auth/**",
           "why": "The browser half of the same login-identity namespace: the sign-in buttons and the token screens read `github`/`google` as OAuth providers, which is a different thing from an integration adapter that happens to share the word."
         },
@@ -255,7 +259,44 @@
           "glob": "packages/core/src/git/github-app-credential.ts",
           "why": "Resolves the GitHub App installation credential a runner presents. Both literals filter `integration_bindings.provider` to find that App's binding, and the registry cannot answer 'which provider is the GitHub App' without naming it. The module is github's by name and purpose; it holds no branch that would have to grow a case when a provider is added."
         }
-      ]
+      ],
+      "egress": {
+        "$comment": "ADR 0006: every external system is reached through one adapter under integrations/<port>/. A global fetch or a vendor SDK import anywhere else in core is refused by file and line. The rule is about LOCATION, as the provider-literal rule beside it is, so it rides the same scan.",
+        "root": "packages/core/src",
+        "adapters": "packages/core/src/integrations/**",
+        "vendorSdks": [
+          "nodemailer",
+          "@sentry/node",
+          "@anthropic-ai/",
+          "openai",
+          "@aws-sdk/",
+          "@google-cloud/",
+          "googleapis",
+          "@octokit/",
+          "@gitbeaker/",
+          "@slack/",
+          "@sendgrid/",
+          "resend",
+          "postmark",
+          "stripe",
+          "twilio",
+          "@rocket.chat/"
+        ],
+        "exceptions": [
+          {
+            "glob": "packages/core/src/schedules/script/worker-entry.ts",
+            "why": "The sandboxed schedule script's ctx.http.fetch: user code in a worker calling a URL the user wrote, held to https: and a timeout by the sandbox, not Forge reaching a system. There is no port to put between a user's script and the URL that script names; the sandbox is the boundary."
+          },
+          {
+            "glob": "packages/core/src/observability/sentry.ts",
+            "why": "Forge's own crash reporting, initialised at boot before any domain module loads, and the one module that imports @sentry/node. Callers still take the vendor's Sentry namespace from it, which ADR 0006 prices until it exports role-typed capture functions."
+          },
+          {
+            "glob": "packages/core/src/assistant/bench-assistant.ts",
+            "why": "The assistant bench is a command-line harness that drives Forge's own API as a client and hands the global fetch to that client; the host it calls is the Forge under test, never a third-party system."
+          }
+        ]
+      }
     },
     "integration-declarations": {
       "$comment": "ISS-1071 \u2014 the registry is only a single door while every declaration behind it answers the questions the generic paths ask. A missing field does not fail to compile once a declaration reaches the registry through a widened type, and the reader then sees a provider that is inert rather than one that did not answer; five of seven adapters reached the old registry through `as any`. This walks the LIVE registry rather than the source, so the thing measured is what the process would hold at boot. `entrypoint` is imported under tsx with a synthetic env; its absence is exit 2, never a pass over an empty registry.",

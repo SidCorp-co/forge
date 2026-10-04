@@ -467,7 +467,7 @@ describe('a probe that never answers', () => {
 
   it('is read as unreachable once its budget runs out', async () => {
     vi.unstubAllGlobals();
-    const { readRuntimeProbe } = await import('../lib/runtime-probe.js');
+    const { readRuntimeProbe } = await import('../integrations/deploy/runtime-probe.js');
     const host = await silentHost();
     const started = Date.now();
     const reading = await readRuntimeProbe({ url: host.url }, { timeoutMs: 300 });

@@ -1,4 +1,4 @@
-import { PROBE_TIMEOUT_MS } from '../lib/runtime-probe.js';
+import { PROBE_TIMEOUT_MS } from '../integrations/deploy/runtime-probe.js';
 import { deployAdapterForBinding } from './deploy-adapters/index.js';
 import { type EnvironmentStateDeps, resolveEnvironmentState } from './environment-state.js';
 import type { NamedEnvironment } from './release-path.js';
@@ -9,7 +9,6 @@ const PLATFORM_TIMEOUT_MS = 10_000;
 export const environmentStateDeps = (projectId: string): EnvironmentStateDeps => ({
   deployAdapterFor: (bindingId) =>
     deployAdapterForBinding(projectId, bindingId, PLATFORM_TIMEOUT_MS),
-  fetch,
   probeTimeoutMs: PROBE_TIMEOUT_MS,
 });
 
