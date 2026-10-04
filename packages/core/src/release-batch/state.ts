@@ -1,15 +1,16 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
+import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { type BoundsReading, readBounds } from './bounds.js';
 import { closeVerification, type ReleaseChannel, resolveReleaseChannels } from './channel.js';
 import { type ReleaseFinishRecord, readFinishRecord } from './finish-job.js';
-import { listAttempts, type ReleaseAttemptRow } from './ledger.js';
 import { type ReleaseMethod, readMethod } from './method.js';
 import type { ReleaseVerification } from './plan.js';
 import { loadReleaseRoster, type ReleaseRoster } from './queries.js';
 import { type LiveState, readLiveState, type VerifyConfig } from './verify.js';
+import { attemptsOf } from './versions.js';
 
 interface ReleaseRunState {
   runId: string;
@@ -87,7 +88,7 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
   const verify = liveProbes(channels);
   const [roster, attempts, live] = await Promise.all([
     loadReleaseRoster(first.projectId),
-    listAttempts(runId),
+    attemptsOf([runId]),
     verify ? readLiveState(verify) : Promise.resolve(null),
   ]);
   const run = (await readRun(runId)) ?? first;

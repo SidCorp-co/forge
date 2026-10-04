@@ -5,8 +5,8 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { abortReleaseBatch } from './abort.js';
 import { createReleaseBatch } from './create.js';
+import { abortReleaseBatch } from './finish.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
 import { announceMethod } from './method.js';
 import {

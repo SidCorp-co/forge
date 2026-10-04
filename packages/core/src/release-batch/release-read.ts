@@ -4,9 +4,7 @@ import type {
   ReleaseProduction,
 } from '@forge/contracts/releases';
 import { RELEASE_ATTENTION_GROUPS } from '@forge/contracts/releases';
-import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues } from '../db/schema.js';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import { peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
@@ -14,7 +12,7 @@ import { approvalRequired, readReleasePath } from '../project-config/index.js';
 import { type ApprovalView, approvalsOfRuns, approvalViews } from './approvals.js';
 import { collectReleaseBlockers } from './blockers.js';
 import { readBounds } from './bounds.js';
-import { RELEASE_GATE_STATUS } from './gate.js';
+import { waitingIssueIds } from './queries.js';
 import { refuseRelease } from './refuse.js';
 import { approversOf, loadReleaseFacts } from './release-facts.js';
 import { gateViews } from './release-gates.js';
@@ -30,19 +28,8 @@ import { currentReleaseVersion, highestCutVersion, releaseLineOf } from './versi
 import { attemptsOf, issueIdsOf, type RunRow, versionRuns, versionStatus } from './versions.js';
 
 async function draftPart(projectId: string): Promise<Part | null> {
-  const rows = await db
-    .select({ id: issues.id })
-    .from(issues)
-    .where(
-      and(
-        eq(issues.projectId, projectId),
-        eq(issues.status, RELEASE_GATE_STATUS),
-        isNull(issues.releaseBatchRunId),
-      ),
-    )
-    .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`);
-  if (rows.length === 0) return null;
-  const ids = rows.map((r) => r.id);
+  const ids = await waitingIssueIds(projectId);
+  if (ids.length === 0) return null;
   const [highest, line, report] = await Promise.all([
     highestCutVersion(db, projectId),
     releaseLineOf(projectId),

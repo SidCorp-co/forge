@@ -6,15 +6,14 @@
 // unattended path. ISS-1215: every way it declines a waiting row is a hold record on that row
 // (`release-batch/hold.ts`), never on the log alone.
 
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues } from '../db/schema.js';
 import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/index.js';
 import { isRefusal } from '../lib/refusal.js';
 import { logger } from '../observability/logger.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from '../pipeline/index.js';
 import { cutWaitingRelease, loadCreatedBy } from '../schedules/index.js';
-import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
+import { resolveReleaseGate } from './gate.js';
 import {
   clearProjectReleaseHolds,
   clearReleaseHolds,
@@ -33,6 +32,7 @@ import {
   writeReleaseHolds,
 } from './hold.js';
 import { productionDeploysOnLand } from './production-trigger.js';
+import { waitingIssueIds } from './queries.js';
 import {
   reportClaimedFailure,
   reportHeldBack,
@@ -92,22 +92,6 @@ async function candidateProjectIds(now: Date): Promise<string[]> {
   }
 
   return [...new Set(rows.map((r) => r.project_id))];
-}
-
-/** Every issue waiting unclaimed at the gate on this project, oldest merge first. */
-async function waitingIssueIds(projectId: string): Promise<string[]> {
-  const rows = await db
-    .select({ id: issues.id })
-    .from(issues)
-    .where(
-      and(
-        eq(issues.projectId, projectId),
-        eq(issues.status, RELEASE_GATE_STATUS),
-        isNull(issues.releaseBatchRunId),
-      ),
-    )
-    .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`, asc(issues.id));
-  return rows.map((r) => r.id);
 }
 
 interface HoldWrite {
