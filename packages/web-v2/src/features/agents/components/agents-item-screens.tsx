@@ -5,7 +5,7 @@
 import { DetailHeader, StatusBadge, useListOrigin } from "@/design";
 import { useMasterStanding, useRunDetail } from "../hooks";
 import { AGENTS_LIST, agentsListHref } from "../routes";
-import { runKey, runName } from "../view";
+import { runName } from "../view";
 import { MasterPage, masterName } from "./master-views";
 import type { AgentsAccess } from "./runs-list";
 import { RunActions, RunPage } from "./run-views";
@@ -17,7 +17,6 @@ export function RunItemScreen({ access, runId }: { access: AgentsAccess; runId: 
     <div className="min-h-full bg-app" data-testid="run-item-screen">
       <DetailHeader
         back={{ href: back, label: "Agents / Runs" }}
-        itemKey={r ? runKey(r) : undefined}
         keyTitle={runId}
         title={r ? runName(r) : "Run"}
         badge={r ? <StatusBadge family="runStanding" value={r.state} /> : null}
@@ -35,7 +34,6 @@ export function MasterItemScreen({ access }: { access: AgentsAccess }) {
     <div className="min-h-full bg-app" data-testid="master-item-screen">
       <DetailHeader
         back={{ href: back, label: "Agents / Runs" }}
-        itemKey="Master"
         keyTitle={m?.sessionId ?? undefined}
         title={m ? masterName(m) : "Project master"}
         badge={m ? <StatusBadge family="masterState" value={m.state} /> : null}
