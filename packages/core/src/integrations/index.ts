@@ -73,6 +73,7 @@ export {
   softDeleteConnection,
   updateConnection,
 } from './store.js';
+export { readStorefrontDraft } from './storefront-draft-read.js';
 export type {
   AgentPath,
   AgentPathKind,

@@ -13,6 +13,7 @@ import {
 import { mirroredEventsFor } from '../issues/record-events/store.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
+import { pgConstraintName, pgErrorCode } from '../lib/db-errors.js';
 import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
 import { refuser } from '../lib/refusal.js';
 import { projectLens } from '../messaging/record-screen.js';
@@ -39,7 +40,6 @@ import {
   rethrowBodyInvalid,
 } from './body-input.js';
 import { type CommentCursor, decodeCommentCursor } from './cursor.js';
-import { pgConstraintName, pgErrorCode } from './error-mapping.js';
 import {
   attachmentsByComment,
   countIssueComments,

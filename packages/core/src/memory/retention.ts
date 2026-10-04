@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { olderThan, type TableStatements } from '../pipeline/retention/shape.js';
+import { olderThan, type TableStatements } from '../db/retention-shape.js';
 
 export const retrievalAnalyticsRetention: TableStatements = {
   deleteBatch: (days, limit) => sql`

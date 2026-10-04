@@ -1,3 +1,4 @@
+export { approvalRequired } from './approvals.js';
 export { registerReleaseBatchClaimSubscriber } from './claim-subscriber.js';
 export {
   activeCoolifyIntegrations,
@@ -35,4 +36,6 @@ export {
   targetUndeclaredHold,
   writeReleaseHolds,
 } from './hold.js';
+export { bindingReachesProduction, confirmPendingProdDeploy } from './release-coolify.js';
+export { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';
 export { recoverUnstartedReleaseBatches } from './unstarted-recovery.js';

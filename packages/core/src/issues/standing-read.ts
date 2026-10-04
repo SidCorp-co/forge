@@ -5,7 +5,7 @@
  * it and its last activity. One query per fact over the whole page, never one per row.
  */
 
-import { getIssueContexts } from '../pipeline/issue-context-store.js';
+import type { IssueStatus } from '@forge/contracts/issue-machine';
 import type {
   IssueAttentionGroup,
   IssueLeaseView,
@@ -15,7 +15,6 @@ import type {
   IssueStandingScope,
   IssueStepHandoff,
 } from '@forge/contracts/issue-standing';
-import type { IssueStatus } from '@forge/contracts/issue-machine';
 import type { WorkStep } from '@forge/contracts/issue-vocabulary';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -23,27 +22,26 @@ import type { WorkStepEntry } from '../db/schema-issue-work-state.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
+import { holds } from '../permissions/index.js';
+import { getIssueContexts } from '../pipeline/issue-context-store.js';
 import { classifyLease } from '../pipeline/session-claim.js';
-import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
-import { approvalRequired } from '../release-batch/approvals.js';
-import { changedSincePlan } from '../requirements/rules.js';
+import { type BlockingEdge, blockerUnsettledSql, blockingEdgesIn } from './blocked-by.js';
 import { readCurrentDrafts } from './criteria/storefront-draft.js';
-import { blockerUnsettledSql, type BlockingEdge, blockingEdgesIn } from './blocked-by.js';
 import { type DesignHold, designHoldPhrase } from './design-delivery.js';
 import { issueWorkMovingSql } from './issue-lease.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { loadIssuePark } from './park-view.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
+import { approvalRequired, changedSincePlan, holdsOpenHumanQuestion } from './ports.js';
 import {
   deriveIssueStanding,
   type IssueStandingInput,
   issueBlockerOf,
+  type StandingEdge,
   type StepDurationFact,
   stepOutcomesOf,
-  type StandingEdge,
   wavesOf,
 } from './standing.js';
-import { holds } from '../permissions/index.js';
 
 /** The most rows one read answers; the list says so when a scope holds more. */
 export const STANDING_LIMIT = 500;

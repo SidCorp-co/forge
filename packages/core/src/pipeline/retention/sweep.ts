@@ -1,18 +1,17 @@
 import { and, inArray, sql } from 'drizzle-orm';
-import { deriveSessionFinal, stampFinalizeAttempt } from '../../agent-sessions/index.js';
 import { db } from '../../db/client.js';
 import { agentSessions } from '../../db/schema.js';
 import { TRANSCRIPT_FINALIZED_KEY } from '../../db/transcript-marker.js';
-import { type CollapseResult, collapseNarration } from '../../issues/record-events/collapse.js';
+import { type CollapseResult, collapseNarration } from '../../issues/index.js';
 import { logger } from '../../observability/logger.js';
-import { type SuggestionSweepResult, sweepSuggestions } from '../../suggestions/stale.js';
+import { deriveSessionFinal, stampFinalizeAttempt } from '../ports.js';
 import {
   finalizeRepairMax,
   RETENTION_RULES,
   type RetentionRule,
   resolveRetention,
 } from './policy.js';
-import { RETENTION_STATEMENTS, repairCandidates, truncatedHistories } from './statements.js';
+import { repairCandidates, retentionStatementsByTable, truncatedHistories } from './statements.js';
 
 const BATCH_SIZE = 10_000;
 /** Cap the loop defensively so a statement that never shortens cannot spin. */
@@ -73,8 +72,6 @@ export interface RetentionSweepResult {
   repair: RepairSweepResult;
   /** Narration record events collapsed into per-issue digests this tick (ISS-56). */
   narration: CollapseResult;
-  /** Suggestions staled after 30 undecided days and payloads purged 90 days after a decision (ISS-58). */
-  suggestions: SuggestionSweepResult;
 }
 
 async function countRows(statement: ReturnType<typeof sql>): Promise<number> {
@@ -105,7 +102,7 @@ async function sweepTable(rule: RetentionRule, bounds: SweepBounds): Promise<Tab
       'retention: environment override refused',
     );
   }
-  const statements = RETENTION_STATEMENTS[rule.table];
+  const statements = retentionStatementsByTable()[rule.table];
   if (resolved.days === null || !statements) {
     return { ...base, durationMs: Date.now() - t0 };
   }
@@ -222,17 +219,11 @@ export async function runRetentionSweep(
     logger.info(narration, 'retention: narration record events collapsed into digests');
   }
 
-  const suggestions = await sweepSuggestions();
-  if (suggestions.staled > 0 || suggestions.purged > 0) {
-    logger.info(suggestions, 'retention: suggestions staled and payloads purged');
-  }
-
   return {
     durationMs: Date.now() - t0,
     deleted: tables.reduce((sum, t) => sum + t.deleted, 0),
     tables,
     repair,
     narration,
-    suggestions,
   };
 }

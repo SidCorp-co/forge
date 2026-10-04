@@ -1,6 +1,6 @@
 import { type SQL, sql } from 'drizzle-orm';
+import { olderThan, SESSION_TERMINAL, type TableStatements } from '../db/retention-shape.js';
 import { TRANSCRIPT_FINALIZED_KEY } from '../db/transcript-marker.js';
-import { olderThan, SESSION_TERMINAL, type TableStatements } from '../pipeline/retention/shape.js';
 
 const SESSION_EVENTS_RELEASABLE = (days: number): SQL => sql`(
   s.status IN ${SESSION_TERMINAL}

@@ -3,6 +3,7 @@
 // `awaiting_release` gate reads (`release-evidence.ts`), so the two never disagree about a verdict.
 
 import { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
+import type { ServingReading } from '@forge/contracts/releases';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issueAttachments, issues, projects } from '../db/schema.js';
@@ -14,11 +15,10 @@ import {
   longestSpelling,
   parseStorefrontDraftRuntime,
 } from '../messaging/verdict-identity.js';
-import { readProjectDocument } from '../project-config/service.js';
-import type { ServingReading } from '../release-batch/serving-reading.js';
 import { type CriterionWithVerdict, type LatestVerdict, listCriteria } from './criteria/store.js';
 import { withCurrentDrafts } from './criteria/storefront-draft.js';
 import { type CitationReport, citationSentence, unresolvedCitations } from './evidence-standing.js';
+import { readProjectDocument } from './ports.js';
 import {
   type IssueIdentities,
   issueIdentities,

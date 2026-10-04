@@ -3,8 +3,8 @@ import { db } from '../db/client.js';
 import { issuePrefixAliases } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type IssuePrefixShapeError, validateIssuePrefix } from '../lib/issue-ref.js';
-import { setProjectIssuePrefix } from '../projects/index.js';
 import { issuePrefixHolder } from './issue-prefix-read.js';
+import { setProjectIssuePrefix } from './ports.js';
 
 export type PrefixWriter = Pick<typeof db, 'transaction' | 'select' | 'insert' | 'update'>;
 

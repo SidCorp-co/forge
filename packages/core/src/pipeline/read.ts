@@ -2,8 +2,8 @@ import { and, count, desc, eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type JobType, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
 import { utcDayText } from '../lib/time-buckets.js';
-import { retryRescuesSince } from '../metrics/queries.js';
 import { cycleTimeTransitionsSql } from './cycle-time-sql.js';
+import { retryRescuesSince } from './ports.js';
 import { listItemsFromRows, type PipelineRunListItem } from './runs-rollup.js';
 
 /** Average hours each status held before its transition out, over the last `days`. */

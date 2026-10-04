@@ -1,5 +1,4 @@
 import { eq } from 'drizzle-orm';
-import { postIssueNotice } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -8,6 +7,7 @@ import type { TransitionActor } from './actor-agency.js';
 import type { TransitionIssueRow } from './apply-transition.js';
 import type { UnblockedDependent } from './drop-cascade.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
+import { postIssueNotice } from './ports.js';
 
 export async function recordDropUnblock(
   issue: TransitionIssueRow,

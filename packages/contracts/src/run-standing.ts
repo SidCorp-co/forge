@@ -59,6 +59,9 @@ export type RunFinalState = (typeof RUN_FINAL_STATES)[number];
 export const RUN_STUCK_AFTER_MS = 3 * 60_000;
 export const SESSION_SILENCE_REAP_MS = 10 * 60_000;
 export const JOB_HEARTBEAT_REAP_DEFAULT_MS = 3 * 60_000;
+/** Result-hop quiet threshold: 60 min, because legit forge-release/forge-code merges run over 5
+ *  between emissions. The demoted stale-detector alarm derives its margin from it. */
+export const RESULT_QUIET_MINUTES = 60;
 
 export const RUN_STUCK_RULES = [
 	"silent",

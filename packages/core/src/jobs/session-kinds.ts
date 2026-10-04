@@ -4,19 +4,15 @@
  */
 import { type SQL, sql } from 'drizzle-orm';
 import { type AgentSessionKind, agentSessionKinds } from '../db/schema.js';
-import {
-  MASTER_SESSION_METADATA_TYPE,
-  RUN_SESSION_METADATA_TYPE,
-} from '../devices/run-session-keys.js';
+import { kindTuple, PIPELINE_SESSION_KINDS } from '../db/session-vocabulary.js';
 
-export const MASTER_SESSION_KIND: AgentSessionKind = MASTER_SESSION_METADATA_TYPE;
-
-export const RUN_SESSION_KIND: AgentSessionKind = RUN_SESSION_METADATA_TYPE;
-
-export const PIPELINE_SESSION_KINDS = [
-  'pipeline',
-  'pm',
-] as const satisfies readonly AgentSessionKind[];
+export {
+  CLIENT_SESSION_KINDS,
+  kindTuple,
+  MASTER_SESSION_KIND,
+  PIPELINE_SESSION_KINDS,
+  RUN_SESSION_KIND,
+} from '../db/session-vocabulary.js';
 
 /** Whether a row's own `kind` is one a pipeline step drives, so `/retry` may reach it. */
 export function isPipelineSessionKind(kind: AgentSessionKind): boolean {
@@ -31,16 +27,6 @@ export const NON_CLIENT_SESSION_KINDS = [
 ] as const satisfies readonly AgentSessionKind[];
 
 export const NEVER_PARKED_SESSION_KINDS = ['master'] as const satisfies readonly AgentSessionKind[];
-
-export const CLIENT_SESSION_KINDS = ['chat'] as const satisfies readonly AgentSessionKind[];
-
-/** A SQL `IN (...)` list over a set of kinds, parameterised. */
-export function kindTuple(kinds: readonly AgentSessionKind[]) {
-  return sql`(${sql.join(
-    kinds.map((k) => sql`${k}`),
-    sql`, `,
-  )})`;
-}
 
 export function isAgentSessionKind(value: unknown): value is AgentSessionKind {
   return typeof value === 'string' && (agentSessionKinds as readonly string[]).includes(value);

@@ -1,6 +1,6 @@
-import { type SQL, sql } from 'drizzle-orm';
-import { terminalAgentSessionStatuses } from '../../db/session-vocabulary.js';
 import { TERMINAL_JOB_STATUSES } from '@forge/contracts/job-machine';
+import { type SQL, sql } from 'drizzle-orm';
+import { terminalAgentSessionStatuses } from './session-vocabulary.js';
 
 /** Terminal `jobs.status`, from the one constant that answers it. */
 export const JOB_TERMINAL = sql`(${sql.join(
@@ -39,3 +39,6 @@ export interface TableStatements {
    */
   heldBack: ((days: number) => SQL) | null;
 }
+
+/** Every table's statements, keyed by the physical table name a retention rule carries. */
+export type RetentionStatements = Readonly<Record<string, TableStatements>>;

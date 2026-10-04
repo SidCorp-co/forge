@@ -424,3 +424,35 @@ export const RELEASE_REFUSAL_STATUSES = {
 	RELEASE_VERSION_CONFLICT: 409,
 	CLAIM_CONFLICT: 409,
 } as const satisfies RefusalStatuses<ReleaseRefusalCode | ReleaseBlockerCode>;
+
+export interface ServedAt {
+	readonly commit: string;
+	readonly where: string;
+}
+
+/** One reading. `served` pairs each commit a probe or a Forge deployment answered with where it
+ *  runs — a probe's url, a target's deployment — `unread` is a line per source answering none, and
+ *  only a project with nothing to ask is an absence: `missing` says why, `route` what opens one. */
+export type ServingReading =
+	| {
+			readonly kind: "serving";
+			readonly served: readonly ServedAt[];
+			readonly unread: readonly string[];
+			readonly readAt: string;
+	  }
+	| {
+			readonly kind: "undeclared";
+			readonly missing: string;
+			readonly route: string;
+	  }
+	| {
+			readonly kind: "unreadable";
+			readonly why: string;
+			readonly hosts: readonly string[];
+			readonly readAt: string;
+	  };
+
+export function servedCommits(serving: ServingReading): string[] {
+	if (serving.kind !== "serving") return [];
+	return [...new Set(serving.served.map((s) => s.commit))];
+}

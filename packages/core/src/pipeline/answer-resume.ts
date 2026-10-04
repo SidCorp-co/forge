@@ -1,5 +1,4 @@
 import { and, eq, isNull, notInArray, sql } from 'drizzle-orm';
-import { requestSessionSend, resolveSessionSend } from '../agent-sessions/session-send.js';
 import { db } from '../db/client.js';
 import {
   agentSessions,
@@ -13,11 +12,11 @@ import { sessionInbox } from '../db/schema-session-inbox.js';
 import { accountActor } from '../issues/account-actor.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { readWorkState } from '../issues/work-state.js';
-import type { LoopScope } from '../jobs/loop-monitor.js';
 import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
 import { AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
 import { isAutonomousProject } from './autonomous-project.js';
+import { type LoopScope, requestSessionSend, resolveSessionSend } from './ports.js';
 
 async function resumableIssue(issueId: string) {
   const [issue] = await db

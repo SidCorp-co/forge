@@ -1,1 +1,1 @@
-export {};
+export { fireOfCaller, issueDeleteRefusal } from './service.js';

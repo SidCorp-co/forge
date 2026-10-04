@@ -1,13 +1,10 @@
 import type { VerdictCorroboration, VerdictDraftReading } from '@forge/contracts/verdict-identity';
 import {
-  decryptConnectionSecrets,
-  effectiveConfig,
-  findBindingWithConnectionById,
-  getIntegration,
+  type IssueProjectDocument,
+  readProjectDocument,
+  readStorefrontDraft,
   type StorefrontDraftReading,
-} from '../../integrations/index.js';
-import type { ProjectDocument } from '../../project-config/schema.js';
-import { readProjectDocument } from '../../project-config/service.js';
+} from '../ports.js';
 import type { CriterionWithVerdict } from './store.js';
 import type { VerdictIdentity, VerdictRefusal } from './verdict-input.js';
 
@@ -19,13 +16,13 @@ export interface DraftCorroboration {
 }
 
 export type DraftReader = (
-  document: ProjectDocument | null,
+  document: IssueProjectDocument | null,
   workflowId: string,
 ) => Promise<StorefrontDraftReading>;
 
 export function environmentFault(
   criterion: number,
-  document: ProjectDocument | null,
+  document: IssueProjectDocument | null,
   environment: string,
 ): VerdictRefusal | null {
   const declared = document ? Object.keys(document.environments) : [];
@@ -60,37 +57,14 @@ export const readSourceDraft: DraftReader = async (document, workflowId) => {
       detail: 'this project declares no project document, so it names no storefront source',
     };
   }
-  if (document.source.type !== 'storefront') {
+  const storefront = document.source.type === 'storefront' ? document.source.storefront : undefined;
+  if (!storefront) {
     return {
       kind: 'unreadable',
       detail: `this project's source is \`${document.source.type}\`, not a storefront: no provider holds a draft of its work for core to read`,
     };
   }
-  const { provider, binding } = document.source.storefront;
-  const pair = await findBindingWithConnectionById(binding);
-  if (!pair) {
-    return {
-      kind: 'unreadable',
-      detail: `the storefront source names binding \`${binding}\`, which core does not hold`,
-    };
-  }
-  const read = getIntegration(provider)?.storefrontDraft;
-  if (!read) {
-    return {
-      kind: 'unreadable',
-      detail: `core has no draft reader for provider \`${provider}\`, so a ${provider} draft cannot be read back`,
-    };
-  }
-  try {
-    return await read({
-      connectionId: pair.connection.id,
-      config: effectiveConfig<Record<string, unknown>>(pair),
-      readSecrets: () => decryptConnectionSecrets(pair.connection),
-      workflowId,
-    });
-  } catch (err) {
-    return { kind: 'unreadable', detail: `the ${provider} read failed: ${(err as Error).message}` };
-  }
+  return readStorefrontDraft({ ...storefront, workflowId });
 };
 
 export interface DraftReading {

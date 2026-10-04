@@ -1,8 +1,8 @@
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
-import type { RunnerAvailability } from '../jobs/queued-gates.js';
 import type { PauseResumer } from '../pipeline/run-pause.js';
 import type { LeaseReading } from '../pipeline/session-claim.js';
 import type { IssueWorker, SessionWorkerLane } from './issue-worker.js';
+import type { RunnerAvailability } from './ports.js';
 
 export type PipelineWaitingReason =
   | 'issue_busy'

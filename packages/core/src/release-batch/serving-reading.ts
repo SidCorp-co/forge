@@ -2,38 +2,13 @@
  *  never stored: a commit on a row is wrong the moment the next deploy lands (ISS-1286). Neither
  *  this nor `collectReleaseBlockers`, which promises no outbound request, calls the other. */
 
+import { type ServedAt, type ServingReading, servedCommits } from '@forge/contracts/releases';
 import { longestSpelling } from '../messaging/verdict-identity.js';
 import { readEnvironmentState } from '../project-config/environment-state-read.js';
 import { readReleasePath } from '../project-config/release-path.js';
 import type { EnvironmentState } from '../project-config/schema.js';
 
-export interface ServedAt {
-  readonly commit: string;
-  readonly where: string;
-}
-
-/** One reading. `served` pairs each commit a probe or a Forge deployment answered with where it
- *  runs — a probe's url, a target's deployment — `unread` is a line per source answering none, and
- *  only a project with nothing to ask is an absence: `missing` says why, `route` what opens one. */
-export type ServingReading =
-  | {
-      readonly kind: 'serving';
-      readonly served: readonly ServedAt[];
-      readonly unread: readonly string[];
-      readonly readAt: string;
-    }
-  | { readonly kind: 'undeclared'; readonly missing: string; readonly route: string }
-  | {
-      readonly kind: 'unreadable';
-      readonly why: string;
-      readonly hosts: readonly string[];
-      readonly readAt: string;
-    };
-
-export function servedCommits(serving: ServingReading): string[] {
-  if (serving.kind !== 'serving') return [];
-  return [...new Set(serving.served.map((s) => s.commit))];
-}
+export { type ServedAt, type ServingReading, servedCommits };
 
 /** Each served commit beside everywhere it runs — `3c38c68` at A; `ea69715` at B and C — one
  *  commit answered whole by one source and abbreviated by another named once, whole. */

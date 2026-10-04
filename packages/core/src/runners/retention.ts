@@ -1,5 +1,5 @@
 import { type SQL, sql } from 'drizzle-orm';
-import { olderThan, type TableStatements } from '../pipeline/retention/shape.js';
+import { olderThan, type TableStatements } from '../db/retention-shape.js';
 
 const notTheCarryIn = (days: number): SQL => sql`
   e.id <> (

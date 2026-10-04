@@ -3,6 +3,8 @@ export { actorAgency, principalAgency, type TransitionActor } from './actor-agen
 export { TransitionError, transitionIssueStatus } from './apply-transition.js';
 export { closeBacklogStreams } from './backlog/open-streams.js';
 export { runCriteriaBackfillOnce } from './criteria/backfill.js';
+export type { IssueCriteriaReport } from './criteria-verdicts.js';
+export { unearnedCriteriaReports } from './criteria-verdicts.js';
 export { isValidDetectorKey } from './detector-key.js';
 export {
   fileDetectedIssue,
@@ -16,7 +18,11 @@ export { registerHostMergeStamp, stampHostMerge } from './host-merge.js';
 export { issueWorkInFlightSql } from './issue-lease.js';
 export { activeIssuePrefix } from './issue-prefix-read.js';
 export { resolveIssueRouteRef } from './issue-route-ref.js';
+export { mergedCommitShaSchema } from './merge-marker.js';
 export { recordIssueMerge } from './merge-record.js';
+export { provideIssuePorts } from './ports.js';
+export { issueScopeOf } from './read-service.js';
+export { type CollapseResult, collapseNarration } from './record-events/collapse.js';
 export { claimIssuesForRelease, releaseEndedRunClaims, releaseRunClaims } from './release-claim.js';
 export {
   type IssueCreateInput,

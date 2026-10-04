@@ -1,8 +1,8 @@
+import type { JobRefusalCode } from '@forge/contracts/jobs';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type IssueStatus, issuePriorities, issueStatuses } from '../db/schema.js';
-import { noPromptMessage, POOL_JOB_NO_PROMPT } from '../jobs/pool-served.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
@@ -21,8 +21,11 @@ import {
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
+import { noPromptMessage } from './ports.js';
 import { batchIssueRows, issueScopeOf, issueUsageTotals } from './read-service.js';
 import { triggerTerminalDispatch } from './transition.js';
+
+const POOL_JOB_NO_PROMPT: JobRefusalCode = 'POOL_JOB_NO_PROMPT';
 
 const runPipelineStepBodySchema = z.object({}).strict();
 

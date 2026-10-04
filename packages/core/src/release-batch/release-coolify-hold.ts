@@ -1,12 +1,12 @@
 /** The environment hold a release dispatch takes and gives back (ISS-1279). */
 
-import { readDeployHolds } from './deploy-confirmations.js';
 import {
   type DeployLockHeld,
   deployHoldsIdle,
   deployHoldsLocks,
+  readDeployHolds,
   releaseDeployLocksForRun,
-} from './deploy-lock.js';
+} from '../pipeline/index.js';
 
 /** The project-document environments each binding's deploy reaches, which is what it holds. */
 export interface DeployLockIntent {

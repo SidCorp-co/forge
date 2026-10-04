@@ -4,9 +4,8 @@ import { db } from '../db/client.js';
 import { notifications } from '../db/schema.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { emitNotification } from '../notifications/emit.js';
-import { projectAdminUserIds } from '../notifications/project-admins.js';
 import { logger } from '../observability/logger.js';
+import { emitNotification, projectAdminUserIds } from './ports.js';
 import { sweepGroupKey } from './stranded-issues.js';
 
 /**

@@ -6,7 +6,7 @@ import {
   RUN_TERMINAL,
   SESSION_TERMINAL,
   type TableStatements,
-} from '../pipeline/retention/shape.js';
+} from '../db/retention-shape.js';
 
 const ENTITY_IS_TERMINAL = sql`
   CASE k.entity

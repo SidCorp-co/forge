@@ -13,13 +13,13 @@ import type { WorkStep } from '../db/schema-issue-work-state.js';
 import type { Refusal } from '../lib/refusal.js';
 import { type KernelActor, transition } from '../lifecycle/transition.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
-import { settleOpenQuestions } from '../questions/issue-coupling.js';
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
 import { archivedAmong, archiveRefusalForTransition } from './archive.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { recordDropUnblock } from './drop-unblock.js';
 import { mintParkQuestion } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
+import { settleOpenQuestions } from './ports.js';
 import { moveOf, recordMove } from './record-events/kernel-records.js';
 import {
   edgeFault,

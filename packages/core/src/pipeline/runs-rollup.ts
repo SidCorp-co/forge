@@ -22,10 +22,7 @@ import {
   projects,
   usageRecords,
 } from '../db/schema.js';
-import { type RunGate, readRunGate } from '../devices/gate-report.js';
-import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { usageSessionMatch } from '../usage-records/rollup.js';
 import {
   groupOf,
   laneOf,
@@ -43,6 +40,14 @@ export type {
   PipelineRunStep,
   ResidentMaster,
 } from './runs-lane.js';
+
+import {
+  type RunGateReading,
+  readAutoRetryPayload,
+  readRunGate,
+  retryMaxRounds,
+  usageSessionMatch,
+} from './ports.js';
 
 export type PipelineStepStatus =
   | 'pending'
@@ -161,7 +166,7 @@ export interface PipelineRunSummary {
   retrySummary: PipelineRunRetrySummary | null;
   /** ISS-1192 — the box's declaration gate when this run opened; `null` where
    *  the box reported none. The list row omits it: it carries a breakdown. */
-  gateAtOpen: RunGate | null;
+  gateAtOpen: RunGateReading | null;
 }
 
 export type PipelineRunListItem = Omit<
@@ -337,7 +342,7 @@ async function loadAttemptsForRun(runId: string): Promise<{
       retrySummary = {
         totalAttempts: attempts.length,
         round: ar.round,
-        maxRounds: RETRY_MAX_ROUNDS,
+        maxRounds: retryMaxRounds(),
         targetDeviceId: ar.target,
         targetDeviceName: ar.target ? (nameById.get(ar.target) ?? null) : null,
       };

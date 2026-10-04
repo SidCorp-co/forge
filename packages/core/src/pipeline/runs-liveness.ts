@@ -4,11 +4,11 @@
  * Read by both run lists, so the REST row and the MCP row cannot answer differently.
  */
 
+import { UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, jobs, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
-import { MASTER_SESSION_METADATA_TYPE } from '../devices/run-session-keys.js';
-import { UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
+import { MASTER_SESSION_METADATA_TYPE } from '../db/session-vocabulary.js';
 import type { PipelineRunLane, ResidentMaster } from './runs-lane.js';
 
 function toIso(value: Date | string | null): string | null {

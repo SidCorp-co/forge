@@ -7,10 +7,10 @@ import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';
 import { leaseWriteTakes } from '../pipeline/session-claim.js';
-import { plannedRevisionFor } from '../requirements/issue-links.js';
 import { refuseHeldTake } from './blocked-by.js';
 import { syncCriteriaFromText } from './criteria/store.js';
 import type { ResolvedLabelAttach } from './label-service.js';
+import { plannedRevisionFor } from './ports.js';
 import { ISSUE_READ_COLUMNS, type IssueRow } from './read-service.js';
 import type { SessionContextExpect } from './session-context.js';
 import {

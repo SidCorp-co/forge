@@ -3,9 +3,6 @@ import { db } from '../db/client.js';
 import { type IssueStatus, projects } from '../db/schema.js';
 import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
-import { policyRefusal } from '../project-config/dispatch-policy.js';
-import { readEffectivePolicy } from '../project-config/effective.js';
-import type { PolicyDocument } from '../project-config/schema.js';
 import type { Actor } from './activity.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
@@ -13,6 +10,7 @@ import {
   dispatchDriveManual,
   isEntryGateClosed,
 } from './autonomous-dispatch.js';
+import { type ProjectPolicy, policyRefusal, readEffectivePolicy } from './ports.js';
 import { refusePipeline } from './refuse.js';
 
 /** Why a person's start on an issue changes nothing. */
@@ -29,7 +27,7 @@ const projectArchived = (projectId: string) =>
   );
 
 async function loadProjectPolicy(projectId: string): Promise<{
-  policy: PolicyDocument | null;
+  policy: ProjectPolicy | null;
   archived: boolean;
   projectCreatedBy: string | null;
 }> {

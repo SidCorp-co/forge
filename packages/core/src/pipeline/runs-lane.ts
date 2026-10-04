@@ -4,7 +4,7 @@ import {
   RUN_GROUP_METADATA_KEY,
   RUN_ISSUE_STATUSES_METADATA_KEY,
   RUN_SESSION_METADATA_TYPE,
-} from '../devices/run-session-keys.js';
+} from '../db/session-vocabulary.js';
 
 type RunRow = typeof pipelineRuns.$inferSelect;
 

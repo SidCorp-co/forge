@@ -5,13 +5,13 @@
  * naming nothing leaves a source verdict to the issue's own source. Shapes: `messaging/verdict-identity.ts`.
  */
 
+import { type ServingReading, servedCommits } from '@forge/contracts/releases';
 import type { VerdictDraftReading } from '@forge/contracts/verdict-identity';
 import {
   parseContractIdentity,
   parseDesignIdentity,
   sameIdentity,
 } from '../messaging/verdict-identity.js';
-import { type ServingReading, servedCommits } from '../release-batch/serving-reading.js';
 
 /** `source` is a commit that was read, which cannot say the code was ever running. `design` is a
  *  stored workflow design revision: for work that lands as a design, the thing itself. */

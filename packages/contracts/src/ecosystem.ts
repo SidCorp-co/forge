@@ -186,3 +186,6 @@ export const CHANNEL_WRITES = [
 ] as const;
 export const CHANNEL_ACTIONS = [...CHANNEL_READS, ...CHANNEL_WRITES] as const;
 export type ChannelAction = (typeof CHANNEL_ACTIONS)[number];
+
+/** `<project slug>/<contract slug>@<version>`, the form a landing names an implemented version in. */
+export const LANDED_CONTRACT = /^([a-z][a-z0-9-]{0,62})\/([a-z][a-z0-9-]{0,62})@([A-Za-z0-9][A-Za-z0-9._+-]{0,39})$/;

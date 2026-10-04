@@ -12,18 +12,16 @@
  * other clears a finding that has stopped holding, so a recovered row stops claiming to be stuck.
  */
 
+import type { ReleaseHoldView } from '@forge/contracts/releases';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses } from '../db/schema.js';
 import type { WorkStep } from '../db/schema-issue-work-state.js';
-import { ADMITTED_RUNNER } from '../devices/pool-admission.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { emitNotification } from '../notifications/emit.js';
-import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
 import { logger } from '../observability/logger.js';
-import type { ReleaseHold } from '../release-batch/index.js';
 import { holderFanout, readClaim } from './lease-fanout.js';
+import { admittedRunner, emitNotification, projectAdminUserIdsFor } from './ports.js';
 import {
   type LeaseReading,
   leaseHolderOf,
@@ -43,6 +41,8 @@ import {
 } from './strand-rules.js';
 import { sweepGroupKey } from './stranded-issues.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
+
+type ReleaseHold = Omit<ReleaseHoldView, 'heldAt'>;
 
 /** A USE of the fleet-wide predicate, never a second copy: `issues/issue-lease.ts` is the only
  *  place that SQL is written (ISS-1109), and a sweep answering it another way reports as stranded
@@ -331,7 +331,7 @@ async function projectsWithAdmittedRunner(
        ids.map((id) => sql`${id}::uuid`),
        sql`, `,
      )})
-       AND ${ADMITTED_RUNNER}
+       AND ${admittedRunner()}
   `)) as unknown as Array<{ project_id: string }>;
   return new Set(rows.map((r) => r.project_id));
 }

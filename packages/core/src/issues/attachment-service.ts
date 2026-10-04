@@ -16,7 +16,7 @@ import { lockAttachmentName, type NameCheckExecutor } from '../lib/attachment-na
 import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
 import { isRefusal, type RefusalError, refuser } from '../lib/refusal.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
-import { getStorage } from '../storage/index.js';
+import { getStorage } from './ports.js';
 
 export { safeName };
 

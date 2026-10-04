@@ -1,8 +1,8 @@
 import { AWAITING_INPUT_STATUSES, ISSUE_MACHINE } from '@forge/contracts/issue-machine';
-import { postIssueNotice } from '../comments/index.js';
 import { db, type Tx } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import { actorAgency, type TransitionActor } from './actor-agency.js';
+import { postIssueNotice } from './ports.js';
 
 /** Does this move carry the actor's reason, posted as a comment (`transition-guards.ts:reasonFault`)? */
 export function requiresAuthoredReason(from: IssueStatus, to: IssueStatus): boolean {

@@ -1,5 +1,5 @@
 import type { JobType } from '../db/schema.js';
-import { type HandoffStep, isHandoffStep } from '../memory/step-handoff-schema.js';
+import { type HandoffStep, isHandoffStep } from './step-handoff-schema.js';
 
 const INJECT_BY_STEP: Record<HandoffStep, HandoffStep[]> = {
   triage: [],

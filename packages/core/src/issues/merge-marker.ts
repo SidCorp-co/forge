@@ -1,13 +1,7 @@
 import type { MergeRefusalCode } from '@forge/contracts/issues';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { z } from 'zod';
-import { postIssueNotice } from '../comments/index.js';
 import { db, type Tx } from '../db/client.js';
-import {
-  type DriftRefusal,
-  landingDriftRefusal,
-  landingWorld,
-} from '../ecosystem/contract/drift.js';
 import { refuser } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import { emitEvents } from '../outbox/index.js';
@@ -32,6 +26,7 @@ import {
   recordMergeTarget,
 } from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
+import { contractDrift, postIssueNotice } from './ports.js';
 import { findIssueById, type IssueRow } from './read-service.js';
 
 export type AuditComment = { id: string; body: string; parentId: string | null };
@@ -78,7 +73,9 @@ export async function writeAuditComment(
   return { id: row.id, body: row.body, parentId: row.parentId };
 }
 
-const refuse = refuser<MergeRefusalCode | DriftRefusal['code']>('MERGE_MARK_REFUSED');
+const refuse = refuser<MergeRefusalCode | 'CONTRACT_DRIFT' | 'CONTRACT_LANDING_UNNAMED'>(
+  'MERGE_MARK_REFUSED',
+);
 
 export type MergeMarkerActor = {
   agency: ActorAgency;
@@ -140,7 +137,7 @@ export async function applyMergeMarker(args: {
       );
     }
     const landed = args.contracts ?? [];
-    const drift = landingDriftRefusal(landed, await landingWorld(prior, landed));
+    const drift = await contractDrift(prior, landed);
     if (drift) throw refuse(drift.code, drift.detail, '/contracts');
     // An agent with nothing else behind it may still have landed on the base branch itself, where
     // the commit is the only trace: it counts once the repository says it is this issue's landing.
