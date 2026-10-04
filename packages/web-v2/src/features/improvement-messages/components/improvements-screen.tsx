@@ -2,7 +2,7 @@
 
 import { useQueries } from "@tanstack/react-query";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import {
   Badge,
   Button,
@@ -11,6 +11,7 @@ import {
   PageContainer,
   PageTitle,
   Skeleton,
+  StatusBadge,
   Table,
   TBody,
   TD,
@@ -20,6 +21,8 @@ import {
 } from "@/design";
 import { useAgentReports, useMarkAgentReportReviewed } from "@/features/agent-reports/hooks";
 import type { AgentReport } from "@/features/agent-reports/types";
+import { FeedbackForm } from "@/features/feedback/components/feedback-form";
+import { feedbackHref } from "@/features/feedback/routes";
 import { useCreateIssue } from "@/features/issues/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
@@ -31,6 +34,7 @@ import {
   type ImprovementFilter,
   type ImprovementRow,
   type LoopRuns,
+  feedbackDraftOf,
   improvementRows,
   issueFromReport,
   matchesFilter,
@@ -89,12 +93,35 @@ function OpenIssueButton({ report, projectId }: { report: AgentReport; projectId
   );
 }
 
-function RowAction({ row, projectId, slug, canWrite }: { row: ImprovementRow; projectId: string; slug: string; canWrite: boolean }) {
+function RowAction({
+  row,
+  projectId,
+  slug,
+  canWrite,
+  onPromote,
+}: {
+  row: ImprovementRow;
+  projectId: string;
+  slug: string;
+  canWrite: boolean;
+  onPromote: () => void;
+}) {
   if (row.source === "proposal") {
     return (
       <Link href={`/projects/${slug}/agents/${row.sessionId}`} className="fg-caption text-accent hover:underline">
         View run →
       </Link>
+    );
+  }
+  if (row.report.feedback) {
+    const fb = row.report.feedback;
+    return (
+      <span className="inline-flex items-center gap-1.5" data-testid="report-became">
+        <Link href={feedbackHref(slug, fb.key)} className="fg-caption text-accent hover:underline">
+          Became {fb.key} →
+        </Link>
+        <StatusBadge family="feedbackPhase" value={fb.phase} />
+      </span>
     );
   }
   if (row.report.linkedIssueId) {
@@ -104,7 +131,16 @@ function RowAction({ row, projectId, slug, canWrite }: { row: ImprovementRow; pr
       </Link>
     );
   }
-  if (row.state === "report" && canWrite) return <OpenIssueButton report={row.report} projectId={projectId} />;
+  if (row.state === "report" && canWrite) {
+    return (
+      <span className="inline-flex gap-1.5">
+        <OpenIssueButton report={row.report} projectId={projectId} />
+        <Button variant="secondary" size="sm" onClick={onPromote} aria-label={`Promote ${row.report.summary} to feedback`}>
+          Promote to feedback
+        </Button>
+      </span>
+    );
+  }
   return null;
 }
 
@@ -119,6 +155,7 @@ export function ImprovementsScreen({
   const { projectId, slug } = scope;
   const [filter, setFilter] = useState<ImprovementFilter>("all");
   const [catalogOpen, setCatalogOpen] = useState(false);
+  const [promoting, setPromoting] = useState<string | null>(null);
   const reportsQ = useAgentReports(projectId);
   const loops = useLoopRuns(projectId);
   const rows = useMemo(() => improvementRows(reportsQ.data ?? [], loops.runs), [reportsQ.data, loops.runs]);
@@ -171,18 +208,27 @@ export function ImprovementsScreen({
           </THead>
           <TBody>
             {shown.map((row) => (
-              <TR key={row.id} data-testid="improvement-row">
-                <TD className="max-w-[420px]">
-                  <p className="fg-body-sm break-words text-fg">{row.title}</p>
-                </TD>
-                <TD className="fg-caption text-muted">{row.from}</TD>
-                <TD>
-                  <Badge tone={STATE_BADGE[row.state].tone}>{STATE_BADGE[row.state].label}</Badge>
-                </TD>
-                <TD className="text-right">
-                  <RowAction row={row} projectId={projectId} slug={slug} canWrite={scope.canWrite} />
-                </TD>
-              </TR>
+              <Fragment key={row.id}>
+                <TR data-testid="improvement-row">
+                  <TD className="max-w-[420px]">
+                    <p className="fg-body-sm break-words text-fg">{row.title}</p>
+                  </TD>
+                  <TD className="fg-caption text-muted">{row.from}</TD>
+                  <TD>
+                    <Badge tone={STATE_BADGE[row.state].tone}>{STATE_BADGE[row.state].label}</Badge>
+                  </TD>
+                  <TD className="text-right">
+                    <RowAction row={row} projectId={projectId} slug={slug} canWrite={scope.canWrite} onPromote={() => setPromoting(row.id)} />
+                  </TD>
+                </TR>
+                {promoting === row.id && row.source === "report" ? (
+                  <TR data-testid="improvement-promote">
+                    <TD colSpan={4} className="p-0">
+                      <FeedbackForm projectId={projectId} agentReport={row.report.id} draft={feedbackDraftOf(row.report)} onDone={() => setPromoting(null)} />
+                    </TD>
+                  </TR>
+                ) : null}
+              </Fragment>
             ))}
           </TBody>
         </Table>

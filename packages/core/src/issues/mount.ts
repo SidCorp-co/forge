@@ -2,6 +2,7 @@ import type { Hono } from 'hono';
 import { needsYouRoutes } from '../development/needs-you-routes.js';
 import { developmentOverviewRoutes } from '../development/overview-routes.js';
 import { contractWaitRoutes } from '../ecosystem/waits/routes.js';
+import { masterStandingRoutes } from '../masters/routes.js';
 import type { RequestIdVars } from '../middleware/request-id.js';
 import { issueActivityRoutes } from './activity-routes.js';
 import { issueCriteriaRoutes } from './criteria/routes.js';
@@ -32,4 +33,5 @@ export function mountIssueProjectRoutes(app: Hono<{ Variables: RequestIdVars }>)
   app.route('/api/projects', issueStandingRoutes);
   app.route('/api/projects', developmentOverviewRoutes);
   app.route('/api/projects', needsYouRoutes);
+  app.route('/api/projects', masterStandingRoutes);
 }

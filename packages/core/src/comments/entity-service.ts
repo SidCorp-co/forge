@@ -11,7 +11,7 @@ import { eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { comments } from '../db/schema.js';
 import { commentEvents } from '../db/schema-comments.js';
-import type { ReadDoor } from '../feedback/read.js';
+import type { ReadDoor } from '../feedback/egress.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { peopleOf } from '../lib/people.js';

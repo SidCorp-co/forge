@@ -47,6 +47,9 @@
     "core-devices": [
       "packages/core/src/devices/**"
     ],
+    "core-masters": [
+      "packages/core/src/masters/**"
+    ],
     "core-domain-templates": [
       "packages/core/src/domain-templates/**"
     ],

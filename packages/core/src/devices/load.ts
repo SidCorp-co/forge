@@ -59,7 +59,7 @@ const RUNNER_FAULTS = sql`COALESCE((
   WHERE rf.device_id = d.id AND rf.limit_reason IS NOT NULL
 ), '[]'::json) AS runner_faults`;
 
-const OCCUPYING = sql`j.status IN ('dispatched', 'running')
+export const OCCUPYING = sql`j.status IN ('dispatched', 'running')
   AND (pr.id IS NULL OR pr.status IN ('running', 'paused'))`;
 
 export async function readDeviceLoad(deviceId: string): Promise<DeviceLoad | null> {

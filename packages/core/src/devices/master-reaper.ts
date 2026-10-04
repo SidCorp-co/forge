@@ -4,6 +4,7 @@ import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
+import { masterSilentSql } from './master-silence.js';
 import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 
 const TERMINAL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(', '));
@@ -11,28 +12,15 @@ const TERMINAL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(
 /**
  * Close the master sessions whose box has stopped answering, and say how many.
  * Flipping the row terminal invokes the descent in `applyKernelTransition`,
- * which returns the children's issue leases. A master is silent only if the sessions it OWNS are: a child that beat inside
- * the window means a live box with a broken master heartbeat. "Owns" is the
- * immediate edge, and a child counts only once it has REPORTED — `created_at`
- * is not a fall back, because `prepareClaimedJob` mints a queued child the
- * instant a job is prepared.
+ * which returns the children's issue leases.
  */
 export async function reapSilentMasters(): Promise<number> {
-  const staleSeconds = SESSION_SILENCE_TIMEOUT_S;
   const silent = (await db.execute(sql`
     SELECT s.id, s.device_id, s.project_id
     FROM agent_sessions s
     WHERE s.kind = ${MASTER_SESSION_KIND}
       AND s.status NOT IN (${TERMINAL})
-      AND COALESCE(s.last_heartbeat_at, s.started_at, s.created_at)
-          < now() - make_interval(secs => ${staleSeconds})
-      AND NOT EXISTS (
-        SELECT 1 FROM agent_sessions c
-        WHERE c.parent_session_id = s.id
-          AND c.status NOT IN (${TERMINAL})
-          AND COALESCE(c.last_heartbeat_at, c.started_at)
-              >= now() - make_interval(secs => ${staleSeconds})
-      )
+      AND ${masterSilentSql('s')}
   `)) as unknown as Array<Record<string, unknown>>;
 
   let closed = 0;

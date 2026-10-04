@@ -201,8 +201,8 @@ no writer gets a fourth state.
   revision or decision row. A slice writes no untyped `activity_log` row of its own.
 - **Repeated acts.** A decision that can happen more than once on one item, such as a return
   that is re-proposed, needs a row per decision. Overwriting the last one loses history
-  (requirements walkthrough D6). Feedback is the reference: every triage, decline, verify, reopen and
-  redaction inserts a `packages/core/src/db/schema-feedback.ts:feedbackDecisions` row, insert-only by
+  (requirements walkthrough D6). Feedback is the reference: every triage, decline, verify, reopen,
+  redaction and promotion from an agent report inserts a `packages/core/src/db/schema-feedback.ts:feedbackDecisions` row, insert-only by
   `feedback_decision_guard()` in `packages/core/drizzle/migrations/0352_product_feedback_is_an_item.sql`.
   A requirement return is a row each (`packages/core/src/db/schema-requirements.ts:requirementReturns`,
   insert-only by `requirement_return_guard()` in
@@ -260,8 +260,10 @@ means `off`).
   `BAD_REQUEST: <action> needs <key>`.
 - **Refusals** come back through `packages/core/src/mcp/tools/lib.ts:refusedAnswer`, never as thrown text.
 - **Access.** A tool declares `grant` (the permission), `reach` (`project`, `public` or `{ account }`)
-  and `route` (the REST mount its rows are served at, one per resource its grants name). The route
-  dates the tool for the grant epoch. Registration on `/mcp` and in chat refuses a tool missing any
+  and `route` (the REST mount its rows are served at, one per resource its grants name, or the nested
+  route it shares with REST where that route serves a newer prefix's rows). The route dates the tool
+  for the grant epoch, by the data it serves rather than the mount it sits under
+  (`packages/core/src/auth/pat-permissions.ts:PAT_NESTED_SURFACES`). Registration on `/mcp` and in chat refuses a tool missing any
   of them (`packages/core/src/mcp/tool-grant.ts:assertToolDeclaresAccess`). Both doors refuse a
   call through `packages/core/src/mcp/tool-call-guard.ts:toolCallRefusal`, which reads the same epoch
   rule as REST (`packages/core/src/auth/pat-permissions.ts:patEpochRefusal`).
@@ -367,7 +369,7 @@ slice to touch that code. Items 1 and 13 were closed by ISS-61, 18 and 29 by the
 | 2 | `packages/core/src/workflows/service.ts:assertWriter` throws a 403 instead of returning `WORKFLOW_WRITER_NOT_PROJECT` | review |
 | 3 | Record events refuse with a thrown 422 and criteria and verdicts with a thrown 400 or 409, each in the error handler's shape, not the envelope (`packages/core/src/issues/record-events/routes.ts:refusalHttp`, `packages/core/src/issues/criteria/store.ts:CriteriaRefused`, `:VerdictRefused`); `forge_criteria` takes a non-strict input, and `forge_issue_events` throws text | review |
 | 4 | Requirement codes, statuses and views are declared in core (`packages/core/src/requirements/rules.ts:RequirementRefusalCode`, `packages/core/src/db/schema-requirements.ts:REVISION_STATES`) and redeclared in `packages/web-v2/src/features/requirements/types.ts`; the requirement spec and criterion schemas live in `packages/contracts/src/suggestions.ts` instead of a requirements module of its own in contracts; route bodies are built inline (`packages/core/src/requirements/routes.ts:revisionFields`) | review |
-| 5 | Criteria verdict values and agent-report kinds are declared in core and redeclared in web (`packages/core/src/db/schema-issue-criteria.ts:verdictValues`, `packages/core/src/db/schema.ts:agentReportKinds`). Design statuses moved to `packages/contracts/src/design-status.ts:DESIGN_STATUSES`, which core re-exports | review |
+| 5 | Criteria verdict values are declared in core and redeclared in web (`packages/core/src/db/schema-issue-criteria.ts:verdictValues`). Design statuses moved to `packages/contracts/src/design-status.ts:DESIGN_STATUSES` and agent-report kinds to `packages/contracts/src/agent-reports.ts:AGENT_REPORT_KINDS` (ISS-93), which core re-exports | review |
 | 6 | Record-event kinds are declared twice, held by `packages/core/src/issues/record-events/kinds.test.ts` | review |
 | 7 | Workflow design state is one head status, not per-revision `REVISION_STATES`; a revision's state is derived on read (`packages/core/src/workflows/design-standing.ts:revisionStateOf`), never stored; `decided_by_user` / `proposed_by_user` naming | review (migration) |
 | 8 | `contract_versions.decided_as` says `person` (and carries `before-approval`); `actor_agency` and `author_agency` have no CHECK | review (migration) |
@@ -377,7 +379,7 @@ slice to touch that code. Items 1 and 13 were closed by ISS-61, 18 and 29 by the
 | 12 | Who-may-act codes predating the suffix: `WORKFLOW_DESIGN_APPROVER_NOT_*`, `CONTRACT_APPROVER_NOT_*`, `CONTRACT_BREAKING_NEEDS_PERSON`, `WORKFLOW_WRITER_NOT_PROJECT`, `LINK_WRITER_NOT_CONSUMER` | review (a rename touches guides and MCP descriptions) |
 | 14 | Agency checks older than the redesign: `packages/core/src/issues/transition-guards.ts`, `packages/core/src/issues/merge-marker.ts`, `packages/core/src/release-batch/approvals.ts`, `packages/core/src/issues/release-gate-hold.ts`, `packages/core/src/projects/master-charter-routes.ts` | review |
 | 15 | Body validation outside `strictBody`: criteria, record events and agent reports use `zValidator` + `flattenError` with no shape hint | review |
-| 16 | `packages/core/src/agent-reports/routes.ts` writes with inline drizzle rather than `packages/core/src/agent-reports/service.ts`; `forge_agent_report` is a singular name | review |
+| 16 | `forge_agent_report` is a singular name; its `submit` inserts through `packages/core/src/agent-reports/service.ts:insertReport` but checks its input inline, and the REST door has no submit | review |
 | 17 | The ISS-54/55/56 `cm:hack` annotations carry no `ISS-n until:` (`packages/core/src/issues/legacy-status.ts`, `packages/core/src/issues/criteria/event-verdicts.ts`, `packages/core/src/issues/record-events/mirror.ts`, `packages/core/src/issues/record-events/history.ts:legacyCommentRecords`, `packages/core/src/comments/tree.ts:recordOf`, `packages/core/src/agent-reports/routes.ts:feedbackReportsAliasRoutes`, `packages/core/src/mcp/tools/forge-agent-report.ts:forgeFeedbackAliasTool`) | review |
 | 20 | The BA door posts a questionnaire through its bound tool (`packages/core/src/assistant/tools/ba-tools.ts`, `ba_send_questionnaire`) without the `PROJECT_AGENT_WRITE` rule REST and MCP posting take (`packages/core/src/questionnaires/rules.ts:posterRefusal`); the room binding stands in for it | review |
 | 21 | FB-n's MCP tool is `forge_feedback_items`, because `forge_feedback` is still the agent-reports alias; the `feedback:*` token grant also still means agent reports, so FB-n routes ride `projects:*` (`cm:hack ISS-59` in `packages/core/src/auth/pat-permissions.ts`) | review (a migration rewrites stored `feedback:*` grants, then the names move) |
@@ -401,6 +403,7 @@ slice to touch that code. Items 1 and 13 were closed by ISS-61, 18 and 29 by the
 | 40 | `forge_issues`, `forge_feedback_items` and `forge_knowledge` take no `view`: their lists were already summaries and their writes answer one item, at most 3.5 KB as measured on dev on 2026-10-04. `forge_feedback_items` `propose_triage` answers the whole suggestion | review |
 | 41 | A projection runs after the whole read: a write still reads the full detail (`packages/core/src/requirements/read.ts:detailOf`, `packages/core/src/workflows/design-service.ts:designView`) and the door drops most of it | review |
 | 42 | `forge_suggestions` has no `get`: a suggestion's payload is read by `list` with `view: 'full'`, narrowed by target | review |
+| 43 | Master passes (ISS-106) have no MCP door: `GET /api/projects/:id/masters/standing` is REST only, and the pass and slot writes are device routes (`packages/core/src/masters/device-routes.ts`) a runner calls with its device credential, which no MCP tool holds. A master pass also has no key; it is named by its verb and start time in refusals | ISS-108 (the runs read model) |
 
 ## Honest costs
 

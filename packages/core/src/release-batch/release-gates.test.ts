@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { REMEDY_COST, type ReleaseBlocker, type ReleaseReasonCode } from './blocker-sentences.js';
 import { gateView, gateViews } from './release-gates.js';
 
@@ -111,7 +112,7 @@ describe('a gate reads as a sentence', () => {
   });
 
   it('names five issues and counts the rest, while the view keeps every key', () => {
-    const ids = Array.from({ length: 31 }, (_, i) => `ISS-${i + 1}`);
+    const ids = Array.from({ length: 31 }, (_, i) => formatIssueRef('ISS', i + 1));
     const v = gateView(blocker('RELEASE_RECORD_MISSING', { displayIds: ids }), 'blocker');
     expect(v.sentence).toBe(
       'ISS-1, ISS-2, ISS-3, ISS-4, ISS-5 and 26 more have no release note, so the release would claim a ship nobody described.',

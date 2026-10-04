@@ -223,9 +223,11 @@ describe('readAdmissibleIssues', () => {
       expect(q).toContain('d.valid_until IS NULL OR d.valid_until > now()');
     });
 
-    it('releases the row on exactly the settled statuses', async () => {
+    it('releases the row on exactly the settled statuses, and on a dropped blocker', async () => {
       const q = await blockedQuery();
-      expect(q).toContain('b.status NOT IN');
+      expect(q).toContain('.status NOT IN');
+      expect(q).toContain('.status <> ');
+      expect(q).toContain('dropped');
       for (const status of BLOCKER_SETTLED_STATUSES) {
         expect(q).toContain(status);
       }

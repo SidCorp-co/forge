@@ -2,7 +2,7 @@
 // skipped, agent_runs and settle; ISS-112): every fire of every kind is opened here, a fire that ran
 // no session is settled here once, and schedules.last_status is written from the fire, never beside
 // it. A fire that started a session settles when that session stops, whoever stops it: trigger
-// `forge_session_stop_settles_its_fire` (migration 0365).
+// `forge_session_stop_settles_its_fire` (migration 0367).
 
 import type {
   ScheduleRunSkipReason,

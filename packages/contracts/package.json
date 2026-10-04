@@ -58,6 +58,10 @@
       "types": "./dist/needs-you.d.ts",
       "default": "./dist/needs-you.js"
     },
+    "./master-standing": {
+      "types": "./dist/master-standing.d.ts",
+      "default": "./dist/master-standing.js"
+    },
     "./issue-standing": {
       "types": "./dist/issue-standing.d.ts",
       "default": "./dist/issue-standing.js"
@@ -109,6 +113,10 @@
     "./schedules": {
       "types": "./dist/schedules.d.ts",
       "default": "./dist/schedules.js"
+    },
+    "./agent-reports": {
+      "types": "./dist/agent-reports.d.ts",
+      "default": "./dist/agent-reports.js"
     },
     "./releases": {
       "types": "./dist/releases.d.ts",

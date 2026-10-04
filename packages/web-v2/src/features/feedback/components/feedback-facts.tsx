@@ -5,7 +5,7 @@
 // column holds only what the reporter said, the acts, and the history.
 
 import Link from "next/link";
-import { ActorChip, EnumBadge, Fact, FactsEmpty, FactsGroup, StatusBadge, type StatusFamily, StepBar, WaitBanner, WaitingOn } from "@/design";
+import { ActorChip, EnumBadge, enumLabel, Fact, FactsEmpty, FactsGroup, StatusBadge, type StatusFamily, StepBar, WaitBanner, WaitingOn } from "@/design";
 import { requirementHref } from "@/features/requirements/routes";
 import { issueHref } from "@/features/issues/routes";
 import { formatRelativeTime, formatStamp } from "@/lib/utils/format";
@@ -130,6 +130,21 @@ export function FeedbackFacts({ f, slug }: { f: FeedbackView; slug: string }) {
         <Fact label="Sent">
           <span title={formatStamp(f.createdAt)}>{formatRelativeTime(f.createdAt)}</span>
         </Fact>
+        {f.source ? (
+          <Fact label="From" testId="facts-source">
+            <Link
+              href={`/projects/${encodeURIComponent(slug)}/automation?tab=improvements`}
+              className="text-link hover:underline"
+              title={`Agent report ${f.source.agentReport.id} · filed ${formatStamp(f.source.agentReport.createdAt)}`}
+            >
+              Agent report {f.source.agentReport.id.slice(0, 8)}
+            </Link>
+            <span className="text-12-5 text-muted">
+              {enumLabel("agentReportKind", f.source.agentReport.kind)} · {enumLabel("agentReportTarget", f.source.agentReport.target)}
+              {f.source.agentReport.targetRef ? ` ${f.source.agentReport.targetRef}` : ""}
+            </span>
+          </Fact>
+        ) : null}
         {f.clarification ? (
           <Fact label="Clarification">
             <span className="grid gap-0.5" title={f.clarification.prompt ?? undefined}>

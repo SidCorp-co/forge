@@ -16,7 +16,9 @@ import {
   feedbackTriageSchema,
   feedbackVerifyRequestSchema,
   listFeedbackQuerySchema,
+  PROMOTE_AGENT_REPORT_SHAPE,
   PROPOSE_FEEDBACK_TRIAGE_SHAPE,
+  promoteAgentReportRequestSchema,
   proposeFeedbackTriageRequestSchema,
 } from '@forge/contracts/feedback';
 import type { SuggestionResponse } from '@forge/contracts/suggestions';
@@ -30,6 +32,7 @@ import { refused } from '../project-config/respond.js';
 import { createSuggestion } from '../suggestions/service.js';
 import { addAttachment, askClarification, attachmentBytes } from './attachments.js';
 import { similarFeedbackAs } from './embeddings.js';
+import { promoteAgentReport } from './promote.js';
 import { detailAs, type FeedbackActor, listFeedbackAs, rowIn } from './read.js';
 import {
   createFeedback,
@@ -93,7 +96,7 @@ feedbackRoutes.get(
   zValidator('query', listFeedbackQuerySchema, (r) => {
     if (!r.success)
       throw badRequest(
-        `invalid query: phase? (comma-separated: ${FEEDBACK_PHASES.join(', ')}), q?`,
+        `invalid query: phase? (comma-separated: ${FEEDBACK_PHASES.join(', ')}), q?, requirement? (REQ-n)`,
       );
   }),
   async (c) => {
@@ -101,6 +104,7 @@ feedbackRoutes.get(
     const out = await listFeedbackAs(actorOf(c), c.req.valid('param').id, {
       phases: q.phase,
       q: q.q,
+      requirement: q.requirement,
     });
     return out.ok ? c.json(out.list) : refused(c, out.refusals);
   },
@@ -119,6 +123,21 @@ feedbackRoutes.post(
         request: c.req.valid('json'),
       }),
     ),
+);
+
+feedbackRoutes.post(
+  '/:id/feedback/promote',
+  projectParam,
+  strictBody(promoteAgentReportRequestSchema, PROMOTE_AGENT_REPORT_SHAPE),
+  async (c) => {
+    const out = await promoteAgentReport({
+      projectId: c.req.valid('param').id,
+      actor: actorOf(c),
+      request: c.req.valid('json'),
+    });
+    if (!out.ok) return refused(c, out.refusals);
+    return c.json({ feedback: out.feedback, effect: out.effect }, 201);
+  },
 );
 
 feedbackRoutes.get('/:id/feedback/:fb', itemParam, async (c) => {

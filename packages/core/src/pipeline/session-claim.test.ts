@@ -8,6 +8,7 @@ import {
   leaseIsWorkInProgress,
   leaseShowsHolderGone,
   leaseSilenceToleranceMs,
+  leaseWriteTakes,
   MIN_SILENCE_MS,
   MISSED_BEATS,
 } from './session-claim.js';
@@ -266,5 +267,24 @@ describe('a holder that declared a heartbeat (ISS-1195)', () => {
     for (const v of ['none', 'live', 'shared', 'expired', 'malformed'] as const) {
       expect(leaseShowsHolderGone(v)).toBe(false);
     }
+  });
+});
+
+describe('leaseWriteTakes', () => {
+  it('takes on a first claim, a reclaim of a lapsed lease and a handoff', () => {
+    expect(leaseWriteTakes(null, lease(), NOW)).toBe(true);
+    expect(leaseWriteTakes(lease({ renewedAt: '2026-09-20T10:00:00.000Z' }), lease(), NOW)).toBe(
+      true,
+    );
+    expect(leaseWriteTakes(lease(), lease({ holder: 'another-run' }), NOW)).toBe(true);
+  });
+
+  it('takes nothing on a renewal by the live holder, a hand-back or a lapsed value', () => {
+    expect(leaseWriteTakes(lease(), lease(), NOW)).toBe(false);
+    expect(leaseWriteTakes(lease(), lease({ stopped: 'handed back' }), NOW)).toBe(false);
+    expect(leaseWriteTakes(null, lease({ renewedAt: '2026-09-20T10:00:00.000Z' }), NOW)).toBe(
+      false,
+    );
+    expect(leaseWriteTakes(lease(), null, NOW)).toBe(false);
   });
 });

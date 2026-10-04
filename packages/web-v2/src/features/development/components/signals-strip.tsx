@@ -67,18 +67,19 @@ function Contracts({ s }: { s: DevelopmentOverview["signals"]["contracts"] }) {
 }
 
 function Master({ s }: { s: DevelopmentOverview["signals"]["master"] }) {
+  const max = s.slots?.max ?? null;
   return (
     <span className="inline-flex flex-wrap items-baseline gap-x-3">
       <span>
-        Slots in use <b className="font-semibold">{s.runs}</b>
-        {s.capacity === null ? (
-          <Tooltip label={s.capacityNote} multiline>
+        Slots in use <b className="font-semibold">{s.slots ? s.slots.inUse : "?"}</b>
+        {max === null ? (
+          <Tooltip label={s.slotsNote ?? ""} multiline>
             <span className="ml-1 cursor-help text-muted underline decoration-dotted underline-offset-2" data-testid="capacity-unavailable">
               of ?
             </span>
           </Tooltip>
         ) : (
-          <span className="text-muted"> of {s.capacity}</span>
+          <span className="text-muted"> of {max}</span>
         )}
       </span>
       <span className={s.masters === 0 ? "text-muted" : undefined}>

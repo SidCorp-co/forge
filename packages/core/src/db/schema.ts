@@ -56,6 +56,7 @@ export { MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
 import type { DecisionFields } from '@forge/contracts/comments';
 import { SCHEDULE_RUN_STATUSES } from '@forge/contracts/schedules';
+import { MASTER_JOB_PANES_MAX } from '@forge/contracts/master-standing';
 import { BODY_FORMATS } from '../body/formats.js';
 import type { IssueBranchOverride } from '../branches/resolve.js';
 import { COMMENT_INTENTS } from '../issues/record-events/kinds.js';
@@ -468,6 +469,9 @@ export const devices = pgTable(
      */
     gateReport: jsonb('gate_report'),
     maxConcurrent: integer('max_concurrent').notNull().default(1),
+    // cm:why the runner declares its job-pane ceiling and core holds no default (design agent-run-standing):
+    // NULL is undeclared, served as such by masters/standing, never a guessed number
+    maxJobPanes: integer('max_job_panes'),
     gitCredentialRef: text('git_credential_ref'),
     machineId: text('machine_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -475,6 +479,10 @@ export const devices = pgTable(
   (t) => ({
     ownerIdIdx: index('devices_owner_id_idx').on(t.ownerId),
     ownerMachineIdx: index('devices_owner_machine_idx').on(t.ownerId, t.machineId),
+    maxJobPanesChk: check(
+      'devices_max_job_panes_chk',
+      sql`${t.maxJobPanes} IS NULL OR ${t.maxJobPanes} BETWEEN 1 AND ${sql.raw(String(MASTER_JOB_PANES_MAX))}`,
+    ),
   }),
 );
 
@@ -2785,95 +2793,7 @@ export const runnerEvents = pgTable(
   }),
 );
 
-export const agentReportKinds = [
-  'friction',
-  'bug',
-  'skill_gap',
-  'unclear_step',
-  'redundant_step',
-  'learning',
-  'suggestion',
-] as const;
-export type AgentReportKind = (typeof agentReportKinds)[number];
-
-export const agentReportSeverities = ['low', 'medium', 'high'] as const;
-export type AgentReportSeverity = (typeof agentReportSeverities)[number];
-
-export const agentReportTargets = [
-  'skill',
-  'prompt',
-  'tool',
-  'doc',
-  'orientation',
-  'pipeline',
-  'other',
-] as const;
-export type AgentReportTarget = (typeof agentReportTargets)[number];
-
-/**
- * What an agent reports about the harness it ran under — friction, a skill gap, a learning. Not a
- * person's product feedback, which owns the word `feedback`.
- */
-export const agentReports = pgTable(
-  'agent_reports',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    issueId: uuid('issue_id').references((): AnyPgColumn => issues.id, { onDelete: 'set null' }),
-    runId: uuid('run_id').references(() => pipelineRuns.id, { onDelete: 'set null' }),
-    jobId: uuid('job_id').references(() => jobs.id, { onDelete: 'set null' }),
-    stage: text('stage'),
-    skillName: text('skill_name'),
-    skillVersion: integer('skill_version'),
-    kind: text('kind', { enum: agentReportKinds }).notNull(),
-    severity: text('severity', { enum: agentReportSeverities }).notNull().default('low'),
-    target: text('target', { enum: agentReportTargets }).notNull(),
-    targetRef: text('target_ref'),
-    summary: text('summary').notNull(),
-    detail: text('detail'),
-    suggestion: text('suggestion'),
-    // Server-computed `self_report:<target>:<targetRef|'-'>:<kind>`.
-    // Stored for C2 signal accrual + list dedup.
-    signalKey: text('signal_key').notNull(),
-    // ISS-557 — bare uuid pointing at the agent_session that emitted this report.
-    // No hard FK so steward sessions (which have no job row) can link cleanly.
-    sessionId: uuid('session_id'),
-    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
-    // ISS-712 — issue the report was curated INTO (distinct from `issueId`,
-    // which is the SOURCE issue the agent was working on when it reported).
-    // Set only via the `review` action's explicit linkedIssueId param.
-    linkedIssueId: uuid('linked_issue_id').references((): AnyPgColumn => issues.id, {
-      onDelete: 'set null',
-    }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    projectIdIdx: index('agent_reports_project_id_idx').on(t.projectId),
-    projectKindIdx: index('agent_reports_project_kind_idx').on(t.projectId, t.kind),
-    projectTargetIdx: index('agent_reports_project_target_idx').on(
-      t.projectId,
-      t.target,
-      t.targetRef,
-    ),
-    signalKeyIdx: index('agent_reports_signal_key_idx').on(t.signalKey),
-    createdAtIdx: index('agent_reports_created_at_idx').on(t.createdAt),
-    sessionIdx: index('agent_reports_session_id_idx').on(t.sessionId),
-    linkedIssueIdIdx: index('agent_reports_linked_issue_id_idx').on(t.linkedIssueId),
-  }),
-);
-
-export const agentReportsRelations = relations(agentReports, ({ one }) => ({
-  project: one(projects, { fields: [agentReports.projectId], references: [projects.id] }),
-  issue: one(issues, { fields: [agentReports.issueId], references: [issues.id] }),
-  linkedIssue: one(issues, {
-    fields: [agentReports.linkedIssueId],
-    references: [issues.id],
-  }),
-  run: one(pipelineRuns, { fields: [agentReports.runId], references: [pipelineRuns.id] }),
-  job: one(jobs, { fields: [agentReports.jobId], references: [jobs.id] }),
-}));
+export * from './schema-agent-reports.js';
 
 export const integrationGuides = pgTable(
   'integration_guides',

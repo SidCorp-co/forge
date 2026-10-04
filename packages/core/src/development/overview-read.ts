@@ -19,6 +19,8 @@ import { effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { actMiss, PERSON_ACT } from '../lib/person-act.js';
+import { readMasterStanding } from '../masters/read.js';
+import { slotsNoteOf } from '../masters/rules.js';
 import { readProjectDocument } from '../project-config/service.js';
 import {
   type ContractChangeFact,
@@ -51,8 +53,6 @@ export const CI_UNAVAILABLE =
   'Core stores check runs for pull requests only, never for a branch head, so it holds no reading of dev itself.';
 export const POST_MERGE_UNAVAILABLE =
   'A push to a gated branch carries its post-merge jobs on GitHub; core receives no event for them and stores none.';
-export const CAPACITY_UNAVAILABLE =
-  'The slot cap (max_job_panes) lives in the runner’s own config; the runner never reports it to core.';
 
 async function laneFacts(
   projectId: string,
@@ -189,18 +189,20 @@ async function moduleFacts(projectId: string) {
 }
 
 async function masterSignal(projectId: string): Promise<OverviewMasterSignal> {
-  const [row] = rowsOf<{ masters: number; runs: number }>(
-    await db.execute(sql`
-      SELECT count(*) FILTER (WHERE kind = 'master')::int AS masters,
-             count(*) FILTER (WHERE kind IN ('run_session', 'pipeline', 'pm') AND status = 'running')::int AS runs
-        FROM agent_sessions
-       WHERE project_id = ${projectId} AND status NOT IN (${terminalSessions})`),
-  );
+  const [[row], standing] = await Promise.all([
+    db
+      .execute(sql`
+        SELECT count(*)::int AS masters
+          FROM agent_sessions
+         WHERE project_id = ${projectId} AND kind = 'master' AND status NOT IN (${terminalSessions})`)
+      .then((r) => rowsOf<{ masters: number }>(r)),
+    readMasterStanding(projectId),
+  ]);
   return {
     masters: row?.masters ?? 0,
-    runs: row?.runs ?? 0,
-    capacity: null,
-    capacityNote: CAPACITY_UNAVAILABLE,
+    state: standing.state,
+    slots: standing.slots,
+    slotsNote: slotsNoteOf(standing),
   };
 }
 

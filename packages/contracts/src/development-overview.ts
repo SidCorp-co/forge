@@ -10,6 +10,7 @@ import type {
 	KernelIssueStatus,
 	WorkStep,
 } from "./issue-vocabulary.js";
+import type { MasterSlots, MasterState } from "./master-standing.js";
 
 export const OVERVIEW_WINDOW_DAYS = 14;
 
@@ -35,9 +36,9 @@ export const OVERVIEW_WINDOWS_SHOWN = 3;
 
 export interface OverviewMasterSignal {
 	masters: number;
-	runs: number;
-	capacity: number | null;
-	capacityNote: string;
+	state: MasterState;
+	slots: MasterSlots | null;
+	slotsNote: string | null;
 }
 
 export interface OverviewSignals {

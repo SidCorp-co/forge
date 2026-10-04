@@ -1,19 +1,18 @@
-import { and, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { eq, inArray, isNotNull, isNull, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
 import {
   agentReportKinds,
   agentReportSeverities,
   agentReports,
   agentReportTargets,
-  issues,
-  projects,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { refused } from '../project-config/respond.js';
+import { issueVisibleIn, listReports, readReport, reportViews, stampReviewed } from './service.js';
 
 const listQuerySchema = z
   .object({
@@ -59,95 +58,29 @@ agentReportRoutes.get(
   async (c) => {
     const { projectId, scope, kind, severity, target, reviewed, limit } = c.req.valid('query');
     const userId = c.get('userId');
-
+    let scoped: SQL;
     if (scope === 'all') {
       const visibleIds = await loadVisibleProjectIds(userId);
       if (visibleIds.length === 0) return c.json([]);
-
-      const conditions = [inArray(agentReports.projectId, visibleIds)];
-      if (kind) conditions.push(eq(agentReports.kind, kind));
-      if (severity) conditions.push(eq(agentReports.severity, severity));
-      if (target) conditions.push(eq(agentReports.target, target));
-      if (reviewed === true) conditions.push(isNotNull(agentReports.reviewedAt));
-      if (reviewed === false) conditions.push(isNull(agentReports.reviewedAt));
-
-      const rows = await db
-        .select({
-          id: agentReports.id,
-          projectId: agentReports.projectId,
-          projectSlug: projects.slug,
-          kind: agentReports.kind,
-          severity: agentReports.severity,
-          target: agentReports.target,
-          targetRef: agentReports.targetRef,
-          summary: agentReports.summary,
-          detail: agentReports.detail,
-          suggestion: agentReports.suggestion,
-          signalKey: agentReports.signalKey,
-          sessionId: agentReports.sessionId,
-          reviewedAt: agentReports.reviewedAt,
-          linkedIssueId: agentReports.linkedIssueId,
-          createdAt: agentReports.createdAt,
-        })
-        .from(agentReports)
-        .leftJoin(projects, eq(projects.id, agentReports.projectId))
-        .where(and(...conditions))
-        .orderBy(desc(agentReports.createdAt))
-        .limit(limit ?? 50);
-
-      const serialized = rows.map((r) => ({
-        ...r,
-        reviewedAt: r.reviewedAt?.toISOString() ?? null,
-        createdAt: r.createdAt.toISOString(),
-      }));
-
-      return c.json(serialized);
+      scoped = inArray(agentReports.projectId, visibleIds);
+    } else {
+      if (!projectId) throw badRequest('projectId is required unless scope=all');
+      const access = await loadProjectAccess(projectId, userId);
+      assertProjectRole(access, 'viewer', 'not a project member');
+      scoped = eq(agentReports.projectId, projectId);
     }
-
-    if (!projectId) {
-      throw badRequest('projectId is required unless scope=all');
-    }
-
-    const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'not a project member');
-
-    const conditions = [eq(agentReports.projectId, projectId)];
-    if (kind) conditions.push(eq(agentReports.kind, kind));
-    if (severity) conditions.push(eq(agentReports.severity, severity));
-    if (target) conditions.push(eq(agentReports.target, target));
-    if (reviewed === true) conditions.push(isNotNull(agentReports.reviewedAt));
-    if (reviewed === false) conditions.push(isNull(agentReports.reviewedAt));
-
-    const rows = await db
-      .select({
-        id: agentReports.id,
-        kind: agentReports.kind,
-        severity: agentReports.severity,
-        target: agentReports.target,
-        targetRef: agentReports.targetRef,
-        summary: agentReports.summary,
-        detail: agentReports.detail,
-        suggestion: agentReports.suggestion,
-        signalKey: agentReports.signalKey,
-        sessionId: agentReports.sessionId,
-        reviewedAt: agentReports.reviewedAt,
-        linkedIssueId: agentReports.linkedIssueId,
-        createdAt: agentReports.createdAt,
-      })
-      .from(agentReports)
-      .where(and(...conditions))
-      .orderBy(desc(agentReports.createdAt))
-      .limit(limit ?? 50);
-
-    // REST endpoint is human-facing (web UI); React escapes all text on render.
-    // No untrusted framing needed here — that's for AI-facing MCP list only.
-    const serialized = rows.map((r) => ({
-      ...r,
-      reviewedAt: r.reviewedAt?.toISOString() ?? null,
-      createdAt: r.createdAt.toISOString(),
-    }));
-
-    return c.json(serialized);
+    const rows = await listReports(
+      [
+        scoped,
+        kind ? eq(agentReports.kind, kind) : undefined,
+        severity ? eq(agentReports.severity, severity) : undefined,
+        target ? eq(agentReports.target, target) : undefined,
+        reviewed === true ? isNotNull(agentReports.reviewedAt) : undefined,
+        reviewed === false ? isNull(agentReports.reviewedAt) : undefined,
+      ],
+      limit ?? 50,
+    );
+    return c.json(await reportViews(rows));
   },
 );
 
@@ -164,50 +97,24 @@ agentReportRoutes.post(
     const { reviewed, linkedIssueId } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const [existing] = await db
-      .select({ id: agentReports.id, projectId: agentReports.projectId })
-      .from(agentReports)
-      .where(eq(agentReports.id, reportId))
-      .limit(1);
-
+    const existing = await readReport(reportId);
     if (!existing) throw notFound('agent report not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
     assertProjectRole(access, 'member', 'not a project member');
 
-    let validatedLinkedIssueId: string | undefined;
-    if (reviewed && linkedIssueId) {
-      const visibleIds = await loadVisibleProjectIds(userId);
-      const [issueRow] = visibleIds.length
-        ? await db
-            .select({ id: issues.id })
-            .from(issues)
-            .where(and(eq(issues.id, linkedIssueId), inArray(issues.projectId, visibleIds)))
-            .limit(1)
-        : [];
-      if (!issueRow) throw notFound('linkedIssueId not found in any project you can see');
-      validatedLinkedIssueId = issueRow.id;
+    let link: { linkedIssueId?: string | null } = {};
+    if (!reviewed) link = { linkedIssueId: null };
+    else if (linkedIssueId) {
+      if (!(await issueVisibleIn(linkedIssueId, await loadVisibleProjectIds(userId)))) {
+        throw notFound('linkedIssueId not found in any project you can see');
+      }
+      link = { linkedIssueId };
     }
 
-    const [updated] = await db
-      .update(agentReports)
-      .set({
-        reviewedAt: reviewed ? new Date() : null,
-        // Omitting linkedIssueId on a reviewed:true call leaves any existing
-        // link untouched (back-compat).
-        ...(!reviewed
-          ? { linkedIssueId: null }
-          : validatedLinkedIssueId !== undefined
-            ? { linkedIssueId: validatedLinkedIssueId }
-            : {}),
-      })
-      .where(eq(agentReports.id, reportId))
-      .returning({
-        id: agentReports.id,
-        reviewedAt: agentReports.reviewedAt,
-        linkedIssueId: agentReports.linkedIssueId,
-      });
-
+    const out = await stampReviewed([eq(agentReports.id, reportId)], { reviewed, ...link });
+    if (!out.ok) return refused(c, out.refusals);
+    const [updated] = out.rows;
     if (!updated) throw notFound('agent report not found after update');
 
     return c.json({

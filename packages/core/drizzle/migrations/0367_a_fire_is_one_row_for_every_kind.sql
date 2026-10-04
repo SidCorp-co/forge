@@ -166,7 +166,7 @@ BEGIN
     'at', now()
   );
   INSERT INTO "backfill_markers" ("key", "completed_at", "report")
-  VALUES ('0365_schedule_runs_one_row_per_fire', now(), jsonb_build_object('runs', jsonb_build_array(this_run)))
+  VALUES ('0367_schedule_runs_one_row_per_fire', now(), jsonb_build_object('runs', jsonb_build_array(this_run)))
   ON CONFLICT ("key") DO UPDATE SET
     "completed_at" = excluded."completed_at",
     "report" = jsonb_build_object('runs', coalesce("backfill_markers"."report" -> 'runs', '[]'::jsonb) || jsonb_build_array(this_run));

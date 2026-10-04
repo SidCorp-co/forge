@@ -18,13 +18,14 @@ vi.mock('../middleware/auth.js', () => ({
   assertEmailVerified: () => async (_c: unknown, next: () => Promise<void>) => next(),
 }));
 
-const selectLimit = vi.fn();
-const updateReturning = vi.fn();
-vi.mock('../db/client.js', () => ({
-  db: {
-    select: vi.fn(() => ({ from: () => ({ where: () => ({ limit: selectLimit }) }) })),
-    update: vi.fn(() => ({ set: () => ({ where: () => ({ returning: updateReturning }) }) })),
-  },
+const readReport = vi.fn();
+const stampReviewed = vi.fn();
+vi.mock('./service.js', () => ({
+  readReport,
+  stampReviewed,
+  issueVisibleIn: vi.fn(async () => true),
+  listReports: vi.fn(async () => []),
+  reportViews: vi.fn(async () => []),
 }));
 
 vi.mock('../lib/authz.js', () => ({
@@ -45,8 +46,11 @@ function buildApp() {
 
 /** One `POST /:id/reviewed` that finds the report and stamps it. */
 function queueReviewed(): void {
-  selectLimit.mockResolvedValueOnce([{ id: REPORT_ID, projectId: PROJECT_ID }]);
-  updateReturning.mockResolvedValueOnce([{ id: REPORT_ID, reviewedAt: null, linkedIssueId: null }]);
+  readReport.mockResolvedValueOnce({ id: REPORT_ID, projectId: PROJECT_ID });
+  stampReviewed.mockResolvedValueOnce({
+    ok: true,
+    rows: [{ id: REPORT_ID, reviewedAt: null, linkedIssueId: null }],
+  });
 }
 
 const reviewed = (base: string) =>
@@ -57,8 +61,8 @@ const reviewed = (base: string) =>
   });
 
 beforeEach(() => {
-  selectLimit.mockReset();
-  updateReturning.mockReset();
+  readReport.mockReset();
+  stampReviewed.mockReset();
 });
 
 describe('/api/agent-reports and its /api/feedback-reports alias', () => {
@@ -81,6 +85,21 @@ describe('/api/agent-reports and its /api/feedback-reports alias', () => {
       reviewedAt: null,
       linkedIssueId: null,
       deprecation: FEEDBACK_REPORTS_ALIAS_DEPRECATION,
+    });
+  });
+
+  it('answers a refused review in the one 422 envelope, naming the item the report became', async () => {
+    readReport.mockResolvedValueOnce({ id: REPORT_ID, projectId: PROJECT_ID });
+    const refusal = { code: 'AGENT_REPORT_PROMOTED', path: '/reviewed', detail: 'became FB-7' };
+    stampReviewed.mockResolvedValueOnce({ ok: false, refusals: [refusal] });
+    const res = await reviewed('/api/agent-reports');
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({
+      error: { code: 'AGENT_REPORT_PROMOTED', refusals: [refusal] },
+    });
+    expect(stampReviewed).toHaveBeenCalledWith(expect.any(Array), {
+      reviewed: false,
+      linkedIssueId: null,
     });
   });
 

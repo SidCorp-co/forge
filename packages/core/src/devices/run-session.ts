@@ -15,7 +15,7 @@
 import { and, eq, inArray, notInArray, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, issues, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
-import { assertDispatchGatesForSeqs } from '../issues/dispatch-gates.js';
+import { refuseHeldTakeForSeqs } from '../issues/blocked-by.js';
 import {
   type IssueLeaseRelease,
   readDeviceIssueLease,
@@ -216,8 +216,8 @@ export async function openRunSession(args: {
     );
   }
   const canonical = await canonicaliseIssueKeys(args.projectId, args.issueKeys);
-  // cm:guard a flow's build waits for its approved design (ISS-53) and a contract wait for its version (E1), refused as the job claim refuses them
-  await assertDispatchGatesForSeqs(args.projectId, canonical.seqs);
+  // cm:guard an unstarted issue a live blocks edge holds (ISSUE_BLOCKED), a flow's build without its approved design (ISS-53) and a contract wait before its version (E1) are refused as the job claim refuses them
+  await refuseHeldTakeForSeqs(args.projectId, canonical.seqs);
   const openingStatuses = await readIssueStatuses(args.projectId, canonical.seqs);
   const spec: OneShotRunSpec = {
     projectId: args.projectId,

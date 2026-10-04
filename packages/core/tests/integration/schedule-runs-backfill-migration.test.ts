@@ -1,4 +1,4 @@
-// cm:why ISS-112 (design automation rev 1, step fires_table; REQ-16 BC-4): migration 0365, read off
+// cm:why ISS-112 (design automation rev 1, step fires_table; REQ-16 BC-4): migration 0367, read off
 // disk and run against real Postgres inside a transaction that is rolled back. Every old prompt fire
 // becomes one schedule_runs row, a failover chain stays one fire, a session naming a schedule that is
 // gone is reported by count and by name and never dropped in silence, a second run writes nothing,
@@ -19,7 +19,7 @@ import {
 const MIGRATION = readFileSync(
   resolvePath(
     dirname(fileURLToPath(import.meta.url)),
-    '../../drizzle/migrations/0365_a_fire_is_one_row_for_every_kind.sql',
+    '../../drizzle/migrations/0367_a_fire_is_one_row_for_every_kind.sql',
   ),
   'utf8',
 );
@@ -139,7 +139,7 @@ async function inRollback(fn: (tx: Tx) => Promise<void>): Promise<void> {
   }
 }
 
-describe('0365 backfills one schedule_runs row per old prompt fire', () => {
+describe('0367 backfills one schedule_runs row per old prompt fire', () => {
   it('maps each fire, keeps a failover chain as one fire, and reports the sessions it cannot link', async () => {
     await inRollback(async (tx) => {
       const prompt = await schedule(tx, 'prompt');
@@ -205,7 +205,7 @@ describe('0365 backfills one schedule_runs row per old prompt fire', () => {
       expect(fireOf.get(orphan)).toBeNull();
 
       const [marker] = await tx`
-        SELECT report FROM backfill_markers WHERE key = '0365_schedule_runs_one_row_per_fire'`;
+        SELECT report FROM backfill_markers WHERE key = '0367_schedule_runs_one_row_per_fire'`;
       const runs = reportRuns(marker?.report);
       expect(runs.at(-1)).toMatchObject({
         firesWritten: 4,
@@ -234,7 +234,7 @@ describe('0365 backfills one schedule_runs row per old prompt fire', () => {
         await tx`SELECT count(*)::int AS n FROM schedule_runs WHERE schedule_id = ${prompt}`;
       expect(count?.n).toBe(1);
       const [marker] = await tx`
-        SELECT report FROM backfill_markers WHERE key = '0365_schedule_runs_one_row_per_fire'`;
+        SELECT report FROM backfill_markers WHERE key = '0367_schedule_runs_one_row_per_fire'`;
       const runs = reportRuns(marker?.report);
       expect(runs.slice(-2).map((r) => r.firesWritten)).toEqual([1, 0]);
     });

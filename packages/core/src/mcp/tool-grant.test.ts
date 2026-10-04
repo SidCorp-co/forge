@@ -218,11 +218,26 @@ describe('declaring the route a tool is served at', () => {
 
   it('refuses a route off the menu, and a path below a prefix', () => {
     expect(() => assertToolDeclaresRoute({ ...sessions, route: '/api/nowhere' as never })).toThrow(
-      /route '\/api\/nowhere' is not a prefix on the menu/,
+      /route '\/api\/nowhere' is neither a prefix on the menu nor a nested surface it dates/,
     );
     expect(() =>
       assertToolDeclaresRoute({ ...sessions, route: '/api/agent-sessions/x' as never }),
-    ).toThrow(/route '\/api\/agent-sessions\/x' is not a prefix on the menu/);
+    ).toThrow(/route '\/api\/agent-sessions\/x' is neither a prefix on the menu/);
+  });
+
+  it('takes a nested surface as a route, dated by the prefix whose rows it serves', () => {
+    const timeseries = {
+      name: 'forge_timeseries_like',
+      inputSchema: {},
+      grant: 'projects:read' as const,
+      reach: 'project' as const,
+      route: '/api/projects/:id/metrics/timeseries' as const,
+    };
+    expect(() => assertToolDeclaresRoute(timeseries)).not.toThrow();
+    expect(toolEpochRefusal(timeseries, {}, 1)).toMatch(
+      /PAT_GRANT_PREDATES_ROUTE: forge_timeseries_like is served at \/api\/projects\/:id\/metrics\/timeseries, and \/api\/projects\/:id\/metrics\/timeseries serves the rows of \/api\/usage-records/,
+    );
+    expect(toolEpochRefusal(timeseries, {}, 2)).toBeNull();
   });
 
   it("refuses a route under another resource than the tool's grant", () => {
@@ -350,6 +365,7 @@ describe('a call against the epoch its token was minted at', () => {
         'forge_guide upsert',
         'forge_metrics.project_retry_rescues',
         'forge_metrics.project_step_durations',
+        'forge_metrics.project_timeseries',
         'forge_metrics.session_failures',
         'forge_orgs.list',
         'forge_orgs.members',
