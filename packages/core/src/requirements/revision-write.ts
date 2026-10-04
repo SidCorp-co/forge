@@ -36,12 +36,14 @@ export interface RevisionWrite {
 
 export const specOf = (spec: RequirementSpec | undefined) => spec ?? {};
 
-/** Applies a revision's criteria list as rows; refusals when a code is unknown or a scenario unparseable. */
+/** Applies a revision's criteria list as rows; refusals when a code is unknown or a scenario
+ *  unparseable. `ownCodes` are what a draft being rewritten held before its reset. */
 export async function writeCriteria(
   tx: Tx,
   requirementId: string,
   revision: number,
   input: readonly CriterionInput[],
+  ownCodes: ReadonlySet<string> = new Set(),
 ): Promise<RequirementRefusal[] | null> {
   const all = await tx
     .select()
@@ -51,7 +53,7 @@ export async function writeCriteria(
     .filter((c) => c.retiredRevision === null)
     .map((c) => ({ id: c.id, code: c.code, body: c.body, form: c.form as CriterionForm }));
   const highest = all.reduce((m, c) => Math.max(m, Number(c.code.slice(3))), 0);
-  const planned = planCriteria(input, live, highest);
+  const planned = planCriteria(input, live, highest, ownCodes);
   if (!planned.ok) return planned.refusals;
   const { retire, insert } = planned.plan;
   if (retire.length) {
@@ -68,16 +70,22 @@ export async function writeCriteria(
   return null;
 }
 
-/** Undoes what an earlier write of draft `revision` did to the criteria, so an edit re-applies whole. */
-export async function resetDraftCriteria(tx: Tx, requirementId: string, revision: number) {
-  await tx
+/** Undoes what an earlier write of draft `revision` did to the criteria, so an edit re-applies
+ *  whole; answers the codes that write gave, which the rewrite may name again. */
+export async function resetDraftCriteria(
+  tx: Tx,
+  requirementId: string,
+  revision: number,
+): Promise<Set<string>> {
+  const removed = await tx
     .delete(requirementCriteria)
     .where(
       and(
         eq(requirementCriteria.requirementId, requirementId),
         eq(requirementCriteria.sinceRevision, revision),
       ),
-    );
+    )
+    .returning({ code: requirementCriteria.code });
   await tx
     .update(requirementCriteria)
     .set({ retiredRevision: null })
@@ -87,6 +95,7 @@ export async function resetDraftCriteria(tx: Tx, requirementId: string, revision
         eq(requirementCriteria.retiredRevision, revision),
       ),
     );
+  return new Set(removed.map((r) => r.code));
 }
 
 /** REQ-n at revision 1 (draft), numbered max+1 under that lock. */
