@@ -120,13 +120,13 @@ const held = (lease: IssueLeaseView | null) =>
   lease !== null && (lease.verdict === 'live' || lease.verdict === 'shared');
 
 // cm:why whose turn it is, first rule that holds wins: closed or dropped → done; on_hold → paused;
-// needs_info → a person answers; an open human question at a working status → a person answers it;
-// draft → a person takes it on or drops it; awaiting_release → a person approves where the project
-// requires it, else queued for the release; a live lease or a job in flight → moving, on the run and
-// its step; a live unsettled blocker → stuck on the first, worded as waiting on its judge where its
-// change landed; a landed row nothing holds → queued for whoever judges what landed (ISS-80,
-// `pipeline/strand-rules.ts:landedWait`); in_progress with no holder → stuck; reopen → stuck, the
-// master re-runs it; open or approved → queued for a master slot.
+// needs_info or an open human question → a person answers; draft → a person takes it on or drops
+// it; awaiting_release → the master while a criterion no longer passes, else a person approves
+// where the project requires it, else queued for the release; a live lease or a job in flight →
+// moving; a live unsettled blocker → stuck on the first, worded as waiting on its judge where its
+// change landed; a landed row nothing holds → queued for its judge
+// (`pipeline/strand-rules.ts:landedWait`); in_progress with no holder or reopen → stuck; open or
+// approved → queued for a master slot.
 function turnOf(input: IssueStandingInput): {
   group: IssueAttentionGroup;
   waitingOn: IssueWaitingOn;
@@ -166,6 +166,18 @@ function turnOf(input: IssueStandingInput): {
   }
   const running = held(input.lease) || input.inFlight;
   if (status === 'awaiting_release') {
+    const { total, passing } = input.criteria;
+    if (passing < total) {
+      return {
+        group: 'stuck',
+        waitingOn: wait(
+          'master',
+          'Master',
+          'judge it again',
+          `${total - passing} of ${total} criteria have no verdict that passes now, such as one judged on a storefront draft the source has moved past or cannot read back; the release hold keeps it until a run judges them again`,
+        ),
+      };
+    }
     if (input.releaseApproval) {
       return forPerson(
         viewer,

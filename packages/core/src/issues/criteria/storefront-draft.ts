@@ -116,34 +116,52 @@ export function currentDraftReading(
   };
 }
 
+export type CurrentDrafts = (judged: { workflowId: string; draftVersion: string }) => DraftReading;
+
 // cm:guard a stored corroboration is what the source held when the verdict was written; every
 // reader and every gate reads the draft the source holds now instead, once per workflow, so a
 // moved draft reads superseded and an unreadable one uncorroborated, never the word stored (FB-56)
+export async function readCurrentDrafts(
+  projectId: string,
+  workflowIds: readonly string[],
+  readDraft: DraftReader = readSourceDraft,
+): Promise<CurrentDrafts> {
+  const readings = new Map<string, StorefrontDraftReading>();
+  if (workflowIds.length > 0) {
+    const document = (await readProjectDocument(projectId))?.document ?? null;
+    for (const workflowId of new Set(workflowIds)) {
+      readings.set(workflowId, await readDraft(document, workflowId));
+    }
+  }
+  return (judged) =>
+    currentDraftReading(
+      judged,
+      readings.get(judged.workflowId) ?? {
+        kind: 'unreadable',
+        detail: `workflow \`${judged.workflowId}\` was not among the drafts read`,
+      },
+    );
+}
+
 export async function withCurrentDrafts(
   projectId: string,
   criteria: readonly CriterionWithVerdict[],
   readDraft: DraftReader = readSourceDraft,
 ): Promise<CriterionWithVerdict[]> {
-  const judged = criteria.filter(
-    (c) => c.latest?.identityKind === 'storefront_draft' && c.latest.storefrontWorkflowId,
+  const workflowIds = criteria.flatMap((c) =>
+    c.latest?.identityKind === 'storefront_draft' && c.latest.storefrontWorkflowId
+      ? [c.latest.storefrontWorkflowId]
+      : [],
   );
-  if (judged.length === 0) return [...criteria];
-  const document = (await readProjectDocument(projectId))?.document ?? null;
-  const readings = new Map<string, StorefrontDraftReading>();
-  for (const c of judged) {
-    const workflowId = c.latest?.storefrontWorkflowId as string;
-    if (!readings.has(workflowId)) readings.set(workflowId, await readDraft(document, workflowId));
-  }
+  if (workflowIds.length === 0) return [...criteria];
+  const current = await readCurrentDrafts(projectId, workflowIds, readDraft);
   return criteria.map((c) => {
     const latest = c.latest;
     if (latest?.identityKind !== 'storefront_draft' || !latest.storefrontWorkflowId) return c;
-    const found = currentDraftReading(
-      {
-        workflowId: latest.storefrontWorkflowId,
-        draftVersion: latest.storefrontDraftVersion ?? '',
-      },
-      readings.get(latest.storefrontWorkflowId) as StorefrontDraftReading,
-    );
+    const found = current({
+      workflowId: latest.storefrontWorkflowId,
+      draftVersion: latest.storefrontDraftVersion ?? '',
+    });
     return {
       ...c,
       latest: { ...latest, corroboration: found.corroboration, corroborationNote: found.note },

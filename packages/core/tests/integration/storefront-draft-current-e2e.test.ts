@@ -162,3 +162,37 @@ describe('FB-56 a storefront-draft verdict is weighed against the draft the stor
     expect(body.criteria[0]?.latest.corroborationNote).toContain('which core does not hold');
   });
 });
+
+describe('FB-56 the issue list does not call a draft verdict passing once nothing confirms the draft (real Postgres)', () => {
+  it('counts no storefront verdict passing and puts the issue on the master, while a commit verdict still passes', async () => {
+    const controlId = randomUUID();
+    const criterion = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
+      VALUES (${controlId}, ${projectId}, 15, 'commit-judged control', 'awaiting_release', ${ownerId})
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO issue_criteria (id, issue_id, n, statement, position)
+      VALUES (${criterion}, ${controlId}, 1, 'the endpoint answers', 0)
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, identity_kind, commit_sha, author_agency)
+      VALUES (${criterion}, ${controlId}, 'pass', 'commit', ${'3641ba21fec5096e2d1a91a40f2d9e50e9239068'}, 'agent')
+    `);
+    await harness.db.execute(
+      sql`UPDATE issues SET status = 'awaiting_release' WHERE id = ${issueId}`,
+    );
+
+    const { listIssueStanding } = await import('../../src/issues/standing-read.js');
+    const list = await listIssueStanding(projectId, 'open', null);
+    const judged = list.issues.find((i) => i.id === issueId)?.standing;
+    expect(judged?.criteria).toMatchObject({ total: 2, passing: 0 });
+    expect(judged?.attentionGroup).toBe('stuck');
+    expect(judged?.waitingOn).toMatchObject({ kind: 'master', act: 'judge it again' });
+    expect(judged?.waitingOn.rule).toContain('2 of 2 criteria have no verdict that passes now');
+
+    const control = list.issues.find((i) => i.id === controlId)?.standing;
+    expect(control?.criteria).toMatchObject({ total: 1, passing: 1 });
+    expect(control?.waitingOn.act).not.toBe('judge it again');
+  });
+});

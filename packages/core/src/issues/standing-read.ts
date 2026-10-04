@@ -23,6 +23,7 @@ import { peopleOf } from '../lib/people.js';
 import { classifyLease } from '../pipeline/session-claim.js';
 import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
 import { approvalRequired } from '../release-batch/approvals.js';
+import { readCurrentDrafts } from './criteria/storefront-draft.js';
 import { designHoldPhrase, designHoldsOf } from './design-delivery.js';
 import { issueWorkMovingSql } from './issue-lease.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
@@ -142,17 +143,26 @@ interface CriteriaRaw {
   issue_id: string;
   verdict: 'pass' | 'short' | 'fail' | 'skipped' | null;
   bc_code: string | null;
+  identity_kind: string | null;
+  storefront_workflow_id: string | null;
+  storefront_draft_version: string | null;
+  stands: boolean;
 }
 
-async function criteriaOf(ids: readonly string[]): Promise<CriteriaRaw[]> {
+// cm:guard a passing verdict on a storefront draft passes only while the source still holds that
+// draft: one the source moved past, or cannot be read back, is not counted passing, so the list
+// never says every criterion passed of an issue the release hold keeps (FB-56)
+async function criteriaOf(projectId: string, ids: readonly string[]): Promise<CriteriaRaw[]> {
   if (ids.length === 0) return [];
-  return rowsOf<CriteriaRaw>(
+  const rows = rowsOf<Omit<CriteriaRaw, 'stands'>>(
     await db.execute(sql`
-      SELECT c.issue_id, v.verdict, rc.code AS bc_code
+      SELECT c.issue_id, v.verdict, rc.code AS bc_code, v.identity_kind,
+             v.storefront_workflow_id, v.storefront_draft_version
         FROM issue_criteria c
         LEFT JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id
         LEFT JOIN LATERAL (
-          SELECT cv.verdict FROM criterion_verdicts cv
+          SELECT cv.verdict, cv.identity_kind, cv.storefront_workflow_id, cv.storefront_draft_version
+            FROM criterion_verdicts cv
            WHERE cv.criterion_id = c.id
            ORDER BY cv.created_at DESC, cv.id DESC
            LIMIT 1
@@ -160,6 +170,22 @@ async function criteriaOf(ids: readonly string[]): Promise<CriteriaRaw[]> {
        WHERE c.issue_id IN (${idList(ids)}) AND c.retired_at IS NULL
        ORDER BY c.issue_id, c.position, c.n`),
   );
+  const drafts = rows.flatMap((r) =>
+    r.identity_kind === 'storefront_draft' && r.storefront_workflow_id
+      ? [r.storefront_workflow_id]
+      : [],
+  );
+  const current = await readCurrentDrafts(projectId, drafts);
+  return rows.map((r) => ({
+    ...r,
+    stands:
+      r.identity_kind !== 'storefront_draft' ||
+      (!!r.storefront_workflow_id &&
+        current({
+          workflowId: r.storefront_workflow_id,
+          draftVersion: r.storefront_draft_version ?? '',
+        }).corroboration === 'corroborated'),
+  }));
 }
 
 interface RequirementRaw {
@@ -276,7 +302,7 @@ async function standingRows(
   const [prefix, edges, criteria, modules, feedback, releaseApproval, who] = await Promise.all([
     activeIssuePrefix(projectId),
     edgesOf(projectId, ids),
-    criteriaOf(ids),
+    criteriaOf(projectId, ids),
     modulesOf(projectId, ids),
     feedbackOf(ids),
     approvalRequired(projectId),
@@ -336,7 +362,8 @@ async function standingRows(
           .map((e) => edge(e.to_id, e.to_seq, e.to_title, e.to_status, e.to_merged, e.to_step)),
         criteria: {
           total: mine.length,
-          passing: mine.filter((c) => c.verdict === 'pass' || c.verdict === 'short').length,
+          passing: mine.filter((c) => c.stands && (c.verdict === 'pass' || c.verdict === 'short'))
+            .length,
           failing: mine.filter((c) => c.verdict === 'fail').length,
           skipped: mine.filter((c) => c.verdict === 'skipped').length,
         },
