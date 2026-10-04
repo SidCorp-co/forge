@@ -124,9 +124,10 @@ under the owner's dev delegation.
   `organizationMembers` under `permissions`, so the one check reads only its own tables, and every
   module that adds, changes or drops a membership calls the kernel's writer
   (`packages/core/src/permissions/memberships.ts`).
-- **Sign-in belongs to the auth door.** Signing a person in through the identity adapter is a door's
-  work, not a platform leaf's: `auth` is declared a door, and a door may reach an adapter through
-  its port's **index.ts** (`packages/core/src/integrations/identity/index.ts`), as a domain may.
+- **Sign-in left the platform.** Signing a person in through the identity adapter is not a platform
+  leaf's work. `auth` was declared a door here; ISS-184's amendment below makes it a domain, since it
+  owns the users table and other domains import it. Either kind reaches the identity adapter only
+  through its port's **index.ts** (`packages/core/src/integrations/identity/index.ts`).
   The credential helpers every kind uses (the PAT helpers, `jwt`, `cookie`, the device and turn
   credentials, the MCP audit writer) live in the platform module `packages/core/src/credentials/`,
   which owns `personalAccessTokens` and `mcpAuditLog`. Whether a turn may act as a person asks
@@ -141,3 +142,85 @@ under the owner's dev delegation.
   403. Carrying the org on membership rows was the other option; it would not cover an org owner
   or admin with no project row, who holds admin on every project of the org, so it needed a second
   copy of `projects.org_id` kept in step by every create and transfer.
+
+## Amendment (2026-10-04, ISS-184): business contexts, a split face, and dependency-cruiser
+
+A research pass over 163 primary sources (owner ask, 2026-10-04) set pattern v2 beside how
+modular monoliths that succeeded were built. Three of its ranked changes are taken here. The
+measurements are dependency-cruiser 18.2.0 over `packages/core/src` at `0d3e1c9ef` on `dev`, tests
+excluded.
+
+- **A business-context layer above the kinds, and direction between contexts first.** Every
+  source draws and enforces boundaries at the level of a business capability first: Shopify's 37
+  components average about 76,000 lines, Spring Modulith takes top-level packages as modules, and
+  the DDD context map relates contexts, not files. Direction over 98 code modules of about 2,400
+  lines means re-planning hundreds of module edges at once; between twelve contexts it is one
+  order. The contexts are the twelve root module labels on the Forge project, declared with their
+  order in `packages/core/src/modules.json` `contexts`, and every module names its own. Read with the
+  label grouping as it stood, 62 context pairs imported each other and 48 of them both ways.
+- **The order, read from the graph:** platform, adapters, access, project-config, knowledge, work,
+  execution, design, release, ecosystem, conversations, operations, each context importing only
+  those before it. Each context sits above the contexts it imports most; the alternatives scored
+  within a few imports of each other, and the tie-breaks follow the kinds: the contexts holding
+  kernels (access, work, execution) sit below the domains that move them. With doors exempt and
+  the technical layers fixed by kind, 58 context pairs import each other, 35 both ways, and 285
+  imports over 104 module pairs run against the order. Those are the back edges to cut, platform's
+  and adapters' first, as Shopify cut cross-layer edges first.
+- **Work is upstream of execution; they stay two contexts.** Execution imports work 122 times over
+  22 module pairs (jobs into the pipeline and the transition engine, devices into issues, sessions
+  into the pipeline); work imports execution 56 times over 17, and 32 of those are the pipeline
+  dispatching jobs, sessions, devices and runners. The languages differ (issue, status, step,
+  pipeline against agent, session, job, runner, device), and a job exists to carry out an issue's
+  step and move the issue through the work kernel's transition: execution conforms to work. The
+  back edges are cut by execution's outbox events, which work consumes, and by the job pool
+  execution claims from. A merge would have made one context of about 26 modules, the largest by
+  far, joined by a dispatch call that an event already describes.
+- **The technical layers are defined by kind.** A platform-kind module is in `platform` and an
+  adapter in `adapters`; neither holds a domain or a read model. That moved, against the label
+  grouping: `config`, `credentials`, `pat`, `security`, `branches`, `embeddings` and
+  `observability` to platform (every layer reads `config/env.ts`, and middleware reads the
+  credential helpers, so in a business context each was a false back edge); `git`,
+  `integrations/coolify`, `integrations/deploy`, `integrations/published-releases` and `storage` to
+  adapters (the registry imports them); `uploads`, a domain, to work. The integration door joins
+  adapters. A door is exempt from context direction because it composes contexts; its kind still
+  lets only a door import it.
+- **modules.json agrees with its own kinds.** `auth` owned `users` and the sign-in tokens as a
+  door, and `orgs` and `conversations` imported it, which no non-door may: it is now a domain, and
+  it reaches the identity adapter through the port as any domain may. `usage-records`, a read
+  model, wrote `usage_records` when a job finished and four kernels read it: it is the job's cost
+  evidence, so it is a kernel module in execution. `admin`, a read model, wrote `admin_thresholds`:
+  the thresholds move to the domain `admin-thresholds`, and `admin` keeps only derived views.
+  `app-config`, declared platform, holds a project's assistant settings behind routes and a
+  permission check: it is a domain in project-config. **Who owns tables:** kernel, domain, adapter
+  and platform modules; an adapter only its own bookkeeping with the vendor (connections,
+  deliveries, mirrored vendor state), a platform module only its own (backfill markers, tokens, the
+  embedding index). A read model and a door own nothing.
+- **The face is split in two.** ISS-168 moved each module's routes and tools onto its index.ts and
+  core then failed to load with "Cannot access X before initialization": reading one constant
+  through a face evaluates every router behind it, and inside an import cycle that order breaks.
+  Barrels load eagerly (Atlassian's removal across 90,000 files cut local test time by about half),
+  and every precedent with public entries splits a light one from a heavy one (Grzybek's
+  IntegrationEvents, ABP's Application.Contracts, Angular's secondary entry points). index.ts now
+  exports services, read functions and types and constructs nothing at import; **routes.ts** and
+  **tool.ts** are imported only by `packages/core/src/route-registry.ts` and
+  `packages/core/src/mcp/registry.ts`; shared constants and types come from `@forge/contracts`; a
+  type-only edge is `import type`, which `verbatimModuleSyntax` (already on in core and contracts)
+  erases.
+- **dependency-cruiser replaces the import half of `scripts/check-module-shape.mjs`.** Its
+  configuration is generated from `modules.json`, so kinds and contexts are declared once. Five
+  rules: context direction, kind direction, runtime cycles between modules (type-only and dynamic
+  imports excluded, since neither orders loading), face-only access, and adapters reached only
+  through their port's index.ts. Its violations are frozen in a shrink-only baseline: a new
+  violation fails, a baseline entry that no longer occurs fails, and a rule whose frozen count rose
+  over the base revision fails, so debt is worked off and never added to (Packwerk's todo file,
+  ArchUnit's freeze, ESLint's bulk suppressions). The declaration checks stay in the small script's
+  library: each table owned once, `owns` consistent with `kind`, every module a known context, and
+  the two technical layers by kind. The semantic rules (table writers, database calls in routes,
+  the refusal shape, status writes) stay regex reports run on demand; off-the-shelf tools see
+  imports, not behaviour, and a type-aware lint for them is a later change. Sheriff and
+  eslint-plugin-boundaries would have served too; one tool is enough, and dependency-cruiser
+  already resolves archmap's graph. Nx needs a project file per module and custom rules on an
+  Enterprise plan.
+- **Not taken:** a planted-violation test per rule. The owner ruled on 2026-10-04 that dev is code
+  only and QA comes later, so each rule is trusted on its generated configuration until QA plants
+  a violation per rule and watches it go red.
