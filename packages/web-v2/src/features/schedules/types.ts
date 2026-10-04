@@ -1,4 +1,4 @@
-export type ScheduleLastStatus = "success" | "failed" | "running" | null;
+export type ScheduleLastStatus = "success" | "failed" | "running" | "skipped" | null;
 
 /** A schedule is either 'prompt' (existing agent-session behavior) or
  *  'script' (a standalone sandboxed Node.js script, no LLM/agent at all). */
@@ -51,12 +51,16 @@ export interface StewardRunReport {
 }
 
 export interface ScheduleRun {
-  sessionId: string;
+  id: string;
+  sessionId: string | null;
   pipelineRunId: string | null;
-  /** agent_session status: idle|queued|running|completed|failed|completed_via_recovery|cancelled_stale */
   status: string;
+  fireStatus: "success" | "failed" | "running" | "skipped";
   runStatus: string | null;
   trigger: ScheduleRunTrigger;
+  reason: string | null;
+  refusal: string | null;
+  disposition: string | null;
   title: string | null;
   failureReason: string | null;
   /** The specific cause behind `failureReason`; a refused run's code leads it (ISS-30). */
@@ -65,7 +69,6 @@ export interface ScheduleRun {
   finishedAt: string | null;
   durationSeconds: number | null;
   stewardReport: StewardRunReport | null;
-  /** script-kind runs only: captured console output + failure message. */
-  output?: string | null;
-  error?: string | null;
+  output: string | null;
+  error: string | null;
 }

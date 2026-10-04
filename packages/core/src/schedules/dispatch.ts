@@ -6,21 +6,22 @@ import {
 } from '../agent-sessions/interactive-credential.js';
 import { db } from '../db/client.js';
 import type { ScheduleMode } from '../db/schema.js';
-import { type agentSessions, projects, scheduleRuns, schedules } from '../db/schema.js';
+import { type agentSessions, projects, schedules } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { emitNotification } from '../notifications/emit.js';
 import { hooks } from '../pipeline/hooks.js';
-import type { DispatchScheduleInput, DispatchScheduleResult } from './dispatch-types.js';
+import type {
+  DispatchScheduleInput,
+  DispatchScheduleResult,
+  RoutedFire,
+} from './dispatch-types.js';
+import { attachFireSession, openFire, settleFire } from './fires.js';
 import { buildDriftCheckPrompt } from './messages/drift-check-prompt.js';
 import { buildFeedbackDigestPrompt } from './messages/feedback-digest-prompt.js';
 import { buildProductMapRefreshPrompt } from './messages/product-map-refresh-prompt.js';
 import { getImprovementMessage } from './messages/registry.js';
 import { buildSkillImprovePrompt } from './messages/skill-improve-prompt.js';
 import { buildSkillStewardPrompt } from './messages/skill-steward-prompt.js';
-import {
-  dispatchScheduleReleaseBatchRun,
-  resolveScheduleTargetProject,
-} from './release-batch-dispatch.js';
+import { routeScheduleReleaseBatchFire } from './release-batch-dispatch.js';
 import {
   authorizeScheduledRun,
   failUndeliveredRun,
@@ -28,8 +29,8 @@ import {
   refusalOfMint,
   scheduledAsker,
 } from './scheduled-session.js';
-import { runScheduleScript } from './script/executor.js';
-import { dispatchScheduleSentryPull } from './sentry-pull-dispatch.js';
+import { routeScheduleScriptFire } from './script-dispatch.js';
+import { routeScheduleSentryPullFire } from './sentry-pull-dispatch.js';
 
 // Keys for standing templates that build their own prompt instead of the steward.
 // Add new standing-template keys here when they have a dedicated builder.
@@ -107,31 +108,62 @@ export function resolveTemplatePrompt(schedule: {
 export async function dispatchScheduleRun(
   input: DispatchScheduleInput,
 ): Promise<DispatchScheduleResult> {
+  const fireId = await openFire({
+    scheduleId: input.schedule.id,
+    projectId: input.schedule.projectId,
+    trigger: input.tick ? 'scheduled' : 'manual',
+  });
+  let routed: RoutedFire;
+  try {
+    routed = await routeFire(input, fireId);
+  } catch (err) {
+    await settleFire(fireId, {
+      status: 'failed',
+      error: `dispatch threw: ${err instanceof Error ? err.message : String(err)}`,
+    });
+    throw err;
+  }
+  if (routed.settle) await settleFire(fireId, routed.settle);
+  return { ...routed.result, fireId };
+}
+
+function routeFire(input: DispatchScheduleInput, fireId: string): Promise<RoutedFire> {
+  switch (input.schedule.kind) {
+    case 'script':
+      return routeScheduleScriptFire(input, fireId);
+    case 'release_batch':
+      return routeScheduleReleaseBatchFire(input, fireId);
+    case 'sentry_pull':
+      return routeScheduleSentryPullFire(input);
+    default:
+      return routePromptFire(input, fireId);
+  }
+}
+
+const skip = (reason: 'project-not-found' | 'no-device' | 'already-applied'): RoutedFire => ({
+  result: { ok: false, reason, status: 'skipped' },
+  settle: { status: 'skipped', reason },
+});
+
+const sessionFailed = (error: string): RoutedFire => ({
+  result: { ok: false, reason: 'session-failed', status: 'failed' },
+  settle: { status: 'failed', error },
+});
+
+async function routePromptFire(input: DispatchScheduleInput, fireId: string): Promise<RoutedFire> {
   const { schedule } = input;
 
-  // ISS-618 — script-kind schedules run a sandboxed script directly in core;
-  // they need no device, no agent session, and no Claude runner at all, so
-  // this branches BEFORE the desktop-runner guard below (which doesn't apply).
-  if (schedule.kind === 'script') {
-    return dispatchScheduleScriptRun(input);
-  }
-  if (schedule.kind === 'release_batch') {
-    return dispatchScheduleReleaseBatchRun(input);
-  }
-  if (schedule.kind === 'sentry_pull') {
-    return dispatchScheduleSentryPull(input);
-  }
-
   if (schedule.prompt == null && !schedule.templateKey) {
-    logger.error(
-      { scheduleId: schedule.id },
-      'schedule.dispatch: prompt-kind schedule has neither prompt nor templateKey',
-    );
-    return { ok: false, reason: 'session-failed', status: 'failed' };
+    return sessionFailed('this prompt-kind schedule has neither a prompt nor a templateKey');
   }
 
+  if (schedule.templateKey && !getImprovementMessage(schedule.templateKey)) {
+    return sessionFailed(
+      `templateKey '${schedule.templateKey}' names no registered improvement message, so this fire has no prompt to send`,
+    );
+  }
   const resolved = resolveTemplatePrompt(schedule);
-  if (resolved === null) return { ok: false, reason: 'already-applied', status: 'skipped' };
+  if (resolved === null) return skip('already-applied');
   const { prompt: effectivePrompt, standing: isStandingTemplate } = resolved;
 
   let resolvedProjectId = schedule.projectId;
@@ -145,7 +177,7 @@ export async function dispatchScheduleRun(
           .where(eq(projects.slug, schedule.targetProjectSlug))
           .limit(1)
       )[0];
-    if (!target) return { ok: false, reason: 'project-not-found', status: 'skipped' };
+    if (!target) return skip('project-not-found');
     resolvedProjectId = target.id;
   }
 
@@ -157,30 +189,21 @@ export async function dispatchScheduleRun(
     .from(projects)
     .where(eq(projects.id, resolvedProjectId))
     .limit(1);
-  if (!project) return { ok: false, reason: 'project-not-found', status: 'skipped' };
+  if (!project) return skip('project-not-found');
 
   const asker = scheduledAsker(input.actor, schedule.ownerId);
   const authorised = await authorizeScheduledRun({ projectId: resolvedProjectId, asker });
-  if (authorised.kind === 'no-device') {
-    return { ok: false, reason: 'no-device', status: 'skipped' };
-  }
+  if (authorised.kind === 'no-device') return skip('no-device');
 
   const title = schedule.name?.trim() || 'Scheduled run';
   const metadata: Record<string, unknown> = {
     source: 'schedule.run',
     scheduleId: schedule.id,
+    scheduleRunId: fireId,
     asker,
   };
   if (input.tick) metadata.tick = true;
-  // ISS-548/ISS-556 — carry templateKey in session metadata so the session-completion
-  // handler can locate the schedule row and write back applied_message_versions (one-shot)
-  // or persist the steward run report (standing).
   if (schedule.templateKey) metadata.templateKey = schedule.templateKey;
-  // ISS-556 — tag standing sessions so the completion handler routes to the
-  // steward report parser instead of the one-shot skill-improve parser.
-  // Drift-check + product-map-refresh + feedback-digest are standing but do NOT
-  // use the steward report format (they create draft issues / upsert knowledge
-  // directly), so the parser must skip them — see NON_STEWARD_STANDING_KEYS.
   if (
     isStandingTemplate &&
     !(schedule.templateKey != null && NON_STEWARD_STANDING_KEYS.has(schedule.templateKey))
@@ -188,10 +211,6 @@ export async function dispatchScheduleRun(
     metadata.steward = true;
   }
 
-  // ISS-101 — schedule runs are project-scoped one-shots with no issueId; open a
-  // 'system' run via the shared chat-session creator, then deliver the prompt
-  // through the ONE chat-turn dispatcher (it pins the device + publishes
-  // `agent:start` with the tool reference + preamble, identical to /start).
   let session: typeof agentSessions.$inferSelect;
   try {
     session = await createChatSessionRow({
@@ -207,8 +226,11 @@ export async function dispatchScheduleRun(
       { err, scheduleId: schedule.id },
       'schedule.dispatch: agent_sessions create failed',
     );
-    return { ok: false, reason: 'session-failed', status: 'failed' };
+    return sessionFailed(
+      `the agent session could not be created: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
+  await attachFireSession(fireId, session);
 
   if (authorised.kind === 'refused') {
     return refuseRun(session, schedule.id, authorised.refusal);
@@ -232,11 +254,12 @@ export async function dispatchScheduleRun(
       'schedule.dispatch: chat-turn dispatch failed',
     );
     await failUndeliveredRun(session);
-    return { ok: false, reason: 'session-failed', status: 'failed', sessionId: session.id };
+    return {
+      result: { ok: false, reason: 'session-failed', status: 'failed', sessionId: session.id },
+      settle: null,
+    };
   }
 
-  // Point lastSessionId at this attempt now that the WS publish committed.
-  // Best-effort: a failure here only means the UI's "last run" link is stale.
   try {
     await db
       .update(schedules)
@@ -249,10 +272,6 @@ export async function dispatchScheduleRun(
     );
   }
 
-  // (The `agent-session.created` broadcast happens inside `dispatchChatTurn`.)
-
-  // Hook subscribers are best-effort — a throw here must not fail the
-  // dispatch (the session row + WS publish already committed).
   try {
     await hooks.emit('scheduleRun', {
       scheduleId: schedule.id,
@@ -267,110 +286,22 @@ export async function dispatchScheduleRun(
     );
   }
 
-  return { ok: true, sessionId: inserted.id, status: 'running', resolvedProjectId };
+  return {
+    result: { ok: true, sessionId: inserted.id, status: 'running', resolvedProjectId },
+    settle: null,
+  };
 }
 
 async function refuseRun(
   session: typeof agentSessions.$inferSelect,
   scheduleId: string,
   refusal: SessionRefusal,
-): Promise<DispatchScheduleResult> {
+): Promise<RoutedFire> {
   await recordRefusedRun({ session, scheduleId, refusal });
-  return { ok: false, reason: 'refused', status: 'failed', sessionId: session.id, refusal };
-}
-
-async function dispatchScheduleScriptRun(
-  input: DispatchScheduleInput,
-): Promise<DispatchScheduleResult> {
-  const { schedule } = input;
-
-  if (!schedule.script) {
-    logger.error(
-      { scheduleId: schedule.id },
-      'schedule.dispatch: script-kind schedule has no script',
-    );
-    return { ok: false, reason: 'session-failed', status: 'failed' };
-  }
-
-  const resolved = await resolveScheduleTargetProject(input);
-  if (!resolved) return { ok: false, reason: 'project-not-found', status: 'skipped' };
-  const { projectId: resolvedProjectId, userId } = resolved;
-
-  const startedAt = new Date();
-  const [run] = await db
-    .insert(scheduleRuns)
-    .values({
-      scheduleId: schedule.id,
-      projectId: resolvedProjectId,
-      trigger: input.tick ? 'scheduled' : 'manual',
-      status: 'running',
-      startedAt,
-    })
-    .returning({ id: scheduleRuns.id });
-  if (!run) {
-    logger.error({ scheduleId: schedule.id }, 'schedule.dispatch: schedule_runs insert failed');
-    return { ok: false, reason: 'session-failed', status: 'failed' };
-  }
-
-  const outcome = await runScheduleScript({
-    script: schedule.script,
-    params: schedule.params ?? null,
-  });
-
-  try {
-    await db
-      .update(scheduleRuns)
-      .set({
-        status: outcome.status,
-        output: outcome.output,
-        error: outcome.status === 'failed' ? outcome.error : null,
-        finishedAt: new Date(),
-      })
-      .where(eq(scheduleRuns.id, run.id));
-  } catch (err) {
-    logger.error(
-      { err, scheduleId: schedule.id, runId: run.id },
-      'schedule.dispatch: schedule_runs update failed',
-    );
-  }
-
-  // Deliver ctx.notify() payloads best-effort — a failed delivery must not
-  // flip an otherwise-successful script run to failed.
-  for (const n of outcome.notifications) {
-    try {
-      await emitNotification({
-        userId,
-        projectId: resolvedProjectId,
-        type: 'schedule_report',
-        title: n.title,
-        body: n.body ?? null,
-      });
-    } catch (err) {
-      logger.error(
-        { err, scheduleId: schedule.id, runId: run.id },
-        'schedule.dispatch: schedule_report notification delivery failed',
-      );
-    }
-  }
-
-  try {
-    await hooks.emit('scheduleRun', {
-      scheduleId: schedule.id,
-      projectId: resolvedProjectId,
-      sessionId: run.id,
-      actorUserId: userId,
-    });
-  } catch (err) {
-    logger.error(
-      { err, scheduleId: schedule.id, runId: run.id },
-      'schedule.dispatch: scheduleRun hook threw',
-    );
-  }
-
-  if (outcome.status === 'failed') {
-    return { ok: false, reason: 'session-failed', status: 'failed', sessionId: run.id };
-  }
-  return { ok: true, sessionId: run.id, status: 'success', resolvedProjectId };
+  return {
+    result: { ok: false, reason: 'refused', status: 'failed', sessionId: session.id, refusal },
+    settle: null,
+  };
 }
 
 export type {

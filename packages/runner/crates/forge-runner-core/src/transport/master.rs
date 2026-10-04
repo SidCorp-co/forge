@@ -20,8 +20,13 @@ pub struct MasterSession {
     pub created: bool,
 }
 
-pub async fn register(client: &CoreClient, project_id: &str, name: &str) -> Result<MasterSession> {
-    register_within(client, project_id, name, CALL_DEADLINE).await
+pub async fn register(
+    client: &CoreClient,
+    project_id: &str,
+    name: &str,
+    max_job_panes: u32,
+) -> Result<MasterSession> {
+    register_within(client, project_id, name, max_job_panes, CALL_DEADLINE).await
 }
 
 /// [`register`], with the deadline a test can shorten.
@@ -29,10 +34,15 @@ pub async fn register_within(
     client: &CoreClient,
     project_id: &str,
     name: &str,
+    max_job_panes: u32,
     deadline: Duration,
 ) -> Result<MasterSession> {
     let url = client.url("/api/devices/me/master-session");
-    let body = serde_json::json!({ "projectId": project_id, "name": name });
+    let body = serde_json::json!({
+        "projectId": project_id,
+        "name": name,
+        "maxJobPanes": max_job_panes,
+    });
     let resp = post(client, "master-session", &url, body, deadline).await?;
     resp.json()
         .await
@@ -45,6 +55,111 @@ pub async fn close(client: &CoreClient, session_id: &str, reason: &str) -> Resul
     post(client, "master-session", &url, body, CALL_DEADLINE)
         .await
         .map(|_| ())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PassError {
+    Refused { code: String, detail: String },
+    Unreached(String),
+}
+
+impl std::fmt::Display for PassError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Refused { code, detail } => write!(f, "{code}: {detail}"),
+            Self::Unreached(said) => f.write_str(said),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct PassReply {
+    pass: PassRow,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct PassRow {
+    id: String,
+}
+
+pub async fn open_pass(
+    client: &CoreClient,
+    session_id: &str,
+    verb: &str,
+    issue_key: Option<&str>,
+) -> std::result::Result<String, PassError> {
+    let body = serde_json::json!({
+        "op": "open",
+        "sessionId": session_id,
+        "verb": verb,
+        "issueKey": issue_key,
+    });
+    pass_call(client, body).await
+}
+
+pub async fn close_pass(
+    client: &CoreClient,
+    session_id: &str,
+    pass_id: &str,
+    dispatched: &[String],
+) -> std::result::Result<String, PassError> {
+    let body = serde_json::json!({
+        "op": "close",
+        "sessionId": session_id,
+        "passId": pass_id,
+        "dispatched": dispatched,
+        "skipped": [],
+        "parked": [],
+    });
+    pass_call(client, body).await
+}
+
+async fn pass_call(
+    client: &CoreClient,
+    body: serde_json::Value,
+) -> std::result::Result<String, PassError> {
+    const WHAT: &str = "master-session/pass";
+    let resp = client
+        .http()
+        .post(client.url("/api/devices/me/master-session/pass"))
+        .bearer_auth(client.device_token())
+        .json(&body)
+        .timeout(CALL_DEADLINE)
+        .send()
+        .await
+        .map_err(|e| {
+            PassError::Unreached(format!(
+                "{WHAT} request: {}",
+                status::unanswered(&e, CALL_DEADLINE)
+            ))
+        })?;
+    let code = resp.status().as_u16();
+    let text = resp.text().await.unwrap_or_default();
+    if (200..300).contains(&code) {
+        return serde_json::from_str::<PassReply>(&text)
+            .map(|r| r.pass.id)
+            .map_err(|e| PassError::Unreached(format!("{WHAT} decode: {e}")));
+    }
+    Err(pass_refusal(code, &text)
+        .unwrap_or_else(|| PassError::Unreached(status::refused(WHAT, code, &text))))
+}
+
+pub(crate) fn pass_refusal(status: u16, text: &str) -> Option<PassError> {
+    if !(400..500).contains(&status) || matches!(status, 401 | 408 | 429) {
+        return None;
+    }
+    let body: serde_json::Value = serde_json::from_str(text).ok()?;
+    let error = body.get("error").unwrap_or(&body);
+    let code = error.get("code")?.as_str()?.to_string();
+    let detail = error
+        .get("refusals")
+        .and_then(|r| r.get(0))
+        .and_then(|r| r.get("detail"))
+        .or_else(|| error.get("message"))
+        .and_then(|d| d.as_str())
+        .unwrap_or_default()
+        .to_string();
+    Some(PassError::Refused { code, detail })
 }
 
 pub async fn report_limit(
@@ -317,7 +432,7 @@ mod tests {
     #[tokio::test]
     async fn a_gateway_refusing_the_registration_is_named_and_its_page_is_not_pasted() {
         let url = refusing("520 ", GATEWAY_PAGE).await;
-        let said = register(&client(url), "p1", "forge-master-pixelight")
+        let said = register(&client(url), "p1", "forge-master-pixelight", 2)
             .await
             .unwrap_err()
             .to_string();
@@ -342,7 +457,7 @@ mod tests {
             ("525 ", "the TLS handshake with the origin failed"),
         ] {
             let url = refusing(status, "error code").await;
-            let said = register(&client(url), "p1", "m")
+            let said = register(&client(url), "p1", "m", 2)
                 .await
                 .unwrap_err()
                 .to_string();
@@ -355,7 +470,7 @@ mod tests {
     #[tokio::test]
     async fn a_plain_bodied_refusal_still_carries_what_core_said() {
         let url = refusing("503 Service Unavailable", "no available server").await;
-        let said = register(&client(url), "p1", "m")
+        let said = register(&client(url), "p1", "m", 2)
             .await
             .unwrap_err()
             .to_string();
@@ -374,7 +489,7 @@ mod tests {
         let deadline = Duration::from_millis(150);
         let said = tokio::time::timeout(
             Duration::from_secs(5),
-            register_within(&client(url), "p1", "m", deadline),
+            register_within(&client(url), "p1", "m", 2, deadline),
         )
         .await
         .expect("the call returns rather than hanging")
@@ -396,7 +511,7 @@ mod tests {
     #[tokio::test]
     async fn a_core_that_cannot_be_reached_names_the_cause_and_not_the_address() {
         let (_held, addr) = refusing_addr();
-        let said = register(&client(format!("http://{addr}")), "p1", "m")
+        let said = register(&client(format!("http://{addr}")), "p1", "m", 2)
             .await
             .unwrap_err()
             .to_string();
@@ -406,5 +521,137 @@ mod tests {
         );
         assert!(!said.contains(&addr.to_string()), "{said}");
         assert!(!said.contains("http"), "{said}");
+    }
+
+    async fn answering(
+        status: &'static str,
+        body: &'static str,
+    ) -> (String, tokio::sync::oneshot::Receiver<String>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 8192];
+            let n = sock.read(&mut buf).await.unwrap_or(0);
+            let req = String::from_utf8_lossy(&buf[..n]).into_owned();
+            let resp = format!(
+                "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = sock.write_all(resp.as_bytes()).await;
+            let _ = sock.shutdown().await;
+            let _ = tx.send(req);
+        });
+        (format!("http://{addr}"), rx)
+    }
+
+    const OPENED: &str = r#"{"pass":{"id":"7c1d2e3f-0000-4000-8000-000000000001","sessionId":"s1","verb":"dispatch","startedAt":"2026-10-04T08:00:00.000Z","issueKey":null}}"#;
+    const ALREADY_OPEN: &str = r#"{"error":{"code":"MASTER_PASS_ALREADY_OPEN","message":"refused, nothing written: MASTER_PASS_ALREADY_OPEN at /op","refusals":[{"code":"MASTER_PASS_ALREADY_OPEN","path":"/op","detail":"this master already has the dispatch pass started 2026-10-04T08:22:15.048Z on ISS-1 open, id c9d772dd-fae2-43c0-b9d6-65f367e9127d; close it before opening the next"}]}}"#;
+    const NOT_OPEN: &str = r#"{"error":{"code":"MASTER_PASS_NOT_OPEN","message":"refused, nothing written: MASTER_PASS_NOT_OPEN at /passId","refusals":[{"code":"MASTER_PASS_NOT_OPEN","path":"/passId","detail":"the dispatch pass started 2026-10-04T08:22:15.048Z ended 2026-10-04T08:22:16.996Z, and a closed pass is final, so this close changed nothing."}]}}"#;
+
+    #[tokio::test]
+    async fn a_registration_declares_the_slots_from_the_runner_config() {
+        let (url, rx) = answering("200 OK", r#"{"sessionId":"s1","name":"m"}"#).await;
+        register(&client(url), "p1", "forge-master-forge", 3)
+            .await
+            .expect("core answered 200");
+        let req = rx.await.unwrap();
+        assert!(
+            req.starts_with("POST /api/devices/me/master-session "),
+            "{req}"
+        );
+        let body = sent_body(&req);
+        assert_eq!(body["maxJobPanes"], 3, "{body}");
+        assert_eq!(body["projectId"], "p1", "{body}");
+    }
+
+    #[tokio::test]
+    async fn an_open_names_the_session_the_verb_and_the_issue_and_answers_the_pass_id() {
+        let (url, rx) = answering("201 Created", OPENED).await;
+        let id = open_pass(&client(url), "s1", "dispatch", Some("ISS-7"))
+            .await
+            .expect("core answered 201");
+        assert_eq!(id, "7c1d2e3f-0000-4000-8000-000000000001");
+        let req = rx.await.unwrap();
+        assert!(
+            req.starts_with("POST /api/devices/me/master-session/pass "),
+            "{req}"
+        );
+        let body = sent_body(&req);
+        assert_eq!(body["op"], "open");
+        assert_eq!(body["sessionId"], "s1");
+        assert_eq!(body["verb"], "dispatch");
+        assert_eq!(body["issueKey"], "ISS-7");
+    }
+
+    #[tokio::test]
+    async fn a_close_names_the_pass_its_open_answered_so_a_replay_never_closes_the_next() {
+        let (url, rx) = answering("200 OK", OPENED).await;
+        close_pass(
+            &client(url),
+            "s1",
+            "7c1d2e3f-0000-4000-8000-000000000001",
+            &["ISS-7".to_string()],
+        )
+        .await
+        .expect("core answered 200");
+        let body = sent_body(&rx.await.unwrap());
+        assert_eq!(body["op"], "close");
+        assert_eq!(
+            body["passId"], "7c1d2e3f-0000-4000-8000-000000000001",
+            "a close that names no pass would close whichever pass is open when it lands: {body}"
+        );
+        assert_eq!(body["dispatched"], serde_json::json!(["ISS-7"]));
+        assert_eq!(body["skipped"], serde_json::json!([]));
+        assert_eq!(body["parked"], serde_json::json!([]));
+    }
+
+    #[tokio::test]
+    async fn each_pass_refusal_comes_back_by_its_code_and_core_s_own_detail() {
+        let (url, _rx) = answering("422 Unprocessable Entity", ALREADY_OPEN).await;
+        match open_pass(&client(url), "s1", "dispatch", None).await {
+            Err(PassError::Refused { code, detail }) => {
+                assert_eq!(code, "MASTER_PASS_ALREADY_OPEN");
+                assert!(
+                    detail.contains("c9d772dd-fae2-43c0-b9d6-65f367e9127d"),
+                    "{detail}"
+                );
+            }
+            other => panic!("expected the refusal by name, got {other:?}"),
+        }
+        let (url, _rx) = answering("422 Unprocessable Entity", NOT_OPEN).await;
+        match close_pass(&client(url), "s1", "p1", &[]).await {
+            Err(PassError::Refused { code, detail }) => {
+                assert_eq!(code, "MASTER_PASS_NOT_OPEN");
+                assert!(detail.contains("changed nothing"), "{detail}");
+            }
+            other => panic!("expected the refusal by name, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_gateway_or_an_unreachable_core_is_not_a_refusal_so_the_close_is_kept_for_retry() {
+        let (url, _rx) = answering("503 Service Unavailable", "no available server").await;
+        assert!(matches!(
+            close_pass(&client(url), "s1", "p1", &[]).await,
+            Err(PassError::Unreached(_))
+        ));
+        let (_held, addr) = refusing_addr();
+        assert!(matches!(
+            close_pass(&client(format!("http://{addr}")), "s1", "p1", &[]).await,
+            Err(PassError::Unreached(_))
+        ));
+        assert_eq!(
+            pass_refusal(
+                404,
+                r#"{"code":"NOT_FOUND","message":"master session s1 not found on this device"}"#
+            ),
+            Some(PassError::Refused {
+                code: "NOT_FOUND".into(),
+                detail: "master session s1 not found on this device".into()
+            })
+        );
+        assert_eq!(pass_refusal(429, r#"{"code":"RATE_LIMITED"}"#), None);
     }
 }

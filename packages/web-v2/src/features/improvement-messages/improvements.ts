@@ -46,23 +46,25 @@ function reportRow(r: AgentReport): ImprovementRow {
 }
 
 function proposalRows(loop: LoopRuns): ImprovementRow[] {
-  return loop.runs.flatMap((run) =>
-    (run.stewardReport?.actions ?? []).flatMap((a, i): ImprovementRow[] =>
+  return loop.runs.flatMap((run) => {
+    const sessionId = run.sessionId;
+    if (!sessionId) return [];
+    return (run.stewardReport?.actions ?? []).flatMap((a, i): ImprovementRow[] =>
       a.kind === "proposed" || a.kind === "applied"
         ? [
             {
-              id: `proposal:${run.sessionId}:${i}`,
+              id: `proposal:${sessionId}:${i}`,
               source: "proposal",
               title: a.summary,
               from: `${loop.title} · ${a.skill}`,
               state: a.kind === "proposed" ? "proposal" : "done",
               at: run.finishedAt ?? run.startedAt ?? "",
-              sessionId: run.sessionId,
+              sessionId,
             },
           ]
         : [],
-    ),
-  );
+    );
+  });
 }
 
 export function improvementRows(reports: readonly AgentReport[], loops: readonly LoopRuns[]): ImprovementRow[] {

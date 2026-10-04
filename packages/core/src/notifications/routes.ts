@@ -384,6 +384,7 @@ export async function createNotification(input: {
   issueId?: string | null;
   secondaryIssueId?: string | null;
   agentSessionId?: string | null;
+  scheduleRunId?: string | null;
   severity?: string | null;
   resolutionKey?: string | null;
   dedupeKey?: string | null;

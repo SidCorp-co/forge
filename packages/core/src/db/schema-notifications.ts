@@ -11,6 +11,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { issues, projects, users } from './schema.js';
+import { scheduleRuns } from './schema-schedule-runs.js';
 
 export const notificationTypes = [
   'issue_status_changed',
@@ -65,6 +66,9 @@ export const notifications = pgTable(
       onDelete: 'set null',
     }),
     agentSessionId: uuid('agent_session_id'),
+    scheduleRunId: uuid('schedule_run_id').references(() => scheduleRuns.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     pendingSince: timestamp('pending_since', { withTimezone: true }),
@@ -83,6 +87,9 @@ export const notifications = pgTable(
       .where(sql`resolved_at IS NULL AND resolution_key IS NOT NULL AND type = 'ops_alert'`),
     dedupeKeyIdx: index('notifications_dedupe_key_idx').on(t.dedupeKey),
     groupKeyIdx: index('notifications_group_key_idx').on(t.groupKey),
+    scheduleRunIdx: index('notifications_schedule_run_idx')
+      .on(t.scheduleRunId)
+      .where(sql`schedule_run_id IS NOT NULL`),
     stateIdx: index('notifications_kind_state_idx').on(t.kind, t.state),
     signalHasNoResolveState: check(
       'notifications_signal_has_no_resolve_state',

@@ -114,6 +114,10 @@
       "types": "./dist/feedback.d.ts",
       "default": "./dist/feedback.js"
     },
+    "./schedules": {
+      "types": "./dist/schedules.d.ts",
+      "default": "./dist/schedules.js"
+    },
     "./agent-reports": {
       "types": "./dist/agent-reports.d.ts",
       "default": "./dist/agent-reports.js"

@@ -101,7 +101,12 @@ export async function runScheduledReleaseCut(args: {
 }): Promise<ScheduledCutOutcome> {
   const roster = await loadReleaseRoster(args.projectId);
   if (!roster.gateStatus) {
-    return { status: 'skipped', output: 'this project has no release gate', named: [] };
+    return {
+      status: 'skipped',
+      output: 'this project has no release gate',
+      named: [],
+      code: 'NO_RELEASE_GATE',
+    };
   }
 
   const waiting = roster.issues.filter((i) => i.claimedByRunId === null).map((i) => i.id);

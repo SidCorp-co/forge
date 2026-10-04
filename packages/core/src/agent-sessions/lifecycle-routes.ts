@@ -19,7 +19,6 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { extractReportFromMessages } from '../schedules/messages/skill-improve-prompt.js';
 import { extractStewardReportFromMessages } from '../schedules/messages/skill-steward-prompt.js';
-import { writeBackScheduleLastStatus } from '../schedules/service.js';
 import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { broadcastSession } from './broadcast.js';
@@ -250,10 +249,6 @@ agentSessionLifecycleRoutes.post(
     // kind='issue' (closed by issue state-machine); fires for pm/interactive.
     if (status === 'completed' || status === 'failed') {
       await closeRunIfOneShot(updated.pipelineRunId, status === 'failed' ? 'failed' : 'completed');
-    }
-
-    if (status === 'completed' || status === 'failed') {
-      await writeBackScheduleLastStatus(updated.metadata, sessionId, status);
     }
 
     if (classification) {

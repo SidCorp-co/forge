@@ -6,9 +6,9 @@
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { projects, scheduleRuns } from '../db/schema.js';
+import { projects } from '../db/schema.js';
 import { logger } from '../logger.js';
-import type { DispatchScheduleInput, DispatchScheduleResult } from './dispatch-types.js';
+import type { DispatchScheduleInput, RoutedFire } from './dispatch-types.js';
 import { runScheduledReleaseCut } from './release-batch-run.js';
 
 /**
@@ -39,58 +39,49 @@ export async function resolveScheduleTargetProject(
   return { projectId, userId };
 }
 
-/**
- * A `release_batch` schedule: claim everything waiting at the gate and enqueue
- * the batch job. Same shape as the script branch — a `schedule_runs` row, no
- * agent session, no Claude runner — because the work is one REST-equivalent
- * call, not a conversation.
- */
-export async function dispatchScheduleReleaseBatchRun(
+export async function routeScheduleReleaseBatchFire(
   input: DispatchScheduleInput,
-): Promise<DispatchScheduleResult> {
-  const { schedule } = input;
+  fireId: string,
+): Promise<RoutedFire> {
   const resolved = await resolveScheduleTargetProject(input);
-  if (!resolved) return { ok: false, reason: 'project-not-found', status: 'skipped' };
-  const { projectId, userId } = resolved;
-
-  const [run] = await db
-    .insert(scheduleRuns)
-    .values({
-      scheduleId: schedule.id,
-      projectId,
-      trigger: input.tick ? 'scheduled' : 'manual',
-      status: 'running',
-      startedAt: new Date(),
-    })
-    .returning({ id: scheduleRuns.id });
-  if (!run) {
-    logger.error({ scheduleId: schedule.id }, 'schedule.dispatch: schedule_runs insert failed');
-    return { ok: false, reason: 'session-failed', status: 'failed' };
+  if (!resolved) {
+    return {
+      result: { ok: false, reason: 'project-not-found', status: 'skipped' },
+      settle: { status: 'skipped', reason: 'project-not-found' },
+    };
   }
+  const { projectId, userId } = resolved;
 
   const outcome = await runScheduledReleaseCut({ projectId, userId });
 
-  try {
-    await db
-      .update(scheduleRuns)
-      .set({
-        status: outcome.status,
-        output: outcome.output,
-        error: outcome.error ?? null,
-        finishedAt: new Date(),
-      })
-      .where(eq(scheduleRuns.id, run.id));
-  } catch (err) {
-    logger.error(
-      { err, scheduleId: schedule.id, runId: run.id },
-      'schedule.dispatch: schedule_runs update failed',
-    );
-  }
-
   if (outcome.status === 'failed') {
-    return { ok: false, reason: 'session-failed', status: 'failed', sessionId: run.id };
+    logger.warn({ scheduleId: input.schedule.id, fireId }, 'schedule.release-batch: cut failed');
+    return {
+      result: { ok: false, reason: 'session-failed', status: 'failed' },
+      settle: {
+        status: 'failed',
+        error: outcome.error ?? outcome.output,
+        output: outcome.output,
+      },
+    };
   }
-  return { ok: true, status: 'success', sessionId: run.id, resolvedProjectId: projectId };
+  if (outcome.status === 'skipped') {
+    return {
+      result: { ok: true, sessionId: null, status: 'skipped', resolvedProjectId: projectId },
+      settle: outcome.code
+        ? {
+            status: 'skipped',
+            reason: 'gate-refused',
+            refusal: outcome.code,
+            output: outcome.output,
+          }
+        : { status: 'skipped', reason: 'nothing-to-do', output: outcome.output },
+    };
+  }
+  return {
+    result: { ok: true, sessionId: null, status: 'success', resolvedProjectId: projectId },
+    settle: { status: 'success', output: outcome.output },
+  };
 }
 
 /** The user a runner-less schedule acts as: the caller, else the project owner. */

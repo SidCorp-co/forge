@@ -17,6 +17,7 @@ import { db } from '../db/client.js';
 import { agentSessions, projects, schedules } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
+import { handFireToRetry, recordFireDisposition, scheduleRunIdOf } from './fires.js';
 import { authorizeScheduledRun, failUndeliveredRun } from './scheduled-session.js';
 
 const MAX_SCHEDULE_FAILOVERS = 2;
@@ -27,7 +28,13 @@ interface ScheduleFailoverState {
 }
 
 export type ScheduleFailoverResult =
-  | { ok: true; status: 'redispatched'; sessionId: string; deviceId: string }
+  | {
+      ok: true;
+      status: 'redispatched';
+      sessionId: string;
+      pipelineRunId: string;
+      deviceId: string;
+    }
   | { ok: false; status: 'authority-refused'; code: string }
   | {
       ok: false;
@@ -54,27 +61,55 @@ const FAILOVER_DISPOSITIONS: Record<
   error: 'no failover (the failover attempt threw)',
 };
 
+function dispositionOf(result: ScheduleFailoverResult): string {
+  if (result.ok) return `cross-device failover (re-dispatched to device ${result.deviceId})`;
+  if (result.status === 'authority-refused') {
+    return `no failover (${result.code}: the run may no longer act as the person it ran as)`;
+  }
+  return FAILOVER_DISPOSITIONS[result.status];
+}
+
 async function stampFailoverDisposition(
   sessionId: string,
   result: ScheduleFailoverResult,
   failureClass: string | null,
 ): Promise<void> {
   if (!failureClass) return;
-  const disposition = result.ok
-    ? `cross-device failover (re-dispatched to device ${result.deviceId})`
-    : result.status === 'authority-refused'
-      ? `no failover (${result.code}: the run may no longer act as the person it ran as)`
-      : FAILOVER_DISPOSITIONS[result.status];
   try {
     await db
       .update(agentSessions)
-      .set({ failureDetail: `${failureClass} → ${disposition}` })
+      .set({ failureDetail: `${failureClass} → ${dispositionOf(result)}` })
       .where(eq(agentSessions.id, sessionId));
   } catch (err) {
     logger.error(
       { err, sessionId, status: result.status },
       'schedule.failover: disposition write-back threw',
     );
+  }
+}
+
+async function recordFailoverOnFire(
+  failed: FailedScheduleSession,
+  result: ScheduleFailoverResult,
+): Promise<void> {
+  if (!result.ok && result.status === 'not-schedule') return;
+  const disposition = dispositionOf(result);
+  try {
+    const recorded = result.ok
+      ? await handFireToRetry({
+          failedSessionId: failed.id,
+          retry: { id: result.sessionId, pipelineRunId: result.pipelineRunId },
+          disposition,
+        })
+      : await recordFireDisposition({ failedSessionId: failed.id, disposition });
+    if (!recorded) {
+      logger.warn(
+        { sessionId: failed.id, status: result.status },
+        'schedule.failover: no fire holds the failed session, so no fire records the failover',
+      );
+    }
+  } catch (err) {
+    logger.error({ err, sessionId: failed.id }, 'schedule.failover: fire write threw');
   }
 }
 
@@ -91,6 +126,7 @@ async function alertAbandonedScheduleWork(row: {
   userId: string | null;
   title: string | null;
   scheduleId: string;
+  scheduleRunId: string | null;
 }): Promise<void> {
   if (!row.userId) return;
   try {
@@ -100,6 +136,7 @@ async function alertAbandonedScheduleWork(row: {
       type: 'schedule_report',
       severity: 'warning',
       agentSessionId: row.id,
+      scheduleRunId: row.scheduleRunId,
       title: `Scheduled run failed mid-flight: ${row.title ?? 'Scheduled run'}`,
       body: 'The run had already started work when it died, so it was not re-dispatched (re-running it would repeat whatever it committed). Its window is not covered by the next firing — re-run it by hand if the work still matters.',
     });
@@ -124,15 +161,10 @@ export async function redispatchScheduleSessionOnFailover(
   sessionId: string,
   opts?: { failureClass?: string | null },
 ): Promise<ScheduleFailoverResult> {
-  const result = await attemptScheduleFailover(sessionId);
-  await stampFailoverDisposition(sessionId, result, opts?.failureClass ?? null);
-  return result;
-}
-
-async function attemptScheduleFailover(sessionId: string): Promise<ScheduleFailoverResult> {
   const [failed] = await db
     .select({
       id: agentSessions.id,
+      failureReason: agentSessions.failureReason,
       projectId: agentSessions.projectId,
       userId: agentSessions.userId,
       deviceId: agentSessions.deviceId,
@@ -145,7 +177,29 @@ async function attemptScheduleFailover(sessionId: string): Promise<ScheduleFailo
     .where(eq(agentSessions.id, sessionId))
     .limit(1);
   if (!failed) return { ok: false, status: 'error' };
+  const result = await attemptScheduleFailover(failed);
+  await stampFailoverDisposition(sessionId, result, opts?.failureClass ?? null);
+  await recordFailoverOnFire(failed, result);
+  return result;
+}
 
+type FailedScheduleSession = Pick<
+  typeof agentSessions.$inferSelect,
+  | 'id'
+  | 'failureReason'
+  | 'projectId'
+  | 'userId'
+  | 'deviceId'
+  | 'title'
+  | 'messages'
+  | 'metadata'
+  | 'claudeSessionId'
+>;
+
+async function attemptScheduleFailover(
+  failed: FailedScheduleSession,
+): Promise<ScheduleFailoverResult> {
+  const sessionId = failed.id;
   const meta = (failed.metadata ?? {}) as Record<string, unknown>;
   if (meta.source !== 'schedule.run' || typeof meta.scheduleId !== 'string') {
     return { ok: false, status: 'not-schedule' };
@@ -158,6 +212,7 @@ async function attemptScheduleFailover(sessionId: string): Promise<ScheduleFailo
       userId: failed.userId,
       title: failed.title,
       scheduleId: meta.scheduleId,
+      scheduleRunId: scheduleRunIdOf(meta),
     });
     return { ok: false, status: 'side-effects' };
   }
@@ -201,6 +256,8 @@ async function attemptScheduleFailover(sessionId: string): Promise<ScheduleFailo
     asker,
     failover: { attempt, triedDeviceIds: tried } satisfies ScheduleFailoverState,
   };
+  const fireId = scheduleRunIdOf(meta);
+  if (fireId) nextMeta.scheduleRunId = fireId;
   if (meta.tick) nextMeta.tick = true;
   if (typeof meta.templateKey === 'string') nextMeta.templateKey = meta.templateKey;
   if (meta.steward) nextMeta.steward = true;
@@ -235,7 +292,7 @@ async function attemptScheduleFailover(sessionId: string): Promise<ScheduleFailo
     try {
       await db
         .update(schedules)
-        .set({ lastSessionId: dispatched.id, lastStatus: 'running' })
+        .set({ lastSessionId: dispatched.id })
         .where(eq(schedules.id, meta.scheduleId as string));
     } catch (err) {
       logger.error(
@@ -247,6 +304,7 @@ async function attemptScheduleFailover(sessionId: string): Promise<ScheduleFailo
       ok: true,
       status: 'redispatched',
       sessionId: dispatched.id,
+      pipelineRunId: dispatched.pipelineRunId,
       deviceId: authority.deviceId,
     };
   } catch (err) {

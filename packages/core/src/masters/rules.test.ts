@@ -7,11 +7,9 @@ import {
 } from '@forge/contracts/master-standing';
 import { describe, expect, it } from 'vitest';
 import {
-  MASTER_SLOTS_MIN_RUNNER,
   NO_MASTER_SLOTS,
   passAlreadyOpenRefusal,
   passNotOpenRefusal,
-  predatesSlotDeclaration,
   sessionEndedRefusal,
   slotsNoteOf,
   slotsOf,
@@ -58,13 +56,13 @@ describe('edge master.declared: a master session declares its slots', () => {
     ).toBeNull();
   });
 
-  it('the ISS-107 amnesty covers exactly the runners below the floor that declares', () => {
-    expect(MASTER_SLOTS_MIN_RUNNER).toBe('0.18.0');
-    expect(predatesSlotDeclaration('0.17.0')).toBe(true);
-    expect(predatesSlotDeclaration('0.17.90')).toBe(true);
-    expect(predatesSlotDeclaration('0.18.0')).toBe(false);
-    expect(predatesSlotDeclaration('1.0.0')).toBe(false);
-    expect(slotsUndeclaredRefusal({ maxJobPanes: undefined, agentVersion: '0.17.90' })).toBeNull();
+  it('a runner of any version that declares no maxJobPanes is refused: the ISS-107 amnesty is over', () => {
+    for (const agentVersion of ['0.17.0', '0.17.90', '0.18.0', '1.0.0']) {
+      expect(
+        slotsUndeclaredRefusal({ maxJobPanes: undefined, agentVersion })?.code,
+        agentVersion,
+      ).toBe('MASTER_SLOTS_UNDECLARED');
+    }
   });
 
   it('the body takes maxJobPanes from 1 to the cap and refuses zero, the cap plus one, a fraction and a stray field', () => {

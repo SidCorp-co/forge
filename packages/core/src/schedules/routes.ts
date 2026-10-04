@@ -15,7 +15,6 @@ import {
   getSchedule,
   listScheduleRuns,
   listSchedules,
-  markScheduleFailed,
   runScheduleNow,
   updateSchedule,
 } from './service.js';
@@ -172,11 +171,6 @@ scheduleRoutes.get(
   },
 );
 
-// Run history for a schedule. Schedule runs are not their own table — each
-// dispatch creates an `agent_sessions` row tagged `metadata.scheduleId` (+
-// `metadata.tick:true` when cron-driven, absent for a manual `/run`) under a
-// `system`-kind `pipeline_run`. We join the run for its clean started/finished
-// span + terminal status, newest first.
 scheduleRoutes.get(
   '/:id/runs',
   zValidator('param', idParamSchema, (r) => {
@@ -260,11 +254,7 @@ export async function runScheduleTickOnce(now: Date = new Date()): Promise<strin
       // Atomic claim: only one ticker wins for this (id, nextRunAt) pair.
       const claimed = await db
         .update(schedules)
-        .set({
-          lastRunAt: now,
-          lastStatus: 'running',
-          nextRunAt: nextRunFor(schedule.cron, now),
-        })
+        .set({ nextRunAt: nextRunFor(schedule.cron, now) })
         .where(
           and(
             eq(schedules.id, schedule.id),
@@ -277,41 +267,24 @@ export async function runScheduleTickOnce(now: Date = new Date()): Promise<strin
         .returning({ id: schedules.id });
       if (claimed.length === 0) continue; // another ticker won the race
 
-      let result: Awaited<ReturnType<typeof dispatchScheduleRun>>;
-      try {
-        result = await dispatchScheduleRun({
-          schedule: {
-            id: schedule.id,
-            name: schedule.name,
-            projectId: schedule.projectId,
-            prompt: schedule.prompt,
-            targetProjectSlug: schedule.targetProjectSlug ?? null,
-            templateKey: schedule.templateKey ?? null,
-            params: (schedule.params as Record<string, unknown> | null) ?? null,
-            mode: schedule.mode ?? null,
-            appliedMessageVersions:
-              (schedule.appliedMessageVersions as Record<string, number> | null) ?? null,
-            kind: schedule.kind,
-            script: schedule.script ?? null,
-            ownerId: schedule.ownerId,
-          },
-          tick: true,
-        });
-      } catch (dispatchErr) {
-        // Don't leave `lastStatus='running'` if dispatch throws after the
-        // atomic claim — flip to 'failed' so the row reflects reality.
-        logger.error(
-          { err: dispatchErr, scheduleId: schedule.id },
-          'schedule.tick: dispatch threw',
-        );
-        await markScheduleFailed(schedule.id, 'schedule.tick');
-        continue;
-      }
-
-      await db
-        .update(schedules)
-        .set({ lastStatus: result.status })
-        .where(eq(schedules.id, schedule.id));
+      const result = await dispatchScheduleRun({
+        schedule: {
+          id: schedule.id,
+          name: schedule.name,
+          projectId: schedule.projectId,
+          prompt: schedule.prompt,
+          targetProjectSlug: schedule.targetProjectSlug ?? null,
+          templateKey: schedule.templateKey ?? null,
+          params: (schedule.params as Record<string, unknown> | null) ?? null,
+          mode: schedule.mode ?? null,
+          appliedMessageVersions:
+            (schedule.appliedMessageVersions as Record<string, number> | null) ?? null,
+          kind: schedule.kind,
+          script: schedule.script ?? null,
+          ownerId: schedule.ownerId,
+        },
+        tick: true,
+      });
 
       if (result.ok) dispatched.push(schedule.id);
     } catch (err) {

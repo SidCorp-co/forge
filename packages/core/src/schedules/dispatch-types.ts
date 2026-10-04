@@ -1,6 +1,7 @@
 import type { SessionRefusal } from '../agent-sessions/interactive-credential.js';
 import type { SessionAsker } from '../agent-sessions/session-credential.js';
 import type { ScheduleKind, ScheduleMode } from '../db/schema.js';
+import type { FireSettlement } from './fires.js';
 import type { AppliedVersions } from './messages/skill-improve-prompt.js';
 
 export interface ScheduleRowForDispatch {
@@ -30,8 +31,13 @@ export interface DispatchScheduleInput {
   resolvedTarget?: { id: string; createdBy: string };
 }
 
-export type DispatchScheduleResult =
-  | { ok: true; sessionId: string; status: 'running' | 'success'; resolvedProjectId: string }
+export type RoutedScheduleResult =
+  | {
+      ok: true;
+      sessionId: string | null;
+      status: 'running' | 'success' | 'skipped';
+      resolvedProjectId: string;
+    }
   | {
       ok: false;
       reason: 'project-not-found' | 'no-device' | 'already-applied';
@@ -45,3 +51,10 @@ export type DispatchScheduleResult =
       sessionId: string;
       refusal: SessionRefusal;
     };
+
+export type DispatchScheduleResult = RoutedScheduleResult & { fireId: string };
+
+export interface RoutedFire {
+  result: RoutedScheduleResult;
+  settle: FireSettlement | null;
+}

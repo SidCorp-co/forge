@@ -148,6 +148,10 @@
 
 ### Added
 
+- **Every schedule run is one row in its history (ISS-112).** A run of any kind records how it
+  started, ended and why, and links its session; older runs are rebuilt. A run skipped for want of a
+  box now counts toward the failing-automation alert.
+
 - **The menu counts what waits on you.** Requirements, Releases, Feedback, Issues and Contracts
   each show how many rows wait on you, with what they wait for in a tooltip, and the dashboard shows
   requirements in delivery and untriaged feedback. All come from `GET /api/projects/:id/needs-you`,
@@ -3327,6 +3331,10 @@
   set is now 59.
 
 ### Fixed
+
+- **A prompt schedule naming a message that no longer exists now fails, and says so (ISS-112).** It
+  used to read as already applied. A release batch skipped for want of a release gate now names
+  `NO_RELEASE_GATE`.
 
 - **A blocked issue can no longer be claimed directly (ISS-104).** The list a master reads already held back an
   issue waiting on another, but taking it by hand still worked: a claim, a run session, a pool job

@@ -206,6 +206,7 @@ describe('runScheduledReleaseCut — unchanged by the cutWaitingRelease extracti
       status: 'skipped',
       output: 'this project has no release gate',
       named: [],
+      code: 'NO_RELEASE_GATE',
     });
     expect(createReleaseBatchMock).not.toHaveBeenCalled();
   });

@@ -5,7 +5,6 @@ import type { SessionAsker } from '../agent-sessions/session-credential.js';
 import { db } from '../db/client.js';
 import {
   agentSessions,
-  isRunnerLessScheduleKind,
   pipelineRuns,
   projects,
   type ScheduleKind,
@@ -13,7 +12,6 @@ import {
   schedules,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
-import { logger } from '../logger.js';
 import { nextRunFor, validateCron } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';
 import { getImprovementMessage } from './messages/registry.js';
@@ -52,44 +50,6 @@ export async function assertTargetProjectAccess(
   const access = await loadProjectAccess(target.id, userId);
   assertProjectRole(access, 'member', 'not a member of target project');
   return target;
-}
-
-// Reset `lastStatus` to 'failed' after a dispatcher throw so the row never
-// gets pinned to 'running' or a stale 'success'. Errors during the reset are
-// logged but never propagated — the original dispatch failure is what matters.
-export async function markScheduleFailed(scheduleId: string, ctx: string): Promise<void> {
-  try {
-    await db.update(schedules).set({ lastStatus: 'failed' }).where(eq(schedules.id, scheduleId));
-  } catch (err) {
-    logger.error({ err, scheduleId }, `${ctx}: lastStatus reset threw`);
-  }
-}
-
-/**
- * ISS-824 — write a schedule.run session's REAL terminal outcome onto
- * `schedules.lastStatus`. Dispatch only ever writes `running`/`skipped`
- * (see `DispatchScheduleResult`); this is the only writer of `success`/
- * `failed` for the interactive session path.
- */
-export async function writeBackScheduleLastStatus(
-  metadata: unknown,
-  sessionId: string,
-  outcome: 'completed' | 'failed',
-): Promise<void> {
-  const meta = (metadata ?? {}) as Record<string, unknown>;
-  if (meta.source !== 'schedule.run' || typeof meta.scheduleId !== 'string') return;
-  const scheduleId = meta.scheduleId;
-  try {
-    await db
-      .update(schedules)
-      .set({ lastStatus: outcome === 'completed' ? 'success' : 'failed' })
-      .where(and(eq(schedules.id, scheduleId), eq(schedules.lastSessionId, sessionId)));
-  } catch (err) {
-    logger.error(
-      { err, scheduleId, sessionId },
-      'schedule session terminal: lastStatus write-back threw',
-    );
-  }
 }
 
 export async function listSchedules(projectId: string, actorUserId: string, enabled?: boolean) {
@@ -155,7 +115,7 @@ export async function getSchedule(id: string, actorUserId: string) {
 
 export async function listScheduleRuns(id: string, actorUserId: string, limit?: number) {
   const [schedule] = await db
-    .select({ projectId: schedules.projectId, kind: schedules.kind })
+    .select({ projectId: schedules.projectId })
     .from(schedules)
     .where(eq(schedules.id, id))
     .limit(1);
@@ -164,88 +124,58 @@ export async function listScheduleRuns(id: string, actorUserId: string, limit?: 
   const access = await loadProjectAccess(schedule.projectId, actorUserId);
   assertProjectRole(access, 'viewer', 'not a project member');
 
-  if (isRunnerLessScheduleKind(schedule.kind)) {
-    const scriptRows = await db
-      .select()
-      .from(scheduleRuns)
-      .where(eq(scheduleRuns.scheduleId, id))
-      .orderBy(desc(scheduleRuns.createdAt))
-      .limit(limit ?? 20);
-
-    const toIso = (d: Date | null): string | null => (d == null ? null : d.toISOString());
-    const runs = scriptRows.map((r) => {
-      const durationSeconds =
-        r.startedAt && r.finishedAt
-          ? Math.max(0, Math.round((r.finishedAt.getTime() - r.startedAt.getTime()) / 1000))
-          : null;
-      return {
-        sessionId: r.id,
-        pipelineRunId: null,
-        status: r.status,
-        runStatus: r.status,
-        trigger: r.trigger,
-        title: null,
-        failureReason: r.error,
-        failureDetail: null,
-        startedAt: toIso(r.startedAt),
-        finishedAt: toIso(r.finishedAt),
-        durationSeconds,
-        stewardReport: null,
-        output: r.output,
-        error: r.error,
-      };
-    });
-
-    return { runs };
-  }
-
   const rows = await db
     .select({
-      sessionId: agentSessions.id,
-      pipelineRunId: agentSessions.pipelineRunId,
-      status: agentSessions.status,
+      id: scheduleRuns.id,
+      sessionId: scheduleRuns.sessionId,
+      pipelineRunId: scheduleRuns.pipelineRunId,
+      fireStatus: scheduleRuns.status,
+      trigger: scheduleRuns.trigger,
+      reason: scheduleRuns.reason,
+      refusal: scheduleRuns.refusal,
+      disposition: scheduleRuns.disposition,
+      output: scheduleRuns.output,
+      error: scheduleRuns.error,
+      startedAt: scheduleRuns.startedAt,
+      finishedAt: scheduleRuns.finishedAt,
+      sessionStatus: agentSessions.status,
       title: agentSessions.title,
       failureReason: agentSessions.failureReason,
       failureDetail: agentSessions.failureDetail,
-      sessionStartedAt: agentSessions.startedAt,
-      createdAt: agentSessions.createdAt,
-      tick: sql<boolean>`(${agentSessions.metadata} ->> 'tick') = 'true'`,
       stewardReport: sql<unknown>`${agentSessions.metadata} -> 'stewardReport'`,
       runStatus: pipelineRuns.status,
-      runStartedAt: pipelineRuns.startedAt,
-      runFinishedAt: pipelineRuns.finishedAt,
     })
-    .from(agentSessions)
-    .leftJoin(pipelineRuns, eq(agentSessions.pipelineRunId, pipelineRuns.id))
-    .where(sql`${agentSessions.metadata} ->> 'scheduleId' = ${id}`)
-    .orderBy(desc(agentSessions.createdAt))
+    .from(scheduleRuns)
+    .leftJoin(agentSessions, eq(agentSessions.id, scheduleRuns.sessionId))
+    .leftJoin(pipelineRuns, eq(pipelineRuns.id, scheduleRuns.pipelineRunId))
+    .where(eq(scheduleRuns.scheduleId, id))
+    .orderBy(desc(scheduleRuns.createdAt))
     .limit(limit ?? 20);
 
-  const toIso = (d: Date | string | null): string | null =>
-    d == null ? null : d instanceof Date ? d.toISOString() : d;
-
-  const runs = rows.map((r) => {
-    const start = r.sessionStartedAt ?? r.runStartedAt ?? r.createdAt;
-    const end = r.runFinishedAt ?? null;
-    const durationSeconds =
-      start && end
-        ? Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 1000))
-        : null;
-    return {
-      sessionId: r.sessionId,
-      pipelineRunId: r.pipelineRunId,
-      status: r.status,
-      runStatus: r.runStatus,
-      trigger: r.tick ? ('scheduled' as const) : ('manual' as const),
-      title: r.title,
-      failureReason: r.failureReason,
-      failureDetail: r.failureDetail,
-      startedAt: toIso(start),
-      finishedAt: toIso(end),
-      durationSeconds,
-      stewardReport: (r.stewardReport as StewardRunReport | null) ?? null,
-    };
-  });
+  const toIso = (d: Date | null): string | null => (d == null ? null : d.toISOString());
+  const runs = rows.map((r) => ({
+    id: r.id,
+    sessionId: r.sessionId,
+    pipelineRunId: r.pipelineRunId,
+    status: r.sessionStatus ?? r.fireStatus,
+    fireStatus: r.fireStatus,
+    runStatus: r.runStatus,
+    trigger: r.trigger,
+    reason: r.reason,
+    refusal: r.refusal,
+    disposition: r.disposition,
+    title: r.title,
+    failureReason: r.failureReason,
+    failureDetail: r.failureDetail,
+    startedAt: toIso(r.startedAt),
+    finishedAt: toIso(r.finishedAt),
+    durationSeconds: r.finishedAt
+      ? Math.max(0, Math.round((r.finishedAt.getTime() - r.startedAt.getTime()) / 1000))
+      : null,
+    stewardReport: (r.stewardReport as StewardRunReport | null) ?? null,
+    output: r.output,
+    error: r.error,
+  }));
 
   return { runs };
 }
@@ -429,7 +359,7 @@ export async function deleteSchedule(id: string, actorUserId: string): Promise<v
 export async function runScheduleNow(
   id: string,
   actor: SessionAsker,
-): Promise<{ sessionId: string; message: string }> {
+): Promise<{ fireId: string; sessionId: string | null; message: string }> {
   const actorUserId = actor.userId;
   const [schedule] = await db.select().from(schedules).where(eq(schedules.id, id)).limit(1);
   if (!schedule) throw notFound('schedule not found');
@@ -444,37 +374,25 @@ export async function runScheduleNow(
     resolvedTarget = await assertTargetProjectAccess(schedule.targetProjectSlug, actorUserId);
   }
 
-  let result: Awaited<ReturnType<typeof dispatchScheduleRun>>;
-  try {
-    result = await dispatchScheduleRun({
-      schedule: {
-        id: schedule.id,
-        name: schedule.name,
-        projectId: schedule.projectId,
-        prompt: schedule.prompt,
-        targetProjectSlug: schedule.targetProjectSlug ?? null,
-        templateKey: schedule.templateKey ?? null,
-        params: (schedule.params as Record<string, unknown> | null) ?? null,
-        mode: schedule.mode ?? null,
-        appliedMessageVersions:
-          (schedule.appliedMessageVersions as Record<string, number> | null) ?? null,
-        kind: schedule.kind,
-        script: schedule.script ?? null,
-        ownerId: schedule.ownerId,
-      },
-      actor,
-      ...(resolvedTarget ? { resolvedTarget } : {}),
-    });
-  } catch (err) {
-    logger.error({ err, scheduleId: schedule.id }, 'schedule.run: dispatch threw');
-    await markScheduleFailed(schedule.id, 'schedule.run');
-    throw err;
-  }
-
-  await db
-    .update(schedules)
-    .set({ lastStatus: result.status, lastRunAt: new Date() })
-    .where(eq(schedules.id, schedule.id));
+  const result = await dispatchScheduleRun({
+    schedule: {
+      id: schedule.id,
+      name: schedule.name,
+      projectId: schedule.projectId,
+      prompt: schedule.prompt,
+      targetProjectSlug: schedule.targetProjectSlug ?? null,
+      templateKey: schedule.templateKey ?? null,
+      params: (schedule.params as Record<string, unknown> | null) ?? null,
+      mode: schedule.mode ?? null,
+      appliedMessageVersions:
+        (schedule.appliedMessageVersions as Record<string, number> | null) ?? null,
+      kind: schedule.kind,
+      script: schedule.script ?? null,
+      ownerId: schedule.ownerId,
+    },
+    actor,
+    ...(resolvedTarget ? { resolvedTarget } : {}),
+  });
 
   if (!result.ok && result.reason === 'refused') throw refusalError(result.refusal);
   if (!result.ok) {
@@ -482,9 +400,9 @@ export async function runScheduleNow(
     // synchronously so the user knows nothing was started.
     throw new HTTPException(409, {
       message: result.reason,
-      cause: { code: 'SCHEDULE_DISPATCH_FAILED', reason: result.reason },
+      cause: { code: 'SCHEDULE_DISPATCH_FAILED', reason: result.reason, fireId: result.fireId },
     });
   }
 
-  return { sessionId: result.sessionId, message: 'Schedule triggered' };
+  return { fireId: result.fireId, sessionId: result.sessionId, message: 'Schedule triggered' };
 }

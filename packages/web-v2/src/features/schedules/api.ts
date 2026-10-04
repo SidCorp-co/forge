@@ -12,7 +12,7 @@ export const schedulesApi = {
     }),
 
   run: (id: string) =>
-    apiClient<{ sessionId: string; message: string }>(`/schedules/${id}/run`, { method: "POST" }),
+    apiClient<{ fireId: string; sessionId: string | null; message: string }>(`/schedules/${id}/run`, { method: "POST" }),
 
   /** `GET /api/schedules/:id/runs?limit=` — recent run history (newest first). */
   runs: (id: string, limit = 20) =>
