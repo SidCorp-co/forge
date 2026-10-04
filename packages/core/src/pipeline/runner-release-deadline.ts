@@ -1,12 +1,10 @@
 import {
-  RUNNER_RELEASE_DEADLINE_MS,
-  repositoryTruth,
-} from '../integrations/github/runner-release-preflight.js';
-import {
   overdueReleases,
+  RUNNER_RELEASE_DEADLINE_MS,
   type RunnerReleaseRow,
+  repositoryTruth,
   settleFailed,
-} from '../integrations/github/runner-release-store.js';
+} from '../integrations/github/index.js';
 import { logger } from '../logger.js';
 
 export { RUNNER_RELEASE_DEADLINE_MS };

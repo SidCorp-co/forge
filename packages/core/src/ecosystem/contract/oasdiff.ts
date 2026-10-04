@@ -8,7 +8,7 @@ import { promisify } from 'node:util';
 import {
   downloadReleaseAsset,
   releaseDownloadUrl,
-} from '../../integrations/github/public-releases.js';
+} from '../../integrations/published-releases/index.js';
 
 const run = promisify(execFile);
 

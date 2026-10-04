@@ -12,7 +12,7 @@ Nothing sanctioned reads a pull request's check runs:
 - `forge_source` (named `forge_github` until ISS-50)
   serves `list | diff | check-log | comment | open-change-request | request-review | review`.
   `check-log` needs a `checkRunId`, and **no action returns one**.
-- `readPullRequestsForIssues` in `integrations/repo-projection.ts` does compute a `checks` rollup
+- `readPullRequestsForIssues` in `integrations/source-host/repo-projection.ts` does compute a `checks` rollup
   off `repo_pull_requests.checks`, and it reaches exactly one caller: `devices/admissible.ts`,
   behind a device token, listing issues no run has opened yet. An issue being worked is by
   construction not in that list.

@@ -243,6 +243,9 @@
     "integrations/postman": {
       "kind": "adapter"
     },
+    "integrations/published-releases": {
+      "kind": "adapter"
+    },
     "integrations/rocketchat": {
       "kind": "adapter",
       "owns": [

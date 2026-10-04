@@ -77,4 +77,4 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
 # in the BACKGROUND (best-effort; exits 0) so a slow binary download can't push
 # boot past the healthcheck start_period, and `exec` the server immediately. The
 # install routes serve 404/501 until the dir fills in (seconds later).
-CMD ["sh", "-c", "node dist/db/migrate.js && { node dist/integrations/github/fetch-release.js & } && exec node dist/index.js"]
+CMD ["sh", "-c", "node dist/db/migrate.js && { node dist/integrations/published-releases/fetch-release.js & } && exec node dist/index.js"]

@@ -24,8 +24,8 @@ call sits now.
 | the transports in auth/email.ts and projects/invitation-email.ts | `packages/core/src/integrations/mail/smtp.ts` | two `nodemailer` transports, built twice from the same `SMTP_*` |
 | auth/oauth/github.ts, oidc-discovery.ts, oidc-provider.ts | `packages/core/src/integrations/identity/` | GitHub OAuth, Google and generic OIDC |
 | webhooks/outbound.ts | `packages/core/src/integrations/outbound-webhooks/delivery.ts` | a customer's webhook URL |
-| install/fetch-release.ts, install/main-runner-head.ts | `packages/core/src/integrations/github/fetch-release.ts`, `packages/core/src/integrations/github/main-runner-head.ts`, over `packages/core/src/integrations/github/public-releases.ts` | `api.github.com` releases and commits |
-| the download in ecosystem/contract/oasdiff.ts | `packages/core/src/integrations/github/public-releases.ts` | a pinned binary download from `github.com` — not a remote spec |
+| install/fetch-release.ts, install/main-runner-head.ts | `packages/core/src/integrations/published-releases/fetch-release.ts`, `packages/core/src/integrations/published-releases/main-runner-head.ts`, over `packages/core/src/integrations/published-releases/public-releases.ts` | `api.github.com` releases and commits |
+| the download in ecosystem/contract/oasdiff.ts | `packages/core/src/integrations/published-releases/public-releases.ts` | a pinned binary download from `github.com` — not a remote spec |
 | lib/runtime-probe.ts, and the global `fetch` project-config/environment-state-read.ts handed it | `packages/core/src/integrations/deploy/runtime-probe.ts` | a project's deployed app, through its declared runtime probe — found by the rule below, not by the hand list |
 | schedules/script/worker-entry.ts | unchanged: an exception | whatever URL a user's sandboxed script names |
 | observability/sentry.ts | unchanged: an exception | Forge's own crash reports, through `@sentry/node` |
@@ -56,7 +56,8 @@ a vendor SDK, a `fetch` to a vendor host, or a vendor's types.
 | mail | `mail` | SMTP | the deployment |
 | identity | `identity` | GitHub OAuth, Google, generic OIDC | the deployment |
 | outbound webhooks | `outbound-webhooks` | a customer's URL | a project's webhook row |
-| paired runner box | `github`, for the published build; the box itself dials in | GitHub releases | the deployment |
+| paired runner box | `published-releases`, for the published build; the box itself dials in | GitHub releases | the deployment |
+| runner release publishing | `github` | GitHub (tags, releases and the release workflow) | a project's binding |
 
 The same vendor may serve two roles — GitHub hosts source and signs people in — and is then two
 adapters, one per port. `packages/core/src/integrations/README.md` holds this table with each port's callers, and is
@@ -97,23 +98,23 @@ sentence that justifies it, and an exception with no reason is refused.
   read process spawns.
 - **The oasdiff binary** (`packages/core/src/ecosystem/contract/oasdiff.ts`) is a local process the
   contract differ runs over two specs it already holds; it reaches no system. Only its pinned
-  download crosses a boundary, and that sits in `packages/core/src/integrations/github/public-releases.ts`.
+  download crosses a boundary, and that sits in `packages/core/src/integrations/published-releases/public-releases.ts`.
 - **Object storage** is not an external system today: `packages/core/src/storage/s3.ts` is an unimplemented stub.
   When it is implemented it becomes an `object-storage` port under `integrations`.
 
 ## Consequences
 
 - Every bypass in the table above now sits behind its port; the scan reads zero offenders.
-- **Two priced amnesties remain**, each with the condition that ends it:
+- **Two priced amnesties were left**, each with the condition that ended it:
   - Callers of `packages/core/src/observability/sentry.ts` took the vendor's `Sentry` namespace from it (18 core
     files outside `integrations`, read on 2026-10-04). Closed by ISS-167: the module exports role-typed
     functions (`reportFailure`, `reportCondition`, `traceStep`, `flushReports`) and no caller names `Sentry`.
-  - Three domain files call a vendor directory where a source-hosting port exists:
-    `integrations/source-host/tool.ts` (`github/opened-pull-request`, `github/review-note`),
-    `issues/merge-routes.ts` (`github/projection-health`) and `webhooks/github-adapter.ts`
-    (`github/projection-events`). These are GitHub-only behaviours with no GitLab counterpart yet.
-    Ends when each is a `source-host` function, at which point the scan can also refuse a domain
-    import of a vendor directory whose role has a port.
+  - Three domain files called a vendor directory where a source-hosting port exists (and by
+    2026-10-04 seven did: the runner box's published build and the oasdiff download were reached in
+    `github/` too). Closed by ISS-167: the change request projection, its health reading and the
+    opened-pull-request record are `source-host` functions, the review note is the comments domain's,
+    `webhooks/github-adapter.ts` is gone, and the published-build reads and the pinned download sit in
+    the `published-releases` port. Every domain file reaches a port through its **index.ts**.
 - The existing vendor directories keep their names. Renaming them under role directories would
   touch the registry's provider keys, every provider-literal allowance and several hundred imports,
   for no behaviour; the role each serves is declared in the integrations README, and a new vendor

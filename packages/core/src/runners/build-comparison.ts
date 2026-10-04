@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { devices } from '../db/schema.js';
 import { compareRunnerBuild } from '../devices/build-state.js';
 import { getPublishedRunnerBuild } from '../install/routes.js';
-import { mainRunnerHead } from '../integrations/github/main-runner-head.js';
+import { mainRunnerHead } from '../integrations/published-releases/index.js';
 import type { HealthResult, Runner, RunnerAdapter } from './types.js';
 
 /**

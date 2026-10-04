@@ -13,15 +13,18 @@
  */
 
 import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
+import type { PolicyRefusalCode } from '@forge/contracts/project-config';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssuePullRequest, readPullRequestsForIssues } from '../integrations/source-host/index.js';
+import {
+  type IssuePullRequest,
+  readPullRequestsForIssues,
+} from '../integrations/source-host/index.js';
 import { blockedByUnsettledSql } from '../issues/blocked-by.js';
 import { dispatchGateHeldSql } from '../issues/dispatch-gates.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { AUTONOMOUS_ENTRY_STATUS, isEntryGateClosed } from '../pipeline/autonomous-mode.js';
-import type { PolicyRefusalCode } from '@forge/contracts/project-config';
 import { policyRefusal } from '../project-config/dispatch-policy.js';
 import { readEffectivePolicy } from '../project-config/effective.js';
 import type { PolicyDocument } from '../project-config/schema.js';

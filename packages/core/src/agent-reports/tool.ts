@@ -26,13 +26,13 @@ import {
   refusedAnswer,
   zodToMcpSchema,
 } from '../lib/tool.js';
+import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../lib/untrusted-text.js';
 import { requireCan } from '../permissions/index.js';
 import {
   listVisibleProjectsWithRole,
   resolveEffectiveProjectId,
   type VisibleProjectWithRole,
 } from '../projects/index.js';
-import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../lib/untrusted-text.js';
 import {
   countReportsForJob,
   fireOfSession,

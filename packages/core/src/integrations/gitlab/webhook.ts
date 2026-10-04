@@ -7,13 +7,13 @@
  */
 
 import { logger } from '../../observability/logger.js';
+import { SourceHostCallError, SourceHostUnavailable } from '../source-host/errors.js';
 import {
   applyCheckRunEvent,
   applyPullRequestEvent,
   branchOfPush,
   type ProjectionContext,
 } from '../source-host/projection.js';
-import { SourceHostCallError, SourceHostUnavailable } from '../source-host/errors.js';
 import type { InboundFact } from '../types.js';
 import { buildGitLabClient } from './client.js';
 import { landingOf, type MergeRequestBody } from './merge.js';

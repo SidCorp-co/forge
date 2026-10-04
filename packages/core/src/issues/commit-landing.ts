@@ -2,7 +2,12 @@ import type { CommitLandingRefusalCode } from '@forge/contracts/issues';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
-import { type HostCommit, resolveSourceHost, type SourceHost, SourceHostUnavailable } from '../integrations/source-host/index.js';
+import {
+  type HostCommit,
+  resolveSourceHost,
+  type SourceHost,
+  SourceHostUnavailable,
+} from '../integrations/source-host/index.js';
 import { readLandingBranches } from '../project-config/release-path.js';
 import { declaredIssueSeqs, subjectOf } from '../projects/commit-owners.js';
 import { issueRefPattern } from '../projects/live-reach.js';

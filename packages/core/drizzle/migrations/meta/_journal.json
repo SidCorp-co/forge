@@ -2479,6 +2479,13 @@
       "when": 1816214400000,
       "tag": "0385_one_durable_outbox_replaces_the_hooks_bus",
       "breakpoints": true
+    },
+    {
+      "idx": 386,
+      "version": "7",
+      "when": 1816300800000,
+      "tag": "0386_source_and_error_facts_ride_the_outbox",
+      "breakpoints": true
     }
   ]
 }

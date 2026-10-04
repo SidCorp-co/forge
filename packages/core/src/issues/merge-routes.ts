@@ -49,7 +49,10 @@ const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
 
 /** The stamp Forge's own merge writes, in the transaction that marks the projection row. */
 export const stampKernelMerge: IssueMergeStamp = (tx, { issueId, commitSha, mergedAt }) =>
-  recordIssueMerge(tx, { issueId, evidence: { kind: 'observed', commitSha, mergedAt, via: 'kernel' } });
+  recordIssueMerge(tx, {
+    issueId,
+    evidence: { kind: 'observed', commitSha, mergedAt, via: 'kernel' },
+  });
 
 export const issueMergeRoutes = new Hono<{ Variables: AuthVars }>();
 

@@ -107,7 +107,11 @@ export interface InboundDispatchInput {
 }
 
 /** The facts a vendor delivery reports to Forge's own modules, written to the outbox by the door. */
-export type InboundFactType = 'source.pushed' | 'source.merged' | 'source.reviewed' | 'error.sighted';
+export type InboundFactType =
+  | 'source.pushed'
+  | 'source.merged'
+  | 'source.reviewed'
+  | 'error.sighted';
 export type InboundFact = {
   [T in InboundFactType]: { type: T; payload: OutboxEventPayload<T> };
 }[InboundFactType];

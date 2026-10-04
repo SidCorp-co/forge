@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { db } from '../db/client.js';
 import { recordTurnedAwayInboundCall } from '../integrations/inbound-door.js';
 import { getAdapter, listIntegrations } from '../integrations/registry.js';
 import {
@@ -8,13 +9,12 @@ import {
   listActiveBindingsForProjectProvider,
 } from '../integrations/store.js';
 import type { IntegrationProvider } from '../integrations/types.js';
-import { db } from '../db/client.js';
+import { verifyHmacSignature, verifySharedToken } from '../lib/hmac.js';
+import { badRequest, notFound } from '../middleware/route-errors.js';
+import { rawBody } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
 import { emitEvents } from '../outbox/index.js';
 import { findProjectIdBySlug } from '../projects/service.js';
-import { badRequest, notFound } from '../middleware/route-errors.js';
-import { rawBody } from '../middleware/zod-validator.js';
-import { verifyHmacSignature, verifySharedToken } from '../lib/hmac.js';
 
 const unauthorized = (code: string) =>
   new HTTPException(401, { message: 'invalid signature', cause: { code } });

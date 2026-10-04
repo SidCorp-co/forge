@@ -14,7 +14,6 @@ import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { seedDomainTemplates } from './domain-templates/index.js';
 import { registerContractMeasureWorker } from './ecosystem/index.js';
 import { provideAdmissionThresholds } from './error-intake/index.js';
-import { refreshMainRunnerHead, servesRunnerReleases } from './integrations/github/index.js';
 import {
   assertVaultBootSafety,
   provideForgeReads,
@@ -23,6 +22,10 @@ import {
 } from './integrations/index.js';
 import { bootstrapChatProviders } from './integrations/llm/index.js';
 import { registerOutboundDeliveryWorker } from './integrations/outbound-webhooks/index.js';
+import {
+  refreshMainRunnerHead,
+  servesRunnerReleases,
+} from './integrations/published-releases/index.js';
 import { startRocketChatManager, stopRocketChatManager } from './integrations/rocketchat/index.js';
 import { closeBacklogStreams, resolveIssueForHeadRef } from './issues/index.js';
 import { provideProjectOrg } from './lib/authz.js';

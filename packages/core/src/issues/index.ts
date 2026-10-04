@@ -1,5 +1,4 @@
 export { insertActivityRow } from './activity-log.js';
-export { TransitionError, transitionIssueStatus } from './apply-transition.js';
 export { issueActivityRoutes, projectActivityRoutes } from './activity-routes.js';
 export {
   type ActorAgency,
@@ -7,6 +6,7 @@ export {
   principalAgency,
   type TransitionActor,
 } from './actor-agency.js';
+export { TransitionError, transitionIssueStatus } from './apply-transition.js';
 export { issueArchiveRoutes } from './archive-routes.js';
 export { attachmentRoutes, issueAttachmentRoutes } from './attachment-routes.js';
 export { backlogStreamRoutes, closeBacklogStreams } from './backlog/routes.js';
@@ -23,8 +23,8 @@ export {
 } from './field-writes.js';
 export { referenceInHeadRef, resolveIssueForHeadRef } from './head-ref-link.js';
 export { registerHostMergeStamp, stampHostMerge } from './host-merge.js';
-export { issueMergeRoutes } from './merge-routes.js';
 export { recordIssueMerge } from './merge-record.js';
+export { issueMergeRoutes } from './merge-routes.js';
 export { claimIssuesForRelease, releaseEndedRunClaims, releaseRunClaims } from './release-claim.js';
 export {
   adoptIssuePlan,

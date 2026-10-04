@@ -10,8 +10,11 @@ import { reapDeadMasterHolds, reapSilentMasters } from './devices/master-reaper.
 import { runDevicePrune } from './devices/prune.js';
 import { reapDeadRunSessions } from './devices/run-session-reaper.js';
 import { runDeviceStaleSweep } from './devices/stale-detector.js';
-import { refetchRunnerRelease, servesRunnerReleases } from './integrations/github/fetch-release.js';
 import { runIntegrationsHealthSweep } from './integrations/health-sweep.js';
+import {
+  refetchRunnerRelease,
+  servesRunnerReleases,
+} from './integrations/published-releases/index.js';
 import { rocketChatManager } from './integrations/rocketchat/connection-manager.js';
 import { probePgBossBackstop } from './jobs/pgboss-health.js';
 import { runStaleSweep } from './jobs/stale-detector.js';

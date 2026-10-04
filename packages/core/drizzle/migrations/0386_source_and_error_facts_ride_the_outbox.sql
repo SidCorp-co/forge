@@ -1,0 +1,4 @@
+-- ISS-167: a source host's push, merge and review, and an error tracker's sighting, are outbox
+-- events the owning modules consume, so the type check admits them.
+ALTER TABLE "pipeline_outbox" DROP CONSTRAINT "pipeline_outbox_type_chk";--> statement-breakpoint
+ALTER TABLE "pipeline_outbox" ADD CONSTRAINT "pipeline_outbox_type_chk" CHECK ("type" IN ('issue.created', 'issue.updated', 'issue.transitioned', 'job.transitioned', 'run.transitioned', 'dependency.changed', 'comment.created', 'comment.updated', 'comment.deleted', 'comment.mentioned', 'question.answered', 'task.created', 'task.updated', 'task.deleted', 'schedule.fired', 'notification.created', 'notification.read', 'user.preferencesChanged', 'skill.syncRequested', 'skill.registered', 'skill.globalUpdated', 'runner.provisionRequested', 'runner.provisionStatus', 'source.pushed', 'source.merged', 'source.reviewed', 'error.sighted'));

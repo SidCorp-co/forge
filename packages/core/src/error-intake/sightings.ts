@@ -36,7 +36,12 @@ export function registerErrorSightings(): void {
       }
       await settleSentryDelivery(p.deliveryId, { done: outcome.kind });
       logger.info(
-        { projectId: p.projectId, deliveryId: p.deliveryId, shortId: p.issue.shortId, outcome: outcome.kind },
+        {
+          projectId: p.projectId,
+          deliveryId: p.deliveryId,
+          shortId: p.issue.shortId,
+          outcome: outcome.kind,
+        },
         'error intake: sighting acted on',
       );
     },

@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import { env } from '../config/env.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
+import { markUntrusted } from '../lib/untrusted-text.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
 import { requireCan } from '../permissions/index.js';
-import { markUntrusted } from '../lib/untrusted-text.js';
 import { getStorage } from '../storage/index.js';
 import { loadAttachmentForFetch } from './attachment-lookup.js';
 import { createDownloadTicket } from './download-ticket-service.js';

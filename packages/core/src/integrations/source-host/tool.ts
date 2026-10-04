@@ -13,6 +13,7 @@
  */
 
 import { z } from 'zod';
+import { noteReviewOnIssue } from '../../comments/index.js';
 import {
   type ContextScopedMcpToolFactory,
   type McpContext,
@@ -21,7 +22,6 @@ import {
 import { logger } from '../../observability/logger.js';
 import { requireCan } from '../../permissions/index.js';
 import { resolveEffectiveProjectId } from '../../projects/index.js';
-import { noteReviewOnIssue } from '../../comments/index.js';
 import { listIntegrations } from '../registry.js';
 import { SourceHostCallError, SourceHostInputRefusal, SourceHostUnavailable } from './errors.js';
 import { OpenedPullRequestIncomplete, projectOpenedPullRequest } from './opened-change-request.js';
