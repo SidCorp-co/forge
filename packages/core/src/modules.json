@@ -490,11 +490,6 @@
         "REQ-22"
       ]
     },
-    "improvement-messages": {
-      "kind": "domain",
-      "context": "design",
-      "serves": []
-    },
     "install": {
       "kind": "door",
       "context": "access",
@@ -575,14 +570,6 @@
       "context": "adapters",
       "serves": [
         "github-merge-sequence#p-github"
-      ]
-    },
-    "integrations/google": {
-      "kind": "adapter",
-      "context": "adapters",
-      "serves": [
-        "personal-data-flow#src-identity",
-        "REQ-27"
       ]
     },
     "integrations/identity": {
@@ -1433,9 +1420,6 @@
         "REQ-23"
       ]
     },
-    "improvement-messages": {
-      "serves": []
-    },
     "integrations": {
       "serves": [
         "github-merge-sequence#p-integrations"
@@ -1526,9 +1510,6 @@
         "agent-run-standing#waiting_person"
       ]
     },
-    "recent-changes": {
-      "serves": []
-    },
     "releases": {
       "serves": [
         "REQ-11",
@@ -1541,9 +1522,6 @@
         "REQ-4",
         "REQ-12"
       ]
-    },
-    "resources": {
-      "serves": []
     },
     "runners": {
       "serves": [
@@ -1592,9 +1570,6 @@
       "serves": [
         "REQ-12"
       ]
-    },
-    "whats-new": {
-      "serves": []
     },
     "workflows": {
       "serves": [

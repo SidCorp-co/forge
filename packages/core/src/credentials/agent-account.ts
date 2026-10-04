@@ -4,7 +4,7 @@ import { type RefusalError, refuser } from '../lib/refusal.js';
 
 const refuse = refuser<AuthRefusalCode>('AUTH_REFUSED');
 
-export const AGENT_EMAIL_DOMAIN = 'agents.forge.invalid';
+const AGENT_EMAIL_DOMAIN = 'agents.forge.invalid';
 
 const HANDLE_PATTERN = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 
@@ -21,7 +21,7 @@ export function handleNameForProject(slug: string, projectId: string): string {
   return isAgentHandle(derived) ? derived : `agent-${projectId.slice(0, 8)}`;
 }
 
-export function synthesizeAgentEmail(handle: string): string {
+function synthesizeAgentEmail(handle: string): string {
   return `${handle}.${randomBytes(6).toString('hex')}@${AGENT_EMAIL_DOMAIN}`;
 }
 
@@ -46,7 +46,7 @@ export const AGENT_CANNOT_LOGIN =
   'Agent Access Token and holds no password, no session and no mailbox. An org ' +
   'admin manages it under the organization it belongs to.';
 
-export function agentCannotLogin(userId: string): RefusalError {
+function agentCannotLogin(userId: string): RefusalError {
   return refuse('AGENT_CANNOT_LOGIN', `account ${userId}: ${AGENT_CANNOT_LOGIN}`);
 }
 

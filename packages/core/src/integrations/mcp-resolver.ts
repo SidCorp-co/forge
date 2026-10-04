@@ -3,12 +3,12 @@ import { listAgentGrantedBindings } from './agent-access-store.js';
 import { directMcpIntegrations, mcpServerNameFor } from './registry.js';
 import { decryptConnectionSecrets, effectiveConfig } from './store.js';
 
-export interface ProducedMcpServer {
+interface ProducedMcpServer {
   name: string;
   bindingId: string;
 }
 
-export async function resolveGrantedMcpEntries(
+async function resolveGrantedMcpEntries(
   projectId: string,
   produced?: ProducedMcpServer[],
 ): Promise<Record<string, Record<string, unknown>>> {
@@ -83,7 +83,7 @@ export async function resolveGrantedMcpEntries(
 }
 
 /** What {@link applyGrantedMcpServers} laid down, and under which names. */
-export interface GrantedMcpApplication {
+interface GrantedMcpApplication {
   map: Record<string, unknown> | null;
   /** Every name this pass produced, each carrying the binding that produced it. One can be absent
    *  though its binding is active, credentialed, granted and unshadowed, and two bindings of one

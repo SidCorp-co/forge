@@ -1,7 +1,7 @@
 // What an adapter must know about Forge's own rows, handed in by the process entry at boot, so no
 // adapter imports the module that owns them (ADR 0008: an adapter imports no domain or kernel).
 
-export interface ForgeReads {
+interface ForgeReads {
   /** The repository the project document declares (`source.git.repository`), or null. */
   declaredRepository(projectId: string): Promise<string | null>;
   /** The issue a branch name refers to on a project, or null. */

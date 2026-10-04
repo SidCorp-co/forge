@@ -57,13 +57,13 @@ export async function rowIn(tx: Tx, projectId: string, ref: string): Promise<Moc
   return row;
 }
 
-export function targetTypeOf(m: MockupRow): MockupTargetType {
+function targetTypeOf(m: MockupRow): MockupTargetType {
   if (m.requirementId) return 'requirement';
   return m.feedbackId ? 'feedback' : 'issue';
 }
 
 /** The latest baseline of each requirement, and the mockups it pins. */
-export async function latestMockupPins(requirementIds: readonly string[]) {
+async function latestMockupPins(requirementIds: readonly string[]) {
   const out = new Map<string, { revision: number; seq: number; mockupIds: Set<string> }>();
   if (!requirementIds.length) return out;
   const baselines = await db

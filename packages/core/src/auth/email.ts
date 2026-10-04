@@ -2,7 +2,7 @@ import { env } from '../config/env.js';
 import { mailDeliveryEnabled, sendMail } from '../integrations/mail/index.js';
 import { logger } from '../observability/logger.js';
 
-export function buildVerificationLink(token: string): string {
+function buildVerificationLink(token: string): string {
   // Link must hit the API origin (where /api/auth/verify lives), NOT the web
   // origin. With subdomain-split deploys (web=forge-beta.example.com,
   // api=forge-beta-api.example.com) APP_BASE_URL is the web URL, so we fall

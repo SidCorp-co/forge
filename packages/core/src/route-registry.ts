@@ -68,7 +68,6 @@ import {
   projectHealthRoutes,
   publicHealthRoutes,
 } from './health/routes.js';
-import { improvementMessageRoutes } from './improvement-messages/routes.js';
 import { installRoutes } from './install/routes.js';
 import {
   githubCallbackRoutes,
@@ -109,7 +108,7 @@ import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
 import { labelProjectRoutes, labelRoutes, moduleDiagramRoutes } from './labels/routes.js';
 import { deviceMasterRoutes, masterStandingRoutes } from './masters/routes.js';
 import { mcpHandler, mcpRequestClass } from './mcp/index.js';
-import { meAttentionRoutes, mePulseRoutes, meRecentChangesRoutes } from './me/routes.js';
+import { meAttentionRoutes, mePulseRoutes } from './me/routes.js';
 import {
   memoryListRoutes,
   memoryMineRoutes,
@@ -123,7 +122,7 @@ import { requirePat } from './middleware/require-pat.js';
 import { mockupRoutes } from './mockups/routes.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { onboardingRoutes } from './onboarding/routes.js';
-import { orgInvitationRoutes, orgRoutes, sshKeyRoutes } from './orgs/routes.js';
+import { orgInvitationRoutes, orgRoutes } from './orgs/routes.js';
 import { outboxAdminRoutes, outboxRoutes } from './outbox/routes.js';
 import { patRoutes } from './pat/routes.js';
 import {
@@ -145,8 +144,6 @@ import {
   projectConfigSchemaRoutes,
 } from './project-config/routes.js';
 import {
-  collaboratorsMeRoutes,
-  gitCredentialRoutes,
   invitationRoutes,
   masterCharterRoutes,
   memberRoutes,
@@ -221,9 +218,7 @@ function mountAccountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/auth', oauthRoutes);
   app.route('/api/projects', projectHealthRoutes);
   app.route('/api/projects', opsHealthProjectRoutes);
-  app.route('/api/me', collaboratorsMeRoutes);
   app.route('/api/projects', projectMetricsRoutes);
-  app.route('/api/projects', gitCredentialRoutes);
   app.route('/api/projects', runLedgerRoutes);
   app.route('/api/projects', masterCharterRoutes);
 }
@@ -270,7 +265,6 @@ function mountProjectAndOrgRoutes(app: Hono<{ Variables: RequestIdVars }>): void
   app.route('/api/orgs', orgRoutes);
   // No auth of their own: they answer under orgRoutes' gate, mounted just above on the same prefix.
   app.route('/api/orgs', deviceOrgRoutes);
-  app.route('/api/orgs', sshKeyRoutes);
   app.route('/api/org-invitations', orgInvitationRoutes);
   app.route('/api/projects', integrationsRoutes);
   app.route('/api/projects', githubConnectRoutes);
@@ -343,7 +337,6 @@ function mountAgentRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/questions', questionRoutes);
   app.route('/api', speakerLinkProjectRoutes);
   app.route('/api', speakerLinkMeRoutes);
-  app.route('/api/me', meRecentChangesRoutes);
   app.route('/api/conversations', conversationRoutes);
   app.route('/api/agent-sessions', agentSessionAttachmentRoutes);
   app.route('/api/agent-sessions', agentSessionRoutes);
@@ -381,7 +374,6 @@ function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/schedules', scheduleRoutes);
   app.route('/api/agent-reports', agentReportRoutes);
   app.route('/api/feedback-reports', feedbackReportsAliasRoutes);
-  app.route('/api/improvement-messages', improvementMessageRoutes);
   app.route('/api/knowledge', knowledgeIngestRoutes);
   app.route('/api/projects', knowledgeRoutes);
   app.route('/api/knowledge-edges', knowledgeEdgeRoutes);

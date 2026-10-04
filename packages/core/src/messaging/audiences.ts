@@ -1,6 +1,6 @@
 import type { Audience } from './contract.js';
 
-export interface AudienceSpec {
+interface AudienceSpec {
   readonly id: Audience;
   /** Who this is, in the words somebody would use to describe the reader. */
   readonly reader: string;
@@ -33,21 +33,6 @@ const SHIPPED: readonly AudienceSpec[] = [
 ];
 
 const registry = new Map<Audience, AudienceSpec>(SHIPPED.map((a) => [a.id, a]));
-
-export function registerAudience(spec: AudienceSpec): void {
-  registry.set(spec.id, spec);
-}
-
 export function audienceSpec(id: Audience): AudienceSpec | undefined {
   return registry.get(id);
-}
-
-export function registeredAudiences(): AudienceSpec[] {
-  return [...registry.values()].sort((a, b) => a.id.localeCompare(b.id));
-}
-
-/** Test seam — resets to what ships, rather than to nothing. */
-export function clearRegisteredAudiences(): void {
-  registry.clear();
-  for (const a of SHIPPED) registry.set(a.id, a);
 }

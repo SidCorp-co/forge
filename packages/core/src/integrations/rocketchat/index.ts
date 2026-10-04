@@ -16,7 +16,7 @@ export {
   type ReplyTransport,
   sendFixedReply,
 } from './outbound.js';
-export { type RoomBinding, roomForProject } from './project-room.js';
+export { roomForProject } from './project-room.js';
 export {
   buildMessagePermalink,
   fetchAttachmentBytes,
@@ -31,8 +31,8 @@ export {
   type RocketChatRestMessage,
   reactToMessage,
 } from './rest-client.js';
-export { type RoomPostAuth, resolveRoomPostAuth, roomStillBoundTo } from './room-auth.js';
-export { provideRoomHandlers, type RoomHandlers } from './room-handlers.js';
+export { resolveRoomPostAuth, roomStillBoundTo } from './room-auth.js';
+export { provideRoomHandlers } from './room-handlers.js';
 export type { Route } from './room-routing.js';
 export { type RoomShape, resolveRoomShape } from './room-shape.js';
 export { questionThread, registerThread, releaseQuestionThread } from './thread-registry.js';

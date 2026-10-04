@@ -8,7 +8,7 @@ export interface IgnoredField {
   detail: string;
 }
 
-export type ReadBack =
+type ReadBack =
   | { ok: true; baseRevision: number | null; document: unknown; ignored: IgnoredField[] }
   | { ok: false; refusals: WorkflowRefusal[] };
 

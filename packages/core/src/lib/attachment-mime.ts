@@ -6,7 +6,7 @@ import {
   safeAttachmentName,
 } from '@forge/contracts/attachments';
 
-export type AttachmentTarget = 'issue' | 'comment' | 'session' | 'conversation';
+type AttachmentTarget = 'issue' | 'comment' | 'session' | 'conversation';
 
 const ISSUE_MIMES = [
   'image/png',
@@ -152,11 +152,11 @@ export function allowedSetForTarget(target: AttachmentTarget): {
 
 const UNDECLARED = 'application/octet-stream';
 
-export type MimeResolution =
+type MimeResolution =
   | { ok: true; mime: string }
   | { ok: false; reason: 'not-allowed' | 'not-text'; mime: string };
 
-export interface ResolveAttachmentMimeInput {
+interface ResolveAttachmentMimeInput {
   target: AttachmentTarget;
   name: string;
   declaredMime: string;

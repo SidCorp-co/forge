@@ -14,7 +14,7 @@ import {
   mintInstallationToken,
 } from './octokit.js';
 
-export interface InstallationRepo {
+interface InstallationRepo {
   installationId: number;
   account: string;
   owner: string;

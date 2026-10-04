@@ -52,7 +52,7 @@ export interface RequirementSpec {
 
 export type Row = typeof requirements.$inferSelect;
 export type RevisionRow = typeof requirementRevisions.$inferSelect;
-export type CriterionRow = typeof requirementCriteria.$inferSelect;
+type CriterionRow = typeof requirementCriteria.$inferSelect;
 
 export const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
@@ -130,8 +130,6 @@ function summaryOf(
     updatedAt: row.updatedAt.toISOString(),
   };
 }
-
-export type RequirementSummary = ReturnType<typeof summaryOf>;
 
 async function standingViewer(viewer: RequirementActor | null, projectId: string) {
   if (!viewer) return null;

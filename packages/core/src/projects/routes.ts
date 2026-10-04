@@ -251,8 +251,6 @@ projectRoutes.patch(
   },
 );
 
-export { collaboratorsMeRoutes } from './collaborators-routes.js';
-export { gitCredentialRoutes } from './git-credential-routes.js';
 export { invitationRoutes } from './invitations-routes.js';
 export { masterCharterRoutes } from './master-charter-routes.js';
 export { memberRoutes } from './members-routes.js';

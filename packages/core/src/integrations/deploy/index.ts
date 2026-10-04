@@ -1,9 +1,7 @@
 export type {
-  ArtifactKind,
   DeployAdapter,
   DeploymentRecord,
   DeploymentStatus,
-  DeployProvider,
   TargetedDeployAdapter,
 } from './records.js';
 export {

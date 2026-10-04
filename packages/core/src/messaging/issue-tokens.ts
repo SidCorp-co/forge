@@ -12,7 +12,7 @@ export function issueTokenRe(prefixes: readonly string[]): RegExp {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export interface IssueClaims {
+interface IssueClaims {
   urlIds: string[];
   malformedUrlIds: string[];
   issSeqs: number[];

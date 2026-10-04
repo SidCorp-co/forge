@@ -35,7 +35,7 @@ const designRowOf = (r: Record<string, unknown>): TracedDesignRow => ({
  * it builds that the baseline does not pin is refused by name; any other issue is given the
  * approved revision of the workflow it builds (REQ-1 BC-1).
  */
-export async function tracedDesignsOf(issueId: string): Promise<TracedDesignRow[]> {
+async function tracedDesignsOf(issueId: string): Promise<TracedDesignRow[]> {
   const [issue] = (await db.execute(sql`
     SELECT i.requirement_id, r.req_seq, w.id AS built_id, w.flow AS built_flow
     FROM issues i
@@ -119,7 +119,7 @@ export async function issueMockupsOf(issueId: string): Promise<MockupContextRow[
 }
 
 /** The requirement `issueId` delivers, at its head, with the criteria of that revision and its latest baseline. */
-export async function requirementRowOf(issueId: string): Promise<RequirementContextRow | null> {
+async function requirementRowOf(issueId: string): Promise<RequirementContextRow | null> {
   const [r] = (await db.execute(sql`
     SELECT r.id, r.req_seq, r.title, r.status, r.current_revision, i.planned_revision,
            i.planned_baseline_seq, i.plan,

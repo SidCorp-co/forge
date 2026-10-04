@@ -14,7 +14,7 @@ import { addOrgMember } from '../permissions/index.js';
 
 const MAX_INSERT_RETRIES = 3;
 
-export interface IssueOrgInvitationInput {
+interface IssueOrgInvitationInput {
   orgId: string;
   inviterId: string;
   email: string;
@@ -62,7 +62,7 @@ export async function issueOrgInvitationToken(
   });
 }
 
-export type ConsumeOrgInvitationResult =
+type ConsumeOrgInvitationResult =
   | { status: 'ok'; orgId: string; role: OrgMemberRole }
   | { status: 'invalid' }
   | { status: 'expired' }

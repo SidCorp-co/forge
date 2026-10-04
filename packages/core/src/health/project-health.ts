@@ -12,19 +12,8 @@ import { firstShipped } from '../pipeline/index.js';
  * round trips.
  */
 
-export const HEALTH_READ_CONCURRENCY = 4;
+const HEALTH_READ_CONCURRENCY = 4;
 const healthReadLimiter = createLimiter(HEALTH_READ_CONCURRENCY);
-
-/** In flight and parked, for the test that asserts the bound holds. */
-export const healthReadLoad = {
-  get inFlight() {
-    return healthReadLimiter.inFlight;
-  },
-  get waiting() {
-    return healthReadLimiter.waiting;
-  },
-};
-
 export type BlockerRow = {
   projectId: string;
   id: string;
@@ -78,7 +67,7 @@ const readThroughputRows = (projectIds: string[]) =>
     GROUP BY f.project_id
   `) as unknown as Promise<ThroughputRow[]>;
 
-export type CycleRow = { project_id: string; avg_days: number | null };
+type CycleRow = { project_id: string; avg_days: number | null };
 
 const readCycleRows = (projectIds: string[]) =>
   db.execute(sql`

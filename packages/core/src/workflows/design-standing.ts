@@ -9,13 +9,13 @@ import type { DesignDecision, DesignStatus } from './design.js';
 
 type DesignWaitingOn = WaitingOn<DesignWaitingKind>;
 
-export interface DesignHeadFacts {
+interface DesignHeadFacts {
   status: DesignStatus | null;
   proposedRevision: number | null;
   approvedRevision: number | null;
 }
 
-export interface DesignStandingInput extends DesignHeadFacts {
+interface DesignStandingInput extends DesignHeadFacts {
   latest: { revision: number; author: string | null } | null;
   canDecide: boolean;
 }

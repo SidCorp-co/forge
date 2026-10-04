@@ -23,7 +23,7 @@ type CardStatus =
   | 'disabled'
   | 'unverified';
 
-export interface StatusCard {
+interface StatusCard {
   key: string;
   label: string;
   status: CardStatus;
@@ -79,7 +79,7 @@ interface ProviderRow {
  * the three blocks were ~95% identical; they differ only in env-keying, the
  * never-checked wording, and provider-specific meta fields.
  */
-export function buildProviderCards(opts: {
+function buildProviderCards(opts: {
   rows: ProviderRow[];
   provider: IntegrationProvider;
   label: string;
@@ -135,7 +135,7 @@ export function buildProviderCards(opts: {
  * The provider whose binding serves the declared repository's host, oldest active binding first,
  * or null where no source host binding reaches it.
  */
-export function repositoryProvider(
+function repositoryProvider(
   pairs: readonly BindingWithConnection[],
   repository: string | null,
 ): { provider: string; label: string } | null {

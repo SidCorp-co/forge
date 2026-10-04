@@ -10,7 +10,7 @@ import { refreshTokens, users } from '../db/schema.js';
 import { ensurePersonalOrg } from '../orgs/index.js';
 
 /** A new refresh token for `userId`, written inside the caller's transaction; answers the raw value. */
-export async function issueRefreshToken(tx: Tx, userId: string): Promise<{ raw: string }> {
+async function issueRefreshToken(tx: Tx, userId: string): Promise<{ raw: string }> {
   const { raw, prefix } = generateRefreshToken();
   const tokenHash = await hashRefreshToken(raw);
   await tx.insert(refreshTokens).values({

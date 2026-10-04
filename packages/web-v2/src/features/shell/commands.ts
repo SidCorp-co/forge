@@ -71,13 +71,6 @@ export function buildWorkspaceCommands(deps: WorkspaceCommandDeps): Command[] {
     out.push({ label: it.label, icon: it.icon, group: "navigate", keywords: "go to", onRun: () => router.push(it.href) });
   }
   out.push({
-    label: "What's New",
-    icon: "bell",
-    group: "navigate",
-    keywords: "changelog release notes updates go to",
-    onRun: () => router.push("/whats-new"),
-  });
-  out.push({
     label: "Docs",
     icon: "book",
     group: "navigate",
@@ -114,7 +107,6 @@ export function buildWorkspaceCommands(deps: WorkspaceCommandDeps): Command[] {
     // Automation's two tabs, by name: the rail names only Automation (ISS-65).
     for (const [label, tab, icon] of [
       ["Schedules", "schedules", "clock"],
-      ["Improvements", "improvements", "star"],
     ] as const) {
       out.push({
         label: `${activeProjectName ?? slug} · ${label}`,

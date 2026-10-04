@@ -10,7 +10,7 @@ import {
 } from '@forge/contracts/outbox-events';
 import type { Db } from '../db/client.js';
 
-export type DeliveryTx = Parameters<Parameters<Db['transaction']>[0]>[0];
+type DeliveryTx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 /** One delivery of one event to one consumer, as the consumer sees it. */
 export interface Delivery {
@@ -29,7 +29,7 @@ export interface Delivery {
   inbox: <R>(write: (tx: DeliveryTx) => Promise<R>) => Promise<R>;
 }
 
-export interface Consumer<T extends OutboxEventType> {
+interface Consumer<T extends OutboxEventType> {
   name: OutboxConsumerOf<T>;
   handle: (payload: OutboxEventPayload<T>, delivery: Delivery) => Promise<void> | void;
   /**

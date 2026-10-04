@@ -14,7 +14,7 @@ import type { AutoflowConfig } from './types.js';
  * (`backend-go/internal/mcp/tools/registry_test.go:TestRegistryParity`). Listed so an agent knows
  * the draft/publish/revert verbs by name before it lists the server's tools itself.
  */
-export const AUTOFLOW_SHOP_TOOLS = {
+const AUTOFLOW_SHOP_TOOLS = {
   context: ['get_context', 'list_skills', 'get_skill'],
   backendBuild: [
     'get_backend_node_catalog',

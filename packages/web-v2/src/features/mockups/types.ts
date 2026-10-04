@@ -1,10 +1,7 @@
 // The mockup vocabulary and response shapes are core's own, declared once in @forge/contracts (ISS-78).
 export type {
-  MockupKind,
   MockupListResponse,
   MockupResponse,
-  MockupStatus,
-  MockupTargetInput,
   MockupView,
   ProposeMockupRequest,
 } from "@forge/contracts/mockups";

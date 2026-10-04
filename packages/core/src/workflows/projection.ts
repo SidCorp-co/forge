@@ -1,13 +1,10 @@
 import { pickFields } from '@forge/contracts/projection';
 import {
   DESIGN_HEAD_FIELDS,
-  type DesignAct,
-  type DesignActAnswer,
   type DesignRevisionSummary,
   type DesignStepsView,
   type DesignSummaryView,
   type WorkflowSummaryView,
-  type WorkflowWriteAnswer,
 } from '@forge/contracts/workflows';
 import { HTTPException } from 'hono/http-exception';
 import type { DesignView } from './design-service.js';
@@ -44,21 +41,6 @@ export function workflowSummaryOf(view: WorkflowView): WorkflowSummaryView {
     returnReason: 'returnReason' in view.design ? (view.design.returnReason ?? null) : null,
     writerName: view.writerName,
     updatedAt: view.document.updatedAt,
-  };
-}
-
-export function workflowWriteAnswerOf(view: WorkflowView, created: boolean): WorkflowWriteAnswer {
-  const summary = workflowSummaryOf(view);
-  return {
-    workflowId: summary.workflowId,
-    flow: summary.flow,
-    revision: summary.revision,
-    created,
-    status: summary.status,
-    approvedRevision: summary.approvedRevision,
-    stepCount: summary.stepCount,
-    edgeCount: summary.edgeCount,
-    updatedAt: summary.updatedAt,
   };
 }
 
@@ -130,24 +112,4 @@ export function designStepsOf(
       }),
     },
   };
-}
-
-export function designActAnswerOf(
-  design: DesignView,
-  act: DesignAct,
-  revision?: number,
-): DesignActAnswer {
-  const answer: DesignActAnswer = { act, ...pickFields(design, DESIGN_HEAD_FIELDS) };
-  if (act === 'link' || act === 'unlink') answer.builds = design.builds;
-  if (act === 'propose' || act === 'decide') {
-    const acted = design.revisions.find((r) => r.revision === revision);
-    if (!acted) {
-      throw new Error(
-        `workflows: ${act} on workflow ${design.workflowId} answered no revision ${revision ?? '(none)'}`,
-      );
-    }
-    answer.acted = revisionSummaryOf(acted);
-  }
-  if (design.designIssue !== undefined) answer.designIssue = design.designIssue;
-  return answer;
 }

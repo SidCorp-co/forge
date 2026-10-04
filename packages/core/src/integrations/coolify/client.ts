@@ -59,7 +59,7 @@ export function describeCoolifyForbidden(err: CoolifyApiError): string {
   return `Coolify recognised the API token but refused ${route} (HTTP 403): the token is missing ${missing}. Widen this token's abilities in Coolify (Keys & Tokens → edit the token) — the credential itself is valid, so replacing it will not change this.`;
 }
 
-export interface CoolifyClientOptions {
+interface CoolifyClientOptions {
   baseUrl: string;
   apiToken: string;
   /** Optional secondary token tried when the primary fails with 401 (rotation window). */

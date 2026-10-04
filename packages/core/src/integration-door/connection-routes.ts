@@ -4,7 +4,6 @@ import {
   adapterOrRefuse,
   applySecretsPatch,
   assertVaultConfigured,
-  bindingWriteMoved,
   buildContextFromBinding,
   connectionConfigSchemaForProvider,
   connectionCreateSchema,
@@ -96,10 +95,6 @@ integrationConnectionsRoutes.post(
     return c.json({ connection: summarizeConnection(connection) }, 201);
   },
 );
-
-integrationConnectionsRoutes.post('/:id/bindings', () => {
-  throw bindingWriteMoved('POST /api/integration-connections/:id/bindings');
-});
 
 integrationConnectionsRoutes.get('/:id/bindings', async (c) => {
   const id = c.req.param('id');

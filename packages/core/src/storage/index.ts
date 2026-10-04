@@ -1,3 +1,2 @@
-export { getStorage, resetStorageForTests } from './factory.js';
-export { LocalFsStorage } from './local-fs.js';
-export { isEnoent, type StorageAdapter } from './types.js';
+export { getStorage } from './factory.js';
+export { isEnoent } from './types.js';

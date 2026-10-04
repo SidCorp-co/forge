@@ -24,7 +24,7 @@ export const PAT_ALLOWED_PREFIXES: readonly string[] = patPermissionPrefixes();
 
 export const PAT_ACCEPTED_PERMISSIONS_HEADER = 'X-Accepted-Forge-Permissions';
 
-export function patSurfaceCovers(path: string): boolean {
+function patSurfaceCovers(path: string): boolean {
   return PAT_ALLOWED_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`));
 }
 
@@ -37,7 +37,7 @@ type PatRequestResolution = {
 };
 
 // cm:why a gate mounted at a prefix runs for every path under it, served or not, so a token's grant would otherwise answer for a route nobody serves; a `use` entry is method ALL with a (c, next) middleware, anything else is a handler that answers
-export function routeIsServed(c: Context): boolean {
+function routeIsServed(c: Context): boolean {
   return matchedRoutes(c).some(
     (r) => r.method !== 'ALL' || !isMiddleware(findTargetHandler(r.handler)),
   );
@@ -50,7 +50,7 @@ export function scopeForMethod(method: string): 'read' | 'write' {
   return READ_METHODS.has(method.toUpperCase()) ? 'read' : 'write';
 }
 
-export function patHasScopeForMethod(principal: PatPrincipal, method: string): boolean {
+function patHasScopeForMethod(principal: PatPrincipal, method: string): boolean {
   return principal.scopes.includes(scopeForMethod(method));
 }
 
@@ -149,7 +149,7 @@ function assertEpoch(principal: PatPrincipal, path: string): void {
 }
 
 /** The PAT principal this request was admitted on, or null for any other door. */
-export function patRequestPrincipal(c: Context): PatPrincipal | null {
+function patRequestPrincipal(c: Context): PatPrincipal | null {
   return (c.get(PAT_REQUEST_VAR) as PatRequestResolution | undefined)?.principal ?? null;
 }
 

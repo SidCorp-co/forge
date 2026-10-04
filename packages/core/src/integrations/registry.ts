@@ -92,8 +92,3 @@ export async function dispatchThrough(
   }
   return dispatch(ctx, input);
 }
-
-/** Test-only — drops every declaration so tests can re-register cleanly. */
-export function __resetRegistry(): void {
-  registry.clear();
-}

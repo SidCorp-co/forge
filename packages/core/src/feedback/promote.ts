@@ -24,7 +24,7 @@ import { detailAs, type FeedbackActor, feedbackKey, notFound, rowIn } from './re
 import { promoteRefusal } from './rules.js';
 import { decide, insertFeedbackIn, inTx, lockFeedback, preparedFeedback } from './service.js';
 
-export type PromoteOutcome =
+type PromoteOutcome =
   | { ok: true; feedback: FeedbackView; effect: FeedbackPromoteEffect }
   | { ok: false; refusals: Refusal[] };
 

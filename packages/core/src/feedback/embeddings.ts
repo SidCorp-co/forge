@@ -19,7 +19,7 @@ import { feedbackEgress, type ReadDoor } from './egress.js';
 import { type FeedbackActor, feedbackKey, phaseOfRow, rowIn } from './read.js';
 
 /** Embeds the item's text, replacing whatever row it held; a redacted item holds none. */
-export async function embedFeedback(feedbackId: string) {
+async function embedFeedback(feedbackId: string) {
   const [row] = await db.select().from(feedback).where(eq(feedback.id, feedbackId));
   if (!row || row.redactedAt) return null;
   return writeItemEmbedding({

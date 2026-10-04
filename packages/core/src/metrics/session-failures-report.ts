@@ -19,12 +19,12 @@ function num(x: number | string | null | undefined): number {
 
 const FAILED_SESSION_STATUSES: ReadonlySet<string> = new Set(['failed', 'cancelled_stale']);
 
-export interface ResumeContinuityRow {
+interface ResumeContinuityRow {
   reason: string;
   sessions: number;
 }
 
-export interface ResumeContinuity {
+interface ResumeContinuity {
   offered: number;
   resumed: number;
   dropped: number;
@@ -32,7 +32,7 @@ export interface ResumeContinuity {
   rows: ResumeContinuityRow[];
 }
 
-export interface SessionFailureRow {
+interface SessionFailureRow {
   cause: FailureCause;
   origin: string;
   sessions: number;
@@ -44,10 +44,7 @@ export interface SessionFailureRow {
  * ISS-887 — of the attempts that HAD a prior transcript to continue, how many continued it and,
  * for the rest, which of the seven `ResumeDropReason` paths took it away.
  */
-export async function loadResumeContinuity(
-  projectId: string,
-  days: number,
-): Promise<ResumeContinuity> {
+async function loadResumeContinuity(projectId: string, days: number): Promise<ResumeContinuity> {
   const result = await resumeDropsForProject(projectId, days);
   let offered = 0;
   let dropped = 0;

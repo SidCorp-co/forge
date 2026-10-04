@@ -6,7 +6,7 @@ import {
   integrationDeliveries,
 } from '../db/schema.js';
 
-export interface RecordDeliveryInput {
+interface RecordDeliveryInput {
   bindingId: string | null;
   direction: IntegrationDeliveryDirection;
   eventName: string;
@@ -15,7 +15,7 @@ export interface RecordDeliveryInput {
   status?: IntegrationDeliveryStatus;
 }
 
-export interface UpdateDeliveryInput {
+interface UpdateDeliveryInput {
   status?: IntegrationDeliveryStatus;
   response?: unknown;
   errorMessage?: string | null;

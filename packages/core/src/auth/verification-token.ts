@@ -4,11 +4,11 @@ import { db } from '../db/client.js';
 import { emailVerificationTokens, users } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 
-export const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 const MAX_INSERT_RETRIES = 3;
 
-export function generateToken(): string {
+function generateToken(): string {
   return randomBytes(32).toString('base64url');
 }
 
@@ -30,7 +30,7 @@ export async function issueVerificationToken(userId: string): Promise<string> {
     : new Error('failed to issue verification token after retries');
 }
 
-export type ConsumeResult = 'ok' | 'expired' | null;
+type ConsumeResult = 'ok' | 'expired' | null;
 
 export async function consumeVerificationToken(token: string): Promise<ConsumeResult> {
   return db.transaction(async (tx) => {

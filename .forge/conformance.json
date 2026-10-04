@@ -186,10 +186,6 @@
           "why": "The provider's own directory \u2014 the one place ISS-1071 puts a provider's name. Everything here is ABOUT gitlab and no generic path reads it (ISS-50)."
         },
         {
-          "glob": "packages/core/src/integrations/google/**",
-          "why": "The provider's own directory \u2014 the one place ISS-1071 puts a provider's name. Everything here is ABOUT google and no generic path reads it."
-        },
-        {
           "glob": "packages/core/src/integrations/registry.ts",
           "why": "The registry itself. Every generic path asks a question here instead of naming a provider, which is precisely what makes this the file the names arrive in."
         },

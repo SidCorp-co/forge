@@ -87,7 +87,7 @@ export function doorCell(id: DoorId): { audience: Audience; intent: Intent } {
 }
 
 /** The same carve, over a cell id — so the rule above can be read against one. */
-export function cellPair(cell: CellId): { audience: Audience; intent: Intent } {
+function cellPair(cell: CellId): { audience: Audience; intent: Intent } {
   const cut = cell.lastIndexOf(':');
   return { audience: cell.slice(0, cut), intent: cell.slice(cut + 1) as Intent };
 }

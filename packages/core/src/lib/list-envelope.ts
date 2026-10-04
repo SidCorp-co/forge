@@ -9,9 +9,9 @@ export function overfetch(limit: number): number {
   return limit + 1;
 }
 
-export type TruncatedBy = 'limit' | 'response-size' | 'limit+response-size';
+type TruncatedBy = 'limit' | 'response-size' | 'limit+response-size';
 
-export interface ListEnvelopeArgs<T> {
+interface ListEnvelopeArgs<T> {
   /** Payload key the tool answers under — `issues`, `jobs`, `reports`, … */
   key: string;
   /** Serialized rows AS FETCHED, i.e. up to `overfetch(limit)` of them. */

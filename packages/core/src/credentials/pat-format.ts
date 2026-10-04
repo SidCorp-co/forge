@@ -1,20 +1,19 @@
 import { randomBytes } from 'node:crypto';
 
-export const PAT_ENVS = ['dev', 'stg', 'prd'] as const;
-export type PatEnv = (typeof PAT_ENVS)[number];
+const PAT_ENVS = ['dev', 'stg', 'prd'] as const;
+type PatEnv = (typeof PAT_ENVS)[number];
 
 /** Anchored — full match for token validation. */
-export const PAT_PATTERN = /^forge_pat_(dev|stg|prd)_[A-Fa-f0-9]{64}$/;
+const PAT_PATTERN = /^forge_pat_(dev|stg|prd)_[A-Fa-f0-9]{64}$/;
 
 /** Unanchored, global — for redaction inside larger strings (Sentry scrubber). */
 export const PAT_STRING_PATTERN = /forge_pat_(?:dev|stg|prd)_[A-Fa-f0-9]+/g;
 
 /** Loose prefix detector — used by the auth dispatcher to choose the PAT path. */
-export const PAT_PREFIX_PATTERN = /^forge_pat_(dev|stg|prd)_/;
+const PAT_PREFIX_PATTERN = /^forge_pat_(dev|stg|prd)_/;
 
 export const PAT_PREFIX_LEN = 18;
-export const PAT_BODY_HEX = 64;
-export const PAT_BODY_BYTES = 32;
+const PAT_BODY_BYTES = 32;
 
 export function patEnvForNodeEnv(nodeEnv: string): PatEnv {
   if (nodeEnv === 'production') return 'prd';

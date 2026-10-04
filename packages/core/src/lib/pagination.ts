@@ -14,7 +14,7 @@ export function fromPage(page: number, pageSize: number): Pagination {
 }
 
 /** What every REST list answers with. */
-export type ListEnvelope<T> = {
+type ListEnvelope<T> = {
   items: T[];
   /** Rows in THIS response. */
   returned: number;
@@ -48,7 +48,7 @@ export function listResponse<T>(
 }
 
 /** What a cursor-paged REST list answers with. */
-export type CursorListEnvelope<T> = {
+type CursorListEnvelope<T> = {
   items: T[];
   /** Rows in THIS response. */
   returned: number;
@@ -75,18 +75,5 @@ export function cursorList<T>(
     limit: page.limit,
     nextCursor: page.nextCursor,
     hasMore: page.nextCursor !== null,
-  };
-}
-
-export function wholeList<T>(c: Context, items: T[], total?: number): ListEnvelope<T> {
-  const resolved = total ?? items.length;
-  setTotalCount(c, resolved);
-  return {
-    items,
-    returned: items.length,
-    total: resolved,
-    limit: items.length,
-    offset: 0,
-    hasMore: items.length < resolved,
   };
 }
