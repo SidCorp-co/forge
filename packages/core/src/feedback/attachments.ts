@@ -5,11 +5,11 @@
 
 import { randomUUID } from 'node:crypto';
 import { FEEDBACK_LIMITS } from '@forge/contracts/feedback';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { feedbackAttachments } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
-import type { ActorAgency } from '../issues/index.js';
 import { allowedSetForTarget, resolveAttachmentMime, safeName } from '../lib/attachment-mime.js';
 import { dataPolicyOf, egressAs } from '../lib/data-egress.js';
 import { isUniqueViolation } from '../lib/db-errors.js';

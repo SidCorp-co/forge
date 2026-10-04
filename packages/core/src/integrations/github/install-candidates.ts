@@ -17,7 +17,7 @@ import {
   projectMembers,
   projects,
 } from '../../db/schema.js';
-import { type IntegrationConnectionRow, listConnectionsForPrincipalUser } from '../store.js';
+import { type IntegrationConnectionRow, listConnectionsForPrincipalUser } from '../index.js';
 
 /** Org admin and owner are implicit project admins; a plain member is not. */
 const ORG_ADMIN_ROLES = ['admin', 'owner'] as const;

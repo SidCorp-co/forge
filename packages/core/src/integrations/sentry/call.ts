@@ -1,8 +1,7 @@
 /** One call to Sentry: the ISS-405 previous-token retry, and the refusal or health verdict it earns. */
 
-import { isPreviousCredentialValid } from '../rotation.js';
-import { updateConnection } from '../store.js';
-import type { AdapterContext, HealthStatus } from '../types.js';
+import type { AdapterContext, HealthStatus } from '../index.js';
+import { isPreviousCredentialValid, updateConnection } from '../index.js';
 import { SentryRefusal, type SentryRefusalReason } from './refusals.js';
 import type { SentryConfig, SentrySecrets } from './types.js';
 

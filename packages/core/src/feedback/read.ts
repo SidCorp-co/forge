@@ -16,6 +16,7 @@ import {
   type FeedbackView,
 } from '@forge/contracts/feedback';
 import { requirementKey } from '@forge/contracts/requirements';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import { and, asc, count, desc, eq, ilike, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -31,7 +32,6 @@ import { agentQuestions } from '../db/schema-questions.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
-import type { ActorAgency } from '../issues/index.js';
 import { activeIssuePrefix, findIssueById, isUuid } from '../issues/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';

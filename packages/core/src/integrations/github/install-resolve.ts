@@ -12,7 +12,7 @@ import {
   decryptConnectionSecrets,
   type IntegrationConnectionRow,
   listBindingsForConnection,
-} from '../store.js';
+} from '../index.js';
 import { listGithubAppsReachableBy } from './install-candidates.js';
 import { appOctokit } from './octokit.js';
 

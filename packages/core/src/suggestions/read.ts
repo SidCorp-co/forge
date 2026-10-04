@@ -3,6 +3,7 @@
  * write resolves a target, a row and a head with.
  */
 
+import type { ActorAgency } from '@forge/contracts/permissions';
 import type {
   SuggestionListResponse,
   SuggestionStatus,
@@ -14,7 +15,6 @@ import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { rowIn as feedbackRowIn } from '../feedback/index.js';
-import type { ActorAgency } from '../issues/index.js';
 import { resolveIssueRouteRef } from '../issues/index.js';
 import type { KernelActor } from '../lifecycle/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';

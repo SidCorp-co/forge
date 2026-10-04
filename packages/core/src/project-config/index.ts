@@ -7,4 +7,5 @@ export type { ProjectDocument } from './schema.js';
 export { STOREFRONT_PROVIDERS } from './schema.js';
 export type { WriteOutcome } from './service.js';
 export { readProjectConfig, readProjectDocument, writeProjectConfig } from './service.js';
-export { readDeclaredSource } from './source.js';
+export { readDeployMap } from './release-path.js';
+export { readDeclaredSource, webUrlOf } from './source.js';

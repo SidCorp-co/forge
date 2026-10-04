@@ -33,8 +33,8 @@
     },
     "relations": {
       "level": 2,
-      "gate": "archmap check + check-module-boundaries",
-      "owns": "which module may depend on which: archmap's contracts, and pattern v2's context direction, kind direction, runtime cycles, face-only access and adapter ports (check-module-boundaries, its shrink-only baseline in .forge/module-boundaries-baseline.json enforced by the checker itself against the base revision)",
+      "gate": "archmap check + check-module-boundaries + check-module-shape",
+      "owns": "which module may depend on which: archmap's contracts, and pattern v2's context direction, kind direction, runtime cycles, face-only access and adapter ports (check-module-boundaries, its shrink-only baseline in .forge/module-boundaries-baseline.json enforced by the checker itself against the base revision); and which module may write which table, where a database call, a refusal and the global fetch may be written (check-module-shape, type-aware ESLint rules ratcheted by the bulk suppressions in .forge/module-shape-suppressions.json, whose per-rule total may not rise over the base revision)",
       "baseline": {
         "path": ".arch.json",
         "keyBy": "contract",
@@ -280,7 +280,7 @@
         }
       ],
       "egress": {
-        "$comment": "ADR 0006: every external system is reached through one adapter under integrations/<port>/. A global fetch or a vendor SDK import anywhere else in core is refused by file and line. The rule is about LOCATION, as the provider-literal rule beside it is, so it rides the same scan.",
+        "$comment": "ADR 0006: every external system is reached through one adapter under integrations/<port>/. A vendor SDK import anywhere else in core is refused by file and line. The rule is about LOCATION, as the provider-literal rule beside it is, so it rides the same scan. The global fetch is the module-shape lint's (scripts/eslint-module-shape/rules/global-fetch.mjs), whose allow list carries its own reasons.",
         "root": "packages/core/src",
         "adapters": "packages/core/src/integrations/**",
         "vendorSdks": [
@@ -307,23 +307,15 @@
         ],
         "exceptions": [
           {
-            "glob": "packages/core/src/schedules/script/worker-entry.ts",
-            "why": "The sandboxed schedule script's ctx.http.fetch: user code in a worker calling a URL the user wrote, held to https: and a timeout by the sandbox, not Forge reaching a system. There is no port to put between a user's script and the URL that script names; the sandbox is the boundary."
-          },
-          {
             "glob": "packages/core/src/observability/sentry.ts",
             "why": "Forge's own crash reporting, initialised at boot before any domain module loads, and the one module that imports @sentry/node. Callers reach it through its role-typed functions (reportFailure, reportCondition, traceStep, flushReports) and never name the vendor's namespace."
-          },
-          {
-            "glob": "packages/core/src/assistant/bench-assistant.ts",
-            "why": "The assistant bench is a command-line harness that drives Forge's own API as a client and hands the global fetch to that client; the host it calls is the Forge under test, never a third-party system."
           }
         ]
       }
     },
     "integration-declarations": {
       "$comment": "ISS-1071 \u2014 the registry is only a single door while every declaration behind it answers the questions the generic paths ask. A missing field does not fail to compile once a declaration reaches the registry through a widened type, and the reader then sees a provider that is inert rather than one that did not answer; five of seven adapters reached the old registry through `as any`. This walks the LIVE registry rather than the source, so the thing measured is what the process would hold at boot. `entrypoint` is imported under tsx with a synthetic env; its absence is exit 2, never a pass over an empty registry.",
-      "entrypoint": "packages/core/src/integrations/register-all.ts",
+      "entrypoint": "packages/core/src/integration-registry.ts",
       "registerFn": "registerAllIntegrations"
     },
     "lint-budget": {

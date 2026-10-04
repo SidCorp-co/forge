@@ -4,6 +4,7 @@
  */
 
 import type { MockupTargetType, MockupView } from '@forge/contracts/mockups';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, asc, desc, eq, inArray, isNotNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
@@ -15,7 +16,6 @@ import {
   requirementBaselines,
   requirements,
 } from '../db/schema-requirements.js';
-import type { ActorAgency } from '../issues/index.js';
 import { activeIssuePrefix, isUuid } from '../issues/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf, egressReading } from '../lib/data-egress.js';

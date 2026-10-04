@@ -4,6 +4,7 @@ export { registerPausedRunWedgeResolve } from './paused-run-wedge-resolve.js';
 export { backfillPhaseJournal } from './phase-journal-backfill.js';
 export { registerPhaseJournalClose } from './phase-journal-close.js';
 export { runReconcilerOnce } from './reconciler.js';
+export { bindingReachesProduction, confirmPendingProdDeploy } from './release-coolify.js';
 export { runRetentionSweep } from './retention/sweep.js';
 export { registerActivitySubscribers } from './subscribers.js';
 export { runPipelineSweep } from './sweeper.js';

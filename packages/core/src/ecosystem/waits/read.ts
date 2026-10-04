@@ -5,13 +5,13 @@ import type {
 } from '@forge/contracts/contract-waits';
 import { CONTRACT_WAIT_UNSETTLED } from '@forge/contracts/contract-waits';
 import { requirementKey } from '@forge/contracts/requirements';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { db, type Tx } from '../../db/client.js';
 import { issues, projects } from '../../db/schema.js';
 import { contractRequests, issueContractWaits } from '../../db/schema-contract-waits.js';
 import { channelDocuments, contractVersions } from '../../db/schema-ecosystem.js';
 import { requirements } from '../../db/schema-requirements.js';
-import type { ActorAgency } from '../../issues/actor-agency.js';
 import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { splitContractRef } from '../interface-rules.js';

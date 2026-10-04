@@ -1,3 +1,4 @@
+export { coolifyIntegration } from './adapter.js';
 export {
   type CoolifyApplicationSummary,
   credentialFromSecrets,

@@ -1,9 +1,9 @@
+import type { ActorAgency } from '@forge/contracts/permissions';
 import type { MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { verifyUserToken } from '../credentials/jwt.js';
 import { isPatLike } from '../credentials/pat-format.js';
 import { runWithPatScope } from '../credentials/pat-scope.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
 import { readBearerToken } from './bearer.js';
 import { declareGate } from './declared-gate.js';
 import { beginPatRequest } from './pat-rest-surface.js';

@@ -1,7 +1,7 @@
+import type { ActorAgency } from '@forge/contracts/permissions';
 import type { RequirementFeedbackItem } from '@forge/contracts/requirements';
 import type { Tx } from '../db/client.js';
 import type { ReadDoor } from '../feedback/index.js';
-import type { ActorAgency } from '../issues/index.js';
 
 /**
  * What feedback and suggestions answer for a requirement. Both build on requirements, so the

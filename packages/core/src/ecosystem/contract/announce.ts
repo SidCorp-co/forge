@@ -1,7 +1,7 @@
+import type { ActorAgency } from '@forge/contracts/permissions';
 import type { Tx } from '../../db/client.js';
 import { fileContractChangeIn } from '../../feedback/contract-change.js';
 import { embedFeedbackLater } from '../../feedback/embeddings.js';
-import type { ActorAgency } from '../../issues/actor-agency.js';
 import { dataPolicyOf } from '../../lib/data-egress.js';
 import { emitNotification } from '../../notifications/emit.js';
 import { logger } from '../../observability/logger.js';

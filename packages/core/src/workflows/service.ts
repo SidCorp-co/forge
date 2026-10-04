@@ -1,3 +1,4 @@
+import type { ActorAgency } from '@forge/contracts/permissions';
 import {
   findTemplate,
   resolveProjectTemplates,
@@ -5,7 +6,6 @@ import {
 } from '@forge/contracts/workflow-templates';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
-import type { ActorAgency } from '../issues/index.js';
 import { peopleOf } from '../lib/people.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { readProjectDocument, staleBase } from '../project-config/index.js';

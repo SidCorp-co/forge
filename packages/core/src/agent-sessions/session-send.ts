@@ -24,8 +24,7 @@ import {
 } from '../db/schema-session-inbox.js';
 import { insertInterventionEvent } from '../jobs/intervention-event.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
-import { deviceRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
+import { deviceRoom, roomManager } from '../lib/rooms.js';
 
 export type SessionInboxRow = typeof sessionInbox.$inferSelect;
 

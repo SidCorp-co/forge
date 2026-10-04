@@ -1,5 +1,5 @@
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
-import type { ActorAgency } from '../issues/index.js';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { type EgressReader, egressReading } from '../lib/data-egress.js';
 
 export const WITHHELD =

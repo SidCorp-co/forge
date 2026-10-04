@@ -1,4 +1,4 @@
-import { isPreviousCredentialValid } from '../rotation.js';
+import { isPreviousCredentialValid } from '../index.js';
 import { CoolifyClient } from './client.js';
 import type { CoolifyApplicationResponse, CoolifyConfig, CoolifySecrets } from './types.js';
 

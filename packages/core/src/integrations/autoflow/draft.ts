@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { StorefrontDraftReading, StorefrontTargetArgs } from '../types.js';
+import type { StorefrontDraftReading, StorefrontTargetArgs } from '../index.js';
 import { autoflowLiveRead } from './live-read.js';
 import type { AutoflowConfig } from './types.js';
 

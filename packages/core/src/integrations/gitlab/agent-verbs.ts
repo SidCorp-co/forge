@@ -1,5 +1,5 @@
-import { SourceHostCallError, SourceHostInputRefusal } from '../source-host/errors.js';
-import type { CheckLog, SourceHost } from '../source-host/types.js';
+import type { CheckLog, SourceHost } from '../source-host/index.js';
+import { SourceHostCallError, SourceHostInputRefusal } from '../source-host/index.js';
 import type { GitLabClient } from './client.js';
 import type { MergeRequestBody } from './merge.js';
 import { checkStatusOf, conclusionOf } from './status.js';

@@ -24,6 +24,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { provisionGitCredential } from '../git/provision-credential.js';
+import { roomManager, userRoom } from '../lib/rooms.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -116,8 +117,6 @@ async function publishLoginEvent(
   data: Record<string, unknown>,
 ): Promise<void> {
   try {
-    const { roomManager } = await import('../ws/server.js');
-    const { userRoom } = await import('../ws/rooms.js');
     roomManager.publish(userRoom(userId), { event, data });
   } catch (err) {
     logger.error({ err, userId, event }, 'device-login: WS publish failed (non-fatal)');

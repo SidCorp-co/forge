@@ -5,6 +5,7 @@
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import type { RequirementStanding } from '@forge/contracts/requirements';
 import { changedSincePlan, requirementKey } from '@forge/contracts/requirements';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
@@ -25,7 +26,6 @@ import {
 import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ReadDoor } from '../feedback/index.js';
-import type { ActorAgency } from '../issues/index.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';

@@ -1,9 +1,9 @@
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import { FEEDBACK_LIMITS } from '@forge/contracts/feedback';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, eq, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
-import type { ActorAgency } from '../issues/index.js';
 import { storedText } from '../lib/data-egress.js';
 import { lockFeedback } from './service.js';
 

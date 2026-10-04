@@ -1,5 +1,5 @@
-import { forgeReads } from '../forge-reads.js';
-import type { BindingTargetRefusal } from '../types.js';
+import type { BindingTargetRefusal } from '../index.js';
+import { forgeReads } from '../index.js';
 import { hostOfRepository } from './resolve.js';
 
 /** A binding on another host than the declared repository is refused as written, never at the merge. */

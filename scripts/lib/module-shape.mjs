@@ -1,11 +1,11 @@
-// Pattern v2's declaration checks and semantic module rules (docs/conventions/domain-entities.md,
-// ADR 0008), measured over packages/core/src. The import rules are dependency-cruiser's
-// (module-boundaries.mjs). Pure functions: the CLI hands in the declaration and the file texts, and
-// gets findings back. Nothing here reads the disk.
+// Pattern v2's declaration checks (docs/conventions/domain-entities.md, ADR 0008) over
+// packages/core/src, and the markers its findings are written as. The import rules are
+// dependency-cruiser's (module-boundaries.mjs); the semantic rules are the ESLint rules in
+// scripts/eslint-module-shape. Pure functions: nothing here reads the disk.
 
 export const KINDS = ['kernel', 'domain', 'read-model', 'adapter', 'door', 'platform'];
 
-export const RULES = ['kind', 'table-writer', 'route-query', 'refusal'];
+export const RULES = ['kind', 'table-writer', 'route-query', 'refusal', 'global-fetch'];
 
 export const ROOT_MODULE = '(root)';
 const SRC = 'packages/core/src/';
@@ -90,7 +90,8 @@ export function parseDeclaration(doc) {
       else owners.set(table, path);
     }
   }
-  for (const [path, spec] of Object.entries(modules)) faults.push(...readsFaults(path, spec, owners));
+  for (const [path, spec] of Object.entries(modules))
+    faults.push(...readsFaults(path, spec, owners));
   return { faults, modules, owners, contexts: order };
 }
 
@@ -114,10 +115,6 @@ function readsFaults(path, spec, owners) {
       );
   }
   return faults;
-}
-
-export function isTestFile(file) {
-  return /\.test\.ts$|\.d\.ts$|\/tests?\/|\/__tests__\/|\/test-helpers?\b|\.spec\.ts$/.test(file);
 }
 
 /** The declared module a core file belongs to: the longest declared path that contains it. */
@@ -174,7 +171,7 @@ export function tableReads(text, tables) {
     const name = bySql.get(m[1]);
     if (name) out.push({ table: name, via: 'sql', line: lineAt(text, m.index) });
   }
-  const imports = /import\s+(type\s+)?\{([^}]*)\}\s*from\s*['"][^'"]*\/db\/schema[^'"\/]*['"]/g;
+  const imports = /import\s+(type\s+)?\{([^}]*)\}\s*from\s*['"][^'"]*\/db\/schema[^'"/]*['"]/g;
   for (const m of text.matchAll(imports)) {
     if (m[1]) continue;
     for (const part of m[2].split(',')) {
@@ -187,120 +184,12 @@ export function tableReads(text, tables) {
   return out;
 }
 
-/** Every write to a declared table in one file: drizzle calls and raw SQL. */
-export function tableWrites(text, tables) {
-  const bySql = new Map([...tables].map(([name, sql]) => [sql, name]));
-  const out = [];
-  for (const m of text.matchAll(/\.(insert|update|delete)\(\s*(?:\w+\.)?(\w+)\s*[),]/g)) {
-    if (tables.has(m[2])) out.push({ table: m[2], op: m[1], line: lineAt(text, m.index) });
-  }
-  const raw = /\b(?:INSERT\s+INTO|DELETE\s+FROM)\s+"?(\w+)"?|\bUPDATE\s+"?(\w+)"?\s+SET\b/g;
-  for (const m of text.matchAll(raw)) {
-    const name = bySql.get(m[1] ?? m[2]);
-    if (name) out.push({ table: name, op: 'sql', line: lineAt(text, m.index) });
-  }
-  return out;
-}
-
-/** A write by any module but the table's declared owner, and every write to an undeclared table. */
-export function tableWriterFindings(writes, owners) {
-  const findings = [];
-  const writers = new Map();
-  for (const w of writes) {
-    if (!writers.has(w.table)) writers.set(w.table, new Set());
-    writers.get(w.table).add(w.module);
-    const owner = owners.get(w.table);
-    if (owner === w.module) continue;
-    findings.push({
-      rule: 'table-writer',
-      module: w.module,
-      file: w.file,
-      line: w.line,
-      detail: owner
-        ? `writes ${w.table}, owned by ${owner}`
-        : `writes ${w.table}, which declares no owner`,
-    });
-  }
-  const multiWriter = Object.fromEntries(
-    [...writers]
-      .filter(([, s]) => s.size > 1)
-      .sort((a, b) => b[1].size - a[1].size)
-      .map(([t, s]) => [t, [...s].sort()]),
-  );
-  return { findings, multiWriter };
-}
-
 /** A route file by its name, or by the Hono router it builds under any name. */
 export function isRouteFile(file, text = '') {
   return (
     /(^|\/)routes\.ts$|-routes\.ts$|\.routes\.ts$|\/routes\/[^/]+\.ts$/.test(file) ||
     /\bnew Hono\b/.test(text)
   );
-}
-
-const QUERY =
-  /\b(?:db|tx|trx)\s*\.\s*(?:select|selectDistinct|selectDistinctOn|insert|update|delete|execute|transaction|query)\b/g;
-
-/** A route file holding database calls of its own. */
-export function routeQueryFindings(file, text, mod) {
-  if (!isRouteFile(file, text)) return [];
-  const n = [...text.matchAll(QUERY)].length;
-  if (n === 0) return [];
-  return [
-    { rule: 'route-query', module: mod, file, detail: `${n} database call(s) in a route file` },
-  ];
-}
-
-const RULE_STATUSES = new Set(['409', '412', '422', '423', '428']);
-/** Codes the MCP door throws for what REST answers 400, 401, 404, 413, 500 or 503: transport, not rules. */
-export const TRANSPORT_CODES = new Set([
-  'BAD_REQUEST',
-  'NOT_FOUND',
-  'UNAUTHORIZED',
-  'PAYLOAD_TOO_LARGE',
-  'INTERNAL',
-  'UNAVAILABLE',
-]);
-const REFUSAL_PATTERNS = [
-  {
-    re: /new\s+HTTPException\(\s*(\d{3})/g,
-    hit: (m, kind) => RULE_STATUSES.has(m[1]) || (m[1] === '403' && kind !== 'platform'),
-    say: (m) => `throws HTTPException ${m[1]} in the error handler's shape, not the envelope`,
-  },
-  {
-    re: /\bclass\s+(\w+)\s+extends\s+(?:Error|HTTPException|\w+Error)\b/g,
-    hit: (_m, kind) => kind !== 'platform' && kind !== 'adapter',
-    say: (m) =>
-      `declares error class ${m[1]}; a rule refusal is the envelope, an invariant a plain Error`,
-  },
-  {
-    re: /throw\s+new\s+Error\(\s*[`'"]([A-Z][A-Z0-9_]{2,}):/g,
-    hit: (m) => !TRANSPORT_CODES.has(m[1]),
-    say: (m) => `throws the code ${m[1]} as text`,
-  },
-  {
-    re: /export\s+(?:const|type)\s+(\w*(?:REFUSAL_CODES|RefusalCode|_CODES))\b/g,
-    hit: (_m, kind) => kind !== 'platform',
-    say: (m) => `declares refusal codes ${m[1]} in core, not in contracts`,
-  },
-];
-
-/** Refusals in any shape but the envelope, and refusal codes declared outside contracts. */
-export function refusalFindings(file, text, mod, kind) {
-  const out = [];
-  for (const p of REFUSAL_PATTERNS) {
-    for (const m of text.matchAll(p.re)) {
-      if (!p.hit(m, kind)) continue;
-      out.push({
-        rule: 'refusal',
-        module: mod,
-        file,
-        line: lineAt(text, m.index),
-        detail: p.say(m),
-      });
-    }
-  }
-  return out;
 }
 
 /** Findings per module, per rule. */
@@ -334,7 +223,7 @@ export function totals(byModule) {
 }
 
 /** The reconciliation markers: one node per module, Wrong while any rule fails. */
-export function markers(byModule, { atSha, multiWriter, rewriteAt = 2 }) {
+export function markers(byModule, { atSha, rewriteAt = 2 }) {
   const nodes = {};
   for (const [m, row] of Object.entries(byModule)) {
     const aspects = RULES.filter((r) => row.counts[r] > 0);
@@ -363,7 +252,6 @@ export function markers(byModule, { atSha, multiWriter, rewriteAt = 2 }) {
     atSha: atSha ?? null,
     rules: RULES,
     totals: totals(byModule),
-    multiWriterTables: multiWriter,
     nodes,
   };
 }
