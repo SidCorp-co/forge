@@ -1,14 +1,13 @@
-import { eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { appConfig } from '../db/schema.js';
 import { chatTurnKinds } from '../integrations/llm/registry.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
+import { appConfigOf } from './read.js';
+import { saveAppConfig } from './service.js';
 
 const projectIdParamSchema = z.object({ projectId: z.uuid() });
 
@@ -47,11 +46,7 @@ appConfigRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    const [row] = await db
-      .select()
-      .from(appConfig)
-      .where(eq(appConfig.projectId, projectId))
-      .limit(1);
+    const row = await appConfigOf(projectId);
     return c.json(row ?? null);
   },
 );
@@ -85,15 +80,7 @@ appConfigRoutes.put(
     if (patch.retrievalExpandRelations !== undefined)
       updates.retrievalExpandRelations = patch.retrievalExpandRelations;
 
-    const [row] = await db
-      .insert(appConfig)
-      .values({ projectId, ...updates })
-      .onConflictDoUpdate({
-        target: appConfig.projectId,
-        set: { ...updates, updatedAt: sql`now()` },
-      })
-      .returning();
-    if (!row) throw new Error('app_config: upsert returned no row');
+    const row = await saveAppConfig(projectId, updates);
 
     return c.json(row);
   },

@@ -218,3 +218,13 @@ export async function approvedVersions(
     .orderBy(sql`${contractVersions.recordedAt} DESC`);
   return rows.map((r) => r.version);
 }
+
+/** An issue's id and project, or null. */
+export async function issueScopeOf(id: string): Promise<{ id: string; projectId: string } | null> {
+  const [issue] = await db
+    .select({ id: issues.id, projectId: issues.projectId })
+    .from(issues)
+    .where(eq(issues.id, id))
+    .limit(1);
+  return issue ?? null;
+}

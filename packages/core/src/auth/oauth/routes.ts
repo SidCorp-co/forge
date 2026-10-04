@@ -1,14 +1,12 @@
-import { and, eq } from 'drizzle-orm';
 import type { MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { env } from '../../config/env.js';
-import { db } from '../../db/client.js';
-import { oauthAccounts } from '../../db/schema.js';
 import type { ProviderId } from '../../integrations/identity/index.js';
 import { isEnabled } from '../../lib/feature-flags.js';
 import { type AuthVars, requireAuth } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
+import { hasOauthLink } from '../read.js';
 import {
   callbackQuery,
   handleCallback,
@@ -75,13 +73,7 @@ oauthRoutes.get(
     const uid = c.get('userId');
     const appBase = env.APP_BASE_URL.replace(/\/+$/, '');
 
-    const [linked] = await db
-      .select({ id: oauthAccounts.id })
-      .from(oauthAccounts)
-      .where(and(eq(oauthAccounts.userId, uid), eq(oauthAccounts.provider, providerId)))
-      .limit(1);
-
-    if (!linked) {
+    if (!(await hasOauthLink(uid, providerId))) {
       // Top-level browser navigation, so a JSON 4xx would leave the user on a
       // raw error page. Redirect back to the tokens settings tab with a typed
       // code so the page can render a banner.

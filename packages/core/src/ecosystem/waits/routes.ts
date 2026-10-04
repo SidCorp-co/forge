@@ -6,12 +6,9 @@ import {
   RETRACT_CONTRACT_WAIT_SHAPE,
   retractContractWaitRequestSchema,
 } from '@forge/contracts/contract-waits';
-import { eq } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
-import { issues } from '../../db/schema.js';
 import { refused } from '../../lib/refusal.js';
 import {
   type AuthVars,
@@ -21,7 +18,7 @@ import {
 } from '../../middleware/auth.js';
 import { strictBody, zValidator } from '../../middleware/zod-validator.js';
 import { requireCan } from '../../permissions/index.js';
-import { issueContractWaitsOf } from './read.js';
+import { issueContractWaitsOf, issueScopeOf } from './read.js';
 import { addContractWait, retractContractWait, type WaitOutcome } from './service.js';
 
 export const contractWaitRoutes = new Hono<{ Variables: AuthVars }>();
@@ -50,11 +47,7 @@ const listQuery = zValidator(
 );
 
 async function issueFor(id: string, userId: string) {
-  const [issue] = await db
-    .select({ id: issues.id, projectId: issues.projectId })
-    .from(issues)
-    .where(eq(issues.id, id))
-    .limit(1);
+  const issue = await issueScopeOf(id);
   if (!issue) throw new HTTPException(404, { message: `issue ${id} not found` });
   await requireCan({ userId }, 'project.read', issue.projectId);
   return issue;

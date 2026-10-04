@@ -1,9 +1,6 @@
-import { and, eq, isNotNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { schedules } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -12,6 +9,7 @@ import {
   listImprovementMessages,
 } from '../schedules/messages/registry.js';
 import { requireHeld } from '../permissions/index.js';
+import { templateSchedulesOf } from './read.js';
 
 const listQuerySchema = z
   .object({
@@ -56,17 +54,7 @@ improvementMessageRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    const enabledRows = await db
-      .select({
-        id: schedules.id,
-        templateKey: schedules.templateKey,
-        mode: schedules.mode,
-        cron: schedules.cron,
-        enabled: schedules.enabled,
-      })
-      .from(schedules)
-      .where(and(eq(schedules.projectId, projectId), isNotNull(schedules.templateKey)))
-      .limit(1000);
+    const enabledRows = await templateSchedulesOf(projectId);
 
     const byKey = new Map(
       enabledRows.flatMap((r) => (r.templateKey === null ? [] : [[r.templateKey, r] as const])),

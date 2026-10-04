@@ -1,14 +1,13 @@
-import { and, asc, eq, inArray, or, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { skillRegistrations, skills, skillTargets } from '../db/schema.js';
+import { skillTargets } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { MANAGED_META_SKILLS, resolveRegisteredEffectiveSkills } from './effective.js';
+import { listSkills, skillById, skillScopeById, skillSyncStatusOf } from './read.js';
 import { refuse } from './refuse.js';
 import {
   createProjectSkill,
@@ -107,33 +106,21 @@ skillCrudRoutes.get(
     const { projectId, scope } = c.req.valid('query');
     const userId = c.get('userId');
 
-    const conditions: SQL[] = [];
+    let rows: Awaited<ReturnType<typeof listSkills>>;
     if (scope === 'global') {
-      conditions.push(eq(skills.scope, 'global'));
+      rows = await listSkills({ kind: 'global' });
     } else if (scope === 'project') {
       if (!projectId) throw badRequest({ projectId: 'required when scope=project' });
       const access = await loadProjectAccess(projectId, userId);
       requireHeld(access, 'project.read');
-      conditions.push(and(eq(skills.scope, 'project'), eq(skills.projectId, projectId)) as SQL);
+      rows = await listSkills({ kind: 'project', projectId });
+    } else if (projectId) {
+      const access = await loadProjectAccess(projectId, userId);
+      requireHeld(access, 'project.read');
+      rows = await listSkills({ kind: 'global-and-project', projectId });
     } else {
-      if (projectId) {
-        const access = await loadProjectAccess(projectId, userId);
-        requireHeld(access, 'project.read');
-        const projectCond = and(
-          eq(skills.scope, 'project'),
-          eq(skills.projectId, projectId),
-        ) as SQL;
-        conditions.push(or(eq(skills.scope, 'global'), projectCond) as SQL);
-      } else {
-        conditions.push(eq(skills.scope, 'global'));
-      }
+      rows = await listSkills({ kind: 'global' });
     }
-
-    const rows = await db
-      .select()
-      .from(skills)
-      .where(and(...conditions))
-      .orderBy(asc(skills.name));
 
     // Tag platform-managed META skills (forge-skills…) so the Skill Studio UI
     // can render them as MCP-served live prompts — NOT disk-synced skills (no
@@ -185,7 +172,7 @@ skillCrudRoutes.get(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const [row] = await db.select().from(skills).where(eq(skills.id, id)).limit(1);
+    const row = await skillById(id);
     if (!row) throw notFound('skill not found');
 
     if (row.scope === 'project' && row.projectId) {
@@ -248,7 +235,7 @@ skillCrudRoutes.put(
     const patch = c.req.valid('json');
     const userId = c.get('userId');
 
-    const [row] = await db.select().from(skills).where(eq(skills.id, id)).limit(1);
+    const row = await skillById(id);
     if (!row) throw notFound('skill not found');
 
     if (row.projectId) {
@@ -273,11 +260,7 @@ skillCrudRoutes.delete(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const [row] = await db
-      .select({ id: skills.id, projectId: skills.projectId, scope: skills.scope })
-      .from(skills)
-      .where(eq(skills.id, id))
-      .limit(1);
+    const row = await skillScopeById(id);
     if (!row) throw notFound('skill not found');
 
     if (row.projectId) {
@@ -304,54 +287,7 @@ skillCrudRoutes.post(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    // Project skills + global skills relevant to this project.
-    const projectSkills = await db
-      .select({
-        id: skills.id,
-        name: skills.name,
-        target: skills.target,
-        scope: skills.scope,
-        contentHash: skills.contentHash,
-        version: skills.version,
-        updatedAt: skills.updatedAt,
-      })
-      .from(skills)
-      .where(or(eq(skills.scope, 'global'), eq(skills.projectId, projectId)) as SQL);
-
-    if (projectSkills.length === 0) return c.json([]);
-
-    const skillIds = projectSkills.map((s) => s.id);
-    const registrations = await db
-      .select({
-        skillId: skillRegistrations.skillId,
-        stage: skillRegistrations.stage,
-      })
-      .from(skillRegistrations)
-      .where(
-        and(
-          eq(skillRegistrations.projectId, projectId),
-          inArray(skillRegistrations.skillId, skillIds),
-        ),
-      );
-
-    const stagesBySkill = new Map<string, string[]>();
-    for (const reg of registrations) {
-      const arr = stagesBySkill.get(reg.skillId) ?? [];
-      arr.push(reg.stage);
-      stagesBySkill.set(reg.skillId, arr);
-    }
-
-    const result = projectSkills.map((s) => ({
-      skillId: s.id,
-      skillName: s.name,
-      target: s.target,
-      scope: s.scope,
-      currentHash: s.contentHash,
-      currentVersion: s.version,
-      updatedAt: s.updatedAt,
-      registeredStages: stagesBySkill.get(s.id) ?? [],
-    }));
-
+    const result = await skillSyncStatusOf(projectId);
     return c.json(result);
   },
 );

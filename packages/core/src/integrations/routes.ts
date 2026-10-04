@@ -10,18 +10,15 @@
 
 import { randomBytes } from 'node:crypto';
 import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
-import { desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { integrationDeliveries } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { registerCoolifyDeployRoutes } from './coolify/routes.js';
-import { findDeliveryById } from './deliveries.js';
+import { findDeliveryById, listBindingDeliveries } from './deliveries.js';
 import { buildMcpPreview } from './mcp-preview-service.js';
 import {
   applySecretsPatch,
@@ -263,12 +260,7 @@ integrationsRoutes.get('/:projectId/integrations/:id/deliveries', async (c) => {
   const id = c.req.param('id');
   const _existing = await projectBinding(projectId, id, c.get('userId'));
 
-  const rows = await db
-    .select()
-    .from(integrationDeliveries)
-    .where(eq(integrationDeliveries.bindingId, id))
-    .orderBy(desc(integrationDeliveries.createdAt))
-    .limit(50);
+  const rows = await listBindingDeliveries(id);
   return c.json({ items: rows });
 });
 

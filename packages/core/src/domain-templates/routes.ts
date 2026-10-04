@@ -1,13 +1,11 @@
-import { asc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { domainTemplates } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { applyTemplate } from './apply.js';
+import { domainTemplateByKey, listDomainTemplates } from './read.js';
 import { requireHeld } from '../permissions/index.js';
 
 const keyParamSchema = z.object({ key: z.string().trim().min(1).max(200) });
@@ -29,8 +27,7 @@ export const domainTemplateRoutes = new Hono<{ Variables: AuthVars }>();
 domainTemplateRoutes.use('*', requireAuth(), assertEmailVerified());
 
 domainTemplateRoutes.get('/', async (c) => {
-  const rows = await db.select().from(domainTemplates).orderBy(asc(domainTemplates.key));
-  return c.json(rows);
+  return c.json(await listDomainTemplates());
 });
 
 domainTemplateRoutes.get(
@@ -40,11 +37,7 @@ domainTemplateRoutes.get(
   }),
   async (c) => {
     const { key } = c.req.valid('param');
-    const [row] = await db
-      .select()
-      .from(domainTemplates)
-      .where(eq(domainTemplates.key, key))
-      .limit(1);
+    const row = await domainTemplateByKey(key);
     if (!row) throw notFound('domain template not found');
     return c.json(row);
   },

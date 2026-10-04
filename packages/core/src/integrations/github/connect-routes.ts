@@ -10,13 +10,10 @@
  */
 
 import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
-import { eq } from 'drizzle-orm';
 import type { Context, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
-import { organizations, projects } from '../../db/schema.js';
 import { loadOrgRole } from '../../lib/authz.js';
 import { refuser } from '../../lib/refusal.js';
 import { logger } from '../../logger.js';
@@ -44,6 +41,7 @@ import {
 } from './connect.js';
 import { findConnectionOwningInstallation } from './install-resolve.js';
 import { listInstallationRepositories } from './repositories.js';
+import { connectProjectOf } from './read.js';
 import { requireCan, requireOrgHeld } from '../../permissions/index.js';
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
@@ -143,17 +141,7 @@ githubConnectRoutes.post(
     const userId = c.get('userId');
     assertVaultConfigured();
 
-    const [project] = await db
-      .select({
-        slug: projects.slug,
-        name: projects.name,
-        orgId: projects.orgId,
-        orgIsPersonal: organizations.isPersonal,
-      })
-      .from(projects)
-      .innerJoin(organizations, eq(organizations.id, projects.orgId))
-      .where(eq(projects.id, projectId))
-      .limit(1);
+    const project = await connectProjectOf(projectId);
     if (!project) throw notFound('project');
 
     const query = c.req.valid('query');
