@@ -12,21 +12,6 @@ Replaces the Tauri desktop app.
   mcp, daemon orchestration. No CLI/GUI knowledge → a thin GUI/tray can reuse it later.
 - `crates/forge-runner` — the `clap` binary that drives the lib.
 
-## Status (M1–M4 implemented, Linux-first)
-
-Working: pairing (`login --code`), credential store (keychain + `0600` file
-fallback), WebSocket connect/subscribe/reconnect, 30s heartbeat, job dispatch
-→ Claude CLI run (worktree + MCP config) → streamed events + complete/fail,
-cancel/abort, `doctor`, `bind`, `status`, `runners`, `service install`
-(systemd). Release binary ≈ 3.7 MB.
-
-Deferred: Windows/WSL spawn; auto-clone; reporting `claudeSessionId` to
-`agent_sessions` for resume.
-
-(Browser-approve login and `install.sh`/binary release have both SHIPPED —
-`login` is the OAuth device flow, and this same README pipes `install.sh` 60
-lines below. They were listed here as deferred long after they landed.)
-
 ## Subcommands
 
 `forge-runner --help` is authoritative; the set today is:
@@ -43,8 +28,14 @@ lines below. They were listed here as deferred long after they landed.)
 | `logs` | Say where this box's runner log is read |
 | `config` | Inspect or edit local config |
 | `doctor` | Diagnose the environment (claude CLI, git, cred store, core reachability) |
+| `git-credential` | git credential helper: hand git a GitHub App token for one repository |
+| `hook` | Report a Claude Code hook event from inside a pane this daemon spawned |
+| `gate` | Answer a pane's `PreToolUse`: has the work it is handing out been declared? |
 | `service` | Install/uninstall the OS service (systemd/launchd) |
+| `run` | Declare what a master is about to hand a subagent, and close it after |
 | `runners` | List runners registered for this device |
+| `master` | Look at, talk to, stand down and end this box's resident masters |
+| `question` | Ask a person on this box's pairing, and read the answer back |
 | `sync` | Pull the latest skills for bound projects now (one-shot) |
 | `update` | Self-update from the release manifest |
 
@@ -98,9 +89,9 @@ A master pane acts as its project's own **agent**, through one credential: the
 token core mints for the checkout at provision
 (`packages/core/src/devices/workspace-credential.ts:issueCheckoutCredential`).
 It is held by the box's agent where the box was paired as one, and otherwise by the project's agent account, which a person
-pairing the box hands it only while they hold member or above on the project.
-It is fenced to that one project, so a pane writing another project's records
-is refused by name (`BUILDER_RUN_WRITER_NOT_PROJECT`), never served as a person.
+pairing the box hands it only while they hold `project.write` on the project.
+It is fenced to that one project, so a pane cannot write another project's
+records, and it is never served as a person.
 
 Both halves of the pane read it. Its MCP `forge` server takes it from the
 checkout's `.mcp.json`. Its `forge` CLI borrows it through

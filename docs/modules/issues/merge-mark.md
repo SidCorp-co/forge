@@ -36,14 +36,14 @@ is a claim that Forge holds a record of the merge; a column holding nothing is n
 record, whichever of `null` and `''` it holds. `merged_at` decides first: a sha with no
 timestamp is `unmarked`.
 
-## What `mark_merged` writes, on each path
+## What `POST /api/issues/:id/merge` writes, on each path
 
 `applyMergeMarker` looks for a merged pull request Forge has projected
 (`observedMergeForIssue`). Where it finds one it stamps `merged_at` AND
 `merged_commit_sha`, from that record. Where it finds none it stamps `merged_at` alone.
 
 Where an agent marks an issue on the `git` shape that holds no other work evidence
-(`findMissingWorkEvidence`) and the call carries `data.commit`, the commit is the only trace
+(`findMissingWorkEvidence`) and the call carries `commit`, the commit is the only trace
 the work left: it landed on the base branch itself, where no branch of its own exists
 (ISS-1318). `readCommitLanding` (`packages/core/src/issues/commit-landing.ts`) reads it from the
 project's repository through its GitHub binding. It counts only where the repository resolves
@@ -57,14 +57,12 @@ nothing: `COMMIT_NOT_IN_REPOSITORY`, `COMMIT_NOT_THIS_ISSUE`, `COMMIT_NOT_LANDED
 evidence unchecked.
 
 Where the caller names a `landing` and no merged pull request exists, it stamps `merged_at` AND
-`merged_landing`. On every path but the one above, the caller's `data.commit` never reaches the
-column — it reaches the audit trail as the caller's claim. That is why the tool description
-states the condition the column is written under rather than a blanket "always" or "never":
-both blankets have been written into it and both were false.
+`merged_landing`. On every path but the one above, the caller's `commit` never reaches the
+column — it reaches the audit trail as the caller's claim.
 
-A merged commit on the row is work evidence: `collectWorkEvidence` reads `merged_commit_sha`
-where `merged_at` is set, so an issue the mark accepted is not refused `NO_WORK_EVIDENCE` when forge-plugin 3.36.542
-names the retired `developed` or `testing` rung one move later (`packages/core/src/issues/transition-evidence.ts:legacyRungEvidenceFault`).
+A merged commit on the row is work evidence: `collectWorkEvidence`
+(`packages/core/src/pipeline/work-evidence.ts`) reads `merged_commit_sha` where `merged_at` is
+set, so an issue the mark accepted is not refused `NO_WORK_EVIDENCE` on its next move.
 
 Where the row already holds a stamp, the gated UPDATE moves nothing and the answer
 describes what the row HOLDS, not which branch this call took. So the "your commit is not
@@ -116,8 +114,8 @@ deployed, and forge-dev is such a project and lands every change in git.
 `target` names the branch a mark merged through, so it is owed on `git` alone
 (`markTargetRequired`); each door answers a missing one in the words it always used.
 
-A close refusal names the route the shape has (`landingRoute`): `mark_merged` for `git`, and
-`mark_merged` with `data.landing` for `outside_git`, where no commit is asked for. The issue detail
+A close refusal names the route the shape has (`landingRoute`): `POST /api/issues/:id/merge` for
+`git`, and the same route carrying `landing` for `outside_git`, where no commit is asked for. The issue detail
 answer carries `landingShape`, so the web rail's Mark merged form asks for a landing only where the
 close will need one, without re-deriving the rule from the project document.
 
@@ -133,7 +131,7 @@ sentence the shortfall prints says so.
 
 ## Why the git shape accepts a claim
 
-On the `git` shape `merged_mark` and the close accept `asserted`: `LANDINGS_ACCEPTED.git`.
+On the `git` shape the mark writer and the close accept `asserted`: `LANDINGS_ACCEPTED.git`.
 
 That is an amnesty and this is its price. `observedMergeForIssue` needs a
 `repo_pull_requests` row in state `merged`; until ISS-1123 (`9a78b0c93`) nothing but an
@@ -145,14 +143,3 @@ every issue the project has and stopped every run.
 through Forge and merged through the kernel door leaves a row and stamps the commit —
 `LANDINGS_ACCEPTED.git` narrows to `['observed']`. Narrowing the constant is the whole change;
 every door is gated on membership of it, so nothing else moves.
-
-## Why a test runs at the route
-
-ISS-1126's criterion 14 names the surfaces of criteria 3 to 7: `POST|DELETE
-/api/issues/:id/merge` and the issue reads that answer the mark. A test that called
-`applyMergeMarker` or a serializer directly proves those helpers and nothing about the runtime
-the criterion names — a route that dropped `mark` from its `c.json` would stay green through
-it. So a test of the mark mounts the Hono routes; one of the helpers alone is a different claim.
-
-The observed branch is only ever exercised under a mocked projection: on any database
-here `repo_pull_requests` is empty, so the branch is unreachable in the field.

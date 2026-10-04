@@ -7,8 +7,8 @@
  *   any (edge)         the move is an edge of the lifecycle                      ILLEGAL_TRANSITION
  *   open, from draft   the actor holds `issues.admit`                            PERMISSION_FORBIDDEN
  *   in_progress        a run or lease holds it; nothing admissible holds out     NO_HOLDER, ISSUE_BLOCKED, WORKFLOW_DESIGN_NOT_APPROVED, CONTRACT_WAIT_UNSETTLED
- *   approved           plan and criteria written; a person made the move where   PLAN_REQUIRED
- *                      the project document sets `plan.approval.required`
+ *   approved           plan and criteria written; the actor holds `plans.approve`  PLAN_REQUIRED
+ *                      where the project document sets `plan.approval.required`
  *   awaiting_release   the merge is recorded (a landing moves no status)          MERGE_NOT_RECORDED
  *                      every criterion's latest verdict passes, with an          NO_WORK_EVIDENCE,
  *                      admissible identity, recorded after the latest reopen     VERDICT_IDENTITY_REQUIRED, VERDICT_PREDATES_REOPEN, VERDICT_IDENTITY_NOT_ADMISSIBLE, VERDICT_DRAFT_SUPERSEDED, VERDICT_UNCORROBORATED

@@ -1,8 +1,8 @@
 # @forge/contracts
 
-Shared TypeScript types derived from [`@forge/core`](../core) — Drizzle row inferrals plus the `z.infer` of the request validators core uses at the HTTP boundary. The request shapes are exported as *types only* (no runtime Zod), so clients get the same compile-time contract without bundling core. The runtime exports are the modules `tsconfig.emit.json` builds to `dist/` — the pipeline-registry response schema, attachments, document-patch, ui-actions, wireframe and workflow-templates — each of which imports nothing from core.
+Shared TypeScript types derived from [`@forge/core`](../core) — Drizzle row inferrals plus the `z.infer` of the request validators core uses at the HTTP boundary. The request shapes are exported as *types only* (no runtime Zod), so clients get the same compile-time contract without bundling core. The runtime exports are the modules `tsconfig.emit.json` lists and builds to `dist/` (the state machines, permissions, pipeline-registry, attachments, document-patch, ui-actions, wireframe, workflow-templates and the rest of that list) — each of which imports nothing from core.
 
-The point: every client (`web-v2`, `dev`, future SDKs) imports the *same* shapes core actually serves, instead of hand-rolling typings that drift.
+The point: every client (`web-v2`, future SDKs) imports the *same* shapes core actually serves, instead of hand-rolling typings that drift.
 
 ## Install
 
@@ -45,9 +45,9 @@ const registry = pipelineRegistryResponseSchema.parse(await api.get("/pipeline/r
 | [`src/integrations.ts`](./src/integrations.ts) | Cross-app integration types |
 | [`src/notifications.ts`](./src/notifications.ts) | Notification types |
 | [`src/skill-facts.ts`](./src/skill-facts.ts) | Skill-facts types |
-| [`src/pipeline-registry.ts`](./src/pipeline-registry.ts) | Pipeline-registry response — a runtime Zod schema (`pipelineRegistryResponseSchema`, `pipelineStepSchema`) plus enum tuples |
+| [`src/pipeline-registry.ts`](./src/pipeline-registry.ts) | Pipeline-registry response — a runtime Zod schema (`pipelineRegistryResponseSchema`) plus enum tuples |
 | [`src/workflow-templates.ts`](./src/workflow-templates.ts) | workflow-template-v1: the diagram-template meta-schema, the built-in registry (`BUILTIN_WORKFLOW_TEMPLATES`) and project-template resolution — runtime, read by core to check designs and by the web to draw them |
-| [`src/issues.ts`](./src/issues.ts) | Release-notes types (`ReleaseNotes`, `ReleaseNotesSection`) re-exported from core |
+| [`src/issues.ts`](./src/issues.ts) | Release-notes types (`ReleaseNotes`, `ReleaseNotesSection`) re-exported from `src/release-notes.ts` |
 | [`src/ssh-keys.ts`](./src/ssh-keys.ts) | Org Private Keys pool + per-project git-credential types |
 | [`src/divergence-charters.ts`](./src/divergence-charters.ts) | Divergence Charter — a project's recorded, intentional deviations from the template (ISS-800) |
 | [`src/reconcile.ts`](./src/reconcile.ts) | Reconcile run / verdict / verifier-vote types (ISS-795 update pipeline) |
@@ -57,6 +57,6 @@ const registry = pipelineRegistryResponseSchema.parse(await api.get("/pipeline/r
 
 ## Why "type-only"
 
-`@forge/contracts` depends on `@forge/core` to *read* its schemas, but its request inputs ship as types only (`z.infer`-derived, not runtime validators). Its runtime values are the emitted modules, which hardcode their own tuples rather than importing core. Web-v2/dev never bundle core code at runtime. Changing core handlers without changing schemas leaves contracts untouched — which is the desired property.
+`@forge/contracts` depends on `@forge/core` to *read* its schemas, but its request inputs ship as types only (`z.infer`-derived, not runtime validators). Its runtime values are the emitted modules, which hardcode their own tuples rather than importing core. Web-v2 never bundles core code at runtime. Changing core handlers without changing schemas leaves contracts untouched — which is the desired property.
 
 → When core changes a row or request shape, add or update the export here and the consumer packages get TypeScript errors at the call sites that need updating. That's the contract.

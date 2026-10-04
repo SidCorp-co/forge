@@ -18,7 +18,6 @@ Run this over a skill before shipping it.
 - [ ] Body isn't bloated (rough target: keep it focused; if a section is a lookup list, it's a reference).
 
 ## Mechanics & safety
-- [ ] Exactly ONE merge mechanism (skill git-merge XOR server mergeStates) — no double-merge.
 - [ ] Single-branch projects: release skips re-merge when already on production.
 - [ ] `references` files (`files[]`) carry `encoding`.
 - [ ] Status transition is the LAST action; comment is posted before it.

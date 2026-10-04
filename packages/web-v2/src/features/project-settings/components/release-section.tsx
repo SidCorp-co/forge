@@ -50,7 +50,7 @@ const UNREAD = "could not be read";
 const NO_RELEASE_RUNNER_LABEL = "none — a release goes to any box in this project's pool";
 
 const FACT_GAPS = new Set(["build-commands", "test-commands", "release-procedure"]);
-const KNOWLEDGE_DOOR = "Write it as a project knowledge entry with `forge_knowledge` (action `write`).";
+const KNOWLEDGE_DOOR = "Write it as a project knowledge entry: `PUT /api/projects/:id/knowledge/<slug>` or `forge knowledge write`.";
 
 /** What the badge says about where a landed change goes — the words a reader of the screen uses. */
 function pathText(r: ReleaseReadiness): string {

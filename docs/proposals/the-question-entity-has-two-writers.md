@@ -17,8 +17,8 @@ The entity, its doors and everything that reads it:
   question is written through; `askQuestion`, `askParkQuestion`, `answerQuestion`, `voidQuestion`),
   `issue-coupling.ts` (the open questions on an issue, and the terminal refusal or void that rides
   in the issue transition's transaction), `read.ts` (`askAs`, `projectQuestionsFor`,
-  `readQuestionsForIssue`, `registerWaiter`, `waiterFor`), `routes.ts`, `screen.ts`, `stop.ts`,
-  `origin.ts`, `protections.ts`
+  `readQuestionsForIssue`, `registerWaiter`, `waiterFor`), `routes.ts`, `screen.ts`,
+  `origin.ts`, `protections.ts`, `batch-item.ts`
 - `POST /api/questions` on a personal access token, in `questions/routes.ts`, through `askAs`
 - `POST /api/devices/me/questions` and `GET /me/questions/:questionId?runId=` on a device pairing,
   in `devices/pool-routes.ts`
@@ -52,9 +52,10 @@ issue standing) and the row chip each read status OR marker.
   open, naming the ids, unless the move carries `voidQuestions` — then each is voided with that
   sentence, `ended_reason: 'issue_terminal'`. Every door refuses an ask on a terminal issue
   (`QUESTION_ISSUE_TERMINAL`).
-- **Out of `needs_info` on an answer.** `pipeline/answer-resume.ts` moves the issue once its last
-  open question is answered, and not before: back to `open`, the driver's entry and the one status
-  a master admits. An answer at any other rung moves nothing.
+- **Out of `needs_info` on an answer.** On an autonomous project, `pipeline/answer-resume.ts` moves
+  the issue once its last open question is answered, and not before: back to the status the park
+  left (`issue_work_state.left_status`), never a guessed one. A park that recorded none waits for a
+  person to move it, and an answer at any other rung moves nothing.
 - **The wedge reset** (`pipeline/reconciler.ts:resetAutonomousWedgesOnce`) leaves an issue holding
   the marker at its rung: its next move is a person's, so it is not wedged.
 
@@ -74,9 +75,10 @@ reaches `POST /api/questions`, are forge-plugin's to fix and are reported there.
 ## What binds the halves that ARE here
 
 The runner and core do not import each other, so the body the box puts on the device door is pinned
-as a file both suites read: `packages/runner/crates/forge-runner-core/assets/question-ask-wire.jsonl`.
-The runner asserts it sends exactly those bodies (`cmd/question.rs`); core asserts the door takes
-them and stores what they carry (`tests/integration/question-runner-wire-e2e.test.ts`).
+as a file: `packages/runner/crates/forge-runner-core/assets/question-ask-wire.jsonl`. The runner
+asserts it sends exactly those bodies (`cmd/question.rs`). Core's half — that the door takes them
+and stores what they carry — has no test on dev, where the TypeScript tests were deleted; nothing in
+core reads the file until they are restored.
 
 ## What is still true and was not fixed
 

@@ -122,8 +122,8 @@ Nothing in `.github/workflows/ci.yml` changes. The window's pull request is an o
 Its merge commit's push to `main` is what the changes job's step *Whether a pull_request run
 already proved this exact tree* reads (ISS-1340): two parents off the commit object, a tree equal
 to the second parent's, and that parent's latest `ci-passed` concluded `success`. `land`'s
-`gh pr merge --merge --match-head-commit <chain head>`, on a window branch `strict` has kept up to
-date, gives all three, so that push skips `core`, `core-integration`, `web`, `runner`, `images`
+`gh pr merge --merge --match-head-commit <chain head>`, on a window branch up to date with the
+base, gives all three, so that push skips `core`, `core-integration`, `web`, `runner`, `images`
 and `whole-tree`. A merge taken any other way, or past red, re-proves the tree as any push does.
 
 ## Migrations

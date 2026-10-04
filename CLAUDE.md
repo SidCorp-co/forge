@@ -32,6 +32,10 @@ and `ci-passed` does not need them (ISS-1370, priced in `.forge/conformance.json
 by the next run to land: read `main`'s latest run before you push. To run them on a branch before it lands:
 `gh workflow run CI --ref <branch> -f base=<the branch it lands on>`.
 
+**On `dev`, pushes and pull requests skip CI** — this branch's `ci.yml` sets `paths-ignore: ['**']`
+on both (ISS-118, until dev is promoted to `main` or the owner re-enables it). Only the nightly
+schedule and a dispatch run it here.
+
 **Green covers the jobs that RAN.** A skipped job passes `ci-passed`, and `changes` decides which
 run: read which ran, not the aggregate alone. A suite the filter should have selected and did not
 is the defect.
@@ -41,7 +45,12 @@ is the defect.
 **A pull request is gated before it lands; a direct push to `main`, after.**
 
 **`pnpm test:changed` is the loop** — it selects by import graph and says so. What makes a run
-proof is where it ran.
+proof is where it ran. On `dev` no TS or JS test file is tracked until ISS-172 restores them, so it
+selects nothing there; the Rust tests remain.
+
+**The builds do not typecheck** — `@forge/contracts` and `@forge/core` build with `--noCheck`.
+`pnpm tc:changed` typechecks the packages your branch touched, and every package importing one,
+against `origin/dev`.
 
 Every other command is a `package.json` script — `pnpm run` in a package lists its own, turbo fans
 the shared ones out from the root, and `packages/runner` is cargo. Read them there, not here.
@@ -140,7 +149,7 @@ what would have to be true for the assertion to go red, **plant exactly that, an
 naming its own rule**. A test that cannot fail has not been written yet.
 
 Cover the axes, not just the happy path: happy · negative · boundary · extreme/edge · the business
-rule itself. Which axes a step owes, and the evidence it must show: the `forge-test` skill.
+rule itself.
 
 ## Documentation is deleted, not carried
 
@@ -153,8 +162,8 @@ disagrees with them is drift** — marked and reconciled to the design, never us
 
 **The files you read are your doc-review worklist.** Every `.md` you opened while working comes
 back marked *still true* / *edited* / *deleted*; "did not touch" is not one of the three. The
-pipeline's `forge-code` step decides which, and `check-doc-citations` decides whether it was
-entitled to say *still true*.
+run that read it decides which, and `check-doc-citations` decides whether it was entitled to say
+*still true*.
 
 **A proposal is deleted by the change that implements it.** Every `docs/proposals/*.md` opens with
 a `**Removed when:**` line naming the issue whose landing deletes it; `check-honest-costs` refuses

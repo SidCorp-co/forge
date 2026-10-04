@@ -95,11 +95,6 @@ Each entry body is a Markdown document containing:
 - ISS-YYY: <route or feature that maps to a node>
 ```
 
-## Out of scope (P4)
-
-- Lifecycle hooks to auto-run at release or on a schedule — those are P4.
-- Automatic trigger on issue close — manual + bootstrap-wizard only in P2.
-
 ## Common mistakes to avoid
 
 - Never add a `click` directive to Mermaid nodes (breaks `securityLevel:strict`).

@@ -1,5 +1,5 @@
 // ISS-764 — prompt assembly for the release_batch job.
-// Pattern: buildSmokeCanaryPrompt (skills/smoke-verify.ts:429).
+// Pattern: skills/smoke-verify.ts:buildSmokeCanaryPrompt.
 // Untrusted issue text is wrapped via markUntrusted (same as every state prompt).
 
 import { describeCrossings, type ReleasePath } from '../project-config/release-path.js';

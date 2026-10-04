@@ -56,16 +56,16 @@ through, what versions that surface today, and where the version is dropped.</p>
 <path d="M624 92 L640 126" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#a)"/>
 
 <rect x="40" y="130" width="200" height="66" rx="9" fill="var(--soft)" stroke="var(--acc)" stroke-width="1.7"/>
-<text x="140" y="154" font-size="12" font-weight="700" text-anchor="middle" fill="var(--acc)">MCP · 37 tools</text>
-<text x="140" y="174" font-size="10.5" text-anchor="middle" fill="var(--mut)">holds no DB handle —</text>
-<text x="140" y="189" font-size="10.5" text-anchor="middle" fill="var(--bad)">true today, guarded by nothing</text>
+<text x="140" y="154" font-size="12" font-weight="700" text-anchor="middle" fill="var(--acc)">MCP · 9 tools</text>
+<text x="140" y="174" font-size="10.5" text-anchor="middle" fill="var(--mut)">one reaches the DB directly —</text>
+<text x="140" y="189" font-size="10.5" text-anchor="middle" fill="var(--bad)">guarded by nothing</text>
 
 <rect x="300" y="130" width="200" height="66" rx="9" fill="var(--soft)" stroke="var(--acc)" stroke-width="1.7"/>
-<text x="400" y="154" font-size="12" font-weight="700" text-anchor="middle" fill="var(--acc)">REST · 130 mounts</text>
-<text x="400" y="176" font-size="10.5" text-anchor="middle" fill="var(--mut)">the wide plane</text>
+<text x="400" y="154" font-size="12" font-weight="700" text-anchor="middle" fill="var(--acc)">REST</text>
+<text x="400" y="176" font-size="10.5" text-anchor="middle" fill="var(--mut)">the primary door</text>
 
 <rect x="560" y="130" width="200" height="66" rx="9" fill="var(--soft)" stroke="var(--acc)" stroke-width="1.7"/>
-<text x="660" y="154" font-size="12" font-weight="700" text-anchor="middle" fill="var(--acc)">device API · 23</text>
+<text x="660" y="154" font-size="12" font-weight="700" text-anchor="middle" fill="var(--acc)">device API</text>
 <text x="660" y="176" font-size="10.5" text-anchor="middle" fill="var(--mut)">`/me/…`, device-credentialled</text>
 
 <path d="M140 200 L300 238" stroke="var(--mut)" stroke-width="1.4" marker-end="url(#a)"/>
@@ -74,20 +74,12 @@ through, what versions that surface today, and where the version is dropped.</p>
 <rect x="300" y="242" width="250" height="44" rx="8" fill="var(--card)" stroke="var(--line)"/>
 <text x="425" y="269" font-size="12" text-anchor="middle" fill="var(--fg)">Postgres</text>
 
-<rect x="790" y="130" width="184" height="156" rx="9" fill="var(--card)" stroke="var(--ok)" stroke-width="1.7"/>
-<text x="882" y="154" font-size="12" font-weight="700" text-anchor="middle" fill="var(--ok)">already fixed</text>
-<text x="812" y="178" font-size="10.5" fill="var(--mut)">No MCP tool reaches</text>
-<text x="812" y="194" font-size="10.5" fill="var(--mut)">drizzle any more. Every</text>
-<text x="812" y="210" font-size="10.5" fill="var(--mut)">query went down to a</text>
-<text x="812" y="226" font-size="10.5" fill="var(--mut)">service under its own</text>
-<text x="812" y="242" font-size="10.5" fill="var(--mut)">domain, so the two</text>
-<text x="812" y="258" font-size="10.5" fill="var(--mut)">transports stopped</text>
-<text x="812" y="274" font-size="10.5" fill="var(--mut)">drifting apart.</text>
 </svg>
-<p class="cap">Measured on <code>main</code>, 2026-09-20. The invariant that keeps MCP off the
-database holds by fact and by nothing else: <code>.arch.json</code> declares eight contracts and
-none of them mentions <code>core-mcp</code>. An unguarded invariant is one careless import from
-being untrue, and nothing will say so.</p>
+<p class="cap">MCP registers nine tools (<code>mcp/registered-tools.ts:REGISTERED_TOOLS</code>); the
+REST API is the primary door and the <code>forge</code> CLI sits on it. Nothing keeps MCP off the
+database: <code>.arch.json</code> declares eight contracts and none of them mentions
+<code>core-mcp</code>, and <code>mcp/tools/forge-ecosystem.ts</code> imports the database client
+directly.</p>
 </div>
 
 <h2>2 · What the two repos actually agree on</h2>
@@ -99,7 +91,7 @@ being untrue, and nothing will say so.</p>
 <tr><td>the five driver statuses</td><td><code>AUTONOMOUS_DRIVER_STATUSES</code> — open · in_progress · needs_info · closed · dropped</td><td class="bad">nothing</td></tr>
 <tr><td>the phase endpoints</td><td><code>POST /:id/phases</code> · <code>/phases/end</code> · <code>/resume-point</code></td><td class="bad">nothing</td></tr>
 <tr><td>which plugins a box installs</td><td><code>GET /api/devices/me/plugins</code></td><td class="ok"><code>pinnedRef</code>, a commit SHA — the only version in the list</td></tr>
-<tr><td>the data surface</td><td>37 MCP tools</td><td class="bad">nothing; a removed tool is discovered at call time</td></tr>
+<tr><td>the data surface</td><td>the REST API, and nine MCP tools</td><td class="bad">nothing the plugin sends. <code>packages/core/contracts/</code> holds the generated route and tool contracts, held to the code by <code>scripts/check-api-contracts.mjs</code>, but no version of them reaches the plugin</td></tr>
 </tbody>
 </table>
 
@@ -157,19 +149,8 @@ handshake.</p>
 <tr><td>five contract items, one versioned</td><td><b>one declared contract version</b> the plugin sends and core admits or refuses by name</td><td>the three-clock rule needs somewhere to stand; this is it</td></tr>
 <tr><td>a pin dropped on conflict</td><td><b>a conflict refuses the install and names both SHAs</b></td><td>a loud break beats a silent substitution — the repo's own rule, not applied here</td></tr>
 <tr><td>phase names are shared vocabulary</td><td><b>phases are opaque strings to core</b>; meaning belongs to the pinned policy</td><td>removes the largest class of two-repo change</td></tr>
-<tr><td>MCP is a second wide plane</td><td><b>REST is the only plane</b>; MCP is a thin adapter over it, and shrinks to what the CLI cannot do</td><td>a business rule written twice is a bug on whichever path has no test</td></tr>
-<tr><td>an unguarded invariant</td><td><b>a contract in <code>.arch.json</code></b> fencing <code>core-mcp</code> off <code>core-db</code></td><td>it is already true; make it stay true for free</td></tr>
+<tr><td>an unguarded invariant</td><td><b>a contract in <code>.arch.json</code></b> fencing <code>core-mcp</code> off <code>core-db</code></td><td>one tool, <code>forge-ecosystem.ts</code>, reaches the database today; a contract makes the fence hold for free</td></tr>
 </tbody>
 </table>
 
-<h2>5 · What this page replaced</h2>
-
-<p><code>docs/proposals/cli-data-surface.html</code> made the same argument and was deleted rather
-than carried. It was written in Vietnamese in a tracked file, and every number in it had drifted:
-45 MCP tool modules against today's 37, 107 route mounts against 130, and four named REST gaps
-(<code>forge_divergence_charters</code>, <code>forge_ux_improver</code>, <code>forge_ops_health</code>,
-<code>forge_version</code>) that no longer exist as tools at all. It also credited the
-MCP-off-the-database invariant to a test file, <code>no-transport-db.test.ts</code>, which is not
-in the tree. Its one surviving idea — REST as the single plane, MCP as a thin adapter — is row 4
-above.</p>
 </main>

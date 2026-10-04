@@ -11,7 +11,7 @@ ever disagree.
 | File | Owns |
 |---|---|
 | [`docs/VISION.md`](docs/VISION.md) | what Forge is and is not — intent, and the final word on intent |
-| [`CLAUDE.md`](CLAUDE.md) | how work is done here: the seven gate axes, the invariants, the ownership line |
+| [`CLAUDE.md`](CLAUDE.md) | how work is done here: the six gate axes, the invariants, the ownership line |
 | [`scripts/README.md`](scripts/README.md) | every gate, what it refuses, and what it was born from |
 | [`GOVERNANCE.md`](GOVERNANCE.md) | who reviews, who merges, and what an agent may decide alone |
 | [`docs/adr/`](docs/adr/) | decisions that shaped the above, and why |
