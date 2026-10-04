@@ -1,4 +1,3 @@
-export { devForceVerifyRoutes } from './dev-force-verify.js';
 export { loginRoutes } from './login.js';
 export { logoutRoutes } from './logout.js';
 export { meRoutes } from './me.js';

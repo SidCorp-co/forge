@@ -1,10 +1,9 @@
-import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { NotificationType } from '../db/schema.js';
 import {
   notificationDeliveries,
   notificationDeliveryMembers,
-  notificationSilences,
   notifications,
   userPreferences,
 } from '../db/schema.js';
@@ -46,30 +45,6 @@ export interface DeliverInput {
   groupTitle?: string | null;
 }
 
-/** A silence THIS reader set that covers this record. */
-async function silencedFor(userId: string, input: DeliverInput, now: Date): Promise<boolean> {
-  const rows = await db
-    .select({ id: notificationSilences.id })
-    .from(notificationSilences)
-    .where(
-      and(
-        eq(notificationSilences.createdBy, userId),
-        gt(notificationSilences.expiresAt, now),
-        sql`(${notificationSilences.type} IS NULL OR ${notificationSilences.type} = ${input.type})`,
-        sql`(${notificationSilences.projectId} IS NULL OR ${notificationSilences.projectId} = ${input.projectId ?? null})`,
-        sql`(${notificationSilences.resolutionKey} IS NULL OR ${notificationSilences.resolutionKey} = ${input.resolutionKey ?? null})`,
-      ),
-    )
-    .limit(1);
-  return rows.length > 0;
-}
-
-/**
- * The firing record that suppresses this one, if any.
- *
- * Scope is the project: a wedge naming a project's pipeline is the cause of that
- * project's stranded parks, and reporting both is reporting one thing twice.
- */
 async function inhibitor(input: DeliverInput): Promise<string | null> {
   const sources = inhibitorsOf(input.type);
   if (sources.length === 0 || !input.projectId) return null;
@@ -119,13 +94,6 @@ async function activeRecord(input: DeliverInput) {
 async function deliverTo(recordId: string, input: DeliverInput, now: Date): Promise<number> {
   let told = 0;
   for (const userId of input.recipients) {
-    if (await silencedFor(userId, input, now)) {
-      logger.info(
-        { type: input.type, projectId: input.projectId, userId },
-        'notifications: silenced for this reader, nobody told',
-      );
-      continue;
-    }
     if (!(await wantsDelivery(userId, input.type))) continue;
     const [already] = await db
       .select({ id: notificationDeliveries.id })

@@ -3,15 +3,7 @@
 // later router mounted under the same prefix, so the area functions below run in sequence.
 
 import type { Hono } from 'hono';
-import {
-  adminAggregateRoutes,
-  adminAlertRoutes,
-  adminMcpAuditRoutes,
-  adminMetricSeriesRoutes,
-  adminRoutes,
-  pipelineHealthAdminRoutes,
-} from './admin/routes.js';
-import { adminThresholdRoutes } from './admin-thresholds/routes.js';
+import { adminAggregateRoutes, adminAlertRoutes, adminRoutes } from './admin/routes.js';
 import { agentReportRoutes, feedbackReportsAliasRoutes } from './agent-reports/routes.js';
 import {
   agentSessionAttachmentRoutes,
@@ -27,7 +19,6 @@ import {
 } from './assistant/routes.js';
 import {
   authRoutes,
-  devForceVerifyRoutes,
   loginRoutes,
   logoutRoutes,
   meRoutes,
@@ -69,7 +60,6 @@ import { feedbackRoutes } from './feedback/routes.js';
 import { deviceGitCredentialRoutes } from './git/routes.js';
 import { guideRoutes } from './guides/routes.js';
 import {
-  opsHealthMeRoutes,
   opsHealthProjectRoutes,
   projectHealthRoutes,
   publicHealthRoutes,
@@ -157,7 +147,6 @@ import {
   memberRoutes,
   projectRoutes,
 } from './projects/routes.js';
-import { promptRoutes } from './prompt/routes.js';
 import { questionnaireRoutes } from './questionnaires/routes.js';
 import { questionRoutes } from './questions/routes.js';
 import { releaseBatchRoutes } from './release-batch/routes.js';
@@ -215,7 +204,6 @@ function mountAccountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/auth', loginRoutes);
   app.route('/api/auth', refreshRoutes);
   app.route('/api/auth', verifyRoutes);
-  app.route('/api/auth', devForceVerifyRoutes);
   app.route('/api/auth', meRoutes);
   app.route('/api/auth', preferenceRoutes);
   app.route('/api/auth', logoutRoutes);
@@ -224,7 +212,6 @@ function mountAccountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/auth', oauthRoutes);
   app.route('/api/projects', projectHealthRoutes);
   app.route('/api/projects', opsHealthProjectRoutes);
-  app.route('/api/me', opsHealthMeRoutes);
   app.route('/api/me', collaboratorsMeRoutes);
   app.route('/api/projects', projectMetricsRoutes);
   app.route('/api/projects', gitCredentialRoutes);
@@ -339,7 +326,6 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
 /** Prompts, skills, notifications, questions, agents, conversations, sessions and pipeline runs. */
 function mountAgentRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issue-step-contexts', stepHandoffRoutes);
-  app.route('/api/prompts', promptRoutes);
   app.route('/api/skill-facts', skillFactsRoutes);
   app.route('/api/skill-activity', skillActivityRoutes);
   app.route('/api/notifications', notificationRoutes);
@@ -363,11 +349,7 @@ function mountAdminAndDeviceRoutes(app: Hono<{ Variables: RequestIdVars }>): voi
   app.route('/api/admin', adminRoutes);
   app.route('/api/admin', adminAggregateRoutes);
   app.route('/api/admin', adminAlertRoutes);
-  app.route('/api/admin', adminMcpAuditRoutes);
-  app.route('/api/admin', adminMetricSeriesRoutes);
-  app.route('/api/admin', adminThresholdRoutes);
   app.route('/api/admin', outboxAdminRoutes);
-  app.route('/api/admin/pipeline', pipelineHealthAdminRoutes);
   app.route('/api/devices', devicePublicRoutes);
   app.route('/api/devices', deviceLoginRoutes);
   app.route('/api/devices', deviceGitCredentialRoutes);

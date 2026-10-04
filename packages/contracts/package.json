@@ -346,10 +346,6 @@
       "types": "./dist/projects.d.ts",
       "default": "./dist/projects.js"
     },
-    "./prompt": {
-      "types": "./dist/prompt.d.ts",
-      "default": "./dist/prompt.js"
-    },
     "./questions": {
       "types": "./dist/questions.d.ts",
       "default": "./dist/questions.js"

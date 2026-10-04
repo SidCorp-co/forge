@@ -1,6 +1,6 @@
 import { NON_OPEN_STATUSES } from '@forge/contracts/issue-machine';
 import { UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
-import { and, count, desc, eq, gte, ilike, inArray, isNull, sql } from 'drizzle-orm';
+import { and, count, desc, eq, ilike, inArray, isNull, sql } from 'drizzle-orm';
 import { readThresholds } from '../admin-thresholds/index.js';
 import { db } from '../db/client.js';
 import {
@@ -13,7 +13,6 @@ import {
   pipelineRuns,
   projectMembers,
   projects,
-  retrievalAnalytics,
   usageRecords,
   users,
 } from '../db/schema.js';
@@ -255,29 +254,6 @@ export async function readAdminWorkspaces(
   return { rows: rows.slice(0, limit), total: allProjects.length };
 }
 
-const metadataInt = (key: string) =>
-  sql<number>`coalesce(sum((${retrievalAnalytics.metadata} ->> ${key})::int), 0)`.mapWith(Number);
-const strategyOf = sql<string>`coalesce(${retrievalAnalytics.metadata} ->> 'strategy', 'unknown')`;
-
-/** A project's retrieval searches since `since`, grouped by strategy. */
-export async function readRetrievalBreakdown(projectId: string, since: Date) {
-  return db
-    .select({
-      strategy: strategyOf,
-      searches: count(),
-      avgHitCount: sql<number>`coalesce(avg(${retrievalAnalytics.hitCount}), 0)`.mapWith(Number),
-      semanticHits: metadataInt('semanticHits'),
-      keywordHits: metadataInt('keywordHits'),
-      overlap: metadataInt('overlap'),
-    })
-    .from(retrievalAnalytics)
-    .where(
-      and(eq(retrievalAnalytics.projectId, projectId), gte(retrievalAnalytics.createdAt, since)),
-    )
-    .groupBy(strategyOf)
-    .orderBy(strategyOf);
-}
-
 type PageQuery = { limit: number; offset: number };
 
 /** Users, newest first, optionally narrowed by an email search. */
@@ -389,38 +365,4 @@ export async function listAdminAudit({
     .limit(limit)
     .offset(offset);
   return { rows, total: Number(n) };
-}
-
-/** Issues parked at `needs_info` (newest 100) and the last 24h of job failures by kind. */
-export async function readPipelineHealth() {
-  const waiting = await db
-    .select({
-      id: issues.id,
-      issSeq: issues.issSeq,
-      title: issues.title,
-      projectId: issues.projectId,
-      projectSlug: projects.slug,
-      projectName: projects.name,
-      status: issues.status,
-      updatedAt: issues.updatedAt,
-    })
-    .from(issues)
-    .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(eq(issues.status, 'needs_info'))
-    .orderBy(desc(issues.updatedAt))
-    .limit(100);
-
-  const failureBreakdown = await db
-    .select({ failureKind: jobs.failureKind, count: count() })
-    .from(jobs)
-    .where(and(eq(jobs.status, 'failed'), sql`${jobs.finishedAt} > now() - interval '24 hours'`))
-    .groupBy(jobs.failureKind);
-
-  return {
-    waiting,
-    failureBreakdown: failureBreakdown.map((r) => ({
-      kind: r.failureKind ?? 'unclassified',
-      count: Number(r.count),
-    })),
-  };
 }

@@ -157,30 +157,6 @@ export const notificationDeliveryMembers = pgTable(
   }),
 );
 
-/**
- * ISS-1063 — Alertmanager's silences: a matcher and a deadline, so an operator already
- * working on something can stop being told about it without turning a type off for
- * everybody and without anything having to remember to turn it back on.
- */
-export const notificationSilences = pgTable(
-  'notification_silences',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    createdBy: uuid('created_by')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    type: text('type', { enum: notificationTypes }),
-    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
-    resolutionKey: text('resolution_key'),
-    reason: text('reason').notNull(),
-    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    activeIdx: index('notification_silences_active_idx').on(t.expiresAt, t.type),
-  }),
-);
-
 export const notificationDeliveriesRelations = relations(notificationDeliveries, ({ one }) => ({
   user: one(users, { fields: [notificationDeliveries.userId], references: [users.id] }),
 }));

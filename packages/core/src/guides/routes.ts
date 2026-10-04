@@ -9,7 +9,6 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, orgResource, requireHeld, requireOrgCan } from '../permissions/index.js';
 import { findProjectOrgId } from '../projects/service.js';
 import {
-  deleteIntegrationGuide,
   integrationGuideSlug,
   resolveGuide,
   resolveGuideIndex,
@@ -57,16 +56,6 @@ orgGuideRoutes.get('/:orgId/guides', async (c) => {
   return c.json({ guides: await resolveGuideIndex(orgId) });
 });
 
-orgGuideRoutes.get('/:orgId/guides/:slug', async (c) => {
-  const orgId = c.req.param('orgId');
-  await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
-  const guide = await resolveGuide(c.req.param('slug'), orgId);
-  if (!guide) {
-    throw new HTTPException(404, { message: validSlugsMessage(), cause: { code: 'NOT_FOUND' } });
-  }
-  return c.json({ guide });
-});
-
 orgGuideRoutes.put(
   '/:orgId/integration-guides/:provider',
   zValidator('json', upsertSchema),
@@ -93,14 +82,6 @@ orgGuideRoutes.put(
     });
   },
 );
-
-orgGuideRoutes.delete('/:orgId/integration-guides/:provider', async (c) => {
-  const orgId = c.req.param('orgId');
-  const provider = c.req.param('provider');
-  assertKnownProvider(provider);
-  await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
-  return c.json({ deleted: await deleteIntegrationGuide(orgId, provider) });
-});
 
 guideRoutes.route('/orgs', orgGuideRoutes);
 

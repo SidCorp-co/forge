@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use clap::Args as ClapArgs;
 use forge_runner_core::auth::pairing::LoginPoll;
-use forge_runner_core::auth::{cred_store, git_cred, pairing};
+use forge_runner_core::auth::{cred_store, pairing};
 use forge_runner_core::config::Config;
 
 use super::Ctx;
@@ -148,14 +148,6 @@ pub async fn pair_device(
         approved.device_id,
         cred_store::active_backend()
     );
-
-    // Auto git-credential provisioning (server returns this only when enabled).
-    if let Some(cred) = approved.git_credential.as_ref() {
-        match git_cred::write_git_credential(cred) {
-            Ok(note) => println!("✔ {note}"),
-            Err(e) => println!("⚠ git credential not configured ({e}) — set up push manually"),
-        }
-    }
 
     Ok(())
 }

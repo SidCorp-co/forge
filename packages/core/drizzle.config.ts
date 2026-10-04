@@ -5,7 +5,6 @@ export default defineConfig({
   schema: [
     './src/db/schema.ts',
     './src/db/schema-activity.ts',
-    './src/db/schema-admin-thresholds.ts',
     './src/db/schema-journal.ts',
     './src/db/schema-master-charter.ts',
     './src/db/schema-master-passes.ts',

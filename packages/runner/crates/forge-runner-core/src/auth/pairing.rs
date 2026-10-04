@@ -83,24 +83,11 @@ pub struct LoginInitResponse {
     pub expires_at: String,
 }
 
-/// Git push credential handed to the runner at poll time (flag-gated server-side).
-#[derive(Debug, Clone, Deserialize)]
-pub struct GitCredential {
-    pub transport: String,
-    pub host: String,
-    pub username: String,
-    pub password: String,
-    #[serde(default)]
-    pub instructions: Option<String>,
-}
-
 /// `GET /api/devices/login/poll` success body (HTTP 200).
 #[derive(Debug, Clone, Deserialize)]
 pub struct LoginApproved {
     pub device_token: String,
     pub device_id: String,
-    #[serde(default)]
-    pub git_credential: Option<GitCredential>,
 }
 
 /// Outcome of one poll tick.

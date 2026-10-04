@@ -94,9 +94,4 @@ export interface AdminAlert {
   entities: AdminAlertEntity[];
 }
 
-export {
-  ADMIN_THRESHOLD_DEFAULTS,
-  type AdminThresholds,
-  SENTRY_THRESHOLD_MAX,
-  SENTRY_THRESHOLD_MIN,
-} from '../db/schema-admin-thresholds.js';
+export { ADMIN_THRESHOLD_DEFAULTS, type AdminThresholds } from '../admin-thresholds/index.js';

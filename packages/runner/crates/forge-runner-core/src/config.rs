@@ -399,7 +399,7 @@ mod tests {
             assert_eq!(crate::daemon::control::config_dir(), None);
             assert!(crate::daemon::control::socket_path().is_none());
             assert!(crate::daemon::pool_jobs::FileRecords::default_dir().is_none());
-            assert!(crate::auth::git_cred::git_credentials_path().is_err());
+            assert!(crate::auth::git_cred::ssh_keys_dir().is_err());
             assert!(Config::default().save().is_err());
         }
         #[cfg(target_os = "linux")]

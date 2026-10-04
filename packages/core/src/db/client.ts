@@ -5,7 +5,6 @@ import { env } from '../config/env.js';
 import { logger } from '../observability/logger.js';
 import * as baseSchema from './schema.js';
 import * as activitySchema from './schema-activity.js';
-import * as adminThresholdsSchema from './schema-admin-thresholds.js';
 import * as agentSelvesSchema from './schema-agent-selves.js';
 import * as agentSessionEventsSchema from './schema-agent-session-events.js';
 import * as backfillMarkersSchema from './schema-backfill-markers.js';
@@ -35,7 +34,6 @@ const schema = {
   ...baseSchema,
   ...activitySchema,
   ...agentSelvesSchema,
-  ...adminThresholdsSchema,
   ...conversationsSchema,
   ...transcriptIndexSchema,
   ...journalSchema,

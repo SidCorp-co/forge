@@ -1,9 +1,8 @@
-import { and, countDistinct, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { and, countDistinct, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   notificationDeliveries,
   notificationDeliveryMembers,
-  notificationSilences,
   notifications,
 } from '../db/schema.js';
 
@@ -106,18 +105,4 @@ export async function liveConditionOf(
     )
     .limit(1);
   return live ?? null;
-}
-
-/** The caller's unexpired silences, newest first. */
-export async function listActiveSilences(userId: string) {
-  return db
-    .select()
-    .from(notificationSilences)
-    .where(
-      and(
-        eq(notificationSilences.createdBy, userId),
-        gt(notificationSilences.expiresAt, new Date()),
-      ),
-    )
-    .orderBy(desc(notificationSilences.createdAt));
 }

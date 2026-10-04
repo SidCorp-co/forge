@@ -7,15 +7,6 @@ import type { Tx } from '../db/client.js';
 import type { SkillActivityPort } from '../jobs/index.js';
 import type { RefusalError } from '../lib/refusal.js';
 
-/** The credential a paired box writes into its git credential helper. */
-export interface GitCredential {
-  transport: 'https';
-  host: string;
-  username: string;
-  password: string;
-  instructions: string;
-}
-
 /** The runner build this deployment publishes. */
 export interface PublishedRunnerBuild {
   version: string;
@@ -62,8 +53,6 @@ export interface DevicesPorts {
   >;
   projectsWithHostCredential(projectIds: string[]): Promise<Set<string>>;
   isHttpsGitUrl(url: string | null | undefined): boolean;
-  /** The push credential this deployment hands a paired box, or null when it hands none. */
-  provisionGitCredential(deviceId: string): Promise<GitCredential | null>;
   decryptSecret(enc: Buffer): string;
   publishedRunnerBuild(): Promise<PublishedRunnerBuild | null>;
   mainRunnerHead(): string | null;

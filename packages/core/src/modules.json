@@ -81,10 +81,7 @@
     },
     "admin-thresholds": {
       "kind": "domain",
-      "context": "operations",
-      "owns": [
-        "adminThresholds"
-      ]
+      "context": "operations"
     },
     "agent-reports": {
       "kind": "domain",
@@ -527,7 +524,6 @@
       "owns": [
         "notificationDeliveries",
         "notificationDeliveryMembers",
-        "notificationSilences",
         "notifications"
       ]
     },

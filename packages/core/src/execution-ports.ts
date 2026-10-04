@@ -21,7 +21,7 @@ import {
   renderContractContext,
 } from './ecosystem/index.js';
 import { reportLinksOf } from './feedback/index.js';
-import { isHttpsGitUrl, projectsWithHostCredential, provisionGitCredential } from './git/index.js';
+import { isHttpsGitUrl, projectsWithHostCredential } from './git/index.js';
 import { getPublishedRunnerBuild } from './install/index.js';
 import { applyGrantedMcpServers, decryptSecret, isVaultConfigured } from './integrations/index.js';
 import { callFastModel } from './integrations/llm/index.js';
@@ -132,7 +132,6 @@ export function provideExecutionPorts(): void {
     withDeclaredSource,
     projectsWithHostCredential,
     isHttpsGitUrl,
-    provisionGitCredential,
     decryptSecret,
     publishedRunnerBuild: getPublishedRunnerBuild,
     mainRunnerHead,

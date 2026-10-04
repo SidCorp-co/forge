@@ -14,4 +14,4 @@ export { reapDeadRunSessions } from './run-session-reaper.js';
 export { SESSION_SILENCE_TIMEOUT_MS, SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 export { runDeviceStaleSweep } from './stale-detector.js';
 export { deviceHolderUserId } from './workspace-credential.js';
-export { setMaxJobPanes, stampGitCredentialRef } from './writes.js';
+export { setMaxJobPanes } from './writes.js';

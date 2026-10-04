@@ -1,7 +1,7 @@
 import { promises as dns } from 'node:dns';
 import { isIPv4, isIPv6 } from 'node:net';
 import { HTTPException } from 'hono/http-exception';
-import { classifyGitRemote } from './provision-credential.js';
+import { classifyGitRemote } from './remote-transport.js';
 
 function ipv4ToInt(ip: string): number {
   return ip.split('.').reduce((acc, octet) => (acc << 8) + Number(octet), 0) >>> 0;

@@ -29,11 +29,8 @@ import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-res
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
-import { reportFailure } from '../observability/sentry.js';
 import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import { issueDeviceCredential } from './credential.js';
-import type { GitCredential } from './ports.js';
-import { devicesPorts } from './ports.js';
 import { loginCodeState, userExists, userKindAndOrg } from './read.js';
 import { registerDevice } from './register.js';
 import { approveLoginCode, consumeLoginCode, insertLoginCode } from './service.js';
@@ -343,22 +340,6 @@ deviceLoginRoutes.get(
         grantEpoch: row.grantEpoch,
       });
 
-      // Optional, flag-gated, best-effort git push-credential provisioning.
-      let gitCredential: GitCredential | null = null;
-      try {
-        gitCredential = await devicesPorts().provisionGitCredential(device.id);
-      } catch (err) {
-        logger.error(
-          { err, deviceId: device.id },
-          'device login: git-cred provisioning failed (login still succeeds)',
-        );
-        reportFailure(err, {
-          level: 'error',
-          tags: { area: 'runner-login', phase: 'git-cred-provision' },
-          extra: { deviceId: device.id },
-        });
-      }
-
       logger.info(
         { approvedUserId, loginCodeId: row.id, deviceId: device.id },
         'device login: consumed',
@@ -369,7 +350,6 @@ deviceLoginRoutes.get(
       return c.json({
         device_token: plaintext,
         device_id: device.id,
-        ...(gitCredential ? { git_credential: gitCredential } : {}),
       });
     }
 

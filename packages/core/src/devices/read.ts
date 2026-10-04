@@ -87,7 +87,6 @@ export async function listOrgDevices(orgId: string, visibleIds: string[]) {
       disabledAt: devices.disabledAt,
       lastSeenAt: devices.lastSeenAt,
       pairedAt: devices.pairedAt,
-      gitCredentialRef: devices.gitCredentialRef,
       createdAt: devices.createdAt,
       ownerId: devices.ownerId,
       runnerCount: sql<number>`count(${runners.id})::int`,

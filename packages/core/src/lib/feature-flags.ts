@@ -13,8 +13,6 @@ const flagDefs = {
   skillUi: true,
 
   socialAuth: true,
-
-  runnerGitCredProvision: false,
 } as const;
 
 export type FeatureFlag = keyof typeof flagDefs;

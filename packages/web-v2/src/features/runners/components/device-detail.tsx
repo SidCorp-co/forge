@@ -119,20 +119,6 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
 						<span className="fg-body-sm text-subtle">{buildChip.title}</span>
 					</MetaRow>
 				)}
-				<MetaRow label="Git push">
-					{device.gitCredentialRef ? (
-						<span className="inline-flex items-center gap-1.5">
-							<Icon
-								name="check"
-								size={14}
-								className="text-[color:var(--green-600)]"
-							/>
-							provisioned
-						</span>
-					) : (
-						"none"
-					)}
-				</MetaRow>
 				<MetaRow label="Last seen">
 					{formatRelativeTime(device.lastSeenAt, { emptyLabel: "never" })}
 				</MetaRow>

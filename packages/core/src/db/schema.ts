@@ -480,7 +480,6 @@ export const devices = pgTable(
     // cm:why the runner declares its job-pane ceiling and core holds no default (design agent-run-standing):
     // NULL is undeclared, served as such by masters/standing, never a guessed number
     maxJobPanes: integer('max_job_panes'),
-    gitCredentialRef: text('git_credential_ref'),
     machineId: text('machine_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

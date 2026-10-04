@@ -55,7 +55,6 @@ export const PAT_PERMISSION_RESOURCES = {
     prefixes: {
       '/api/skills': 1,
       '/api/skill-facts': 1,
-      '/api/prompts': 1,
       '/api/skill-activity': 2,
     },
   },

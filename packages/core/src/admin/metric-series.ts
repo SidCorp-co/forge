@@ -3,10 +3,9 @@
  * boundaries, the bucketed SQL readers, and the one fold that turns them into a
  * series (ISS-975).
  *
- * Two surfaces are built from this and no other: `GET /overview`'s `glance`
- * tiles and `GET /metrics/:metric/timeseries`. Both go through
- * {@link computeSeries}, so a spark is provably a sample of the series the
- * route returns rather than a parallel computation of it. All window cutoffs
+ * `GET /overview`'s `glance` tiles are built from this and no other, through
+ * {@link computeSeries}, so a spark is a sample of the series rather than a
+ * parallel computation of it. All window cutoffs
  * are bound SQL-side (`now() - (n::int * interval ...)`) — postgres-js cannot
  * serialize a JS Date at Bind time (ISS-267) — and bucket boundaries are
  * computed in JS so every series is dense regardless of which buckets have rows.
@@ -243,8 +242,7 @@ export interface MetricSeries {
  * The dense series over the baseline window AND the current one, plus the two
  * scalars the glance shows, folded in one pass.
  *
- * The `points` array is what `/metrics/:metric/timeseries` returns; `spark` is
- * its current-window tail with null read as zero. That is the same number the
+ * `spark` is the current-window tail of `points` with null read as zero. That is the same number the
  * glance published before the two were one computation, and reading it off the
  * points is what keeps the tile a sample of the series rather than a second
  * opinion about it.
