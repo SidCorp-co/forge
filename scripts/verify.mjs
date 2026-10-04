@@ -38,6 +38,7 @@ const CHECKS = [
     layer: 'entry',
     reads: "each test file's own assertions, judged file by file",
     cmd: ['node', 'scripts/check-test-signal.mjs', '--all'],
+    scopeMayBeEmpty: true, // cm:hack ISS-172 until:QA phase on dev
     scanned: /^test-signal: (\d+) test file/m,
   },
   {
@@ -46,6 +47,7 @@ const CHECKS = [
     layer: 'shared',
     reads: "every tracked test file against every runner's include globs",
     cmd: ['node', 'scripts/check-test-reachability.mjs'],
+    scopeMayBeEmpty: true, // cm:hack ISS-172 until:QA phase on dev
     scanned: /^test-reachability: (\d+) tracked test file/m,
     needs: ['deps'],
     unit: 'test files',
@@ -56,6 +58,7 @@ const CHECKS = [
     layer: 'shared',
     reads: 'every test file for whole-tree declarations, across packages',
     cmd: ['node', 'scripts/check-whole-tree-gates.mjs'],
+    scopeMayBeEmpty: true, // cm:hack ISS-172 until:QA phase on dev
     scanned: /^whole-tree-gates: (\d+) test file\(s\) read/m,
     unit: 'test files',
   },

@@ -3,6 +3,7 @@ import {
   keepTermsInEnglishSchema,
 } from '@forge/contracts/content-language';
 import { SENSITIVE_DATA_LEVELS } from '@forge/contracts/data-policy';
+import { deliveryPolicySchema } from '@forge/contracts/delivery-policy';
 import { REQUIREMENT_READINESS_GATES } from '@forge/contracts/requirements';
 import {
   projectWorkflowTemplateSchema,
@@ -171,6 +172,11 @@ export const projectDocumentSchema = z.strictObject({
     })
     .optional(),
   release: releaseRuleSchema.optional(),
+  // cm:why what the delivery gate asks of an issue (owner ruling on dev, 2026-10-04):
+  // `verdictsRequired: false` lets `awaiting_release` and the release cut pass without a passing
+  // verdict per criterion, and the move's record says `verdicts-waived`
+  // (`issues/transition-guards.ts:verdictGuard`). Absent is `true`.
+  delivery: deliveryPolicySchema.optional(),
   // `designApprover` is retired (ADR 0007): ISS-159 until:no stored project document carries
   // it — still parsed so a stored document reads, refused on write (`rules.ts:checkRetiredApprovers`),
   // never read. `templates` are the project's own diagram templates

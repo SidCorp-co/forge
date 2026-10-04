@@ -2,13 +2,13 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import type { DesignStatus } from './design.js';
+import type { LoadedPinnedContract } from './pinned-contracts.js';
 import {
   type LoadedRequirement,
   type MockupContextRow,
   type RequirementContextRow,
   requirementContext,
 } from './requirement-context.js';
-import type { LoadedPinnedContract } from './pinned-contracts.js';
 import {
   ARTIFACT_CONTEXT_KEY,
   ArtifactContextError,
