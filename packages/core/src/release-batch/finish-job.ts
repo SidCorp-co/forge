@@ -21,6 +21,7 @@ import { logger } from '../observability/logger.js';
 import { closeRunIfOneShot } from '../pipeline/index.js';
 import { abortedError, batchAborted, rewordStoredAbort } from './abort-stamp.js';
 import { assertApprovalAllowsAttempt } from './approvals.js';
+import { assertFinishable, finishReleaseBatch, readReleaseRun } from './finish.js';
 import {
   compareAndSet,
   type FinishRefusal,
@@ -38,7 +39,6 @@ import {
   reasonOf,
   refuseRelease,
 } from './refuse.js';
-import { assertFinishable, finishReleaseBatch, readReleaseRun } from './finish.js';
 import { claimedCommit, NOTHING_TO_COMPARE, notAWholeCommit } from './verify.js';
 
 /** How long a worker's claim on an attempt stands without a renewal. */
@@ -161,7 +161,7 @@ export async function acceptReleaseBatchFinish(
  * One worker's hold on one attempt. Every write goes through `commit`, one at a
  * time, and the first one that finds the record moved ends the hold for good.
  */
-function holdAttempt(runId: string, start: ReleaseFinishRecord, hooks: FinishWorkerHooks = {}) {
+function holdAttempt(runId: string, start: ReleaseFinishRecord) {
   let current = start;
   let lost = false;
   let chain: Promise<unknown> = Promise.resolve();
@@ -197,7 +197,6 @@ function holdAttempt(runId: string, start: ReleaseFinishRecord, hooks: FinishWor
    */
   async function fence(tx: Tx): Promise<void> {
     if (lost) throw fenceLost();
-    await hooks.beforeFence?.();
     const rows = await tx.execute<{ owner: string | null; status: string; metadata: unknown }>(sql`
       SELECT ${pipelineRuns.metadata} -> 'finish' ->> 'owner' AS owner, ${pipelineRuns.status} AS status,
         ${pipelineRuns.metadata} AS metadata
@@ -210,7 +209,6 @@ function holdAttempt(runId: string, start: ReleaseFinishRecord, hooks: FinishWor
       throw fenceLost();
     }
     if (row && batchAborted(row)) throw await abortedError(runId, tx);
-    await hooks.afterFence?.();
   }
 
   return {
@@ -252,19 +250,41 @@ function refusalOf(err: unknown): FinishRefusal {
   };
 }
 
-/**
- * Do the work of the attempt the run carries, if no live worker holds it.
- * Always ends with the record terminal, unless its lease was taken over.
- */
-interface FinishWorkerHooks {
-  /** Test seam: runs after the green verdict is committed and before the first close. */
-  afterVerified?: () => Promise<void>;
-  /** Test seam: runs as a fence starts, before it locks and reads the run row. */
-  beforeFence?: () => Promise<void>;
-  /** Test seam: runs inside a closing write's transaction, after the fence passed. */
-  afterFence?: () => Promise<void>;
-  /** Test seam: runs after the claims are released and before `finished` is written. */
-  beforeFinishedWrite?: () => Promise<void>;
+/** A finish that stopped: its refusal written on the record, unless the hold was lost or it finished. */
+async function recordFinishFailure(
+  err: unknown,
+  runId: string,
+  hold: ReturnType<typeof holdAttempt>,
+): Promise<void> {
+  if (isRefusal(err, FENCE_LOST) || hold.lost) return;
+  if (hold.state === 'finished') {
+    // The roster is closed and recorded; only the run's close failed, which the sweep retries.
+    logger.error({ err, runId }, 'release-batch: a finished release could not close its run');
+    return;
+  }
+  const own = refusalOf(err);
+  if (own.code === 'RELEASE_FINISH_ERRORED') {
+    logger.error({ err, runId }, 'release-batch: a finish stopped on an unexpected error');
+  }
+  const failed = (refusal: FinishRefusal) => () => ({
+    state: 'failed' as const,
+    refusal,
+    owner: null,
+    leaseUntil: null,
+    finishedAt: new Date().toISOString(),
+  });
+  // The write reads the run itself, so an abort landing just before it still wins, and the
+  // abort's account is read only once that write has missed.
+  await hold
+    .commit(failed(own), async () => failed(refusalOf(await abortedError(runId)))())
+    .catch(() => {});
+  // An abort still between its stamp and its settle was read as `returning`; see rewordStoredAbort.
+  await rewordStoredAbort(runId).catch((reworded) => {
+    logger.error(
+      { err: reworded, runId },
+      'release-batch: an aborted refusal could not be re-read',
+    );
+  });
 }
 
 /**
@@ -288,7 +308,11 @@ async function refuseIfAborted(runId: string): Promise<void> {
   if (run && batchAborted(run)) throw await abortedError(runId);
 }
 
-async function runReleaseBatchFinish(runId: string, hooks: FinishWorkerHooks = {}): Promise<void> {
+/**
+ * Do the work of the attempt the run carries, if no live worker holds it.
+ * Always ends with the record terminal, unless its lease was taken over.
+ */
+async function runReleaseBatchFinish(runId: string): Promise<void> {
   const run = await readReleaseRun(runId);
   const record = run ? readFinishRecord(run.metadata) : null;
   if (!run || !record) return;
@@ -303,7 +327,7 @@ async function runReleaseBatchFinish(runId: string, hooks: FinishWorkerHooks = {
   if (!isInFlight(record) || leaseStands(record, Date.now())) return;
 
   const owner = randomUUID();
-  const hold = holdAttempt(runId, record, hooks);
+  const hold = holdAttempt(runId, record);
   try {
     await hold.commit((r) => ({
       owner,
@@ -328,7 +352,6 @@ async function runReleaseBatchFinish(runId: string, hooks: FinishWorkerHooks = {
       onVerified: async (verification) => {
         await refuseIfAborted(runId);
         await hold.commit(() => ({ state: 'closing', verification }));
-        await hooks.afterVerified?.();
       },
       fence: hold.fence,
       onRosterClosed: async (result) => {
@@ -340,7 +363,6 @@ async function runReleaseBatchFinish(runId: string, hooks: FinishWorkerHooks = {
         if (aborted) throw await abortedError(runId);
       },
       onClosed: async (result) => {
-        await hooks.beforeFinishedWrite?.();
         await hold.commit((r) => ({
           ...mergeOutcome(r, result),
           state: 'finished',
@@ -351,35 +373,7 @@ async function runReleaseBatchFinish(runId: string, hooks: FinishWorkerHooks = {
       },
     });
   } catch (err) {
-    if (isRefusal(err, FENCE_LOST) || hold.lost) return;
-    if (hold.state === 'finished') {
-      // The roster is closed and recorded; only the run's close failed, which the sweep retries.
-      logger.error({ err, runId }, 'release-batch: a finished release could not close its run');
-      return;
-    }
-    const own = refusalOf(err);
-    if (own.code === 'RELEASE_FINISH_ERRORED') {
-      logger.error({ err, runId }, 'release-batch: a finish stopped on an unexpected error');
-    }
-    const failed = (refusal: FinishRefusal) => () => ({
-      state: 'failed' as const,
-      refusal,
-      owner: null,
-      leaseUntil: null,
-      finishedAt: new Date().toISOString(),
-    });
-    // The write reads the run itself, so an abort landing just before it still wins, and the
-    // abort's account is read only once that write has missed.
-    await hold
-      .commit(failed(own), async () => failed(refusalOf(await abortedError(runId)))())
-      .catch(() => {});
-    // An abort still between its stamp and its settle was read as `returning`; see rewordStoredAbort.
-    await rewordStoredAbort(runId).catch((reworded) => {
-      logger.error(
-        { err: reworded, runId },
-        'release-batch: an aborted refusal could not be re-read',
-      );
-    });
+    await recordFinishFailure(err, runId, hold);
   } finally {
     clearInterval(heartbeat);
   }
