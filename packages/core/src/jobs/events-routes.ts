@@ -10,14 +10,13 @@ import {
   sessionRuntimeStates,
 } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { projectRoom, roomManager } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
 import { requireHeld } from '../permissions/index.js';
-import { projectRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { readJobGate } from './job-queries.js';
 import { scrubJobOutput } from './job-secret-scrub.js';

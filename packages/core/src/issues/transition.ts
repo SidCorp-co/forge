@@ -4,11 +4,11 @@ import { type IssueStatus, issueStatuses, waitingKinds } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
+import { projectRoom, roomManager } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { projectRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
+import { requireHeld } from '../permissions/index.js';
 import {
   type StatusTransitionResult,
   TransitionError,
@@ -23,7 +23,6 @@ import { transitionIssueRow } from './read-service.js';
 import { recordEventRoutes } from './record-events/routes.js';
 import { refuseOffRecoveryEdge, withRecoveryHint } from './recovery-move.js';
 import { refuseLegacyStatusFields } from './status-input.js';
-import { requireHeld } from '../permissions/index.js';
 
 const transitionBodySchema = z
   .object({

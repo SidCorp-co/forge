@@ -83,3 +83,5 @@ export class RoomManager {
     return this.rooms.get(room)?.size ?? 0;
   }
 }
+
+export const roomManager = new RoomManager();

@@ -24,10 +24,10 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import { freshRunnerAvailability } from '../jobs/queued-gates.js';
+import { projectRoom, roomManager } from '../lib/rooms.js';
 import { logger } from '../observability/logger.js';
 import { holderFanout, readClaim } from '../pipeline/lease-fanout.js';
 import type { LeaseReading } from '../pipeline/session-claim.js';
-import { projectRoom } from '../ws/rooms.js';
 import { classifyIssueWorker, type SessionWorkerLane, unreadableWorker } from './issue-worker.js';
 import { loadActiveJobsByIssue, loadPausedRunsByIssue } from './pipeline-health-loaders.js';
 import {
@@ -287,7 +287,6 @@ export async function publishPipelineHealthChanged(
 ): Promise<void> {
   if (issueIds.length === 0) return;
   try {
-    const { roomManager } = await import('../ws/server.js');
     const map = await hydratePipelineHealthForIssues(projectId, issueIds);
     for (const [issueId, pipelineHealth] of map) {
       roomManager.publish(projectRoom(projectId), {

@@ -10,8 +10,7 @@ import type {
 import { assertConversationReadable } from '../conversations/scope.js';
 import { findConversation } from '../conversations/store.js';
 import type { ConversationShape } from '../db/schema-conversations.js';
-import { roomManager } from '../ws/room-manager.js';
-import { userRoom } from '../ws/rooms.js';
+import { roomManager, userRoom } from '../lib/rooms.js';
 import type { SpeakerResolution } from './identity/speaker-link.js';
 
 /** What the Forge UI hands the ports: the room it already read, and who is typing in it. */
