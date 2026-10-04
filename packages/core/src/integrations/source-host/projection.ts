@@ -3,15 +3,14 @@
  *
  * Four events, one row shape. Everything here is derived from the payload alone
  * and nothing calls GitHub: what a payload cannot answer is
- * `projection-refresh.ts`'s, and it runs after this has committed so a failed
+ * `github/projection-refresh.ts`'s, and it runs after this has committed so a failed
  * read can never cost the fact the delivery did carry.
  *
  * Nothing here creates, closes or transitions a Forge issue. A pull request is a
- * change under review, not a unit of work, and the guard in
- * `webhooks/github-adapter.ts` that says so is the older half of this rule.
+ * change under review, not a unit of work.
  */
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { db, type Tx } from '../../db/client.js';
 import {
   type ChangeRequestHost,
@@ -19,7 +18,7 @@ import {
   type ProjectedReview,
   repoPullRequests,
 } from '../../db/schema-repo-projection.js';
-import { resolveIssueForHeadRef } from './issue-link.js';
+import { forgeReads } from '../forge-reads.js';
 import { foldCheckRun, foldReviewDismissed, foldReviewSubmitted } from './projection-shape.js';
 
 /** What the caller already knows about the delivery's binding. */
@@ -128,7 +127,7 @@ export async function applyPullRequestEvent(
   const baseSha = pr?.base?.sha;
   if (!pr || !number || !headRef || !headSha || !baseRef || !baseSha) return 0;
 
-  const issueId = await resolveIssueForHeadRef({ projectId: ctx.projectId, headRef });
+  const issueId = await forgeReads().issueForHeadRef(ctx.projectId, headRef);
   const updatedAt = pr.updated_at ? new Date(pr.updated_at) : null;
 
   const sameTarget = sql`${repoPullRequests.headSha} = excluded.head_sha AND ${repoPullRequests.baseRef} = excluded.base_ref`;
@@ -362,4 +361,89 @@ export async function markPullRequestMerged(
       updatedAt: new Date(),
     })
     .where(eq(repoPullRequests.id, id));
+}
+
+export const BASE_PUSH_REFRESH_CAP = 25;
+
+export const CAP_REACHED_REASON = `not refreshed: this base push moved more than ${BASE_PUSH_REFRESH_CAP} open pull requests, and this one is past the cap — its behind-by is from before the push`;
+
+/** What a re-read of one stored change request answered, or why it could not. */
+export type RefreshOutcome =
+  | {
+      ok: true;
+      behindBy: number | null;
+      aheadBy: number | null;
+      mergeable: boolean | null;
+      mergeableState: string | null;
+      baseSha: string | null;
+    }
+  | { ok: false; reason: string };
+
+export async function storeRefresh(
+  rowId: string,
+  target: { headSha: string; baseRef: string; startedAt?: Date },
+  outcome: RefreshOutcome,
+): Promise<boolean> {
+  const startedAt = target.startedAt ?? new Date();
+  const set = outcome.ok
+    ? {
+        behindBy: outcome.behindBy,
+        aheadBy: outcome.aheadBy,
+        mergeable: outcome.mergeable,
+        mergeableState: outcome.mergeableState,
+        ...(outcome.baseSha ? { baseSha: outcome.baseSha } : {}),
+        refreshedForHead: target.headSha,
+        refreshedAt: startedAt,
+        refreshError: null,
+        updatedAt: new Date(),
+      }
+    : {
+        refreshedForHead: target.headSha,
+        refreshedAt: startedAt,
+        refreshError: outcome.reason,
+        updatedAt: new Date(),
+      };
+  const rows = await db
+    .update(repoPullRequests)
+    .set(set)
+    .where(
+      and(
+        eq(repoPullRequests.id, rowId),
+        eq(repoPullRequests.headSha, target.headSha),
+        eq(repoPullRequests.baseRef, target.baseRef),
+        or(isNull(repoPullRequests.refreshedAt), lte(repoPullRequests.refreshedAt, startedAt)),
+      ),
+    )
+    .returning({ id: repoPullRequests.id });
+  return rows.length > 0;
+}
+
+/**
+ * Put a refusal onto the rows a delivery could not read for at all.
+ *
+ * A binding with no installation or no App key is the commonest of these, and it
+ * is the one an operator can act on — leaving the row's counts null with nothing
+ * beside them makes "nobody has asked yet" and "Forge cannot ask" the same
+ * answer, which is the silent substitution the rest of this design refuses.
+ */
+export async function storeRefreshRefusal(
+  rows: Array<{ id: string; headSha: string; baseRef: string }>,
+  reason: string,
+): Promise<number> {
+  let touched = 0;
+  for (const row of rows) {
+    if (await storeRefresh(row.id, row, { ok: false, reason })) touched += 1;
+  }
+  return touched;
+}
+
+/** Mark the rows a base push could not reach, so the truncation is on the row. */
+export async function markRefreshCapped(rowIds: string[]): Promise<number> {
+  if (rowIds.length === 0) return 0;
+  const rows = await db
+    .update(repoPullRequests)
+    .set({ refreshError: CAP_REACHED_REASON, refreshedAt: new Date(), updatedAt: new Date() })
+    .where(inArray(repoPullRequests.id, rowIds))
+    .returning({ id: repoPullRequests.id });
+  return rows.length;
 }

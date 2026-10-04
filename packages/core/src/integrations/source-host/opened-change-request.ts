@@ -15,7 +15,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { type ChangeRequestHost, repoPullRequests } from '../../db/schema-repo-projection.js';
-import type { OpenedChangeRequest } from '../source-host/types.js';
+import type { OpenedChangeRequest } from './types.js';
 import { applyPullRequestEvent, type PullRequestPayload } from './projection.js';
 
 export type OpenedProjectionOutcome =

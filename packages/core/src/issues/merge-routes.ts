@@ -27,17 +27,7 @@ import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
 import { LANDED_CONTRACT } from '../ecosystem/contract/drift.js';
-import {
-  describeEmptyProjection,
-  projectionPipeReport,
-} from '../integrations/github/projection-health.js';
-import { openPullRequestsForIssue } from '../integrations/repo-projection.js';
-import { SourceHostUnavailable } from '../integrations/source-host/errors.js';
-import {
-  CHANGE_REQUEST_MERGE_METHODS,
-  MergeInputError,
-  mergeStoredChangeRequest,
-} from '../integrations/source-host/merge.js';
+import { CHANGE_REQUEST_MERGE_METHODS, describeEmptyProjection, type IssueMergeStamp, MergeInputError, mergeStoredChangeRequest, openPullRequestsForIssue, projectionPipeReport, SourceHostUnavailable } from '../integrations/source-host/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
@@ -46,8 +36,13 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { mergedLandingSchema } from './landing-evidence.js';
 import { applyMergeMarker, mergedCommitShaSchema } from './merge-marker.js';
+import { recordIssueMerge } from './merge-record.js';
 
 const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
+
+/** The stamp Forge's own merge writes, in the transaction that marks the projection row. */
+export const stampKernelMerge: IssueMergeStamp = (tx, { issueId, commitSha, mergedAt }) =>
+  recordIssueMerge(tx, { issueId, evidence: { kind: 'observed', commitSha, mergedAt, via: 'kernel' } });
 
 export const issueMergeRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -216,13 +211,16 @@ issueMergeRoutes.post(
 
     const actor = restActor(c);
     try {
-      const outcome = await mergeStoredChangeRequest({
-        pullRequestId: stored.id,
-        requestedBy: `${actor.type}:${actor.id}`,
-        runId: body.runId ?? null,
-        ...(body.headSha ? { expectedHeadSha: body.headSha } : {}),
-        ...(body.method ? { method: body.method } : {}),
-      });
+      const outcome = await mergeStoredChangeRequest(
+        {
+          pullRequestId: stored.id,
+          requestedBy: `${actor.type}:${actor.id}`,
+          runId: body.runId ?? null,
+          ...(body.headSha ? { expectedHeadSha: body.headSha } : {}),
+          ...(body.method ? { method: body.method } : {}),
+        },
+        stampKernelMerge,
+      );
       if (!outcome) throw notFound('pull request not found');
       if (outcome.kind === 'refused') {
         throw refuse('MERGE_REFUSED', `${outcome.detail} (${outcome.reason})`);

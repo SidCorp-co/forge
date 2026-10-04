@@ -4,4 +4,5 @@ export { adminMcpAuditRoutes } from './mcp-audit-routes.js';
 export { adminMetricSeriesRoutes } from './metric-series-routes.js';
 export { pipelineHealthAdminRoutes } from './pipeline-health-routes.js';
 export { adminRoutes } from './routes.js';
+export { readThresholds } from './thresholds.js';
 export { adminThresholdRoutes } from './thresholds-routes.js';

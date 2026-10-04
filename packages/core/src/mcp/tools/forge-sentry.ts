@@ -15,14 +15,7 @@
  */
 
 import { z } from 'zod';
-import {
-  readProjectSentryIssue,
-  readProjectSentryIssues,
-  SENTRY_AGENT_STATUSES,
-  type SentryAgentListRequest,
-} from '../../integrations/sentry/agent-read.js';
-import { SENTRY_LIST_MAX_LIMIT } from '../../integrations/sentry/listing.js';
-import { isSentryRefusal, SentryRefusal } from '../../integrations/sentry/refusals.js';
+import { isSentryRefusal, readProjectSentryIssue, readProjectSentryIssues, SENTRY_AGENT_STATUSES, SENTRY_LIST_MAX_LIMIT, type SentryAgentListRequest, SentryRefusal } from '../../integrations/sentry/index.js';
 import {
   type ContextScopedMcpToolFactory,
   type McpContext,

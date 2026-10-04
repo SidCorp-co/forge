@@ -1,4 +1,4 @@
-import { sanitizeUntrusted } from '../../prompt/sanitize.js';
+import { sanitizeUntrusted } from '../../lib/untrusted-text.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
 import type { OutboundDispatchInput, OutboundDispatchResult } from '../types.js';
 import { callSentry, type SentryAdapterContext } from './call.js';

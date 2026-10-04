@@ -1,5 +1,4 @@
 import type { BindingRole } from '../../db/schema.js';
-import { handleGitHubEvent } from '../../webhooks/github-adapter.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
 import { sourceHostMismatch } from '../source-host/bind.js';
 import { type IntegrationConnectionRow, updateConnection } from '../store.js';
@@ -9,6 +8,7 @@ import {
   type HealthCheckResult,
   type InboundDispatchInput,
   type InboundDispatchResult,
+  type InboundFact,
   type IntegrationAdapterMethods,
 } from '../types.js';
 import { GitHubAuthError, installationToken } from './app-auth.js';
@@ -16,6 +16,7 @@ import { compareBoundRepository, githubInboundSecret } from './bind-effects.js';
 import { githubGitCredential } from './git-credential.js';
 import { readAppHookConfig } from './hook-config.js';
 import { checkInstallationGrant } from './installation-permissions.js';
+import { type GitHubEventPayload, handleGitHubEvent } from './projection-events.js';
 import { GITHUB_BINDING_CONFIG_KEYS, githubConfigBase, githubSecretsSchema } from './schemas.js';
 import { githubHostOf, githubSourceHost } from './source-host.js';
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
@@ -190,8 +191,7 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
     const eventType = input.headers['x-github-event'];
     if (!eventType) throw new Error('github webhook: x-github-event missing');
 
-    const payload = input.payload as Parameters<typeof handleGitHubEvent>[2] & {
-      action?: string;
+    const payload = input.payload as GitHubEventPayload & {
       repository?: { full_name?: string };
     };
 
@@ -209,14 +209,16 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
       payload,
       ...(guid ? { requestId: guid } : {}),
     };
-    let result: Awaited<ReturnType<typeof handleGitHubEvent>>;
+    const facts: InboundFact[] = [];
+    let actions: number;
     try {
-      result = await handleGitHubEvent(
+      actions = await handleGitHubEvent(
         {
           projectId: ctx.projectId,
           bindingId: ctx.bindingId,
           config: ctx.config ?? {},
           secrets: ctx.secrets ?? {},
+          facts,
         },
         eventType,
         payload,
@@ -230,7 +232,7 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
     }
     // Logged once the event is applied, so an `ok` row says what happened rather than what arrived.
     const deliveryId = await recordDelivery({ ...logged, status: 'ok' });
-    return { deliveryId, actions: result.actions };
+    return { deliveryId, actions: actions + facts.length, facts };
   },
 };
 

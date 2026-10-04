@@ -1,12 +1,10 @@
 import { eq } from 'drizzle-orm';
-import { db } from '../../db/client.js';
+import { db, type Tx } from '../../db/client.js';
 import { pipelineRuns } from '../../db/schema.js';
 import { repoPullRequests } from '../../db/schema-repo-projection.js';
-import { recordIssueMerge } from '../../issues/merge-record.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
 import { SourceHostUnavailable } from './errors.js';
-import { resolveIssueForHeadRef } from '../github/issue-link.js';
-import { markPullRequestMerged } from '../github/projection.js';
+import { markPullRequestMerged } from './projection.js';
 import { sourceHostForBinding } from './resolve.js';
 import type { SourceHost } from './types.js';
 
@@ -16,6 +14,15 @@ export const MERGE_EVENT = 'pull_request.merge';
 /** Every merge method any host has. A host that lacks one refuses it by name (`words.mergeMethods`). */
 export const CHANGE_REQUEST_MERGE_METHODS = ['merge', 'squash', 'rebase'] as const;
 export type ChangeRequestMergeMethod = (typeof CHANGE_REQUEST_MERGE_METHODS)[number];
+
+/**
+ * Writes the issue's merge stamp in the transaction that marks the projection row, and answers whether
+ * it wrote. Supplied by the caller, which owns the stamp; the adapter owns only the row.
+ */
+export type IssueMergeStamp = (
+  tx: Tx,
+  args: { issueId: string; commitSha: string; mergedAt: Date },
+) => Promise<{ wrote: boolean }>;
 
 export interface MergeRequest {
   /** The `repo_pull_requests` row to merge. */
@@ -111,15 +118,13 @@ async function writeEvidence(args: {
   host: SourceHost;
   commitSha: string;
   mergedAt: Date;
+  stampIssue: IssueMergeStamp;
 }): Promise<{ stamped: boolean }> {
-  const { row, host, commitSha, mergedAt } = args;
+  const { row, host, commitSha, mergedAt, stampIssue } = args;
   try {
     return await db.transaction(async (tx) => {
       const stamp = row.issueId
-        ? await recordIssueMerge(tx, {
-            issueId: row.issueId,
-            evidence: { kind: 'observed', commitSha, mergedAt, via: 'kernel' },
-          })
+        ? await stampIssue(tx, { issueId: row.issueId, commitSha, mergedAt })
         : { wrote: false };
       await markPullRequestMerged(tx, row.id, { commitSha, mergedAt });
       return { stamped: stamp.wrote };
@@ -151,9 +156,9 @@ async function refuse(deliveryId: string, reason: string, detail: string): Promi
  * `expectBindingId` is how a caller authorised for ONE binding says so: a dispatch holding a context
  * for binding A and a row belonging to binding B would validate A and then MERGE on B's repository.
  */
-// cm:flow release/stamp — the merge is the stamp: one operation writes issues.merged_at, issues.merged_commit_sha and the projection row's merged state
 export async function mergeStoredChangeRequest(
   req: MergeRequest,
+  stampIssue: IssueMergeStamp,
   expectBindingId?: string,
 ): Promise<MergeOutcome | null> {
   const row = await storedRow(req.pullRequestId);
@@ -212,6 +217,7 @@ export async function mergeStoredChangeRequest(
     host,
     commitSha: result.commitSha,
     mergedAt: result.mergedAt,
+    stampIssue,
   });
   await updateDelivery(deliveryId, {
     status: 'ok',
@@ -228,35 +234,4 @@ export async function mergeStoredChangeRequest(
     mergedAt: result.mergedAt,
     stamped,
   };
-}
-
-/**
- * The merge a source host reports by webhook, on the row the kernel's own merge writes: the one stamp
- * for GitHub and GitLab alike. Somebody pressing Merge on the host and Forge merging are one landing
- * arriving by two routes, and they produce one record because both write through `recordIssueMerge`
- * under `merged_commit_sha IS NULL`. It records the merge and moves no status. Answers whether this
- * call wrote the stamp.
- */
-export async function stampHostMerge(args: {
-  projectId: string;
-  headRef: string;
-  commitSha: string;
-  mergedAt: Date;
-}): Promise<boolean> {
-  if (Number.isNaN(args.mergedAt.getTime())) return false;
-  const issueId = await resolveIssueForHeadRef({
-    projectId: args.projectId,
-    headRef: args.headRef,
-  });
-  if (!issueId) return false;
-  const stamp = await recordIssueMerge(db, {
-    issueId,
-    evidence: {
-      kind: 'observed',
-      commitSha: args.commitSha,
-      mergedAt: args.mergedAt,
-      via: 'event',
-    },
-  });
-  return stamp.wrote;
 }

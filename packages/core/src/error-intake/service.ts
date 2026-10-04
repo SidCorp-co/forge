@@ -1,13 +1,16 @@
+import type { ErrorTrackerIssue, ErrorTrackerTarget } from '@forge/contracts/outbox-events';
 import { and, eq, type SQL, sql } from 'drizzle-orm';
-import { readThresholds } from '../../admin/thresholds.js';
-import { db } from '../../db/client.js';
-import { postIssueNotice } from '../../comments/index.js';
-import { issues, projects } from '../../db/schema.js';
-import { TransitionError, transitionIssueStatus } from '../../issues/apply-transition.js';
-import { fileDetectedIssue, rewriteIssueMetadata } from '../../issues/index.js';
-import { logger } from '../../observability/logger.js';
-import { judgeSentryIssue, type SentryAdmissionThresholds } from './admission.js';
-import type { SentryIssueDetail } from './types.js';
+import { postIssueNotice } from '../comments/index.js';
+import { db } from '../db/client.js';
+import { issues, projects } from '../db/schema.js';
+import {
+  fileDetectedIssue,
+  rewriteIssueMetadata,
+  TransitionError,
+  transitionIssueStatus,
+} from '../issues/index.js';
+import { logger } from '../observability/logger.js';
+import { judgeSentryIssue, type SentryAdmissionThresholds } from './rules.js';
 
 /** The status a Sentry issue is filed at, and the only one this path ever writes on a create. */
 export const SENTRY_FILED_STATUS = 'draft' as const;
@@ -67,7 +70,7 @@ export interface SentryIntakeContext {
   createdById: string;
   thresholds: SentryAdmissionThresholds;
   /** The declared target this issue was confined to, named in the filed issue's body. */
-  target: { label: string; organizationSlug: string; projectSlug?: string };
+  target: ErrorTrackerTarget;
   /** The schedule fire that pulled it, or null for the webhook door. */
   scheduleRunId: string | null;
 }
@@ -95,13 +98,25 @@ export async function projectCreatedById(projectId: string): Promise<string | nu
   return row?.createdBy ?? null;
 }
 
-/** The admission policy, read from `admin_thresholds` — the SAME read on both doors. */
+type ThresholdSource = () => Promise<SentryAdmissionThresholds>;
+let thresholdSource: ThresholdSource | null = null;
+
+/**
+ * Where the admission policy is read from (`admin_thresholds`, the admin module's). The process entry
+ * provides it at boot, so this domain reads no module above it.
+ */
+export function provideAdmissionThresholds(source: ThresholdSource): void {
+  thresholdSource = source;
+}
+
+/** The admission policy — the SAME read for the webhook's sightings and the scheduled pull. */
 export async function readSentryThresholds(): Promise<SentryAdmissionThresholds> {
-  const policy = await readThresholds();
-  return {
-    minEventCount: policy.sentryMinEventCount,
-    minUserCount: policy.sentryMinUserCount,
-  };
+  if (!thresholdSource) {
+    throw new Error(
+      'error intake: no admission threshold source was provided; the process entry calls provideAdmissionThresholds before it serves',
+    );
+  }
+  return thresholdSource();
 }
 
 /** Bound a TITLE, which is a column a person scans. Never used for the run's own record. */
@@ -112,15 +127,15 @@ function capTitle(text: string, max: number): string {
 /**
  * The title and body a Sentry issue becomes.
  *
- * Both fields are already `sanitizeUntrusted`-stripped by `issues.ts:projectIssue`. The title is
+ * Both fields are already `sanitizeUntrusted`-stripped by the error-tracking port (`integrations/sentry/issues.ts:projectIssue`). The title is
  * capped because it is a column a person scans, and the structural fields (counts, timestamps,
  * permalink) are written by this code from typed values rather than copied out of free text.
  */
 export function buildSentryIssueRow(
-  issue: SentryIssueDetail,
+  issue: ErrorTrackerIssue,
   externalId: string,
   detectorKey: string,
-  target: { label: string; organizationSlug: string; projectSlug?: string },
+  target: ErrorTrackerTarget,
 ): SentryIssueRow {
   const headline = issue.title?.trim() ? issue.title.trim() : `Sentry issue ${externalId}`;
   const lines = [
@@ -165,7 +180,7 @@ export function sentryWatermarkStamp(lastSeen: string): SQL {
 }
 
 export function sighting(
-  issue: SentryIssueDetail,
+  issue: ErrorTrackerIssue,
   shortId: string,
   previous: SentrySightingRecord | null,
 ): SentrySightingRecord {
@@ -254,7 +269,7 @@ interface Observation {
 
 async function observe(
   existing: ExistingIssue,
-  issue: SentryIssueDetail,
+  issue: ErrorTrackerIssue,
   shortId: string,
   authorId: string,
 ): Promise<Observation> {
@@ -325,7 +340,7 @@ async function file(
  */
 async function reopenOnRegression(
   existing: ExistingIssue,
-  issue: SentryIssueDetail,
+  issue: ErrorTrackerIssue,
   shortId: string,
   previous: SentrySightingRecord | null,
   ctx: SentryIntakeContext,
@@ -390,13 +405,13 @@ async function reopenOnRegression(
 }
 
 /**
- * ONE Sentry issue, decided. The whole of what a door has to do with an error.
+ * ONE Sentry issue, decided. The whole of what Forge does with an error.
  *
- * Both callers — `intake.ts`'s scheduled pull and `webhook.ts`'s delivery handler — reach this and
- * nothing else, so neither can answer differently about whether an error is work.
+ * Both routes — `pull.ts`'s scheduled pull and `sightings.ts`'s reaction to a webhook's sighting —
+ * reach this and nothing else, so neither can answer differently about whether an error is work.
  */
 export async function intakeSentryIssue(
-  issue: SentryIssueDetail,
+  issue: ErrorTrackerIssue,
   ctx: SentryIntakeContext,
 ): Promise<SentryIntakeOutcome> {
   const shortId = issue.shortId?.trim() ?? '';

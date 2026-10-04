@@ -1,5 +1,5 @@
-import { readDeclaredSource } from '../../project-config/source.js';
 import { grantHolds, notGrantedMessage } from '../agent-access.js';
+import { forgeReads } from '../forge-reads.js';
 import { getIntegration, listIntegrations } from '../registry.js';
 import {
   type BindingWithConnection,
@@ -74,7 +74,7 @@ export async function resolveSourceHost(
     );
   }
 
-  const declaredHost = hostOfRepository((await readDeclaredSource(projectId)).repository);
+  const declaredHost = hostOfRepository(await forgeReads().declaredRepository(projectId));
   const onHost = declaredHost
     ? considered.filter(
         (p) => factoryOf(p.binding.provider)?.hostOf(effectiveConfig(p)) === declaredHost,

@@ -1,4 +1,4 @@
-import { runSentryPull, type SentryPullOutcome } from '../integrations/sentry/intake.js';
+import { runSentryPull, type SentryPullOutcome } from '../error-intake/index.js';
 import type { DispatchScheduleInput, RoutedFire } from './dispatch-types.js';
 import { resolveScheduleTargetProject } from './release-batch-dispatch.js';
 

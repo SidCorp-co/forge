@@ -2,9 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projectGitCredentials, workspaceSshKeys } from '../db/schema.js';
 import { type BranchRefs, GIT_ACCESS, readRemoteDivergence } from '../git/remote-divergence.js';
-import { SourceHostUnavailable } from '../integrations/source-host/errors.js';
-import { resolveSourceHost } from '../integrations/source-host/resolve.js';
-import type { LiveDivergence, SourceHost } from '../integrations/source-host/types.js';
+import { type LiveDivergence, resolveSourceHost, type SourceHost, SourceHostUnavailable } from '../integrations/source-host/index.js';
 import { decryptSecret, isVaultConfigured } from '../integrations/vault.js';
 import { readDeclaredSource, remoteOf } from '../project-config/source.js';
 

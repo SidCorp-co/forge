@@ -3,6 +3,7 @@ export { registerContractMeasureWorker } from './contract/land.js';
 export { contractRoutes } from './contract/routes.js';
 export { busRoutes, linkProjectRoutes } from './link-routes.js';
 export { ecosystemProjectRoutes } from './project-routes.js';
+export { registerSourcePushReactions } from './source-push.js';
 export { contractRequestRoutes } from './requests/routes.js';
 export { ecosystemRoutes, membershipRoutes } from './routes.js';
 export { contractStandingRoutes } from './standing/routes.js';

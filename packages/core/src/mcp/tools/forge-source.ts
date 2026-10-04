@@ -3,7 +3,7 @@
  * source host, whichever host that is: a GitHub pull request or a GitLab merge request.
  *
  * The point of the tool is what it does NOT hand back: the host credential is resolved
- * server-side and the call is made from core, through `integrations/source-host/resolve.ts`.
+ * server-side and the call is made from core, through the source-host port (`integrations/source-host/index.ts`).
  *
  * The action list and what each one returns live in the `description` below — it is what a model
  * actually reads, and a second copy here is one that goes stale.
@@ -13,19 +13,9 @@
  */
 
 import { z } from 'zod';
-import {
-  OpenedPullRequestIncomplete,
-  projectOpenedPullRequest,
-} from '../../integrations/github/opened-pull-request.js';
-import { noteReviewOnIssue } from '../../integrations/github/review-note.js';
+import { OpenedPullRequestIncomplete, projectOpenedPullRequest, resolveSourceHost, type ReviewEvent, type SourceHost, SourceHostCallError, SourceHostInputRefusal, SourceHostUnavailable } from '../../integrations/source-host/index.js';
+import { noteReviewOnIssue } from '../../comments/index.js';
 import { listIntegrations } from '../../integrations/registry.js';
-import {
-  SourceHostCallError,
-  SourceHostInputRefusal,
-  SourceHostUnavailable,
-} from '../../integrations/source-host/errors.js';
-import { resolveSourceHost } from '../../integrations/source-host/resolve.js';
-import type { ReviewEvent, SourceHost } from '../../integrations/source-host/types.js';
 import { logger } from '../../logger.js';
 import {
   type ContextScopedMcpToolFactory,

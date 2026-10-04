@@ -1,12 +1,9 @@
-import { and, eq, inArray, isNull, lte, or } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { repoPullRequests } from '../../db/schema-repo-projection.js';
 import { logger } from '../../observability/logger.js';
+import { type RefreshOutcome, storeRefresh } from '../source-host/projection.js';
 import { GitHubClientError, GitHubReadError, type GitHubRepoClient } from './client.js';
-
-export const BASE_PUSH_REFRESH_CAP = 25;
-
-export const CAP_REACHED_REASON = `not refreshed: this base push moved more than ${BASE_PUSH_REFRESH_CAP} open pull requests, and this one is past the cap — its behind-by is from before the push`;
 
 interface PullRead {
   mergeable?: boolean | null;
@@ -21,24 +18,12 @@ interface CompareRead {
   base_commit?: { sha?: string };
 }
 
-/** What the two reads answered, or why they could not. */
 /** The row this refresh is an answer about — both halves, because either can move. */
 export interface RefreshTarget {
   number: number;
   baseRef: string;
   headSha: string;
 }
-
-export type RefreshOutcome =
-  | {
-      ok: true;
-      behindBy: number | null;
-      aheadBy: number | null;
-      mergeable: boolean | null;
-      mergeableState: string | null;
-      baseSha: string | null;
-    }
-  | { ok: false; reason: string };
 
 /**
  * Ask GitHub the two questions a payload cannot answer, for one pull request at
@@ -101,45 +86,6 @@ function targetMismatch(args: RefreshTarget, pull: PullRead): string | null {
   return null;
 }
 
-export async function storeRefresh(
-  rowId: string,
-  target: { headSha: string; baseRef: string; startedAt?: Date },
-  outcome: RefreshOutcome,
-): Promise<boolean> {
-  const startedAt = target.startedAt ?? new Date();
-  const set = outcome.ok
-    ? {
-        behindBy: outcome.behindBy,
-        aheadBy: outcome.aheadBy,
-        mergeable: outcome.mergeable,
-        mergeableState: outcome.mergeableState,
-        ...(outcome.baseSha ? { baseSha: outcome.baseSha } : {}),
-        refreshedForHead: target.headSha,
-        refreshedAt: startedAt,
-        refreshError: null,
-        updatedAt: new Date(),
-      }
-    : {
-        refreshedForHead: target.headSha,
-        refreshedAt: startedAt,
-        refreshError: outcome.reason,
-        updatedAt: new Date(),
-      };
-  const rows = await db
-    .update(repoPullRequests)
-    .set(set)
-    .where(
-      and(
-        eq(repoPullRequests.id, rowId),
-        eq(repoPullRequests.headSha, target.headSha),
-        eq(repoPullRequests.baseRef, target.baseRef),
-        or(isNull(repoPullRequests.refreshedAt), lte(repoPullRequests.refreshedAt, startedAt)),
-      ),
-    )
-    .returning({ id: repoPullRequests.id });
-  return rows.length > 0;
-}
-
 /**
  * Refresh one stored pull request: capture its head, read, write under it.
  *
@@ -168,34 +114,4 @@ export async function refreshStoredPullRequest(
     logger.info({ rowId, reason: outcome.reason }, 'repo projection: refresh could not answer');
   }
   return storeRefresh(rowId, { ...row, startedAt }, outcome);
-}
-
-/**
- * Put a refusal onto the rows a delivery could not read for at all.
- *
- * A binding with no installation or no App key is the commonest of these, and it
- * is the one an operator can act on — leaving the row's counts null with nothing
- * beside them makes "nobody has asked yet" and "Forge cannot ask" the same
- * answer, which is the silent substitution the rest of this design refuses.
- */
-export async function storeRefreshRefusal(
-  rows: Array<{ id: string; headSha: string; baseRef: string }>,
-  reason: string,
-): Promise<number> {
-  let touched = 0;
-  for (const row of rows) {
-    if (await storeRefresh(row.id, row, { ok: false, reason })) touched += 1;
-  }
-  return touched;
-}
-
-/** Mark the rows a base push could not reach, so the truncation is on the row. */
-export async function markRefreshCapped(rowIds: string[]): Promise<number> {
-  if (rowIds.length === 0) return 0;
-  const rows = await db
-    .update(repoPullRequests)
-    .set({ refreshError: CAP_REACHED_REASON, refreshedAt: new Date(), updatedAt: new Date() })
-    .where(inArray(repoPullRequests.id, rowIds))
-    .returning({ id: repoPullRequests.id });
-  return rows.length;
 }

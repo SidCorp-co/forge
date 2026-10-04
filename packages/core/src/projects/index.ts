@@ -2,6 +2,7 @@ export { collaboratorsMeRoutes } from './collaborators-routes.js';
 export { gitCredentialRoutes } from './git-credential-routes.js';
 export { projectHealthRoutes } from './health-routes.js';
 export { invitationRoutes } from './invitations-routes.js';
+export { registerLiveReadingInvalidation } from './live-reading.js';
 export { masterCharterRoutes } from './master-charter-routes.js';
 export { memberRoutes } from './members-routes.js';
 export { projectRoutes } from './routes.js';

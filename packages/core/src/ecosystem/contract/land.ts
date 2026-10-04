@@ -1,6 +1,5 @@
 import { db } from '../../db/client.js';
-import { resolveSourceHost } from '../../integrations/source-host/resolve.js';
-import type { SourceHost } from '../../integrations/source-host/types.js';
+import { resolveSourceHost, type SourceHost } from '../../integrations/source-host/index.js';
 import { logger } from '../../logger.js';
 import { readProjectConfig } from '../../project-config/service.js';
 import { boss } from '../../queue/boss.js';

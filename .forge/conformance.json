@@ -231,10 +231,6 @@
           "why": "The browser half of the same login-identity namespace: the sign-in buttons and the token screens read `github`/`google` as OAuth providers, which is a different thing from an integration adapter that happens to share the word."
         },
         {
-          "glob": "packages/core/src/webhooks/github-adapter.ts",
-          "why": "`'github'` here is `issues.source`, whose enum is `['manual','github']` (db/schema.ts, `issueSources`) \u2014 the issue-INTAKE vocabulary, not the integration-provider one. Same word, different column: every literal in this file is a value compared against `issues.source`, and the registry knows nothing about it."
-        },
-        {
           "glob": "packages/web-v2/src/features/conversations/types.ts",
           "why": "The `ConversationAdapter` union: which surface a conversation happened on. It mirrors the `conversations.source` column, not `integration_bindings.provider`, and it carries 'web' and 'widget' which are not integrations at all."
         },

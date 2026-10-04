@@ -1,3 +1,4 @@
+import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
 import type { ProjectPermission } from '@forge/contracts/permissions';
 import type { z } from 'zod';
 import type { BindingRole } from '../db/schema.js';
@@ -105,10 +106,18 @@ export interface InboundDispatchInput {
   payload: unknown;
 }
 
+/** The facts a vendor delivery reports to Forge's own modules, written to the outbox by the door. */
+export type InboundFactType = 'source.pushed' | 'source.merged' | 'source.reviewed' | 'error.sighted';
+export type InboundFact = {
+  [T in InboundFactType]: { type: T; payload: OutboxEventPayload<T> };
+}[InboundFactType];
+
 export interface InboundDispatchResult {
   deliveryId: string;
   actions: number;
   refusal?: string;
+  /** What the door emits for the modules that own the effects; the adapter performs none of them. */
+  facts?: readonly InboundFact[];
 }
 
 export type AgentPath =

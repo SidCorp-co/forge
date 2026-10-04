@@ -12,10 +12,9 @@ import {
   applyPullRequestEvent,
   branchOfPush,
   type ProjectionContext,
-} from '../github/projection.js';
+} from '../source-host/projection.js';
 import { SourceHostCallError, SourceHostUnavailable } from '../source-host/errors.js';
-import { stampHostMerge } from '../source-host/merge.js';
-import { applyPushedBranch } from '../source-host/push.js';
+import type { InboundFact } from '../types.js';
 import { buildGitLabClient } from './client.js';
 import { landingOf, type MergeRequestBody } from './merge.js';
 import { checkStatusOf, conclusionOf } from './status.js';
@@ -33,6 +32,8 @@ export interface GitLabDeliveryContext {
   bindingId: string;
   config: GitLabConfig;
   secrets: GitLabSecrets;
+  /** Collected here and emitted by the inbound door for the modules that own each effect. */
+  facts: InboundFact[];
 }
 
 interface ProjectPart {
@@ -105,25 +106,28 @@ function stateOf(state: string | undefined): 'open' | 'closed' | 'merged' {
 async function onPush(ctx: GitLabDeliveryContext, payload: PushHook): Promise<GitLabEventResult> {
   const branch = branchOfPush(payload);
   if (!branch) return { actions: 0 };
-  const actions = await applyPushedBranch({
-    projectId: ctx.projectId,
-    bindingId: ctx.bindingId,
-    branch,
-    commit: payload.after,
-    defaultBranch: payload.project?.default_branch ?? null,
+  ctx.facts.push({
+    type: 'source.pushed',
+    payload: {
+      projectId: ctx.projectId,
+      bindingId: ctx.bindingId,
+      branch,
+      commit: payload.after ?? null,
+      defaultBranch: payload.project?.default_branch ?? null,
+    },
   });
-  return { actions };
+  return { actions: 1 };
 }
 
 /**
- * The merge a hook reports, through the one host-merge stamp. The commit is GitLab's landing (merge
+ * The merge a hook reports, for the issue's merge stamp. The commit is GitLab's landing (merge
  * commit, else squash, else the fast-forwarded head); the time is `merged_at` where the hook carries
  * it, else the `updated_at` of the `merge` action itself.
  */
-async function stampMerged(
+function reportMerged(
   ctx: GitLabDeliveryContext,
   mr: NonNullable<MergeRequestHook['object_attributes']>,
-): Promise<number> {
+): number {
   if (mr.state !== 'merged' || !mr.source_branch) return 0;
   const commitSha = landingOf({
     merge_commit_sha: mr.merge_commit_sha ?? null,
@@ -132,13 +136,11 @@ async function stampMerged(
   });
   const at = gitlabTime(mr.merged_at) ?? (mr.action === 'merge' ? gitlabTime(mr.updated_at) : null);
   if (!commitSha || !at) return 0;
-  const wrote = await stampHostMerge({
-    projectId: ctx.projectId,
-    headRef: mr.source_branch,
-    commitSha,
-    mergedAt: new Date(at),
+  ctx.facts.push({
+    type: 'source.merged',
+    payload: { projectId: ctx.projectId, headRef: mr.source_branch, commitSha, mergedAt: at },
   });
-  return wrote ? 1 : 0;
+  return 1;
 }
 
 /** The merge request's base sha, which the hook does not carry, read from GitLab. */
@@ -176,7 +178,7 @@ async function onMergeRequest(
         'GITLAB_PAYLOAD_INCOMPLETE: the Merge Request Hook carried no iid, branches or last commit, so nothing was recorded',
     };
   }
-  const stamped = await stampMerged(ctx, mr);
+  const stamped = reportMerged(ctx, mr);
   const base = await baseShaOf(ctx, mr.iid);
   if (typeof base !== 'string') {
     logger.warn(

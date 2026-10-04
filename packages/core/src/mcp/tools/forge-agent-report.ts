@@ -28,7 +28,7 @@ import {
 } from '../../db/schema.js';
 import { resolvePipelineContext } from '../../jobs/active-job-context.js';
 import { requireCan } from '../../permissions/index.js';
-import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../../prompt/sanitize.js';
+import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../../lib/untrusted-text.js';
 import {
   type ContextScopedMcpToolFactory,
   loadVisibleProjectIdsForPrincipal,

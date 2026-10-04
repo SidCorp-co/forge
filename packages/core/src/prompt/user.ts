@@ -13,7 +13,7 @@ import {
   type StepHandoffPayload,
 } from '../memory/step-handoff-schema.js';
 import { handoffInjectSteps } from '../pipeline/handoff-policy.js';
-import { markUntrusted } from './sanitize.js';
+import { markUntrusted } from '../lib/untrusted-text.js';
 
 /** ISS-699 — steps that finished after `sessionContext.lastUpdated`, measured
  *  from the jobs ledger by `loadIssueSnapshot`. null when nothing is newer. */

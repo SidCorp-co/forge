@@ -1,10 +1,12 @@
 export { insertActivityRow } from './activity-log.js';
+export { TransitionError, transitionIssueStatus } from './apply-transition.js';
 export { issueActivityRoutes, projectActivityRoutes } from './activity-routes.js';
 export { issueArchiveRoutes } from './archive-routes.js';
 export { attachmentRoutes, issueAttachmentRoutes } from './attachment-routes.js';
 export { backlogStreamRoutes, closeBacklogStreams } from './backlog/routes.js';
 export { issueCriteriaRoutes } from './criteria/routes.js';
 export { issueDependencyRoutes } from './dependency-routes.js';
+export { isValidDetectorKey } from './detector-key.js';
 export { issueExtrasRoutes } from './extras-routes.js';
 export {
   fileDetectedIssue,
@@ -13,7 +15,10 @@ export {
   setIssueTriage,
   stampRunStarted,
 } from './field-writes.js';
+export { referenceInHeadRef, resolveIssueForHeadRef } from './head-ref-link.js';
+export { registerHostMergeStamp, stampHostMerge } from './host-merge.js';
 export { issueMergeRoutes } from './merge-routes.js';
+export { recordIssueMerge } from './merge-record.js';
 export { claimIssuesForRelease, releaseEndedRunClaims, releaseRunClaims } from './release-claim.js';
 export {
   adoptIssuePlan,

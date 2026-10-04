@@ -1,6 +1,6 @@
 import type { BindingRole } from '../../db/schema.js';
 import { logger } from '../../observability/logger.js';
-import { readDeclaredSource } from '../../project-config/source.js';
+import { forgeReads } from '../forge-reads.js';
 import { decryptConnectionSecrets, type IntegrationConnectionRow } from '../store.js';
 import type { GitHubConfig, GitHubSecrets } from './types.js';
 
@@ -28,7 +28,7 @@ export async function compareBoundRepository(args: {
   if (args.role !== 'service' || !owner || !repo) return { kind: 'not-a-repository' };
 
   const bound = `github.com/${owner}/${repo}`;
-  const { repository: declared } = await readDeclaredSource(args.projectId);
+  const declared = await forgeReads().declaredRepository(args.projectId);
   if (declared === null) {
     return {
       kind: 'undeclared',

@@ -1,7 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { type PullRequestState, repoPullRequests } from '../db/schema-repo-projection.js';
-import { type CheckRollup, rollupOf } from './github/projection-shape.js';
+import { db } from '../../db/client.js';
+import { type PullRequestState, repoPullRequests } from '../../db/schema-repo-projection.js';
+import { type CheckRollup, rollupOf } from './projection-shape.js';
 
 export interface IssuePullRequest {
   number: number;

@@ -11,10 +11,11 @@ import {
   listActiveBindingsForProjectProvider,
 } from '../integrations/store.js';
 import type { IntegrationProvider } from '../integrations/types.js';
-import { logger } from '../logger.js';
+import { logger } from '../observability/logger.js';
+import { emitEvents } from '../outbox/index.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { rawBody } from '../middleware/zod-validator.js';
-import { verifyHmacSignature, verifySharedToken } from './hmac.js';
+import { verifyHmacSignature, verifySharedToken } from '../lib/hmac.js';
 
 const unauthorized = (code: string) =>
   new HTTPException(401, { message: 'invalid signature', cause: { code } });
@@ -163,6 +164,9 @@ webhookInboundRoutes.post(
           rawBody,
           payload: parsed,
         });
+        // The adapter performs no effect on Forge's modules: what the delivery reports goes to the
+        // outbox, and the module that owns each effect consumes it.
+        if (result.facts?.length) await emitEvents(db, result.facts);
         return c.json({
           accepted: true,
           handler: map.provider,

@@ -12,6 +12,7 @@ import {
   type HealthCheckResult,
   type InboundDispatchInput,
   type InboundDispatchResult,
+  type InboundFact,
   type IntegrationAdapterMethods,
 } from '../types.js';
 import { gitlabGitCredential } from './git-credential.js';
@@ -195,6 +196,7 @@ const gitlabAdapterMethods: IntegrationAdapterMethods<GitLabConfig, GitLabSecret
       payload,
       ...(uuid ? { requestId: uuid } : {}),
     };
+    const facts: InboundFact[] = [];
     let result: Awaited<ReturnType<typeof handleGitLabEvent>>;
     try {
       result = await handleGitLabEvent(
@@ -203,6 +205,7 @@ const gitlabAdapterMethods: IntegrationAdapterMethods<GitLabConfig, GitLabSecret
           bindingId: ctx.bindingId,
           config: ctx.config ?? {},
           secrets: ctx.secrets ?? {},
+          facts,
         },
         eventType,
         payload,
@@ -223,6 +226,7 @@ const gitlabAdapterMethods: IntegrationAdapterMethods<GitLabConfig, GitLabSecret
       deliveryId,
       actions: result.actions,
       ...(result.refusal ? { refusal: result.refusal } : {}),
+      facts,
     };
   },
 };

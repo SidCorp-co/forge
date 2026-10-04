@@ -15,10 +15,7 @@
 import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import {
-  type IssuePullRequest,
-  readPullRequestsForIssues,
-} from '../integrations/repo-projection.js';
+import { type IssuePullRequest, readPullRequestsForIssues } from '../integrations/source-host/index.js';
 import { blockedByUnsettledSql } from '../issues/blocked-by.js';
 import { dispatchGateHeldSql } from '../issues/dispatch-gates.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';

@@ -5,6 +5,7 @@ import type { Server as HttpServer } from 'node:http';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { readThresholds } from './admin/index.js';
 import { registerWebConversationAdapter } from './assistant/index.js';
 import { runOnceBackfills } from './boot-backfills.js';
 import { env } from './config/env.js';
@@ -12,16 +13,18 @@ import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { seedDomainTemplates } from './domain-templates/index.js';
 import { registerContractMeasureWorker } from './ecosystem/index.js';
+import { provideAdmissionThresholds } from './error-intake/index.js';
 import { refreshMainRunnerHead, servesRunnerReleases } from './integrations/github/index.js';
 import {
   assertVaultBootSafety,
+  provideForgeReads,
   registerAllIntegrations,
   registerIntegrationsWorker,
 } from './integrations/index.js';
 import { bootstrapChatProviders } from './integrations/llm/index.js';
 import { registerOutboundDeliveryWorker } from './integrations/outbound-webhooks/index.js';
 import { startRocketChatManager, stopRocketChatManager } from './integrations/rocketchat/index.js';
-import { closeBacklogStreams } from './issues/index.js';
+import { closeBacklogStreams, resolveIssueForHeadRef } from './issues/index.js';
 import { provideProjectOrg } from './lib/authz.js';
 import { logger } from './logger.js';
 import { registerChunkReindex, registerMemoryReconcileWorker } from './memory/index.js';
@@ -31,6 +34,7 @@ import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.j
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import { emitEvents, startOutboxWorker, stopOutboxWorker } from './outbox/index.js';
 import { registerOutboxConsumers } from './outbox-consumers.js';
+import { readDeclaredSource } from './project-config/index.js';
 import { findProjectOrgId } from './projects/index.js';
 import { startBoss, stopBoss } from './queue/boss.js';
 import { registerReleaseBatchFinish } from './release-batch/index.js';
@@ -42,6 +46,14 @@ import { coreTimers } from './timer-registry.js';
 import { attachWs, closeWs } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
+provideForgeReads({
+  declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,
+  issueForHeadRef: (projectId, headRef) => resolveIssueForHeadRef({ projectId, headRef }),
+});
+provideAdmissionThresholds(async () => {
+  const policy = await readThresholds();
+  return { minEventCount: policy.sentryMinEventCount, minUserCount: policy.sentryMinUserCount };
+});
 
 export const app = new Hono<{ Variables: RequestIdVars }>();
 

@@ -1,7 +1,6 @@
 import { logger } from '../../observability/logger.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
 import type { AdapterContext, InboundDispatchInput, InboundDispatchResult } from '../types.js';
-import { intakeSentryIssue, projectCreatedById, readSentryThresholds } from './intake-issue.js';
 import { projectIssue } from './issues.js';
 import { readTargets, resolveSentryTarget } from './targets.js';
 import type { SentryConfig, SentrySecrets } from './types.js';
@@ -110,11 +109,13 @@ function unservedReason(envelope: SentryDeliveryEnvelope): string | null {
 }
 
 /**
- * One Sentry webhook delivery.
+ * One Sentry webhook delivery, decoded and confined to a declared target.
  *
  * Answers rather than throws for anything permanent: a refusal is recorded and returned with
  * `actions: 0`, because a throw becomes a 500 and Sentry retries a delivery whose outcome cannot
- * change. The signature is verified before this is reached, by `POST /api/webhooks/in/:slug`.
+ * change. A served issue is reported as an `error.sighted` fact and its delivery row stays `pending`
+ * until the error-intake domain settles it. The signature is verified before this is reached, by
+ * `POST /api/webhooks/in/:slug`.
  */
 export async function handleSentryWebhook(
   ctx: AdapterContext<SentryConfig, SentrySecrets>,
@@ -130,11 +131,7 @@ export async function handleSentryWebhook(
   });
 
   const refuse = async (reason: string): Promise<InboundDispatchResult> => {
-    await updateDelivery(deliveryId, {
-      status: 'failed',
-      errorMessage: reason,
-      completedAt: new Date(),
-    });
+    await settleSentryDelivery(deliveryId, { refusal: reason });
     logger.info(
       { projectId: ctx.projectId, bindingId: ctx.bindingId, deliveryId, reason },
       'sentry webhook: delivery refused by name',
@@ -142,53 +139,44 @@ export async function handleSentryWebhook(
     return { deliveryId, actions: 0, refusal: reason };
   };
 
+  const unserved = unservedReason(envelope);
+  if (unserved) return refuse(unserved);
+
+  const issue = projectIssue(envelope.issue, '');
+  const selected = selectSentryTarget(ctx.config, issue.projectSlug);
+  if ('refusal' in selected) return refuse(selected.refusal);
+
+  let target: ReturnType<typeof resolveSentryTarget>;
   try {
-    const unserved = unservedReason(envelope);
-    if (unserved) return await refuse(unserved);
-
-    const issue = projectIssue(envelope.issue, '');
-    const selected = selectSentryTarget(ctx.config, issue.projectSlug);
-    if ('refusal' in selected) return await refuse(selected.refusal);
-
-    const createdById = await projectCreatedById(ctx.projectId);
-    if (!createdById) {
-      return await refuse(
-        'this project has no creator to file Sentry issues as, so the delivery could not be acted on',
-      );
-    }
-
-    let target: ReturnType<typeof resolveSentryTarget>;
-    try {
-      target = resolveSentryTarget(ctx.config, selected.label);
-    } catch (err) {
-      return await refuse(
-        err instanceof Error ? err.message : 'the selected target could not be resolved',
-      );
-    }
-
-    const outcome = await intakeSentryIssue(issue, {
-      projectId: ctx.projectId,
-      createdById,
-      thresholds: await readSentryThresholds(),
-      target,
-      scheduleRunId: null,
-    });
-
-    if (outcome.kind === 'refused') return await refuse(outcome.reason);
-
-    await updateDelivery(deliveryId, { status: 'ok', completedAt: new Date() });
-    logger.info(
-      { projectId: ctx.projectId, deliveryId, shortId: issue.shortId, outcome: outcome.kind },
-      'sentry webhook: delivery acted on',
-    );
-    return { deliveryId, actions: 1 };
+    target = resolveSentryTarget(ctx.config, selected.label);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'unknown error';
-    await updateDelivery(deliveryId, {
-      status: 'failed',
-      errorMessage: `this delivery failed part way: ${message}. Some of its writes may already have committed — the issue's own comments and metadata are the record of what did.`,
-      completedAt: new Date(),
-    });
-    throw err;
+    return refuse(err instanceof Error ? err.message : 'the selected target could not be resolved');
   }
+
+  return {
+    deliveryId,
+    actions: 1,
+    facts: [
+      {
+        type: 'error.sighted',
+        payload: { projectId: ctx.projectId, bindingId: ctx.bindingId, deliveryId, issue, target },
+      },
+    ],
+  };
+}
+
+/**
+ * Settle an inbound Sentry delivery with what its intake decided. A refusal carries its own sentence,
+ * so a person reading the delivery row can fix the cause without opening the source.
+ */
+export async function settleSentryDelivery(
+  deliveryId: string,
+  outcome: { refusal: string } | { done: string },
+): Promise<void> {
+  await updateDelivery(
+    deliveryId,
+    'refusal' in outcome
+      ? { status: 'failed', errorMessage: outcome.refusal, completedAt: new Date() }
+      : { status: 'ok', response: { outcome: outcome.done }, completedAt: new Date() },
+  );
 }

@@ -1,4 +1,4 @@
-import { readDeclaredSource } from '../../project-config/source.js';
+import { forgeReads } from '../forge-reads.js';
 import type { BindingTargetRefusal } from '../types.js';
 import { hostOfRepository } from './resolve.js';
 
@@ -8,7 +8,7 @@ export async function sourceHostMismatch(args: {
   provider: string;
   host: string;
 }): Promise<BindingTargetRefusal[]> {
-  const { repository } = await readDeclaredSource(args.projectId);
+  const repository = await forgeReads().declaredRepository(args.projectId);
   const declared = hostOfRepository(repository);
   if (declared === null || declared === args.host.toLowerCase()) return [];
   return [

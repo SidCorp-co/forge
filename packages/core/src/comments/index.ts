@@ -4,6 +4,13 @@ export {
   validateCommentAttachment,
 } from './attachment-service.js';
 export { entityCommentRoutes } from './entity-routes.js';
+export {
+  noteReviewOnIssue,
+  type ReviewNoteOutcome,
+  type ReviewNoteResult,
+  type ReviewToNote,
+  registerReviewNotes,
+} from './review-note.js';
 export { commentRoutes } from './routes.js';
 export {
   type CommentThreadRow,

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { env } from '../../config/env.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
-import { markUntrusted } from '../../prompt/sanitize.js';
+import { markUntrusted } from '../../lib/untrusted-text.js';
 import { getStorage } from '../../storage/index.js';
 import { loadAttachmentForFetch } from '../../uploads/attachment-lookup.js';
 import { createDownloadTicket } from '../../uploads/download-ticket-service.js';

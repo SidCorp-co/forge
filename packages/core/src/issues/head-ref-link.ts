@@ -1,8 +1,8 @@
 import { and, eq } from 'drizzle-orm';
-import { db as defaultDb } from '../../db/client.js';
-import { issues } from '../../db/schema.js';
-import { heldIssuePrefixes, type IssueRefReader } from '../../issues/issue-prefix-read.js';
-import { ISS_SEQ_MAX, LEGACY_ISSUE_PREFIX } from '../../lib/issue-ref.js';
+import { db as defaultDb } from '../db/client.js';
+import { issues } from '../db/schema.js';
+import { heldIssuePrefixes, type IssueRefReader } from './issue-prefix-read.js';
+import { ISS_SEQ_MAX, LEGACY_ISSUE_PREFIX } from '../lib/issue-ref.js';
 
 const HEAD_REF_SHAPE = /^([A-Za-z][A-Za-z0-9]{1,5})-(\d{1,10})(?:[-_/.]|$)/;
 

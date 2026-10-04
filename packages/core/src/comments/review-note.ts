@@ -1,9 +1,10 @@
 import { and, eq, like } from 'drizzle-orm';
-import { insertComment } from '../../comments/index.js';
-import { db } from '../../db/client.js';
-import { comments, issues, projects } from '../../db/schema.js';
-import { logger } from '../../observability/logger.js';
-import { resolveIssueForHeadRef } from './issue-link.js';
+import { db } from '../db/client.js';
+import { comments, issues, projects } from '../db/schema.js';
+import { logger } from '../observability/logger.js';
+import { consume } from '../outbox/index.js';
+import { resolveIssueForHeadRef } from '../issues/index.js';
+import { insertComment } from './service.js';
 
 /** One review, in the shape both doors already hold it in. */
 export interface ReviewToNote {
@@ -77,7 +78,7 @@ export function reviewNoteBody(args: {
   return `## GitHub review\n\n${head}\n\n${quoted}\n\n${reviewMarker(review.id)}`;
 }
 
-/** The user a system comment is attributed to, as `webhooks/github-adapter.ts` attributes its own. */
+/** The user a system comment is attributed to: the project's creator. */
 async function projectCreator(projectId: string): Promise<string | null> {
   const [row] = await db
     .select({ createdBy: projects.createdBy })
@@ -157,5 +158,15 @@ export async function noteReviewOnIssue(args: {
       tx,
     );
     return { outcome: 'written' as const, issueId, commentId: written.row.id };
+  });
+}
+
+/** The comments domain's reaction to a review a source host reported. */
+export function registerReviewNotes(): void {
+  consume('source.reviewed', {
+    name: 'review-note',
+    handle: async (p) => {
+      await noteReviewOnIssue(p);
+    },
   });
 }

@@ -161,6 +161,9 @@
         "itemEmbeddings"
       ]
     },
+    "error-intake": {
+      "kind": "domain"
+    },
     "feedback": {
       "kind": "domain",
       "owns": [
@@ -213,7 +216,6 @@
     "integrations/github": {
       "kind": "adapter",
       "owns": [
-        "repoPullRequests",
         "runnerReleases"
       ]
     },
@@ -255,7 +257,10 @@
       "kind": "adapter"
     },
     "integrations/source-host": {
-      "kind": "adapter"
+      "kind": "adapter",
+      "owns": [
+        "repoPullRequests"
+      ]
     },
     "issues": {
       "kind": "kernel",

@@ -1,5 +1,5 @@
-import { isValidDetectorKey } from '../../issues/detector-key.js';
-import type { SentryIssueDetail } from './types.js';
+import type { ErrorTrackerIssue } from '@forge/contracts/outbox-events';
+import { isValidDetectorKey } from '../issues/index.js';
 
 /**
  * The levels this gate admits, and nothing else.
@@ -34,7 +34,7 @@ export function sentryDetectorKey(shortId: string): string | null {
 
 /** One Sentry issue judged against operator policy. */
 export function judgeSentryIssue(
-  issue: SentryIssueDetail,
+  issue: ErrorTrackerIssue,
   thresholds: SentryAdmissionThresholds,
 ): SentryAdmissionVerdict {
   // The join key first: without a shortId there is no `external_id`, so a second sighting could not

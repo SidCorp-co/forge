@@ -28,6 +28,10 @@ export const OUTBOX_EVENT_TYPES = [
 	"skill.globalUpdated",
 	"runner.provisionRequested",
 	"runner.provisionStatus",
+	"source.pushed",
+	"source.merged",
+	"source.reviewed",
+	"error.sighted",
 ] as const;
 export type OutboxEventType = (typeof OUTBOX_EVENT_TYPES)[number];
 
@@ -80,6 +84,31 @@ export interface TransitionEvent<E extends TransitionEventEntity> {
 	actor: OutboxActor;
 	/** When the move was written (ISO 8601). */
 	at: string;
+}
+
+/** One error-tracker issue as the error-tracking port reads it; free text is already sanitised. */
+export interface ErrorTrackerIssue {
+	id: string;
+	shortId: string | null;
+	status: string | null;
+	substatus: string | null;
+	level: string | null;
+	count: number | null;
+	userCount: number | null;
+	firstSeen: string | null;
+	lastSeen: string | null;
+	permalink: string | null;
+	projectSlug: string | null;
+	title: string | null;
+	culprit: string | null;
+	metadataValue: string | null;
+}
+
+/** The declared error-tracker target an issue was confined to. */
+export interface ErrorTrackerTarget {
+	label: string;
+	organizationSlug: string;
+	projectSlug?: string;
 }
 
 export interface IssueSnapshot {
@@ -236,6 +265,45 @@ export interface OutboxEventPayloads {
 		deviceId: string;
 		status: string;
 		detail: string | null;
+	};
+	/** A source host reported a push; `branch` is null where the ref named no branch. */
+	"source.pushed": {
+		projectId: string;
+		bindingId: string;
+		branch: string | null;
+		commit: string | null;
+		defaultBranch: string | null;
+	};
+	/** A source host reported a change request merged (on the host, not through Forge's merge). */
+	"source.merged": {
+		projectId: string;
+		headRef: string;
+		commitSha: string;
+		/** ISO 8601. */
+		mergedAt: string;
+	};
+	/** A review was submitted on a change request, on the host or through Forge. */
+	"source.reviewed": {
+		projectId: string;
+		headRef: string;
+		repository: string;
+		number: number;
+		review: {
+			id: string;
+			reviewer: string;
+			state: string;
+			submittedAt: string | null;
+			url: string | null;
+			body: string | null;
+		};
+	};
+	/** An error tracker delivered an issue; the inbound delivery row waits on its intake. */
+	"error.sighted": {
+		projectId: string;
+		bindingId: string;
+		deliveryId: string;
+		issue: ErrorTrackerIssue;
+		target: ErrorTrackerTarget;
 	};
 }
 

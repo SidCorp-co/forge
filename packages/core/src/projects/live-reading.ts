@@ -1,6 +1,7 @@
 import type { BranchRefs } from '../git/remote-divergence.js';
-import type { LiveDivergence } from '../integrations/source-host/types.js';
-import { logger } from '../logger.js';
+import type { LiveDivergence } from '../integrations/source-host/index.js';
+import { logger } from '../observability/logger.js';
+import { consume } from '../outbox/index.js';
 import {
   crossesByCherryPick,
   promotedBranch,
@@ -190,4 +191,12 @@ export async function projectReleaseRow(projectId: string): Promise<ProjectRelea
 export async function projectReleaseRows(projectIds: string[]): Promise<ProjectReleaseRow[]> {
   const rows = await Promise.all(projectIds.map(projectReleaseRow));
   return rows.filter((r): r is ProjectReleaseRow => r !== null);
+}
+
+/** A push makes the held live reading stale, whichever branch it named. */
+export function registerLiveReadingInvalidation(): void {
+  consume('source.pushed', {
+    name: 'live-reading',
+    handle: (p) => forgetLiveReading(p.projectId),
+  });
 }

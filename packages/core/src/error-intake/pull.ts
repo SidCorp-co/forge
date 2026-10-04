@@ -1,34 +1,23 @@
-import { logger } from '../../observability/logger.js';
 import {
   type BindingWithConnection,
   buildContextFromBinding,
   listActiveBindingsForProjectProvider,
-} from '../store.js';
+} from '../integrations/index.js';
+import {
+  listSentryIssues,
+  resolveSentryTargets,
+  SENTRY_LIST_DEFAULT_LIMIT,
+  type SentryAdapterContext,
+  SentryListingFailed,
+  type SentryTarget,
+} from '../integrations/sentry/index.js';
+import { logger } from '../observability/logger.js';
 import {
   intakeSentryIssue,
   projectCreatedById,
   readSentryThresholds,
   type SentryIntakeContext,
-} from './intake-issue.js';
-import { listSentryIssues, type SentryAdapterContext } from './issues.js';
-import { SENTRY_LIST_DEFAULT_LIMIT, SentryListingFailed } from './listing.js';
-import { resolveSentryTargets } from './targets.js';
-import type { SentryTarget } from './types.js';
-
-export {
-  buildSentryIssueRow,
-  intakeSentryIssue,
-  recordedCount,
-  recordedSighting,
-  SENTRY_FILED_STATUS,
-  SENTRY_ISSUE_SOURCE,
-  SENTRY_REGRESSED_SUBSTATUS,
-  type SentryIntakeContext,
-  type SentryIntakeOutcome,
-  type SentryIssueRow,
-  type SentrySightingRecord,
-  sentryMetadataMerge,
-} from './intake-issue.js';
+} from './service.js';
 
 export interface SentryPullOutcome {
   status: 'success' | 'skipped' | 'failed';

@@ -1,6 +1,6 @@
 /** The commit a joined or manually opened builder run reads, taken from the project's own host (ISS-50). */
 
-import { resolveSourceHost } from '../integrations/source-host/resolve.js';
+import { resolveSourceHost } from '../integrations/source-host/index.js';
 import { readDeclaredSource } from '../project-config/source.js';
 import type { BuilderSource } from './link-rules.js';
 import type { BuilderRunWrite } from './link-schema.js';
