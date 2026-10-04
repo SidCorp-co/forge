@@ -25,10 +25,9 @@ pub struct MeRunner {
     pub repo_path: Option<String>,
     pub branch: Option<String>,
     pub status: String,
-    #[serde(default)]
     pub master_policy: Option<String>,
-    /// The project document's `source.git.repository` (`host/owner/name`). `None` on an older core
-    /// or a project that declares no git source.
+    /// The project document's `source.git.repository` (`host/owner/name`). `None` on a project
+    /// that declares no git source.
     #[serde(default)]
     pub repository: Option<String>,
     /// Core mints a git credential for that repository, so `bind --path` points the checkout's

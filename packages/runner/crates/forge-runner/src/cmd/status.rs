@@ -31,14 +31,6 @@ pub async fn run(ctx: Ctx, _args: Args) -> anyhow::Result<()> {
             .unwrap_or("not yet (forge-runner login)")
     );
     println!("token      {}", cred_store::active_backend());
-    println!(
-        "register   {}",
-        if cfg.runner.register_enabled {
-            "on"
-        } else {
-            "off (device-room)"
-        }
-    );
     print_gate(&cfg);
     print_pool(&cfg);
     let now = forge_runner_core::daemon::agent_activity::now_ms();

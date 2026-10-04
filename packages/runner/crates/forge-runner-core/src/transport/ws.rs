@@ -22,20 +22,10 @@ use super::frames::Frame;
 const PING_INTERVAL: Duration = Duration::from_secs(25);
 const PONG_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// A `runner:register` payload sent on connect (one per bound project).
-#[derive(Clone)]
-pub struct RunnerRegistration {
-    pub project_id: String,
-    pub name: String,
-    pub runner_type: String,
-}
-
 pub struct WsConfig {
     pub url: String,
     pub device_token: String,
     pub device_id: String,
-    pub registrations: Vec<RunnerRegistration>,
-    pub register_enabled: bool,
 }
 
 pub type Outbound = watch::Receiver<Option<String>>;
@@ -88,23 +78,6 @@ pub async fn connect(
                     .is_err()
                 {
                     return; // consumer gone — stop entirely
-                }
-
-                // Register one runner per bound project (gated by the flag).
-                if cfg.register_enabled {
-                    for reg in &cfg.registrations {
-                        let msg = serde_json::json!({
-                            "type": "runner:register",
-                            "data": {
-                                "type": reg.runner_type,
-                                "name": reg.name,
-                                "projectId": reg.project_id,
-                                "capabilities": { "maxConcurrent": 1 }
-                            }
-                        })
-                        .to_string();
-                        let _ = write.send(Message::Text(msg.into())).await;
-                    }
                 }
 
                 outbound.mark_unchanged();

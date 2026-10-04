@@ -62,7 +62,7 @@ use crate::runner::inflight;
 use crate::runner::Runner;
 use crate::transport::frames::{job_id_of, session_id_of, Frame};
 use crate::transport::runners::{self, MeRunner};
-use crate::transport::ws::{self, RunnerRegistration, WsConfig};
+use crate::transport::ws::{self, WsConfig};
 use crate::transport::{heartbeat, lifecycle, CoreClient};
 
 use dispatch::resolve_repo;
@@ -479,21 +479,7 @@ pub async fn run(
     };
     let assigned: &[MeRunner] = server.as_deref().unwrap_or_default();
 
-    // One runner registration per assigned project. Union the server
-    // assignments (authoritative project_id + slug) with any local config
-    // binding that already has a project_id, deduped by project_id.
-    let device_name = crate::auth::pairing::default_device_name();
-    let mut seen_project_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut registrations: Vec<RunnerRegistration> = Vec::new();
-
     for r in assigned {
-        if seen_project_ids.insert(r.project_id.clone()) {
-            registrations.push(RunnerRegistration {
-                project_id: r.project_id.clone(),
-                name: format!("{device_name} ({})", r.slug),
-                runner_type: "claude-code".into(),
-            });
-        }
         // AC 5 — warn when assigned on the server but no usable repo path
         // (neither server nor local), with the exact command to fix it.
         if resolve_repo(assigned, &cfg, &r.project_id).is_err() {
@@ -504,19 +490,7 @@ pub async fn run(
             );
         }
     }
-    for (slug, b) in &cfg.bindings {
-        if let Some(pid) = b.project_id.clone() {
-            if seen_project_ids.insert(pid.clone()) {
-                registrations.push(RunnerRegistration {
-                    project_id: pid,
-                    name: format!("{device_name} ({slug})"),
-                    runner_type: "claude-code".into(),
-                });
-            }
-        }
-    }
-
-    if registrations.is_empty() {
+    if assigned.is_empty() && cfg.bindings.values().all(|b| b.project_id.is_none()) {
         tracing::warn!(
             "no project assignments — jobs cannot be routed. Bind a device in the web UI, then run `forge-runner bind <slug> --path <dir>`."
         );
@@ -557,8 +531,6 @@ pub async fn run(
             url: format!("{ws_base}/ws"),
             device_token: device_token.clone(),
             device_id: device_id.clone(),
-            registrations,
-            register_enabled: cfg.runner.register_enabled,
         };
         let cancel_rx = cancel_rx.clone();
         tokio::spawn(async move { ws::connect(ws_cfg, frame_tx, ledger_rx, cancel_rx).await });

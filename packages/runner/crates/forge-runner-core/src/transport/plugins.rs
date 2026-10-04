@@ -46,9 +46,6 @@ pub async fn list_designated(client: &CoreClient) -> Result<Vec<DesignatedPlugin
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
-    if resp.status().as_u16() == 404 {
-        return Ok(Vec::new());
-    }
     if !resp.status().is_success() {
         let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();

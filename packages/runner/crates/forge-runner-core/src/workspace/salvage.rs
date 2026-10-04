@@ -43,10 +43,6 @@ impl Outcome {
 #[derive(Debug, Clone)]
 pub struct Salvage {
     pub outcome: Outcome,
-    pub branch: Option<String>,
-    pub sha: Option<String>,
-    pub files: Option<u32>,
-    pub insertions: Option<u32>,
     pub detail: Option<String>,
 }
 
@@ -54,10 +50,6 @@ impl Salvage {
     fn bare(outcome: Outcome) -> Self {
         Self {
             outcome,
-            branch: None,
-            sha: None,
-            files: None,
-            insertions: None,
             detail: None,
         }
     }
@@ -648,7 +640,7 @@ async fn stage_and_commit(target: &Target, job_id: &str, attempt: u32, failure: 
         return Committed::Stop(Salvage::failed("git add could not be spawned"));
     }
 
-    let (files, insertions) = match git(wt, &["diff", "--cached", "--numstat"]).await {
+    let (files, _) = match git(wt, &["diff", "--cached", "--numstat"]).await {
         Some(out) if out.status.success() => count_staged(&String::from_utf8_lossy(&out.stdout)),
         _ => (0, 0),
     };
@@ -670,17 +662,8 @@ async fn stage_and_commit(target: &Target, job_id: &str, attempt: u32, failure: 
         return Committed::Stop(Salvage::failed("git commit could not be spawned"));
     }
 
-    let sha = git(wt, &["rev-parse", "--short", "HEAD"])
-        .await
-        .filter(|o| o.status.success())
-        .map(|o| stdout_trim(&o));
-
     Committed::Done(Salvage {
         outcome: Outcome::CommittedNotPushed,
-        branch: Some(branch.to_string()),
-        sha,
-        files: Some(files),
-        insertions: Some(insertions),
         detail: None,
     })
 }

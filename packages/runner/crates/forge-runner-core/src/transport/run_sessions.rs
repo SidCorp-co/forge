@@ -343,8 +343,8 @@ pub async fn is_terminal(client: &CoreClient, session_id: &str) -> Result<bool> 
 pub struct LeaseState {
     pub held_by_this_device: bool,
     /// The issue itself has reached a terminal status at core. `None` is *not
-    /// known to be over* — an older core that does not send the field, or a key
-    /// that reaches no issue — and a box reads it as the run carrying on
+    /// known to be over* — a key that reaches no issue — and a box reads it as
+    /// the run carrying on
     /// (ISS-1245).
     #[serde(default)]
     pub issue_over: Option<bool>,

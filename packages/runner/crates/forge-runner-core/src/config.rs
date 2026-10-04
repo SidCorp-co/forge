@@ -213,9 +213,6 @@ fn default_skill_auto_pull() -> bool {
 pub struct RunnerSettings {
     #[serde(default = "default_duplex_max_sessions")]
     pub duplex_max_sessions: u32,
-    /// Send `runner:register` (gated behind core `runnerFramework` flag).
-    #[serde(default)]
-    pub register_enabled: bool,
     #[serde(default = "default_max_job_panes")]
     pub max_job_panes: u32,
 }
@@ -224,7 +221,6 @@ impl Default for RunnerSettings {
     fn default() -> Self {
         Self {
             duplex_max_sessions: default_duplex_max_sessions(),
-            register_enabled: false,
             max_job_panes: default_max_job_panes(),
         }
     }

@@ -116,7 +116,6 @@ pub struct Run {
     pub work: Work,
     pub blocker_kind: Option<BlockerKind>,
     pub waiting_on: Option<String>,
-    pub resume_id: Option<String>,
     pub session_terminal_at: Option<i64>,
     pub worktree_gone_at: Option<i64>,
     /// How this run stopped holding a checkout it owed back, in the words of
@@ -130,19 +129,12 @@ pub struct Run {
     /// (ISS-1183). One column carrying both meanings is a row that reads
     /// `worktree gone` over a checkout somebody is standing in (ISS-1193).
     pub released_as: Option<String>,
-    pub claim_owner: Option<String>,
-    pub claim_generation: i64,
-    pub claim_expires_at: Option<i64>,
-    pub revival_token: Option<String>,
-    pub revival_deadline_at: Option<i64>,
     pub ended_by: Option<String>,
     pub ended_reason: Option<String>,
     pub agent_id: Option<String>,
     /// What a resumed master chose to do about this run: `continue`, `restart` or `leave`.
     pub resume_choice: Option<String>,
     pub resume_choice_why: Option<String>,
-    /// Set when this pane was RESUMED over the run, which is what makes a choice owed.
-    pub resume_owed_at: Option<i64>,
     /// When the refusal this run's release is currently standing on was FIRST
     /// seen. Cleared the moment a release gets past it, so it is the age of one
     /// streak and not a count of every refusal this run ever had.
@@ -153,23 +145,12 @@ pub struct Run {
     /// When that refusal was decided to be one no retry can get past. From here
     /// the leases are back, the run is over, and the checkout is still on disk.
     pub release_terminal_at: Option<i64>,
-    /// How many times the release has been attempted since that refusal was
-    /// first seen.
-    pub release_attempts: i64,
     /// When this run's subagent last ended a turn, in wall-clock ms. A turn-end
     /// is not a finish: a subagent ends one to wait on its own background work,
     /// and one that finished can still be resumed by its dispatcher (ISS-1246).
     pub turn_ended_at_ms: Option<i64>,
     /// Where this run's subagent writes its own transcript.
     pub agent_transcript: Option<String>,
-    /// What the box last said about this run's standing: `quiet` or
-    /// `unreadable` for a run it keeps; `awaiting-session`, `awaiting` and
-    /// `awaiting-leases` for one no master here answers for, by what it still
-    /// waits on, `unanswered` once the bound licenses its release, `foreign-boot` for one this boot may not
-    /// reclaim, and `decided` for one whose release was decided terminal while
-    /// its leases are still chased (ISS-1220). Cleared by the next turn-end, so each silence is
-    /// said once.
-    pub kept_notice: Option<String>,
     /// When the run was declared, in wall-clock seconds.
     pub created_at: i64,
     /// When the process this run's subagent lived in was last known to end, in
@@ -705,28 +686,19 @@ fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
                 _ => None,
             }),
         waiting_on: row.get(10)?,
-        resume_id: row.get(11)?,
         session_terminal_at: row.get(12)?,
         worktree_gone_at: row.get(13)?,
         released_as: row.get(14)?,
-        claim_owner: row.get(15)?,
-        claim_generation: row.get(16)?,
-        claim_expires_at: row.get(17)?,
-        revival_token: row.get(18)?,
-        revival_deadline_at: row.get(19)?,
         ended_by: row.get(20)?,
         ended_reason: row.get(21)?,
         agent_id: row.get(22)?,
         resume_choice: row.get(23)?,
         resume_choice_why: row.get(24)?,
-        resume_owed_at: row.get(25)?,
         release_refused_at: row.get(26)?,
         release_refusal: row.get(27)?,
         release_terminal_at: row.get(28)?,
-        release_attempts: row.get(29)?,
         turn_ended_at_ms: row.get(30)?,
         agent_transcript: row.get(31)?,
-        kept_notice: row.get(32)?,
         created_at: row.get(33)?,
         host_ended_at_ms: row.get(34)?,
         host_ended_by: row.get(35)?,

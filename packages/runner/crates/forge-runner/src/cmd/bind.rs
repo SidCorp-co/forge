@@ -17,10 +17,6 @@ pub struct Args {
     /// Path to an EXISTING local checkout (preferred — no re-clone).
     #[arg(long)]
     pub path: Option<PathBuf>,
-    /// Deprecated — the project id is now resolved from the slug via
-    /// `/me/runners`. Accepted but ignored to avoid breaking older scripts.
-    #[arg(long, hide = true)]
-    pub project_id: Option<String>,
     /// Default branch for this binding.
     #[arg(long)]
     pub branch: Option<String>,
@@ -46,11 +42,6 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         }
     };
 
-    if args.project_id.is_some() {
-        eprintln!(
-            "note: --project-id is deprecated and ignored; the project is resolved from the slug via the server."
-        );
-    }
     if !path.join(".git").exists() {
         eprintln!(
             "warning: {} has no `.git` — binding will still be saved, but double-check the path.",
