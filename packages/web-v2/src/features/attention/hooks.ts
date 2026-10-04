@@ -35,30 +35,23 @@ export function useAttention() {
 
   const view: AttentionView = useMemo(() => {
     const base = attentionQ.data;
-    const needsReview = base?.needsReview ?? [];
-    const awaitingInput = base?.awaitingInput ?? [];
+    const needsYou = base?.needsYou ?? [];
     const mentions = base?.mentions ?? [];
     const failedJobs = base?.failedJobs ?? [];
     const pendingSkillUpdates = base?.pendingSkillUpdates ?? [];
-    const unseenDrafts = base?.unseenDrafts ?? [];
     const channelGates = base?.channelGates ?? [];
     return {
-      needsReview,
-      awaitingInput,
+      needsYou,
       mentions,
       failedJobs,
       pendingSkillUpdates,
-      unseenDrafts,
-      unseenDraftsTotal: base?.unseenDraftsTotal ?? 0,
       channelGates,
       offlineRunners,
       total:
-        needsReview.length +
-        awaitingInput.length +
+        needsYou.length +
         mentions.length +
         failedJobs.length +
         pendingSkillUpdates.length +
-        unseenDrafts.length +
         channelGates.length +
         offlineRunners.length,
     };

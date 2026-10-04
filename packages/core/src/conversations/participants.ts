@@ -18,13 +18,9 @@ import {
 } from '../db/schema-conversations.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import type { Executor, TxOnly } from './db-executor.js';
-import { holds } from '../permissions/index.js';
-
-const forbidden = (message: string, code: string) =>
-  new HTTPException(403, { message, cause: { code } });
-
-const badRequest = (message: string, code: string) =>
-  new HTTPException(400, { message, cause: { code } });
+import { forbidden } from '../middleware/route-errors.js';
+import { requireHeld } from '../permissions/index.js';
+import { refuseConversation } from './refusals.js';
 
 export interface ParticipantRow {
   id: string;
@@ -211,19 +207,19 @@ async function loadHandle(
     .where(eq(users.id, handleUserId))
     .limit(1);
   if (!row) {
-    throw badRequest(`no user ${handleUserId}, so it is no handle`, 'HANDLE_NOT_FOUND');
+    throw refuseConversation('HANDLE_NOT_FOUND', `no user ${handleUserId}, so it is no handle`);
   }
   if (row.kind !== 'agent') {
-    throw badRequest(
-      `user ${handleUserId} is a person, not an agent; a handle is an agent account and a person joins as a person`,
+    throw refuseConversation(
       'HANDLE_NOT_AN_AGENT',
+      `user ${handleUserId} is a person, not an agent; a handle is an agent account and a person joins as a person`,
     );
   }
   if (!row.handle) {
-    throw new HTTPException(409, {
-      message: `agent ${handleUserId} carries no handle on its org membership, so there is no address to put in a room`,
-      cause: { code: 'HANDLE_HAS_NO_NAME' },
-    });
+    throw refuseConversation(
+      'HANDLE_HAS_NO_NAME',
+      `agent ${handleUserId} carries no handle on its org membership, so there is no address to put in a room`,
+    );
   }
   return { id: row.id, handle: row.handle };
 }
@@ -242,9 +238,9 @@ export async function attachOpeningHandle(
 
   const handleProjects = await projectsOfHandle(handleUserId, tx);
   if (!handleProjects.includes(projectId)) {
-    throw badRequest(
-      `@${handle.handle} is a member of ${handleProjects.length === 0 ? 'no project' : handleProjects.join(', ')} and not of ${projectId}, so it cannot be the opening handle for a room about that project`,
+    throw refuseConversation(
       'HANDLE_NOT_ON_PROJECT',
+      `@${handle.handle} is a member of ${handleProjects.length === 0 ? 'no project' : handleProjects.join(', ')} and not of ${projectId}, so it cannot be the opening handle for a room about that project`,
     );
   }
 
@@ -271,19 +267,19 @@ export async function addHandle(args: AddHandleArgs): Promise<void> {
 
   const handleProjects = await projectsOfHandle(args.handleUserId, tx);
   if (!handleProjects.includes(args.projectId)) {
-    throw badRequest(
-      `@${handle.handle} is a member of ${handleProjects.length === 0 ? 'no project' : handleProjects.join(', ')} and not of ${args.projectId}, so it cannot be the handle for a room about that project`,
+    throw refuseConversation(
       'HANDLE_NOT_ON_PROJECT',
+      `@${handle.handle} is a member of ${handleProjects.length === 0 ? 'no project' : handleProjects.join(', ')} and not of ${args.projectId}, so it cannot be the handle for a room about that project`,
     );
   }
 
   const access = await effectiveProjectRole(args.actorUserId, args.projectId);
-  if (!(access ? holds(access, 'project.write') : false)) {
+  if (!access?.role) {
     throw forbidden(
-      `@${handle.handle} would make this room about project ${args.projectId} and you hold ${access?.role ?? 'no role'} on it; a handle is added to a room by somebody who holds at least a member role on its project`,
-      'HANDLE_PROJECT_FORBIDDEN',
+      `@${handle.handle} would make this room about project ${args.projectId} and you hold no role on it; a handle is added to a room by somebody who holds project.write on its project`,
     );
   }
+  requireHeld(access, 'project.write', `adding @${handle.handle} to a room`);
 
   await tx
     .insert(conversationParticipants)
@@ -310,9 +306,9 @@ export interface AddPersonArgs {
 export async function addPerson(args: AddPersonArgs): Promise<void> {
   const tx = args.tx ?? defaultDb;
   if (!args.userId && !args.externalKey) {
-    throw badRequest(
-      'a person joins a conversation as a Forge user or as the key their channel gave; with neither there is nobody to add',
+    throw refuseConversation(
       'PARTICIPANT_UNIDENTIFIED',
+      'a person joins a conversation as a Forge user or as the key their channel gave; with neither there is nobody to add',
     );
   }
   await tx
@@ -389,16 +385,16 @@ async function removeWithin(tx: Executor, args: RemoveParticipantArgs): Promise<
   };
 
   if (row.kind === 'handle' && (await liveOfKind('handle')) <= 1) {
-    throw badRequest(
-      `conversation ${args.conversationId} has one handle left and a room with none is about no project, so nobody could read it again; add another handle first, or delete the conversation`,
+    throw refuseConversation(
       'CONVERSATION_LAST_HANDLE',
+      `conversation ${args.conversationId} has one handle left and a room with none is about no project, so nobody could read it again; add another handle first, or delete the conversation`,
     );
   }
 
   if (row.kind === 'person' && room?.shape === 'direct' && (await liveOfKind('person')) <= 1) {
-    throw badRequest(
-      `conversation ${args.conversationId} is a one-to-one room and this is the last person in it; such a room is read by the people in it, so taking the last one out would leave it readable by nobody — add another person first, or delete the conversation`,
+    throw refuseConversation(
       'CONVERSATION_LAST_PERSON',
+      `conversation ${args.conversationId} is a one-to-one room and this is the last person in it; such a room is read by the people in it, so taking the last one out would leave it readable by nobody — add another person first, or delete the conversation`,
     );
   }
 

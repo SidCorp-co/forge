@@ -1,6 +1,7 @@
+import type { LabelRefusalCode } from '@forge/contracts/labels';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
 
-const BY_CONSTRAINT: Record<string, { code: string; message: string }> = {
+const BY_CONSTRAINT: Record<string, { code: LabelRefusalCode; message: string }> = {
   labels_project_id_name_uq: {
     code: 'LABEL_NAME_TAKEN',
     message: 'label name already taken in this project',
@@ -15,7 +16,9 @@ const BY_CONSTRAINT: Record<string, { code: string; message: string }> = {
   },
 };
 
-export function labelUniqueConflict(err: unknown): { code: string; message: string } | undefined {
+export function labelUniqueConflict(
+  err: unknown,
+): { code: LabelRefusalCode; message: string } | undefined {
   if (!isUniqueViolation(err)) return undefined;
   return BY_CONSTRAINT[uniqueViolationConstraint(err) ?? ''];
 }

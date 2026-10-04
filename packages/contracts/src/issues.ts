@@ -1,1 +1,128 @@
+import { STOREFRONT_DRAFT_REFUSAL_CODES } from "./verdict-identity.js";
+
 export type { ReleaseNotes, ReleaseNotesSection } from "./release-notes.js";
+
+// Rule refusals an issue write answers in the 422 envelope (packages/contracts/src/refusal.ts).
+
+export const CRITERIA_REFUSAL_CODES = [
+	"CRITERIA_REFUSED",
+	"CRITERIA_TEXT_UNPARSEABLE",
+	"CRITERIA_LOCKED",
+	"CRITERIA_INPUT_INVALID",
+] as const;
+export type CriteriaRefusalCode = (typeof CRITERIA_REFUSAL_CODES)[number];
+
+export const VERDICT_REFUSAL_CODES = [
+	"VERDICT_REFUSED",
+	"VERDICT_VALUE_UNKNOWN",
+	"VERDICT_SKIP_REASON_REQUIRED",
+	"VERDICT_IDENTITY_REQUIRED",
+	"VERDICT_COMMIT_NOT_FULL",
+	"VERDICT_RUNTIME_NOT_FULL",
+	"VERDICT_DESIGN_SHAPE",
+	"VERDICT_CONTRACT_SHAPE",
+	"VERDICT_CRITERION_UNKNOWN",
+	"VERDICT_DESIGN_UNKNOWN",
+	"VERDICT_DESIGN_UNAPPROVED",
+	"VERDICT_CONTRACT_UNKNOWN",
+	...STOREFRONT_DRAFT_REFUSAL_CODES,
+] as const;
+export type VerdictRefusalCode = (typeof VERDICT_REFUSAL_CODES)[number];
+
+export const ATTRIBUTE_REFUSAL_CODES = [
+	"ATTRIBUTE_REFUSED",
+	"UNREGISTERED_KEY",
+	"WRONG_TYPE",
+	"OBLIGATION_UNOWNED",
+	"EMPTY_TEXT",
+	"SOURCE_COMMENT_NOT_FOUND",
+	"SOURCE_COMMENT_OFF_ISSUE",
+] as const;
+export type AttributeRefusalCode = (typeof ATTRIBUTE_REFUSAL_CODES)[number];
+
+export const COMMIT_LANDING_REFUSAL_CODES = [
+	"COMMIT_NOT_IN_REPOSITORY",
+	"COMMIT_NOT_THIS_ISSUE",
+	"COMMIT_NOT_LANDED",
+	"COMMIT_UNVERIFIED",
+] as const;
+export type CommitLandingRefusalCode = (typeof COMMIT_LANDING_REFUSAL_CODES)[number];
+
+export const MERGE_REFUSAL_CODES = [
+	"MERGE_MARK_REFUSED",
+	"NO_WORK_EVIDENCE",
+	"UNMARK_REQUIRES_NOT_CLOSED",
+	"LANDING_REQUIRED",
+	"LANDING_NOT_THIS_SHAPE",
+	"MARK_ALREADY_STANDS",
+	"TARGET_REQUIRED",
+	"PROJECT_DOCUMENT_NOT_FOUND",
+	"NO_PULL_REQUEST",
+	"PROJECTION_EMPTY",
+	"MERGE_REFUSED",
+	"NO_BINDING",
+	...COMMIT_LANDING_REFUSAL_CODES,
+] as const;
+export type MergeRefusalCode = (typeof MERGE_REFUSAL_CODES)[number];
+
+export const ARCHIVE_REFUSAL_CODES = [
+	"ARCHIVE_REFUSED",
+	"ARCHIVE_KEY_UNKNOWN",
+	"ARCHIVE_STATUS_NOT_TERMINAL",
+	"ARCHIVE_ISSUE_NOT_TERMINAL",
+	"ARCHIVE_EDGE_LOAD_BEARING",
+] as const;
+export type ArchiveRefusalCode = (typeof ARCHIVE_REFUSAL_CODES)[number];
+
+export const ISSUE_ATTACHMENT_REFUSAL_CODES = [
+	"ATTACHMENT_REFUSED",
+	"MIME_NOT_ALLOWED",
+	"FILE_TOO_LARGE",
+	"EMPTY_FILE",
+	"INVALID_NAME",
+	"INVALID_BASE64",
+	"PAYLOAD_TOO_LARGE",
+	"ATTACHMENT_NAME_TAKEN",
+] as const;
+export type IssueAttachmentRefusalCode = (typeof ISSUE_ATTACHMENT_REFUSAL_CODES)[number];
+
+export const DEPENDENCY_REFUSAL_CODES = [
+	"DEPENDENCY_REFUSED",
+	"SELF_DEP",
+	"CROSS_PROJECT",
+	"CYCLE_DETECTED",
+	"CYCLE_DEPTH_EXCEEDED",
+	"ISSUE_ARCHIVED",
+] as const;
+export type DependencyRefusalCode = (typeof DEPENDENCY_REFUSAL_CODES)[number];
+
+export const LABEL_ATTACH_REFUSAL_CODES = [
+	"LABELS_REFUSED",
+	"INVALID_LABELS",
+	"PRIMARY_NOT_MODULE",
+	"MULTIPLE_PRIMARY",
+] as const;
+export type LabelAttachRefusalCode = (typeof LABEL_ATTACH_REFUSAL_CODES)[number];
+
+export const ISSUE_CREATE_REFUSAL_CODES = [
+	"ISSUE_CREATE_REFUSED",
+	"INVALID_STATUS",
+	"INVALID_DETECTOR_KEY",
+] as const;
+export type IssueCreateRefusalCode = (typeof ISSUE_CREATE_REFUSAL_CODES)[number];
+
+export const ISSUE_TAKE_REFUSAL_CODES = [
+	"ISSUE_TAKE_REFUSED",
+	"ISSUE_BLOCKED",
+	"ISSUE_LEASE_HELD",
+] as const;
+export type IssueTakeRefusalCode = (typeof ISSUE_TAKE_REFUSAL_CODES)[number];
+
+export const ISSUE_UPDATE_REFUSAL_CODES = [
+	"ISSUE_UPDATE_REFUSED",
+	"SESSION_CONTEXT_DROPS_UNREAD_KEYS",
+	"SESSION_CONTEXT_MISMATCH",
+	"BRANCH_SELF_REFERENCE",
+	"ASSIGNEE_NOT_MEMBER",
+] as const;
+export type IssueUpdateRefusalCode = (typeof ISSUE_UPDATE_REFUSAL_CODES)[number];

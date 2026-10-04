@@ -1,4 +1,3 @@
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type ActorAgency, actorAgency, type TransitionActor } from '../../issues/actor-agency.js';
 import { loadVisibleProjectIds } from '../../lib/authz.js';
@@ -77,19 +76,6 @@ export type ContextScopedMcpToolFactory = (ctx: McpContext) => McpTool;
  */
 export function zodToMcpSchema(schema: z.ZodTypeAny): Record<string, unknown> {
   return z.toJSONSchema(schema) as Record<string, unknown>;
-}
-
-/**
- * The token's own scope for an admin act on /mcp: a token minted without `admin` reaches no admin
- * tool, whatever its holder's permissions. It is a scope of the token, not a permission.
- */
-export function assertTokenHasScope(principal: McpPrincipal, scope: 'admin'): void {
-  if (!principal.scopes.includes(scope)) {
-    throw new HTTPException(403, {
-      message: `this token lacks the ${scope} scope`,
-      cause: { code: 'INSUFFICIENT_SCOPE' },
-    });
-  }
 }
 
 /** The user a principal acts as. */

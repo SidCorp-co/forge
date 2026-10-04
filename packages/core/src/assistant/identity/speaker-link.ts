@@ -1,19 +1,9 @@
+import type { SpeakerRefusalCode } from '@forge/contracts/assistant';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { type ConversationAdapter, conversationAdapters } from '../../db/schema-conversations.js';
 import { assistantSpeakerLinks } from '../../db/schema-speaker-links.js';
 import { speakerLinkUrl } from './link-url.js';
-
-export type SpeakerRefusalCode =
-  | 'SPEAKER_UNLINKED'
-  | 'SPEAKER_SOURCE_UNKNOWN'
-  | 'SPEAKER_DIRECTORY_UNSUPPORTED'
-  | 'SPEAKER_DIRECTORY_UNREACHABLE'
-  | 'SPEAKER_NOT_ON_CHANNEL'
-  | 'SPEAKER_EMAIL_ABSENT'
-  | 'SPEAKER_NOT_THE_TARGET'
-  | 'SPEAKER_ADDRESS_DIFFERS'
-  | 'SPEAKER_ALREADY_LINKED';
 
 export interface SpeakerRefusal {
   code: SpeakerRefusalCode;

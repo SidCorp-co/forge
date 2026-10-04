@@ -1,15 +1,9 @@
 import { db } from '../../db/client.js';
+import { isRefusal } from '../../lib/refusal.js';
 import type { Publication } from '../schema.js';
 import { lockKeys } from '../store.js';
 import { type MeasuredChange, type MeasuredDiff, measured } from './diff.js';
-import {
-  ArtifactUnreadable,
-  elementList,
-  INITIAL,
-  measureChange,
-  parseArtifact,
-  sha256,
-} from './measure.js';
+import { elementList, INITIAL, measureChange, parseArtifact, sha256 } from './measure.js';
 import { type NamingProblem, namingProblem, proposeVersion, type Versioning } from './naming.js';
 import { insertVersion, latestVersion, readArtifact, type StoredVersion } from './store.js';
 import {
@@ -136,8 +130,9 @@ export async function recordVersion(input: RecordInput): Promise<RecordOutcome> 
   try {
     doc = input.artifact ? parseArtifact(input.publication.type, input.artifact.text) : null;
   } catch (err) {
-    if (!(err instanceof ArtifactUnreadable)) throw err;
-    return { outcome: 'refused', problem: { code: 'ARTIFACT_UNREADABLE', detail: err.message } };
+    if (!isRefusal(err, 'ARTIFACT_UNREADABLE')) throw err;
+    const detail = err.refusals[0]?.detail ?? 'the artifact does not parse';
+    return { outcome: 'refused', problem: { code: 'ARTIFACT_UNREADABLE', detail } };
   }
   return db.transaction(async (tx) => {
     await lockKeys(tx, [`contract:${input.providerProjectId}/${slug}`]);

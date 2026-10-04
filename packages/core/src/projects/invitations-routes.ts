@@ -11,6 +11,7 @@ import {
 } from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { consumeInvitationToken } from './invitation-token.js';
+import { refuse } from './refuse.js';
 
 const badRequest = (code: string, message: string) =>
   new HTTPException(400, { message, cause: { code } });
@@ -157,10 +158,10 @@ invitationRoutes.post('/:token/accept', requireAuth(), async (c) => {
     case 'already_accepted':
       throw gone('ALREADY_ACCEPTED', 'invitation already accepted');
     case 'email_mismatch':
-      throw new HTTPException(403, {
-        message: 'invitation was sent to a different email address',
-        cause: { code: 'INVITATION_EMAIL_MISMATCH' },
-      });
+      throw refuse(
+        'INVITATION_EMAIL_MISMATCH',
+        'this invitation was sent to a different email address; sign in with the address it was sent to',
+      );
     case 'ok':
       return c.json({ projectId: result.projectId, role: result.role });
   }

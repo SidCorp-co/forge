@@ -18,10 +18,6 @@ import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { sendOrgInvitationEmail } from '../projects/invitation-email.js';
-import { agentAccountRoutes } from './agent-accounts-routes.js';
-import { issueOrgInvitationToken } from './invitations.js';
-import { listOrgMembers, listOrgsForUser } from './service.js';
 import {
   addOrgMember,
   removeOrgMember,
@@ -29,18 +25,17 @@ import {
   requireOrgHeld,
   updateOrgMember,
 } from '../permissions/index.js';
+import { sendOrgInvitationEmail } from '../projects/invitation-email.js';
+import { agentAccountRoutes } from './agent-accounts-routes.js';
+import { issueOrgInvitationToken } from './invitations.js';
+import { refuse } from './refuse.js';
+import { listOrgMembers, listOrgsForUser } from './service.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 const notFound = (message = 'not found', code = 'NOT_FOUND') =>
   new HTTPException(404, { message, cause: { code } });
-
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
-const conflict = (message: string, code: string, hint?: string) =>
-  new HTTPException(409, { message, cause: { code, ...(hint ? { hint } : {}) } });
 
 const createOrgSchema = z.object({
   slug: z
@@ -114,7 +109,7 @@ orgRoutes.post(
       return c.json({ ...created, role: 'owner' as const }, 201);
     } catch (err) {
       if (isUniqueViolation(err)) {
-        throw conflict('slug already taken', 'SLUG_TAKEN');
+        throw refuse('SLUG_TAKEN', 'this org slug is already taken; pick another', '/slug');
       }
       throw err;
     }
@@ -165,17 +160,16 @@ orgRoutes.delete(
 
     const org = await requireOrgCan({ userId }, 'org.own', orgId);
     if (org.isPersonal) {
-      throw conflict('personal org cannot be deleted', 'PERSONAL_ORG_IMMUTABLE');
+      throw refuse('PERSONAL_ORG_IMMUTABLE', 'a personal org cannot be deleted');
     }
     const [projectCount] = await db
       .select({ n: count() })
       .from(projects)
       .where(eq(projects.orgId, orgId));
     if (Number(projectCount?.n ?? 0) > 0) {
-      throw conflict(
-        'org still has projects',
+      throw refuse(
         'ORG_NOT_EMPTY',
-        'delete or move its projects first',
+        'the org still has projects; delete or move its projects first',
       );
     }
 
@@ -245,7 +239,7 @@ orgRoutes.post(
     const caller = await requireOrgCan({ userId: callerId }, 'org.admin', orgId);
     if (role === 'owner') requireOrgHeld(orgId, caller.role, 'org.own');
     if (caller.isPersonal) {
-      throw conflict('personal org cannot have additional members', 'PERSONAL_ORG_IMMUTABLE');
+      throw refuse('PERSONAL_ORG_IMMUTABLE', 'a personal org cannot have additional members');
     }
 
     const [target] = await db
@@ -258,7 +252,11 @@ orgRoutes.post(
     // after signup inserts the membership). 'owner' is never invitable.
     if (!target) {
       if (role === 'owner') {
-        throw forbidden('the owner role cannot be granted by email invitation');
+        throw refuse(
+          'OWNER_NOT_INVITABLE',
+          'the owner role cannot be granted by email invitation; invite as admin and promote once they join',
+          '/role',
+        );
       }
       const [org] = await db
         .select({ name: organizations.name })
@@ -291,7 +289,7 @@ orgRoutes.post(
     }
 
     const inserted = await addOrgMember(db, { orgId, userId: target.id, role }, { ifAbsent: true });
-    if (!inserted) throw conflict('user is already an org member', 'ALREADY_MEMBER');
+    if (!inserted) throw refuse('ALREADY_MEMBER', 'this user is already an org member', '/email');
     return c.json(
       { userId: inserted.userId, role: inserted.role, createdAt: inserted.createdAt, email },
       201,
@@ -390,14 +388,18 @@ orgRoutes.patch(
     // NOT be blocked on an owner-tier target.
     if (role !== undefined) {
       // Touching the owner tier (granting or revoking) is owner-only.
-      if (role === 'owner' || target.role === 'owner') requireOrgHeld(orgId, caller.role, 'org.own');
+      if (role === 'owner' || target.role === 'owner')
+        requireOrgHeld(orgId, caller.role, 'org.own');
       if (target.role === 'owner' && role !== 'owner') {
         const [ownerCount] = await db
           .select({ n: count() })
           .from(organizationMembers)
           .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.role, 'owner')));
         if (Number(ownerCount?.n ?? 0) <= 1) {
-          throw conflict('org must keep at least one owner', 'LAST_OWNER');
+          throw refuse(
+            'LAST_OWNER',
+            'the org must keep at least one owner; promote another owner first',
+          );
         }
       }
     }
@@ -445,7 +447,10 @@ orgRoutes.delete(
         .from(organizationMembers)
         .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.role, 'owner')));
       if (Number(ownerCount?.n ?? 0) <= 1) {
-        throw conflict('org must keep at least one owner', 'LAST_OWNER');
+        throw refuse(
+          'LAST_OWNER',
+          'the org must keep at least one owner; promote another owner first',
+        );
       }
     }
 

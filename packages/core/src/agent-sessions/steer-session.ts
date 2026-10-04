@@ -3,17 +3,8 @@ import { insertComment } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { agentSessions, jobs, terminalAgentSessionStatuses } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
+import { refuseSession } from './refusals.js';
 import { requestSessionSend } from './session-send.js';
-
-export class SteerError extends Error {
-  constructor(
-    public readonly code: 'NO_LIVE_SESSION' | 'SESSION_PARKED' | 'NO_DEVICE',
-    message: string,
-  ) {
-    super(message);
-    this.name = 'SteerError';
-  }
-}
 
 export interface SteerOptions {
   /** User id of the acting principal — recorded in the audit event. */
@@ -80,10 +71,10 @@ export async function steerIssue(
 ): Promise<SteerResult> {
   const session = await steerableSessionFor(issueId);
   if (!session) {
-    throw new SteerError('NO_LIVE_SESSION', 'no live agent session is working this issue');
+    throw refuseSession('NO_LIVE_SESSION', 'no live agent session is working this issue');
   }
   if (session.runtimeState === 'awaiting_input') {
-    throw new SteerError(
+    throw refuseSession(
       'SESSION_PARKED',
       'the session is waiting on an answer, not running — on an autonomous project a comment on the issue delivers it',
     );
@@ -106,7 +97,7 @@ export async function steerIssue(
   });
 
   if (!published) {
-    throw new SteerError('NO_DEVICE', 'the session has no device to deliver to');
+    throw refuseSession('NO_DEVICE', 'the session has no device to deliver to');
   }
 
   return {

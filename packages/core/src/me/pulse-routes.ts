@@ -18,6 +18,7 @@ import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { pulseActionsOf } from './pulse-actions.js';
 import { readPulseFlow } from './pulse-flow.js';
 import { emptyBuckets } from './pulse-folds.js';
 import { readPulseLiveness } from './pulse-liveness.js';
@@ -68,6 +69,7 @@ function emptyPulse(now: Date): PulseResponse {
       sessionFailures: [],
       pipelineFlow: [],
     },
+    actions: [],
   };
 }
 
@@ -111,6 +113,7 @@ mePulseRoutes.get(
       work,
       flow,
       quality,
+      actions: pulseActionsOf(liveness, work, now),
     };
     return c.json(response);
   },

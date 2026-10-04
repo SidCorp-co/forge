@@ -6,6 +6,7 @@ import { recordIssueMerge } from '../../issues/merge-record.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
 import { SourceHostUnavailable } from './errors.js';
 import { resolveIssueForHeadRef } from '../github/issue-link.js';
+import { markPullRequestMerged } from '../github/projection.js';
 import { sourceHostForBinding } from './resolve.js';
 import type { SourceHost } from './types.js';
 
@@ -120,10 +121,7 @@ async function writeEvidence(args: {
             evidence: { kind: 'observed', commitSha, mergedAt, via: 'kernel' },
           })
         : { wrote: false };
-      await tx
-        .update(repoPullRequests)
-        .set({ state: 'merged', mergedAt, mergeCommitSha: commitSha, updatedAt: new Date() })
-        .where(eq(repoPullRequests.id, row.id));
+      await markPullRequestMerged(tx, row.id, { commitSha, mergedAt });
       return { stamped: stamp.wrote };
     });
   } catch (err) {

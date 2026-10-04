@@ -1,4 +1,8 @@
-import { RELEASE_ATTEMPT_STAGES, type ReleaseAttemptStage } from '@forge/contracts/releases';
+import {
+  RELEASE_ATTEMPT_STAGES,
+  RELEASE_HOLD_OWERS,
+  type ReleaseAttemptStage,
+} from '@forge/contracts/releases';
 import { type InferSelectModel, sql } from 'drizzle-orm';
 import {
   boolean,
@@ -12,7 +16,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { pipelineRuns, projects, users } from './schema.js';
+import { issues, pipelineRuns, projects, users } from './schema.js';
 
 export { RELEASE_ATTEMPT_STAGES, type ReleaseAttemptStage };
 
@@ -106,3 +110,41 @@ export const releaseApprovals = pgTable(
 );
 
 export type ReleaseApprovalRow = InferSelectModel<typeof releaseApprovals>;
+
+/**
+ * Why the automatic release is not taking an issue waiting at its gate. One standing row per
+ * issue (`cleared_at IS NULL`); a changed reason clears the standing row and adds its successor,
+ * so the rows are the history of what held it.
+ */
+export const releaseHolds = pgTable(
+  'release_holds',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }),
+    code: text('code').notNull(),
+    reason: text('reason').notNull(),
+    owes: text('owes', { enum: RELEASE_HOLD_OWERS }).notNull(),
+    waitingFor: text('waiting_for').notNull(),
+    heldAt: timestamp('held_at', { withTimezone: true }).notNull().defaultNow(),
+    clearedAt: timestamp('cleared_at', { withTimezone: true }),
+  },
+  (t) => ({
+    owesChk: check(
+      'release_holds_owes_chk',
+      sql`${t.owes} IN (${sql.raw(RELEASE_HOLD_OWERS.map((o) => `'${o}'`).join(', '))})`,
+    ),
+    standingUq: uniqueIndex('release_holds_standing_uq')
+      .on(t.issueId)
+      .where(sql`cleared_at IS NULL`),
+    projectIdx: index('release_holds_project_idx')
+      .on(t.projectId, t.heldAt)
+      .where(sql`cleared_at IS NULL`),
+  }),
+);
+
+export type ReleaseHoldRow = InferSelectModel<typeof releaseHolds>;

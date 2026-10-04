@@ -6,7 +6,7 @@ import {
   documentSchema,
   holdSchema,
   type ThreadHold,
-  TYPE_CODES,
+  TYPE_ABBREVIATIONS,
 } from './channel-schema.js';
 import type { ContractFacts } from './contract/citations.js';
 import { elementRefusals } from './contract/element-rules.js';
@@ -122,11 +122,11 @@ function numberRefusals(d: ChannelDocument, w: ChannelWorld): EcosystemRefusal[]
       detail: `${d.number} is not a number of channel ${code}; every number here starts ${code}-.`,
     });
   }
-  if (d.number.split('-')[1] !== TYPE_CODES[d.type]) {
+  if (d.number.split('-')[1] !== TYPE_ABBREVIATIONS[d.type]) {
     out.push({
       code: 'NUMBER_TYPE_MISMATCH',
       path: '/number',
-      detail: `${d.number} does not carry ${TYPE_CODES[d.type]}, the code of a ${d.type}.`,
+      detail: `${d.number} does not carry ${TYPE_ABBREVIATIONS[d.type]}, the code of a ${d.type}.`,
     });
   }
   return out;

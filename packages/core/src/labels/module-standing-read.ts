@@ -17,6 +17,7 @@ import type { ActorAgency } from '../issues/actor-agency.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { listIssueStanding } from '../issues/standing-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { notFound } from '../middleware/route-errors.js';
 import { loadDeclaredEdges } from './module-diagram-source.js';
 import { moduleDrift } from './module-drift.js';
 import { moduleRollup } from './module-rollup.js';
@@ -260,13 +261,6 @@ export async function moduleRollupWithStanding(
   };
 }
 
-export class ModuleNotFoundError extends Error {
-  constructor(readonly ref: string) {
-    super(`module ${ref} not found in this project: pass a module slug or its label id`);
-    this.name = 'ModuleNotFoundError';
-  }
-}
-
 interface EntryRaw {
   id: string;
   slug: string;
@@ -352,7 +346,9 @@ export async function moduleDetailOf(
 ): Promise<ModuleDetail> {
   const nodes = await readNodes(projectId);
   const node = UUID.test(ref) ? nodes.find((n) => n.id === ref) : nodes.find((n) => n.slug === ref);
-  if (!node) throw new ModuleNotFoundError(ref);
+  if (!node) {
+    throw notFound(`module ${ref} not found in this project: pass a module slug or its label id`);
+  }
 
   const subtree = subtreesOf(nodes).get(node.id) ?? [node.id];
   const prefix = await activeIssuePrefix(projectId);

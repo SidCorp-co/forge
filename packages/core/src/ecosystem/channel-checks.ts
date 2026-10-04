@@ -1,5 +1,5 @@
 import type { Tx } from '../db/client.js';
-import { Refused } from './channel-act.js';
+import { refusedWith } from './channel-act.js';
 import { documentRefusals, parseChannelDocument, threadRoot } from './channel-rules.js';
 import type { ChannelDocument } from './channel-schema.js';
 import { loadWorld, publishedChain } from './channel-world.js';
@@ -7,7 +7,7 @@ import { lockKeys } from './store.js';
 
 export function parsedOrRefused(raw: unknown): ChannelDocument {
   const parsed = parseChannelDocument(raw);
-  if (!parsed.ok) throw new Refused(parsed.refusals);
+  if (!parsed.ok) throw refusedWith(parsed.refusals);
   return parsed.value;
 }
 
@@ -26,6 +26,6 @@ export async function checked(
     cites: doc,
   });
   const refusals = documentRefusals(doc, world);
-  if (refusals.length > 0) throw new Refused(refusals);
+  if (refusals.length > 0) throw refusedWith(refusals);
   return { doc, thread: root ?? doc.number ?? null };
 }

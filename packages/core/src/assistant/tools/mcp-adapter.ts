@@ -7,10 +7,16 @@
  */
 
 import type { ChatTool } from '../../integrations/llm/types.js';
+import { RefusalError } from '../../lib/refusal.js';
 import { toolCallRefusal } from '../../mcp/tool-call-guard.js';
 import { assertToolDeclaresAccess } from '../../mcp/tool-grant.js';
 import { type CallToolResult, toToolCallContent } from '../../mcp/tool-result.js';
-import type { ContextScopedMcpToolFactory, McpContext, McpTool } from '../../mcp/tools/lib.js';
+import {
+  type ContextScopedMcpToolFactory,
+  type McpContext,
+  type McpTool,
+  refusedAnswer,
+} from '../../mcp/tools/lib.js';
 import { patEffectiveProjectIds } from '../../mcp/tools/project-scope.js';
 
 /** One entry in the chat tool allowlist. */
@@ -180,6 +186,9 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
     try {
       return toToolCallContent(await entry.handler(args));
     } catch (err) {
+      if (err instanceof RefusalError) {
+        return toToolCallContent(refusedAnswer(err.refusals, err.fallbackCode));
+      }
       return toolError(thrownMessage(err));
     }
   }

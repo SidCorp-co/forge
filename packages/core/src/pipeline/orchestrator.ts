@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { PolicyRefusedError } from '../project-config/dispatch-policy.js';
+import { policyRefusal } from '../project-config/dispatch-policy.js';
 import { readEffectivePolicy } from '../project-config/effective.js';
 import type { PolicyDocument } from '../project-config/schema.js';
 import type { Actor } from './activity.js';
@@ -13,23 +13,20 @@ import {
   isEntryGateClosed,
 } from './autonomous-dispatch.js';
 import type { HooksBus } from './hooks.js';
+import { refusePipeline } from './refuse.js';
 
-export type StartRefusalCode = 'INTAKE_NOT_MANUAL' | 'PROJECT_ARCHIVED';
+/** Why a person's start on an issue changes nothing. */
+const intakeNotManual = (projectId: string) =>
+  refusePipeline(
+    'INTAKE_NOT_MANUAL',
+    `project ${projectId} has policy intake \`auto\`, so its masters take every issue at \`${AUTONOMOUS_ENTRY_STATUS}\` without a person starting it. Starting one by hand is only for a project whose policy says \`intake: { mode: "manual" }\`.`,
+  );
 
-/** Why a person's start on an issue changes nothing, named so the route can say it. */
-export class StartRefusedError extends Error {
-  constructor(
-    readonly code: StartRefusalCode,
-    readonly projectId: string,
-  ) {
-    super(
-      code === 'INTAKE_NOT_MANUAL'
-        ? `INTAKE_NOT_MANUAL: project ${projectId} has policy intake \`auto\`, so its masters take every issue at \`${AUTONOMOUS_ENTRY_STATUS}\` without a person starting it. Starting one by hand is only for a project whose policy says \`intake: { mode: "manual" }\`.`
-        : `PROJECT_ARCHIVED: project ${projectId} is archived, so nothing dispatches there. Restore the project before starting its issues.`,
-    );
-    this.name = 'StartRefusedError';
-  }
-}
+const projectArchived = (projectId: string) =>
+  refusePipeline(
+    'PROJECT_ARCHIVED',
+    `project ${projectId} is archived, so nothing dispatches there. Restore the project before starting its issues.`,
+  );
 
 async function loadProjectPolicy(projectId: string): Promise<{
   policy: PolicyDocument | null;
@@ -61,9 +58,9 @@ export async function triggerPipelineStepManual(args: {
   reason: Record<string, unknown>;
 }): Promise<{ startedAt: string }> {
   const { policy, archived, projectCreatedBy } = await loadProjectPolicy(args.projectId);
-  if (archived) throw new StartRefusedError('PROJECT_ARCHIVED', args.projectId);
-  if (!policy) throw new PolicyRefusedError('POLICY_UNDECLARED', args.projectId, null);
-  if (!isEntryGateClosed(policy)) throw new StartRefusedError('INTAKE_NOT_MANUAL', args.projectId);
+  if (archived) throw projectArchived(args.projectId);
+  if (!policy) throw policyRefusal('POLICY_UNDECLARED', args.projectId, null);
+  if (!isEntryGateClosed(policy)) throw intakeNotManual(args.projectId);
   return dispatchDriveManual({ ...args, projectCreatedBy });
 }
 
@@ -79,7 +76,7 @@ export async function reEnqueueForIssue(args: {
   if (!policy) {
     logger.warn(
       { projectId: args.projectId, issueId: args.issueId, code: 'POLICY_UNDECLARED' },
-      new PolicyRefusedError('POLICY_UNDECLARED', args.projectId, null).message,
+      policyRefusal('POLICY_UNDECLARED', args.projectId, null).refusals[0]?.detail,
     );
     return;
   }

@@ -20,11 +20,16 @@ import { accountActor } from '../issues/account-actor.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
-import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
+import { collectReleaseBlockers } from './blockers.js';
 import { closeVerification, type ReleaseVerification } from './channel.js';
 import { claimConflictAt, RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
-import { NoReleaseGateError, ReleaseNotVerifiedError } from './errors.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
+import {
+  blockerRefusal,
+  notVerifiedRefusal,
+  reasonOf,
+  releaseBlockedRefusal,
+} from './refuse.js';
 import { type ServingNowOutcome, verifyServingNow } from './verify.js';
 
 /** The one ledger key a recorded release writes under. */
@@ -111,8 +116,8 @@ export async function recordPerformedRelease(
     issueIds: args.issueIds,
     door: 'record',
   });
-  if (!report.projectExists) throw new NoReleaseGateError();
-  const refusal = releaseBlockerError(report);
+  if (!report.projectExists) throw blockerRefusal('NO_RELEASE_GATE');
+  const refusal = releaseBlockedRefusal(report, args.issueIds);
   if (refusal) throw refusal;
   // Every id is now an issue at this project's gate, so its lower-case spelling is the row's own.
   const issueIds = args.issueIds.map((id) => id.toLowerCase());
@@ -126,7 +131,7 @@ export async function recordPerformedRelease(
   let outcome: Extract<ServingNowOutcome, { ok: true }> | null = null;
   if (verification.kind === 'probed') {
     const read = await verifyServingNow({ cfg: verification.cfg, expected: commit });
-    if (!read.ok) throw new ReleaseNotVerifiedError(read.reason, read.live);
+    if (!read.ok) throw notVerifiedRefusal(read.reason, read.live);
     outcome = read;
   }
   const identity = outcome?.identity ?? null;
@@ -187,7 +192,7 @@ export async function recordPerformedRelease(
         closed.push(issue.id);
       } else {
         logger.warn({ err, issueId: issue.id, runId: run.id }, 'release-record: could not close');
-        failed.push({ id: issue.id, reason: err instanceof Error ? err.message : String(err) });
+        failed.push({ id: issue.id, reason: reasonOf(err) });
       }
     }
   }

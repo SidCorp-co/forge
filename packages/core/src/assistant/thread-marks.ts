@@ -8,7 +8,8 @@ import {
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { conversationWindows } from '../db/schema-conversations.js';
-import { onboardings, questionnaireBatches } from '../db/schema-onboarding.js';
+import { questionnaireBatches } from '../db/schema-onboarding.js';
+import { onboardingStatusesOf } from '../onboarding/read.js';
 import { requirements } from '../db/schema-requirements.js';
 import { requirementKey } from '../requirements/read.js';
 
@@ -77,10 +78,7 @@ export async function threadMarks(
     ...new Set(rooms.flatMap((r) => (r.requirementId ? [r.requirementId] : []))),
   ];
   const [onboarded, waiting, unsettled, turns, subjects] = await Promise.all([
-    db
-      .select({ conversationId: onboardings.conversationId, status: onboardings.status })
-      .from(onboardings)
-      .where(inArray(onboardings.conversationId, ids)),
+    onboardingStatusesOf(ids),
     db
       .select({ conversationId: questionnaireBatches.conversationId })
       .from(questionnaireBatches)
@@ -104,7 +102,7 @@ export async function threadMarks(
           .where(inArray(requirements.id, requirementIds))
       : Promise.resolve([]),
   ]);
-  const status = new Map(onboarded.map((o) => [o.conversationId, o.status]));
+  const status = onboarded;
   const open = new Set(waiting.map((w) => w.conversationId));
   const pending = new Set(unsettled.map((w) => w.conversationId));
   const keyOf = new Map(subjects.map((s) => [s.id, requirementKey(s.reqSeq)]));

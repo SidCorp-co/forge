@@ -1,5 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import type { RefusalError } from '../lib/refusal.js';
+import { refuseDevice } from './refusals.js';
 
 export const NON_ADMITTED_RUNNER_STATUSES = ['disabled', 'draining'] as const;
 
@@ -25,22 +27,16 @@ const WHAT_WAS_WRONG: Record<RunnerAdmissionReason, string> = {
 };
 
 /** Refused before anything is written, so the box is told why rather than shown fewer rows. */
-export class RunnerNotAdmittedError extends Error {
-  readonly code = 'RUNNER_NOT_ADMITTED';
-  readonly reason: RunnerAdmissionReason;
-  readonly projectId: string;
-  readonly deviceId: string;
-
-  constructor(args: { reason: RunnerAdmissionReason; projectId: string; deviceId: string }) {
-    super(
-      `${args.reason}: ${WHAT_WAS_WRONG[args.reason]} (project ${args.projectId}, device ${args.deviceId}), ` +
-        `so it may not open a run session there. ${ADMITTED_BOX}`,
-    );
-    this.name = 'RunnerNotAdmittedError';
-    this.reason = args.reason;
-    this.projectId = args.projectId;
-    this.deviceId = args.deviceId;
-  }
+export function runnerNotAdmitted(args: {
+  reason: RunnerAdmissionReason;
+  projectId: string;
+  deviceId: string;
+}): RefusalError {
+  return refuseDevice(
+    'RUNNER_NOT_ADMITTED',
+    `${args.reason}: ${WHAT_WAS_WRONG[args.reason]} (project ${args.projectId}, device ${args.deviceId}), ` +
+      `so it may not open a run session there. ${ADMITTED_BOX}`,
+  );
 }
 
 /**

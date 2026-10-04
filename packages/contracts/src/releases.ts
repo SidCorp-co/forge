@@ -287,6 +287,19 @@ export interface ReleaseApprovalView {
 	reason: string | null;
 }
 
+/** Who owes the act that clears a release hold. */
+export const RELEASE_HOLD_OWERS = ["agent", "human"] as const;
+export type ReleaseHoldOwer = (typeof RELEASE_HOLD_OWERS)[number];
+
+/** Why the automatic release is not taking an issue at its gate, as the sweep last decided it. */
+export interface ReleaseHoldView {
+	code: string;
+	reason: string;
+	owes: ReleaseHoldOwer;
+	waitingFor: string;
+	heldAt: string;
+}
+
 export const RELEASE_ATTEMPT_STAGES = [
 	"promote",
 	"deploy",
@@ -344,3 +357,63 @@ export interface ReleaseDetail extends ReleaseSummary {
 export interface ReleaseResponse {
 	release: ReleaseDetail;
 }
+
+/** Every reason a release will not start, in the order the doors refuse in (ISS-1127). */
+export const RELEASE_BLOCKER_CODES = [
+	"NO_RELEASE_GATE",
+	"RELEASE_TARGET_UNDECLARED",
+	"CLAIM_CONFLICT",
+	"RELEASE_ROSTER_EMPTY",
+	"RELEASE_ROSTER_OVERSIZE",
+	"RELEASE_RECORD_MISSING",
+	"RELEASE_WORK_UNMERGED",
+	"CONTRACT_PROVIDER_NOT_LIVE",
+	"RELEASE_PROBES_UNREADABLE",
+	"RELEASE_POOL_EMPTY",
+	"NO_RUNNER_ONLINE",
+	"BATCH_IN_FLIGHT",
+	"RELEASE_CRITERIA_UNEARNED",
+	"RELEASE_RUNTIME_UNROUTED",
+	"RELEASE_CHECK_UNEVALUATED",
+] as const;
+export type ReleaseBlockerCode = (typeof RELEASE_BLOCKER_CODES)[number];
+
+export const RELEASE_APPROVAL_REFUSAL_CODES = [
+	"RELEASE_APPROVAL_SHAPE",
+	"RELEASE_APPROVAL_PENDING",
+	"RELEASE_APPROVAL_NOT_PENDING",
+	"RELEASE_APPROVAL_EVIDENCE_ENVIRONMENT",
+	"RELEASE_APPROVAL_PATH_UNREADABLE",
+	"RELEASE_RUN_CONCLUDED",
+	"RELEASE_DECISION_UNKNOWN",
+	"RELEASE_RETURN_WITHOUT_REASON",
+	"RELEASE_AWAITING_APPROVAL",
+	"RELEASE_APPROVAL_RETURNED",
+	"RELEASE_APPROVAL_REQUIRED",
+	"RELEASE_VERSION_SHAPE",
+] as const;
+export type ReleaseApprovalRefusalCode = (typeof RELEASE_APPROVAL_REFUSAL_CODES)[number];
+
+/** Every code a release door refuses with, in the one 422 envelope; `RELEASE_REFUSED` when several differ. */
+export const RELEASE_REFUSAL_CODES = [
+	"RELEASE_REFUSED",
+	...RELEASE_BLOCKER_CODES,
+	...RELEASE_APPROVAL_REFUSAL_CODES,
+	"RELEASE_ISSUES_UNNAMED",
+	"RELEASE_VERDICT_NOT_YOURS",
+	"RELEASE_NOT_VERIFIED",
+	"RELEASE_BATCH_ABORTED",
+	"RELEASE_FINISH_IN_FLIGHT",
+	"RELEASE_FINISHED_FOR_OTHER_COMMIT",
+	"RELEASE_CLAIM_LOST",
+	"RELEASE_FINISH_LEASE_LOST",
+	"RELEASE_VERSION_MISSING",
+	"RELEASE_VERSION_CONFLICT",
+	"RELEASE_RECUT_REFUSED",
+	"RELEASE_VERSION_EXHAUSTED",
+	"RELEASE_VERSION_LINE_BEHIND",
+	"RELEASE_RUN_HOLDING",
+	"RELEASE_RUN_NOT_OPEN",
+	"RELEASE_NOTHING_RECORDED",
+] as const;
+export type ReleaseRefusalCode = (typeof RELEASE_REFUSAL_CODES)[number];

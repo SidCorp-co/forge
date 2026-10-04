@@ -23,7 +23,7 @@ import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
 import { holderFanout, readClaim } from './lease-fanout.js';
-import { readReleaseHold } from './release-hold.js';
+import type { ReleaseHold } from '../release-batch/index.js';
 import {
   type LeaseReading,
   leaseHolderOf,
@@ -99,7 +99,8 @@ interface CandidateRow {
   step: WorkStep | null;
   lease: unknown;
   strand: unknown;
-  release_hold: unknown;
+  /** The standing `release_holds` row, built from its NOT NULL columns. */
+  release_hold: ReleaseHold | null;
   ever_ran: boolean;
   cursor_ts: string;
 }
@@ -217,7 +218,7 @@ function judge(
     everRan: row.ever_ran,
     poolHasRunner: pooled.has(row.project_id),
     lease,
-    releaseHold: readReleaseHold(row.release_hold),
+    releaseHold: row.release_hold,
     step: row.step,
   };
   const { reason, owes } = strandReason({ status: row.status, rule, evidence });
@@ -287,7 +288,10 @@ async function readCandidates(now: Date, scope: { projectId?: string }): Promise
            (SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id)  AS lease,
            (SELECT w.step FROM issue_work_state w WHERE w.issue_id = i.id)   AS step,
            i.session_context -> 'strand' AS strand,
-           i.session_context -> 'releaseHold' AS release_hold,
+           (SELECT jsonb_build_object('code', h.code, 'reason', h.reason, 'owes', h.owes,
+                                      'waitingFor', h.waiting_for)
+              FROM release_holds h
+             WHERE h.issue_id = i.id AND h.cleared_at IS NULL) AS release_hold,
            i.updated_at::text AS cursor_ts,
            EXISTS (SELECT 1 FROM pipeline_runs pr WHERE pr.issue_id = i.id) AS ever_ran
       FROM issues i

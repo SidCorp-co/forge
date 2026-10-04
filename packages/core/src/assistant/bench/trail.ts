@@ -36,13 +36,6 @@ export interface Attempt {
   error: string | null;
 }
 
-export class TrailPairingError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'TrailPairingError';
-  }
-}
-
 function argvOf(name: string, args: string): string[] | null {
   if (name !== 'forge') return null;
   try {
@@ -93,7 +86,7 @@ export function pairTrail(roomId: string, rows: ChatLogRow[], snapshots: string[
   const last = new Set(snapshots[snapshots.length - 1] ?? []);
   for (const row of roomRows) {
     if (!last.has(row.id))
-      throw new TrailPairingError(
+      throw new Error(
         `chat_logs row ${row.id} belongs to room ${roomId} but no send boundary places it`,
       );
   }
@@ -105,7 +98,7 @@ export function pairTrail(roomId: string, rows: ChatLogRow[], snapshots: string[
       if (before.has(id)) continue;
       const row = byId.get(id);
       if (!row)
-        throw new TrailPairingError(
+        throw new Error(
           `send ${k} boundary names chat_logs row ${id}, which the trail read does not hold`,
         );
       attempts.push(readAttempt(row));

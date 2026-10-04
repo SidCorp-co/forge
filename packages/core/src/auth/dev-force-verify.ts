@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { emailVerificationTokens, users } from '../db/schema.js';
+import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 
 export const devForceVerifyRoutes = new Hono();
@@ -38,10 +39,7 @@ devForceVerifyRoutes.post(
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean);
     if (!allowed.includes(parsed.email.toLowerCase())) {
-      throw new HTTPException(403, {
-        message: 'email not allow-listed',
-        cause: { code: 'FORBIDDEN' },
-      });
+      throw forbidden('email not allow-listed');
     }
 
     const [row] = await db

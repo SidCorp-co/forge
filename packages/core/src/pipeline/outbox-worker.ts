@@ -85,7 +85,7 @@ function actorOf(row: OutboxRow): Actor {
     }
   }
   throw new Error(
-    `OUTBOX_ACTOR_UNRECORDED: outbox row ${row.id} names actor ${row.actor_type ?? 'NULL'}:${row.actor_id ?? 'NULL'} with agency ${row.actor_agency ?? 'NULL'}; a transition records who acted through pipeline.actor_agency and this one did not`,
+    `outbox row ${row.id} names actor ${row.actor_type ?? 'NULL'}:${row.actor_id ?? 'NULL'} with agency ${row.actor_agency ?? 'NULL'}; a transition records who acted through pipeline.actor_agency and this one did not`,
   );
 }
 

@@ -20,7 +20,8 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { openIssueRun, openOneShotRun } from '../pipeline/runs.js';
 import { canonicalSessionId, usageSessionMatch } from '../usage-records/rollup.js';
 import { readJob } from './job-queries.js';
-import { noPromptMessage, POOL_JOB_NO_PROMPT, poolPrompt } from './pool-served.js';
+import { refuseJob } from './refusals.js';
+import { noPromptMessage, poolPrompt } from './pool-served.js';
 import {
   type ActualUsage,
   extractPayloadExtras,
@@ -34,9 +35,6 @@ const badRequest = (details: unknown) =>
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-const conflict = (message: string, code: string) =>
-  new HTTPException(409, { message, cause: { code } });
 
 const jobCreateSchema = z
   .object({
@@ -131,10 +129,7 @@ jobProjectRoutes.post(
 
     if (input.issueId) await assertIssueInProject(projectId, input.issueId);
     if (poolPrompt(input.payload) === null) {
-      throw new HTTPException(422, {
-        message: noPromptMessage(input.type),
-        cause: { code: POOL_JOB_NO_PROMPT },
-      });
+      throw refuseJob('POOL_JOB_NO_PROMPT', noPromptMessage(input.type), '/payload');
     }
 
     // ISS-101 — every job needs a pipeline_run. Issue-bound jobs attach to
@@ -256,7 +251,7 @@ jobRoutes.patch(
     requireHeld(access, 'project.write');
 
     if (job.status !== 'queued') {
-      throw conflict('jobs can only be patched while queued', 'JOB_NOT_QUEUED');
+      throw refuseJob('JOB_NOT_QUEUED', 'jobs can only be patched while queued');
     }
 
     const [updated] = await db

@@ -127,7 +127,6 @@ async function guarded<T>(
     const detail = err instanceof Error ? err.message : String(err);
     out.push({
       code: 'RELEASE_CHECK_UNEVALUATED',
-      httpStatus: 503,
       message: releaseBlockerSentence('RELEASE_CHECK_UNEVALUATED', { check, detail }),
       details: { check, detail },
       evaluated: false,

@@ -1,3 +1,4 @@
+import type { NoteRefusalCode } from '@forge/contracts/assistant';
 import type { ChatMessage } from '../../integrations/llm/types.js';
 import type { CallToolResult } from '../../mcp/tool-result.js';
 import { NEAR_DUPLICATE_THRESHOLD } from '../../memory/thresholds.js';
@@ -18,15 +19,6 @@ export const RECENT_TURNS = 6;
 export const EXISTING_TOP_K = 3;
 /** The marker `turn-context.ts:applyTurnContext` puts between its prefix and the person's own text. */
 const CONTEXT_MARKER = '\n\n---\n\n';
-
-export type NoteRefusalCode =
-  | 'unasked'
-  | 'restates_message'
-  | 'second_note_this_turn'
-  | 'too_short'
-  | 'too_long'
-  | 'duplicate'
-  | 'about_the_conversation';
 
 export interface NoteRefusal {
   code: NoteRefusalCode;

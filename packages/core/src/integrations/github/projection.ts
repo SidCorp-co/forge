@@ -12,7 +12,7 @@
  */
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { db } from '../../db/client.js';
+import { db, type Tx } from '../../db/client.js';
 import {
   type ChangeRequestHost,
   type ProjectedCheckRun,
@@ -345,4 +345,21 @@ export async function openPullRequestsOnBase(
       ),
     )
     .orderBy(repoPullRequests.number);
+}
+
+/** A change request Forge merged itself, recorded in the caller's transaction. */
+export async function markPullRequestMerged(
+  tx: Tx,
+  id: string,
+  merged: { commitSha: string; mergedAt: Date },
+): Promise<void> {
+  await tx
+    .update(repoPullRequests)
+    .set({
+      state: 'merged',
+      mergedAt: merged.mergedAt,
+      mergeCommitSha: merged.commitSha,
+      updatedAt: new Date(),
+    })
+    .where(eq(repoPullRequests.id, id));
 }

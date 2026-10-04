@@ -270,25 +270,8 @@ export interface EmitResult {
   failures: HookSubscriberFailure[];
 }
 
-export class HookDeliveryError extends Error {
-  readonly topic: HookTopic;
-  readonly failures: HookSubscriberFailure[];
-
-  constructor(result: Pick<EmitResult, 'topic' | 'failures'>) {
-    const detail = result.failures
-      .map(
-        (f) => `${f.subscriber}: ${f.error instanceof Error ? f.error.message : String(f.error)}`,
-      )
-      .join('; ');
-    super(`${result.topic}: ${result.failures.length} subscriber(s) failed — ${detail}`);
-    this.name = 'HookDeliveryError';
-    this.topic = result.topic;
-    this.failures = result.failures;
-  }
-}
-
 /**
- * Throws `HookDeliveryError` when a failure the caller owns is present;
+ * Throws, naming each failed subscriber, when a failure the caller owns is present;
  * no-op otherwise. The bus itself never throws — this lets a specific caller
  * (e.g. `drainOutboxOnce`) opt into treating a subscriber failure as its own.
  *
@@ -304,7 +287,10 @@ export function assertHookDelivered(result: EmitResult, opts?: { owned?: string[
     ? result.failures.filter((f) => owned.includes(f.subscriber))
     : result.failures;
   if (relevant.length > 0) {
-    throw new HookDeliveryError({ topic: result.topic, failures: relevant });
+    const detail = relevant
+      .map((f) => `${f.subscriber}: ${f.error instanceof Error ? f.error.message : String(f.error)}`)
+      .join('; ');
+    throw new Error(`${result.topic}: ${relevant.length} subscriber(s) failed — ${detail}`);
   }
 }
 

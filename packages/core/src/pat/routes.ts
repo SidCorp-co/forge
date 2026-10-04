@@ -1,3 +1,4 @@
+import type { PatRefusalCode } from '@forge/contracts/pat';
 import { SET_PAT_FENCE_SHAPE, setPatFenceRequestSchema } from '@forge/contracts/pat-fence';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -18,7 +19,7 @@ import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { mcpAuditLog, personalAccessTokens } from '../db/schema.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
-import { RefusalError } from '../lib/refusal.js';
+import { RefusalError, refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireFreshAuth } from '../middleware/require-fresh-auth.js';
 import { forgetPatThrottle } from '../middleware/require-pat.js';
@@ -28,6 +29,8 @@ import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { fenceEditorRefusal, fenceOf } from './fence-rules.js';
 import { listPatFenceChanges, setPatFence } from './fence-service.js';
+
+const refuse = refuser<PatRefusalCode>('PAT_REFUSED');
 
 const SCOPES = ['read', 'write', 'admin'] as const;
 
@@ -158,24 +161,21 @@ patRoutes.post(
       (PAT_ACCOUNT_ONLY_PERMISSIONS as readonly string[]).includes(p),
     );
     if (fenced && accountOnly.length > 0) {
-      throw new HTTPException(400, {
-        message:
-          `${accountOnly.join(', ')} ${accountOnly.length === 1 ? 'is' : 'are'} account ` +
+      throw refuse(
+        'PAT_ACCOUNT_PERMISSION_ON_SCOPED_TOKEN',
+        `${accountOnly.join(', ')} ${accountOnly.length === 1 ? 'is' : 'are'} account ` +
           'permissions, whose routes resolve no project, and this token is fenced to projects. ' +
           'Drop them, or mint the token with no project list.',
-        cause: {
-          code: 'PAT_ACCOUNT_PERMISSION_ON_SCOPED_TOKEN',
-          details: { accountOnly, sent: body.permissions },
-        },
-      });
+        '/permissions',
+      );
     }
 
     const active = await countActivePatsForUser(userId);
     if (active >= env.PAT_MAX_PER_USER) {
-      throw new HTTPException(422, {
-        message: 'maximum number of personal access tokens reached',
-        cause: { code: 'PAT_LIMIT', details: { max: env.PAT_MAX_PER_USER } },
-      });
+      throw refuse(
+        'PAT_LIMIT',
+        `you hold the most live personal access tokens allowed (${env.PAT_MAX_PER_USER}); revoke one first`,
+      );
     }
 
     const [existing] = await db
@@ -190,18 +190,20 @@ patRoutes.post(
       )
       .limit(1);
     if (existing) {
-      throw new HTTPException(409, {
-        message: 'a personal access token with this name already exists',
-        cause: { code: 'PAT_NAME_CONFLICT' },
-      });
+      throw refuse(
+        'PAT_NAME_CONFLICT',
+        'a live personal access token with this name already exists',
+        '/name',
+      );
     }
 
     const reserved = coreTokenNamePrefixOf(body.name);
     if (reserved) {
-      throw new HTTPException(422, {
-        message: `a token name beginning "${reserved}" is one core gives the tokens it mints for a device, a workspace or an assistant turn; name a personal token otherwise`,
-        cause: { code: 'PAT_NAME_RESERVED' },
-      });
+      throw refuse(
+        'PAT_NAME_RESERVED',
+        `a token name beginning "${reserved}" is one core gives the tokens it mints for a device, a workspace or an assistant turn; name a personal token otherwise`,
+        '/name',
+      );
     }
 
     if (body.boundProjectId && body.projectIds && body.projectIds.length > 0) {

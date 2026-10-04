@@ -11,9 +11,9 @@ import {
 } from './requirement-context.js';
 import {
   ARTIFACT_CONTEXT_KEY,
-  ArtifactContextError,
   artifactContext,
   artifactContextRecord,
+  artifactContextRefusal,
   type LoadedArtifact,
   type TracedDesignRow,
 } from './run-context.js';
@@ -76,7 +76,7 @@ async function pinnedDesignsOf(issue: Record<string, unknown>): Promise<TracedDe
     ORDER BY w.flow
   `)) as unknown as Array<Record<string, unknown>>;
   if (issue.built_id && !rows.some((r) => String(r.id) === String(issue.built_id))) {
-    throw new ArtifactContextError(
+    throw artifactContextRefusal(
       'ARTIFACT_CONTEXT_UNLOADABLE',
       {
         kind: 'workflow-design',

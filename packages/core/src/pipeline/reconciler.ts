@@ -13,11 +13,7 @@ import {
   AUTONOMOUS_JOB_TYPE,
 } from './autonomous-mode.js';
 import { checkAutonomousRescueCap, recordAutonomousRescue } from './autonomous-rescue-cap.js';
-import {
-  AgentMintedSinceSelected,
-  mintReconcilerActor,
-  reconcilerActorFor,
-} from './reconciler-actor.js';
+import { mintReconcilerActor, reconcilerActorFor } from './reconciler-actor.js';
 import {
   buildWedgeResetBody,
   readWedgeLease,
@@ -130,9 +126,15 @@ export async function runReconcilerOnce(): Promise<{
   return { rescued, stale, autonomousReset };
 }
 
-/** Committed between the wedge read and the reset's row lock: a question for a person, a lease. */
-class AskedSinceSelected extends Error {}
-class LeaseRenewedSinceSelected extends Error {}
+/** Committed between the wedge read and the reset's row lock: a question, a lease, an agent account. */
+type StoodSinceSelected = 'asked' | 'lease' | 'minted';
+
+const STOOD_SAID: Record<StoodSinceSelected, string> = {
+  asked: 'reconciler: a person was asked since the wedge read, so it stays',
+  lease: 'reconciler: a lease was renewed since the wedge read, so it stays',
+  minted:
+    'reconciler: the project gained an agent account since the wedge read, so the next pass resets it',
+};
 
 type WedgeCandidate = {
   id: string;
@@ -221,6 +223,7 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
     );
     return false;
   }
+  let stood = null as StoodSinceSelected | null;
   try {
     const { capped, runId } = await checkAutonomousRescueCap({
       projectId: row.project_id,
@@ -244,10 +247,15 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
         reason: 'reconciler_autonomous_wedge_reset',
         recovery: true,
         beforeStatusWrite: async (tx) => {
-          if (await personOwesAnAnswer(tx, row.id)) throw new AskedSinceSelected();
+          // Each throw rolls the move back; `stood` says which re-check stopped it.
+          const stop = (why: StoodSinceSelected) => {
+            stood = why;
+            return new Error(STOOD_SAID[why]);
+          };
+          if (await personOwesAnAnswer(tx, row.id)) throw stop('asked');
           const reading = readWedgeLease(await wedgeLeaseUnderLock(tx, row.id), new Date());
-          if (wedgeLeaseHoldsTheIssue(reading)) throw new LeaseRenewedSinceSelected();
-          await mintReconcilerActor(tx, row.project_id, actor);
+          if (wedgeLeaseHoldsTheIssue(reading)) throw stop('lease');
+          if (!(await mintReconcilerActor(tx, row.project_id, actor))) throw stop('minted');
           await postIssueNotice(
             {
               issueId: row.id,
@@ -280,25 +288,8 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
     }
     return true;
   } catch (err) {
-    if (err instanceof AskedSinceSelected) {
-      logger.info(
-        { issueId: row.id },
-        'reconciler: a person was asked since the wedge read, so it stays',
-      );
-      return false;
-    }
-    if (err instanceof LeaseRenewedSinceSelected) {
-      logger.info(
-        { issueId: row.id },
-        'reconciler: a lease was renewed since the wedge read, so it stays',
-      );
-      return false;
-    }
-    if (err instanceof AgentMintedSinceSelected) {
-      logger.info(
-        { issueId: row.id, projectId: row.project_id },
-        'reconciler: the project gained an agent account since the wedge read, so the next pass resets it',
-      );
+    if (stood) {
+      logger.info({ issueId: row.id, projectId: row.project_id }, STOOD_SAID[stood]);
       return false;
     }
     logger.error(

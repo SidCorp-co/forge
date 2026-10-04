@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 import {
   acknowledgeReconcileRun,
   applyReconcileRun,
@@ -21,7 +22,7 @@ import {
   rejectReconcileRun,
   spawnReconcileRun,
 } from './reconcile-service.js';
-import { requireHeld } from '../permissions/index.js';
+import { refuse } from './refuse.js';
 
 const projectParamSchema = z.object({ projectId: z.string().uuid() });
 const runParamSchema = z.object({ projectId: z.string().uuid(), runId: z.string().uuid() });
@@ -30,8 +31,6 @@ const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 const notFound = (msg: string) =>
   new HTTPException(404, { message: msg, cause: { code: 'NOT_FOUND' } });
-const conflict = (msg: string) =>
-  new HTTPException(409, { message: msg, cause: { code: 'CONFLICT' } });
 
 export const reconcileRoutes = new Hono<{ Variables: AuthVars }>();
 reconcileRoutes.use('/:projectId/reconcile-runs*', requireAuth(), assertEmailVerified());
@@ -64,10 +63,9 @@ reconcileRoutes.post(
     const result = await spawnReconcileRun({ projectId, packetId, skillId, actorUserId: userId });
 
     if (!result.ok) {
-      if (result.reason === 'already-active') throw conflict(result.detail);
-      if (result.reason === 'c1-c5-refused')
-        throw badRequest({ code: 'C1_C5_REFUSED', message: result.detail });
-      if (result.reason === 'no-runner') throw conflict(`NO_RUNNER_ONLINE: ${result.detail}`);
+      if (result.reason === 'already-active') throw refuse('RECONCILE_RUN_ACTIVE', result.detail);
+      if (result.reason === 'c1-c5-refused') throw refuse('C1_C5_REFUSED', result.detail);
+      if (result.reason === 'no-runner') throw refuse('NO_RUNNER_ONLINE', result.detail);
       throw new HTTPException(500, { message: result.detail });
     }
 
@@ -144,7 +142,10 @@ reconcileRoutes.post(
     const run = await getReconcileRun(runId);
     if (!run || run.projectId !== projectId) throw notFound(`reconcile run ${runId} not found`);
     if (run.status !== 'pending' && run.status !== 'running') {
-      throw conflict(`reconcile run ${runId} is ${run.status}; a verdict is recorded on a pending or running run`);
+      throw refuse(
+        'RECONCILE_RUN_NOT_OPEN',
+        `reconcile run ${runId} is ${run.status}; a verdict is recorded on a pending or running run`,
+      );
     }
 
     await recordReconcileVerdict({
@@ -189,7 +190,10 @@ reconcileRoutes.post(
     const run = await getReconcileRun(runId);
     if (!run || run.projectId !== projectId) throw notFound(`reconcile run ${runId} not found`);
     if (run.status !== 'verifying') {
-      throw conflict(`reconcile run ${runId} is ${run.status}; a vote is recorded on a verifying run`);
+      throw refuse(
+        'RECONCILE_RUN_NOT_VERIFYING',
+        `reconcile run ${runId} is ${run.status}; a vote is recorded on a verifying run`,
+      );
     }
 
     await recordVerifierVote({ runId, jobId, vote, reason });
@@ -217,7 +221,6 @@ reconcileRoutes.post(
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.startsWith('NOT_FOUND:')) throw notFound(msg);
-      if (msg.startsWith('BAD_REQUEST:')) throw badRequest(msg);
       throw err;
     }
 
@@ -249,7 +252,6 @@ reconcileRoutes.post(
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.startsWith('NOT_FOUND:')) throw notFound(msg);
-      if (msg.startsWith('BAD_REQUEST:')) throw badRequest(msg);
       throw err;
     }
 
@@ -281,7 +283,6 @@ reconcileRoutes.post(
     } catch (err: unknown) {
       const msg = String(err);
       if (msg.startsWith('NOT_FOUND:')) throw notFound(msg);
-      if (msg.startsWith('BAD_REQUEST:')) throw badRequest(msg);
       throw err;
     }
 

@@ -64,7 +64,7 @@ provenance of its own.
    `releaseIssueLeaseRow` deletes on `(project_id, issue_key)` with `device_id` narrowing it,
    `readDeviceIssueLease` takes the project the caller named, and `resolveLeaseKey` is the one
    place the prefixed key the pool hands out becomes the canonical one the store holds. A release
-   that matched no row answers `404` and one this box holds in two projects answers `409` naming
+   that matched no row answers `404` and one this box holds in two projects is refused `ISSUE_LEASE_AMBIGUOUS` naming
    both, rather than either being acknowledged as done.
 5. **Issue revision**, so a live attempt is not silently re-aimed.
 6. ~~**Delete `POST /me/pool/claim`**~~ **Done, ISS-1110.** It answered every call

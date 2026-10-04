@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
+import { refuseConversation } from '../conversations/refusals.js';
 import { conversationPins } from '../db/schema-conversations.js';
 import { isActiveMember } from '../ecosystem/store.js';
 import type { AuthVars } from '../middleware/auth.js';
@@ -22,20 +23,19 @@ export async function ecosystemOfScope(
 ): Promise<string | null> {
   if (!scope || scope.kind === 'project') return null;
   if (await isActiveMember(db, homeProjectId, scope.ecosystemId)) return scope.ecosystemId;
-  throw new HTTPException(409, {
-    message: `project ${homeProjectId} is not an active member of ecosystem ${scope.ecosystemId}, so a chat opened under it cannot read at that ecosystem's scope — open it under a member project, or at project scope`,
-    cause: {
-      code: 'ECOSYSTEM_NOT_MEMBER',
-      details: { projectId: homeProjectId, ecosystemId: scope.ecosystemId },
-    },
-  });
+  throw refuseConversation(
+    'ECOSYSTEM_NOT_MEMBER',
+    `project ${homeProjectId} is not an active member of ecosystem ${scope.ecosystemId}, so a chat opened under it cannot read at that ecosystem's scope — open it under a member project, or at project scope`,
+    '/scope/ecosystemId',
+  );
 }
 
 export const scopeIsFixed = (id: string) =>
-  new HTTPException(409, {
-    message: `conversation ${id}'s scope was set when it was opened and never changes — open another conversation at the scope you want`,
-    cause: { code: 'CONVERSATION_SCOPE_FIXED' },
-  });
+  refuseConversation(
+    'CONVERSATION_SCOPE_FIXED',
+    `conversation ${id}'s scope was set when it was opened and never changes — open another conversation at the scope you want`,
+    '/scope',
+  );
 
 export async function pinnedBy(userId: string, ids: readonly string[]): Promise<Set<string>> {
   if (ids.length === 0) return new Set();

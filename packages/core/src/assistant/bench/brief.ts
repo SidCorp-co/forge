@@ -58,14 +58,6 @@ export interface ProjectBriefSource {
   readAt: string;
 }
 
-/** A read the brief cannot do without, named so an operator knows which credential to fix. */
-export class BriefRefusal extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'BriefRefusal';
-  }
-}
-
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 /** One line of author text inside the grounding block, clamped so "never truncated" stays true of it. */
@@ -271,7 +263,7 @@ export async function readProjectBrief(
   try {
     index = await client.knowledge(project.id);
   } catch (err) {
-    throw new BriefRefusal(
+    throw new Error(
       `cannot read this project's knowledge: ${errorText(err)}. The benchmark's project brief is assembled from it and handed to the judge on every turn, so a run without it would grade every project answer against nothing. Give the credential membership of ${project.slug}, or run against a project it already holds.`,
     );
   }

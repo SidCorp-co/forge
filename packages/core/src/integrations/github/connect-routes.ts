@@ -9,6 +9,7 @@
  * own session cookie and answer to the same auth as every other route.
  */
 
+import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
 import { eq } from 'drizzle-orm';
 import type { Context, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
@@ -17,6 +18,7 @@ import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { organizations, projects } from '../../db/schema.js';
 import { loadOrgRole } from '../../lib/authz.js';
+import { refuser } from '../../lib/refusal.js';
 import { logger } from '../../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { badRequest } from '../../middleware/route-errors.js';
@@ -43,6 +45,8 @@ import {
 import { findConnectionOwningInstallation } from './install-resolve.js';
 import { listInstallationRepositories } from './repositories.js';
 import { requireCan, requireOrgHeld } from '../../permissions/index.js';
+
+const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 
 const invalidQuery = (result: { success: boolean; error?: z.core.$ZodError }) => {
   if (!result.success && result.error) throw badRequest(z.flattenError(result.error));
@@ -117,12 +121,11 @@ async function ownerOrgForProjectApp(args: {
   userId: string;
 }): Promise<string | undefined> {
   if (args.asked && args.asked !== args.projectOrgId) {
-    throw new HTTPException(409, {
-      message:
-        "org connection must belong to the project's own org — this project belongs to " +
+    throw refuse(
+      'ORG_MISMATCH',
+      "org connection must belong to the project's own org — this project belongs to " +
         `${args.projectOrgId ?? 'no shared org'}, and the request named ${args.asked}.`,
-      cause: { code: 'ORG_MISMATCH' },
-    });
+    );
   }
   if (!args.projectOrgId) return undefined;
   // A GitHub App created here is owned by the project's org and reachable by every admin of the

@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { SESSION_MACHINE } from '@forge/contracts/session-machine';
 import { eq } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import {
   CONTENT_LANGUAGE_KEY,
   contentLanguageBlock,
@@ -18,6 +17,7 @@ import {
 } from '../db/schema.js';
 import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
 import { buildChatPreamble, TOOL_REFERENCE } from '../lib/chat-preamble.js';
+import type { RefusalError } from '../lib/refusal.js';
 import {
   findAvailableDeviceForProject,
   findChatCapableDeviceForProject,
@@ -38,6 +38,7 @@ import {
   readPersistedPageContext,
   samePageContext,
 } from './page-context.js';
+import { refuseSession } from './refusals.js';
 import { seedTurn } from './session-events.js';
 import { transitionSessions } from './session-transition.js';
 import type { AgentSessionPatch } from './session-failure.js';
@@ -71,20 +72,19 @@ function readLensOverride(metadata: unknown): MemberLens[] | null {
 }
 
 /**
- * The 409 a caller throws when a REMOTE chat turn has no online Claude client.
+ * The refusal a caller throws when a REMOTE chat turn has no online Claude client.
  * `scope` only changes the user-facing wording (a brand-new turn references the
  * project; a follow-up references the session) — same code `NO_CLAUDE_CLIENT`.
  */
 export const noClaudeClient = (scope: 'project' | 'session' | 'picked') =>
-  new HTTPException(409, {
-    message:
-      scope === 'project'
-        ? 'No online Claude client for this project. Open the desktop app or bring a chat-capable runner online, then try again.'
-        : scope === 'picked'
-          ? 'The selected runner is offline or not chat-capable for this project. Pick another runner, choose Auto, or bring it online, then try again.'
-          : 'No online Claude client for this session. Open the desktop app or bring its runner online, then try again.',
-    cause: { code: 'NO_CLAUDE_CLIENT' },
-  });
+  refuseSession(
+    'NO_CLAUDE_CLIENT',
+    scope === 'project'
+      ? 'No online Claude client for this project. Open the desktop app or bring a chat-capable runner online, then try again.'
+      : scope === 'picked'
+        ? 'The selected runner is offline or not chat-capable for this project. Pick another runner, choose Auto, or bring it online, then try again.'
+        : 'No online Claude client for this session. Open the desktop app or bring its runner online, then try again.',
+  );
 
 export interface ChatClient {
   /** Resolved runner device for a REMOTE turn; null when local, or none online. */
@@ -287,11 +287,11 @@ export interface DispatchChatTurnArgs {
 }
 
 /** A remote turn runs in its device binding's checkout; a binding that names none is refused by name. */
-export function checkoutUnbound(projectId: string, deviceId: string | null): HTTPException {
-  return new HTTPException(409, {
-    message: `CHECKOUT_UNBOUND: device ${deviceId ?? '(none)'}'s binding to project ${projectId} names no checkout, so no turn runs there. The binding is the only place a checkout is named: set it with \`forge-runner bind <slug> --path <dir>\` on the box, or PATCH /api/projects/${projectId}/runners/:runnerId { repoPath }.`,
-    cause: { code: 'CHECKOUT_UNBOUND' },
-  });
+export function checkoutUnbound(projectId: string, deviceId: string | null): RefusalError {
+  return refuseSession(
+    'CHECKOUT_UNBOUND',
+    `device ${deviceId ?? '(none)'}'s binding to project ${projectId} names no checkout, so no turn runs there. The binding is the only place a checkout is named: set it with \`forge-runner bind <slug> --path <dir>\` on the box, or PATCH /api/projects/${projectId}/runners/:runnerId { repoPath }.`,
+  );
 }
 
 export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<AgentSessionRow> {

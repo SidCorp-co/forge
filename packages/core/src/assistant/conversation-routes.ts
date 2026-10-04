@@ -30,7 +30,8 @@ import {
   settleShape,
 } from '../conversations/membership.js';
 import { addHandle, addPerson, listParticipants } from '../conversations/participants.js';
-import { PresenceValidationError, validateRoomPresence } from '../conversations/presence.js';
+import { refuseConversation } from '../conversations/refusals.js';
+import { validateRoomPresence } from '../conversations/presence.js';
 import { derivedScope } from '../conversations/scope.js';
 import {
   type ConversationRow,
@@ -70,7 +71,7 @@ import {
   pinnedBy,
   scopeIsFixed,
 } from './conversation-scope.js';
-import { ConversationModeSettledError, sendWebConversationMessage } from './conversation-send.js';
+import { sendWebConversationMessage } from './conversation-send.js';
 import { conversationToolCallRoutes } from './conversation-tool-calls.js';
 import { threadMarks } from './thread-marks.js';
 import { rememberUiSnapshot } from './ui-snapshot.js';
@@ -185,10 +186,10 @@ conversationRoutes.route('/', conversationPinRoutes);
 function soleProject(row: ConversationRow, scope: string[]): string {
   const only = scope[0];
   if (scope.length !== 1 || !only) {
-    throw new HTTPException(409, {
-      message: `conversation ${row.id} is about ${scope.length} projects (${scope.join(', ') || 'none'}) and a turn runs under exactly one, so there is no project for this message to be answered under`,
-      cause: { code: 'CONVERSATION_SCOPE_AMBIGUOUS' },
-    });
+    throw refuseConversation(
+      'CONVERSATION_SCOPE_AMBIGUOUS',
+      `conversation ${row.id} is about ${scope.length} projects (${scope.join(', ') || 'none'}) and a turn runs under exactly one, so there is no project for this message to be answered under`,
+    );
   }
   return only;
 }
@@ -369,17 +370,7 @@ conversationRoutes.patch(
     if (scope !== undefined) throw scopeIsFixed(id);
     let roomPresence: ReturnType<typeof validateRoomPresence> | null | undefined;
     if (presence !== undefined) {
-      try {
-        roomPresence = presence === null ? null : validateRoomPresence(presence);
-      } catch (err) {
-        if (err instanceof PresenceValidationError) {
-          throw new HTTPException(400, {
-            message: err.message,
-            cause: { code: 'PRESENCE_INVALID', issues: err.issues },
-          });
-        }
-        throw err;
-      }
+      roomPresence = presence === null ? null : validateRoomPresence(presence);
     }
     let updated: ConversationRow | null = null;
     if (title !== undefined) updated = await renameConversation(id, title);
@@ -422,10 +413,10 @@ conversationRoutes.post(
 
     const conversation = await writableConversation(id, userId);
     if (conversation.adapter !== 'web') {
-      throw new HTTPException(409, {
-        message: `conversation ${id} is a ${conversation.adapter} room, and the Forge UI speaks only in the rooms it opened — answer there instead`,
-        cause: { code: 'CONVERSATION_NOT_WEB' },
-      });
+      throw refuseConversation(
+        'CONVERSATION_NOT_WEB',
+        `conversation ${id} is a ${conversation.adapter} room, and the Forge UI speaks only in the rooms it opened — answer there instead`,
+      );
     }
     const scope = await derivedScope(id);
     const projectId = soleProject(conversation, scope);
@@ -433,34 +424,36 @@ conversationRoutes.post(
     const already = await readMessages(id, 1);
     const settled = conversation.mode !== null || already.length > 0;
     if (mode !== undefined && settled) {
-      throw new HTTPException(409, {
-        message: `conversation ${id} already answers in ${effectiveConversationMode(conversation)} mode; a room's mode is written by its first message and never changes, so open another conversation to talk to the other one`,
-        cause: { code: 'CONVERSATION_MODE_SETTLED' },
-      });
+      throw refuseConversation(
+        'CONVERSATION_MODE_SETTLED',
+        `conversation ${id} already answers in ${effectiveConversationMode(conversation)} mode; a room's mode is written by its first message and never changes, so open another conversation to talk to the other one`,
+      );
     }
     const asking = mode ?? effectiveConversationMode(conversation);
     if (conversation.requirementId && asking === 'agent') {
-      throw new HTTPException(409, {
-        message: `conversation ${id} is a BA room about a requirement, answered in Assistant mode through its narrow tool set; an Agent turn would reach past it, so this message was not taken in`,
-        cause: { code: 'CONVERSATION_BA_ASSISTANT_ONLY' },
-      });
+      throw refuseConversation(
+        'CONVERSATION_BA_ASSISTANT_ONLY',
+        `conversation ${id} is a BA room about a requirement, answered in Assistant mode through its narrow tool set; an Agent turn would reach past it, so this message was not taken in`,
+      );
     }
     const unavailable =
       asking === 'agent' ? await conversationAgentUnavailableReason(projectId) : null;
     if (unavailable) {
-      throw new HTTPException(409, {
-        message: `no paired device can take an Agent turn for project ${projectId} (${unavailable}), so this message was not taken in — nothing was answered in Assistant mode in its place`,
-        cause: { code: 'CONVERSATION_AGENT_NO_DEVICE', details: { projectId } },
-      });
+      throw refuseConversation(
+        'CONVERSATION_AGENT_NO_DEVICE',
+        `no paired device can take an Agent turn for project ${projectId} (${unavailable}), so this message was not taken in — nothing was answered in Assistant mode in its place`,
+        '/mode',
+      );
     }
 
     const attached = await listConversationAttachmentsByIds(id, attachmentIds ?? []);
     const foreign = foreignAttachmentIds(attachmentIds ?? [], attached);
     if (foreign.length > 0) {
-      throw new HTTPException(409, {
-        message: `attachment ${foreign.join(', ')} ${foreign.length === 1 ? 'is' : 'are'} not on conversation ${id}, so this message was not taken in — upload the file to this room and send its id, rather than citing one from another`,
-        cause: { code: 'CONVERSATION_ATTACHMENT_FOREIGN', details: { attachmentIds: foreign } },
-      });
+      throw refuseConversation(
+        'CONVERSATION_ATTACHMENT_FOREIGN',
+        `attachment ${foreign.join(', ')} ${foreign.length === 1 ? 'is' : 'are'} not on conversation ${id}, so this message was not taken in — upload the file to this room and send its id, rather than citing one from another`,
+        '/attachmentIds',
+      );
     }
 
     const [me] = await db
@@ -470,33 +463,22 @@ conversationRoutes.post(
       .limit(1);
 
     if (uiSnapshot) rememberUiSnapshot(conversation.id, uiSnapshot);
-    let sent: Awaited<ReturnType<typeof sendWebConversationMessage>>;
-    try {
-      sent = await sendWebConversationMessage({
-        room: {
-          id: conversation.id,
-          externalId: conversation.externalId,
-          shape: conversation.shape,
-        },
-        projectId,
-        userId,
-        viaTokenId: c.get('patTokenId') ?? null,
-        userLabel: me?.displayName ?? me?.email ?? null,
-        content,
-        mode: asking,
-        namedMode: mode !== undefined,
-        ...(clientToken ? { clientToken } : {}),
-        ...(attached.length > 0 ? { images: imagesFromAttachments(attached) } : {}),
-      });
-    } catch (err) {
-      if (err instanceof ConversationModeSettledError) {
-        throw new HTTPException(409, {
-          message: `conversation ${id} was opened in ${err.settled} mode by a message that landed first; this one was not taken in — send it again, or open another conversation to talk to the other mode`,
-          cause: { code: 'CONVERSATION_MODE_SETTLED' },
-        });
-      }
-      throw err;
-    }
+    const sent = await sendWebConversationMessage({
+      room: {
+        id: conversation.id,
+        externalId: conversation.externalId,
+        shape: conversation.shape,
+      },
+      projectId,
+      userId,
+      viaTokenId: c.get('patTokenId') ?? null,
+      userLabel: me?.displayName ?? me?.email ?? null,
+      content,
+      mode: asking,
+      namedMode: mode !== undefined,
+      ...(clientToken ? { clientToken } : {}),
+      ...(attached.length > 0 ? { images: imagesFromAttachments(attached) } : {}),
+    });
 
     if (conversation.title === null && sent.seq === 0) {
       await renameConversation(id, roomNameFrom(content, attached));

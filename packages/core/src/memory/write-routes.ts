@@ -9,16 +9,8 @@ import {
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import {
-  MemoryFeedbackValidationError,
-  memoryFeedbackInputSchema,
-  runMemoryFeedback,
-} from './feedback-service.js';
-import {
-  MemoryWriteValidationError,
-  runMemoryWrite,
-  writeMemoryInputSchema,
-} from './write-service.js';
+import { memoryFeedbackInputSchema, runMemoryFeedback } from './feedback-service.js';
+import { runMemoryWrite, writeMemoryInputSchema } from './write-service.js';
 import { requireCan } from '../permissions/index.js';
 
 const badRequest = (details: unknown) =>
@@ -47,9 +39,6 @@ memoryWriteRoutes.post(
       const result = await runMemoryWrite(body);
       return c.json(result, 201);
     } catch (err) {
-      if (err instanceof MemoryWriteValidationError) {
-        throw badRequest({ textContent: [err.message] });
-      }
       if (err instanceof EmbeddingUnavailableError) {
         throw new HTTPException(503, {
           message: 'embeddings service unavailable',
@@ -74,14 +63,7 @@ memoryWriteRoutes.post(
     const userId = c.get('userId');
     await requireCan({ userId }, 'project.write', body.projectId);
 
-    try {
-      const result = await runMemoryFeedback(body);
-      return c.json(result, result.found ? 200 : 404);
-    } catch (err) {
-      if (err instanceof MemoryFeedbackValidationError) {
-        throw badRequest({ evidence: [err.message] });
-      }
-      throw err;
-    }
+    const result = await runMemoryFeedback(body);
+    return c.json(result, result.found ? 200 : 404);
   },
 );

@@ -99,28 +99,21 @@ export interface BenchResult {
 const RESULT_KEYS = ['at', 'api', 'commit', 'version', 'model', 'runId', 'k', 'tasks'] as const;
 const TRIAL_KEYS = ['at', 'pass', 'error', 'seconds', 'turns', 'cleanup'] as const;
 
-export class ResultShapeError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ResultShapeError';
-  }
-}
-
 /** Parse a result file, refusing one whose shape is not the one `writeResult` produced. */
 export function readResult(text: string, where = 'result'): BenchResult {
   const parsed: unknown = JSON.parse(text);
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
-    throw new ResultShapeError(`${where} is not an object`);
+    throw new Error(`${where} is not an object`);
   const obj = parsed as Record<string, unknown>;
   for (const key of RESULT_KEYS) {
-    if (!(key in obj)) throw new ResultShapeError(`${where} lacks ${key}`);
+    if (!(key in obj)) throw new Error(`${where} lacks ${key}`);
   }
-  if (!Array.isArray(obj.tasks)) throw new ResultShapeError(`${where}.tasks is not a list`);
+  if (!Array.isArray(obj.tasks)) throw new Error(`${where}.tasks is not a list`);
   if (obj.project === undefined) obj.project = null;
   obj.tasks.forEach((task: unknown, t) => {
     const row = task as Record<string, unknown>;
     if (typeof row.id !== 'string' || !Array.isArray(row.trials))
-      throw new ResultShapeError(`${where}.tasks[${t}] lacks id or trials`);
+      throw new Error(`${where}.tasks[${t}] lacks id or trials`);
     if (row.capability === undefined) row.capability = 'method';
     for (const trial of row.trials as Array<Record<string, unknown>>) {
       const cleanup = trial.cleanup as Record<string, unknown> | undefined;
@@ -136,7 +129,7 @@ export function readResult(text: string, where = 'result'): BenchResult {
     row.trials.forEach((trial: unknown, i) => {
       for (const key of TRIAL_KEYS) {
         if (!(key in (trial as Record<string, unknown>)))
-          throw new ResultShapeError(`${where}.tasks[${t}].trials[${i}] lacks ${key}`);
+          throw new Error(`${where}.tasks[${t}].trials[${i}] lacks ${key}`);
       }
     });
   });

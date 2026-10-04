@@ -1,3 +1,4 @@
+import type { ChannelRefusalCode } from '@forge/contracts/ecosystem';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../../db/client.js';
 import { ecosystemReadFence } from '../../ecosystem/access.js';
@@ -23,6 +24,7 @@ import {
   viewOf,
 } from '../../ecosystem/channel-view.js';
 import { activeEcosystemIdsOf, isActiveMember } from '../../ecosystem/store.js';
+import { RefusalError } from '../../lib/refusal.js';
 import { namedRefusals, type SideCodes, sideOf } from '../../mcp/tools/ecosystem-side.js';
 import type { ContextScopedMcpToolFactory, McpContext } from '../../mcp/tools/lib.js';
 import {
@@ -63,25 +65,23 @@ function settled(outcome: ChannelOutcome): Answer {
   return outcome.ok ? viewOf(outcome.served) : refusedWith(outcome.refusals);
 }
 
-class Unreadable extends Error {
-  constructor(
-    readonly path: string,
-    detail: string,
-  ) {
-    super(detail);
-  }
-}
-
-class Ambiguous extends Error {}
+const refuseChannel = (code: ChannelRefusalCode, path: string, detail: string) =>
+  new RefusalError([{ code, path, detail }], code);
 
 async function soleEcosystem(projectId: string, named: string | undefined): Promise<string> {
   const active = (await activeEcosystemIdsOf(db, [projectId])).map((m) => m.ecosystemId);
   if (named) {
     if (active.includes(named)) return named;
-    throw new Unreadable('/ecosystem', `project ${projectId} is not active in ecosystem ${named}`);
+    throw refuseChannel(
+      'CHANNEL_NOT_A_PARTY',
+      '/ecosystem',
+      `project ${projectId} is not active in ecosystem ${named}`,
+    );
   }
   if (active.length === 1 && active[0]) return active[0];
-  throw new Ambiguous(
+  throw refuseChannel(
+    'CHANNEL_ECOSYSTEM_AMBIGUOUS',
+    '/ecosystem',
     active.length === 0
       ? `project ${projectId} is active in no ecosystem, so it has no channel`
       : `project ${projectId} is active in ${active.length} ecosystems (${active.join(', ')}); name one`,
@@ -109,7 +109,8 @@ type Handlers = {
 async function scopedEcosystem(side: string, named: string | undefined, scope: ReadScope) {
   if (!scope.ecosystemId) return soleEcosystem(side, named);
   if (named && named !== scope.ecosystemId) {
-    throw new Unreadable(
+    throw refuseChannel(
+      'CHANNEL_NOT_A_PARTY',
       '/ecosystem',
       `this chat reads at ecosystem ${scope.ecosystemId}'s scope, so ecosystem ${named} is outside it`,
     );
@@ -292,9 +293,6 @@ async function run(ctx: McpContext, raw: Record<string, unknown>): Promise<Answe
   try {
     return await handler(call.args, side, writer, scope);
   } catch (err) {
-    if (err instanceof Unreadable) return one('CHANNEL_NOT_A_PARTY', err.path, err.message);
-    if (err instanceof Ambiguous)
-      return one('CHANNEL_ECOSYSTEM_AMBIGUOUS', '/ecosystem', err.message);
     const decided = namedRefusals(err);
     if (decided) return refusedWith(decided);
     if (err instanceof HTTPException && (err.status === 404 || err.status === 403)) {

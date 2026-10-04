@@ -41,7 +41,8 @@ import { permissionRefusalFor } from '../permissions/index.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { planDriftOf } from '../requirements/plan-drift.js';
 import type { ActorAgency } from './actor-agency.js';
-import { IssueBlockedError, refuseHeldTake } from './blocked-by.js';
+import { refuseHeldTake } from './blocked-by.js';
+import { isRefusal } from '../lib/refusal.js';
 import type { DraftReader } from './criteria/storefront-draft.js';
 import { isDispatchGateError } from './dispatch-gates.js';
 import { type CriteriaEvidence, type SourceType, unpassedCriteria } from './release-evidence.js';
@@ -195,11 +196,11 @@ async function heldTakeGuard(ctx: GuardContext): Promise<GuardFault | null> {
     await refuseHeldTake(ctx.executor, ctx.issue.id, 'a move to `in_progress`');
     return null;
   } catch (err) {
-    if (err instanceof IssueBlockedError) {
+    if (isRefusal(err, 'ISSUE_BLOCKED')) {
       return {
-        code: err.code,
-        detail: err.message.replace(/^ISSUE_BLOCKED: /, ''),
-        details: { from: ctx.from, to: ctx.to, blocked: err.blocked },
+        code: 'ISSUE_BLOCKED',
+        detail: err.refusals.map((r) => r.detail).join(' '),
+        details: { from: ctx.from, to: ctx.to },
       };
     }
     if (isDispatchGateError(err)) {

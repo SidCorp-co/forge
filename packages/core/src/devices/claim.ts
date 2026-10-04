@@ -19,11 +19,11 @@ import { JOB_MACHINE } from '@forge/contracts/job-machine';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
-import { IssueBlockedError, refuseBlockedTake } from '../issues/blocked-by.js';
+import { heldTakeRefusal, refuseBlockedTake } from '../issues/blocked-by.js';
+import { refusalCodeOf } from '../lib/refusal.js';
 import {
   assertDispatchGatesForIssue,
   type DispatchGateCode,
-  isDispatchGateError,
 } from '../issues/dispatch-gates.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { holdQueuedJob, releaseJobHold } from '../jobs/index.js';
@@ -38,12 +38,9 @@ import {
 } from '../jobs/prepare-claimed-job.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { transition } from '../lifecycle/transition.js';
+import type { PolicyRefusalCode } from '@forge/contracts/project-config';
 import { logger } from '../logger.js';
-import {
-  type DispatchState,
-  type PolicyRefusalCode,
-  PolicyRefusedError,
-} from '../project-config/dispatch-policy.js';
+import { type DispatchState, policyRefusalOf } from '../project-config/dispatch-policy.js';
 import { runnerAdmission } from './pool-admission.js';
 import { releaseLabelVerdict } from './release-label.js';
 
@@ -71,7 +68,7 @@ export type PrepareResult =
   | {
       ok: false;
       reason: 'policy_refused';
-      code: PolicyRefusalCode | DispatchGateCode | IssueBlockedError['code'];
+      code: PolicyRefusalCode | DispatchGateCode | 'ISSUE_BLOCKED';
       detail: string;
     }
   | { ok: false; reason: 'checkout_unbound'; detail: string };
@@ -197,11 +194,12 @@ async function policyStateFor(
   try {
     return { ok: true, state: await resolveJobPolicy(job) };
   } catch (err) {
-    if (!(err instanceof PolicyRefusedError)) throw err;
-    logger.warn({ jobId, projectId: job.projectId, code: err.code }, err.message);
+    const refused = policyRefusalOf(err);
+    if (!refused) throw err;
+    logger.warn({ jobId, projectId: job.projectId, code: refused.code }, refused.detail);
     return {
       ok: false,
-      refusal: { ok: false, reason: 'policy_refused', code: err.code, detail: err.message },
+      refusal: { ok: false, reason: 'policy_refused', code: refused.code, detail: refused.detail },
     };
   }
 }
@@ -223,9 +221,12 @@ async function designGateFor(jobId: string): Promise<Extract<PrepareResult, { ok
     await assertDispatchGatesForIssue(job.projectId, job.issueId);
     return null;
   } catch (err) {
-    if (!isDispatchGateError(err) && !(err instanceof IssueBlockedError)) throw err;
-    logger.warn({ jobId, projectId: job.projectId, code: err.code }, err.message);
-    return { ok: false, reason: 'policy_refused', code: err.code, detail: err.message };
+    const refused = heldTakeRefusal(err);
+    if (!refused) throw err;
+    const code = refusalCodeOf(refused) as DispatchGateCode | 'ISSUE_BLOCKED';
+    const detail = refused.refusals.map((r) => r.detail).join(' ');
+    logger.warn({ jobId, projectId: job.projectId, code }, detail);
+    return { ok: false, reason: 'policy_refused', code, detail };
   }
 }
 

@@ -26,21 +26,15 @@ export const WORKING_RENEW_MS = 5000;
  */
 export const ACK_TIMEOUT_MS = 5000;
 
-class AckDeadlineError extends Error {
-  constructor(ms: number) {
-    super(`the acknowledgement did not return within ${ms}ms`);
-    this.name = 'AckDeadlineError';
-  }
-}
-
-function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new AckDeadlineError(ms)), ms);
+/** Settles `late` once `ms` passes with the call still out, so the caller can take it back later. */
+function withDeadline(p: Promise<unknown>, ms: number): Promise<'done' | 'late'> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => resolve('late'), ms);
     t.unref?.();
     p.then(
-      (v) => {
+      () => {
         clearTimeout(t);
-        resolve(v);
+        resolve('done');
       },
       (e) => {
         clearTimeout(t);
@@ -96,10 +90,18 @@ export function acknowledgeRequest(args: AcknowledgeArgs): RequestAcknowledgemen
         () => undefined,
       );
     }
-    return withDeadline(call, ACK_TIMEOUT_MS).catch((err: unknown) => {
-      if (err instanceof AckDeadlineError) abandoned = true;
-      warn(err, ackArg, 'conversations: an acknowledgement could not be shown');
-    });
+    return withDeadline(call, ACK_TIMEOUT_MS).then(
+      (outcome) => {
+        if (outcome === 'done') return;
+        abandoned = true;
+        warn(
+          new Error(`the acknowledgement did not return within ${ACK_TIMEOUT_MS}ms`),
+          ackArg,
+          'conversations: an acknowledgement could not be shown',
+        );
+      },
+      (err: unknown) => warn(err, ackArg, 'conversations: an acknowledgement could not be shown'),
+    );
   };
 
   let chain: Promise<void> = Promise.resolve();

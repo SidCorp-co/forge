@@ -14,15 +14,18 @@ import {
   projects,
   runners,
 } from '../db/schema.js';
-import { assertUnfenced, loadPersonalOrgId, loadProjectAccess, maxProjectRole, orgDerivedProjectRole, visibleProjectsWhere } from '../lib/authz.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
-  badRequest,
-  flatten,
-  idParamSchema,
-  notFound,
-} from '../middleware/route-errors.js';
+  assertUnfenced,
+  loadPersonalOrgId,
+  loadProjectAccess,
+  maxProjectRole,
+  orgDerivedProjectRole,
+  visibleProjectsWhere,
+} from '../lib/authz.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { badRequest, flatten, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld, requireOrgCan, requireOrgHeld } from '../permissions/index.js';
 import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
 import { readDeclaredSource } from '../project-config/source.js';
 import { type AgentConfigKeyPatch, patchAgentConfigKeys, readAgentConfig } from './agent-config.js';
@@ -37,13 +40,7 @@ import {
   undeclaredFieldError,
 } from './retired-project-keys.js';
 import { projectRunnerRoutes } from './runners-routes.js';
-import {
-  createProject,
-  ProjectSlugTakenError,
-  readIssueBranchInputs,
-  readProjectBranches,
-} from './service.js';
-import { requireHeld, requireOrgCan, requireOrgHeld } from '../permissions/index.js';
+import { createProject, readIssueBranchInputs, readProjectBranches } from './service.js';
 
 const createProjectFields = {
   slug: z
@@ -131,24 +128,13 @@ projectRoutes.post(
       orgId = personal;
     }
 
-    try {
-      const created = await createProject({
-        slug,
-        name,
-        orgId,
-        createdBy: userId,
-      });
-
-      return c.json(created, 201);
-    } catch (err: unknown) {
-      if (err instanceof ProjectSlugTakenError) {
-        throw new HTTPException(409, {
-          message: 'slug already taken',
-          cause: { code: 'SLUG_TAKEN' },
-        });
-      }
-      throw err;
-    }
+    const created = await createProject({
+      slug,
+      name,
+      orgId,
+      createdBy: userId,
+    });
+    return c.json(created, 201);
   },
 );
 
