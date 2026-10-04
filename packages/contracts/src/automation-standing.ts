@@ -128,17 +128,14 @@ export interface ScheduleStanding {
 
 /** What a fire produced, each counted by its join to the fire, never by a stored total. */
 export interface FireProduced {
-	/** agent_reports.schedule_run_id */
 	reports: number;
 	/** Of those, the ones still at triage new. */
 	newReports: number;
 	/** Steward actions proposed or applied, read through the fire's session. */
 	proposals: number;
-	/** issues.schedule_run_id */
 	issues: number;
 	/** The run a runner-less fire started (a release cut); a prompt fire's own run is not counted. */
 	runs: number;
-	/** notifications.schedule_run_id */
 	notifications: number;
 }
 
@@ -174,7 +171,6 @@ export interface ReportStanding extends AgentReportView {
 	waitingOn: AutomationWaitingOn;
 }
 
-/** A steward action a fire's session proposed or applied, read off that session's run report. */
 export interface FireProposal {
 	fireId: string;
 	scheduleId: string;
@@ -191,11 +187,9 @@ export interface AutomationStandingResponse {
 	/** scheduleFailStreak, the threshold failing is read against. */
 	failStreak: number;
 	schedules: ScheduleStanding[];
-	/** The newest fires, newest first. */
 	fires: FireStanding[];
 	firesTotal: number;
 	firesHasMore: boolean;
-	/** Every report at triage new, high severity then oldest, then the newest triaged ones. */
 	reports: ReportStanding[];
 	reportCounts: Record<AgentReportTriage, number>;
 	/** The proposals of the fires served, newest first. */
@@ -234,6 +228,5 @@ export interface ScheduleDetailResponse {
 	firesHasMore: boolean;
 	/** Every report this schedule's fires filed. */
 	reports: ReportStanding[];
-	/** The proposals of the fires served, newest first. */
 	proposals: FireProposal[];
 }

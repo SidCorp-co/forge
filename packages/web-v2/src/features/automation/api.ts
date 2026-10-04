@@ -36,7 +36,6 @@ export const pmApi = {
 
 const projectPath = (projectId: string) => `/projects/${encodeURIComponent(projectId)}/automation`;
 
-/** The automation read model (ISS-114): every derived fact the schedules and Improvements screens show. */
 export const automationApi = {
   /** `GET /api/projects/:id/automation/standing` — schedules, fires, reports and proposals. */
   standing: (projectId: string) => apiClient<AutomationStandingResponse>(`${projectPath(projectId)}/standing`),
