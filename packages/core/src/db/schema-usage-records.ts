@@ -1,5 +1,15 @@
 import { relations, sql } from 'drizzle-orm';
-import { check, index, integer, pgTable, real, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  check,
+  index,
+  integer,
+  pgTable,
+  real,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { canonicalUuidText } from './column-checks.js';
 import { projects } from './schema-projects.js';
 

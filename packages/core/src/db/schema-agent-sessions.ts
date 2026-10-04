@@ -1,5 +1,15 @@
 import { relations, sql } from 'drizzle-orm';
-import { foreignKey, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  foreignKey,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { users } from './schema-auth.js';
 import { devices } from './schema-devices.js';
 import { pipelineRuns } from './schema-pipeline.js';

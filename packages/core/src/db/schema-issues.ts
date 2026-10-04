@@ -1,5 +1,5 @@
 import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
-import { type ReleaseNotes } from '@forge/contracts/release-notes';
+import type { ReleaseNotes } from '@forge/contracts/release-notes';
 import { relations, type SQL, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,

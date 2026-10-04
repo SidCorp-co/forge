@@ -1,6 +1,6 @@
 /**
  * ISS-652 — Tier 1 alert engine, single source of truth. `computeAlerts` is
- * called by BOTH `admin/alert-routes.ts` (pull, GET /api/admin/alerts) and
+ * called by BOTH `admin/routes.ts` (pull, GET /api/admin/alerts) and
  * `admin/alert-sweeper.ts` (push, writes `notifications`) — neither side ever
  * inlines its own alert query, so pull and push cannot drift apart.
  *

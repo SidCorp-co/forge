@@ -1,5 +1,14 @@
 import { isNull, sql } from 'drizzle-orm';
-import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import {
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+  varchar,
+} from 'drizzle-orm/pg-core';
 import { users } from './schema-auth.js';
 import { devices } from './schema-devices.js';
 import { projects } from './schema-projects.js';

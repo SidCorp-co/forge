@@ -1,5 +1,17 @@
 import { relations, sql } from 'drizzle-orm';
-import { type AnyPgColumn, boolean, index, integer, jsonb, pgTable, real, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  type AnyPgColumn,
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  real,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { users } from './schema-auth.js';
 import { devices } from './schema-devices.js';
 import { projects } from './schema-projects.js';

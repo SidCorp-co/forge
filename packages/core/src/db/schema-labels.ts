@@ -1,5 +1,14 @@
 import { relations, sql } from 'drizzle-orm';
-import { type AnyPgColumn, check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  type AnyPgColumn,
+  check,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { issueLabels } from './schema-issues.js';
 import { knowledgeEntries } from './schema-knowledge.js';
 import { projects } from './schema-projects.js';

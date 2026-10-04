@@ -1,5 +1,16 @@
 import { relations, sql } from 'drizzle-orm';
-import { boolean, customType, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  customType,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import * as ints from './schema-integration-types.js';
 import { integrationBindings } from './schema-project-config.js';
 

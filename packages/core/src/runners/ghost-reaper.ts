@@ -2,7 +2,6 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { ADMIN_THRESHOLDS } from '../lib/admin-thresholds.js';
 import { logger } from '../observability/logger.js';
-import { runnersPorts } from './ports.js';
 import { setRunnerStatus } from './runner-events.js';
 
 interface GhostRunnerReapResult {

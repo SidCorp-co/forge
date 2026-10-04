@@ -3,7 +3,6 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { env } from '../../config/env.js';
 import type { ProviderId } from '../../integrations/identity/index.js';
-import { isEnabled } from '../../lib/feature-flags.js';
 import { type AuthVars, requireAuth } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { hasOauthLink } from '../read.js';
@@ -17,12 +16,18 @@ import {
 } from './handler.js';
 import { getEnabledProviders, toPublic } from './providers.js';
 
+/** `FEATURE_SOCIAL_AUTH` unset means on; set, only `true` or `1` keeps it on. */
+function socialAuthEnabled(): boolean {
+  const v = process.env.FEATURE_SOCIAL_AUTH;
+  return v === undefined || v === 'true' || v === '1';
+}
+
 export const oauthRoutes = new Hono<{ Variables: AuthVars }>();
 
 const VALID_PROVIDERS: ReadonlySet<ProviderId> = new Set(['github', 'google', 'oidc']);
 
 function gate() {
-  if (!isEnabled('socialAuth')) {
+  if (!socialAuthEnabled()) {
     throw new HTTPException(404, {
       message: 'social auth is disabled',
       cause: { code: 'NOT_FOUND' },

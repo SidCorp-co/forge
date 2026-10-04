@@ -11,6 +11,7 @@ import {
 } from '../middleware/auth.js';
 import { onAdminList, requireAdmin } from '../middleware/require-admin.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { computeAlerts } from './alert-queries.js';
 import { listAdminAudit, listAdminDevices, listAdminProjects, listAdminUsers } from './read.js';
 
 const badRequest = (details: unknown) =>
@@ -103,4 +104,22 @@ adminRoutes.route('/', whoamiRoutes);
 adminRoutes.route('/', adminProtected);
 
 export { adminAggregateRoutes } from './aggregate-routes.js';
-export { adminAlertRoutes } from './alert-routes.js';
+
+const alertsQuerySchema = z.object({
+  staleSeconds: z.coerce.number().int().min(60).max(86_400).optional(),
+});
+
+export const adminAlertRoutes = new Hono<{ Variables: AuthVars }>();
+adminAlertRoutes.use('*', requireAuth(), assertEmailVerified(), requireAdmin());
+
+adminAlertRoutes.get(
+  '/alerts',
+  zValidator('query', alertsQuerySchema, (r) => {
+    if (!r.success) throw badRequest(r.error);
+  }),
+  async (c) => {
+    const { staleSeconds } = c.req.valid('query');
+    const alerts = await computeAlerts(staleSeconds === undefined ? {} : { staleSeconds });
+    return c.json(listResponse(c, alerts, alerts.length, { limit: alerts.length, offset: 0 }));
+  },
+);

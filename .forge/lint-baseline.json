@@ -54,9 +54,6 @@
     "packages/core/src/metrics/queries.ts": {
       "lint/complexity/useOptionalChain": 1
     },
-    "packages/core/src/middleware/require-fresh-auth.ts": {
-      "lint/complexity/useOptionalChain": 1
-    },
     "packages/core/src/pipeline/registry.test.ts": {
       "lint/suspicious/noTemplateCurlyInString": 1
     },
