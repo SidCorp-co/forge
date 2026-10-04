@@ -8,11 +8,7 @@ import {
   projectMembers,
   usageRecords,
 } from '../db/schema.js';
-import {
-  EMPTY_USAGE_TOTALS,
-  usageSessionMatch,
-  usageTotalsSelection,
-} from '../usage-records/rollup.js';
+import { emptyUsageTotals, usageSessionMatch, usageTotalsSelection } from './ports.js';
 import { type WorkStateView, workStateViewSql } from './work-state.js';
 
 /**
@@ -170,7 +166,7 @@ export async function issueUsageTotals(issueId: string) {
     .select(usageTotalsSelection())
     .from(usageRecords)
     .where(usageSessionMatch(sql`IN ${sessionIdSubquery}`));
-  return totals ?? EMPTY_USAGE_TOTALS;
+  return totals ?? emptyUsageTotals();
 }
 
 /** What a status move reads of the issue before it gates and applies. */

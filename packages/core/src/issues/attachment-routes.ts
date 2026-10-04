@@ -9,15 +9,15 @@ import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth
 import { forbidden, notFound } from '../middleware/route-errors.js';
 import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
-import { safeRecordActivity } from '../pipeline/activity.js';
-import { getStorage, isEnoent } from '../storage/index.js';
+import { safeRecordActivity } from './activity.js';
 import { deleteIssueAttachment, persistIssueAttachment } from './attachment-service.js';
-import { attachmentWithProject, issueScopeOf, listIssueAttachments } from './read-service.js';
 import {
   issueRouteIdParamSchema,
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
+import { getStorage, isEnoent } from './ports.js';
+import { attachmentWithProject, issueScopeOf, listIssueAttachments } from './read-service.js';
 
 const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
   new HTTPException(400, { message, cause: { code, details } });

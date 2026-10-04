@@ -2,16 +2,17 @@ import type { CommitLandingRefusalCode } from '@forge/contracts/issues';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
-import {
-  type HostCommit,
-  resolveSourceHost,
-  type SourceHost,
-  SourceHostUnavailable,
-} from '../integrations/source-host/index.js';
-import { readLandingBranches } from '../project-config/release-path.js';
-import { declaredIssueSeqs, subjectOf } from '../projects/commit-owners.js';
-import { issueRefPattern } from '../projects/live-reach.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
+import {
+  type CommitHost,
+  declaredIssueSeqs,
+  type HostCommit,
+  isSourceHostUnavailable,
+  issueRefPattern,
+  readLandingBranches,
+  resolveSourceHost,
+  subjectOf,
+} from './ports.js';
 
 export type CommitLanding =
   | { ok: true; sha: string; committedAt: Date; branch: string; repository: string }
@@ -22,7 +23,7 @@ export type CommitLanding =
     };
 
 export interface CommitLandingDeps {
-  host?: (projectId: string) => Promise<SourceHost>;
+  host?: (projectId: string) => Promise<CommitHost>;
 }
 
 function refuse(code: CommitLandingRefusalCode, detail: string): CommitLanding {
@@ -67,11 +68,11 @@ export async function readCommitLanding(
   }
   const branches = live && live !== baseBranch ? [baseBranch, live] : [baseBranch];
 
-  let host: SourceHost;
+  let host: CommitHost;
   try {
     host = await (deps.host ?? ((id: string) => resolveSourceHost(id, 'kernel')))(projectId);
   } catch (err) {
-    if (err instanceof SourceHostUnavailable) return unreadable(commit, err.message);
+    if (isSourceHostUnavailable(err)) return unreadable(commit, err.message);
     throw err;
   }
   const repository = host.fullName;

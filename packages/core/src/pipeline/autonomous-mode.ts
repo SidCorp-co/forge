@@ -5,7 +5,7 @@ import {
   ISSUE_TERMINAL_STATUSES,
 } from '@forge/contracts/issue-machine';
 import type { IssueStatus, JobType } from '../db/schema.js';
-import type { PolicyDocument } from '../project-config/schema.js';
+import { type ProjectPolicy } from './ports.js';
 
 export { AUTONOMOUS_DRIVER_STATUSES, AUTONOMOUS_ENTRY_STATUS, AUTONOMOUS_QUESTION_STATUS };
 
@@ -21,7 +21,7 @@ export function autonomousStepFor(
 export const AUTONOMOUS_SKILL_NAME = 'issue-flow';
 
 /** A project runs the driver exactly when it has a policy: the policy is what says how it runs. */
-export function isAutonomous(policy: PolicyDocument | null): policy is PolicyDocument {
+export function isAutonomous(policy: ProjectPolicy | null): policy is ProjectPolicy {
   return policy !== null;
 }
 
@@ -34,6 +34,6 @@ export const AUTONOMOUS_INFLIGHT_STATUSES: readonly IssueStatus[] =
   );
 
 /** Whether a human, not a master, decides when this project's work starts. */
-export function isEntryGateClosed(policy: PolicyDocument | null): boolean {
+export function isEntryGateClosed(policy: ProjectPolicy | null): boolean {
   return policy?.intake.mode === 'manual';
 }

@@ -16,8 +16,8 @@ import {
   type FeedbackView,
   feedbackKey,
 } from '@forge/contracts/feedback';
-import { requirementKey } from '@forge/contracts/requirements';
 import type { ActorAgency } from '@forge/contracts/permissions';
+import { requirementKey } from '@forge/contracts/requirements';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import { and, asc, count, desc, eq, ilike, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';

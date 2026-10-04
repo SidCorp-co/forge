@@ -12,7 +12,6 @@ import { z } from 'zod';
 import { type Db, db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { projectConfigDocuments } from '../db/schema-project-config.js';
-import type { ProjectDocument } from '../project-config/schema.js';
 import {
   describeMergeMark,
   type MergeMarkColumns,
@@ -24,7 +23,7 @@ import {
  *  storefront change — the repository, where there is one, holds none of it. */
 export type LandingShape = 'git' | 'outside_git';
 
-type SourceType = ProjectDocument['source']['type'];
+type SourceType = 'git' | 'storefront' | 'none';
 
 const SHAPE_OF_SOURCE: Readonly<Record<SourceType, LandingShape>> = {
   git: 'git',

@@ -1,10 +1,10 @@
+import { HOLD_PAYLOAD_KEY, holdReleasesItself, readHoldState } from '@forge/contracts/jobs';
+import { RESULT_QUIET_MINUTES } from '@forge/contracts/run-standing';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { HOLD_PAYLOAD_KEY, holdReleasesItself, readHoldState } from '../jobs/hold.js';
-import { RESULT_QUIET_MINUTES } from '../jobs/loop-monitor.js';
-import { gateReasonsForQueuedJobsIn } from '../jobs/queued-gates.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../observability/logger.js';
+import { gateReasonsForQueuedJobsIn } from './ports.js';
 import { NO_PROGRESS_ROUNDS } from './reopen-policy.js';
 import { pauseResumesItself } from './run-pause.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';

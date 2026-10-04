@@ -3,16 +3,17 @@ import { isCommentIntent } from '@forge/contracts/record-events';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import type { ActorRef } from '../issues/actor-identity.js';
-import { resolveActors } from '../issues/actor-resolution.js';
+import type { ActorRef } from '../issues/index.js';
 import {
   issueRouteIdParamSchema,
+  mirroredEventsFor,
   projectScopeQuerySchema,
+  resolveActors,
   resolveIssueRouteRef,
-} from '../issues/issue-route-ref.js';
-import { mirroredEventsFor } from '../issues/record-events/store.js';
+} from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
+import { pgConstraintName, pgErrorCode } from '../lib/db-errors.js';
 import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
 import { refuser } from '../lib/refusal.js';
 import { projectLens } from '../messaging/record-screen.js';
@@ -39,7 +40,6 @@ import {
   rethrowBodyInvalid,
 } from './body-input.js';
 import { type CommentCursor, decodeCommentCursor } from './cursor.js';
-import { pgConstraintName, pgErrorCode } from './error-mapping.js';
 import {
   attachmentsByComment,
   countIssueComments,

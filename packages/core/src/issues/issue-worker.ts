@@ -2,11 +2,7 @@
  *  lane's `agent_sessions.metadata.issueId`, the run-session lane's `issue_leases` row, and
  *  `issue_work_state.lease`. `none` carries its reason: an absent field reads as quiet. */
 
-import {
-  type LeaseReading,
-  type LeaseVerdict,
-  leaseIsWorkInProgress,
-} from '../pipeline/session-claim.js';
+import { type LeaseReading, type LeaseVerdict, leaseIsWorkInProgress } from './session-claim.js';
 
 /** The session lanes, richer record first — the order a reader prefers them in. */
 export const SESSION_WORKER_LANES = ['job', 'run_session'] as const;

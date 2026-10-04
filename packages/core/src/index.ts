@@ -7,6 +7,8 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { readThresholds } from './admin-thresholds/index.js';
 import {
+  composeLayers,
+  METHOD_LAYERS,
   provideChatTools,
   registerRoomBridges,
   registerRoomChat,
@@ -19,11 +21,13 @@ import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import {
   contractProviderShortfalls,
   interfaceContractsOf,
+  provideEcosystemSignals,
   registerContractMeasureWorker,
 } from './ecosystem/index.js';
 import { provideAdmissionThresholds } from './error-intake/index.js';
 import { provideExecutionPorts } from './execution-ports.js';
 import { provideFeedbackDependents, requirementFeedbackAs } from './feedback/index.js';
+import { provideAssistantMethod } from './guides/index.js';
 import { registerAllIntegrations } from './integration-registry.js';
 import { assertVaultBootSafety, provideForgeReads } from './integrations/index.js';
 import { bootstrapChatProviders } from './integrations/llm/index.js';
@@ -34,24 +38,35 @@ import {
 import { startRocketChatManager, stopRocketChatManager } from './integrations/rocketchat/index.js';
 import {
   activeIssuePrefix,
+  allRelationDigests,
   claimIssuePrefix,
   closeBacklogStreams,
   computeProjectProgress,
   heldIssuePrefixes,
+  issueDisplayIds,
+  loadIssueRelationsForIssues,
   resolveIssueForHeadRef,
 } from './issues/index.js';
 import { recordSecretResolve, rememberHandedOut, resolvePipelineContext } from './jobs/index.js';
 import { provideProjectOrg } from './lib/authz.js';
 import { provideDataPolicy } from './lib/data-egress.js';
 import { CHAT_READ_MODEL_TOOLS } from './mcp/index.js';
-import { registerChunkReindex, registerMemoryReconcileWorker } from './memory/index.js';
+import {
+  provideMemoryIssueReads,
+  registerChunkReindex,
+  registerMemoryReconcileWorker,
+} from './memory/index.js';
 import { provideIssueFactReads } from './messaging/gather.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import { deleteFeedbackMockups } from './mockups/index.js';
-import { emitNotification } from './notifications/index.js';
+import {
+  emitNotification,
+  projectAdminUserIdsFor,
+  resolveNotifications,
+} from './notifications/index.js';
 import { logger } from './observability/logger.js';
 import {
   declareOutboxQueues,
@@ -82,10 +97,20 @@ import { startTimers, stopTimers } from './schedules/index.js';
 import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
 import { redactFeedbackSuggestions, staleOnTargetRevised } from './suggestions/index.js';
 import { coreTimers } from './timer-registry.js';
-import { attachWs, closeWs } from './ws/index.js';
+import { provideWorkPorts } from './work-ports.js';
+import { attachWs, closeWs, wakeMastersForBuild, wakeMastersForChannel } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
+provideWorkPorts();
 provideExecutionPorts();
+provideAssistantMethod(composeLayers(METHOD_LAYERS));
+provideMemoryIssueReads({
+  displayIds: (issueIds) => issueDisplayIds(issueIds),
+  relationEdges: async (issueIds, projectId) => {
+    const relations = await loadIssueRelationsForIssues(issueIds, projectId);
+    return new Map([...relations].map(([id, r]) => [id, allRelationDigests(r)]));
+  },
+});
 provideProjectsPorts({
   claimIssuePrefix,
   notifyInvitee: async (notice) => {
@@ -119,6 +144,13 @@ provideOutboxGate(async (userId, permission, projectId, act) => {
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,
   issueForHeadRef: (projectId, headRef) => resolveIssueForHeadRef({ projectId, headRef }),
+});
+provideEcosystemSignals({
+  notify: emitNotification,
+  resolve: resolveNotifications,
+  projectAdmins: projectAdminUserIdsFor,
+  wakeForChannel: wakeMastersForChannel,
+  wakeForBuild: wakeMastersForBuild,
 });
 provideInterfaceContracts(interfaceContractsOf);
 provideRequirementDependents({ feedbackOf: requirementFeedbackAs, revised: staleOnTargetRevised });

@@ -23,13 +23,12 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
-import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
-import { usageSessionMatch } from '../usage-records/rollup.js';
 import { issueArchiveSide } from './archive.js';
 import { buildCreatedByCondition, buildOriginCondition } from './creator.js';
 import { heldIssuePrefixes } from './issue-prefix-read.js';
 import { resolveLabelIdsTolerant, resolveModuleIdsTolerant } from './label-service.js';
 import { REST_ISSUE_LIST_COLUMNS } from './list-projection.js';
+import { holdsOpenHumanQuestion, usageSessionMatch } from './ports.js';
 import { buildIssueSearchCondition, matchedSearchFieldsSql } from './search-predicate.js';
 import { buildIssueOrderBy, type IssueSort } from './sort.js';
 
@@ -154,9 +153,7 @@ export async function listIssues(
     };
   }
 
-  for (const side of issueArchiveSide(
-    filters.includeArchived === true || filters.key !== undefined,
-  ))
+  for (const side of issueArchiveSide(filters.includeArchived === true || filters.key !== undefined))
     both(side);
   if (filters.key !== undefined) {
     const parsed = parseIssueRef(
@@ -170,9 +167,7 @@ export async function listIssues(
   if (filters.status?.length) {
     const atStatus = inArray(issues.status, [...filters.status]);
     conditions.push(
-      filters.orWaitingOnPerson
-        ? (or(atStatus, holdsOpenHumanQuestion(issues.id)) as SQL)
-        : atStatus,
+      filters.orWaitingOnPerson ? (or(atStatus, holdsOpenHumanQuestion(issues.id)) as SQL) : atStatus,
     );
   }
   if (filters.statusNot?.length) conditions.push(notInArray(issues.status, [...filters.statusNot]));

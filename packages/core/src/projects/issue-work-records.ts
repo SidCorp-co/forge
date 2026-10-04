@@ -9,7 +9,7 @@ const worklog = (key: 'head' | 'base' | 'branch') =>
 /**
  * The project's issues whose recorded merged commit or recorded work head is one of `shas`, which
  * are compared in lower case. The worklog is what `forge claim --pushed` writes, and the same field
- * `pipeline/work-evidence.ts` reads an issue's branch from.
+ * `issues/work-evidence.ts` reads an issue's branch from.
  */
 export async function issueWorkRecordsAt(
   projectId: string,

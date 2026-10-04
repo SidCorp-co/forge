@@ -14,12 +14,15 @@ export { rocketChatPersona } from './chat-room/persona.js';
 export { parseRocketChatVenueId, rocketChatVenueId } from './chat-room/port.js';
 export { consumeQuestionThreadReply } from './chat-room/question-inbound.js';
 export { drainRoomWindows, registerRoomChat } from './chat-room/room-chat.js';
+export { publishToConversationReaders, WEB_CONVERSATION_EVENT } from './conversation-adapter.js';
 export {
   drainWebConversationWindows,
   registerWebConversationAdapter,
 } from './conversation-drain.js';
 export { runTranscriptIndexSweepOnce } from './conversation-index-drain.js';
 export { resolveSpeaker } from './identity/speaker-link.js';
+export { composeLayers } from './prompt/layer.js';
+export { METHOD_LAYERS } from './prompt/layers.js';
 export { buildEscalationToolset } from './tools/escalate.js';
 export { type ChatToolSpec, type ChatToolset, mergeToolsets } from './tools/mcp-adapter.js';
 export { buildChatToolContext } from './tools/principal.js';

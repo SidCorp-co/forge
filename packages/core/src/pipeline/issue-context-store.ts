@@ -8,8 +8,8 @@ import {
   type StepVerdict,
 } from '../db/schema.js';
 import { actorAgencies, actorTypes } from '../db/schema-activity.js';
-import { refreshModuleKnowledgeForIssue } from '../labels/module-knowledge-refresh.js';
-import { type StepHandoffPayload, stepHandoffSchema } from '../memory/step-handoff-schema.js';
+import { refreshModuleKnowledgeForIssue } from './ports.js';
+import { type StepHandoffPayload, stepHandoffSchema } from './step-handoff-schema.js';
 
 /**
  * ISS-381 (2.1) — derive the unified verdict column value from a handoff

@@ -1,9 +1,8 @@
 import { db } from '../db/client.js';
 import type { JobType } from '../db/schema.js';
-import { insertJobRow } from '../jobs/index.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { wakeMastersForProject } from '../ws/master-wake.js';
 import { AUTONOMOUS_ENTRY_STATUS } from './autonomous-mode.js';
+import { insertJobRow, wakeMastersForProject } from './ports.js';
 import { refusePipeline } from './refuse.js';
 import { setCurrentStep } from './runs.js';
 

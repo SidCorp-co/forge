@@ -1,8 +1,8 @@
 // What a person owes an issue, read once for the banner, the status control and the decision panel:
 // the status, the park record in the thread and the open question rows (ISS-1310).
 
-import { AWAITING_INPUT_STATUSES, PARK_STATUSES } from '@forge/contracts/issue-machine';
 import type { IssuePark, ParkOwes, ParkResume, ParkThreadQuestion } from '@forge/contracts';
+import { AWAITING_INPUT_STATUSES, PARK_STATUSES } from '@forge/contracts/issue-machine';
 import { and, desc, eq, gt, isNull, notInArray, notLike, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -14,7 +14,7 @@ import {
 } from '../db/schema.js';
 import { issueWorkState } from '../db/schema-issue-work-state.js';
 import { type ForgeRecord, parseForgeRecord } from '../messaging/forge-record.js';
-import { openHumanQuestionIdsOn } from '../questions/issue-coupling.js';
+import { openHumanQuestionIdsOn } from './ports.js';
 import { type RecordEntry, recordHistory } from './record-events/history.js';
 import { announcesAMove } from './transition-reason.js';
 
@@ -136,9 +136,7 @@ export function readPark(input: ParkInput): IssuePark | null {
   const threadQuestion = threadQuestionOf(view);
   return {
     ...view,
-    asks:
-      view.openQuestionIds.length > 0 ||
-      (threadQuestion !== null && threadQuestion.answer === null),
+    asks: view.openQuestionIds.length > 0 || (threadQuestion !== null && threadQuestion.answer === null),
     threadQuestion,
   };
 }

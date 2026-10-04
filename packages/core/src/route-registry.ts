@@ -28,7 +28,11 @@ import {
   verifyRoutes,
 } from './auth/routes.js';
 import { automationRoutes } from './automation/routes.js';
-import { commentRoutes, entityCommentRoutes } from './comments/routes.js';
+import {
+  commentRoutes,
+  entityCommentRoutes,
+  registerIssueCommentRoutes,
+} from './comments/routes.js';
 import { contentLanguageRoutes } from './content-language/routes.js';
 import { developmentOverviewRoutes, needsYouRoutes } from './development/routes.js';
 import {
@@ -71,6 +75,7 @@ import {
   githubConnectRoutes,
   integrationConnectionsRoutes,
   integrationsRoutes,
+  issueMergePullRequestRoutes,
 } from './integration-door/routes.js';
 import {
   attachmentRoutes,
@@ -170,6 +175,9 @@ import { uploadRoutes } from './uploads/routes.js';
 import { webhookInboundRoutes } from './webhooks/routes.js';
 import { workflowJsonSchemas } from './workflows/index.js';
 import { workflowRoutes, workflowTemplateCatalogueRoutes } from './workflows/routes.js';
+
+// The issue router serves its comments too; the comments module adds them here, once, at load.
+registerIssueCommentRoutes(issueRoutes);
 
 export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   mountPublicDoors(app);
@@ -296,6 +304,7 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issues', issueAttachmentRoutes);
   app.route('/api/issues', issueExtrasRoutes);
   app.route('/api/issues', issueMergeRoutes);
+  app.route('/api/issues', issueMergePullRequestRoutes);
   app.route('/api/uploads', uploadRoutes);
   app.route('/api/issues', issueRoutes);
   app.route('/api/issues', transitionRoutes);

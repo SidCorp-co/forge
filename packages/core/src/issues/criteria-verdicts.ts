@@ -15,10 +15,10 @@ import {
   longestSpelling,
   parseStorefrontDraftRuntime,
 } from '../messaging/verdict-identity.js';
-import { readProjectDocument } from '../project-config/service.js';
 import { type CriterionWithVerdict, type LatestVerdict, listCriteria } from './criteria/store.js';
 import { withCurrentDrafts } from './criteria/storefront-draft.js';
 import { type CitationReport, citationSentence, unresolvedCitations } from './evidence-standing.js';
+import { readProjectDocument } from './ports.js';
 import {
   type IssueIdentities,
   issueIdentities,

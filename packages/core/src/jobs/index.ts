@@ -1,15 +1,13 @@
-export type { PipelineCaller } from './active-job-context.js';
-export { resolvePipelineContext } from './active-job-context.js';
-export { syncAgentSessionLifecycle } from './agent-session-link.js';
-export type { HoldState } from './hold.js';
-export { holdReleasesItself, readHoldState } from './hold.js';
+export { type PipelineCaller, resolvePipelineContext } from './active-job-context.js';
+export { broadcastSessionEvent, syncAgentSessionLifecycle } from './agent-session-link.js';
+export { type HoldState, holdReleasesItself, readHoldState } from './hold.js';
 export { countInFlightByRunner } from './in-flight.js';
 export {
   appendJobEvent,
   type InterventionEventInput,
   insertInterventionEvent,
 } from './intervention-event.js';
-export { resolveJobPolicy } from './job-policy.js';
+export { extractStageStatus, resolveJobPolicy } from './job-policy.js';
 export {
   jobsOfSession,
   recordSecretResolve,
@@ -17,8 +15,8 @@ export {
   scrubJobOutput,
 } from './job-secret-scrub.js';
 export { buildJobSystemPrompt } from './job-system-prompt.js';
-export { killGraceMs } from './kill-gate.js';
-export { reapZombieSessions } from './loop-monitor.js';
+export { killGraceMs, requestJobKill } from './kill-gate.js';
+export { type LoopMonitorResult, reapZombieSessions, runLoopMonitor } from './loop-monitor.js';
 export {
   countClaimHeldIssuesByProject,
   type LoopMonitorCoverage,
@@ -31,7 +29,8 @@ export {
   releaseHoldsOfDeadMasters,
   releaseJobHold,
 } from './master-holds.js';
-export { probePgBossBackstop } from './pgboss-health.js';
+export { parkedOnAHuman } from './park-deadline.js';
+export { probePgBossBackstop, recordPipelineSweeperTick } from './pgboss-health.js';
 export { poolPrompt, settleNoPromptJob } from './pool-served.js';
 export {
   type JobsPorts,
@@ -40,16 +39,21 @@ export {
   type SkillActivityExecutor,
   type SkillActivityPort,
 } from './ports.js';
-export type { PreparedJob } from './prepare-claimed-job.js';
 export {
   canNameItsAgent,
   checkoutUnboundMessage,
+  type PreparedJob,
   prepareClaimedJob,
   resolveRunnerForDevice,
 } from './prepare-claimed-job.js';
-export { buildBarrierFragments } from './queued-gates.js';
+export {
+  buildBarrierFragments,
+  freshRunnerAvailability,
+  gateReasonsForQueuedJobsIn,
+} from './queued-gates.js';
 export { NOT_PARKED } from './resident-session.js';
 export { type ResolvedJobMcpServers, resolveSessionMcpServers } from './resolve-job-mcp-servers.js';
+export { jobEventsRetention } from './retention.js';
 export {
   AGENT_SESSION_KIND_LIST,
   heartbeatReapedSql,

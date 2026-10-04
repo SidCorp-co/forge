@@ -6,7 +6,7 @@ import {
   verifyRefreshToken,
 } from '../credentials/refresh-token.js';
 import { db, type Tx } from '../db/client.js';
-import { emailVerificationTokens, refreshTokens, users } from '../db/schema.js';
+import { refreshTokens, users } from '../db/schema.js';
 import { ensurePersonalOrg } from '../orgs/index.js';
 
 /** A new refresh token for `userId`, written inside the caller's transaction; answers the raw value. */
@@ -82,14 +82,6 @@ export async function rotateRefreshToken(raw: string, prefix: string): Promise<R
 
     const { raw: newRaw } = await issueRefreshToken(tx, matched.userId);
     return { kind: 'ok', userId: matched.userId, refreshToken: newRaw };
-  });
-}
-
-/** A user marked verified now, with their outstanding verification tokens deleted. */
-export async function forceVerifyEmail(userId: string): Promise<void> {
-  await db.transaction(async (tx) => {
-    await tx.update(users).set({ emailVerifiedAt: new Date() }).where(eq(users.id, userId));
-    await tx.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, userId));
   });
 }
 

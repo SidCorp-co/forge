@@ -4,13 +4,16 @@ import { issues, projects } from '../db/schema.js';
 import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import {
+  evidenceFor,
+  issueRefPattern,
+  issueWorkRecordsAt,
+  type LiveReading,
+  liveReadingForRow,
+  projectReleaseRows,
   type ReadingOwnership,
   readingOwnership,
   unclaimedShas,
-} from '../projects/commit-owners.js';
-import { issueWorkRecordsAt } from '../projects/issue-work-records.js';
-import { evidenceFor, issueRefPattern, type LiveReading } from '../projects/live-reach.js';
-import { liveReadingForRow, projectReleaseRows } from '../projects/live-reading.js';
+} from '../projects/index.js';
 import { ageSeconds } from './pulse-folds.js';
 import type {
   PulseCapped,

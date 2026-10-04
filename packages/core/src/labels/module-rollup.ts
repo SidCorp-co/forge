@@ -7,7 +7,7 @@ import type {
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, issues, labels } from '../db/schema.js';
-import { issueArchiveSide } from '../issues/archive.js';
+import { issueArchiveSide } from '../issues/index.js';
 
 /**
  * ISS-949 — the backlog read by module instead of by issue.
@@ -242,11 +242,7 @@ export async function readIssueModuleSets(projectId: string): Promise<Map<string
     .from(issueLabels)
     .innerJoin(
       labels,
-      and(
-        eq(labels.id, issueLabels.labelId),
-        eq(labels.kind, 'module'),
-        eq(labels.projectId, projectId),
-      ),
+      and(eq(labels.id, issueLabels.labelId), eq(labels.kind, 'module'), eq(labels.projectId, projectId)),
     )
     .innerJoin(issues, and(eq(issues.id, issueLabels.issueId), ...issueArchiveSide(false)));
   const out = new Map<string, string[]>();

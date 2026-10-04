@@ -18,7 +18,7 @@ import { db, type Tx } from '../../db/client.js';
 import { activityLog } from '../../db/schema-activity.js';
 import { refuser } from '../../lib/refusal.js';
 import { type ForgeRecord, overBudget, REQUESTED_FIELDS } from '../../messaging/forge-record.js';
-import type { Actor } from '../../pipeline/activity.js';
+import type { Actor } from '../activity.js';
 
 /** The key shape a record field takes, the same one the comment fence reads (`forge-record.ts`). */
 const FIELD_KEY = /^[a-z][a-z0-9-]*$/u;

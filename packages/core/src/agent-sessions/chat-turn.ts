@@ -23,7 +23,7 @@ import {
 import type { RefusalError } from '../lib/refusal.js';
 import { deviceRoom, projectRoom, roomManager } from '../lib/rooms.js';
 import { type KernelActor, movedRow } from '../lifecycle/index.js';
-import { openOneShotRun } from '../pipeline/runs.js';
+import { openOneShotRun } from '../pipeline/index.js';
 import { listSessionAttachmentsByIds, type SessionAttachmentRef } from './attachment-service.js';
 import { applyAutoTitleAsync } from './auto-title.js';
 import { broadcastSession, broadcastTurnAppended } from './broadcast.js';

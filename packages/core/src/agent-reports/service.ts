@@ -13,7 +13,7 @@ import type {
 } from '@forge/contracts/agent-reports';
 import { feedbackKey } from '@forge/contracts/feedback';
 import type { ActorAgency } from '@forge/contracts/permissions';
-import { and, asc, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, ne, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import {
   type AgentReportKind,
@@ -394,4 +394,46 @@ export async function markReportFiled(
       triagedAt: new Date(),
     })
     .where(eq(agentReports.id, reportId));
+}
+
+/** Every report at triage new, then the newest `triaged` triaged ones, of a project or of one schedule's fires. */
+export async function reportViewsIn(scope: {
+  projectId: string;
+  scheduleId?: string;
+  triaged: number;
+}) {
+  const inProject = eq(agentReports.projectId, scope.projectId);
+  const fromSchedule = scope.scheduleId
+    ? inArray(
+        agentReports.scheduleRunId,
+        db
+          .select({ id: scheduleRuns.id })
+          .from(scheduleRuns)
+          .where(eq(scheduleRuns.scheduleId, scope.scheduleId)),
+      )
+    : inProject;
+  const base = () =>
+    db
+      .select(reportColumns)
+      .from(agentReports)
+      .leftJoin(projects, eq(projects.id, agentReports.projectId));
+  const [fresh, triaged] = await Promise.all([
+    base().where(and(fromSchedule, eq(agentReports.triage, 'new'))),
+    base()
+      .where(and(fromSchedule, ne(agentReports.triage, 'new')))
+      .orderBy(desc(agentReports.createdAt), desc(agentReports.id))
+      .limit(scope.triaged),
+  ]);
+  return reportViews([...fresh, ...triaged]);
+}
+
+/** One report of a project, as a list of at most one. */
+export async function reportViewById(projectId: string, reportId: string) {
+  const rows = await db
+    .select(reportColumns)
+    .from(agentReports)
+    .leftJoin(projects, eq(projects.id, agentReports.projectId))
+    .where(and(eq(agentReports.projectId, projectId), eq(agentReports.id, reportId)))
+    .limit(1);
+  return reportViews(rows);
 }

@@ -277,7 +277,7 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
     const existing = await findBindingWithConnectionById(id);
     if (!existing || existing.binding.projectId !== projectId) throw notFound();
     const { bindingReachesProduction, confirmPendingProdDeploy } = await import(
-      '../pipeline/index.js'
+      '../release-batch/index.js'
     );
     if (!(await bindingReachesProduction(projectId, existing.binding))) {
       throw new HTTPException(400, {

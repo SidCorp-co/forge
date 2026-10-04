@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import type { Executor } from '../conversations/db-executor.js';
-import { existingProjectHandle, resolveProjectHandle } from '../conversations/handles.js';
+import type { Tx } from '../db/client.js';
 import { db } from '../db/client.js';
+import { existingProjectHandle, resolveProjectHandle } from './ports.js';
 
 export type ReconcilerActor = { type: 'user'; id: string; agency: 'agent' };
 
@@ -17,7 +17,7 @@ export async function reconcilerActorFor(projectId: string): Promise<ReconcilerA
  * False where the project gained another agent account since the actor was read.
  */
 export async function mintReconcilerActor(
-  tx: Executor,
+  tx: Tx,
   projectId: string,
   actor: ReconcilerActor,
 ): Promise<boolean> {

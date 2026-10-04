@@ -23,7 +23,7 @@ import {
   transitionIssueStatus,
 } from '../issues/index.js';
 import { logger } from '../observability/logger.js';
-import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
+import { closeRunIfOneShot, openOneShotRun } from '../pipeline/index.js';
 import { collectReleaseBlockers } from './blockers.js';
 import { closeVerification, type ReleaseVerification } from './channel.js';
 import { claimConflictAt, RELEASE_RECORD_SOURCE } from './claim-conflicts.js';

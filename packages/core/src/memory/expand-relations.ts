@@ -6,14 +6,8 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { memories } from '../db/schema.js';
-import { memoryOfLiveIssue } from '../issues/archive.js';
-import {
-  allRelationDigests,
-  emptyIssueRelations,
-  type IssueRelations,
-  loadIssueRelationsForIssues,
-} from '../issues/dependency-read.js';
-import { issueDisplayIds } from '../issues/display-ids.js';
+import { memoryOfLiveIssue } from './live-issue.js';
+import { type IssueRelationEdge, memoryIssueReads } from './ports.js';
 import { deriveMemoryStaleness, type MemoryHit, type MemoryVia } from './search.js';
 
 export const EXPAND_SEED_LIMIT = 5;
@@ -31,8 +25,8 @@ function isExpandable(kind: string): kind is MemoryVia['relation'] {
   return (EXPAND_RELATION_KINDS as ReadonlyArray<string>).includes(kind);
 }
 
-function neighboursOf(relations: IssueRelations, from: string): Neighbour[] {
-  return allRelationDigests(relations)
+function neighboursOf(edges: IssueRelationEdge[], from: string): Neighbour[] {
+  return edges
     .filter((edge) => !edge.expired && isExpandable(edge.kind))
     .map((edge) => ({
       issueId: edge.otherIssueId,
@@ -58,15 +52,13 @@ export async function expandIssueRelations(input: ExpandRelationsInput): Promise
   if (seeds.length === 0 || input.topK <= 0) return [];
 
   const seedRefs = seeds.map((s) => s.sourceRef);
+  const reads = memoryIssueReads();
   const [labels, relations] = await Promise.all([
-    issueDisplayIds(seedRefs),
-    loadIssueRelationsForIssues(seedRefs, input.projectId),
+    reads.displayIds(seedRefs),
+    reads.relationEdges(seedRefs, input.projectId),
   ]);
   const perSeed = seeds.map((seed) =>
-    neighboursOf(
-      relations.get(seed.sourceRef) ?? emptyIssueRelations(),
-      labels.get(seed.sourceRef) ?? seed.sourceRef,
-    ),
+    neighboursOf(relations.get(seed.sourceRef) ?? [], labels.get(seed.sourceRef) ?? seed.sourceRef),
   );
   const present = new Set(input.hits.filter((h) => h.source === 'issue').map((h) => h.sourceRef));
   const chosen = pickNeighbours(perSeed, present);

@@ -1,3 +1,4 @@
+import { ALWAYS_INJECT_MAX_CHARS } from '@forge/contracts/knowledge';
 import { and, eq } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../../db/client.js';
@@ -31,7 +32,6 @@ import {
   repositoryOf,
 } from '../../project-config/index.js';
 import {
-  ALWAYS_INJECT_MAX_CHARS,
   type KnowledgeObligation,
   missingProjectKnowledge,
   type RESERVED_PROJECT_FACT_KEYS,

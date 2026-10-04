@@ -8,14 +8,14 @@
  * the incident that mirror came from.
  */
 
-import { pauseReading } from './pipeline-health-reasons.js';
+import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
+import { describePause } from '@forge/contracts/run-standing';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs, pipelineRuns } from '../db/schema.js';
-import { extractStageStatus } from '../jobs/job-policy.js';
-import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
-import { describePause } from '../pipeline/run-pause.js';
+import { pauseReading } from './pipeline-health-reasons.js';
 import type { PipelineHealthJob, PipelineHealthPausedRun } from './pipeline-health-types.js';
+import { extractStageStatus } from './ports.js';
 
 /**
  * Q3 — the issue's live jobs, bucketed by issue id.

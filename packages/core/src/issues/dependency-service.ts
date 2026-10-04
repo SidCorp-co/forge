@@ -11,7 +11,7 @@ import { issueDependencies, type issueDependencyKinds, issues } from '../db/sche
 import { refuser } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
-import { type Actor, safeRecordActivity } from '../pipeline/activity.js';
+import { type Actor, safeRecordActivity } from './activity.js';
 import { archivedAmong } from './archive.js';
 import { detectCycle } from './cycle-detect.js';
 import { type DependencyKindEffect, describeDependencyKind } from './dependency-effects.js';

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { isPlainObject as isRecord } from '@forge/contracts/document-patch';
 import { db, type Tx } from '../db/client.js';
-import { isRecord, parseVersionedDocument, staleBase } from '../project-config/documents.js';
+import { parseVersionedDocument, staleBase } from '../project-config/index.js';
 import { assertStewardAdmin, notFound } from './access.js';
 import { checkEcosystem, type MemberCommitment } from './ecosystem-rules.js';
 import type { Checked, EcosystemRefusal } from './refusals.js';

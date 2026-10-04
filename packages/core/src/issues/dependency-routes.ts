@@ -16,7 +16,7 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { safeRecordActivity } from '../pipeline/activity.js';
+import { safeRecordActivity } from './activity.js';
 import {
   dependencyEdgeById,
   issueProjectsOf,

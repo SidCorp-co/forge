@@ -11,13 +11,16 @@ import {
 } from '../integrations/index.js';
 import { logger } from '../observability/logger.js';
 import {
+  closeRun,
+  deployHoldsLocks,
   isCloseDeferred,
+  RELEASE_DEPLOY_DONE_STEP,
+  releaseDeployLocksForRun,
   resolveDeployGate,
+  setCurrentStep,
   settleDeployTarget,
   targetHoldKey,
-} from '../pipeline/deploy-confirmations.js';
-import { deployHoldsLocks, releaseDeployLocksForRun } from '../pipeline/deploy-lock.js';
-import { closeRun, RELEASE_DEPLOY_DONE_STEP, setCurrentStep } from '../pipeline/runs.js';
+} from '../pipeline/index.js';
 import { boss } from '../queue/boss.js';
 import { INTEGRATIONS_QUEUE_NAME } from '../queue/names.js';
 import { enqueueCoolifyHealthGate, healthGateFor } from './coolify-health-gate.js';

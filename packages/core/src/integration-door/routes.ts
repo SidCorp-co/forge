@@ -324,3 +324,4 @@ integrationsRoutes.get('/:projectId/integrations/mcp-preview', async (c) => {
 });
 
 export { githubCallbackRoutes, githubConnectRoutes } from './github-connect-routes.js';
+export { issueMergePullRequestRoutes } from './issue-merge-routes.js';

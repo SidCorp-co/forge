@@ -1,11 +1,11 @@
 import { JOB_MACHINE, LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import { and, eq, inArray } from 'drizzle-orm';
-import { transitionSessions } from '../agent-sessions/session-transition.js';
 import type { Db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
-import { transition } from '../lifecycle/transition.js';
+import { transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
+import { requestJobKill, transitionSessions } from './ports.js';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 export type JobRow = typeof jobs.$inferSelect;
@@ -98,7 +98,6 @@ export async function requestKillsForCascade(
   reason: CascadeReason,
 ): Promise<string[]> {
   if (killableJobs.length === 0) return [];
-  const { requestJobKill } = await import('../jobs/kill-gate.js');
   const notified = new Set<string>();
   for (const job of killableJobs) {
     try {

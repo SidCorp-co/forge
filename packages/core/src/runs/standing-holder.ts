@@ -6,8 +6,15 @@ import type {
   RunHolder,
   RunState,
 } from '@forge/contracts/run-standing';
-import { classifyLease } from '../pipeline/index.js';
-import { after, iso, none, type RunFacts, type StandingContext } from './standing-types.js';
+import { classifyLease } from '../issues/index.js';
+import {
+  after,
+  iso,
+  none,
+  type RunFacts,
+  type StandingContext,
+  TERMINAL_SESSION,
+} from './standing-types.js';
 
 function verdictAt(at: Date, now: Date, lapsed: IssueLeaseVerdict): IssueLeaseVerdict {
   return at.getTime() > now.getTime() ? 'live' : lapsed;

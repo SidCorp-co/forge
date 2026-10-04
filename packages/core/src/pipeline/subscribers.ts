@@ -1,6 +1,6 @@
 import { issueUpdatedPayload } from '@forge/contracts/field-changes';
+import { type RecordActivityInput, recordActivityTx } from '../issues/index.js';
 import { consume, type Delivery } from '../outbox/index.js';
-import { type RecordActivityInput, recordActivityTx } from './activity.js';
 
 const MAX_BODY_SNIPPET = 240;
 const snippet = (s: string): string => s.slice(0, MAX_BODY_SNIPPET);

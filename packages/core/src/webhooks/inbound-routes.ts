@@ -15,7 +15,7 @@ import { badRequest, notFound } from '../middleware/route-errors.js';
 import { rawBody } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
 import { emitEvents } from '../outbox/index.js';
-import { findProjectIdBySlug } from '../projects/service.js';
+import { findProjectIdBySlug } from '../projects/index.js';
 
 const unauthorized = (code: string) =>
   new HTTPException(401, { message: 'invalid signature', cause: { code } });

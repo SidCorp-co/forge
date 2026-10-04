@@ -1,3 +1,11 @@
+export {
+  assertDesignApprovedForIssue,
+  assertDesignsApprovedForSeqs,
+  buildsWorkflowOf,
+  designUnapprovedSql,
+} from './build-gate.js';
+export { WorkflowDesignNotApprovedError } from './design.js';
+export { proposesWorkflowOf } from './design-issue.js';
 export { workflowJsonSchemas } from './json-schema.js';
 export { designNodesIn, nodeRefRefusal, nodeSetRefusals } from './node-refs.js';
 export { loadPinnedContracts, renderPinnedContracts } from './pinned-contracts.js';

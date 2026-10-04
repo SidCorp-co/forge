@@ -1,12 +1,10 @@
 /**
  * Archiving an issue (ISS-1237): out of every discovery read, still answered by key, reversible.
  *
- * The read side is two predicates. `issueArchiveSide` is what every read that lists or searches
- * issues composes. `memoryOfLiveIssue` is its twin for
- * the memory corpus, where each issue lives again as a `memories` row with `source = 'issue'` and
- * `source_ref = issues.id`; that corpus is what recall, the alike check and knowledge search read,
- * so a filter on `issues` alone would leave the text reachable. The memory rows themselves are not
- * archived: `memories.archived_at` is decay's soft delete, followed by a hard purge.
+ * The read side is `issueArchiveSide`, which every read that lists or searches issues composes.
+ * Its twin over the memory corpus, where each issue lives again as a `memories` row, is
+ * `memory/live-issue.ts:memoryOfLiveIssue`. The memory rows themselves are not archived:
+ * `memories.archived_at` is decay's soft delete, followed by a hard purge.
  *
  * The write side is one operation over a filter, in either direction, with a dry run. A row that
  * is not terminal, or that a non-terminal issue still points at, is refused by name and the whole
@@ -37,49 +35,15 @@ import {
   issueDependencies,
   issueStatuses,
   issues,
-  memories,
 } from '../db/schema.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
-import type { Actor } from '../pipeline/activity.js';
+import type { Actor } from './activity.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
 
 /** The condition a discovery read composes: nothing when the caller asked for archived rows too. */
 export function issueArchiveSide(includeArchived: boolean | undefined): SQL[] {
   return includeArchived ? [] : [isNull(issues.archivedAt)];
-}
-
-const archivedIssueIds = (projectId: string) =>
-  sql`(SELECT ai.id::text FROM issues ai WHERE ai.project_id = ${projectId} AND ai.archived_at IS NOT NULL)`;
-
-/**
- * A memory row that is not the text of an archived issue, nor a fact extracted from one
- * (`memory/extraction.ts` tags those `metadata.issueId`). `NOT IN` over the project's archived
- * ids is a hashed subplan, evaluated once per query rather than once per memory row.
- */
-function liveIssueMemory(cols: { source: SQL; sourceRef: SQL; metadata: SQL }, projectId: string) {
-  const archived = archivedIssueIds(projectId);
-  return sql`((${cols.source} <> 'issue' OR ${cols.sourceRef} NOT IN ${archived}) AND coalesce(${cols.metadata}->>'issueId', '') NOT IN ${archived})`;
-}
-
-export function memoryOfLiveIssue(projectId: string): SQL {
-  const cols = {
-    source: sql`${memories.source}`,
-    sourceRef: sql`${memories.sourceRef}`,
-    metadata: sql`${memories.metadata}`,
-  };
-  return liveIssueMemory(cols, projectId);
-}
-
-/** The same condition for hand-written SQL that names the memories table by an alias. */
-export function memoryOfLiveIssueAs(tableAlias: string, projectId: string): SQL {
-  const t = sql.raw(tableAlias);
-  const cols = {
-    source: sql`${t}.source`,
-    sourceRef: sql`${t}.source_ref`,
-    metadata: sql`${t}.metadata`,
-  };
-  return liveIssueMemory(cols, projectId);
 }
 
 const refList = z.array(z.string().trim().min(1).max(40)).max(10_000);

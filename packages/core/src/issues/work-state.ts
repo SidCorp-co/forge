@@ -17,8 +17,8 @@ import {
   type WorkStepEntry,
   workSteps,
 } from '../db/schema-issue-work-state.js';
-import { classifyLease } from '../pipeline/session-claim.js';
 import { issueWorkInFlightSql } from './issue-lease.js';
+import { classifyLease } from './session-claim.js';
 
 export { type WorkStep, workSteps };
 

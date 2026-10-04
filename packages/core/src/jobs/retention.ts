@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
+import { JOB_TERMINAL, olderThan, type TableStatements } from '../db/retention-shape.js';
 import { TRANSCRIPT_FINALIZED_KEY } from '../db/transcript-marker.js';
-import { JOB_TERMINAL, olderThan, type TableStatements } from '../pipeline/retention/shape.js';
 
 /** Over-age `job_events` rows in scope, and the rows among them the rule releases. */
 const JOB_EVENTS_SOURCE = sql`

@@ -1,7 +1,7 @@
 import { CONTRACT_WAIT_UNSETTLED } from '@forge/contracts/contract-waits';
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../../db/client.js';
-import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
+import { activeIssuePrefix } from '../../issues/index.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { holdsDispatch, unsettledDetail } from './rules.js';
 

@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { AUTONOMOUS_QUESTION_STATUS } from '@forge/contracts/issue-machine';
 import type { IssueStatus } from '../db/schema.js';
-import { AUTONOMOUS_QUESTION_STATUS } from '../pipeline/autonomous-mode.js';
-import { personOwesAnAnswer } from '../questions/issue-coupling.js';
-import { askParkQuestion } from '../questions/write.js';
 import { actorAgency, type TransitionActor } from './actor-agency.js';
 import type { DrizzleTx } from './dependency-executor.js';
+import { askParkQuestion, personOwesAnAnswer } from './ports.js';
 
 export const NEED_NOT_STATED =
   'the run did not say what would settle this — answer with whatever it needs to carry on';

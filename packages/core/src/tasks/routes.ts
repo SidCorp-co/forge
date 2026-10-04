@@ -6,7 +6,7 @@ import {
   issueRouteIdParamSchema,
   projectScopeQuerySchema,
   resolveIssueRouteRef,
-} from '../issues/issue-route-ref.js';
+} from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';

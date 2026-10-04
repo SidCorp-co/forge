@@ -1,28 +1,23 @@
 import type { SQL } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import {
-  assertWaitsSettledForIssue,
-  assertWaitsSettledForSeqs,
-  ContractWaitUnsettledError,
-  waitUnsettledSql,
-} from '../ecosystem/waits/gate.js';
-import { waitsOnContractsOf } from '../ecosystem/waits/read.js';
-import {
   assertDesignApprovedForIssue,
   assertDesignsApprovedForSeqs,
+  assertWaitsSettledForIssue,
+  assertWaitsSettledForSeqs,
   buildsWorkflowOf,
+  type DispatchGateCode,
+  type DispatchGateError,
   designUnapprovedSql,
   type GateReader,
-} from '../workflows/build-gate.js';
-import { WorkflowDesignNotApprovedError } from '../workflows/design.js';
+  isDispatchGateError,
+  waitsOnContractsOf,
+  waitUnsettledSql,
+} from './ports.js';
 
-export type DispatchGateError = WorkflowDesignNotApprovedError | ContractWaitUnsettledError;
-export type DispatchGateCode = DispatchGateError['code'];
+export { type DispatchGateCode, type DispatchGateError, isDispatchGateError };
 
-export const isDispatchGateError = (err: unknown): err is DispatchGateError =>
-  err instanceof WorkflowDesignNotApprovedError || err instanceof ContractWaitUnsettledError;
-
-// cm:why every dispatch door asks the pair here, so none can check the design gate and forget the contract wait
+// Every dispatch door asks the pair here, so none can check the design gate and forget the contract wait
 export function dispatchGateHeldSql(issueId: SQL): SQL {
   return sql`(${designUnapprovedSql(issueId)} OR ${waitUnsettledSql(issueId)})`;
 }

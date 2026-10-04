@@ -1,3 +1,4 @@
+export { approvalRequired } from './approvals.js';
 export { registerReleaseBatchClaimSubscriber } from './claim-subscriber.js';
 export {
   activeCoolifyIntegrations,
@@ -35,8 +36,11 @@ export {
   targetUndeclaredHold,
   writeReleaseHolds,
 } from './hold.js';
+export { provideReleaseBatchPorts } from './ports.js';
 export { loadReleaseRoster } from './queries.js';
 export { heldBackByProviders } from './refuse.js';
+export { bindingReachesProduction, confirmPendingProdDeploy } from './release-coolify.js';
+export { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';
 export { createReleaseBatch } from './service.js';
 export { recoverUnstartedReleaseBatches } from './unstarted-recovery.js';
-export { provideReleaseBatchPorts } from './ports.js';
+export { reportedCommit } from './verify.js';

@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, devices } from '../db/schema.js';
-import { getLoopThresholds } from '../jobs/loop-monitor-thresholds.js';
+import { getLoopThresholds } from './ports.js';
 
 export type DerivedAgentStatus = 'running' | 'queued' | 'completed' | 'failed' | 'cancelled' | null;
 
@@ -31,11 +31,7 @@ export interface HydratedAgentSession {
 
 export type SessionHeartbeat = 'alive' | 'stale' | 'unknown';
 export type SessionContinuity = 'resumed' | 'fresh' | 'unknown';
-export type SessionFreshReason =
-  | 'first-in-group'
-  | 'different-device'
-  | 'prior-failed'
-  | 'new-session';
+export type SessionFreshReason = 'first-in-group' | 'different-device' | 'prior-failed' | 'new-session';
 
 function heartbeatOf(at: Date | null, now: number, timeoutMs: number): SessionHeartbeat {
   if (!at) return 'unknown';

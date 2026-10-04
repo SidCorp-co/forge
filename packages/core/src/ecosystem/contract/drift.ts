@@ -8,6 +8,7 @@
  * until the version is approved or the work is rebuilt against the current one.
  */
 
+import { LANDED_CONTRACT } from '@forge/contracts/ecosystem';
 import { db } from '../../db/client.js';
 import { projectsWhere } from '../store.js';
 import { currentOf, versionsOf } from './store.js';
@@ -33,9 +34,7 @@ export function contractsNamedIn(text: string): NamedContract[] {
   return [...out.values()];
 }
 
-/** `<project slug>/<contract slug>@<version>`, the form a landing names an implemented version in. */
-export const LANDED_CONTRACT =
-  /^([a-z][a-z0-9-]{0,62})\/([a-z][a-z0-9-]{0,62})@([A-Za-z0-9][A-Za-z0-9._+-]{0,39})$/;
+export { LANDED_CONTRACT };
 
 export interface DriftRefusal {
   code: 'CONTRACT_DRIFT' | 'CONTRACT_LANDING_UNNAMED';

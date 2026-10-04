@@ -441,7 +441,7 @@ written:
   rather than restating it in TypeScript (`packages/core/src/issues/blocked-by.ts:blockerUnsettledSql`,
   `packages/core/src/devices/master-silence.ts:masterSilentSql`,
   `packages/core/src/jobs/session-kinds.ts:heartbeatReapedSql`). A surface that describes what a
-  sweep will do asks the sweep's own predicate (`packages/core/src/jobs/hold.ts:holdReleasesItself`).
+  sweep will do asks the sweep's own predicate (`@forge/contracts/jobs:holdReleasesItself`).
 - **When computing on read gets slow**, take the next step only when the one before cannot serve,
   and measure before each:
   1. **An index** on the owner's table, leading with the scope column.

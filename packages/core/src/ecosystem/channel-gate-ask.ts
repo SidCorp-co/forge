@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { inArray } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { projects } from '../db/schema.js';
-import { insertAskedQuestion } from '../questions/write.js';
+import { insertAskedQuestion } from '../questions/index.js';
 import { GATE_OPTIONS } from './channel-gate.js';
 import type { ChannelDocument } from './channel-schema.js';
 

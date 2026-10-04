@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { uuid } from '../project-config/schema.js';
+import { uuid } from '../project-config/index.js';
 import { forbidden, refusedBy } from './access.js';
 import type { ChannelOutcome } from './channel-act.js';
 import { type ChannelNeed, channelRoleRefusal, writerOf } from './channel-author.js';

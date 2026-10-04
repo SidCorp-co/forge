@@ -12,7 +12,7 @@
  *
  * `(project_id, issue_key)` is the identity on every path, take and give-back
  * alike, and `resolveLeaseKey` is where a caller's key becomes that pair.
- * cm:edge naming -> packages/core/src/pipeline/session-claim.ts — which RUN may write a record.
+ * cm:edge naming -> packages/core/src/issues/session-claim.ts — which RUN may write a record.
  */
 
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';

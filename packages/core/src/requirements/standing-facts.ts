@@ -6,7 +6,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { reopenedAtOf } from '../issues/release-evidence.js';
+import { reopenedAtOf } from '../issues/index.js';
 import type { StandingIssueCriterion } from './standing.js';
 
 type CriterionVerdictRow = {

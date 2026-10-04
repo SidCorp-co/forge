@@ -1,9 +1,17 @@
-import { composeLayers } from '../assistant/prompt/layer.js';
-import { METHOD_LAYERS } from '../assistant/prompt/layers.js';
 import type { CoreGuide } from './types.js';
 
 /** The one spelling of this guide's slug. Every door persona points at it. */
 export const ASSISTANT_METHOD_SLUG = 'answering-as-the-assistant';
+
+let methodBody: string | null = null;
+
+/**
+ * The assistant (Conversations) owns its method, and guides sits upstream of it, so the
+ * composition root hands the composed method in at boot.
+ */
+export function provideAssistantMethod(body: string): void {
+  methodBody = body;
+}
 
 export const ASSISTANT_METHOD_GUIDE: CoreGuide = {
   slug: ASSISTANT_METHOD_SLUG,
@@ -12,5 +20,12 @@ export const ASSISTANT_METHOD_GUIDE: CoreGuide = {
   summary:
     'How a Forge assistant works a request: investigate with your tools before answering, act instead of delegating, and what a reply and a filed issue owe.',
   version: 2,
-  body: composeLayers(METHOD_LAYERS),
+  get body(): string {
+    if (methodBody === null) {
+      throw new Error(
+        'guides: the assistant method was not provided, so its guide has no body; the process entry calls provideAssistantMethod before it serves',
+      );
+    }
+    return methodBody;
+  },
 };

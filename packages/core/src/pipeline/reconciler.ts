@@ -1,19 +1,22 @@
 import { sql } from 'drizzle-orm';
-import { postIssueNotice } from '../comments/index.js';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
-import { transitionIssueStatus } from '../issues/apply-transition.js';
+import { transitionIssueStatus } from '../issues/index.js';
 import { logger } from '../observability/logger.js';
 import { traceStep } from '../observability/sentry.js';
 import { countOverdueDeliveries } from '../outbox/index.js';
-import { holdsOpenHumanQuestion, personOwesAnAnswer } from '../questions/issue-coupling.js';
-import { wakeMastersForProject } from '../ws/master-wake.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
   AUTONOMOUS_INFLIGHT_STATUSES,
   AUTONOMOUS_JOB_TYPE,
 } from './autonomous-mode.js';
 import { checkAutonomousRescueCap, recordAutonomousRescue } from './autonomous-rescue-cap.js';
+import {
+  holdsOpenHumanQuestion,
+  personOwesAnAnswer,
+  postIssueNotice,
+  wakeMastersForProject,
+} from './ports.js';
 import { mintReconcilerActor, reconcilerActorFor } from './reconciler-actor.js';
 import {
   buildWedgeResetBody,

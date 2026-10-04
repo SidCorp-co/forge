@@ -13,11 +13,11 @@ import {
   questionBlockerKinds,
   questionStatuses,
 } from '../db/schema-questions.js';
-import { doorOf, tokenIdOf } from '../ecosystem/channel-author.js';
 import { egressAs } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { doorOfRequest } from './ports.js';
 import {
   answerAs,
   askAs,
@@ -267,7 +267,7 @@ questionRoutes.post(
         round: body.round,
         userId: c.get('userId'),
         agency: restActor(c).agency,
-        via: await doorOf(tokenIdOf(c)),
+        via: await doorOfRequest(c),
         ...(body.note === undefined ? {} : { note: body.note }),
       }),
     );

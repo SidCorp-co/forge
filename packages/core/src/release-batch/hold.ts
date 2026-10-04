@@ -2,7 +2,7 @@
  * ISS-1215 — why the automatic release is not taking an issue, kept as a record on the issue.
  *
  * Where production deploys `on-land`, `awaiting_release` is a transit state that
- * `pipeline/release-sweep.ts` moves a row out of, so every way that sweep declines a row is a
+ * `release-batch/release-sweep.ts` moves a row out of, so every way that sweep declines a row is a
  * `release_holds` row: a held issue must not read like one nobody looked at. This module is the
  * table's one writer.
  */

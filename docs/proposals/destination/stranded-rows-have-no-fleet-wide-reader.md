@@ -2,7 +2,7 @@
 
 `pipeline/idle-issues.ts` writes a `strand` record onto every row it finds standing with nothing
 behind it: the status, how long it has stood there, what it waits for, who owes the next move, and
-the reason drawn from the evidence by `pipeline/strand-rules.ts:strandReason`. The derivation is
+the reason drawn from the evidence by `issues/strand-rules.ts:strandReason`. The derivation is
 good and it runs on the sweeper tick for every project.
 
 It is written to `issues.session_context`, which the browse query does not read. `issues/list-service.ts`

@@ -1,9 +1,4 @@
 {
-  "packages/core/src/assistant/bench/client.ts": {
-    "module-shape/refusal": {
-      "count": 1
-    }
-  },
   "packages/core/src/devices/run-session.ts": {
     "module-shape/table-writer": {
       "count": 1

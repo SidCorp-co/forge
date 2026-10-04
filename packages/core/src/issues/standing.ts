@@ -5,6 +5,8 @@
  * `standing-read.ts` gathers the facts.
  */
 
+import type { IssuePark, ParkOwes } from '@forge/contracts';
+import type { IssueStatus } from '@forge/contracts/issue-machine';
 import {
   ISSUE_RESOLVED_STATUSES,
   ISSUE_TERMINAL_STATUSES,
@@ -23,21 +25,20 @@ import type {
   IssueStepOutcome,
   IssueWaitingKind,
 } from '@forge/contracts/issue-standing';
-import type { WaitingOn } from '@forge/contracts/standing';
-import type { IssueStatus } from '@forge/contracts/issue-machine';
-import type { IssuePark, ParkOwes } from '@forge/contracts';
 import {
   ISSUE_STATUS_LABELS,
   type IssueStatusTone,
   issueStatusToneOn,
   type WorkStep,
 } from '@forge/contracts/issue-vocabulary';
-import { landedWait } from '../pipeline/strand-rules.js';
+import type { WaitingOn } from '@forge/contracts/standing';
 import type { PipelineReading } from './pipeline-health-types.js';
+import { landedWait } from './strand-rules.js';
 
 /** Settled blockers release their dependents (`dependency-effects.ts:BLOCKER_SETTLED_STATUSES`). */
 const SETTLED: readonly string[] = ISSUE_RESOLVED_STATUSES;
 const DONE: readonly string[] = ISSUE_TERMINAL_STATUSES;
+
 
 const STEP_WORD: Record<WorkStep, string> = {
   triage: 'Triage',
@@ -137,7 +138,7 @@ const held = (lease: IssueLeaseView | null) =>
 // where the project requires it, else queued for the release; a live lease or a job in flight →
 // moving; a live unsettled blocker → stuck on the first, worded as waiting on its judge where its
 // change landed; a landed row nothing holds → queued for its judge
-// (`pipeline/strand-rules.ts:landedWait`); in_progress with no holder or reopen → stuck; open or
+// (`strand-rules.ts:landedWait`); in_progress with no holder or reopen → stuck; open or
 // approved → queued for a master slot.
 function turnOf(input: IssueStandingInput): {
   group: IssueAttentionGroup;
@@ -448,13 +449,7 @@ function parkBlocker(park: IssuePark, refs: readonly IssueEdgeRef[]): IssueBlock
   const at = park.resume.at;
   if (at) {
     return blocker(
-      {
-        tone: 'attention',
-        reason: copy.reason,
-        whoMustAct: copy.who,
-        act: resumeAct(at),
-        resumeAt: at,
-      },
+      { tone: 'attention', reason: copy.reason, whoMustAct: copy.who, act: resumeAct(at), resumeAt: at },
       refs,
     );
   }
@@ -577,14 +572,7 @@ const truncate = (s: string, max: number) => {
   return t.length > max ? `${t.slice(0, max - 1)}…` : t;
 };
 
-const OUTCOME_KEYS = [
-  'outcome',
-  'summary',
-  'verdict',
-  'result',
-  'planSummary',
-  'rootCauseHypothesis',
-];
+const OUTCOME_KEYS = ['outcome', 'summary', 'verdict', 'result', 'planSummary', 'rootCauseHypothesis'];
 
 /** A short line from a free-form handoff payload: the stable fields first, then any string. */
 function outcomeLabelOf(payload: Record<string, unknown> | null): string | null {
@@ -631,8 +619,7 @@ export function stepOutcomesOf(input: {
   for (const step of new Set([...handoffByStep.keys(), ...runsByStep.keys()])) {
     const handoff = handoffByStep.get(step) ?? null;
     let pick: { seconds: number; cost: number; at: string } | undefined;
-    for (const acc of runsByStep.get(step)?.values() ?? [])
-      if (!pick || acc.at > pick.at) pick = acc;
+    for (const acc of runsByStep.get(step)?.values() ?? []) if (!pick || acc.at > pick.at) pick = acc;
     out.push({
       step,
       state: input.failedStep === step ? 'failed' : input.activeStep === step ? 'running' : 'done',

@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { runners } from '../db/schema.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
 import { logger } from '../observability/logger.js';
-import { emitPipelineWedge, resolvePipelineWedge } from '../pipeline/wedge.js';
+import { emitPipelineWedge, resolvePipelineWedge } from '../pipeline/index.js';
 import type { RunnerLimit } from './limit-detect.js';
 
 export function broadcastRunnerChanged(projectId: string, runnerId: string): void {

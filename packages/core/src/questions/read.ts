@@ -5,6 +5,7 @@
 // latency and nothing else (ISS-964 criterion 12).
 
 import { randomUUID } from 'node:crypto';
+import type { PersonVia } from '@forge/contracts/ecosystem';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, count, desc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -20,12 +21,10 @@ import {
   type QuestionStep,
   questionWaiters,
 } from '../db/schema-questions.js';
-import type { PersonVia } from '../ecosystem/channel-schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import type { EgressSurface } from '../lib/data-egress.js';
 import { notFound } from '../middleware/route-errors.js';
 import { type PermissionFacts, requireHeld } from '../permissions/index.js';
-import { questionnaireSurface } from '../questionnaires/read.js';
 import {
   type AskAnswer,
   type AskInput,
@@ -362,4 +361,15 @@ export async function waiterFor(args: { questionId: string; deviceId: string; ru
     )
     .limit(1);
   return row ?? null;
+}
+
+// A questionnaire's surface is read off its own arc, never off the caller's claim: an
+// onboarding round is product (`onboarding.answers`), a BA clarification about a requirement is
+// operational (`requirement.clarification`), and a batch with neither belongs to its conversation
+export function questionnaireSurface(b: {
+  onboardingId: string | null;
+  requirementId: string | null;
+}): EgressSurface {
+  if (b.requirementId !== null) return 'requirement.clarification';
+  return b.onboardingId !== null ? 'onboarding.answers' : 'conversation';
 }

@@ -23,7 +23,7 @@ import { projectWorkflowDesigns } from '../../db/schema-workflows.js';
 import { RefusalError, refuser } from '../../lib/refusal.js';
 import { dbContractLookup } from '../../messaging/verdict-contract.js';
 import { dbDesignLookup } from '../../messaging/verdict-design.js';
-import { readProjectDocument } from '../../project-config/service.js';
+import { readProjectDocument } from '../ports.js';
 import { writeKernelRecord } from '../record-events/store.js';
 import {
   normalizeStatement,

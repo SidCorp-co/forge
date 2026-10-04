@@ -5,7 +5,7 @@ import { channelDocuments } from '../db/schema-ecosystem.js';
 import { agentQuestions, isChoiceStep } from '../db/schema-questions.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { actorFor, visibleFilter } from '../permissions/index.js';
-import { mayChoose } from '../questions/write.js';
+import { mayChoose } from '../questions/index.js';
 
 export const CHANNEL_GATES_CAP = 20;
 

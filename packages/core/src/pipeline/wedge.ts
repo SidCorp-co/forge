@@ -1,9 +1,8 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications, projects } from '../db/schema.js';
-import { resolveNotifications } from '../notifications/auto-resolve.js';
-import { createNotification } from '../notifications/index.js';
 import { logger } from '../observability/logger.js';
+import { createNotification, resolveNotifications } from './ports.js';
 
 export function wedgeResolutionKey(entityId: string): string {
   return `wedge:${entityId}`;

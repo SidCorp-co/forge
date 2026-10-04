@@ -22,8 +22,8 @@ import {
   isUuid,
   type PendingIssueRelation,
   putCriteria,
+  writeIssueRelations,
 } from '../issues/index.js';
-import { writeIssueRelations } from '../issues/relations-service.js';
 import { formatIssueRef, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import type { Refusal } from '../lib/refusal.js';
 import { latestBaselineIn, linkIssueRefusal, rowIn } from '../requirements/index.js';

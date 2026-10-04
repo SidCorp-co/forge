@@ -7,9 +7,6 @@ import {
 } from './landing-evidence.js';
 import { type MergeMarkKind, type MergeRecordExecutor, mergeMarkKindOf } from './merge-record.js';
 
-/** The status an issue stands at while its release is waiting to be pressed. */
-export const BASE_MERGE_STATE: IssueStatus = 'awaiting_release';
-
 /** What a refusal under the shipped-work rule says, or `null` where the call may proceed. */
 export interface ShippedRuleRefusal {
   detail: string;

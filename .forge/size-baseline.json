@@ -209,10 +209,6 @@
       "fileLines": 538,
       "maxFunctionLines": 166
     },
-    "packages/core/src/skills/reconcile-service.ts": {
-      "fileLines": 1305,
-      "maxFunctionLines": 156
-    },
     "packages/core/tests/integration/admin-aggregate-routes.test.ts": {
       "fileLines": 0,
       "maxFunctionLines": 196

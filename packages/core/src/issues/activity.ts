@@ -2,9 +2,9 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import type { Context } from 'hono';
 import type { Db } from '../db/client.js';
 import type { ActorType } from '../db/schema.js';
-import { agencyUndetermined } from '../issues/actor-agency.js';
-import { insertActivityRow } from '../issues/index.js';
 import { logger } from '../observability/logger.js';
+import { insertActivityRow } from './activity-log.js';
+import { agencyUndetermined } from './actor-agency.js';
 
 export type Actor = { type: ActorType; id: string; agency: ActorAgency };
 
