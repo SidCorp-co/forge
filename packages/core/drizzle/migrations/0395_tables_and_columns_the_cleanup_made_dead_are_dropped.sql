@@ -32,7 +32,10 @@ ALTER TABLE "user_preferences" DROP COLUMN IF EXISTS "last_seen_whats_new";--> s
 DROP TABLE IF EXISTS "project_git_credentials" CASCADE;--> statement-breakpoint
 DROP TABLE IF EXISTS "workspace_ssh_keys" CASCADE;--> statement-breakpoint
 
--- improvement message versions on a schedule (ISS-208); `template_key` and `mode` stay, still read
+-- the improvement-message template fields of a schedule (ISS-208; their last readers went in ISS-223)
+DROP INDEX IF EXISTS "schedules_template_key_idx";--> statement-breakpoint
+ALTER TABLE "schedules" DROP COLUMN IF EXISTS "template_key";--> statement-breakpoint
+ALTER TABLE "schedules" DROP COLUMN IF EXISTS "mode";--> statement-breakpoint
 ALTER TABLE "schedules" DROP COLUMN IF EXISTS "applied_message_versions";--> statement-breakpoint
 
 -- the PM job's per-project index (ISS-208, ISS-209): no job of type 'pm' is produced
