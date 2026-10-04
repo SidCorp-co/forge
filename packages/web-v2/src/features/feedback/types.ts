@@ -6,7 +6,7 @@ export type {
   FeedbackCaseView,
   FeedbackDedup,
   FeedbackRouteWrite,
-  FeedbackAttention,
+  FeedbackAttentionGroup,
   FeedbackDecisionView,
   FeedbackKind,
   FeedbackListResponse,

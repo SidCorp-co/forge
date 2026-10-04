@@ -83,7 +83,7 @@ One file per responsibility, under `packages/core/src/<module>/`. The references
 | **rules.ts** | Pure guards over what the service read; each returns `<Module>Refusal \| null` or a list | Touch the DB, throw a refusal |
 | **read.ts** | `rowIn(tx, projectId, ref)`, list and detail views, the actor type | Write |
 | **service.ts** | Writes. Each runs in one transaction under the entity's advisory lock (`packages/core/src/requirements/service.ts:lockRequirements`) and returns `{ ok: true, … } \| { ok: false; refusals }` | Throw a refusal. It throws only a 404 and invariant `Error`s |
-| **standing.ts** | The module's derived facts, when it has any, typed by its contracts standing shape | Write |
+| **standing.ts** | The module's derived facts, when it has any, extending `packages/contracts/src/standing.ts:Standing` | Write |
 | **events.ts** | The outbox events this module emits, typed in contracts | Emit an event no module consumes |
 | **routes.ts** | Hono routes: param validators, `strictBody`, the actor, `answer` | Hold a rule or a database call (BC-15) |
 | **tool.ts** | The MCP door, only when an agent needs what the CLI and the API do not cover (BC-21) | Re-implement a rule |
@@ -180,7 +180,8 @@ A write a rule refuses answers **422** with one body, and nothing is written:
   `packages/core/src/project-config/respond.ts:refused` (moving into platform beside the envelope),
   MCP through `packages/core/src/mcp/tools/lib.ts:refusedAnswer`, flagged `isError`.
 - **A service returns its refusals; it never throws them.** A guard that runs before the service
-  throws `packages/core/src/lib/refusal.ts:RefusalError`, which `packages/core/src/middleware/error.ts`
+  throws `packages/core/src/lib/refusal.ts:RefusalError`, built by the module's typed
+  `packages/core/src/lib/refusal.ts:refuser`, which `packages/core/src/middleware/error.ts`
   answers with the same body.
 - **A rule refusal is never an error class, an `HTTPException` or thrown text.** 400 (request
   shape), 401 and 403 (no session, no membership, a fenced token) and 404 (a row the caller cannot
@@ -239,6 +240,10 @@ A write a rule refuses answers **422** with one body, and nothing is written:
   changed-since-plan, passing, needs-you, the system graph) has one function in one core read
   model, answering one shared contracts shape. The reference is `packages/core/src/runs/`, whose
   `packages/core/src/runs/read.ts:listRunStanding` answers `packages/contracts/src/run-standing.ts`.
+- **One standing shape.** A row's group and whom it waits on are
+  `packages/contracts/src/standing.ts:Standing<Group, WaitingKind>`: its groups are a subset of
+  `STANDING_GROUPS`, its waiting kinds a subset of `WAITING_KINDS`, and its group labels a
+  `StandingGroupLabels`. Needs-you is the one predicate `standing.ts:needsViewer` over that shape.
 - **A predicate is declared once**, in contracts, and both the read model and any gate apply that
   one predicate.
 - **web-v2 renders; it computes no domain fact.** A feature's **derive.ts** may format, sort and

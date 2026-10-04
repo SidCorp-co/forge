@@ -1,7 +1,7 @@
 import { AWAITING_INPUT_STATUSES, ISSUE_MACHINE } from '@forge/contracts/issue-machine';
-import { type Db, db } from '../db/client.js';
+import { postIssueNotice } from '../comments/index.js';
+import { db, type Tx } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
-import { comments } from '../db/schema.js';
 import { actorAgency, type TransitionActor } from './actor-agency.js';
 
 /** Does this move carry the actor's reason, posted as a comment (`transition-guards.ts:reasonFault`)? */
@@ -69,18 +69,20 @@ export async function postLeaveComment(
     actor: TransitionActor;
     options: { transitionReason?: string | undefined };
   },
-  executor: Pick<Db, 'insert'>,
+  tx: Tx,
 ): Promise<void> {
   const reason = args.options.transitionReason ?? '';
   if (!announcesLeave(args.fromStatus, args.toStatus, reason, actorAgency(args.actor))) return;
-  await executor.insert(comments).values({
-    issueId: args.issue.id,
-    authorId: args.actor.type === 'user' ? args.actor.id : args.actor.ownerId,
-    body: buildLeaveBody(args.fromStatus, args.toStatus, reason),
-    parentId: null,
-    // A person's word on leaving a park is owed a reply, as every person's comment was (ISS-56).
-    intent: actorAgency(args.actor) === 'human' ? 'question' : 'note',
-  });
+  await postIssueNotice(
+    {
+      issueId: args.issue.id,
+      authorId: args.actor.type === 'user' ? args.actor.id : args.actor.ownerId,
+      body: buildLeaveBody(args.fromStatus, args.toStatus, reason),
+      // A person's word on leaving a park is owed a reply, as every person's comment was (ISS-56).
+      intent: actorAgency(args.actor) === 'human' ? 'question' : 'note',
+    },
+    tx,
+  );
 }
 
 /**
@@ -97,18 +99,20 @@ export async function postTransitionReasonComment(
     waitingKind?: WaitingKind | null;
     /** True when a device actor wrote it — an agent's rationale is still an agent's. */
   },
-  executor: Pick<Db, 'insert'> = db,
+  tx: Tx = db,
 ): Promise<void> {
   if (!args.authorId) return;
-  await executor.insert(comments).values({
-    issueId: args.issueId,
-    authorId: args.authorId,
-    body: buildTransitionReasonBody(
-      args.toStatus,
-      args.fromStatus,
-      args.reason,
-      args.waitingKind ?? null,
-    ),
-    parentId: null,
-  });
+  await postIssueNotice(
+    {
+      issueId: args.issueId,
+      authorId: args.authorId,
+      body: buildTransitionReasonBody(
+        args.toStatus,
+        args.fromStatus,
+        args.reason,
+        args.waitingKind ?? null,
+      ),
+    },
+    tx,
+  );
 }

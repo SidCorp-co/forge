@@ -7,7 +7,8 @@ import type { DevelopmentOverview } from "../types";
 import { IssueFlow } from "./issue-flow";
 import { LeaseLanes } from "./lease-lanes";
 import { ModuleBars } from "./module-bars";
-import { NeedsYou } from "./needs-you";
+import { NeedsYouList } from "@/features/needs-you/components/needs-you-list";
+import { useNeedsYou } from "@/features/needs-you/hooks";
 import { SignalsStrip } from "./signals-strip";
 import { StuckChains } from "./stuck-chains";
 
@@ -34,6 +35,7 @@ function Coverage({ c }: { c: DevelopmentOverview["coverage"] }) {
 
 export function DevelopmentOverviewScreen({ scope }: { scope: { projectId: string; slug: string } }) {
   const q = useDevelopmentOverview(scope.projectId);
+  const needsYou = useNeedsYou(scope.projectId).data?.items ?? [];
   const d = q.data;
   return (
     <>
@@ -77,10 +79,17 @@ export function DevelopmentOverviewScreen({ scope }: { scope: { projectId: strin
                 </section>
               </div>
             </div>
-            {d.flow.total === 0 && d.needsYou.count === 0 && d.stuck.count === 0 && d.moving.count === 0 ? (
+            {d.flow.total === 0 && needsYou.length === 0 && d.stuck.count === 0 && d.moving.count === 0 ? (
               <EmptyState title="Nothing is moving yet" message="Issues appear here once someone files or works one." />
             ) : null}
-            <NeedsYou needs={d.needsYou} slug={scope.slug} />
+            <section id="needs-you" aria-label="Needs you" className="scroll-mt-4" data-testid="needs-you">
+              <NeedsYouList
+                items={needsYou}
+                slug={scope.slug}
+                foldKey="web-v2:development-overview:fold"
+                empty="Nothing waits on you. A question, a draft to take on, a release to approve or a contract version to decide shows here."
+              />
+            </section>
           </>
         )}
       </div>

@@ -51,16 +51,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  allowedTransitions,
   canonicalIssueId,
-  deriveBlockerState,
-  deriveStepOutcomes,
   isLiveRun,
-  runningStepOf,
   issueQueryKey,
   parseChecklist,
   runStatusChip,
-  threadQuestionOf,
   workStepOf,
 } from "../derive";
 import { useCriteria } from "../criteria";
@@ -72,8 +67,6 @@ import {
   useComments,
   useCreateComment,
   useIssue,
-  useStepDurations,
-  useStepHandoffs,
   useTasks,
 } from "../detail-hooks";
 import {
@@ -164,8 +157,6 @@ export function IssueDetailScreen({
   const depsQ = useIssueDeps(canonicalId, true, projectId);
   const costQ = useIssueCost(canonicalId, true, projectId);
   const membersQ = useProjectMembers(projectId);
-  const handoffsQ = useStepHandoffs(projectId, canonicalId);
-  const durationsQ = useStepDurations(projectId, canonicalId);
 
   const patch = usePatchIssue();
   const {
@@ -251,12 +242,9 @@ export function IssueDetailScreen({
   const onPatch = (body: Parameters<typeof patch.mutate>[0]["body"]) =>
     patch.mutate({ id: issue.id, body }, { onSuccess: refreshIssue });
 
-  const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data, park, standingQ.data?.standing ?? null);
+  const blocker = standingQ.data?.blocker ?? null;
   const liveStep = issue.pipelineHealth?.activeSession?.skill ?? null;
-  const stepOutcomes = deriveStepOutcomes(handoffsQ.data, durationsQ.data, {
-    activeStep: runningStepOf(issue.pipelineHealth),
-    failedStep: issue.failureInfo?.failedStep ?? null,
-  });
+  const stepOutcomes = standingQ.data?.stepOutcomes ?? [];
   const liveSession = pickActiveSession(issue.agentSessions);
   const queuedStep = deriveQueuedStep(issue.pipelineHealth, !!liveSession);
   const agentState: LiveAgentState | null = liveSession
@@ -280,11 +268,12 @@ export function IssueDetailScreen({
       requestParkLeave(issue.id, "move_anyway", targets, { onSuccess: refreshIssue }),
   };
   const statusPark = canWrite ? { reading: park, actions: parkActions } : undefined;
-  const threadQuestion = park.state === "ready" && park.park ? threadQuestionOf(park.park) : null;
+  const threadQuestion = park.state === "ready" && park.park ? park.park.threadQuestion : null;
 
   const isTerminal = issue.status === "awaiting_release" || issue.status === "closed";
   // The menu offers Pause and Reopen only where the issue machine draws them from this status.
-  const exitsHere = allowedTransitions(issue.status, issue.workState?.leftStatus ?? null);
+  const moves = standingQ.data?.standing.moves ?? [];
+  const exitsHere = moves.map((m) => m.to);
   // The run's state is a session chip beside the issue's lifecycle chip, never merged into it (ISS-360, ISS-1150).
   const runChip = runStatusChip(issue);
   const isRunActive = isLiveRun(runChip) || issue.status === "in_progress" || issue.status === "reopen";
@@ -373,6 +362,7 @@ export function IssueDetailScreen({
       onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
       canMarkMerged={canWrite}
       park={statusPark}
+      moves={moves}
     />
   );
 
@@ -486,14 +476,10 @@ export function IssueDetailScreen({
             <div className="grid gap-6" data-testid="view-runs">
               {/* Session-group continuity (ISS-376) — resumed/fresh per step. Self-hides when no session carries group metadata. */}
               <SessionGroupTimeline sessions={issue.agentSessions ?? []} />
-              {handoffsQ.isLoading || durationsQ.isLoading ? (
+              {standingQ.isLoading ? (
                 <EmptyPanelLine title="Steps" status="Loading…" />
-              ) : handoffsQ.isError || durationsQ.isError ? (
-                <EmptyPanelLine
-                  title="Steps"
-                  status="Couldn't load"
-                  detail={formatApiError(handoffsQ.isError ? handoffsQ.error : durationsQ.error)}
-                />
+              ) : standingQ.isError ? (
+                <EmptyPanelLine title="Steps" status="Couldn't load" detail={formatApiError(standingQ.error)} />
               ) : stepOutcomes.length === 0 ? (
                 <EmptyPanelLine title="Steps" status="None yet" detail="Steps appear here as agents record them." />
               ) : (

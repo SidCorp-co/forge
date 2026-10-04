@@ -10,7 +10,7 @@
  * the token and builds the work while the job stays `queued` and HELD;
  * `startJobForMaster` is the stamp, and the stamp is what ends the hold. A
  * master that prepares and never starts is covered by the release rule that
- * already existed — `releaseJobFromMaster`, or the three-minute reaper — which
+ * already existed — `jobs/master-holds.ts:releaseJobHold`, or the three-minute reaper — which
  * is the whole reason the split lands on this side of the stamp rather than
  * after it.
  */
@@ -19,13 +19,14 @@ import { JOB_MACHINE } from '@forge/contracts/job-machine';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
-import { IssueBlockedError, refuseBlockedTake } from '../issues/blocked-by.js';
+import { heldTakeRefusal, refuseBlockedTake } from '../issues/blocked-by.js';
+import { refusalCodeOf } from '../lib/refusal.js';
 import {
   assertDispatchGatesForIssue,
   type DispatchGateCode,
-  isDispatchGateError,
 } from '../issues/dispatch-gates.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { holdQueuedJob, releaseJobHold } from '../jobs/index.js';
 import { resolveJobPolicy } from '../jobs/job-policy.js';
 import { poolPrompt, settleNoPromptJob } from '../jobs/pool-served.js';
 import {
@@ -37,12 +38,9 @@ import {
 } from '../jobs/prepare-claimed-job.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { transition } from '../lifecycle/transition.js';
+import type { PolicyRefusalCode } from '@forge/contracts/project-config';
 import { logger } from '../logger.js';
-import {
-  type DispatchState,
-  type PolicyRefusalCode,
-  PolicyRefusedError,
-} from '../project-config/dispatch-policy.js';
+import { type DispatchState, policyRefusalOf } from '../project-config/dispatch-policy.js';
 import { runnerAdmission } from './pool-admission.js';
 import { releaseLabelVerdict } from './release-label.js';
 
@@ -70,7 +68,7 @@ export type PrepareResult =
   | {
       ok: false;
       reason: 'policy_refused';
-      code: PolicyRefusalCode | DispatchGateCode | IssueBlockedError['code'];
+      code: PolicyRefusalCode | DispatchGateCode | 'ISSUE_BLOCKED';
       detail: string;
     }
   | { ok: false; reason: 'checkout_unbound'; detail: string };
@@ -126,25 +124,7 @@ export async function prepareJobForMaster(args: {
   if (design) return design;
 
   const claimed = await db.transaction(async (tx) => {
-    const held = await tx
-      .update(jobs)
-      .set({ heldBy: args.sessionId, heldAt: sql`now()` })
-      .where(
-        and(
-          eq(jobs.id, args.jobId),
-          eq(jobs.status, 'queued'),
-          isNull(jobs.heldBy),
-          sql`NOT EXISTS (
-            SELECT 1 FROM jobs other
-            WHERE other.issue_id = jobs.issue_id
-              AND other.id <> jobs.id
-              AND other.status IN ('dispatched','running','held')
-          )`,
-        ),
-      )
-      .returning();
-
-    const row = held[0];
+    const row = await holdQueuedJob(tx, args.jobId, args.sessionId);
     if (!row) {
       const diag = (await tx.execute(sql`
         SELECT j.held_by IS NOT NULL OR j.status <> 'queued' AS taken,
@@ -181,7 +161,7 @@ export async function prepareJobForMaster(args: {
       policy: policy.state,
     });
   } catch (err) {
-    await releaseJobFromMaster({ jobId: claimed.job.id, sessionId: args.sessionId });
+    await releaseJobHold(claimed.job.id, args.sessionId);
     throw err;
   }
 
@@ -214,11 +194,12 @@ async function policyStateFor(
   try {
     return { ok: true, state: await resolveJobPolicy(job) };
   } catch (err) {
-    if (!(err instanceof PolicyRefusedError)) throw err;
-    logger.warn({ jobId, projectId: job.projectId, code: err.code }, err.message);
+    const refused = policyRefusalOf(err);
+    if (!refused) throw err;
+    logger.warn({ jobId, projectId: job.projectId, code: refused.code }, refused.detail);
     return {
       ok: false,
-      refusal: { ok: false, reason: 'policy_refused', code: err.code, detail: err.message },
+      refusal: { ok: false, reason: 'policy_refused', code: refused.code, detail: refused.detail },
     };
   }
 }
@@ -240,9 +221,12 @@ async function designGateFor(jobId: string): Promise<Extract<PrepareResult, { ok
     await assertDispatchGatesForIssue(job.projectId, job.issueId);
     return null;
   } catch (err) {
-    if (!isDispatchGateError(err) && !(err instanceof IssueBlockedError)) throw err;
-    logger.warn({ jobId, projectId: job.projectId, code: err.code }, err.message);
-    return { ok: false, reason: 'policy_refused', code: err.code, detail: err.message };
+    const refused = heldTakeRefusal(err);
+    if (!refused) throw err;
+    const code = refusalCodeOf(refused) as DispatchGateCode | 'ISSUE_BLOCKED';
+    const detail = refused.refusals.map((r) => r.detail).join(' ');
+    logger.warn({ jobId, projectId: job.projectId, code }, detail);
+    return { ok: false, reason: 'policy_refused', code, detail };
   }
 }
 
@@ -317,36 +301,9 @@ export async function startJobForMaster(args: {
     })
   ).rows;
   if (!stamped.length) {
-    await releaseJobFromMaster({ jobId: args.jobId, sessionId: args.sessionId });
+    await releaseJobHold(args.jobId, args.sessionId);
     return { ok: false, reason: 'hold_lost' };
   }
   return { ok: true };
 }
 
-/** Give a held job back to the pool. */
-export async function releaseJobFromMaster(args: {
-  jobId: string;
-  sessionId: string;
-}): Promise<boolean> {
-  const rows = await db
-    .update(jobs)
-    .set({ heldBy: null, heldAt: null })
-    .where(and(eq(jobs.id, args.jobId), eq(jobs.heldBy, args.sessionId)))
-    .returning({ id: jobs.id });
-  return rows.length > 0;
-}
-
-/**
- * Release every job a dead master was holding.
- *
- * Only the hold moves. Anything this master actually started is no longer
- * held at all, so a running job is not reachable from here.
- */
-export async function releaseAllHeldBySession(sessionId: string): Promise<number> {
-  const rows = await db
-    .update(jobs)
-    .set({ heldBy: null, heldAt: null })
-    .where(eq(jobs.heldBy, sessionId))
-    .returning({ id: jobs.id });
-  return rows.length;
-}

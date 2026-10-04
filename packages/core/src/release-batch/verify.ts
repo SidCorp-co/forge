@@ -84,7 +84,7 @@ export async function readLiveState(
  * an unparseable probe url (`readRuntimeProbe`), as `verifyDeployed` and
  * `verifyServingNow` do. Two doors screen ahead of them — `createReleaseBatch` and
  * `recordPerformedRelease`, through `collectReleaseBlockers` — so that throw is a
- * 409, not a 500. `finishReleaseBatch` screens nothing (ISS-1127, ISS-1129 F3, F4).
+ * refusal, not a 500. `finishReleaseBatch` screens nothing (ISS-1127, ISS-1129 F3, F4).
  */
 export async function readLiveCommit(cfg: VerifyConfig): Promise<string | null> {
   return (await readLiveState(cfg)).identity;

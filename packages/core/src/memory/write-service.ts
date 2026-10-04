@@ -1,5 +1,7 @@
+import type { MemoryRefusalCode } from '@forge/contracts/memory';
 import { z } from 'zod';
 import { memorySources } from '../db/schema.js';
+import { refuser } from '../lib/refusal.js';
 import { type IndexResult, indexMemory, MAX_EMBED_CHARS } from './indexer.js';
 
 /**
@@ -28,7 +30,7 @@ export type WriteMemoryResult = IndexResult;
  */
 const NEAR_DUPLICATE_PROBE_SOURCES = new Set<string>(['note', 'knowledge']);
 
-export class MemoryWriteValidationError extends Error {}
+const refuse = refuser<MemoryRefusalCode>('MEMORY_REFUSED');
 
 const AGENT_AUTHORED_SOURCES = new Set<string>(['note', 'knowledge', 'policy']);
 
@@ -62,14 +64,18 @@ function longestFencedBlockLines(text: string): number {
 function assertAgentMemoryQuality(input: WriteMemoryInput): void {
   if (!AGENT_AUTHORED_SOURCES.has(input.source)) return;
   if (input.textContent.length > MAX_EMBED_CHARS) {
-    throw new MemoryWriteValidationError(
+    throw refuse(
+      'MEMORY_TEXT_TOO_LONG',
       `textContent is ${input.textContent.length} chars but agent-authored memory (${input.source}) is capped at ${MAX_EMBED_CHARS} — the embedding window; anything past it would be stored yet unsearchable. Tighten to facts + pointers, or split into multiple sourceRefs.`,
+      '/textContent',
     );
   }
   const blockLines = longestFencedBlockLines(input.textContent);
   if (blockLines > MAX_CODE_BLOCK_LINES) {
-    throw new MemoryWriteValidationError(
+    throw refuse(
+      'MEMORY_CODE_BLOCK_TOO_LONG',
       `textContent contains a ${blockLines}-line fenced code block (max ${MAX_CODE_BLOCK_LINES}). Memory stores logic, not code — copied code rots on the next commit. Replace the block with a one-sentence invariant + a file:line or SHA pointer; one-line runnable commands (verify, query) are fine.`,
+      '/textContent',
     );
   }
 }

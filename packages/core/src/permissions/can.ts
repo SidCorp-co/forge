@@ -15,8 +15,8 @@ import {
   type Permission,
   type PermissionRefusal,
   type PermissionScope,
-  type ProjectPermission,
   PROJECT_ROLES,
+  type ProjectPermission,
   permissionVerb,
   ROLE_PERMISSIONS,
   TOKEN_EXPLICIT_PERMISSIONS,
@@ -31,6 +31,7 @@ import {
   type ProjectAccess,
 } from '../lib/authz.js';
 import { RefusalError } from '../lib/refusal.js';
+import { forbidden } from '../middleware/route-errors.js';
 
 /** What a project decision reads: the effective role and the membership's grant. */
 export type PermissionFacts = Pick<ProjectAccess, 'projectId' | 'role' | 'grants'>;
@@ -111,8 +112,7 @@ function orgRefusal(
   };
 }
 
-const noAccess = (what: string) =>
-  new HTTPException(403, { message: `not a member of this ${what}`, cause: { code: 'FORBIDDEN' } });
+const noAccess = (what: string) => forbidden(`not a member of this ${what}`);
 
 /** Throw unless the resolved access holds the permission: 403 with no role at all, else the 422 refusal. */
 export function requireHeld(

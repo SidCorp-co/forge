@@ -165,7 +165,7 @@ export function useSetIssueModules(issueId: string | undefined) {
 }
 
 /** Shared mutation factory: invalidate `['issues']` on success, toast on error
- *  (409 ILLEGAL_TRANSITION / 400 ASSIGNEE_NOT_MEMBER map to friendly copy). */
+ *  (ILLEGAL_TRANSITION / ASSIGNEE_NOT_MEMBER map to friendly copy by code). */
 function useIssueMutation<TArgs, TData>(
   fn: (args: TArgs) => Promise<TData>,
   opts: { successMessage?: string } = {},
@@ -376,7 +376,7 @@ export function useBatchRelease(projectId: string, { showsRefusal }: { showsRefu
 }
 
 /** Outcome tally of a bulk apply. `skipped` = the server rejected the change
- *  with 409 (invalid transition / no-op / stale) — surfaced, not failed. */
+ *  with a 422 refusal (invalid transition / no-op / stale) — surfaced, not failed. */
 export interface BulkSummary {
   updated: number;
   skipped: number;
@@ -401,7 +401,7 @@ export function useBulkUpdateIssues() {
         const results = await Promise.allSettled(ids.slice(i, i + BULK_CHUNK).map(apply));
         for (const r of results) {
           if (r.status === "fulfilled") summary.updated++;
-          else if (r.reason instanceof ApiError && r.reason.status === 409) summary.skipped++;
+          else if (r.reason instanceof ApiError && (r.reason.status === 409 || r.reason.status === 422)) summary.skipped++;
           else summary.failed++;
         }
       }

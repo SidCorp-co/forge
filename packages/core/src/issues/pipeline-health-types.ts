@@ -14,6 +14,22 @@ export type PipelineWaitingReason =
 
 export type WaitingCause = WaitingKind;
 
+/** A gate or a pause as a person reads it: what holds the step, who acts, and whether it clears itself. */
+export interface PipelineReading {
+  short: string;
+  detail: string;
+  who: string;
+  /** False when it clears itself. */
+  needsAction: boolean;
+}
+
+export interface PipelineGate {
+  reason: PipelineWaitingReason;
+  since: string;
+  details: Record<string, unknown>;
+  reading: PipelineReading;
+}
+
 export interface PipelineHealth {
   stage: IssueStatus;
   /**
@@ -23,11 +39,7 @@ export interface PipelineHealth {
    */
   worker: IssueWorker;
   activeSession?: { id: string; status: 'queued' | 'running'; skill: string };
-  waitingOn?: {
-    reason: PipelineWaitingReason;
-    since: string;
-    details: Record<string, unknown>;
-  };
+  waitingOn?: PipelineGate;
   queuedAt?: string;
   queuedStep?: PipelineHealthQueuedStep;
   /** Only set when `stage === 'needs_info'`: what the park is stopped on. */
@@ -46,6 +58,7 @@ export interface PipelineHealthPausedRun {
   /** Who ends this pause, from `run-pause.ts#describePause`. */
   resumer: PauseResumer;
   since: string;
+  reading: PipelineReading;
 }
 
 /** ISS-903 — the queued candidate, projected for a human surface. */

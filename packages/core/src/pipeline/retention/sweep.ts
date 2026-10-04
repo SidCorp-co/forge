@@ -3,7 +3,7 @@ import { db } from '../../db/client.js';
 import { agentSessions } from '../../db/schema.js';
 import { TRANSCRIPT_FINALIZED_KEY } from '../../db/transcript-marker.js';
 import { type CollapseResult, collapseNarration } from '../../issues/record-events/collapse.js';
-import { deriveSessionFinal } from '../../jobs/session-transcript.js';
+import { deriveSessionFinal, stampFinalizeAttempt } from '../../agent-sessions/index.js';
 import { logger } from '../../logger.js';
 import { type SuggestionSweepResult, sweepSuggestions } from '../../suggestions/stale.js';
 import {
@@ -15,7 +15,6 @@ import {
 import {
   RETENTION_STATEMENTS,
   repairCandidates,
-  stampFinalizeAttempt,
   truncatedHistories,
 } from './statements.js';
 
@@ -155,7 +154,7 @@ async function repairUnfinalized(days: number, max: number): Promise<RepairSweep
   const now = new Date();
   for (const row of rows) {
     try {
-      await db.execute(stampFinalizeAttempt(row.session_id, now));
+      await stampFinalizeAttempt(row.session_id, now);
       await deriveSessionFinal(row.job_id, row.session_id);
     } catch (err) {
       logger.warn(

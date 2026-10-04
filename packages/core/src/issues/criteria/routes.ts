@@ -1,6 +1,6 @@
 /**
  * ISS-55 — an issue's criteria and the verdicts on them, over REST. Transport only: the rules are
- * `store.ts` and `verdict-input.ts`, which the MCP door (`mcp/tools/forge-criteria.ts`) calls too.
+ * `store.ts` and `verdict-input.ts`, which every door calls.
  *
  *   GET  /api/issues/:id/criteria   live criteria in order, each with its latest verdict
  *   PUT  /api/issues/:id/criteria   the plan step's write: replace the criteria (renders the text)
@@ -23,10 +23,10 @@ import {
 } from '../../middleware/auth.js';
 import { idParamSchema } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
+import { requireHeld } from '../../permissions/index.js';
 import { criteriaPutSchema, verdictPostSchema } from './input-schemas.js';
 import { listCriteria, putCriteria, recordVerdict } from './store.js';
 import { withCurrentDrafts } from './storefront-draft.js';
-import { requireHeld } from '../../permissions/index.js';
 
 const readCriteria = async (issue: { id: string; projectId: string }) =>
   withCurrentDrafts(issue.projectId, await listCriteria(db, issue.id));
@@ -40,11 +40,7 @@ const badInput = (r: { success: boolean; error?: z.core.$ZodError }) => {
   }
 };
 
-async function issueFor(
-  id: string,
-  userId: string,
-  permission: 'project.read' | 'project.write',
-) {
+async function issueFor(id: string, userId: string, permission: 'project.read' | 'project.write') {
   const [issue] = await db
     .select({ id: issues.id, projectId: issues.projectId })
     .from(issues)

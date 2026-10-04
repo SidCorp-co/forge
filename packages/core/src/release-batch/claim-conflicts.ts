@@ -7,7 +7,8 @@ import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.j
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { agrees, counted } from '../lib/plural.js';
 import { TERMINAL_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
-import { ClaimConflictError, ReleaseClaimLostError } from './errors.js';
+import type { RefusalError } from '../lib/refusal.js';
+import { blockerRefusal, refuseRelease } from './refuse.js';
 
 /**
  * Inside the close's own transaction: refuses unless `runId` still claims the issue, holding the
@@ -21,7 +22,12 @@ export async function refuseLostReleaseClaim(
   const held = await tx.execute(
     sql`SELECT 1 FROM issues WHERE id = ${issueId} AND release_batch_run_id = ${runId} FOR UPDATE`,
   );
-  if (held.length === 0) throw new ReleaseClaimLostError(issueId, runId);
+  if (held.length === 0) {
+    throw refuseRelease(
+      'RELEASE_CLAIM_LOST',
+      `release batch ${runId} no longer claims issue ${issueId}: an abort handed it back to the gate, so this finish does not close it`,
+    );
+  }
 }
 
 /** What `metadata.source` reads on the run a recorded release writes. */
@@ -194,21 +200,23 @@ export function claimConflictSentence(
 }
 
 /**
- * The error a claim that lost a race throws: the ids it did not take, and each one's standing read
- * after the loss, so the refusal names what took it. An id the read finds free again keeps its place
- * in `issueIds`, and a list the read found nothing for keeps the generic sentence.
+ * The refusal a claim that lost a race throws: the ids it did not take, and each one's standing read
+ * after the loss, so the refusal names what took it. A list the read found nothing for keeps the
+ * generic sentence.
  */
 export async function claimConflictAt(
   projectId: string,
   gateStatus: IssueStatus,
   issueIds: string[],
   claimed: Array<{ id: string }>,
-): Promise<ClaimConflictError> {
+): Promise<RefusalError> {
   const lost = issueIds.filter((id) => !claimed.some((r) => r.id === id));
   const conflicts = await readClaimConflicts(projectId, gateStatus, lost);
-  return new ClaimConflictError(
-    lost,
-    conflicts.length > 0 ? claimConflictDetails(projectId, gateStatus, conflicts) : null,
+  return blockerRefusal(
+    'CLAIM_CONFLICT',
+    conflicts.length > 0
+      ? claimConflictDetails(projectId, gateStatus, conflicts)
+      : { issueIds: lost },
   );
 }
 

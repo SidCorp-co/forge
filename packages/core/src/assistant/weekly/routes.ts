@@ -13,6 +13,7 @@ import { projects } from '../../db/schema.js';
 import { loadProjectAccess } from '../../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
+import { refuseAssistant } from '../refusals.js';
 import { readAssistantWeekly } from './config.js';
 import { realDeps, runAssistantWeeklyForProject } from './run.js';
 import { requireOrgHeld } from '../../permissions/index.js';
@@ -47,13 +48,9 @@ assistantWeeklyRoutes.post(
     if (!row) return c.json({ code: 'NOT_FOUND', message: 'project not found' }, 404);
     const config = readAssistantWeekly(row.agentConfig);
     if (!config)
-      return c.json(
-        {
-          code: 'ASSISTANT_WEEKLY_OFF',
-          message:
-            'assistantWeekly is not enabled on this project; save it on PATCH /api/projects/:id with enabled, pinnedIssue, judgeProviderId and judgeModel first',
-        },
-        409,
+      throw refuseAssistant(
+        'ASSISTANT_WEEKLY_OFF',
+        'assistantWeekly is not enabled on this project; save it on PATCH /api/projects/:id with enabled, pinnedIssue, judgeProviderId and judgeModel first',
       );
     const outcome = await runAssistantWeeklyForProject(
       { projectId: row.id, slug: row.slug, config },

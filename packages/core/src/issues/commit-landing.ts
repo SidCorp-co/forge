@@ -1,3 +1,4 @@
+import type { CommitLandingRefusalCode } from '@forge/contracts/issues';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
@@ -9,38 +10,26 @@ import { declaredIssueSeqs, subjectOf } from '../projects/commit-owners.js';
 import { issueRefPattern } from '../projects/live-reach.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
 
-export type CommitLandingRefusalCode =
-  | 'COMMIT_NOT_IN_REPOSITORY'
-  | 'COMMIT_NOT_THIS_ISSUE'
-  | 'COMMIT_NOT_LANDED'
-  | 'COMMIT_UNVERIFIED';
-
 export type CommitLanding =
   | { ok: true; sha: string; committedAt: Date; branch: string; repository: string }
   | {
       ok: false;
       code: CommitLandingRefusalCode;
       detail: string;
-      details: Record<string, unknown>;
     };
 
 export interface CommitLandingDeps {
   host?: (projectId: string) => Promise<SourceHost>;
 }
 
-function refuse(
-  code: CommitLandingRefusalCode,
-  detail: string,
-  details: Record<string, unknown>,
-): CommitLanding {
-  return { ok: false, code, detail, details };
+function refuse(code: CommitLandingRefusalCode, detail: string): CommitLanding {
+  return { ok: false, code, detail };
 }
 
 function unreadable(commit: string, why: string): CommitLanding {
   return refuse(
     'COMMIT_UNVERIFIED',
     `commit ${commit} could not be checked against this project's repository, so it is not taken as evidence unchecked: ${why}. Mark again once the repository can be read, or record the branch the work was done on`,
-    { commit },
   );
 }
 
@@ -94,7 +83,6 @@ export async function readCommitLanding(
     return refuse(
       'COMMIT_NOT_IN_REPOSITORY',
       `commit ${commit} is not an object in ${repository}: ${host.provider} resolves it to no single commit there. Mark with the sha the work landed at`,
-      { commit, repository },
     );
   }
   const sha = read.sha.toLowerCase();
@@ -107,7 +95,6 @@ export async function readCommitLanding(
     return refuse(
       'COMMIT_NOT_THIS_ISSUE',
       `commit ${sha} in ${repository} is not ${ref}'s landing: its subject "${subject}" does not declare ${ref}. A commit is an issue's when its subject names the key in a closing (…) group, opens with it, or merges a branch named for it`,
-      { commit: sha, repository, subject, issue: ref },
     );
   }
 
@@ -129,6 +116,5 @@ export async function readCommitLanding(
   return refuse(
     'COMMIT_NOT_LANDED',
     `commit ${sha} is in ${repository} and ${branches.join(' and ')} ${branches.length > 1 ? 'do' : 'does'} not contain it, so it has not landed. Mark once it is merged there`,
-    { commit: sha, repository, branches },
   );
 }

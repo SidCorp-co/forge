@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { ActionRecord } from "../derive";
+import type { PulseActionRecord } from "@forge/contracts/needs-you";
 import { ageText } from "../derive";
 
 export interface RecordPanelProps {
@@ -9,7 +9,7 @@ export interface RecordPanelProps {
   /** Every record the condition holds. */
   total: number;
   /** The records the response actually named. */
-  records: ActionRecord[];
+  records: PulseActionRecord[];
   onClose: () => void;
 }
 

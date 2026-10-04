@@ -69,25 +69,18 @@ const KEYS = [
   'flagged',
 ] as const;
 
-export class HistoryShapeError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'HistoryShapeError';
-  }
-}
-
 export function readHistoryResult(text: string, where = 'history'): HistoryResult {
   const parsed: unknown = JSON.parse(text);
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
-    throw new HistoryShapeError(`${where} is not an object`);
+    throw new Error(`${where} is not an object`);
   const obj = parsed as Record<string, unknown>;
   for (const key of KEYS) {
-    if (!(key in obj)) throw new HistoryShapeError(`${where} lacks ${key}`);
+    if (!(key in obj)) throw new Error(`${where} lacks ${key}`);
   }
   if (obj.excludedSessionsByTask === undefined) obj.excludedSessionsByTask = [];
   if (obj.excludedRowsByTask === undefined) obj.excludedRowsByTask = 0;
   if (!Array.isArray(obj.groups) || !Array.isArray(obj.flagged))
-    throw new HistoryShapeError(`${where}.groups and .flagged must be lists`);
+    throw new Error(`${where}.groups and .flagged must be lists`);
   return obj as unknown as HistoryResult;
 }
 

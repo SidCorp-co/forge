@@ -5,12 +5,9 @@
  * `credentials/turn-credential.ts:mintTurnCredential`.
  */
 
-import {
-  liveTurnToken,
-  type TurnAuthorityOutcome,
-  type TurnAuthorityRefusalCode,
-} from '../credentials/turn-credential.js';
+import type { TurnAuthorityRefusalCode } from '@forge/contracts/auth';
 import { PAT_GRANT_EPOCH } from '../credentials/pat-permissions.js';
+import { liveTurnToken, type TurnAuthorityOutcome } from '../credentials/turn-credential.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { holds } from './can.js';
 

@@ -12,6 +12,7 @@ import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { assertPlatformAdmin } from '../middleware/require-admin.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { clearRunnerLimit } from '../runners/apply-runner-limit.js';
@@ -22,14 +23,15 @@ import { materializeJobUsage } from '../usage-records/materialize.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { SYNTHETIC_REAP_ERRORS, syncAgentSessionLifecycle } from './agent-session-link.js';
-import { cancelJob, JobCancelError } from './cancel-job.js';
+import { cancelJob } from './cancel-job.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { isResumeFailedError, reclassifyAbortedResume } from './handle-resume-failed.js';
 import { readJobGate } from './job-queries.js';
+import { refuseJob } from './refusals.js';
 import { salvageSchema, salvageSet } from './prior-attempts.js';
-import { JobResumeError, resumeHeldJob } from './resume-job.js';
+import { resumeHeldJob } from './resume-job.js';
 import type { RetryOutcome } from './retry.js';
-import { deriveSessionFinal } from './session-transcript.js';
+import { deriveSessionFinal } from '../agent-sessions/index.js';
 import { jobTurnVerdictRoutes } from './turn-verdict-routes.js';
 import { holds, requireHeld } from '../permissions/index.js';
 
@@ -38,12 +40,6 @@ const badRequest = (details: unknown) =>
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
-const conflict = (message: string, code: string) =>
-  new HTTPException(409, { message, cause: { code } });
 
 const jobIdParamSchema = z.object({ id: z.uuid() });
 
@@ -288,7 +284,7 @@ jobLifecycleDeviceRoutes.post(
     }
 
     if (!OCCUPYING_JOB_STATUSES.includes(job.status)) {
-      throw conflict('job is not in a runnable state', 'INVALID_STATE');
+      throw refuseJob('INVALID_STATE', 'job is not in a runnable state');
     }
 
     const status: 'done' | 'cancelled' | 'failed' =
@@ -310,7 +306,7 @@ jobLifecycleDeviceRoutes.post(
       })
     ).rows;
 
-    if (!updated) throw conflict('job state changed mid-request', 'INVALID_STATE');
+    if (!updated) throw refuseJob('INVALID_STATE', 'job state changed mid-request');
 
     // ISS-283 — final authoritative derive of the agent_sessions transcript
     // from the streamed job_events (CLI runner never PATCHes the session row).
@@ -403,7 +399,7 @@ jobLifecycleDeviceRoutes.post(
     const job = await loadJob(id);
     if (job.deviceId !== device.id) throw forbidden('job is not dispatched to this device');
     if (!OCCUPYING_JOB_STATUSES.includes(job.status)) {
-      throw conflict('job is not in a runnable state', 'INVALID_STATE');
+      throw refuseJob('INVALID_STATE', 'job is not in a runnable state');
     }
 
     let [updated] = (
@@ -417,7 +413,7 @@ jobLifecycleDeviceRoutes.post(
       })
     ).rows;
 
-    if (!updated) throw conflict('job state changed mid-request', 'INVALID_STATE');
+    if (!updated) throw refuseJob('INVALID_STATE', 'job state changed mid-request');
 
     // ISS-283 — final transcript derive (see /complete). Fire-and-forget.
     if (updated.agentSessionId) {
@@ -539,21 +535,13 @@ jobLifecycleUserRoutes.post(
 
     const body = c.req.valid('json');
 
-    try {
-      const result = await cancelJob(id, {
-        actorUserId: userId,
-        actorAgency: restActor(c).agency,
-        reason: body.reason ?? 'manual cancel (REST)',
-        source: 'rest',
-      });
-      return c.json(result);
-    } catch (e) {
-      if (e instanceof JobCancelError) {
-        if (e.code === 'NOT_FOUND') throw notFound(e.message);
-        throw conflict(e.message, e.code);
-      }
-      throw e;
-    }
+    const result = await cancelJob(id, {
+      actorUserId: userId,
+      actorAgency: restActor(c).agency,
+      reason: body.reason ?? 'manual cancel (REST)',
+      source: 'rest',
+    });
+    return c.json(result);
   },
 );
 
@@ -577,20 +565,12 @@ jobLifecycleUserRoutes.post(
 
     const body = c.req.valid('json');
 
-    try {
-      const result = await resumeHeldJob(id, {
-        actorUserId: userId,
-        actor: restActor(c),
-        reason: body.reason ?? 'manual resume (REST)',
-        source: 'rest',
-      });
-      return c.json(result);
-    } catch (e) {
-      if (e instanceof JobResumeError) {
-        if (e.code === 'NOT_FOUND') throw notFound(e.message);
-        throw conflict(e.message, e.code);
-      }
-      throw e;
-    }
+    const result = await resumeHeldJob(id, {
+      actorUserId: userId,
+      actor: restActor(c),
+      reason: body.reason ?? 'manual resume (REST)',
+      source: 'rest',
+    });
+    return c.json(result);
   },
 );

@@ -24,7 +24,8 @@ import { dispatchGateHeldSql } from '../issues/dispatch-gates.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { AUTONOMOUS_ENTRY_STATUS, isEntryGateClosed } from '../pipeline/autonomous-mode.js';
-import { type PolicyRefusalCode, PolicyRefusedError } from '../project-config/dispatch-policy.js';
+import type { PolicyRefusalCode } from '@forge/contracts/project-config';
+import { policyRefusal } from '../project-config/dispatch-policy.js';
 import { readEffectivePolicy } from '../project-config/effective.js';
 import type { PolicyDocument } from '../project-config/schema.js';
 import type { PoolRelation } from './pool.js';
@@ -99,8 +100,8 @@ export async function readAdmissions(args: {
       admissions.push(admissionOf(projectId, held.document));
       continue;
     }
-    const refusal = new PolicyRefusedError('POLICY_UNDECLARED', projectId, null);
-    refused.push({ projectId, code: refusal.code, message: refusal.message });
+    const [refusal] = policyRefusal('POLICY_UNDECLARED', projectId, null).refusals;
+    refused.push({ projectId, code: 'POLICY_UNDECLARED', message: refusal?.detail ?? '' });
   }
   return { admissions, refused };
 }

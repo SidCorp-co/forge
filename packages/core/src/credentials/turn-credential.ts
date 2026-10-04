@@ -8,9 +8,11 @@
  */
 
 import { randomBytes } from 'node:crypto';
+import { TURN_AUTHORITY_REFUSAL_CODES, type TurnAuthorityRefusalCode } from '@forge/contracts/auth';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { personalAccessTokens, users } from '../db/schema.js';
+import { isRefusal, refuser } from '../lib/refusal.js';
 import { logger } from '../logger.js';
 import type { PatPrincipal } from '../middleware/require-pat.js';
 import { mintPat, revokePat } from './pat.js';
@@ -42,27 +44,23 @@ export const AGENT_TURN_MENU: readonly PatPermission[] = PAT_PERMISSION_NAMES.fi
   (name) => PAT_PERMISSION_GROUPS[name].reach === 'project',
 );
 
-export type TurnAuthorityRefusalCode =
-  | 'TURN_NO_ROLE'
-  | 'TURN_TOKEN_NOT_LIVE'
-  | 'TURN_TOKEN_FENCED'
-  | 'TURN_GRANT_EMPTY'
-  | 'TURN_DEVICE_NO_ROLE'
-  | 'TURN_DEVICE_OUTRANKED';
-
 /** Why a turn will not act as the person, in words the room is shown. */
 export interface TurnAuthorityRefusal {
   code: TurnAuthorityRefusalCode;
   message: string;
 }
 
-export class TurnAuthorityRefused extends Error {
-  readonly code: TurnAuthorityRefusalCode;
-  constructor(refusal: TurnAuthorityRefusal) {
-    super(refusal.message);
-    this.name = 'TurnAuthorityRefused';
-    this.code = refusal.code;
-  }
+const turnRefused = refuser<TurnAuthorityRefusalCode>('TURN_GRANT_EMPTY');
+
+/** A thrown turn-authority refusal and its sentence, or null for anything else. */
+export function turnAuthorityRefusalOf(
+  err: unknown,
+): { code: TurnAuthorityRefusalCode; message: string } | null {
+  if (!isRefusal(err)) return null;
+  const hit = err.refusals.find((r) =>
+    (TURN_AUTHORITY_REFUSAL_CODES as readonly string[]).includes(r.code),
+  );
+  return hit ? { code: hit.code as TurnAuthorityRefusalCode, message: hit.detail } : null;
 }
 
 /** The person a turn acts as, and the bounds their own credential sets. */
@@ -126,10 +124,10 @@ export async function mintTurnCredential(args: {
   const { authority } = args;
   const granted = args.menu.filter((p) => patGrantCovers(authority.grant, p));
   if (granted.length === 0) {
-    throw new TurnAuthorityRefused({
-      code: 'TURN_GRANT_EMPTY',
-      message: `I cannot act on this: the access token it was sent with grants none of what my tools use (${args.menu.join(', ')}).`,
-    });
+    throw turnRefused(
+      'TURN_GRANT_EMPTY',
+      `I cannot act on this: the access token it was sent with grants none of what my tools use (${args.menu.join(', ')}).`,
+    );
   }
   const [owner] = await db
     .select({ kind: users.kind })

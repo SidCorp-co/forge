@@ -5,41 +5,17 @@
  * nothing written.
  */
 
+import type { RequirementRefusalCode } from '@forge/contracts/requirements';
 import {
   type BaselineReadiness,
   DEFERRABLE_STATUSES,
   type RequirementReadinessGate,
 } from '@forge/contracts/requirements';
 import type { CriterionForm, RequirementStatus, RevisionState } from '../db/schema-requirements.js';
+import { refuser } from '../lib/refusal.js';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
-export type RequirementRefusalCode =
-  | 'PERMISSION_FORBIDDEN'
-  | 'REQUIREMENT_REVISION_STALE'
-  | 'REQUIREMENT_REVISION_NOT_CURRENT'
-  | 'REQUIREMENT_REVISION_NOT_DRAFT'
-  | 'REQUIREMENT_REVISION_NOT_PROPOSED'
-  | 'REQUIREMENT_REVISION_OPEN'
-  | 'REQUIREMENT_DESIGN_UNAPPROVED'
-  | 'REQUIREMENT_NOT_AGREED'
-  | 'REQUIREMENT_ALREADY_AGREED'
-  | 'REQUIREMENT_NOT_READY'
-  | 'REQUIREMENT_ISSUE_LINKED_ELSEWHERE'
-  | 'REQUIREMENT_NO_PLAN_TO_ADOPT'
-  | 'REQUIREMENT_DEFERRED'
-  | 'REQUIREMENT_DEFER_REASON_REQUIRED'
-  | 'REQUIREMENT_NOT_DEFERRABLE'
-  | 'REQUIREMENT_NOT_DEFERRED'
-  | 'REQUIREMENT_HAS_LIVE_ISSUES'
-  | 'REQUIREMENT_PINS_CURRENT'
-  | 'REQUIREMENT_CONTRACT_UNKNOWN'
-  | 'REQUIREMENT_DESIGN_UNLINKED'
-  | 'WORKFLOW_NODE_UNKNOWN'
-  | 'WORKFLOW_NODE_AMBIGUOUS'
-  | 'REVISION_REASON_REQUIRED'
-  | 'CRITERION_CODE_UNKNOWN'
-  | 'CRITERION_CODE_DUPLICATE'
-  | 'CRITERION_SCENARIO_UNPARSEABLE';
+export const refuseRequirement = refuser<RequirementRefusalCode>('REQUIREMENT_REFUSED');
 
 export interface RequirementRefusal {
   code: RequirementRefusalCode;
@@ -49,10 +25,7 @@ export interface RequirementRefusal {
 
 // Accept, return, agree, defer, link and repin are approvals (ADR 0007): whoever holds
 // requirements.approve signs off, an agent or the revision's author included.
-export function signoffRefusal(
-  facts: PermissionFacts,
-  act: string,
-): RequirementRefusal | null {
+export function signoffRefusal(facts: PermissionFacts, act: string): RequirementRefusal | null {
   return permissionRefusal(facts, 'requirements.approve', act);
 }
 

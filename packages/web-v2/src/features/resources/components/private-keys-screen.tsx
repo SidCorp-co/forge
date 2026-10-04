@@ -262,9 +262,9 @@ export function PrivateKeysScreen({ orgId }: { orgId: string | null }) {
 								{inUseError.referencedBy.length === 1 ? "" : "s"} and can&apos;t be deleted:
 							</span>
 							<span className="flex flex-col gap-1">
-								{inUseError.referencedBy.map((p) => (
-									<span key={p.id} className="fg-body-sm font-semibold text-fg">
-										{p.name}
+								{inUseError.referencedBy.map((line) => (
+									<span key={line} className="fg-body-sm font-semibold text-fg">
+										{line}
 									</span>
 								))}
 							</span>

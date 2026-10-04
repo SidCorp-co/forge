@@ -27,13 +27,6 @@ export type LayerValues = Readonly<Record<string, string | null>>;
 
 const PLACEHOLDER_RE = /\{(\w+)\}/g;
 
-export class LayerComposeError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'LayerComposeError';
-  }
-}
-
 /** Every `{token}` a layer reads, in the order they appear. */
 export function placeholdersOf(layer: PromptLayer): string[] {
   return [...new Set([...layer.text.matchAll(PLACEHOLDER_RE)].map((m) => m[1] as string))];
@@ -43,7 +36,7 @@ function renderLine(line: string, layer: PromptLayer, values: LayerValues): stri
   const tokens = [...line.matchAll(PLACEHOLDER_RE)].map((m) => m[1] as string);
   for (const token of tokens) {
     if (!Object.hasOwn(values, token)) {
-      throw new LayerComposeError(
+      throw new Error(
         `assistant prompt: layer "${layer.id}" reads {${token}}, which the door composing it does not name; the doors name ${Object.keys(values).sort().join(', ') || 'nothing'}`,
       );
     }

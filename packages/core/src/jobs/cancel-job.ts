@@ -6,11 +6,13 @@ import type { ActorAgency } from '../issues/actor-agency.js';
 import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
 import { transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
+import { notFound } from '../middleware/route-errors.js';
 import { failReconcileRunForFailedJob } from '../skills/reconcile-service.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { insertInterventionEvent } from './intervention-event.js';
+import { refuseJob } from './refusals.js';
 import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 
 /**
@@ -18,20 +20,6 @@ import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
  * `cancelled` instead of asking a runner to stop.
  */
 const NO_DEVICE_STATUSES = new Set(['queued', 'held']);
-
-/**
- * Transport-neutral failure raised by {@link cancelJob}. Callers map `code` to
- * their own surface: REST → HTTP 404/409, MCP → `Error('CODE: message')`.
- */
-export class JobCancelError extends Error {
-  constructor(
-    public readonly code: 'NOT_FOUND' | 'NOT_CANCELLABLE',
-    message: string,
-  ) {
-    super(message);
-    this.name = 'JobCancelError';
-  }
-}
 
 export interface CancelJobOptions {
   /** User id of the acting principal — recorded in the audit event. */
@@ -51,10 +39,10 @@ export interface CancelJobResult {
 
 export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<CancelJobResult> {
   const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
-  if (!job) throw new JobCancelError('NOT_FOUND', 'job not found');
+  if (!job) throw notFound('job not found');
 
   if (!LIVE_JOB_STATUSES.includes(job.status)) {
-    throw new JobCancelError('NOT_CANCELLABLE', 'job is not cancellable');
+    throw refuseJob('NOT_CANCELLABLE', 'job is not cancellable');
   }
 
   const previousStatus = job.status;
@@ -76,7 +64,7 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
       return row;
     });
     if (!updated) {
-      throw new JobCancelError('NOT_CANCELLABLE', 'job state changed mid-request');
+      throw refuseJob('NOT_CANCELLABLE', 'job state changed mid-request');
     }
 
     await syncAgentSessionLifecycle(updated, 'cancelled');
@@ -114,7 +102,7 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
     await insertInterventionEvent(tx, { ...opts, ...auditFor(row, previousStatus) });
     return row;
   });
-  if (!updated) throw new JobCancelError('NOT_FOUND', 'job not found');
+  if (!updated) throw notFound('job not found');
 
   if (updated.deviceId) {
     roomManager.publish(deviceRoom(updated.deviceId), {

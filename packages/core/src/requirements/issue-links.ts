@@ -4,7 +4,6 @@
  */
 
 import { and, eq } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import {
@@ -13,13 +12,18 @@ import {
   requirementWorkflows,
 } from '../db/schema-requirements.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
+import {
+  adoptIssuePlan,
+  linkIssueToRequirement,
+  unlinkIssueFromRequirement,
+} from '../issues/index.js';
 import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
+import { requireCan } from '../permissions/index.js';
 import { plannedBaselineSeqIn } from './baselines.js';
 import { planDriftOf } from './plan-drift.js';
 import { notFound, type RequirementActor, requirementKey, rowIn, signerRefusal } from './read.js';
-import { linkIssueRefusal } from './rules.js';
+import { linkIssueRefusal, refuseRequirement } from './rules.js';
 import { answer, inTx, lockRequirements, type RequirementOutcome } from './service.js';
-import { requireCan } from '../permissions/index.js';
 
 async function issueIn(projectId: string, ref: string, userId: string) {
   const issue = await resolveIssueRouteRef(ref, projectId, userId);
@@ -75,26 +79,21 @@ export async function linkIssue(input: {
       : null;
     if (held?.requirementId === row.id) {
       if (input.adoptPlan) {
-        await tx
-          .update(issues)
-          .set({ plannedRevision, plannedBaselineSeq, updatedAt: new Date() })
-          .where(eq(issues.id, issue.id));
+        await adoptIssuePlan(tx, issue.id, { plannedRevision, plannedBaselineSeq });
       }
       return null;
     }
     if (held?.requirementId) {
+      const elsewhere = await rowIn(tx, projectId, held.requirementId);
       return [
         {
           code: 'REQUIREMENT_ISSUE_LINKED_ELSEWHERE',
           path: '/issue',
-          detail: `${input.issue} already delivers requirement ${held.requirementId}; an issue serves one requirement, so unlink it there first.`,
+          detail: `${input.issue} already delivers ${requirementKey(elsewhere.reqSeq)}; an issue serves one requirement, so unlink it there first.`,
         },
       ];
     }
-    await tx
-      .update(issues)
-      .set({ requirementId: row.id, plannedRevision, plannedBaselineSeq, updatedAt: new Date() })
-      .where(eq(issues.id, issue.id));
+    await linkIssueToRequirement(tx, issue.id, row.id, { plannedRevision, plannedBaselineSeq });
     return null;
   });
   return answer(projectId, row.id, actor, refusals);
@@ -110,15 +109,7 @@ export async function unlinkIssue(input: {
   await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const row = await rowIn(db, projectId, input.ref);
   const issue = await issueIn(projectId, input.issue, actor.userId);
-  await db
-    .update(issues)
-    .set({
-      requirementId: null,
-      plannedRevision: null,
-      plannedBaselineSeq: null,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(issues.id, issue.id), eq(issues.requirementId, row.id)));
+  await unlinkIssueFromRequirement(issue.id, row.id);
   return answer(projectId, row.id, actor, null);
 }
 
@@ -214,10 +205,11 @@ export async function plannedRevisionFor(
   if (!r?.requirementId) return null;
   if (!plan?.trim()) return { plannedRevision: null, plannedBaselineSeq: null };
   if (r.currentRevision === null) {
-    throw new HTTPException(422, {
-      message: `REQUIREMENT_REVISION_NOT_CURRENT: ${requirementKey(r.reqSeq ?? 0)} has no current revision, so there is nothing for this plan to be written against; a person accepts a revision first.`,
-      cause: { code: 'REQUIREMENT_REVISION_NOT_CURRENT' },
-    });
+    throw refuseRequirement(
+      'REQUIREMENT_REVISION_NOT_CURRENT',
+      `${requirementKey(r.reqSeq ?? 0)} has no current revision, so there is nothing for this plan to be written against; a person accepts a revision first.`,
+      '/plan',
+    );
   }
   return {
     plannedRevision: r.currentRevision,

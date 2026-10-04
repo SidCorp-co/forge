@@ -130,16 +130,6 @@ export interface ClientOptions {
 }
 
 /** A fetch that threw: no response reached the client. Names the request and the cause. */
-export class FetchFailure extends Error {
-  constructor(
-    public readonly method: string,
-    public readonly path: string,
-    cause: unknown,
-  ) {
-    super(`fetch failed (cause: ${causeText(cause)}) on ${method} ${path}`);
-    this.name = 'FetchFailure';
-  }
-}
 
 const causeText = (err: unknown): string => {
   const cause = (err as { cause?: { code?: string; message?: string } } | undefined)?.cause;
@@ -306,19 +296,17 @@ export function createClient(opts: ClientOptions) {
 
   let retries = 0;
 
-  async function attempt(
-    method: string,
-    path: string,
-    init: RequestInit,
-  ): Promise<{ status: number; text: string }> {
+  type Attempt = { ok: true; status: number; text: string } | { ok: false; failure: string };
+
+  async function attempt(method: string, path: string, init: RequestInit): Promise<Attempt> {
     try {
       const timed: RequestInit = opts.timeoutMs
         ? { ...init, signal: AbortSignal.timeout(opts.timeoutMs) }
         : init;
       const res = await opts.fetch(`${api}${path}`, timed);
-      return { status: res.status, text: await res.text() };
+      return { ok: true, status: res.status, text: await res.text() };
     } catch (err) {
-      throw new FetchFailure(method, path, err);
+      return { ok: false, failure: `fetch failed (cause: ${causeText(err)}) on ${method} ${path}` };
     }
   }
 
@@ -332,20 +320,14 @@ export function createClient(opts: ClientOptions) {
     if (body !== undefined) headers['content-type'] = 'application/json';
     const init: RequestInit = { method, headers };
     if (body !== undefined) init.body = JSON.stringify(body);
-    try {
-      return await attempt(method, path, init);
-    } catch (first) {
-      if (!(first instanceof FetchFailure) || (method !== 'GET' && method !== 'DELETE'))
-        throw first;
-      retries += 1;
-      await sleep(opts.retryDelayMs ?? 5000);
-      try {
-        return await attempt(method, path, init);
-      } catch (second) {
-        if (second instanceof FetchFailure) second.message += `; first attempt: ${first.message}`;
-        throw second;
-      }
-    }
+    const first = await attempt(method, path, init);
+    if (first.ok) return first;
+    if (method !== 'GET' && method !== 'DELETE') throw new Error(first.failure);
+    retries += 1;
+    await sleep(opts.retryDelayMs ?? 5000);
+    const second = await attempt(method, path, init);
+    if (second.ok) return second;
+    throw new Error(`${second.failure}; first attempt: ${first.failure}`);
   }
 
   async function json<T>(method: string, path: string, body?: unknown): Promise<T> {

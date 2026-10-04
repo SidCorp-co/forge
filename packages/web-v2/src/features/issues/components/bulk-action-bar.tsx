@@ -5,8 +5,8 @@
 // issue via `useBulkUpdateIssues` (a fan-out over the same per-row
 // transition/patch endpoints, tallied once with a single summary toast).
 //
-// Set-status offers only `bulkAllowedStatuses()` — the intersection, across the
-// whole selection, of the exits the issue machine draws for each row's rung — so a bulk
+// Set-status offers only the moves every selected row's core read offers (`moves`, needing
+// no reason) — so a bulk
 // pick can't mass-409 (mirrors the per-row ISS-308 E1 guard). The control is
 // disabled, with the reason rendered beside it, when that intersection is
 // empty. Priority has no
@@ -16,13 +16,22 @@
 
 import { useId, useState } from "react";
 import { Button, Menu, type MenuItem } from "@/design";
-import { bulkAllowedStatuses, priorityLabel, transitionLabels } from "../derive";
+import { priorityLabel, transitionLabels } from "../derive";
 import { agentHoldsSelection, heldInSelection } from "../edit-lock";
 import { type BulkUpdate, useBulkUpdateIssues } from "../hooks";
-import { ISSUE_PRIORITIES, type IssueRow } from "../types";
+import { ISSUE_PRIORITIES, type IssueRow, type IssueStatus } from "../types";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "./batch-release-dialog";
 
 const BATCH_RELEASE_GATE = "awaiting_release" as const;
+
+/** The moves every selected row offers that need no reason, in the first row's order. */
+function commonMoves(rows: readonly IssueRow[]): IssueStatus[] {
+  const [first, ...rest] = rows;
+  if (!first) return [];
+  return first.moves
+    .filter((m) => !m.needsReason && rest.every((r) => r.moves.some((o) => o.to === m.to)))
+    .map((m) => m.to);
+}
 
 /** A bulk action the bar will not run, with the reason rendered beside it. */
 function RefusedAction({
@@ -82,7 +91,7 @@ export function BulkActionBar({
   if (count === 0) return null;
 
   const ids = selectedRows.map((r) => r.id);
-  const statusTargets = bulkAllowedStatuses(selectedRows);
+  const statusTargets = commonMoves(selectedRows);
   const heldCount = heldInSelection(selectedRows);
   const heldReason = heldCount > 0 ? agentHoldsSelection(heldCount, count) : null;
   const noCommonStatus = statusTargets.length === 0;

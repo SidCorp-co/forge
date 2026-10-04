@@ -22691,9 +22691,8 @@
                   },
                   "status": {
                     "enum": [
-                      "open",
-                      "on_hold",
-                      "draft"
+                      "draft",
+                      "open"
                     ],
                     "type": "string"
                   },

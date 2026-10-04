@@ -12,6 +12,7 @@ import { eq } from 'drizzle-orm';
 import { createChatSessionRow } from '../agent-sessions/chat-turn.js';
 import { dispatchInteractiveTurn } from '../agent-sessions/interactive-credential.js';
 import { readSessionAsker } from '../agent-sessions/session-credential.js';
+import { setSessionFailureDetail } from '../agent-sessions/index.js';
 import { firstUserMessageText } from '../agent-sessions/turns-helpers.js';
 import { db } from '../db/client.js';
 import { agentSessions, projects } from '../db/schema.js';
@@ -76,10 +77,7 @@ async function stampFailoverDisposition(
 ): Promise<void> {
   if (!failureClass) return;
   try {
-    await db
-      .update(agentSessions)
-      .set({ failureDetail: `${failureClass} → ${dispositionOf(result)}` })
-      .where(eq(agentSessions.id, sessionId));
+    await setSessionFailureDetail(sessionId, `${failureClass} → ${dispositionOf(result)}`);
   } catch (err) {
     logger.error(
       { err, sessionId, status: result.status },

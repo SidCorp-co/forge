@@ -1,23 +1,26 @@
 import type { FeedbackPhase } from "./feedback.js";
 import type {
 	IssueAttentionGroup,
-	IssueWaitingOn,
+	IssueWaitingKind,
 } from "./issue-standing.js";
 import type { IssueStatus } from "./issue-machine.js";
 import type { IssueStatusTone, WorkStep } from "./issue-vocabulary.js";
+import type {
+	Standing,
+	StandingGroup,
+	StandingGroupLabels,
+	WaitingOn,
+} from "./standing.js";
 
 export const MODULE_ATTENTION_GROUPS = [
 	"needs_you",
 	"moving",
 	"stuck",
 	"quiet",
-] as const;
+] as const satisfies readonly StandingGroup[];
 export type ModuleAttentionGroup = (typeof MODULE_ATTENTION_GROUPS)[number];
 
-export const MODULE_ATTENTION_LABELS: Record<
-	ModuleAttentionGroup,
-	{ label: string; hint: string; tone: IssueStatusTone; collapsed: boolean }
-> = {
+export const MODULE_ATTENTION_LABELS: StandingGroupLabels<ModuleAttentionGroup> = {
 	needs_you: {
 		label: "Needs you",
 		hint: "An issue in it waits on you to answer, decide or approve",
@@ -95,16 +98,13 @@ export interface ModuleRequirementTrace {
 	criteria: string[];
 }
 
-export interface ModuleWaitingOn extends IssueWaitingOn {
-	issueKey: string | null;
-}
-
-export interface ModuleStanding {
-	attentionGroup: ModuleAttentionGroup;
+/** `waitingOn` is the standing of `leadIssue`, the issue that leads the module's group. */
+export interface ModuleStanding
+	extends Standing<ModuleAttentionGroup, IssueWaitingKind> {
+	leadIssue: string | null;
 	open: number;
 	openByKind: Record<ModuleOpenKind, number>;
 	running: number;
-	waitingOn: ModuleWaitingOn;
 	lastLanding: ModuleLanding | null;
 	requirements: ModuleRequirementTrace[];
 	childCount: number;
@@ -177,7 +177,7 @@ export interface ModuleActiveIssue {
 	tone: IssueStatusTone;
 	step: WorkStep | null;
 	attentionGroup: IssueAttentionGroup;
-	waitingOn: IssueWaitingOn;
+	waitingOn: WaitingOn<IssueWaitingKind>;
 	modulePath: string;
 }
 

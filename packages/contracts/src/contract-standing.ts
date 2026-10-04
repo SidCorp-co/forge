@@ -5,6 +5,12 @@
 import type { FeedbackStatus } from "./feedback.js";
 import type { IssueStatus } from "./issue-machine.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
+import type {
+	Standing,
+	StandingGroup,
+	StandingGroupLabels,
+	WaitingKind,
+} from "./standing.js";
 
 export const CONTRACT_DIRECTIONS = ["provided", "consumed"] as const;
 export type ContractDirection = (typeof CONTRACT_DIRECTIONS)[number];
@@ -14,13 +20,14 @@ export const CONTRACT_DIRECTION_LABELS: Record<ContractDirection, string> = {
 	consumed: "Consumed",
 };
 
-export const CONTRACT_ATTENTION_GROUPS = ["needs_you", "waiting", "steady"] as const;
+export const CONTRACT_ATTENTION_GROUPS = [
+	"needs_you",
+	"waiting",
+	"steady",
+] as const satisfies readonly StandingGroup[];
 export type ContractAttentionGroup = (typeof CONTRACT_ATTENTION_GROUPS)[number];
 
-export const CONTRACT_ATTENTION_LABELS: Record<
-	ContractAttentionGroup,
-	{ label: string; hint: string; tone: IssueStatusTone; collapsed: boolean }
-> = {
+export const CONTRACT_ATTENTION_LABELS: StandingGroupLabels<ContractAttentionGroup> = {
 	needs_you: {
 		label: "Needs you",
 		hint: "A breaking version to adapt to before its window ends, a version to decide, or a request to reply to",
@@ -130,16 +137,13 @@ export const CONTRACT_APPROVAL_TONES: Record<string, IssueStatusTone> = {
 	returned: "err",
 };
 
-export const CONTRACT_WAITING_KINDS = ["you", "person", "project", "none"] as const;
+export const CONTRACT_WAITING_KINDS = [
+	"you",
+	"person",
+	"project",
+	"none",
+] as const satisfies readonly WaitingKind[];
 export type ContractWaitingKind = (typeof CONTRACT_WAITING_KINDS)[number];
-
-export interface ContractWaitingOn {
-	kind: ContractWaitingKind;
-	who: string;
-	act: string;
-	rule: string;
-	ref: string | null;
-}
 
 export interface ContractProjectRef {
 	id: string;
@@ -161,7 +165,8 @@ export interface ContractWindow {
 	open: boolean;
 }
 
-export interface ContractStandingRow {
+export interface ContractStandingRow
+	extends Standing<ContractAttentionGroup, ContractWaitingKind> {
 	ref: string;
 	slug: string;
 	provider: ContractProjectRef;
@@ -179,8 +184,6 @@ export interface ContractStandingRow {
 	waits: number;
 	openRequests: number;
 	state: ContractState;
-	attentionGroup: ContractAttentionGroup;
-	waitingOn: ContractWaitingOn;
 	touchedAt: string | null;
 }
 

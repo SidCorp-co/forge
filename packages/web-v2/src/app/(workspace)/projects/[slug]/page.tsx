@@ -28,13 +28,12 @@ import {
   idleRuns,
   activeSpend,
   awaitingReleaseRuns,
-  projectAttention,
   runnersSummary,
   spendByStage,
   statusDonut,
   upcomingSchedules,
 } from "@/features/project-dashboard/derive";
-import { useAttention } from "@/features/attention/hooks";
+import { useNeedsYou } from "@/features/needs-you/hooks";
 import { OnboardingHint } from "@/features/onboarding/components/onboarding-hint";
 import { useProjectRuns, useStepDurations } from "@/features/pipeline/hooks";
 import { useProjectHealth, useProjects } from "@/features/projects/hooks";
@@ -65,7 +64,7 @@ export default function ProjectOverviewPage() {
 
   // Card data — every hook reuses an existing source. Project-scoped hooks gate
   // on `projectId` so they no-op until the slug resolves.
-  const attentionQ = useAttention();
+  const needsYouQ = useNeedsYou(projectId);
   const runsQ = useProjectRuns(projectId);
   const durationsQ = useStepDurations({ days: 7, projectId });
   const queueQ = useQueueStats(projectId);
@@ -124,7 +123,7 @@ export default function ProjectOverviewPage() {
   const glyph = projectGlyph(project.id);
   const now = Date.now();
 
-  const attention = projectAttention(attentionQ.view, project.slug, health?.blockers);
+  const attention = needsYouQ.data?.items ?? [];
   const runItems = runsQ.data?.items;
   const runsActive = activeRuns(runItems);
   const runsIdle = idleRuns(runItems);
@@ -197,7 +196,7 @@ export default function ProjectOverviewPage() {
           inFlightUsd={inFlight}
         />
 
-        <AttentionQueue items={attention} now={now} />
+        <AttentionQueue items={attention} slug={project.slug} />
 
         {workflowsQ.data && workflowsQ.data.workflows.length > 0 ? (
           <SystemOverviewRegion

@@ -1,7 +1,5 @@
 
 import {
-	ISSUE_MACHINE,
-	ISSUE_RESOLVED_STATUSES,
 	ISSUE_STATUSES,
 	ISSUE_TERMINAL_STATUSES,
 } from "@forge/contracts/issue-machine";
@@ -14,32 +12,28 @@ import {
 	WORK_STEP_LABELS,
 	type WorkStep,
 } from "@forge/contracts/issue-vocabulary";
-import type { IssueStanding } from "@forge/contracts/issue-standing";
 import {
 	type SemanticTone,
 	STATUS_KEY_TONE,
 	type StatusKey,
 } from "@/design/status";
-import { gateView, pausedRunView } from "./waiting";
 import type {
 	CommentKind,
+	FreshReason,
 	GroupBy,
 	IssueAgentSession,
 	IssueAgentStatus,
 	IssueComplexity,
 	IssueDependencies,
 	IssueDependencyEdge,
-	IssueDetail,
 	IssueFilter,
 	IssuePark,
 	IssuePriority,
 	IssueRow,
 	IssueStatus,
 	IssueWorkStateRow,
-	ParkOwes,
 	PipelineHealth,
-	StepDurationRow,
-	StepHandoffRow,
+	SessionContinuity,
 } from "./types";
 
 export const STATUS_LABELS: Record<IssueStatus, string> = ISSUE_STATUS_LABELS;
@@ -124,107 +118,10 @@ export function statusToTone(status: IssueStatus): SemanticTone {
 	return STATUS_KEY_TONE[statusToChip(status)];
 }
 
-/**
- * The targets a rung may move to, read off the issue machine in the order it declares them: the
- * first is the rung's forward move. A park's return to the status it left comes first; with no
- * recorded left status every parkable status is offered.
- */
-export function allowedTransitions(
-	from: IssueStatus,
-	leftStatus: IssueStatus | null = null,
-): IssueStatus[] {
-	const back = parkReturnTargets(from, leftStatus);
-	const rest = ISSUE_MACHINE.edges
-		.filter((e) => e.from === from && !e.recovery && !e.guards.includes("left_status"))
-		.map((e) => e.to);
-	return [...back, ...new Set(rest)];
-}
-
-/** The park's return edges the machine draws, narrowed to the recorded left status where there is one. */
-export function parkReturnTargets(
-	from: IssueStatus,
-	leftStatus: IssueStatus | null | undefined,
-): IssueStatus[] {
-	const back = ISSUE_MACHINE.edges
-		.filter((e) => e.from === from && e.guards.includes("left_status"))
-		.map((e) => e.to);
-	if (!leftStatus) return back;
-	return back.includes(leftStatus) ? [leftStatus] : [];
-}
-
-/** How a target reads against the rung it is offered from. */
-export type TransitionKind = "forward" | "bounce" | "discard";
-
-export interface GroupedTransition {
-	to: IssueStatus;
-	kind: TransitionKind;
-	/** First of its kind in the menu — the renderer draws a rule above it. */
-	startsGroup: boolean;
-}
-
-const BOUNCE_TARGETS = new Set<IssueStatus>(["needs_info", "on_hold", "reopen"]);
-/* status-tuple: differs — this is the transition MENU's discard group, not core's
-   ISSUE_TERMINAL_STATUSES. It answers which exits the menu draws under one rule, and its sibling
-   BOUNCE_TARGETS is deliberately not core's PARK_STATUSES for the same reason: the grouping
-   follows what the menu offers from a rung, which core's terminal set does not decide. */
-const DISCARD_TARGETS = new Set<IssueStatus>(["closed", "dropped"]);
-
-const KIND_ORDER: TransitionKind[] = ["forward", "bounce", "discard"];
-
-/**
- * The rung's targets as the menu draws them: forward first, then the bounces,
- * then the discards, each group in the order core declared it. A row's FIRST
- * exit is its forward move whatever set it belongs to, which is what keeps
- * `awaiting_release → closed` out of the discard group.
- */
-export function groupedTransitions(
-	from: IssueStatus,
-	leftStatus: IssueStatus | null = null,
-): GroupedTransition[] {
-	const row = allowedTransitions(from, leftStatus);
-	const back = new Set(parkReturnTargets(from, leftStatus));
-	const kindOf = (to: IssueStatus, i: number): TransitionKind => {
-		if (i === 0 || back.has(to)) return "forward";
-		if (BOUNCE_TARGETS.has(to)) return "bounce";
-		if (DISCARD_TARGETS.has(to)) return "discard";
-		return "forward";
-	};
-	const typed = row.map((to, i) => ({ to, kind: kindOf(to, i) }));
-	const out: GroupedTransition[] = [];
-	for (const kind of KIND_ORDER) {
-		let first = true;
-		for (const t of typed) {
-			if (t.kind !== kind) continue;
-			out.push({ ...t, startsGroup: first && out.length > 0 });
-			first = false;
-		}
-	}
-	return out;
-}
-
 /** A move target has no holder, so it is named by its own status word, never "Running" (ISS-1213). */
 export function transitionLabels(targets: IssueStatus[]): string[] {
 	return targets.map(statusLabel);
 }
-
-export function bulkAllowedStatuses(rows: IssueRow[]): IssueStatus[] {
-	if (rows.length === 0) return [];
-	let common: IssueStatus[] | null = null;
-	for (const r of rows) {
-		const allowed = allowedTransitions(r.status, r.workState?.leftStatus ?? null);
-		if (common === null) {
-			common = allowed;
-		} else {
-			const allowedSet = new Set(allowed);
-			common = common.filter((s) => allowedSet.has(s));
-		}
-	}
-	return (common ?? []).filter((s) => !BULK_HAS_NO_REASON_TO_COLLECT.has(s));
-}
-
-const BULK_HAS_NO_REASON_TO_COLLECT: ReadonlySet<string> = new Set(
-	ISSUE_MACHINE.reasonRequired,
-);
 
 export interface DepCounts {
 	blockedBy: number;
@@ -469,64 +366,6 @@ export function parseChecklist(
 	return items;
 }
 
-/** Heartbeat staleness threshold. Mirrors core's sweeper
- *  `HEARTBEAT_TIMEOUT_MS_DEFAULT = 3*60_000` (`pipeline/sweeper.ts`, env
- *  `PIPELINE_HEARTBEAT_TIMEOUT_MS`). Not env-readable from the FE, so kept in
- *  lockstep: a session older than this is the "stale" the server uses. */
-export const HEARTBEAT_STALE_MS = 3 * 60_000;
-
-export type HeartbeatState = "alive" | "stale" | "unknown";
-
-/** Alive vs stale from a session's `lastHeartbeatAt` (AC#3). `unknown` when the
- *  field is absent (older server) or unparseable — the caller then hides the
- *  dot rather than lying about liveness. `nowMs` is injectable for tests. */
-export function heartbeatState(
-	lastHeartbeatAt: string | null | undefined,
-	nowMs: number = Date.now(),
-): HeartbeatState {
-	if (!lastHeartbeatAt) return "unknown";
-	const t = Date.parse(lastHeartbeatAt);
-	if (Number.isNaN(t)) return "unknown";
-	return nowMs - t <= HEARTBEAT_STALE_MS ? "alive" : "stale";
-}
-
-export type BlockerCtaKind =
-	| "provide-info"
-	| "resume-park"
-	| "resume-run"
-	| "open-blocker"
-	| "none";
-
-/** A blocking dependency endpoint, ready to render as a clickable ISS-x chip. */
-export interface BlockingRef {
-	id: string;
-	displayId: string;
-	title: string | null;
-	status: IssueStatus | null;
-	merged: boolean;
-	designHold: string | null;
-}
-
-/** Single server-derived "why is it stuck" verdict for the blocker banner
- *  (AC#1/#2). Computed in ONE place from status / pipelineHealth.waitingOn /
- *  blocks edges / the park view — the component never re-joins those sources.
- *  `null` ⇒ not blocked ⇒ render nothing. */
-export interface BlockerState {
-	tone: "danger" | "attention" | "info";
-	reason: string;
-	whoMustAct: string;
-	cta: { label: string; kind: BlockerCtaKind };
-	/** The paused `pipeline_runs.id` the `resume-run` CTA acts on. Set only
-	 *  alongside that kind. */
-	runId?: string;
-	/** The status the park left (`workState.leftStatus`), which the `resume-park` CTA moves to. Set only alongside that kind. */
-	resumeAt?: IssueStatus;
-	/** Open `blocks` issues this one is waiting on. */
-	blockingRefs?: BlockingRef[];
-	/** Extra context (failure classification, hold-until), Tier-2 detail. */
-	detail?: string;
-}
-
 /**
  * The park view as the page holds it: still being read, unreadable, or read — where a read
  * `null` means nobody owes the issue anything (ISS-1310).
@@ -537,399 +376,6 @@ export type ParkReading =
 	| { state: "ready"; park: IssuePark | null };
 
 export const NO_PARK: ParkReading = { state: "ready", park: null };
-
-/** Whether Answer the question has anything to take the reader to: a question nobody has answered yet. */
-export function parkAsksAQuestion(park: IssuePark): boolean {
-	if (park.openQuestionIds.length > 0) return true;
-	const asked = threadQuestionOf(park);
-	return asked !== null && asked.answer === null;
-}
-
-/** One reading as the run wrote it, `reading -> outcome`, split into the choice and where it leads. */
-export interface ThreadReading {
-	choice: string;
-	outcome: string | null;
-}
-
-/** A question a `needs_info` issue asked only in the thread: the sentence it stopped with, why, its choices, and the answer a person gave. */
-export interface ThreadQuestionView {
-	prompt: string | null;
-	why: string | null;
-	readings: ThreadReading[];
-	answer: IssuePark["answer"];
-}
-
-function readingOf(raw: string): ThreadReading {
-	const at = raw.indexOf("->");
-	if (at < 0) return { choice: raw.trim(), outcome: null };
-	return { choice: raw.slice(0, at).trim(), outcome: raw.slice(at + 2).trim() || null };
-}
-
-/** This park's thread question, or `null` where a question row carries it or none was asked. */
-export function threadQuestionOf(park: IssuePark): ThreadQuestionView | null {
-	if (park.shape !== "park" || park.status !== "needs_info") return null;
-	if (park.openQuestionIds.length > 0) return null;
-	const prompt = park.reason ?? park.record?.why ?? null;
-	if (!prompt && park.readings.length === 0) return null;
-	const why = park.record?.why && park.record.why !== prompt ? park.record.why : null;
-	return { prompt, why, readings: park.readings.map(readingOf), answer: park.answer ?? null };
-}
-
-/** What the person owes, in their words rather than the enum's. */
-export const PARK_OWES_COPY: Record<ParkOwes, { reason: string; who: string }> = {
-	information: {
-		reason: "This issue is waiting for information — an answer to a question.",
-		who: "Anyone on the project can answer it; the question is below.",
-	},
-	decision: {
-		reason: "This issue is waiting for a decision — a judgement only a person can make.",
-		who: "Whoever owns the call decides, then resumes it where it stopped.",
-	},
-	resource: {
-		reason:
-			"This issue is waiting for something only a person can supply — an account, a credential, or data.",
-		who: "Supply it, then resume it where it stopped.",
-	},
-};
-
-/** The banner once a question asked in the thread has a person's answer on it. */
-export const ANSWERED_COPY = {
-	reason: "The question this issue asked has an answer on the thread.",
-	who: "Resume it where it stopped once the answer is enough to go on.",
-};
-
-export const NOTHING_TO_RESUME_AT =
-	"Nothing says where this issue picks up again — Move anyway… in the status menu lists every move.";
-
-/** An `on_hold` issue whose work state names no status it left: its own exits are the whole answer. */
-export const NOTHING_TO_RESUME_FROM_HOLD =
-	"Nothing says where this issue picks up again — the status menu lists every status it may return to.";
-
-function parkBlocker(park: IssuePark, blockingRefs: BlockingRef[]): BlockerState {
-	const answered = threadQuestionOf(park)?.answer ? ANSWERED_COPY : null;
-	const copy = answered ?? PARK_OWES_COPY[park.owes];
-	const refs = blockingRefs.length ? { blockingRefs } : {};
-	if (parkAsksAQuestion(park)) {
-		return {
-			tone: "attention",
-			reason: copy.reason,
-			whoMustAct: PARK_OWES_COPY.information.who,
-			cta: { label: "Answer it", kind: "provide-info" },
-			...refs,
-		};
-	}
-	const at = park.resume.at;
-	if (at) {
-		return {
-			tone: "attention",
-			reason: copy.reason,
-			whoMustAct: copy.who,
-			cta: { label: `Resume at ${statusLabel(at)}`, kind: "resume-park" },
-			resumeAt: at,
-			...refs,
-		};
-	}
-	return {
-		tone: "attention",
-		reason: copy.reason,
-		whoMustAct: copy.who,
-		cta: { label: "", kind: "none" },
-		detail: NOTHING_TO_RESUME_AT,
-		...refs,
-	};
-}
-
-const SETTLED_BLOCKERS: ReadonlySet<string> = new Set(ISSUE_RESOLVED_STATUSES);
-
-/** Incoming `blocks` edges whose blocker core has not settled — i.e. this issue is genuinely
- *  blocked-by one Forge will not dispatch past. Exported so list/board rows can flag a
- *  genuinely-stuck issue (danger chip) without re-deriving the rule. */
-export function openBlockingRefs(
-	deps: IssueDependencies | undefined,
-): BlockingRef[] {
-	if (!deps) return [];
-	return liveDependencies(deps)
-		.incoming.filter(
-			(e) =>
-				e.kind === "blocks" &&
-				!(
-					e.fromStatus &&
-					SETTLED_BLOCKERS.has(e.fromStatus) &&
-					!e.fromDesignHold
-				),
-		)
-		.map((e) => ({
-			id: e.fromIssueId,
-			displayId: e.fromDisplayId ?? `#${e.fromIssueId.slice(0, 6)}`,
-			title: e.fromTitle ?? null,
-			status: e.fromStatus ?? null,
-			merged: Boolean(e.fromMergedAt),
-			designHold: e.fromDesignHold ?? null,
-		}));
-}
-
-// cm:why a blocker whose change has landed holds its dependents until its criteria pass (ISS-54), so
-// what holds this issue is that blocker's judge, never "finish the blocking issue" (ISS-80). Which
-// blocker waits on a judge is core's standing fact (`IssueEdgeRef.landed`), never re-derived here.
-function blocksBlocker(blockingRefs: BlockingRef[], judged: ReadonlySet<string>): BlockerState {
-	const keys = blockingRefs.map((r) => r.displayId).join(", ");
-	const one = blockingRefs.length === 1;
-	if (blockingRefs.every((r) => r.designHold)) {
-		return {
-			tone: "info",
-			reason: `Blocked by ${keys}, which ${one ? "delivers a design" : "deliver designs"} not yet approved: ${blockingRefs.map((r) => r.designHold).join("; ")}.`,
-			whoMustAct: `The design approver decides the revision ${keys} ${one ? "delivers" : "deliver"}; this issue is released once it is approved.`,
-			cta: { label: "Open blocking issue", kind: "open-blocker" },
-			blockingRefs,
-		};
-	}
-	if (blockingRefs.every((r) => judged.has(r.displayId))) {
-		return {
-			tone: "info",
-			reason: `Blocked by ${keys}, which ${one ? "has" : "have"} landed and ${one ? "waits" : "wait"} on a judge.`,
-			whoMustAct: `A judge records a verdict on each criterion of ${keys}; this issue is released once ${one ? "it passes" : "they pass"}.`,
-			cta: { label: "Open blocking issue", kind: "open-blocker" },
-			blockingRefs,
-		};
-	}
-	return {
-		tone: "info",
-		reason: `Blocked by ${blockingRefs.length} open issue${one ? "" : "s"}.`,
-		whoMustAct: "Finish the blocking issue(s) first.",
-		cta: { label: "Open blocking issue", kind: "open-blocker" },
-		blockingRefs,
-	};
-}
-
-function onHoldBlocker(
-	leftStatus: IssueStatus | null | undefined,
-	blockingRefs: BlockingRef[],
-): BlockerState {
-	const refs = blockingRefs.length ? { blockingRefs } : {};
-	const base = {
-		tone: "info" as const,
-		reason: "The issue is paused.",
-		whoMustAct: "An operator can resume it when the work is wanted again.",
-	};
-	if (leftStatus) {
-		return {
-			...base,
-			cta: { label: `Resume at ${statusLabel(leftStatus)}`, kind: "resume-park" },
-			resumeAt: leftStatus,
-			...refs,
-		};
-	}
-	return { ...base, cta: { label: "", kind: "none" }, detail: NOTHING_TO_RESUME_FROM_HOLD, ...refs };
-}
-
-/**
- * Derive the single blocker verdict for an issue, or `null` when it is actively
- * progressing. Precedence (richest signal first): a paused run → the park view
- * (every park shape, and an open question at any status) → on_hold →
- * pipelineHealth capacity/dep waits → open `blocks` edges.
- *
- * A mechanically-failed job has no card of its own (ISS-393): it re-dispatches or parks at
- * `needs_info`, both covered below.
- */
-export function deriveBlockerState(
-	issue: Pick<IssueDetail, "status"> & {
-		workState?: Pick<IssueWorkStateRow, "leftStatus"> | null;
-	},
-	pipelineHealth: PipelineHealth | undefined,
-	deps: IssueDependencies | undefined,
-	/** The park view: what a person owes this issue, read once for the banner and the status control. */
-	park: ParkReading = NO_PARK,
-	standing: Pick<IssueStanding, "blockedBy"> | null = null,
-): BlockerState | null {
-	const blockingRefs = openBlockingRefs(deps);
-
-	const paused = pausedRunView(pipelineHealth?.pausedRun);
-	if (paused) {
-		return {
-			tone: paused.needsAction ? "attention" : "info",
-			reason: paused.reason,
-			whoMustAct: paused.who,
-			cta: paused.needsAction
-				? { label: "Resume run", kind: "resume-run" }
-				: { label: "", kind: "none" },
-			...(paused.needsAction ? { runId: paused.runId } : {}),
-			...(blockingRefs.length ? { blockingRefs } : {}),
-		};
-	}
-
-	if (park.state === "ready" && park.park) return parkBlocker(park.park, blockingRefs);
-
-	if (issue.status === "needs_info") {
-		return {
-			tone: "attention",
-			reason: "This issue is stopped until a person acts.",
-			whoMustAct:
-				park.state === "error"
-					? "What it waits on could not be read — reload the page, or read the thread."
-					: "Reading what it waits on…",
-			cta: { label: "", kind: "none" },
-			...(blockingRefs.length ? { blockingRefs } : {}),
-		};
-	}
-
-	if (issue.status === "on_hold") {
-		return onHoldBlocker(issue.workState?.leftStatus, blockingRefs);
-	}
-
-	const waitingOn = pipelineHealth?.waitingOn;
-	const gate = waitingOn ? gateView(waitingOn) : null;
-	if (waitingOn && gate) {
-		const copy = { reason: gate.detail, who: gate.who };
-		return {
-			tone: gate.needsAction ? "attention" : "info",
-			reason: copy.reason,
-			whoMustAct: copy.who,
-			cta: blockingRefs.length
-				? { label: "Open blocking issue", kind: "open-blocker" }
-				: { label: "", kind: "none" },
-			...(blockingRefs.length ? { blockingRefs } : {}),
-		};
-	}
-
-	if (blockingRefs.length) {
-		const judged = new Set((standing?.blockedBy ?? []).filter((b) => b.landed).map((b) => b.key));
-		return blocksBlocker(blockingRefs, judged);
-	}
-
-	return null;
-}
-
-export type StepState = "done" | "running" | "failed";
-
-/** One step an issue ACTUALLY ran, rolled up for the detail screen's steps card. */
-export interface StepOutcome {
-	/** The job type exactly as the kernel recorded it — never folded onto another name. */
-	step: string;
-	state: StepState;
-	outcomeLabel?: string;
-	durationSeconds?: number;
-	costUsd?: number;
-	handoff?: StepHandoffRow;
-	/** When this step last ran, for ordering. */
-	ranAt: string;
-}
-
-function truncate(s: string, max: number): string {
-	const t = s.replace(/\s+/g, " ").trim();
-	return t.length > max ? `${t.slice(0, max - 1)}…` : t;
-}
-
-/** Pull a short, human one-liner from a free-form handoff payload. Tries the
- *  stable fields first, then any string field; never throws on a missing/odd
- *  shape (AC#4 graceful fallback). */
-export function handoffOutcomeLabel(
-	payload: Record<string, unknown> | null | undefined,
-): string | undefined {
-	if (!payload || typeof payload !== "object") return undefined;
-	const preferred = [
-		"outcome",
-		"summary",
-		"verdict",
-		"result",
-		"planSummary",
-		"rootCauseHypothesis",
-	];
-	for (const k of preferred) {
-		const v = payload[k];
-		if (typeof v === "string" && v.trim()) return truncate(v, 90);
-	}
-	for (const v of Object.values(payload)) {
-		if (typeof v === "string" && v.trim()) return truncate(v, 90);
-	}
-	return undefined;
-}
-
-/**
- * The step an issue is RUNNING right now, read off the kernel's own active session — or `null`.
- *
- * A session the kernel calls `queued` names a step nobody has started, so it names no running step.
- */
-export function runningStepOf(
-	health: PipelineHealth | null | undefined,
-): string | null {
-	const session = health?.activeSession;
-	return session?.status === "running" ? session.skill : null;
-}
-
-/**
- * The steps this issue ran, from the rows that record them.
- *
- * One entry per job type carried on a `step_handoffs` or `step_durations` row, ordered by when it
- * last ran. A job type outside the seven staged names keeps its own name; `drive` is one, and on an
- * autonomous project it is the only one. Durations and cost are summed across the attempts of the
- * most recent RUN of that step, and the latest attempt's handoff is attached.
- */
-export function deriveStepOutcomes(
-	handoffs: StepHandoffRow[] | undefined,
-	durations: StepDurationRow[] | undefined,
-	live?: { activeStep?: string | null; failedStep?: string | null },
-): StepOutcome[] {
-	const handoffByStep = new Map<string, StepHandoffRow>();
-	for (const row of handoffs ?? []) {
-		const prev = handoffByStep.get(row.step);
-		if (
-			!prev ||
-			row.updatedAt > prev.updatedAt ||
-			(row.updatedAt === prev.updatedAt && row.attempt > prev.attempt)
-		) {
-			handoffByStep.set(row.step, row);
-		}
-	}
-
-	const byStepRun = new Map<
-		string,
-		Map<string, { durationSeconds: number; costUsd: number; latest: string }>
-	>();
-	for (const row of durations ?? []) {
-		const runs = byStepRun.get(row.step) ?? new Map();
-		const acc = runs.get(row.runId) ?? {
-			durationSeconds: 0,
-			costUsd: 0,
-			latest: "",
-		};
-		acc.durationSeconds += row.durationSeconds ?? 0;
-		acc.costUsd += row.costUsd ?? 0;
-		if ((row.finishedAt ?? row.startedAt ?? "") > acc.latest)
-			acc.latest = row.finishedAt ?? row.startedAt ?? "";
-		runs.set(row.runId, acc);
-		byStepRun.set(row.step, runs);
-	}
-
-	const outcomes: StepOutcome[] = [];
-	for (const step of new Set([...handoffByStep.keys(), ...byStepRun.keys()])) {
-		const handoff = handoffByStep.get(step);
-		let pick:
-			| { durationSeconds: number; costUsd: number; latest: string }
-			| undefined;
-		for (const acc of byStepRun.get(step)?.values() ?? []) {
-			if (!pick || acc.latest > pick.latest) pick = acc;
-		}
-		const state: StepState =
-			live?.failedStep === step
-				? "failed"
-				: live?.activeStep === step
-					? "running"
-					: "done";
-		outcomes.push({
-			step,
-			state,
-			ranAt: pick?.latest || handoff?.updatedAt || "",
-			...(handoff
-				? { handoff, outcomeLabel: handoffOutcomeLabel(handoff.payload) }
-				: {}),
-			...(pick && pick.durationSeconds > 0
-				? { durationSeconds: pick.durationSeconds }
-				: {}),
-			...(pick && pick.costUsd > 0 ? { costUsd: pick.costUsd } : {}),
-		});
-	}
-	return outcomes.sort((a, b) => a.ranAt.localeCompare(b.ranAt));
-}
 
 /** Known session-group keys → humanized labels. The label set is data-driven:
  *  any unknown key (a project may define its own groups) gets a Title-Case
@@ -953,17 +399,6 @@ export function humanizeSessionGroup(key: string | null | undefined): string {
 	if (!key) return "Session";
 	return SESSION_GROUP_LABELS[key] ?? titleCase(key);
 }
-
-/** Whether a step reused the prior same-group Claude session, started a new one,
- *  or carries too little metadata to tell (legacy rows → no badge). */
-export type SessionContinuity = "resumed" | "fresh" | "unknown";
-
-/** Why a step is `fresh` rather than `resumed` — surfaced in operator detail. */
-export type FreshReason =
-	| "first-in-group"
-	| "different-device"
-	| "prior-failed"
-	| "new-session";
 
 /** One row of the session-continuity timeline — a pure projection of an
  *  `IssueAgentSession`. Holds both the humanized labels (default view) and the
@@ -1009,52 +444,20 @@ function startMs(s: IssueAgentSession): number {
 	return Number.isNaN(t) ? 0 : t;
 }
 
+/** Core's sessions oldest first, labelled for the timeline; continuity is core's. */
 export function deriveSessionTimeline(
 	sessions: IssueAgentSession[] | null | undefined,
 ): SessionTimelineEntry[] {
 	if (!sessions || sessions.length === 0) return [];
 	const ordered = [...sessions].sort((a, b) => startMs(a) - startMs(b));
-
-	const lastByGroup = new Map<
-		string,
-		{ claude: string; deviceId: string | null; status: string }
-	>();
 	let prevClaude: string | null = null;
-	const entries: SessionTimelineEntry[] = [];
-
-	for (const s of ordered) {
+	return ordered.map((s) => {
 		const group = metaString(s.metadata, "sessionGroup");
-		const jobType = metaString(s.metadata, "jobType");
 		const claude = s.claudeSessionId ?? null;
 		const deviceId = s.deviceId ?? null;
-
-		let continuity: SessionContinuity;
-		let freshReason: FreshReason | null = null;
-
-		if (!group || !claude) {
-			continuity = "unknown";
-		} else {
-			const prior = lastByGroup.get(group);
-			if (!prior) {
-				continuity = "fresh";
-				freshReason = "first-in-group";
-			} else if (prior.claude === claude) {
-				continuity = "resumed";
-			} else {
-				continuity = "fresh";
-				freshReason =
-					prior.deviceId !== deviceId
-						? "different-device"
-						: prior.status === "failed"
-							? "prior-failed"
-							: "new-session";
-			}
-			lastByGroup.set(group, { claude, deviceId, status: s.status });
-		}
-
-		entries.push({
+		const entry: SessionTimelineEntry = {
 			id: s.id,
-			jobType,
+			jobType: metaString(s.metadata, "jobType"),
 			group,
 			groupLabel: group ? humanizeSessionGroup(group) : null,
 			claudeSessionId: claude,
@@ -1064,15 +467,13 @@ export function deriveSessionTimeline(
 			deviceName: s.deviceName ?? null,
 			status: s.status,
 			startedAt: s.startedAt ?? s.createdAt ?? null,
-			continuity,
-			freshReason,
+			continuity: s.continuity,
+			freshReason: s.freshReason,
 			connectedToPrev: !!claude && claude === prevClaude,
-		});
-
+		};
 		prevClaude = claude;
-	}
-
-	return entries;
+		return entry;
+	});
 }
 
 /** Human copy for a fresh-reason (operator detail, AC8). */

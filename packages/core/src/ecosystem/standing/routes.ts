@@ -3,10 +3,10 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../../lib/authz.js';
 import { queryBadRequest } from '../../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
-import { badRequest, forbidden, notFound } from '../../middleware/route-errors.js';
+import { badRequest, forbidden } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { slug } from '../../project-config/schema.js';
-import { ContractNotFoundError, readContractDetail, readContractStanding } from './read.js';
+import { readContractDetail, readContractStanding } from './read.js';
 
 const projectParam = z.object({ id: z.uuid() });
 const contractParam = z.object({ id: z.uuid(), provider: slug(), contract: slug() });
@@ -54,11 +54,6 @@ contractStandingRoutes.get(
     const { id, provider, contract } = c.req.valid('param');
     const userId = c.get('userId');
     await member(id, userId);
-    try {
-      return c.json(await readContractDetail(id, userId, { provider, contract }));
-    } catch (err) {
-      if (err instanceof ContractNotFoundError) throw notFound(err.message);
-      throw err;
-    }
+    return c.json(await readContractDetail(id, userId, { provider, contract }));
   },
 );

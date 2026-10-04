@@ -3,7 +3,7 @@ import { contractRequests } from '../../db/schema-contract-waits.js';
 import type { ActorAgency } from '../../issues/actor-agency.js';
 import { createRequirementIn } from '../../requirements/revision-write.js';
 import { lockRequirements } from '../../requirements/service.js';
-import { Refused } from '../channel-act.js';
+import { refusedWith } from '../channel-act.js';
 import type { ChannelDocument } from '../channel-schema.js';
 import { splitContractRef } from '../interface-rules.js';
 import { projectsWhere } from '../store.js';
@@ -34,7 +34,7 @@ export async function landChangeRequestIn(
   const { provider: providerSlug, contract } = splitContractRef(body.contract);
   const [provider] = await projectsWhere(tx, { slugs: [providerSlug] });
   if (!provider || provider.id === doc.from) {
-    throw new Refused([
+    throw refusedWith([
       {
         code: 'CONTRACT_REQUEST_PROVIDER_UNKNOWN',
         path: '/body/contract',

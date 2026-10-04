@@ -5,19 +5,13 @@
  */
 
 import { type Context, Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import {
-  type ArchiveDirection,
-  IssueArchiveRefusedError,
-  issueArchiveRequestSchema,
-  runIssueArchive,
-} from './archive.js';
 import { requireHeld } from '../permissions/index.js';
+import { type ArchiveDirection, issueArchiveRequestSchema, runIssueArchive } from './archive.js';
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
 
@@ -41,24 +35,14 @@ function archiveHandler(direction: ArchiveDirection) {
     const body = c.req.valid('json');
     const access = await loadProjectAccess(projectId, c.get('userId'));
     requireHeld(access, 'project.admin');
-    try {
-      const report = await runIssueArchive({
-        projectId,
-        direction,
-        filter: body.filter,
-        dryRun: body.dryRun === true,
-        actor: restActor(c),
-      });
-      return c.json(report);
-    } catch (err) {
-      if (err instanceof IssueArchiveRefusedError) {
-        throw new HTTPException(409, {
-          message: err.message,
-          cause: { code: err.code, details: err.report },
-        });
-      }
-      throw err;
-    }
+    const report = await runIssueArchive({
+      projectId,
+      direction,
+      filter: body.filter,
+      dryRun: body.dryRun === true,
+      actor: restActor(c),
+    });
+    return c.json(report);
   };
 }
 

@@ -24,14 +24,9 @@ export interface ModuleFlow {
   arrows: FlowArrow[];
 }
 
-export class ModuleFlowParseError extends Error {
-  constructor(
-    readonly line: string,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'ModuleFlowParseError';
-  }
+/** A stored flow outside the subset, named by the line that could not be read. */
+export interface UnreadableFlow {
+  unreadable: string;
 }
 
 const FENCE = /^```[ \t]*mermaid[ \t]*$/i;
@@ -58,11 +53,9 @@ function remember(steps: Map<string, FlowStep>, id: string, label: string | unde
   if (text !== null && existing.label === id) steps.set(id, { id, label: text });
 }
 
-function readNode(raw: string, steps: Map<string, FlowStep>): string {
+function readNode(raw: string, steps: Map<string, FlowStep>): string | UnreadableFlow {
   const m = NODE.exec(raw.trim());
-  if (!m?.[1]) {
-    throw new ModuleFlowParseError(raw.trim(), `cannot read \`${raw.trim()}\` as a flow step`);
-  }
+  if (!m?.[1]) return { unreadable: `cannot read \`${raw.trim()}\` as a flow step` };
   const id = m[1];
   remember(steps, id, m[2] ?? m[3] ?? m[4]);
   return id;
@@ -73,7 +66,7 @@ function readNode(raw: string, steps: Map<string, FlowStep>): string {
  * caller decides whether an absent flow is a refusal (`user-flow` with no flows anywhere) or
  * simply a module that contributes nothing to this diagram.
  */
-export function parseModuleFlow(body: string): ModuleFlow | null {
+export function parseModuleFlow(body: string): ModuleFlow | UnreadableFlow | null {
   const block = extractMermaidBlock(body);
   if (block === null) return null;
 
@@ -86,20 +79,17 @@ export function parseModuleFlow(body: string): ModuleFlow | null {
     if (line === '' || line.startsWith('%%')) continue;
     if (!sawHeader) {
       if (!HEADER.test(line)) {
-        throw new ModuleFlowParseError(
-          line,
-          `flow must open with \`flowchart\` or \`graph\`, not \`${line}\``,
-        );
+        return { unreadable: `flow must open with \`flowchart\` or \`graph\`, not \`${line}\`` };
       }
       sawHeader = true;
       continue;
     }
     const arrow = ARROW.exec(line);
-    if (!arrow?.[1] || !arrow[3]) {
-      throw new ModuleFlowParseError(line, `cannot read \`${line}\` as a flow arrow`);
-    }
+    if (!arrow?.[1] || !arrow[3]) return { unreadable: `cannot read \`${line}\` as a flow arrow` };
     const from = readNode(arrow[1], steps);
+    if (typeof from !== 'string') return from;
     const to = readNode(arrow[3], steps);
+    if (typeof to !== 'string') return to;
     arrows.push({ from, to, label: arrow[2]?.trim() || null });
   }
 

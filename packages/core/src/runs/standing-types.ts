@@ -8,8 +8,9 @@ import type {
   RunNone,
   RunOutcome,
   RunState,
-  RunWaitingOn,
+  RunWaitingKind,
 } from '@forge/contracts/run-standing';
+import { nobodyWaits, type WaitingOn } from '@forge/contracts/standing';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import type { HoldState } from '../jobs/hold.js';
 import type { PipelineRunLane } from '../pipeline/runs-lane.js';
@@ -140,4 +141,14 @@ export interface Derived {
   waitingOn: RunWaitingOn;
 }
 
-export const NO_WAIT = (rule: string): RunWaitingOn => ({ kind: 'none', rule });
+export type RunWaitingOn = WaitingOn<RunWaitingKind>;
+
+export const NO_WAIT = nobodyWaits;
+
+export const runWait = (
+  kind: RunWaitingKind,
+  who: string,
+  act: string,
+  rule: string,
+  extra: { ref?: string | null; dueAt?: string | null } = {},
+): RunWaitingOn => ({ kind, who, act, rule, ref: extra.ref ?? null, dueAt: extra.dueAt ?? null });

@@ -1,4 +1,6 @@
 import type { DesignRevisionState } from "./design-status.js";
+import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
+import type { WaitingKind, WaitingOn } from "./standing.js";
 
 // cm:why the answer shapes a workflow and its design are read in when the whole document is not
 // asked for (ISS-87)
@@ -83,24 +85,16 @@ export interface DesignHead {
 	approvedRevision: number | null;
 	approver: string;
 	canDecide: boolean;
-	waitingOn: DesignWaitingOn;
+	waitingOn: WaitingOn<DesignWaitingKind>;
 }
 
-export const DESIGN_WAITING_ON_KINDS = [
+export const DESIGN_WAITING_KINDS = [
 	"you",
 	"person",
 	"agent",
 	"none",
-] as const;
-export type DesignWaitingOnKind = (typeof DESIGN_WAITING_ON_KINDS)[number];
-
-// cm:why whose turn a design is, worded as a requirement's is (`requirements.ts:RequirementWaitingOn`), so every screen says it once from core (`workflows/design-standing.ts:designStandingOf`)
-export interface DesignWaitingOn {
-	kind: DesignWaitingOnKind;
-	who: string;
-	act: string;
-	rule: string;
-}
+] as const satisfies readonly WaitingKind[];
+export type DesignWaitingKind = (typeof DESIGN_WAITING_KINDS)[number];
 
 export interface DesignRequirementLink {
 	key: string;
@@ -162,3 +156,71 @@ export interface DesignActAnswer extends DesignHead {
 	builds?: DesignBuild[];
 	designIssue?: unknown;
 }
+
+export const WORKFLOW_REFUSAL_CODES = [
+	"WORKFLOW_KIND_UNKNOWN",
+	"WORKFLOW_STEP_DUPLICATE",
+	"WORKFLOW_AFTER_DANGLING",
+	"WORKFLOW_AFTER_CYCLE",
+	"WORKFLOW_EDGE_DANGLING",
+	"WORKFLOW_EDGE_UNDRAWN",
+	"WORKFLOW_EDGE_DUPLICATE",
+	"WORKFLOW_EDGE_RETURN_FORWARD",
+	"WORKFLOW_EDGE_REEVALUATES_FORWARD",
+	"WORKFLOW_EDGE_FIELD_MISSING",
+	"WORKFLOW_EDGE_KIND_NOT_IN_TEMPLATE",
+	"WORKFLOW_TEMPLATE_MISSING",
+	"WORKFLOW_TEMPLATE_UNKNOWN",
+	"WORKFLOW_NODE_TYPE_NOT_IN_TEMPLATE",
+	"WORKFLOW_NODE_FIELD_MISSING",
+	"WORKFLOW_BAND_MISMATCH",
+	"WORKFLOW_TEMPLATE_RULE",
+	"WORKFLOW_EDGE_ENDPOINT_NOT_IN_KIND",
+	"WORKFLOW_EDGE_KIND_NONE",
+	"WORKFLOW_EDGE_KIND_AMBIGUOUS",
+	"WORKFLOW_NODE_NOT_ENTRY",
+	"WORKFLOW_NODE_TYPE_COUNT",
+	"WORKFLOW_NODE_LINES",
+	"WORKFLOW_NODE_FIELD_NOT_UNIQUE",
+	"WORKFLOW_NODE_VALUE_NOT_IN_VOCABULARY",
+	"WORKFLOW_REF_NOT_ALLOWED",
+	"WORKFLOW_REF_DANGLING",
+	"WORKFLOW_REF_TARGET_MISMATCH",
+	"WORKFLOW_REF_MISSING",
+	"WORKFLOW_BASE_SELF",
+	"WORKFLOW_BASE_DUPLICATE",
+	"WORKFLOW_BASE_UNKNOWN",
+	"WORKFLOW_DUPLICATE",
+	"WORKFLOW_IDENTITY_IMMUTABLE",
+	"PATH_OUTSIDE_REPO",
+	"PROJECT_ID_IMMUTABLE",
+] as const;
+export type WorkflowRefusalCode = (typeof WORKFLOW_REFUSAL_CODES)[number];
+
+export const DESIGN_REFUSAL_CODES = [
+	"WORKFLOW_DESIGN_NOT_PROPOSED",
+	"WORKFLOW_DESIGN_REVISION_STALE",
+	"WORKFLOW_DESIGN_REASON_MISSING",
+	"WORKFLOW_DESIGN_ALREADY_PROPOSED",
+	"WORKFLOW_DESIGN_ALREADY_APPROVED",
+	"WORKFLOW_DESIGN_UNCHANGED",
+	"WORKFLOW_DESIGN_NOT_APPROVED",
+	"WORKFLOW_DESIGN_BASE_UNAPPROVED",
+	"WORKFLOW_DESIGN_ISSUE_IS_BUILD",
+	"WORKFLOW_BUILD_ALREADY_LINKED",
+	"WORKFLOW_BUILD_NOT_LINKED",
+	"WORKFLOW_NODE_UNKNOWN",
+	"WORKFLOW_NODE_AMBIGUOUS",
+	...PERMISSION_REFUSAL_CODES,
+] as const;
+export type DesignRefusalCode = (typeof DESIGN_REFUSAL_CODES)[number];
+
+/** A traced design, requirement or pinned contract a job cannot be given; the job is refused by name. */
+export const ARTIFACT_CONTEXT_REFUSAL_CODES = [
+	"ARTIFACT_CONTEXT_UNLOADABLE",
+	"ARTIFACT_CONTEXT_OVER_BUDGET",
+	"REQUIREMENT_REVISION_NOT_CURRENT",
+	"REQUIREMENT_NOT_AGREED",
+] as const;
+export type ArtifactContextRefusalCode =
+	(typeof ARTIFACT_CONTEXT_REFUSAL_CODES)[number];

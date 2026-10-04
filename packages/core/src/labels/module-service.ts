@@ -1,6 +1,8 @@
+import type { LabelRefusalCode } from '@forge/contracts/labels';
 import { and, count, eq, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, knowledgeEntries, type LabelKind, labels } from '../db/schema.js';
+import { refuser } from '../lib/refusal.js';
 
 /**
  * ISS-593 — the module half of the labels table. A module IS a label with
@@ -9,26 +11,7 @@ import { issueLabels, knowledgeEntries, type LabelKind, labels } from '../db/sch
  * acyclic, and that a module always has a colour.
  */
 
-export type ModuleErrorCode =
-  | 'INVALID_PARENT'
-  | 'PARENT_NOT_MODULE'
-  | 'CIRCULAR_HIERARCHY'
-  | 'MODULE_IN_USE'
-  | 'PARENT_ON_NON_MODULE'
-  | 'INVALID_KNOWLEDGE_NODE'
-  | 'KNOWLEDGE_NODE_NOT_IN_PROJECT'
-  | 'KNOWLEDGE_NODE_TAKEN'
-  | 'KNOWLEDGE_NODE_ON_NON_MODULE';
-
-export class ModuleHierarchyError extends Error {
-  constructor(
-    readonly code: ModuleErrorCode,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'ModuleHierarchyError';
-  }
-}
+const refuse = refuser<LabelRefusalCode>('LABEL_REFUSED');
 
 const MODULE_PALETTE = [
   '#1f6f4a',
@@ -67,18 +50,18 @@ export async function assertParentIsLegal(
   labelId: string | undefined,
 ): Promise<void> {
   if (labelId !== undefined && parentId === labelId) {
-    throw new ModuleHierarchyError('CIRCULAR_HIERARCHY', 'a module cannot be its own parent');
+    throw refuse('CIRCULAR_HIERARCHY', 'a module cannot be its own parent');
   }
 
   const parent = await loadModuleRow(parentId);
   if (!parent || parent.projectId !== projectId) {
-    throw new ModuleHierarchyError(
+    throw refuse(
       'INVALID_PARENT',
       'parentId does not name a label in this project',
     );
   }
   if (parent.kind !== 'module') {
-    throw new ModuleHierarchyError('PARENT_NOT_MODULE', 'parentId must name a module');
+    throw refuse('PARENT_NOT_MODULE', 'parentId must name a module');
   }
   if (labelId === undefined) return;
 
@@ -86,7 +69,7 @@ export async function assertParentIsLegal(
   let cursor = parent.parentId;
   while (cursor !== null) {
     if (cursor === labelId) {
-      throw new ModuleHierarchyError(
+      throw refuse(
         'CIRCULAR_HIERARCHY',
         'that parent is a descendant of this module',
       );
@@ -131,7 +114,7 @@ export async function assertDemotionIsLegal(labelId: string): Promise<void> {
     .from(labels)
     .where(eq(labels.parentId, labelId));
   if ((children?.n ?? 0) > 0) {
-    throw new ModuleHierarchyError(
+    throw refuse(
       'MODULE_IN_USE',
       'that module is the parent of another module; re-parent its children first',
     );
@@ -142,7 +125,7 @@ export async function assertDemotionIsLegal(labelId: string): Promise<void> {
     .from(issueLabels)
     .where(and(eq(issueLabels.labelId, labelId), eq(issueLabels.isPrimary, true)));
   if ((primary?.n ?? 0) > 0) {
-    throw new ModuleHierarchyError(
+    throw refuse(
       'MODULE_IN_USE',
       "that module is some issue's primary; clear the attribution first",
     );
@@ -200,13 +183,13 @@ export async function assertKnowledgeNodeIsLegal(
     .where(eq(knowledgeEntries.id, knowledgeEntryId))
     .limit(1);
   if (!node) {
-    throw new ModuleHierarchyError(
+    throw refuse(
       'INVALID_KNOWLEDGE_NODE',
       'knowledgeEntryId does not name a knowledge entry',
     );
   }
   if (node.projectId !== projectId) {
-    throw new ModuleHierarchyError(
+    throw refuse(
       'KNOWLEDGE_NODE_NOT_IN_PROJECT',
       'that knowledge entry belongs to a different project',
     );
@@ -218,7 +201,7 @@ export async function assertKnowledgeNodeIsLegal(
     .where(eq(labels.knowledgeEntryId, knowledgeEntryId))
     .limit(1);
   if (owner && owner.id !== labelId) {
-    throw new ModuleHierarchyError(
+    throw refuse(
       'KNOWLEDGE_NODE_TAKEN',
       'another module is already bound to that knowledge entry',
     );
@@ -228,7 +211,7 @@ export async function assertKnowledgeNodeIsLegal(
 /** The knowledge binding belongs to a module and to nothing else — the database says the same thing in `labels_knowledge_entry_chk`, and this is what turns it into a code the caller can act on. */
 export function assertKnowledgeNodeIsForModule(isModule: boolean): void {
   if (!isModule) {
-    throw new ModuleHierarchyError(
+    throw refuse(
       'KNOWLEDGE_NODE_ON_NON_MODULE',
       'only a module can name a knowledge entry; set kind to module, or clear knowledgeEntryId',
     );
@@ -238,7 +221,7 @@ export function assertKnowledgeNodeIsForModule(isModule: boolean): void {
 /** `parentId` belongs to a module and to nothing else — a plain label with a parent is a row the hierarchy cannot mean anything about. */
 export function assertParentIsForModule(isModule: boolean): void {
   if (!isModule) {
-    throw new ModuleHierarchyError(
+    throw refuse(
       'PARENT_ON_NON_MODULE',
       'only a module can have a parent; set kind to module, or clear parentId',
     );

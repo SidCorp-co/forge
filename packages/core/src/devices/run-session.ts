@@ -25,6 +25,7 @@ import {
 import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
 import { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 import { canonicalIssueKey, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
+import { insertSessionRow } from '../agent-sessions/index.js';
 import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { logger } from '../logger.js';
 import {
@@ -32,11 +33,12 @@ import {
   closeRunIfOneShot,
   insertOneShotRun,
   type OneShotRunSpec,
+  stampRunMetadataTime,
 } from '../pipeline/runs.js';
 import { requirePolicy } from '../project-config/dispatch-policy.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { liveMasterSessionId } from './master-owner.js';
-import { projectAdmission, RunnerNotAdmittedError } from './pool-admission.js';
+import { projectAdmission, runnerNotAdmitted } from './pool-admission.js';
 import {
   RUN_GROUP_METADATA_KEY,
   RUN_ISSUE_STATUSES_METADATA_KEY,
@@ -149,12 +151,7 @@ async function announceOnce(
 ): Promise<void> {
   if (found.announced) return;
   await announceOneShotRun(found.runId, { projectId, kind: 'system' });
-  await db
-    .update(pipelineRuns)
-    .set({
-      metadata: sql`COALESCE(${pipelineRuns.metadata}, '{}'::jsonb) || jsonb_build_object(${RUN_ANNOUNCED_METADATA_KEY}::text, to_jsonb(now()))`,
-    })
-    .where(eq(pipelineRuns.id, found.runId));
+  await stampRunMetadataTime(found.runId, RUN_ANNOUNCED_METADATA_KEY);
 }
 
 /**
@@ -192,7 +189,7 @@ export async function openRunSession(args: {
   // After the replay, so a committed open whose reply was lost is answered, not orphaned.
   const admission = await projectAdmission({ projectId: args.projectId, deviceId: args.deviceId });
   if (!admission.admitted) {
-    throw new RunnerNotAdmittedError({
+    throw runnerNotAdmitted({
       reason: admission.reason,
       projectId: args.projectId,
       deviceId: args.deviceId,
@@ -241,22 +238,18 @@ export async function openRunSession(args: {
       if (winner) return { existing: winner };
     }
     const run = await insertOneShotRun(tx, spec);
-    const [row] = await tx
-      .insert(agentSessions)
-      .values({
-        projectId: args.projectId,
-        deviceId: args.deviceId,
-        pipelineRunId: run.id,
-        title: `run: ${args.name}`,
-        kind: RUN_SESSION_KIND,
-        parentSessionId: masterSessionId,
-        status: 'running',
-        startedAt: new Date(),
-        lastHeartbeatAt: new Date(),
-        metadata: { terminalName: args.name, deviceId: args.deviceId },
-      })
-      .returning({ id: agentSessions.id });
-    if (!row) throw new Error('openRunSession: insert returned no row');
+    const row = await insertSessionRow(tx, {
+      projectId: args.projectId,
+      deviceId: args.deviceId,
+      pipelineRunId: run.id,
+      title: `run: ${args.name}`,
+      kind: RUN_SESSION_KIND,
+      parentSessionId: masterSessionId,
+      status: 'running',
+      startedAt: new Date(),
+      lastHeartbeatAt: new Date(),
+      metadata: { terminalName: args.name, deviceId: args.deviceId },
+    });
     // Inside the transaction on purpose: a key somebody live already holds
     // rolls the run and the session back with it, so a refused open leaves a
     // box with nothing rather than with half a group.

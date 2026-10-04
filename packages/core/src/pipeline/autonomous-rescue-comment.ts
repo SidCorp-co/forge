@@ -1,6 +1,5 @@
-import { eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { comments, type IssueStatus } from '../db/schema.js';
+import { postIssueNoticeOnce } from '../comments/index.js';
+import type { IssueStatus } from '../db/schema.js';
 import { logger } from '../logger.js';
 
 export function buildCapReachedCommentBody(args: {
@@ -31,17 +30,7 @@ export async function postCapReachedComment(args: {
 }): Promise<void> {
   try {
     const body = buildCapReachedCommentBody(args);
-    const existing = await db
-      .select({ id: comments.id, body: comments.body })
-      .from(comments)
-      .where(eq(comments.issueId, args.issueId));
-    if (existing.some((c) => c.body === body)) return;
-
-    await db.insert(comments).values({
-      issueId: args.issueId,
-      authorId: args.authorId,
-      body,
-    });
+    await postIssueNoticeOnce({ issueId: args.issueId, authorId: args.authorId, body, marker: body });
   } catch (err) {
     logger.error({ err, issueId: args.issueId }, 'autonomous-rescue-cap: failed to post comment');
   }

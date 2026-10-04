@@ -426,3 +426,31 @@ export interface DeliveryRetryResponse {
   requestId: string;
   queued: true;
 }
+
+/** The codes an integration route refuses under. */
+export const INTEGRATION_REFUSAL_CODES = [
+  'INTEGRATION_REFUSED',
+  'MISSING_CREDENTIALS',
+  'NOT_RETRYABLE',
+  'ORG_MISMATCH',
+  'MCP_PREVIEW_UNCLAIMED',
+] as const;
+
+export type IntegrationRefusalCode = (typeof INTEGRATION_REFUSAL_CODES)[number];
+
+/** The rules the Coolify commands refuse by name, in the one 422 envelope. */
+export const COOLIFY_REFUSAL_CODES = [
+  'COOLIFY_REFUSED',
+  'COOLIFY_ROLLBACK_IMAGE_UNLISTED',
+  'MISSING_CREDENTIALS',
+] as const;
+export type CoolifyRefusalCode = (typeof COOLIFY_REFUSAL_CODES)[number];
+
+// Refusal codes a runner release answers in the one envelope.
+export const RUNNER_RELEASE_REFUSAL_CODES = [
+  'RUNNER_RELEASE_REFUSED',
+  'RUNNER_RELEASE_NO_REPOSITORY',
+  'RUNNER_RELEASE_ALREADY_ATTEMPTED',
+  'RUNNER_RELEASE_STOPPED',
+] as const;
+export type RunnerReleaseRefusalCode = (typeof RUNNER_RELEASE_REFUSAL_CODES)[number];

@@ -209,8 +209,9 @@ function lockOverdueOf(f: RunFacts, ctx: StandingContext): StuckReading | null {
 
 function gateOverdueOf(f: RunFacts, ctx: StandingContext, derived: Derived): StuckReading | null {
   const w = derived.waitingOn;
-  if (w.kind !== 'gate' || !w.resumesAt) return null;
-  const resumesAt = new Date(w.resumesAt);
+  if (w.kind !== 'gate' || !w.dueAt || !w.ref) return null;
+  const gate = w.ref;
+  const resumesAt = new Date(w.dueAt);
   const since = after(resumesAt, ctx.stuckAfterMs);
   if (since.getTime() >= ctx.now.getTime()) return null;
   const j = f.job;
@@ -222,12 +223,12 @@ function gateOverdueOf(f: RunFacts, ctx: StandingContext, derived: Derived): Stu
       ? evidence(
           'jobs',
           j.id,
-          w.gate === 'retry_cooldown' ? 'retry_after_at' : 'payload.__hold',
-          w.gate,
+          gate === 'retry_cooldown' ? 'retry_after_at' : 'payload.__hold',
+          gate,
           resumesAt,
         )
-      : evidence('pipeline_runs', f.run.id, 'metadata', w.gate, resumesAt),
-    detail: `the ${w.gate} gate was due to resume at ${resumesAt.toISOString()} and no new attempt came in ${mins(ctx.stuckAfterMs)}`,
+      : evidence('pipeline_runs', f.run.id, 'metadata', gate, resumesAt),
+    detail: `the ${gate} gate was due to resume at ${resumesAt.toISOString()} and no new attempt came in ${mins(ctx.stuckAfterMs)}`,
   };
 }
 

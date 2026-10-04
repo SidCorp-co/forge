@@ -1,6 +1,6 @@
 import { collectReleaseBlockers } from './blockers.js';
-import { type CloseVerification, closeVerification } from './channel.js';
-import { ReleaseProbesUnreadableError } from './errors.js';
+import { type CloseVerification, closeVerification, refusedVerifyBindings } from './channel.js';
+import { isRefusal } from '../lib/refusal.js';
 import type { VerifySource } from './plan.js';
 import { readLiveState } from './verify.js';
 
@@ -21,7 +21,7 @@ export interface ServingDeployment {
 export type ServingRead =
   | { ok: true; deployment: ServingDeployment }
   | { ok: false; code: 'NO_PROJECT' }
-  | { ok: false; code: 'PROBES_UNREADABLE'; detail: string };
+  | { ok: false; code: 'RELEASE_PROBES_UNREADABLE'; detail: string };
 
 // cm:guard the identity is DERIVED on every call and never stored — a commit copied onto a row is
 // wrong the moment the next deploy lands, measured on forge-dev when prod moved ae8cdcbb0 -> 592637df9
@@ -37,11 +37,11 @@ export async function readServingDeployment(projectId: string): Promise<ServingR
   try {
     verification = closeVerification(channels);
   } catch (err) {
-    if (!(err instanceof ReleaseProbesUnreadableError)) throw err;
+    if (!isRefusal(err, 'RELEASE_PROBES_UNREADABLE')) throw err;
     return {
       ok: false,
-      code: 'PROBES_UNREADABLE',
-      detail: `${err.bindings.join(', ')} declares only runtime probes that identify an artifact, and a release proves the commit it shipped. Declare a probe with \`identifies: "source"\` on the production environment, or remove them.`,
+      code: 'RELEASE_PROBES_UNREADABLE',
+      detail: `${refusedVerifyBindings(channels).join(', ')} declares only runtime probes that identify an artifact, and a release proves the commit it shipped. Declare a probe with \`identifies: "source"\` on the production environment, or remove them.`,
     };
   }
   if (verification.kind === 'unverified') {

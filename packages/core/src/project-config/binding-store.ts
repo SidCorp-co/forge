@@ -177,3 +177,16 @@ export const drizzleBindingStore: BindingStore = {
     }
   },
 };
+
+/** A binding's inbound webhook secret, rotated. */
+export async function setBindingInboundSecret(
+  id: string,
+  integrationSecret: string,
+): Promise<typeof integrationBindings.$inferSelect | null> {
+  const [row] = await db
+    .update(integrationBindings)
+    .set({ integrationSecret, updatedAt: new Date() })
+    .where(eq(integrationBindings.id, id))
+    .returning();
+  return row ?? null;
+}

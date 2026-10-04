@@ -6,11 +6,21 @@
 // Shift, middle) goes to the page as the browser would. Folded groups live in session storage, so
 // back from a full page finds them as they were.
 
+import type { StandingGroup, StandingGroupLabels } from "@forge/contracts/standing";
 import type { MouseEvent, ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 import { Icon } from "../icons/icon";
 import { LEGEND, type LegendTone } from "../vocabulary";
+
+/** A read model's groups in the order its contract declares them, each holding the rows core put there. */
+export function standingGroups<R extends { attentionGroup: G }, G extends StandingGroup>(
+  rows: readonly R[],
+  order: readonly G[],
+  labels: StandingGroupLabels<G>,
+): ListGroup<R>[] {
+  return order.map((g) => ({ id: g, ...labels[g], rows: rows.filter((r) => r.attentionGroup === g) }));
+}
 
 export interface ListGroup<R> {
   id: string;

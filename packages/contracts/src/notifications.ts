@@ -208,3 +208,6 @@ export function targetsChannel(
 ): boolean {
 	return channelsFor(type).includes(channel);
 }
+
+export const NOTIFICATION_REFUSAL_CODES = ["NOTIFICATION_REFUSED", "CONDITION_STILL_TRUE"] as const;
+export type NotificationRefusalCode = (typeof NOTIFICATION_REFUSAL_CODES)[number];

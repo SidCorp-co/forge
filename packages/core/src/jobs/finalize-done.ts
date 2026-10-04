@@ -10,7 +10,7 @@ import { materializeJobUsage } from '../usage-records/materialize.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
-import { deriveSessionFinal } from './session-transcript.js';
+import { deriveSessionFinal } from '../agent-sessions/index.js';
 
 type JobRow = typeof jobs.$inferSelect;
 

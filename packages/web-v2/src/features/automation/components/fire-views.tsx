@@ -33,7 +33,7 @@ import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useFireDetail } from "../hooks";
 import { fireHref, reportHref, scheduleHref, sessionHref } from "../routes";
 import type { FireDetailResponse, FireStanding } from "../types";
-import { fireWhy, fmtDuration, producedLine, shortId, waitingView } from "../view";
+import { fireWhy, fmtDuration, producedLine, shortId } from "../view";
 
 export const fireRow =
   (hrefOf: (id: string) => string) =>
@@ -46,7 +46,7 @@ export const fireRow =
       title: f.scheduleName,
       facts: [enumLabel("fireTrigger", f.trigger), fmtDuration(f.durationSeconds), producedLine(f.produced), ...(why ? [why] : [])],
       state: <StatusBadge family="scheduleRun" value={f.status} />,
-      waitingOn: f.waitingOn.kind === "none" ? <span className="text-12-5 text-subtle">—</span> : <WaitingOn w={waitingView(f.waitingOn)} />,
+      waitingOn: f.waitingOn.kind === "none" ? <span className="text-12-5 text-subtle">—</span> : <WaitingOn w={f.waitingOn} />,
       owner: enumLabel("fireTrigger", f.trigger),
       age: { text: formatAge(f.startedAt), title: `Started ${formatStamp(f.startedAt)}` },
       dim: f.attentionGroup === "nothing_produced",
@@ -82,7 +82,7 @@ export function FireLines({ fires, slug }: { fires: readonly FireStanding[]; slu
 
 export function FireBanner({ f, className }: { f: FireStanding; className?: string }) {
   if (f.waitingOn.kind === "none") return null;
-  const w = waitingView(f.waitingOn);
+  const w = f.waitingOn;
   return (
     <WaitBanner
       tone="you"

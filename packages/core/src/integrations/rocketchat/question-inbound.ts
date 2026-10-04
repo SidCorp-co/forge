@@ -14,7 +14,7 @@ import { rocketchatQuestionDeliveries } from '../../db/schema-rocketchat.js';
 import { logger } from '../../logger.js';
 import { screenForDoor } from '../../messaging/proven.js';
 import { answerAs } from '../../questions/read.js';
-import { QuestionRefused } from '../../questions/write.js';
+import { isRefusal } from '../../lib/refusal.js';
 import type { RocketChatDdpClient, RocketChatIncomingMessage } from './ddp-client.js';
 import { FIXED_REPLY_CONSTANT, type ReplyTransport, sendFixedReply } from './outbound.js';
 import {
@@ -170,8 +170,8 @@ export async function handleQuestionThreadReply(args: {
       via: 'assistant',
     });
   } catch (err) {
-    if (err instanceof QuestionRefused) {
-      await say(transport, ANSWER_FAILED(err.message));
+    if (isRefusal(err)) {
+      await say(transport, ANSWER_FAILED(err.refusals.map((r) => r.detail).join('; ')));
       return;
     }
     logger.error(

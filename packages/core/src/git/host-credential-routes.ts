@@ -15,7 +15,7 @@ import { z } from 'zod';
 import { logger } from '../logger.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { GitCredentialError, mintGitCredentialForDevice } from './host-credential.js';
+import { mintGitCredentialForDevice } from './host-credential.js';
 
 export const deviceGitCredentialRoutes = new Hono<{ Variables: DeviceVars }>();
 
@@ -45,27 +45,20 @@ deviceGitCredentialRoutes.post(
       });
     }
 
-    try {
-      const grant = await mintGitCredentialForDevice({ deviceId: device.id, host, path });
-      logger.info(
-        {
-          deviceId: device.id,
-          projectId: grant.projectId,
-          repository: grant.repository,
-          expiresAt: grant.expiresAt,
-        },
-        'git-credential: minted a host credential',
-      );
-      return c.json({
-        username: grant.username,
-        password: grant.password,
+    const grant = await mintGitCredentialForDevice({ deviceId: device.id, host, path });
+    logger.info(
+      {
+        deviceId: device.id,
+        projectId: grant.projectId,
+        repository: grant.repository,
         expiresAt: grant.expiresAt,
-      });
-    } catch (err) {
-      if (err instanceof GitCredentialError) {
-        throw new HTTPException(err.status as 400, { message: err.message });
-      }
-      throw err;
-    }
+      },
+      'git-credential: minted a host credential',
+    );
+    return c.json({
+      username: grant.username,
+      password: grant.password,
+      expiresAt: grant.expiresAt,
+    });
   },
 );

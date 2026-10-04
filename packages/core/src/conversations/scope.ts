@@ -1,13 +1,10 @@
 import { and, eq, isNotNull, isNull } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../db/client.js';
 import { conversationParticipants } from '../db/schema-conversations.js';
 import { effectiveProjectRole } from '../lib/authz.js';
+import { forbidden } from '../middleware/route-errors.js';
 import { type ProjectPermission, requireHeld } from '../permissions/index.js';
 import type { Executor } from './db-executor.js';
-
-const forbidden = (message: string, code: string) =>
-  new HTTPException(403, { message, cause: { code } });
 
 /**
  * The project ids this conversation is about, sorted so two reads of one
@@ -63,14 +60,12 @@ async function assertConversationHeld(
   if (!userId) {
     throw forbidden(
       `conversation ${conversationId} was reached with no authority named; a turn or a read names the user it runs as, and nothing here is anonymous`,
-      'CONVERSATION_NO_AUTHORITY',
     );
   }
   const scope = await derivedScope(conversationId, tx);
   if (scope.length === 0) {
     throw forbidden(
       `conversation ${conversationId} has no handle in it, so it is about no project and nobody holds a role that reaches it`,
-      'CONVERSATION_NO_SCOPE',
     );
   }
   for (const projectId of scope) {
@@ -78,7 +73,6 @@ async function assertConversationHeld(
     if (!access?.role) {
       throw forbidden(
         `conversation ${conversationId} is about project ${projectId} and you hold no role on it; a room is reached only by someone who holds ${permission} on every project in it`,
-        'CONVERSATION_OUT_OF_SCOPE',
       );
     }
     requireHeld(access, permission, `conversation ${conversationId}`);

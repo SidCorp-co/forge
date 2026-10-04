@@ -11,19 +11,19 @@ import type {
   ReleaseProduction,
   ReleaseState,
   ReleaseSummary,
-  ReleaseWaiting,
 } from '@forge/contracts/releases';
-import { RELEASE_ATTENTION } from '@forge/contracts/releases';
+import { RELEASE_ATTENTION_GROUPS } from '@forge/contracts/releases';
+import { nobodyWaits } from '@forge/contracts/standing';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import { releaseNotesSections } from '@forge/contracts/release-notes';
 import { peopleOf } from '../lib/people.js';
+import { notFound } from '../middleware/route-errors.js';
 import { readReleasePath } from '../project-config/release-path.js';
 import {
   type ApprovalView,
-  approvalRefusal,
   approvalRequired,
   approvalsOfRuns,
   approvalViews,
@@ -31,6 +31,7 @@ import {
 import { collectReleaseBlockers } from './blockers.js';
 import { type BoundsReading, readBounds } from './bounds.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
+import { refuseRelease } from './refuse.js';
 import { approversOf, loadReleaseFacts, type ReleaseFacts } from './release-facts.js';
 import { gateViews } from './release-gates.js';
 import {
@@ -51,7 +52,7 @@ import {
 import { currentReleaseVersion, highestCutVersion, releaseLineOf } from './version-store.js';
 import { attemptsOf, issueIdsOf, type RunRow, versionRuns, versionStatus } from './versions.js';
 
-const NOBODY: ReleaseWaiting = { kind: 'none', who: '—', act: '', rule: '' };
+const NOBODY = nobodyWaits('the issue has shipped');
 const CHANGELOG_SECTIONS = releaseNotesSections.filter((s) => s !== 'Skip');
 
 interface Part {
@@ -170,8 +171,7 @@ function summaryOf(p: Part, s: Shared): ReleaseSummary {
     runId: p.runId,
     state: p.state,
     current: s.current === p.version,
-    attention: turn.attention,
-    waiting: turn.waiting,
+    ...turn,
     headline: headlineOf(
       facts.map((i) => ({
         section: i.releaseNotes?.section ?? null,
@@ -240,7 +240,7 @@ function noteSections(p: Part, s: Shared) {
   };
 }
 
-function issueViews(p: Part, s: Shared, waiting: ReleaseWaiting): ReleaseIssueView[] {
+function issueViews(p: Part, s: Shared, waiting: ReleaseSummary['waitingOn']): ReleaseIssueView[] {
   return p.issueIds.flatMap((id) => {
     const i = s.facts.issues.get(id);
     if (!i) return [];
@@ -257,7 +257,7 @@ function issueViews(p: Part, s: Shared, waiting: ReleaseWaiting): ReleaseIssueVi
           : null,
         proof: proofOf(criteria),
         criteria,
-        waiting: i.status === 'closed' || p.state === 'shipped' ? NOBODY : waiting,
+        waitingOn: i.status === 'closed' || p.state === 'shipped' ? NOBODY : waiting,
       },
     ];
   });
@@ -277,7 +277,7 @@ function detailOf(
   const strip = ({ runId: _run, ...view }: ApprovalView): ReleaseApprovalView => view;
   return {
     ...summary,
-    issues: issueViews(p, s, summary.waiting),
+    issues: issueViews(p, s, summary.waitingOn),
     requirementsCompleted: [...reqIds]
       .flatMap((id) => s.facts.requirements.get(id) ?? [])
       .map((r) => completionOf(r, inRelease))
@@ -420,7 +420,7 @@ export async function listReleases(
   const shared = await sharedFor(projectId, parts, viewer, current, required);
   const releases = parts.map((p) => summaryOf(p, shared));
   const counts = Object.fromEntries(
-    RELEASE_ATTENTION.map((a) => [a, releases.filter((r) => r.attention === a).length]),
+    RELEASE_ATTENTION_GROUPS.map((a) => [a, releases.filter((r) => r.attentionGroup === a).length]),
   ) as ReleaseListResponse['counts'];
   return { releases, counts, approvalRequired: required, production };
 }
@@ -431,9 +431,7 @@ export async function readRelease(
   viewer: ViewerFacts | null,
 ): Promise<ReleaseDetail> {
   if (!parseReleaseVersion(version)) {
-    throw approvalRefusal(
-      422,
-      'RELEASE_VERSION_SHAPE',
+    throw refuseRelease('RELEASE_VERSION_SHAPE',
       `${JSON.stringify(version)} is not a release version: ${RELEASE_VERSION_SHAPE}`,
     );
   }
@@ -444,7 +442,7 @@ export async function readRelease(
   const [run] = await runParts(projectId, version, required);
   const part = run ?? (await draftPart(projectId));
   if (!part || part.version !== version) {
-    throw approvalRefusal(404, 'NOT_FOUND', `project ${projectId} has cut no version ${version}`);
+    throw notFound(`project ${projectId} has cut no version ${version}`);
   }
   const [shared, read, readers] = await Promise.all([
     sharedFor(projectId, [part], viewer, current, required),

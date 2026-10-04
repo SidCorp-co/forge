@@ -7,7 +7,6 @@ export {
   listPreferenceChanges,
   type PreferenceActor,
   type PreferenceChange,
-  PreferenceRestoreConflict,
   readAssistantPreferences,
   restorePreferenceChange,
   writeAssistantPreferences,

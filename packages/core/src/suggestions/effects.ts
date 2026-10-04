@@ -10,13 +10,14 @@ import type { FeedbackTriageEffect } from '@forge/contracts/feedback';
 import { SUGGESTION_PAYLOADS, type SuggestionEffect } from '@forge/contracts/suggestions';
 import { SUGGESTION_MACHINE } from '@forge/contracts/suggestion-machine';
 import { and, eq, sql } from 'drizzle-orm';
-import { insertComment, type WrittenComment } from '../comments/service.js';
+import { insertComment, type WrittenComment } from '../comments/index.js';
 import type { Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { requirementRevisions } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { rowIn as feedbackRowIn } from '../feedback/read.js';
 import { type TriageWritten, triageIn } from '../feedback/triage.js';
+import { setIssueTriage } from '../issues/index.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import type { PendingIssueRelation } from '../issues/relations-service.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -115,12 +116,7 @@ async function issueTriageEffect(
     row.id,
   );
   const before = await issueRowOf(tx, projectId, targetOfRow(row).id);
-  if (Object.keys(set).length) {
-    await tx
-      .update(issues)
-      .set({ ...set, updatedAt: new Date() })
-      .where(eq(issues.id, before.id));
-  }
+  await setIssueTriage(tx, before.id, set);
   const note = routeNote
     ? await insertComment(
         {

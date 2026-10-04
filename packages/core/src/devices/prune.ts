@@ -1,7 +1,7 @@
 import { DEVICE_MACHINE } from '@forge/contracts/runner-machine';
-import { inArray, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { runners } from '../db/schema.js';
+import { deleteDeviceRunners } from '../runners/index.js';
 import { transition } from '../lifecycle/transition.js';
 
 function pruneDays(): number {
@@ -23,9 +23,7 @@ export async function runDevicePrune(): Promise<{ revoked: number; durationMs: n
       returning: ['id'],
     });
     const ids = rows.map((r) => r.id);
-    if (ids.length > 0) {
-      await tx.delete(runners).where(inArray(runners.deviceId, ids));
-    }
+    await deleteDeviceRunners(tx, ids);
     return ids.length;
   });
 

@@ -9,14 +9,16 @@
  * a deterministic sequence with no judgement in it, which is what puts it on
  * the dispatch face rather than the MCP one.
  *
- * Every refusal carries its own sentence in `message`, because that sentence IS
+ * Every refusal carries its own sentence in its detail, because that sentence IS
  * the deliverable — which step stopped and what is now true on the repository.
  */
 
+import type { RunnerReleaseRefusalCode } from '@forge/contracts/integrations';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { loadProjectAccess } from '../../lib/authz.js';
+import { refuser } from '../../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { badRequest, notFound } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
@@ -37,12 +39,13 @@ const startBodySchema = z
 export const runnerReleaseRoutes = new Hono<{ Variables: AuthVars }>();
 runnerReleaseRoutes.use('*', requireAuth(), assertEmailVerified());
 
-const REFUSAL_STATUS = {
-  no_repository: 409,
-  bad_version: 400,
-  already_attempted: 409,
-  stopped: 422,
-} as const;
+const refuse = refuser<RunnerReleaseRefusalCode>('RUNNER_RELEASE_REFUSED');
+
+const REFUSAL_CODE = {
+  no_repository: 'RUNNER_RELEASE_NO_REPOSITORY',
+  already_attempted: 'RUNNER_RELEASE_ALREADY_ATTEMPTED',
+  stopped: 'RUNNER_RELEASE_STOPPED',
+} as const satisfies Record<string, RunnerReleaseRefusalCode>;
 
 runnerReleaseRoutes.post(
   '/:projectId/runner-releases',
@@ -67,10 +70,14 @@ runnerReleaseRoutes.post(
       requestedById: userId,
     });
     if (outcome.started) return c.json({ release: outcome.release }, 202);
-    throw new HTTPException(REFUSAL_STATUS[outcome.kind], {
-      message: outcome.message,
-      cause: { code: `RUNNER_RELEASE_${outcome.kind.toUpperCase()}`, details: outcome.release },
-    });
+    if (outcome.kind === 'bad_version') {
+      throw new HTTPException(400, {
+        message: outcome.message,
+        cause: { code: 'RUNNER_RELEASE_BAD_VERSION' },
+      });
+    }
+    const held = outcome.release ? ` Release ${outcome.release.id} holds what happened.` : '';
+    throw refuse(REFUSAL_CODE[outcome.kind], `${outcome.message}${held}`, '/version');
   },
 );
 

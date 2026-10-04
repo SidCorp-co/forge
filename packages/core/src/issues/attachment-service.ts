@@ -1,3 +1,4 @@
+import type { IssueAttachmentRefusalCode } from '@forge/contracts/issues';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
@@ -12,31 +13,14 @@ import {
 } from '../lib/attachment-mime.js';
 import { lockAttachmentName, type NameCheckExecutor } from '../lib/attachment-name-lock.js';
 import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
+import { isRefusal, type RefusalError, refuser } from '../lib/refusal.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { getStorage } from '../storage/index.js';
 import type { ActorAgency } from './actor-agency.js';
 
 export { safeName };
 
-export type AttachmentErrorCode =
-  | 'MIME_NOT_ALLOWED'
-  | 'FILE_TOO_LARGE'
-  | 'EMPTY_FILE'
-  | 'INVALID_NAME'
-  | 'INVALID_BASE64'
-  | 'PAYLOAD_TOO_LARGE'
-  | 'ATTACHMENT_NAME_TAKEN';
-
-export class AttachmentError extends Error {
-  readonly code: AttachmentErrorCode;
-  readonly details: unknown;
-  constructor(code: AttachmentErrorCode, message: string, details?: unknown) {
-    super(message);
-    this.code = code;
-    this.details = details;
-    this.name = 'AttachmentError';
-  }
-}
+const refuse = refuser<IssueAttachmentRefusalCode>('ATTACHMENT_REFUSED');
 
 /**
  * The oldest attachment on this issue stored under exactly `name`, or null.
@@ -60,11 +44,11 @@ export async function findIssueAttachmentByName(
   return { id: row.id, name: row.name, url: `/api/attachments/${row.id}/download` };
 }
 
-export function nameTakenError(existing: ExistingAttachmentRef, scope: string): AttachmentError {
-  return new AttachmentError(
+export function nameTakenError(existing: ExistingAttachmentRef, scope: string): RefusalError {
+  return refuse(
     'ATTACHMENT_NAME_TAKEN',
-    `an attachment named "${existing.name}" is already on this ${scope} (id ${existing.id}) — cite it, delete it, or upload under a different name`,
-    { existing },
+    `an attachment named "${existing.name}" is already on this ${scope} (id ${existing.id}, ${existing.url}) — cite it, delete it, or upload under a different name`,
+    '/name',
   );
 }
 
@@ -99,15 +83,16 @@ export function validateIssueAttachment(input: {
   mime: string;
   bytes: Buffer;
 }): string {
-  if (!input.name) throw new AttachmentError('INVALID_NAME', 'name is empty after sanitisation');
+  if (!input.name) throw refuse('INVALID_NAME', 'name is empty after sanitisation', '/name');
   if (nameExceedsByteBudget(input.name))
-    throw new AttachmentError(
+    throw refuse(
       'INVALID_NAME',
       `name is longer than ${NAME_MAX_BYTES} bytes of UTF-8 — rename the file and upload it again`,
+      '/name',
     );
-  if (input.bytes.byteLength <= 0) throw new AttachmentError('EMPTY_FILE', 'empty file');
+  if (input.bytes.byteLength <= 0) throw refuse('EMPTY_FILE', 'empty file');
   if (input.bytes.byteLength > env.UPLOADS_MAX_BYTES)
-    throw new AttachmentError('FILE_TOO_LARGE', 'file too large');
+    throw refuse('FILE_TOO_LARGE', `file too large: at most ${env.UPLOADS_MAX_BYTES} bytes`);
 
   const resolved = resolveAttachmentMime({
     target: 'issue',
@@ -116,10 +101,11 @@ export function validateIssueAttachment(input: {
     bytes: input.bytes,
   });
   if (!resolved.ok) {
-    throw new AttachmentError('MIME_NOT_ALLOWED', mimeRefusalMessage(resolved), {
-      reason: resolved.reason,
-      allowed: allowedSetForTarget('issue'),
-    });
+    throw refuse(
+      'MIME_NOT_ALLOWED',
+      `${mimeRefusalMessage(resolved)}; allowed: ${allowedSetForTarget('issue').extensions.join(', ')}, or any extension whose bytes are text`,
+      '/mime',
+    );
   }
   return resolved.mime;
 }
@@ -194,14 +180,18 @@ export interface Base64AttachmentInput {
 export interface AttachmentErrorEntry {
   index: number;
   name: string;
-  code: AttachmentErrorCode | 'INTERNAL';
+  code: string;
   message: string;
-  details?: unknown;
 }
 
 function toErrorEntry(index: number, name: string, err: unknown): AttachmentErrorEntry {
-  return err instanceof AttachmentError
-    ? { index, name, code: err.code, message: err.message, details: err.details }
+  return isRefusal(err)
+    ? {
+        index,
+        name,
+        code: err.refusals[0]?.code ?? err.fallbackCode,
+        message: err.refusals[0]?.detail ?? err.message,
+      }
     : {
         index,
         name,
@@ -222,7 +212,7 @@ export interface DecodedAttachment {
  * or oversized payloads keeps the parent row (issue/comment) from being
  * committed when the attachments are unusable.
  *
- * Throws AttachmentError with code INVALID_BASE64 or PAYLOAD_TOO_LARGE.
+ * Refuses INVALID_BASE64 or PAYLOAD_TOO_LARGE.
  */
 export function decodeAndValidateAttachments(
   items: readonly Base64AttachmentInput[],
@@ -232,9 +222,10 @@ export function decodeAndValidateAttachments(
   for (const [i, a] of items.entries()) {
     const buf = decodeBase64Strict(a.dataBase64);
     if (!buf) {
-      throw new AttachmentError(
+      throw refuse(
         'INVALID_BASE64',
         `attachments[${i}].dataBase64 is not valid base64`,
+        `/attachments/${i}/dataBase64`,
       );
     }
     decoded.push({ name: a.name, mime: a.mime, bytes: buf });
@@ -243,9 +234,10 @@ export function decodeAndValidateAttachments(
   const sizes = decoded.map((d) => d.bytes.byteLength);
   const total = sizes.reduce((s, n) => s + n, 0);
   if (total > limit || sizes.some((n) => n > limit)) {
-    throw new AttachmentError(
+    throw refuse(
       'PAYLOAD_TOO_LARGE',
       `total=${total} per=[${sizes.map((n, i) => `${i}:${n}`).join(',')}] limit=${limit}`,
+      '/attachments',
     );
   }
   return decoded;
@@ -294,10 +286,10 @@ export async function persistDecodedIssueAttachments(
     try {
       validateIssueAttachment({ name, mime: d.mime, bytes: d.bytes });
       if (seen.has(name)) {
-        throw new AttachmentError(
+        throw refuse(
           'ATTACHMENT_NAME_TAKEN',
           `this batch carries "${name}" more than once — an attachment name is one document`,
-          { duplicateWithinBatch: name },
+          `/attachments/${i}/name`,
         );
       }
       seen.add(name);

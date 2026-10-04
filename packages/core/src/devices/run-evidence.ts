@@ -17,10 +17,15 @@
  * into the kernel through a second door (ISS-1050).
  */
 
-import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { agentSessions, comments, devices, issues, pipelineRuns } from '../db/schema.js';
+import {
+  latestIssueCommentWith,
+  postIssueNotice,
+  postIssueNoticeOnce,
+} from '../comments/index.js';
+import { agentSessions, devices, issues, pipelineRuns } from '../db/schema.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import {
@@ -308,26 +313,14 @@ async function insertCommentOnce(args: {
   authorId: string;
   deviceId: string;
 }): Promise<boolean> {
-  return await db.transaction(async (tx) => {
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`run-evidence:${args.issueId}:${args.marker}`}, 0))`,
-    );
-    const existing = await tx
-      .select({ id: comments.id })
-      .from(comments)
-      .where(
-        and(eq(comments.issueId, args.issueId), sql`${comments.body} LIKE ${`%${args.marker}%`}`),
-      )
-      .limit(1);
-    if (existing.length > 0) return false;
-    await tx.insert(comments).values({
-      issueId: args.issueId,
-      authorId: args.authorId,
-      authorDeviceId: args.deviceId,
-      body: args.body,
-    });
-    return true;
+  const posted = await postIssueNoticeOnce({
+    issueId: args.issueId,
+    marker: args.marker,
+    body: args.body,
+    authorId: args.authorId,
+    authorDeviceId: args.deviceId,
   });
+  return posted !== null;
 }
 
 /**
@@ -351,24 +344,22 @@ async function insertHeldReportOnChange(args: {
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${`run-evidence:${args.issueId}:${args.family}`}, 0))`,
     );
     // Whole markers only, each closed by its backtick and matched literally: a
-    // bare family is a prefix of every longer head's, and a LIKE over it would
+    // bare family is a prefix of every longer head's, and a match over it would
     // let another commit's report stand in for this one's latest.
     const whole = [args.family, `${args.family}:refused`, `${args.family}:not-refused`].map(
-      (m) => sql`strpos(${comments.body}, ${`\`${m}\``}) > 0`,
+      (m) => `\`${m}\``,
     );
-    const [latest] = await tx
-      .select({ body: comments.body })
-      .from(comments)
-      .where(and(eq(comments.issueId, args.issueId), or(...whole)))
-      .orderBy(desc(comments.createdAt), desc(comments.id))
-      .limit(1);
-    if (latest?.body.includes(`\`${args.marker}\``)) return false;
-    await tx.insert(comments).values({
-      issueId: args.issueId,
-      authorId: args.authorId,
-      authorDeviceId: args.deviceId,
-      body: args.body,
-    });
+    const latest = await latestIssueCommentWith(args.issueId, whole, tx);
+    if (latest?.includes(`\`${args.marker}\``)) return false;
+    await postIssueNotice(
+      {
+        issueId: args.issueId,
+        authorId: args.authorId,
+        authorDeviceId: args.deviceId,
+        body: args.body,
+      },
+      tx,
+    );
     return true;
   });
 }

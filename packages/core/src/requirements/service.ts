@@ -6,12 +6,12 @@
  * transaction under the project's requirement lock.
  */
 
+import { REQUIREMENT_MACHINE } from '@forge/contracts/requirement-machine';
 import {
   type BaselineReadiness,
   REQUIREMENT_READINESS_GATE_DEFAULT,
   type RequirementReadinessGate,
 } from '@forge/contracts/requirements';
-import { REQUIREMENT_MACHINE } from '@forge/contracts/requirement-machine';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import {
@@ -22,6 +22,7 @@ import {
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
+import { RefusalError } from '../lib/refusal.js';
 import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { staleOnTargetRevised } from '../suggestions/stale.js';
@@ -43,6 +44,7 @@ export {
   type RevisionWrite,
 } from './revision-write.js';
 
+import { requireCan } from '../permissions/index.js';
 import {
   detailOf,
   linkedDesigns,
@@ -67,7 +69,6 @@ import {
   staleBaseRefusal,
   stateRefusal,
 } from './rules.js';
-import { requireCan } from '../permissions/index.js';
 
 async function readinessGateOf(projectId: string): Promise<RequirementReadinessGate> {
   const doc = await readProjectDocument(projectId);
@@ -99,13 +100,7 @@ export async function answer(
   };
 }
 
-class Refused extends Error {
-  constructor(readonly refusals: RequirementRefusal[]) {
-    super(refusals.map((r) => r.code).join(', '));
-  }
-}
-
-/** Runs `body` in a transaction; a `Refused` rolls everything back and comes out as refusals. */
+/** Runs `body` in a transaction; a refusal rolls everything back and comes out as refusals. */
 export function requirementKernelActor(actor: RequirementActor): KernelActor {
   return { type: 'user', id: actor.userId, agency: actor.agency };
 }
@@ -116,11 +111,11 @@ export async function inTx(
   try {
     return await db.transaction(async (tx) => {
       const refusals = await body(tx);
-      if (refusals?.length) throw new Refused(refusals);
+      if (refusals?.length) throw new RefusalError(refusals, 'REQUIREMENT_REFUSED');
       return null;
     });
   } catch (err) {
-    if (err instanceof Refused) return err.refusals;
+    if (err instanceof RefusalError) return err.refusals as RequirementRefusal[];
     throw err;
   }
 }

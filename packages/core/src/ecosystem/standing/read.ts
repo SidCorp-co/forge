@@ -9,6 +9,7 @@ import {
 } from '@forge/contracts/contract-standing';
 import type { ContractRequestView } from '@forge/contracts/contract-waits';
 import { db } from '../../db/client.js';
+import { notFound } from '../../middleware/route-errors.js';
 import { measurementsOf } from '../contract/store.js';
 import { loadGraph } from '../graph.js';
 import { type HeldInterface, loadInterface } from '../interface-service.js';
@@ -36,8 +37,6 @@ import {
   standingOf,
   versionRef,
 } from './standing.js';
-
-export class ContractNotFoundError extends Error {}
 
 export const MODULE_UNAVAILABLE =
   'The interface document names no module for a publication, so nothing records which module provides or consumes it.';
@@ -77,7 +76,7 @@ async function worldOf(projectId: string, userId: string | null, now: Date): Pro
     viewerOf(projectId, userId),
     windowDues(projectId),
   ]);
-  if (!self) throw new ContractNotFoundError(`project ${projectId} does not exist`);
+  if (!self) throw notFound(`project ${projectId} does not exist`);
   const graph = await loadGraph(memberships.map((m) => m.ecosystemId));
   const edges = liveEdges(graph);
   const providers = new Set<string>([
@@ -295,7 +294,7 @@ export async function readContractDetail(
   const w = await worldOf(projectId, userId, now);
   const entry = entriesOf(w).find((e) => refKey(w, e) === refOf(ref.provider, ref.contract));
   if (!entry) {
-    throw new ContractNotFoundError(
+    throw notFound(
       `project ${w.project.slug} neither provides nor consumes ${refOf(ref.provider, ref.contract)}, and none of its issues waits on it`,
     );
   }

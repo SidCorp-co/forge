@@ -5,14 +5,13 @@
  * error leaves, so the runner's failure comment is the only thing left (codex F1 on the plan).
  */
 
-import { eq } from 'drizzle-orm';
 import {
+  deleteComment,
   discardCommentAttachments,
   persistCommentAttachment,
+  postIssueNotice,
   validateCommentAttachment,
-} from '../../comments/attachment-service.js';
-import { db } from '../../db/client.js';
-import { comments } from '../../db/schema.js';
+} from '../../comments/index.js';
 import { failureLine, type WeeklyReport } from '../bench/history/report.js';
 
 export interface PostWeeklyArgs {
@@ -26,11 +25,11 @@ export interface PostWeeklyArgs {
 export async function postWeeklyComment(args: PostWeeklyArgs): Promise<{ commentId: string }> {
   const files = args.report.files.map((f) => ({ ...f, bytes: Buffer.from(f.text, 'utf8') }));
   for (const f of files) validateCommentAttachment({ name: f.name, mime: f.mime, bytes: f.bytes });
-  const [inserted] = await db
-    .insert(comments)
-    .values({ issueId: args.issueId, authorId: args.authorId, body: args.report.body })
-    .returning({ id: comments.id });
-  if (!inserted) throw new Error('the report comment was not inserted');
+  const inserted = await postIssueNotice({
+    issueId: args.issueId,
+    authorId: args.authorId,
+    body: args.report.body,
+  });
   const written: string[] = [];
   try {
     for (const f of files) {
@@ -46,7 +45,7 @@ export async function postWeeklyComment(args: PostWeeklyArgs): Promise<{ comment
     }
   } catch (err) {
     await discardCommentAttachments(written);
-    await db.delete(comments).where(eq(comments.id, inserted.id));
+    await deleteComment(inserted.id);
     throw err;
   }
   return { commentId: inserted.id };
@@ -59,7 +58,7 @@ export async function postWeeklyFailure(args: {
   windowId: string;
   error: { name: string; message: string };
 }): Promise<void> {
-  await db.insert(comments).values({
+  await postIssueNotice({
     issueId: args.issueId,
     authorId: args.authorId,
     body: failureLine(args.windowId, args.error),

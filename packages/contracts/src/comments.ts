@@ -28,6 +28,8 @@ export const COMMENT_EVENT_KINDS = ["posted", "edited"] as const;
 export type CommentEventKind = (typeof COMMENT_EVENT_KINDS)[number];
 
 export const COMMENT_REFUSAL_CODES = [
+	"COMMENT_REFUSED",
+	"COMMENT_INTENT_UNKNOWN",
 	"COMMENT_SCOPE_INVALID",
 	"COMMENT_DECISION_REQUIRED",
 	"COMMENT_DECISION_INTENT_MISMATCH",

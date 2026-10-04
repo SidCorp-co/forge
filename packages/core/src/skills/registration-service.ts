@@ -9,6 +9,7 @@ import { db } from '../db/client.js';
 import { type IssueStatus, skillRegistrations, skills } from '../db/schema.js';
 import { hooks } from '../pipeline/hooks.js';
 import { recordSkillActivityEvent } from './activity.js';
+import { refuse } from './refuse.js';
 
 export interface RegisterSkillInput {
   projectId: string;
@@ -21,21 +22,6 @@ export interface RegisterSkillResult {
   projectId: string;
   skillId: string;
   stage: IssueStatus | null;
-}
-
-/**
- * Thrown when a stage registration targets a skill that is not a project skill
- * owned by this project. Only project skills are usable — adopt the global
- * template first (`applyGlobalSkillDefault`).
- */
-export class SkillNotProjectScopedError extends Error {
-  readonly code = 'SKILL_NOT_PROJECT_SCOPED';
-  constructor(skillId: string) {
-    super(
-      `SKILL_NOT_PROJECT_SCOPED: skill '${skillId}' is not a project skill for this project; adopt the global template into the project before registering it`,
-    );
-    this.name = 'SkillNotProjectScopedError';
-  }
 }
 
 export async function registerSkillForProject(
@@ -79,7 +65,10 @@ export async function registerSkillForProject(
     .where(eq(skills.id, skillId))
     .limit(1);
   if (target?.scope !== 'project' || target.projectId !== projectId) {
-    throw new SkillNotProjectScopedError(skillId);
+    throw refuse(
+      'SKILL_NOT_PROJECT_SCOPED',
+      `skill '${skillId}' is not a project skill for this project; adopt the global template into the project before registering it`,
+    );
   }
 
   await db.transaction(async (tx) => {

@@ -43,6 +43,3 @@ export const notFound = (message = 'project not found') =>
 
 export const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
-export const conflict = (code: string, message: string, details?: unknown) =>
-  new HTTPException(409, { message, cause: details === undefined ? { code } : { code, details } });

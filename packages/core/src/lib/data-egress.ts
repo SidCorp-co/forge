@@ -5,9 +5,9 @@ import {
   type SensitiveDataLevel,
 } from '@forge/contracts/data-policy';
 import { redactionCount, scrubPersonalData } from '@forge/observability';
-import { HTTPException } from 'hono/http-exception';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { readProjectDocument } from '../project-config/service.js';
+import { RefusalError } from './refusal.js';
 
 // cm:why the one egress rule (decision on ISS-59, 2026-10-04): every read that hands content to an
 // agent or a provider passes `egressDeep(project, surface)`, and each surface declares its class
@@ -262,10 +262,7 @@ export async function egressForRequest<T>(
     throw new Error(`data-egress: a ${surface} read reached its handler without an auth gate`);
   const out = await egressAs({ agency }, projectId, surface, value, what);
   if (out.ok) return out.value;
-  throw new HTTPException(422, {
-    message: `${out.refusal.code}: ${out.refusal.detail}`,
-    cause: { code: out.refusal.code },
-  });
+  throw new RefusalError([out.refusal], out.refusal.code);
 }
 
 type ProductSurface = {

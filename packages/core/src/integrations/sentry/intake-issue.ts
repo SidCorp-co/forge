@@ -1,8 +1,10 @@
 import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { readThresholds } from '../../admin/thresholds.js';
 import { db } from '../../db/client.js';
-import { comments, issues, projects } from '../../db/schema.js';
+import { postIssueNotice } from '../../comments/index.js';
+import { issues, projects } from '../../db/schema.js';
 import { TransitionError, transitionIssueStatus } from '../../issues/apply-transition.js';
+import { fileDetectedIssue, rewriteIssueMetadata } from '../../issues/index.js';
 import { logger } from '../../logger.js';
 import { judgeSentryIssue, type SentryAdmissionThresholds } from './admission.js';
 import type { SentryIssueDetail } from './types.js';
@@ -268,24 +270,28 @@ async function observe(
     const grew = issue.count !== null && previousCount !== null && issue.count > previousCount;
 
     if (grew) {
-      await tx.insert(comments).values({
-        issueId: existing.id,
-        authorId,
-        body: [
-          `Sentry has seen \`${shortId}\` again.`,
-          '',
-          `- Events: ${issue.count} (was ${previousCount})`,
-          `- Users affected: ${issue.userCount ?? 'not reported'}`,
-          `- Last seen: ${issue.lastSeen ?? 'not reported'}`,
-          ...(issue.permalink ? ['', issue.permalink] : []),
-        ].join('\n'),
-      });
+      await postIssueNotice(
+        {
+          issueId: existing.id,
+          authorId,
+          body: [
+            `Sentry has seen \`${shortId}\` again.`,
+            '',
+            `- Events: ${issue.count} (was ${previousCount})`,
+            `- Users affected: ${issue.userCount ?? 'not reported'}`,
+            `- Last seen: ${issue.lastSeen ?? 'not reported'}`,
+            ...(issue.permalink ? ['', issue.permalink] : []),
+          ].join('\n'),
+        },
+        tx,
+      );
     }
 
-    await tx
-      .update(issues)
-      .set({ metadata: sentryMetadataMerge(sighting(issue, shortId, previous)) })
-      .where(eq(issues.id, existing.id));
+    await rewriteIssueMetadata(
+      existing.id,
+      sentryMetadataMerge(sighting(issue, shortId, previous)),
+      tx,
+    );
 
     return { what: grew ? 'commented' : 'refreshed', previous };
   });
@@ -296,13 +302,19 @@ async function file(
   row: SentryIssueRow,
   baseline: SentrySightingRecord,
 ): Promise<'filed' | 'raced'> {
-  const inserted = await db.execute<{ id: string }>(sql`
-    INSERT INTO issues (project_id, title, description, created_by_id, source, external_id, detector_key, status, created_via, metadata, schedule_run_id)
-    VALUES (${ctx.projectId}, ${row.title}, ${row.description}, ${ctx.createdById}, ${row.source}, ${row.externalId}, ${row.detectorKey}, ${row.status}, 'system', ${JSON.stringify({ sentry: baseline })}::jsonb, ${ctx.scheduleRunId})
-    ON CONFLICT (project_id, source, external_id) WHERE external_id IS NOT NULL DO NOTHING
-    RETURNING id
-  `);
-  return (inserted[0] as { id?: string } | undefined)?.id ? 'filed' : 'raced';
+  const filed = await fileDetectedIssue({
+    projectId: ctx.projectId,
+    title: row.title,
+    description: row.description,
+    createdById: ctx.createdById,
+    source: row.source,
+    externalId: row.externalId,
+    detectorKey: row.detectorKey,
+    status: row.status,
+    metadata: { sentry: baseline },
+    scheduleRunId: ctx.scheduleRunId,
+  });
+  return filed ? 'filed' : 'raced';
 }
 
 /**
@@ -368,10 +380,7 @@ async function reopenOnRegression(
     };
   }
 
-  await db
-    .update(issues)
-    .set({ metadata: sentryWatermarkStamp(issue.lastSeen as string) })
-    .where(eq(issues.id, existing.id));
+  await rewriteIssueMetadata(existing.id, sentryWatermarkStamp(issue.lastSeen as string));
 
   logger.info(
     { projectId: ctx.projectId, issueId: existing.id, shortId },

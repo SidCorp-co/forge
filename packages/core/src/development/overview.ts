@@ -8,8 +8,6 @@ import type {
   OverviewModuleRow,
   OverviewModules,
   OverviewMoving,
-  OverviewNeed,
-  OverviewNeeds,
   OverviewStuck,
 } from '@forge/contracts/development-overview';
 import {
@@ -279,21 +277,11 @@ export function modulesOf(
   };
 }
 
-export interface ReleaseAskFact {
-  runId: string;
-  version: string | null;
-  requestedAt: string;
-  requestedBy: string;
-  environment: string;
-  decidable: boolean;
-}
-
 export interface ProposedVersionFact {
   contract: string;
   version: string;
   classification: string;
   recordedAt: string;
-  decidable: boolean;
 }
 
 export interface ContractChangeFact {
@@ -303,102 +291,6 @@ export interface ContractChangeFact {
   title: string;
   dueAt: string;
   status: string;
-  actable: boolean;
 }
 
 export const OPEN_CONTRACT_CHANGE: readonly string[] = ['new', 'triaged', 'reopened'];
-
-const youOwe = (act: string, rule: string): OverviewNeed['waitingOn'] => ({
-  kind: 'you',
-  who: 'You',
-  act,
-  rule,
-  ref: null,
-});
-
-export function needsOf(
-  rows: readonly IssueStandingRow[],
-  releases: readonly ReleaseAskFact[],
-  proposed: readonly ProposedVersionFact[],
-  changes: readonly ContractChangeFact[],
-): OverviewNeeds {
-  const issues = rows
-    .filter((r) => r.standing.attentionGroup === 'needs_you' && r.standing.waitingOn.kind === 'you')
-    .map((r): OverviewNeed => {
-      const s = r.standing;
-      return {
-        kind: 'issue',
-        key: r.key,
-        ref: r.key,
-        title: r.title,
-        facts: [
-          ...(s.module ? [s.module.path] : []),
-          ...(s.requirement
-            ? [
-                `${s.requirement.key}${s.requirement.criteria.length ? ` ${s.requirement.criteria.join(', ')}` : ''}`,
-              ]
-            : []),
-        ],
-        state: { family: 'issue', value: r.status, step: s.step, tone: s.tone },
-        waitingOn: s.waitingOn,
-        owner: s.owner ? { name: s.owner.name, kind: s.owner.kind } : null,
-        touchedAt: s.touchedAt,
-      };
-    });
-  const asks = releases
-    .filter((a) => a.decidable)
-    .map(
-      (a): OverviewNeed => ({
-        kind: 'release',
-        key: a.version ?? `Batch ${a.runId.slice(0, 8)}`,
-        ref: a.runId,
-        title: a.version ? `Release ${a.version}` : 'Release batch',
-        facts: [`Evidence from ${a.environment}`, `Asked by ${a.requestedBy}`],
-        state: { family: 'release', value: 'pending' },
-        waitingOn: youOwe(
-          'approve the release',
-          'a person other than the one who asked approves a release before production',
-        ),
-        owner: null,
-        touchedAt: a.requestedAt,
-      }),
-    );
-  const versions = proposed
-    .filter((v) => v.decidable)
-    .map(
-      (v): OverviewNeed => ({
-        kind: 'contract',
-        key: `${v.contract} ${v.version}`,
-        ref: `${v.contract}@${v.version}`,
-        title: `${v.contract} ${v.version} is proposed`,
-        facts: [`Measured ${v.classification}`],
-        state: { family: 'classification', value: v.classification },
-        waitingOn: youOwe(
-          `approve ${v.version}`,
-          'a proposed contract version is current only once a person with admin approves it',
-        ),
-        owner: null,
-        touchedAt: v.recordedAt,
-      }),
-    );
-  const due = changes
-    .filter((c) => c.actable && OPEN_CONTRACT_CHANGE.includes(c.status))
-    .map(
-      (c): OverviewNeed => ({
-        kind: 'contract',
-        key: `${c.contract} ${c.version}`,
-        ref: `${c.contract}@${c.version}`,
-        title: c.title,
-        facts: [c.feedback, `Adapt by ${c.dueAt.slice(0, 10)}`],
-        state: { family: 'classification', value: 'breaking' },
-        waitingOn: youOwe(
-          `adapt by ${c.dueAt.slice(0, 10)}`,
-          "an approved breaking version filed this item; the provider's commitment window ends on its due date",
-        ),
-        owner: null,
-        touchedAt: null,
-      }),
-    );
-  const out = [...issues, ...asks, ...versions, ...due];
-  return { count: out.length, rows: out };
-}

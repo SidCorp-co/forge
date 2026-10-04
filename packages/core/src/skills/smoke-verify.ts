@@ -1,3 +1,4 @@
+import { UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -7,11 +8,11 @@ import {
   skillRegistrations,
   skills,
 } from '../db/schema.js';
-import { UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import { loadProjectSkillSyncStatus, type ProjectSkillSyncStatus } from './effective.js';
+import { refuse } from './refuse.js';
 
 // ── report shapes ───────────────────────────────────────────────────────────
 
@@ -264,14 +265,6 @@ export async function buildSmokeVerifyReport(projectId: string): Promise<SkillSm
 
 // ── tier-2: canary dispatch ─────────────────────────────────────────────────
 
-export class NoRunnerOnlineError extends Error {
-  readonly code = 'NO_RUNNER_ONLINE';
-  constructor() {
-    super('no runner is online for this project — canaries would queue forever');
-    this.name = 'NoRunnerOnlineError';
-  }
-}
-
 /**
  * The synthetic canary prompt. Deliberately NOT a `/<skill>` invocation — the
  * goal is to prove the skill is present + readable and that the
@@ -356,7 +349,12 @@ export async function dispatchSmokeCanaries(args: {
 
   // Fail fast with an honest reason instead of parking jobs in `queued`.
   const capable = await onlineCapableDeviceIds(projectId, {});
-  if (capable.length === 0) throw new NoRunnerOnlineError();
+  if (capable.length === 0) {
+    throw refuse(
+      'NO_RUNNER_ONLINE',
+      'no runner is online for this project — canaries would queue forever',
+    );
+  }
 
   const tier1 = await loadSmokeVerifyTier1(projectId);
 

@@ -3,11 +3,11 @@ import {
   broadcastSession,
   broadcastTurnAppended,
   broadcastTurnTruncated,
-} from '../agent-sessions/broadcast.js';
-import { syncTurnsWithMessages } from '../agent-sessions/turns-helpers.js';
+} from './broadcast.js';
+import { syncTurnsWithMessages } from './turns-helpers.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
-import { finalizedMerge } from '../db/transcript-marker.js';
+import { attemptedMerge, finalizedMerge } from '../db/transcript-marker.js';
 import {
   type AgentMessage,
   createDeriveState,
@@ -301,6 +301,14 @@ async function markFinalized(agentSessionId: string, at: Date): Promise<void> {
   } catch (err) {
     logger.warn({ err, agentSessionId }, 'session-transcript: could not record the finalisation');
   }
+}
+
+/** Stamp a finalise attempt before the derive runs, so a failure rotates to the back. */
+export async function stampFinalizeAttempt(agentSessionId: string, at: Date): Promise<void> {
+  await db
+    .update(agentSessions)
+    .set({ metadata: attemptedMerge(at) })
+    .where(eq(agentSessions.id, agentSessionId));
 }
 
 /**

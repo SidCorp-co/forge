@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { handleForProject } from '../conversations/participants.js';
+import { refuseConversation } from '../conversations/refusals.js';
 import { assertConversationReadable, assertConversationWritable } from '../conversations/scope.js';
 import {
   appendMessages,
@@ -20,7 +21,8 @@ import { conversations } from '../db/schema-conversations.js';
 import type { ChatContentPart, ChatMessage } from '../integrations/llm/types.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { effectiveProjectRole } from '../lib/authz.js';
-import { holds } from '../permissions/index.js';
+import { forbidden } from '../middleware/route-errors.js';
+import { requireHeld } from '../permissions/index.js';
 
 export type { ConversationImage };
 export { toCanonicalEntry };
@@ -79,15 +81,6 @@ export interface OpenTurnOptions {
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-const badRequest = (message: string, code: string) =>
-  new HTTPException(400, { message, cause: { code } });
-
-const conflict = (message: string, code: string) =>
-  new HTTPException(409, { message, cause: { code } });
-
-const forbidden = (message: string, code: string) =>
-  new HTTPException(403, { message, cause: { code } });
-
 /**
  * The conversation this turn belongs to, with its window read back.
  */
@@ -110,15 +103,15 @@ export async function openTurn(opts: OpenTurnOptions): Promise<ConversationTurn>
         ? await assertConversationReadable(row.id, opts.readerUserId ?? null)
         : await assertConversationWritable(row.id, opts.readerUserId ?? null);
     if (!scope.includes(opts.projectId)) {
-      throw conflict(
-        `conversation ${row.id} is about ${scope.join(', ')} and this turn arrives under project ${opts.projectId}; a turn runs in a room its own project is in`,
+      throw refuseConversation(
         'CONVERSATION_PROJECT_CONFLICT',
+        `conversation ${row.id} is about ${scope.join(', ')} and this turn arrives under project ${opts.projectId}; a turn runs in a room its own project is in`,
       );
     }
     if (row.adapter !== opts.adapter) {
-      throw conflict(
-        `conversation ${row.id} (${row.adapter} ${row.externalId}) is a ${row.adapter} room and this turn arrives as ${opts.adapter}; a venue's adapter is settled when it is first seen`,
+      throw refuseConversation(
         'CONVERSATION_ADAPTER_CONFLICT',
+        `conversation ${row.id} (${row.adapter} ${row.externalId}) is a ${row.adapter} room and this turn arrives as ${opts.adapter}; a venue's adapter is settled when it is first seen`,
       );
     }
     return {
@@ -131,25 +124,24 @@ export async function openTurn(opts: OpenTurnOptions): Promise<ConversationTurn>
   }
 
   if (!opts.externalId) {
-    throw badRequest(
-      'a turn needs the conversation it continues or the venue it happens in; with neither there is no room to speak in',
+    throw refuseConversation(
       'CONVERSATION_UNADDRESSED',
+      'a turn needs the conversation it continues or the venue it happens in; with neither there is no room to speak in',
     );
   }
 
   if (!opts.readerUserId) {
     throw forbidden(
       `a turn in ${opts.adapter} venue ${opts.externalId} was opened with no authority named; a turn writes to the room it runs in, and nothing here is anonymous`,
-      'CONVERSATION_NO_AUTHORITY',
     );
   }
   const access = await effectiveProjectRole(opts.readerUserId, opts.projectId);
-  if (!(access ? holds(access, 'project.write') : false)) {
+  if (!access?.role) {
     throw forbidden(
-      `a turn in ${opts.adapter} venue ${opts.externalId} arrives under project ${opts.projectId} and you hold no member role on it; a turn writes to the room it runs in, so it takes the role that writing takes`,
-      'CONVERSATION_OUT_OF_SCOPE',
+      `a turn in ${opts.adapter} venue ${opts.externalId} arrives under project ${opts.projectId} and you hold no role on it; a turn writes to the room it runs in, so it takes the role that writing takes`,
     );
   }
+  requireHeld(access, 'project.write', `a turn in ${opts.adapter} venue ${opts.externalId}`);
 
   const conversation = await openConversation(
     {

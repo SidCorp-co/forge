@@ -2,21 +2,21 @@
 
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
+import { namedRefusals } from "@/lib/api/refusals";
 import { useToast } from "@/providers/toast-provider";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { resourcesApi } from "./api";
-import type { SshKeyCreateInput, SshKeyUsedByProject } from "./types";
+import type { SshKeyCreateInput } from "./types";
 
-/** 409 payload shape for a safe-delete rejection (`ApiError.details`). */
+/** A safe-delete refused: one KEY_IN_USE refusal per project still holding the key. */
 export interface KeyInUseDetails {
-	referencedBy: SshKeyUsedByProject[];
+	referencedBy: string[];
 }
 
-/** Read the structured `referencedBy` list off a KEY_IN_USE 409, if present. */
+/** The projects a KEY_IN_USE refusal names, one sentence each, if it is one. */
 export function keyInUseDetails(err: unknown): KeyInUseDetails | null {
-	if (!(err instanceof ApiError) || err.code !== "KEY_IN_USE") return null;
-	const details = err.details as Partial<KeyInUseDetails> | undefined;
-	return Array.isArray(details?.referencedBy) ? { referencedBy: details.referencedBy } : null;
+	const rows = namedRefusals(err).filter((r) => r.code === "KEY_IN_USE");
+	return rows.length > 0 ? { referencedBy: rows.map((r) => r.detail) } : null;
 }
 
 /** The org's Private Keys pool. Keyed `['orgs', orgId, 'ssh-keys']`. */
@@ -48,7 +48,7 @@ export function useCreateSshKey(orgId: string) {
 }
 
 /**
- * Safe-delete a pool key. On a 409 KEY_IN_USE the caller (the confirm dialog)
+ * Safe-delete a pool key. On a KEY_IN_USE refusal the caller (the confirm dialog)
  * reads `keyInUseDetails(error)` to surface the referencing-project list
  * inline — the toast alone is not enough per the UX contract.
  */

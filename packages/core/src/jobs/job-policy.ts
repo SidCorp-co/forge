@@ -19,7 +19,7 @@ type PolicyJob = Pick<typeof jobs.$inferSelect, 'projectId' | 'issueId' | 'paylo
 /**
  * The policy state a job runs under, from the project's policy-v1 alone.
  *
- * Throws `PolicyRefusedError` when the project has no policy, or its policy leaves out the state
+ * Throws a policy refusal (`policyRefusal`) when the project has no policy, or its policy leaves out the state
  * the job is for; the caller refuses the claim by that name.
  */
 export async function resolveJobPolicy(job: PolicyJob): Promise<DispatchState> {

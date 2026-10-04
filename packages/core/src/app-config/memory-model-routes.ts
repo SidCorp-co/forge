@@ -2,6 +2,7 @@
 // estimate, flip, status, cancel. A project admin's action, never a side
 // effect of PUT /api/app-config — an hours-long paid job is not a boolean.
 
+import type { AppConfigRefusalCode } from '@forge/contracts/app-config';
 import { eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -9,6 +10,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { appConfig, memoryModels } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { refuser } from '../lib/refusal.js';
 import {
   countPending,
   enqueueChunkPurge,
@@ -21,6 +23,8 @@ import {
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
+
+const refuse = refuser<AppConfigRefusalCode>('APP_CONFIG_REFUSED');
 
 const paramSchema = z.object({ projectId: z.uuid() });
 const flipSchema = z.object({ model: z.enum(memoryModels) }).strict();
@@ -69,10 +73,10 @@ memoryModelRoutes.post(
     const current = await readReindex(projectId);
     if (model === 'chunked') {
       if (isLive(current)) {
-        throw new HTTPException(409, {
-          message: 'a reindex is already queued or running',
-          cause: { code: 'REINDEX_LIVE' },
-        });
+        throw refuse(
+          'REINDEX_LIVE',
+          'a reindex is already queued or running; wait for it or cancel it',
+        );
       }
       const counts = await countPending(projectId);
       const reindex = {
@@ -114,10 +118,7 @@ memoryModelRoutes.delete('/:projectId/memory-model/reindex', validParam, async (
   requireHeld(access, 'project.admin');
   const current = await readReindex(projectId);
   if (!isLive(current)) {
-    throw new HTTPException(409, {
-      message: 'no reindex is queued or running',
-      cause: { code: 'REINDEX_NOT_LIVE' },
-    });
+    throw refuse('REINDEX_NOT_LIVE', 'no reindex is queued or running, so there is none to cancel');
   }
   await writeReindex(projectId, { state: 'cancelled', finishedAt: new Date().toISOString() });
   return c.json({ model: 'chunked', reindex: await readReindex(projectId) });

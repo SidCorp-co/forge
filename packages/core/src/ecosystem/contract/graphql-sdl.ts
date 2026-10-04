@@ -1,5 +1,8 @@
 /** A strict reader for the GraphQL type-system subset a contract publishes; no `graphql` package is a dependency of this workspace. */
 
+import type { RefusalError } from '../../lib/refusal.js';
+import { refuseEcosystem } from '../refusals.js';
+
 export type RootRole = 'query' | 'mutation' | 'subscription';
 
 export const ROOT_NAME: Record<RootRole, string> = {
@@ -39,7 +42,8 @@ export interface SdlSchema {
   types: Map<string, SdlType>;
 }
 
-export class SdlUnreadable extends Error {}
+const sdlUnreadable = (why: string) =>
+  refuseEcosystem('ARTIFACT_UNREADABLE', `a graphql artifact is SDL text, and ${why}`, '/artifact');
 
 type Token = { kind: 'punct' | 'name' | 'string' | 'number' | 'eof'; value: string; at: number };
 
@@ -90,11 +94,11 @@ function lex(text: string): Token[] {
   return out;
 }
 
-function unreadable(text: string, at: number, why: string): SdlUnreadable {
+function unreadable(text: string, at: number, why: string): RefusalError {
   const before = text.slice(0, at);
   const line = before.split(/\r\n|\r|\n/).length;
   const col = at - Math.max(before.lastIndexOf('\n'), before.lastIndexOf('\r'));
-  return new SdlUnreadable(`the SDL does not parse at ${line}:${col}: ${why}`);
+  return sdlUnreadable(`the SDL does not parse at ${line}:${col}: ${why}`);
 }
 
 const DEFINITIONS = new Set([
@@ -405,32 +409,30 @@ export function parseSdl(text: string): SdlSchema {
   }
   for (const [role, name] of Object.entries(roots)) {
     if (types.get(name)?.kind !== 'object') {
-      throw new SdlUnreadable(
+      throw sdlUnreadable(
         `the SDL names ${name} as its ${role} root, and defines no object type ${name}`,
       );
     }
   }
   if (!roots.query)
-    throw new SdlUnreadable('the SDL defines no query root (a type Query, or schema { query: … })');
+    throw sdlUnreadable('the SDL defines no query root (a type Query, or schema { query: … })');
   const known = (n: string) => BUILT_IN.has(n) || types.has(n);
   for (const t of types.values()) {
     for (const i of t.interfaces) {
       if (types.get(i)?.kind !== 'interface') {
-        throw new SdlUnreadable(`${t.name} implements ${i}, which is no interface the SDL defines`);
+        throw sdlUnreadable(`${t.name} implements ${i}, which is no interface the SDL defines`);
       }
     }
     for (const m of t.members) {
       if (types.get(m)?.kind !== 'object') {
-        throw new SdlUnreadable(
-          `union ${t.name} names ${m}, which is no object type the SDL defines`,
-        );
+        throw sdlUnreadable(`union ${t.name} names ${m}, which is no object type the SDL defines`);
       }
     }
     if (t.kind === 'enum') continue;
     for (const f of t.fields.values()) {
       for (const ref of [f.type, ...[...f.args.values()].map((a) => a.type)]) {
         if (!known(namedType(ref))) {
-          throw new SdlUnreadable(
+          throw sdlUnreadable(
             `${t.name}.${f.name} names type ${namedType(ref)}, which the SDL never defines`,
           );
         }

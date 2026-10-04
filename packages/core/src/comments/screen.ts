@@ -1,5 +1,6 @@
-import { HTTPException } from 'hono/http-exception';
+import type { MessageRefusalCode } from '@forge/contracts/messaging';
 import type { Tx } from '../db/client.js';
+import { RefusalError } from '../lib/refusal.js';
 import { ROLE_HOLDER } from '../messaging/audiences.js';
 import { MessageRefusedError } from '../messaging/contract.js';
 import { parseForgeRecord, readForgeRecord } from '../messaging/forge-record.js';
@@ -46,15 +47,17 @@ export async function screenAgentComment(projectId: string, body: string, tx: Tx
   if (refusals.length > 0) throw new MessageRefusedError('comment-write', refusals);
 }
 
-/**
- * The 400 a refused message becomes, or `null` when this error is not one. The door and the
- * refusals must ride under `details`, the only key of a cause `middleware/error.ts` puts on the
- * wire — a refusal placed elsewhere reaches the caller as prose with no structure behind it.
- */
-export function messageRefusalHttp(err: unknown): HTTPException | null {
+/** The refusal a screened message answers with, one row per broken rule; null for anything else. */
+export function messageRefusalHttp(err: unknown): RefusalError | null {
   if (!(err instanceof MessageRefusedError)) return null;
-  return new HTTPException(400, {
-    message: err.message,
-    cause: { code: err.code, details: { door: err.door, refusals: err.refusals } },
-  });
+  const code: MessageRefusalCode = err.code;
+  const rows = err.refusals.map((r) => ({
+    code,
+    path: '/body',
+    detail: `${r.why} (rule ${r.rule}; shape: ${r.shape}; for example: ${r.example}; door ${err.door})`,
+  }));
+  return new RefusalError(
+    rows.length > 0 ? rows : [{ code, path: '/body', detail: `refused at door ${err.door}` }],
+    code,
+  );
 }

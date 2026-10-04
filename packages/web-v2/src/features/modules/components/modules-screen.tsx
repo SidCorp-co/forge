@@ -103,7 +103,7 @@ const rowOf =
       title: r.name,
       facts: factsLine(r),
       state: <OpenBar standing={r.standing} max={max} />,
-      waitingOn: <WaitingOn w={moduleWaitingView(r.standing.waitingOn)} />,
+      waitingOn: <WaitingOn w={moduleWaitingView(r.standing)} />,
       owner: land ? <span className="font-mono text-11-5">{land.issueKey}</span> : <span className="text-subtle">None yet</span>,
       age: land ? { text: formatAge(land.landedAt), title: `Landed ${formatStamp(land.landedAt)}` } : null,
       dim: r.standing.attentionGroup === "quiet",

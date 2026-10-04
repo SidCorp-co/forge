@@ -33,6 +33,7 @@ import {
   skills,
   updatePackets,
 } from '../db/schema.js';
+import { insertJobRow } from '../jobs/index.js';
 import { selectKnowledgeBodies } from '../knowledge/service.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { transition } from '../lifecycle/transition.js';
@@ -47,6 +48,7 @@ import { recordSkillActivityEvent } from './activity.js';
 import { globalEffectiveMd } from './effective.js';
 import { hashSkillBody } from './hash.js';
 import { ensurePolicyLandedFor } from './policy-landed.js';
+import { refuse } from './refuse.js';
 
 async function logActivity(
   executor: SkillActivityExecutor,
@@ -592,7 +594,7 @@ async function spawnVerifierJobs(runId: string, projectId: string): Promise<void
 
     const jobId = randomUUID();
     try {
-      await db.insert(jobs).values({
+      await insertJobRow(db, {
         id: jobId,
         projectId,
         issueId: null,
@@ -745,23 +747,19 @@ export async function spawnReconcileRun(input: {
         .returning({ id: reconcileRuns.id });
       if (!run) throw new Error('reconcile_runs insert returned no row');
 
-      const [job] = await tx
-        .insert(jobs)
-        .values({
-          projectId: input.projectId,
-          issueId: null,
-          pipelineRunId: pipelineRun.id,
-          createdBy: input.actorUserId,
-          type: 'reconcile',
-          payload: {
-            reconcileRunId: run.id,
-            skillName: 'forge-reconcile',
-            promptString: buildReconcilePrompt(run.id, reconcileInstructions),
-          },
-          status: 'queued',
-        })
-        .returning({ id: jobs.id });
-      if (!job) throw new Error('reconcile job insert returned no row');
+      const job = await insertJobRow(tx, {
+        projectId: input.projectId,
+        issueId: null,
+        pipelineRunId: pipelineRun.id,
+        createdBy: input.actorUserId,
+        type: 'reconcile',
+        payload: {
+          reconcileRunId: run.id,
+          skillName: 'forge-reconcile',
+          promptString: buildReconcilePrompt(run.id, reconcileInstructions),
+        },
+        status: 'queued',
+      });
 
       await logActivity(tx, {
         eventType: 'reconcile.started',
@@ -998,8 +996,10 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
       )
       .limit(1);
     if (!verifierJob) {
-      throw new Error(
-        `BAD_REQUEST: jobId ${input.jobId} is not a dispatched verify_skill job for run ${input.runId}`,
+      throw refuse(
+        'RECONCILE_VOTE_JOB_UNKNOWN',
+        `jobId ${input.jobId} is not a dispatched verify_skill job for run ${input.runId}`,
+        '/jobId',
       );
     }
 
@@ -1166,10 +1166,13 @@ export async function applyReconcileRun(runId: string, actorUserId: string): Pro
 
     if (!runRow) throw new Error(`NOT_FOUND: reconcile run ${runId}`);
     if (runRow.status !== 'decided') {
-      throw new Error(`BAD_REQUEST: run is in status '${runRow.status}', expected 'decided'`);
+      throw refuse(
+        'RECONCILE_RUN_NOT_DECIDED',
+        `run is in status '${runRow.status}'; a run is applied once it is 'decided'`,
+      );
     }
     if (!runRow.skillId) {
-      throw new Error('BAD_REQUEST: run has no skillId — cannot publish');
+      throw refuse('RECONCILE_RUN_NO_SKILL', 'run has no skillId, so there is no skill to publish');
     }
 
     const candidateBody = runRow.candidateBody ?? '';
@@ -1245,8 +1248,9 @@ export async function rejectReconcileRun(
 
     if (!runRow) throw new Error(`NOT_FOUND: reconcile run ${runId}`);
     if (RECONCILE_RUN_MACHINE.terminal.includes(runRow.status)) {
-      throw new Error(
-        `BAD_REQUEST: run is in terminal status '${runRow.status}', nothing to reject`,
+      throw refuse(
+        'RECONCILE_RUN_TERMINAL',
+        `run is in terminal status '${runRow.status}', nothing to reject`,
       );
     }
 
@@ -1296,8 +1300,9 @@ export async function acknowledgeReconcileRun(
 
     if (!runRow) throw new Error(`NOT_FOUND: reconcile run ${runId}`);
     if (runRow.status !== 'escalated' || runRow.verdict !== 'escalate') {
-      throw new Error(
-        `BAD_REQUEST: run is in status '${runRow.status}' verdict '${runRow.verdict}', expected 'escalated'/'escalate'`,
+      throw refuse(
+        'RECONCILE_RUN_NOT_ESCALATED',
+        `run is in status '${runRow.status}' verdict '${runRow.verdict}'; only an 'escalated' run with verdict 'escalate' is acknowledged`,
       );
     }
     if (runRow.acknowledgedAt) return;

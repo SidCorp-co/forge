@@ -4,7 +4,6 @@ import { getIntegration } from '../integrations/registry.js';
 import { effectiveConfig } from '../integrations/store.js';
 import { getKnowledgeEntry } from '../knowledge/service.js';
 import type { NamedEnvironment } from '../project-config/release-path.js';
-import { ReleaseProbesUnreadableError } from './errors.js';
 import { type ReleaseDeclaration, resolveReleaseDeclaration } from './gate.js';
 import {
   type CloseVerification,
@@ -14,6 +13,7 @@ import {
   type ReleaseRollback,
 } from './plan.js';
 import type { VerifyConfig } from './verify.js';
+import { blockerRefusal } from './refuse.js';
 
 export type {
   CloseVerification,
@@ -111,7 +111,7 @@ export function refusedVerifyBindings(channels: readonly ReleaseChannel[]): stri
  */
 export function closeVerification(channels: readonly ReleaseChannel[]): CloseVerification {
   const refused = refusedVerifyBindings(channels);
-  if (refused.length > 0) throw new ReleaseProbesUnreadableError(refused);
+  if (refused.length > 0) throw blockerRefusal('RELEASE_PROBES_UNREADABLE', { bindings: refused });
   const cfg = channels.find((c) => c.verify !== null)?.verify ?? null;
   return cfg ? { kind: 'probed', cfg } : { kind: 'unverified' };
 }

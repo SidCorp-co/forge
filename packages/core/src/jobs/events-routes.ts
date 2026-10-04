@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, isNull, notInArray, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -11,20 +11,25 @@ import {
   jobs,
   type SessionRuntimeState,
   sessionRuntimeStates,
-  terminalAgentSessionStatuses,
 } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { readJobGate } from './job-queries.js';
+import { refuseJob } from './refusals.js';
 import { scrubJobOutput } from './job-secret-scrub.js';
-import { maybeDeriveIncremental } from './session-transcript.js';
+import {
+  beatSession,
+  maybeDeriveIncremental,
+  setSessionRuntimeState,
+} from '../agent-sessions/index.js';
 import { TERMINAL_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { requireHeld } from '../permissions/index.js';
 
@@ -33,12 +38,6 @@ const badRequest = (details: unknown) =>
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
-const conflict = (message: string, code: string) =>
-  new HTTPException(409, { message, cause: { code } });
 
 const jobIdParamSchema = z.object({ id: z.uuid() });
 
@@ -168,7 +167,7 @@ jobEventsRoutes.post(
     if (
       TERMINAL_STATUSES.has(job.status as typeof TERMINAL_STATUSES extends Set<infer T> ? T : never)
     ) {
-      throw conflict('job is in a terminal state', 'JOB_TERMINATED');
+      throw refuseJob('JOB_TERMINATED', 'job is in a terminal state');
     }
 
     const persisted = await scrubJobOutput(
@@ -236,17 +235,12 @@ jobEventsRoutes.post(
         const heartbeatNow = new Date();
         const sawTurn = events.some(isTurnEvidence);
         const started = await db.transaction(async (tx) => {
-          const beat = await tx
-            .update(agentSessions)
-            .set({ lastHeartbeatAt: heartbeatNow, updatedAt: heartbeatNow })
-            .where(
-              and(
-                eq(agentSessions.id, linkedSessionId),
-                inArray(agentSessions.status, ['queued', 'running']),
-              ),
-            )
-            .returning({ id: agentSessions.id });
-          if (!sawTurn || beat.length === 0) return null;
+          const beat = await beatSession(
+            linkedSessionId,
+            { at: heartbeatNow, liveOnly: true },
+            tx,
+          );
+          if (!sawTurn || !beat) return null;
           const [row] = (
             await transitionSessions(tx, {
               to: 'running',
@@ -284,15 +278,7 @@ jobEventsRoutes.post(
       );
       if (reported) {
         try {
-          await db
-            .update(agentSessions)
-            .set({ runtimeState: reported, updatedAt: new Date() })
-            .where(
-              and(
-                eq(agentSessions.id, job.agentSessionId),
-                notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
-              ),
-            );
+          await setSessionRuntimeState(job.agentSessionId, reported);
         } catch (err) {
           logger.warn({ err, jobId, reported }, 'events-routes: runtime-state sync failed');
         }

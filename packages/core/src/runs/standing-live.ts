@@ -6,9 +6,15 @@ import {
   iso,
   NO_WAIT,
   type RunFacts,
+  runWait,
   type StandingContext,
   TERMINAL_SESSION,
 } from './standing-types.js';
+
+const gateLabel = (gate: string) => {
+  const words = gate.replace(/_/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
 
 function personWho(ctx: StandingContext, admin: boolean) {
   const isViewer = admin ? !!ctx.viewer?.isAdmin : !!ctx.viewer?.canWrite;
@@ -17,21 +23,26 @@ function personWho(ctx: StandingContext, admin: boolean) {
 
 function person(
   ctx: StandingContext,
-  w: { admin: boolean; act: string; ref: string; since: Date | null; rule: string },
+  w: {
+    admin: boolean;
+    act: string;
+    ref: string;
+    issueKey?: string | null;
+    since: Date | null;
+    rule: string;
+  },
 ): Derived {
   return {
     state: 'waiting_person',
     since: w.since,
     rule: w.rule,
     outcome: null,
-    waitingOn: {
-      kind: 'person',
-      ...personWho(ctx, w.admin),
-      act: w.act,
-      ref: w.ref,
-      since: iso(w.since),
-      rule: w.rule,
-    },
+    waitingOn: (() => {
+      const p = personWho(ctx, w.admin);
+      return runWait(p.isViewer ? 'you' : 'person', p.who, w.act, `${w.rule} (${w.ref})`, {
+        ref: w.issueKey ?? null,
+      });
+    })(),
   };
 }
 
@@ -46,13 +57,13 @@ function gate(w: {
     since: w.since,
     rule: w.rule,
     outcome: null,
-    waitingOn: {
-      kind: 'gate',
-      gate: w.gate,
-      resumesAt: iso(w.resumesAt),
-      since: iso(w.since),
-      rule: w.rule,
-    },
+    waitingOn: runWait(
+      'gate',
+      gateLabel(w.gate),
+      w.resumesAt ? 'resumes at its deadline' : 'resumes itself',
+      `${w.gate}: ${w.rule}`,
+      { ref: w.gate, dueAt: iso(w.resumesAt) },
+    ),
   };
 }
 
@@ -63,6 +74,7 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
       admin: f.question.admin,
       act: 'answer the question',
       ref: `question ${f.question.id}${f.question.issueKey ? ` on ${f.question.issueKey}` : ''} (blocker_kind human)`,
+      issueKey: f.question.issueKey,
       since: f.question.createdAt,
       rule: 'an open question with blocker_kind human: only a person can answer it',
     });
@@ -118,6 +130,7 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
       admin: false,
       act: f.issue.status === 'needs_info' ? 'answer a question' : 'resume it',
       ref: `${key} at ${f.issue.status}`,
+      issueKey: key,
       since: f.issue.statusSince,
       rule: `the issue is parked at ${f.issue.status} while its run is live; a person moves it next${
         f.issue.statusSince ? '' : ' (no kernel transition records when it moved there)'
@@ -200,18 +213,18 @@ export function liveOf(f: RunFacts, ctx: StandingContext): Derived {
       outcome: null,
       waitingOn:
         full && ctx.slots
-          ? {
-              kind: 'machine',
-              slots: ctx.slots,
-              since: iso(since),
-              rule: `no free slot: ${ctx.slots.inUse} of ${ctx.slots.max} in use (masters/standing.slots)`,
-            }
-          : {
-              kind: 'master',
-              who: f.master?.name ?? 'Master',
-              since: iso(since),
-              rule: 'queued: the project master takes it in a pass',
-            },
+          ? runWait(
+              'machine',
+              'Machine',
+              `no free slot · ${ctx.slots.inUse} of ${ctx.slots.max} in use`,
+              `no free slot: ${ctx.slots.inUse} of ${ctx.slots.max} in use (masters/standing.slots)`,
+            )
+          : runWait(
+              'master',
+              f.master?.name ?? 'Master',
+              'dispatches it',
+              'queued: the project master takes it in a pass',
+            ),
     };
   }
   if (s && !TERMINAL_SESSION.includes(s.status)) {
@@ -229,12 +242,12 @@ export function liveOf(f: RunFacts, ctx: StandingContext): Derived {
       since: f.run.startedAt,
       rule: 'the run is open and nothing has been dispatched on it yet',
       outcome: null,
-      waitingOn: {
-        kind: 'master',
-        who: f.master?.name ?? 'Master',
-        since: iso(f.run.startedAt),
-        rule: 'queued: nothing is dispatched on the run',
-      },
+      waitingOn: runWait(
+        'master',
+        f.master?.name ?? 'Master',
+        'dispatches it',
+        'queued: nothing is dispatched on the run',
+      ),
     };
   }
   return running(

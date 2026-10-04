@@ -1,11 +1,11 @@
-import { sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { stampRunStarted } from '../issues/index.js';
 import type { IssueStatus } from '../db/schema.js';
 import { logger } from '../logger.js';
 import type { PolicyDocument } from '../project-config/schema.js';
 import { wakeMastersForProject } from '../ws/master-wake.js';
 import type { Actor } from './activity.js';
 import { AUTONOMOUS_ENTRY_STATUS, autonomousStepFor, isAutonomous } from './autonomous-mode.js';
+import { refusePipeline } from './refuse.js';
 
 export {
   AUTONOMOUS_ENTRY_STATUS,
@@ -52,21 +52,12 @@ export async function dispatchDriveManual(args: {
   projectCreatedBy: string | null;
 }): Promise<{ startedAt: string }> {
   if (!autonomousStepFor(args.status)) {
-    throw new Error(
-      `AUTONOMOUS_NOT_AT_ENTRY: the driver is handed an issue at \`${AUTONOMOUS_ENTRY_STATUS}\`, this one is at \`${args.status}\``,
+    throw refusePipeline(
+      'NOT_AT_ENTRY_STATUS',
+      `the driver is handed an issue at \`${AUTONOMOUS_ENTRY_STATUS}\`, this one is at \`${args.status}\``,
     );
   }
-  const rows = (await db.execute(sql`
-    UPDATE issues
-    SET session_context = CASE
-          WHEN session_context ? 'runRelease' THEN session_context
-          ELSE jsonb_set(COALESCE(session_context, '{}'::jsonb), ARRAY['runRelease'], to_jsonb(now()), true)
-        END,
-        updated_at = CASE WHEN session_context ? 'runRelease' THEN updated_at ELSE now() END
-    WHERE id = ${args.issueId}
-    RETURNING session_context->>'runRelease' AS started_at
-  `)) as unknown as Array<{ started_at: string }>;
-  const startedAt = rows[0]?.started_at;
+  const startedAt = await stampRunStarted(args.issueId);
   if (!startedAt) throw new Error(`issue ${args.issueId} vanished while it was being started`);
   await wakeMastersForProject({
     projectId: args.projectId,

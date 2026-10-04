@@ -9,9 +9,16 @@
 import type { FailureCause } from "./failure-causes.js";
 import type { IssueLeaseVerdict } from "./issue-standing.js";
 import type { IssueStatus } from "./issue-machine.js";
-import type { IssueStatusTone, WorkStep } from "./issue-vocabulary.js";
+import type { WorkStep } from "./issue-vocabulary.js";
 import type { MasterStanding } from "./master-standing.js";
 import { pickFields } from "./projection.js";
+import type {
+	Standing,
+	StandingGroup,
+	StandingGroupLabel,
+	StandingGroupLabels,
+	WaitingKind,
+} from "./standing.js";
 
 export const RUN_STATES = [
 	"queued",
@@ -83,14 +90,19 @@ export const RUN_EXPIRY_SOURCES = [
 ] as const;
 export type RunExpirySource = (typeof RUN_EXPIRY_SOURCES)[number];
 
-export const RUN_WAIT_KINDS = [
+/** Whom a run waits on: the viewer or another person to answer or approve, its holder at work
+ *  (`dueAt` the lease's end), a gate that resumes by itself (`ref` the gate, `dueAt` its deadline),
+ *  the master, a free machine slot, or nobody. */
+export const RUN_WAITING_KINDS = [
+	"you",
 	"person",
+	"run",
 	"gate",
 	"master",
 	"machine",
 	"none",
-] as const;
-export type RunWaitKind = (typeof RUN_WAIT_KINDS)[number];
+] as const satisfies readonly WaitingKind[];
+export type RunWaitingKind = (typeof RUN_WAITING_KINDS)[number];
 
 export const RUN_HANDBACK_CLOSES = ["ended", "killed_idle", "died"] as const;
 export type RunHandbackClose = (typeof RUN_HANDBACK_CLOSES)[number];
@@ -110,17 +122,10 @@ export const RUN_GROUPS = [
 	"waiting_gate",
 	"queued",
 	"finished",
-] as const;
+] as const satisfies readonly StandingGroup[];
 export type RunGroup = (typeof RUN_GROUPS)[number];
 
-export interface RunGroupLabel {
-	label: string;
-	hint: string;
-	tone: IssueStatusTone;
-	collapsed: boolean;
-}
-
-export const RUN_GROUP_LABELS: Record<RunGroup, RunGroupLabel> = {
+export const RUN_GROUP_LABELS: StandingGroupLabels<RunGroup> = {
 	needs_you: {
 		label: "Needs you",
 		hint: "Answer or approve; the run holds no slot meanwhile",
@@ -166,7 +171,7 @@ export const RUN_GROUP_LABELS: Record<RunGroup, RunGroupLabel> = {
 };
 
 /** The row the list draws above every run group, read from `master` beside the items. */
-export const RUN_MASTER_GROUP: RunGroupLabel = {
+export const RUN_MASTER_GROUP: StandingGroupLabel = {
 	label: "Project master",
 	hint: "What the master is doing now",
 	tone: "neutral",
@@ -236,50 +241,6 @@ export interface RunHeld {
 }
 
 export type RunHolder = RunHeld | RunNone;
-
-export interface RunPersonWait {
-	kind: "person";
-	who: string;
-	isViewer: boolean;
-	act: string;
-	ref: string;
-	since: string | null;
-	rule: string;
-}
-
-export interface RunGateWait {
-	kind: "gate";
-	gate: string;
-	resumesAt: string | null;
-	since: string | null;
-	rule: string;
-}
-
-export interface RunMasterWait {
-	kind: "master";
-	who: string;
-	since: string | null;
-	rule: string;
-}
-
-export interface RunMachineWait {
-	kind: "machine";
-	slots: { inUse: number; max: number };
-	since: string | null;
-	rule: string;
-}
-
-export interface RunNoWait {
-	kind: "none";
-	rule: string;
-}
-
-export type RunWaitingOn =
-	| RunPersonWait
-	| RunGateWait
-	| RunMasterWait
-	| RunMachineWait
-	| RunNoWait;
 
 export interface RunActor {
 	type: RunActorType;
@@ -384,7 +345,7 @@ export interface RunJob {
 	status: string;
 }
 
-export interface RunStanding {
+export interface RunStanding extends Standing<RunGroup, RunWaitingKind> {
 	id: string;
 	projectId: string;
 	lane: RunLane;
@@ -401,9 +362,6 @@ export interface RunStanding {
 	liveJobs: number;
 	device: RunDevice | null;
 	holder: RunHolder;
-	waitingOn: RunWaitingOn;
-	needsViewer: boolean;
-	attentionGroup: RunGroup;
 	outcome: RunOutcome | null;
 	master: RunMasterRef;
 	stuck: RunStuck;
@@ -486,7 +444,7 @@ export const RUN_SUMMARY_FIELDS = [
 	"attempt",
 	"holder",
 	"waitingOn",
-	"needsViewer",
+	"attentionGroup",
 	"outcome",
 	"lastBeatAt",
 	"stuck",

@@ -11,7 +11,6 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { writeAssistantPreferences } from '../preferences/index.js';
-import { PresenceValidationError } from '../conversations/presence.js';
 import { db } from '../db/client.js';
 import { answerStyles, organizationMembers, projectMemberRoles } from '../db/schema.js';
 import type { AuthVars } from '../middleware/auth.js';
@@ -204,19 +203,9 @@ agentAccountRoutes.patch(
     const { orgId, agentUserId } = c.req.valid('param');
     const actor = c.get('userId');
     await requireOrgCan({ userId: actor }, 'org.admin', orgId);
-    try {
-      const self = await writeAgentSelf(orgId, agentUserId, c.req.valid('json'), actor);
-      if (!self) throw notFound('agent not found');
-      return c.json(self);
-    } catch (err) {
-      if (err instanceof PresenceValidationError) {
-        throw new HTTPException(400, {
-          message: err.message,
-          cause: { code: 'PRESENCE_INVALID', issues: err.issues },
-        });
-      }
-      throw err;
-    }
+    const self = await writeAgentSelf(orgId, agentUserId, c.req.valid('json'), actor);
+    if (!self) throw notFound('agent not found');
+    return c.json(self);
   },
 );
 

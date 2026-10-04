@@ -61,9 +61,7 @@ function mergeMarkSentence(err: ApiError): string | null {
     return `Nothing on this issue says where the work landed, so it cannot close. ${unmarkFirst}Mark merged in the issue’s properties and fill in “Where it landed” — the live URL, CMS entry or storefront resource — then close. Use Dropped if it never landed.`;
   }
   if (err.code === 'MARK_ALREADY_STANDS') {
-    const held = detailStr(err.details, 'heldLanding');
-    const stands = held ? `This issue’s mark already says it landed at ${held}` : 'This issue already carries a mark that names no landing';
-    return `${stands}, and that mark stands — nothing changed. To change it, press Unmark, then Mark merged with the landing that is right.`;
+    return 'This issue already carries a mark, and that mark stands — nothing changed. To change it, press Unmark, then Mark merged with the landing that is right.';
   }
   return null;
 }

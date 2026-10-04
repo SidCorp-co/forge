@@ -1,5 +1,8 @@
 import { randomBytes } from 'node:crypto';
-import { HTTPException } from 'hono/http-exception';
+import type { AuthRefusalCode } from '@forge/contracts/auth';
+import { type RefusalError, refuser } from '../lib/refusal.js';
+
+const refuse = refuser<AuthRefusalCode>('AUTH_REFUSED');
 
 export const AGENT_EMAIL_DOMAIN = 'agents.forge.invalid';
 
@@ -34,11 +37,8 @@ export const AGENT_CANNOT_LOGIN =
   'Agent Access Token and holds no password, no session and no mailbox. An org ' +
   'admin manages it under the organization it belongs to.';
 
-export function agentCannotLogin(userId: string): HTTPException {
-  return new HTTPException(403, {
-    message: AGENT_CANNOT_LOGIN,
-    cause: { code: 'AGENT_CANNOT_LOGIN', details: { userId } },
-  });
+export function agentCannotLogin(userId: string): RefusalError {
+  return refuse('AGENT_CANNOT_LOGIN', `account ${userId}: ${AGENT_CANNOT_LOGIN}`);
 }
 
 export function assertNotAgent(kind: string | null | undefined, userId: string): void {

@@ -10,12 +10,10 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import {
-  type DeliveryPhase,
   type RequirementStatus,
   type RevisionState,
   requirementBaselines,
   requirementCriteria,
-  requirementDelivery,
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
@@ -82,7 +80,6 @@ export async function standingsOf(
   const [
     revisions,
     criteria,
-    delivery,
     linked,
     open,
     prefix,
@@ -116,7 +113,6 @@ export async function standingsOf(
       })
       .from(requirementCriteria)
       .where(inArray(requirementCriteria.requirementId, ids)),
-    db.select().from(requirementDelivery).where(inArray(requirementDelivery.requirementId, ids)),
     db
       .select({
         requirementId: issues.requirementId,
@@ -160,7 +156,6 @@ export async function standingsOf(
   const feedbackBy = feedbackCountsOf(feedbackLinks);
   const by = <T extends { requirementId: string | null }>(list: readonly T[], id: string) =>
     list.filter((x) => x.requirementId === id);
-  const phaseBy = new Map(delivery.map((d) => [d.requirementId, d.phase as DeliveryPhase | null]));
   const out = new Map<string, RequirementStanding>();
   for (const row of rows) {
     const mine = by(linked, row.id).map((i) => ({
@@ -182,7 +177,6 @@ export async function standingsOf(
       row.id,
       deriveStanding({
         status: row.status as RequirementStatus,
-        phase: phaseBy.get(row.id) ?? null,
         owner: row.ownerId
           ? {
               id: row.ownerId,
@@ -218,7 +212,7 @@ export async function standingsOf(
   return out;
 }
 
-/** Which of `ids` read delivered (proven, `standing.ts:provenPhase`) or were accepted. */
+/** Which of `ids` read delivered (`standing.ts:deliveryOf`) or were accepted. */
 export async function deliveredAmong(
   projectId: string,
   ids: readonly string[],

@@ -1,11 +1,9 @@
 
+import type { PulseActionKey } from "@forge/contracts/needs-you";
 import { TONE_META } from "@/design/status";
 import {
   PULSE_BUCKET_LABELS,
   PULSE_BUCKET_STATUSES,
-  type PulseIssueIdentity,
-  type PulseNotOnLiveIdentity,
-  type PulseProjectIdentity,
   type PulseQuality,
   type PulseResponse,
   type PulseThresholds,
@@ -50,7 +48,7 @@ export type Destination =
   | { kind: "panel"; panel: PanelKey }
   | { kind: "anchor"; anchorId: string };
 
-export type PanelKey = "liveJobs" | "stuckRuns" | ActionKey;
+export type PanelKey = "liveJobs" | PulseActionKey;
 
 export const BUCKET_ORDER: Array<keyof PulseWorkBuckets> = [
   "open",
@@ -88,191 +86,6 @@ export function waffleCells(buckets: PulseWorkBuckets): WaffleCell[] {
     color: TONE_META[BUCKET_TONE[key]].dot,
     destination: { kind: "anchor", anchorId: "pulse-per-project" } as const,
   }));
-}
-
-export type ActionKey =
-  | "stuckRuns"
-  | "abandonedIssues"
-  | "releaseWaiting"
-  | "notOnLive"
-  | "liveUnmeasured"
-  | "neverRanProjects"
-  | "silentProjects";
-
-export type ActionOwner = "person" | "machine";
-
-/**
- * The tie-break of last resort, so one response renders in one order.
- */
-export const ACTION_ORDER: ActionKey[] = [
-  "stuckRuns",
-  "abandonedIssues",
-  "releaseWaiting",
-  "notOnLive",
-  "liveUnmeasured",
-  "neverRanProjects",
-  "silentProjects",
-];
-
-const ACTION_META: Record<ActionKey, { label: string; owner: ActionOwner; hint: string }> = {
-  stuckRuns: {
-    label: "Runs claimed but empty",
-    owner: "machine",
-    hint: "The control plane still calls these open and no job is under them.",
-  },
-  abandonedIssues: {
-    label: "In-flight issues nobody is working",
-    owner: "person",
-    hint: "In progress, no live job, idle past the threshold — nothing will pick these up on its own.",
-  },
-  releaseWaiting: {
-    label: "Waiting to be released",
-    owner: "person",
-    hint: "Merged and waiting on a release nobody has run.",
-  },
-  notOnLive: {
-    label: "Closed, not on production",
-    owner: "person",
-    hint: "Closed on a promotion that has not happened: a commit of each is on the base branch and not the live one.",
-  },
-  liveUnmeasured: {
-    label: "Promote projects Forge could not fully compare",
-    owner: "person",
-    hint: "Forge cannot tell whether closed issues here reached the live branch: the comparison failed, was cut short, or was taken before they merged.",
-  },
-  neverRanProjects: {
-    label: "Projects holding a backlog with no pipeline",
-    owner: "person",
-    hint: "These have issues and have never started a run.",
-  },
-  silentProjects: {
-    label: "Projects gone quiet",
-    owner: "machine",
-    hint: "A backlog, and the last run is older than the threshold.",
-  },
-};
-
-export interface ActionRecord {
-  key: string;
-  label: string;
-  detail: string;
-  href: string;
-  /** Null where the record has no age: a refused comparison says when it was read, not since when. */
-  ageSeconds: number | null;
-}
-
-export interface ActionRow {
-  key: ActionKey;
-  label: string;
-  hint: string;
-  owner: ActionOwner;
-  /** Every record the condition holds. */
-  count: number;
-  /** The records the response actually named — never more than `count`. */
-  records: ActionRecord[];
-  /** Null where no record under the row has an age. */
-  oldestSeconds: number | null;
-}
-
-const issueRecord = (i: PulseIssueIdentity): ActionRecord => ({
-  key: i.documentId,
-  label: i.issueRef,
-  detail: i.title,
-  href: `/projects/${i.projectSlug}/issues/${i.documentId}`,
-  ageSeconds: i.ageSeconds,
-});
-
-const notOnLiveRecord = (i: PulseNotOnLiveIdentity): ActionRecord => {
-  const first = i.evidence[0];
-  return {
-    ...issueRecord(i),
-    detail: first ? `${i.title} · ${first.sha.slice(0, 8)} not on ${i.deploysFrom}` : i.title,
-  };
-};
-
-const projectRecord = (p: PulseProjectIdentity, now: number): ActionRecord => ({
-  key: p.id,
-  label: p.name,
-  detail: `${p.backlog} ${p.backlog === 1 ? "issue" : "issues"} waiting`,
-  href: `/projects/${p.slug}`,
-  ageSeconds: p.lastIssueRunAt
-    ? Math.max(0, Math.floor((now - new Date(p.lastIssueRunAt).getTime()) / 1000))
-    : Number.MAX_SAFE_INTEGER,
-});
-
-/**
- * The ranked action queue: one row per condition that has records.
- */
-export function actionQueue(pulse: PulseResponse, nowMs: number): ActionRow[] {
-  const { work } = pulse;
-  const sources: Record<ActionKey, { count: number; records: ActionRecord[] }> = {
-    stuckRuns: {
-      count: pulse.liveness.stuckRuns.total,
-      records: pulse.liveness.stuckRuns.shown.map((r) => ({
-        key: r.runId,
-        label: r.issueRef ?? "Run",
-        detail: r.projectSlug,
-        href: r.issueDocId
-          ? `/projects/${r.projectSlug}/issues/${r.issueDocId}`
-          : `/ops?run=${r.runId}`,
-        ageSeconds: r.ageSeconds,
-      })),
-    },
-    abandonedIssues: {
-      count: work.abandoned.total,
-      records: work.abandoned.shown.map(issueRecord),
-    },
-    releaseWaiting: {
-      count: work.releaseWaiting.total,
-      records: work.releaseWaiting.shown.map(issueRecord),
-    },
-    notOnLive: {
-      count: work.notOnLive.total,
-      records: work.notOnLive.shown.map(notOnLiveRecord),
-    },
-    liveUnmeasured: {
-      count: work.liveUnmeasured.total,
-      records: work.liveUnmeasured.shown.map((p) => ({
-        key: p.id,
-        label: p.name,
-        detail: p.reason,
-        href: `/projects/${p.slug}`,
-        ageSeconds: null,
-      })),
-    },
-    neverRanProjects: {
-      count: work.neverRanProjects.total,
-      records: work.neverRanProjects.shown.map((p) => projectRecord(p, nowMs)),
-    },
-    silentProjects: {
-      count: work.silentProjects.total,
-      records: work.silentProjects.shown.map((p) => projectRecord(p, nowMs)),
-    },
-  };
-
-  const rows: ActionRow[] = [];
-  for (const key of ACTION_ORDER) {
-    const src = sources[key];
-    if (src.count === 0) continue;
-    rows.push({
-      key,
-      ...ACTION_META[key],
-      count: src.count,
-      records: src.records,
-      oldestSeconds: src.records.reduce<number | null>(
-        (max, r) => (r.ageSeconds === null ? max : Math.max(max ?? 0, r.ageSeconds)),
-        null,
-      ),
-    });
-  }
-
-  return rows.sort((a, b) => {
-    const ageA = a.oldestSeconds ?? -1;
-    const ageB = b.oldestSeconds ?? -1;
-    if (ageA !== ageB) return ageB - ageA;
-    if (a.count !== b.count) return b.count - a.count;
-    return ACTION_ORDER.indexOf(a.key) - ACTION_ORDER.indexOf(b.key);
-  });
 }
 
 export interface ProjectSilenceRow {
