@@ -21,7 +21,6 @@ import {
   dataPolicyOf,
   type EgressDeep,
   type EgressReader,
-  type EgressSurface,
   egressAt,
   isProviderBound,
 } from '../lib/data-egress.js';

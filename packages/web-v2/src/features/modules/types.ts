@@ -1,4 +1,6 @@
 export type {
+  CodeTraceResponse,
+  CodeTraceUnit,
   ModuleActiveIssue,
   ModuleActivityDay,
   ModuleAttentionGroup,

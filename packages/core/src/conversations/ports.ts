@@ -121,12 +121,3 @@ export function conversationTransport(
 ): ConversationTransport | undefined {
   return transports.get(adapter);
 }
-
-export function registeredConversationAdapters(): ConversationAdapter[] {
-  return [...transports.keys()].sort();
-}
-
-/** Test seam — the registry is process-global by design. */
-export function clearConversationTransports(): void {
-  transports.clear();
-}

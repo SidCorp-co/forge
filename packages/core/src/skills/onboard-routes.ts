@@ -16,16 +16,15 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
 import { requireHeld } from '../permissions/index.js';
 import { projectHead } from '../projects/index.js';
-import { resolveRegisteredEffectiveSkills } from './effective.js';
-import { requestSkillSync } from './service.js';
+import { installBuiltinSkill, requestSkillSync } from './service.js';
 
 // ISS-733 — the "Build Project Brain" trigger: web calls this once, after
 // bootstrap, to open a fresh chat session that runs `forge-onboard` as turn 1
 // (the chat-runs-skill mechanism in `agent-sessions/chat-turn.ts`). Mirrors
 // the dedup-free dispatch shape of `conversations/conversation-agent.ts`
-// (resolveChatDevice → createChatSessionRow → dispatchChatTurn), plus an
-// explicit skill-sync push first since sync is explicit-only (the runner
-// won't have the file on disk otherwise).
+// (resolveChatDevice → createChatSessionRow → dispatchChatTurn). It first installs the seeded
+// forge-onboard template into the project (the device manifest carries only project install-only
+// skills), then pushes an explicit skill sync, since the runner never syncs implicitly.
 
 const ONBOARD_SKILL_NAME = 'forge-onboard';
 const ONBOARD_MESSAGE =
@@ -53,11 +52,10 @@ projectOnboardRoutes.post(
     const project = await projectHead(id);
     if (!project) throw new HTTPException(404, { message: 'project not found' });
 
-    const effective = await resolveRegisteredEffectiveSkills(project.id);
-    if (!effective.some((s) => s.name === ONBOARD_SKILL_NAME && s.installOnly)) {
+    if (!(await installBuiltinSkill(project.id, ONBOARD_SKILL_NAME))) {
       throw new HTTPException(503, {
         message:
-          'forge-onboard is not installed for this project. It is a reserved meta skill that no project route adopts, so onboarding cannot start until it is installed.',
+          'forge-onboard has no global template to install: the built-in skills were not seeded from packages/core/skills at boot, so onboarding cannot start',
         cause: { code: 'ONBOARD_SKILL_MISSING' },
       });
     }

@@ -1,7 +1,7 @@
 import type { ChatToolset } from './mcp-adapter.js';
 import { toolError } from './mcp-adapter.js';
 
-export const ROOM_SEND_TOOL_NAME = 'room_send';
+const ROOM_SEND_TOOL_NAME = 'room_send';
 
 export interface RoomSendCapture {
   toolset: ChatToolset;

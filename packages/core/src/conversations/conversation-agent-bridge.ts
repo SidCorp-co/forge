@@ -44,10 +44,8 @@ type Outcome = {
   passed: MessageVerdict | null;
 };
 
-function readProgressFacts(metadata: unknown): ProgressFacts | null | 'legacy-session' {
-  const m = metadata as Record<string, unknown> | null;
-  if (!m || !('progressFacts' in m)) return 'legacy-session';
-  const pf = m.progressFacts;
+function readProgressFacts(metadata: unknown): ProgressFacts | null {
+  const pf = (metadata as Record<string, unknown> | null)?.progressFacts;
   if (!pf || typeof pf !== 'object') return null;
   const p = pf as Record<string, unknown>;
   const keys = ['shipped', 'closedUnshipped', 'inFlight', 'remaining', 'total'] as const;
@@ -155,7 +153,7 @@ async function composeOutcome(session: SessionRow, meta: ConversationAgentMeta):
 /**
  * Deliver one runner-hosted conversation reply, at most once.
  */
-export async function deliverConversationAgentReplyOnce(session: SessionRow): Promise<void> {
+async function deliverConversationAgentReplyOnce(session: SessionRow): Promise<void> {
   const meta = readConversationAgentMeta(session.metadata);
   if (!meta) return;
   if (meta.deliveredAt) return;

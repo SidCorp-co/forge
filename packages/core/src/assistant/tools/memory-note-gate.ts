@@ -6,15 +6,15 @@ import type { PreCall } from '../run-turn-core.js';
 import { toolError } from './mcp-adapter.js';
 
 /** The note tool's name as the chat model sees it (`forge_memory.note` sanitised by the adapter). */
-export const NOTE_TOOL_CHAT_NAME = 'forge_memory_note';
+const NOTE_TOOL_CHAT_NAME = 'forge_memory_note';
 /** The note tool's own cap on `text`; defined here so the rules import nothing that needs a database, re-exported by the tool. */
 export const NOTE_TEXT_MAX = 8192;
-export const NOTE_TEXT_MIN = 12;
+const NOTE_TEXT_MIN = 12;
 /** The similarity at which an existing note is this note: the store's own near-duplicate threshold (D3). */
-export const DUPLICATE_SCORE = NEAR_DUPLICATE_THRESHOLD;
-export const REFUSAL_TEXT_MAX = 300;
+const DUPLICATE_SCORE = NEAR_DUPLICATE_THRESHOLD;
+const REFUSAL_TEXT_MAX = 300;
 /** How many of the person's recent messages the restatement rule reads. */
-export const RECENT_TURNS = 6;
+const RECENT_TURNS = 6;
 /** How many existing notes the duplicate rule reads, closest first. */
 export const EXISTING_TOP_K = 3;
 /** The marker `turn-context.ts:applyTurnContext` puts between its prefix and the person's own text. */
@@ -89,7 +89,7 @@ const normalise = (s: string): string =>
     .trim();
 
 /** The person's own words in a provider message: the text after the turn-context prefix, or every text part. */
-export function personText(m: ChatMessage): string {
+function personText(m: ChatMessage): string {
   if (typeof m.content === 'string') {
     const at = m.content.lastIndexOf(CONTEXT_MARKER);
     return at >= 0 ? m.content.slice(at + CONTEXT_MARKER.length) : m.content;
@@ -100,10 +100,7 @@ export function personText(m: ChatMessage): string {
 }
 
 /** The person's messages in a turn's provider history, oldest first. */
-export function recentPersonTurns(
-  messages: readonly ChatMessage[],
-  limit = RECENT_TURNS,
-): string[] {
+function recentPersonTurns(messages: readonly ChatMessage[], limit = RECENT_TURNS): string[] {
   return messages
     .filter((m) => m.role === 'user')
     .map(personText)
@@ -136,7 +133,7 @@ const firstLine = (s: string, max = 80): string => {
 };
 
 /** The rules, in the order they are read; the first one broken is the refusal. */
-export function judgeNote(input: NoteJudgeInput): NoteRefusal | null {
+function judgeNote(input: NoteJudgeInput): NoteRefusal | null {
   const text = input.text.trim();
   if (text.length < NOTE_TEXT_MIN)
     return {

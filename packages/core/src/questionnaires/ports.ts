@@ -4,6 +4,7 @@
 
 import type { db } from '../db/client.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
+import type { BatchRow } from './read.js';
 
 /** A transaction, never the pool: the questionnaire writes and its room message commit together. */
 export type TxOnly = Parameters<Parameters<(typeof db)['transaction']>[0]>[0];
@@ -35,6 +36,10 @@ export interface QuestionnairePorts {
     conversationId: string,
     data: { conversationId: string; messageId: string | null; role: string; content: string },
   ) => Promise<number>;
+  /** The thread owner's write inside the submit transaction (an onboarding round touches its onboarding). */
+  onSubmittedIn: (tx: TxOnly, batch: BatchRow) => Promise<void>;
+  /** The thread owner's step after a submit commits (an onboarding round enqueues its revise job). */
+  afterSubmit: (batch: BatchRow, submittedBy: string) => Promise<void>;
 }
 
 let provided: QuestionnairePorts | null = null;
@@ -65,3 +70,7 @@ export const announceConversationChange: QuestionnairePorts['announceConversatio
   conversationId,
   data,
 ) => questionnairePorts().announceConversationChange(conversationId, data);
+export const onSubmittedIn: QuestionnairePorts['onSubmittedIn'] = (tx, batch) =>
+  questionnairePorts().onSubmittedIn(tx, batch);
+export const afterSubmit: QuestionnairePorts['afterSubmit'] = (batch, submittedBy) =>
+  questionnairePorts().afterSubmit(batch, submittedBy);

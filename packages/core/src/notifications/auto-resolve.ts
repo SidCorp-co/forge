@@ -58,10 +58,7 @@ export async function resolveNotifications(
   }
 }
 
-export async function sendResolvedNotice(
-  notificationId: string,
-  outcome?: string,
-): Promise<number> {
+async function sendResolvedNotice(notificationId: string, outcome?: string): Promise<number> {
   const [record] = await db
     .select({
       type: notifications.type,
