@@ -45,6 +45,12 @@ export const FEEDBACK_PHASES = [
 ] as const;
 export type FeedbackPhase = (typeof FEEDBACK_PHASES)[number];
 
+/** The phases a person still has to triage: never routed, or sent back by the reporter. */
+export const FEEDBACK_UNTRIAGED_PHASES = [
+	"new",
+	"reopened",
+] as const satisfies readonly FeedbackPhase[];
+
 /** What one item is about: an exclusive arc of five foreign keys, or a screen named in words; core alone files against a contract version (E3). */
 export const FEEDBACK_TARGET_TYPES = [
 	"requirement",

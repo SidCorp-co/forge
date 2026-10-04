@@ -137,6 +137,18 @@
 
 ### Added
 
+- **The menu counts what waits on you.** Requirements, Releases, Feedback, Issues and Contracts
+  each show how many rows wait on you, with what they wait for in a tooltip, and the dashboard shows
+  requirements in delivery and untriaged feedback. All come from `GET /api/projects/:id/needs-you`,
+  which counts each list's own waiting-on-you group.
+
+- **A notification reads as its key and one line.** The bell shows the record it names, a one-line
+  summary and its type as a badge; the long body opens under Details.
+
+- **Ask Agent stays out of the page's way.** Its controls never take the page's primary colour, it
+  closes when you change page unless pinned, and past conversations replace the chat, grouped Project
+  and This page, each with its status.
+
 - **Development has a Modules list and a page for each module.** The list groups modules by what
   needs you, what is moving and what is stuck, or as a tree, and a click opens a peek. A module's
   page shows what is open in it, what landed, the paths and couplings its knowledge entry records

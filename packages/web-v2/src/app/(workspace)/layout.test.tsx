@@ -40,7 +40,25 @@ vi.mock("@/features/orgs/active-org", () => ({
 vi.mock("@/features/orgs/components/org-switcher", () => ({
   OrgSwitcher: ({ variant }: { variant: string }) => <button type="button" data-testid={`org-switcher-${variant}`}>Org</button>,
 }));
-vi.mock("@/features/releases/hooks", () => ({ useAwaitingApprovalCount: () => 2 }));
+vi.mock("@/features/needs-you/hooks", () => {
+  const area = (you: number, act: string) => ({ you, acts: you ? [{ act, count: you }] : [] });
+  return {
+  useNeedsYou: () => ({
+    data: {
+      generatedAt: "2026-10-04T00:00:00.000Z",
+      areas: {
+        requirements: area(3, "accept r2"),
+        releases: area(2, "approve"),
+        feedback: area(4, "triage it"),
+        issues: area(1, "answer a question"),
+        contracts: area(0, ""),
+      },
+      requirementsInDelivery: 0,
+      untriagedFeedback: 4,
+    },
+  }),
+  };
+});
 vi.mock("@/features/workflows/hooks", () => ({ useDesignsAwaitingCount: () => undefined }));
 vi.mock("@/features/conversations/components/conversation-chat", () => ({
   ConversationChat: ({ projectId, initialDraft }: { projectId: string; initialDraft?: string }) => (
@@ -203,11 +221,15 @@ describe("the project menu", () => {
     }
   });
 
-  it("counts the versions awaiting approval on Releases", () => {
+  it("counts what waits on the viewer on Requirements, Releases and Feedback, with the detail in the tooltip", () => {
     rail(false);
     at("/projects/forge-dev/releases");
     mount();
     expect(side().getByRole("button", { name: /^Releases/ })).toHaveTextContent("2");
+    expect(side().getByRole("button", { name: /^Requirements/ })).toHaveTextContent("3");
+    const feedback = side().getByRole("button", { name: /^Feedback/ });
+    expect(feedback).toHaveTextContent("4");
+    expect(feedback).toHaveAttribute("title", "Feedback · waiting on you 4: triage it (4)");
   });
 });
 

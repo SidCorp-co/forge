@@ -16,10 +16,6 @@ export function useReleases(projectId: string | undefined) {
   });
 }
 
-export function useAwaitingApprovalCount(projectId: string | undefined): number | undefined {
-  return useReleases(projectId).data?.counts.you;
-}
-
 export function useRelease(projectId: string | undefined, version: string | undefined) {
   return useQuery({
     queryKey: releaseKey(projectId ?? "", version ?? ""),

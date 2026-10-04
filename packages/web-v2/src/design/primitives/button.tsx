@@ -1,4 +1,6 @@
-import type { ButtonHTMLAttributes, Ref } from "react";
+"use client";
+
+import { type ButtonHTMLAttributes, createContext, type ReactNode, type Ref, useContext } from "react";
 import { Button as ShadcnButton } from "@/components/ui/button";
 import { Icon, type IconName } from "@/design/icons/icon";
 import { Spinner } from "./spinner";
@@ -23,6 +25,14 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   ref?: Ref<HTMLButtonElement>;
 }
 
+const SecondaryOnly = createContext(false);
+
+// cm:why a region beside the page (the Ask Agent dock) never carries a primary action: the page's one
+// primary keeps that colour, so a primary asked for inside the region is drawn as a secondary (REQ-11 BC-8)
+export function SecondaryRegion({ children }: { children: ReactNode }) {
+  return <SecondaryOnly.Provider value={true}>{children}</SecondaryOnly.Provider>;
+}
+
 export function Button({
   variant = "secondary",
   size = "md",
@@ -34,10 +44,12 @@ export function Button({
   ...props
 }: ButtonProps) {
   const px = size === "sm" ? 15 : 16;
+  const secondaryOnly = useContext(SecondaryOnly);
+  const shown = variant === "primary" && secondaryOnly ? "secondary" : variant;
   return (
     <ShadcnButton
       type={type}
-      variant={VARIANT[variant]}
+      variant={VARIANT[shown]}
       size={SIZE[size]}
       disabled={disabled || loading}
       aria-busy={loading || undefined}

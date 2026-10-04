@@ -16,6 +16,7 @@ import {
 } from "@/design";
 import { AttentionQueue } from "@/features/project-dashboard/components/attention-queue";
 import { AwaitingReleaseCard } from "@/features/project-dashboard/components/awaiting-release-card";
+import { DeliveryRow } from "@/features/project-dashboard/components/delivery-row";
 import { KpiBand } from "@/features/project-dashboard/components/kpi-band";
 import { LiveRunsCard } from "@/features/project-dashboard/components/live-runs-card";
 import { RunnersCard } from "@/features/project-dashboard/components/runners-card";
@@ -185,6 +186,7 @@ export default function ProjectOverviewPage() {
       </header>
 
       <div className="space-y-4">
+        <DeliveryRow projectId={project.id} slug={project.slug} />
         <KpiBand
           liveRuns={runsActive.length}
           busyRunners={runners.busyCount}

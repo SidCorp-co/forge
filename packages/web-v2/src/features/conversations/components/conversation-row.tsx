@@ -16,8 +16,7 @@
 // means.
 
 import { useState } from "react";
-import { IconButton, Input, ProjectMark } from "@/design";
-import { ThreadStatusChip } from "@/features/onboarding/components/marks";
+import { IconButton, Input, ProjectMark, StatusBadge } from "@/design";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import { formatRelativeTime } from "@/lib/utils/format";
 import type { ListedConversation } from "../hooks";
@@ -70,7 +69,7 @@ export function ConversationRow({
 
   if (editing !== null) {
     return (
-      <div className="flex min-h-[44px] w-full items-center gap-2 rounded-lg border border-[color:var(--link)] px-2 py-1.5">
+      <div className="flex min-h-[44px] w-full items-center gap-2 border-b border-line-subtle bg-surface px-3 py-1.5">
         <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={initials} size={22} />
         <Input
           autoFocus
@@ -91,8 +90,8 @@ export function ConversationRow({
 
   return (
     <div
-      className={`group flex min-h-[44px] w-full items-center gap-2 rounded-lg border px-2 py-1.5 transition-colors focus-within:border-[color:var(--link)] hover:bg-hover ${
-        open ? "border-[color:var(--link)] bg-hover" : "border-transparent"
+      className={`group flex min-h-[44px] w-full items-center gap-2 border-b border-line-subtle px-3 py-2 transition-colors hover:bg-hover ${
+        open ? "bg-active" : ""
       }`}
     >
       <button
@@ -105,7 +104,7 @@ export function ConversationRow({
       >
         <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={initials} size={22} />
         <span className="fg-body-sm min-w-0 flex-1 truncate text-fg">{conversationTitle(row)}</span>
-        {row.threadStatus && <ThreadStatusChip status={row.threadStatus} />}
+        {row.threadStatus && <StatusBadge family="thread" value={row.threadStatus} />}
       </button>
 
       {/* Out of the layout until wanted: an invisible group still takes its width, and four

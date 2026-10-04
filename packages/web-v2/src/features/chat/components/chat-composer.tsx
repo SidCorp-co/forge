@@ -51,6 +51,10 @@ const MAX_ROWS = 8;
  */
 export const ComposerWidthContext = createContext<number | null>(null);
 
+const KEY_HINT = "Enter sends · Shift+Enter for a new line";
+/** Narrower than this, the composer's footer has no room left for a hint line worth reading. */
+const HINT_ROW_MIN_WIDTH = 560;
+
 interface StagedFile {
   id: string;
   file: File;
@@ -349,10 +353,14 @@ export function ChatComposer({
   };
 
   const staged = files.reduce((bytes, { file }) => bytes + file.size, 0);
+  // cm:why the hint is a line of its own under the box, never inside the footer row, where it ran over
+  // the footer's own controls in a narrow dock (REQ-11 BC-8); a narrow composer keeps it on Send's tooltip
   const hint =
     files.length > 0
       ? `${files.length} file${files.length === 1 ? "" : "s"} · ${formatSize(staged)}`
-      : "Enter sends · Shift+Enter for a new line";
+      : (frameWidth ?? 0) >= HINT_ROW_MIN_WIDTH
+        ? KEY_HINT
+        : null;
 
   return (
     <ComposerWidthContext.Provider value={frameWidth}>
@@ -481,8 +489,7 @@ export function ChatComposer({
                 />
               )}
               {footerControl}
-              <div className="ml-auto flex items-center gap-2.5">
-                <span className="fg-caption hidden text-disabled sm:inline">{hint}</span>
+              <div className="ml-auto flex flex-none items-center gap-2.5">
                 {showStop ? (
                   <Button
                     variant="secondary"
@@ -499,6 +506,7 @@ export function ChatComposer({
                     size="md"
                     icon="arrowRight"
                     aria-label="Send message"
+                    title={`Send · ${KEY_HINT}`}
                     className="h-11 w-11 flex-none rounded-full p-0"
                     loading={busy}
                     disabled={!canSend}
@@ -508,6 +516,12 @@ export function ChatComposer({
               </div>
             </div>
           </div>
+
+          {hint && (
+            <p className="fg-caption px-1 text-right text-disabled" data-testid="composer-hint">
+              {hint}
+            </p>
+          )}
 
           {slashSkills && (
             <SlashSkillsMenu

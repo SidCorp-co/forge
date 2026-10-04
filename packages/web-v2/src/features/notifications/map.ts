@@ -3,34 +3,6 @@ import { enumLabel } from "@/design/vocabulary";
 import { formatRelativeTime } from "@/lib/utils/format";
 import type { NotificationRow, PendingInvitation } from "./types";
 
-/** Short uppercase tag shown in the row's leading MonoTag. */
-function typeLabel(type: string): string {
-  switch (type) {
-    case "issue_status_changed":
-      return "STATUS";
-    case "pipeline_wedge":
-      return "WEDGE";
-    case "mention":
-      return "MENTION";
-    case "invitation_received":
-      return "INVITE";
-    case "reconcile_gate_pending":
-      return "SKILL";
-    case "issue_stranded":
-      return "STRANDED";
-    case "retry_rescue_threshold":
-      return "RETRY";
-    case "channel_document_published":
-      return "CHANNEL";
-    case "channel_thread_held":
-      return "HELD";
-    case "channel_gate_pending":
-      return "APPROVE";
-    default:
-      return "EVENT";
-  }
-}
-
 /** Red for trouble, amber for review gates, green for done, cobalt otherwise. */
 function hueFor(row: NotificationRow): NotificationItem["hue"] {
   // ISS-510 — derive from the explicit contract severity when present.
@@ -88,8 +60,10 @@ export function toNotificationItem(
   const resolved = deliveryResolved(row);
   return {
     id: row.id,
-    label: row.resolvedNotice || resolved ? "RESOLVED" : typeLabel(row.type),
-    text: row.title,
+    ...(row.subject ? { subjectKey: row.subject.key } : {}),
+    type: row.type,
+    resolved: row.resolvedNotice || resolved,
+    text: row.line,
     sub: liveBody(row),
     time: formatRelativeTime(row.createdAt),
     unread: row.readAt === null && !resolved,
@@ -109,8 +83,9 @@ export function toInvitationItem(
 ): NotificationItem {
   return {
     id: `invite-${inv.token}`,
-    label: "INVITE",
-    text: `${inv.inviterEmail} invited you to ${inv.name} as ${enumLabel("role", inv.role)}`,
+    subjectKey: inv.name,
+    type: "invitation_received",
+    text: `${inv.inviterEmail} invited you as ${enumLabel("role", inv.role)}`,
     time: formatRelativeTime(inv.createdAt),
     unread: true,
     hue: "amber",

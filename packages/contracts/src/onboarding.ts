@@ -4,7 +4,10 @@
 // not know.
 
 import { z } from "zod";
-import type { DataEgressRefusalCode, SensitiveDataLevel } from "./data-policy.js";
+import type {
+	DataEgressRefusalCode,
+	SensitiveDataLevel,
+} from "./data-policy.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 
 /** The onboarding thread's status, as the conversation list and the dashboard hint show it. */
@@ -15,17 +18,26 @@ export const ONBOARDING_STATUSES = [
 ] as const;
 export type OnboardingStatus = (typeof ONBOARDING_STATUSES)[number];
 
-export const ONBOARDING_STATUS_TONES: Record<OnboardingStatus, IssueStatusTone> =
-	{
-		in_progress: "run",
-		waiting_on_you: "you",
-		done: "done",
-	};
+export const ONBOARDING_STATUS_TONES: Record<
+	OnboardingStatus,
+	IssueStatusTone
+> = {
+	in_progress: "run",
+	waiting_on_you: "you",
+	done: "done",
+};
 
 export const ONBOARDING_STATUS_LABELS: Record<OnboardingStatus, string> = {
 	in_progress: "In progress",
 	waiting_on_you: "Waiting on you",
 	done: "Done",
+};
+
+/** The same three values read as any conversation's status (`onboarding/read.ts:threadMarks`). */
+export const THREAD_STATUS_HINTS: Record<OnboardingStatus, string> = {
+	in_progress: "in_progress: the agent is working on the last message",
+	waiting_on_you: "waiting_on_you: a question or a batch waits on you",
+	done: "done: nothing in this thread waits on anyone",
 };
 
 /** Which analysis an onboarding job runs: the first read of the code, or the turn after a submit. */
@@ -126,7 +138,10 @@ export type QuestionnaireRefusalCode =
 
 export interface OnboardingRefusal {
 	/** CONTENT_EGRESS_FORBIDDEN: an agent read of a no_egress project's answers (ISS-59's one guard). */
-	code: OnboardingRefusalCode | QuestionnaireRefusalCode | DataEgressRefusalCode;
+	code:
+		| OnboardingRefusalCode
+		| QuestionnaireRefusalCode
+		| DataEgressRefusalCode;
 	path: string;
 	detail: string;
 }
@@ -305,7 +320,12 @@ export interface OnboardingView {
 	reanalyzedAt: string | null;
 	doneAt: string | null;
 	designs: OnboardingDesignView[];
-	openBatch: { id: string; round: number; open: number; postedAt: string } | null;
+	openBatch: {
+		id: string;
+		round: number;
+		open: number;
+		postedAt: string;
+	} | null;
 	job: OnboardingJobView | null;
 	sensitiveData: boolean;
 }

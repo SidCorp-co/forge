@@ -113,6 +113,7 @@ const FIELD: Partial<Record<EnumFamily, string>> = {
   blockerKind: "blocker",
   dependencyKind: "kind",
   pauseKind: "kind",
+  notificationType: "type",
 };
 
 export interface EnumBadgeProps {

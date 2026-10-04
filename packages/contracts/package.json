@@ -54,6 +54,10 @@
       "types": "./dist/development-overview.d.ts",
       "default": "./dist/development-overview.js"
     },
+    "./needs-you": {
+      "types": "./dist/needs-you.d.ts",
+      "default": "./dist/needs-you.js"
+    },
     "./issue-standing": {
       "types": "./dist/issue-standing.d.ts",
       "default": "./dist/issue-standing.js"

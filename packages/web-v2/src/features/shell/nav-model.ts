@@ -2,6 +2,8 @@ import type { BottomTabItem, NavItem } from "@/design";
 import { joinedEcosystems, needsMe } from "@/features/ecosystem/inbox";
 import { ecosystemRoutes } from "@/features/ecosystem/routes";
 import type { WorkspaceRead } from "@/features/ecosystem/types";
+import { needsYouHint } from "@/features/needs-you/hint";
+import { NEEDS_YOU_AREA_LABELS, type NeedsYouAreaKey, type NeedsYouResponse } from "@/features/needs-you/types";
 import type { RailEntry, RailItem } from "./nav-rail-compact";
 
 export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
@@ -68,26 +70,36 @@ export const PROJECT_MENU: ProjEntry[] = [
 
 export const PROJECT_ITEMS: ProjItem[] = PROJECT_MENU.flatMap((e) => (isProjGroup(e) ? e.items : [e]));
 
+// cm:why the waiting-on-you counts come from core's one needs-you read, each the size of its list's
+// own waiting-on-you group, so a menu number never disagrees with the list it opens (REQ-11 BC-10)
 export interface ProjectBadges {
-  openIssues?: number | undefined;
-  awaitingApproval?: number | undefined;
+  needsYou?: NeedsYouResponse | undefined;
   /** Workflow designs awaiting their approver. */
   designsAwaiting?: number | undefined;
 }
 
-const BADGE_OF: Record<string, keyof ProjectBadges> = {
-  "proj-issues": "openIssues",
-  "proj-releases": "awaitingApproval",
-  "proj-workflows": "designsAwaiting",
+const AREA_OF: Record<string, NeedsYouAreaKey> = {
+  "proj-requirements": "requirements",
+  "proj-releases": "releases",
+  "proj-feedback": "feedback",
+  "proj-issues": "issues",
+  "proj-contracts": "contracts",
 };
 
-const badgeOf = (key: string, badges: ProjectBadges) => {
-  const field = BADGE_OF[key];
-  return field ? badges[field] : undefined;
-};
+function badgeOf(key: string, badges: ProjectBadges): Pick<NavItem, "badge" | "badgeHint"> {
+  const area = AREA_OF[key];
+  if (area) {
+    const read = badges.needsYou?.areas[area];
+    return read ? { badge: read.you, badgeHint: needsYouHint(NEEDS_YOU_AREA_LABELS[area], read) } : {};
+  }
+  if (key === "proj-workflows" && badges.designsAwaiting !== undefined) {
+    return { badge: badges.designsAwaiting, badgeHint: `Workflows · designs awaiting approval ${badges.designsAwaiting}` };
+  }
+  return {};
+}
 
 export function projectMenu(badges: ProjectBadges): ProjEntry[] {
-  const withBadge = (it: ProjItem): ProjItem => ({ ...it, badge: badgeOf(it.key, badges) });
+  const withBadge = (it: ProjItem): ProjItem => ({ ...it, ...badgeOf(it.key, badges) });
   return PROJECT_MENU.map((e) => (isProjGroup(e) ? { ...e, items: e.items.map(withBadge) } : withBadge(e)));
 }
 
@@ -204,7 +216,7 @@ export function compactWorkspaceRailItems(attentionCount: number): RailItem[] {
 
 /** The compact rail's project tier: the same menu, Development folded under its head. */
 export function projectRailItems(badges: ProjectBadges): RailEntry[] {
-  const row = (it: ProjItem): RailItem => ({ key: it.key, label: it.label, icon: it.icon, badge: badgeOf(it.key, badges) });
+  const row = (it: ProjItem): RailItem => ({ key: it.key, label: it.label, icon: it.icon, ...badgeOf(it.key, badges) });
   return PROJECT_MENU.map((e) => (isProjGroup(e) ? { key: e.key, label: e.label, icon: e.icon, items: e.items.map(row) } : row(e)));
 }
 

@@ -42,7 +42,7 @@ import {
 } from "@/features/shell";
 import { ChatDock } from "@/features/conversations/components/chat-dock";
 import { ChatDockProvider, useChatDockState } from "@/features/conversations/dock";
-import { useAwaitingApprovalCount } from "@/features/releases/hooks";
+import { useNeedsYou } from "@/features/needs-you/hooks";
 import { useDesignsAwaitingCount } from "@/features/workflows/hooks";
 import { WorkspaceSidebar } from "@/features/shell/components/workspace-sidebar";
 import { SidebarSearch } from "@/features/shell/components/sidebar-search";
@@ -122,7 +122,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { selectedProject, activeOrgId, scopedProjects, pinnedIds, railSlug, railProject } =
     useShellProject(pathname);
   const dock = useChatDockState(railProject?.id ?? null);
-  const awaitingApproval = useAwaitingApprovalCount(railProject?.id);
+  const needsYou = useNeedsYou(railProject?.id).data;
   const designsAwaiting = useDesignsAwaitingCount(railProject?.id);
   const slug = activeSlug(pathname);
 
@@ -229,7 +229,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           attentionCount={attentionCount}
           railSlug={railSlug}
           rail={rail}
-          badges={{ openIssues: rail.railConsole?.openIssues, awaitingApproval, designsAwaiting }}
+          badges={{ needsYou, designsAwaiting }}
           onNavigate={navigate}
           onRoute={(href) => router.push(href)}
           onSignOut={logout}
@@ -247,7 +247,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         railProjectName={railProject?.name}
         activeKey={activeKey}
         attentionCount={attentionCount}
-        badges={{ openIssues: rail.railConsole?.openIssues, awaitingApproval, designsAwaiting }}
+        badges={{ needsYou, designsAwaiting }}
         scopedProjects={scopedProjects}
         onNavigate={navigate}
         onOpenProject={(s) => router.push(`/projects/${s}`)}

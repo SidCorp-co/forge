@@ -1,6 +1,6 @@
-import type { NotificationSeverity, NotificationType } from "@forge/contracts/notifications";
+import type { NotificationSeverity, NotificationSubject, NotificationType } from "@forge/contracts/notifications";
 
-export type { NotificationSeverity, NotificationType };
+export type { NotificationSeverity, NotificationSubject, NotificationType };
 
 export interface NotificationRow {
   id: string;
@@ -24,6 +24,10 @@ export interface NotificationRow {
   secondaryIssueId: string | null;
   agentSessionId: string | null;
   createdAt: string;
+  /** What the delivery names, read by core from the record's references. */
+  subject: NotificationSubject | null;
+  /** The title as one line beside the subject key: core drops the key it opens with. */
+  line: string;
 }
 
 /** One record behind a delivery — `GET /api/notifications/:id/members`. */

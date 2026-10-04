@@ -15,11 +15,13 @@ const ECO = "e1";
 const listed = vi.hoisted(() => ({ projectIds: [] as string[], archived: false }));
 const ecosystems = vi.hoisted(() => ({ asked: [] as string[] }));
 
-const row = (id: string, projectId: string, title: string, ecosystemId: string | null = null) => ({
+const row = (id: string, projectId: string, title: string, ecosystemId: string | null = null, subjectKey: string | null = null) => ({
   id,
   projectId,
   title,
   ecosystemId,
+  subjectKey,
+  threadStatus: "done",
   adapter: "web",
   externalId: id,
   shape: "direct",
@@ -27,7 +29,12 @@ const row = (id: string, projectId: string, title: string, ecosystemId: string |
   updatedAt: "2026-10-01T10:00:00.000Z",
   archivedAt: null,
 });
-const LIVE = [row("c1", "p1", "Alpha release"), row("c2", "p2", "Beta backlog"), row("c3", "p1", "Platform drift", ECO)];
+const LIVE = [
+  row("c1", "p1", "Alpha release"),
+  row("c2", "p2", "Beta backlog"),
+  row("c3", "p1", "Platform drift", ECO),
+  row("c4", "p1", "REQ-1 thread", null, "REQ-1"),
+];
 const ARCHIVED = [{ ...row("c9", "p1", "Old alpha thread"), archivedAt: "2026-09-01T00:00:00.000Z" }];
 
 vi.mock("@/features/projects/hooks", () => ({
@@ -67,9 +74,9 @@ beforeEach(() => {
   ecosystems.asked = [];
 });
 
-function sidebar(projectId: string | null = "p1") {
+function sidebar(projectId: string | null = "p1", pageKey: string | null = null) {
   const onNavigate = vi.fn();
-  render(<ConversationList projectId={projectId} conversationId={null} onSelect={onNavigate} />);
+  render(<ConversationList projectId={projectId} conversationId={null} pageKey={pageKey} onSelect={onNavigate} />);
   return { onNavigate };
 }
 
@@ -134,11 +141,26 @@ describe("New chat", () => {
 });
 
 describe("the filter menu", () => {
-  it("lists every conversation until a filter is chosen, and is not pressed", () => {
-    sidebar();
-    expect(listedTitles()).toHaveLength(3);
+  it("opens on the open project's rooms, grouped Project and This page, and is not pressed", () => {
+    sidebar("p1", "REQ-1");
+    expect(listedTitles()).toEqual(["Alpha release", "Platform drift", "REQ-1 thread"]);
+    expect(within(screen.getByRole("region", { name: "Project" })).queryByText("REQ-1 thread")).toBeNull();
+    expect(within(screen.getByRole("region", { name: "This page" })).getByText("REQ-1 thread")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Filter conversations" })).toHaveAttribute("aria-pressed", "false");
     expect(screen.queryByTestId("active-filter")).toBeNull();
+  });
+
+  it("lists another project's rooms only under that project's name, once Every project is picked", () => {
+    sidebar("p1");
+    expect(screen.queryByText("Beta backlog")).toBeNull();
+    fireEvent.click(filterMenu().getByRole("menuitemcheckbox", { name: "Every project" }));
+    expect(within(screen.getByRole("region", { name: "Beta" })).getByText("Beta backlog")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Project" })).queryByText("Beta backlog")).toBeNull();
+  });
+
+  it("draws every room's status as a badge", () => {
+    sidebar("p1");
+    expect(screen.getAllByTestId("status-badge").map((b) => b.textContent)).toEqual(["✓Done", "✓Done", "✓Done"]);
   });
 
   it("filters to one project and shows that it is filtered", () => {
@@ -155,13 +177,13 @@ describe("the filter menu", () => {
     expect(listedTitles()).toEqual(["Platform drift"]);
   });
 
-  it("reaches the archived conversations, and Show all brings the full list back", () => {
+  it("reaches the archived conversations, and the reset brings the project's list back", () => {
     sidebar();
     fireEvent.click(filterMenu().getByRole("menuitemcheckbox", { name: "Archived" }));
     expect(listed.archived).toBe(true);
     expect(listedTitles()).toEqual(["Old alpha thread"]);
-    expect(screen.getByTestId("active-filter")).toHaveTextContent("Showing archived");
-    fireEvent.click(screen.getByRole("button", { name: "Show all" }));
+    expect(screen.getByTestId("active-filter")).toHaveTextContent("Showing Alpha · archived");
+    fireEvent.click(screen.getByRole("button", { name: "Back to Alpha" }));
     expect(listed.archived).toBe(false);
     expect(listedTitles()).toHaveLength(3);
   });
@@ -176,6 +198,7 @@ describe("the filter menu", () => {
 describe("opening a listed conversation", () => {
   it("opens that room in its own project", () => {
     const { onNavigate } = sidebar();
+    fireEvent.click(filterMenu().getByRole("menuitemcheckbox", { name: "Every project" }));
     fireEvent.click(screen.getByText("Beta backlog"));
     expect(onNavigate).toHaveBeenLastCalledWith({ kind: "room", projectId: "p2", conversationId: "c2" });
   });

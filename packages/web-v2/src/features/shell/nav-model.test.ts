@@ -103,17 +103,44 @@ describe("the project menu", () => {
     expect(at("/feedback/FB-3")).toBe("proj-feedback");
   });
 
-  it("badges Issues with open issues and Releases with versions awaiting approval", () => {
-    const badges = { openIssues: 12, awaitingApproval: 1 };
+  it("badges each area with what waits on the viewer, from the one needs-you read, detail in the hint", () => {
+    const area = (you: number, act: string) => ({ you, acts: you ? [{ act, count: you }] : [] });
+    const badges = {
+      designsAwaiting: 2,
+      needsYou: {
+        generatedAt: "2026-10-04T00:00:00.000Z",
+        areas: {
+          requirements: area(3, "accept r2"),
+          releases: area(1, "approve"),
+          feedback: area(0, ""),
+          issues: area(12, "take on or drop"),
+          contracts: area(1, "adopt 2.0"),
+        },
+        requirementsInDelivery: 0,
+        untriagedFeedback: 0,
+      },
+    };
     const flat = projectMenu(badges).flatMap((e) => (isProjGroup(e) ? e.items : [e]));
     expect(Object.fromEntries(flat.map((i) => [i.key, i.badge]))).toMatchObject({
+      "proj-requirements": 3,
+      "proj-workflows": 2,
       "proj-issues": 12,
       "proj-releases": 1,
+      "proj-feedback": 0,
+      "proj-contracts": 1,
       "proj-automation": undefined,
     });
+    expect(flat.find((i) => i.key === "proj-requirements")?.badgeHint).toBe(
+      "Requirements · waiting on you 3: accept r2 (3)",
+    );
     const rail = projectRailItems(badges).flatMap((e) => (isRailGroup(e) ? e.items : [e]));
     expect(rail.find((i) => i.key === "proj-releases")?.badge).toBe(1);
-    expect(rail.find((i) => i.key === "proj-issues")?.badge).toBe(12);
+    expect(rail.find((i) => i.key === "proj-issues")?.badgeHint).toBe("Issues · waiting on you 12: take on or drop (12)");
+  });
+
+  it("draws no count before the read answers, rather than a zero it never read", () => {
+    const flat = projectMenu({}).flatMap((e) => (isProjGroup(e) ? e.items : [e]));
+    expect(flat.find((i) => i.key === "proj-requirements")?.badge).toBeUndefined();
   });
 
   it("folds the compact rail's build machinery under Development, in the menu's order", () => {

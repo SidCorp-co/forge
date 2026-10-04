@@ -4,7 +4,8 @@
 // each legend tone draws. A screen never declares a colour map.
 
 import { SENSITIVE_DATA_BADGES } from "@forge/contracts/data-policy";
-import { ONBOARDING_STATUS_LABELS, ONBOARDING_STATUS_TONES } from "@forge/contracts/onboarding";
+import { NOTIFICATION_TYPE_LABELS } from "@forge/contracts/notifications";
+import { ONBOARDING_STATUS_LABELS, ONBOARDING_STATUS_TONES, THREAD_STATUS_HINTS } from "@forge/contracts/onboarding";
 import { DESIGN_STATUS_GLYPHS, DESIGN_STATUS_HINTS, DESIGN_STATUS_LABELS, DESIGN_STATUS_TONES } from "@forge/contracts/design-status";
 import {
   FEEDBACK_DECISION_LABELS,
@@ -136,6 +137,12 @@ const CONTRACT_FAMILIES = {
   contractAdoption: { labels: CONTRACT_ADOPTION_LABELS, tones: CONTRACT_ADOPTION_TONES, glyphs: CONTRACT_ADOPTION_GLYPHS, hints: CONTRACT_ADOPTION_HINTS },
   contractApproval: { labels: CONTRACT_APPROVAL_LABELS, tones: CONTRACT_APPROVAL_TONES, glyphs: { proposed: "●", approved: "✓", returned: "↺" } },
   onboarding: { labels: ONBOARDING_STATUS_LABELS, tones: ONBOARDING_STATUS_TONES, glyphs: { in_progress: "•", waiting_on_you: "?", done: "✓" } },
+  thread: {
+    labels: ONBOARDING_STATUS_LABELS,
+    tones: ONBOARDING_STATUS_TONES,
+    glyphs: { in_progress: "•", waiting_on_you: "?", done: "✓" },
+    hints: THREAD_STATUS_HINTS,
+  },
   dataPolicy: {
     labels: Object.fromEntries(Object.entries(SENSITIVE_DATA_BADGES).map(([k, v]) => [k, v.label])),
     tones: Object.fromEntries(Object.entries(SENSITIVE_DATA_BADGES).map(([k, v]) => [k, POLICY_TONE[v.tone]])),
@@ -180,6 +187,7 @@ export const ENUM_FAMILIES = {
   feedbackTarget: FEEDBACK_TARGET_LABELS,
   contractDirection: CONTRACT_DIRECTION_LABELS,
   step: WORK_STEP_LABELS,
+  notificationType: NOTIFICATION_TYPE_LABELS,
   ...ENUM_LABELS,
 } as const satisfies Record<string, Record<string, string>>;
 
