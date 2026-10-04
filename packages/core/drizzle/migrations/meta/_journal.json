@@ -2444,6 +2444,13 @@
       "when": 1815782400000,
       "tag": "0380_a_copied_citation_carries_its_kind_and_coverage_sha",
       "breakpoints": true
+    },
+    {
+      "idx": 381,
+      "version": "7",
+      "when": 1815868800000,
+      "tag": "0381_a_retired_issue_status_is_stored_nowhere",
+      "breakpoints": true
     }
   ]
 }
