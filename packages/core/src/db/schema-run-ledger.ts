@@ -9,7 +9,9 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { agentSessions, devices, projects } from './schema.js';
+import { agentSessions } from './schema-agent-sessions.js';
+import { devices } from './schema-devices.js';
+import { projects } from './schema-projects.js';
 
 export const deviceRunLedger = pgTable(
   'device_run_ledger',

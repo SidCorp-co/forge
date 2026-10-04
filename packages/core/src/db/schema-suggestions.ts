@@ -16,9 +16,11 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { issues, projects, users } from './schema.js';
+import { users } from './schema-auth.js';
 import { conversationMessages } from './schema-conversations.js';
 import { feedback } from './schema-feedback.js';
+import { issues } from './schema-issues.js';
+import { projects } from './schema-projects.js';
 import { requirements } from './schema-requirements.js';
 import { projectWorkflows } from './schema-workflows.js';
 

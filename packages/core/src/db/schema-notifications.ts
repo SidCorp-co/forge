@@ -10,7 +10,9 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { issues, projects, users } from './schema.js';
+import { users } from './schema-auth.js';
+import { issues } from './schema-issues.js';
+import { projects } from './schema-projects.js';
 import { scheduleRuns } from './schema-schedule-runs.js';
 
 export const notificationTypes = [

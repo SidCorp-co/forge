@@ -11,8 +11,8 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { projects } from './schema.js';
 import { feedback } from './schema-feedback.js';
+import { projects } from './schema-projects.js';
 import { requirements } from './schema-requirements.js';
 import { MEMORY_EMBEDDING_DIM, pgVector } from './schema-types.js';
 

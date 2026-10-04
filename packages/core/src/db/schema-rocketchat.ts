@@ -25,7 +25,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { integrationConnections } from './schema.js';
+import { integrationConnections } from './schema-integrations.js';
 import { agentQuestions } from './schema-questions.js';
 
 export const questionDeliveryStatuses = QUESTION_DELIVERY_STATUSES;

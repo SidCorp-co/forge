@@ -1,5 +1,5 @@
 import { index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { users } from './schema.js';
+import { users } from './schema-auth.js';
 
 /** How a handle behaves in a group room it was not summoned into. */
 export const answerInGroupModes = ['window', 'mention', 'tool'] as const;

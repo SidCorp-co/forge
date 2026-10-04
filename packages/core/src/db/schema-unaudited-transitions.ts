@@ -1,5 +1,5 @@
 import { index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { kernelTransitionEntities } from './schema.js';
+import { kernelTransitionEntities } from './schema-vocabulary.js';
 
 export const unauditedTransitions = pgTable(
   'unaudited_transitions',

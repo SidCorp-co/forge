@@ -15,7 +15,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { agentSessions } from './schema.js';
+import { agentSessions } from './schema-agent-sessions.js';
 
 export const agentSessionEventKinds = ['stdout', 'seed', 'snapshot'] as const;
 export type AgentSessionEventKind = (typeof agentSessionEventKinds)[number];

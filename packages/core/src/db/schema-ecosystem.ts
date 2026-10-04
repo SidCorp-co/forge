@@ -11,7 +11,9 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { organizations, projects, users } from './schema.js';
+import { users } from './schema-auth.js';
+import { organizations } from './schema-orgs.js';
+import { projects } from './schema-projects.js';
 
 export const ecosystems = pgTable(
   'ecosystems',

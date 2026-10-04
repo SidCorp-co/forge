@@ -11,8 +11,9 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { projects, users } from './schema.js';
+import { users } from './schema-auth.js';
 import { contractVersions, ecosystems } from './schema-ecosystem.js';
+import { projects } from './schema-projects.js';
 
 export const ecosystemLinks = pgTable(
   'ecosystem_links',

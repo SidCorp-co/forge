@@ -10,12 +10,11 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { issues } from './schema.js';
+import { issues } from './schema-issues.js';
+import { actorAgencies } from './schema-vocabulary.js';
 
 export const actorTypes = ['user', 'device'] as const;
 export type ActorType = (typeof actorTypes)[number];
-
-export const actorAgencies = ['human', 'agent'] as const;
 
 export const activityLog = pgTable(
   'activity_log',
@@ -66,3 +65,5 @@ export const activityLog = pgTable(
 export const activityLogRelations = relations(activityLog, ({ one }) => ({
   issue: one(issues, { fields: [activityLog.issueId], references: [issues.id] }),
 }));
+
+export { actorAgencies } from './schema-vocabulary.js';

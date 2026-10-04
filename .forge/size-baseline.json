@@ -9,10 +9,6 @@
       "fileLines": 612,
       "maxFunctionLines": 153
     },
-    "packages/core/src/db/schema.ts": {
-      "fileLines": 2298,
-      "maxFunctionLines": 0
-    },
     "packages/core/src/feedback/read.ts": {
       "fileLines": 527,
       "maxFunctionLines": 0

@@ -7,7 +7,10 @@
 
 import { relations } from 'drizzle-orm';
 import { index, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { agentSessions, devices, pipelineRuns, projects } from './schema.js';
+import { agentSessions } from './schema-agent-sessions.js';
+import { devices } from './schema-devices.js';
+import { pipelineRuns } from './schema-pipeline.js';
+import { projects } from './schema-projects.js';
 
 export const issueLeases = pgTable(
   'issue_leases',

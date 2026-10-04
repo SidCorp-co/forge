@@ -26,11 +26,13 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { agentSessions, issues, projects } from './schema.js';
-import type { ConversationAdapter } from './schema-conversations.js';
+import { agentSessions } from './schema-agent-sessions.js';
 import { feedback } from './schema-feedback.js';
+import { issues } from './schema-issues.js';
 import { questionnaireBatches } from './schema-onboarding.js';
+import { projects } from './schema-projects.js';
 import { requirements } from './schema-requirements.js';
+import type { ConversationAdapter } from './schema-vocabulary.js';
 
 export const questionStatuses = QUESTION_STATUSES;
 export type QuestionStatus = (typeof questionStatuses)[number];

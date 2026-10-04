@@ -12,10 +12,12 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { issues, projects, users } from './schema.js';
-import { actorAgencies } from './schema-activity.js';
+import { users } from './schema-auth.js';
 import { feedback } from './schema-feedback.js';
+import { issues } from './schema-issues.js';
+import { projects } from './schema-projects.js';
 import { requirementRevisions, requirements } from './schema-requirements.js';
+import { actorAgencies } from './schema-vocabulary.js';
 
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 

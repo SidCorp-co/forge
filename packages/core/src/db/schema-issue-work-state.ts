@@ -3,7 +3,7 @@
 
 import { sql } from 'drizzle-orm';
 import { check, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { issues } from './schema.js';
+import { issues } from './schema-issues.js';
 
 /** A run's steps inside `in_progress` (and `release` inside `awaiting_release`), in order. */
 export const workSteps = ['triage', 'clarify', 'plan', 'build', 'test', 'release'] as const;

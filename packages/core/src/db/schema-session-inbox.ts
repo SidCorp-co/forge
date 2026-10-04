@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
-import { agentSessions } from './schema.js';
+import { agentSessions } from './schema-agent-sessions.js';
 
 export const sessionInboxKinds = ['work', 'answer', 'inject', 'checkpoint', 'cancel'] as const;
 export type SessionInboxKind = (typeof sessionInboxKinds)[number];

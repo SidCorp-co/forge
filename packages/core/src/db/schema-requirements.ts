@@ -22,9 +22,10 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { projects, users } from './schema.js';
+import { users } from './schema-auth.js';
 import { contractVersions } from './schema-ecosystem.js';
 import { mockups } from './schema-mockups.js';
+import { projects } from './schema-projects.js';
 import { suggestions } from './schema-suggestions.js';
 import { projectWorkflowDesigns, projectWorkflows } from './schema-workflows.js';
 

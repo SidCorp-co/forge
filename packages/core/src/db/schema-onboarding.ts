@@ -12,10 +12,12 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { jobs, projects, users } from './schema.js';
-import { actorAgencies } from './schema-activity.js';
+import { users } from './schema-auth.js';
 import { conversationMessages, conversations } from './schema-conversations.js';
+import { jobs } from './schema-jobs.js';
+import { projects } from './schema-projects.js';
 import { requirements } from './schema-requirements.js';
+import { actorAgencies } from './schema-vocabulary.js';
 
 export {
   QUESTIONNAIRE_STATUSES,

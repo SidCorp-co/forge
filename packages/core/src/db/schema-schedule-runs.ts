@@ -5,7 +5,10 @@ import {
 } from '@forge/contracts/schedules';
 import { relations, sql } from 'drizzle-orm';
 import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
-import { agentSessions, pipelineRuns, projects, schedules } from './schema.js';
+import { agentSessions } from './schema-agent-sessions.js';
+import { pipelineRuns } from './schema-pipeline.js';
+import { projects } from './schema-projects.js';
+import { schedules } from './schema-schedules.js';
 
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 

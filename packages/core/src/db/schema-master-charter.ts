@@ -10,7 +10,8 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { projects, users } from './schema.js';
+import { users } from './schema-auth.js';
+import { projects } from './schema-projects.js';
 
 export { MASTER_VERBS as masterVerbs, type MasterVerb } from '@forge/contracts/master-standing';
 
