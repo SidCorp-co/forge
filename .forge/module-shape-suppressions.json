@@ -39,36 +39,6 @@
       "count": 1
     }
   },
-  "packages/core/src/release-batch/abort-stamp.ts": {
-    "module-shape/table-writer": {
-      "count": 3
-    }
-  },
-  "packages/core/src/release-batch/finish-record.ts": {
-    "module-shape/table-writer": {
-      "count": 1
-    }
-  },
-  "packages/core/src/release-batch/method.ts": {
-    "module-shape/table-writer": {
-      "count": 1
-    }
-  },
-  "packages/core/src/release-batch/releasing-recovery.ts": {
-    "module-shape/table-writer": {
-      "count": 1
-    }
-  },
-  "packages/core/src/release-batch/unverified-close.ts": {
-    "module-shape/table-writer": {
-      "count": 1
-    }
-  },
-  "packages/core/src/release-batch/version-store.ts": {
-    "module-shape/table-writer": {
-      "count": 2
-    }
-  },
   "packages/core/src/workflows/design.ts": {
     "module-shape/refusal": {
       "count": 1
