@@ -49,9 +49,6 @@ export function internalNamesOf(iface: InterfaceDocument): string[] {
   const names = new Set<string>();
   for (const pub of Object.values(iface.publishes)) {
     for (const m of pub.implementedBy ?? []) names.add(m);
-    const path = pub.artifact && 'path' in pub.artifact ? pub.artifact.path : null;
-    const dir = path?.includes('/') ? path.slice(0, path.lastIndexOf('/')) : null;
-    if (dir) names.add(dir);
   }
   for (const c of iface.consumes) for (const m of c.usedBy ?? []) names.add(m);
   return [...names].sort();
