@@ -5,7 +5,6 @@ import {
   PAT_PERMISSION_GROUPS,
   PAT_PERMISSION_NAMES,
   type PatPermission,
-  type PatRoute,
   patEpochRefusal,
   patGrantCovers,
   patPrefixForPath,

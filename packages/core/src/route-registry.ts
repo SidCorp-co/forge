@@ -132,6 +132,7 @@ import { mockupRoutes } from './mockups/index.js';
 import { notificationRoutes } from './notifications/index.js';
 import { onboardingRoutes } from './onboarding/index.js';
 import { orgInvitationRoutes, orgRoutes, sshKeyRoutes } from './orgs/index.js';
+import { outboxAdminRoutes, outboxRoutes } from './outbox/index.js';
 import { patRoutes } from './pat/routes.js';
 import {
   phaseRoutes,
@@ -229,6 +230,7 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', suggestionRoutes);
   app.route('/api/projects', feedbackRoutes);
   app.route('/api/projects', mockupRoutes);
+  app.route('/api/projects', outboxRoutes);
   app.route('/api/projects', baDoorRoutes);
   app.route('/api/projects', onboardingRoutes);
   app.route('/api/projects', questionnaireRoutes);
@@ -337,6 +339,7 @@ export function mountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/admin', adminMcpAuditRoutes);
   app.route('/api/admin', adminMetricSeriesRoutes);
   app.route('/api/admin', adminThresholdRoutes);
+  app.route('/api/admin', outboxAdminRoutes);
   app.route('/api/admin/pipeline', pipelineHealthAdminRoutes);
   app.route('/api/devices', devicePublicRoutes);
   app.route('/api/devices', deviceLoginRoutes);

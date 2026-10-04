@@ -286,12 +286,36 @@ A write a rule refuses answers **422** with one body, and nothing is written:
   (`packages/core/src/db/schema-feedback.ts:feedbackDecisions`); overwriting the last one loses
   history.
 - **A fact another module reacts to is an outbox event**, written in the act's transaction to the
-  one durable outbox (`packages/core/src/db/schema.ts:pipelineOutbox`) by
+  one durable outbox (`packages/core/src/db/schema-outbox.ts:pipelineOutbox`) by
   `packages/core/src/outbox/emit.ts:emitEvent`, its types in
-  `packages/contracts/src/outbox-events.ts:OUTBOX_EVENT_TYPES`. A reaction is a named consumer
-  (`packages/core/src/outbox/consumers.ts:consume`), registered in
-  `packages/core/src/outbox-consumers.ts:registerOutboxConsumers` and delivered by the outbox worker,
-  which retries only the consumers that failed. There is no in-memory bus.
+  `packages/contracts/src/outbox-events.ts:OUTBOX_EVENT_TYPES`. There is no in-memory bus.
+- **Every consumer is declared in contracts** (`packages/contracts/src/outbox-consumers.ts:OUTBOX_CONSUMERS`)
+  and registered under that name (`packages/core/src/outbox/consumers.ts:consume`, from
+  `packages/core/src/outbox-consumers.ts:registerOutboxConsumers`). The worker refuses to start
+  while the two disagree.
+- **One delivery row per event and consumer** (`packages/core/src/db/schema-outbox.ts:outboxDeliveries`),
+  written with the event, holds that consumer's status (`pending`, `delivered`, `dead`), attempts,
+  next attempt, lease and last error. Consumers are independent: one failing never retries or holds
+  back another.
+- **The delivery row is the consumer's inbox.** A consumer whose effect is rows writes them inside
+  `Delivery.inbox(tx => …)`, which marks the delivery `delivered` in the same transaction, so a
+  redelivery after the commit writes nothing again. A consumer whose effect leaves the database (a
+  push, a queue send) is marked by the worker when it returns, and is delivered at least once.
+- **Retries back off over hours** (`OUTBOX_MAX_ATTEMPTS` starts, doubling from
+  `OUTBOX_RETRY_BASE_MS` to `OUTBOX_RETRY_CAP_MS`, jittered), then the delivery is `dead`. Dead
+  deliveries are listed at `GET /api/projects/:id/outbox/dead` (and every project's, project-less
+  events included, at `GET /api/admin/outbox/dead`), replayed by
+  `POST /api/projects/:id/outbox/deliveries/:did/replay` under `outbox.replay`, and raised as the
+  `A6` ops alert (`packages/core/src/admin/alert-queries.ts:computeAlerts`). A consumer with a row
+  of its own waiting on the delivery settles it in `onDeadLetter`.
+- **An issue's events reach each consumer in order**: a delivery waits while an earlier event of the
+  same issue is still pending for the same consumer, backoff included. A dead one no longer holds
+  the issue back; replaying it delivers it after its successors.
+- **The lease is renewed while a consumer runs**, so a slow consumer is never claimed twice.
+- **The worker is woken in-process after the emitting transaction commits**
+  (`packages/core/src/db/client.ts:afterCommit`); nothing is signalled from inside the transaction,
+  and polling backs it up. Delivered rows, and events left with no delivery, are pruned after
+  `OUTBOX_RETENTION_DAYS` by the `outbox-retention` timer (`packages/core/src/timer-registry.ts`).
 - **An event nobody consumes is not emitted**, and a subscription to an event nobody emits is
   removed. Each event node of an approved design maps to an event kind or to "the row is the
   record".
@@ -474,7 +498,7 @@ web-v2/src/features/feedback/     api.ts, hooks.ts, types.ts, routes.ts, compone
 | Direction between twelve contexts first | A back edge between two contexts is cut by an outbox event or a port filled at boot rather than a direct call, and each cut is a change of its own; the order was read from today's graph, so a context whose code is wrongly placed reads as a back edge until it moves |
 | One owner per table | A cross-module write becomes a call into the owner's service, one more function and one more transaction boundary to get right |
 | The machine as data and one kernel transition | Every status write in core moves into one engine, and a slice can no longer set its own status in a one-line update |
-| One durable outbox | Every reaction is asynchronous and survives a crash, at the price of a table write per event and a consumer that must be idempotent |
+| One durable outbox | Every reaction is asynchronous and survives a crash, at the price of a table write per event plus one per consumer, and a consumer whose effect leaves the database must be idempotent |
 | One 422 for every rule refusal | A client reads `error.code` and never branches on 403 or 409 |
 | The semantic rules run on demand, not before a push | New code can break a table-writer, route-query, refusal or status-write rule and land; the break shows only when the orchestrator or QA next runs the script |
 | A shrink-only baseline for the import rules | A file move rewrites its baseline keys, so the move carries `--update-baseline` with it; a violation can never be admitted by re-freezing, only fixed |

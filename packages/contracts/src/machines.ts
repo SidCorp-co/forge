@@ -1,7 +1,5 @@
 // Every status machine, by the entity its moves are recorded under (`kernel_transitions.entity`).
 
-import type { StatusMachine } from "./state-machine.js";
-import { DEVICE_MACHINE, RUNNER_MACHINE, RUNNER_PROVISION_MACHINE } from "./runner-machine.js";
 import { FEEDBACK_MACHINE } from "./feedback-machine.js";
 import { ISSUE_MACHINE } from "./issue-machine.js";
 import { JOB_MACHINE } from "./job-machine.js";
@@ -10,9 +8,19 @@ import { QUESTIONNAIRE_MACHINE } from "./onboarding-machine.js";
 import { QUESTION_MACHINE } from "./question-machine.js";
 import { RECONCILE_RUN_MACHINE } from "./reconcile-run-machine.js";
 import { REQUIREMENT_MACHINE } from "./requirement-machine.js";
+import {
+	COMMENT_MIRROR_MACHINE,
+	QUESTION_DELIVERY_MACHINE,
+} from "./room-delivery-machine.js";
 import { RUN_MACHINE } from "./run-machine.js";
+import {
+	DEVICE_MACHINE,
+	RUNNER_MACHINE,
+	RUNNER_PROVISION_MACHINE,
+} from "./runner-machine.js";
 import { SCHEDULE_RUN_MACHINE } from "./schedule-run-machine.js";
 import { SESSION_MACHINE } from "./session-machine.js";
+import type { StatusMachine } from "./state-machine.js";
 import { SUGGESTION_MACHINE } from "./suggestion-machine.js";
 
 export const MACHINE_ENTITIES = [
@@ -31,6 +39,8 @@ export const MACHINE_ENTITIES = [
 	"runner",
 	"runner_provision",
 	"device",
+	"comment_mirror",
+	"question_delivery",
 ] as const;
 export type MachineEntity = (typeof MACHINE_ENTITIES)[number];
 
@@ -50,6 +60,8 @@ export const MACHINES = {
 	runner: RUNNER_MACHINE,
 	runner_provision: RUNNER_PROVISION_MACHINE,
 	device: DEVICE_MACHINE,
+	comment_mirror: COMMENT_MIRROR_MACHINE,
+	question_delivery: QUESTION_DELIVERY_MACHINE,
 } as const satisfies { readonly [E in MachineEntity]: StatusMachine<E> };
 
 export type MachineOf<E extends MachineEntity> = (typeof MACHINES)[E];

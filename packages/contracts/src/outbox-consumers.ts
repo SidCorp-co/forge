@@ -1,0 +1,121 @@
+// Who consumes each outbox event, and what one delivery looks like (pattern v2, BC-18; ADR 0008).
+// The emitting transaction writes one `outbox_deliveries` row per consumer named here, so the list is
+// data every process reads the same way, whether or not it runs the worker. The worker refuses to
+// start when a registered consumer and this list disagree.
+
+import type { OutboxEventType } from "./outbox-events.js";
+
+export const OUTBOX_CONSUMERS = {
+	"issue.created": [
+		"ws-broadcast",
+		"activity-feed",
+		"pipeline-orchestrator",
+		"master-wake",
+		"memory-indexer",
+	],
+	"issue.updated": ["ws-broadcast", "activity-feed", "memory-indexer"],
+	"issue.transitioned": [
+		"ws-broadcast",
+		"activity-feed",
+		"pipeline-orchestrator",
+		"master-wake",
+		"notify-transitions",
+		"outbound-webhooks",
+		"pm",
+		"memory-reconcile",
+	],
+	"job.transitioned": ["pm", "phase-journal-close", "memory-extraction"],
+	"run.transitioned": ["paused-run-wedge-resolve", "release-batch-claims"],
+	"dependency.changed": ["pm"],
+	"comment.created": [
+		"activity-feed",
+		"master-wake",
+		"rocketchat-comment-mirror",
+	],
+	"comment.updated": ["activity-feed"],
+	"comment.deleted": ["activity-feed"],
+	"comment.mentioned": ["activity-feed", "notify-mentions"],
+	"question.answered": ["answer-resume"],
+	"task.created": ["ws-broadcast"],
+	"task.updated": ["ws-broadcast"],
+	"task.deleted": ["ws-broadcast"],
+	"schedule.fired": ["ws-broadcast"],
+	"notification.created": ["ws-broadcast"],
+	"notification.read": ["ws-broadcast"],
+	"user.preferencesChanged": ["ws-broadcast"],
+	"skill.syncRequested": ["ws-broadcast"],
+	"skill.registered": ["ws-broadcast"],
+	"skill.globalUpdated": ["ws-broadcast"],
+	"runner.provisionRequested": ["ws-broadcast"],
+	"runner.provisionStatus": ["ws-broadcast"],
+	"source.pushed": ["ecosystem-land", "ecosystem-builder", "live-reading"],
+	"source.merged": ["issue-merge-stamp"],
+	"source.reviewed": ["review-note"],
+	"error.sighted": ["error-intake"],
+	"integration.changed": ["ws-broadcast"],
+} as const satisfies {
+	readonly [T in OutboxEventType]: readonly [string, ...string[]];
+};
+
+export type OutboxConsumerOf<T extends OutboxEventType> =
+	(typeof OUTBOX_CONSUMERS)[T][number];
+export type OutboxConsumerName = OutboxConsumerOf<OutboxEventType>;
+
+/** The event types one consumer reads. */
+export type ConsumedBy<N extends OutboxConsumerName> = {
+	[T in OutboxEventType]: N extends OutboxConsumerOf<T> ? T : never;
+}[OutboxEventType];
+
+export function consumersOfType(
+	type: OutboxEventType,
+): readonly OutboxConsumerName[] {
+	return OUTBOX_CONSUMERS[type];
+}
+
+/**
+ * `pending` until the consumer is through (`delivered`) or every attempt is spent (`dead`). A dead
+ * delivery is replayed back to `pending` by an act; nothing moves it on its own.
+ */
+export const OUTBOX_DELIVERY_STATUSES = ["pending", "delivered", "dead"] as const;
+export type OutboxDeliveryStatus = (typeof OUTBOX_DELIVERY_STATUSES)[number];
+
+/**
+ * How many times a delivery is started before it is dead, and the backoff between starts: the
+ * delay doubles from `OUTBOX_RETRY_BASE_MS` up to `OUTBOX_RETRY_CAP_MS`, each jittered by up to a
+ * quarter either way, so the last attempt lands roughly six hours after the first.
+ */
+export const OUTBOX_MAX_ATTEMPTS = 15;
+export const OUTBOX_RETRY_BASE_MS = 10_000;
+export const OUTBOX_RETRY_CAP_MS = 60 * 60_000;
+
+/** Delivered rows, and events left with no delivery, are pruned after this many days. */
+export const OUTBOX_RETENTION_DAYS = 7;
+
+/** One dead delivery, as `GET …/outbox/dead` lists it. */
+export interface DeadOutboxDelivery {
+	id: string;
+	eventId: string;
+	type: OutboxEventType;
+	consumer: string;
+	projectId: string | null;
+	issueId: string | null;
+	attempts: number;
+	lastError: string | null;
+	/** ISO 8601: when the event was written, and when its last attempt failed. */
+	createdAt: string;
+	deadAt: string;
+}
+
+export interface DeadOutboxDeliveriesResponse {
+	deliveries: DeadOutboxDelivery[];
+	total: number;
+}
+
+export const OUTBOX_REFUSAL_CODES = ["OUTBOX_DELIVERY_NOT_DEAD"] as const;
+export type OutboxRefusalCode = (typeof OUTBOX_REFUSAL_CODES)[number];
+
+/** `POST …/outbox/deliveries/:id/replay`: the delivery is pending again with a fresh attempt count. */
+export interface ReplayOutboxDeliveryResponse {
+	act: "replayed";
+	delivery: { id: string; status: "pending"; consumer: string; eventId: string };
+}

@@ -107,7 +107,11 @@
       "context": "conversations",
       "owns": [
         "assistantSpeakerLinks",
-        "conversationPins"
+        "conversationPins",
+        "rocketchatCommentMirrorState",
+        "rocketchatCommentMirrors",
+        "rocketchatQuestionDeliveries",
+        "rocketchatThreadOpenings"
       ]
     },
     "auth": {
@@ -354,10 +358,6 @@
       "kind": "adapter",
       "context": "adapters",
       "owns": [
-        "rocketchatCommentMirrorState",
-        "rocketchatCommentMirrors",
-        "rocketchatQuestionDeliveries",
-        "rocketchatThreadOpenings",
         "rocketchatThreads"
       ]
     },
@@ -512,6 +512,7 @@
       "kind": "kernel",
       "context": "platform",
       "owns": [
+        "outboxDeliveries",
         "pipelineOutbox"
       ]
     },

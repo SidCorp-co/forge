@@ -7,6 +7,7 @@ export type {
   ModuleFact,
   ModuleFeedbackRef,
   ModuleLanding,
+  ModuleLevelCoupling,
   ModuleOpenKind,
   ModuleRef,
   ModuleRequirementTrace,

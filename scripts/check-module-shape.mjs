@@ -102,7 +102,7 @@ for (const [file, text] of texts) {
     for (const w of tableWrites(text, tables)) writes.push({ ...w, file, module: mod });
   findings.push(...routeQueryFindings(file, text, mod));
   findings.push(...refusalFindings(file, text, mod, kind));
-  findings.push(...statusWriteFindings(file, text, mod));
+  findings.push(...statusWriteFindings(file, text, mod, kind, owners));
 }
 const { findings: writerHits, multiWriter } = tableWriterFindings(writes, owners);
 findings.push(...writerHits);

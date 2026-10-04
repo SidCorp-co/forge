@@ -1,7 +1,7 @@
 import { db } from '../db/client.js';
 import { consume } from '../outbox/index.js';
 import { resolveIssueForHeadRef } from './head-ref-link.js';
-import { recordIssueMerge } from './merge-record.js';
+import { type MergeRecordExecutor, recordIssueMerge } from './merge-record.js';
 
 /**
  * The merge a source host reports, on the row the kernel's own merge writes: the one stamp for GitHub
@@ -10,19 +10,22 @@ import { recordIssueMerge } from './merge-record.js';
  * `merged_commit_sha IS NULL`. It records the merge and moves no status. Answers whether this call
  * wrote the stamp.
  */
-export async function stampHostMerge(args: {
-  projectId: string;
-  headRef: string;
-  commitSha: string;
-  mergedAt: Date;
-}): Promise<boolean> {
+export async function stampHostMerge(
+  args: {
+    projectId: string;
+    headRef: string;
+    commitSha: string;
+    mergedAt: Date;
+  },
+  executor: MergeRecordExecutor = db,
+): Promise<boolean> {
   if (Number.isNaN(args.mergedAt.getTime())) return false;
   const issueId = await resolveIssueForHeadRef({
     projectId: args.projectId,
     headRef: args.headRef,
   });
   if (!issueId) return false;
-  const stamp = await recordIssueMerge(db, {
+  const stamp = await recordIssueMerge(executor, {
     issueId,
     evidence: {
       kind: 'observed',
@@ -38,8 +41,8 @@ export async function stampHostMerge(args: {
 export function registerHostMergeStamp(): void {
   consume('source.merged', {
     name: 'issue-merge-stamp',
-    handle: async (p) => {
-      await stampHostMerge({ ...p, mergedAt: new Date(p.mergedAt) });
+    handle: async (p, d) => {
+      await d.inbox((tx) => stampHostMerge({ ...p, mergedAt: new Date(p.mergedAt) }, tx));
     },
   });
 }

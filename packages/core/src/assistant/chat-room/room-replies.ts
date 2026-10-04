@@ -1,68 +1,17 @@
 /**
- * ISS-727 — the shared half of the two RC completion bridges. Everything here
+ * ISS-727 — the shared half of the two room completion bridges. Everything here
  * is parameterized by the metadata marker so the bridges cannot drift; what
  * stays in each is only its own decision logic (Bao synthesis vs verbatim,
  * failover, fallback copy, progress source).
  */
 import { and, eq, sql } from 'drizzle-orm';
-import { claimSessionMetadataDelivery } from '../../agent-sessions/index.js';
-import { messageRoleToTurnRole } from '../../agent-sessions/turns-helpers.js';
+import { claimSessionMetadataDelivery, messageRoleToTurnRole } from '../../agent-sessions/index.js';
 import { db } from '../../db/client.js';
-import { agentSessions, integrationBindings } from '../../db/schema.js';
-import { logger } from '../../observability/logger.js';
-import { decryptConnectionSecrets, findConnectionById } from '../store.js';
-import type { RocketChatBindingConfig, RocketChatConfig, RocketChatSecrets } from './types.js';
+import { agentSessions } from '../../db/schema.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
 
 export type RoomReplyMarker = 'escalation' | 'agentChat';
-
-export interface RoomPostAuth {
-  serverUrl: string;
-  authToken: string;
-  userId: string;
-}
-
-export async function resolveRoomPostAuth(
-  connectionId: string,
-  logContext: Record<string, unknown>,
-): Promise<RoomPostAuth | null> {
-  const connection = await findConnectionById(connectionId);
-  if (!connection) {
-    logger.error({ ...logContext, connectionId }, 'rocketchat: connection not found');
-    return null;
-  }
-  const secrets = decryptConnectionSecrets<RocketChatSecrets>(connection);
-  const config = (connection.config ?? {}) as RocketChatConfig;
-  if (!config.serverUrl || !secrets.authToken || !secrets.userId) {
-    logger.error(
-      { ...logContext, connectionId },
-      'rocketchat: connection missing serverUrl/credentials',
-    );
-    return null;
-  }
-  return { serverUrl: config.serverUrl, authToken: secrets.authToken, userId: secrets.userId };
-}
-
-/** The room is still this project's to post into, right now. */
-export async function roomStillBoundTo(args: {
-  connectionId: string;
-  projectId: string;
-  rid: string;
-}): Promise<boolean> {
-  const rows = await db
-    .select({ config: integrationBindings.config })
-    .from(integrationBindings)
-    .where(
-      and(
-        eq(integrationBindings.provider, 'rocketchat'),
-        eq(integrationBindings.active, true),
-        eq(integrationBindings.connectionId, args.connectionId),
-        eq(integrationBindings.projectId, args.projectId),
-      ),
-    );
-  return rows.some((r) => ((r.config ?? {}) as RocketChatBindingConfig).rids?.includes(args.rid));
-}
 
 export interface RoomReplyMeta {
   connectionId: string;

@@ -6,7 +6,7 @@
 
 import { isChoiceStep, type QuestionOption, type QuestionStep } from '../../db/schema-questions.js';
 import type { RoomMessage } from '../../messaging/proven.js';
-import { agentAuthoredSegments } from '../../questions/screen.js';
+import { agentAuthoredSegments } from '../../questions/index.js';
 
 export { OPTION_LINE_RE } from '../../messaging/option-line.js';
 

@@ -1,4 +1,5 @@
-import type { OutboxEventPayload, OutboxEventType } from '@forge/contracts/outbox-events';
+import type { ConsumedBy, OutboxConsumerOf } from '@forge/contracts/outbox-consumers';
+import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
 import { consume } from '../outbox/index.js';
 import { deviceRoom, globalRoom, projectRoom, userRoom } from './rooms.js';
 import { roomManager } from './server.js';
@@ -8,8 +9,11 @@ import { roomManager } from './server.js';
  * web's event router (web-v2 `src/lib/ws/event-router.ts`) reacts to, under the same names on both
  * sides. Publish-only; it writes no data.
  */
-function on<T extends OutboxEventType>(type: T, publish: (p: OutboxEventPayload<T>) => void): void {
-  consume(type, { name: 'ws-broadcast', handle: publish });
+function on<T extends ConsumedBy<'ws-broadcast'>>(
+  type: T,
+  publish: (p: OutboxEventPayload<T>) => void,
+): void {
+  consume(type, { name: 'ws-broadcast' as OutboxConsumerOf<T>, handle: publish });
 }
 
 export function registerWsBroadcastSubscribers(): void {
@@ -227,14 +231,7 @@ export function registerWsBroadcastSubscribers(): void {
   });
 
   on('integration.changed', (p) => {
-    roomManager.publish(projectRoom(p.projectId), {
-      event: 'integration.changed',
-      data: {
-        projectId: p.projectId,
-        ...(p.bindingId ? { bindingId: p.bindingId } : {}),
-        ...(p.connectionId ? { connectionId: p.connectionId } : {}),
-      },
-    });
+    roomManager.publish(projectRoom(p.projectId), { event: 'integration.changed', data: p });
   });
 
   on('skill.globalUpdated', (p) => {

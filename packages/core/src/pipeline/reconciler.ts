@@ -5,6 +5,7 @@ import type { IssueStatus } from '../db/schema.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { traceStep } from '../observability/sentry.js';
+import { countOverdueDeliveries } from '../outbox/index.js';
 import { holdsOpenHumanQuestion, personOwesAnAnswer } from '../questions/issue-coupling.js';
 import { wakeMastersForProject } from '../ws/master-wake.js';
 import {
@@ -21,7 +22,7 @@ import {
   wedgeLeaseUnderLock,
 } from './wedge-lease.js';
 
-const STALE_OUTBOX_INTERVAL = '5 minutes';
+const STALE_OUTBOX_MS = 5 * 60_000;
 const STUCK_ISSUE_INTERVAL = '60 seconds';
 const STUCK_ISSUE_LIMIT = 100;
 
@@ -92,19 +93,12 @@ export async function runReconcilerOnce(): Promise<{
   }
 
   try {
-    const staleRows = await db.execute<{ count: string | number }>(sql`
-      SELECT COUNT(*)::text AS count
-      FROM pipeline_outbox
-      WHERE processed_at IS NULL
-        AND created_at < now() - interval '${sql.raw(STALE_OUTBOX_INTERVAL)}'
-    `);
-    const first = staleRows[0];
-    const n = first ? Number(first.count) : 0;
+    const n = await countOverdueDeliveries(STALE_OUTBOX_MS);
     if (n > 0) {
       stale = n;
-      logger.warn({ stale: n }, 'reconciler: outbox has stale unprocessed rows');
+      logger.warn({ stale: n }, 'reconciler: outbox deliveries are overdue');
       traceStep({
-        category: 'pipeline.outbox.stale_unprocessed',
+        category: 'pipeline.outbox.overdue',
         level: 'warning',
         data: { staleCount: n },
       });
