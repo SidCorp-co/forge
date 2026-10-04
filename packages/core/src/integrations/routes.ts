@@ -47,9 +47,9 @@ import {
   buildContextFromBinding,
   findBindingWithConnectionById,
   listBindingsForProject,
-  setBindingInboundSecret,
   updateConnection,
 } from './store.js';
+import { setBindingInboundSecret } from '../project-config/binding-store.js';
 import { requireCan, requireOrgHeld } from '../permissions/index.js';
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');

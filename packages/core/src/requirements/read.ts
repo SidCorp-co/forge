@@ -12,13 +12,11 @@ import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import {
   type CriterionForm,
-  type DeliveryPhase,
   type RequirementStatus,
   type RevisionState,
   requirementBaselinePins,
   requirementBaselines,
   requirementCriteria,
-  requirementDelivery,
   requirementRevisions,
   requirements,
   requirementWorkflows,
@@ -43,7 +41,6 @@ import {
   type ReadinessAtHead,
   signoffRefusal,
 } from './rules.js';
-import { provenPhase } from './standing.js';
 import { standingsOf } from './standing-read.js';
 
 export interface RequirementActor {
@@ -123,29 +120,10 @@ export async function linkedDesigns(tx: Tx, requirementId: string): Promise<Link
   return rows;
 }
 
-// cm:why the phase and the BC coverage are the standing's (`standing.ts:provenPhase`): the view
-// counts issue statuses, the standing adds whether every current BC holds a passing verdict
-const deliveryOf = (
-  d:
-    | { phase: string | null; liveIssues: number; startedIssues: number; closedIssues: number }
-    | undefined,
-  standing: RequirementStanding,
-) => ({
-  phase: provenPhase((d?.phase ?? null) as DeliveryPhase | null, standing.coverage),
-  liveIssues: d?.liveIssues ?? 0,
-  startedIssues: d?.startedIssues ?? 0,
-  closedIssues: d?.closedIssues ?? 0,
-  criteriaCoverage: {
-    criteria: standing.facts.criteria,
-    passing: standing.facts.passing,
-    judged: standing.facts.judged,
-  },
-});
-
 function summaryOf(
   row: Row,
   latest: { revision: number; state: RevisionState } | null,
-  delivery: ReturnType<typeof deliveryOf>,
+  delivery: RequirementStanding['delivery'],
 ) {
   return {
     id: row.id,
@@ -177,7 +155,7 @@ export async function listRequirementsAs(viewer: RequirementActor, projectId: st
     .orderBy(desc(requirements.reqSeq));
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
-  const [latest, delivery, standings] = await Promise.all([
+  const [latest, standings] = await Promise.all([
     db
       .selectDistinctOn([requirementRevisions.requirementId], {
         requirementId: requirementRevisions.requirementId,
@@ -187,11 +165,9 @@ export async function listRequirementsAs(viewer: RequirementActor, projectId: st
       .from(requirementRevisions)
       .where(inArray(requirementRevisions.requirementId, ids))
       .orderBy(requirementRevisions.requirementId, desc(requirementRevisions.revision)),
-    db.select().from(requirementDelivery).where(inArray(requirementDelivery.requirementId, ids)),
     standingViewer(viewer, projectId).then((v) => standingsOf(projectId, rows, v)),
   ]);
   const latestBy = new Map(latest.map((l) => [l.requirementId, l]));
-  const deliveryBy = new Map(delivery.map((d) => [d.requirementId, d]));
   return rows.map((r) => {
     const l = latestBy.get(r.id);
     const standing = standings.get(r.id) as RequirementStanding;
@@ -199,7 +175,7 @@ export async function listRequirementsAs(viewer: RequirementActor, projectId: st
       ...summaryOf(
         r,
         l ? { revision: l.revision, state: l.state as RevisionState } : null,
-        deliveryOf(deliveryBy.get(r.id), standing),
+        standing.delivery,
       ),
       standing,
     };
@@ -214,7 +190,6 @@ export async function detailOf(row: Row, viewer: RequirementActor | null, door: 
     baselines,
     pins,
     linked,
-    delivery,
     prefix,
     standing,
     history,
@@ -276,7 +251,6 @@ export async function detailOf(row: Row, viewer: RequirementActor | null, door: 
       .from(issues)
       .where(eq(issues.requirementId, row.id))
       .orderBy(asc(issues.issSeq)),
-    db.select().from(requirementDelivery).where(eq(requirementDelivery.requirementId, row.id)),
     activeIssuePrefix(row.projectId),
     standingViewer(viewer, row.projectId)
       .then((v) => standingsOf(row.projectId, [row], v))
@@ -299,7 +273,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null, door: 
     ...summaryOf(
       row,
       latest ? { revision: latest.revision, state: latest.state as RevisionState } : null,
-      deliveryOf(delivery[0], standing),
+      standing.delivery,
     ),
     revisions: revisions.map((r) => revisionView(r, criteria, people)),
     criteria:

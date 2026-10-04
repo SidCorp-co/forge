@@ -392,8 +392,7 @@
         "phaseJournal",
         "pipelineOutbox",
         "pipelineRuns",
-        "queueSnapshots",
-        "runnerEvents"
+        "queueSnapshots"
       ]
     },
     "plugins": {
@@ -450,7 +449,8 @@
       "kind": "domain",
       "owns": [
         "releaseApprovals",
-        "releaseAttempts"
+        "releaseAttempts",
+        "releaseHolds"
       ]
     },
     "requirements": {
@@ -471,6 +471,7 @@
     "runners": {
       "kind": "kernel",
       "owns": [
+        "runnerEvents",
         "runners"
       ]
     },

@@ -8,7 +8,7 @@ import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import type { QuestionRefusalCode } from '@forge/contracts/questions';
 import { and, eq, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
 import {
   type AnswerShape,
@@ -471,4 +471,18 @@ function view<T extends { steps: QuestionStep[] }>(row: T) {
     answerShape: (current && !isChoiceStep(current) ? 'free_text' : 'choice') as AnswerShape,
     recommendedOptionId: current && isChoiceStep(current) ? current.recommendedOptionId : '',
   };
+}
+
+/** The clarification questions asked on a feedback, removed with what the reporter gave (UC15). */
+export async function deleteFeedbackQuestions(tx: Tx, feedbackId: string): Promise<void> {
+  await tx.delete(agentQuestions).where(eq(agentQuestions.feedbackId, feedbackId));
+}
+
+/** A questionnaire batch's items, each a question of its own, asked in the batch's transaction. */
+export async function insertBatchQuestions(
+  tx: Tx,
+  rows: Array<typeof agentQuestions.$inferInsert>,
+): Promise<void> {
+  if (rows.length === 0) return;
+  await tx.insert(agentQuestions).values(rows);
 }

@@ -78,7 +78,7 @@ export function OverviewScreen() {
 
       <LivenessBand liveness={data.liveness} thresholds={data.thresholds} />
       <WorkSitting pulse={data} nowMs={nowMs} />
-      <ActionQueue pulse={data} nowMs={nowMs} />
+      <ActionQueue pulse={data} />
       <FlowSection flow={data.flow} />
       <QualitySection quality={data.quality} />
     </PageContainer>

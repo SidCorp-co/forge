@@ -33,6 +33,7 @@ import {
   closeRunIfOneShot,
   insertOneShotRun,
   type OneShotRunSpec,
+  stampRunMetadataTime,
 } from '../pipeline/runs.js';
 import { requirePolicy } from '../project-config/dispatch-policy.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
@@ -150,12 +151,7 @@ async function announceOnce(
 ): Promise<void> {
   if (found.announced) return;
   await announceOneShotRun(found.runId, { projectId, kind: 'system' });
-  await db
-    .update(pipelineRuns)
-    .set({
-      metadata: sql`COALESCE(${pipelineRuns.metadata}, '{}'::jsonb) || jsonb_build_object(${RUN_ANNOUNCED_METADATA_KEY}::text, to_jsonb(now()))`,
-    })
-    .where(eq(pipelineRuns.id, found.runId));
+  await stampRunMetadataTime(found.runId, RUN_ANNOUNCED_METADATA_KEY);
 }
 
 /**

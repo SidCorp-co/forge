@@ -10,6 +10,7 @@ import { RUNNER_PROVISION_MACHINE } from '@forge/contracts/runner-machine';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { runners } from '../db/schema.js';
+import { setRunnerProvisionDetail } from '../runners/index.js';
 import { transition } from '../lifecycle/transition.js';
 import type { ProvisionReport } from './provision-row.js';
 
@@ -34,10 +35,7 @@ export async function recordProvisionReports(
     const terminal = group.some((r) => r.terminal);
     try {
       await db.transaction(async (tx) => {
-        await tx
-          .update(runners)
-          .set({ provisionDetail: detail, updatedAt: new Date() })
-          .where(eq(runners.id, runnerId));
+        await setRunnerProvisionDetail(tx, eq(runners.id, runnerId), detail);
         if (terminal) {
           await transition(tx, RUNNER_PROVISION_MACHINE, {
             to: 'failed',

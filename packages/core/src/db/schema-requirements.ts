@@ -16,7 +16,6 @@ import {
   integer,
   jsonb,
   pgTable,
-  pgView,
   primaryKey,
   text,
   timestamp,
@@ -38,8 +37,8 @@ export { REVISION_STATES, type RevisionState } from '@forge/contracts/requiremen
 export const CRITERION_FORMS = REQUIREMENT_CRITERION_FORMS;
 export type CriterionForm = (typeof CRITERION_FORMS)[number];
 
-// cm:why the stored status holds only what a person decides (workflow requirement-lifecycle); in
-// delivery and delivered are phases of the requirement_delivery view, never written (Q1)
+// cm:why the stored status holds only what a person decides (workflow requirement-lifecycle);
+// in_delivery and delivered are read-time phases (`requirements/standing.ts:deliveryOf`), never written (Q1)
 export const requirements = pgTable(
   'requirements',
   {
@@ -422,15 +421,3 @@ export const requirementBaselinePins = pgTable(
   }),
 );
 
-export const DELIVERY_PHASES = ['agreed', 'in_delivery', 'delivered'] as const;
-export type DeliveryPhase = (typeof DELIVERY_PHASES)[number];
-
-// cm:why the delivery phase is computed on every read and never written (Q1); the SQL lives in
-// migration 0349, and `.existing()` keeps drizzle-kit from re-emitting it
-export const requirementDelivery = pgView('requirement_delivery', {
-  requirementId: uuid('requirement_id').notNull(),
-  phase: text('phase', { enum: DELIVERY_PHASES }),
-  liveIssues: integer('live_issues').notNull(),
-  startedIssues: integer('started_issues').notNull(),
-  closedIssues: integer('closed_issues').notNull(),
-}).existing();

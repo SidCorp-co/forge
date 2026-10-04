@@ -1,13 +1,7 @@
 
-export type AttentionKind =
-  | "needs_review"
-  | "awaiting_input"
-  | "mention"
-  | "failed_job"
-  | "pending_skill_update"
-  | "unseen_draft"
-  | "runner_offline"
-  | "channel_gate";
+import type { NeedsYouProjectItem } from "@/features/needs-you/types";
+
+export type AttentionKind = "mention" | "failed_job" | "pending_skill_update" | "runner_offline" | "channel_gate";
 
 export interface AttentionItem {
   kind: AttentionKind;
@@ -18,22 +12,18 @@ export interface AttentionItem {
   status?: string;
   projectSlug?: string;
   projectName?: string;
-  blockerKind?: string | null;
   questionId?: string | null;
-  cost?: { claimsHeld: number; workspacesPinned: number; dependents: number };
   documentNumber?: string;
   /** Channel-gate only: the waiting document's type; null when core could not read it. */
   documentType?: string | null;
 }
 
 export interface AttentionResponse {
-  needsReview: AttentionItem[];
-  awaitingInput: AttentionItem[];
+  /** Every project's needs-you rows, from core's one needs-you read model. */
+  needsYou: NeedsYouProjectItem[];
   mentions: AttentionItem[];
   failedJobs: AttentionItem[];
   pendingSkillUpdates: AttentionItem[];
-  unseenDrafts: AttentionItem[];
-  unseenDraftsTotal: number;
   channelGates: AttentionItem[];
   total: number;
 }

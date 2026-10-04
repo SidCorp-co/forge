@@ -160,36 +160,6 @@ export interface OverviewModules {
 	unassigned: OverviewModuleRow;
 }
 
-export const OVERVIEW_NEED_KINDS = ["issue", "release", "contract"] as const;
-export type OverviewNeedKind = (typeof OVERVIEW_NEED_KINDS)[number];
-
-export type OverviewNeedState =
-	| {
-			family: "issue";
-			value: IssueStatus;
-			step: WorkStep | null;
-			tone: IssueStatusTone;
-	  }
-	| { family: "release"; value: "pending" }
-	| { family: "classification"; value: string };
-
-export interface OverviewNeed {
-	kind: OverviewNeedKind;
-	key: string;
-	ref: string;
-	title: string;
-	facts: string[];
-	state: OverviewNeedState;
-	waitingOn: WaitingOn;
-	owner: { name: string | null; kind: "human" | "agent" } | null;
-	touchedAt: string | null;
-}
-
-export interface OverviewNeeds {
-	count: number;
-	rows: OverviewNeed[];
-}
-
 export interface DevelopmentOverview {
 	generatedAt: string;
 	signals: OverviewSignals;
@@ -197,7 +167,6 @@ export interface DevelopmentOverview {
 	moving: OverviewMoving;
 	stuck: OverviewStuck;
 	modules: OverviewModules;
-	needsYou: OverviewNeeds;
 	coverage: {
 		open: number;
 		openRead: number;
