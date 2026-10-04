@@ -33,7 +33,7 @@ export async function readAppHookConfig(args: {
   try {
     res = await doFetch(`${base}/app/hook/config`, {
       headers: {
-        Authorization: `Bearer ${buildAppJwt(args.appId, args.privateKey, args.nowMs ?? Date.now())}`,
+        Authorization: `Bearer ${await buildAppJwt(args.appId, args.privateKey, args.nowMs ?? Date.now())}`,
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
       },

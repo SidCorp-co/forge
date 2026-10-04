@@ -79,7 +79,7 @@ export async function listInstallationRepositories(args: {
   fetchImpl?: typeof fetch;
 }): Promise<{ repositories: InstallationRepo[]; truncated: boolean }> {
   const doFetch = args.fetchImpl ?? fetch;
-  const jwt = buildAppJwt(args.appId, args.privateKey);
+  const jwt = await buildAppJwt(args.appId, args.privateKey);
 
   const installations = await githubJson<Array<{ id?: number; account?: { login?: string } }>>(
     doFetch,

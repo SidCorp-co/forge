@@ -1,4 +1,5 @@
-import { createHash, createSign } from 'node:crypto';
+import { createHash, createPrivateKey } from 'node:crypto';
+import { SignJWT } from 'jose';
 import { GoogleAuthError, type ServiceAccountKey } from './types.js';
 
 const DEFAULT_TOKEN_URI = 'https://oauth2.googleapis.com/token';
@@ -11,10 +12,6 @@ const KEY_SHAPE_REFUSAL =
   'the stored Google credential is not a service-account key file — expected JSON with "type":"service_account", "client_email" and "private_key". Re-enter the key file Google issued, unchanged.';
 
 const FOREIGN_TOKEN_URI_REFUSAL = `the key file's "token_uri" is not Google's. A service-account key issued by Google carries "${DEFAULT_TOKEN_URI}"; anything else would send a signed assertion somewhere Forge will not go. Re-download the key from the Google Cloud console.`;
-
-function b64url(input: Buffer | string): string {
-  return Buffer.from(input).toString('base64url');
-}
 
 /**
  * Read the stored key file. Refuses by name rather than returning a half-built
@@ -47,36 +44,27 @@ export function parseServiceAccountKey(json: string): ServiceAccountKey {
   return key as unknown as ServiceAccountKey;
 }
 
-export function buildAssertion(
+export async function buildAssertion(
   key: ServiceAccountKey,
   scope: string,
   nowMs: number = Date.now(),
-): string {
+): Promise<string> {
   const now = Math.floor(nowMs / 1000);
   // The constant and not `key.token_uri`: `parseServiceAccountKey` has already
   // refused any other value, so reading the field back would be a second,
   // weaker copy of that rule.
   const aud = DEFAULT_TOKEN_URI;
-  const header = b64url(
-    JSON.stringify({
+  return new SignJWT({ scope })
+    .setProtectedHeader({
       alg: 'RS256',
       typ: 'JWT',
       ...(key.private_key_id ? { kid: key.private_key_id } : {}),
-    }),
-  );
-  const payload = b64url(
-    JSON.stringify({
-      iss: key.client_email,
-      scope,
-      aud,
-      iat: now - 60,
-      exp: now - 60 + ASSERTION_LIFETIME_S,
-    }),
-  );
-  const signer = createSign('RSA-SHA256');
-  signer.update(`${header}.${payload}`);
-  signer.end();
-  return `${header}.${payload}.${signer.sign(key.private_key).toString('base64url')}`;
+    })
+    .setIssuer(key.client_email)
+    .setAudience(aud)
+    .setIssuedAt(now - 60)
+    .setExpirationTime(now - 60 + ASSERTION_LIFETIME_S)
+    .sign(createPrivateKey(key.private_key));
 }
 
 export interface GoogleAccessToken {
@@ -141,15 +129,19 @@ export async function googleAccessToken(args: MintArgs): Promise<GoogleAccessTok
   const key = parseServiceAccountKey(args.serviceAccountJson);
   const doFetch = args.fetchImpl ?? fetch;
 
+  let assertion: string;
+  try {
+    assertion = await buildAssertion(key, args.scope, now);
+  } catch {
+    throw new GoogleAuthError(400, 'rejected', KEY_SHAPE_REFUSAL);
+  }
+
   let res: Response;
   try {
     res = await doFetch(DEFAULT_TOKEN_URI, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: JWT_BEARER_GRANT,
-        assertion: buildAssertion(key, args.scope, now),
-      }).toString(),
+      body: new URLSearchParams({ grant_type: JWT_BEARER_GRANT, assertion }).toString(),
       signal: AbortSignal.timeout(MINT_TIMEOUT_MS),
     });
   } catch (err) {

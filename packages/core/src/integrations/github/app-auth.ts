@@ -7,25 +7,27 @@
  * is what every repository call carries.
  */
 
-import { createSign } from 'node:crypto';
+import { createPrivateKey } from 'node:crypto';
+import { SignJWT } from 'jose';
 import { GITHUB_API_BASE, type HeadersLike } from './types.js';
 
 const JWT_LIFETIME_S = 540;
 const TOKEN_REFRESH_MARGIN_MS = 5 * 60_000;
 const MINT_TIMEOUT_MS = 8000;
 
-function b64url(input: Buffer | string): string {
-  return Buffer.from(input).toString('base64url');
-}
-
-export function buildAppJwt(appId: string, privateKeyPem: string, nowMs = Date.now()): string {
+/** `createPrivateKey` and not `importPKCS8`: GitHub issues App keys as PKCS#1. */
+export async function buildAppJwt(
+  appId: string,
+  privateKeyPem: string,
+  nowMs = Date.now(),
+): Promise<string> {
   const now = Math.floor(nowMs / 1000);
-  const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
-  const payload = b64url(JSON.stringify({ iat: now - 60, exp: now + JWT_LIFETIME_S, iss: appId }));
-  const signer = createSign('RSA-SHA256');
-  signer.update(`${header}.${payload}`);
-  signer.end();
-  return `${header}.${payload}.${signer.sign(privateKeyPem).toString('base64url')}`;
+  return new SignJWT({})
+    .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
+    .setIssuer(appId)
+    .setIssuedAt(now - 60)
+    .setExpirationTime(now + JWT_LIFETIME_S)
+    .sign(createPrivateKey(privateKeyPem));
 }
 
 export interface InstallationToken {
@@ -89,7 +91,7 @@ export async function installationTokenWithExpiry(args: {
   const res = await doFetch(`${base}/app/installations/${args.installationId}/access_tokens`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${buildAppJwt(args.appId, args.privateKey, now)}`,
+      Authorization: `Bearer ${await buildAppJwt(args.appId, args.privateKey, now)}`,
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
     },

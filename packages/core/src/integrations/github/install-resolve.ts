@@ -36,7 +36,7 @@ export async function findConnectionOwningInstallation(args: {
     try {
       const res = await doFetch(`${GITHUB_API_BASE}/app/installations/${args.installationId}`, {
         headers: {
-          authorization: `Bearer ${buildAppJwt(appId, privateKey)}`,
+          authorization: `Bearer ${await buildAppJwt(appId, privateKey)}`,
           accept: 'application/vnd.github+json',
         },
       });
