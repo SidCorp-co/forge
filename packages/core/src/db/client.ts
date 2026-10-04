@@ -30,6 +30,7 @@ import * as sessionInboxSchema from './schema-session-inbox.js';
 import * as speakerLinksSchema from './schema-speaker-links.js';
 import * as transcriptIndexSchema from './schema-transcript-index.js';
 import * as unauditedTransitionsSchema from './schema-unaudited-transitions.js';
+import { refuseBareDates } from './sql-timestamp.js';
 
 const schema = {
   ...baseSchema,
@@ -88,7 +89,9 @@ function buildDb() {
         }
       : {};
 
-  return drizzle(queryClient, { schema, ...queryLog });
+  const built = drizzle(queryClient, { schema, ...queryLog });
+  refuseBareDates(queryClient);
+  return built;
 }
 
 export type Db = ReturnType<typeof buildDb>;

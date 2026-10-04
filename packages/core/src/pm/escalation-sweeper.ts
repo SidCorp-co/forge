@@ -24,6 +24,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type JobType, pmDecisions, projects } from '../db/schema.js';
+import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { insertJobRow } from '../jobs/index.js';
 import { buildJobPromptString } from '../jobs/prompt-string.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
@@ -101,7 +102,7 @@ async function selectExpiredEscalations(now: Date): Promise<ExpiredEscalationRow
     SELECT d.id, d.project_id, d.event_ref, d.actions
     FROM ${pmDecisions} d
     WHERE d.actions @> '[{"type":"escalate"}]'::jsonb
-      AND (d.event_ref->>'expiresAt')::timestamptz < ${now.toISOString()}::timestamptz
+      AND (d.event_ref->>'expiresAt')::timestamptz < ${sqlTimestamp(now)}
       AND NOT EXISTS (
         SELECT 1 FROM ${pmDecisions} f
         WHERE f.project_id = d.project_id

@@ -11,6 +11,7 @@ import type { ReleaseHoldOwer, ReleaseHoldView } from '@forge/contracts/releases
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { releaseHolds } from '../db/schema-release-ledger.js';
+import { sqlTimestamp } from '../db/sql-timestamp.js';
 import type { IssueCriteriaReport } from '../issues/criteria-verdicts.js';
 import { logger } from '../observability/logger.js';
 import { type ServingReading, servingClause } from './serving-reading.js';
@@ -366,7 +367,7 @@ export async function clearProjectReleaseHolds(
 export async function clearStaleReleaseHolds(now: Date = new Date()): Promise<number> {
   const cleared = (await db.execute(sql`
     UPDATE release_holds h
-       SET cleared_at = ${now}
+       SET cleared_at = ${sqlTimestamp(now)}
       FROM issues i
      WHERE h.issue_id = i.id
        AND h.cleared_at IS NULL

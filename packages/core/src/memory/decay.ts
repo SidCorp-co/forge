@@ -1,6 +1,7 @@
 import { and, inArray, isNull, lt, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type MemorySource, memories } from '../db/schema.js';
+import { sqlTimestamp } from '../db/sql-timestamp.js';
 
 export const DECAY_SOURCES: MemorySource[] = ['note', 'knowledge'];
 export const PRUNE_ZERO_RETRIEVAL_DAYS = 30;
@@ -17,7 +18,7 @@ function daysAgo(days: number): Date {
 }
 
 function daysAgoParam(days: number): SQL {
-  return sql`${daysAgo(days).toISOString()}::timestamptz`;
+  return sqlTimestamp(daysAgo(days));
 }
 
 export interface DecayResult {
