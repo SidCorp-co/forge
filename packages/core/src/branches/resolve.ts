@@ -1,4 +1,4 @@
-export interface BranchConfig {
+interface BranchConfig {
   baseBranch: string | null;
   targetBranch: string | null;
 }
@@ -8,11 +8,11 @@ export interface IssueBranchOverride {
   targetBranch?: string | null;
 }
 
-export interface IssueLike {
+interface IssueLike {
   metadata?: ({ branchConfig?: IssueBranchOverride | null } & Record<string, unknown>) | null;
 }
 
-export interface ProjectLike {
+interface ProjectLike {
   baseBranch: string | null;
 }
 

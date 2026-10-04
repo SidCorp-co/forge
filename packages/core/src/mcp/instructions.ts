@@ -1,7 +1,7 @@
 import { env } from '../config/env.js';
 
 /** The public, credential-free address of the guide corpus, on the web host. */
-export function publicGuidesUrl(): string {
+function publicGuidesUrl(): string {
   return `${env.APP_BASE_URL.replace(/\/+$/, '')}/guides`;
 }
 

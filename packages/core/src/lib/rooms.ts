@@ -3,7 +3,7 @@ export interface Subscriber {
   readyState: number;
 }
 
-export interface PublishEnvelope {
+interface PublishEnvelope {
   event: string;
   data: unknown;
 }
@@ -21,7 +21,7 @@ export const globalRoom = (): string => GLOBAL_ROOM;
 
 const OPEN = 1;
 
-export class RoomManager {
+class RoomManager {
   private readonly rooms = new Map<string, Set<Subscriber>>();
   private readonly memberships = new WeakMap<Subscriber, Set<string>>();
 

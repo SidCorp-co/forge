@@ -57,7 +57,7 @@ export function maxProjectRole(
 }
 
 /** Where a project sits: its org, or null when the project does not exist. */
-export type ProjectOrgSource = (projectId: string) => Promise<string | null>;
+type ProjectOrgSource = (projectId: string) => Promise<string | null>;
 
 let projectOrgSource: ProjectOrgSource | null = null;
 

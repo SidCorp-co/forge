@@ -876,15 +876,13 @@ moment a sibling could invalidate a minute later, and it scaled as N².
 `CHANGELOG.md` is the external record of what shipped, and until 2026-08-28 nothing owned it.
 Commit `3df9a8e9` removed **1,034 lines, added 0** — the whole `[Unreleased]` block, every released
 version section and the style header — inside a commit about closing 94 dangling docs pointers whose
-message never named the file. Twelve gates ran on it and every one passed. The in-app What's New
-feed parses this file (`packages/web-v2/src/lib/changelog.ts`) and renders an empty list when it
-finds no `## [` heading, so it went blank for every signed-in user without throwing.
+message never named the file. Twelve gates ran on it and every one passed.
 
 Three rules:
 
 | | Fails when |
 |---|---|
-| `structure` | the file carries no `## [Unreleased]` heading — the What's New feed, the release step, the release cutter, the batch release plan and the release-notes schema all key on it — or one release section carries the same `###` heading twice, or an entry this change adds is followed by prose a blank line cut off from its bullet |
+| `structure` | the file carries no `## [Unreleased]` heading — the release step, the release cutter, the batch release plan and the release-notes schema all key on it — or one release section carries the same `###` heading twice, or an entry this change adds is followed by prose a blank line cut off from its bullet |
 | `no-silent-loss` | an entry present at the base revision is absent at HEAD, is not an edit of one that is present, and nothing declares the removal |
 | `entry-budget` | an entry this change adds runs over `ENTRY_WORD_BUDGET` words, or one it corrects runs over the larger of that budget and what the entry already held. The refusal names each entry with the ceiling actually applied to it and whether it paired as a correction, because an inherited ceiling advertised to an entry that did not inherit one reads as a rule the checker is not following |
 
@@ -938,7 +936,7 @@ breaks ties between pairings of the same size.
 ### Prose a blank line orphaned is named, not dropped
 
 A blank line ends an entry, so a bullet's second paragraph belongs to no bullet: `parseRecord` drops
-it, the What's New feed never renders it, and neither the loss rule nor the budget can see it. That
+it, and neither the loss rule nor the budget can see it. That
 was tolerable while every entry was compared by byte identity, and it stopped being tolerable the
 moment corrections paired: a published 50-word bullet split after word 40 by a blank line leaves a
 40-word bullet that pairs with what it truncated, inherits its ceiling, and passes green — where the

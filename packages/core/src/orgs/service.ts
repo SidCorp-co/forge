@@ -38,11 +38,7 @@ export async function isPersonalOrg(orgId: string): Promise<boolean> {
  * (local register + OAuth first-login); existing users are covered by
  * migration 0106. Slug mirrors the migration: `personal-<userId>`.
  */
-export async function ensurePersonalOrg(
-  dbh: Tx,
-  userId: string,
-  email: string,
-): Promise<string> {
+export async function ensurePersonalOrg(dbh: Tx, userId: string, email: string): Promise<string> {
   const found = await findPersonalOrgId(userId, dbh);
   if (found) return found;
 
@@ -68,7 +64,7 @@ export async function ensurePersonalOrg(
 }
 
 /** One org the caller belongs to, with the caller's own role in it. */
-export type OrgMembership = {
+type OrgMembership = {
   id: string;
   slug: string;
   name: string;
@@ -94,7 +90,7 @@ export async function listOrgsForUser(userId: string): Promise<OrgMembership[]> 
 }
 
 /** One member of an org, as both transports report them. */
-export type OrgMember = {
+type OrgMember = {
   userId: string;
   email: string;
   /** The label a person reads, or null where nobody has typed one. */

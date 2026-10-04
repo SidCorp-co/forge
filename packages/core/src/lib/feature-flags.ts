@@ -15,7 +15,7 @@ const flagDefs = {
   socialAuth: true,
 } as const;
 
-export type FeatureFlag = keyof typeof flagDefs;
+type FeatureFlag = keyof typeof flagDefs;
 
 function readEnv(flag: FeatureFlag): boolean {
   const envKey = `FEATURE_${flag.replace(/[A-Z]/g, (c) => `_${c}`).toUpperCase()}`;
@@ -26,13 +26,4 @@ function readEnv(flag: FeatureFlag): boolean {
 
 export function isEnabled(flag: FeatureFlag): boolean {
   return readEnv(flag);
-}
-
-/** Snapshot of all flag values right now — for `/api/admin/health` or debug. */
-export function snapshotFlags(): Record<FeatureFlag, boolean> {
-  const out = {} as Record<FeatureFlag, boolean>;
-  for (const k of Object.keys(flagDefs) as FeatureFlag[]) {
-    out[k] = readEnv(k);
-  }
-  return out;
 }

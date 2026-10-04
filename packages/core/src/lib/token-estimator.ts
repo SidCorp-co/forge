@@ -87,15 +87,3 @@ export function estimateTokens(text: string): number {
   cache.set(key, value);
   return value;
 }
-
-export function getTokenEstimatorCacheStats(): {
-  hits: number;
-  misses: number;
-  size: number;
-} {
-  return cache.stats();
-}
-
-export function clearTokenEstimatorCache(): void {
-  cache.clear();
-}

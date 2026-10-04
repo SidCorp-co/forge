@@ -7,7 +7,7 @@ import type { scopeForMethod } from '../middleware/pat-rest-surface.js';
  * token may hold them; `account` routes resolve none, so only a token carrying
  * its owner's whole reach may.
  */
-export type PatReach = 'project' | 'account';
+type PatReach = 'project' | 'account';
 
 type PatResourceDeclaration = {
   readonly reach: PatReach;
@@ -199,7 +199,7 @@ export const PAT_UNGRANTABLE: Readonly<Record<string, string>> = Object.freeze({
   'POST /api/agent-sessions/:id/inbox/:seq/applied': DEVICE,
 });
 
-export type PatPermissionResource = keyof typeof PAT_PERMISSION_RESOURCES;
+type PatPermissionResource = keyof typeof PAT_PERMISSION_RESOURCES;
 
 export const PAT_PERMISSION_LEVELS = ['read', 'write'] as const satisfies readonly ReturnType<
   typeof scopeForMethod
@@ -207,7 +207,7 @@ export const PAT_PERMISSION_LEVELS = ['read', 'write'] as const satisfies readon
 
 export type PatPermissionLevel = (typeof PAT_PERMISSION_LEVELS)[number];
 
-export type PatPermissionGroup = {
+type PatPermissionGroup = {
   readonly resource: PatPermissionResource;
   readonly level: PatPermissionLevel;
   readonly reach: PatReach;
@@ -263,7 +263,7 @@ function prefixMatches(prefix: string, path: string): boolean {
   return path === prefix || path.startsWith(`${prefix}/`);
 }
 
-export type PatPrefixMatch = {
+type PatPrefixMatch = {
   readonly resource: PatPermissionResource;
   readonly prefix: string;
   readonly epoch: number;
@@ -281,7 +281,7 @@ export function patPrefixForPath(path: string): PatPrefixMatch | null {
   return null;
 }
 
-export type PatPrefix = {
+type PatPrefix = {
   [R in PatPermissionResource]: keyof (typeof PAT_PERMISSION_RESOURCES)[R]['prefixes'] & string;
 }[PatPermissionResource];
 
@@ -289,7 +289,7 @@ export type PatRoute = PatPrefix | keyof typeof PAT_NESTED_SURFACES;
 
 export const PAT_GRANT_PREDATES_ROUTE = 'PAT_GRANT_PREDATES_ROUTE';
 
-export type PatEpochRefusal = {
+type PatEpochRefusal = {
   readonly resource: PatPermissionResource;
   readonly prefix: string;
   readonly surface: string | null;
@@ -298,13 +298,13 @@ export type PatEpochRefusal = {
   readonly message: string;
 };
 
-export type PatNestedSurface = {
+type PatNestedSurface = {
   readonly route: string;
   readonly surface: PatPrefix;
   readonly epoch: number;
 };
 
-export function patNestedSurfaceFor(path: string): PatNestedSurface | null {
+function patNestedSurfaceFor(path: string): PatNestedSurface | null {
   let found: PatNestedSurface | null = null;
   for (const [route, surface] of Object.entries(PAT_NESTED_SURFACES) as Array<
     [string, PatPrefix]
@@ -344,7 +344,7 @@ export function patEpochRefusal(
 }
 
 /** The resource whose prefixes cover this path, or null when the menu does not. */
-export function patResourceForPath(path: string): PatPermissionResource | null {
+function patResourceForPath(path: string): PatPermissionResource | null {
   return patPrefixForPath(path)?.resource ?? null;
 }
 

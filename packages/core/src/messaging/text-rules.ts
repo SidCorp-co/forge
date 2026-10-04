@@ -219,7 +219,7 @@ export const ONLY_VERIFIED_CITATIONS: MessageRule = {
 // // i18n-allow: refers to the Vietnamese phrase words above
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 /** A Forge issue-navigation target: `/projects/<slug>/issues/<segment>`, behind a host and/or a `#` or not. */
-export const ISSUE_NAV_RE =
+const ISSUE_NAV_RE =
   /(?<![^\s([<"'`*_])(?:https?:\/\/[^\s/]+\/?)?(#?)\/projects\/([\w-]+)\/issues\/([^\s/?#)\]>,.;:!"'`|*]+)/gi;
 
 /** An issue link the web can open, or none. */

@@ -15,7 +15,6 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  ConfirmDialog,
   EmptyState,
   ErrorState,
   Field,
@@ -23,7 +22,6 @@ import {
   HelpButton,
   Icon,
   Input,
-  MonoTag,
   PageContainer,
   PageTitle,
   Select,
@@ -37,13 +35,11 @@ import {
 } from "@/design";
 import { useProjectDocument } from "@/features/project-settings/config-hooks";
 import { useProject } from "@/features/projects/hooks";
-import { PrivateKeyCreateSlideOver } from "@/features/resources/components/private-key-create-slideover";
-import { useOrgSshKeys } from "@/features/resources/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import Link from "next/link";
+import "next/link";
 import { useMemo, useState } from "react";
 import { PoolAdmission } from "./pool-admission";
 import { PoolReadBanner } from "./pool-read";
@@ -53,16 +49,12 @@ import {
 	useActiveRunners,
 	useAssignDeviceToProject,
 	useClearRunnerError,
-	useDeleteGitCredential,
 	useDevices,
-	useGitCredential,
 	useInitPairing,
 	useProjectRunners,
 	useReprovision,
 	useRunnerActivity,
 	useSetDeviceDisabled,
-	useSetGitCredential,
-	useTestGitCredential,
 	useUnassignDeviceFromProject,
 } from "../hooks";
 import {
@@ -104,210 +96,6 @@ function repositoryOf(document: Record<string, unknown> | null | undefined): str
 	return source?.type === "git" && typeof source.git?.repository === "string"
 		? source.git.repository
 		: null;
-}
-
-/**
- * Git-access card (ISS-628). The repository is the project document's
- * `source.git.repository`, edited on the Configuration tab; the deploy key is
- * picked from the project's org-scoped Private Keys pool.
- */
-function GitConfigCard({
-	projectId,
-	orgId,
-	repository,
-	configHref,
-	canEdit,
-}: {
-	projectId: string;
-	orgId: string | null;
-	repository: string | null;
-	configHref: string | null;
-	canEdit: boolean;
-}) {
-	const cred = useGitCredential(projectId);
-	const setCred = useSetGitCredential(projectId);
-	const delCred = useDeleteGitCredential(projectId);
-	const testCred = useTestGitCredential(projectId);
-	const pool = useOrgSshKeys(orgId);
-	const [createOpen, setCreateOpen] = useState(false);
-	const [detachConfirmOpen, setDetachConfirmOpen] = useState(false);
-
-	const credData = cred.data;
-	const poolKeys = pool.data ?? [];
-
-	const options = [
-		{ value: "", label: "Select a key…" },
-		...poolKeys.map((k) => ({ value: k.id, label: k.name })),
-	];
-
-	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>Git access</CardTitle>
-				<HelpButton
-					summary="Optional. Pick a deploy key from this org's Private Keys pool so any device assigned to this project clones the repository its configuration declares over SSH and pushes — one key, reusable across every project. Without a key, devices clone over HTTPS with whatever git auth they already have."
-					actions={[
-						"Declare the repository and the workspace setup on the Configuration tab",
-						"Pick a key from the org pool, or create a new one",
-						"Manage the pool from Resources → Private Keys",
-					]}
-				/>
-			</CardHeader>
-			<CardContent>
-				<div className="flex flex-col gap-5">
-					<Field
-						label="Repository"
-						hint="The project configuration's source.git.repository. A newly-assigned device clones it when its folder is missing."
-					>
-						<div className="flex items-center justify-between gap-2">
-							{repository ? (
-								<MonoTag>{repository}</MonoTag>
-							) : (
-								<span className="fg-body-sm text-subtle">
-									This project&apos;s configuration declares no repository.
-								</span>
-							)}
-							{configHref && (
-								<Link
-									href={configHref}
-									className="text-13 font-semibold text-accent hover:underline"
-								>
-									Edit in Configuration
-								</Link>
-							)}
-						</div>
-					</Field>
-
-					<div className="border-t border-line-subtle pt-4">
-						<span className="fg-label">Deploy key</span>
-						{cred.isLoading ? (
-							<Skeleton className="mt-2 h-20 w-full" />
-						) : cred.isError ? (
-							<ErrorState message={formatApiError(cred.error)} onRetry={() => cred.refetch()} />
-						) : credData?.configured ? (
-							<div className="mt-2 flex flex-col gap-2 rounded-lg border border-line bg-sunken p-3">
-								<div className="flex items-center justify-between gap-2">
-									<span className="inline-flex items-center gap-1.5 text-13 text-fg">
-										<Icon
-											name="check"
-											size={14}
-											className="text-[color:var(--green-600)]"
-										/>
-										{credData.key.name}
-									</span>
-									{credData.key.fingerprint && (
-										<MonoTag>{credData.key.fingerprint}</MonoTag>
-									)}
-								</div>
-								<div className="flex items-center justify-between gap-2">
-									<code className="min-w-0 flex-1 truncate font-mono text-12 text-subtle">
-										{credData.key.publicKey}
-									</code>
-									<CopyButton
-										value={credData.key.publicKey}
-										label="Copy public key"
-									/>
-								</div>
-								<p className="fg-body-sm text-subtle">
-									Add this public key to your repo&apos;s deploy keys (write
-									access) so runners can clone + push.
-								</p>
-								{testCred.data && (
-									<Banner tone={testCred.data.ok ? "success" : "danger"}>
-										{testCred.data.message}
-										{testCred.data.headSha
-											? ` (HEAD ${testCred.data.headSha.slice(0, 10)})`
-											: ""}
-									</Banner>
-								)}
-								<div className="flex items-center justify-between gap-2">
-									<Button
-										variant="secondary"
-										size="sm"
-										icon="activity"
-										loading={testCred.isPending}
-										onClick={() => testCred.mutate()}
-									>
-										Test connection
-									</Button>
-									{canEdit && (
-										<Button
-											variant="ghost"
-											size="sm"
-											icon="trash"
-											loading={delCred.isPending}
-											onClick={() => setDetachConfirmOpen(true)}
-										>
-											Detach key
-										</Button>
-									)}
-								</div>
-							</div>
-						) : (
-							<div className="mt-2 flex flex-col gap-3">
-								{pool.isLoading ? (
-									<Skeleton className="h-9 w-full" />
-								) : pool.isError ? (
-									<ErrorState
-										message={formatApiError(pool.error)}
-										onRetry={() => pool.refetch()}
-									/>
-								) : poolKeys.length === 0 ? (
-									<p className="fg-body-sm text-subtle">
-										This organization has no private keys yet. Create one to
-										connect this project to Git.
-									</p>
-								) : (
-									<p className="fg-body-sm text-subtle">
-										Pick a key from this org&apos;s Private Keys pool. Without a
-										key, devices use whatever git auth they already have.
-									</p>
-								)}
-								{canEdit && (
-									<div className="flex flex-wrap items-center gap-2">
-										{poolKeys.length > 0 && (
-											<Select
-												options={options}
-												value=""
-												onChange={(id) => id && setCred.mutate(id)}
-											/>
-										)}
-										<Button
-											variant={poolKeys.length === 0 ? "primary" : "ghost"}
-											size="sm"
-											icon="plus"
-											onClick={() => setCreateOpen(true)}
-										>
-											Create new key
-										</Button>
-									</div>
-								)}
-							</div>
-						)}
-					</div>
-				</div>
-			</CardContent>
-			{orgId && (
-				<PrivateKeyCreateSlideOver
-					open={createOpen}
-					onClose={() => setCreateOpen(false)}
-					orgId={orgId}
-					onCreated={(key) => setCred.mutate(key.id)}
-				/>
-			)}
-
-			<ConfirmDialog
-				open={detachConfirmOpen}
-				title="Detach deploy key?"
-				message="This project stops using the key for cloning/pushing; the key itself stays in the org pool and can be re-attached anytime."
-				confirmLabel="Detach key"
-				tone="danger"
-				loading={delCred.isPending}
-				onConfirm={() => delCred.mutate(undefined, { onSuccess: () => setDetachConfirmOpen(false) })}
-				onClose={() => setDetachConfirmOpen(false)}
-			/>
-		</Card>
-	);
 }
 
 /** Horizontal step row reflecting one runner's provision lifecycle. */
@@ -900,7 +688,7 @@ export function ProjectRunnersScreen({
 					<HelpButton
 						summary="Assign paired devices to this project. Each gets its own checkout; with a declared repository, a freshly-assigned device auto-clones, syncs skills, and writes its MCP config."
 						actions={[
-							"Declare the repository on the Configuration tab, and attach a deploy key for SSH",
+							"Declare the repository on the Configuration tab",
 							"Assign a device — watch it clone → sync skills → ready",
 							"Manage devices account-wide on the Runners page",
 						]}
@@ -908,14 +696,6 @@ export function ProjectRunnersScreen({
 					</TopBarActions>
 				</>
 			)}
-
-			<GitConfigCard
-				projectId={projectId}
-				orgId={project.data?.orgId ?? null}
-				repository={repository}
-				configHref={project.data?.slug ? `/projects/${project.data.slug}/settings?tab=config` : null}
-				canEdit={!!canEdit}
-			/>
 
 			{canEdit && (
 				<AssignDevice

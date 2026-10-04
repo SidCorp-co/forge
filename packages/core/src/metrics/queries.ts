@@ -39,7 +39,7 @@ function windowCutoff(days: number): SQL {
  * buckets had rows. Daily buckets are floored to UTC midnight, hourly to the
  * hour. `now` is injectable for deterministic tests.
  */
-export function bucketTimestamps(days: number, bucket: Bucket, now: Date): string[] {
+function bucketTimestamps(days: number, bucket: Bucket, now: Date): string[] {
   const end = new Date(now);
   end.setUTCMilliseconds(0);
   end.setUTCSeconds(0);
@@ -54,7 +54,7 @@ export function bucketTimestamps(days: number, bucket: Bucket, now: Date): strin
   return out;
 }
 
-export interface TimeseriesPoint {
+interface TimeseriesPoint {
   ts: string;
   [key: string]: unknown;
 }
@@ -100,7 +100,7 @@ function densifyGrouped(
   return out;
 }
 
-export interface TimeseriesParams {
+interface TimeseriesParams {
   projectId: string;
   metric: Metric;
   days: number;
@@ -109,7 +109,7 @@ export interface TimeseriesParams {
   now?: Date;
 }
 
-export interface TimeseriesResult {
+interface TimeseriesResult {
   metric: Metric;
   bucket: Bucket;
   days: number;
@@ -369,7 +369,7 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
   return { metric, bucket, days, groupBy: groupByStep ? 'step' : null, series };
 }
 
-export function computeRunnerUptime(
+function computeRunnerUptime(
   buckets: string[],
   rows: Array<Record<string, unknown>>,
   bucketMs: number,
@@ -423,7 +423,7 @@ export function computeRunnerUptime(
   return out;
 }
 
-export type StepDurationAggRow = {
+type StepDurationAggRow = {
   project_id: string;
   project_slug: string | null;
   step: string;
@@ -434,7 +434,7 @@ export type StepDurationAggRow = {
   n: number | string | null;
 };
 
-export type ProjectStepDurationRow = Omit<StepDurationAggRow, 'project_id' | 'project_slug'> & {
+type ProjectStepDurationRow = Omit<StepDurationAggRow, 'project_id' | 'project_slug'> & {
   breakdown_key?: string | null;
 };
 
@@ -481,7 +481,7 @@ export function retryRescuesSince(projectIds: readonly string[] | null, since: S
   return sql`retry_rescues_since(${scope}, ${since})`;
 }
 
-export type RetryRescueRow = {
+type RetryRescueRow = {
   failure_kind: string | null;
   failure_reason: string;
   rescues: number | string;
@@ -499,7 +499,7 @@ export async function retryRescues(projectId: string, days: number): Promise<Ret
   return result as unknown as RetryRescueRow[];
 }
 
-export type SessionFailureAggRow = {
+type SessionFailureAggRow = {
   status: string | null;
   failure_reason: string | null;
   sessions: number | string;
@@ -521,7 +521,7 @@ export async function sessionFailures(
   return result as unknown as SessionFailureAggRow[];
 }
 
-export type ResumeDropRow = { drop_reason: string | null; sessions: number | string };
+type ResumeDropRow = { drop_reason: string | null; sessions: number | string };
 
 export async function resumeDropsForProject(
   projectId: string,
