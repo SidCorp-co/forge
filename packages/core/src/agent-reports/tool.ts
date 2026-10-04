@@ -16,7 +16,7 @@ import {
   agentReportTargets,
 } from '../db/schema.js';
 import { principalAgency } from '../issues/index.js';
-import { resolvePipelineContext } from '../jobs/active-job-context.js';
+import { resolvePipelineContext } from '../jobs/index.js';
 import { buildListEnvelope, overfetch } from '../lib/list-envelope.js';
 import {
   type ContextScopedMcpToolFactory,
@@ -32,7 +32,7 @@ import {
   resolveEffectiveProjectId,
   type VisibleProjectWithRole,
 } from '../projects/index.js';
-import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../prompt/sanitize.js';
+import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../prompt/index.js';
 import {
   countReportsForJob,
   fireOfSession,

@@ -22,11 +22,11 @@ import { logger } from '../../logger.js';
 import { requireCan } from '../../permissions/index.js';
 import { resolveEffectiveProjectId } from '../../projects/index.js';
 import {
+  noteReviewOnIssue,
   OpenedPullRequestIncomplete,
   projectOpenedPullRequest,
-} from '../github/opened-pull-request.js';
-import { noteReviewOnIssue } from '../github/review-note.js';
-import { listIntegrations } from '../registry.js';
+} from '../github/index.js';
+import { listIntegrations } from '../index.js';
 import { SourceHostCallError, SourceHostInputRefusal, SourceHostUnavailable } from './errors.js';
 import { resolveSourceHost } from './resolve.js';
 import type { ReviewEvent, SourceHost } from './types.js';

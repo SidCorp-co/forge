@@ -20,6 +20,7 @@ export {
   setIssueTriage,
   stampRunStarted,
 } from './field-writes.js';
+export { resolveIssueRouteRef } from './issue-route-ref.js';
 export { issueMergeRoutes } from './merge-routes.js';
 export { claimIssuesForRelease, releaseEndedRunClaims, releaseRunClaims } from './release-claim.js';
 export {

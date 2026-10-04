@@ -17,7 +17,7 @@ import {
   refusedAnswer,
 } from '../lib/tool.js';
 import { resolveProjectIdFromSlug } from '../projects/index.js';
-import { resolveManagedMetaPrompts } from '../skills/effective.js';
+import { resolveManagedMetaPrompts } from '../skills/index.js';
 import { forgeMcpInstructions } from './instructions.js';
 import { MCP_TOOLS } from './registry.js';
 import { toolCallRefusal } from './tool-call-guard.js';

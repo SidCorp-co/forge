@@ -13,6 +13,7 @@ export {
   updateProjectSchema,
 } from './routes.js';
 export {
+  findProjectIdBySlug,
   findProjectOrgId,
   listVisibleProjectsWithRole,
   projectDocumentNames,

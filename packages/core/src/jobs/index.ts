@@ -1,3 +1,4 @@
+export { resolvePipelineContext } from './active-job-context.js';
 export { jobEventsListRoutes, jobEventsRoutes } from './events-routes.js';
 export { appendJobEvent } from './intervention-event.js';
 export { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './lifecycle-routes.js';
