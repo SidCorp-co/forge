@@ -108,17 +108,14 @@ export {
 export { recordDeliveredReply, recordDeliveredReplyToVenue, recordSilence } from './transcript.js';
 export { conversationsNeedingIndex, indexConversationOnce } from './transcript-index.js';
 export { RETRIEVAL_MAX_RESULTS, searchConversationTranscript } from './transcript-search.js';
+export { closeWindow, releaseWindow, reserveDelivery, splitWindowTail } from './window-claim.js';
 export {
   type ClaimedWindow,
   type ConversationWindowRow,
   claimDueWindows,
   claimOf,
-  closeWindow,
   listWindowsForConversation,
   openOrExtendWindow,
-  releaseWindow,
-  reserveDelivery,
-  splitWindowTail,
   type WindowClaim,
   windowDeliveryKey,
 } from './windows.js';
