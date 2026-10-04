@@ -223,27 +223,3 @@ export async function runHeartbeatTick(
   }
   return result;
 }
-
-export const HEARTBEAT_TICK_MS = 60_000;
-
-/**
- * Start ticking. Returns the stop.
- */
-export function startConversationHeartbeat(
-  tick: () => Promise<unknown> = () => runHeartbeatTick(),
-  intervalMs: number = HEARTBEAT_TICK_MS,
-): () => void {
-  let running = false;
-  const run = (): void => {
-    if (running) return;
-    running = true;
-    void tick()
-      .catch((err) => logger.error({ err }, 'conversations: the heartbeat tick failed'))
-      .finally(() => {
-        running = false;
-      });
-  };
-  const timer = setInterval(run, intervalMs);
-  timer.unref?.();
-  return () => clearInterval(timer);
-}

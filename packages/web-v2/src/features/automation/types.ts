@@ -15,7 +15,6 @@ export interface PmConfig {
   id: string;
   projectId: string;
   enabled: boolean;
-  cadenceCron: string | null;
   eventTriggers: PmEventTriggers;
   customInstructions: string | null;
   modelOverride: string | null;
@@ -26,7 +25,6 @@ export interface PmConfig {
 
 export type PmConfigPatch = Partial<{
   enabled: boolean;
-  cadenceCron: string | null;
   eventTriggers: PmEventTriggers;
   customInstructions: string | null;
   modelOverride: string | null;
@@ -52,13 +50,6 @@ export const PM_TRIGGER_LABELS: Record<keyof PmEventTriggers, string> = {
   queuePressure: "Queue pressure",
   graphChanged: "Knowledge graph changed",
 };
-
-export const PM_CRON_PRESETS: { label: string; value: string | null }[] = [
-  { label: "Off", value: null },
-  { label: "Every 15 min", value: "*/15 * * * *" },
-  { label: "Hourly", value: "0 * * * *" },
-  { label: "Every 6h", value: "0 */6 * * *" },
-];
 
 export const PM_MODEL_OPTIONS: { label: string; value: string }[] = [
   { label: "Default (app config)", value: "" },

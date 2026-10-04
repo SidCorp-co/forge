@@ -1,14 +1,9 @@
-import { and, eq, lte, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { scheduleKinds, schedules } from '../db/schema.js';
-import { logger } from '../logger.js';
+import { scheduleKinds } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { nextRunFor } from './cron.js';
-import { dispatchScheduleRun } from './dispatch.js';
 import {
   createSchedule,
   deleteSchedule,
@@ -218,55 +213,3 @@ scheduleRoutes.post(
     return c.json(result, 202);
   },
 );
-
-export async function runScheduleTickOnce(now: Date = new Date()): Promise<string[]> {
-  const due = await db
-    .select()
-    .from(schedules)
-    .where(and(eq(schedules.enabled, true), lte(schedules.nextRunAt, now)));
-
-  const dispatched: string[] = [];
-  for (const schedule of due) {
-    try {
-      // Atomic claim: only one ticker wins for this (id, nextRunAt) pair.
-      const claimed = await db
-        .update(schedules)
-        .set({ nextRunAt: nextRunFor(schedule.cron, now) })
-        .where(
-          and(
-            eq(schedules.id, schedule.id),
-            eq(schedules.enabled, true),
-            schedule.nextRunAt
-              ? eq(schedules.nextRunAt, schedule.nextRunAt)
-              : sql`${schedules.nextRunAt} IS NULL`,
-          ),
-        )
-        .returning({ id: schedules.id });
-      if (claimed.length === 0) continue; // another ticker won the race
-
-      const result = await dispatchScheduleRun({
-        schedule: {
-          id: schedule.id,
-          name: schedule.name,
-          projectId: schedule.projectId,
-          prompt: schedule.prompt,
-          targetProjectSlug: schedule.targetProjectSlug ?? null,
-          templateKey: schedule.templateKey ?? null,
-          params: (schedule.params as Record<string, unknown> | null) ?? null,
-          mode: schedule.mode ?? null,
-          appliedMessageVersions:
-            (schedule.appliedMessageVersions as Record<string, number> | null) ?? null,
-          kind: schedule.kind,
-          script: schedule.script ?? null,
-          ownerId: schedule.ownerId,
-        },
-        tick: true,
-      });
-
-      if (result.ok) dispatched.push(schedule.id);
-    } catch (err) {
-      logger.error({ err, scheduleId: schedule.id }, 'schedule.tick: dispatch failed');
-    }
-  }
-  return dispatched;
-}

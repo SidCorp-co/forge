@@ -1,8 +1,8 @@
 /**
- * ISS-652 — the push half of the Tier 1 alert engine. Runs as one pass inside
- * `pipeline/sweeper.ts`'s `runPipelineSweep`, computing the same 5 alerts the
- * GET route serves (`alert-queries.ts` is the shared source) and writing
- * `notifications` rows when one crosses into warn/crit.
+ * The push half of the Tier 1 alert engine: a cluster timer every five minutes
+ * (`timer-registry.ts`), computing the same 5 alerts the GET route serves
+ * (`alert-queries.ts` is the shared source) and writing `notifications` rows
+ * when one crosses into warn/crit.
  */
 
 import { sql } from 'drizzle-orm';
@@ -20,13 +20,6 @@ export interface AlertSweepResult {
   notified: number;
   resolved: number;
 }
-
-const ALERT_SWEEP_INTERVAL_MS = (() => {
-  const env = Number(process.env.FORGE_ALERT_SWEEP_INTERVAL_MS);
-  return Number.isFinite(env) && env > 0 ? env : 5 * 60_000;
-})();
-
-let lastSweepAt = 0;
 
 const ALERT_TITLES: Record<AdminAlert['id'], string> = {
   A1: 'Orphan jobs detected',
@@ -87,11 +80,6 @@ async function unreadDeliveries(notificationId: string): Promise<void> {
 
 /** Never throws — same contract as `detectStrandedIssues`. */
 export async function runAlertSweep(now: Date = new Date()): Promise<AlertSweepResult> {
-  if (now.getTime() - lastSweepAt < ALERT_SWEEP_INTERVAL_MS) {
-    return { evaluated: 0, notified: 0, resolved: 0 };
-  }
-  lastSweepAt = now.getTime();
-
   try {
     const alerts = await computeAlerts({ now });
     const adminIds = await platformAdminUserIds();

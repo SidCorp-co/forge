@@ -11,7 +11,6 @@ export type SpawnCause =
   | 'queue-pressure'
   | 'graph-changed'
   | 'tick'
-  | 'agent-cron'
   | 'operator'
   | 'operator-reply';
 

@@ -3101,15 +3101,6 @@
                       }
                     ]
                   },
-                  "schedule": {
-                    "enum": [
-                      "off",
-                      "weekly",
-                      "biweekly",
-                      "monthly"
-                    ],
-                    "type": "string"
-                  },
                   "type": {
                     "maxLength": 200,
                     "minLength": 1,
@@ -3314,15 +3305,6 @@
                         "type": "null"
                       }
                     ]
-                  },
-                  "schedule": {
-                    "enum": [
-                      "off",
-                      "weekly",
-                      "biweekly",
-                      "monthly"
-                    ],
-                    "type": "string"
                   },
                   "type": {
                     "maxLength": 200,
@@ -32579,6 +32561,12 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "grants": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "role": {
                     "enum": [
                       "admin",
@@ -32588,10 +32576,10 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "role"
-                ],
-                "type": "object"
+                "type": "object",
+                "x-forge-refinements": [
+                  "send role, grants or both"
+                ]
               }
             }
           },
@@ -32658,18 +32646,6 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
-                  "cadenceCron": {
-                    "anyOf": [
-                      {
-                        "maxLength": 120,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
                   "customInstructions": {
                     "anyOf": [
                       {

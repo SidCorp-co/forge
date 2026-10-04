@@ -112,31 +112,6 @@ export async function reapDeadMasterHolds(): Promise<number> {
   return rows.length;
 }
 
-export const MASTER_REAPER_QUEUE = 'master-hold-reaper';
-
-let registered = false;
-
-export async function registerMasterReaper(): Promise<void> {
-  if (registered) return;
-  const { boss } = await import('../queue/boss.js');
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(MASTER_REAPER_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(MASTER_REAPER_QUEUE, async () => {
-    // Masters first: closing one returns its own holds and, through the
-    // descent, its children's leases. The hold sweep that follows catches what
-    // no transition can reach — a hold whose session row is gone entirely, and
-    // one whose master this pass declined to close.
-    const closed = await reapSilentMasters();
-    if (closed > 0) logger.info({ closed }, 'master-reaper: sweep closed silent masters');
-    const released = await reapDeadMasterHolds();
-    if (released > 0) logger.info({ released }, 'master-reaper: sweep returned holds to the pool');
-  });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(MASTER_REAPER_QUEUE, '* * * * *');
-  registered = true;
-}
-
 /**
  * Release the holds of one named session, for the daemon's socket-drop path.
  *

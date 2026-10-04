@@ -1,19 +1,17 @@
-// cm:why the one application writer of schedule_runs (design automation rev 1, steps tick, route,
-// skipped, agent_runs and settle; ISS-112): every fire of every kind is opened here, a fire that ran
-// no session is settled here once, and schedules.last_status is written from the fire, never beside
-// it. A fire that started a session settles when that session stops, whoever stops it: trigger
-// `forge_session_stop_settles_its_fire` (migration 0367).
+// The one application writer of schedule_runs (design automation, steps tick, route, skipped,
+// agent_runs and settle): every fire of every kind is opened here and a fire that ran no session is
+// settled here once. A fire that started a session settles when that session stops, whoever stops
+// it: trigger `forge_session_stop_settles_its_fire`. Nothing is copied onto the schedule; its last
+// status is its newest fire (`lastFires`).
 
 import type {
   ScheduleRunSkipReason,
   ScheduleRunStatus,
   ScheduleRunTrigger,
 } from '@forge/contracts/schedules';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { scheduleRuns, schedules } from '../db/schema.js';
-
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+import { scheduleRuns } from '../db/schema.js';
 
 export type FireSettlement =
   | { status: 'success'; output?: string | null; pipelineRunId?: string | null }
@@ -30,59 +28,25 @@ export interface FireSession {
   pipelineRunId: string;
 }
 
-// cm:guard only the schedule's newest fire writes schedules.last_status, so a late settle of an
-// older fire never overwrites the status of one that started after it.
-async function writeLastStatusFromFire(
-  tx: Tx,
-  fire: { id: string; scheduleId: string },
-  status: ScheduleRunStatus,
-): Promise<void> {
-  await tx
-    .update(schedules)
-    .set({ lastStatus: status })
-    .where(
-      and(
-        eq(schedules.id, fire.scheduleId),
-        sql`NOT EXISTS (
-          SELECT 1 FROM ${scheduleRuns} newer, ${scheduleRuns} this_fire
-          WHERE this_fire.id = ${fire.id}
-            AND newer.schedule_id = this_fire.schedule_id
-            AND newer.created_at > this_fire.created_at
-        )`,
-      ),
-    );
-}
-
-const SETTLED_FIRE = { id: scheduleRuns.id, scheduleId: scheduleRuns.scheduleId };
-
 export async function openFire(args: {
   scheduleId: string;
   projectId: string;
   trigger: ScheduleRunTrigger;
 }): Promise<string> {
-  const startedAt = new Date();
-  return db.transaction(async (tx) => {
-    const [fire] = await tx
-      .insert(scheduleRuns)
-      .values({
-        scheduleId: args.scheduleId,
-        projectId: args.projectId,
-        trigger: args.trigger,
-        status: 'running',
-        startedAt,
-      })
-      .returning({ id: scheduleRuns.id });
-    if (!fire) {
-      throw new Error(
-        `schedule_runs: opening a fire of schedule ${args.scheduleId} returned no row`,
-      );
-    }
-    await tx
-      .update(schedules)
-      .set({ lastStatus: 'running', lastRunAt: startedAt })
-      .where(eq(schedules.id, args.scheduleId));
-    return fire.id;
-  });
+  const [fire] = await db
+    .insert(scheduleRuns)
+    .values({
+      scheduleId: args.scheduleId,
+      projectId: args.projectId,
+      trigger: args.trigger,
+      status: 'running',
+      startedAt: new Date(),
+    })
+    .returning({ id: scheduleRuns.id });
+  if (!fire) {
+    throw new Error(`schedule_runs: opening a fire of schedule ${args.scheduleId} returned no row`);
+  }
+  return fire.id;
 }
 
 export async function attachFireSession(fireId: string, session: FireSession): Promise<void> {
@@ -106,22 +70,18 @@ export async function settleFire(fireId: string, settlement: FireSettlement): Pr
   if (settlement.status === 'success' && settlement.pipelineRunId) {
     set.pipelineRunId = settlement.pipelineRunId;
   }
-  return db.transaction(async (tx) => {
-    const [fire] = await tx
-      .update(scheduleRuns)
-      .set(set)
-      .where(
-        and(
-          eq(scheduleRuns.id, fireId),
-          eq(scheduleRuns.status, 'running'),
-          sql`${scheduleRuns.sessionId} IS NULL`,
-        ),
-      )
-      .returning(SETTLED_FIRE);
-    if (!fire) return false;
-    await writeLastStatusFromFire(tx, fire, settlement.status);
-    return true;
-  });
+  const settled = await db
+    .update(scheduleRuns)
+    .set(set)
+    .where(
+      and(
+        eq(scheduleRuns.id, fireId),
+        eq(scheduleRuns.status, 'running'),
+        sql`${scheduleRuns.sessionId} IS NULL`,
+      ),
+    )
+    .returning({ id: scheduleRuns.id });
+  return settled.length > 0;
 }
 
 export function scheduleRunIdOf(metadata: unknown): string | null {
@@ -134,24 +94,20 @@ export async function handFireToRetry(args: {
   retry: FireSession;
   disposition: string;
 }): Promise<boolean> {
-  return db.transaction(async (tx) => {
-    const [fire] = await tx
-      .update(scheduleRuns)
-      .set({
-        sessionId: args.retry.id,
-        pipelineRunId: args.retry.pipelineRunId,
-        status: 'running',
-        finishedAt: null,
-        error: null,
-        refusal: null,
-        disposition: args.disposition,
-      })
-      .where(eq(scheduleRuns.sessionId, args.failedSessionId))
-      .returning(SETTLED_FIRE);
-    if (!fire) return false;
-    await writeLastStatusFromFire(tx, fire, 'running');
-    return true;
-  });
+  const handed = await db
+    .update(scheduleRuns)
+    .set({
+      sessionId: args.retry.id,
+      pipelineRunId: args.retry.pipelineRunId,
+      status: 'running',
+      finishedAt: null,
+      error: null,
+      refusal: null,
+      disposition: args.disposition,
+    })
+    .where(eq(scheduleRuns.sessionId, args.failedSessionId))
+    .returning({ id: scheduleRuns.id });
+  return handed.length > 0;
 }
 
 export async function recordFireDisposition(args: {
@@ -164,4 +120,43 @@ export async function recordFireDisposition(args: {
     .where(eq(scheduleRuns.sessionId, args.failedSessionId))
     .returning({ id: scheduleRuns.id });
   return rows.length > 0;
+}
+
+export interface LastFire {
+  id: string;
+  status: ScheduleRunStatus;
+  trigger: ScheduleRunTrigger;
+  startedAt: Date;
+  finishedAt: Date | null;
+  reason: ScheduleRunSkipReason | null;
+  refusal: string | null;
+  sessionId: string | null;
+}
+
+/** Each schedule's newest fire, by schedule id: what a schedule's last status, run and session are. */
+export async function lastFires(
+  projectId: string,
+  scheduleIds?: readonly string[],
+): Promise<Map<string, LastFire>> {
+  const where = [eq(scheduleRuns.projectId, projectId)];
+  if (scheduleIds) {
+    if (scheduleIds.length === 0) return new Map();
+    where.push(inArray(scheduleRuns.scheduleId, [...scheduleIds]));
+  }
+  const rows = await db
+    .selectDistinctOn([scheduleRuns.scheduleId], {
+      scheduleId: scheduleRuns.scheduleId,
+      id: scheduleRuns.id,
+      status: scheduleRuns.status,
+      trigger: scheduleRuns.trigger,
+      startedAt: scheduleRuns.startedAt,
+      finishedAt: scheduleRuns.finishedAt,
+      reason: scheduleRuns.reason,
+      refusal: scheduleRuns.refusal,
+      sessionId: scheduleRuns.sessionId,
+    })
+    .from(scheduleRuns)
+    .where(and(...where))
+    .orderBy(scheduleRuns.scheduleId, desc(scheduleRuns.createdAt), desc(scheduleRuns.id));
+  return new Map(rows.map(({ scheduleId, ...f }) => [scheduleId, f]));
 }

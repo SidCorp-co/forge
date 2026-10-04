@@ -28,34 +28,9 @@ import { parseRocketChatVenueId, rocketChatConversationPorts } from './conversat
 import { rocketChatTurn } from './turn-inputs.js';
 
 /**
- * How often the drain looks.
- */
-const DRAIN_INTERVAL_MS = 1500;
-
-/**
  * How many windows one connection takes per tick.
  */
 export const WINDOW_DRAIN_BATCH = 5;
-
-/**
- * Start the drain. Returns the stop.
- */
-export function startWindowDrainLoop(alive: () => boolean, drain: () => Promise<void>): () => void {
-  let running = false;
-  const tick = (): void => {
-    if (!alive() || running) return;
-    running = true;
-    void drain()
-      .catch((err) => logger.error({ err }, 'rocketchat: the window drain tick failed'))
-      .finally(() => {
-        running = false;
-      });
-  };
-  const timer = setInterval(tick, DRAIN_INTERVAL_MS);
-  timer.unref?.();
-  tick();
-  return () => clearInterval(timer);
-}
 
 /**
  * Settle and route every window this core's connections owe an answer.

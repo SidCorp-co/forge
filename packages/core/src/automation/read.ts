@@ -13,11 +13,11 @@ import {
 } from '@forge/contracts/automation-standing';
 import { readThresholds } from '../admin/thresholds.js';
 import { loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { lastFires } from '../schedules/fires.js';
 import { readScheduleStreaks } from '../schedules/streak.js';
 import {
   type FireRow,
   fireFacts,
-  lastFires,
   producedItems,
   reportCounts,
   reportFacts,
@@ -62,7 +62,7 @@ async function schedulesOf(
   const [facts, streaks, last, thresholds] = await Promise.all([
     scheduleFacts(projectId, scheduleId),
     readScheduleStreaks({ projectId, ...(scheduleId ? { scheduleId } : {}) }),
-    lastFires(projectId, scheduleId),
+    lastFires(projectId, scheduleId ? [scheduleId] : undefined),
     readThresholds(),
   ]);
   const streakOf = new Map(streaks.map((s) => [s.scheduleId, s]));
