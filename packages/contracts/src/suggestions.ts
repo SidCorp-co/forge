@@ -103,7 +103,7 @@ export const SUGGESTION_STALE_AFTER_DAYS = 30;
 export const SUGGESTION_PURGE_PAYLOAD_AFTER_DAYS = 90;
 
 /** Every refusal a suggestion write or the BA door answers with, by name. */
-export const SUGGESTION_REFUSAL_CODES = [
+const SUGGESTION_REFUSAL_CODES = [
 	"SUGGESTION_PAYLOAD_INVALID",
 	"SUGGESTION_TARGET_INVALID",
 	"SUGGESTION_BASE_STALE",
@@ -289,18 +289,12 @@ export const createSuggestionRequestSchema = z.strictObject({
 	payload: z.unknown(),
 	model: z.string().max(200).nullable().optional(),
 });
-export type CreateSuggestionRequest = z.infer<
-	typeof createSuggestionRequestSchema
->;
 export const CREATE_SUGGESTION_SHAPE = `{ kind: ${SUGGESTION_KINDS.join(" | ")}, requirement | issue | feedback | workflow, baseRevision, payload, model? }`;
 
 /** `POST /api/projects/:id/suggestions/:sid/accept` — the person's reason, kept on the row. */
 export const acceptSuggestionRequestSchema = z.strictObject({
 	reason: z.string().max(4_000).nullable().optional(),
 });
-export type AcceptSuggestionRequest = z.infer<
-	typeof acceptSuggestionRequestSchema
->;
 export const ACCEPT_SUGGESTION_SHAPE =
 	"{ reason? } — why it is accepted, and on whose authority";
 
@@ -310,9 +304,6 @@ export const reviseSuggestionRequestSchema = z.strictObject({
 	payload: z.unknown(),
 	reason: z.string().max(4_000),
 });
-export type ReviseSuggestionRequest = z.infer<
-	typeof reviseSuggestionRequestSchema
->;
 export const REVISE_SUGGESTION_SHAPE =
 	"{ payload, reason } — the whole payload as it should read, and why the original is changed";
 
@@ -320,10 +311,6 @@ export const REVISE_SUGGESTION_SHAPE =
 export const rejectSuggestionRequestSchema = z.strictObject({
 	reason: z.string().max(4_000),
 });
-export type RejectSuggestionRequest = z.infer<
-	typeof rejectSuggestionRequestSchema
->;
-
 /** `GET /api/projects/:id/suggestions` — `status` is comma-separated. */
 export const listSuggestionsQuerySchema = z.strictObject({
 	...targetFields,
@@ -432,7 +419,7 @@ export interface SuggestionListResponse {
 	open: number;
 }
 
-export const SUGGESTION_SUMMARY_FIELDS = [
+const SUGGESTION_SUMMARY_FIELDS = [
 	"id",
 	"kind",
 	"status",
@@ -448,7 +435,7 @@ export const SUGGESTION_SUMMARY_FIELDS = [
 	"payloadPurgedAt",
 ] as const;
 
-export type SuggestionSummaryView = Pick<
+type SuggestionSummaryView = Pick<
 	SuggestionView,
 	(typeof SUGGESTION_SUMMARY_FIELDS)[number]
 >;

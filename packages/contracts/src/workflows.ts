@@ -6,22 +6,6 @@ import type { RefusalStatuses } from "./refusal.js";
 // cm:why the answer shapes a workflow and its design are read in when the whole document is not
 // asked for (ISS-87)
 
-export const WORKFLOW_SUMMARY_FIELDS = [
-	"workflowId",
-	"flow",
-	"title",
-	"kind",
-	"template",
-	"status",
-	"revision",
-	"approvedRevision",
-	"stepCount",
-	"edgeCount",
-	"returnReason",
-	"writerName",
-	"updatedAt",
-] as const;
-
 export interface WorkflowSummaryView {
 	workflowId: string;
 	flow: string;
@@ -38,18 +22,6 @@ export interface WorkflowSummaryView {
 	updatedAt: string;
 }
 
-export const WORKFLOW_WRITE_FIELDS = [
-	"workflowId",
-	"flow",
-	"revision",
-	"created",
-	"status",
-	"approvedRevision",
-	"stepCount",
-	"edgeCount",
-	"updatedAt",
-] as const;
-
 export type WorkflowWriteAnswer = Pick<
 	WorkflowSummaryView,
 	| "workflowId"
@@ -63,8 +35,6 @@ export type WorkflowWriteAnswer = Pick<
 > & { created: boolean };
 
 export const DESIGN_VIEWS = ["summary", "steps", "full"] as const;
-export type DesignViewName = (typeof DESIGN_VIEWS)[number];
-
 export const DESIGN_HEAD_FIELDS = [
 	"workflowId",
 	"flow",
@@ -77,7 +47,7 @@ export const DESIGN_HEAD_FIELDS = [
 	"waitingOn",
 ] as const;
 
-export interface DesignHead {
+interface DesignHead {
 	workflowId: string;
 	flow: string;
 	status: string | null;

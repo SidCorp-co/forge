@@ -12,7 +12,7 @@ import type { WaitingOn } from "./standing.js";
 
 export const OVERVIEW_WINDOW_DAYS = 14;
 
-export interface OverviewUnavailable {
+interface OverviewUnavailable {
 	available: false;
 	reason: string;
 }
@@ -53,7 +53,7 @@ export const OVERVIEW_FLOW_STAGES = [
 	"awaiting_release",
 	"closed",
 ] as const;
-export type OverviewFlowStageId = (typeof OVERVIEW_FLOW_STAGES)[number];
+type OverviewFlowStageId = (typeof OVERVIEW_FLOW_STAGES)[number];
 
 export const OVERVIEW_FLOW_LABELS: Record<OverviewFlowStageId, string> = {
 	draft: "Draft",

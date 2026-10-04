@@ -13,7 +13,7 @@ import { z } from 'zod';
 export const WORKFLOW_TEMPLATE_SCHEMA_ID =
   'https://forge.sidcorp.co/schemas/workflow-template-v1.json';
 
-export const LAYOUT_FAMILIES = [
+const LAYOUT_FAMILIES = [
   'layered-bands',
   'lane-grid',
   'layered',
@@ -22,9 +22,7 @@ export const LAYOUT_FAMILIES = [
   'decision-model',
   'boundaries',
 ] as const;
-export type LayoutFamily = (typeof LAYOUT_FAMILIES)[number];
-
-export const LAYOUT_DIRECTIONS = ['down', 'right'] as const;
+const LAYOUT_DIRECTIONS = ['down', 'right'] as const;
 
 /** The icon keys a node type may name; the web holds one glyph per key and nothing else. */
 export const TEMPLATE_ICONS = [
@@ -61,7 +59,7 @@ export const TEMPLATE_ICONS = [
 ] as const;
 
 /** The colour tokens a node type or edge kind may name; each is one hue with a light and a dark value. */
-export const TEMPLATE_COLOURS = [
+const TEMPLATE_COLOURS = [
   'orange',
   'slate',
   'teal',
@@ -107,7 +105,7 @@ export const NODE_REQUIRABLE_FIELDS = [
 export type NodeRequirableField = (typeof NODE_REQUIRABLE_FIELDS)[number];
 
 /** The same closed list for edges, held to the workflow-v2 edge schema. */
-export const EDGE_REQUIRABLE_FIELDS = [
+const EDGE_REQUIRABLE_FIELDS = [
   'label',
   'condition',
   'action',
@@ -118,17 +116,13 @@ export const EDGE_REQUIRABLE_FIELDS = [
   'payload',
   'protocol',
 ] as const;
-export type EdgeRequirableField = (typeof EDGE_REQUIRABLE_FIELDS)[number];
-
 /**
  * `forward`: a line `after` draws, from an earlier step to a later one. `return`: a line back from
  * a later step to one it comes after — never drawn in `after`, so it orders nothing and is outside
  * the cycle check, and it is the only kind that may name what it `reevaluates`.
  */
-export const EDGE_DIRECTIONS = ['forward', 'return'] as const;
-export type EdgeDirection = (typeof EDGE_DIRECTIONS)[number];
-
-export const EDGE_LINES = ['solid', 'dashed', 'dotted'] as const;
+const EDGE_DIRECTIONS = ['forward', 'return'] as const;
+const EDGE_LINES = ['solid', 'dashed', 'dotted'] as const;
 
 /** The rules a template may switch on; the kernel implements each, and this is what each one holds. */
 export const TEMPLATE_RULE_MEANING = {
@@ -181,21 +175,19 @@ export const templateRefSchema = z.strictObject({
 });
 export type TemplateRef = z.infer<typeof templateRefSchema>;
 
-export const templateBandSchema = z.strictObject({
+const templateBandSchema = z.strictObject({
   id: bandId(),
   label: label(),
   tooltip: tooltip(),
   /** The node types a step in this band may be. */
   types: z.array(nodeTypeId()).min(1).max(TEMPLATE_LIMITS.nodeTypes),
 });
-export type TemplateBand = z.infer<typeof templateBandSchema>;
-
 /**
  * Where a diagram's bands come from: the template's own ordered list, the design itself (a
  * swimlane's actors, a sequence's systems — they differ per design, so the design declares them in
  * `lanes`), or nowhere (a tree or a state machine is not banded).
  */
-export const templateLanesSchema = z.discriminatedUnion('from', [
+const templateLanesSchema = z.discriminatedUnion('from', [
   z.strictObject({
     from: z.literal('template'),
     bands: z.array(templateBandSchema).min(1).max(TEMPLATE_LIMITS.bands),
@@ -207,29 +199,23 @@ export const templateLanesSchema = z.discriminatedUnion('from', [
   }),
   z.strictObject({ from: z.literal('none') }),
 ]);
-export type TemplateLanes = z.infer<typeof templateLanesSchema>;
-
 /** How many lines of one kind (any kind, when it names none) a node of the type has, in or out. */
-export const templateLineRuleSchema = z.strictObject({
+const templateLineRuleSchema = z.strictObject({
   kind: edgeKindId().optional(),
   min: z.number().int().min(0).max(TEMPLATE_LIMITS.lineCount),
   max: z.number().int().min(1).max(TEMPLATE_LIMITS.lineCount).optional(),
 });
-export type TemplateLineRule = z.infer<typeof templateLineRuleSchema>;
-
 /**
  * A cross-link a node of the type may carry in `node.refs`: to a step of another design of the
  * project drawn in `template` (or a preset of it), whose type is one of `types`. `required` makes
  * one such ref owed; every ref carried must resolve, or the write is refused by name.
  */
-export const templateLinkSchema = z.strictObject({
+const templateLinkSchema = z.strictObject({
   template: z.string().regex(TEMPLATE_ID),
   types: z.array(nodeTypeId()).min(1).max(TEMPLATE_LIMITS.nodeTypes),
   required: z.boolean(),
   tooltip: tooltip(),
 });
-export type TemplateLink = z.infer<typeof templateLinkSchema>;
-
 export const templateNodeTypeSchema = z.strictObject({
   id: nodeTypeId(),
   label: label(),

@@ -33,11 +33,7 @@ export type RequirementStatus = (typeof REQUIREMENT_STATUSES)[number];
 export const DEFERRABLE_STATUSES = ["draft", "agreed"] as const;
 
 export const REQUIREMENT_DEFERRAL_ACTS = ["defer", "undefer"] as const;
-export type RequirementDeferralAct = (typeof REQUIREMENT_DEFERRAL_ACTS)[number];
-
 export const BASELINE_ACTS = ["agree", "repin"] as const;
-export type BaselineAct = (typeof BASELINE_ACTS)[number];
-
 /** The lifecycle a person reads: the stored status (draft, agreed, accepted, dropped) with agreed
  *  split by the derived delivery phase. `dropped` and `deferred` are off the line. */
 export const REQUIREMENT_LIFECYCLE = [
@@ -55,7 +51,7 @@ export const REQUIREMENT_STATES = [
 export type RequirementState = (typeof REQUIREMENT_STATES)[number];
 
 /** The issue badge legend's tones, so a requirement's colours mean what an issue's do. */
-export type StandingTone = IssueStatusTone;
+type StandingTone = IssueStatusTone;
 
 export const REQUIREMENT_STATE_LABELS: Record<RequirementState, string> = {
 	draft: "Draft",
@@ -195,7 +191,7 @@ export const REQUIREMENT_WAITING_KINDS = [
 export type RequirementWaitingKind = (typeof REQUIREMENT_WAITING_KINDS)[number];
 
 /** The tasks of workflow requirement-to-delivery a requirement holds open, derived on read. */
-export const REQUIREMENT_TASK_KINDS = ["breakdown", "check"] as const;
+const REQUIREMENT_TASK_KINDS = ["breakdown", "check"] as const;
 export type RequirementTaskKind = (typeof REQUIREMENT_TASK_KINDS)[number];
 
 /** Step `breakdown`: the master proposes the breakdown within this many working days of the agree. */
@@ -403,7 +399,7 @@ export const repinRequirementRequestSchema = z.strictObject({
 export const REPIN_REQUIREMENT_SHAPE =
 	"{ revision, reason? } — names the head revision; writes a baseline pinning each linked design's approved revision and each linked contract's current version";
 
-export const REQUIREMENT_CONTRACT_REF =
+const REQUIREMENT_CONTRACT_REF =
 	/^[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9-]{0,62}$/;
 
 export const linkRequirementContractRequestSchema = z.strictObject({
@@ -444,101 +440,6 @@ export interface RequirementSummaryView {
 	counts: RequirementFacts;
 	waitingOn: WaitingOn<RequirementWaitingKind>;
 	updatedAt: string;
-}
-
-export const REQUIREMENT_HEAD_FIELDS = [
-	"id",
-	"key",
-	"title",
-	"status",
-	"currentRevision",
-	"latestRevision",
-	"updatedAt",
-] as const;
-
-export type RequirementHeadView = Pick<
-	RequirementSummaryView,
-	(typeof REQUIREMENT_HEAD_FIELDS)[number]
->;
-
-export const REQUIREMENT_REVISION_HEAD_FIELDS = [
-	"revision",
-	"state",
-	"baseRevision",
-	"proposedAt",
-	"decidedByName",
-	"decidedAt",
-	"returnReason",
-] as const;
-
-export interface RequirementRevisionHead {
-	revision: number;
-	state: string;
-	baseRevision: number | null;
-	proposedAt: string | null;
-	decidedByName: string | null;
-	decidedAt: string | null;
-	returnReason: string | null;
-}
-
-export interface RequirementRevisionWritten extends RequirementRevisionHead {
-	criteria: { code: string; form: string; body: string }[];
-}
-
-export interface RequirementLinkedIssue {
-	issueId: string;
-	displayId: string;
-	title: string;
-	status: string;
-	plannedRevision: number | null;
-	changedSincePlan: boolean;
-}
-
-export interface RequirementLinkedContract {
-	providerProjectId: string;
-	/** `<project>/<contract>`. */
-	contract: string;
-	contractSlug: string;
-	/** The newest approved version, which the next agree or re-pin pins; null while none is approved. */
-	currentVersion: string | null;
-}
-
-export interface RequirementLinkedDesign {
-	workflowId: string;
-	flow: string;
-	title: string;
-	designStatus: string | null;
-	approvedRevision: number | null;
-}
-
-export const REQUIREMENT_ACTS = [
-	"create",
-	"revise",
-	"edit",
-	"propose",
-	"accept",
-	"return",
-	"agree",
-	"repin",
-	"defer",
-	"undefer",
-	"link_issue",
-	"unlink_issue",
-	"link_workflow",
-	"unlink_workflow",
-	"link_contract",
-	"unlink_contract",
-] as const;
-export type RequirementAct = (typeof REQUIREMENT_ACTS)[number];
-
-export interface RequirementActAnswer {
-	act: RequirementAct;
-	requirement: RequirementHeadView;
-	revision?: RequirementRevisionHead | RequirementRevisionWritten;
-	baseline?: { revision: number; seq: number; agreedAt: string; pins: number };
-	issues?: RequirementLinkedIssue[];
-	workflows?: RequirementLinkedDesign[];
-	contracts?: RequirementLinkedContract[];
 }
 
 export const REQUIREMENT_REFUSAL_CODES = [

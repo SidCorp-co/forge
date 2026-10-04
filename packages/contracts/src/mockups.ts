@@ -95,9 +95,7 @@ export const MOCKUP_LIMITS = {
 	reasonChars: 2_000,
 } as const;
 
-export const MOCKUP_SOURCES = ["issue", "comment"] as const;
-export type MockupSource = (typeof MOCKUP_SOURCES)[number];
-
+const MOCKUP_SOURCES = ["issue", "comment"] as const;
 export const MOCKUP_REFUSAL_CODES = [
 	"MOCKUP_CONTENT_REQUIRED",
 	"MOCKUP_TYPE_INVALID",
@@ -128,7 +126,7 @@ export const mockupTargetSchema = z.union([
 ]);
 export type MockupTargetInput = z.infer<typeof mockupTargetSchema>;
 
-export const mockupSourceSchema = z.strictObject({
+const mockupSourceSchema = z.strictObject({
 	from: z.enum(MOCKUP_SOURCES),
 	attachmentId: z.uuid(),
 });

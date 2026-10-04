@@ -28,9 +28,6 @@ export const CONTRACT_WAIT_REFUSAL_CODES = [
 export type ContractWaitRefusalCode = (typeof CONTRACT_WAIT_REFUSAL_CODES)[number];
 
 export const CONTRACT_WAIT_UNSETTLED = "CONTRACT_WAIT_UNSETTLED" as const;
-
-export const CONTRACT_PROVIDER_NOT_LIVE = "CONTRACT_PROVIDER_NOT_LIVE" as const;
-
 export const PROVIDER_LIVE_MODES = ["required", "off"] as const;
 export type ProviderLiveMode = (typeof PROVIDER_LIVE_MODES)[number];
 
@@ -53,7 +50,6 @@ export const ADD_CONTRACT_WAIT_SHAPE =
 export const retractContractWaitRequestSchema = z.strictObject({
 	reason: z.string().trim().min(1).max(CONTRACT_WAIT_LIMITS.reason),
 });
-export type RetractContractWaitRequest = z.infer<typeof retractContractWaitRequestSchema>;
 export const RETRACT_CONTRACT_WAIT_SHAPE = "{ reason } says why the issue no longer waits";
 
 export interface ContractRequestRef {

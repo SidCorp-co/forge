@@ -12,15 +12,12 @@ export const CONTENT_LANGUAGE_CHOICES = [
 ] as const;
 
 /** artifact: prose stored in Forge. chat: a reply, plus what the turn stores. code: code and its posts. */
-export const CONTENT_LANGUAGE_CONTEXTS = ["artifact", "chat", "code"] as const;
+const CONTENT_LANGUAGE_CONTEXTS = ["artifact", "chat", "code"] as const;
 export type ContentLanguageContext = (typeof CONTENT_LANGUAGE_CONTEXTS)[number];
 
 export const CONTENT_LANGUAGE_REFUSAL_CODES = [
 	"CONTENT_LANGUAGE_INVALID",
 ] as const;
-export type ContentLanguageRefusalCode =
-	(typeof CONTENT_LANGUAGE_REFUSAL_CODES)[number];
-
 export const CONTENT_LANGUAGE_LIMITS = {
 	tagMax: 35,
 	keepTermsMax: 50,
@@ -28,7 +25,7 @@ export const CONTENT_LANGUAGE_LIMITS = {
 } as const;
 
 /** Terms that stay English inside localized prose whatever the project adds. */
-export const TECHNICAL_TERMS_KEPT_IN_ENGLISH = [
+const TECHNICAL_TERMS_KEPT_IN_ENGLISH = [
 	"API",
 	"webhook",
 	"SLA",
@@ -108,7 +105,7 @@ export type ContentLanguageWrite = z.infer<typeof contentLanguageWriteSchema>;
 export const CONTENT_LANGUAGE_WRITE_SHAPE = `{ baseRevision: the project document revision read, contentLanguage: BCP-47 tag, keepTermsInEnglish?: string[] (≤${CONTENT_LANGUAGE_LIMITS.keepTermsMax}) | null }`;
 
 /** What a project writes in, resolved: `source` says whether its document declared it. */
-export interface ContentLanguageSetting {
+interface ContentLanguageSetting {
 	contentLanguage: string;
 	keepTermsInEnglish: string[];
 	source: "document" | "default";

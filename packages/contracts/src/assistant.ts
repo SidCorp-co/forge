@@ -1,6 +1,6 @@
 // The codes the assistant's chat tools and speaker identity refuse under.
 
-export const ASSISTANT_REFUSAL_CODES = [
+const ASSISTANT_REFUSAL_CODES = [
 	"ASSISTANT_REFUSED",
 	"ASSISTANT_WEEKLY_OFF",
 ] as const;

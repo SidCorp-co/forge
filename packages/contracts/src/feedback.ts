@@ -316,7 +316,7 @@ const ref = z.string().trim().min(1).max(200);
 const reason = z.string().max(FEEDBACK_LIMITS.reason);
 
 /** The target fields a create names exactly one of (FEEDBACK_TARGET_NOT_ONE otherwise). */
-export const feedbackTargetFields = {
+const feedbackTargetFields = {
 	requirement: ref.optional(),
 	issue: ref.optional(),
 	release: ref.optional(),

@@ -53,17 +53,6 @@ export const QUESTIONNAIRE_STATUSES = [
 	"superseded",
 ] as const;
 export type QuestionnaireStatus = (typeof QUESTIONNAIRE_STATUSES)[number];
-
-export const QUESTIONNAIRE_STATUS_TONES: Record<
-	QuestionnaireStatus,
-	IssueStatusTone
-> = {
-	open: "you",
-	submitted: "done",
-	skipped: "neutral",
-	superseded: "neutral",
-};
-
 /** The three groups a batch is read in, in this order. */
 export const QUESTIONNAIRE_GROUPS = [
 	"question",
@@ -79,27 +68,15 @@ export const QUESTIONNAIRE_GROUP_LABELS: Record<QuestionnaireGroup, string> = {
 };
 
 /** How an item is answered: one option, several, a short text, or accept / reject. */
-export const QUESTIONNAIRE_CONTROLS = [
+const QUESTIONNAIRE_CONTROLS = [
 	"choice",
 	"multi",
 	"text",
 	"accept_reject",
 ] as const;
-export type QuestionnaireControl = (typeof QUESTIONNAIRE_CONTROLS)[number];
-
 /** An item's own state, read from its agent_questions row. */
 export const QUESTIONNAIRE_ITEM_STATES = ["open", "answered", "void"] as const;
 export type QuestionnaireItemState = (typeof QUESTIONNAIRE_ITEM_STATES)[number];
-
-export const QUESTIONNAIRE_ITEM_STATE_TONES: Record<
-	QuestionnaireItemState,
-	IssueStatusTone
-> = {
-	open: "you",
-	answered: "ready",
-	void: "neutral",
-};
-
 /** At most this many rounds per onboarding (reset by a re-analysis) or per requirement room. */
 export const QUESTIONNAIRE_MAX_ROUNDS = 3;
 /** At most this many items in one batch; the trials landed at 15. */
@@ -107,7 +84,7 @@ export const QUESTIONNAIRE_MAX_ITEMS = 15;
 /** A batch left open this many days raises the dashboard hint to attention. */
 export const QUESTIONNAIRE_DUE_DAYS = 7;
 
-export const ONBOARDING_REFUSAL_CODES = [
+const ONBOARDING_REFUSAL_CODES = [
 	"ONBOARDING_ALREADY_RUNNING",
 	"ONBOARDING_ALREADY_STARTED",
 	"ONBOARDING_NOT_STARTED",
@@ -152,7 +129,7 @@ const itemId = z
 		"an item id is 1-40 of a-z, 0-9, _ and -, stable across rounds",
 	);
 
-export const questionnaireOptionSchema = z.strictObject({
+const questionnaireOptionSchema = z.strictObject({
 	id: itemId,
 	label: z.string().trim().min(1).max(200),
 });
@@ -205,7 +182,6 @@ export const submitAnswersRequestSchema = z.strictObject({
 	/** Skip for now: a recorded outcome; the batch stays answerable and nothing more is asked. */
 	skip: z.boolean().optional(),
 });
-export type SubmitAnswersRequest = z.infer<typeof submitAnswersRequestSchema>;
 export const SUBMIT_ANSWERS_SHAPE =
 	"{ answers: [{ itemId, choice? | choices? | text? | decision?: accept | reject }], skip? }";
 
@@ -234,20 +210,6 @@ export const markDoneRequestSchema = z.strictObject({
 	text: z.string().trim().min(1).max(8_000).optional(),
 });
 export const MARK_DONE_SHAPE = "{ text? }";
-
-/** The canonical message blocks onboarding adds beside text / tool / todos / thinking. */
-export const QUESTIONNAIRE_BLOCK_TYPES = [
-	"questionnaire",
-	"questionnaire_answers",
-	"designs",
-] as const;
-export type QuestionnaireBlockType = (typeof QUESTIONNAIRE_BLOCK_TYPES)[number];
-
-export interface DesignsBlockData {
-	heading: string;
-	workflowIds: string[];
-	approve?: boolean;
-}
 
 /** An item as every reader sees it, with its row's state and the answer it got. */
 export interface QuestionnaireItemView extends QuestionnaireItem {

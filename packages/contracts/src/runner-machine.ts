@@ -4,8 +4,6 @@
 import { defineMachine, fromEach } from "./state-machine.js";
 
 export const RUNNER_STATUSES = ["online", "offline", "draining", "disabled"] as const;
-export type RunnerStatus = (typeof RUNNER_STATUSES)[number];
-
 export const RUNNER_MACHINE = defineMachine({
 	entity: "runner",
 	shapes: ["403a0154"],
@@ -31,8 +29,6 @@ export const RUNNER_PROVISION_STATUSES = [
 	"needs_manual_setup",
 	"failed",
 ] as const;
-export type RunnerProvisionStatus = (typeof RUNNER_PROVISION_STATUSES)[number];
-
 /** A box reports its provisioning step by step; any report may follow any other, since a box
  *  provisions again after a reset. */
 export const RUNNER_PROVISION_MACHINE = defineMachine({
@@ -49,8 +45,6 @@ export const RUNNER_PROVISION_MACHINE = defineMachine({
 });
 
 export const DEVICE_STATUSES = ["online", "offline", "revoked"] as const;
-export type DeviceStatus = (typeof DEVICE_STATUSES)[number];
-
 export const DEVICE_MACHINE = defineMachine({
 	entity: "device",
 	shapes: ["9c512d74"],

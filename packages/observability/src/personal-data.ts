@@ -1,9 +1,9 @@
 import { scrubLogText } from "./index.js";
 
 /** What a redaction replaced, by kind; `secret` counts lines the secret scrubber changed. */
-export type PersonalDataKind = "email" | "number" | "name" | "secret";
+type PersonalDataKind = "email" | "number" | "name" | "secret";
 
-export interface PersonalDataScrub {
+interface PersonalDataScrub {
 	text: string;
 	redactions: Record<PersonalDataKind, number>;
 }
@@ -94,7 +94,7 @@ function scrubUnlabelled(text: string, onName: () => void): string {
 	return out + text.slice(last);
 }
 
-export const PERSONAL_DATA_PLACEHOLDER = {
+const PERSONAL_DATA_PLACEHOLDER = {
 	email: "[email]",
 	number: "[number]",
 	name: "[name]",

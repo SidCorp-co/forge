@@ -26,7 +26,7 @@ export interface HoldState {
 }
 
 /** Reasons whose clearance the hold sweep can VERIFY before re-queueing, by re-running the check that failed. */
-export const CONDITION_CHECKED_REASONS: ReadonlySet<string> = new Set(["all_devices_exhausted"]);
+const CONDITION_CHECKED_REASONS: ReadonlySet<string> = new Set(["all_devices_exhausted"]);
 
 /** Reasons with nothing to re-check: waiting IS the whole remedy, so the hold simply retries after a recheck interval. */
 export const TIME_CHECKED_REASONS: ReadonlySet<string> = new Set(["verify_unavailable"]);

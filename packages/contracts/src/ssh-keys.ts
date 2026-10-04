@@ -39,19 +39,9 @@ export type ProjectGitAccessView =
       key: WorkspaceSshKeyView;
     };
 
-/** `PUT /api/projects/:id/git-credential` request body. */
-export interface ProjectGitAccessInput {
-  sshKeyId: string;
-}
-
 export interface SshConnTestResult {
   ok: boolean;
   code: 'authenticated' | 'auth_denied' | 'host_unreachable' | 'not_found' | 'timeout' | 'error';
   message: string;
   headSha?: string;
-}
-
-export interface SshKeyInUseError {
-  code: 'KEY_IN_USE';
-  referencedBy: SshKeyUsedByProject[];
 }

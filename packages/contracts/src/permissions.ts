@@ -4,7 +4,7 @@
 // further permissions on its project; a token narrows what its holder reaches.
 
 /** Every resource an approve-type act decides, each with its own `<resource>.approve`. */
-export const APPROVAL_RESOURCES = [
+const APPROVAL_RESOURCES = [
 	"requirements",
 	"mockups",
 	"suggestions",
@@ -91,19 +91,12 @@ export type OrgPermission = (typeof ORG_PERMISSIONS)[number];
 
 export const PERMISSIONS = [...PROJECT_PERMISSIONS, ...ORG_PERMISSIONS] as const;
 export type Permission = (typeof PERMISSIONS)[number];
-
-export const isPermission = (value: string): value is Permission =>
-	(PERMISSIONS as readonly string[]).includes(value);
-
-export const isProjectPermission = (value: string): value is ProjectPermission =>
-	(PROJECT_PERMISSIONS as readonly string[]).includes(value);
-
 /** Whether a person or an agent is at the keyboard of an act: what an actor carries and an audit row records. */
 export type ActorAgency = "human" | "agent";
 
 /** The project roles, weakest first. */
 export const PROJECT_ROLES = ["viewer", "member", "admin"] as const;
-export type ProjectRole = (typeof PROJECT_ROLES)[number];
+type ProjectRole = (typeof PROJECT_ROLES)[number];
 
 /**
  * What each project role holds. Approval is admin's by default; to let members approve, add
@@ -115,8 +108,8 @@ export const ROLE_PERMISSIONS: Readonly<Record<ProjectRole, readonly ProjectPerm
 	admin: [...READ, ...WRITE, ...PERSONAL, ...APPROVE, ...DEPLOY, ...OPERATE, ...ADMIN],
 };
 
-export const ORG_ROLES = ["member", "admin", "owner"] as const;
-export type OrgRole = (typeof ORG_ROLES)[number];
+const ORG_ROLES = ["member", "admin", "owner"] as const;
+type OrgRole = (typeof ORG_ROLES)[number];
 
 export const ORG_ROLE_PERMISSIONS: Readonly<Record<OrgRole, readonly OrgPermission[]>> = {
 	member: ["org.read"],
@@ -176,5 +169,3 @@ export interface PermissionRefusal {
 	permission: Permission;
 	scope: PermissionScope;
 }
-
-export const PERMISSION_GRANT_REFUSAL_CODES = ["MEMBER_GRANT_UNKNOWN_PERMISSION"] as const;

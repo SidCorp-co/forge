@@ -171,7 +171,7 @@ export interface ModulePurpose {
 	updatedAt: string;
 }
 
-export const MODULE_COUPLING_SOURCES = ["declared", "issue_stream"] as const;
+const MODULE_COUPLING_SOURCES = ["declared", "issue_stream"] as const;
 export type ModuleCouplingSource = (typeof MODULE_COUPLING_SOURCES)[number];
 
 export interface ModuleCoupling {

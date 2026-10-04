@@ -79,7 +79,7 @@ export const CHANNEL_REFUSAL_CODES = [
 export type ChannelRefusalCode = (typeof CHANNEL_REFUSAL_CODES)[number];
 
 /** What `forge_ecosystem` refuses before a service is asked; everything after is the service's own code. */
-export const ECOSYSTEM_TOOL_REFUSAL_CODES = [
+const ECOSYSTEM_TOOL_REFUSAL_CODES = [
 	"ECOSYSTEM_ARGUMENT_INVALID",
 	"ECOSYSTEM_TURN_UNBOUND",
 	"ECOSYSTEM_PROJECT_UNNAMED",
@@ -91,7 +91,7 @@ export const ECOSYSTEM_TOOL_REFUSAL_CODES = [
 export type EcosystemToolRefusalCode =
 	(typeof ECOSYSTEM_TOOL_REFUSAL_CODES)[number];
 
-export const CONTRACT_REFUSAL_CODES = [
+const CONTRACT_REFUSAL_CODES = [
 	"CONTRACT_NOT_PUBLISHED",
 	"ARTIFACT_MEASURED_FROM_GIT",
 	"NOTHING_TO_RECORD",
@@ -108,8 +108,6 @@ export const CONTRACT_REFUSAL_CODES = [
 	"CONTRACT_KIND_MISMATCH",
 	"CONTRACT_ARTIFACT_NOT_MOCKABLE",
 ] as const;
-export type ContractRefusalCode = (typeof CONTRACT_REFUSAL_CODES)[number];
-
 export const CONTRACT_APPROVAL_REFUSAL_CODES = [
 	"CONTRACT_VERSION_NOT_PROPOSED",
 	"CONTRACT_DECISION_REASON_MISSING",
@@ -164,7 +162,7 @@ export const ECOSYSTEM_REFUSAL_STATUSES = {
 } as const satisfies RefusalStatuses<EcosystemRefusalCode | ChannelRefusalCode | EcosystemToolRefusalCode>;
 
 // The channel tool's actions: reads answer, writes change a channel document.
-export const CHANNEL_READS = [
+const CHANNEL_READS = [
 	"register",
 	"inbox",
 	"outbox",

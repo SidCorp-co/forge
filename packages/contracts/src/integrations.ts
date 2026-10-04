@@ -152,15 +152,6 @@ export interface IntegrationHealthResult {
   diagnostics?: Record<string, unknown>;
 }
 
-/**
- * Result of `POST /integration-connections/:id/test` (ISS-435) — the
- * connection-scoped healthcheck used by the workspace directory drawer. Same
- * adapter result shape as the binding-scoped test; the server probes through a
- * representative active binding and replies 404 `NO_BINDING` when the
- * connection has no active binding to build a context from.
- */
-export type ConnectionTestResult = IntegrationHealthResult;
-
 /** Result of `POST .../confirm-prod-deploy`. `integrationId` stays the binding id. */
 export interface ConfirmProdDeployResult {
   confirmed: boolean;
@@ -207,7 +198,7 @@ export type EpodsystemSecretsInput = {
   apiKey: string;
 };
 
-export interface SentryTargetInput {
+interface SentryTargetInput {
   label: string;
   organizationSlug?: string;
   projectSlug?: string;
@@ -237,30 +228,6 @@ export type RocketchatSecretsInput = {
   authToken: string;
   userId: string;
 };
-export type GithubConfigInput = {
-  installationId?: number;
-  owner?: string;
-  repo?: string;
-  /** GitHub Enterprise only; absent means api.github.com. */
-  apiBaseUrl?: string;
-};
-/** All three come back from the app-manifest conversion; none is typed by hand. */
-export type GithubSecretsInput = {
-  appId: string;
-  privateKey: string;
-  webhookSecret: string;
-};
-/** GitLab (ISS-50): `baseUrl` is connection-tier (absent means https://gitlab.com); the project path or id is binding-tier. */
-export type GitlabConfigInput = {
-  baseUrl?: string;
-  projectPath?: string;
-  projectId?: number;
-};
-/** A project or group access token with the `api` scope, typed by hand and never read back. */
-export type GitlabSecretsInput = {
-  token: string;
-};
-
 /**
  * Google service-account config (ISS-1036). `clientEmail` and `projectId` are
  * READ BACK out of the stored key by the healthcheck, never typed;
@@ -311,21 +278,6 @@ export interface ConnectionResponse {
 }
 
 /**
- * `{ integration }` — binding create/update. Create + rotate-secret also return
- * the freshly minted inbound-webhook HMAC `integrationSecret` (shown once).
- */
-export interface BindingResponse {
-  integration: BindingSummary;
-  integrationSecret?: string;
-  /**
-   * Immediate post-create/bind health probe (ISS-429) — create + bind-existing
-   * run the adapter healthcheck right away so the integration starts from a
-   * real state. `null` when the probe crashed at the transport layer.
-   */
-  health?: IntegrationHealthResult | null;
-}
-
-/**
  * Where one connection is actually used. The directory lists credentials that
  * are otherwise indistinguishable — several Coolify tokens differ only by the
  * projects behind them — so the list route carries usage and the cards tell
@@ -359,10 +311,6 @@ export interface ConnectionListResponse {
 export interface BindingListResponse {
   bindings: BindingSummary[];
   items: BindingSummary[];
-}
-/** List envelope for delivery rows (`GET .../integrations/:id/deliveries`). */
-export interface IntegrationDeliveryListResponse {
-  items: IntegrationDeliveryRow[];
 }
 
 /** A connection's bindings (`GET /integration-connections/:id/bindings`), keyed as {@link BindingListResponse}. */

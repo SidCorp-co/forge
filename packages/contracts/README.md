@@ -20,7 +20,7 @@ Workspace-internal — already wired through pnpm's workspace protocol. To add i
 
 ```ts
 import type { Issue, Project, IssueCreateInput } from "@forge/contracts";
-import { pipelineRegistryResponseSchema } from "@forge/contracts";
+import { REGISTRY_JOB_TYPES } from "@forge/contracts";
 
 // Row types — what core returns from SELECT.
 const issue: Issue = await api.get(`/issues/${id}`);
@@ -30,8 +30,8 @@ const issue: Issue = await api.get(`/issues/${id}`);
 const body: IssueCreateInput = { title: "add /api/foo" };
 await api.post("/issues", body);
 
-// Runtime Zod lives in the emitted modules (pipeline-registry, ui-actions, wireframe, workflow-templates …).
-const registry = pipelineRegistryResponseSchema.parse(await api.get("/pipeline/registry"));
+// Runtime values live in the emitted modules (pipeline-registry, ui-actions, wireframe, workflow-templates …).
+const isJobType = (t: string) => (REGISTRY_JOB_TYPES as readonly string[]).includes(t);
 ```
 
 ## Layout
@@ -43,12 +43,10 @@ const registry = pipelineRegistryResponseSchema.parse(await api.get("/pipeline/r
 | [`src/responses.ts`](./src/responses.ts) | Response envelope shapes |
 | [`src/integrations.ts`](./src/integrations.ts) | Cross-app integration types |
 | [`src/notifications.ts`](./src/notifications.ts) | Notification types |
-| [`src/skill-facts.ts`](./src/skill-facts.ts) | Skill-facts types |
-| [`src/pipeline-registry.ts`](./src/pipeline-registry.ts) | Pipeline-registry response — a runtime Zod schema (`pipelineRegistryResponseSchema`) plus enum tuples |
+| [`src/pipeline-registry.ts`](./src/pipeline-registry.ts) | Pipeline-registry enum tuples (job types, priorities, complexities, run kinds) |
 | [`src/workflow-templates.ts`](./src/workflow-templates.ts) | workflow-template-v1: the diagram-template meta-schema, the built-in registry (`BUILTIN_WORKFLOW_TEMPLATES`) and project-template resolution — runtime, read by core to check designs and by the web to draw them |
 | [`src/issues.ts`](./src/issues.ts) | Release-notes types (`ReleaseNotes`, `ReleaseNotesSection`) re-exported from `src/release-notes.ts` |
 | [`src/ssh-keys.ts`](./src/ssh-keys.ts) | Org Private Keys pool + per-project git-credential types |
-| [`src/skill-activity.ts`](./src/skill-activity.ts) | Skill-update activity-log event types (ISS-797) |
 | [`src/index.ts`](./src/index.ts) | Aggregated barrel |
 
 ## Why "type-only"

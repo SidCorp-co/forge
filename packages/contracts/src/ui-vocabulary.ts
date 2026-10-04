@@ -278,9 +278,6 @@ export const STATE_READINGS = {
 		none: ["No master", "you", "?"],
 	} satisfies Record<MasterState, Reading>,
 } as const satisfies Record<string, Record<string, Reading>>;
-
-export type StateReadingFamily = keyof typeof STATE_READINGS;
-
 /** Non-state enums: a label only; their badge is neutral. A value a map does not name reads
  *  sentence-cased. */
 export const ENUM_LABELS = {
@@ -545,5 +542,3 @@ export const ENUM_LABELS = {
 		"gate-refused": "The gate refused it",
 	} satisfies Record<ScheduleRunSkipReason, string>,
 } as const satisfies Record<string, Record<string, string>>;
-
-export type EnumLabelFamily = keyof typeof ENUM_LABELS;

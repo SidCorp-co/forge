@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 
-export const PAT_FENCE_MAX_PROJECTS = 50;
+const PAT_FENCE_MAX_PROJECTS = 50;
 export const PAT_FENCE_REASON_MAX = 500;
 
 export const PAT_FENCE_REFUSAL_CODES = [
@@ -40,8 +40,6 @@ export const setPatFenceRequestSchema = z
 			path: ["projectIds"],
 		},
 	);
-export type SetPatFenceRequest = z.infer<typeof setPatFenceRequestSchema>;
-
 export type PatFence = {
 	projectIds: string[] | null;
 	boundProjectId: string | null;

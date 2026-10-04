@@ -4,13 +4,13 @@
 
 import { z } from "zod";
 
-export const VERDICTS_REQUIRED_DEFAULT = true;
+const VERDICTS_REQUIRED_DEFAULT = true;
 
 export const deliveryPolicySchema = z.strictObject({
 	verdictsRequired: z.boolean().optional(),
 });
 
-export type DeliveryPolicy = z.infer<typeof deliveryPolicySchema>;
+type DeliveryPolicy = z.infer<typeof deliveryPolicySchema>;
 
 export const verdictsRequiredOf = (
 	delivery: DeliveryPolicy | null | undefined,
