@@ -1,6 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications, projects } from '../db/schema.js';
+import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { retryRescuesSince } from '../metrics/queries.js';
 import { emitNotification } from '../notifications/emit.js';
@@ -45,7 +46,7 @@ export async function detectRetryRescueThresholds(
       -- alarm has reported nothing since it was written and every tick looked healthy.
       -- Found by the integration case below it (ISS-1063); the same shape bit
       -- \`notifications/reevaluate-conditions.ts\` and \`pipeline/issue-run-invariant.ts\`.
-      FROM ${retryRescuesSince(null, sql`${start.toISOString()}::timestamptz`)}
+      FROM ${retryRescuesSince(null, sqlTimestamp(start))}
       GROUP BY project_id, failure_reason
       HAVING count(*) >= ${RETRY_RESCUE_ALERT_THRESHOLD}
     `);

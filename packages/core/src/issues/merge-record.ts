@@ -2,6 +2,7 @@ import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
+import { sqlTimestamp } from '../db/sql-timestamp.js';
 
 /** The pool or a caller's open transaction. A close stamps inside one; a mark does not. */
 export type MergeRecordExecutor = Pick<Db, 'update' | 'select'>;
@@ -113,9 +114,9 @@ export async function recordIssueMerge(
   const { issueId, evidence } = args;
   const stampExpr =
     evidence.kind === 'observed'
-      ? sql`${evidence.mergedAt.toISOString()}::timestamptz`
+      ? sqlTimestamp(evidence.mergedAt)
       : evidence.at
-        ? sql`${evidence.at.toISOString()}::timestamptz`
+        ? sqlTimestamp(evidence.at)
         : sql`now()`;
 
   const gate =
