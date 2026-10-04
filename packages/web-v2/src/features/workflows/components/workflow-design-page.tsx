@@ -25,8 +25,8 @@ import type { WorkflowBody, WorkflowDesign, WorkflowRecord, WorkflowStep } from 
 import { WorkflowDesignFacts } from "./workflow-design-facts";
 import { DesignPill } from "./workflow-parts";
 
-export const DESIGN_TABS = ["design", "steps", "revisions", "decisions"] as const;
-export type DesignTab = (typeof DESIGN_TABS)[number];
+const DESIGN_TABS = ["design", "steps", "revisions", "decisions"] as const;
+type DesignTab = (typeof DESIGN_TABS)[number];
 
 export const useDesignTab = () => useUrlTab(DESIGN_TABS);
 
@@ -39,7 +39,7 @@ const BANNER_TONE: Record<WorkflowDesign["waitingOn"]["kind"], BannerTone> = {
 
 const waitHead = (w: WorkflowDesign["waitingOn"]) => (w.kind === "you" ? "Waiting on you:" : `Waiting on ${w.who}:`);
 
-export function DesignBanner({ d, children, className }: { d: WorkflowDesign; children?: ReactNode; className?: string }) {
+function DesignBanner({ d, children, className }: { d: WorkflowDesign; children?: ReactNode; className?: string }) {
   const w = d.waitingOn;
   if (w.kind === "none") return null;
   const latest = d.revisions[0];
@@ -155,7 +155,7 @@ function RevisionsPane({ d }: { d: WorkflowDesign }) {
   );
 }
 
-export interface DesignPageProps {
+interface DesignPageProps {
   projectId: string;
   slug: string;
   d: WorkflowDesign;

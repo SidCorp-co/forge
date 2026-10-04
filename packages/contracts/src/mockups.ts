@@ -2,8 +2,8 @@
 // import the kinds, statuses, limits, refusal codes, request schemas and views from here
 
 import { z } from "zod";
-import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
+import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import type { RefusalStatuses } from "./refusal.js";
 
 export const MOCKUP_KINDS = [
@@ -95,8 +95,7 @@ export const MOCKUP_LIMITS = {
 	reasonChars: 2_000,
 } as const;
 
-export const MOCKUP_SOURCES = ["issue", "comment"] as const;
-export type MockupSource = (typeof MOCKUP_SOURCES)[number];
+const MOCKUP_SOURCES = ["issue", "comment"] as const;
 
 export const MOCKUP_REFUSAL_CODES = [
 	"MOCKUP_CONTENT_REQUIRED",
@@ -128,7 +127,7 @@ export const mockupTargetSchema = z.union([
 ]);
 export type MockupTargetInput = z.infer<typeof mockupTargetSchema>;
 
-export const mockupSourceSchema = z.strictObject({
+const mockupSourceSchema = z.strictObject({
 	from: z.enum(MOCKUP_SOURCES),
 	attachmentId: z.uuid(),
 });

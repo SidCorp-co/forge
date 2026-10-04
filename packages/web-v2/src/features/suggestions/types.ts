@@ -3,7 +3,6 @@ export type {
   SuggestionListResponse,
   SuggestionProducer,
   SuggestionResponse,
-  SuggestionStatus,
   SuggestionView,
 } from "@forge/contracts/suggestions";
 

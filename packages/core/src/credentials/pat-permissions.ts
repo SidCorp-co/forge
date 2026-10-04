@@ -81,7 +81,6 @@ export const PAT_PERMISSION_RESOURCES = {
     prefixes: {
       '/api/agent-reports': 2,
       '/api/feedback-reports': 2,
-      '/api/improvement-messages': 2,
     },
   },
   account: {

@@ -24,14 +24,14 @@ import { readStoredWorkflow } from './schema.js';
 import { projectFactsOf, type WorkflowWriter } from './service.js';
 import { designsOf, lockWorkflows } from './store.js';
 
-export type ObservationOutcome =
+type ObservationOutcome =
   | { ok: true; observation: ObservationView; created: boolean }
   | { ok: false; refusals: ObservationRefusal[] };
 
 type Row = typeof projectWorkflowObservations.$inferSelect;
 
 /** A workflow of `projectId` by uuid or flow; 404 naming the ref otherwise. */
-export async function workflowRowIn(executor: Tx | typeof db, projectId: string, ref: string) {
+async function workflowRowIn(executor: Tx | typeof db, projectId: string, ref: string) {
   const uuid = /^[0-9a-f-]{36}$/i.test(ref);
   const [row] = await executor
     .select({
@@ -207,7 +207,7 @@ export async function listObservations(
 }
 
 /** The latest observation of a workflow, or the one read at `at` (a sha or an observation id). */
-export async function readObservation(
+async function readObservation(
   executor: Tx | typeof db,
   workflowId: string,
   at: 'latest' | string = 'latest',
@@ -240,5 +240,3 @@ export async function observationAs(
   if (!row) throw notFound(`workflow ${wf.flow} holds no observation ${at}`);
   return viewOf(row, wf.flow);
 }
-
-export { documentOf as observationDocumentOf };
