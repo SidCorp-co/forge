@@ -18,18 +18,17 @@ import type { NodeRef } from '@forge/contracts/workflow-health';
 import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-feedback.js';
-import { deleteFeedbackEmbedding } from '../embeddings/item-writer.js';
-import { deleteFeedbackMockups } from '../mockups/index.js';
 import { agentQuestions } from '../db/schema-questions.js';
-import { deleteFeedbackQuestions } from '../questions/index.js';
-import { redactFeedbackSuggestions } from '../suggestions/index.js';
+import { deleteFeedbackEmbedding } from '../embeddings/item-writer.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
-import { RefusalError } from '../lib/refusal.js';
+import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
+import { deleteFeedbackMockups } from '../mockups/index.js';
 import { permissionFactsOf, requireCan } from '../permissions/index.js';
-import type { NamedRefusal } from '../project-config/respond.js';
+import { deleteFeedbackQuestions } from '../questions/index.js';
 import { getStorage } from '../storage/index.js';
+import { redactFeedbackSuggestions } from '../suggestions/index.js';
 import { designNodesIn, nodeRefRefusal } from '../workflows/node-refs.js';
 import { embedFeedbackLater } from './embeddings.js';
 import { detailAs, type FeedbackActor, feedbackKey, phaseOfRow, type Row, rowIn } from './read.js';
@@ -46,14 +45,14 @@ import {
 
 export type FeedbackOutcome =
   | { ok: true; feedback: FeedbackView; created?: boolean; effect?: FeedbackTriageEffect }
-  | { ok: false; refusals: NamedRefusal[] };
+  | { ok: false; refusals: Refusal[] };
 
 /** The transport a write came through, recorded on an issue a triage files. */
 export type FeedbackChannel = 'web' | 'mcp';
 
 export async function inTx(
-  body: (tx: Tx) => Promise<NamedRefusal[] | null | undefined>,
-): Promise<NamedRefusal[] | null> {
+  body: (tx: Tx) => Promise<Refusal[] | null | undefined>,
+): Promise<Refusal[] | null> {
   try {
     return await db.transaction(async (tx) => {
       const refusals = await body(tx);
@@ -150,7 +149,7 @@ async function nodeColumns(
   projectId: string,
   workflowId: string | null,
   node: NodeRef | undefined,
-): Promise<{ columns: Partial<NewFeedback> } | { refusal: NamedRefusal }> {
+): Promise<{ columns: Partial<NewFeedback> } | { refusal: Refusal }> {
   if (!node) return { columns: {} };
   if (!workflowId) {
     return {
@@ -177,7 +176,7 @@ export async function preparedFeedback(
   projectId: string,
   actor: FeedbackActor,
   request: CreateFeedbackRequest,
-): Promise<{ ok: true; values: NewFeedback } | { ok: false; refusals: NamedRefusal[] }> {
+): Promise<{ ok: true; values: NewFeedback } | { ok: false; refusals: Refusal[] }> {
   const count = targetCountRefusal(request, request.whereSeen);
   if (count) return { ok: false, refusals: [count] };
   const target = await resolveTarget(projectId, request, actor.userId);
@@ -251,7 +250,7 @@ export async function declineIn(
   row: Row,
   actor: FeedbackActor,
   reason: string | undefined,
-): Promise<NamedRefusal | null> {
+): Promise<Refusal | null> {
   const refused = declineRefusal(row.status, reason);
   if (refused) return refused;
   const moved = await transition(tx, FEEDBACK_MACHINE, {

@@ -489,3 +489,26 @@ export async function selectOnDemandSlugsFromKnowledge(projectId: string): Promi
     .orderBy(asc(knowledgeEntries.orderIndex), asc(knowledgeEntries.slug));
   return rows.map((r) => r.slug);
 }
+
+/** A knowledge node's related issues and, when given, its metadata, written by a module refresh. */
+export async function updateKnowledgeLinks(
+  nodeId: string,
+  set: { relatedIssueIds?: string[]; metadata?: Record<string, unknown>; at: Date },
+): Promise<void> {
+  await db
+    .update(knowledgeEntries)
+    .set({
+      ...(set.relatedIssueIds ? { relatedIssueIds: set.relatedIssueIds } : {}),
+      ...(set.metadata ? { metadata: set.metadata } : {}),
+      updatedAt: set.at,
+    })
+    .where(eq(knowledgeEntries.id, nodeId));
+}
+
+/** A knowledge entry that had no embedding is given one; a concurrent writer's stays. */
+export async function fillKnowledgeEmbedding(entryId: string, vector: number[]): Promise<void> {
+  await db
+    .update(knowledgeEntries)
+    .set({ embedding: vector })
+    .where(and(eq(knowledgeEntries.id, entryId), isNull(knowledgeEntries.embedding)));
+}

@@ -20,7 +20,7 @@ import { activeIssuePrefix, heldIssuePrefixes } from '../issues/issue-prefix-rea
 import { isUuid } from '../issues/issue-route-ref.js';
 import { type PendingIssueRelation, writeIssueRelations } from '../issues/relations-service.js';
 import { formatIssueRef, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
-import type { NamedRefusal } from '../project-config/respond.js';
+import type { Refusal } from '../lib/refusal.js';
 import { latestBaselineIn } from '../requirements/baselines.js';
 import { requirementKey, rowIn } from '../requirements/read.js';
 import { linkIssueRefusal } from '../requirements/rules.js';
@@ -56,7 +56,7 @@ type Breakdown = ReturnType<(typeof SUGGESTION_PAYLOADS)['breakdown']['schema'][
  *  and the payload's traces and blockers hold at `head`. */
 /** Each blockedBy entry that names an existing issue, read in the caller's transaction. */
 async function namedBlockersIn(tx: Tx, projectId: string, p: Breakdown) {
-  const refusals: NamedRefusal[] = [];
+  const refusals: Refusal[] = [];
   const ids = new Map<string, string>();
   const prefix = await activeIssuePrefix(projectId);
   let held: string[] = [];
@@ -116,7 +116,7 @@ export async function breakdownGuardIn(
   head: number | null,
   p: Breakdown,
 ): Promise<{
-  refusals: NamedRefusal[];
+  refusals: Refusal[];
   codes: ReadonlyMap<string, string>;
   blockers: ReadonlyMap<string, string>;
   builds: (PinnedDesign | null)[];
@@ -168,7 +168,7 @@ async function pinnedDesignsIn(tx: Tx, workflowIds: readonly string[]): Promise<
 
 /** A stored breakdown that no longer parses (one proposed before complexity was required) is
  *  refused at accept by its path, never thrown; a reviewer revises it with the field added. */
-function storedBreakdownRefusal(row: Row): NamedRefusal | null {
+function storedBreakdownRefusal(row: Row): Refusal | null {
   const refusal = payloadRefusal('breakdown', 'requirement', row.payload);
   if (!refusal) return null;
   return {

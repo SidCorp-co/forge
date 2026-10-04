@@ -22,9 +22,9 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { writeRecordEvent } from '../issues/record-events/store.js';
 import { dataPolicyOf, egressAt, storedText } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import type { Refusal } from '../lib/refusal.js';
 import { transition } from '../lifecycle/transition.js';
 import { requireCan } from '../permissions/index.js';
-import type { NamedRefusal } from '../project-config/respond.js';
 import { requirementKey, rowIn as requirementRowIn } from '../requirements/read.js';
 import { linkIssueRefusal } from '../requirements/rules.js';
 import { createRequirementIn, lockRequirements } from '../requirements/service.js';
@@ -70,7 +70,7 @@ import {
 
 /** What a triage or a route write did, which its caller announces once the transaction committed. */
 export interface TriageWritten {
-  refusals: NamedRefusal[] | null;
+  refusals: Refusal[] | null;
   effect?: FeedbackTriageEffect;
   createdIssueId?: string;
 }
@@ -106,7 +106,7 @@ interface RouteInput {
   fromSuggestionId: string | null;
 }
 
-const unknownCarrier = (path: string, detail: string): NamedRefusal => ({
+const unknownCarrier = (path: string, detail: string): Refusal => ({
   code: 'FEEDBACK_TARGET_UNKNOWN',
   path,
   detail,
@@ -146,10 +146,7 @@ async function markRoutedIn(tx: Tx, caseId: string, actor: FeedbackActor): Promi
 }
 
 /** An existing carrier the write names, resolved inside the item's project. */
-async function namedCarrierIn(
-  tx: Tx,
-  input: RouteInput,
-): Promise<{ refusal: NamedRefusal } | Carrier> {
+async function namedCarrierIn(tx: Tx, input: RouteInput): Promise<{ refusal: Refusal } | Carrier> {
   const { row, route, write: w, actor } = input;
   const projectId = row.projectId;
   const none: Carrier = {
@@ -274,7 +271,7 @@ async function fileIssueIn(tx: Tx, input: RouteInput): Promise<{ id: string; key
 async function writeRouteIn(
   tx: Tx,
   input: RouteInput,
-): Promise<{ refusals: NamedRefusal[] } | { carrier: string | null; createdIssueId?: string }> {
+): Promise<{ refusals: Refusal[] } | { carrier: string | null; createdIssueId?: string }> {
   const { row, route, write: w, actor } = input;
   const named = await namedCarrierIn(tx, input);
   if ('refusal' in named) return { refusals: [named.refusal] };

@@ -22,9 +22,9 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import type { PendingIssueRelation } from '../issues/relations-service.js';
 import { emitIssueFieldUpdate } from '../issues/update-hook.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import type { Refusal } from '../lib/refusal.js';
 import { transition } from '../lifecycle/transition.js';
 import { emitEvent } from '../outbox/index.js';
-import type { NamedRefusal } from '../project-config/respond.js';
 import { requirementKey, rowIn } from '../requirements/read.js';
 import {
   createRequirementIn,
@@ -39,13 +39,13 @@ export type Effect = SuggestionEffect | FeedbackTriageEffect;
 export type AcceptChannel = 'web' | 'mcp';
 
 export interface EffectWritten {
-  refusals: NamedRefusal[] | null;
+  refusals: Refusal[] | null;
   effect?: Effect;
   /** Edges the accept landed, whose effects are flushed after the commit. */
   relations?: PendingIssueRelation[];
 }
 
-export const undecided = (kind: string, path: string, what: string): NamedRefusal => ({
+export const undecided = (kind: string, path: string, what: string): Refusal => ({
   code: 'SUGGESTION_EFFECT_UNDECIDED',
   path,
   detail: `the approved designs name no effect for ${what}, so accepting this ${kind} suggestion would write nothing; reject it with a reason, or have its producer propose it without that part.`,

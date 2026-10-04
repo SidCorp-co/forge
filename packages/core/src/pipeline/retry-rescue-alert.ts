@@ -44,7 +44,7 @@ export async function detectRetryRescueThresholds(
       -- function's own catch, which logs and returns \`{ detected: 0, notified: 0 }\` — so the
       -- alarm has reported nothing since it was written and every tick looked healthy.
       -- Found by the integration case below it (ISS-1063); the same shape bit
-      -- \`pipeline/reevaluate-conditions.ts\` and \`pipeline/issue-run-invariant.ts\`.
+      -- \`notifications/reevaluate-conditions.ts\` and \`pipeline/issue-run-invariant.ts\`.
       FROM ${retryRescuesSince(null, sql`${start.toISOString()}::timestamptz`)}
       GROUP BY project_id, failure_reason
       HAVING count(*) >= ${RETRY_RESCUE_ALERT_THRESHOLD}

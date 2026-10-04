@@ -1,6 +1,6 @@
 import type { PatFence, PatFenceChangeView } from '@forge/contracts/pat-fence';
 import { and, desc, eq } from 'drizzle-orm';
-import { lockPatName, type Pat } from '../credentials/pat.js';
+import { lockPatName, type Pat, setTokenFence } from '../credentials/pat.js';
 import { db, type Tx } from '../db/client.js';
 import { personalAccessTokens } from '../db/schema.js';
 import { type PatFenceChangeRow, patFenceChanges } from '../db/schema-pat-fence-changes.js';
@@ -58,11 +58,7 @@ export async function setPatFence(input: SetPatFenceInput): Promise<SetPatFenceO
     const refused = fenceRefusals(token, input.fence, reachable);
     if (refused.length > 0) return { ok: false, refusals: refused };
 
-    const [updated] = await tx
-      .update(personalAccessTokens)
-      .set({ projectIds: input.fence.projectIds, boundProjectId: input.fence.boundProjectId })
-      .where(eq(personalAccessTokens.id, token.id))
-      .returning();
+    const updated = await setTokenFence(tx, token.id, input.fence);
     if (!updated) throw new Error(`setPatFence: token ${token.id} vanished under its own lock`);
 
     const [change] = await tx

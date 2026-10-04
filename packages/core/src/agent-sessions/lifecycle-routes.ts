@@ -2,7 +2,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { agentSessions, devices, projects, runners, schedules } from '../db/schema.js';
+import { agentSessions, devices, projects, runners } from '../db/schema.js';
 import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import {
   findAvailableDeviceForProject,
@@ -18,6 +18,7 @@ import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { extractReportFromMessages } from '../schedules/messages/skill-improve-prompt.js';
+import { mergeAppliedMessageVersions } from '../schedules/service.js';
 import { extractStewardReportFromMessages } from '../schedules/messages/skill-steward-prompt.js';
 import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -292,23 +293,7 @@ agentSessionLifecycleRoutes.post(
             // ISS-548 — one-shot skill-improve: update appliedMessageVersions gate.
             const report = extractReportFromMessages(messages);
             if (report && Object.keys(report.updatedVersions).length > 0) {
-              // Merge with any existing applied versions (concurrent runs are rare
-              // but we prefer a max-version merge over a blind overwrite).
-              const [currentRow] = await db
-                .select({ appliedMessageVersions: schedules.appliedMessageVersions })
-                .from(schedules)
-                .where(eq(schedules.id, scheduleId))
-                .limit(1);
-              const existing_ =
-                (currentRow?.appliedMessageVersions as Record<string, number> | null) ?? {};
-              const merged: Record<string, number> = { ...existing_ };
-              for (const [key, ver] of Object.entries(report.updatedVersions)) {
-                merged[key] = Math.max(merged[key] ?? 0, ver);
-              }
-              await db
-                .update(schedules)
-                .set({ appliedMessageVersions: merged })
-                .where(eq(schedules.id, scheduleId));
+              await mergeAppliedMessageVersions(scheduleId, report.updatedVersions);
             }
             // Always persist the report in session metadata for the UI.
             if (report) {

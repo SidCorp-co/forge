@@ -120,11 +120,11 @@ function describe(row: { description?: unknown; descriptionFormat?: unknown }): 
 }
 
 /**
- * Subscribe to issue/comment lifecycle hooks and keep the `memories` table in
- * sync via the embeddings service.
+ * Consume the issue outbox events and keep the `memories` table in sync via
+ * the embeddings service.
  *
- * Hook work is detached with `queueMicrotask` so it never adds LiteLLM
- * latency to the request path. Hook subscribers use `indexMemoryBestEffort`,
+ * The consumer detaches its work with `queueMicrotask` so a slow LiteLLM call
+ * never holds the outbox worker; it uses `indexMemoryBestEffort`,
  * which logs and swallows failures — eventually consistent. Explicit callers
  * (REST `POST /api/memory`, knowledge ingest) use
  * `indexMemory` which throws so the caller can report or retry.

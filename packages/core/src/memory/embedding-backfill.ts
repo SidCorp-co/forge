@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { appConfig, knowledgeEntries, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/index.js';
-import { knowledgeEmbedInput } from '../knowledge/service.js';
+import { fillKnowledgeEmbedding, knowledgeEmbedInput } from '../knowledge/service.js';
 import { logger } from '../logger.js';
 import { chunkAndPublish, loadChunkParent } from './chunk-writer.js';
 import { CHUNKED_SOURCES } from './chunker.js';
@@ -94,10 +94,7 @@ async function backfillKnowledge(): Promise<{ reembedded: number; aborted: boole
         { surface: 'knowledge' },
         knowledgeEmbedInput(row.title, row.body),
       );
-      await db
-        .update(knowledgeEntries)
-        .set({ embedding: vector })
-        .where(and(eq(knowledgeEntries.id, row.id), isNull(knowledgeEntries.embedding)));
+      await fillKnowledgeEmbedding(row.id, vector);
       reembedded++;
     } catch (err) {
       if (err instanceof EmbeddingUnavailableError) {

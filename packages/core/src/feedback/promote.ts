@@ -6,6 +6,7 @@ import {
 } from '@forge/contracts/feedback';
 import { eq, inArray } from 'drizzle-orm';
 import { alreadyTriagedRefusal, type TriageFacts } from '../agent-reports/rules.js';
+import { markReportFiled } from '../agent-reports/service.js';
 import { db, type Tx } from '../db/client.js';
 import { agentReports, issues, projects } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
@@ -13,16 +14,16 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
-import type { NamedRefusal } from '../project-config/respond.js';
+import type { Refusal } from '../lib/refusal.js';
+import { requireCan } from '../permissions/index.js';
 import { embedFeedbackLater } from './embeddings.js';
 import { detailAs, type FeedbackActor, feedbackKey, notFound, rowIn } from './read.js';
 import { promoteRefusal } from './rules.js';
 import { decide, insertFeedbackIn, inTx, lockFeedback, preparedFeedback } from './service.js';
-import { requireCan } from '../permissions/index.js';
 
 export type PromoteOutcome =
   | { ok: true; feedback: FeedbackView; effect: FeedbackPromoteEffect }
-  | { ok: false; refusals: NamedRefusal[] };
+  | { ok: false; refusals: Refusal[] };
 
 async function slugsOf(ids: string[]) {
   const rows = await db
@@ -129,16 +130,7 @@ export async function promoteAgentReport(input: {
         copied.length ? `copied its ${copied.join(' and ')}` : 'nothing copied from it'
       }.`,
     });
-    await tx
-      .update(agentReports)
-      .set({
-        feedbackId: id,
-        triage: 'filed',
-        triagedBy: actor.userId,
-        triagedAgency: actor.agency,
-        triagedAt: new Date(),
-      })
-      .where(eq(agentReports.id, report.id));
+    await markReportFiled(tx, report.id, { feedbackId: id, by: actor.userId, agency: actor.agency });
     return null;
   });
   if (refusals) return { ok: false, refusals };

@@ -19,9 +19,9 @@ import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { egressForRequest } from '../lib/data-egress.js';
+import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { refused } from '../project-config/respond.js';
 import { linkContract, unlinkContract } from './contract-links.js';
 import { putCriterionSteps } from './criterion-steps.js';
 import { deferRequirement, undeferRequirement } from './deferral.js';
@@ -97,7 +97,7 @@ function actorOf(c: Context<{ Variables: AuthVars }>): RequirementActor {
 }
 
 function answer(c: Context, outcome: RequirementOutcome) {
-  if (!outcome.ok) return refused(c, outcome.refusals);
+  if (!outcome.ok) return refused(c, outcome.refusals, 'REQUIREMENT_REFUSED');
   return c.json(outcome.requirement, outcome.created ? 201 : 200);
 }
 

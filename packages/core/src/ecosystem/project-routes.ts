@@ -2,9 +2,11 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
+import { refused } from '../lib/refusal.js';
+import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { envelopeOf, refused } from '../project-config/respond.js';
+import { requireCan } from '../permissions/index.js';
 import { readApiPage } from './api-page.js';
 import { heldEcosystem } from './ecosystem-service.js';
 import {
@@ -17,7 +19,6 @@ import { membershipDocument } from './membership-rules.js';
 import type { CommitmentsSetter } from './provider-writer-rules.js';
 import { serialiseRevisions } from './routes.js';
 import { listInterfaceRevisions, membershipsWhere, readEcosystems } from './store.js';
-import { requireCan } from '../permissions/index.js';
 
 export const ecosystemProjectRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -68,7 +69,7 @@ ecosystemProjectRoutes.put(
       baseRevision,
       raw: document,
     });
-    if (!outcome.ok) return refused(c, outcome.refusals);
+    if (!outcome.ok) return refused(c, outcome.refusals, 'ECOSYSTEM_REFUSED');
     const setBy = await commitmentsSetter(id);
     return c.json({ ...serialise(outcome.held, setBy), created: outcome.created });
   },

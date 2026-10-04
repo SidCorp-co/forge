@@ -1,11 +1,9 @@
 import { createHash } from 'node:crypto';
-import { and, eq, isNull, or, sql } from 'drizzle-orm';
-import { lockPatName, mintPat } from '../credentials/pat.js';
+import { lockPatName, mintPat, revokeLiveTokens, supersedeNamedToken } from '../credentials/pat.js';
 import { deviceTokenNameFor } from '../credentials/pat-format.js';
 import { PAT_GRANT_ALL } from '../credentials/pat-permissions.js';
 import { env } from '../config/env.js';
 import { db, type Tx } from '../db/client.js';
-import { personalAccessTokens } from '../db/schema.js';
 import { agentCredentialFence, withAgentFenceLock } from '../orgs/agent-fence.js';
 
 const DEVICE_TOKEN_RATE_LIMIT_PER_MINUTE = 600;
@@ -43,19 +41,7 @@ export async function issueDeviceCredential(args: {
 
   const supersede = async (tx: Tx) => {
     await lockPatName(tx, name);
-    await tx
-      .update(personalAccessTokens)
-      .set({ revokedAt: sql`now()` })
-      .where(
-        and(
-          eq(personalAccessTokens.name, name),
-          isNull(personalAccessTokens.revokedAt),
-          or(
-            eq(personalAccessTokens.deviceId, args.deviceId),
-            eq(personalAccessTokens.userId, args.holderUserId),
-          ),
-        ),
-      );
+    await supersedeNamedToken(tx, name, { deviceId: args.deviceId, userId: args.holderUserId });
   };
 
   if (!args.holderIsAgent) {
@@ -78,10 +64,5 @@ export async function issueDeviceCredential(args: {
 
 /** Revoke every live credential issued to a box, so unpairing takes its reach with it. */
 export async function revokeDeviceCredentials(deviceId: string): Promise<number> {
-  const rows = await db
-    .update(personalAccessTokens)
-    .set({ revokedAt: sql`now()` })
-    .where(and(eq(personalAccessTokens.deviceId, deviceId), isNull(personalAccessTokens.revokedAt)))
-    .returning({ id: personalAccessTokens.id });
-  return rows.length;
+  return revokeLiveTokens({ deviceId });
 }

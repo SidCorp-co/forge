@@ -1,4 +1,6 @@
+export { bootstrapRunnerAdapters } from './bootstrap.js';
 export { type HeartbeatRunnerTransition, mirrorHeartbeatToRunners } from './heartbeat-mirror.js';
+export { runnerRoutes } from './routes.js';
 export {
   deleteDeviceRunners,
   deleteProjectRunner,

@@ -1,8 +1,9 @@
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { jobs, notifications, pmConfig, projects } from '../db/schema.js';
+import { jobs, pmConfig, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { deliverExisting } from '../notifications/deliver.js';
+import { insertNotificationRecord } from '../notifications/emit.js';
 import { emissionAllowed, noteSuppressed } from '../notifications/emission-switch.js';
 import { INITIAL_STATE, kindOf, tierOf } from '../notifications/kinds.js';
 
@@ -60,21 +61,17 @@ export async function handlePmJobFailedAutoDisable(payload: {
       return;
     }
 
-    const [record] = await tx
-      .insert(notifications)
-      .values({
-        projectId: payload.projectId,
-        type: 'pm_escalation',
-        kind: kindOf('pm_escalation'),
-        tier: tierOf('pm_escalation'),
-        state: INITIAL_STATE[kindOf('pm_escalation')],
-        title: 'PM agent auto-disabled',
-        body: `PM agent failed ${count} times in the last hour. The PM agent is off until you re-enable it in project settings.`,
-        issueId: null,
-        agentSessionId: null,
-      })
-      .returning({ id: notifications.id });
-    recordId = record?.id ?? null;
+    recordId = await insertNotificationRecord(tx, {
+      projectId: payload.projectId,
+      type: 'pm_escalation',
+      kind: kindOf('pm_escalation'),
+      tier: tierOf('pm_escalation'),
+      state: INITIAL_STATE[kindOf('pm_escalation')],
+      title: 'PM agent auto-disabled',
+      body: `PM agent failed ${count} times in the last hour. The PM agent is off until you re-enable it in project settings.`,
+      issueId: null,
+      agentSessionId: null,
+    });
     recipient = project.createdBy;
   });
 

@@ -5,9 +5,11 @@ import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { egressForRequest } from '../lib/data-egress.js';
+import { refused } from '../lib/refusal.js';
+import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { envelopeOf, refused } from '../project-config/respond.js';
+import { requireCan } from '../permissions/index.js';
 import { DESIGN_DECISIONS, DESIGN_REASON_MAX } from './design.js';
 import {
   type DesignOutcome,
@@ -31,7 +33,6 @@ import {
 } from './service.js';
 import { readSystemGraphAs } from './system-graph-read.js';
 import { listProjectTemplatesAs, readProjectTemplateAs } from './template-service.js';
-import { requireCan } from '../permissions/index.js';
 
 export const workflowRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -89,7 +90,7 @@ function writerOf(c: Context<{ Variables: AuthVars }>): WorkflowWriter {
 }
 
 function answer(c: Context, outcome: WorkflowOutcome) {
-  if (!outcome.ok) return refused(c, outcome.refusals);
+  if (!outcome.ok) return refused(c, outcome.refusals, 'WORKFLOW_REFUSED');
   return c.json(
     { ...workflowView(outcome.row, outcome.document), created: outcome.created },
     outcome.created ? 201 : 200,
@@ -148,7 +149,7 @@ workflowRoutes.put('/:id/workflows/:workflow', workflowParam, envelope, async (c
 });
 
 function answerDesign(c: Context, outcome: DesignOutcome) {
-  if (!outcome.ok) return refused(c, outcome.refusals);
+  if (!outcome.ok) return refused(c, outcome.refusals, 'WORKFLOW_REFUSED');
   return c.json(outcome.design);
 }
 
@@ -204,7 +205,7 @@ workflowRoutes.get(
       workflowId: workflow,
       ...c.req.valid('query'),
     });
-    if (!outcome.ok) return refused(c, outcome.refusals);
+    if (!outcome.ok) return refused(c, outcome.refusals, 'WORKFLOW_REFUSED');
     return c.json(
       await egressForRequest(c.get('agency'), id, 'design', outcome.graph, `workflow ${workflow}`),
     );
@@ -340,7 +341,7 @@ workflowRoutes.post(
       writer: writerOf(c),
       write: c.req.valid('json'),
     });
-    if (!outcome.ok) return refused(c, outcome.refusals);
+    if (!outcome.ok) return refused(c, outcome.refusals, 'WORKFLOW_REFUSED');
     return c.json({ observation: outcome.observation }, outcome.created ? 201 : 200);
   },
 );

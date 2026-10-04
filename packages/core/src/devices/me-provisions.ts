@@ -4,7 +4,6 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { projectGitCredentials, projects, runners, workspaceSshKeys } from '../db/schema.js';
 import { isHttpsGitUrl, projectsWithHostCredential } from '../git/host-credential.js';
-import { deviceGitCredentialRoutes } from '../git/host-credential-routes.js';
 import { logger } from '../logger.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { readDeclaredSource, remoteOf } from '../project-config/source.js';
@@ -19,8 +18,6 @@ import {
 import { deviceHolderUserId, issueCheckoutCredential } from './workspace-credential.js';
 
 export const deviceProvisionRoutes = new Hono<{ Variables: DeviceVars }>();
-
-deviceProvisionRoutes.route('/', deviceGitCredentialRoutes);
 
 const unauth = () =>
   new HTTPException(401, { message: 'device revoked', cause: { code: 'UNAUTHENTICATED' } });

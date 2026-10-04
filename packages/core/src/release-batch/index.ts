@@ -1,3 +1,5 @@
+export { registerReleaseBatchClaimSubscriber } from './claim-subscriber.js';
+export { registerReleaseBatchFinish } from './finish-job.js';
 export {
   clearProjectReleaseHolds,
   clearReleaseHolds,
@@ -17,3 +19,4 @@ export {
   targetUndeclaredHold,
   writeReleaseHolds,
 } from './hold.js';
+export { releaseBatchRoutes } from './routes.js';

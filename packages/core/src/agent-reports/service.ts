@@ -376,3 +376,21 @@ export async function issueDeleteRefusal(issue: {
 }
 
 export type { AgentReportKind, AgentReportSeverity, AgentReportTarget };
+
+/** An agent report promoted to a feedback is triaged as filed, naming who filed it. */
+export async function markReportFiled(
+  tx: Tx,
+  reportId: string,
+  filed: { feedbackId: string; by: string; agency: ActorAgency },
+): Promise<void> {
+  await tx
+    .update(agentReports)
+    .set({
+      feedbackId: filed.feedbackId,
+      triage: 'filed',
+      triagedBy: filed.by,
+      triagedAgency: filed.agency,
+      triagedAt: new Date(),
+    })
+    .where(eq(agentReports.id, reportId));
+}

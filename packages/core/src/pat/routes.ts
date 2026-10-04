@@ -4,6 +4,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { env } from '../config/env.js';
 import { countActivePatsForUser, mintPat, revokePat, rotatePat } from '../credentials/pat.js';
 import { coreTokenNamePrefixOf } from '../credentials/pat-format.js';
 import {
@@ -15,16 +16,14 @@ import {
   patGrantIsLegacy,
   patGrantIsStatedFull,
 } from '../credentials/pat-permissions.js';
-import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { mcpAuditLog, personalAccessTokens } from '../db/schema.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
-import { RefusalError, refuser } from '../lib/refusal.js';
+import { RefusalError, refused, refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireFreshAuth } from '../middleware/require-fresh-auth.js';
 import { forgetPatThrottle } from '../middleware/require-pat.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { refused } from '../project-config/respond.js';
 import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { fenceEditorRefusal, fenceOf } from './fence-rules.js';
@@ -370,7 +369,7 @@ patRoutes.put(
         cause: { code: 'NOT_FOUND' },
       });
     }
-    if (!outcome.ok) return refused(c, outcome.refusals);
+    if (!outcome.ok) return refused(c, outcome.refusals, 'PAT_REFUSED');
     roomManager.publish(userRoom(userId), {
       event: 'pat.fence_changed',
       data: { tokenId: id, userId, changeId: outcome.change.id, ts: outcome.change.changedAt },

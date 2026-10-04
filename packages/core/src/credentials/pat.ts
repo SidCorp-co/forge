@@ -1,5 +1,5 @@
 import argon2 from 'argon2';
-import { and, eq, type InferSelectModel, isNull, sql } from 'drizzle-orm';
+import { and, eq, type InferSelectModel, isNull, or, sql } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db, type Tx } from '../db/client.js';
 import { personalAccessTokens, type UserKind, users } from '../db/schema.js';
@@ -100,6 +100,71 @@ export async function mintPat(input: MintPatInput, tx: Tx = db): Promise<MintedP
  */
 export async function lockPatName(tx: Tx, name: string): Promise<void> {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${name}, 0))`);
+}
+
+/** Who a live token is revoked for: its holder, the box it was issued to, or its name. */
+export type TokenHolder = { userId: string } | { deviceId: string } | { name: string };
+
+/** Revoke every live token of one holder; answers how many. */
+export async function revokeLiveTokens(holder: TokenHolder, tx: Tx = db): Promise<number> {
+  const of =
+    'userId' in holder
+      ? eq(personalAccessTokens.userId, holder.userId)
+      : 'deviceId' in holder
+        ? eq(personalAccessTokens.deviceId, holder.deviceId)
+        : eq(personalAccessTokens.name, holder.name);
+  const rows = await tx
+    .update(personalAccessTokens)
+    .set({ revokedAt: sql`now()` })
+    .where(and(of, isNull(personalAccessTokens.revokedAt)))
+    .returning({ id: personalAccessTokens.id });
+  return rows.length;
+}
+
+/**
+ * The live token called `name` that a box or its holder carries is superseded, under the name's
+ * lock the caller took, before its successor is minted.
+ */
+export async function supersedeNamedToken(
+  tx: Tx,
+  name: string,
+  holder: { deviceId: string; userId: string },
+): Promise<void> {
+  await tx
+    .update(personalAccessTokens)
+    .set({ revokedAt: sql`now()` })
+    .where(
+      and(
+        eq(personalAccessTokens.name, name),
+        isNull(personalAccessTokens.revokedAt),
+        or(
+          eq(personalAccessTokens.deviceId, holder.deviceId),
+          eq(personalAccessTokens.userId, holder.userId),
+        ),
+      ),
+    );
+}
+
+export type TokenFence = { projectIds: string[] | null; boundProjectId: string | null };
+
+/** One token's project fence; null when the token is gone. */
+export async function setTokenFence(tx: Tx, tokenId: string, fence: TokenFence): Promise<Pat | null> {
+  const [row] = await tx
+    .update(personalAccessTokens)
+    .set({ projectIds: fence.projectIds, boundProjectId: fence.boundProjectId })
+    .where(eq(personalAccessTokens.id, tokenId))
+    .returning();
+  return row ?? null;
+}
+
+/** Every live token of one holder takes the same fence; answers how many. */
+export async function refenceLiveTokens(tx: Tx, userId: string, fence: TokenFence): Promise<number> {
+  const rows = await tx
+    .update(personalAccessTokens)
+    .set({ projectIds: fence.projectIds, boundProjectId: fence.boundProjectId })
+    .where(and(eq(personalAccessTokens.userId, userId), patIsLive()))
+    .returning({ id: personalAccessTokens.id });
+  return rows.length;
 }
 
 export interface VerifiedPat {

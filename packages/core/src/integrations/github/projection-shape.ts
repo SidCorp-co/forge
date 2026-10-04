@@ -90,7 +90,7 @@ function idOf(id: string): bigint {
   try {
     return BigInt(id);
   } catch {
-    return 0n;
+    return BigInt(0);
   }
 }
 

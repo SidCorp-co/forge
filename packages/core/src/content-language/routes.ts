@@ -13,12 +13,12 @@ import {
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { refused } from '../project-config/respond.js';
+import { requireCan } from '../permissions/index.js';
 import { readContentLanguage } from './read.js';
 import { writeContentLanguage } from './service.js';
-import { requireCan } from '../permissions/index.js';
 
 export const contentLanguageRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -52,7 +52,7 @@ contentLanguageRoutes.put(
       userId,
       write: c.req.valid('json'),
     });
-    if (!outcome.ok) return refused(c, outcome.refusals);
+    if (!outcome.ok) return refused(c, outcome.refusals, 'CONTENT_LANGUAGE_REFUSED');
     const view: ContentLanguageView = {
       ...contentLanguageOf(outcome.held.document),
       revision: outcome.held.revision,

@@ -1,4 +1,5 @@
 import type { Refusal, RefusalEnvelope } from '@forge/contracts';
+import type { Context } from 'hono';
 
 export type { Refusal, RefusalEnvelope };
 
@@ -12,7 +13,7 @@ export class RefusalError extends Error {
   }
 }
 
-/** The body `respond.ts:refused` answers 422 and `mcp/tools/lib.ts:refusedAnswer` returns. */
+/** The body `refused` answers 422 and `lib/tool.ts:refusedAnswer` returns. */
 export function refusalEnvelope(
   refusals: readonly Refusal[],
   fallbackCode: string,
@@ -26,6 +27,18 @@ export function refusalEnvelope(
       refusals: [...refusals],
     },
   };
+}
+
+/**
+ * A route's answer to refusals a service returned: 422 in the one envelope, under the module's
+ * fallback code when the refusals carry more than one code.
+ */
+export function refused<C extends string>(
+  c: Context,
+  refusals: readonly Refusal[],
+  fallbackCode: C,
+) {
+  return c.json(refusalEnvelope(refusals, fallbackCode), 422);
 }
 
 /**

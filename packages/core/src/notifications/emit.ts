@@ -1,4 +1,5 @@
-import type { NotificationType } from '../db/schema.js';
+import type { Tx } from '../db/client.js';
+import { type NotificationType, notifications } from '../db/schema.js';
 import { createNotification } from './routes.js';
 
 const DEFAULT_SEVERITY_BY_TYPE: Record<NotificationType, string> = {
@@ -54,4 +55,19 @@ export async function emitNotification(
     ...input,
     severity: input.severity ?? defaultSeverityForType(input.type),
   });
+}
+
+/**
+ * One notification record written in the caller's transaction, for an act that raises it as part
+ * of its own write; the caller delivers it once the transaction committed.
+ */
+export async function insertNotificationRecord(
+  tx: Tx,
+  values: typeof notifications.$inferInsert,
+): Promise<string | null> {
+  const [record] = await tx
+    .insert(notifications)
+    .values(values)
+    .returning({ id: notifications.id });
+  return record?.id ?? null;
 }

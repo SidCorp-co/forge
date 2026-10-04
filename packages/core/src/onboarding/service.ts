@@ -28,9 +28,10 @@ import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { finalizeJobDone } from '../jobs/finalize-done.js';
 import type { EgressReader } from '../lib/data-egress.js';
+import type { Refusal } from '../lib/refusal.js';
+import { permissionFactsOf, requireCan } from '../permissions/index.js';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { openOneShotRun } from '../pipeline/runs.js';
-import type { NamedRefusal } from '../project-config/respond.js';
 import { readDeclaredSource } from '../project-config/source.js';
 import {
   type BatchRow,
@@ -62,7 +63,6 @@ import {
   settlesPhaseJob,
   startRefusal,
 } from './rules.js';
-import { permissionFactsOf, requireCan } from '../permissions/index.js';
 
 export interface OnboardingActor {
   userId: string;
@@ -71,11 +71,11 @@ export interface OnboardingActor {
 
 export type OnboardingOutcome =
   | { ok: true; onboarding: OnboardingView; created?: boolean }
-  | { ok: false; refusals: NamedRefusal[] };
+  | { ok: false; refusals: Refusal[] };
 
 export type OnboardingQuestionnaireOutcome =
   | { ok: true; questionnaire: QuestionnaireView; created: true }
-  | { ok: false; refusals: NamedRefusal[] };
+  | { ok: false; refusals: Refusal[] };
 
 /** Serialises every onboarding write on one project. */
 async function lockOnboarding(tx: TxOnly, projectId: string) {
