@@ -91,6 +91,7 @@ function C4Box({ data }: NodeProps & { data: C4BoxData }) {
         data-rel={data.rel}
         data-hit={data.hit}
         data-mark={data.mark ?? undefined}
+        data-count={b.node.count !== null || undefined}
         data-testid="c4-box"
         data-id={b.node.id}
         style={{ width: b.w, height: b.h, ["--mark" as string]: data.mark ? MARK_HUE[data.mark] : undefined }}
