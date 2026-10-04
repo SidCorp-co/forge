@@ -2,13 +2,10 @@ import { apiClient } from "@/lib/api/client";
 import type { Bus, BuilderRunRecord, LinkRecord } from "./bus";
 import type {
   ApiPage,
-  ContractVersion,
   DocumentType,
   DocumentView,
   EcosystemDocument,
   HeldEcosystem,
-  Measurement,
-  NamedProject,
   OutboxResponse,
   ProjectEcosystemsResponse,
   ThreadHold,
@@ -96,23 +93,4 @@ export const ecosystemApi = {
 
   apiPage: (projectId: string) => apiClient<ApiPage>(`/projects/${projectId}/api-page`),
 
-  ownVersions: (projectId: string, contract: string) =>
-    apiClient<{ versions: ContractVersion[] }>(
-      `/projects/${projectId}/contracts/${encodeURIComponent(contract)}/versions`,
-    ),
-
-  ownMeasurements: (projectId: string, contract: string) =>
-    apiClient<{ measurements: Measurement[] }>(
-      `/projects/${projectId}/contracts/${encodeURIComponent(contract)}/measurements`,
-    ),
-
-  consumedVersions: (projectId: string, provider: string, contract: string) =>
-    apiClient<{ provider: NamedProject; contract: string; versions: ContractVersion[] }>(
-      `/projects/${projectId}/consumes/${provider}/${encodeURIComponent(contract)}/versions`,
-    ),
-
-  consumedMeasurements: (projectId: string, provider: string, contract: string) =>
-    apiClient<{ measurements: Measurement[] }>(
-      `/projects/${projectId}/consumes/${provider}/${encodeURIComponent(contract)}/measurements`,
-    ),
 };

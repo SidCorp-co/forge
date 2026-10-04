@@ -13,7 +13,7 @@ const query = (params: Record<string, string | undefined>) => {
   return s ? `?${s}` : "";
 };
 
-// cm:why an ecosystem spans projects from any organization, so its page, the Threads inbox and the create form live at the workspace; a document, its compose form, contracts and the API page are a project's own and stay under it
+// cm:why an ecosystem spans projects from any organization, so its page, the Threads inbox and the create form live at the workspace; a document, its compose form and the API page are a project's own and stay under it
 export const ecosystemRoutes = {
   list: () => "/ecosystems",
   create: () => "/ecosystems/new",
@@ -32,8 +32,5 @@ export const ecosystemRoutes = {
     projectSlug: string,
     opts: { ecosystem?: string; inReplyTo?: string; draft?: string } = {},
   ) => `${base(projectSlug)}/channel/new${query(opts)}`,
-  contracts: (projectSlug: string) => `${base(projectSlug)}/contracts`,
-  contract: (projectSlug: string, contract: string, provider?: string) =>
-    `${base(projectSlug)}/contracts/${encodeURIComponent(contract)}${query({ provider })}`,
   apiPage: (projectSlug: string) => `${base(projectSlug)}/api`,
 } as const;

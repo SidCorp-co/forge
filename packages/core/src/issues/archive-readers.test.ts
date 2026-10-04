@@ -84,6 +84,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/held-hydrator.ts': 'the ids passed in',
   'issues/list-projection.ts':
     'runs the where its callers build; the list and search routes compose the predicate into it',
+  'issues/landing-advance.ts':
+    'the one issue a recorded landing names, by id; an archived issue is refused by the transition it asks for',
   'issues/landing-evidence.ts': 'by issue id, a guard',
   'issues/merge-record.ts': 'by issue id',
   'issues/merge-routes.ts': 'by issue id',

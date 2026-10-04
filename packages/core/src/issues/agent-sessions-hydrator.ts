@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, devices } from '../db/schema.js';
 
-export type DerivedAgentStatus = 'running' | 'queued' | 'completed' | 'failed' | null;
+export type DerivedAgentStatus = 'running' | 'queued' | 'completed' | 'failed' | 'cancelled' | null;
 
 export interface HydratedAgentSession {
   id: string;
@@ -35,6 +35,7 @@ export function deriveAgentStatus(sessions: HydratedAgentSession[]): DerivedAgen
   for (const s of sessions) {
     if (s.status === 'failed') return 'failed';
     if (s.status === 'completed' || s.status === 'completed_via_recovery') return 'completed';
+    if (s.status === 'cancelled') return 'cancelled';
   }
   return null;
 }

@@ -5,6 +5,7 @@ import { isTerminalPlacement } from './status-assertions.js';
 import {
   AT_REST_STATUSES,
   heldReleaseWait,
+  landedWait,
   SHORTEST_GRACE_MS,
   STRAND_RULES,
   type StrandEvidence,
@@ -85,6 +86,39 @@ describe('STRAND_RULES covers every status (ISS-1122)', () => {
     expect(strandRuleFor('')).toBeNull();
     expect(strandRuleFor('constructor')).toBeNull();
     expect(strandRuleFor('toString')).toBeNull();
+  });
+});
+
+describe('a landed row nothing holds waits on its judge (ISS-80)', () => {
+  it('names a judge for a landed in_progress row at step test, over its released claim', () => {
+    const landed = evidence({
+      merged: true,
+      step: 'test',
+      lease: reading({ verdict: 'expired', stopped: true }),
+    });
+    expect(landedWait('in_progress', landed)?.waitingFor).toBe(
+      'a judge to record a verdict on each criterion',
+    );
+    const { reason, owes } = strandReason({
+      status: 'in_progress',
+      rule: WATCHED,
+      evidence: landed,
+    });
+    expect(reason).toContain('waits at step `test` for a judge');
+    expect(reason).not.toContain('claim on this row was released');
+    expect(owes).toBe('agent');
+  });
+
+  it('names the claiming run for a landed open row', () => {
+    expect(landedWait('open', evidence({ merged: true }))?.waitingFor).toBe(
+      'a run to claim it and judge what landed',
+    );
+  });
+
+  it('says nothing of a judge for an unlanded row, or a landed row at another step', () => {
+    expect(landedWait('in_progress', evidence({ merged: false, step: 'test' }))).toBeNull();
+    expect(landedWait('in_progress', evidence({ merged: true, step: 'build' }))).toBeNull();
+    expect(landedWait('awaiting_release', evidence({ merged: true }))).toBeNull();
   });
 });
 

@@ -136,6 +136,15 @@ vi.mock('../../pipeline/work-evidence.js', () => ({
   collectWorkEvidence: async () => ({ handoffCommitSha: null }),
 }));
 vi.mock('../../pipeline/hooks.js', () => ({ hooks: { emit: async () => undefined } }));
+vi.mock('../../issues/landing-advance.js', () => ({
+  advanceLandedIssue: async () => ({
+    outcome: 'judge_owed',
+    status: 'in_progress',
+    step: 'test',
+    leaseEnded: null,
+    detail: 'Landing recorded; it waits at step `test` for a judge.',
+  }),
+}));
 /** The shape `landing-evidence.ts` reads off the project's kind, set per case. */
 let shape: 'git' | 'outside_git' = 'git';
 vi.mock('../../issues/landing-evidence.js', async (importOriginal) => ({

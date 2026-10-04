@@ -8,9 +8,9 @@ import { Icon, type IconName } from "../icons/icon";
 import { AGENT_TINT } from "../status";
 import { LEGEND } from "../vocabulary";
 
-export type WhoKind = "you" | "person" | "agent" | "system" | "issue" | "release";
+export type WhoKind = "you" | "person" | "agent" | "system" | "issue" | "release" | "project";
 
-const SYSTEM_ICON: Partial<Record<WhoKind, IconName>> = { system: "settings", issue: "rows", release: "rocket" };
+const SYSTEM_ICON: Partial<Record<WhoKind, IconName>> = { system: "settings", issue: "rows", release: "rocket", project: "ecosystem" };
 
 /** The small mark in front of a name: an initial for a person, an icon for an agent or the system. */
 export function WhoMark({ kind, who, size = 16 }: { kind: WhoKind; who: string; size?: number }) {

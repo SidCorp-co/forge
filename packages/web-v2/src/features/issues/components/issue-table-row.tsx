@@ -168,7 +168,7 @@ export function DepBadges({
           tone="danger"
           label={
             openBlockers.length === 1
-              ? `Blocked by ${openBlockers[0].displayId}`
+              ? `Blocked by ${openBlockers[0].displayId}${openBlockers[0].landed ? " · landed" : ""}`
               : `Blocked by ${openBlockers.length}`
           }
           items={openBlockers.map(refToMenuItem)}

@@ -33,7 +33,7 @@ export const ISSUE_PRIORITIES: IssuePriority[] = [...REGISTRY_ISSUE_PRIORITIES];
 export const ISSUE_COMPLEXITIES: IssueComplexity[] = [...REGISTRY_ISSUE_COMPLEXITIES];
 
 /** Agent run status hydrated by the search endpoint (`withAgentSessions=1`). */
-export type IssueAgentStatus = "running" | "queued" | "completed" | "failed" | null;
+export type IssueAgentStatus = "running" | "queued" | "completed" | "failed" | "cancelled" | null;
 
 export interface IssueAgentSession {
   id: string;
@@ -189,6 +189,7 @@ export interface IssueDependencyEdge {
   fromDisplayId?: string | null;
   fromTitle?: string | null;
   fromStatus?: IssueStatus | null;
+  fromMergedAt?: string | null;
   toDisplayId?: string | null;
   toTitle?: string | null;
   toStatus?: IssueStatus | null;

@@ -120,7 +120,7 @@ export type Issue = typeof schema.issues.$inferSelect & {
     updatedAt: Date | string;
     title: string | null;
   }>;
-  agentStatus?: 'running' | 'queued' | 'completed' | 'failed' | null;
+  agentStatus?: 'running' | 'queued' | 'completed' | 'failed' | 'cancelled' | null;
   /** ISS-1213 — search endpoint only, under `?withAgentSessions`: is anything on the issue now. */
   held?: boolean;
   lastCheckInAt?: string | null;

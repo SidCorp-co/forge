@@ -37,7 +37,7 @@ describe("⌘K", () => {
     expect(routeOf("Forge · Schedules")).toBe("/projects/forge-dev/automation?tab=schedules");
     expect(routeOf("Forge · Improvements")).toBe("/projects/forge-dev/automation?tab=improvements");
     expect(routeOf("Forge · Automation")).toBe("/projects/forge-dev/automation");
-    expect(routeOf("Forge · Contracts")).toBe("/projects/forge-dev/ecosystem/contracts");
+    expect(routeOf("Forge · Contracts")).toBe("/projects/forge-dev/contracts");
     expect(routeOf("Forge · Requirements")).toBe("/projects/forge-dev/requirements");
     expect(routeOf("Forge · Modules")).toBe("/projects/forge-dev/modules");
   });

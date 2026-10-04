@@ -167,40 +167,6 @@ export interface ApiPage {
   } | null;
 }
 
-export interface VersionChange {
-  element: string;
-  kind: string;
-  level: string;
-  text: string;
-  check?: string;
-}
-
-/** One recorded version, in the fields both readers share: the diff and when it was observed. */
-export interface ContractVersion {
-  contractVersion: string;
-  previous: string | null;
-  observedAt: string;
-  diff: { tool: string; classification: string; changes: VersionChange[] };
-}
-
-export interface Measurement {
-  outcome: string;
-  version: string | null;
-  environments: string[];
-  observedAt: string;
-  settledAt: string | null;
-  /** The provider's own read only. */
-  commit?: string;
-  branch?: string;
-  reason?: string | null;
-}
-
-export interface ContractReading {
-  /** Whose contract it is, when read as a consumer; absent on the provider's own read. */
-  provider?: NamedProject;
-  versions: ContractVersion[];
-  measurements: Measurement[];
-}
 
 /** The full name of each document type, as rows and filters print it. */
 export const TYPE_LABEL: Record<string, string> = {
