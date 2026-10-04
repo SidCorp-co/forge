@@ -1,6 +1,6 @@
 import { db } from '../../db/client.js';
 import type { ActorAgency } from '../../issues/actor-agency.js';
-import { approverFactsOf } from '../../lib/approval.js';
+import { permissionFactsOf } from '../../permissions/index.js';
 import { notFound } from '../access.js';
 import { loadInterface } from '../interface-service.js';
 import type { EcosystemRefusal } from '../refusals.js';
@@ -35,10 +35,10 @@ export async function decideContractVersion(input: DecideInput): Promise<DecideO
   const target = await read();
   if (!target) throw notFound(`${project.slug}/${contract} has no recorded version "${version}"`);
   const [facts, iface] = await Promise.all([
-    approverFactsOf(actor.userId, projectId),
+    permissionFactsOf(actor.userId, projectId),
     loadInterface(projectId),
   ]);
-  const denied = approverRefusal(facts, { ref }, projectId);
+  const denied = approverRefusal(facts, { ref });
   if (denied) return { ok: false, refusals: [denied] };
   const [outcome, approved] = await db.transaction(
     async (tx): Promise<[DecideOutcome, Approved | null]> => {

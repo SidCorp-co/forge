@@ -1,12 +1,13 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { phaseJournalOutcomes } from '../db/schema-journal.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { endPhase, listPhases, resumePoint, startPhase } from './phase-journal.js';
 import { readPipelineRun } from './runs.js';
+import { requireHeld } from '../permissions/index.js';
 
 const startBodySchema = z
   .object({
@@ -26,11 +27,15 @@ const endBodySchema = z
   })
   .strict();
 
-async function runProjectFor(runId: string, userId: string, role: 'viewer' | 'member') {
+async function runProjectFor(
+  runId: string,
+  userId: string,
+  permission: 'project.read' | 'project.write',
+) {
   const row = await readPipelineRun(runId);
   if (!row) throw notFound('pipeline run not found');
   const access = await loadProjectAccess(row.projectId, userId);
-  assertProjectRole(access, role);
+  requireHeld(access, permission);
   return row;
 }
 
@@ -48,7 +53,7 @@ phaseRoutes.post(
   async (c) => {
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
-    const run = await runProjectFor(id, c.get('userId'), 'member');
+    const run = await runProjectFor(id, c.get('userId'), 'project.write');
     const row = await startPhase({
       projectId: run.projectId,
       runId: id,
@@ -72,7 +77,7 @@ phaseRoutes.post(
   async (c) => {
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
-    await runProjectFor(id, c.get('userId'), 'member');
+    await runProjectFor(id, c.get('userId'), 'project.write');
     await endPhase({
       runId: id,
       phase: body.phase,
@@ -91,7 +96,7 @@ phaseRoutes.get(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    await runProjectFor(id, c.get('userId'), 'viewer');
+    await runProjectFor(id, c.get('userId'), 'project.read');
     const row = await resumePoint(id);
     return c.json({
       resumePoint: row
@@ -108,7 +113,7 @@ phaseRoutes.get(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    await runProjectFor(id, c.get('userId'), 'viewer');
+    await runProjectFor(id, c.get('userId'), 'project.read');
     const rows = await listPhases(id);
     return c.json({
       phases: rows.map((row) => ({

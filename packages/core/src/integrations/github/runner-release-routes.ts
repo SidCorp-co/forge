@@ -16,12 +16,13 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { assertProjectRole, loadProjectAccess } from '../../lib/authz.js';
+import { loadProjectAccess } from '../../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { badRequest, notFound } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { startRunnerRelease } from './runner-release.js';
 import { findById, listForProject } from './runner-release-store.js';
+import { requireHeld } from '../../permissions/index.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
 const releaseParamSchema = z.object({ projectId: z.uuid(), id: z.uuid() });
@@ -57,7 +58,7 @@ runnerReleaseRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin');
+    requireHeld(access, 'project.admin');
 
     const outcome = await startRunnerRelease({
       projectId,

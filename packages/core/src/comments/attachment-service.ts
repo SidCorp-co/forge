@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
-import { commentAttachments, comments } from '../db/schema.js';
+import { commentAttachments } from '../db/schema.js';
 import {
   allowedSetForTarget,
   mimeRefusalMessage,
@@ -13,7 +13,6 @@ import {
 import { lockAttachmentName, type NameCheckExecutor } from '../lib/attachment-name-lock.js';
 import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
 import { getStorage } from '../storage/index.js';
-import type { CommentAttachmentLite } from './tree.js';
 
 export { safeName };
 
@@ -119,10 +118,8 @@ export interface PersistedCommentAttachment {
 }
 
 /**
- * Validate + store a single comment attachment. Shared by the REST multipart
- * route and the MCP `forge_comments` create path. Behaviour must stay
- * byte-identical to the legacy inline REST code so the web UI keeps rendering
- * MCP-uploaded rows the same way (see ISS-93 AC #4).
+ * Validate + store a single comment attachment for every REST door that
+ * uploads one, so each row renders the same way in the web UI.
  */
 export async function persistCommentAttachment(
   input: PersistCommentAttachmentInput,
@@ -169,25 +166,6 @@ export async function persistCommentAttachment(
   };
 }
 
-export interface CommentAttachmentErrorEntry {
-  index: number;
-  name: string;
-  code: AttachmentErrorCode | 'INTERNAL';
-  message: string;
-  details?: unknown;
-}
-
-function toErrorEntry(index: number, name: string, err: unknown): CommentAttachmentErrorEntry {
-  return err instanceof AttachmentError
-    ? { index, name, code: err.code, message: err.message, details: err.details }
-    : {
-        index,
-        name,
-        code: 'INTERNAL',
-        message: err instanceof Error ? err.message : String(err),
-      };
-}
-
 /** Remove attachments this process wrote and no longer stands behind (storage and rows). */
 export async function discardCommentAttachments(ids: readonly string[]): Promise<void> {
   if (ids.length === 0) return;
@@ -201,99 +179,4 @@ export async function discardCommentAttachments(ids: readonly string[]): Promise
     } catch {}
   }
   await db.delete(commentAttachments).where(inArray(commentAttachments.id, [...ids]));
-}
-
-/**
- * Persist a pre-decoded batch onto a comment, whole or not at all (ISS-957).
- * The issue twin's contract, applied to the second parent: every member is
- * judged before any lands, and a failure during the persist loop is rolled
- * back, so a comment never carries half the evidence it was written to carry.
- */
-export async function persistDecodedCommentAttachments(
-  commentId: string,
-  decoded: readonly { name: string; mime: string; bytes: Buffer }[],
-  uploaderId: string,
-  uploaderDeviceId: string | null,
-): Promise<{ persisted: PersistedCommentAttachment[]; errors: CommentAttachmentErrorEntry[] }> {
-  const errors: CommentAttachmentErrorEntry[] = [];
-  const seen = new Set<string>();
-  for (const [i, d] of decoded.entries()) {
-    const name = safeName(d.name || 'file');
-    try {
-      validateCommentAttachment({ name, mime: d.mime, bytes: d.bytes });
-      if (seen.has(name)) {
-        throw new AttachmentError(
-          'ATTACHMENT_NAME_TAKEN',
-          `this batch carries "${name}" more than once — an attachment name is one document`,
-          { duplicateWithinBatch: name },
-        );
-      }
-      seen.add(name);
-      const taken = await findCommentAttachmentByName(commentId, name);
-      if (taken) throw nameTakenError(taken, 'comment');
-    } catch (err) {
-      errors.push(toErrorEntry(i, d.name, err));
-    }
-  }
-  if (errors.length > 0) return { persisted: [], errors };
-
-  const persisted: PersistedCommentAttachment[] = [];
-  for (const [i, d] of decoded.entries()) {
-    try {
-      persisted.push(
-        await persistCommentAttachment({
-          commentId,
-          name: d.name,
-          mime: d.mime,
-          bytes: d.bytes,
-          uploaderId,
-          uploaderDeviceId,
-        }),
-      );
-    } catch (err) {
-      await discardCommentAttachments(persisted.map((a) => a.id));
-      return { persisted: [], errors: [toErrorEntry(i, d.name, err)] };
-    }
-  }
-  return { persisted, errors };
-}
-
-/**
- * Group every attachment on an issue's comments by commentId. Shared by the
- * REST comment-tree endpoint (`comments/routes.ts`) and the MCP read surfaces
- * (`forge_comments.list`, `forge_step_start`) so all three render the same
- * `{id,name,mime,size,url,createdAt}` rows from one query. Comments with no
- * attachment simply have no map entry (caller defaults to `[]`).
- */
-export async function listCommentAttachmentsForIssue(
-  issueId: string,
-): Promise<Map<string, CommentAttachmentLite[]>> {
-  const rows = await db
-    .select({
-      id: commentAttachments.id,
-      commentId: commentAttachments.commentId,
-      name: commentAttachments.name,
-      mime: commentAttachments.mime,
-      size: commentAttachments.size,
-      createdAt: commentAttachments.createdAt,
-    })
-    .from(commentAttachments)
-    .innerJoin(comments, eq(comments.id, commentAttachments.commentId))
-    .where(eq(comments.issueId, issueId))
-    .orderBy(asc(commentAttachments.createdAt));
-
-  const byCommentId = new Map<string, CommentAttachmentLite[]>();
-  for (const a of rows) {
-    const list = byCommentId.get(a.commentId) ?? [];
-    list.push({
-      id: a.id,
-      name: a.name,
-      mime: a.mime,
-      size: a.size,
-      createdAt: a.createdAt,
-      url: `/api/comments/attachments/${a.id}`,
-    });
-    byCommentId.set(a.commentId, list);
-  }
-  return byCommentId;
 }

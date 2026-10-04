@@ -6,10 +6,8 @@
 
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, projects, skillRegistrations, skills } from '../db/schema.js';
-import { AUTONOMOUS_ENTRY_STATUS } from '../pipeline/autonomous-mode.js';
+import { type IssueStatus, skillRegistrations, skills } from '../db/schema.js';
 import { hooks } from '../pipeline/hooks.js';
-import { readEffectivePolicy } from '../project-config/effective.js';
 import { recordSkillActivityEvent } from './activity.js';
 
 export interface RegisterSkillInput {
@@ -113,61 +111,4 @@ export async function registerSkillForProject(
 
   await hooks.emit('skillRegistered', { projectId, skillId, actorUserId, stage });
   return { projectId, skillId, stage };
-}
-
-export interface SkillRegistrationView {
-  stage: IssueStatus;
-  skillId: string;
-  skillName: string;
-  scope: 'global' | 'project';
-  /** `null` off the entry status, where the field gates nothing. */
-  mode: 'auto' | 'manual' | null;
-  enabled: boolean;
-  registeredBy: string | null;
-  registeredAt: string;
-}
-
-/**
- * List a project's stage→skill bindings overlaid with `mode`/`enabled` from its policy.
- *
- * `enabled` is whether the policy declares that state. `mode` is the policy's intake, meaningful
- * at the entry status alone and `null` everywhere else. A project with no policy enables nothing.
- *
- * Stages with no skill registered are NOT returned.
- */
-export async function listSkillRegistrations(projectId: string): Promise<SkillRegistrationView[]> {
-  const [project] = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) return [];
-  const policy = (await readEffectivePolicy(projectId))?.document ?? null;
-
-  const rows = await db
-    .select({
-      stage: skillRegistrations.stage,
-      skillId: skillRegistrations.skillId,
-      skillName: skills.name,
-      scope: skills.scope,
-      registeredBy: skillRegistrations.registeredBy,
-      createdAt: skillRegistrations.createdAt,
-    })
-    .from(skillRegistrations)
-    .innerJoin(skills, eq(skills.id, skillRegistrations.skillId))
-    .where(eq(skillRegistrations.projectId, projectId))
-    .orderBy(skillRegistrations.stage);
-
-  return rows.map((r) => {
-    return {
-      stage: r.stage as IssueStatus,
-      skillId: r.skillId,
-      skillName: r.skillName,
-      scope: r.scope as 'global' | 'project',
-      mode: r.stage === AUTONOMOUS_ENTRY_STATUS ? (policy?.intake.mode ?? null) : null,
-      enabled: policy !== null && Object.hasOwn(policy.states, r.stage),
-      registeredBy: r.registeredBy,
-      registeredAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
-    };
-  });
 }

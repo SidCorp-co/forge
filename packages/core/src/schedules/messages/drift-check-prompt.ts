@@ -37,8 +37,8 @@ projectId: ${projectId}
 
 ## STEP 1 — Load knowledge entries
 
-Call \`forge_knowledge action=list projectId=${projectId}\` to get all curated entries (index view).
-For entries with non-trivial bodies you may call \`forge_knowledge action=get slug=<slug>\` to read the full body including \`relatedIssueIds\` and \`tags\`.
+Call \`forge-runner api projects/${projectId}/knowledge\` to get all curated entries (index view).
+For entries with non-trivial bodies you may call \`forge-runner api projects/${projectId}/knowledge/<slug>\` to read the full body including \`relatedIssueIds\` and \`tags\`.
 
 Note for each entry:
 - slug, title, kind, confidence, injection
@@ -49,7 +49,7 @@ Note for each entry:
 
 ## STEP 2 — Load recently shipped issues
 
-Call \`forge_issues action=list projectId=${projectId} status=closed\` (and/or status=released if available) to get issues shipped in the last **${LOOKBACK_WINDOW_DAYS} days** (filter by \`mergedAt\` or \`updatedAt\`).
+Call \`forge-runner api 'projects/${projectId}/issues?status=closed'\` to get issues shipped in the last **${LOOKBACK_WINDOW_DAYS} days** (filter by \`mergedAt\` or \`updatedAt\`).
 
 For each shipped issue note:
 - title, category, tags, acceptanceCriteria keywords
@@ -84,17 +84,16 @@ A capability is **undocumented** when **≥ ${UNDOCUMENTED_ISSUE_THRESHOLD} ship
 
 ## STEP 4 — Propose drift remediation (cap: ${MAX_DRAFT_PROPOSALS_PER_RUN} drafts per run)
 
-For each distinct drift cluster detected in Step 3, create ONE draft issue via \`forge_issues action=create\`:
+For each distinct drift cluster detected in Step 3, create ONE draft issue via \`forge-runner api projects/${projectId}/issues -X POST\` with this body:
 
 \`\`\`
-forge_issues.create({
-  projectId: "${projectId}",
+{
   status: "draft",            // ALWAYS draft — never open
   title: "Knowledge drift: <short description>",
   description: <see format below>,
   category: "doc-drift",
   priority: "low",
-})
+}
 \`\`\`
 
 **Draft issue description format:**
@@ -116,7 +115,7 @@ forge_issues.create({
 
 **HARD RULES:**
 - Create at most **${MAX_DRAFT_PROPOSALS_PER_RUN} draft issues** per run — stop after reaching the cap even if more drift is detected.
-- NEVER call \`forge_knowledge action=upsert\` or \`forge_knowledge action=delete\`. Propose only.
+- NEVER write or delete a knowledge entry. Propose only.
 - NEVER set \`injection: "always"\` in any proposed entry. If describing a future entry, specify \`injection: "on_demand"\`.
 - Proposals that already have an open/in-progress issue for the same entry slug should be skipped (avoid proposal fatigue — check for existing issues with the same slug in title before creating).
 
@@ -124,7 +123,7 @@ forge_issues.create({
 
 ## STEP 5 — Report
 
-After all proposals (or if nothing was found), write a brief summary comment via \`forge_comments.create\` on the most recently shipped issue for context traceability, or simply output your findings:
+After all proposals (or if nothing was found), write a brief summary comment via \`forge-runner api issues/<id>/comments -X POST\` on the most recently shipped issue for context traceability, or simply output your findings:
 
 - How many entries were scanned
 - How many drift signals found (by type)

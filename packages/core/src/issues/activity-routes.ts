@@ -4,9 +4,9 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { activityLog, issues } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest, forbidden, idParamSchema, notFound } from '../middleware/route-errors.js';
+import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import type { ActorAgency } from './actor-agency.js';
 import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './actor-identity.js';
@@ -18,6 +18,7 @@ import {
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
 import { KERNEL_RECORD_KINDS, recordAction } from './record-events/kinds.js';
+import { requireHeld } from '../permissions/index.js';
 
 const ACTIVITY_TYPES = ['issue', 'comment', 'member'] as const;
 
@@ -178,7 +179,7 @@ issueActivityRoutes.patch(
     if (!activity || activity.issueId !== issueId) throw notFound('activity not found');
 
     const access = await loadProjectAccess(activity.projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
     assertActivityMutable(activity.action);
 
     const previous = (activity.payload as Record<string, unknown> | null) ?? {};
@@ -218,7 +219,7 @@ issueActivityRoutes.delete(
     if (!activity || activity.issueId !== issueId) throw notFound('activity not found');
 
     const access = await loadProjectAccess(activity.projectId, userId);
-    assertProjectRole(access, 'admin', 'not a project admin');
+    requireHeld(access, 'project.admin');
     assertActivityMutable(activity.action);
 
     await db.delete(activityLog).where(eq(activityLog.id, activityId));
@@ -243,7 +244,7 @@ projectActivityRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const conditions = [eq(issues.projectId, projectId), ...issueArchiveSide(false)];
     if (before) conditions.push(lt(activityLog.createdAt, before));

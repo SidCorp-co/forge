@@ -14,7 +14,7 @@ import {
   type ProposeMockupRequest,
 } from '@forge/contracts/mockups';
 import type { RevisionState } from '@forge/contracts/requirements';
-import { type ApproverFacts, approvalRefusal } from '../lib/approval.js';
+import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
 export interface MockupRefusal {
   code: MockupRefusalCode;
@@ -119,7 +119,7 @@ export function sourceProjectRefusal(
     return refusal(
       'MOCKUP_SOURCE_NOT_FOUND',
       '/source/attachmentId',
-      `no ${from} attachment ${attachmentId} exists; upload it first (forge_uploads request) or send the bytes as contentBase64.`,
+      `no ${from} attachment ${attachmentId} exists; upload it first (POST /api/issues/:id/attachments) or send the bytes as contentBase64.`,
     );
   }
   return refusal(
@@ -140,15 +140,13 @@ export function decidedRefusal(key: string, status: MockupStatus): MockupRefusal
 
 // Accept and return are approvals (ADR 0007): whoever holds mockups.approve decides, its author included.
 export function deciderRefusal(
-  facts: ApproverFacts,
-  projectId: string,
+  facts: PermissionFacts,
   key: string,
   act: 'accept' | 'return',
 ): MockupRefusal | null {
-  return approvalRefusal(
+  return permissionRefusal(
     facts,
-    'mockups',
-    projectId,
+    'mockups.approve',
     `${act === 'accept' ? 'accepting' : 'returning'} ${key}`,
   );
 }

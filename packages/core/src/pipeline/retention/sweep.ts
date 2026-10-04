@@ -5,7 +5,6 @@ import { TRANSCRIPT_FINALIZED_KEY } from '../../db/transcript-marker.js';
 import { type CollapseResult, collapseNarration } from '../../issues/record-events/collapse.js';
 import { deriveSessionFinal } from '../../jobs/session-transcript.js';
 import { logger } from '../../logger.js';
-import { boss } from '../../queue/boss.js';
 import { type SuggestionSweepResult, sweepSuggestions } from '../../suggestions/stale.js';
 import {
   finalizeRepairMax,
@@ -19,8 +18,6 @@ import {
   stampFinalizeAttempt,
   truncatedHistories,
 } from './statements.js';
-
-export const RETENTION_QUEUE = 'job-event-retention';
 
 const BATCH_SIZE = 10_000;
 /** Cap the loop defensively so a statement that never shortens cannot spin. */
@@ -243,29 +240,4 @@ export async function runRetentionSweep(
     narration,
     suggestions,
   };
-}
-
-let registered = false;
-
-export async function registerRetentionSweeper(): Promise<void> {
-  if (registered) return;
-  // pg-boss v10 requires explicit createQueue before schedule/work can reference it.
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(RETENTION_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(RETENTION_QUEUE, async () => {
-    try {
-      const result = await runRetentionSweep();
-      logger.info(
-        { deleted: result.deleted, durationMs: result.durationMs },
-        'retention: sweep complete',
-      );
-    } catch (err) {
-      logger.error({ err }, 'retention: sweep failed');
-      throw err;
-    }
-  });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(RETENTION_QUEUE, '0 3 * * *');
-  registered = true;
 }

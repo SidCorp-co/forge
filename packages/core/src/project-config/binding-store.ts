@@ -2,9 +2,10 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { AgentAccess, BindingRole } from '../db/release-axes.js';
 import { integrationBindings, integrationConnections } from '../db/schema.js';
-import { loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
+import { loadOrgRole } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { findProjectOrgId } from '../projects/service.js';
+import { holdsOrg } from '../permissions/index.js';
 
 export interface StoredBinding {
   id: string;
@@ -108,7 +109,7 @@ export const drizzleBindingStore: BindingStore = {
   projectOrgId: findProjectOrgId,
 
   async isOrgAdmin(orgId, userId) {
-    return orgRoleAtLeast(await loadOrgRole(orgId, userId), 'admin');
+    return holdsOrg(await loadOrgRole(orgId, userId), 'org.admin');
   },
 
   async casBinding({ baseRevision, integrationSecret, ...write }) {

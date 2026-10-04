@@ -28,14 +28,12 @@ import { type MemoryHit, searchMemories } from './search.js';
  *    hard-delete them. A later write to the same key revives the row, and
  *    the decay job purges archives only after a 90-day grace period.
  *  - PROMOTE is dropped — no role hierarchy in forge.
- *  - pg-boss schedule instead of a setInterval poller. Runs at 03:00, before
- *    the 03:30 decay sweep, so freshly-merged rows are not double-processed.
+ *  - A cluster timer (`timer-registry.ts`) at 03:00, before the 03:30 decay
+ *    sweep, so freshly-merged rows are not double-processed.
  *
  * Signal (last 24h, per project): pipeline comments, status changes and reopen cycles, a reopen
  * meaning the fix or review was wrong. Nothing of an archived issue is read, signal or memory.
  */
-
-export const MEMORY_CONSOLIDATION_QUEUE = 'memory-consolidation';
 
 export const MAX_CREATES = 5;
 export const MAX_UPDATES = 5;
@@ -803,30 +801,4 @@ export async function registerMemoryReconcileWorker(): Promise<void> {
 
 export function resetMemoryReconcileWorkerForTest(): void {
   reconcileWorkerRegistered = false;
-}
-
-let registered = false;
-
-export async function registerMemoryConsolidation(): Promise<void> {
-  if (registered) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(MEMORY_CONSOLIDATION_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(MEMORY_CONSOLIDATION_QUEUE, async () => {
-    try {
-      const result = await runConsolidationSweep();
-      logger.info(result, 'memory.consolidation: sweep complete');
-    } catch (err) {
-      logger.error({ err }, 'memory.consolidation: sweep failed');
-      throw err;
-    }
-  });
-  // 03:00 — before the 03:30 decay sweep (proposal: consolidate, then decay).
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(MEMORY_CONSOLIDATION_QUEUE, '0 3 * * *');
-  registered = true;
-}
-
-export function resetMemoryConsolidationForTest(): void {
-  registered = false;
 }

@@ -22,20 +22,9 @@ const READ_METHODS: ReadonlySet<string> = new Set([
 
 const READ_ACTIONS: ReadonlySet<string> = new Set([
   'list',
-  'listTasks',
   'get',
   'design',
   'search',
-  'events',
-  'runs',
-  'catalog',
-  'snapshot',
-  'graph',
-  'runner_load',
-  'resume_point',
-  'effective',
-  'list_registrations',
-  'sync_status',
   'status',
   'state',
   'logs',
@@ -45,43 +34,8 @@ const READ_ACTIONS: ReadonlySet<string> = new Set([
   'rollback-images',
 ]);
 
-/**
- * Read-only tools that take no `action` argument, so nothing in their
- * arguments identifies them. Gated by `request-class.test.ts`, which asserts
- * every name here is a tool this core registers — a rename leaves a dead
- * entry that silently stops widening the budget it was added for.
- */
-const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
-  'forge_health',
-  'forge_memory.search',
-  'forge_memory.get',
-  'forge_step_handoff.get',
-  'forge_skills.list',
-  'forge_skills.get',
-  'forge_skills.effective',
-  'forge_skills.list_registrations',
-  'forge_skills.sync_status',
-  'forge_skill_facts.list',
-  'forge_skill_facts.get',
-  'forge_metrics.project_retry_rescues',
-  'forge_metrics.project_step_durations',
-  'forge_metrics.project_timeseries',
-  'forge_metrics.session_failures',
-  'forge_jobs.list',
-  'forge_jobs.get',
-  'forge_jobs.events',
-  'forge_agent_sessions.list',
-  'forge_agent_sessions.get',
-  'forge_pipeline_runs.get',
-  'forge_projects.list',
-  'forge_projects.get',
-  'forge_orgs.list',
-  'forge_orgs.members',
-  'forge_storefront_target',
-]);
-
-export const MCP_READ_ONLY_TOOLS = READ_ONLY_TOOLS;
-export const MCP_READ_ACTIONS = READ_ACTIONS;
+/** Read-only tools that take no `action` argument, so nothing in their arguments identifies them. */
+const READ_ONLY_TOOLS: ReadonlySet<string> = new Set(['forge_storefront_target']);
 
 /** The class of one JSON-RPC envelope, whatever shape it turned out to be. */
 export function classifyMcpEnvelope(envelope: unknown): PatRequestClass {

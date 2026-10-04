@@ -1,7 +1,7 @@
 // The workflow-design tier of the capability-guide registry: how a master takes a flow from a
 // design to code its approver has seen. Same shape, same consumers as registry.ts.
 //
-// Altitude (NT1): the order of the work and what refuses it. `forge_workflows` carries its schema.
+// Altitude (NT1): the order of the work and what refuses it. `GET /api/schemas/workflow-v2.json` carries its schema.
 
 import type { CoreGuide } from './types.js';
 
@@ -20,24 +20,24 @@ names the workflow it builds is not dispatched while that design is not approved
 
 ### The order of the work
 1. **Pick the template, then draw.** Every design names the diagram template it is drawn in,
-   \`template: { id, version }\` — \`forge_guide get workflow-templates\` says which (operational-flow for
+   \`template: { id, version }\` — \`GET /api/guides/workflow-templates.md\` says which (operational-flow for
    what the business does, service-blueprint, ux-flow for screens, state-machine, integration-sequence,
    decision-model, data-flow, system-context). The template fixes the node types, the bands, the fields each
-   type requires, the edge kinds and the cross-links to the project's other designs. \`forge_workflows action=write\` with a workflow-v2 document (\`GET /api/schemas/workflow-v2.json\`).
+   type requires, the edge kinds and the cross-links to the project's other designs. \`POST /api/projects/:id/workflows\` creates one with a workflow-v2 document (\`GET /api/schemas/workflow-v2.json\`), \`PUT …/workflows/:workflow\` with the \`baseRevision\` you read writes the next revision.
    A design holds the plan only: no step status, evidence or commit. Give each step its \`node\` (its type,
    a short business \`label\`, a \`purpose\`, and what its type requires) and each line \`after\` draws the
    contract its kind owes. A new v2 workflow is a **draft**.
-2. **Propose.** \`action=propose\` with the revision you wrote and \`issue\`, the issue the design is
+2. **Propose.** \`POST …/workflows/:workflow/design/propose\` with the revision you wrote and \`issue\`, the issue the design is
    drawn under (a revision a later write proposes inherits it). The approver now sees it on
    \`/projects/<slug>/workflows/<flow>\` — send them that link.
-3. **Wait.** The decision wakes this project's master. \`action=design\` reads the status: \`proposed\`
+3. **Wait.** The decision wakes this project's master. \`GET …/workflows/:workflow/design\` reads the status: \`proposed\`
    waits, \`returned\` carries the approver's reason, \`approved\` names the revision. A return reopens
-   the design's issue with the reason posted on it, and \`forge_issues get\` shows it under
+   the design's issue with the reason posted on it, and \`GET /api/issues/:id\` shows it under
    \`proposesWorkflow\`, so the issue is admissible work again. A returned design is revised by writing
    it again, which proposes the revision; there is nothing to re-send.
-4. **Link the build.** File the issues that build it, then \`action=link\` each one. Until the design is
+4. **Link the build.** File the issues that build it, then link each one (\`POST …/workflows/:workflow/builds\`). Until the design is
    approved those issues are out of the admissible list, and a run or job claimed for one is refused
-   \`WORKFLOW_DESIGN_NOT_APPROVED\`; \`forge_issues get\` shows why under \`buildsWorkflow\`. Linking
+   \`WORKFLOW_DESIGN_NOT_APPROVED\`; \`GET /api/issues/:id\` shows why under \`buildsWorkflow\`. Linking
    the issue the design itself is drawn under is refused \`WORKFLOW_DESIGN_ISSUE_IS_BUILD\`: it would wait
    on itself.
 5. **Build the approved revision only.** Build what the approved revision draws. What the code holds is
@@ -95,7 +95,7 @@ or node id. A repository project cites \`{ kind: "repo", file, symbol }\`. The o
 ### Who approves
 Whoever holds \`workflow-designs.approve\` on the project (project admin, or an org owner or admin),
 person or agent alike, a design onboarding drafted included; without it the call is refused
-\`APPROVE_PERMISSION_REQUIRED\` naming the permission. Unlinking an issue lifts its gate, so it takes the
+\`PERMISSION_FORBIDDEN\` naming the permission. Unlinking an issue lifts its gate, so it takes the
 same permission. The project document's old \`workflows.designApprover\` is retired, and a write naming
 it is refused \`APPROVER_POLICY_RETIRED\`.`,
 };

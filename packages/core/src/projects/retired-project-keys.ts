@@ -36,12 +36,6 @@ export const RETIRED_PROJECT_FIELDS: Record<string, string> = {
 export const PROJECT_NAME_MOVED =
   "`name` is not written by PATCH /api/projects/:id: a project's name is its project document's `project.name`, and the `projects` row carries it only as that document's projection. Read the document with GET /api/projects/:id/config and write it with PUT /api/projects/:id/config { baseRevision, document }.";
 
-/** The retirement message for each of `keys` the device binding replaced, joined; `null` for none. */
-export function retiredProjectFieldsMessage(keys: readonly string[]): string | null {
-  const said = keys.flatMap((k) => (RETIRED_PROJECT_FIELDS[k] ? [RETIRED_PROJECT_FIELDS[k]] : []));
-  return said.length === 0 ? null : said.join(' ');
-}
-
 export function refuseRetiredProjectFields(raw: unknown, ctx: z.RefinementCtx): void {
   if (!raw || typeof raw !== 'object') return;
   for (const [field, message] of Object.entries(RETIRED_PROJECT_FIELDS)) {

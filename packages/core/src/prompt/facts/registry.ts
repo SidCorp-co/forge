@@ -1,5 +1,6 @@
 import type { IssueStatus, JobType } from '../../db/schema.js';
 import { guideRef } from '../../guides/guide-ref.js';
+import { STEP_TOOL_REFERENCE_TEXT } from './drive-rules.js';
 
 export type FactCategory = 'enum' | 'protocol' | 'format' | 'reference';
 export type FactTier = 'mandatory' | 'contextual';
@@ -28,7 +29,7 @@ export interface ProjectModuleFact {
 }
 
 export interface ForgeFact {
-  /** Stable id used in `{{forge:<id>}}` and the MCP/REST surfaces. */
+  /** Stable id used in `{{forge:<id>}}` and the REST surfaces. */
   id: string;
   title: string;
   category: FactCategory;
@@ -52,21 +53,21 @@ export interface ForgeFact {
 }
 
 export const OPERATING_AFFORDANCES_TEXT = `## Operating affordances
-Forge gives you a tool for things agents routinely do in prose. When you hit the trigger, reach for the tool — and avoid the red flag.
+Forge gives you a REST call for things agents routinely do in prose (\`forge-runner api <path>\`, the \`/api/\` prefix implied). When you hit the trigger, make the call — and avoid the red flag.
 
 An issue is a unit of WORK with a named deliverable and an owner, whose completion someone other than the author can verify. A note, a question, an audit finding and a record of something already done are NOT issues — the four admission gates and where each of those goes instead: guide \`what-is-an-issue\`.
 
 | When you need | Use | Red flag (DON'T) |
 |---|---|---|
-| Ordering between issues | Blocker known **at create time** → \`forge_issues.create { data.relations:[{ kind:'blocks', dependsOnId }] }\` (edge committed BEFORE \`issueCreated\`/dispatch — atomic). Both issues already exist → \`forge_issues.update { data.relations:[{ kind:'blocks', dependsOnId }] }\` (any credential; retract by re-sending with \`validUntil\` in the past), or \`forge_project_pm action=set_dependency kind:blocks\` (\`from\` = the blocker; needs a paired device). Verify with \`forge_issues.get\` → \`relations\`. | Prose instead of an edge (only a \`blocks\` edge gates dispatch) · setting a blocks edge AFTER an \`open\` create — the new issue can dispatch before the edge lands (race); use \`data.relations\` or create at \`draft\` first |
-| To record a note, learning, or decision | \`forge_memory.write\` (durable business logic → repo \`docs/\`) | Filing it as an issue — \`draft\` or not, nobody browses the issue list for notes |
+| Ordering between issues | Blocker known **at create time** → \`projects/<id>/issues -X POST\` with \`relations:[{ kind:'blocks', dependsOnId }]\` (edge committed BEFORE \`issueCreated\`/dispatch — atomic). Both issues already exist → \`issues/<dependent>/dependencies -X POST -d '{"dependsOnId":"<blocker>","kind":"blocks"}'\` (retract with \`validUntil\` in the past). Verify with \`issues/<id>/dependencies\`. | Prose instead of an edge (only a \`blocks\` edge gates dispatch) · setting a blocks edge AFTER an \`open\` create — the new issue can dispatch before the edge lands (race); send \`relations\` on the create or create at \`draft\` first |
+| To record a note, learning, or decision | \`memory -X POST\` (durable business logic → repo \`docs/\`) | Filing it as an issue — \`draft\` or not, nobody browses the issue list for notes |
 | To queue work that must actually happen LATER | create an issue at \`draft\` | Creating it at \`open\` — that auto-triages and spawns a pipeline run |
 | To report an issue | fill \`title\`, \`description\`, \`priority\`, \`category\` | Pre-filling \`plan\`/\`acceptanceCriteria\` — on a staged project those are written by the clarify/plan steps, on an autonomous one by the driver's own phases |
 | To change the project's policy (\`qa\`, intake, a status's model or permission profile) | GET \`/api/projects/:id/policy\`, then PUT the whole document with the \`baseRevision\` you read | Writing it without reading it — a stale revision is refused by name, never merged |
-| To write or change the project's own prose (build commands, a rule, a guide) | \`forge_knowledge\` action \`write\`, one entry per slug, \`injection\` deciding whether it reaches every prompt or is fetched on demand | Sending it to \`forge_config\` as \`projectFacts\` — that key was retired in ISS-1048 and the call is refused by name |
-| Before you design / fix | \`forge_memory.search\` for prior conventions, gotchas, decisions | Skipping recall and rediscovering (or contradicting) settled work |
+| To write or change the project's own prose (build commands, a rule, a guide) | \`projects/<id>/knowledge/<slug> -X PUT\`, one entry per slug, \`injection\` deciding whether it reaches every prompt or is fetched on demand | Sending it to the project config as \`projectFacts\` — that key is refused by name |
+| Before you design / fix | \`memory/search -X POST\` for prior conventions, gotchas, decisions | Skipping recall and rediscovering (or contradicting) settled work |
 | To park work that never started | leave it at \`draft\` | \`on_hold\` from \`draft\` — \`on_hold\` is a deliberate pause for ACTIVE work only |
-| To finish a fix made by hand, outside the pipeline | drive it through \`status\` and/or capture a \`forge_memory\` learning | Fixing it and forgetting — no status move, no learning recorded |
+| To finish a fix made by hand, outside the pipeline | drive it through \`status\` and/or capture a memory learning | Fixing it and forgetting — no status move, no learning recorded |
 | An issue you are working turns out NOT to be work (a note, a question, a duplicate, already done) | Act on it yourself — comment saying which gate it fails and where the content went, THEN \`needs_info\` if a human owes you requirements, or \`dropped\` if it is not work at all | Leaving it filed for someone else to find · reaching for \`closed\` — that says the work shipped, and a close with no \`merged_at\` is refused by name (\`CLOSE_REQUIRES_SHIPPED\`) · moving status with no comment, so the next reader cannot tell why |
 | A bug, gap or defect you find WHILE working an issue | **Fix it now, in this issue**, and DECLARE it in your comment under \`Extra fixes:\` — extra work is REPORTED, never filed | Filing it instead of fixing it. A new \`draft\` is not a hand-off: nobody owns it, nothing ages it, and a two-minute fix becomes backlog nobody reads |
 | A residual genuinely out of reach (needs a human decision, or work no diff here can carry) | ONE of: a \`blocks\` edge onto the issue that would ship without it · a line in \`docs/proposals/\` · \`needs_info\` + \`waitingKind\` + \`reason\` when it blocks THIS issue | Filing a new issue to carry it — that is not one of the options. Equally: staying silent because none of the three fit — say it in a comment on the issue you are on |
@@ -77,32 +78,32 @@ What counts as an issue: guide \`what-is-an-issue\` · how to write the body of 
 const LIFECYCLE_GUIDE_POINTER = guideRef('pipeline-and-issue-lifecycle');
 
 const PIPELINE_RULES_TEXT = `## Pipeline Rules
-- **Always advance the state — never leave an issue parked.** The FINAL action of every step MUST be a \`forge_issues.update\` that moves \`status\`. Setting status is what triggers the next step; an issue left in its current status stalls the pipeline forever. Do this even if your skill instructions don't mention a transition.
+- **Always advance the state — never leave an issue parked.** The FINAL action of every step MUST be a status move, \`issues/<id>/transition -X POST -d '{"toStatus":"<status>"}'\`. Setting status is what triggers the next step; an issue left in its current status stalls the pipeline forever. Do this even if your skill instructions don't mention a transition.
 - **Single-shot turn — never background-and-exit.** Your step is ONE headless turn; when you stop, the whole process group is killed. Any \`run_in_background\` task dies with it and you never see its result — so NEVER end your turn while still waiting on background output (the job reports \`done\` but the issue is left parked, the silent stall above). To wait on an async result (deploy / build / migration), poll in the FOREGROUND so the turn blocks until you have the answer, then verify and set status. If the wait would exceed your budget, set the handoff status and exit cleanly — do NOT background-poll-and-exit. Backgrounding is fine ONLY for a helper you consume within the SAME turn (e.g. a dev server you query before finishing).
-- **Where to move next.** The \`## This State\` section below names the exact status to set on success and on a block — follow it. Otherwise follow the \`### Status ladder\` section — it is project-resolved and OVERRIDES the default. Only when neither is present, default forward along the issue lifecycle (\`${LIFECYCLE_GUIDE_POINTER}\`), the same in staged and autonomous mode: \`open → in_progress\`, then \`in_progress → approved\` at the plan checkpoint and \`approved → in_progress\` to build, then \`in_progress → awaiting_release\` once every criterion passed, then \`awaiting_release → closed\`. How far a run got inside \`in_progress\` is its step (\`data.workState.step\`: triage, clarify, plan, build, test), never a status — \`confirmed\`, \`developed\`, \`testing\` and the other retired names are refused by name.
+- **Where to move next.** The \`## This State\` section below names the exact status to set on success and on a block — follow it. Otherwise follow the \`### Status ladder\` section — it is project-resolved and OVERRIDES the default. Only when neither is present, default forward along the issue lifecycle (\`${LIFECYCLE_GUIDE_POINTER}\`), the same in staged and autonomous mode: \`open → in_progress\`, then \`in_progress → approved\` at the plan checkpoint and \`approved → in_progress\` to build, then \`in_progress → awaiting_release\` once every criterion passed, then \`awaiting_release → closed\`. How far a run got inside \`in_progress\` is its step (\`data.workState.step\`: triage, clarify, plan, build, test), never a status — \`confirmed\`, \`developed\`, \`testing\` and the other legacy names are refused \`ISSUE_STATUS_LEGACY\`.
 - **Park the moment the condition is true.** From \`open\`, \`reopen\`, \`in_progress\`, \`approved\` or \`awaiting_release\` you may set \`needs_info\` (a person must answer, decide or supply something — see the two bullets below) or \`on_hold\` (deliberate pause), rather than forcing a step that can't succeed; \`reopen\` is the exit for a failed check at \`awaiting_release\` or after \`closed\`. Leaving a park returns only to the status it left. Every other move outside the lifecycle is refused with \`ILLEGAL_TRANSITION\`, naming the moves that are legal.
-- **\`needs_info\` is ANSWERED, not commented back to life — and it takes TWO fields, not one.** \`reason\` is why the work stopped; \`needs\` is what a person must supply for it to start again. Send both on the same \`forge_issues\` call. \`needs\` mints a free-text question, written in the same transaction as the status write, and that question is the ONLY thing a person can answer — the comment lane that used to revive a park was cut on 2026-09-13. Write it as the ask itself, not as the reason said twice: a decision between two named options, the credential you cannot mint, the fact only they hold. Omitting it does not skip the question, it mints one saying you did not say what would settle this — which is true, and is a worse thing to have said. The answer reaches you where you are: a live session is sent it on stdin, a box that registered a waiter reads it back itself, and otherwise the issue returns to its entry status with the answer on the record.
-- **\`needs_info\` says what it is stopped on, and YOU are its only author.** Set it when something only a person can supply is missing — an answer about the requirements (\`needs_answer\`), a decision between tradeoffs (\`needs_decision\`) or a resource you cannot create, e.g. a test account, credentials, third-party data (\`needs_resource\`). Pass BOTH \`waitingKind\` and \`reason\` on the same \`forge_issues\` call — the write is REJECTED without either (\`WAITING_KIND_REQUIRED\`, \`TRANSITION_REASON_REQUIRED\`). Write the \`reason\` as the actual ask, addressed to the person who will read it: name what you need, why you cannot get it yourself, and what happens once you have it. The system never parks an issue by itself: an agent or a human put it there deliberately. Leaving it goes back to the status it left (\`workState.leftStatus\`), from any actor and any surface. Park semantics in full: \`${LIFECYCLE_GUIDE_POINTER}\`.
+- **\`needs_info\` is ANSWERED, not commented back to life — and it takes TWO fields, not one.** \`reason\` is why the work stopped; \`needs\` is what a person must supply for it to start again. Send both on the same transition call. \`needs\` mints a free-text question, written in the same transaction as the status write, and that question is the ONLY thing a person can answer — the comment lane that used to revive a park was cut on 2026-09-13. Write it as the ask itself, not as the reason said twice: a decision between two named options, the credential you cannot mint, the fact only they hold. Omitting it does not skip the question, it mints one saying you did not say what would settle this — which is true, and is a worse thing to have said. The answer reaches you where you are: a live session is sent it on stdin, a box that registered a waiter reads it back itself, and otherwise the issue returns to its entry status with the answer on the record.
+- **\`needs_info\` says what it is stopped on, and YOU are its only author.** Set it when something only a person can supply is missing — an answer about the requirements (\`needs_answer\`), a decision between tradeoffs (\`needs_decision\`) or a resource you cannot create, e.g. a test account, credentials, third-party data (\`needs_resource\`). Pass BOTH \`waitingKind\` and \`reason\` on the same transition call — the write is REJECTED without either (\`WAITING_KIND_REQUIRED\`, \`TRANSITION_REASON_REQUIRED\`). Write the \`reason\` as the actual ask, addressed to the person who will read it: name what you need, why you cannot get it yourself, and what happens once you have it. The system never parks an issue by itself: an agent or a human put it there deliberately. Leaving it goes back to the status it left (\`workState.leftStatus\`), from any actor and any surface. Park semantics in full: \`${LIFECYCLE_GUIDE_POINTER}\`.
 - **You never self-rescue a crash, and a crash never touches the issue.** If your job fails mechanically (process crash / non-zero exit / no runner / provider quota), the SYSTEM reverts the issue to the stage's entry-status and re-dispatches (retry budget + backoff). When the budget is spent, the JOB is \`held\` — the issue stays where it is and is NOT parked at \`needs_info\`, because nothing is being asked of a human. Do NOT set \`on_hold\` or \`needs_info\` to "hold" a failure.
 - **Five rounds with no movement is your stop signal, not a cap.** Nothing limits how many times an issue may be reopened. But if you have fixed the same problem ~5 times and nothing has changed — same failure, same symptom, no new information — stop fixing and set \`needs_info\` (\`waitingKind: needs_decision\`) with a comment saying what you tried and what you now need from a human. Five rounds that each moved something forward are normal work; keep going.
 - **Status LAST**, after all other work (commits, comments, handoff). Don't hand-set system-owned derived fields — EXCEPT \`merged_at\` (next bullet).
-- **A blocker releases its dependents by reaching \`awaiting_release\`, not by being stamped.** A \`blocks\` dependent is held out of the set a master reads until its blocker's status is \`awaiting_release\` (every criterion passed) or \`closed\`. A reopened blocker blocks again. \`merged_at\` gates nothing: a blocker whose code has landed but which sits at \`in_progress\` or \`on_hold\` still holds its dependents, so stamping is not how you unblock them — moving the blocker forward is. \`merged_at\` is still owed as the EVIDENCE that the work landed, and NOTHING stamps it as a side effect of a transition — closing did until ISS-1108 and no longer does. So stamp it yourself right after the merge lands: \`forge_issues.mark_merged({ issueId, target: 'base' })\` — or, on a project whose \`source.type\` is not \`git\`, whose work lands outside git, \`forge_issues.mark_merged({ issueId, landing: '<the live URL, CMS entry or storefront resource>' })\`, because a mark there that names no landing is refused (\`LANDING_REQUIRED\`). Forge never merges or stamps server-side; the \`## Merge required\` block carries the details. **Verify before you stamp.** \`merged_at\` is CALLER-ASSERTED — nothing server-side checks git. On a project that lands in git, confirm the commits are actually reachable from the target branch ON THE REMOTE (\`git fetch\`, then \`git merge-base --is-ancestor <sha> origin/<branch>\`; after a squash merge the sha never appears, so check the issue's diff is present instead) before you stamp or close. On a project whose \`source.type\` is not \`git\` there is no commit to check: confirm the live URL, CMS entry or storefront resource shows the change, and read no commit as that project's normal record rather than as a sign the work did not land. A push exit code, matching branch names, or "the previous step said so" is not evidence. An abandoned issue whose code never landed cannot be closed at all: \`closed\` means the work shipped, and a close with no \`merged_at\` is refused by name (\`CLOSE_REQUIRES_SHIPPED\`). \`dropped\` is its exit, and it releases the dependents by expiring this issue's outgoing \`blocks\` edges.
+- **A blocker releases its dependents by reaching \`awaiting_release\`, not by being stamped.** A \`blocks\` dependent is held out of the set a master reads until its blocker's status is \`awaiting_release\` (every criterion passed) or \`closed\`. A reopened blocker blocks again. \`merged_at\` gates nothing: a blocker whose code has landed but which sits at \`in_progress\` or \`on_hold\` still holds its dependents, so stamping is not how you unblock them — moving the blocker forward is. \`merged_at\` is still owed as the EVIDENCE that the work landed, and NOTHING stamps it as a side effect of a transition — closing did until ISS-1108 and no longer does. So stamp it yourself right after the merge lands: \`issues/<id>/merge -X POST -d '{"target":"base"}'\` — or, on a project whose \`source.type\` is not \`git\`, whose work lands outside git, \`-d '{"landing":"<the live URL, CMS entry or storefront resource>"}'\`, because a mark there that names no landing is refused (\`LANDING_REQUIRED\`). Forge never merges or stamps server-side; the \`## Merge required\` block carries the details. **Verify before you stamp.** \`merged_at\` is CALLER-ASSERTED — nothing server-side checks git. On a project that lands in git, confirm the commits are actually reachable from the target branch ON THE REMOTE (\`git fetch\`, then \`git merge-base --is-ancestor <sha> origin/<branch>\`; after a squash merge the sha never appears, so check the issue's diff is present instead) before you stamp or close. On a project whose \`source.type\` is not \`git\` there is no commit to check: confirm the live URL, CMS entry or storefront resource shows the change, and read no commit as that project's normal record rather than as a sign the work did not land. A push exit code, matching branch names, or "the previous step said so" is not evidence. An abandoned issue whose code never landed cannot be closed at all: \`closed\` means the work shipped, and a close with no \`merged_at\` is refused by name (\`CLOSE_REQUIRES_SHIPPED\`). \`dropped\` is its exit, and it releases the dependents by expiring this issue's outgoing \`blocks\` edges.
 - **A blocker's \`merged_at\` is a claim, not proof.** Its status let you dispatch; the stamp beside it is caller-asserted and nothing verified it, and several projects have had a dependent build against code that was never on the base branch. Before you rely on a blocker's work, confirm it is actually there — on the base branch, or on a project whose \`source.type\` is not \`git\` at the landing its mark names. If it is not: say so in a comment and set \`waiting\` (or \`reopen\` if it is your own issue's code) — do NOT silently build against it, and do NOT merge the blocker yourself.
 - **Branch discipline.** Create the ISS-* branch in this issue's OWN worktree, cut from \`baseBranch\` — \`git worktree add .claude/worktrees/iss-XX-short-title -b ISS-XX-short-title origin/<baseBranch>\`, reusing the worktree if it already exists. NEVER \`git checkout\`/\`stash\`/\`reset\`/\`clean\` in the shared root checkout: other agents are working in it right now and their uncommitted changes are unrecoverable once you clobber them. Never switch branches mid-work. Full protocol: the \`## Worktree isolation\` section.
 - **Never merge or roll back a shared branch to rescue an environment.** Merging into \`baseBranch\` or the branch production deploys from belongs to the ONE step your skill says owns it; no other step may merge there, and NO step may \`git revert\`, \`reset --hard\` or force-push a shared branch — not even to "restore" a deploy you think you broke. From inside a single step you cannot tell your own change from a pre-existing outage (an API that has been down for hours reads exactly like one you just broke), and a rollback deletes reviewed work while the outage survives it. When the environment you need is broken, or is missing code a previous step claimed was merged: post the evidence as a comment and set \`waiting\`. Reverting is a human decision.
 - **A stale clone is not evidence of absence.** The runner's checkout can be many commits behind the remote. Before concluding that code, a column, a symbol or a commit does NOT exist — and especially before bouncing an issue on that basis — run \`git fetch origin\` and read \`origin/<baseBranch>\`, not your local HEAD (\`git log origin/<base> -- <path>\`, \`git grep <symbol> origin/<base>\`). A MISSING \`ISS-XX-*\` BRANCH proves nothing: branches are pruned after merge, so its absence is the normal post-merge state, and even a live \`git ls-remote\` cannot tell "never existed" from "already merged and cleaned up". If Forge says an issue merged and your working copy disagrees, fetch before you trust your copy.
 - **ISS-* branch is source of truth.** Kept alive through the pipeline. Where the project document's production deploys from a branch its promotions reach, it crosses each promotion at release; where production deploys from the branch work lands on, the release is an act on its binding and no branch moves; where there is no production environment there is no release step.
-- **Check in first.** The prompt does NOT inline the issue body, comments, attachments, or handoffs — it carries only the title + a pointer. Begin every step by calling \`forge_step_start\` (\`{ projectId, issueId, stage }\`) — it marks the issue in-flight when the step defines a working status (code/fix → \`in_progress\`) and returns your working bundle: the issue (full body when small; a lean manifest with \`bodyTruncated:true\` + \`bodyManifest\` field-sizes when heavy fields exceed the threshold — pull fields you need via \`forge_issues.get { documentId, fields: ['plan', ...] }\`), comments (each with \`attachments[]\`), prior step handoffs, resolved \`branchConfig\`. Never assume data from the prompt. To read an attached image/file's CONTENT, call \`forge_uploads\` action=fetch (images come back viewable). If the tool errors, fall back to \`forge_issues.get\` + \`forge_comments.list\` and set the working status yourself.
+- **Check in first.** The prompt does NOT inline the issue body, comments, attachments, or handoffs — it carries only the title + a pointer. Begin every step by reading your working set: \`issues/<id>\` (the body and \`attachments[]\`; its edges at \`issues/<id>/dependencies\`), \`issues/<id>/comments\`, the prior step handoffs at \`issue-step-contexts?projectId=<projectId>&issueId=<id>\`, and the branch config at \`projects/<projectId>\`. Never assume data from the prompt. To read an attached image/file's CONTENT, call the \`forge_uploads\` MCP tool (images come back viewable). When the step defines a working status (code/fix → \`in_progress\`), move the issue there first.
 - **Never speak for a human.** An automated step must NEVER post a comment framed as a human/owner decision or an owner approval. You post on a credential that belongs to a person, and Forge records the comment under that person's identity — nothing on the comment says an agent wrote it, so such a comment is not distinguishable from the owner having typed it. That is a forgery, not a shortcut. If a human decided something, QUOTE that human's comment id — do not restate it as your own authority. Once a human has answered a \`needs_info\`, you may not silently override it: if you disagree or have new evidence, raise a NEW \`needs_info\` that quotes their answer — never contradict-in-place.
 
 ## Capture Learnings
 Only when you hit a reusable lesson — a project convention, a non-obvious gotcha, or a fix pattern that will help a DIFFERENT agent on a DIFFERENT issue. If it's specific to this issue, it belongs in \`sessionContext\`, not memory.
-1. Search first: \`forge_memory.search({ projectId, query, topK: 3, sourceFilter: ['knowledge'] })\`.
-2. If nothing comes back scoring > 0.8, write it: \`forge_memory.write({ projectId, source: 'knowledge', sourceRef: '<stable-kebab-slug>', textContent, metadata: { category: 'convention' | 'gotcha' | 'fix-pattern' } })\`. Reusing the same \`sourceRef\` upserts (refines) the existing note instead of duplicating.
-\`projectId\` comes from \`forge_issues.get\`. Keep \`textContent\` tight — one lesson, no issue-specific detail.
+1. Search first: \`memory/search -X POST -d '{"projectId":"<id>","query":"<topic>","topK":3,"sourceFilter":["knowledge"]}'\`.
+2. If nothing comes back scoring > 0.8, write it: \`memory -X POST -d '{"projectId":"<id>","source":"knowledge","sourceRef":"<stable-kebab-slug>","textContent":"<one lesson>","metadata":{"category":"convention"}}'\` — \`category\` is \`convention\`, \`gotcha\` or \`fix-pattern\`. Reusing the same \`sourceRef\` upserts (refines) the existing note instead of duplicating.
+Keep \`textContent\` tight — one lesson, no issue-specific detail.
 
 ## Session Context (coding / fix / review tasks)
-Before your final status update, update \`issues.sessionContext\` via \`forge_issues.update\`:
+Before your final status update, update \`issues.sessionContext\` via \`issues/<id> -X PATCH\`:
 \`{ currentState, decisions, filesModified, errorsResolved, reviewFeedback, sessionCount, lastUpdated }\`
 Merge with existing: increment sessionCount, append to arrays (skip duplicates), replace currentState. Cap arrays at 20.
 
@@ -113,20 +114,9 @@ Merge with existing: increment sessionCount, append to arrays (skip duplicates),
 - Code only while implementing. No explanations between edits.
 - Never repeat file contents after reading — just edit.
 - One-line status at the end (e.g. "Plan written, set approved." or "Fix applied, pushed, criteria passed, set awaiting_release.").
-- Comments go to \`forge_comments.create\`, not to chat output.
+- Comments go to \`issues/<id>/comments -X POST\`, not to chat output.
 
 ${OPERATING_AFFORDANCES_TEXT}`;
-
-const TOOL_REFERENCE_TEXT = `## Tool Reference
-- **forge_step_start** — step check-in: marks the issue in-flight (when the step has a working status) and returns the bundle {issue (full when small; lean manifest + \`bodyTruncated:true\` + \`bodyManifest\` when heavy fields exceed threshold — pull fields via \`forge_issues.get { fields }\`), comments (each with attachments[]), handoffs, branchConfig} in one call. Idempotent; call FIRST on every step.
-- **forge_issues** — list/get/create/update issues. get/update/transition return the issue with \`attachments[]\` ({id,name,mime,size,url}). get accepts optional \`fields:[...]\` to fetch only specific heavy fields (description/plan/acceptanceCriteria/sessionContext/releaseNotes) when the step_start bundle was lean. update.documentId is required. Writable: title, description, status, priority, category, complexity, acceptanceCriteria, plan, sessionContext, relations.
-- **forge_comments** — create requires issueDocumentId + body. list returns actor, body, isAI, timestamps, and \`attachments[]\` per comment.
-- **forge_uploads** — attachment I/O. action=request mints a presigned upload URL (attach a file). action=fetch reads an EXISTING attachment by {target:"issue"|"comment", attachmentId} — images (png/jpeg/gif/webp) return as a viewable image block (vision), text/markdown inline; PDFs/video/oversized return metadata + download url only. Use fetch whenever an issue/comment references an attached image or file.
-- **forge_memory** — per-project semantic memory. \`.search({projectId, query, topK, sourceFilter?})\` → scored hits; \`.write({projectId, source, sourceRef, textContent, metadata?})\` upserts on (projectId, source, sourceRef); \`.get\` for natural-key lookups, \`.delete\` to remove; \`.feedback({projectId, source, sourceRef, verdict: 'confirmed'|'outdated', evidence?})\` reports a verify-at-recall outcome (note/knowledge only — confirmed protects from decay, outdated archives immediately, evidence required); a body a later write replaced is read back over REST, \`GET /api/memory/revisions?projectId=<id>&sourceRef=<ref>\` — there is no MCP tool for it, so an overwrite is recoverable and a ref whose content looks wrong can be told apart from one written that way. Sources: issue, comment, job, note, knowledge, decision, policy.
-- **forge_knowledge** — curated project knowledge entries (list/get/upsert/delete/search). \`search\` supports \`scope: 'knowledge'|'memory'|'all'\` — scope \`all\` queries both stores and labels each hit with \`origin\`. On-demand guides: fetch via \`action=get\` + slug. Upsert embeds for semantic search; tolerates embeddings outage (degraded write).
-- **forge_config** — read/write per-project settings: baseBranch (where an ISS-* branch is cut from, the document's \`source.git.defaultBranch\`), the project document as \`config.projectDocument\` (environments, promotions, testing; written through \`PUT /api/projects/:id/config\`), plugins, and reads back the project's policy as \`config.policy\` (written through \`PUT /api/projects/:id/policy\`, never through this tool). It carries NO project prose: \`projectFacts\` and \`projectFactsConfig\` were retired in ISS-1048 and a call naming either is refused by name. Prose is \`forge_knowledge\`, whose \`injection\` field (\`always\` | \`on_demand\` | \`none\`) is what the always-inject flag became.
-- **forge_skills** — list available skills + per-project enable/disable.
-- **forge_guide** — capability guides, fetched live: \`list\` / \`get {slug}\` (or \`<host>/api/guides/<slug>.md\`). The corpus is public — no token, no session — and the same guides are readable web pages at \`<web-host>/guides\`, which is the address to hand a person or an agent that does not hold this server.`;
 
 /** The happy path of workflow `issue-lifecycle`: the steps of a run are progress inside
  *  `in_progress`, never statuses (ISS-54). */
@@ -160,18 +150,18 @@ export const FORGE_FACTS: readonly ForgeFact[] = [
     tier: 'mandatory',
     scope: 'global',
     namespace: 'forge',
-    version: 11,
+    version: 12,
     render: () => PIPELINE_RULES_TEXT,
   },
   {
     id: 'mcp-tool-reference',
-    title: 'MCP tool reference',
+    title: 'Reaching Forge',
     category: 'reference',
     tier: 'mandatory',
     scope: 'global',
     namespace: 'forge',
-    version: 2,
-    render: () => TOOL_REFERENCE_TEXT,
+    version: 3,
+    render: () => STEP_TOOL_REFERENCE_TEXT,
   },
 
   {
@@ -182,11 +172,9 @@ export const FORGE_FACTS: readonly ForgeFact[] = [
     scope: 'global',
     namespace: 'forge',
     appliesTo: ['clarify', 'release', 'drive'],
-    version: 5,
+    version: 6,
     render: (ctx) => `## Release-notes shape
-Seed \`releaseNotes\` via ${
-      ctx?.stage === 'drive' ? '`forge-runner api issues/<id> -X PATCH`' : '`forge_issues.update`'
-    } as \`{ section, userFacing, technical }\`:
+Seed \`releaseNotes\` via \`forge-runner api issues/<id> -X PATCH\` as \`{ section, userFacing, technical }\`:
 - \`section\` ∈ \`Added | Changed | Fixed | Removed | Security | Skip\` (\`Skip\` = internal-only, no changelog line).
 - \`userFacing\` — one plain-language line for end users.
 - \`technical\` — optional implementation detail.
@@ -204,14 +192,11 @@ ${
     scope: 'global',
     namespace: 'forge',
     appliesTo: Object.keys(HANDOFF_KEYS) as JobType[],
-    version: 3,
+    version: 4,
     render: (ctx) => {
       const stage = ctx?.stage ?? null;
       const keys = stage ? HANDOFF_KEYS[stage] : undefined;
-      const call =
-        stage === 'drive'
-          ? '`forge-runner api issue-step-contexts -X POST`'
-          : '`forge_step_handoff.write`';
+      const call = '`forge-runner api issue-step-contexts -X POST`';
       const body = keys
         ? `For the \`${stage}\` step, call ${call} with \`payload\`: \`${HANDOFF_UNIVERSAL_KEYS}, ${keys}\`.`
         : `Call ${call} with the structured payload for your step (triage/clarify/plan/code/review/test/fix each have a schema). Every one of them carries \`${HANDOFF_UNIVERSAL_KEYS}\` inside \`payload\` alongside its own fields.`;
@@ -270,7 +255,7 @@ Never sweep other issues' worktrees, however old they look: a directory you did 
     scope: 'project-resolved',
     namespace: 'forge',
     appliesTo: ['drive'],
-    version: 1,
+    version: 2,
     relevant: (ctx) => (ctx.modules?.length ?? 0) > 0,
     render: (ctx) => {
       const modules = ctx?.modules ?? [];
@@ -286,7 +271,7 @@ This project keeps a module taxonomy. Every module is a label with \`kind:"modul
 ${list}
 
 **Set it on the issue itself, never in a comment.** The carrier is the label attach payload: send the module as an OBJECT alongside any plain label strings —
-\`forge_issues.update({ documentId, labels: [{ labelId: "<module name>", isPrimary: true }, "needs-design"] })\`
+\`forge-runner api issues/<id> -X PATCH -d '{"labels":[{"labelId":"<module name>","isPrimary":true},"needs-design"]}'\`
 \`labelId\` takes the module's name or its uuid. \`labels\` REPLACES the set, so send the whole set in one call. A second primary in the same payload, or an \`isPrimary\` on something that is not a module, is refused — the write does not half-apply.
 
 A \`**Module:**\` line in a comment is NOT the attribution and nothing reads it. If you find one, set the field and leave the comment alone.

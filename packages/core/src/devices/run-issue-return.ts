@@ -19,10 +19,14 @@
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, issues, terminalAgentSessionStatuses } from '../db/schema.js';
+import {
+  type IssueStatus,
+  issueStatuses,
+  issues,
+  terminalAgentSessionStatuses,
+} from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
-import { isLegacyStatus, MIGRATED_AS } from '../issues/legacy-status.js';
 import { ASSERTS_WORK_IN_PROGRESS } from '../issues/status-sets.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
@@ -130,8 +134,12 @@ export async function returnIssuesForRun(
     const key = canonicalIssueKey(issue.issSeq);
     const named = run.statuses[key];
     if (!named) continue;
-    // A run opened before ISS-54 stored its floor in the seventeen statuses.
-    const target: IssueStatus = isLegacyStatus(named) ? MIGRATED_AS[named] : (named as IssueStatus);
+    if (!(issueStatuses as readonly string[]).includes(named)) {
+      throw new Error(
+        `run-issue-return: run ${runId} stored \`${named}\` as ${key}'s opening status, which is not one of ${issueStatuses.join(', ')}`,
+      );
+    }
+    const target = named as IssueStatus;
     if (heldElsewhere.has(key)) {
       logger.info(
         { runId, issueKey: key, status: issue.status },

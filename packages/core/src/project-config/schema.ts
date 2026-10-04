@@ -165,7 +165,7 @@ export const projectDocumentSchema = z.strictObject({
   }),
   // cm:why plan approval held as a project rule: `required` makes the kernel refuse a move into
   // `approved` by an actor without plans.approve (`issues/transition-guards.ts:planGuard`, refusal
-  // APPROVE_PERMISSION_REQUIRED); absent is not required, and a run's own plan checkpoint is enough.
+  // PERMISSION_FORBIDDEN); absent is not required, and a run's own plan checkpoint is enough.
   plan: z
     .strictObject({
       approval: z.strictObject({ required: z.boolean() }),
@@ -247,7 +247,7 @@ const profileName = () => z.string().regex(SHORT_NAME);
 
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/terminal.rs:job_argv — the grammar of
 // one `--disallowed-tools` entry a job pane is started with: a built-in tool, optionally with a
-// specifier (`Bash(git push:*)`), or an MCP server or tool (`mcp__forge__forge_issues`, `mcp__x__*`).
+// specifier (`Bash(git push:*)`), or an MCP server or tool (`mcp__forge__forge_coolify_deploy`, `mcp__x__*`).
 export const TOOL_PATTERN =
   /^(?:[A-Z][A-Za-z0-9]*(?:\((?! )[^()\n]{1,200}(?<! )\))?|mcp__[A-Za-z0-9-][A-Za-z0-9_-]*(?<!_)(?:__\*)?)$/;
 

@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issueStatuses, skillRegistrations, skills } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -13,6 +13,7 @@ import { isMetaSkillName } from './meta-skills.js';
 import { registerSkillForProject, SkillNotProjectScopedError } from './registration-service.js';
 import { getSkillForProject } from './service.js';
 import { computeSkillDiff } from './sync.js';
+import { holds, requireHeld } from '../permissions/index.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
 const skillParamSchema = z.object({ projectId: z.uuid(), skillId: z.uuid() });
@@ -57,8 +58,8 @@ async function loadDeviceProjectRole(
   projectId: string,
 ): Promise<{ isAdmin: boolean }> {
   const access = await loadProjectAccess(projectId, deviceOwnerId);
-  if (!access.role) throw forbidden('device owner is not a project member');
-  return { isAdmin: projectRoleAtLeast(access.role, 'admin') };
+  requireHeld(access, 'project.read');
+  return { isAdmin: holds(access, 'project.admin') };
 }
 
 export const skillSyncRoutes = new Hono<{ Variables: DeviceVars }>();
@@ -194,7 +195,7 @@ skillRegisterRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin');
+    requireHeld(access, 'project.admin');
 
     const skill = await getSkillForProject(skillId, projectId);
     if (!skill) throw notFound('NOT_FOUND', 'skill not found');
@@ -233,7 +234,7 @@ skillRegisterRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const rows = await db
       .select({
@@ -270,7 +271,7 @@ skillRegisterRoutes.delete(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin');
+    requireHeld(access, 'project.admin');
 
     const [row] = await db
       .select({ skillId: skillRegistrations.skillId })

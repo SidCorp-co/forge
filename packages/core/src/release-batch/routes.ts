@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RELEASE_ATTEMPT_STAGES } from '../db/schema-release-ledger.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, conflict, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -48,6 +48,7 @@ import {
 import { readServingDeployment } from './serving.js';
 import { assertRunNotHolding, ReleaseRunHoldingError, readReleaseRunState } from './state.js';
 import { releaseVersionRoutes } from './version-routes.js';
+import { requireHeld } from '../permissions/index.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
 
@@ -101,7 +102,7 @@ releaseBatchRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin');
+    requireHeld(access, 'project.admin');
 
     try {
       const result = await createReleaseBatch({ projectId, issueIds, userId, recutOf });
@@ -147,7 +148,7 @@ releaseBatchRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
 
     const active = await getActiveReleaseBatch(projectId);
     return c.json(active ?? null);
@@ -164,7 +165,7 @@ releaseBatchRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
 
     try {
       return c.json(await loadReleaseRoster(projectId));
@@ -184,7 +185,7 @@ releaseBatchRoutes.get(
   async (c) => {
     const { projectId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
 
     const readiness = await loadReleaseReadiness(projectId);
     if (!readiness) throw notFound('project not found');
@@ -200,7 +201,7 @@ releaseBatchRoutes.get(
   async (c) => {
     const { projectId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
 
     // cm:edge protocol -> packages/core/src/release-batch/readiness.ts — readiness answers the
     // DECLARATION and makes no outbound request; this one reads the probes, so they stay apart
@@ -248,7 +249,7 @@ async function loadRunForProject(runId: string, projectId: string, userId: strin
   if (!run || run.projectId !== projectId) throw notFound('release batch not found');
 
   const access = await loadProjectAccess(projectId, userId);
-  assertProjectRole(access, 'member');
+  requireHeld(access, 'project.write');
 }
 
 releaseBatchRoutes.get(
@@ -453,7 +454,7 @@ releaseBatchRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin');
+    requireHeld(access, 'project.admin');
 
     try {
       const result = await recordPerformedRelease({ projectId, userId, ...c.req.valid('json') });
@@ -472,7 +473,7 @@ releaseBatchRoutes.get(
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
 
     const record = await readReleaseRecord(projectId, runId);
     if (!record) throw notFound('no release record under this id on this project');

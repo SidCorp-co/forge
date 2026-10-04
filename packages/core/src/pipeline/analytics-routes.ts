@@ -3,22 +3,17 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { jobTypes } from '../db/schema.js';
-import { effectiveProjectRole, loadVisibleProjectIds } from '../lib/authz.js';
+import { loadVisibleProjectIds } from '../lib/authz.js';
 import { utcDayText } from '../lib/time-buckets.js';
 import { buildInterventionsReport } from '../metrics/interventions-report.js';
 import { retryRescuesSince } from '../metrics/queries.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest, forbidden, notFound } from '../middleware/route-errors.js';
+import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { cycleTimeTransitionsSql } from './cycle-time-sql.js';
 import { driverComparison } from './driver-comparison.js';
 import { shippedPerDay } from './throughput-series.js';
-
-async function assertProjectMember(projectId: string, userId: string): Promise<void> {
-  const access = await effectiveProjectRole(userId, projectId);
-  if (!access) throw notFound('project not found');
-  if (!access.role) throw forbidden('not a project member');
-}
+import { requireCan } from '../permissions/index.js';
 
 const querySchema = z.object({
   days: z.coerce.number().int().min(1).max(90).optional().default(30),
@@ -266,7 +261,7 @@ projectCostAnalyticsRoutes.get(
     const { id } = c.req.valid('param');
     const { days } = c.req.valid('query');
     const userId = c.get('userId');
-    await assertProjectMember(id, userId);
+    await requireCan({ userId }, 'project.read', id);
 
     const totalRows = await db.execute(sql`
       SELECT COALESCE(SUM(cost_usd), 0)::float AS total
@@ -333,7 +328,7 @@ projectCostAnalyticsRoutes.get(
     const { id } = c.req.valid('param');
     const { days, step } = c.req.valid('query');
     const userId = c.get('userId');
-    await assertProjectMember(id, userId);
+    await requireCan({ userId }, 'project.read', id);
 
     const stepFilter = step ? sql`AND step = ${step}` : sql``;
     const dailyRows = await db.execute(sql`
@@ -373,7 +368,7 @@ projectCostAnalyticsRoutes.get(
     const { id } = c.req.valid('param');
     const { days } = c.req.valid('query');
     const userId = c.get('userId');
-    await assertProjectMember(id, userId);
+    await requireCan({ userId }, 'project.read', id);
 
     const rows = await db.execute(sql`
       WITH win AS (

@@ -2,12 +2,9 @@ import { and, asc, eq, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { integrationBindings, integrationConnections } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { boss } from '../queue/boss.js';
 import { raceWithTimeout } from './probe.js';
 import { getAdapter } from './registry.js';
 import { type BindingWithConnection, buildContextFromBinding } from './store.js';
-
-export const HEALTH_SWEEP_QUEUE = 'integrations-health-sweep';
 
 /** Skip connections probed more recently than this (fresh deploy/test wins). */
 const MIN_PROBE_AGE_MS = 30 * 60 * 1000;
@@ -89,26 +86,4 @@ export async function runIntegrationsHealthSweep(): Promise<{
   }
 
   return { probed, skippedFresh, failed, durationMs: Date.now() - t0 };
-}
-
-let registered = false;
-
-export async function registerIntegrationsHealthSweep(): Promise<void> {
-  if (registered) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(HEALTH_SWEEP_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(HEALTH_SWEEP_QUEUE, async () => {
-    try {
-      const result = await runIntegrationsHealthSweep();
-      logger.info(result, 'integrations-health-sweep: complete');
-    } catch (err) {
-      logger.error({ err }, 'integrations-health-sweep: failed');
-      throw err;
-    }
-  });
-  // Hourly at :17 — offset from the */5 stale sweep and on-the-hour crons.
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(HEALTH_SWEEP_QUEUE, '17 * * * *');
-  registered = true;
 }

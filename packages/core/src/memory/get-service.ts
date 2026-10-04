@@ -5,8 +5,8 @@ import { memories, memorySources } from '../db/schema.js';
 import { memoryOfLiveIssue } from '../issues/archive.js';
 
 /**
- * Direct (non-semantic) memory query. Used by REST `GET /api/memory` and
- * MCP `forge_memory.get`. Filters on natural keys + JSONB `@>` containment.
+ * Direct (non-semantic) memory query, behind REST `GET /api/memory`. Filters
+ * on natural keys + JSONB `@>` containment.
  *
  * Does NOT check authorization — callers MUST verify project membership
  * before invoking.

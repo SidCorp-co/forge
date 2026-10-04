@@ -20,7 +20,7 @@ export interface SteerOptions {
   actorUserId: string;
   /**
    * Who was at the keyboard. A steer is usually a person reaching into a
-   * running agent, but a master steering through MCP is not, and the comment
+   * running agent, but a master steering over its token is not, and the comment
    * this writes has to say which (ISS-969).
    */
   actorAgency: ActorAgency;

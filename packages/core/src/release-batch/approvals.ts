@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { type ReleaseApprovalRow, releaseApprovals } from '../db/schema-release-ledger.js';
-import { approvalRefusalFor } from '../lib/approval.js';
+import { permissionRefusalFor } from '../permissions/index.js';
 import { peopleOf } from '../lib/people.js';
 import { agrees } from '../lib/plural.js';
 import { RefusalError } from '../lib/refusal.js';
@@ -222,10 +222,10 @@ export async function decideApproval(input: {
   decision: Decision;
 }): Promise<ApprovalView> {
   const { projectId, runId, approvalId, userId, decision } = input;
-  const denied = await approvalRefusalFor(
+  const denied = await permissionRefusalFor(
     { userId },
     projectId,
-    'releases',
+    'releases.approve',
     'approving or returning a release',
   );
   if (denied) throw new RefusalError([denied], denied.code);

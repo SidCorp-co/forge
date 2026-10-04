@@ -19,8 +19,7 @@ The entity, its doors and everything that reads it:
   in the issue transition's transaction), `read.ts` (`askAs`, `projectQuestionsFor`,
   `readQuestionsForIssue`, `registerWaiter`, `waiterFor`), `routes.ts`, `screen.ts`, `stop.ts`,
   `origin.ts`, `protections.ts`
-- `POST /api/questions` on a personal access token, in `questions/routes.ts`, and the MCP tool
-  `forge_questions` (`mcp/tools/forge-questions.ts`) — both through `askAs`
+- `POST /api/questions` on a personal access token, in `questions/routes.ts`, through `askAs`
 - `POST /api/devices/me/questions` and `GET /me/questions/:questionId?runId=` on a device pairing,
   in `devices/pool-routes.ts`
 - two screens: the issue decision panel (`web-v2` `features/questions/components/decision-panel.tsx`),
@@ -43,7 +42,7 @@ time, so answering or voiding the last one clears it with no second write. The I
 issue page's banner, the Attention count (`me/attention-buckets.ts`) and the row chip each read
 status OR marker.
 
-- **An ask moves nothing.** `askAs`, behind `POST /api/questions` and `forge_questions`, writes the
+- **An ask moves nothing.** `askAs`, behind `POST /api/questions`, writes the
   question and leaves the issue at its rung, whatever the blocker kind.
 - **Into `needs_info`.** A park is a deliberate move, taken for want of a requirement. Every agent
   or device park leaves an open question (`issues/park-question.ts`), `skip` or not: it mints one,
@@ -64,13 +63,13 @@ status OR marker.
 | Writer | Where it lives | Creates a question row | Moves the issue |
 |---|---|---|---|
 | `mintParkQuestion` | `packages/core/src/issues/park-question.ts` | yes, on every agent or device park to `needs_info` | it runs inside that park |
-| `askAs` | `packages/core/src/questions/read.ts`, behind `POST /api/questions` and `forge_questions` | yes | no |
+| `askAs` | `packages/core/src/questions/read.ts`, behind `POST /api/questions` | yes | no |
 | `forge-runner question ask` → `transport::questions::ask` | `packages/runner/crates/forge-runner/src/cmd/question.rs` | yes, on the box's device pairing | no |
 | `forge record question` | `github.com/SidCorp-co/forge-plugin`, `plugin/` | **no** — it writes a `forge-record: question` comment and nothing else | no |
 
 The last is the half this repo cannot gate: its record reads correctly to a human in the thread,
 and no question row carries the options or the need it wrote. That, and the CLI having no verb that
-reaches `forge_questions`, are forge-plugin's to fix and are reported there.
+reaches `POST /api/questions`, are forge-plugin's to fix and are reported there.
 
 ## What binds the halves that ARE here
 
@@ -83,7 +82,7 @@ them and stores what they carry (`tests/integration/question-runner-wire-e2e.tes
 
 - **A person's answer at a rung other than `needs_info` reaches no session.** `answer-resume` hands
   an answer to the session that asked only while the issue is parked; a run that asked about
-  finished work reads the answer back with `forge_questions` action `get`.
+  finished work reads the answer back with `GET /api/questions/:id`.
 - **No browser is told a question changed.** An ask or an answer publishes no websocket event, and
   since neither moves the issue, an Issues list or an issue page already open shows the marker,
   `Needs you`, its count and the banner as of its last fetch until it refetches (focus, remount, or

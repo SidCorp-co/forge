@@ -24,20 +24,20 @@ import { Sentry } from '../../observability/sentry.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { decryptConnectionSecrets } from '../store.js';
 import { consumeIssueThreadReply } from './comment-inbound.js';
-import { startCommentMirrorLoop } from './comment-mirror.js';
+import { runCommentMirrorDrain } from './comment-mirror.js';
 import { type RocketChatFrame, rocketChatConversationPorts } from './conversation-port.js';
 import { RocketChatDdpClient, type RocketChatIncomingMessage } from './ddp-client.js';
 import { createSeenTracker, decideSkip, type SeenTracker } from './inbound-gate.js';
 import { registerLiveConnection, unregisterLiveConnection } from './live-connections.js';
 import { FIXED_REPLY_CONSTANT, sendFixedReply } from './outbound.js';
-import { startQuestionDrainLoop } from './question-delivery.js';
+import { drainQuestionDeliveries } from './question-delivery.js';
 import { consumeQuestionThreadReply } from './question-inbound.js';
 import { fetchOwnIdentity } from './rest-client.js';
 import { type RoomShape, resolveRoomShape } from './room-shape.js';
 import { buildRoutes, type Route } from './routes.js';
 import { subjectForThread } from './thread-registry.js';
 import type { RocketChatConfig, RocketChatSecrets } from './types.js';
-import { drainConversationWindows, startWindowDrainLoop } from './window-drain.js';
+import { drainConversationWindows } from './window-drain.js';
 
 let cachedWebBaseUrl: string | undefined;
 let webBaseUrlRead = false;
@@ -85,21 +85,12 @@ class RocketChatConnectionManager {
   private started = false;
   private listenClient?: pg.Client | undefined;
   private listenRetryTimer?: NodeJS.Timeout | undefined;
-  private stopQuestionDrain?: (() => void) | undefined;
-  private stopWindowDrain?: (() => void) | undefined;
-  private stopCommentMirror?: (() => void) | undefined;
 
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
     this.startReloadListener();
     registerConversationTransport(rocketChatConversationPorts);
-    this.stopQuestionDrain = startQuestionDrainLoop(() => this.started);
-    this.stopWindowDrain = startWindowDrainLoop(
-      () => this.started,
-      () => drainConversationWindows(this.conns, webBaseUrl()),
-    );
-    this.stopCommentMirror = startCommentMirrorLoop(() => this.started, hooks);
     const rows = await db
       .select()
       .from(integrationConnections)
@@ -118,6 +109,24 @@ class RocketChatConnectionManager {
         logger.error({ err, connectionId: conn.id }, 'rocketchat: acquire failed'),
       );
     }
+  }
+
+  // The drains below are process timers (`timer-registry.ts`): each does nothing until this
+  // process's manager has started, and stops with it.
+
+  /** Settle and route every window this core's connections owe an answer. */
+  async drainWindows(): Promise<void> {
+    if (this.started) await drainConversationWindows(this.conns, webBaseUrl());
+  }
+
+  async drainQuestions(): Promise<void> {
+    if (!this.started) return;
+    const r = await drainQuestionDeliveries();
+    if (r.owed > 0) logger.info({ ...r }, 'rocketchat: question delivery drain');
+  }
+
+  async drainCommentMirror(): Promise<void> {
+    if (this.started) await runCommentMirrorDrain(hooks);
   }
 
   private async acquire(connectionId: string): Promise<void> {
@@ -458,12 +467,6 @@ class RocketChatConnectionManager {
 
   async stop(): Promise<void> {
     this.started = false;
-    this.stopQuestionDrain?.();
-    this.stopQuestionDrain = undefined;
-    this.stopWindowDrain?.();
-    this.stopWindowDrain = undefined;
-    this.stopCommentMirror?.();
-    this.stopCommentMirror = undefined;
     if (this.listenRetryTimer) clearTimeout(this.listenRetryTimer);
     this.listenRetryTimer = undefined;
     const listen = this.listenClient;

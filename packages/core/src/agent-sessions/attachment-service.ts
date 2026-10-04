@@ -56,7 +56,7 @@ function attachmentUrl(sessionId: string, id: string): string {
 
 /**
  * Validate + store a single chat-session attachment. Shared by the REST
- * multipart route (web-v2 composer) and the MCP `forge_uploads` presigned path.
+ * multipart route (web-v2 composer) and the presigned upload path.
  */
 export async function persistSessionAttachment(
   input: PersistSessionAttachmentInput,

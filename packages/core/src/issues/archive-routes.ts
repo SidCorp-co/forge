@@ -7,7 +7,7 @@
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -17,6 +17,7 @@ import {
   issueArchiveRequestSchema,
   runIssueArchive,
 } from './archive.js';
+import { requireHeld } from '../permissions/index.js';
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
 
@@ -39,7 +40,7 @@ function archiveHandler(direction: ArchiveDirection) {
     const { id: projectId } = c.req.valid('param');
     const body = c.req.valid('json');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    assertProjectRole(access, 'admin', `${direction} requires project admin access`);
+    requireHeld(access, 'project.admin');
     try {
       const report = await runIssueArchive({
         projectId,

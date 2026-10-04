@@ -20,13 +20,7 @@ import {
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
-import type {
-  FireFacts,
-  LastFireFacts,
-  ReportFacts,
-  ScheduleFacts,
-  StewardAction,
-} from './standing.js';
+import type { FireFacts, ReportFacts, ScheduleFacts, StewardAction } from './standing.js';
 
 export async function scheduleFacts(
   projectId: string,
@@ -76,21 +70,6 @@ const lastFireColumns = {
   refusal: scheduleRuns.refusal,
   sessionId: scheduleRuns.sessionId,
 };
-
-/** Each schedule's newest fire. */
-export async function lastFires(
-  projectId: string,
-  scheduleId?: string,
-): Promise<Map<string, LastFireFacts>> {
-  const where = [eq(scheduleRuns.projectId, projectId)];
-  if (scheduleId) where.push(eq(scheduleRuns.scheduleId, scheduleId));
-  const rows = await db
-    .selectDistinctOn([scheduleRuns.scheduleId], lastFireColumns)
-    .from(scheduleRuns)
-    .where(and(...where))
-    .orderBy(scheduleRuns.scheduleId, desc(scheduleRuns.createdAt), desc(scheduleRuns.id));
-  return new Map(rows.map(({ scheduleId: id, ...f }) => [id, f]));
-}
 
 const fireColumns = {
   ...lastFireColumns,

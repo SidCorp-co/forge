@@ -1,10 +1,6 @@
 import { and, inArray, isNull, lt, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type MemorySource, memories } from '../db/schema.js';
-import { logger } from '../logger.js';
-import { boss } from '../queue/boss.js';
-
-export const MEMORY_DECAY_QUEUE = 'memory-decay';
 
 export const DECAY_SOURCES: MemorySource[] = ['note', 'knowledge'];
 export const PRUNE_ZERO_RETRIEVAL_DAYS = 30;
@@ -74,31 +70,4 @@ export async function runMemoryDecay(): Promise<DecayResult> {
     purged: purgedRows.count,
     durationMs: Date.now() - t0,
   };
-}
-
-let registered = false;
-
-export async function registerMemoryDecay(): Promise<void> {
-  if (registered) return;
-  // pg-boss v10 requires explicit createQueue before schedule/work can reference it.
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(MEMORY_DECAY_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(MEMORY_DECAY_QUEUE, async () => {
-    try {
-      const result = await runMemoryDecay();
-      logger.info(result, 'memory.decay: sweep complete');
-    } catch (err) {
-      logger.error({ err }, 'memory.decay: sweep failed');
-      throw err;
-    }
-  });
-  // Daily, off-peak. Same cadence as forge-agents' dream poller.
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(MEMORY_DECAY_QUEUE, '30 3 * * *');
-  registered = true;
-}
-
-export function resetMemoryDecayForTest(): void {
-  registered = false;
 }

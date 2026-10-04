@@ -11,12 +11,15 @@ import {
   projects,
   users,
 } from '../db/schema.js';
-import { assertProjectRole, loadOrgRole, loadProjectAccess } from '../lib/authz.js';
+import { PROJECT_PERMISSIONS, type ProjectPermission } from '@forge/contracts/permissions';
+import { loadOrgRole, loadProjectAccess } from '../lib/authz.js';
+import { RefusalError } from '../lib/refusal.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { emitNotification } from '../notifications/emit.js';
+import { requireHeld } from '../permissions/index.js';
 import { sendInvitationEmail } from './invitation-email.js';
 import { issueInvitationToken } from './invitation-token.js';
 
@@ -34,9 +37,30 @@ const directAddSchema = z.object({
   role: z.enum(projectMemberRoles),
 });
 
-const patchRoleSchema = z.object({
-  role: z.enum(projectMemberRoles),
-});
+// `grants` replaces the membership's grant whole: the permissions it holds on this project beyond
+// its role, each a name from `@forge/contracts/permissions:PROJECT_PERMISSIONS`.
+const patchMemberSchema = z
+  .object({
+    role: z.enum(projectMemberRoles).optional(),
+    grants: z.array(z.string()).optional(),
+  })
+  .refine((b) => b.role !== undefined || b.grants !== undefined, {
+    message: 'send role, grants or both',
+  });
+
+function grantRefusals(grants: readonly string[]) {
+  return grants.flatMap((g, i) =>
+    (PROJECT_PERMISSIONS as readonly string[]).includes(g)
+      ? []
+      : [
+          {
+            code: 'MEMBER_GRANT_UNKNOWN_PERMISSION',
+            path: `/grants/${i}`,
+            detail: `"${g}" is not a project permission; a grant names permissions from: ${PROJECT_PERMISSIONS.join(', ')}.`,
+          },
+        ],
+  );
+}
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
 const memberParamSchema = z.object({ projectId: z.uuid(), userId: z.uuid() });
@@ -64,7 +88,7 @@ memberRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     // `kind` and `displayName` are here because an agent account IS a project
     // member (ISS-932) and a reader that is only told its synthesized address
@@ -77,6 +101,7 @@ memberRoutes.get(
         displayName: users.displayName,
         kind: users.kind,
         role: projectMembers.role,
+        grants: projectMembers.grants,
         createdAt: projectMembers.createdAt,
       })
       .from(projectMembers)
@@ -97,7 +122,7 @@ memberRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'requires project admin');
+    requireHeld(access, 'members.admin');
 
     const rows = await db
       .select({
@@ -134,7 +159,7 @@ memberRoutes.post(
     const callerId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, callerId);
-    assertProjectRole(access, 'admin', 'requires project admin');
+    requireHeld(access, 'members.admin');
 
     // Same-org guard: direct-add skips the email handshake, which is only
     // safe for someone the org has already vetted.
@@ -189,7 +214,7 @@ memberRoutes.post(
     const inviterId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, inviterId);
-    assertProjectRole(access, 'admin', 'requires project admin');
+    requireHeld(access, 'members.admin');
     const [project] = await db
       .select({ name: projects.name })
       .from(projects)
@@ -272,16 +297,18 @@ memberRoutes.patch(
   zValidator('param', memberParamSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
-  zValidator('json', patchRoleSchema, (result) => {
+  zValidator('json', patchMemberSchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
   async (c) => {
     const { projectId, userId: targetUserId } = c.req.valid('param');
-    const { role } = c.req.valid('json') as { role: (typeof projectMemberRoles)[number] };
+    const { role, grants } = c.req.valid('json');
     const callerId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, callerId);
-    assertProjectRole(access, 'admin', 'requires project admin');
+    requireHeld(access, 'members.admin');
+    const refused = grantRefusals(grants ?? []);
+    if (refused.length > 0) throw new RefusalError(refused, 'MEMBER_GRANT_UNKNOWN_PERMISSION');
 
     const [target] = await db
       .select({ role: projectMembers.role })
@@ -292,12 +319,16 @@ memberRoutes.patch(
 
     const [updated] = await db
       .update(projectMembers)
-      .set({ role })
+      .set({
+        ...(role !== undefined ? { role } : {}),
+        ...(grants !== undefined ? { grants: [...new Set(grants as ProjectPermission[])] } : {}),
+      })
       .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, targetUserId)))
       .returning({
         userId: projectMembers.userId,
         projectId: projectMembers.projectId,
         role: projectMembers.role,
+        grants: projectMembers.grants,
         createdAt: projectMembers.createdAt,
       });
     if (!updated) throw notFound('NOT_FOUND', 'membership not found');
@@ -320,7 +351,7 @@ memberRoutes.delete(
     const callerId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, callerId);
-    assertProjectRole(access, 'admin', 'requires project admin');
+    requireHeld(access, 'members.admin');
 
     const deleted = await db
       .delete(projectInvitations)
@@ -351,7 +382,7 @@ memberRoutes.delete(
     const access = await loadProjectAccess(projectId, callerId);
     const selfLeave = targetUserId === callerId;
     if (!selfLeave) {
-      assertProjectRole(access, 'admin', 'requires project admin');
+      requireHeld(access, 'members.admin');
     }
 
     const [target] = await db

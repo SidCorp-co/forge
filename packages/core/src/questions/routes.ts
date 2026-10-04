@@ -18,6 +18,8 @@ import {
 } from '../db/schema-questions.js';
 import { Refused } from '../ecosystem/channel-act.js';
 import { doorOf, tokenIdOf } from '../ecosystem/channel-author.js';
+import type { ActorAgency } from '../issues/actor-agency.js';
+import { egressAs } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { refused as refusedByName } from '../project-config/respond.js';
@@ -26,6 +28,7 @@ import {
   askAs,
   decodeCursor,
   projectQuestionsFor,
+  questionSurface,
   readQuestionFor,
   readQuestionsForIssue,
 } from './read.js';
@@ -128,6 +131,23 @@ const refuseFirst = (result: Parsed) => {
 const notFound = (what: 'question' | 'issue' = 'question') =>
   new HTTPException(404, { message: `${what} not found`, cause: { code: 'NOT_FOUND' } });
 
+type ShownQuestion = {
+  id: string;
+  status: string;
+  projectId: string;
+  issueId: string | null;
+  feedbackId: string | null;
+  requirementId: string | null;
+  batchId: string | null;
+};
+
+/** A question as the project's data policy lets this reader see it; withheld text keeps its ids. */
+async function shown<Q extends ShownQuestion>(agency: ActorAgency | undefined, q: Q) {
+  if (!agency) throw new Error('questions: a question read reached its handler without an auth gate');
+  const out = await egressAs({ agency }, q.projectId, await questionSurface(q), q, `question ${q.id}`);
+  return out.ok ? out.value : { id: q.id, status: q.status, issueId: q.issueId, withheld: out.refusal };
+}
+
 function questionId(c: { req: { param: (k: string) => string } }): string {
   const id = c.req.param('id');
   if (!uuid.safeParse(id).success) throw badRequest('the question id must be a uuid');
@@ -141,7 +161,6 @@ const REFUSAL_STATUS: Record<QuestionRefusalCode, ContentfulStatusCode> = {
   QUESTION_EXPIRED: 409,
   QUESTION_ROUND_STALE: 409,
   QUESTION_OPTION_UNKNOWN: 400,
-  QUESTION_AUTHORITY_REQUIRED: 403,
   QUESTION_ISSUE_ELSEWHERE: 400,
   QUESTION_ISSUE_TERMINAL: 409,
   QUESTION_REASON_REQUIRED: 400,
@@ -207,7 +226,13 @@ questionRoutes.get('/', zValidator('query', listQuery, refuseQuery), async (c) =
         issueScope === 'none',
       );
       if (!open) throw notFound();
-      return c.json(open);
+      const agency = c.get('agency');
+      return c.json({
+        ...open,
+        questions: await Promise.all(
+          open.questions.map((q) => shown(agency, q as typeof q & ShownQuestion)),
+        ),
+      });
     } catch (e) {
       if (e instanceof QuestionRefused) throw refused(e);
       throw e;
@@ -215,7 +240,8 @@ questionRoutes.get('/', zValidator('query', listQuery, refuseQuery), async (c) =
   }
   const seen = await readQuestionsForIssue(issueId as string, c.get('userId'));
   if (!seen) throw notFound();
-  return c.json({ questions: seen });
+  const agency = c.get('agency');
+  return c.json({ questions: await Promise.all(seen.map((q) => shown(agency, q))) });
 });
 
 questionRoutes.post('/', zValidator('json', askSchema, refuseBody), async (c) => {
@@ -244,7 +270,7 @@ questionRoutes.post('/', zValidator('json', askSchema, refuseBody), async (c) =>
 questionRoutes.get('/:id', async (c) => {
   const seen = await readQuestionFor(questionId(c), c.get('userId'));
   if (!seen) throw notFound();
-  return c.json(seen);
+  return c.json(await shown(c.get('agency'), seen));
 });
 
 questionRoutes.post(

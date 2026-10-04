@@ -1,15 +1,15 @@
 import { Hono } from 'hono';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
-import { assertProjectMember } from '../route-helpers.js';
 import { effectiveConfig, listActiveBindingsForProjectProvider } from '../store.js';
 import type { PostmanConfig } from './types.js';
+import { requireCan } from '../../permissions/index.js';
 
 export const integrationTargetRoutes = new Hono<{ Variables: AuthVars }>();
 integrationTargetRoutes.use('*', requireAuth(), assertEmailVerified());
 
 integrationTargetRoutes.get('/:projectId/integrations/postman-target', async (c) => {
   const projectId = c.req.param('projectId');
-  await assertProjectMember(projectId, c.get('userId'));
+  await requireCan({ userId: c.get('userId') }, 'project.read', projectId);
 
   const [pair] = await listActiveBindingsForProjectProvider(projectId, 'postman');
   if (!pair) return c.json({ configured: false });

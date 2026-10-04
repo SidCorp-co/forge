@@ -27,8 +27,7 @@ import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ReadDoor } from '../feedback/egress.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { approverFactsOf } from '../lib/approval.js';
-import { assertProjectAccess } from '../lib/authz.js';
+import { permissionFactsOf, requireCan } from '../permissions/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
 import { approvalRequired } from '../release-batch/approvals.js';
@@ -88,7 +87,7 @@ export async function rowIn(tx: Tx, projectId: string, ref: string): Promise<Row
 }
 
 export async function signerRefusal(actor: RequirementActor, projectId: string, act: string) {
-  return signoffRefusal(await approverFactsOf(actor.userId, projectId), projectId, act);
+  return signoffRefusal(await permissionFactsOf(actor.userId, projectId), act);
 }
 
 const rowsOfRevision = (rows: readonly CriterionRow[], revision: number) =>
@@ -169,7 +168,7 @@ async function standingViewer(viewer: RequirementActor | null, projectId: string
 }
 
 export async function listRequirementsAs(viewer: RequirementActor, projectId: string) {
-  await assertProjectAccess(projectId, viewer.userId, 'viewer');
+  await requireCan({ userId: viewer.userId }, 'project.read', projectId);
   const rows = await db
     .select()
     .from(requirements)
@@ -443,6 +442,6 @@ export async function readRequirementAs(
   ref: string,
   door: ReadDoor = {},
 ): Promise<RequirementDetail> {
-  await assertProjectAccess(projectId, viewer.userId, 'viewer');
+  await requireCan({ userId: viewer.userId }, 'project.read', projectId);
   return detailOf(await rowIn(db, projectId, ref), viewer, door);
 }

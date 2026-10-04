@@ -19,7 +19,7 @@ export const memoryQuestion: Task = {
         { kind: 'mustMatch', patterns: [/thursday/i] },
         { kind: 'mustMatch', patterns: [/14:00/] },
         { kind: 'notFallback' },
-        { kind: 'toolsAllowed', tools: ['forge_memory_search', 'forge_memory_note'] },
+        { kind: 'toolsAllowed', tools: ['forge_memory', 'forge_memory_note'] },
       ],
     },
   ],

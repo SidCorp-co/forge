@@ -19,8 +19,8 @@ gap — never by guessing silently and writing, always by proposing and waiting 
    then END YOUR TURN immediately — no follow-up questions stacked in the same message, no "while
    I wait, let me also ask...". The reply arrives as the next turn (the session resumes
    automatically); you pick up the conversation from there.
-2. **Never write without an explicit confirm.** Before any `forge_knowledge` upsert, `forge_memory`
-   write, `forge_knowledge` write, `forge_config` update, or policy write, present a
+2. **Never write without an explicit confirm.** Before any knowledge write, memory write,
+   project-document update, or policy write, present a
    short plain-English summary of exactly what you intend to write and ask "Write this?" (a single
    question, per rule 1). Only write after an unambiguous yes. A "no", a follow-up question, or the
    user closing the tab must never leave a partial write behind — nothing you propose exists until
@@ -64,18 +64,19 @@ exhaustive audit; a later `forge-product-map` / re-run of this skill can refine 
 
 Summarize what you plan to write, grouped by target, then ask "Write this?" (rule 2):
 
-- **Always-injected entries** (`forge_knowledge` action=write, `injection: "always"`) — durable,
+- **Always-injected entries** (`forge-runner api projects/$FORGE_PROJECT_ID/knowledge/<slug> -X PUT`,
+  `injection: "always"`) — durable,
   kebab-case slugs holding what every stage should see: a hard rule, a non-obvious convention, the
   build and test commands. Their bodies are rendered verbatim into every prompt for this project, so
   use `always` sparingly; most entries stay `on_demand` and are fetched by slug when a task needs
   them. `{{project:<key>}}` in a skill body no longer reaches these — it answers reserved names
-  derived from project columns only, and anything else with a refusal naming this tool (ISS-1048).
-- **Knowledge entries** (`forge_knowledge` action=write) — at minimum an `overview` entry (what
+  derived from project columns only, and anything else with a refusal naming the knowledge route.
+- **Knowledge entries** (the same `PUT`) — at minimum an `overview` entry (what
   the product is, its major feature areas); add `workflow` (a key entity's lifecycle) or `rule`
   entries only when the survey surfaced something concrete enough to diagram or state as a
   constraint. Don't invent detail you don't have evidence for — a thin, honest overview beats a
   padded one. Set `authoredBy: "agent"`.
-- **Seed memory** (`forge_memory` action=write) — a handful of durable, non-obvious facts a future
+- **Seed memory** (`forge-runner api memory -X POST`) — a handful of durable, non-obvious facts a future
   agent session would otherwise have to rediscover (a real gotcha, a firm convention, a pointer to
   where truth lives). Follow the `forge-memory-curator` contract: the 3-question gate (worth it? /
   right place — not already in code or CLAUDE.md? / safe & findable as one secret-free fact under a
@@ -83,7 +84,7 @@ Summarize what you plan to write, grouped by target, then ask "Write this?" (rul
   `decision` for a dated architectural choice), dense `textContent` (~150–800 chars, lead line
   ≤160 chars, one fact per line, no prose padding), stable kebab `sourceRef` slug, and — the
   non-negotiable one — **never put a secret in `textContent`; store a pointer to where it lives
-  instead.** Search (`forge_memory` action=search) before writing so you upsert an existing slug
+  instead.** Search (`forge-runner api memory/search -X POST`) before writing so you upsert an existing slug
   instead of duplicating a topic.
 - **Policy** (`PUT /api/projects/:id/policy`, the whole document with the `baseRevision` read) and the **release shape**
   (the project document, `PUT /api/projects/:id/config` with the `baseRevision` read) — propose
@@ -106,7 +107,7 @@ state.
 ## Common mistakes to avoid
 
 - Asking more than one question in a single turn — breaks the resume model this skill depends on.
-- Writing anything (`forge_knowledge`, `forge_memory`, `forge_config`) before an explicit "yes" to
+- Writing anything (knowledge, memory, the project document) before an explicit "yes" to
   that specific proposal.
 - Putting a credential, token, or connection string into a knowledge entry or memory `textContent`
   — store a pointer to where it lives instead.

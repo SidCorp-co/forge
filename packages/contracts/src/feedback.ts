@@ -8,7 +8,7 @@ import type {
 	AgentReportSeverity,
 	AgentReportTarget,
 } from "./agent-reports.js";
-import { APPROVAL_REFUSAL_CODES } from "./approval.js";
+import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import { type NodeRef, nodeRefSchema } from "./workflow-health.js";
 
@@ -286,8 +286,7 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_CLARIFICATION_ALREADY_OPEN",
 	"FEEDBACK_CLARIFICATION_CLOSED",
 	"FEEDBACK_ATTACHMENT_INVALID",
-	...APPROVAL_REFUSAL_CODES,
-	"FEEDBACK_REDACT_FORBIDDEN",
+	...PERMISSION_REFUSAL_CODES,
 	"FEEDBACK_SEARCH_WITHHELD",
 	"FEEDBACK_SOURCE_ALREADY_PROMOTED",
 	"FEEDBACK_SOURCE_NOT_IN_PROJECT",

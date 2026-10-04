@@ -1,13 +1,12 @@
 /**
- * ISS-145 — Action-dispatcher consolidating the five
- * `forge_pipeline_runs.<action>` tools into a single `forge_project_pipeline_runs`
- * tool, mirroring the shape of `forge_issues` / `forge_comments`.
+ * ISS-145 — `forge_project_pipeline_runs`, one action-dispatching tool over
+ * the five pipeline-run actions.
  *
  * Implementation lives in the per-action pure handlers exported by
  * `./forge-pipeline-runs.ts`. This file owns input validation, required-field
  * checks per action, and routing. Authorization is re-applied inside each
  * handler — list gates on the projectId argument, the runId-resolved actions
- * gate after the run lookup, both through `assertPrincipalIsMember` — so the
+ * gate after the run lookup, both through `requireCan(…, 'project.read', …)` — so the
  * dispatcher does NOT collapse auth into a single pre-switch call.
  */
 

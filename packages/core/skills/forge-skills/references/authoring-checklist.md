@@ -20,10 +20,10 @@ Run this over a skill before shipping it.
 ## Mechanics & safety
 - [ ] Exactly ONE merge mechanism (skill git-merge XOR server mergeStates) — no double-merge.
 - [ ] Single-branch projects: release skips re-merge when already on production.
-- [ ] `references` files created via MCP carry `encoding`.
+- [ ] `references` files (`files[]`) carry `encoding`.
 - [ ] Status transition is the LAST action; comment is posted before it.
 
 ## Ship
-- [ ] Read `forge_skills_effective` and reconciled against the live server body before overwriting.
-- [ ] `forge_skills_update`/`create` (server, `installOnly: true`) → `forge_skills_push`.
+- [ ] Read `GET /api/projects/:projectId/skills/effective` and reconciled against the live server body before overwriting.
+- [ ] `PUT`/`POST /api/skills` (server, `installOnly: true` on the `PUT`) → `POST /api/skills/bulk-push`.
 - [ ] Verified ON DISK (`.claude/skills/<name>/SKILL.md`), not just the sync dashboard.

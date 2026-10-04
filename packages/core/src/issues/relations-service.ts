@@ -8,7 +8,6 @@
  */
 
 import { z } from 'zod';
-import { db } from '../db/client.js';
 import type { IssueDependencyExecutor } from './dependency-executor.js';
 import {
   emitIssueDependencyEffects,
@@ -54,21 +53,6 @@ export type AppliedIssueRelation = {
   created: boolean;
   updated: boolean;
 };
-
-export async function applyIssueRelations(
-  writer: IssueDependencyWriter,
-  projectId: string,
-  issueId: string,
-  relations: readonly IssueRelationInput[] | undefined,
-): Promise<AppliedIssueRelation[]> {
-  // One transaction for every edge, so each side's `FOR SHARE` read holds until its edge commits
-  // and an archive cannot land between the archived-issue check and the insert (ISS-1237).
-  const pending = await db.transaction((tx) =>
-    writeIssueRelations(writer, projectId, issueId, relations, tx),
-  );
-  await flushIssueRelationEffects(writer, projectId, pending);
-  return pending.map((p) => p.applied);
-}
 
 /** One edge landed, plus what announcing it will need. */
 export type PendingIssueRelation = {

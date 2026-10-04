@@ -1,6 +1,6 @@
 ---
 name: forge-reconcile
-description: "Master agent for Update Pipeline stage ② (Reconcile). Reads the context bundle from a reconcile_run row, reasons over the change, produces one of four verdicts (no-op | apply | apply-with-adaptation | escalate), writes the candidate body, and records the verdict via forge_reconcile. Used by the internal reconcile pipeline — not user-invocable."
+description: "Master agent for Update Pipeline stage ② (Reconcile). Reads the context bundle from a reconcile_run row, reasons over the change, produces one of four verdicts (no-op | apply | apply-with-adaptation | escalate), writes the candidate body, and records the verdict through the reconcile-runs REST route. Used by the internal reconcile pipeline — not user-invocable."
 user_invocable: false
 ---
 
@@ -10,13 +10,13 @@ Update Pipeline stage ② (Reconcile). You are the Master agent responsible for 
 
 ## Your one job
 
-Read the context bundle from the reconcile_run row (via `forge_reconcile action=get`), reason carefully, and call `forge_reconcile action=record_verdict` with exactly ONE of the four verdicts below.
+Read the context bundle from the reconcile_run row (`forge-runner api projects/$FORGE_PROJECT_ID/reconcile-runs/<runId>`), reason carefully, and record exactly ONE of the four verdicts below.
 
 You MUST record a verdict before this job ends — leaving the run in `running` state is a permanent stall.
 
 ## Step 1 — Load the bundle
 
-Call `forge_reconcile action=get` with the `runId` from your job payload (`jobs.payload.reconcileRunId`).
+Read `forge-runner api projects/$FORGE_PROJECT_ID/reconcile-runs/<runId>`, with the `runId` from your job payload (`jobs.payload.reconcileRunId`).
 
 The `bundle` field is self-describing — read the keys. Three things you could NOT infer from them:
 
@@ -26,7 +26,7 @@ The `bundle` field is self-describing — read the keys. Three things you could 
 - **`invariantSet`** is a hard constraint on your candidate body, not background reading.
 
 Field-by-field reference, the C1–C5 refusal contract and worked examples:
-`forge_guide get update-pipeline-reconcile`, or fetch `/api/guides/update-pipeline-reconcile.md`.
+`GET /api/guides/update-pipeline-reconcile.md` (public, no credential).
 
 ## Step 2 — Reason (do this IN WRITING, in your rationale)
 
@@ -79,11 +79,10 @@ revert** — a wrong `auto` reaches every runner, recoverable only by a manual s
 
 ## Step 5 — Record your verdict
 
-Call `forge_reconcile action=record_verdict` with:
-- `runId`: from your job payload
+Call `forge-runner api projects/$FORGE_PROJECT_ID/reconcile-runs/<runId>/verdict -X POST -d '<json>'`, `runId` from your job payload, with:
 - `verdict`: one of `no-op | apply | apply-with-adaptation | escalate`
 - `gate`: `auto` or `human`, per Step 4.5 (required on every verdict)
 - `candidateBody`: the full candidate body (required for apply/apply-with-adaptation; omit for no-op/escalate)
 - `rationale`: your written reasoning from Step 2, plus one line naming why you chose that gate (required for all verdicts)
 
-After recording, your job is done. Do NOT attempt to write the skill body yourself — `record_verdict` hands off to the verifier pipeline.
+After recording, your job is done. Do NOT attempt to write the skill body yourself — recording the verdict hands off to the verifier pipeline.

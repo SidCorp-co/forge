@@ -17,9 +17,8 @@
  * types (`set_dependency`, `flag_blocker`, `comment`) are out of scope
  * here — they are recorded as `skipped` so the parent decision is still
  * marked followed-up and a noisy escalation does not loop forever. The
- * memory indexer fires off the new decision row via the
- * `forge_pm.write_decision` codepath (we go direct here because the
- * sweeper is a system actor without a device principal).
+ * sweeper writes the new decision row and indexes it into memory itself,
+ * because it is a system actor without a device principal.
  */
 
 import { sql } from 'drizzle-orm';
@@ -31,10 +30,7 @@ import { logger } from '../logger.js';
 import { indexMemory } from '../memory/indexer.js';
 import { Sentry } from '../observability/sentry.js';
 import { openIssueRun } from '../pipeline/runs.js';
-import { boss } from '../queue/boss.js';
 
-export const PM_ESCALATION_SWEEPER_QUEUE = 'pm.escalation-sweeper';
-const PM_ESCALATION_SWEEPER_CRON = '*/5 * * * *';
 const SWEEP_BATCH_LIMIT = 50;
 
 interface ExpiredEscalationRow extends Record<string, unknown> {
@@ -175,8 +171,8 @@ async function executeDispatchFallback(
 
   const userPayload =
     fallback.payload && typeof fallback.payload === 'object' ? fallback.payload : {};
-  // Mirror forge_pm.dispatch payload shape so the runner sees an identical
-  // job whether it came from the live PM agent or the timeout sweeper.
+  // The same payload shape a PM agent's dispatch writes, so the runner sees an
+  // identical job whether it came from the live PM agent or the timeout sweeper.
   const payload: Record<string, unknown> = {
     ...(userPayload as Record<string, unknown>),
     skillName: `forge-${jobType}`,
@@ -257,8 +253,7 @@ async function recordTimeout(
     .returning({ id: pmDecisions.id });
   if (!inserted) return;
 
-  // Mirror forge_pm.write_decision: detached memory index so embed latency
-  // doesn't block the sweeper tick.
+  // Detached memory index so embed latency doesn't block the sweeper tick.
   const decisionId = inserted.id;
   queueMicrotask(() => {
     indexMemory({
@@ -274,42 +269,4 @@ async function recordTimeout(
       );
     });
   });
-}
-
-let registered = false;
-
-export async function registerPmEscalationSweeper(): Promise<void> {
-  if (registered) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(PM_ESCALATION_SWEEPER_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(PM_ESCALATION_SWEEPER_QUEUE, async () => {
-    try {
-      const result = await runPmEscalationSweep();
-      if (result.executed > 0 || result.errors > 0) {
-        logger.info(result, 'pm-escalation-sweeper: actioned');
-      }
-    } catch (err) {
-      logger.error({ err }, 'pm-escalation-sweeper: tick failed');
-      throw err;
-    }
-  });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(PM_ESCALATION_SWEEPER_QUEUE, PM_ESCALATION_SWEEPER_CRON, {});
-  registered = true;
-}
-
-export async function unregisterPmEscalationSweeper(): Promise<void> {
-  if (!registered) return;
-  try {
-    // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-    await (boss as any).unschedule?.(PM_ESCALATION_SWEEPER_QUEUE);
-  } catch {
-    // unschedule is best-effort — if the schedule never existed, ignore.
-  }
-  registered = false;
-}
-
-export function resetPmEscalationSweeperForTest(): void {
-  registered = false;
 }

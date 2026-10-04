@@ -7,6 +7,7 @@ import { countActivePatsForUser, mintPat, revokePat, rotatePat } from '../auth/p
 import { coreTokenNamePrefixOf } from '../auth/pat-format.js';
 import {
   PAT_ACCOUNT_ONLY_PERMISSIONS,
+  PAT_EXPLICIT_PERMISSIONS,
   PAT_GRANT_EPOCH,
   PAT_PERMISSION_ALL,
   PAT_PERMISSION_NAMES,
@@ -37,7 +38,7 @@ const createBodySchema = z
     projectIds: z.array(z.uuid()).max(50).nullable().optional(),
     boundProjectId: z.uuid().nullable().optional(),
     permissions: z
-      .array(z.enum([...PAT_PERMISSION_NAMES, PAT_PERMISSION_ALL]))
+      .array(z.enum([...PAT_PERMISSION_NAMES, ...PAT_EXPLICIT_PERMISSIONS, PAT_PERMISSION_ALL]))
       .nullable()
       .optional(),
     expiresAt: z.iso.datetime().optional(),
@@ -105,6 +106,7 @@ patRoutes.get('/pat', async (c) => {
     menu: {
       permissions: PAT_PERMISSION_NAMES,
       accountOnly: PAT_ACCOUNT_ONLY_PERMISSIONS,
+      explicit: PAT_EXPLICIT_PERMISSIONS,
       full: PAT_PERMISSION_ALL,
     },
   });
@@ -135,11 +137,15 @@ patRoutes.post(
         },
       });
     }
-    if (body.permissions.includes(PAT_PERMISSION_ALL) && body.permissions.length > 1) {
+    const routeGroups = body.permissions.filter(
+      (p) => !(PAT_EXPLICIT_PERMISSIONS as readonly string[]).includes(p),
+    );
+    if (body.permissions.includes(PAT_PERMISSION_ALL) && routeGroups.length > 1) {
       throw new HTTPException(400, {
         message:
-          `full access is the whole grant: send ["${PAT_PERMISSION_ALL}"] on its own, or name ` +
-          'the permissions this token needs without it.',
+          `full access is the whole route grant: send ["${PAT_PERMISSION_ALL}"] with no route ` +
+          `group beside it (only ${PAT_EXPLICIT_PERMISSIONS.join(', ')} may join it), or name ` +
+          'the groups this token needs without it.',
         cause: {
           code: 'PAT_PERMISSIONS_FULL_NOT_COMBINABLE',
           details: { sent: body.permissions },

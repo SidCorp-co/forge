@@ -4,9 +4,10 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest, forbidden } from '../middleware/route-errors.js';
+import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { listMasterPasses, readMasterStanding } from './read.js';
+import { requireHeld } from '../permissions/index.js';
 
 const projectParam = z.object({ id: z.uuid() });
 const noQuery = z.strictObject({});
@@ -31,7 +32,7 @@ masterStandingRoutes.get(
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
     return c.json(await readMasterStanding(projectId));
   },
 );
@@ -47,7 +48,7 @@ masterStandingRoutes.get(
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
     const q = c.req.valid('query');
     return c.json(
       await listMasterPasses(projectId, {

@@ -1,13 +1,10 @@
-import { forgeGuideTool } from '../../mcp/tools/forge-guide.js';
 import { forgeKnowledgeTool } from '../../mcp/tools/forge-knowledge.js';
-import { forgeMemorySearchTool } from '../../mcp/tools/forge-memory.js';
+import { forgeMemoryTool } from '../../mcp/tools/forge-memory.js';
 import {
   forgeMetricsProjectStepDurationsTool,
   forgeMetricsProjectTimeseriesTool,
 } from '../../mcp/tools/forge-metrics.js';
-import { forgePipelineRunsGetTool } from '../../mcp/tools/forge-pipeline-runs.js';
 import { forgeProjectPipelineRunsTool } from '../../mcp/tools/forge-project-pipeline-runs.js';
-import { forgeProjectsGetTool } from '../../mcp/tools/forge-projects.js';
 import type { McpContext } from '../../mcp/tools/lib.js';
 import { forgeChannelTool } from './forge-channel-tool.js';
 import { forgeCliTool } from './forge-cli-tool.js';
@@ -18,14 +15,11 @@ import { buildToolset, type ChatToolSpec, type ChatToolset } from './mcp-adapter
 /** Curated allowlist exposed to the chat model. */
 export const CHAT_TOOL_ALLOWLIST: ChatToolSpec[] = [
   { factory: forgeCliTool },
-  { factory: forgeGuideTool, allowedActions: ['list', 'get'] },
   {
     factory: forgeKnowledgeTool,
     allowedActions: ['list', 'get', 'search'],
   },
-  { factory: forgeMemorySearchTool },
-  { factory: forgeProjectsGetTool },
-  { factory: forgePipelineRunsGetTool },
+  { factory: forgeMemoryTool, allowedActions: ['search'] },
   { factory: forgeProjectPipelineRunsTool },
   { factory: forgeMetricsProjectStepDurationsTool },
   { factory: forgeMetricsProjectTimeseriesTool },

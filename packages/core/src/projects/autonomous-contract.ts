@@ -1,5 +1,5 @@
 export interface KnowledgeObligation {
-  /** `knowledge_entries.slug`, fetched by the driver with `forge_knowledge`. */
+  /** `knowledge_entries.slug`, fetched by the driver from `/api/projects/:id/knowledge/:slug`. */
   slug: string;
   /** What the agent uses it for. Rendered to the operator when it is missing. */
   role: string;

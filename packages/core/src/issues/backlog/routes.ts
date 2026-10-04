@@ -13,7 +13,6 @@ import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import { RULES } from '../../config/rate-limits.js';
 import { type IssueStatus, issueStatuses } from '../../db/schema.js';
-import { assertProjectAccess } from '../../lib/authz.js';
 import { queryBadRequest } from '../../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { rateLimit } from '../../middleware/rate-limit.js';
@@ -25,6 +24,7 @@ import { Cancellation } from './cancellation.js';
 import { emitBacklogStream } from './emitter.js';
 import { orderingSource } from './ordering-source.js';
 import { countMatching } from './page-read.js';
+import { requireCan } from '../../permissions/index.js';
 
 /** What `forge alike` calls open: everything the tracker has not settled. */
 export const UNSETTLED_STATUSES: IssueStatus[] = issueStatuses.filter(
@@ -120,7 +120,7 @@ backlogStreamRoutes.get(
   async (c) => {
     const { id } = c.req.valid('param');
     const q = c.req.valid('query');
-    await assertProjectAccess(id, c.get('userId'), 'viewer');
+    await requireCan({ userId: c.get('userId') }, 'project.read', id);
 
     const statuses = q.status ?? [...TAKEABLE_STATUSES];
     const total = await countMatching(id, statuses);
@@ -151,7 +151,7 @@ backlogStreamRoutes.get(
   async (c) => {
     const { id } = c.req.valid('param');
     const q = c.req.valid('query');
-    await assertProjectAccess(id, c.get('userId'), 'viewer');
+    await requireCan({ userId: c.get('userId') }, 'project.read', id);
 
     const statuses = q.status ?? UNSETTLED_STATUSES;
     const total = await countMatching(id, statuses);

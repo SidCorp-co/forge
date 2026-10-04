@@ -435,8 +435,8 @@ function buildReconcilePrompt(runId: string, instructions: string): string {
       '',
       `runId: ${runId}`,
       '',
-      `Start by calling \`forge_reconcile action=get\` with runId=${runId} to load the bundle for this run.`,
-      'You MUST call `forge_reconcile action=record_verdict` before this job ends — leaving the run without a verdict permanently stalls it.',
+      `Start by loading the bundle for this run: \`forge-runner api projects/$FORGE_PROJECT_ID/reconcile-runs/${runId}\`.`,
+      `You MUST record your verdict (\`forge-runner api projects/$FORGE_PROJECT_ID/reconcile-runs/${runId}/verdict -X POST\`) before this job ends — leaving the run without a verdict permanently stalls it.`,
     ],
     instructions,
   );
@@ -453,9 +453,9 @@ export function buildVerifierPromptWith(
       '',
       `runId: ${runId}`,
       `jobId: ${jobId}`,
-      `Start by calling \`forge_reconcile action=get\` with runId=${runId} to load the run for this verification.`,
+      `Start by loading the run for this verification: \`forge-runner api projects/$FORGE_PROJECT_ID/reconcile-runs/${runId}\`.`,
       `When you record your vote, pass jobId=${jobId} — this is YOUR job's own ID, not the Master agent's.`,
-      'You MUST call `forge_reconcile action=record_vote` before this job ends — leaving your vote unrecorded permanently stalls the run.',
+      `You MUST record your vote (\`forge-runner api projects/$FORGE_PROJECT_ID/reconcile-runs/${runId}/votes -X POST\`) before this job ends — leaving your vote unrecorded permanently stalls the run.`,
     ],
     instructions,
   );
@@ -820,7 +820,7 @@ interface VerdictTxResult {
  * Transitions: pending|running → verifying (candidate body present, verdict not escalate)
  *              pending|running → escalated (verdict = escalate)
  *
- * Called by the reconcile agent via the `forge_reconcile` MCP tool.
+ * Called by the reconcile agent via `POST /api/projects/:projectId/reconcile-runs/:runId/verdict`.
  */
 export async function recordReconcileVerdict(input: RecordVerdictInput): Promise<void> {
   const result = await db.transaction(async (tx): Promise<VerdictTxResult> => {
@@ -944,7 +944,7 @@ export interface RecordVerifierVoteInput {
  * pass) or escalates (human gate or majority fail).
  *
  * Multi-vote: at least 2 verifier jobs must agree on 'pass' for auto-publish.
- * Called by the verifier agent via the `forge_reconcile` MCP tool.
+ * Called by the verifier agent via `POST /api/projects/:projectId/reconcile-runs/:runId/votes`.
  *
  * Concurrency: SELECT FOR UPDATE inside the transaction serializes concurrent
  * vote calls for the same run. Duplicate votes from the same jobId are ignored;

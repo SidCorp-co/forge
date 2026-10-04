@@ -17,37 +17,6 @@ import {
   sessionAttachments,
 } from '../db/schema.js';
 
-export async function loadIssueProjectId(issueId: string): Promise<string> {
-  const [row] = await db
-    .select({ projectId: issues.projectId })
-    .from(issues)
-    .where(eq(issues.id, issueId))
-    .limit(1);
-  if (!row) throw new Error('NOT_FOUND: issue not found');
-  return row.projectId;
-}
-
-export async function loadCommentProjectId(commentId: string): Promise<string> {
-  const [row] = await db
-    .select({ projectId: issues.projectId })
-    .from(comments)
-    .innerJoin(issues, eq(issues.id, comments.issueId))
-    .where(eq(comments.id, commentId))
-    .limit(1);
-  if (!row) throw new Error('NOT_FOUND: comment not found');
-  return row.projectId;
-}
-
-export async function loadSessionProjectId(sessionId: string): Promise<string> {
-  const [row] = await db
-    .select({ projectId: agentSessions.projectId })
-    .from(agentSessions)
-    .where(eq(agentSessions.id, sessionId))
-    .limit(1);
-  if (!row) throw new Error('NOT_FOUND: session not found');
-  return row.projectId;
-}
-
 interface AttachmentForFetch {
   name: string;
   mime: string;

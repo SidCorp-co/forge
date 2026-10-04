@@ -1,10 +1,6 @@
 /**
- * The liveness probe, answered once for both transports.
- *
- * `GET /health` and the `forge_health` MCP tool each carried their own copy of
- * the same three checks. The tool's doc comment already said it "wraps the same
- * three checks as `app.get('/health')`" — a sentence that only stays true by
- * hand.
+ * The liveness probe and the ops health read, apart from the routes that serve
+ * them (`health/routes.ts`).
  */
 
 import { count, inArray, sql } from 'drizzle-orm';
@@ -12,7 +8,6 @@ import pkg from '../../package.json' with { type: 'json' };
 import { db } from '../db/client.js';
 import { agentSessions, jobs, projects, runners } from '../db/schema.js';
 import { countInFlightByRunner } from '../jobs/in-flight.js';
-import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { isBossStarted } from '../queue/boss.js';
 import { isWsListening } from '../ws/server.js';
 
@@ -36,19 +31,6 @@ export async function readLiveness(): Promise<LivenessSnapshot> {
   const queueOk = isBossStarted();
   const wsOk = isWsListening();
   return { ok: dbOk && queueOk && wsOk, dbOk, queueOk, wsOk };
-}
-
-/** How many jobs are in flight right now; `0` when the database is unreachable. */
-export async function countActiveJobs(): Promise<number> {
-  try {
-    const [row] = await db
-      .select({ n: count() })
-      .from(jobs)
-      .where(inArray(jobs.status, [...LIVE_JOB_STATUSES]));
-    return Number(row?.n ?? 0);
-  } catch {
-    return 0;
-  }
 }
 
 export type OpsRunner = {

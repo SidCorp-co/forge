@@ -16,7 +16,7 @@ import {
   agentReports,
   agentReportTargets,
 } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
+import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { refusalEnvelope } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
@@ -32,6 +32,7 @@ import {
   visibleIssue,
   writableProjectIds,
 } from './service.js';
+import { requireHeld } from '../permissions/index.js';
 
 const listQuerySchema = z
   .object({
@@ -94,7 +95,7 @@ agentReportRoutes.get(
     } else {
       if (!projectId) throw badRequest('projectId is required unless scope=all');
       const access = await loadProjectAccess(projectId, userId);
-      assertProjectRole(access, 'viewer', 'not a project member');
+      requireHeld(access, 'project.read');
       scoped = eq(agentReports.projectId, projectId);
     }
     const rows = await listReports(
@@ -130,7 +131,7 @@ agentReportRoutes.post(
     } else {
       if (!body.projectId) throw badRequest('projectId is required unless scope=all');
       const access = await loadProjectAccess(body.projectId, userId);
-      assertProjectRole(access, 'member', 'not a project member');
+      requireHeld(access, 'project.write');
       scoped = eq(agentReports.projectId, body.projectId);
     }
     const out = await triageReports({
@@ -155,7 +156,7 @@ agentReportRoutes.post(
     const existing = await readReport(reportId);
     if (!existing) throw notFound(`agent report ${reportId} not found`);
     const access = await loadProjectAccess(existing.projectId, c.get('userId'));
-    assertProjectRole(access, 'member', 'not a project member');
+    requireHeld(access, 'project.write');
     const out = await triageReports({
       scope: [eq(agentReports.id, reportId)],
       bulk: false,

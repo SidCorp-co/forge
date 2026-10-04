@@ -126,10 +126,9 @@ export function validateIssueAttachment(input: {
 
 /**
  * Validate + store a single issue attachment. Shared by the REST multipart
- * route (POST /issues/:id/attachments), the REST inline create path
- * (POST /projects/:id/issues with attachments[]), and the MCP forge_issues
- * create action. Behaviour must stay byte-identical across surfaces so the
- * UIs render rows uniformly regardless of upload origin.
+ * route (POST /issues/:id/attachments) and the REST inline create path
+ * (POST /projects/:id/issues with attachments[]). Behaviour must stay
+ * byte-identical across both so the UIs render rows uniformly.
  */
 export async function persistIssueAttachment(
   input: PersistIssueAttachmentInput,
@@ -329,35 +328,4 @@ export async function persistDecodedIssueAttachments(
     }
   }
   return { persisted, errors };
-}
-
-/** Metadata view of an issue attachment (no bytes). Mirrors the comment
- * `CommentAttachmentLite` shape so MCP serializers render both uniformly. */
-export interface IssueAttachmentLite {
-  id: string;
-  name: string;
-  mime: string;
-  size: number;
-  url: string;
-  createdAt: Date;
-}
-
-/**
- * List an issue's attachments (metadata only) for read surfaces — the MCP
- * `forge_issues`/`forge_step_start` serializers. `url` is the same download
- * path the REST attachment routes expose so every surface points at one route.
- */
-export async function listIssueAttachments(issueId: string): Promise<IssueAttachmentLite[]> {
-  const rows = await db
-    .select({
-      id: issueAttachments.id,
-      name: issueAttachments.name,
-      mime: issueAttachments.mime,
-      size: issueAttachments.size,
-      createdAt: issueAttachments.createdAt,
-    })
-    .from(issueAttachments)
-    .where(eq(issueAttachments.issueId, issueId))
-    .orderBy(asc(issueAttachments.createdAt));
-  return rows.map((r) => ({ ...r, url: `/api/attachments/${r.id}/download` }));
 }

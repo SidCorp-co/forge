@@ -26,7 +26,7 @@ import {
 } from '../agent-sessions/session-credential.js';
 import { TurnAuthorityRefused } from '../auth/turn-credential.js';
 import { db } from '../db/client.js';
-import { agentSessions, schedules } from '../db/schema.js';
+import { agentSessions } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
@@ -66,9 +66,7 @@ export async function authorizeScheduledRun(args: {
   const { asker, projectId } = args;
   const exclude = args.excludeDeviceIds ?? [];
   if (!asker) return { kind: 'refused', refusal: SCHEDULE_OWNER_GONE_REFUSAL };
-  const roleRefusal = sessionRoleRefusal(
-    (await effectiveProjectRole(asker.userId, projectId))?.role,
-  );
+  const roleRefusal = sessionRoleRefusal(await effectiveProjectRole(asker.userId, projectId));
   if (roleRefusal) return { kind: 'refused', refusal: roleRefusal };
   const deviceId = await pickTurnCredentialDevice(projectId, exclude);
   if (!deviceId) {
@@ -115,7 +113,6 @@ export async function recordRefusedRun(args: {
     actor: { type: 'system' },
     source: 'schedule',
   });
-  await db.update(schedules).set({ lastSessionId: session.id }).where(eq(schedules.id, scheduleId));
 }
 
 /** A run whose frame never reached its box is failed, never left `idle` for the sweeper to guess at. */

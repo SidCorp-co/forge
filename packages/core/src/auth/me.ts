@@ -4,9 +4,9 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { oauthAccounts, userPreferences, users } from '../db/schema.js';
-import { assertOrgAccess } from '../lib/authz.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireOrgCan } from '../permissions/index.js';
 
 export const meRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -162,7 +162,7 @@ meRoutes.patch(
     }
 
     if (patch.activeOrgId != null) {
-      await assertOrgAccess(patch.activeOrgId, userId, 'member');
+      await requireOrgCan({ userId }, 'org.read', patch.activeOrgId);
     }
 
     // Insert a row if missing, otherwise patch only the keys the caller sent.

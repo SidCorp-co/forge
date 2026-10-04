@@ -1,6 +1,6 @@
 /**
  * Which project an MCP call is about, and which projects its credential may
- * speak for. Split out of `lib.ts` — see the header on `project-authz.ts`.
+ * speak for.
  */
 
 import type { McpPrincipal } from '../../middleware/require-pat.js';

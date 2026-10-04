@@ -6,12 +6,13 @@ import { db } from '../db/client.js';
 import { projectGitCredentials, workspaceSshKeys } from '../db/schema.js';
 import { testSshConnection } from '../git/ssh-keys.js';
 import { decryptSecret, isVaultConfigured } from '../integrations/vault.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { getOrgSshKey } from '../orgs/ssh-keys-service.js';
 import { NO_REPOSITORY, readDeclaredSource, remoteOf } from '../project-config/source.js';
+import { requireHeld } from '../permissions/index.js';
 
 export const gitCredentialRoutes = new Hono<{ Variables: AuthVars }>();
 gitCredentialRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -31,7 +32,7 @@ gitCredentialRoutes.get(
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'project member required');
+    requireHeld(access, 'project.read');
 
     const [ref] = await db
       .select({ sshKeyId: projectGitCredentials.sshKeyId })
@@ -56,7 +57,7 @@ gitCredentialRoutes.put(
     const { sshKeyId } = c.req.valid('json');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    requireHeld(access, 'project.admin');
 
     const key = await getOrgSshKey(access.orgId, sshKeyId);
     if (!key) {
@@ -88,7 +89,7 @@ gitCredentialRoutes.post(
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'viewer', 'project member required');
+    requireHeld(access, 'project.read');
 
     if (!isVaultConfigured()) {
       throw new HTTPException(503, {
@@ -142,7 +143,7 @@ gitCredentialRoutes.delete(
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    requireHeld(access, 'project.admin');
 
     await db.delete(projectGitCredentials).where(eq(projectGitCredentials.projectId, projectId));
     return c.body(null, 204);

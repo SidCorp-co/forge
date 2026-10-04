@@ -1,5 +1,5 @@
 import { db } from '../db/client.js';
-import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import { forbidden, notFound, readerProjects } from './access.js';
 import { heldEcosystem } from './ecosystem-service.js';
 import { loadGraph } from './graph.js';
@@ -14,6 +14,7 @@ import {
   readEcosystems,
   recordedVersions,
 } from './store.js';
+import { holds } from '../permissions/index.js';
 
 const artifactKind = (p: Publication) =>
   p.artifact === null ? 'none' : 'path' in p.artifact ? 'repository' : 'upload';
@@ -64,7 +65,7 @@ export async function readApiPage(userId: string, projectId: string, fence?: rea
   if (!target) throw notFound(`project ${projectId} does not exist`);
   const access = await effectiveProjectRole(userId, projectId);
   const full =
-    projectRoleAtLeast(access?.role ?? null, 'viewer') && (!fence || fence.includes(projectId));
+    (access ? holds(access, 'project.read') : false) && (!fence || fence.includes(projectId));
   const targetEcos = (await activeEcosystemIdsOf(db, [projectId])).map((m) => m.ecosystemId);
   const graph = await loadGraph(targetEcos);
   const reader = full ? new Set([projectId]) : await readerProjects(userId, fence);

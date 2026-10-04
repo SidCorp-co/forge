@@ -1,7 +1,7 @@
 /**
  * The bytes a mockup is stored from: sent as base64, drawn as a wireframe-v1 document, or copied
  * from an upload already in the same project (an issue or comment attachment, which is where
- * `forge_uploads` puts a file). A copy is a new object in the one store, so a later delete of the
+ * `POST /api/issues/:id/attachments` puts a file). A copy is a new object in the one store, so a later delete of the
  * source never takes a mockup with it.
  */
 

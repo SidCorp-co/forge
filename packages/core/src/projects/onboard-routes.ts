@@ -10,7 +10,7 @@ import {
 } from '../agent-sessions/interactive-credential.js';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { resolveSessionRepoPathForDevice } from '../lib/device-pool.js';
 import { logger } from '../logger.js';
 import type { AuthVars } from '../middleware/auth.js';
@@ -18,6 +18,7 @@ import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { resolveRegisteredEffectiveSkills } from '../skills/effective.js';
 import { requestSkillSync } from '../skills/service.js';
+import { requireHeld } from '../permissions/index.js';
 
 // ISS-733 — the "Build Project Brain" trigger: web calls this once, after
 // bootstrap, to open a fresh chat session that runs `forge-onboard` as turn 1
@@ -48,7 +49,7 @@ projectOnboardRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(id, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
+    requireHeld(access, 'project.admin');
 
     const [project] = await db
       .select({ id: projects.id, slug: projects.slug })

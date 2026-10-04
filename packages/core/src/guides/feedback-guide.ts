@@ -10,11 +10,12 @@ export const FEEDBACK_TRIAGE_GUIDE: CoreGuide = {
   version: 1,
   body: `## Feedback: filing, triage, resolution and verification
 
-A feedback item (FB-n) is what a reporter says is wrong or wanted in the product. \`forge_feedback_items\` is
-the door, and the REST routes under \`/api/projects/:id/feedback\` are the same services. It is not
-\`forge_feedback\`, which is the old name of the agent-report tool: an agent's report about its own run
-is a different thing, and \`promote\` turns one of this project's reports into FB-n when it is product
-feedback after all.
+A feedback item (FB-n) is what a reporter says is wrong or wanted in the product. The door is
+\`/api/projects/:id/feedback\`: \`POST\` files one (\`create\` below) and \`GET\` lists them,
+\`GET …/feedback/:fb\` reads one, and each act below is \`POST …/feedback/:fb/<act>\` (\`triage\`,
+\`triage-suggestions\`, \`route\`, \`verify\`, \`reopen\`, \`clarification\`). It is not an agent report,
+an agent's report about its own run: \`POST …/feedback/promote\` turns one of this project's reports
+into FB-n when it is product feedback after all.
 
 ### Filing
 - \`create\` takes a \`kind\` (\`bug\`, \`change_request\`, \`question\`, \`idea\`, \`contract_change\`), a
@@ -69,15 +70,15 @@ Nothing ever reads an item as \`verified\` on its own.
   (\`FEEDBACK_DECLINE_REASON_REQUIRED\`); it moves the item to \`declined\` and closes its case.
 - **Triage is an approval.** Triage and writing a case's route take \`feedback.approve\` on the project
   (project admin, or an org owner or admin), person or agent alike; without it the call is refused
-  \`APPROVE_PERMISSION_REQUIRED\` naming the permission. Without it, send \`propose_triage\`
-  \`{ feedback, triage }\`, which writes a \`feedback_triage\` suggestion stamped by core with the nearest
-  item (\`dedup\`, or why dedup did not run); a holder accepts it (\`forge_suggestions accept\`), and the
+  \`PERMISSION_FORBIDDEN\` naming the permission. Without it, send \`POST …/feedback/:fb/triage-suggestions\`
+  \`{ triage }\`, which writes a \`feedback_triage\` suggestion stamped by core with the nearest
+  item (\`dedup\`, or why dedup did not run); a holder accepts it (\`POST /api/projects/:id/suggestions/:sid/accept\`), and the
   accept is the triage (${guideRef('suggestions')}).
 - Triage is picked while the item is \`new\`, \`reopened\`, or \`triaged\` with nothing carrying it; any
   other phase is \`FEEDBACK_STATUS_INVALID\`.
 
 ### Asking the reporter
-\`clarify\` \`{ prompt, needed }\` asks the reporter one question, before the item is routed
+\`clarification\` \`{ prompt, needed }\` asks the reporter one question, before the item is routed
 (\`FEEDBACK_CLARIFICATION_CLOSED\` once it is past \`new\` or \`reopened\`), and at most one is open per item
 (\`FEEDBACK_CLARIFICATION_ALREADY_OPEN\`): wait for its answer. The answer never edits the item. Picking a
 route, declining included, closes the open question.
@@ -85,7 +86,7 @@ route, declining included, closes the open question.
 ### After it ships
 - \`verify\` follows \`resolved\` and nothing else (\`FEEDBACK_NOT_RESOLVED\`): an item is never verified
   before its fix shipped, and never automatically. It takes \`feedback.approve\`
-  (\`APPROVE_PERMISSION_REQUIRED\` without it).
+  (\`PERMISSION_FORBIDDEN\` without it).
 - \`reopen\` \`{ reason }\` also follows \`resolved\`, says what the fix does not answer
   (\`FEEDBACK_REOPEN_REASON_REQUIRED\`), and sends the item back to triage.
 - Every triage, route write, decline, verify, reopen, redaction and promotion is kept as its own decision record, so
@@ -95,12 +96,13 @@ route, declining included, closes the open question.
 On a project whose data policy is \`redact\` or \`no_egress\`, the title, body, where-seen text, answer and
 every decision reason are scrubbed on write. On a \`no_egress\` project every answer of this door carries
 metadata only, and a text search (\`q\`) is \`FEEDBACK_SEARCH_WITHHELD\`: list by phase instead.
-\`delete_reporter_data\` deletes an item's text, attachments and embedding while keeping the row; it is a
-project admin person's act (\`FEEDBACK_REDACT_FORBIDDEN\`).
+\`DELETE …/feedback/:fb/reporter-data\` deletes an item's text, attachments and embedding while keeping the row; it takes
+\`feedback.redact\` (project admin), which a token holds only where its own grant names it
+(\`PERMISSION_FORBIDDEN\` without it).
 
 ### Reading the list
-\`list\` \`{ phase?, q?, requirement? }\` answers each item's derived phase and who it waits on: a person to
+\`GET …/feedback\` \`?phase=&q=&requirement=\` answers each item's derived phase and who it waits on: a person to
 triage a new or reopened item, the case's owner (BA or Project master) to write a triaged one's route, the carrier to ship a planned one, the reporter to verify a resolved one.
-\`similar\` \`{ feedback }\` compares stored embeddings to find likely duplicates. How a requirement a
+\`GET …/feedback/:fb/similar\` compares stored embeddings to find likely duplicates. How a requirement a
 feedback item revises moves is in ${guideRef('requirement-lifecycle')}.`,
 };

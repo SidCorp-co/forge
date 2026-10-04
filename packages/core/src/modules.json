@@ -166,6 +166,7 @@
       "owns": [
         "feedback",
         "feedbackAttachments",
+        "feedbackCases",
         "feedbackDecisions"
       ]
     },
@@ -379,6 +380,9 @@
       "owns": [
         "patFenceChanges"
       ]
+    },
+    "permissions": {
+      "kind": "kernel"
     },
     "pipeline": {
       "kind": "kernel",

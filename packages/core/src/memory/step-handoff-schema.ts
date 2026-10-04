@@ -269,7 +269,7 @@ export function renderHandoffSchemaPrompt(step: HandoffStep): string {
 /**
  * Scope literals that go into the termination block — the agent does NOT
  * have to guess these; the prompt embeds the exact values it should pass to
- * `forge_memory.write`.
+ * `POST /api/issue-step-contexts`.
  */
 export interface HandoffScope {
   projectId: string;
@@ -281,12 +281,10 @@ export interface HandoffScope {
 /**
  * The autonomous lane's termination block.
  *
- * `renderTerminationBlock` below is the staged one and stays as it is. The
- * driver needs its own because the staged text is wrong for it in three ways
- * that all point the same direction: it names MCP tools on a lane that reaches
- * Forge over the CLI, it sends the agent to "the next state in the Pipeline
- * Rules ladder" on a lane that has no ladder, and it offers `reopen`, which a
- * run does not enter from `in_progress` in the issue lifecycle.
+ * `renderTerminationBlock` below is the staged one. The driver needs its own
+ * because the staged text is wrong for it in two ways: it sends the agent to
+ * "the next state in the Pipeline Rules ladder" on a lane that has no ladder,
+ * and it hands off to a next step that the driver does not have.
  */
 export function renderDriveTerminationBlock(scope: HandoffScope): string {
   return [
@@ -336,21 +334,22 @@ export function renderTerminationBlock(opts: { step: HandoffStep; scope: Handoff
     'the next step inherits your context. This is best-effort context — NOT a',
     'completion gate, so it never blocks your real work.',
     '',
-    '1. Call `forge_step_handoff.write` with these scope fields (do not change them):',
+    '1. Record the handoff with these scope fields (do not change them):',
     '',
-    '   ```json',
-    '   {',
+    '   ```',
+    "   forge-runner api issue-step-contexts -X POST -d '{",
     `     "projectId": "${scope.projectId}",`,
     `     "issueId": "${scope.issueId}",`,
     `     "pipelineRunId": "${scope.runId}",`,
     `     "step": "${step}",`,
     `     "attempt": ${scope.attempt},`,
     '     "payload": <see schema below>',
-    '   }',
+    "   }'",
     '   ```',
     '',
     '2. Advance the pipeline state (MANDATORY — not best-effort). Call',
-    '   `forge_issues.update` to move the issue `status` to the next state in the',
+    `   \`forge-runner api issues/${scope.issueId}/transition -X POST -d '{"toStatus":"<status>"}'\``,
+    '   to move the issue to the next state in the',
     '   Pipeline Rules ladder, even if your skill instructions did not mention a',
     '   transition. On success move forward; on a blocking problem branch to',
     '   `needs_info` / `on_hold` instead. Entering `needs_info` requires a non-empty',

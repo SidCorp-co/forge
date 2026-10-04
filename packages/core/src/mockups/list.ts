@@ -5,7 +5,6 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { rowIn as feedbackRowIn } from '../feedback/read.js';
 import { issueRefIn, requirementRefIn } from '../feedback/refs.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { egressAs } from '../lib/data-egress.js';
 import { getStorage } from '../storage/index.js';
 import {
@@ -16,6 +15,7 @@ import {
   mockupViews,
   rowIn,
 } from './read.js';
+import { requireCan } from '../permissions/index.js';
 
 const badRequest = (message: string) =>
   new HTTPException(400, { message, cause: { code: 'BAD_REQUEST' } });
@@ -30,7 +30,7 @@ export async function listMockupsAs(
   },
   door: MockupDoor = {},
 ): Promise<MockupListResponse> {
-  await assertProjectAccess(projectId, viewer.userId, 'viewer');
+  await requireCan({ userId: viewer.userId }, 'project.read', projectId);
   const named = [query.requirement, query.feedback, query.issue].filter(Boolean);
   if (named.length !== 1) {
     throw badRequest(
@@ -64,7 +64,7 @@ export async function getMockupAs(
   ref: string,
   door: MockupDoor = {},
 ) {
-  await assertProjectAccess(projectId, viewer.userId, 'viewer');
+  await requireCan({ userId: viewer.userId }, 'project.read', projectId);
   const [view] = await mockupViews(projectId, [await rowIn(db, projectId, ref)], viewer, door);
   return view;
 }
@@ -77,7 +77,7 @@ export async function mockupBytes(
   ref: string,
   door: MockupDoor = {},
 ) {
-  await assertProjectAccess(projectId, viewer.userId, 'viewer');
+  await requireCan({ userId: viewer.userId }, 'project.read', projectId);
   const row = await rowIn(db, projectId, ref);
   const gate = await egressAs(
     { agency: viewer.agency, providerBound: door.providerBound },

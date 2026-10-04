@@ -1,10 +1,8 @@
-import { eq, type SQL, sql } from 'drizzle-orm';
-import { type Db, db } from '../db/client.js';
-import type { JobType, RunnerType } from '../db/schema.js';
+import { type SQL, sql } from 'drizzle-orm';
+import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { runnerMayTakeJob } from '../devices/release-label.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
-import { RUNNER_CAPABILITIES } from '../pipeline/registry.js';
 import { claimCapableSql } from '../runners/device-cap.js';
 import {
   deviceNotDisabled,
@@ -12,7 +10,6 @@ import {
   runnerUnlimited,
   runnerWorkspaceReady,
 } from '../runners/liveness-sql.js';
-import { countInFlightForOneRunner } from './in-flight.js';
 
 export type GateSkipReason =
   | 'not_found'
@@ -23,33 +20,6 @@ export type GateSkipReason =
   | 'runner_too_old'
   | 'runner_stale'
   | 'release_label_missing';
-
-/**
- * What {@link assertDispatchable} answers. `ok: false` carries the first
- * reason the CASE matched — the arms run in precedence order, so it is the
- * most specific one.
- */
-export type DispatchBarrier = { ok: true } | { ok: false; reason: GateSkipReason; hint?: string };
-
-type DispatchGateExecutor = Pick<Db, 'select' | 'execute'>;
-
-/**
- * Runner ↔ job-type capability gate. Sourced from the pipeline registry
- * (single SSOT — see `pipeline/registry.ts`). A master reads it to know which
- * of its boxes could run a job type at all.
- *
- * `pm` and `custom` are intentionally excluded from RUNNER_CAPABILITIES —
- * PM flows through a dedicated queue and bypasses the gate; `custom` is
- * operator-defined and has no canonical runner mapping.
- */
-export function runnerSupportsJobType(runnerType: RunnerType, jobType: JobType): boolean {
-  const caps = RUNNER_CAPABILITIES[runnerType];
-  return caps ? caps.includes(jobType) : false;
-}
-
-export async function countInFlightForRunner(runnerId: string): Promise<number> {
-  return countInFlightForOneRunner(runnerId);
-}
 
 export interface BarrierFragments {
   /** Shared CTE chunk: `fresh_capable_runners`.
@@ -112,8 +82,8 @@ export function buildBarrierFragments(args: {
 }
 
 /**
- * The gate-precedence CASE, shared by {@link assertDispatchable} and
- * {@link gateReasonsForQueuedJobs}. Expects `j`, `r` and
+ * The gate-precedence CASE {@link gateReasonsForQueuedJobsIn} reads; the arms run in precedence
+ * order, so a job's reason is the most specific one. Expects `j`, `r` and
  * `fresh_capable_runners` in scope.
  */
 function buildGateReasonCase(predicates: BarrierFragments['predicates']): SQL {
@@ -151,37 +121,6 @@ function buildGateReasonCase(predicates: BarrierFragments['predicates']): SQL {
       END`;
 }
 
-export async function assertDispatchable(
-  jobId: string,
-  exec: DispatchGateExecutor = db,
-): Promise<DispatchBarrier> {
-  const [job] = await exec
-    .select({ projectId: jobs.projectId })
-    .from(jobs)
-    .where(eq(jobs.id, jobId))
-    .limit(1);
-  if (!job) return { ok: false, reason: 'not_found', hint: jobId };
-
-  const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
-  const { ctes, predicates } = buildBarrierFragments({
-    projectIds: [job.projectId],
-    livenessSeconds,
-  });
-
-  const rows = await exec.execute<{ reason: string | null }>(sql`
-    WITH ${ctes}
-    SELECT ${buildGateReasonCase(predicates)} AS reason
-    FROM jobs j
-    LEFT JOIN issues i ON i.id = j.issue_id
-    JOIN pipeline_runs r ON r.id = j.pipeline_run_id
-    WHERE j.id = ${jobId}
-  `);
-  const row = rows[0];
-  if (!row) return { ok: false, reason: 'not_found', hint: jobId };
-  if (row.reason === null) return { ok: true };
-  return { ok: false, reason: row.reason as GateSkipReason };
-}
-
 export interface RunnerAvailability {
   /** Runners the picker considers selectable at all (online, fresh, not
    *  rate-limited, device not disabled). Zero ⇒ gate reason `runner_stale`. */
@@ -205,17 +144,6 @@ export async function freshRunnerAvailability(projectId: string): Promise<Runner
     FROM fresh_capable_runners
   `);
   return { total: Number(rows[0]?.total ?? 0) };
-}
-
-/**
- * The gate a job is stuck behind, for every `queued` job in `projectId`.
- *
- * Read-only, one query. Jobs absent from the map are dispatchable right now.
- */
-export async function gateReasonsForQueuedJobs(
-  projectId: string,
-): Promise<Map<string, GateSkipReason>> {
-  return gateReasonsForQueuedJobsIn([projectId]);
 }
 
 export async function gateReasonsForQueuedJobsIn(

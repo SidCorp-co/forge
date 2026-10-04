@@ -1,11 +1,7 @@
 /**
- * The one definition of "an agent session row without its transcript".
- *
- * ISS-428 taught this on the MCP side: `messages` is a full transcript, often
- * multi-MB, and selecting it into a LIST makes every page carry every word
- * ever said. The MCP tool projected around it and left a guard saying never to
- * `select()` here; the REST list did exactly that anyway, so the same lesson
- * held on one transport and not the other. Both read this now.
+ * The one definition of "an agent session row without its transcript": `messages` is a full
+ * transcript, often multi-MB, and selecting it into a LIST makes every page carry every word
+ * ever said (ISS-428).
  */
 
 import { and, desc, eq, type SQL, sql } from 'drizzle-orm';
@@ -89,7 +85,7 @@ export async function listAgentSessionsForMcp(q: AgentSessionQuery) {
     .limit(q.limit);
 }
 
-/** How many messages a detail read returns. Both the REST route and the MCP tool take this tail. */
+/** How many messages a detail read returns. */
 export const MESSAGE_TAIL = 20;
 
 /**

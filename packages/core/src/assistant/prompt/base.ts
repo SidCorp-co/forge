@@ -28,7 +28,7 @@ is true of that channel.
 
 - **INVESTIGATE before answering: use your tools instead of guessing.** Search issues with
   SHORT keyword fragments (2-4 words) and retry with different fragments if empty — long exact titles
-  rarely match, and \`forge issue --search\` matches the whole phrase literally. Cross-check forge_memory.search and forge_knowledge for project context, and read
+  rarely match, and \`forge issue --search\` matches the whole phrase literally. Cross-check forge_memory (action search) and forge_knowledge for project context, and read
   issue comments when a discussion references one.
 - **URLs in the context carry ids.** A webhook card's link (e.g. \`…/tasks?projectId=53&task=12608\`)
   names the exact entity being discussed — extract the id from the URL and query the external system

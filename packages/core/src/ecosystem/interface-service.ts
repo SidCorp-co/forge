@@ -1,6 +1,6 @@
 import { db, type Tx } from '../db/client.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { effectiveProjectRole } from '../lib/authz.js';
+import { permissionFactsOf } from '../permissions/index.js';
 import { isRecord, parseVersionedDocument, staleBase } from '../project-config/documents.js';
 import { notFound } from './access.js';
 import { versionsOf } from './contract/store.js';
@@ -16,7 +16,6 @@ import {
   type CommitmentsSetter,
   commitmentsRefusal,
   commitmentsSetterOf,
-  type ProviderWriterCode,
   providerWriterRefusal,
 } from './provider-writer-rules.js';
 import { type EcosystemRefusal, renameParseRefusals } from './refusals.js';
@@ -64,14 +63,13 @@ export interface ProviderWriter {
   agency: ActorAgency;
 }
 
-/** The refusal, under its code, of a writer that is neither the project's own agent nor a person holding admin on it. */
+/** The refusal of a writer that does not hold contracts.write on the provider project. */
 export async function providerWriterMiss(
   writer: ProviderWriter,
   projectId: string,
-  code: ProviderWriterCode,
+  what: string,
 ): Promise<EcosystemRefusal | null> {
-  const role = (await effectiveProjectRole(writer.userId, projectId))?.role ?? null;
-  return providerWriterRefusal({ ...writer, role }, projectId, code);
+  return providerWriterRefusal(await permissionFactsOf(writer.userId, projectId), what);
 }
 
 /** Who set the commitments the interface makes now, so a reader can tell an agent's proposal from a person's decision. */
@@ -192,7 +190,8 @@ export async function writeInterface(input: {
 }): Promise<InterfaceOutcome> {
   const { projectId, writer, baseRevision, raw } = input;
   const userId = writer.userId;
-  const denied = await providerWriterMiss(writer, projectId, 'INTERFACE_WRITER_NOT_PROJECT');
+  const facts = await permissionFactsOf(userId, projectId);
+  const denied = providerWriterRefusal(facts, 'writing the interface');
   if (denied) return { ok: false, refusals: [denied] };
   const parsed = parseInterface(raw, projectId);
   if (Array.isArray(parsed)) return { ok: false, refusals: parsed };
@@ -208,8 +207,7 @@ export async function writeInterface(input: {
     if (storedRevision !== baseRevision) {
       return { ok: false, refusals: [staleBase(baseRevision, storedRevision)] };
     }
-    const setter = current ? commitmentsSetterOf(await interfaceRevisionsBy(tx, projectId)) : null;
-    const commitments = commitmentsRefusal(writer, setter, current?.document, doc);
+    const commitments = commitmentsRefusal(facts, current?.document, doc);
     const refusals = [
       ...(commitments ? [commitments] : []),
       ...checkInterface(doc, await buildWorld(tx, self, providers)),

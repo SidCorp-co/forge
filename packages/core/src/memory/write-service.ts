@@ -3,8 +3,7 @@ import { memorySources } from '../db/schema.js';
 import { type IndexResult, indexMemory, MAX_EMBED_CHARS } from './indexer.js';
 
 /**
- * Shared service for writing a memory row. Used by REST `POST /api/memory`
- * and MCP `forge_memory.write` so both surfaces validate identically.
+ * Shared service for writing a memory row, behind REST `POST /api/memory`.
  *
  * Does NOT check authorization — callers MUST verify project membership
  * before invoking.

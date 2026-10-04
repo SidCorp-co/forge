@@ -34,8 +34,8 @@ function proposedWait(input: DesignStandingInput, revision: number): DesignWaiti
 }
 
 // cm:why whose turn a design is, first rule wins: proposed → its approver (you when you may decide);
-// returned or draft → the master that writes it, since only an agent writes a design
-// (`rules.ts:workflowWriterRefusal`); approved or not under approval → nobody
+// returned or draft → the master that writes it (a holder of workflow-designs.write); approved or
+// not under approval → nobody
 export function designWaitingOn(input: DesignStandingInput): DesignWaitingOn {
   const latest = input.latest?.revision ?? null;
   const writer = input.latest?.author ?? 'Master';

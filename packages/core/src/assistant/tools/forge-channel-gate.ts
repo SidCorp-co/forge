@@ -23,7 +23,7 @@ const no = (code: string, path: string, detail: string): GateOutcome => ({
   refusals: [{ code, path, detail }],
 });
 
-// cm:why the gate is decided only by answering its question through `answerAs`, the call `POST /api/questions/:id/answer` makes, so the option's authority (QUESTION_AUTHORITY_REQUIRED) and the note rule are the question's own
+// cm:why the gate is decided only by answering its question through `answerAs`, the call `POST /api/questions/:id/answer` makes, so the option's authority (PERMISSION_FORBIDDEN) and the note rule are the question's own
 export async function decideGateAs(args: {
   side: string;
   documentId: string;

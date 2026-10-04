@@ -1,8 +1,9 @@
 /**
  * Feedback writes (workflows `feedback-lifecycle` rev 2 and `feedback-triage` rev 2). Each runs in
  * one transaction under the project's feedback lock and answers an outcome, refusals named and
- * nothing written. A person verifies or reopens; triage, decline and the case are `triage.ts`, attachments and
- * the clarification `attachments.ts`. Every decision is a `feedback_decisions` row.
+ * nothing written. Triage, the case and the route write are `triage.ts`, which reaches the decline
+ * act here; attachments and the clarification are `attachments.ts`. Every decision is a
+ * `feedback_decisions` row.
  */
 
 import type {
@@ -19,7 +20,7 @@ import { itemEmbeddings } from '../db/schema-item-embeddings.js';
 import { mockups } from '../db/schema-mockups.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
+import { permissionFactsOf, requireCan } from '../permissions/index.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { logger } from '../logger.js';
 import type { NamedRefusal } from '../project-config/respond.js';
@@ -82,10 +83,8 @@ export async function answer(
   return { ok: true, feedback: await detailAs(viewer, projectId, id), ...extra };
 }
 
-export async function roleFacts(actor: FeedbackActor, projectId: string) {
-  const access = await effectiveProjectRole(actor.userId, projectId);
-  return { userId: actor.userId, agency: actor.agency, role: access?.role ?? null };
-}
+export const roleFacts = (actor: FeedbackActor, projectId: string) =>
+  permissionFactsOf(actor.userId, projectId);
 
 export async function decide(
   tx: Tx,
@@ -115,7 +114,7 @@ export async function decide(
   });
 }
 
-// cm:why a route picked closes the assistant's open clarification (feedback-lifecycle new -> triaged)
+// a route picked closes the assistant's open clarification (feedback-lifecycle new -> triaged)
 export async function closeClarification(tx: Tx, feedbackId: string, why: string) {
   await tx
     .update(agentQuestions)
@@ -217,7 +216,7 @@ export async function createFeedback(input: {
   dedupKey?: string | undefined;
 }): Promise<FeedbackOutcome> {
   const { projectId, actor, request } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const prepared = await preparedFeedback(projectId, actor, request);
   if (!prepared.ok) return prepared;
   let id = '';
@@ -266,10 +265,9 @@ async function personalAct(
   act: 'verified' | 'reopened',
 ): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'viewer');
+  await requireCan({ userId: actor.userId }, 'project.read', projectId);
   const forbidden = verifyActRefusal(
     await roleFacts(actor, projectId),
-    projectId,
     act === 'verified' ? 'verifying feedback' : 'reopening feedback',
   );
   if (forbidden) return { ok: false, refusals: [forbidden] };
@@ -324,7 +322,7 @@ export async function redactReporterData(input: {
   actor: FeedbackActor;
 }): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'viewer');
+  await requireCan({ userId: actor.userId }, 'project.read', projectId);
   const forbidden = redactActRefusal(await roleFacts(actor, projectId));
   if (forbidden) return { ok: false, refusals: [forbidden] };
   const first = await rowIn(db, projectId, input.ref);

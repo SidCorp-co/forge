@@ -1,20 +1,18 @@
 /**
- * The three PM reads that `forge_project_pm` served and no route did:
- * snapshot, graph and runner load.
- *
- * The write half of that tool already has routes under `pm/routes.ts`
- * (config, policies, decisions, escalations, run). These are the reads.
+ * The three PM reads: snapshot, graph and runner load. The writes (config,
+ * policies, decisions, escalations, run) are in `pm/routes.ts`.
  */
 
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { PM_GRAPH_DEFAULT_DEPTH, PM_GRAPH_MAX_DEPTH, readPmGraph } from './graph-service.js';
 import { readRunnerLoad } from './runner-load-service.js';
 import { readPmSnapshot } from './snapshot-service.js';
+import { requireHeld } from '../permissions/index.js';
 
 const paramSchema = z.object({ id: z.uuid() });
 
@@ -33,7 +31,7 @@ pmReadRoutes.use('/:id/pm/runner-load', requireAuth(), assertEmailVerified());
 
 async function assertMember(projectId: string, userId: string): Promise<void> {
   const access = await loadProjectAccess(projectId, userId);
-  assertProjectRole(access, 'viewer', 'not a project member');
+  requireHeld(access, 'project.read');
 }
 
 pmReadRoutes.get(

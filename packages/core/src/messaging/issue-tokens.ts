@@ -42,10 +42,18 @@ export function extractIssueClaims(reply: string, prefixes: readonly string[] = 
   return { urlIds, malformedUrlIds, issSeqs, claimsCreation: CREATION_CLAIM_RE.test(reply) };
 }
 
+/** A `forge new` or `forge feedback` filing, or a `forge_issues` create in a turn recorded before that tool went. */
 export function turnCreatedIssue(
   toolCalls: readonly { name: string; arguments: string }[],
 ): boolean {
-  return toolCalls.some(
-    (t) => t.name === 'forge_issues' && /"action"\s*:\s*"create"/.test(t.arguments),
-  );
+  return toolCalls.some((t) => {
+    if (t.name === 'forge_issues') return /"action"\s*:\s*"create"/.test(t.arguments);
+    if (t.name !== 'forge') return false;
+    try {
+      const argv = (JSON.parse(t.arguments) as { argv?: unknown }).argv;
+      return Array.isArray(argv) && (argv[0] === 'new' || argv[0] === 'feedback');
+    } catch {
+      return false;
+    }
+  });
 }

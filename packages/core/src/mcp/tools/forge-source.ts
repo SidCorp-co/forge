@@ -2,9 +2,7 @@
  * ISS-50 — `forge_source`, the way an agent reads and writes a change request on the project's
  * source host, whichever host that is: a GitHub pull request or a GitLab merge request.
  *
- * ISS-1074 built it for GitHub as `forge_github`. Before it, an agent that needed a diff or a
- * failing job's log shelled out to `gh` under a person's account and wrote its verdict into the
- * tracker only. The point of the tool is what it does NOT hand back: the host credential is resolved
+ * The point of the tool is what it does NOT hand back: the host credential is resolved
  * server-side and the call is made from core, through `integrations/source-host/resolve.ts`.
  *
  * The action list and what each one returns live in the `description` below — it is what a model
@@ -30,14 +28,12 @@ import { resolveSourceHost } from '../../integrations/source-host/resolve.js';
 import type { ReviewEvent, SourceHost } from '../../integrations/source-host/types.js';
 import { logger } from '../../logger.js';
 import {
-  assertPrincipalIsMember,
-  assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   type McpContext,
-  type McpTool,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 /**
  * The verbs this face refuses BY NAME rather than by schema. Nothing an agent does through it can
@@ -199,24 +195,6 @@ export const forgeSourceTool: ContextScopedMcpToolFactory = (ctx) => ({
   handler: (args) => run(args, ctx),
 });
 
-// cm:hack ISS-50 until:no project document's tool policy and no runner settings allowlist names mcp__forge__forge_github, and forge-plugin calls forge_source — the GitHub-era name stays served so a grant or deny written against it keeps meaning the same capability; its one legacy action name is translated here and nowhere else.
-export const forgeGithubAliasTool: ContextScopedMcpToolFactory = (ctx): McpTool => ({
-  name: 'forge_github',
-  reach: 'project',
-  route: '/api/projects',
-  grant: { byAction: { ...GRANTS.byAction, 'open-pull-request': 'projects:write' } },
-  description: `The former name of \`forge_source\`, kept for grants written against it — call \`forge_source\`; \`open-pull-request\` here is its \`open-change-request\`. ${DESCRIPTION}`,
-  inputSchema: zodToMcpSchema(
-    inputSchema.extend({
-      action: z.enum([...inputSchema.shape.action.options, 'open-pull-request']),
-    }),
-  ),
-  handler: (args) => {
-    const legacy = (args as { action?: unknown } | null)?.action === 'open-pull-request';
-    return run(legacy ? { ...(args as object), action: 'open-change-request' } : args, ctx);
-  },
-});
-
 /** Every source host binding's report, from each host provider's own reader. */
 async function listSourceBindings(projectId: string): Promise<unknown[]> {
   const readers = listIntegrations().flatMap((d) =>
@@ -231,13 +209,13 @@ async function dispatchAction(input: Input, ctx: McpContext): Promise<unknown> {
   const { principal } = ctx;
 
   if (input.action === 'list') {
-    await assertPrincipalIsMember(principal, projectId);
+    await requireCan({ userId: principal.userId }, 'project.read', projectId);
     return listSourceBindings(projectId);
   }
 
   const reading = input.action === 'diff' || input.action === 'check-log';
-  if (reading) await assertPrincipalIsMember(principal, projectId);
-  else await assertPrincipalIsWriter(principal, projectId);
+  if (reading) await requireCan({ userId: principal.userId }, 'project.read', projectId);
+  else await requireCan({ userId: principal.userId }, 'project.write', projectId);
 
   const host = await resolveSourceHost(projectId, 'agent');
 

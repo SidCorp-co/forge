@@ -6,7 +6,6 @@ import {
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { peopleOf } from '../lib/people.js';
 import { staleBase } from '../project-config/documents.js';
 import { readProjectDocument } from '../project-config/service.js';
@@ -19,7 +18,6 @@ import {
   parseWorkflow,
   type WorkflowRefusal,
   workflowIdentityRefusals,
-  workflowWriterRefusal,
 } from './rules.js';
 import { readStoredWorkflow, type WorkflowWrite } from './schema.js';
 import {
@@ -34,6 +32,7 @@ import {
   workflowsOf,
 } from './store.js';
 import { type ProjectDesign, type ProjectDesigns, projectDesignOf } from './template-check.js';
+import { requireCan } from '../permissions/index.js';
 
 export interface WorkflowWriter {
   userId: string;
@@ -104,14 +103,7 @@ const templateFor = (doc: WorkflowWrite, templates: readonly WorkflowTemplate[])
   doc.version === 2 ? findTemplate(templates, doc.template) : null;
 
 export async function assertWriter(writer: WorkflowWriter, projectId: string): Promise<void> {
-  const role = (await effectiveProjectRole(writer.userId, projectId))?.role ?? null;
-  const refusal = workflowWriterRefusal({ ...writer, role }, projectId);
-  if (refusal) {
-    throw new HTTPException(403, {
-      message: refusal.detail,
-      cause: { code: refusal.code, details: { refusals: [refusal] } },
-    });
-  }
+  await requireCan(writer, 'workflow-designs.write', projectId, 'writing a workflow');
 }
 
 export async function createWorkflow(input: {
@@ -244,7 +236,7 @@ export function workflowView(
 }
 
 export async function listWorkflowsAs(userId: string, projectId: string) {
-  await assertProjectAccess(projectId, userId, 'viewer');
+  await requireCan({ userId }, 'project.read', projectId);
   const rows = await workflowsOf(db, projectId);
   const [names, reasons] = await Promise.all([
     writerNames(rows),
@@ -259,7 +251,7 @@ export async function listWorkflowsAs(userId: string, projectId: string) {
 }
 
 export async function readWorkflowAs(userId: string, projectId: string, id: string) {
-  await assertProjectAccess(projectId, userId, 'viewer');
+  await requireCan({ userId }, 'project.read', projectId);
   const row = await readWorkflow(db, id);
   if (!row || row.projectId !== projectId) {
     throw notFound(`project ${projectId} holds no workflow ${id}`);

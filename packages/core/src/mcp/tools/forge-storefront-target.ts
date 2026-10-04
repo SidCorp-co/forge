@@ -9,11 +9,11 @@ import {
 } from '../../integrations/store.js';
 import type { IntegrationDeclaration } from '../../integrations/types.js';
 import {
-  assertPrincipalIsMember,
   type ContextScopedMcpToolFactory,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const inputSchema = z
   .object({
@@ -90,7 +90,7 @@ export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = (ctx) => (
     'AUTOFLOW returns { configured, provider, label, stores[], shop, orgId, storeId, storeSlug, storeName, ' +
     'themeId, commerceEnabled, siteUrl, endpoint, mcpUrl, backendResolvedLive, workflows[], routes[], shopTools }: ' +
     '`workflows[]` (id, draftVersion, code, name, version, publishedAt — null = never published) and `routes[]` are the ' +
-    'Backend Builder graph read live; `id` and `draftVersion` are what a storefront_draft verdict names (`forge_criteria`). ' +
+    'Backend Builder graph read live; `id` and `draftVersion` are what a storefront_draft verdict names (`POST /api/issues/:id/verdicts`). ' +
     'Backend Builder graph read live; when `backendResolvedLive` is false they are UNKNOWN, ' +
     '`backendUnresolvedBecause` says why, and the answer is the binding facts only. Writes land on a ' +
     'draft; `publish_backend_workflow` goes live and `revert_backend_workflow` rolls back. ' +
@@ -110,7 +110,7 @@ export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = (ctx) => (
   handler: async (args) => {
     const input = inputSchema.parse(args) as Input;
     const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-    await assertPrincipalIsMember(ctx.principal, projectId);
+    await requireCan({ userId: ctx.principal.userId }, 'project.read', projectId);
 
     const served = storefrontProviders();
     let providers = served;
