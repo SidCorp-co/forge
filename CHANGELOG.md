@@ -162,14 +162,9 @@
   `blockedBy` can name an existing issue of another requirement; an unknown or finished one is
   refused by name.
 
-- **Releases is a train and a page of its own.** The list shows the release train with each release's
-  contents grouped by requirement, then the releases under Needs you and Shipped, each row saying
-  whom it waits on. A release opens as a page with Approve release and Return with reason in the
-  header; tabs for the issues, the criteria of each issue, the checks with the batch run, and the
-  notes; and a rail holding its state, approval, run and production. Core now works out whom a
-  release waits on, whether it completes a requirement, and the reason a draft cannot be cut, and
-  a refusal such as a provider that is not live yet reads as a sentence with its code and config
-  hint behind a tooltip. Approvals name a person, never an email address.
+- **Releases is a release train and a page of its own.** A release shows whom it waits on, the
+  requirements it completes and each issue's criteria, with Approve release and Return with reason
+  in its header; a refused gate reads as a sentence, its code behind a tooltip.
 
 - **A storefront project's work can be judged on an unpublished draft.** A verdict names an Autoflow
   workflow, its draft version and a preview environment; Forge reads the draft back, and only a
