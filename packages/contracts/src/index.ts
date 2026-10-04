@@ -5,7 +5,6 @@ export * from "./body-components.js";
 export * from "./deploy-capability.js";
 export * from "./divergence-charters.js";
 export * from "./document-patch.js";
-export * from "./domain-templates.js";
 export * from "./failure-causes.js";
 export * from "./field-changes.js";
 export * from "./forge-record.js";

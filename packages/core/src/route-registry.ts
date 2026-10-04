@@ -18,7 +18,6 @@ import {
   agentSessionProjectReadRoutes,
   agentSessionRoutes,
 } from './agent-sessions/routes.js';
-import { agentRoutes } from './agents/routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
 import {
   baDoorRoutes,
@@ -52,7 +51,6 @@ import {
   deviceUserRoutes,
   runLedgerRoutes,
 } from './devices/routes.js';
-import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { ecosystemJsonSchemas } from './ecosystem/index.js';
 import {
   busRoutes,
@@ -370,7 +368,6 @@ function mountAgentRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api', speakerLinkProjectRoutes);
   app.route('/api', speakerLinkMeRoutes);
   app.route('/api/me', meRecentChangesRoutes);
-  app.route('/api/agents', agentRoutes);
   app.route('/api/conversations', conversationRoutes);
   app.route('/api/agent-sessions', agentSessionAttachmentRoutes);
   app.route('/api/agent-sessions', agentSessionRoutes);
@@ -421,7 +418,6 @@ function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/usage-records', usageRecordRoutes);
   app.route('/api/app-config', memoryModelRoutes);
   app.route('/api/app-config', appConfigRoutes);
-  app.route('/api/domain-templates', domainTemplateRoutes);
   app.route('/api/runners', runnerRoutes);
 
   if (isEnabled('pmAgent')) app.route('/api/projects', pmRoutes);

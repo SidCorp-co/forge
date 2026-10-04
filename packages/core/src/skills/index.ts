@@ -9,5 +9,4 @@ export {
   failReconcileRunIfNoVerdictRecorded,
 } from './reconcile-service.js';
 export { registerSkillForProject } from './registration-service.js';
-export { resolveOrAdoptProjectSkill } from './service.js';
 export { createUpdatePacket } from './update-packets.js';

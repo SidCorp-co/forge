@@ -17,7 +17,6 @@ import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { stampGitCredentialRef } from './devices/index.js';
-import { seedDomainTemplates } from './domain-templates/index.js';
 import {
   contractProviderShortfalls,
   interfaceContractsOf,
@@ -238,7 +237,6 @@ if (isMain) {
   );
   await runOnceBackfills();
   await sweepPolicyLanded();
-  await seedDomainTemplates(db);
   bootstrapChatProviders();
   registerWebConversationAdapter();
   registerRoomChat();

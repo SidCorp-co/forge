@@ -1,4 +1,7 @@
-import { AUTONOMOUS_DRIVER_STATUSES, ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import {
+  AUTONOMOUS_DRIVER_STATUSES,
+  ISSUE_TERMINAL_STATUSES,
+} from '@forge/contracts/issue-machine';
 import {
   CONTENT_LANGUAGE_LIMITS,
   keepTermsInEnglishSchema,

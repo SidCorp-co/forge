@@ -41,7 +41,6 @@ const registry = pipelineRegistryResponseSchema.parse(await api.get("/pipeline/r
 | [`src/rows.ts`](./src/rows.ts) | Row types inferred from Drizzle table schemas in `@forge/core` |
 | [`src/requests.ts`](./src/requests.ts) | Request input types (`z.infer` of core's validators, re-exported as types — no runtime Zod) |
 | [`src/responses.ts`](./src/responses.ts) | Response envelope shapes |
-| [`src/domain-templates.ts`](./src/domain-templates.ts) | Reusable domain literal templates (status enums, etc.) |
 | [`src/integrations.ts`](./src/integrations.ts) | Cross-app integration types |
 | [`src/notifications.ts`](./src/notifications.ts) | Notification types |
 | [`src/skill-facts.ts`](./src/skill-facts.ts) | Skill-facts types |

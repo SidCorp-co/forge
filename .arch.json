@@ -8,9 +8,6 @@
     "core-agent-sessions": [
       "packages/core/src/agent-sessions/**"
     ],
-    "core-agents": [
-      "packages/core/src/agents/**"
-    ],
     "core-app-config": [
       "packages/core/src/app-config/**"
     ],
@@ -49,9 +46,6 @@
     ],
     "core-runs": [
       "packages/core/src/runs/**"
-    ],
-    "core-domain-templates": [
-      "packages/core/src/domain-templates/**"
     ],
     "core-embeddings": [
       "packages/core/src/embeddings/**"

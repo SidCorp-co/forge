@@ -104,13 +104,6 @@
         "sessionInbox"
       ]
     },
-    "agents": {
-      "kind": "domain",
-      "context": "execution",
-      "owns": [
-        "agents"
-      ]
-    },
     "api-contract": {
       "kind": "door",
       "context": "platform"
@@ -239,13 +232,6 @@
         "deviceSkills",
         "devices",
         "pairingCodes"
-      ]
-    },
-    "domain-templates": {
-      "kind": "domain",
-      "context": "design",
-      "owns": [
-        "domainTemplates"
       ]
     },
     "ecosystem": {

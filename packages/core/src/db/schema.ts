@@ -1893,47 +1893,6 @@ export const usageRecordsRelations = relations(usageRecords, ({ one }) => ({
 
 export * from './schema-notifications.js';
 
-export const agentApprovalModes = ['preview', 'auto-create'] as const;
-export type AgentApprovalMode = (typeof agentApprovalModes)[number];
-
-// Folds the legacy `agent-definition` template into the agent row itself —
-// no template inheritance per Tier B2 plan.
-export const agents = pgTable(
-  'agents',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    name: text('name').notNull(),
-    type: text('type').notNull(),
-    description: text('description'),
-    enabled: boolean('enabled').notNull().default(false),
-    focusAreas: jsonb('focus_areas')
-      .notNull()
-      .default(
-        sql`'["feature-gaps","journey-completeness","polish","accessibility","ux-improvements"]'::jsonb`,
-      ),
-    customInstructions: text('custom_instructions'),
-    approvalMode: text('approval_mode', { enum: agentApprovalModes }).notNull().default('preview'),
-    maxProposals: integer('max_proposals').notNull().default(10),
-    excludeCategories: jsonb('exclude_categories').notNull().default(sql`'[]'::jsonb`),
-    promptTemplate: text('prompt_template'),
-    reindexPromptTemplate: text('reindex_prompt_template'),
-    knowledge: text('knowledge'),
-    memory: text('memory'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    projectTypeIdx: index('agents_project_type_idx').on(t.projectId, t.type),
-  }),
-);
-
-export const agentsRelations = relations(agents, ({ one }) => ({
-  project: one(projects, { fields: [agents.projectId], references: [projects.id] }),
-}));
-
 export const agentSessions = pgTable(
   'agent_sessions',
   {
@@ -2123,21 +2082,6 @@ export const appConfig = pgTable('app_config', {
 export const appConfigRelations = relations(appConfig, ({ one }) => ({
   project: one(projects, { fields: [appConfig.projectId], references: [projects.id] }),
 }));
-
-// v1 EPIC 5 (ISS-274) — content-addressed domain template manifests. Mirrors
-// the skills seed pattern: builtin manifests get re-seeded when their
-// `contentHash` changes; user-applied snapshots are not retroactively bumped.
-export const domainTemplates = pgTable('domain_templates', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  key: text('key').notNull().unique(),
-  name: text('name').notNull(),
-  description: text('description'),
-  manifest: jsonb('manifest').notNull(),
-  contentHash: text('content_hash').notNull(),
-  builtin: boolean('builtin').notNull().default(false),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
 
 // v1 EPIC 5 (ISS-274) — append-only retrieval log. Today only `/api/memory/search`
 // (`source='api-search'`) populates this; EPIC 1's chat-prompt-builder will add

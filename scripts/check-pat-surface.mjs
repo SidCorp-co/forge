@@ -61,14 +61,6 @@ const EXEMPT = [
     route: 'GET /api/runners/types',
     why: 'the static list of runner adapters this build registers; no project data',
   },
-  {
-    route: 'GET /api/domain-templates',
-    why: 'the global domain-template catalogue, one table no project owns',
-  },
-  {
-    route: 'GET /api/domain-templates/:key',
-    why: 'one entry of the same global catalogue',
-  },
 ];
 
 function servedTable() {
