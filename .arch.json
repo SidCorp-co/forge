@@ -53,9 +53,6 @@
     "core-feedback": [
       "packages/core/src/feedback/**"
     ],
-    "core-git": [
-      "packages/core/src/git/**"
-    ],
     "core-guides": [
       "packages/core/src/guides/**"
     ],
@@ -157,9 +154,6 @@
     ],
     "core-skills": [
       "packages/core/src/skills/**"
-    ],
-    "core-storage": [
-      "packages/core/src/storage/**"
     ],
     "core-tasks": [
       "packages/core/src/tasks/**"

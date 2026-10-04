@@ -1,5 +1,5 @@
 import { autoflowIntegration } from './integrations/autoflow/index.js';
-import { coolifyIntegration } from './integrations/coolify/index.js';
+import { coolifyIntegration } from './integrations/deploy/index.js';
 import { epodsystemIntegration } from './integrations/epodsystem/index.js';
 import { githubIntegration } from './integrations/github/index.js';
 import { gitlabIntegration } from './integrations/gitlab/index.js';

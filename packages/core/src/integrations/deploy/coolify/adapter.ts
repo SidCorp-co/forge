@@ -1,5 +1,5 @@
-import { logger } from '../../observability/logger.js';
-import { traceStep } from '../../observability/sentry.js';
+import { logger } from '../../../observability/logger.js';
+import { traceStep } from '../../../observability/sentry.js';
 import {
   type DeployTargetDispatch,
   type DispatchingAdapterMethods,
@@ -11,7 +11,7 @@ import {
   recordDelivery,
   updateConnection,
   updateDelivery,
-} from '../index.js';
+} from '../../index.js';
 import { verifyCoolifyBindingTarget } from './binding-target.js';
 import { breakerAllowsDispatch, maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
 import { CoolifyApiError, coolifyAbilityForRoute, describeCoolifyForbidden } from './client.js';

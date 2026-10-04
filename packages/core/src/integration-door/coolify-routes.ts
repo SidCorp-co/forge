@@ -27,7 +27,7 @@ import {
   credentialFromSecrets,
   describeCoolifyForbidden,
   fetchCoolifyApplications,
-} from '../integrations/coolify/index.js';
+} from '../integrations/deploy/index.js';
 import {
   buildContextFromBinding,
   findBindingWithConnectionById,

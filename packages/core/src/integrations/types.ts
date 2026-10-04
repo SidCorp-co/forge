@@ -485,7 +485,7 @@ export interface IntegrationDeclaration<
   readonly gitCredential?: GitCredentialMint;
 }
 
-/** What `git/host-credential.ts` asks of a provider for one repository git is fetching. */
+/** What `source-host/host-credential.ts` asks of a provider for one repository git is fetching. */
 export interface GitCredentialMint {
   /** Whether this binding is complete enough to mint for at all — the provision flag reads it. */
   serves(config: Record<string, unknown>): boolean;

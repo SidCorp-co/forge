@@ -3,6 +3,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { commentAttachments } from '../db/schema.js';
+import { getStorage } from '../integrations/index.js';
 import {
   allowedSetForTarget,
   mimeRefusalMessage,
@@ -14,7 +15,6 @@ import {
 import { lockAttachmentName, type NameCheckExecutor } from '../lib/attachment-name-lock.js';
 import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
-import { getStorage } from '../storage/index.js';
 
 export { safeName };
 

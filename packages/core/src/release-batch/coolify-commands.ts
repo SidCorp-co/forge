@@ -11,7 +11,7 @@
  */
 
 import type { CoolifyRefusalCode } from '@forge/contracts/integrations';
-import type { CoolifyConfig } from '../integrations/coolify/index.js';
+import type { CoolifyConfig } from '../integrations/deploy/index.js';
 import {
   effectiveConfig,
   findLastOutbound,

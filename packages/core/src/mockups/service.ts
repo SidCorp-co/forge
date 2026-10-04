@@ -14,12 +14,12 @@ import { db, type Tx } from '../db/client.js';
 import { mockups } from '../db/schema-mockups.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
 import { rowIn as feedbackRowIn, issueRefIn, requirementRefIn } from '../feedback/index.js';
+import { getStorage } from '../integrations/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
-import { getStorage } from '../storage/index.js';
 import { mockupContent } from './content.js';
 import { type MockupActor, type MockupRow, mockupKey, mockupViews, rowIn } from './read.js';
 import {

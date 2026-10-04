@@ -2,8 +2,11 @@ import type { RerankReport } from '@forge/contracts/memory';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { type MemorySource, retrievalAnalytics } from '../db/schema.js';
-import { EmbeddingUnavailableError, embedQuery } from '../integrations/embeddings/index.js';
-import { fastModelConfigured } from '../integrations/llm/index.js';
+import {
+  EmbeddingUnavailableError,
+  embedQuery,
+  fastModelConfigured,
+} from '../integrations/llm/index.js';
 import { logger } from '../observability/logger.js';
 import { expandIssueRelations } from './expand-relations.js';
 import { inRerankHoldout, rerankHits, rerankPoolSize } from './rerank.js';

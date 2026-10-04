@@ -15,7 +15,7 @@ import {
   requirements,
 } from '../db/schema-requirements.js';
 import { EMBEDDING_PROVIDER_NOT_CONFIGURED, writeItemEmbedding } from '../embeddings/index.js';
-import { embeddingsConfigured, embedWithModel } from '../integrations/embeddings/index.js';
+import { embeddingsConfigured, embedWithModel } from '../integrations/llm/index.js';
 import { dataPolicyOf, type EgressSurface, egressAt, egressText } from '../lib/data-egress.js';
 import { logger } from '../observability/logger.js';
 

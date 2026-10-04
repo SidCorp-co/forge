@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
-import { coolifyIntegration } from '../integrations/coolify/index.js';
+import { coolifyIntegration } from '../integrations/deploy/index.js';
 import {
   enqueueOutboundDispatch,
   findDeliveryByRequestId,

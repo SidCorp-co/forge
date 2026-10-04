@@ -10,7 +10,7 @@ import {
   type BindingWithConnection,
   buildContextFromBinding,
   isPreviousCredentialValid,
-} from '../index.js';
+} from '../../index.js';
 import { CoolifyClient } from './client.js';
 import { flattenLogs, logDigest, redactCoolifyEnvDump, tailLog } from './logs.js';
 import type { CoolifyConfig, CoolifySecrets } from './types.js';

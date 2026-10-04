@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { EmbeddingUnavailableError } from '../integrations/embeddings/index.js';
+import { EmbeddingUnavailableError } from '../integrations/llm/index.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import {

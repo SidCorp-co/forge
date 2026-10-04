@@ -59,7 +59,6 @@ import {
   membershipRoutes,
 } from './ecosystem/routes.js';
 import { feedbackRoutes } from './feedback/routes.js';
-import { deviceGitCredentialRoutes } from './git/routes.js';
 import { guideRoutes } from './guides/routes.js';
 import {
   opsHealthProjectRoutes,
@@ -68,6 +67,7 @@ import {
 } from './health/routes.js';
 import { installRoutes } from './install/routes.js';
 import {
+  deviceGitCredentialRoutes,
   githubCallbackRoutes,
   githubConnectRoutes,
   integrationConnectionsRoutes,

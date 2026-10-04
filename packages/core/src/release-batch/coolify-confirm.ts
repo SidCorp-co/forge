@@ -2,7 +2,7 @@ import {
   buildClient,
   type CoolifyConfig,
   type CoolifySecrets,
-} from '../integrations/coolify/index.js';
+} from '../integrations/deploy/index.js';
 import {
   buildContextFromBinding,
   findBindingById,

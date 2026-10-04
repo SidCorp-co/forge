@@ -21,7 +21,7 @@ import {
   type CoolifyConfig,
   fetchCoolifyDeploymentLogs,
   fetchCoolifyRuntimeLogs,
-} from '../integrations/coolify/index.js';
+} from '../integrations/deploy/index.js';
 import { findLastOutbound } from '../integrations/index.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';

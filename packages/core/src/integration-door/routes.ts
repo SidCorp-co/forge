@@ -315,5 +315,6 @@ integrationsRoutes.get('/:projectId/integrations/mcp-preview', async (c) => {
   return c.json(await buildMcpPreview(projectId));
 });
 
+export { deviceGitCredentialRoutes } from './git-credential-routes.js';
 export { githubCallbackRoutes, githubConnectRoutes } from './github-connect-routes.js';
 export { issueMergePullRequestRoutes } from './issue-merge-routes.js';

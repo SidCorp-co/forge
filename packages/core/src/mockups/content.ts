@@ -15,9 +15,9 @@ import { parseWireframe } from '@forge/contracts/wireframe';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issueAttachments, issues } from '../db/schema.js';
+import { getStorage } from '../integrations/index.js';
 import { looksBinary, mimeFromName, safeName } from '../lib/attachment-mime.js';
 import { storedText } from '../lib/data-egress.js';
-import { getStorage } from '../storage/index.js';
 import {
   contentRefusal,
   type MockupRefusal,

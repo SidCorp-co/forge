@@ -72,6 +72,8 @@ export {
   TEST_PROBE_TIMEOUT_MS,
   toIso,
 } from './route-helpers.js';
+export { getStorage } from './storage/factory.js';
+export { isEnoent } from './storage/types.js';
 export {
   type BindingWithConnection,
   buildContextFromBinding,

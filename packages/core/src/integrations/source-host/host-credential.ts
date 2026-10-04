@@ -13,15 +13,15 @@
 import type { GitRefusalCode } from '@forge/contracts/git';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { db } from '../db/client.js';
-import { integrationBindings, integrationConnections, runners } from '../db/schema.js';
+import { db } from '../../db/client.js';
+import { integrationBindings, integrationConnections, runners } from '../../db/schema.js';
+import { refuser } from '../../lib/refusal.js';
 import {
   decryptConnectionSecrets,
   effectiveConfig,
   type GitCredentialMint,
   listIntegrations,
-} from '../integrations/index.js';
-import { refuser } from '../lib/refusal.js';
+} from '../index.js';
 
 const refuse = refuser<GitRefusalCode>('GIT_REFUSED');
 

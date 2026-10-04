@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type ItemEmbeddingStatus, itemEmbeddings } from '../db/schema-item-embeddings.js';
-import { embeddingsConfigured, embedWithModel } from '../integrations/embeddings/index.js';
+import { embeddingsConfigured, embedWithModel } from '../integrations/llm/index.js';
 import { dataPolicyOf, type EgressSurface, egressText } from '../lib/data-egress.js';
 
 export const EMBEDDING_PROVIDER_NOT_CONFIGURED =

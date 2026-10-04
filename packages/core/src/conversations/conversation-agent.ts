@@ -27,11 +27,11 @@ import {
 } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
+import { getStorage } from '../integrations/index.js';
 import { buildProgressFactsBlock, computeProjectProgress } from '../issues/index.js';
 import { egressShown } from '../lib/data-egress.js';
 import type { ProgressFacts } from '../messaging/facts.js';
 import { logger } from '../observability/logger.js';
-import { getStorage } from '../storage/index.js';
 import { attachmentIdFromRef, loadConversationAttachment } from './attachment-service.js';
 import { scheduleAck } from './conversation-agent-ack.js';
 import {

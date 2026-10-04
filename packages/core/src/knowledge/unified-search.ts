@@ -1,4 +1,4 @@
-import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/index.js';
+import { EmbeddingUnavailableError, embed } from '../integrations/llm/index.js';
 import type { MemoryHit } from '../memory/index.js';
 import { runMemorySearch } from '../memory/index.js';
 import { logger } from '../observability/logger.js';

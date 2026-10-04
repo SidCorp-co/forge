@@ -294,7 +294,7 @@ already carries is refused rather than released again — a rerun of an older re
 job would otherwise publish that code under a version higher than what followed it.
 
 Withdrawing a release takes two acts, not one: core's
-`packages/core/src/integrations/published-releases/fetch-release.ts` never moves `RUNNER_RELEASE_DIR` backwards,
+`packages/core/src/integrations/github/published-releases/fetch-release.ts` never moves `RUNNER_RELEASE_DIR` backwards,
 so deleting a tag and its GitHub Release leaves
 the bad build still being served. Either delete `VERSION` and the
 `forge-runner-*` assets from that directory on the core host, or publish a higher

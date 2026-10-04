@@ -1,6 +1,10 @@
 import { env } from '../../config/env.js';
 import { EgressRefused, type EgressScope, egressScoped } from '../../lib/data-egress.js';
-import { type EmbedDetailed, EmbeddingsClient, EmbeddingUnavailableError } from './client.js';
+import {
+  type EmbedDetailed,
+  EmbeddingsClient,
+  EmbeddingUnavailableError,
+} from './embeddings-client.js';
 
 /** What `embed` needs of a client; the real one and a test's stand-in both fit. */
 interface EmbeddingsPort {
@@ -98,4 +102,4 @@ export async function embedBatch(scope: EgressScope, texts: string[]): Promise<n
   return client.embedBatch(await Promise.all(texts.map((t) => sent(scope, t))));
 }
 
-export { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from './client.js';
+export { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from './embeddings-client.js';

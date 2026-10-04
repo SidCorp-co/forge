@@ -1,11 +1,11 @@
-import { logger } from '../../observability/logger.js';
-import { reportCondition } from '../../observability/sentry.js';
+import { logger } from '../../../observability/logger.js';
+import { reportCondition } from '../../../observability/sentry.js';
 import {
   findBindingById,
   findConnectionById,
   recentOutboundDeliveries,
   updateConnection,
-} from '../index.js';
+} from '../../index.js';
 
 /** Per the issue's AC: 3 consecutive failed outbound deliveries within 5 minutes trips the breaker. */
 const BREAKER_FAILURE_THRESHOLD = 3;

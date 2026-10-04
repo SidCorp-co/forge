@@ -1,5 +1,14 @@
 export { bootstrapChatProviders, defaultChatProviderId } from './bootstrap.js';
 export {
+  EMBEDDING_UNAVAILABLE,
+  EmbeddingUnavailableError,
+  embed,
+  embedBatch,
+  embeddingsConfigured,
+  embedQuery,
+  embedWithModel,
+} from './embeddings.js';
+export {
   callFastModel,
   callFastModelObject,
   type FastModelMiss,

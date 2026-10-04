@@ -124,7 +124,7 @@ export async function upsertKnowledgeEntries(
   let vectors: Array<number[] | null> = entries.map(() => null);
   let degraded = false;
   try {
-    const { embedBatch } = await import('../integrations/embeddings/index.js');
+    const { embedBatch } = await import('../integrations/llm/index.js');
     const embedded = await embedBatch(
       { surface: 'knowledge' },
       entries.map((e) => knowledgeEmbedInput(e.title, e.body)),
@@ -136,7 +136,7 @@ export async function upsertKnowledgeEntries(
     }
     vectors = embedded;
   } catch (err) {
-    const { EmbeddingUnavailableError } = await import('../integrations/embeddings/index.js');
+    const { EmbeddingUnavailableError } = await import('../integrations/llm/index.js');
     if (!(err instanceof EmbeddingUnavailableError)) throw err;
     degraded = true;
     logger.warn(

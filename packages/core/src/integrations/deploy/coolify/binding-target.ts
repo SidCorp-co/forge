@@ -1,5 +1,5 @@
-import type { BindingTargetRefusal, VerifyBindingTargetArgs } from '../index.js';
-import { decryptConnectionSecrets, type IntegrationConnectionRow } from '../index.js';
+import type { BindingTargetRefusal, VerifyBindingTargetArgs } from '../../index.js';
+import { decryptConnectionSecrets, type IntegrationConnectionRow } from '../../index.js';
 import { credentialFromSecrets, fetchCoolifyApplications } from './applications.js';
 import { CoolifyApiError, describeCoolifyForbidden } from './client.js';
 import type { CoolifyConfig, CoolifySecrets } from './types.js';

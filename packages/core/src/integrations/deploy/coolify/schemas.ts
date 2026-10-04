@@ -9,7 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../index.js';
+import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../../index.js';
 
 const coolifyTargetSchema = z
   .object({
