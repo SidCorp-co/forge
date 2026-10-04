@@ -149,8 +149,8 @@ pmRoutes.post(
 
 /**
  * Operator response to a PM escalation. Posts a comment on each issue the
- * decision referenced (memory indexer auto-embeds via the `commentCreated`
- * hook), marks the matching `pm_escalation` notification rows as read, and
+ * decision referenced (memory indexer auto-embeds via the `comment.created`
+ * event), marks the matching `pm_escalation` notification rows as read, and
  * spawns a follow-up PM session with `cause='operator-reply'`.
  */
 pmRoutes.post(

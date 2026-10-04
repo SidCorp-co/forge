@@ -223,14 +223,20 @@ A write a rule refuses answers **422** with one body, and nothing is written:
   (`packages/core/src/db/schema-feedback.ts:feedbackDecisions`); overwriting the last one loses
   history.
 - **A fact another module reacts to is an outbox event**, written in the act's transaction to the
-  one durable outbox (`packages/core/src/db/schema.ts:pipelineOutbox`) and typed in contracts. The
-  in-memory bus (`packages/core/src/pipeline/hooks.ts:HooksBus`) is not that outbox, and a new
-  reaction is not built on it.
+  one durable outbox (`packages/core/src/db/schema.ts:pipelineOutbox`) by
+  `packages/core/src/outbox/emit.ts:emitEvent`, its types in
+  `packages/contracts/src/outbox-events.ts:OUTBOX_EVENT_TYPES`. A reaction is a named consumer
+  (`packages/core/src/outbox/consumers.ts:consume`), registered in
+  `packages/core/src/outbox-consumers.ts:registerOutboxConsumers` and delivered by the outbox worker,
+  which retries only the consumers that failed. There is no in-memory bus.
 - **An event nobody consumes is not emitted**, and a subscription to an event nobody emits is
   removed. Each event node of an approved design maps to an event kind or to "the row is the
   record".
 - **One act yields one record and at most one event**, not a record plus an activity row plus an
-  outbox row plus a push. A WebSocket push is a consumer of the event.
+  outbox row plus a push. A kernel move is its `kernel_transitions` row plus one `<entity>.transitioned`
+  event for the machines and targets in
+  `packages/contracts/src/outbox-events.ts:TRANSITION_EVENTS`; the activity line and the WebSocket
+  push are consumers of that event.
 - **Comments on other entities** sit on exactly one of issue | requirement | workflow | feedback
   (`comments_scope_chk`), with a `packages/core/src/db/schema-comments.ts:commentEvents` row per post
   and edit.
