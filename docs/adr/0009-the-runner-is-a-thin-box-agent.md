@@ -16,7 +16,7 @@ Two readings of the remaining production code disagreed about what it was:
   a master protocol and its own verdicts, so it seemed to duplicate core across the board.
 - **The value census** (2026-10-05, `~/forge-local-docs/value-census.html`) corrected that. Most of
   what looked duplicated is split on purpose:
-  - **The box ledger is the authority by design** (`runner/ledger.rs`, ISS-933), and core keeps
+  - **The box ledger is the authority by design** (`packages/runner/crates/forge-runner-core/src/runner/ledger.rs`, ISS-933), and core keeps
     a mirror of it (ISS-934). Only the box can say which processes and checkouts it holds.
   - **The reapers are split on purpose.** Core reaps leases and state; the runner reaps processes
     and worktrees, which only the machine can see.
@@ -84,7 +84,7 @@ The choices inside that, and why:
 ### How the change is made
 
 - **Cleanup first (ISS-216).** Delete legacy and unused code, the Rust test modules and
-  `tests/` (QA restores them, as ISS-172 did for TS), and any decision code core already makes.
+  the crates' integration-test directories (QA restores them, as ISS-172 did for TS), and any decision code core already makes.
   Decision code core should own but does not yet is listed, not moved. No crate split.
 - **Simplify second (ISS-218).** Split into the crates above and turn shared state into actors.
 - **The wire protocol keeps working** against the core on `dev` through both phases. A change a
