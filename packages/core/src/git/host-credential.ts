@@ -26,7 +26,7 @@ import { refuser } from '../lib/refusal.js';
 
 const refuse = refuser<GitRefusalCode>('GIT_REFUSED');
 
-export interface GitCredentialGrant {
+interface GitCredentialGrant {
   username: string;
   password: string;
   expiresAt: string;

@@ -6,8 +6,8 @@ import { createHash } from 'node:crypto';
 import { FILTERED } from '@forge/observability';
 import type { CoolifyDeploymentLogLine } from './types.js';
 
-export const LOG_MAX_LINES = 100;
-export const LOG_MAX_BYTES = 16 * 1024;
+const LOG_MAX_LINES = 100;
+const LOG_MAX_BYTES = 16 * 1024;
 
 const ENV_DUMP_MARKER = /Creating \.env file with runtime variables/i;
 const ENV_ASSIGNMENT_LINE = /^(\s*(?:export\s+)?[A-Z][A-Z0-9_]*)\s*=.*$/;

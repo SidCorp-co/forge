@@ -25,7 +25,7 @@ const coolifyTargetSchema = z
     ...(t.healthUrl ? { healthUrl: t.healthUrl } : {}),
   }));
 
-export const COOLIFY_ROLLBACK_MODE = 'coolify-image' as const;
+const COOLIFY_ROLLBACK_MODE = 'coolify-image' as const;
 
 const COOLIFY_ROLLBACK_PROSE_REFUSAL =
   'rollback on a Coolify binding is an action, not a paragraph: Coolify exposes `GET /applications/{uuid}/rollback-images` and `POST /applications/{uuid}/rollback`, and Forge performs them. Send {"mode":"coolify-image"}. Free text is kept only for channels whose API cannot express a rollback (ISS-925).';

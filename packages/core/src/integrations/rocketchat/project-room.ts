@@ -1,7 +1,7 @@
 import { activeRocketChatBinding } from './binding.js';
 import type { RocketChatBindingConfig } from './types.js';
 
-export interface RoomBinding {
+interface RoomBinding {
   connectionId: string;
   rid: string;
 }

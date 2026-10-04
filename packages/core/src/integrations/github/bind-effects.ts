@@ -12,7 +12,7 @@ export function githubInboundSecret(connection: IntegrationConnectionRow): strin
   return secrets.webhookSecret ?? null;
 }
 
-export type BoundRepositoryOutcome =
+type BoundRepositoryOutcome =
   | { kind: 'not-a-repository' }
   | { kind: 'declared'; repository: string }
   | { kind: 'undeclared'; bound: string; detail: string }

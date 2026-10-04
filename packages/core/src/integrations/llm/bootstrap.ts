@@ -6,8 +6,8 @@ import { createAnthropicProvider } from './anthropic.js';
 import { createOpenAIProvider } from './openai.js';
 import { listProviders, register } from './registry.js';
 
-export const CHAT_PROVIDER_ID = 'openai';
-export const ANTHROPIC_PROVIDER_ID = 'anthropic';
+const CHAT_PROVIDER_ID = 'openai';
+const ANTHROPIC_PROVIDER_ID = 'anthropic';
 
 const LEGACY_PROVIDER_IDS = ['litellm', 'gemini'] as const;
 

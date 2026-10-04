@@ -59,7 +59,7 @@ export function releaseDownloadUrl(repo: string, tag: string, name: string): str
   return `https://github.com/${repo}/releases/download/${tag}/${name}`;
 }
 
-export type AssetDownload = { ok: true; bytes: Buffer } | { ok: false; status: number };
+type AssetDownload = { ok: true; bytes: Buffer } | { ok: false; status: number };
 
 export async function downloadReleaseAsset(
   url: string,
