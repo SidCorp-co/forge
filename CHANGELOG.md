@@ -8,6 +8,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Development > Agents / Runs lists every run, grouped by what needs attention (ISS-111).** The
+  project master sits beside them, and each run and the master has a peek and a full page.
+
+- **A requirement can link the contracts it is built on (ISS-149).** Every agree, re-baseline and
+  re-pin pins each linked contract's current version, and a re-pin is offered when a newer version
+  is approved.
+
 ## [0.4.0-dev.2] - 2026-10-04
 
 Mockups on requirements, feedback and issues; automation and run states read clearly
