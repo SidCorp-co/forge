@@ -16,7 +16,8 @@ requirements and workflow designs.
   no hand-kept list of divergences on this page.
 - **The import rules block.** `scripts/check-module-boundaries.mjs` runs dependency-cruiser over
   `packages/core/src` with rules generated from `packages/core/src/modules.json`: context direction,
-  kind direction, runtime cycles between modules, face-only access and adapters through their port.
+  kind direction, runtime cycles between modules, face-only access, adapters through their port,
+  and read models SELECTing only the tables they declare under `reads`.
   Today's violations are frozen in `.forge/module-boundaries-baseline.json`; a new violation, an
   entry that no longer occurs, or a rule whose frozen count rose fails, so the baseline only
   shrinks. It runs in `pnpm verify` and CI.
@@ -77,13 +78,14 @@ a door.
 |---|---|---|
 | **kernel** | The job, session, run and issue machines, the transition engine, leases, evidence and records (a job's usage records among them), retry, escalation, the outbox, and memberships with their roles and grants (the permission kernel's own data) | Hold a product rule; call an adapter |
 | **domain** | One product entity family: requirements, feedback, release, chat, users and sign-in, and so on | Compute a fact another module also computes |
-| **read-model** | Derived facts only: standing, waiting-on, needs-you, coverage, counts, the system graph | Write any table |
+| **read-model** | Derived facts only: standing, waiting-on, needs-you, coverage, counts, the system graph | Write any table but its own projection; SELECT a table its `reads` does not declare |
 | **adapter** | One external system behind a role-named port ([ADR 0006](../adr/0006-every-external-system-is-reached-through-one-adapter-port.md)) | Import a domain, a kernel module or a read model |
 | **door** | The route-mount registry, the MCP registry, WebSocket, inbound webhooks, and the integration door (a provider's routes and MCP tools, which reach its adapter through the port) | Hold a rule or a query |
 | **platform** | The db client and schema, `lib`, middleware, queue, config, observability, the credential helpers (`credentials`) | Import any other kind |
 
 **Who owns tables.** A kernel, a domain, an adapter or a platform module may own tables; a read
-model and a door own none. An adapter owns only its own bookkeeping with the vendor (connections,
+model owns none but the projection tables it declares under `projections` (BC-19), and a door owns
+none. An adapter owns only its own bookkeeping with the vendor (connections,
 deliveries, mirrored vendor state), never a product entity. A platform module owns only its own
 bookkeeping (backfill markers, tokens, the embedding index).
 
@@ -98,7 +100,7 @@ door ──▶ read-model ──▶ domain ──▶ kernel ──▶ platform
 | Kind | May import |
 |---|---|
 | door | door, read-model, domain, kernel, adapter (port index only), platform |
-| read-model | read-model, domain, kernel, platform |
+| read-model | read-model, domain, kernel, platform; an owner's read files for a table it declares under `reads` |
 | domain | domain, kernel, adapter, platform |
 | kernel | kernel, platform |
 | adapter | adapter, platform |
@@ -112,8 +114,9 @@ door ──▶ read-model ──▶ domain ──▶ kernel ──▶ platform
   loading.
 - **Inbound vendor traffic** (a webhook, a chat socket, a poll) enters through a door and calls the
   module that owns the effect. The adapter only speaks the vendor's protocol.
-- **A domain that gates on a derived fact** applies the fact's predicate from contracts to its own
-  rows; it does not import the read model.
+- **A domain that gates on a derived fact** applies the fact's predicate from contracts to the input
+  the fact's one input-builder answers (BC-19), inside its own write transaction; it does not import
+  the read model.
 
 ## Public face (BC-13)
 
@@ -201,8 +204,8 @@ và CLI hơn thì không cần MCP".
 
 - **One owner.** Every table is listed under exactly one module's `owns` in
   `packages/core/src/modules.json`. Only that module inserts, updates or deletes its rows, by
-  drizzle or raw SQL. Another module reads through the owner's read functions and writes by
-  calling the owner's service.
+  drizzle or raw SQL. Another module writes by calling the owner's service, and reads through the
+  owner's read functions, except a read model, which SELECTs the tables it declares (BC-19).
 - **Ids and scope.** A `uuid` primary key and `project_id` NOT NULL referencing `projects` with
   `on delete cascade`, or `issue_id` the same way for an issue-scoped row. Every list index leads
   with that scope column.
@@ -368,8 +371,44 @@ written:
   `packages/contracts/src/standing.ts:Standing<Group, WaitingKind>`: its groups are a subset of
   `STANDING_GROUPS`, its waiting kinds a subset of `WAITING_KINDS`, and its group labels a
   `StandingGroupLabels`. Needs-you is the one predicate `standing.ts:needsViewer` over that shape.
-- **A predicate is declared once**, in contracts, and both the read model and any gate apply that
-  one predicate.
+- **A read model reads the data directly.** It SELECTs the owners' tables or views it lists under
+  `reads` on its entry in `packages/core/src/modules.json`, and writes none. It does not build a
+  fact by calling other domains' read functions row by row, which is an N+1 read. The boundary
+  check refuses a read model file that SELECTs a table its `reads` does not name (a raw SQL `FROM`
+  or `JOIN`, or a value import from a schema file: `undeclared-read`) and a declared read nothing
+  uses. A read model may import an owner's read files (`read.ts`, `<x>-read.ts`, anything under
+  `read/`) for a table it declares, and nothing else behind the owner's face.
+- **The reference shape is `packages/core/src/runs/facts-read.ts`.** One statement per table for
+  the whole page, never one per row, collected into maps keyed by row
+  (`packages/core/src/runs/facts-read.ts:readTables`); then a typed facts object per row
+  (`packages/core/src/runs/facts.ts:gatherFacts`); then one pure function from facts to the
+  contracts shape (`packages/core/src/runs/standing.ts:runStandingOf`).
+- **One input-builder per derived fact.** A fact that a gate also decides on has exactly one
+  function that builds its predicate's input. It takes the executor first
+  (`Pick<Tx, 'execute'>`), lives in the module that owns the fact's subject, and is exported beside
+  the predicate. The read model calls it with `db`; the gate calls it with its own `tx`, inside the
+  write transaction that acts on the answer. Nothing else assembles the same rows. The reference is
+  `packages/core/src/issues/blocked-by.ts:blockingEdgesIn`, which the issue standing, the
+  dependency read and every take gate call.
+- **A predicate is declared once**, and the read model and every gate apply that one predicate:
+  in contracts when it is pure over a contracts shape (`packages/contracts/src/standing.ts:needsViewer`),
+  or beside its input-builder when it is a SQL fragment, which the builder then selects as a column
+  rather than restating it in TypeScript (`packages/core/src/issues/blocked-by.ts:blockerUnsettledSql`,
+  `packages/core/src/devices/master-silence.ts:masterSilentSql`,
+  `packages/core/src/jobs/session-kinds.ts:heartbeatReapedSql`). A surface that describes what a
+  sweep will do asks the sweep's own predicate (`packages/core/src/jobs/hold.ts:holdReleasesItself`).
+- **When computing on read gets slow**, take the next step only when the one before cannot serve,
+  and measure before each:
+  1. **An index** on the owner's table, leading with the scope column.
+  2. **A view** the owner publishes (`pgView`, listed under the owner's `owns`, read through
+     `reads`), when several read models need the same join.
+  3. **A materialized view** (`pgMaterializedView`, the owner's), refreshed by a declared timer.
+     Its staleness is stated: every answer it serves carries the refresh time, and the field's
+     contracts doc says how stale it may be.
+  4. **A projection table**, listed under the read model's own `projections` in modules.json. Only
+     the read model's outbox consumer writes it (declared in
+     `packages/contracts/src/outbox-consumers.ts:OUTBOX_CONSUMERS`), and it is rebuildable from the
+     owners' tables at any time, so losing it loses nothing.
 - **web-v2 renders; it computes no domain fact.** A feature's **derive.ts** may format, sort and
   group what a read model answered, and nothing more.
 
@@ -548,4 +587,6 @@ web-v2/src/features/feedback/     api.ts, hooks.ts, types.ts, routes.ts, compone
 | One durable outbox | Every reaction is asynchronous and survives a crash, at the price of a table write per event plus one per consumer, and a consumer whose effect leaves the database must be idempotent |
 | The status chosen by what the client should do | Each code that is not 422 is declared in a status map beside it; a code thrown in core but declared in no contracts array answers 422, whatever it means |
 | The semantic rules run on demand, not before a push | New code can break a table-writer, route-query, refusal or status-write rule and land; the break shows only when the orchestrator or QA next runs the script |
+| Read models SELECT owners' tables they declare | An owner's column change can break a read model's SQL that no owner code calls, so the `reads` list is where an owner looks before it changes a table |
+| One input-builder per fact, shared with the gate | The builder answers what both callers need, so the read model's page query and the gate's single-row check run the same statement shape, and the gate may read a column it does not use |
 | A shrink-only baseline for the import rules | A file move rewrites its baseline keys, so the move carries `--update-baseline` with it; a violation can never be admitted by re-freezing, only fixed |

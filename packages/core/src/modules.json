@@ -1,5 +1,5 @@
 {
-  "$comment": "Pattern v2 (docs/conventions/domain-entities.md, ADR 0008): every directory under packages/core/src is exactly one kind and sits in one business context, and every table has exactly one owning module, the only one that writes it. A nested path (integrations/<port>) is a module of its own. `contexts` lists the contexts in dependency order: a module imports only its own context or one listed before it, a door excepted. Each context's label is its root module label on the Forge project. scripts/check-module-boundaries.mjs generates its dependency-cruiser rules from this file, and scripts/check-module-shape.mjs reads it for the declaration checks and the semantic rules.",
+  "$comment": "Pattern v2 (docs/conventions/domain-entities.md, ADR 0008): every directory under packages/core/src is exactly one kind and sits in one business context, and every table has exactly one owning module, the only one that writes it. A read model lists under `reads` the owners' tables or views it SELECTs, and writes none. A nested path (integrations/<port>) is a module of its own. `contexts` lists the contexts in dependency order: a module imports only its own context or one listed before it, a door excepted. Each context's label is its root module label on the Forge project. scripts/check-module-boundaries.mjs generates its dependency-cruiser rules from this file, and scripts/check-module-shape.mjs reads it for the declaration checks and the semantic rules.",
   "contexts": [
     {
       "name": "platform",
@@ -57,7 +57,27 @@
     },
     "admin": {
       "kind": "read-model",
-      "context": "operations"
+      "context": "operations",
+      "reads": [
+        "activityLog",
+        "devices",
+        "integrationBindings",
+        "integrationDeliveries",
+        "issueLabels",
+        "issues",
+        "jobs",
+        "labels",
+        "mcpAuditLog",
+        "organizations",
+        "pipelineRuns",
+        "projectMembers",
+        "projects",
+        "retrievalAnalytics",
+        "runners",
+        "schedules",
+        "usageRecords",
+        "users"
+      ]
     },
     "admin-thresholds": {
       "kind": "domain",
@@ -113,7 +133,17 @@
     },
     "automation": {
       "kind": "read-model",
-      "context": "work"
+      "context": "work",
+      "reads": [
+        "agentReports",
+        "agentSessions",
+        "issues",
+        "notifications",
+        "pipelineRuns",
+        "projects",
+        "scheduleRuns",
+        "schedules"
+      ]
     },
     "body": {
       "kind": "platform",
@@ -166,7 +196,23 @@
     },
     "development": {
       "kind": "read-model",
-      "context": "work"
+      "context": "work",
+      "reads": [
+        "agentSessions",
+        "contractVersions",
+        "devices",
+        "feedback",
+        "issueContractWaits",
+        "issueLabels",
+        "issueLeases",
+        "issueWorkState",
+        "issues",
+        "labels",
+        "masterPasses",
+        "projects",
+        "releaseApprovals",
+        "requirements"
+      ]
     },
     "devices": {
       "kind": "kernel",
@@ -227,7 +273,13 @@
     },
     "health": {
       "kind": "read-model",
-      "context": "operations"
+      "context": "operations",
+      "reads": [
+        "agentSessions",
+        "jobs",
+        "projects",
+        "runners"
+      ]
     },
     "improvement-messages": {
       "kind": "domain",
@@ -377,7 +429,24 @@
     },
     "me": {
       "kind": "read-model",
-      "context": "work"
+      "context": "work",
+      "reads": [
+        "activityLog",
+        "agentQuestions",
+        "agentSessions",
+        "channelDocuments",
+        "commentMentions",
+        "comments",
+        "issues",
+        "jobs",
+        "notificationDeliveries",
+        "notificationDeliveryMembers",
+        "notifications",
+        "pipelineRuns",
+        "projects",
+        "reconcileRuns",
+        "runners"
+      ]
     },
     "memory": {
       "kind": "domain",
@@ -390,7 +459,17 @@
     },
     "metrics": {
       "kind": "read-model",
-      "context": "operations"
+      "context": "operations",
+      "reads": [
+        "activityLog",
+        "agentSessions",
+        "issueStepContexts",
+        "issues",
+        "jobs",
+        "queueSnapshots",
+        "runnerEvents",
+        "usageRecords"
+      ]
     },
     "middleware": {
       "kind": "platform",
@@ -522,7 +601,25 @@
     },
     "runs": {
       "kind": "read-model",
-      "context": "execution"
+      "context": "execution",
+      "reads": [
+        "agentQuestions",
+        "agentSessions",
+        "deployLocks",
+        "deviceRunLedger",
+        "devices",
+        "issueLeases",
+        "issueWorkState",
+        "issues",
+        "jobEvents",
+        "jobs",
+        "kernelTransitions",
+        "masterPasses",
+        "phaseJournal",
+        "pipelineRuns",
+        "releaseApprovals",
+        "releaseAttempts"
+      ]
     },
     "schedules": {
       "kind": "domain",

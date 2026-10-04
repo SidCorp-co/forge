@@ -28,7 +28,7 @@ import { reapExpiredParks, reapUnansweredParks } from './park-deadline.js';
 import { quietJobCandidateQuery } from './progress-signal.js';
 import { broadcastZombieTransition, lookupIssueForRun, reapQueueHop } from './queue-hop.js';
 import { RESULT_EVENT_LATERAL, RESULT_GUARD } from './resident-session.js';
-import { CLIENT_SESSION_KINDS, PIPELINE_SESSION_KINDS } from './session-kinds.js';
+import { CLIENT_SESSION_KINDS, heartbeatReapedSql } from './session-kinds.js';
 import { type SessionLostCause, sessionLostCause } from './session-lost-cause.js';
 
 type RedispatchFn = (
@@ -342,11 +342,7 @@ export async function reapZombieSessions(
             lt(agentSessions.createdAt, heartbeatCutoff),
           ),
         ),
-        or(
-          inArray(agentSessions.kind, PIPELINE_SESSION_KINDS),
-          sql`${agentSessions.metadata} -> 'escalation' IS NOT NULL`,
-          sql`${agentSessions.metadata} -> 'agentChat' IS NOT NULL`,
-        ),
+        heartbeatReapedSql(sql`${agentSessions}`),
         ...(projectFilter ? [projectFilter] : []),
       ),
       reason: 'heartbeat_timeout',

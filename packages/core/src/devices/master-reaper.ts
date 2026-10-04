@@ -69,7 +69,7 @@ export async function reapSilentMasters(): Promise<number> {
  * job it held one statement later. A TERMINAL master is not guarded.
  */
 export async function reapDeadMasterHolds(): Promise<number> {
-  const released = await releaseHoldsOfDeadMasters(SESSION_SILENCE_TIMEOUT_S);
+  const released = await releaseHoldsOfDeadMasters(masterSilentSql, SESSION_SILENCE_TIMEOUT_S);
   for (const row of released) {
     logger.warn(
       { jobId: row.jobId, masterSessionId: row.formerHolder, masterStatus: row.masterStatus },

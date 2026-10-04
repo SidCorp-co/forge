@@ -1,7 +1,6 @@
-import { HOLD_RECHECK_MS, holdResumesItself } from '../jobs/hold.js';
+import { holdReleasesItself } from '../jobs/hold.js';
 import { describePause } from '../pipeline/run-pause.js';
 import {
-  after,
   type Derived,
   iso,
   NO_WAIT,
@@ -107,7 +106,7 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
     });
   }
   const job = f.job;
-  if (job?.status === 'held' && job.hold && !holdResumesItself(job.hold.reason)) {
+  if (job?.status === 'held' && job.hold && !holdReleasesItself(job.hold)) {
     return person(ctx, {
       admin: false,
       act: 'resume the job',
@@ -142,15 +141,14 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
 
 function gateWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
   const job = f.job;
-  if (job?.status === 'held' && job.hold && holdResumesItself(job.hold.reason)) {
+  if (job?.status === 'held' && job.hold && holdReleasesItself(job.hold)) {
     const heldAt = new Date(job.hold.heldAt);
-    const timed = job.hold.reason === 'verify_unavailable';
     return gate({
       gate: job.hold.reason,
-      resumesAt: timed ? after(heldAt, HOLD_RECHECK_MS) : null,
+      resumesAt: job.retryAfterAt,
       since: heldAt,
-      rule: timed
-        ? `held ${job.hold.reason}: the hold retries once ${HOLD_RECHECK_MS / 60_000} min have passed`
+      rule: job.retryAfterAt
+        ? `held ${job.hold.reason}: the release sweep retries it once jobs.retry_after_at has passed`
         : `held ${job.hold.reason}: it re-queues when its condition clears, which has no deadline`,
     });
   }

@@ -11,7 +11,7 @@ import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { OCCUPYING } from '../devices/load.js';
-import { masterLastBeatSql } from '../devices/master-silence.js';
+import { masterLastBeatSql, masterSilentSql } from '../devices/master-silence.js';
 import { SESSION_SILENCE_TIMEOUT_S } from '../devices/session-silence.js';
 import { NOT_PARKED } from '../jobs/resident-session.js';
 import { MASTER_SESSION_KIND, RUN_SESSION_KIND } from '../jobs/session-kinds.js';
@@ -128,11 +128,12 @@ interface MasterRow {
 async function liveMaster(projectId: string): Promise<MasterRow | null> {
   const [row] = rowsOf<MasterRow>(
     await db.execute(sql`
-      SELECT m.*, m.last_beat < now() - make_interval(secs => ${SESSION_SILENCE_TIMEOUT_S}) AS silent
+      SELECT m.*
         FROM (
           SELECT s.id, COALESCE(s.metadata ->> 'terminalName', s.title) AS title, s.device_id, d.name AS device_name, d.max_job_panes,
                  COALESCE(s.started_at, s.created_at) AS started_at,
-                 ${masterLastBeatSql('s')} AS last_beat
+                 ${masterLastBeatSql('s')} AS last_beat,
+                 ${masterSilentSql('s')} AS silent
             FROM agent_sessions s
             LEFT JOIN devices d ON d.id = s.device_id
            WHERE s.project_id = ${projectId}

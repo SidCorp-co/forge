@@ -59,6 +59,7 @@ export async function loadActiveJobsByIssue(
       runnerId: r.runnerId,
       agentSessionId: r.agentSessionId,
       failureReason: r.failureReason,
+      payload: r.payload,
       pipelineRunStatus: r.pipelineRunStatus,
       stageStatus: extractStageStatus(r.payload),
       retryAfterAt: r.retryAfterAt,
