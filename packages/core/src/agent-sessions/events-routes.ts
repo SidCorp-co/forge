@@ -9,7 +9,7 @@
  * frame a chat turn ever produced was thrown away.
  *
  * The runner does not parse here. It numbers lines and posts them; core folds
- * them with `jobs/session-transcript.ts`, the same reducer the pipeline path
+ * them with `agent-sessions/session-transcript.ts`, the same reducer the pipeline path
  * uses.
  */
 
