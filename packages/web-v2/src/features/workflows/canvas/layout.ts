@@ -28,22 +28,50 @@ export function labelBox(text: string): Size {
   return { width, height: 8 + lines * 15 };
 }
 
-export async function layoutView(input: {
-  view: View;
-  sizes: ReadonlyMap<string, Size>;
-  labels: ReadonlyMap<string, string>;
-  /** Each node's band row, top to bottom; absent, the graph is not banded. */
-  partition: ((key: string) => number) | null;
+export interface GraphNode extends Size {
+  id: string;
+  /** The node's band row, top to bottom, when the graph is banded. */
+  partition?: number;
+}
+
+export interface GraphEdge {
+  id: string;
+  from: string;
+  to: string;
+  label?: string;
+  labelPlacement?: "CENTER" | "TAIL";
+}
+
+/** ELK's own padding round each disconnected piece, which a row of pieces is measured with. */
+const PIECE_PAD = 12;
+
+/**
+ * Any boxes-and-lines graph laid out by ELK's layered algorithm. With `rowWidth`, the pieces that no
+ * line joins are packed into rows no wider than it, in the order given, instead of one long layer.
+ */
+export async function layoutGraph(input: {
+  nodes: readonly GraphNode[];
+  edges: readonly GraphEdge[];
   direction: "down" | "right";
+  partitioned: boolean;
+  rowWidth?: number;
 }): Promise<Placed> {
-  const { view, sizes, labels, partition, direction } = input;
+  const { nodes, edges, direction, partitioned, rowWidth } = input;
+  const area = nodes.reduce((sum, n) => sum + (n.width + 2 * PIECE_PAD) * (n.height + 2 * PIECE_PAD), 0);
+  const rows: Record<string, string> = rowWidth
+    ? {
+        "elk.padding": `[top=${PIECE_PAD},left=${PIECE_PAD},bottom=${PIECE_PAD},right=${PIECE_PAD}]`,
+        "elk.aspectRatio": String(rowWidth / Math.sqrt(area || 1)),
+        "elk.layered.considerModelOrder.components": "MODEL_ORDER",
+      }
+    : {};
   const graph: ElkNode = {
     id: "root",
     layoutOptions: {
       "elk.algorithm": "layered",
       "elk.direction": direction === "down" ? "DOWN" : "RIGHT",
       "elk.edgeRouting": "ORTHOGONAL",
-      "elk.partitioning.activate": partition ? "true" : "false",
+      "elk.partitioning.activate": partitioned ? "true" : "false",
       "elk.layered.spacing.nodeNodeBetweenLayers": "28",
       "elk.spacing.nodeNode": "44",
       "elk.spacing.edgeNode": "22",
@@ -54,34 +82,30 @@ export async function layoutView(input: {
       // that band ~450px right of the rest, so the first card opened clipped (hop-layout.test.ts).
       "elk.layered.nodePlacement.strategy": "SIMPLE",
       "elk.layered.mergeEdges": "false",
+      ...rows,
     },
-    children: view.nodes.map((n) => ({
-      id: n.key,
-      width: sizes.get(n.key)?.width ?? 250,
-      height: sizes.get(n.key)?.height ?? 60,
-      ...(partition ? { layoutOptions: { "elk.partitioning.partition": String(partition(n.key)) } } : {}),
+    children: nodes.map((n) => ({
+      id: n.id,
+      width: n.width,
+      height: n.height,
+      ...(partitioned && n.partition !== undefined ? { layoutOptions: { "elk.partitioning.partition": String(n.partition) } } : {}),
     })),
-    edges: view.edges
-      .filter((e) => e.src.every((s) => s.kind.direction === "forward"))
-      .map((e): ElkExtendedEdge => {
-        const text = labels.get(e.key);
-        return {
-          id: e.key,
-          sources: [e.from],
-          targets: [e.to],
-          // A merged line's label carries its first line's words, wider than a card gap; at its tail it
-          // leaves each layer centred on one axis (hop-layout.test.ts).
-          labels: text
-            ? [{ text, ...labelBox(text), layoutOptions: { "elk.edgeLabels.placement": e.merged ? "TAIL" : "CENTER" } }]
-            : [],
-        };
+    edges: edges.map(
+      (e): ElkExtendedEdge => ({
+        id: e.id,
+        sources: [e.from],
+        targets: [e.to],
+        labels: e.label
+          ? [{ text: e.label, ...labelBox(e.label), layoutOptions: { "elk.edgeLabels.placement": e.labelPlacement ?? "CENTER" } }]
+          : [],
       }),
+    ),
   };
   const out = await (await elk()).layout(graph);
-  const nodes = new Map(
+  const placedNodes = new Map(
     (out.children ?? []).map((n) => [n.id, { x: n.x ?? 0, y: n.y ?? 0, width: n.width ?? 0, height: n.height ?? 0 }]),
   );
-  const edges = new Map(
+  const placedEdges = new Map(
     (out.edges ?? []).map((e) => {
       const s = e.sections?.[0];
       const points = s ? [s.startPoint, ...(s.bendPoints ?? []), s.endPoint] : [];
@@ -89,7 +113,39 @@ export async function layoutView(input: {
       return [e.id, { points, label: l ? { x: (l.x ?? 0) + (l.width ?? 0) / 2, y: (l.y ?? 0) + (l.height ?? 0) / 2 } : null }];
     }),
   );
-  return { nodes, edges, width: out.width ?? 0, height: out.height ?? 0 };
+  return { nodes: placedNodes, edges: placedEdges, width: out.width ?? 0, height: out.height ?? 0 };
+}
+
+export function layoutView(input: {
+  view: View;
+  sizes: ReadonlyMap<string, Size>;
+  labels: ReadonlyMap<string, string>;
+  /** Each node's band row, top to bottom; absent, the graph is not banded. */
+  partition: ((key: string) => number) | null;
+  direction: "down" | "right";
+}): Promise<Placed> {
+  const { view, sizes, labels, partition, direction } = input;
+  return layoutGraph({
+    direction,
+    partitioned: partition !== null,
+    nodes: view.nodes.map((n) => ({
+      id: n.key,
+      width: sizes.get(n.key)?.width ?? 250,
+      height: sizes.get(n.key)?.height ?? 60,
+      ...(partition ? { partition: partition(n.key) } : {}),
+    })),
+    edges: view.edges
+      .filter((e) => e.src.every((s) => s.kind.direction === "forward"))
+      .map((e) => ({
+        id: e.key,
+        from: e.from,
+        to: e.to,
+        label: labels.get(e.key),
+        // A merged line's label carries its first line's words, wider than a card gap; at its tail it
+        // leaves each layer centred on one axis (hop-layout.test.ts).
+        labelPlacement: e.merged ? "TAIL" : "CENTER",
+      })),
+  });
 }
 
 /** A polyline with its corners rounded, as an SVG path. */

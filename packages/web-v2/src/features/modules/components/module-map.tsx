@@ -1,76 +1,112 @@
 "use client";
 
-// One level of the module tree as a map: a node per module in rollup order, wrapped four to a row, and
-// the couplings core rolled up to this level between them. Line width is the coupling's weight; a
-// coupling declared in both directions is drawn in the error tone.
+// One level of the module tree as a map on the workflow canvas's React Flow and ELK layout: a card per
+// module in rollup order, wrapped into rows the width allows, and the couplings core rolled up to this
+// level between them. Line width is the coupling's weight; a coupling declared in both directions is
+// drawn in the error tone. The map is a fitted picture: nothing on it moves, pans or zooms.
 
-import type { KeyboardEvent } from "react";
+import "@xyflow/react/dist/base.css";
+import "@/features/workflows/canvas/canvas.css";
+import { BaseEdge, type Edge, type EdgeProps, EdgeLabelRenderer, Handle, type Node, type NodeProps, Position, ReactFlow } from "@xyflow/react";
+import { type KeyboardEvent, memo, useEffect, useMemo, useRef, useState } from "react";
 import { LEGEND } from "@/design";
-import { cn } from "@/lib/utils/cn";
+import { layoutGraph, type Placed, rounded } from "@/features/workflows/canvas/layout";
 import type { ModuleLevelCoupling, ModuleRollupRow } from "../types";
 
-const COLS = 4;
+const MAX_COLS = 4;
 const W = 214;
 const H = 84;
-const GAP_X = 52;
-const GAP_Y = 58;
-const PAD = 14;
+/** One column of the packed rows: a card, ELK's padding round it and the gap to the next. */
+const COL = W + 24 + 20;
+const PAD = 8;
 
 const keyOf = (r: ModuleRollupRow) => r.slug ?? r.id;
 
-interface Placed {
+interface ModuleNodeData extends Record<string, unknown> {
   row: ModuleRollupRow;
-  x: number;
-  y: number;
+  on: boolean;
+  rel: boolean;
+  act: { select: (key: string) => void; open: (key: string) => void };
 }
 
-function place(rows: readonly ModuleRollupRow[]): { placed: Placed[]; width: number; height: number } {
-  const cols = Math.max(1, Math.min(COLS, rows.length));
-  const placed = rows.map((row, i) => ({
-    row,
-    x: PAD + (i % cols) * (W + GAP_X),
-    y: PAD + Math.floor(i / cols) * (H + GAP_Y),
-  }));
-  const lines = Math.max(1, Math.ceil(rows.length / cols));
-  return { placed, width: PAD * 2 + cols * W + (cols - 1) * GAP_X, height: PAD * 2 + lines * H + (lines - 1) * GAP_Y };
-}
-
-const centre = (p: Placed): [number, number] => [p.x + W / 2, p.y + H / 2];
-
-/** Where the line from `c` towards `o` leaves the node's box, with a small margin. */
-function clip(c: [number, number], o: [number, number]): [number, number] {
-  const dx = o[0] - c[0];
-  const dy = o[1] - c[1];
-  const s = Math.max(Math.abs(dx) / (W / 2 + 6), Math.abs(dy) / (H / 2 + 6)) || 1;
-  return [c[0] + dx / s, c[1] + dy / s];
-}
-
-interface Drawn {
-  c: ModuleLevelCoupling;
+interface CouplingEdgeData extends Record<string, unknown> {
   d: string;
-  label: [number, number];
   width: number;
+  twoWay: boolean;
+  label: string;
+  labelAt: { x: number; y: number } | null;
+  title: string;
+  dim: boolean;
 }
 
-function draw(couplings: readonly ModuleLevelCoupling[], at: Map<string, Placed>): Drawn[] {
-  const max = Math.max(1, ...couplings.map((c) => c.weight));
-  return couplings.flatMap((c) => {
-    const a = at.get(c.aId);
-    const b = at.get(c.bId);
-    if (!a || !b) return [];
-    const ca = centre(a);
-    const cb = centre(b);
-    const A = clip(ca, cb);
-    const B = clip(cb, ca);
-    const len = Math.hypot(B[0] - A[0], B[1] - A[1]) || 1;
-    // a line that would cross the nodes between two far ends of a row or column bows around them
-    const far = (Math.abs(A[1] - B[1]) < 4 && len > W + GAP_X) || (Math.abs(A[0] - B[0]) < 4 && len > H + GAP_Y);
-    const bend = far ? 30 + len * 0.08 : 12;
-    const qx = (A[0] + B[0]) / 2 + (-(B[1] - A[1]) / len) * bend;
-    const qy = (A[1] + B[1]) / 2 + ((B[0] - A[0]) / len) * bend;
-    return [{ c, d: `M${A[0]},${A[1]} Q${qx},${qy} ${B[0]},${B[1]}`, label: [qx, qy], width: 1 + 5 * Math.sqrt(c.weight / max) }];
-  });
+function ModuleCard({ data }: NodeProps & { data: ModuleNodeData }) {
+  const { row: r, act } = data;
+  const key = keyOf(r);
+  const s = r.standing;
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Enter") act.open(key);
+    else if (e.key === " ") {
+      e.preventDefault();
+      act.select(key);
+    }
+  };
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={`${r.name}: ${s.childCount} child modules, ${s.open} open issues. Enter opens it.`}
+      aria-pressed={data.on}
+      className="wfc-card"
+      style={{ width: W, height: H, ["--tc" as string]: data.on ? "var(--link)" : "var(--wf-slate)" }}
+      data-on={data.on}
+      data-rel={data.rel}
+      data-testid="module-map-node"
+      data-key={key}
+      onClick={() => act.select(key)}
+      onDoubleClick={() => act.open(key)}
+      onKeyDown={onKey}
+    >
+      <Handle type="target" position={Position.Top} isConnectable={false} />
+      <Handle type="source" position={Position.Bottom} isConnectable={false} />
+      <h3 className="truncate">{r.name}</h3>
+      <p>{s.childCount ? `${s.childCount} child modules` : "No child modules"}</p>
+      <p>
+        Open {s.open} · Requirements {s.requirements.length}
+      </p>
+    </div>
+  );
 }
+
+function CouplingEdge({ id, data }: EdgeProps & { data: CouplingEdgeData }) {
+  const tone = data.twoWay ? LEGEND.err.fg : "var(--wf-edge)";
+  return (
+    <>
+      <BaseEdge
+        id={id}
+        path={data.d}
+        interactionWidth={0}
+        style={{ stroke: tone, strokeWidth: data.width, strokeLinecap: "round", opacity: data.dim ? 0.1 : 0.75 }}
+        data-testid="module-map-edge"
+        data-two-way={data.twoWay || undefined}
+      />
+      {data.labelAt ? (
+        <EdgeLabelRenderer>
+          <div
+            className="wfc-label nodrag nopan font-mono tabular-nums"
+            data-rel={!data.dim}
+            title={data.title}
+            style={{ color: data.twoWay ? tone : undefined, transform: `translate(-50%, -50%) translate(${data.labelAt.x}px, ${data.labelAt.y}px)` }}
+          >
+            {data.label}
+          </div>
+        </EdgeLabelRenderer>
+      ) : null}
+    </>
+  );
+}
+
+const NODE_TYPES = { module: memo(ModuleCard) };
+const EDGE_TYPES = { coupling: memo(CouplingEdge) };
 
 function edgeTitle(c: ModuleLevelCoupling, name: (id: string) => string): string {
   const a = name(c.aId);
@@ -80,6 +116,22 @@ function edgeTitle(c: ModuleLevelCoupling, name: (id: string) => string): string
   if (c.declaredBToA) lines.push(`${b} → ${a}: ${c.declaredBToA} declared`);
   if (c.sharedIssues) lines.push(`Issues carrying both sides: ${c.sharedIssues}`);
   return lines.join("\n");
+}
+
+const edgeLabel = (c: ModuleLevelCoupling) => (c.twoWay ? `${c.declaredAToB}⇄${c.declaredBToA}` : String(c.weight));
+
+/** The map's width as it changes, measured from the element itself. */
+function useWidth() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setWidth(e ? e.contentRect.width : 0));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, width] as const;
 }
 
 export function ModuleMap({
@@ -95,117 +147,112 @@ export function ModuleMap({
   onSelect: (key: string) => void;
   onOpen: (key: string) => void;
 }) {
-  const { placed, width, height } = place(rows);
-  const at = new Map(placed.map((p) => [p.row.id, p]));
-  const edges = draw(couplings, at);
-  const name = (id: string) => at.get(id)?.row.name ?? id;
-  const selectedId = placed.find((p) => keyOf(p.row) === selected)?.row.id ?? null;
-  const near = new Set(selectedId ? couplings.flatMap((c) => (c.aId === selectedId || c.bId === selectedId ? [c.aId, c.bId] : [])) : []);
-  const onKey = (e: KeyboardEvent, key: string) => {
-    if (e.key === "Enter") onOpen(key);
-    else if (e.key === " ") {
-      e.preventDefault();
-      onSelect(key);
-    }
-  };
+  const [wrap, width] = useWidth();
+  const cols = Math.max(1, Math.min(MAX_COLS, rows.length, Math.floor((width - 2 * PAD + 20) / COL)));
+  const ids = useMemo(() => new Set(rows.map((r) => r.id)), [rows]);
+  // A coupling is drawn only between two modules on this level; nothing is drawn that core did not roll up.
+  const drawn = useMemo(() => couplings.filter((c) => ids.has(c.aId) && ids.has(c.bId)), [couplings, ids]);
+  const [placed, setPlaced] = useState<Placed | null>(null);
+  const measured = width > 0;
+
+  useEffect(() => {
+    if (!measured) return;
+    let live = true;
+    void layoutGraph({
+      direction: "down",
+      partitioned: false,
+      rowWidth: cols * COL - 20 + 4,
+      nodes: rows.map((r) => ({ id: r.id, width: W, height: H })),
+      edges: drawn.map((c) => ({ id: `${c.aId}-${c.bId}`, from: c.aId, to: c.bId, label: edgeLabel(c) })),
+    }).then((at) => {
+      if (live) setPlaced(at);
+    });
+    return () => {
+      live = false;
+    };
+  }, [rows, drawn, cols, measured]);
+
+  const act = useRef({ select: onSelect, open: onOpen });
+  act.current = { select: onSelect, open: onOpen };
+  const stableAct = useMemo(() => ({ select: (k: string) => act.current.select(k), open: (k: string) => act.current.open(k) }), []);
+
+  const selectedId = rows.find((r) => keyOf(r) === selected)?.id ?? null;
+  const near = useMemo(
+    () => new Set(selectedId ? drawn.flatMap((c) => (c.aId === selectedId || c.bId === selectedId ? [c.aId, c.bId] : [])) : []),
+    [drawn, selectedId],
+  );
+
+  const nodes = useMemo((): Node[] => {
+    if (!placed) return [];
+    return rows.flatMap((r) => {
+      const p = placed.nodes.get(r.id);
+      if (!p) return [];
+      const data: ModuleNodeData = { row: r, on: r.id === selectedId, rel: !selectedId || r.id === selectedId || near.has(r.id), act: stableAct };
+      return [{ id: r.id, type: "module", position: { x: p.x, y: p.y }, width: W, height: H, data, draggable: false, selectable: false, focusable: false }];
+    });
+  }, [placed, rows, selectedId, near, stableAct]);
+
+  const edges = useMemo((): Edge[] => {
+    if (!placed) return [];
+    const max = Math.max(1, ...drawn.map((c) => c.weight));
+    const name = (id: string) => rows.find((r) => r.id === id)?.name ?? id;
+    return drawn.flatMap((c) => {
+      const id = `${c.aId}-${c.bId}`;
+      const routed = placed.edges.get(id);
+      if (!routed || routed.points.length < 2) return [];
+      const data: CouplingEdgeData = {
+        d: rounded(routed.points),
+        width: 1 + 5 * Math.sqrt(c.weight / max),
+        twoWay: c.twoWay,
+        label: edgeLabel(c),
+        labelAt: routed.label,
+        title: edgeTitle(c, name),
+        dim: selectedId !== null && c.aId !== selectedId && c.bId !== selectedId,
+      };
+      return [{ id, source: c.aId, target: c.bId, type: "coupling", data, selectable: false, focusable: false }];
+    });
+  }, [placed, drawn, rows, selectedId]);
+
+  // Fit: as large as the width holds, never above 100%; the map is as tall as the fitted drawing.
+  const at = placed;
+  const zoom = at && width > 0 ? Math.min(1, (width - 2 * PAD) / Math.max(1, at.width)) : 1;
+  const height = at ? at.height * zoom + 2 * PAD : Math.ceil(rows.length / cols) * (H + 44) + 2 * PAD;
+  const viewport = { x: at ? (width - at.width * zoom) / 2 : PAD, y: PAD, zoom };
 
   return (
-    <div className="overflow-x-auto" data-testid="module-map">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        role="img"
-        aria-label={`Map of ${rows.length} modules and ${couplings.length} couplings between them`}
-        className="block h-auto w-full font-sans"
-        style={{ minWidth: Math.min(width, 760), maxWidth: width * 1.15 }}
-      >
-        <g>
-          {edges.map((e) => {
-            const lit = !selectedId || e.c.aId === selectedId || e.c.bId === selectedId;
-            return (
-              <path
-                key={`${e.c.aId}-${e.c.bId}`}
-                d={e.d}
-                fill="none"
-                strokeLinecap="round"
-                strokeWidth={e.width}
-                stroke={e.c.twoWay ? LEGEND.err.fg : "var(--fg-subtle)"}
-                opacity={lit ? 0.75 : 0.08}
-                data-testid="module-map-edge"
-                data-two-way={e.c.twoWay || undefined}
-              >
-                <title>{edgeTitle(e.c, name)}</title>
-              </path>
-            );
-          })}
-        </g>
-        <g>
-          {edges.map((e) => {
-            const lit = !selectedId || e.c.aId === selectedId || e.c.bId === selectedId;
-            return (
-              <text
-                key={`${e.c.aId}-${e.c.bId}`}
-                x={e.label[0]}
-                y={e.label[1] + 4}
-                textAnchor="middle"
-                className="font-mono"
-                fontSize={12}
-                fill="var(--fg-default)"
-                stroke="var(--bg-app)"
-                strokeWidth={3}
-                paintOrder="stroke"
-                opacity={lit ? 1 : 0}
-                aria-hidden
-              >
-                {e.c.twoWay ? `${e.c.declaredAToB}⇄${e.c.declaredBToA}` : e.c.weight}
-              </text>
-            );
-          })}
-        </g>
-        <g>
-          {placed.map((p) => {
-            const key = keyOf(p.row);
-            const s = p.row.standing;
-            const isSel = key === selected;
-            const dim = selectedId !== null && !isSel && !near.has(p.row.id);
-            return (
-              // biome-ignore lint/a11y/useSemanticElements: an SVG node has no <button> to be
-              <g
-                key={p.row.id}
-                role="button"
-                tabIndex={0}
-                aria-label={`${p.row.name}: ${s.childCount} child modules, ${s.open} open issues. Enter opens it.`}
-                aria-pressed={isSel}
-                className={cn("cursor-pointer outline-none", dim && "opacity-35")}
-                onClick={() => onSelect(key)}
-                onDoubleClick={() => onOpen(key)}
-                onKeyDown={(e) => onKey(e, key)}
-                data-testid="module-map-node"
-                data-key={key}
-              >
-                <rect
-                  x={p.x}
-                  y={p.y}
-                  width={W}
-                  height={H}
-                  rx={3}
-                  fill={isSel ? "var(--cobalt-50)" : "var(--bg-surface)"}
-                  stroke={isSel ? "var(--link)" : "var(--border-default)"}
-                  strokeWidth={isSel ? 1.5 : 1}
-                />
-                <text x={p.x + 12} y={p.y + 26} fontSize={15} fontWeight={600} fill="var(--fg-default)">
-                  {p.row.name}
-                </text>
-                <text x={p.x + 12} y={p.y + 48} fontSize={12.5} fill="var(--fg-muted)">
-                  {s.childCount ? `${s.childCount} child modules` : "No child modules"}
-                </text>
-                <text x={p.x + 12} y={p.y + 67} fontSize={12.5} fill="var(--fg-muted)">
-                  Open {s.open} · Requirements {s.requirements.length}
-                </text>
-              </g>
-            );
-          })}
-        </g>
-      </svg>
+    <div
+      ref={wrap}
+      role="group"
+      aria-label={`Map of ${rows.length} modules and ${drawn.length} couplings between them`}
+      className="wfc"
+      style={{ height, minHeight: 0 }}
+      data-ready={placed !== null}
+      data-dim={selectedId !== null}
+      data-static="true"
+      data-testid="module-map"
+    >
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
+        viewport={viewport}
+        minZoom={0.1}
+        maxZoom={1}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        nodesFocusable={false}
+        edgesFocusable={false}
+        elementsSelectable={false}
+        panOnDrag={false}
+        panOnScroll={false}
+        zoomOnScroll={false}
+        zoomOnPinch={false}
+        zoomOnDoubleClick={false}
+        preventScrolling={false}
+        disableKeyboardA11y
+        proOptions={{ hideAttribution: true }}
+      />
     </div>
   );
 }

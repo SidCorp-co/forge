@@ -11,6 +11,8 @@
 .wfc .react-flow__handle { opacity: 0; pointer-events: none; min-width: 0; min-height: 0; width: 1px; height: 1px; border: 0; }
 .wfc[data-ready="false"] .react-flow__viewport { opacity: 0; }
 .wfc .react-flow__viewport { transition: opacity var(--dur-base) var(--ease-out); }
+/* A fitted picture (the module map): the page scrolls through it, nothing on it pans or zooms. */
+.wfc[data-static="true"] .react-flow__renderer, .wfc[data-static="true"] .react-flow__pane { touch-action: auto !important; cursor: default; }
 
 .wfc-row { position: relative; height: 100%; border-top: 1px solid var(--border-subtle); }
 .wfc-row-label { pointer-events: auto; position: absolute; height: auto; left: 10px; top: 10px; display: inline-flex; align-items: center; gap: 5px; border: 0; background: none; padding: 4px 6px; border-radius: var(--r-sm); font-size: var(--text-11-5); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-subtle); cursor: pointer; }
@@ -21,6 +23,7 @@
 .wfc-card { position: relative; width: 250px; display: flex; flex-direction: column; gap: 5px; padding: 10px 12px 11px; background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--r-lg); box-shadow: var(--shadow-sm); transition: opacity var(--dur-base), border-color var(--dur-base), box-shadow var(--dur-base); }
 .wfc-card::before { content: ""; position: absolute; left: -1px; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: var(--tc); }
 .wfc-card:hover { border-color: var(--border-strong); }
+.wfc-card:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
 .wfc-card[data-compact="true"] { padding: 8px 11px; gap: 4px; }
 .wfc-card[data-on="true"] { border-color: var(--tc); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tc) 22%, transparent), var(--shadow-sm); }
 .wfc-card[data-hit="true"] { outline: 2px solid var(--wf-hit); outline-offset: 3px; }
