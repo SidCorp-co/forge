@@ -1,0 +1,547 @@
+{
+  "$comment": "Pattern v2 (docs/conventions/domain-entities.md, ADR 0008): every directory under packages/core/src is exactly one kind, and every table has exactly one owning module, the only one that writes it. A nested path (integrations/<port>) is a module of its own. scripts/check-module-shape.mjs reads this file.",
+  "modules": {
+    "(root)": {
+      "kind": "door"
+    },
+    "admin": {
+      "kind": "read-model",
+      "owns": [
+        "adminThresholds"
+      ]
+    },
+    "agent-reports": {
+      "kind": "domain",
+      "owns": [
+        "agentReports"
+      ]
+    },
+    "agent-sessions": {
+      "kind": "kernel",
+      "owns": [
+        "agentSessionEvents",
+        "agentSessionTurns",
+        "agentSessions",
+        "sessionAttachments",
+        "sessionInbox"
+      ]
+    },
+    "agents": {
+      "kind": "domain",
+      "owns": [
+        "agents"
+      ]
+    },
+    "api-contract": {
+      "kind": "platform"
+    },
+    "app-config": {
+      "kind": "platform",
+      "owns": [
+        "appConfig"
+      ]
+    },
+    "assistant": {
+      "kind": "domain",
+      "owns": [
+        "assistantSpeakerLinks",
+        "conversationPins"
+      ]
+    },
+    "auth": {
+      "kind": "platform",
+      "owns": [
+        "emailVerificationTokens",
+        "mcpAuditLog",
+        "oauthAccounts",
+        "personalAccessTokens",
+        "preferenceChanges",
+        "refreshTokens",
+        "userPreferences",
+        "users"
+      ]
+    },
+    "automation": {
+      "kind": "read-model"
+    },
+    "body": {
+      "kind": "platform"
+    },
+    "branches": {
+      "kind": "platform"
+    },
+    "chat-logs": {
+      "kind": "domain",
+      "owns": [
+        "chatLogs"
+      ]
+    },
+    "cli": {
+      "kind": "door"
+    },
+    "comments": {
+      "kind": "domain",
+      "owns": [
+        "commentAttachments",
+        "commentEvents",
+        "commentMentions",
+        "comments"
+      ]
+    },
+    "config": {
+      "kind": "platform"
+    },
+    "content-language": {
+      "kind": "domain"
+    },
+    "conversations": {
+      "kind": "domain",
+      "owns": [
+        "conversationAttachments",
+        "conversationIndexState",
+        "conversationMessages",
+        "conversationParticipants",
+        "conversationPassages",
+        "conversationWindows",
+        "conversations"
+      ]
+    },
+    "db": {
+      "kind": "platform",
+      "owns": [
+        "backfillMarkers",
+        "projectFactsMigrationBackup"
+      ]
+    },
+    "development": {
+      "kind": "read-model"
+    },
+    "devices": {
+      "kind": "kernel",
+      "owns": [
+        "deviceLoginCodes",
+        "deviceRunLedger",
+        "deviceSkills",
+        "devices",
+        "pairingCodes"
+      ]
+    },
+    "domain-templates": {
+      "kind": "domain",
+      "owns": [
+        "domainTemplates"
+      ]
+    },
+    "ecosystem": {
+      "kind": "domain",
+      "owns": [
+        "channelCounters",
+        "channelDocumentEvents",
+        "channelDocuments",
+        "channelThreadHolds",
+        "contractArtifacts",
+        "contractMeasurements",
+        "contractRequests",
+        "contractVersions",
+        "ecosystemBuilderRuns",
+        "ecosystemConsumptions",
+        "ecosystemLinks",
+        "ecosystemMembershipEvents",
+        "ecosystemMemberships",
+        "ecosystemRevisions",
+        "ecosystems",
+        "issueContractWaits",
+        "projectInterfaceRevisions",
+        "projectInterfaces"
+      ]
+    },
+    "embeddings": {
+      "kind": "platform",
+      "owns": [
+        "itemEmbeddings"
+      ]
+    },
+    "feedback": {
+      "kind": "domain",
+      "owns": [
+        "feedback",
+        "feedbackAttachments",
+        "feedbackDecisions"
+      ]
+    },
+    "git": {
+      "kind": "adapter"
+    },
+    "guides": {
+      "kind": "domain",
+      "owns": [
+        "integrationGuides"
+      ]
+    },
+    "health": {
+      "kind": "read-model"
+    },
+    "improvement-messages": {
+      "kind": "domain"
+    },
+    "install": {
+      "kind": "door"
+    },
+    "integrations": {
+      "kind": "adapter",
+      "owns": [
+        "integrationConnections",
+        "integrationDeliveries"
+      ]
+    },
+    "integrations/autoflow": {
+      "kind": "adapter"
+    },
+    "integrations/coolify": {
+      "kind": "adapter"
+    },
+    "integrations/deploy": {
+      "kind": "adapter"
+    },
+    "integrations/embeddings": {
+      "kind": "adapter"
+    },
+    "integrations/epodsystem": {
+      "kind": "adapter"
+    },
+    "integrations/github": {
+      "kind": "adapter",
+      "owns": [
+        "repoPullRequests",
+        "runnerReleases"
+      ]
+    },
+    "integrations/gitlab": {
+      "kind": "adapter"
+    },
+    "integrations/google": {
+      "kind": "adapter"
+    },
+    "integrations/identity": {
+      "kind": "adapter"
+    },
+    "integrations/llm": {
+      "kind": "adapter"
+    },
+    "integrations/mail": {
+      "kind": "adapter"
+    },
+    "integrations/outbound-webhooks": {
+      "kind": "adapter",
+      "owns": [
+        "projectWebhooks"
+      ]
+    },
+    "integrations/postman": {
+      "kind": "adapter"
+    },
+    "integrations/rocketchat": {
+      "kind": "adapter",
+      "owns": [
+        "rocketchatCommentMirrorState",
+        "rocketchatCommentMirrors",
+        "rocketchatQuestionDeliveries",
+        "rocketchatThreadOpenings",
+        "rocketchatThreads"
+      ]
+    },
+    "integrations/sentry": {
+      "kind": "adapter"
+    },
+    "integrations/source-host": {
+      "kind": "adapter"
+    },
+    "issues": {
+      "kind": "kernel",
+      "owns": [
+        "activityLog",
+        "criterionVerdicts",
+        "issueAttachments",
+        "issueAttributeDefs",
+        "issueAttributes",
+        "issueCriteria",
+        "issueDependencies",
+        "issueLabels",
+        "issueLeases",
+        "issuePrefixAliases",
+        "issueWorkState",
+        "issues",
+        "projectIssCounters"
+      ]
+    },
+    "jobs": {
+      "kind": "kernel",
+      "owns": [
+        "jobEvents",
+        "jobs",
+        "promptBlobs"
+      ]
+    },
+    "knowledge": {
+      "kind": "domain",
+      "owns": [
+        "knowledgeEntries"
+      ]
+    },
+    "knowledge-edges": {
+      "kind": "domain",
+      "owns": [
+        "knowledgeEdges"
+      ]
+    },
+    "labels": {
+      "kind": "domain",
+      "owns": [
+        "labels"
+      ]
+    },
+    "lib": {
+      "kind": "platform"
+    },
+    "lifecycle": {
+      "kind": "kernel",
+      "owns": [
+        "kernelTransitions",
+        "unauditedTransitions"
+      ]
+    },
+    "masters": {
+      "kind": "domain",
+      "owns": [
+        "masterPasses"
+      ]
+    },
+    "mcp": {
+      "kind": "door"
+    },
+    "me": {
+      "kind": "read-model"
+    },
+    "memory": {
+      "kind": "domain",
+      "owns": [
+        "memories",
+        "memoryChunks",
+        "memoryRevisions",
+        "retrievalAnalytics"
+      ]
+    },
+    "messaging": {
+      "kind": "platform"
+    },
+    "metrics": {
+      "kind": "read-model"
+    },
+    "middleware": {
+      "kind": "platform"
+    },
+    "mockups": {
+      "kind": "domain",
+      "owns": [
+        "mockups"
+      ]
+    },
+    "notifications": {
+      "kind": "domain",
+      "owns": [
+        "notificationDeliveries",
+        "notificationDeliveryMembers",
+        "notificationSilences",
+        "notifications"
+      ]
+    },
+    "observability": {
+      "kind": "platform"
+    },
+    "onboarding": {
+      "kind": "domain",
+      "owns": [
+        "onboardings"
+      ]
+    },
+    "orgs": {
+      "kind": "domain",
+      "owns": [
+        "agentSelves",
+        "orgInvitations",
+        "organizationMembers",
+        "organizations",
+        "workspaceSshKeys"
+      ]
+    },
+    "pat": {
+      "kind": "platform",
+      "owns": [
+        "patFenceChanges"
+      ]
+    },
+    "pipeline": {
+      "kind": "kernel",
+      "owns": [
+        "deployLocks",
+        "issueStepContexts",
+        "phaseJournal",
+        "pipelineOutbox",
+        "pipelineRuns",
+        "queueSnapshots",
+        "runnerEvents"
+      ]
+    },
+    "plugins": {
+      "kind": "platform"
+    },
+    "pm": {
+      "kind": "domain",
+      "owns": [
+        "pmConfig",
+        "pmDecisions",
+        "pmPolicies"
+      ]
+    },
+    "project-config": {
+      "kind": "domain",
+      "owns": [
+        "integrationBindings",
+        "projectConfigDocuments",
+        "projectConfigRevisions",
+        "projectPolicies",
+        "projectSecrets",
+        "projectTestingProfiles"
+      ]
+    },
+    "projects": {
+      "kind": "domain",
+      "owns": [
+        "projectGitCredentials",
+        "projectInvitations",
+        "projectMasterCharters",
+        "projectMembers",
+        "projects"
+      ]
+    },
+    "prompt": {
+      "kind": "domain"
+    },
+    "questionnaires": {
+      "kind": "domain",
+      "owns": [
+        "questionnaireBatches"
+      ]
+    },
+    "questions": {
+      "kind": "domain",
+      "owns": [
+        "agentQuestions",
+        "questionWaiters"
+      ]
+    },
+    "queue": {
+      "kind": "platform"
+    },
+    "release-batch": {
+      "kind": "domain",
+      "owns": [
+        "releaseApprovals",
+        "releaseAttempts"
+      ]
+    },
+    "requirements": {
+      "kind": "domain",
+      "owns": [
+        "requirementBaselinePins",
+        "requirementBaselines",
+        "requirementContracts",
+        "requirementCriteria",
+        "requirementCriterionSteps",
+        "requirementDeferrals",
+        "requirementReturns",
+        "requirementRevisions",
+        "requirementWorkflows",
+        "requirements"
+      ]
+    },
+    "runners": {
+      "kind": "kernel",
+      "owns": [
+        "runners"
+      ]
+    },
+    "runs": {
+      "kind": "read-model"
+    },
+    "schedules": {
+      "kind": "domain",
+      "owns": [
+        "scheduleRuns",
+        "schedules"
+      ]
+    },
+    "security": {
+      "kind": "platform"
+    },
+    "skill-facts": {
+      "kind": "domain"
+    },
+    "skills": {
+      "kind": "domain",
+      "owns": [
+        "divergenceCharters",
+        "reconcileRuns",
+        "skillActivityEvents",
+        "skillRegistrations",
+        "skills",
+        "updatePackets"
+      ]
+    },
+    "storage": {
+      "kind": "adapter"
+    },
+    "suggestions": {
+      "kind": "domain",
+      "owns": [
+        "suggestions"
+      ]
+    },
+    "tasks": {
+      "kind": "domain",
+      "owns": [
+        "tasks"
+      ]
+    },
+    "update-packets": {
+      "kind": "door"
+    },
+    "uploads": {
+      "kind": "domain",
+      "owns": [
+        "downloadTickets",
+        "uploadTickets"
+      ]
+    },
+    "usage-records": {
+      "kind": "read-model",
+      "owns": [
+        "usageRecords"
+      ]
+    },
+    "webhooks": {
+      "kind": "door"
+    },
+    "workflows": {
+      "kind": "domain",
+      "owns": [
+        "projectWorkflowDesigns",
+        "projectWorkflows",
+        "workflowBuilds"
+      ]
+    },
+    "ws": {
+      "kind": "door"
+    }
+  }
+}
