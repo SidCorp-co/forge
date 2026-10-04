@@ -3,6 +3,7 @@ import {
   declareIntegration,
   findConnectionById,
   type HealthCheckResult,
+  type HealthStatus,
   type IntegrationAdapterMethods,
   isPreviousCredentialValid,
   updateConnection,
@@ -17,6 +18,7 @@ import {
 import { epodsystemStorefrontTarget } from './target.js';
 import type {
   ApiKeyContextResponse,
+  ApiKeyStore,
   EpodsystemConfig,
   EpodsystemSecrets,
   StoreContextResponse,
@@ -65,164 +67,166 @@ async function gqlPost(
   }
 }
 
+// One probe with a given key. Both an HTTP 401/403 and a 200 + GraphQL `errors[]` (the platform's
+// resolver-layer auth rejection) read as `unauthorized`, so the rotation-window fallback covers both
+// shapes (ISS-405).
+type ProbeResult =
+  | { kind: 'ok'; body: ApiKeyContextResponse }
+  | { kind: 'unauthorized'; status: number }
+  | { kind: 'http-error'; status: number };
+
+async function probeApiKeyContext(url: string, key: string): Promise<ProbeResult> {
+  const probe = await gqlPost(url, key, API_KEY_CONTEXT_QUERY);
+  if (!probe.ok) {
+    if (probe.status === 401 || probe.status === 403) {
+      return { kind: 'unauthorized', status: probe.status };
+    }
+    return { kind: 'http-error', status: probe.status };
+  }
+  const body = probe.json as ApiKeyContextResponse;
+  if (body.errors && body.errors.length > 0) return { kind: 'unauthorized', status: 200 };
+  return { kind: 'ok', body };
+}
+
+/** Probe with the primary key, then once with a previous key still inside its rotation window. */
+async function probeWithRotation(
+  url: string,
+  secrets: EpodsystemSecrets,
+  apiKey: string,
+): Promise<{ result: ProbeResult; activeKey: string }> {
+  const result = await probeApiKeyContext(url, apiKey);
+  if (
+    result.kind !== 'unauthorized' ||
+    !secrets.previousApiKey ||
+    !isPreviousCredentialValid(secrets)
+  ) {
+    return { result, activeKey: apiKey };
+  }
+  const retry = await probeApiKeyContext(url, secrets.previousApiKey);
+  return { result: retry, activeKey: retry.kind === 'ok' ? secrets.previousApiKey : apiKey };
+}
+
+async function markHealth(
+  connectionId: string,
+  status: HealthStatus,
+  config?: Record<string, unknown>,
+) {
+  await updateConnection(connectionId, {
+    ...(config ? { config } : {}),
+    lastHealthStatus: status,
+    lastHealthAt: new Date(),
+  });
+}
+
+/** A key still rejected after the previous-key retry must be re-entered (ISS-409); any other HTTP error stays an error. */
+async function rejected(
+  connectionId: string,
+  result: Exclude<ProbeResult, { kind: 'ok' }>,
+): Promise<HealthCheckResult> {
+  if (result.kind === 'http-error') {
+    await markHealth(connectionId, 'error');
+    return {
+      status: 'error',
+      message: `Epodsystem API error (HTTP ${result.status})`,
+      diagnostics: { httpStatus: result.status },
+    };
+  }
+  await markHealth(connectionId, 'needs_reauth');
+  return {
+    status: 'needs_reauth',
+    message: 'invalid Epodsystem API key',
+    ...(result.status === 200 ? {} : { diagnostics: { httpStatus: result.status } }),
+  };
+}
+
+/** The store's active theme name and primary domain. Non-fatal: a failure leaves both null. */
+async function enrichStore(
+  url: string,
+  key: string,
+  store: ApiKeyStore,
+  log: Record<string, unknown>,
+): Promise<{ themeName: string | null; domain: string | null }> {
+  try {
+    const enrich = await gqlPost(url, key, STORE_CONTEXT_QUERY, { sid: String(store.id) });
+    if (!enrich.ok) return { themeName: null, domain: null };
+    const ed = (enrich.json as StoreContextResponse).data;
+    const themes = ed?.storeThemes ?? [];
+    const active =
+      themes.find((t) => String(t.id) === String(store.active_theme_id)) ??
+      themes.find((t) => t.role === 'main') ??
+      null;
+    const domains = ed?.storeDomains ?? [];
+    return {
+      themeName: active?.name ?? null,
+      domain: (domains.find((d) => d.is_primary) ?? domains[0])?.domain ?? null,
+    };
+  } catch (err) {
+    logger.warn(
+      { ...log, err: err instanceof Error ? err.message : 'unknown' },
+      'epodsystem: healthcheck enrichment failed (non-fatal)',
+    );
+    return { themeName: null, domain: null };
+  }
+}
+
+/** Resolve org, scopes and the one store (ISS-387) into the connection config and the diagnostics. */
+async function settleResolved(
+  ctx: { connectionId: string; bindingId?: string | null },
+  url: string,
+  activeKey: string,
+  body: ApiKeyContextResponse,
+): Promise<HealthCheckResult> {
+  const apiCtx = body.data?.apiKeyContext;
+  // A valid key with no store yet leaves `store` undefined: key valid, identity unresolved.
+  const store = apiCtx?.stores?.[0];
+  const { themeName, domain } =
+    store?.id != null
+      ? await enrichStore(url, activeKey, store, {
+          connectionId: ctx.connectionId,
+          bindingId: ctx.bindingId,
+        })
+      : { themeName: null, domain: null };
+  // Only non-secret store identity — never the key.
+  const diagnostics = {
+    orgId: apiCtx?.organization_id ?? null,
+    scopes: Array.isArray(apiCtx?.scopes) ? apiCtx.scopes : null,
+    storeId: store?.id != null ? String(store.id) : null,
+    storeSlug: store?.slug ?? null,
+    storeName: store?.name ?? null,
+    themeId: store?.active_theme_id != null ? String(store.active_theme_id) : null,
+    themeName,
+    commerceEnabled: store?.commerce_enabled ?? null,
+    domain,
+  };
+  const connection = await findConnectionById(ctx.connectionId);
+  const resolved: Record<string, unknown> = {
+    ...((connection?.config ?? {}) as Record<string, unknown>),
+  };
+  for (const [key, value] of Object.entries(diagnostics)) if (value != null) resolved[key] = value;
+  await markHealth(ctx.connectionId, 'ok', resolved);
+  return {
+    status: 'ok',
+    message: store?.name ? `Connected to ${store.name}` : 'Epodsystem API key is valid',
+    diagnostics,
+  };
+}
+
 const epodsystemAdapterMethods: IntegrationAdapterMethods<EpodsystemConfig, EpodsystemSecrets> = {
   async healthcheck(ctx): Promise<HealthCheckResult> {
     const apiKey = ctx.secrets?.apiKey;
     if (!apiKey) {
-      await updateConnection(ctx.connectionId, {
-        lastHealthStatus: 'error',
-        lastHealthAt: new Date(),
-      });
+      await markHealth(ctx.connectionId, 'error');
       return { status: 'error', message: 'no Epodsystem API key configured' };
     }
-
-    // The endpoint is fixed platform config (EPODSYSTEM_ENDPOINT env, default
-    // the prod admin host) — not per-store, not user-supplied. The crmk_ key
-    // resolves the org/store on its own.
+    // The endpoint is fixed platform config, not per store: the crmk_ key resolves the org and store.
     const url = epodsystemGraphqlBase();
-
-    // One probe with a given key. Treats both an HTTP 401/403 and a 200 + GraphQL
-    // `errors[]` (the platform's resolver-layer auth rejection) as `unauthorized`
-    // so the rotation-window fallback covers both shapes (ISS-405).
-    type ProbeResult =
-      | { kind: 'ok'; body: ApiKeyContextResponse }
-      | { kind: 'unauthorized'; status: number }
-      | { kind: 'http-error'; status: number };
-    async function probeApiKeyContext(key: string): Promise<ProbeResult> {
-      const probe = await gqlPost(url, key, API_KEY_CONTEXT_QUERY);
-      if (!probe.ok) {
-        if (probe.status === 401 || probe.status === 403) {
-          return { kind: 'unauthorized', status: probe.status };
-        }
-        return { kind: 'http-error', status: probe.status };
-      }
-      const body = probe.json as ApiKeyContextResponse;
-      if (body.errors && body.errors.length > 0) {
-        return { kind: 'unauthorized', status: 200 };
-      }
-      return { kind: 'ok', body };
-    }
-
     try {
-      let result = await probeApiKeyContext(apiKey);
-      // If the primary key is rejected AND a retained previous key is still
-      // inside the rotation window, retry once with it. Mirrors
-      // coolify/client.ts:50-79 and the dual-token PATCH path.
-      let activeKey = apiKey;
-      if (
-        result.kind === 'unauthorized' &&
-        ctx.secrets.previousApiKey &&
-        isPreviousCredentialValid(ctx.secrets)
-      ) {
-        result = await probeApiKeyContext(ctx.secrets.previousApiKey);
-        if (result.kind === 'ok') activeKey = ctx.secrets.previousApiKey;
-      }
-
-      if (result.kind !== 'ok') {
-        // unauthorized (HTTP 401/403 OR a 200 + GraphQL errors[] auth rejection)
-        // = key rejected even after the ISS-405 previous-key retry above, so the
-        // operator must re-enter it → needs_reauth (ISS-409). A non-auth HTTP
-        // error stays a generic error.
-        const healthStatus = result.kind === 'unauthorized' ? 'needs_reauth' : 'error';
-        await updateConnection(ctx.connectionId, {
-          lastHealthStatus: healthStatus,
-          lastHealthAt: new Date(),
-        });
-        if (result.kind === 'unauthorized') {
-          return result.status === 200
-            ? { status: healthStatus, message: 'invalid Epodsystem API key' }
-            : {
-                status: healthStatus,
-                message: 'invalid Epodsystem API key',
-                diagnostics: { httpStatus: result.status },
-              };
-        }
-        return {
-          status: 'error',
-          message: `Epodsystem API error (HTTP ${result.status})`,
-          diagnostics: { httpStatus: result.status },
-        };
-      }
-
-      const body = result.body;
-      const apiCtx = body.data?.apiKeyContext;
-      // One-store-per-project (ISS-387): take the first store. A valid key with
-      // no store yet leaves `store` undefined → key-valid, identity unresolved.
-      const store = apiCtx?.stores?.[0];
-      const orgId = apiCtx?.organization_id ?? null;
-      const scopes = Array.isArray(apiCtx?.scopes) ? apiCtx.scopes : null;
-
-      let themeName: string | null = null;
-      let domain: string | null = null;
-      if (store?.id != null) {
-        try {
-          const enrich = await gqlPost(url, activeKey, STORE_CONTEXT_QUERY, {
-            sid: String(store.id),
-          });
-          if (enrich.ok) {
-            const ed = (enrich.json as StoreContextResponse).data;
-            const themes = ed?.storeThemes ?? [];
-            const active =
-              themes.find((t) => String(t.id) === String(store.active_theme_id)) ??
-              themes.find((t) => t.role === 'main') ??
-              null;
-            themeName = active?.name ?? null;
-            const domains = ed?.storeDomains ?? [];
-            domain = (domains.find((d) => d.is_primary) ?? domains[0])?.domain ?? null;
-          }
-        } catch (err) {
-          // Enrichment is non-fatal; log without the key.
-          logger.warn(
-            {
-              connectionId: ctx.connectionId,
-              bindingId: ctx.bindingId,
-              err: err instanceof Error ? err.message : 'unknown',
-            },
-            'epodsystem: healthcheck enrichment failed (non-fatal)',
-          );
-        }
-      }
-
-      const connection = await findConnectionById(ctx.connectionId);
-      const resolved: Record<string, unknown> = {
-        ...((connection?.config ?? {}) as Record<string, unknown>),
-      };
-      if (orgId != null) resolved.orgId = orgId;
-      if (scopes != null) resolved.scopes = scopes;
-      if (store?.slug != null) resolved.storeSlug = store.slug;
-      if (store?.name != null) resolved.storeName = store.name;
-      if (store?.id != null) resolved.storeId = String(store.id);
-      if (store?.active_theme_id != null) resolved.themeId = String(store.active_theme_id);
-      if (themeName != null) resolved.themeName = themeName;
-      if (store?.commerce_enabled != null) resolved.commerceEnabled = store.commerce_enabled;
-      if (domain != null) resolved.domain = domain;
-      await updateConnection(ctx.connectionId, {
-        config: resolved,
-        lastHealthStatus: 'ok',
-        lastHealthAt: new Date(),
-      });
-      return {
-        status: 'ok',
-        message: store?.name ? `Connected to ${store.name}` : 'Epodsystem API key is valid',
-        // Only non-secret store identity — never the key.
-        diagnostics: {
-          orgId,
-          scopes,
-          storeId: store?.id != null ? String(store.id) : null,
-          storeSlug: store?.slug ?? null,
-          storeName: store?.name ?? null,
-          themeId: store?.active_theme_id != null ? String(store.active_theme_id) : null,
-          themeName,
-          commerceEnabled: store?.commerce_enabled ?? null,
-          domain,
-        },
-      };
+      const { result, activeKey } = await probeWithRotation(url, ctx.secrets, apiKey);
+      if (result.kind !== 'ok') return await rejected(ctx.connectionId, result);
+      return await settleResolved(ctx, url, activeKey, result.body);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown error';
-      await updateConnection(ctx.connectionId, {
-        lastHealthStatus: 'error',
-        lastHealthAt: new Date(),
-      });
+      await markHealth(ctx.connectionId, 'error');
       logger.warn(
         { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: message },
         'epodsystem: healthcheck failed',

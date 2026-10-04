@@ -1,5 +1,6 @@
 import { logger } from '../../observability/logger.js';
 import {
+  type AdapterContext,
   declareIntegration,
   findConnectionById,
   type HealthCheckResult,
@@ -57,127 +58,134 @@ async function settle(
   return result;
 }
 
+type Ctx = AdapterContext<AutoflowConfig, AutoflowSecrets>;
+
+function refused(ctx: Ctx, fresh: Extract<AutoflowFreshToken, { kind: 'needs_reauth' }>) {
+  return settle(ctx.connectionId, 'needs_reauth', {
+    status: 'needs_reauth',
+    message: fresh.reason.startsWith('refresh_refused')
+      ? reauthDetail(fresh.reason, autoflowBaseUrl(ctx.config))
+      : `Autoflow access token expired and no refresh token is stored (${fresh.reason}); ${mintHint(ctx.config)}`,
+    diagnostics: { refresh: fresh.reason },
+  });
+}
+
+/**
+ * Probe `apiKeyContext` with a fresh token. A token refused before its recorded expiry (revoked, or
+ * the clock lied) is refreshed once; a previous token still inside its rotation window is the last try.
+ */
+async function probeFresh(ctx: Ctx, url: string): Promise<AutoflowGqlResult | HealthCheckResult> {
+  const refresh = (refusedToken?: string) =>
+    ensureFreshAutoflowToken({
+      connectionId: ctx.connectionId,
+      config: ctx.config,
+      minLifetimeMs: AUTOFLOW_REFRESH_MARGIN_MS,
+      ...(refusedToken ? { refusedToken } : {}),
+    });
+  const probe = (token: string) => autoflowGql(url, token, CONTEXT_QUERY, PROBE_TIMEOUT_MS);
+  const fresh = await refresh();
+  if (fresh.kind === 'needs_reauth') return refused(ctx, fresh);
+  let current: AutoflowSecrets = fresh.secrets ?? ctx.secrets;
+  let result = await probe(current.accessToken);
+  if (result.kind === 'unauthorized') {
+    const retry = await refresh(current.accessToken);
+    if (retry.kind === 'needs_reauth' && retry.reason.startsWith('refresh_refused')) {
+      return refused(ctx, retry);
+    }
+    if (retry.kind === 'ok' && retry.secrets.accessToken !== current.accessToken) {
+      current = retry.secrets;
+      result = await probe(current.accessToken);
+    }
+  }
+  if (
+    result.kind === 'unauthorized' &&
+    current.previousAccessToken &&
+    isPreviousCredentialValid(current)
+  ) {
+    result = await probe(current.previousAccessToken);
+  }
+  return result;
+}
+
+function probeFailure(ctx: Ctx, url: string, probe: Exclude<AutoflowGqlResult, { kind: 'ok' }>) {
+  switch (probe.kind) {
+    case 'unauthorized':
+      return settle(ctx.connectionId, 'needs_reauth', {
+        status: 'needs_reauth',
+        message: `Autoflow refused the access token (${probe.message}); ${mintHint(ctx.config)}`,
+        diagnostics: { httpStatus: probe.status },
+      });
+    case 'http-error':
+      return settle(ctx.connectionId, 'error', {
+        status: 'error',
+        message: `Autoflow API error (HTTP ${probe.status}) at ${url}`,
+        diagnostics: { httpStatus: probe.status },
+      });
+    case 'graphql-error':
+      return settle(ctx.connectionId, 'error', {
+        status: 'error',
+        message: `Autoflow answered apiKeyContext with an error: ${probe.message}`,
+      });
+  }
+}
+
+/** An OAuth access token is pinned to ONE site, and it must be the site the binding names. */
+async function settleStore(ctx: Ctx, apiCtx: AutoflowApiKeyContext | null | undefined) {
+  const stores = apiCtx?.stores ?? [];
+  if (stores.length !== 1 || !stores[0]) {
+    return settle(ctx.connectionId, 'needs_reauth', {
+      status: 'needs_reauth',
+      message: `the token resolves to ${stores.length} sites, and an Autoflow access token is minted for exactly one; ${mintHint(ctx.config)}`,
+    });
+  }
+  const store = stores[0];
+  if (ctx.config.shop && store.slug !== ctx.config.shop) {
+    return settle(ctx.connectionId, 'needs_reauth', {
+      status: 'needs_reauth',
+      message: `the token was minted for site "${store.slug ?? '(no slug)'}", and this binding names shop "${ctx.config.shop}"; ${mintHint(ctx.config)}`,
+      diagnostics: { tokenSite: store.slug ?? null, bindingShop: ctx.config.shop },
+    });
+  }
+  const connection = await findConnectionById(ctx.connectionId);
+  const resolved: Record<string, unknown> = {
+    ...((connection?.config ?? {}) as Record<string, unknown>),
+  };
+  if (apiCtx?.organization_id) resolved.orgId = apiCtx.organization_id;
+  if (store.id != null) resolved.storeId = String(store.id);
+  if (store.slug) resolved.storeSlug = store.slug;
+  if (store.name) resolved.storeName = store.name;
+  if (store.active_theme_id != null) resolved.themeId = String(store.active_theme_id);
+  if (store.commerce_enabled != null) resolved.commerceEnabled = store.commerce_enabled;
+  const result: HealthCheckResult = {
+    status: 'ok',
+    message: store.name ? `Connected to ${store.name}` : 'Autoflow access token is valid',
+    diagnostics: {
+      orgId: apiCtx?.organization_id ?? null,
+      storeId: store.id != null ? String(store.id) : null,
+      storeSlug: store.slug ?? null,
+      storeName: store.name ?? null,
+      themeId: store.active_theme_id != null ? String(store.active_theme_id) : null,
+    },
+  };
+  return settle(ctx.connectionId, 'ok', result, resolved);
+}
+
 const autoflowAdapterMethods: IntegrationAdapterMethods<AutoflowConfig, AutoflowSecrets> = {
   async healthcheck(ctx): Promise<HealthCheckResult> {
-    let token = ctx.secrets?.accessToken;
-    if (!token) {
+    if (!ctx.secrets?.accessToken) {
       return settle(ctx.connectionId, 'error', {
         status: 'error',
         message: 'no Autoflow access token configured',
       });
     }
     const url = autoflowGraphqlUrl(ctx.config);
-    const refused = (fresh: Extract<AutoflowFreshToken, { kind: 'needs_reauth' }>) =>
-      settle(ctx.connectionId, 'needs_reauth', {
-        status: 'needs_reauth',
-        message: fresh.reason.startsWith('refresh_refused')
-          ? reauthDetail(fresh.reason, autoflowBaseUrl(ctx.config))
-          : `Autoflow access token expired and no refresh token is stored (${fresh.reason}); ${mintHint(ctx.config)}`,
-        diagnostics: { refresh: fresh.reason },
-      });
     try {
-      const fresh = await ensureFreshAutoflowToken({
-        connectionId: ctx.connectionId,
-        config: ctx.config,
-        minLifetimeMs: AUTOFLOW_REFRESH_MARGIN_MS,
-      });
-      if (fresh.kind === 'needs_reauth') return refused(fresh);
-      let current: AutoflowSecrets = fresh.secrets ?? ctx.secrets;
-      token = current.accessToken;
-      let probe: AutoflowGqlResult = await autoflowGql(url, token, CONTEXT_QUERY, PROBE_TIMEOUT_MS);
-      if (probe.kind === 'unauthorized') {
-        // A token refused before its recorded expiry (revoked, or the clock lied): refresh once.
-        const retry = await ensureFreshAutoflowToken({
-          connectionId: ctx.connectionId,
-          config: ctx.config,
-          minLifetimeMs: AUTOFLOW_REFRESH_MARGIN_MS,
-          refusedToken: token,
-        });
-        if (retry.kind === 'needs_reauth' && retry.reason.startsWith('refresh_refused')) {
-          return refused(retry);
-        }
-        if (retry.kind === 'ok' && retry.secrets.accessToken !== token) {
-          current = retry.secrets;
-          token = current.accessToken;
-          probe = await autoflowGql(url, token, CONTEXT_QUERY, PROBE_TIMEOUT_MS);
-        }
-      }
-      if (
-        probe.kind === 'unauthorized' &&
-        current.previousAccessToken &&
-        isPreviousCredentialValid(current)
-      ) {
-        probe = await autoflowGql(
-          url,
-          current.previousAccessToken,
-          CONTEXT_QUERY,
-          PROBE_TIMEOUT_MS,
-        );
-      }
-      if (probe.kind === 'unauthorized') {
-        return settle(ctx.connectionId, 'needs_reauth', {
-          status: 'needs_reauth',
-          message: `Autoflow refused the access token (${probe.message}); ${mintHint(ctx.config)}`,
-          diagnostics: { httpStatus: probe.status },
-        });
-      }
-      if (probe.kind === 'http-error') {
-        return settle(ctx.connectionId, 'error', {
-          status: 'error',
-          message: `Autoflow API error (HTTP ${probe.status}) at ${url}`,
-          diagnostics: { httpStatus: probe.status },
-        });
-      }
-      if (probe.kind === 'graphql-error') {
-        return settle(ctx.connectionId, 'error', {
-          status: 'error',
-          message: `Autoflow answered apiKeyContext with an error: ${probe.message}`,
-        });
-      }
-
-      const apiCtx = probe.data.apiKeyContext as AutoflowApiKeyContext | null | undefined;
-      const stores = apiCtx?.stores ?? [];
-      // An OAuth access token is pinned to ONE site; anything else is not guessed at.
-      if (stores.length !== 1 || !stores[0]) {
-        return settle(ctx.connectionId, 'needs_reauth', {
-          status: 'needs_reauth',
-          message: `the token resolves to ${stores.length} sites, and an Autoflow access token is minted for exactly one; ${mintHint(ctx.config)}`,
-        });
-      }
-      const store = stores[0];
-      if (ctx.config.shop && store.slug !== ctx.config.shop) {
-        return settle(ctx.connectionId, 'needs_reauth', {
-          status: 'needs_reauth',
-          message: `the token was minted for site "${store.slug ?? '(no slug)'}", and this binding names shop "${ctx.config.shop}"; ${mintHint(ctx.config)}`,
-          diagnostics: { tokenSite: store.slug ?? null, bindingShop: ctx.config.shop },
-        });
-      }
-
-      const connection = await findConnectionById(ctx.connectionId);
-      const resolved: Record<string, unknown> = {
-        ...((connection?.config ?? {}) as Record<string, unknown>),
-      };
-      if (apiCtx?.organization_id) resolved.orgId = apiCtx.organization_id;
-      if (store.id != null) resolved.storeId = String(store.id);
-      if (store.slug) resolved.storeSlug = store.slug;
-      if (store.name) resolved.storeName = store.name;
-      if (store.active_theme_id != null) resolved.themeId = String(store.active_theme_id);
-      if (store.commerce_enabled != null) resolved.commerceEnabled = store.commerce_enabled;
-      return settle(
-        ctx.connectionId,
-        'ok',
-        {
-          status: 'ok',
-          message: store.name ? `Connected to ${store.name}` : 'Autoflow access token is valid',
-          diagnostics: {
-            orgId: apiCtx?.organization_id ?? null,
-            storeId: store.id != null ? String(store.id) : null,
-            storeSlug: store.slug ?? null,
-            storeName: store.name ?? null,
-            themeId: store.active_theme_id != null ? String(store.active_theme_id) : null,
-          },
-        },
-        resolved,
+      const probe = await probeFresh(ctx, url);
+      if (!('kind' in probe)) return probe;
+      if (probe.kind !== 'ok') return await probeFailure(ctx, url, probe);
+      return await settleStore(
+        ctx,
+        probe.data.apiKeyContext as AutoflowApiKeyContext | null | undefined,
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown error';
