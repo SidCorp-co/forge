@@ -4,9 +4,8 @@
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { holderFanout, leaseIsWorkInProgress, readClaim } from '../issues/index.js';
 import { logger } from '../observability/logger.js';
-import { holderFanout, readClaim } from '../pipeline/lease-fanout.js';
-import { leaseIsWorkInProgress } from '../pipeline/session-claim.js';
 
 export const LOOP_MONITOR_AXIS = 'job' as const;
 

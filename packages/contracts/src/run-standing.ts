@@ -460,3 +460,54 @@ export type RunSummaryView = Pick<
 
 export const runSummaryOf = (run: RunStanding): RunSummaryView =>
 	pickFields(run, RUN_SUMMARY_FIELDS);
+
+/** Machine pause kinds a MACHINE clears: something in this build watches for the condition and resumes the run without anyone being asked. */
+export const MACHINE_RESUMED_PAUSE_KINDS: readonly string[] = [];
+
+/** Machine pause kinds only a PERSON clears. */
+export const HUMAN_RESUMED_PAUSE_KINDS = ["stage_stalled"] as const;
+
+/** Every machine pause-reason kind that still has code able to clear it. `pauseReason` is written as `<kind>:<detail>`; the orphaned-pause sweep frees any run whose kind is absent here. */
+export const LIVE_PAUSE_REASON_KINDS = [...MACHINE_RESUMED_PAUSE_KINDS, ...HUMAN_RESUMED_PAUSE_KINDS] as const;
+
+export type PauseReasonKind = (typeof LIVE_PAUSE_REASON_KINDS)[number];
+
+/** The only way to spell a machine pause reason — the kind must be registered. */
+export function pauseReasonFor(kind: PauseReasonKind, detail: string): string {
+	return `${kind}:${detail}`;
+}
+
+/** True when `reason` names a kind that still exists in this build. */
+export function isLivePauseReason(reason: string | null | undefined): boolean {
+	if (!reason) return false;
+	const kind = reason.split(":", 1)[0] ?? "";
+	return (LIVE_PAUSE_REASON_KINDS as readonly string[]).includes(kind);
+}
+
+export function pauseResumesItself(reason: string | null | undefined): boolean {
+	if (!reason) return false;
+	const kind = reason.split(":", 1)[0] ?? "";
+	return (MACHINE_RESUMED_PAUSE_KINDS as readonly string[]).includes(kind);
+}
+
+/** Who ends this pause. The one question a surface describing a pause has to answer, and the only thing its copy may branch on. */
+export type PauseResumer = "operator" | "machine" | "sweeper";
+
+/** A `pauseReason` read apart, for a surface that has to name the pause. */
+export interface PauseDescription {
+	/** The kind half of `<kind>:<detail>`; null for an operator pause. */
+	kind: string | null;
+	/** The detail half — the stage, for `stage_stalled:<stage>`. */
+	detail: string | null;
+	resumer: PauseResumer;
+}
+
+/** Read a `pauseReason` as the three things a banner needs: which kind holds the run, what its detail names, and who ends it. */
+export function describePause(reason: string | null | undefined): PauseDescription {
+	if (!reason) return { kind: null, detail: null, resumer: "operator" };
+	const separator = reason.indexOf(":");
+	const kind = separator === -1 ? reason : reason.slice(0, separator);
+	const detail = separator === -1 ? null : reason.slice(separator + 1) || null;
+	if (pauseResumesItself(reason)) return { kind, detail, resumer: "machine" };
+	return { kind, detail, resumer: isLivePauseReason(reason) ? "operator" : "sweeper" };
+}

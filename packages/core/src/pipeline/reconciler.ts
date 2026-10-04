@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
-import { transitionIssueStatus } from '../issues/apply-transition.js';
+import { transitionIssueStatus } from '../issues/index.js';
 import { logger } from '../observability/logger.js';
 import { traceStep } from '../observability/sentry.js';
 import { countOverdueDeliveries } from '../outbox/index.js';

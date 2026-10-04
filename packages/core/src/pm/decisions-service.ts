@@ -10,7 +10,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type ModelTier, pmDecisions, projects } from '../db/schema.js';
-import { indexMemory } from '../memory/indexer.js';
+import { indexMemory } from '../memory/index.js';
 import { logger } from '../observability/logger.js';
 import { emitNotification } from './ports.js';
 

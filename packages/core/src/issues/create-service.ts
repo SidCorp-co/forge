@@ -9,7 +9,6 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
-import { leaseWriteTakes } from '../pipeline/session-claim.js';
 import type { Actor } from './activity.js';
 import {
   type AttachmentErrorEntry,
@@ -35,6 +34,7 @@ import {
   type PendingIssueRelation,
   writeIssueRelations,
 } from './relations-service.js';
+import { leaseWriteTakes } from './session-claim.js';
 import { splitSessionContext, writeSplitSessionContext } from './work-state.js';
 
 const refuse = refuser<IssueCreateRefusalCode>('ISSUE_CREATE_REFUSED');

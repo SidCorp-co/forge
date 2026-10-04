@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { AUTONOMOUS_QUESTION_STATUS } from '@forge/contracts/issue-machine';
 import type { IssueStatus } from '../db/schema.js';
-import { AUTONOMOUS_QUESTION_STATUS } from '../pipeline/autonomous-mode.js';
 import { actorAgency, type TransitionActor } from './actor-agency.js';
 import type { DrizzleTx } from './dependency-executor.js';
 import { askParkQuestion, personOwesAnAnswer } from './ports.js';

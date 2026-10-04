@@ -13,7 +13,7 @@ import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
-import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
+import { CLASSIFIER_VERSION } from '../pipeline/index.js';
 import { jobsPorts } from './ports.js';
 
 export { noPromptMessage, POOL_JOB_NO_PROMPT } from '@forge/contracts/jobs';

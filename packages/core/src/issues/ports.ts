@@ -197,6 +197,26 @@ export interface IssuePorts {
     binding: string;
     workflowId: string;
   }) => Promise<StorefrontDraftReading>;
+  /** The issue's step handoffs, oldest first. */
+  handoffContextsOf: (
+    projectId: string,
+    issueId: string,
+  ) => Promise<
+    Array<{
+      id: string;
+      step: string | null;
+      attempt: number;
+      pipelineRunId: string;
+      payload: unknown;
+      createdAt: Date;
+      updatedAt: Date;
+    }>
+  >;
+  setCurrentStepForOpenIssueRun: (issueId: string, step: string) => Promise<void>;
+  closeOpenRunForIssue: (
+    issueId: string,
+    outcome: 'completed' | 'failed' | 'cancelled',
+  ) => Promise<'settled' | 'deferred'>;
 }
 
 let ports: IssuePorts | null = null;
@@ -314,3 +334,11 @@ export const isSourceHostUnavailable = (err: unknown): err is Error =>
   issuePorts().isSourceHostUnavailable(err);
 export const readStorefrontDraft: IssuePorts['readStorefrontDraft'] = (args) =>
   issuePorts().readStorefrontDraft(args);
+export const handoffContextsOf: IssuePorts['handoffContextsOf'] = (projectId, issueId) =>
+  issuePorts().handoffContextsOf(projectId, issueId);
+export const setCurrentStepForOpenIssueRun: IssuePorts['setCurrentStepForOpenIssueRun'] = (
+  issueId,
+  step,
+) => issuePorts().setCurrentStepForOpenIssueRun(issueId, step);
+export const closeOpenRunForIssue: IssuePorts['closeOpenRunForIssue'] = (issueId, outcome) =>
+  issuePorts().closeOpenRunForIssue(issueId, outcome);

@@ -1,5 +1,6 @@
 export {
   discardCommentAttachments,
+  findCommentAttachmentByName,
   persistCommentAttachment,
   validateCommentAttachment,
 } from './attachment-service.js';

@@ -24,8 +24,6 @@ import { effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { holds } from '../permissions/index.js';
-import { getIssueContexts } from '../pipeline/issue-context-store.js';
-import { classifyLease } from '../pipeline/session-claim.js';
 import { type BlockingEdge, blockerUnsettledSql, blockingEdgesIn } from './blocked-by.js';
 import { readCurrentDrafts } from './criteria/storefront-draft.js';
 import { type DesignHold, designHoldPhrase } from './design-delivery.js';
@@ -33,7 +31,8 @@ import { issueWorkMovingSql } from './issue-lease.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { loadIssuePark } from './park-view.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
-import { approvalRequired, holdsOpenHumanQuestion } from './ports.js';
+import { approvalRequired, handoffContextsOf, holdsOpenHumanQuestion } from './ports.js';
+import { classifyLease } from './session-claim.js';
 import {
   deriveIssueStanding,
   type IssueStandingInput,
@@ -494,7 +493,7 @@ export async function readIssueStanding(
 /** The handoffs, step durations and newest failed job one issue's step outcomes are read from. */
 async function stepFactsOf(projectId: string, issueId: string) {
   const [contexts, durations, failed] = await Promise.all([
-    getIssueContexts({ projectId, issueId, kind: 'handoff', limit: 200, orderDir: 'asc' }),
+    handoffContextsOf(projectId, issueId),
     db.execute(sql`
       SELECT run_id, step, duration_seconds, cost_usd, coalesce(finished_at, started_at) AS at
         FROM pipeline_run_step_durations

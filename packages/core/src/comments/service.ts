@@ -10,11 +10,7 @@ import { prepareBody } from '../body/prepare.js';
 import { db, type Tx } from '../db/client.js';
 import { commentMentions, comments, issues, users } from '../db/schema.js';
 import type { Actor } from '../issues/index.js';
-import {
-  dropCommentMirror,
-  mirrorCommentRecord,
-  remirrorCommentRecord,
-} from '../issues/record-events/mirror.js';
+import { dropCommentMirror, mirrorCommentRecord, remirrorCommentRecord } from '../issues/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 import { parseForgeRecord } from '../messaging/forge-record.js';

@@ -9,9 +9,9 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { holderFanout, readClaim } from '../pipeline/lease-fanout.js';
-import { leaseIsWorkInProgress } from '../pipeline/session-claim.js';
 import { issueWorkMovingSql } from './issue-lease.js';
+import { holderFanout, readClaim } from './lease-fanout.js';
+import { leaseIsWorkInProgress } from './session-claim.js';
 
 export interface IssueHold {
   held: boolean;

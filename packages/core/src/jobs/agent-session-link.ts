@@ -14,9 +14,8 @@ import {
 } from '../db/schema.js';
 import { deviceRoom, projectRoom, roomManager } from '../lib/rooms.js';
 import { logger } from '../observability/logger.js';
-import { classifyFailure } from '../pipeline/failure-classifier.js';
 import type { FailureCause } from '../pipeline/index.js';
-import { closeRunIfOneShot } from '../pipeline/runs.js';
+import { classifyFailure, closeRunIfOneShot } from '../pipeline/index.js';
 import type { ResumeRecord } from './resume-policy.js';
 
 type JobRow = typeof jobs.$inferSelect;

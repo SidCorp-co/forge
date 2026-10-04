@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { BASE_MERGE_STATE } from '../issues/merged-at.js';
+import { BASE_MERGE_STATE } from '../issues/index.js';
 import { foldLanes, foldSessionFailures } from './pulse-folds.js';
 import { idList } from './pulse-sql.js';
 import { PULSE_QUALITY_WINDOW_DAYS, type PulseQuality } from './pulse-types.js';

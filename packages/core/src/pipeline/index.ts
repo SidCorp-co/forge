@@ -6,8 +6,13 @@ export {
 } from './autonomous-mode.js';
 export {
   abandonDeployDispatchHold,
+  isCloseDeferred,
   openDeployDispatchHold,
   readDeployHolds,
+  replaceDispatchHoldWithTargets,
+  resolveDeployGate,
+  settleDeployTarget,
+  targetHoldKey,
 } from './deploy-confirmations.js';
 export {
   acquireDeployLocks,
@@ -39,12 +44,16 @@ export {
   alarmStalledQueuedJobs,
   type Inv7AlarmResult,
 } from './inv7-alarms.js';
+export { getIssueContexts } from './issue-context-store.js';
 export {
   detectOrphanedRunAssertions,
   type IssueRunInvariantResult,
 } from './issue-run-invariant.js';
-export { holderFanout, readClaim } from './lease-fanout.js';
-export { reEnqueueForIssue, registerPipelineOrchestrator } from './orchestrator.js';
+export {
+  reEnqueueForIssue,
+  registerPipelineOrchestrator,
+  triggerPipelineStepManual,
+} from './orchestrator.js';
 export { registerPausedRunWedgeResolve } from './paused-run-wedge-resolve.js';
 export { backfillPhaseJournal } from './phase-journal-backfill.js';
 export { registerPhaseJournalClose } from './phase-journal-close.js';
@@ -56,6 +65,7 @@ export { NO_PROGRESS_ROUNDS } from './reopen-policy.js';
 export { resolvedWindowDaysFor, retentionRuleFor } from './retention/policy.js';
 export { runRetentionSweep } from './retention/sweep.js';
 export { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
+export type { PauseResumer } from './run-pause.js';
 export { describePause, type OrphanedPauseResult, resumeOrphanedPauses } from './run-pause.js';
 export {
   type RunMetadataWrite,
@@ -64,6 +74,7 @@ export {
   writeRunMetadata,
 } from './run-records.js';
 export {
+  cancelConcludedRun,
   closeOpenRunForIssue,
   closeRun,
   closeRunIfOneShot,
@@ -71,8 +82,10 @@ export {
   type OneShotRunSpec,
   openIssueRun,
   openOneShotRun,
+  RELEASE_DEPLOY_DONE_STEP,
   RELEASE_DEPLOY_IN_FLIGHT_STEP,
   setCurrentStep,
+  setCurrentStepForOpenIssueRun,
 } from './runs.js';
 export {
   type ConcludedRunReapResult,
@@ -82,7 +95,6 @@ export {
 } from './runs-concluded.js';
 export { groupOf, laneOf, type PipelineRunLane, stepOf } from './runs-lane.js';
 export { loadRunLivenessByRunIds, type RunLiveness } from './runs-liveness.js';
-export { classifyLease, leaseIsWorkInProgress } from './session-claim.js';
 export { firstShipped } from './shipped-at.js';
 export {
   reapStaleReleaseBatchClaims,

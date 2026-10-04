@@ -1,5 +1,5 @@
 import { holdReleasesItself, readHoldState } from '@forge/contracts/jobs';
-import type { PauseResumer } from '../pipeline/run-pause.js';
+import type { PauseResumer } from '@forge/contracts/run-standing';
 import type {
   PipelineGate,
   PipelineHealth,

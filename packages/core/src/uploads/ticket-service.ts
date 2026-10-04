@@ -1,10 +1,10 @@
 import type { AttachmentRefusalCode } from '@forge/contracts/attachments';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
-import { findCommentAttachmentByName } from '../comments/attachment-service.js';
+import { findCommentAttachmentByName } from '../comments/index.js';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { uploadTickets } from '../db/schema.js';
-import { findIssueAttachmentByName } from '../issues/attachment-service.js';
+import { findIssueAttachmentByName } from '../issues/index.js';
 import {
   allowedSetForTarget,
   NAME_MAX_BYTES,

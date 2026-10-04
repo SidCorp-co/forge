@@ -3,8 +3,8 @@
  *  a live lease is working it whatever the job table says (ISS-1317). */
 
 import { sql } from 'drizzle-orm';
-import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
-import { classifyLease, type LeaseReading, leaseIsWorkInProgress } from './session-claim.js';
+import type { IssueDependencyExecutor } from '../issues/index.js';
+import { classifyLease, type LeaseReading, leaseIsWorkInProgress } from '../issues/index.js';
 
 /** Holder fanout is not counted: the question is whether THIS issue's claim is unexpired, and a
  *  holder claiming several issues is still working each one it holds. */

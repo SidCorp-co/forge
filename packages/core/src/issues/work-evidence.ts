@@ -1,8 +1,8 @@
 import { and, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import { issueDependencies, issueStepContexts, issues, jobs, projects } from '../db/schema.js';
-import { WORK_EVIDENCE_WAIVER_KIND } from '../issues/dependency-effects.js';
 import { logger } from '../observability/logger.js';
+import { WORK_EVIDENCE_WAIVER_KIND } from './dependency-effects.js';
 import { readLandingBranches } from './ports.js';
 
 const IMPLEMENTATION_STEPS = ['code', 'fix', 'drive'] as const;

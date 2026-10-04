@@ -6,7 +6,7 @@ import { postIssueNotice } from '../comments/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { refuser } from '../lib/refusal.js';
-import { deleteMemory, indexMemoryBestEffort } from '../memory/indexer.js';
+import { deleteMemory, indexMemoryBestEffort } from '../memory/index.js';
 import {
   type AuthVars,
   assertEmailVerified,

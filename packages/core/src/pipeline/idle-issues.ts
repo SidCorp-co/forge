@@ -17,28 +17,27 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses } from '../db/schema.js';
 import type { WorkStep } from '../db/schema-issue-work-state.js';
-import { issueWorkInFlightSql } from '../issues/issue-lease.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
-import { logger } from '../observability/logger.js';
-import { holderFanout, readClaim } from './lease-fanout.js';
-import { admittedRunner, emitNotification, projectAdminUserIdsFor } from './ports.js';
 import {
+  heldReleaseWait,
+  holderFanout,
+  issueWorkInFlightSql,
   type LeaseReading,
+  landedWait,
   leaseHolderOf,
   leaseIsReleasable,
   leaseIsWorkInProgress,
   leaseShowsHolderGone,
-} from './session-claim.js';
-import { isTerminalPlacement } from './status-assertions.js';
-import {
-  heldReleaseWait,
-  landedWait,
+  readClaim,
   SHORTEST_GRACE_MS,
   STRAND_RULES,
   type StrandEvidence,
   strandReason,
   strandRuleFor,
-} from './strand-rules.js';
+} from '../issues/index.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
+import { logger } from '../observability/logger.js';
+import { admittedRunner, emitNotification, projectAdminUserIdsFor } from './ports.js';
+import { isTerminalPlacement } from './status-assertions.js';
 import { sweepGroupKey } from './stranded-issues.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
 

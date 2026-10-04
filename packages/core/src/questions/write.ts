@@ -22,9 +22,9 @@ import {
   type QuestionOrigin,
   type QuestionStep,
 } from '../db/schema-questions.js';
-import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
+import type { IssueDependencyExecutor } from '../issues/index.js';
 import { refuser } from '../lib/refusal.js';
-import { type KernelActor, transition } from '../lifecycle/transition.js';
+import { type KernelActor, transition } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
 import { holds, type PermissionFacts, requireHeld } from '../permissions/index.js';

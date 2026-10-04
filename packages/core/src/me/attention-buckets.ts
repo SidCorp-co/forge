@@ -23,7 +23,7 @@ import {
   projects,
   reconcileRuns,
 } from '../db/schema.js';
-import { issueArchiveSide } from '../issues/archive.js';
+import { issueArchiveSide } from '../issues/index.js';
 import { actorFor, visibleFilter } from '../permissions/index.js';
 
 const PER_BUCKET = 5;

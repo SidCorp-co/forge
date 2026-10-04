@@ -1,7 +1,7 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { logger } from '../observability/logger.js';
-import { emitPipelineWedge } from '../pipeline/wedge.js';
+import { emitPipelineWedge } from '../pipeline/index.js';
 import { killGraceMs } from './kill-gate.js';
 import { RESULT_QUIET_MINUTES } from './loop-monitor.js';
 import { quietJobCandidateQuery } from './progress-signal.js';

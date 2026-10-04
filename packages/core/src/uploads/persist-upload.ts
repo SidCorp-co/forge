@@ -1,5 +1,5 @@
-import { persistCommentAttachment } from '../comments/attachment-service.js';
-import { persistIssueAttachment } from '../issues/attachment-service.js';
+import { persistCommentAttachment } from '../comments/index.js';
+import { persistIssueAttachment } from '../issues/index.js';
 import { persistConversationAttachment, persistSessionAttachment } from './ports.js';
 import type { UploadTicket } from './ticket-service.js';
 

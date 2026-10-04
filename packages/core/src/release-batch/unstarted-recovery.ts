@@ -5,7 +5,7 @@ import { jobs } from '../db/schema.js';
 import { syncAgentSessionLifecycle } from '../jobs/index.js';
 import { transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
-import { emitPipelineWedge } from '../pipeline/wedge.js';
+import { emitPipelineWedge } from '../pipeline/index.js';
 import { recoverStrandedReleasing, runRecordedPromotion } from './releasing-recovery.js';
 
 /**

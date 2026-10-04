@@ -1,7 +1,6 @@
 import type { BodyNode } from '../body/parse.js';
 import { bodyNodes } from '../body/prepare.js';
-import { actorKey, type ResolvedActor } from '../issues/actor-identity.js';
-import { type RecordEvent, recordOfEvent } from '../issues/record-events/store.js';
+import { actorKey, type RecordEvent, type ResolvedActor, recordOfEvent } from '../issues/index.js';
 import { type ForgeRecord, parseForgeRecord } from '../messaging/forge-record.js';
 import type { RecordLens } from '../messaging/record-screen.js';
 

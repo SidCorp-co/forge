@@ -17,12 +17,13 @@ import { type IssueStatus, issues } from '../db/schema.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import {
   activeIssuePrefix,
+  flushIssueRelationEffects,
   type PendingIssueRelation,
   resolveIssueRouteRef,
   TransitionError,
   transitionIssueStatus,
+  writeIssueRelations,
 } from '../issues/index.js';
-import { flushIssueRelationEffects, writeIssueRelations } from '../issues/relations-service.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
 import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';

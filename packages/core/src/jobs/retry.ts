@@ -16,13 +16,14 @@ import { db } from '../db/client.js';
 import { jobEvents, jobs } from '../db/schema.js';
 import { logger } from '../observability/logger.js';
 import { traceStep } from '../observability/sentry.js';
-import { classifyFailure, deriveActionFromKind } from '../pipeline/failure-classifier.js';
-import { verifyRecovery } from '../pipeline/recovery-verifier.js';
 import {
   capacityWedgeEntityId,
+  classifyFailure,
+  deriveActionFromKind,
   emitPipelineWedge,
   resolvePipelineWedge,
-} from '../pipeline/wedge.js';
+  verifyRecovery,
+} from '../pipeline/index.js';
 import type { RequiredCapabilities } from '../runners/index.js';
 import { onlineCapableDeviceIds } from '../runners/index.js';
 import { jobsPorts } from './ports.js';

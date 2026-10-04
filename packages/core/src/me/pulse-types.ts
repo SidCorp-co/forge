@@ -5,7 +5,7 @@
  */
 
 import type { PulseActionRow } from '@forge/contracts/needs-you';
-import type { FailureCause } from '../pipeline/failure-causes.js';
+import type { FailureCause } from '../pipeline/index.js';
 
 /** A set the response counts in full and names only the first `shown.length` of. */
 export interface PulseCapped<T> {

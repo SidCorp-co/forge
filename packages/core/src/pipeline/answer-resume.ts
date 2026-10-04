@@ -9,9 +9,12 @@ import {
 } from '../db/schema.js';
 import { agentQuestions, questionWaiters } from '../db/schema-questions.js';
 import { sessionInbox } from '../db/schema-session-inbox.js';
-import { accountActor } from '../issues/account-actor.js';
-import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
-import { readWorkState } from '../issues/work-state.js';
+import {
+  accountActor,
+  readWorkState,
+  TransitionError,
+  transitionIssueStatus,
+} from '../issues/index.js';
 import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
 import { AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';

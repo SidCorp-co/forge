@@ -13,7 +13,7 @@ import { db } from '../db/client.js';
 import { type JobType, jobs } from '../db/schema.js';
 import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
-import { resolvePipelineWedge } from '../pipeline/wedge.js';
+import { resolvePipelineWedge } from '../pipeline/index.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
 

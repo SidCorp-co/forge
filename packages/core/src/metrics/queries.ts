@@ -1,7 +1,7 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { bucketIso, utcDateTrunc } from '../lib/time-buckets.js';
-import { firstShipped } from '../pipeline/shipped-at.js';
+import { firstShipped } from '../pipeline/index.js';
 
 export const METRICS = [
   'cost',

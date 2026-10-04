@@ -7,7 +7,7 @@ import type {
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, issues, labels } from '../db/schema.js';
-import { issueArchiveSide } from '../issues/archive.js';
+import { issueArchiveSide } from '../issues/index.js';
 
 /**
  * ISS-949 — the backlog read by module instead of by issue.

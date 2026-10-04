@@ -21,7 +21,7 @@ import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions, type QuestionOrigin, type QuestionStep } from '../db/schema-questions.js';
 import { dataPolicyOf, storedAnswers } from '../lib/data-egress.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
-import { type KernelActor, movedRow, transition } from '../lifecycle/transition.js';
+import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';
 import { permissionFactsOf } from '../permissions/index.js';
 import { insertBatchQuestions } from '../questions/index.js';
 import {

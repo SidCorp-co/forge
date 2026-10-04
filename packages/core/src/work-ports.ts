@@ -81,7 +81,12 @@ import {
   projectAdminUserIdsFor,
   resolveNotifications,
 } from './notifications/index.js';
-import { providePipelinePorts } from './pipeline/index.js';
+import {
+  closeOpenRunForIssue,
+  getIssueContexts,
+  providePipelinePorts,
+  setCurrentStepForOpenIssueRun,
+} from './pipeline/index.js';
 import { providePmPorts } from './pm/index.js';
 import {
   policyRefusal,
@@ -228,6 +233,10 @@ export function provideWorkPorts(): void {
     isSourceHostUnavailable: (err): err is SourceHostUnavailable =>
       err instanceof SourceHostUnavailable,
     readStorefrontDraft,
+    handoffContextsOf: (projectId, issueId) =>
+      getIssueContexts({ projectId, issueId, kind: 'handoff', limit: 200, orderDir: 'asc' }),
+    setCurrentStepForOpenIssueRun,
+    closeOpenRunForIssue,
   });
 
   provideAutomationPorts({

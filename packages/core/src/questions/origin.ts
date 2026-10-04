@@ -2,7 +2,7 @@ import { and, desc, eq, gte, lte } from 'drizzle-orm';
 import { agentSessions } from '../db/schema.js';
 import { conversationMessages, conversationWindows } from '../db/schema-conversations.js';
 import type { QuestionOrigin } from '../db/schema-questions.js';
-import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
+import type { IssueDependencyExecutor } from '../issues/index.js';
 import { conversationTurnOf } from './ports.js';
 
 /** The pool, or a caller's open transaction — a park resolves its origin inside the transition's. */

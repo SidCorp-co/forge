@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
-import { issueArchiveSide } from '../issues/archive.js';
+import { issueArchiveSide } from '../issues/index.js';
 
 /** The ids among `projectIds` that belong to `orgId`. */
 export async function projectIdsInOrg(projectIds: string[], orgId: string): Promise<string[]> {

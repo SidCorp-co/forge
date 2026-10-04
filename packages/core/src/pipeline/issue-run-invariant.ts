@@ -2,7 +2,7 @@ import { ASSERTS_WORK_IN_PROGRESS } from '@forge/contracts/issue-machine';
 import { and, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications } from '../db/schema.js';
-import { issueWorkInFlightSql } from '../issues/issue-lease.js';
+import { issueWorkInFlightSql } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../observability/logger.js';
 import { emitNotification, projectAdminUserIds } from './ports.js';

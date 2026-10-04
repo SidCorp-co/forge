@@ -10,7 +10,7 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
-import { triggerPipelineStepManual } from '../pipeline/orchestrator.js';
+import { triggerPipelineStepManual } from '../pipeline/index.js';
 import { statusChangeRows } from './activity-read.js';
 import { TransitionError, transitionIssueStatus } from './apply-transition.js';
 import { BATCH_SKIP_BY_CODE, type BatchSkipReason } from './batch-skip-reason.js';

@@ -7,7 +7,12 @@ export {
 export { runMemoryDecay } from './decay.js';
 export { runChunkBackfill, runEmbeddingBackfill } from './embedding-backfill.js';
 export { registerMemoryExtraction } from './extraction.js';
-export { deleteMemory, registerMemoryIndexer } from './indexer.js';
+export {
+  deleteMemory,
+  indexMemory,
+  indexMemoryBestEffort,
+  registerMemoryIndexer,
+} from './indexer.js';
 export { retrievalAnalyticsRetention } from './retention.js';
 export { foreignScriptChars } from './script-guard.js';
 export { runMemorySearch } from './search-service.js';

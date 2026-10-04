@@ -25,9 +25,8 @@ import { db } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
 import { logger } from '../observability/logger.js';
-import { holderFanout, readClaim } from '../pipeline/lease-fanout.js';
-import type { LeaseReading } from '../pipeline/session-claim.js';
 import { classifyIssueWorker, type SessionWorkerLane, unreadableWorker } from './issue-worker.js';
+import { holderFanout, readClaim } from './lease-fanout.js';
 import { loadActiveJobsByIssue, loadPausedRunsByIssue } from './pipeline-health-loaders.js';
 import {
   gateOf,
@@ -41,6 +40,7 @@ import type {
   PipelineHealth,
   PipelineHealthSession,
 } from './pipeline-health-types.js';
+import type { LeaseReading } from './session-claim.js';
 
 export type { IssueWorker, SessionWorkerLane, WorkerSession } from './issue-worker.js';
 

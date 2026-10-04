@@ -5,7 +5,6 @@ import { db, type Tx } from '../db/client.js';
 import { refuser } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import { emitEvents } from '../outbox/index.js';
-import { collectWorkEvidence, findMissingWorkEvidence } from '../pipeline/work-evidence.js';
 import type { Actor } from './activity.js';
 import { type CommitLanding, readCommitLanding } from './commit-landing.js';
 import {
@@ -28,6 +27,7 @@ import {
 import { refuseUnmarkOnClosed } from './merged-at.js';
 import { contractDrift, postIssueNotice } from './ports.js';
 import { findIssueById, type IssueRow } from './read-service.js';
+import { collectWorkEvidence, findMissingWorkEvidence } from './work-evidence.js';
 
 export type AuditComment = { id: string; body: string; parentId: string | null };
 

@@ -9,10 +9,13 @@ import {
 } from '../issues/index.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
 import { logger } from '../observability/logger.js';
-import { classifyFailure } from '../pipeline/failure-classifier.js';
-import { classifyVerdict, JOB_TYPE_ENTRY_STATUS } from '../pipeline/recovery-verifier.js';
-import { closeOpenRunForIssue } from '../pipeline/runs.js';
-import { emitPipelineWedge } from '../pipeline/wedge.js';
+import {
+  classifyFailure,
+  classifyVerdict,
+  closeOpenRunForIssue,
+  emitPipelineWedge,
+  JOB_TYPE_ENTRY_STATUS,
+} from '../pipeline/index.js';
 import {
   attributeFailureToRunner,
   detectRunnerLimit,

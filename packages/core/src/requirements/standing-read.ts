@@ -20,7 +20,7 @@ import {
   requirements,
 } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { readProjectDocument } from '../project-config/index.js';

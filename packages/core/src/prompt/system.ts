@@ -17,7 +17,7 @@ import {
 } from '../db/schema.js';
 import { estimateTokens } from '../lib/token-estimator.js';
 import { logger } from '../observability/logger.js';
-import { NO_PROGRESS_ROUNDS } from '../pipeline/reopen-policy.js';
+import { NO_PROGRESS_ROUNDS } from '../pipeline/index.js';
 import { promotedBranch, readProjectDocument, readReleasePath } from '../project-config/index.js';
 import { mandatoryPreambleBlocks } from './facts/mandatory-blocks.js';
 import { OPERATING_AFFORDANCES_TEXT } from './facts/registry.js';

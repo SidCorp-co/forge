@@ -17,8 +17,7 @@ import { comments, issues } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { requirements } from '../db/schema-requirements.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { isUuid } from '../issues/issue-route-ref.js';
+import { activeIssuePrefix, isUuid } from '../issues/index.js';
 import {
   dataPolicyOf,
   type EgressReader,

@@ -17,7 +17,7 @@ import { and, eq, inArray, isNotNull, lt, or, sql } from 'drizzle-orm';
 import { SWEEP_SESSION_COLUMNS, transitionSessions } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { agentSessions, pipelineRuns } from '../db/schema.js';
-import { emitPipelineWedge } from '../pipeline/wedge.js';
+import { emitPipelineWedge } from '../pipeline/index.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { PIPELINE_SESSION_KINDS } from './session-kinds.js';
 

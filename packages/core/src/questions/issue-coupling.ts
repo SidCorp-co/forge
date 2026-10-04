@@ -4,14 +4,14 @@
 // writer to `issues.status` and it is `issues/apply-transition.ts`. Nothing here
 // moves an issue; it refuses or voids alongside the move that does (ISS-1257).
 
-import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import { and, eq, inArray, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import type { IssueStatus } from '../db/schema.js';
 import { agentQuestions } from '../db/schema-questions.js';
-import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
-import { type KernelActor, transition } from '../lifecycle/transition.js';
+import type { IssueDependencyExecutor } from '../issues/index.js';
+import { type KernelActor, transition } from '../lifecycle/index.js';
 
 type Executor = IssueDependencyExecutor;
 

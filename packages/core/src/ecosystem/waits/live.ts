@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { issueDisplayIds } from '../../issues/display-ids.js';
+import { issueDisplayIds } from '../../issues/index.js';
 import { reportedCommit } from '../../release-batch/verify.js';
 import { heldEcosystem } from '../ecosystem-service.js';
 import { loadInterface } from '../interface-service.js';
