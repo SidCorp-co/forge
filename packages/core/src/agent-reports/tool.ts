@@ -27,7 +27,7 @@ import {
   zodToMcpSchema,
 } from '../lib/tool.js';
 import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../lib/untrusted-text.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import {
   listVisibleProjectsWithRole,
   resolveEffectiveProjectId,
@@ -165,7 +165,7 @@ async function handleAgentReport(ctx: McpContext, args: unknown) {
         );
       }
       const projectId = input.projectId;
-      await requireCan({ userId: principal.userId }, 'project.read', projectId);
+      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
 
       if (!input.kind) throw new Error('BAD_REQUEST: kind is required for submit');
       if (!input.target) throw new Error('BAD_REQUEST: target is required for submit');
@@ -233,7 +233,7 @@ async function handleAgentReport(ctx: McpContext, args: unknown) {
         limit = input.limit ?? 50;
       } else {
         const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-        await requireCan({ userId: principal.userId }, 'project.read', projectId);
+        await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
         scopeCondition = eq(agentReports.projectId, projectId);
         limit = input.limit ?? 25;
       }
@@ -259,7 +259,7 @@ async function handleAgentReport(ctx: McpContext, args: unknown) {
 
       // No caller-supplied project here — membership is checked against the
       // row's own project, resolved only after the row is known.
-      await requireCan({ userId: principal.userId }, 'project.read', row.projectId);
+      await requireCan(actorFor(principal.userId), 'project.read', projectResource(row.projectId));
 
       const [view] = await reportViews([row]);
       return { report: view ? frameReport(view) : null };
@@ -319,7 +319,7 @@ async function triage(ctx: McpContext, input: z.infer<typeof inputSchema>) {
       ];
     } else {
       const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-      await requireCan({ userId: principal.userId }, 'project.read', projectId);
+      await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
       scope = [eq(agentReports.projectId, projectId), eq(agentReports.signalKey, input.signalKey)];
     }
   } else {
@@ -328,7 +328,7 @@ async function triage(ctx: McpContext, input: z.infer<typeof inputSchema>) {
     }
     if (!input.reportId) throw new Error('BAD_REQUEST: triage needs reportId or signalKey');
     const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-    await requireCan({ userId: principal.userId }, 'project.read', projectId);
+    await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
     const row = await readReport(input.reportId);
     if (!row || row.projectId !== projectId) {
       throw new Error(`NOT_FOUND: agent report ${input.reportId} not found in this project`);

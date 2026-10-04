@@ -7,7 +7,7 @@ import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
-import { requireOrgCan, requireOrgHeld } from '../permissions/index.js';
+import { actorFor, orgResource, requireOrgCan, requireOrgHeld } from '../permissions/index.js';
 import { sendOrgInvitationEmail } from '../projects/invitation-email.js';
 import { agentAccountRoutes } from './agent-accounts-routes.js';
 import { issueOrgInvitationToken } from './invitations.js';
@@ -118,7 +118,7 @@ orgRoutes.patch(
     const patch = c.req.valid('json');
     const userId = c.get('userId');
 
-    await requireOrgCan({ userId }, 'org.own', orgId);
+    await requireOrgCan(actorFor(userId), 'org.own', orgResource(orgId));
 
     const updated = await updateOrg(orgId, patch);
     if (!updated) throw notFound('organization not found');
@@ -137,7 +137,7 @@ orgRoutes.delete(
     const { orgId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    await requireOrgCan({ userId }, 'org.own', orgId);
+    await requireOrgCan(actorFor(userId), 'org.own', orgResource(orgId));
     if (await isPersonalOrg(orgId)) {
       throw refuse('PERSONAL_ORG_IMMUTABLE', 'a personal org cannot be deleted');
     }
@@ -165,7 +165,7 @@ orgRoutes.get(
     const { orgId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    await requireOrgCan({ userId }, 'org.read', orgId);
+    await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
 
     return c.json(await listOrgProjects(orgId));
   },
@@ -180,7 +180,7 @@ orgRoutes.get(
     const { orgId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    await requireOrgCan({ userId }, 'org.read', orgId);
+    await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
 
     return c.json(await listOrgMembers(orgId));
   },
@@ -201,7 +201,7 @@ orgRoutes.post(
     const { email, role } = c.req.valid('json');
     const callerId = c.get('userId');
 
-    const caller = await requireOrgCan({ userId: callerId }, 'org.admin', orgId);
+    const caller = await requireOrgCan(actorFor(callerId), 'org.admin', orgResource(orgId));
     if (role === 'owner') requireOrgHeld(orgId, caller.role, 'org.own');
     if (await isPersonalOrg(orgId)) {
       throw refuse('PERSONAL_ORG_IMMUTABLE', 'a personal org cannot have additional members');
@@ -257,7 +257,7 @@ orgRoutes.get(
   async (c) => {
     const { orgId } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireOrgCan({ userId }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(userId), 'org.admin', orgResource(orgId));
 
     const rows = await listPendingOrgInvitations(orgId);
 
@@ -282,7 +282,7 @@ orgRoutes.delete(
     const { orgId } = c.req.valid('param');
     const { email } = c.req.valid('query');
     const userId = c.get('userId');
-    await requireOrgCan({ userId }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(userId), 'org.admin', orgResource(orgId));
 
     if (!(await revokeOrgInvitation(orgId, email))) {
       throw notFound('pending invitation not found', 'INVITATION_NOT_FOUND');
@@ -304,7 +304,7 @@ orgRoutes.patch(
     const { role, lenses } = c.req.valid('json');
     const callerId = c.get('userId');
 
-    const caller = await requireOrgCan({ userId: callerId }, 'org.admin', orgId);
+    const caller = await requireOrgCan(actorFor(callerId), 'org.admin', orgResource(orgId));
 
     const targetRole = await orgMemberRole(orgId, targetUserId);
     if (!targetRole) throw notFound('membership not found');
@@ -347,9 +347,9 @@ orgRoutes.delete(
 
     const selfLeave = targetUserId === callerId;
     const caller = await requireOrgCan(
-      { userId: callerId },
+      actorFor(callerId),
       selfLeave ? 'org.read' : 'org.admin',
-      orgId,
+      orgResource(orgId),
     );
 
     const targetRole = await orgMemberRole(orgId, targetUserId);

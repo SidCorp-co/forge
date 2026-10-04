@@ -15,7 +15,7 @@ import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import type { Refusal } from '../lib/refusal.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { embedFeedbackLater } from './embeddings.js';
 import { detailAs, type FeedbackActor, feedbackKey, notFound, rowIn } from './read.js';
 import { promoteRefusal } from './rules.js';
@@ -88,7 +88,7 @@ export async function promoteAgentReport(input: {
   request: PromoteAgentReportRequest;
 }): Promise<PromoteOutcome> {
   const { projectId, actor, request } = input;
-  await requireCan({ userId: actor.userId }, 'project.write', projectId);
+  await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const [report] = await db
     .select()
     .from(agentReports)

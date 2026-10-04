@@ -35,7 +35,7 @@ import {
 } from '../integrations/index.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { announceIntegrationChanged } from '../project-config/index.js';
 import {
   coolifyDeliveryStatus,
@@ -95,14 +95,14 @@ const invalidInput = (result: { success: boolean; error?: z.core.$ZodError }) =>
 
 // cm:why membership is refused before the input is read, so a stranger learns nothing from a 400
 const projectMember: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
-  await requireCan({ userId: c.get('userId') }, 'project.read', c.req.param('projectId') ?? '');
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(c.req.param('projectId') ?? ''));
   await next();
 };
 
 const coolifyRun =
   (act: 'deploy' | 'cancel' | 'rollback'): MiddlewareHandler<{ Variables: AuthVars }> =>
   async (c, next) => {
-    await requireCoolifyRun({ userId: c.get('userId') }, c.req.param('projectId') ?? '', act);
+    await requireCoolifyRun(actorFor(c.get('userId')), c.req.param('projectId') ?? '', act);
     await next();
   };
 
@@ -121,7 +121,7 @@ const asHttp = (err: unknown): never => {
 export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }>): void {
   routes.get('/:projectId/integrations/coolify', async (c) => {
     const projectId = c.req.param('projectId');
-    await requireCan({ userId: c.get('userId') }, 'project.read', projectId);
+    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(projectId));
     return c.json(await listCoolifyIntegrations(projectId));
   });
 
@@ -268,7 +268,7 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
     const projectId = c.req.param('projectId');
     const id = c.req.param('id');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'project.admin', projectId);
+    await requireCan(actorFor(userId), 'project.admin', projectResource(projectId));
 
     const existing = await findBindingWithConnectionById(id);
     if (!existing || existing.binding.projectId !== projectId) throw notFound();

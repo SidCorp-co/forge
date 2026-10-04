@@ -7,7 +7,7 @@ import { sql } from 'drizzle-orm';
 import { afterCommit, db } from '../db/client.js';
 import type { Refusal } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { wakeOutbox } from './worker.js';
 
 export type ReplayOutcome =
@@ -72,7 +72,7 @@ export async function replayDelivery(input: {
   projectId: string;
   deliveryId: string;
 }): Promise<ReplayOutcome> {
-  await requireCan({ userId: input.userId }, 'outbox.replay', input.projectId, 'Replaying an outbox delivery');
+  await requireCan(actorFor(input.userId), 'outbox.replay', projectResource(input.projectId), 'Replaying an outbox delivery');
   return replay(input.deliveryId, input.projectId);
 }
 

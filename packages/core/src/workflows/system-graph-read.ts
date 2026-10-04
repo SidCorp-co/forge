@@ -6,7 +6,7 @@ import { readStoredWorkflow, type WorkflowWriteV2 } from './schema.js';
 import { templatesOf } from './service.js';
 import { designsOf, readWorkflow } from './store.js';
 import { type GraphDoc, isSystemContext, systemGraphOf, withRemoved } from './system-graph.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 export interface SystemGraphRefusal {
   code: SystemGraphRefusalCode;
@@ -30,7 +30,7 @@ export async function readSystemGraphAs(input: {
   against?: number | undefined;
 }): Promise<SystemGraphOutcome> {
   const { projectId, workflowId } = input;
-  await requireCan({ userId: input.userId }, 'project.read', projectId);
+  await requireCan(actorFor(input.userId), 'project.read', projectResource(projectId));
   const row = await readWorkflow(db, workflowId);
   if (!row || row.projectId !== projectId) {
     throw new HTTPException(404, {

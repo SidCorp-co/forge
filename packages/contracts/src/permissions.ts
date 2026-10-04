@@ -1,5 +1,5 @@
 // One permission vocabulary (pattern v2 BC-20, ADR 0007): every check in core asks
-// `can(actor, permission, scope)` for a `<resource>.<verb>` named here, and nothing else decides
+// `can(actor, permission, resource)` for a `<resource>.<verb>` named here, and nothing else decides
 // who may act. A role is a permission set declared below as data; a membership may carry a grant of
 // further permissions on its project; a token narrows what its holder reaches.
 
@@ -123,7 +123,8 @@ export const ORG_ROLE_PERMISSIONS: Readonly<Record<OrgRole, readonly OrgPermissi
 
 /**
  * Permissions a token holds only where its grant names them: neither a full grant (`*`) nor a token
- * minted before grants existed reaches them. A session holds them by its role.
+ * minted before grants existed reaches them. A session holds them by its role. Every approve
+ * permission is one (ADR 0007): a token approves only where its grant names the approval.
  */
 export const TOKEN_EXPLICIT_PERMISSIONS: readonly Permission[] = [
 	"questionnaires.answer",
@@ -132,6 +133,7 @@ export const TOKEN_EXPLICIT_PERMISSIONS: readonly Permission[] = [
 	"commitments.write",
 	"feedback.redact",
 	"comments.moderate",
+	...APPROVE,
 ];
 
 /** The verb of a permission: anything but `read` is a write, and needs a token's `write` scope. */
@@ -144,6 +146,24 @@ export type PermissionRefusalCode = (typeof PERMISSION_REFUSAL_CODES)[number];
 export type PermissionScope =
 	| { kind: "project"; id: string }
 	| { kind: "org"; id: string };
+
+/**
+ * What a project permission is asked about: a resource of a project. Only `projectId` decides today;
+ * `type` and `id` name the row so that per-resource permissions need no call site to change.
+ */
+export interface ProjectResource {
+	type: string;
+	id: string | null;
+	projectId: string;
+}
+
+/** What an org permission is asked about. */
+export interface OrgResource {
+	type: "org";
+	id: string;
+}
+
+export type PermissionResource = ProjectResource | OrgResource;
 
 /** The one refusal for a missing permission; `permission` and `scope` ride beside the envelope's fields. */
 export interface PermissionRefusal {

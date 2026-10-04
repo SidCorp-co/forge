@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { parseMasterCharterWrite } from './master-charter.js';
 import {
   declareCharter,
@@ -49,7 +49,7 @@ masterCharterRoutes.get(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    await requireCan({ userId: c.get('userId') }, 'project.read', id);
+    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
 
     const charter = await readCurrentCharter(id);
     if (!charter) return c.json(UNDECLARED);
@@ -64,7 +64,7 @@ masterCharterRoutes.get(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    await requireCan({ userId: c.get('userId') }, 'project.read', id);
+    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
 
     const versions = await readCharterVersions(id);
     return c.json({ versions: versions.map(serialise), returned: versions.length });
@@ -80,7 +80,7 @@ masterCharterRoutes.put(
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireCan({ userId }, 'charter.write', id, 'writing the master charter');
+    await requireCan(actorFor(userId), 'charter.write', projectResource(id), 'writing the master charter');
 
     const parsed = parseMasterCharterWrite(c.req.valid('json'));
     if (!parsed.ok) {

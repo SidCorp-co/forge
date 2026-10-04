@@ -13,7 +13,7 @@ import { db, type Tx } from '../db/client.js';
 import { projectWorkflowObservations, projectWorkflows } from '../db/schema-workflows.js';
 import { peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
-import { permissionRefusalFor } from '../permissions/index.js';
+import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
 import { type ObservationRefusal, observationRefusals } from './observation-rules.js';
 import {
   type ObservationDocument,
@@ -115,9 +115,9 @@ export async function writeObservation(input: {
 }): Promise<ObservationOutcome> {
   const { projectId, writer, write } = input;
   const who = await permissionRefusalFor(
-    writer,
-    projectId,
+    actorFor(writer.userId, writer.agency),
     'workflow-designs.write',
+    projectResource(projectId),
     'writing an observation',
   );
   if (who) return { ok: false, refusals: [who] };

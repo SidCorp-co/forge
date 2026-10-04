@@ -3,7 +3,7 @@ import { env } from '../config/env.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { getStorage } from '../storage/index.js';
 import { loadAttachmentForFetch } from './attachment-lookup.js';
 import { createDownloadTicket } from './download-ticket-service.js';
@@ -69,7 +69,7 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
 
     const { target, attachmentId } = input.data;
     const att = await loadAttachmentForFetch(target, attachmentId);
-    await requireCan({ userId: principal.userId }, 'project.write', att.projectId);
+    await requireCan(actorFor(principal.userId), 'project.write', projectResource(att.projectId));
 
     const download = await mintDownloadTicket(target, attachmentId, att.projectId, principal);
     const meta = {

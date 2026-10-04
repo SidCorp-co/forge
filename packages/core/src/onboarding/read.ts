@@ -22,7 +22,7 @@ import { projectWorkflows } from '../db/schema-workflows.js';
 import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import type { LiveJob } from './rules.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 export type Executor = typeof db | Tx;
 export type OnboardingRow = typeof onboardings.$inferSelect;
@@ -316,7 +316,7 @@ export async function readOnboardingState(
   projectId: string,
   userId: string,
 ): Promise<OnboardingStateResponse> {
-  await requireCan({ userId }, 'project.read', projectId);
+  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
   const row = await onboardingOf(db, projectId);
   const view = row ? await onboardingView(db, row) : null;
   return {

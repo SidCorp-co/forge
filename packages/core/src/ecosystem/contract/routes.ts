@@ -10,7 +10,7 @@ import {
   restActor,
 } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
-import { requireCan } from '../../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
 import { slug } from '../../project-config/schema.js';
 import { CONTRACT_DECISION_REASON_MAX, CONTRACT_DECISIONS } from './approval.js';
 import { decideContractVersion } from './decide.js';
@@ -96,7 +96,7 @@ const uploadBody = zValidator('json', uploadSchema, (r, c) => {
 
 contractRoutes.get('/:id/contracts/:contract/versions', contractParam, async (c) => {
   const { id, contract } = c.req.valid('param');
-  await requireCan({ userId: c.get('userId') }, 'project.read', id);
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const versions = await versionsOf(db, [id], contract);
   return c.json({
     versions: versions.map((v) => v.document),
@@ -107,7 +107,7 @@ contractRoutes.get('/:id/contracts/:contract/versions', contractParam, async (c)
 
 contractRoutes.get('/:id/contracts/:contract/versions/:version', versionParam, async (c) => {
   const { id, contract, version } = c.req.valid('param');
-  await requireCan({ userId: c.get('userId') }, 'project.read', id);
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const versions = await versionsOf(db, [id], contract);
   const hit = versions.find((v) => v.version === version);
   if (!hit) throw notFound(`${contract} of project ${id} has no recorded version "${version}"`);
@@ -132,7 +132,7 @@ contractRoutes.get(
   versionParam,
   async (c) => {
     const { id, contract, version } = c.req.valid('param');
-    await requireCan({ userId: c.get('userId') }, 'project.read', id);
+    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
     const hit = (await versionsOf(db, [id], contract)).find((v) => v.version === version);
     if (!hit) throw notFound(`${contract} of project ${id} has no recorded version "${version}"`);
     const text = hit.artifactSha256 ? await readArtifact(db, hit.artifactSha256) : null;
@@ -206,7 +206,7 @@ contractRoutes.post(
 
 contractRoutes.get('/:id/contracts/:contract/measurements', contractParam, async (c) => {
   const { id, contract } = c.req.valid('param');
-  await requireCan({ userId: c.get('userId') }, 'project.read', id);
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   const rows = await measurementsOf(id, contract, 100);
   return c.json({
     measurements: rows.map((r) => ({

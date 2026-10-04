@@ -25,7 +25,7 @@ import {
 } from './agent-accounts.js';
 import { agentSelfPatchSchema, readAgentSelf, writeAgentSelf } from './agent-selves.js';
 import { orgMemberRole } from './read.js';
-import { requireOrgCan } from '../permissions/index.js';
+import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 
 export const agentAccountRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -62,7 +62,7 @@ agentAccountRoutes.get(
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');
-    await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     return c.json({ agents: await listAgentAccounts(orgId) });
   },
 );
@@ -78,7 +78,7 @@ agentAccountRoutes.post(
   async (c) => {
     const { orgId } = c.req.valid('param');
     const body = c.req.valid('json');
-    await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     assertMayMintFullCredential(c);
 
     const { agent, plaintext } = await createAgentAccount({
@@ -102,7 +102,7 @@ agentAccountRoutes.put(
   }),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
-    await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     const out = await setAgentProjects(orgId, agentUserId, c.req.valid('json').projectIds);
     if (!out) throw notFound('agent not found');
     return c.json(out);
@@ -116,7 +116,7 @@ agentAccountRoutes.delete(
   }),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
-    await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     if (!(await revokeAgentAccount(orgId, agentUserId))) throw notFound('agent not found');
     return c.body(null, 204);
   },
@@ -129,7 +129,7 @@ agentAccountRoutes.post(
   }),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
-    await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     assertMayMintFullCredential(c);
     const minted = await mintAgentCredential(orgId, agentUserId, mintEpochFor(c));
     if (!minted) throw notFound('agent not found');
@@ -144,7 +144,7 @@ agentAccountRoutes.delete(
   }),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
-    await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     const revoked = await revokeAgentCredentials(orgId, agentUserId);
     if (revoked === null) throw notFound('agent not found');
     return c.json({ revoked });
@@ -161,7 +161,7 @@ agentAccountRoutes.patch(
   }),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
-    await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     const displayName = await setAgentDisplayName(
       orgId,
       agentUserId,
@@ -183,7 +183,7 @@ agentAccountRoutes.get(
   }),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
-    await requireOrgCan({ userId: c.get('userId') }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
     const self = await readAgentSelf(orgId, agentUserId);
     if (!self) throw notFound('agent not found');
     return c.json(self);
@@ -201,7 +201,7 @@ agentAccountRoutes.patch(
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
     const actor = c.get('userId');
-    await requireOrgCan({ userId: actor }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(actor), 'org.admin', orgResource(orgId));
     const self = await writeAgentSelf(orgId, agentUserId, c.req.valid('json'), actor);
     if (!self) throw notFound('agent not found');
     return c.json(self);
@@ -231,7 +231,7 @@ agentAccountRoutes.patch(
   async (c) => {
     const { orgId, userId } = c.req.valid('param');
     const actor = c.get('userId');
-    await requireOrgCan({ userId: actor }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(actor), 'org.admin', orgResource(orgId));
     if ((await orgMemberRole(orgId, userId)) === null) throw notFound('membership not found');
     const prefs = await writeAssistantPreferences({
       userId,

@@ -146,6 +146,7 @@ export async function mintTurnCredential(args: {
     grantEpoch: Math.min(authority.grantEpoch, PAT_GRANT_EPOCH),
     deviceId: args.deviceId ?? null,
     expiresAt: new Date(Date.now() + args.ttlMs),
+    onBehalfOf: authority.userId,
   });
   const tokenId = minted.row.id;
   return {

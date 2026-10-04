@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { ContextScopedMcpToolFactory } from '../../lib/tool.js';
 import { runMemoryWrite } from '../../memory/write-service.js';
-import { requireCan } from '../../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
 import { NOTE_TEXT_MAX } from './memory-note-gate.js';
 
 export { NOTE_TEXT_MAX };
@@ -56,7 +56,7 @@ export const forgeMemoryNoteTool: ContextScopedMcpToolFactory = (ctx) => ({
         'forge_memory.note is written as the linked person who spoke, and this turn does not run as them — nothing may be remembered on their behalf. They can link their account first.',
       );
     }
-    await requireCan({ userId: ctx.principal.userId }, 'project.write', projectId);
+    await requireCan(actorFor(ctx.principal.userId), 'project.write', projectResource(projectId));
     const sourceRef = `conversation:${turn.conversationId}:${randomUUID()}`;
     const result = await runMemoryWrite({
       projectId,

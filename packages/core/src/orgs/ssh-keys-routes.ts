@@ -8,7 +8,7 @@ import {
   listOrgSshKeys,
   testOrgSshKey,
 } from './ssh-keys-service.js';
-import { requireOrgCan } from '../permissions/index.js';
+import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 
 export const sshKeyRoutes = new Hono<{ Variables: AuthVars }>();
 sshKeyRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -35,7 +35,7 @@ const testSchema = z.object({ repoUrl: z.string().trim().min(1).max(2000) });
 sshKeyRoutes.get('/:orgId/ssh-keys', zValidator('param', orgParamSchema), async (c) => {
   const { orgId } = c.req.valid('param');
   const userId = c.get('userId');
-  await requireOrgCan({ userId }, 'org.read', orgId);
+  await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
   return c.json(await listOrgSshKeys(orgId));
 });
 
@@ -47,7 +47,7 @@ sshKeyRoutes.post(
     const { orgId } = c.req.valid('param');
     const body = c.req.valid('json');
     const userId = c.get('userId');
-    await requireOrgCan({ userId }, 'org.admin', orgId);
+    await requireOrgCan(actorFor(userId), 'org.admin', orgResource(orgId));
     // Normalize `note` (zod leaves it possibly `undefined` when omitted) to the
     // contract's `string | null` before handing off to the service.
     const input =
@@ -67,7 +67,7 @@ sshKeyRoutes.post(
 sshKeyRoutes.delete('/:orgId/ssh-keys/:keyId', zValidator('param', keyParamSchema), async (c) => {
   const { orgId, keyId } = c.req.valid('param');
   const userId = c.get('userId');
-  await requireOrgCan({ userId }, 'org.admin', orgId);
+  await requireOrgCan(actorFor(userId), 'org.admin', orgResource(orgId));
   await deleteOrgSshKey(orgId, keyId);
   return c.body(null, 204);
 });
@@ -80,7 +80,7 @@ sshKeyRoutes.post(
     const { orgId, keyId } = c.req.valid('param');
     const { repoUrl } = c.req.valid('json');
     const userId = c.get('userId');
-    await requireOrgCan({ userId }, 'org.read', orgId);
+    await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
     const result = await testOrgSshKey(orgId, keyId, repoUrl);
     return c.json(result);
   },

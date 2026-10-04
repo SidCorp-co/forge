@@ -15,7 +15,7 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { nearestFeedbackOf } from '../feedback/embeddings.js';
 import type { Refusal } from '../lib/refusal.js';
 import { notAnEdgeError, transition } from '../lifecycle/transition.js';
-import { permissionFactsOf, permissionRefusalFor, requireCan } from '../permissions/index.js';
+import { actorFor, permissionFactsOf, permissionRefusalFor, projectResource, requireCan } from '../permissions/index.js';
 import { designNodesIn, nodeSetRefusals } from '../workflows/node-refs.js';
 import { breakdownGuardIn } from './breakdown.js';
 import {
@@ -147,7 +147,7 @@ export async function createSuggestion(input: {
   conversationMessageId?: string | null | undefined;
 }): Promise<SuggestionOutcome> {
   const { projectId, kind } = input;
-  await requireCan({ userId: input.actor.userId }, 'project.write', projectId);
+  await requireCan(actorFor(input.actor.userId), 'project.write', projectResource(projectId));
   if (kind === 'breakdown') {
     const forbidden = breakdownProposerRefusal(
       await permissionFactsOf(input.actor.userId, projectId),
@@ -212,9 +212,9 @@ export async function reviseSuggestion(input: {
     if (refusal) return { ok: false, refusals: [refusal] };
   }
   const forbidden = await permissionRefusalFor(
-    actor,
-    projectId,
+    actorFor(actor.userId, actor.agency),
     'suggestions.approve',
+    projectResource(projectId),
     'revising a suggestion',
   );
   if (forbidden) return { ok: false, refusals: [forbidden] };

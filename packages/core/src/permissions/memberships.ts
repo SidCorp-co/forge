@@ -23,6 +23,7 @@ export interface NewProjectMembership {
   projectId: string;
   userId: string;
   role: ProjectMemberRole;
+  grants?: string[];
 }
 
 export interface NewOrgMembership {

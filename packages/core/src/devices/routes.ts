@@ -10,7 +10,7 @@ import { rateLimit } from '../middleware/rate-limit.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { badRequest, forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireHeld, requireOrgCan } from '../permissions/index.js';
+import { actorFor, orgResource, requireHeld, requireOrgCan } from '../permissions/index.js';
 import { readPluginDesignations, unionPluginDesignations } from '../plugins/designation.js';
 import { withDeclaredSource } from '../project-config/source.js';
 import { patchDeviceRunnerCheckout } from '../runners/index.js';
@@ -124,7 +124,7 @@ deviceOwnerRoutes.get(
     // org scope at all. The organisation's devices are a different population,
     // served by `/api/orgs/:orgId/devices` in `devices/org-routes.ts` (ISS-1162).
     const { orgId } = c.req.valid('query');
-    if (orgId !== undefined) await requireOrgCan({ userId }, 'org.read', orgId);
+    if (orgId !== undefined) await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
 
     const rows = await listOwnedDevices(userId, orgId);
     // ISS-392, widened by ISS-1165 — each box is compared against the published

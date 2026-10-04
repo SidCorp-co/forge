@@ -23,11 +23,11 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { lockPatName, mintPat, supersedeNamedToken } from '../credentials/pat.js';
 import { deviceTokenNameFor, workspaceTokenNameFor } from '../credentials/pat-format.js';
-import { PAT_GRANT_ALL } from '../credentials/pat-permissions.js';
 import { resolveProjectHandle } from '../conversations/handles.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens, users } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
+import { agentCredentialGrant } from '../orgs/agent-fence.js';
 import { holds } from '../permissions/index.js';
 import { refuseDevice } from './refusals.js';
 
@@ -72,7 +72,7 @@ export async function issueWorkspaceCredential(args: {
   return db.transaction(async (tx) => {
     await lockPatName(tx, name);
     const [parent] = await tx
-      .select({ grantEpoch: personalAccessTokens.grantEpoch })
+      .select({ grantEpoch: personalAccessTokens.grantEpoch, holder: personalAccessTokens.userId })
       .from(personalAccessTokens)
       .where(
         and(
@@ -89,10 +89,11 @@ export async function issueWorkspaceCredential(args: {
         userId: args.holderUserId,
         name,
         scopes: ['read', 'write'],
-        permissions: PAT_GRANT_ALL,
+        permissions: await agentCredentialGrant(args.holderUserId, tx),
         projectIds: [args.projectId],
         deviceId: args.deviceId,
         grantEpoch: parent?.grantEpoch ?? 1,
+        onBehalfOf: parent && parent.holder !== args.holderUserId ? parent.holder : null,
       },
       tx,
     );

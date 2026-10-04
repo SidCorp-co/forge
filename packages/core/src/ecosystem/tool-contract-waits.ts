@@ -6,7 +6,7 @@ import {
 import { z } from 'zod';
 import { resolveIssueRouteRef } from '../issues/index.js';
 import { type McpContext, refusedAnswer } from '../lib/tool.js';
-import { requireCan } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { listContractRequests } from './requests/read.js';
 import { issueContractWaitsOf } from './waits/read.js';
 import { addContractWait, retractContractWait, type WaitOutcome } from './waits/service.js';
@@ -82,7 +82,7 @@ export const WAIT_HANDLERS: Record<
     return { ...(await issueContractWaitsOf(found.id, side)) };
   },
   contract_requests: async (ctx, side) => {
-    await requireCan({ userId: ctx.principal.userId }, 'project.read', side);
+    await requireCan(actorFor(ctx.principal.userId), 'project.read', projectResource(side));
     return { requests: await listContractRequests(side) };
   },
   contract_wait_add: async (ctx, side, a) => {
