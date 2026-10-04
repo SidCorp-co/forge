@@ -3,12 +3,12 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
+import { checkerConfig } from './lib/debt-ratchet.mjs';
 import { dieAs, ROOT } from './lib/gate.mjs';
 import { TEST_FILE_RE } from './lib/test-reachability.mjs';
 
 const die = dieAs('check-doc-citations');
 
-const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
 const MANIFESTS = ['package.json', 'Cargo.toml'];
 const MARKER = /<!--\s*doc-citation:\s*unchecked\s+(.*?)\s*\u2014\s*(\S.*?)\s*-->/;
 const MARKER_REACH = 3;
@@ -35,16 +35,6 @@ const DEFAULTS = {
   sourceExts: ['ts', 'tsx', 'mjs', 'cjs', 'js', 'jsx', 'rs', 'sql'],
   skipPrefixes: ['dist/', 'node_modules/', '.next/', 'coverage/', 'target/', '.turbo/'],
 };
-
-function config() {
-  if (!existsSync(CONFIG_PATH)) return DEFAULTS;
-  try {
-    const declared = JSON.parse(readFileSync(CONFIG_PATH, 'utf8'))?.checkers?.['doc-citations'];
-    return { ...DEFAULTS, ...(declared ?? {}) };
-  } catch (err) {
-    die(`${CONFIG_PATH} is not readable JSON: ${err.message}`);
-  }
-}
 
 /** `**` crosses directories, `*` does not — the two are split apart before either is escaped. */
 const globRe = (glob) =>
@@ -359,7 +349,7 @@ function main() {
   if (!args.includes('--all')) {
     die('the only mode is --all — a staged subset reports clean on a tree that is not');
   }
-  const cfg = config();
+  const cfg = checkerConfig(ROOT, 'doc-citations', DEFAULTS, die);
   const w = world(cfg);
   const skip = (cfg.skipDocs ?? []).map((d) => globRe(typeof d === 'string' ? d : d.glob));
   const docs = w.files

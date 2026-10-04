@@ -5,10 +5,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { mergeTarget } from './lib/base-branch.mjs';
 import { baseRev, ratchetFault } from './lib/baseline-ratchet.mjs';
+import { readManifest } from './lib/debt-ratchet.mjs';
 import { ROOT } from './lib/gate.mjs';
 import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequisite.mjs';
-
-const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
 
 const PROBES = {
   form: {
@@ -89,15 +88,6 @@ function baselineFault(level, decl) {
   return ratchetFault(ROOT, BASE_REV, decl);
 }
 
-function readManifest() {
-  if (!existsSync(CONFIG_PATH)) return { error: `${CONFIG_PATH} not found` };
-  try {
-    return { manifest: JSON.parse(readFileSync(CONFIG_PATH, 'utf8')) };
-  } catch (err) {
-    return { error: `${CONFIG_PATH} is unreadable — ${err.message}` };
-  }
-}
-
 function measureOne(spec, baselinePath) {
   const missing = absentPrerequisites(ROOT, spec.needs);
   if (missing.length > 0) return { level: null, blocked: missing, note: remedyLines(missing)[0] };
@@ -155,7 +145,7 @@ function whereFrom() {
     : target.summary;
 }
 
-const { manifest, error } = readManifest();
+const { manifest, error } = readManifest(ROOT);
 if (error) {
   console.error(`conformance-status: ${error}`);
   process.exit(2);

@@ -2,11 +2,11 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { checkerConfig } from './lib/debt-ratchet.mjs';
 import { dieAs, ROOT, stripComments, walkFiles } from './lib/gate.mjs';
 
 const die = dieAs('check-status-tuples');
 
-const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
 const VOCABULARIES = {
   issue: { file: 'packages/contracts/src/issue-machine.ts', symbol: 'ISSUE_STATUSES' },
   job: { file: 'packages/contracts/src/job-machine.ts', symbol: 'JOB_STATUSES' },
@@ -41,16 +41,6 @@ const DEFAULTS = {
   scanExts: ['.ts', '.tsx'],
   skipDirs: ['node_modules', 'dist', 'coverage', '.next', '.turbo', 'drizzle'],
 };
-
-function config() {
-  if (!existsSync(CONFIG_PATH)) return DEFAULTS;
-  try {
-    const declared = JSON.parse(readFileSync(CONFIG_PATH, 'utf8'))?.checkers?.['status-tuples'];
-    return { ...DEFAULTS, ...(declared ?? {}) };
-  } catch (err) {
-    die(`${CONFIG_PATH} is not readable JSON: ${err.message}`);
-  }
-}
 
 function readVocabularies() {
   const read = {};
@@ -243,7 +233,7 @@ function main() {
     die('the only mode is --all — a staged subset reports clean on a tree that is not');
   }
 
-  const cfg = config();
+  const cfg = checkerConfig(ROOT, 'status-tuples', DEFAULTS, die);
   const vocabularies = readVocabularies();
   const files = cfg.scanRoots.flatMap((rel) =>
     walkFiles(rel, {
