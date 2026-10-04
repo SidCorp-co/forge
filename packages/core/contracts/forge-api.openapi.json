@@ -19047,6 +19047,14 @@
                             "commitments.write",
                             "feedback.redact",
                             "comments.moderate",
+                            "requirements.approve",
+                            "mockups.approve",
+                            "suggestions.approve",
+                            "workflow-designs.approve",
+                            "contracts.approve",
+                            "feedback.approve",
+                            "releases.approve",
+                            "plans.approve",
                             "*"
                           ],
                           "type": "string"
