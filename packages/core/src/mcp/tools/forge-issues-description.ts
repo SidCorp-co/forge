@@ -55,7 +55,9 @@ export function forgeIssuesDescription(refClause: string): string {
     'relations.<kind>.\n' +
     'TRANSITION. Ten statuses (draft, open, reopen, in_progress, approved, needs_info, on_hold, ' +
     "awaiting_release, closed, dropped); a run's progress is data.workState.step, never a status. " +
-    'Each move is guarded and refused by name: in_progress needs a holder (NO_HOLDER), approved a ' +
+    'Each move is guarded and refused by name: in_progress needs a holder (NO_HOLDER) and, from ' +
+    'open, reopen or approved, no live blocks edge from an unsettled blocker (ISSUE_BLOCKED, also ' +
+    'refused to a data.sessionContext write that takes the lease), approved a ' +
     'plan and criteria (PLAN_REQUIRED), awaiting_release a passing verdict on every criterion ' +
     '(NO_WORK_EVIDENCE, VERDICT_IDENTITY_REQUIRED), recorded after the latest reopen ' +
     '(VERDICT_PREDATES_REOPEN); a storefront_draft verdict counts only on a storefront-source project ' +

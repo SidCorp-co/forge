@@ -2,7 +2,9 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, issues } from '../db/schema.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';
+import { leaseWriteTakes } from '../pipeline/session-claim.js';
 import { plannedRevisionFor } from '../requirements/issue-links.js';
+import { refuseHeldTake } from './blocked-by.js';
 import { syncCriteriaFromText } from './criteria/store.js';
 import type { ResolvedLabelAttach } from './label-service.js';
 import { ISSUE_READ_COLUMNS, type IssueRow } from './read-service.js';
@@ -69,6 +71,12 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
     if (updates.sessionContext !== undefined) {
       if (!expect) refuseUnreadSessionContextDrop(current.sessionContext, updates.sessionContext);
       const split = splitSessionContext(updates.sessionContext);
+      if (
+        split.lease.present &&
+        leaseWriteTakes(leaseIn(current.sessionContext), split.lease.value, new Date())
+      ) {
+        await refuseHeldTake(tx, issueId, 'a write that takes the lease');
+      }
       columns.sessionContext = split.rest;
       await writeSplitSessionContext(tx, issueId, split);
     }
@@ -141,6 +149,11 @@ async function lockComposedSessionContext(
   `)) as unknown as Array<{ session_context: unknown }>;
   const row = rows[0];
   return row ? { sessionContext: row.session_context ?? null } : null;
+}
+
+function leaseIn(context: unknown): unknown {
+  if (!context || typeof context !== 'object' || Array.isArray(context)) return null;
+  return (context as Record<string, unknown>).lease ?? null;
 }
 
 /** JSON equality as `jsonb` compares it: key order is not part of the value. */

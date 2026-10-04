@@ -1,11 +1,11 @@
 /**
- * One guard per move of workflow `issue-lifecycle` (approved revision 2), each refusing by name.
+ * One guard per move of workflow `issue-lifecycle` (approved revision 3), each refusing by name.
  * `apply-transition.ts` asks `edgeFault` before anything is written and `guardFault` inside the
  * transition's own transaction, so a guard reads the row the move will change.
  *
  *   into               condition                                                code
  *   any (edge)         the move is an edge of the lifecycle                      ILLEGAL_TRANSITION
- *   in_progress        a run or lease holds it                                   NO_HOLDER
+ *   in_progress        a run or lease holds it; nothing admissible holds out     NO_HOLDER, ISSUE_BLOCKED, WORKFLOW_DESIGN_NOT_APPROVED, CONTRACT_WAIT_UNSETTLED
  *   approved           plan and criteria written; a person made the move where   PLAN_REQUIRED
  *                      the project document sets `plan.approval.required`
  *   awaiting_release   every criterion's latest verdict passes, with an          NO_WORK_EVIDENCE,
@@ -29,7 +29,9 @@ import {
 } from '../pipeline/state-machine.js';
 import { readProjectDocument } from '../project-config/service.js';
 import type { ActorAgency } from './actor-agency.js';
+import { IssueBlockedError, refuseHeldTake } from './blocked-by.js';
 import type { DraftReader } from './criteria/storefront-draft.js';
+import { isDispatchGateError } from './dispatch-gates.js';
 import { type CriteriaEvidence, type SourceType, unpassedCriteria } from './release-evidence.js';
 import { isBlankPlan } from './transition-evidence.js';
 import { issueHolder } from './work-state.js';
@@ -37,6 +39,9 @@ import { issueHolder } from './work-state.js';
 export type GuardCode =
   | 'ILLEGAL_TRANSITION'
   | 'NO_HOLDER'
+  | 'ISSUE_BLOCKED'
+  | 'WORKFLOW_DESIGN_NOT_APPROVED'
+  | 'CONTRACT_WAIT_UNSETTLED'
   | 'PLAN_REQUIRED'
   | 'NO_WORK_EVIDENCE'
   | 'VERDICT_IDENTITY_REQUIRED'
@@ -150,6 +155,30 @@ export function reasonFault(
     };
   }
   return null;
+}
+
+// cm:why a person's move is refused as an agent's: issue-lifecycle rev 3 puts the condition on the edge, not the actor (ISS-104 decision)
+async function heldTakeGuard(ctx: GuardContext): Promise<GuardFault | null> {
+  try {
+    await refuseHeldTake(ctx.executor, ctx.issue.id, 'a move to `in_progress`');
+    return null;
+  } catch (err) {
+    if (err instanceof IssueBlockedError) {
+      return {
+        code: err.code,
+        detail: err.message.replace(/^ISSUE_BLOCKED: /, ''),
+        details: { from: ctx.from, to: ctx.to, blocked: err.blocked },
+      };
+    }
+    if (isDispatchGateError(err)) {
+      return {
+        code: err.code,
+        detail: err.message.replace(`${err.code}: `, ''),
+        details: { from: ctx.from, to: ctx.to, blocked: err.blocked },
+      };
+    }
+    throw err;
+  }
 }
 
 /** in_progress, entered by a claim: a run or a lease holds the issue. */
@@ -291,7 +320,7 @@ export async function guardFault(ctx: GuardContext): Promise<GuardFault | null> 
   if (isParkReturn(ctx)) return null;
   switch (ctx.to) {
     case 'in_progress':
-      return holderGuard(ctx);
+      return (await heldTakeGuard(ctx)) ?? holderGuard(ctx);
     case 'approved':
       return planGuard(ctx);
     case 'awaiting_release':

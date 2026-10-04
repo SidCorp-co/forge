@@ -133,10 +133,10 @@ function assertReach(path: string, fence: readonly string[] | null): void {
 function assertEpoch(principal: PatPrincipal, path: string): void {
   const refusal = patEpochRefusal(path, principal.grantEpoch);
   if (!refusal) return;
-  const { prefix, routeEpoch, tokenEpoch } = refusal;
+  const { prefix, surface, routeEpoch, tokenEpoch } = refusal;
   throw new HTTPException(403, {
     message: refusal.message,
-    cause: { code: PAT_GRANT_PREDATES_ROUTE, details: { prefix, routeEpoch, tokenEpoch } },
+    cause: { code: PAT_GRANT_PREDATES_ROUTE, details: { prefix, surface, routeEpoch, tokenEpoch } },
   });
 }
 

@@ -103,6 +103,27 @@ export const PAT_PERMISSION_RESOURCES = {
   admin: { reach: 'account', prefixes: { '/api/admin': 2 } },
 } as const satisfies Record<string, PatResourceDeclaration>;
 
+// cm:why a route is dated by the data surface it serves, never by the mount it sits under (ISS-105,
+// the orchestrator's decision): a route nested under an older mount that serves a newer prefix's rows
+// takes that prefix's epoch, read off the prefix itself, and keeps its mount's grant word
+export const PAT_NESTED_SURFACES = Object.freeze({
+  '/api/projects/:id/agent-sessions': '/api/agent-sessions',
+  '/api/projects/:id/run-sessions': '/api/agent-sessions',
+  '/api/projects/:id/metrics/session-failures': '/api/agent-sessions',
+  '/api/projects/:id/metrics/step-durations': '/api/pipeline',
+  '/api/projects/:id/metrics/retry-rescues': '/api/pipeline',
+  '/api/projects/:id/metrics/interventions': '/api/pipeline',
+  '/api/projects/:id/analytics': '/api/pipeline',
+  '/api/projects/:id/metrics/timeseries': '/api/usage-records',
+  '/api/projects/:id/runners': '/api/runners',
+  '/api/issues/:id/cost-summary': '/api/usage-records',
+} as const satisfies Record<string, PatPrefix>);
+
+// cm:hack ISS-105 until:forge-plugin reads runner load at a route under /api/runners — GET
+// /api/projects/:id/pm/runner-load serves /api/runners rows and is left out of PAT_NESTED_SURFACES, so
+// it keeps its mount's epoch 1: forge-plugin 3.36.542 calls it (`tracker/routes.mjs`), and a token
+// in the field older than epoch 2 would lose it. /mcp dates the same read at /api/runners already.
+
 const PUBLIC = 'public: it reads no credential, so there is nothing for a grant to admit';
 const SESSION =
   "the browser session's own lifecycle — signing up, signing in, refreshing, verifying, " +
@@ -263,34 +284,61 @@ export type PatPrefix = {
   [R in PatPermissionResource]: keyof (typeof PAT_PERMISSION_RESOURCES)[R]['prefixes'] & string;
 }[PatPermissionResource];
 
+export type PatRoute = PatPrefix | keyof typeof PAT_NESTED_SURFACES;
+
 export const PAT_GRANT_PREDATES_ROUTE = 'PAT_GRANT_PREDATES_ROUTE';
 
 export type PatEpochRefusal = {
   readonly resource: PatPermissionResource;
   readonly prefix: string;
+  readonly surface: string | null;
   readonly routeEpoch: number;
   readonly tokenEpoch: number;
   readonly message: string;
 };
 
+export type PatNestedSurface = {
+  readonly route: string;
+  readonly surface: PatPrefix;
+  readonly epoch: number;
+};
+
+export function patNestedSurfaceFor(path: string): PatNestedSurface | null {
+  let found: PatNestedSurface | null = null;
+  for (const [route, surface] of Object.entries(PAT_NESTED_SURFACES) as Array<
+    [string, PatPrefix]
+  >) {
+    if (!patternMatches(route, path)) continue;
+    if (found && found.route.split('/').length >= route.split('/').length) continue;
+    found = { route, surface, epoch: patPrefixForPath(surface)?.epoch ?? 1 };
+  }
+  return found;
+}
+
 // cm:guard the one epoch rule: REST reads it for the request path, /mcp for the route a tool
-// declares, so a token minted before a prefix joined the menu is refused it on both.
+// declares, so a token minted before a prefix joined the menu is refused it on both, and a route
+// nested under an older mount is dated by the surface it serves (PAT_NESTED_SURFACES).
 export function patEpochRefusal(
   path: string,
   tokenEpoch: number | undefined,
 ): PatEpochRefusal | null {
   const match = patPrefixForPath(path);
+  if (!match) return null;
+  const nested = patNestedSurfaceFor(path);
+  const dated = nested && nested.epoch > match.epoch ? nested : null;
+  const routeEpoch = dated ? dated.epoch : match.epoch;
   const held = tokenEpoch ?? 1;
-  if (!match || match.epoch <= held) return null;
+  if (routeEpoch <= held) return null;
+  const why = dated
+    ? `${dated.route} serves the rows of ${dated.surface}, which joined the menu at grant epoch ${routeEpoch}, after this token was minted (epoch ${held}); a route is dated by the data it serves, not the mount it sits under, and a token keeps the reach it was minted with. `
+    : `${match.prefix} joined '${match.resource}' at grant epoch ${routeEpoch}, after this token was minted (epoch ${held}), and a token keeps the reach it was minted with. `;
   return {
     resource: match.resource,
     prefix: match.prefix,
-    routeEpoch: match.epoch,
+    surface: dated ? dated.surface : null,
+    routeEpoch,
     tokenEpoch: held,
-    message:
-      `${match.prefix} joined '${match.resource}' at grant epoch ${match.epoch}, after this ` +
-      `token was minted (epoch ${held}), and a token keeps the reach it was minted with. ` +
-      'Mint a new token to reach it.',
+    message: `${why}Mint a new token to reach it.`,
   };
 }
 

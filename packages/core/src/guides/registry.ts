@@ -352,7 +352,7 @@ needs_info / on_hold: entered from open, reopen, in_progress, approved, awaiting
 | \`draft\` | a person, to admit it | filed here; never re-entered (\`ILLEGAL_TRANSITION\`) |
 | \`open\` | a master, to take it | — |
 | \`reopen\` | a master, to take it again | a reason (\`TRANSITION_REASON_REQUIRED\`); from \`awaiting_release\` or \`closed\` |
-| \`in_progress\` | the run holding it; its step is the progress | something holds it — a lease or a run (\`NO_HOLDER\`) |
+| \`in_progress\` | the run holding it; its step is the progress | something holds it — a lease or a run (\`NO_HOLDER\`); from \`open\`, \`reopen\` or \`approved\`, no live \`blocks\` edge from an unsettled blocker (\`ISSUE_BLOCKED\`), no unapproved workflow design (\`WORKFLOW_DESIGN_NOT_APPROVED\`) and no unsettled contract wait (\`CONTRACT_WAIT_UNSETTLED\`) — the same refusals meet a lease, a run session or a pool job taken over it |
 | \`approved\` | a master; the next run goes straight to build | plan and criteria written (\`PLAN_REQUIRED\`), and a person's move where the project document sets \`plan.approval.required\` |
 | \`needs_info\` | a person, to answer, decide or supply | the question as \`reason\` and its \`waitingKind\` (\`needs_answer\`, \`needs_decision\`, \`needs_resource\`) |
 | \`on_hold\` | the person who paused it | a reason |

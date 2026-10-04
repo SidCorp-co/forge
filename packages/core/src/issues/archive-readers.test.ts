@@ -63,6 +63,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/attachment-routes.ts': 'by issue or attachment id',
   'issues/attributes/read.ts': 'the ids attribute values reference',
   'issues/attributes/routes.ts': 'by issue id',
+  'issues/blocked-by.ts':
+    'the issue a door is taking, by id or seq, and the blockers over its live edges',
   'issues/commit-landing.ts': 'by issue id, the issue a mark names',
   'issues/create-service.ts': 'the existing row a dedup names',
   'issues/issue-lease.ts':

@@ -19,6 +19,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { jobs } from '../db/schema.js';
+import { IssueBlockedError, refuseBlockedTake } from '../issues/blocked-by.js';
 import {
   assertDispatchGatesForIssue,
   type DispatchGateCode,
@@ -68,7 +69,7 @@ export type PrepareResult =
   | {
       ok: false;
       reason: 'policy_refused';
-      code: PolicyRefusalCode | DispatchGateCode;
+      code: PolicyRefusalCode | DispatchGateCode | IssueBlockedError['code'];
       detail: string;
     }
   | { ok: false; reason: 'checkout_unbound'; detail: string };
@@ -222,8 +223,8 @@ async function policyStateFor(
 }
 
 /**
- * A job for an issue that builds a workflow whose design is not approved, or waits on a contract
- * version not yet published, is refused by the policy-refusal shape the box already reads, and stays
+ * A job for an unstarted issue a live blocks edge holds, one that builds a workflow whose design is
+ * not approved, or one that waits on a contract version not yet published, is refused by the policy-refusal shape the box already reads, and stays
  * queued until the design is approved or the version is.
  */
 async function designGateFor(jobId: string): Promise<Extract<PrepareResult, { ok: false }> | null> {
@@ -234,10 +235,11 @@ async function designGateFor(jobId: string): Promise<Extract<PrepareResult, { ok
     .limit(1);
   if (!job?.issueId) return null;
   try {
+    await refuseBlockedTake(db, job.issueId, 'a pool job for it');
     await assertDispatchGatesForIssue(job.projectId, job.issueId);
     return null;
   } catch (err) {
-    if (!isDispatchGateError(err)) throw err;
+    if (!isDispatchGateError(err) && !(err instanceof IssueBlockedError)) throw err;
     logger.warn({ jobId, projectId: job.projectId, code: err.code }, err.message);
     return { ok: false, reason: 'policy_refused', code: err.code, detail: err.message };
   }

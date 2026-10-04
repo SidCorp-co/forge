@@ -10,6 +10,13 @@
 
 ### Security
 
+- **An older token is refused a project's agent sessions, runners and usage reports wherever they are
+  served (ISS-105).** A route nested under a project or issue now takes the age of the data it serves,
+  so a token made before agent sessions, pipeline reports, usage or runners could be granted is refused
+  them under `/api/projects/:id/…` and `/api/issues/:id/cost-summary` as it already was at their own
+  routes, and the project timeseries MCP tool with them. Runner load stays readable for now, because
+  the forge CLI still reads it there.
+
 - **A token's permissions now bound what it can do over MCP too.** A token granted only
   `issues:read` could call every MCP tool its owner's role allowed; a call outside its grant is
   now refused by name. Full-access tokens are unchanged.
@@ -3320,6 +3327,13 @@
   set is now 59.
 
 ### Fixed
+
+- **A blocked issue can no longer be claimed directly (ISS-104).** The list a master reads already held back an
+  issue waiting on another, but taking it by hand still worked: a claim, a run session, a pool job
+  and the move to in progress now each refuse it, naming every issue it waits on and why that one
+  has not finished (its status, or a design revision not yet approved). A person is refused as an
+  agent is; retract the dependency on the record if it no longer holds. A dependency on a dropped
+  issue holds nothing, in the list and at every door alike.
 
 - **A storefront-draft verdict counts only while the storefront still holds that draft (FB-56).**
   A moved draft now reads `superseded`, an unreadable one `uncorroborated`, and both are refused at
