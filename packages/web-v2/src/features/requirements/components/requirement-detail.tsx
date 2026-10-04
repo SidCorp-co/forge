@@ -35,8 +35,8 @@ import { RequirementFacts } from "./requirement-facts";
 import { CriteriaTable, History, Readiness, RevisionDiff, RevisionList } from "./requirement-proof";
 import { RequirementBanner } from "./standing-bits";
 
-export const REQUIREMENT_TABS = ["overview", "criteria", "revisions", "mockups", "decisions", "activity"] as const;
-export type RequirementTab = (typeof REQUIREMENT_TABS)[number];
+const REQUIREMENT_TABS = ["overview", "criteria", "revisions", "mockups", "decisions", "activity"] as const;
+type RequirementTab = (typeof REQUIREMENT_TABS)[number];
 
 /** The open view rides `?tab=`, written without a navigation, so back from an issue lands on it. */
 export const useRequirementTab = () => useUrlTab(REQUIREMENT_TABS);

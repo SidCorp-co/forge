@@ -1,42 +1,22 @@
 //! The runner abstraction — the seam that lets one device drive multiple CLI
 //! backends (Claude Code today; codex later). Core already tags
-//! every claimed job with `runnerType`, so a new kind = new `RunnerKind`
-//! variant + a `Runner` impl + a stream parser.
+//! every claimed job with `runnerType`, so a new kind = a new
+//! `Runner` impl + a stream parser.
 
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
+
 use tokio::sync::mpsc;
 
 use crate::error::Result;
 
-pub mod blocked;
 pub mod claude_code;
 pub mod close_loop;
-#[cfg_attr(not(unix), path = "doorbell_no_fifo.rs")]
-pub mod doorbell;
 pub mod inflight;
 pub mod ledger;
 pub mod process;
 pub mod terminate;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum RunnerKind {
-    ClaudeCode,
-    // Codex,
-    // Antigravity,
-}
-
-impl RunnerKind {
-    /// Wire value used by core (`runnerType` / `runner:register`).
-    pub fn wire_type(&self) -> &'static str {
-        match self {
-            RunnerKind::ClaudeCode => "claude-code",
-        }
-    }
-}
 
 pub type SessionId = String;
 
@@ -47,9 +27,7 @@ pub struct JobSpec {
     pub project_id: String,
     /// Project slug — used for the MCP `X-Forge-Project-Slug` header.
     pub project_slug: Option<String>,
-    pub issue_id: Option<String>,
-    /// Pipeline step: triage|clarify|plan|code|review|test|release|fix|pm|custom.
-    pub step: String,
+
     pub repo_path: PathBuf,
     pub prompt: Option<String>,
     pub system_prompt: Option<String>,
@@ -59,7 +37,6 @@ pub struct JobSpec {
     pub mcp_servers_override: Option<serde_json::Value>,
     /// `claudeSessionId` from core — the single source of truth for resume.
     pub resume_id: Option<String>,
-    pub agent_session_id: Option<String>,
     pub counts_against_session_cap: bool,
     /// The token core minted for the person this session answers (ISS-17). When present it is
     /// the session's `forge` MCP credential and its `$FORGE_PAT`, in place of the box's own —
@@ -77,59 +54,23 @@ impl std::fmt::Debug for TurnCredential {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ToolPhase {
-    Call,
-    Result,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FailureKind {
-    Transient,
-    ResumeFailed,
-    UsageLimit,
-    Permanent,
-}
-
 /// Normalized output, independent of which CLI produced it. The daemon maps
 /// these onto core's job events / lifecycle calls.
 #[derive(Debug, Clone)]
 pub enum RunnerEvent {
     /// One raw JSONL line from the underlying CLI.
     Stdout(serde_json::Value),
-    Tool {
-        name: String,
-        phase: ToolPhase,
-    },
-    Usage {
-        input: u64,
-        output: u64,
-        cache_read: u64,
-        cache_write: u64,
-    },
     /// Captured CLI session id (for resume bookkeeping on core).
     ClaudeSessionId(String),
     StateChanged(&'static str),
-    Done {
-        exit_code: i32,
-    },
+    Done,
     Failed {
         error: String,
-        kind: FailureKind,
     },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RunnerStatus {
-    Idle,
-    Running,
-    Completed,
-    Failed,
 }
 
 #[async_trait]
 pub trait Runner: Send + Sync {
-    fn kind(&self) -> RunnerKind;
     /// Spawn the job, streaming normalized events on `tx`. Returns the session id.
     async fn start(&self, spec: JobSpec, tx: mpsc::Sender<RunnerEvent>) -> Result<SessionId>;
     async fn send(
@@ -139,5 +80,4 @@ pub trait Runner: Send + Sync {
         tx: mpsc::Sender<RunnerEvent>,
     ) -> Result<()>;
     async fn abort(&self, session: &SessionId) -> Result<()>;
-    fn status(&self, session: &SessionId) -> RunnerStatus;
 }

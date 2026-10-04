@@ -2,10 +2,10 @@ import { type Canvas, type CanvasEdge, edgeText, lineLabel, titleOf } from "./mo
 
 /** 0 stages only · 1 step titles · 2 full cards; zoom decides it, at these scales. */
 export type Lod = 0 | 1 | 2;
-export const LOD_AT: readonly [number, number] = [0.45, 0.95];
+const LOD_AT: readonly [number, number] = [0.45, 0.95];
 export const lodOf = (zoom: number): Lod => (zoom < LOD_AT[0] ? 0 : zoom < LOD_AT[1] ? 1 : 2);
 
-export interface ViewState {
+interface ViewState {
   lod: Lod;
   /** Bands shown as their steps; every other band is folded into its summary card. */
   expanded: ReadonlySet<string>;
@@ -32,7 +32,7 @@ export interface View {
   keyOf: Map<string, string>;
 }
 
-export const bandKey = (band: string) => `band:${band}`;
+const bandKey = (band: string) => `band:${band}`;
 
 export function buildView(c: Canvas, s: ViewState): View {
   const nodes: ViewNode[] = [];

@@ -17,15 +17,7 @@ import {
   type RequirementWaitingKind,
 } from "@forge/contracts/requirements";
 import type { ReactNode } from "react";
-import {
-  type BannerTone,
-  type CoverageSegment,
-  CoverageBar,
-  LEGEND,
-  type MarkView,
-  StepBar,
-  WaitBanner,
-} from "@/design";
+import { type BannerTone, type CoverageSegment, CoverageBar, LEGEND, StepBar, WaitBanner } from "@/design";
 
 /** Stale is hatched rather than a tone, so it never reads as a verdict of its own colour. */
 const VERDICT_FILL: Partial<Record<BcVerdict, string>> = {
@@ -34,14 +26,6 @@ const VERDICT_FILL: Partial<Record<BcVerdict, string>> = {
 };
 
 const VERDICT_ORDER: BcVerdict[] = ["passing", "failing", "stale", "not_judged", "gap"];
-
-export const coverageMarks = (coverage: RequirementCoverage[]): MarkView[] =>
-  coverage.map((c) => ({
-    key: c.code,
-    label: `${c.code} · ${BC_VERDICT_LABELS[c.verdict]} — ${c.body}`,
-    tone: BC_VERDICT_TONES[c.verdict],
-    fill: VERDICT_FILL[c.verdict],
-  }));
 
 /** Passing n of m as the shared stacked bar, a legend naming each verdict present. */
 export function CoverageSummary({ coverage }: { coverage: RequirementCoverage[] }) {

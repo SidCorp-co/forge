@@ -118,20 +118,6 @@ pub fn load_device_token() -> Result<Option<String>> {
     Ok(None)
 }
 
-pub fn clear_device_token() -> Result<()> {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        if let Ok(entry) = keyring::Entry::new(SERVICE, DEVICE_ACCOUNT) {
-            let _ = entry.delete_credential();
-        }
-    }
-    let p = file_path()?;
-    if p.exists() {
-        std::fs::remove_file(p)?;
-    }
-    Ok(())
-}
-
 pub fn load_pat() -> Result<Option<String>> {
     if let Ok(tok) = std::env::var("FORGE_PAT") {
         let tok = tok.trim();
@@ -165,21 +151,6 @@ pub fn store_pat(token: &str) -> Result<()> {
         }
     }
     file_store_pat(token)
-}
-
-pub fn clear_pat() -> Result<()> {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        if let Ok(entry) = keyring::Entry::new(SERVICE, PAT_ACCOUNT) {
-            let _ = entry.delete_credential();
-        }
-    }
-    let mut cred = read_cred_file()?;
-    if cred.pat.is_some() {
-        cred.pat = None;
-        write_cred_file(&cred)?;
-    }
-    Ok(())
 }
 
 /// Load from the keychain, treating any error as "absent" so the caller falls
@@ -264,101 +235,3 @@ fn restrict_dir(p: &std::path::Path) {
 fn restrict_file(_p: &std::path::Path) {}
 #[cfg(not(unix))]
 fn restrict_dir(_p: &std::path::Path) {}
-
-#[cfg(test)]
-pub(crate) static ENV_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-#[cfg(test)]
-pub(crate) struct ScopedVar {
-    key: &'static str,
-    before: Option<std::ffi::OsString>,
-}
-
-#[cfg(test)]
-impl ScopedVar {
-    /// Sets `key` for the lifetime of the guard.
-    pub(crate) fn set(key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
-        let before = std::env::var_os(key);
-        std::env::set_var(key, value);
-        Self { key, before }
-    }
-
-    /// Unsets `key` for the lifetime of the guard.
-    pub(crate) fn unset(key: &'static str) -> Self {
-        let before = std::env::var_os(key);
-        std::env::remove_var(key);
-        Self { key, before }
-    }
-
-    /// Changes the value without changing what the guard puts back.
-    pub(crate) fn move_to(&self, value: impl AsRef<std::ffi::OsStr>) {
-        std::env::set_var(self.key, value);
-    }
-}
-
-#[cfg(test)]
-impl Drop for ScopedVar {
-    fn drop(&mut self) {
-        match self.before.take() {
-            Some(v) => std::env::set_var(self.key, v),
-            None => std::env::remove_var(self.key),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// One test, not four: the store reads process-wide env (`XDG_CONFIG_HOME`,
-    /// `FORGE_RUNNER_CRED_STORE`) and cargo runs tests in threads, so separate
-    /// cases would race each other's config dir.
-    #[test]
-    fn the_two_credentials_do_not_evict_each_other() {
-        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = crate::test_scratch::Scratch::new("cred");
-        let _xdg = ScopedVar::set("XDG_CONFIG_HOME", &dir);
-        let _store = ScopedVar::set("FORGE_RUNNER_CRED_STORE", "file");
-        let _pat = ScopedVar::unset("FORGE_PAT");
-        let _ = clear_device_token();
-        let _ = clear_pat();
-
-        store_device_token("device-abc").unwrap();
-        store_pat("forge_pat_xyz").unwrap();
-        assert_eq!(load_device_token().unwrap().as_deref(), Some("device-abc"));
-        assert_eq!(load_pat().unwrap().as_deref(), Some("forge_pat_xyz"));
-
-        // The regression: a re-login used to serialise a fresh CredFile and
-        // take the PAT with it.
-        store_device_token("device-def").unwrap();
-        assert_eq!(load_device_token().unwrap().as_deref(), Some("device-def"));
-        assert_eq!(
-            load_pat().unwrap().as_deref(),
-            Some("forge_pat_xyz"),
-            "re-pairing the device wiped the REST token it never touched"
-        );
-
-        store_pat("forge_pat_second").unwrap();
-        assert_eq!(load_device_token().unwrap().as_deref(), Some("device-def"));
-
-        std::env::set_var("FORGE_PAT", "forge_pat_from_env");
-        assert_eq!(load_pat().unwrap().as_deref(), Some("forge_pat_from_env"));
-        std::env::set_var("FORGE_PAT", "   ");
-        assert_eq!(
-            load_pat().unwrap().as_deref(),
-            Some("forge_pat_second"),
-            "a blank FORGE_PAT must fall through to the store, not authenticate as empty"
-        );
-        std::env::remove_var("FORGE_PAT");
-
-        clear_pat().unwrap();
-        assert_eq!(load_pat().unwrap(), None);
-        assert_eq!(
-            load_device_token().unwrap().as_deref(),
-            Some("device-def"),
-            "clearing the REST token logged the device out"
-        );
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-}

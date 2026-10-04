@@ -43,7 +43,7 @@ export interface EffectWritten {
   relations?: PendingIssueRelation[];
 }
 
-export const undecided = (kind: string, path: string, what: string): Refusal => ({
+const undecided = (kind: string, path: string, what: string): Refusal => ({
   code: 'SUGGESTION_EFFECT_UNDECIDED',
   path,
   detail: `the approved designs name no effect for ${what}, so accepting this ${kind} suggestion would write nothing; reject it with a reason, or have its producer propose it without that part.`,
@@ -87,7 +87,7 @@ type IssueTriage = ReturnType<(typeof SUGGESTION_PAYLOADS)['triage']['schema']['
 // cm:why decision on ISS-58 (2026-10-04): a triage suggestion on an issue applies only the fields the
 // feedback-triage design names, priority, category and complexity; its free-text `route` is not an
 // effect, so it is kept as a note comment on the issue rather than refused or dropped
-export function issueTriageOf(p: IssueTriage, suggestionId: string) {
+function issueTriageOf(p: IssueTriage, suggestionId: string) {
   const set: Partial<Pick<typeof issues.$inferInsert, 'priority' | 'category' | 'complexity'>> = {};
   if (p.priority) set.priority = p.priority;
   if (p.category !== undefined) set.category = p.category;

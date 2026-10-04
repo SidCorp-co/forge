@@ -486,11 +486,6 @@
         "REQ-22"
       ]
     },
-    "improvement-messages": {
-      "kind": "domain",
-      "context": "design",
-      "serves": []
-    },
     "install": {
       "kind": "door",
       "context": "access",
@@ -1402,9 +1397,6 @@
       "serves": [
         "REQ-23"
       ]
-    },
-    "improvement-messages": {
-      "serves": []
     },
     "integrations": {
       "serves": [

@@ -10,7 +10,7 @@ import { Legend, ZoomBar } from "./controls";
 
 const wide = () => typeof window === "undefined" || window.innerWidth > 700;
 
-export interface FrameProps {
+interface FrameProps {
   /** Which layout drew the nodes: the design's own (ELK, by template) or a C4 level. */
   layout: "flow" | "c4-context" | "c4-containers";
   wrap: RefObject<HTMLDivElement | null>;

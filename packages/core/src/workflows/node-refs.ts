@@ -12,7 +12,7 @@ import { isUuid } from '../issues/index.js';
 import type { Refusal } from '../lib/refusal.js';
 import { readStoredWorkflow, type WorkflowWrite } from './schema.js';
 
-export interface DesignNodes {
+interface DesignNodes {
   workflowId: string;
   flow: string;
   revision: number;
@@ -63,13 +63,13 @@ export async function designNodesIn(
 const edgeText = (e: EdgeRef) => `${e.from}>${e.to}${e.label ? ` "${e.label}"` : ''}`;
 
 /** The edges an edge reference names: those with its ends, narrowed by its label when given. */
-export function edgesMatching(nodes: DesignNodes, e: EdgeRef) {
+function edgesMatching(nodes: DesignNodes, e: EdgeRef) {
   return nodes.edges.filter(
     (x) => x.from === e.from && x.to === e.to && (e.label === undefined || x.label === e.label),
   );
 }
 
-export function edgeRefusal(nodes: DesignNodes, e: EdgeRef, path: string): Refusal | null {
+function edgeRefusal(nodes: DesignNodes, e: EdgeRef, path: string): Refusal | null {
   const hits = edgesMatching(nodes, e);
   if (hits.length === 1) return null;
   if (hits.length === 0) {
@@ -86,7 +86,7 @@ export function edgeRefusal(nodes: DesignNodes, e: EdgeRef, path: string): Refus
   };
 }
 
-export function stepRefusal(nodes: DesignNodes, step: string, path: string): Refusal | null {
+function stepRefusal(nodes: DesignNodes, step: string, path: string): Refusal | null {
   if (nodes.steps.has(step)) return null;
   return {
     code: 'WORKFLOW_NODE_UNKNOWN',

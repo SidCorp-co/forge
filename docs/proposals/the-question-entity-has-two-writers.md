@@ -91,9 +91,9 @@ core reads the file until they are restored.
   its own poll — which the issue page's question read skips while the issue holds none).
 - **`issue_id` stays nullable.** A master's question from the device door may carry none, and those
   are what the Questions tab still lists. Making the column `NOT NULL` breaks the runner's wire.
-- `packages/runner/crates/forge-runner-core/src/runner/blocked.rs` — `arm_bounded` and
-  `park_for_human` — still has no caller outside its own tests, so no run declares itself parked on
-  a person, and `parkedOnAHuman` matches nothing on a box.
+- The runner's blocked-run park (`arm_bounded`, `park_for_human`) never had a caller outside its
+  own tests and was deleted in ISS-216, so no run declares itself parked on a person, and
+  `parkedOnAHuman` matches nothing on a box.
 
 ## Honest costs
 

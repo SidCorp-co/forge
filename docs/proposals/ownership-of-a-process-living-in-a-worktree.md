@@ -1,8 +1,7 @@
 # Ownership of a process living in a worktree
 
-**Removed when:** every `logged_while` copy in forge-runner-core is folded into `crate::log_capture`
-and the three field-triggered amnesties are recorded in the doc comments that enforce them, which
-dev ISS-123 carries. The change that lands it deletes this file.
+**Removed when:** the three field-triggered amnesties are recorded in the doc comments that
+enforce them, which dev ISS-123 carries. The change that lands it deletes this file.
 
 ISS-1271 made a worktree's removal end the processes living in the checkout, attributing them by
 residence: a process belongs to a checkout when `/proc/<pid>/cwd` resolves to it or beneath it, and
@@ -66,23 +65,6 @@ in ISS-1271 did.
 
 The condition that ends this one is a process observed arriving inside that window in the field, or
 a second issue asking for the quarantine on its own terms.
-
-## Nine copies of the log-capture helper
-
-`forge-runner-core` held nine copies of the same `logged_while` test helper — in
-`workspace::worktree`, `runner::close_loop`, `daemon::headroom`, `daemon::pool_jobs`,
-`daemon::session_tokens`, `daemon::recovery`, `daemon::mod` and twice in `daemon::master` — several
-of them noting in a comment that the shared one was out of reach from where it was needed.
-
-ISS-1271 put one where every unit test in the crate can reach it, `crate::log_capture`, and folded
-`workspace::worktree`'s copy into it. The rest were not folded: `daemon::master` was held by another
-change's branch at the time, and none of the other files was in the declared file scope of a batched
-change, where an undeclared file makes a red gate unattributable. A later change added one more, in
-`transport::provision`, so nine private copies stand today across eight files: `runner::close_loop`,
-`transport::provision`, `daemon::headroom`, `daemon::pool_jobs`, `daemon::session_tokens`,
-`daemon::recovery`, `daemon::mod` and two in `daemon::master`. Each is a `use
-crate::log_capture::logged_while;` and a deletion, and `crate::log_capture` also carries a guard
-form, `capturing()`, that an `async` test needs and that none of the copies has.
 
 ## Honest costs
 

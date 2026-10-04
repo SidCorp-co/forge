@@ -67,7 +67,6 @@ import {
   projectHealthRoutes,
   publicHealthRoutes,
 } from './health/routes.js';
-import { improvementMessageRoutes } from './improvement-messages/routes.js';
 import { installRoutes } from './install/routes.js';
 import {
   githubCallbackRoutes,
@@ -368,7 +367,6 @@ function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/schedules', scheduleRoutes);
   app.route('/api/agent-reports', agentReportRoutes);
   app.route('/api/feedback-reports', feedbackReportsAliasRoutes);
-  app.route('/api/improvement-messages', improvementMessageRoutes);
   app.route('/api/knowledge', knowledgeIngestRoutes);
   app.route('/api/projects', knowledgeRoutes);
   app.route('/api/skills', skillCrudRoutes);

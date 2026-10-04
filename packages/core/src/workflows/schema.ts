@@ -1,5 +1,4 @@
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
-import { repoPath } from '@forge/contracts/repo-path';
 import {
   BAND_ID,
   EDGE_KIND_ID,
@@ -12,26 +11,20 @@ import {
 import { z } from 'zod';
 import { slug, uuid } from '../project-config/index.js';
 
-export const WORKFLOW_SCHEMA_ID = `${SCHEMA_BASE}/workflow-v1.json`;
 export const WORKFLOW_V2_SCHEMA_ID = `${SCHEMA_BASE}/workflow-v2.json`;
-export const WORKFLOW_VERSIONS = [1, 2] as const;
 
 export const WORKFLOW_KINDS = ['flow', 'state'] as const;
-export type WorkflowKind = (typeof WORKFLOW_KINDS)[number];
-
-export const WORKFLOW_STATUSES = ['writing', 'current', 'rechecking'] as const;
-export type WorkflowStatus = (typeof WORKFLOW_STATUSES)[number];
 
 // cm:why a node's type and an edge's kind are no longer one global list: the template a design names
 // declares them (`@forge/contracts/workflow-templates`), so the schema holds only their shape and
 // `template-check.ts` refuses one its template does not declare
-export const NODE_TYPE = NODE_TYPE_ID;
-export const EDGE_KIND = EDGE_KIND_ID;
+const NODE_TYPE = NODE_TYPE_ID;
+const EDGE_KIND = EDGE_KIND_ID;
 
-export const UI_STATE_VARIANTS = ['empty', 'loading', 'error', 'success', 'partial'] as const;
+const UI_STATE_VARIANTS = ['empty', 'loading', 'error', 'success', 'partial'] as const;
 
 /** operational-flow: an event is named `domain.verb_past` (`patient.discharged`). */
-export const EVENT_NAME = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
+const EVENT_NAME = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
 
 export const STOREFRONT_REF_KINDS = ['workflow', 'route', 'node'] as const;
 
@@ -68,64 +61,13 @@ export const WORKFLOW_LIMITS = {
 
 // cm:why a step id is a status name as often as a verb, so it takes `_` (`in_progress`) where a flow slug does not
 export const STEP_ID = /^[a-z][a-z0-9_-]{0,62}$/;
-// cm:why the annotation is the `cm:flow <flow>/<step>` id written in the code, so evidence names that same string
-export const FLOW_STEP_ID = /^[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9_-]{0,62}$/;
 const SHA = /^[0-9a-f]{40}$/;
 
 const sha = () => z.string().regex(SHA);
 const stepId = () => z.string().regex(STEP_ID);
 const timestamp = () => z.iso.datetime({ offset: true });
 
-const coverageSchema = z.strictObject({
-  reading: z.enum(COVERAGE_READINGS),
-  atSha: sha().nullable(),
-});
-
-const evidenceSchema = z.strictObject({
-  file: repoPath(),
-  symbol: z.string().min(1).max(WORKFLOW_LIMITS.symbol).optional(),
-  annotation: z.string().regex(FLOW_STEP_ID).optional(),
-  coverage: coverageSchema,
-});
-
-export const workflowStepSchema = z.strictObject({
-  id: stepId(),
-  title: z.string().min(1).max(WORKFLOW_LIMITS.title).optional(),
-  does: z.string().min(1).max(WORKFLOW_LIMITS.does),
-  status: z.enum(WORKFLOW_STATUSES),
-  after: z.array(stepId()).max(WORKFLOW_LIMITS.after),
-  evidence: evidenceSchema.nullable(),
-});
-export type WorkflowStep = z.infer<typeof workflowStepSchema>;
-
-const driftSchema = z.strictObject({
-  sha: sha(),
-  steps: z.array(stepId()).min(1).max(WORKFLOW_LIMITS.steps),
-  reason: z.string().min(1).max(WORKFLOW_LIMITS.reason),
-});
-
-const workflowFields = {
-  $schema: z.literal(WORKFLOW_SCHEMA_ID),
-  version: z.literal(1),
-  project: uuid(),
-  flow: slug(),
-  kind: z.enum(WORKFLOW_KINDS),
-  title: z.string().min(1).max(WORKFLOW_LIMITS.title),
-  summary: z.string().min(1).max(WORKFLOW_LIMITS.summary),
-  status: z.enum(WORKFLOW_STATUSES),
-  steps: z.array(workflowStepSchema).min(1).max(WORKFLOW_LIMITS.steps),
-  drift: driftSchema.nullable(),
-  writtenBy: z.strictObject({ runId: uuid().optional(), sessionId: uuid().optional(), sha: sha() }),
-  refreshedAtSha: sha(),
-};
-
-export const workflowWriteSchema = z.strictObject(workflowFields);
-export type WorkflowWriteV1 = z.infer<typeof workflowWriteSchema>;
-
 const stamps = { id: uuid(), createdAt: timestamp(), updatedAt: timestamp() };
-
-export const workflowDocumentSchema = z.strictObject({ ...workflowFields, ...stamps });
-export type WorkflowDocument = z.infer<typeof workflowDocumentSchema>;
 
 const contractText = () => z.string().min(1).max(WORKFLOW_LIMITS.contract);
 const ioList = () =>
@@ -237,12 +179,14 @@ const laneSchema = z.strictObject({
   tooltip: z.string().min(1).max(WORKFLOW_LIMITS.purpose).optional(),
 });
 
-const { status: _status, drift: _drift, refreshedAtSha: _sha, ...designFields } = workflowFields;
-
 const workflowV2Fields = {
-  ...designFields,
   $schema: z.literal(WORKFLOW_V2_SCHEMA_ID),
   version: z.literal(2),
+  project: uuid(),
+  flow: slug(),
+  kind: z.enum(WORKFLOW_KINDS),
+  title: z.string().min(1).max(WORKFLOW_LIMITS.title),
+  summary: z.string().min(1).max(WORKFLOW_LIMITS.summary),
   steps: z.array(workflowStepV2Schema).min(1).max(WORKFLOW_LIMITS.steps),
   /** The diagram template the design is drawn in; it decides the node types, bands and edge kinds. */
   template: templateRefSchema,
@@ -268,13 +212,13 @@ export type WorkflowWriteV2 = z.infer<typeof workflowWriteV2Schema>;
 
 export const workflowDocumentV2Schema = z.strictObject({ ...workflowV2Fields, ...stamps });
 
-export type WorkflowWrite = WorkflowWriteV1 | WorkflowWriteV2;
-export type AnyWorkflowStep = WorkflowStep | WorkflowStepV2;
+export type WorkflowWrite = WorkflowWriteV2;
+export type AnyWorkflowStep = WorkflowStepV2;
 
 export const stepsOf = (doc: WorkflowWrite): readonly AnyWorkflowStep[] => doc.steps;
 
 // cm:hack dev-workflow-templates until:every stored workflow-v2 document and design revision carries `template` — a version 2 design written before templates names none, and it was drawn in HOP's journey vocabulary, which is `operational-flow@1`; it is read as that and never re-guessed, and a write still owes `template`
-export function withLegacyTemplate(raw: unknown): unknown {
+function withLegacyTemplate(raw: unknown): unknown {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return raw;
   const doc = raw as Record<string, unknown>;
   return doc.version === 2 && !('template' in doc) ? { ...doc, template: LEGACY_V2_TEMPLATE } : raw;
@@ -282,10 +226,6 @@ export function withLegacyTemplate(raw: unknown): unknown {
 
 /** The stored document read back by the version it was written at; never a guess at another. */
 export function readStoredWorkflow(raw: unknown): WorkflowWrite | null {
-  const version = (raw as { version?: unknown } | null)?.version;
-  const parsed =
-    version === 2
-      ? workflowWriteV2Schema.safeParse(withLegacyTemplate(raw))
-      : workflowWriteSchema.safeParse(raw);
+  const parsed = workflowWriteV2Schema.safeParse(withLegacyTemplate(raw));
   return parsed.success ? parsed.data : null;
 }

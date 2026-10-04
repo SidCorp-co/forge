@@ -36,7 +36,6 @@ pub struct SkillFile {
 pub struct SkillManifestEntry {
     pub skill_id: String,
     pub name: String,
-    pub version: i64,
     pub effective_hash: String,
 }
 
@@ -49,10 +48,6 @@ struct SkillManifestResponse {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillContent {
-    pub skill_id: String,
-    pub name: String,
-    pub version: i64,
-    pub effective_hash: String,
     pub skill_md: String,
     pub files: Vec<SkillFile>,
 }

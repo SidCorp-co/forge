@@ -96,7 +96,7 @@ async function casesOf(feedbackIds: readonly string[]): Promise<Map<string, Case
   return new Map(rows.map((r) => [r.feedbackId, r]));
 }
 
-export function caseView(c: CaseRow, now: Date = new Date()): FeedbackCaseView {
+function caseView(c: CaseRow, now: Date = new Date()): FeedbackCaseView {
   return {
     route: c.route,
     owner: c.owner,

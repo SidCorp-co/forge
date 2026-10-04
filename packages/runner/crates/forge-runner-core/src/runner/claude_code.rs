@@ -17,7 +17,7 @@ use tokio::sync::{mpsc, Mutex};
 
 use super::inflight;
 use super::process::{build_command, graceful_kill};
-use super::{FailureKind, JobSpec, Runner, RunnerEvent, RunnerKind, RunnerStatus, SessionId};
+use super::{JobSpec, Runner, RunnerEvent, SessionId};
 use crate::error::{Error, Result};
 use crate::mcp;
 
@@ -30,7 +30,6 @@ fn user_message_line(text: &str) -> String {
 }
 
 struct Session {
-    status: RunnerStatus,
     child: Option<tokio::process::Child>,
     claude_session_id: Option<String>,
     /// Held open for the life of a DUPLEX session — dropping it is EOF, which
@@ -47,9 +46,6 @@ struct Session {
     /// Raised after each turn's verdict is sent. The only signal a caller
     /// outside the turn loop has that a turn it started has finished.
     turn_done: Arc<tokio::sync::Notify>,
-    /// Which door this session's state is reported by — a pipeline session is
-    /// keyed by `job_id` here and cannot be PATCHed session-side.
-    is_issue_job: bool,
     /// What this session was spawned with, and where its checkout stood at the
     /// last turn — the two facts a caller needs to decide whether the resident
     /// session can serve the next turn as-is.
@@ -120,15 +116,6 @@ struct Outcome {
     result_seen: bool,
     /// Error detail from a `{type:result}` with `is_error=true`.
     result_error: Option<String>,
-    /// `num_turns` from the `{type:result}` event. `Some(0)` on an
-    /// `is_error=false` result means the CLI produced ZERO turns — the model
-    /// was never invoked (e.g. `Unknown command: /forge-plan` when the skill
-    /// is not installed on this device). For a pipeline job that is a no-op,
-    /// not a success (ISS-626).
-    num_turns: Option<i64>,
-    /// The `result` text of the terminal event (used to surface WHY a no-op
-    /// result had zero turns — carries the "Unknown command …" line).
-    result_text: Option<String>,
     /// MCP servers that did NOT reach a connected status at `system/init`.
     mcp_failed: Vec<String>,
     /// Captured child exit status (carries exit code / terminating signal).
@@ -141,8 +128,6 @@ impl Outcome {
         self.usage_limit = None;
         self.result_seen = false;
         self.result_error = None;
-        self.num_turns = None;
-        self.result_text = None;
     }
 }
 
@@ -157,7 +142,6 @@ struct TurnLoop<'a> {
     turn_tx: &'a TurnTx,
     turn_started: &'a Arc<tokio::sync::Notify>,
     turn_done: &'a Arc<tokio::sync::Notify>,
-    is_issue_job: bool,
     residency: Duration,
 }
 
@@ -168,16 +152,8 @@ async fn join_reader(reader: &mut tokio::task::JoinHandle<()>, within: Duration)
     let _ = tokio::time::timeout(within, reader).await;
 }
 
-async fn report_session_closed(
-    is_issue_job: bool,
-    turn_tx: &TurnTx,
-    core: Option<&crate::transport::CoreClient>,
-    job_id: &str,
-) {
-    if is_issue_job {
-        let tx = turn_tx.lock().await;
-        let _ = tx.send(RunnerEvent::StateChanged("closed")).await;
-    } else if let Some(client) = core {
+async fn report_session_closed(core: Option<&crate::transport::CoreClient>, job_id: &str) {
+    if let Some(client) = core {
         crate::transport::agent_sessions::report_runtime_state(client, job_id, "closed").await;
     }
 }
@@ -192,7 +168,6 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
         turn_tx,
         turn_started,
         turn_done,
-        is_issue_job,
         residency,
     } = r;
     let mut reported = false;
@@ -201,7 +176,7 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
             _ = result_notify.notified() => {
                 let ev = {
                     let mut o = outcome.lock().await;
-                    let ev = turn_verdict(&o, is_issue_job);
+                    let ev = turn_verdict(&o);
                     o.reset_turn();
                     ev
                 };
@@ -216,27 +191,13 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
                 if let (Some((sid, seq, turn)), Some(client)) = (consumed, core) {
                     crate::transport::inbox::applied(client, &sid, seq, turn).await;
                 }
-                let job_ended = match (is_issue_job, core) {
-                    (true, Some(client)) => {
-                        crate::transport::lifecycle::turn_is_job_end(client, job_id).await
-                    }
-                    _ => true,
-                };
                 {
                     let tx = turn_tx.lock().await;
                     let _ = tx.send(RunnerEvent::StateChanged("awaiting_input")).await;
-                    if job_ended {
-                        let _ = tx.send(ev).await;
-                    }
+                    let _ = tx.send(ev).await;
                 }
                 turn_done.notify_waiters();
-                reported = job_ended;
-                if is_issue_job && job_ended {
-                    if let Some(s) = sessions.lock().await.get_mut(job_id) {
-                        s.stdin = None;
-                    }
-                    return reported;
-                }
+                reported = true;
             }
             _ = &mut *reader => return reported,
         }
@@ -245,7 +206,7 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
             _ = &mut *reader => return reported,
             _ = tokio::time::sleep(residency) => {
                 tracing::info!("[claude] job={job_id} idle past the session ceiling — closing");
-                report_session_closed(is_issue_job, turn_tx, core, job_id).await;
+                report_session_closed(core, job_id).await;
                 if let Some(s) = sessions.lock().await.get_mut(job_id) {
                     s.stdin = None;
                 }
@@ -255,24 +216,14 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
     }
 }
 
-fn turn_verdict(o: &Outcome, is_issue_job: bool) -> RunnerEvent {
+fn turn_verdict(o: &Outcome) -> RunnerEvent {
     if let Some(msg) = o.usage_limit.clone() {
         return RunnerEvent::Failed {
             error: format!("[USAGE_LIMIT] {msg}"),
-            kind: FailureKind::UsageLimit,
-        };
-    }
-    if is_issue_job && o.succeeded == Some(true) && o.num_turns == Some(0) {
-        let detail = o.result_text.clone().unwrap_or_default();
-        return RunnerEvent::Failed {
-            error: format!(
-                "[NO_WORK] claude produced 0 turns — no work done (skill likely not installed on this device): {detail}"
-            ),
-            kind: FailureKind::Transient,
         };
     }
     if o.succeeded == Some(true) {
-        return RunnerEvent::Done { exit_code: 0 };
+        return RunnerEvent::Done;
     }
     RunnerEvent::Failed {
         error: o
@@ -280,7 +231,6 @@ fn turn_verdict(o: &Outcome, is_issue_job: bool) -> RunnerEvent {
             .clone()
             .map(|e| format!("[RESULT_ERROR] {e}"))
             .unwrap_or_else(|| "[NO_RESULT] the turn ended without a result event".into()),
-        kind: FailureKind::Transient,
     }
 }
 
@@ -416,39 +366,6 @@ fn classify_failure_reason(
     }
     // 6. Degenerate fallback (result seen, not is_error, yet not succeeded).
     "[NO_RESULT_EXIT] terminal with no success signal".to_string()
-}
-
-/// Is the required `forge` MCP server among the ones that TERMINALLY failed to
-/// connect at init? (`mcp_failed` already excludes transient `pending` — see
-/// [`mcp_failed_servers`].) A pipeline step reads attachments and reaches its
-/// connected integrations through forge tools (`forge_uploads`, `forge_source`, ...). A job that
-/// ran without them can only emit pseudocode — it must FAIL (not Done) so core
-/// routes it through bounded auto-retry instead of leaving the issue unchanged
-/// and letting the reconciler re-dispatch forever (ISS-570 / ISS-563 loop).
-///
-/// Scope is intentionally narrow: only servers whose name starts with `forge(`
-/// are considered required. Override servers (playwright, …) are
-/// opt-in per state and may legitimately be absent without invalidating the job.
-fn required_mcp_down(mcp_failed: &[String]) -> bool {
-    mcp_failed.iter().any(|s| s.starts_with("forge("))
-}
-
-/// Whether a missing `forge` MCP server should be treated as FATAL for this run.
-///
-/// ISS-570's hard-fail exists to stop the *reconciler re-dispatch loop*: an
-/// issue pipeline job that ran without forge tools can only emit pseudocode,
-/// leaves its issue unchanged, and the reconciler re-dispatches it forever.
-/// That loop is impossible without an issue behind the run, so the hard-fail is
-/// scoped to issue-bound pipeline jobs (`issue_id = Some`).
-///
-/// Interactive runs — chat (`daemon/chat.rs` sets `step="chat"`, `issue_id=None`)
-/// and schedule ticks — have no reconciler driving them. A transient `pending`
-/// at the single init snapshot must NOT nuke them; at worst they answer the turn
-/// without forge tools instead of failing the whole session and wedging a slot.
-/// (For issue jobs that hit the same transient race, the failure is emitted as
-/// `FailureKind::Transient`, so core's bounded auto-retry self-heals it.)
-fn mcp_failure_is_fatal(is_issue_job: bool, mcp_failed: &[String]) -> bool {
-    is_issue_job && required_mcp_down(mcp_failed)
 }
 
 pub struct ClaudeCodeRunner {
@@ -689,14 +606,10 @@ impl ClaudeCodeRunner {
         let core =
             crate::transport::CoreClient::new(self.core_url.clone(), self.device_token.clone());
         for id in &closed {
-            let (turn_tx, is_issue_job) = {
-                let map = self.sessions.lock().await;
-                match map.get(id) {
-                    Some(s) => (s.turn_tx.clone(), s.is_issue_job),
-                    None => continue,
-                }
-            };
-            report_session_closed(is_issue_job, &turn_tx, Some(&core), id).await;
+            if !self.sessions.lock().await.contains_key(id) {
+                continue;
+            }
+            report_session_closed(Some(&core), id).await;
         }
         closed
     }
@@ -715,10 +628,6 @@ impl ClaudeCodeRunner {
 
 #[async_trait]
 impl Runner for ClaudeCodeRunner {
-    fn kind(&self) -> RunnerKind {
-        RunnerKind::ClaudeCode
-    }
-
     async fn start(&self, spec: JobSpec, tx: mpsc::Sender<RunnerEvent>) -> Result<SessionId> {
         let job_id = spec.job_id.clone();
 
@@ -742,10 +651,6 @@ impl Runner for ClaudeCodeRunner {
         };
 
         let invoked_with_resume = spec.resume_id.is_some();
-        // ISS-570 hard-fail on a down `forge` server is scoped to reconciler-driven
-        // issue jobs (see mcp_failure_is_fatal). Chat / schedule runs carry no
-        // issue_id and must not be nuked by a transient `pending` at init.
-        let is_issue_job = spec.issue_id.is_some();
         let timeout = spec
             .timeout_seconds
             .filter(|s| *s > 0)
@@ -838,7 +743,6 @@ impl Runner for ClaudeCodeRunner {
         self.sessions.lock().await.insert(
             job_id.clone(),
             Session {
-                status: RunnerStatus::Running,
                 child: Some(child),
                 claude_session_id: None,
                 stdin: session_stdin,
@@ -847,7 +751,6 @@ impl Runner for ClaudeCodeRunner {
                 pending_inbox: None,
                 turns: 0,
                 turn_done: turn_done.clone(),
-                is_issue_job,
                 model: spec.model.clone(),
                 head_sha: None,
                 permit: session_permit,
@@ -930,11 +833,6 @@ impl Runner for ClaudeCodeRunner {
                             let mut o = outcome.lock().await;
                             o.succeeded = Some(!is_error);
                             o.result_seen = true;
-                            o.num_turns = json.get("num_turns").and_then(Value::as_i64);
-                            o.result_text = json
-                                .get("result")
-                                .and_then(Value::as_str)
-                                .map(|s| s.chars().take(300).collect());
                             if is_error {
                                 o.result_error = Some(result_error_detail(&json));
                             }
@@ -975,7 +873,6 @@ impl Runner for ClaudeCodeRunner {
                     turn_tx: &turn_tx_for_turns,
                     turn_started: &turn_started_for_turns,
                     turn_done: &turn_done_for_turns,
-                    is_issue_job,
                     residency: SESSION_IDLE_TIMEOUT,
                 },
                 &mut reader,
@@ -1047,16 +944,7 @@ impl Runner for ClaudeCodeRunner {
                 None
             };
 
-            let (
-                succeeded_opt,
-                usage_limit,
-                result_seen,
-                result_error,
-                mcp_failed,
-                polled_exit,
-                num_turns,
-                result_text,
-            ) = {
+            let (succeeded_opt, usage_limit, result_seen, result_error, mcp_failed, polled_exit) = {
                 let o = outcome.lock().await;
                 (
                     o.succeeded,
@@ -1065,8 +953,6 @@ impl Runner for ClaudeCodeRunner {
                     o.result_error.clone(),
                     o.mcp_failed.clone(),
                     o.exit,
-                    o.num_turns,
-                    o.result_text.clone(),
                 )
             };
             let outcome_exit = polled_exit.or(killed_exit);
@@ -1083,19 +969,8 @@ impl Runner for ClaudeCodeRunner {
                     .contains("out of extra usage")
                     .then(|| stderr.trim().chars().take(500).collect())
             });
-            // ISS-626 — a pipeline result with ZERO turns did no work: the CLI
-            // short-circuited before invoking the model (the classic case is
-            // `Unknown command: /forge-<skill>` when the skill is not installed
-            // on this device). The result is `is_error=false`, so without this
-            // guard the job records Done and the reconciler re-dispatches the
-            // no-op forever. Fail it → core routes the cc-startup signal to a
-            // different-device failover (a device that HAS the skill).
-            let no_work = is_issue_job && succeeded_opt == Some(true) && num_turns == Some(0);
 
-            let succeeded = usage_limit.is_none()
-                && succeeded_opt.unwrap_or(false)
-                && !mcp_failure_is_fatal(is_issue_job, &mcp_failed)
-                && !no_work;
+            let succeeded = usage_limit.is_none() && succeeded_opt.unwrap_or(false);
 
             let resume_failed = invoked_with_resume && !succeeded && {
                 let b = stderr.to_lowercase();
@@ -1106,25 +981,17 @@ impl Runner for ClaudeCodeRunner {
                     || b.contains("session id not found")
             };
 
-            // Final status + emit terminal event.
-            if let Some(s) = sessions.lock().await.get_mut(&job_id) {
-                s.status = if succeeded {
-                    RunnerStatus::Completed
-                } else {
-                    RunnerStatus::Failed
-                };
-            }
+            // Emit the terminal event.
             let _ = std::fs::remove_file(&mcp_path);
 
             let emit = turn_tx.lock().await.clone();
             if !already_reported {
                 if succeeded {
-                    let _ = emit.send(RunnerEvent::Done { exit_code: 0 }).await;
+                    let _ = emit.send(RunnerEvent::Done).await;
                 } else if let Some(msg) = usage_limit {
                     let _ = tx
                         .send(RunnerEvent::Failed {
                             error: format!("[USAGE_LIMIT] {msg}"),
-                            kind: FailureKind::UsageLimit,
                         })
                         .await;
                 } else if resume_failed {
@@ -1132,22 +999,6 @@ impl Runner for ClaudeCodeRunner {
                     let _ = tx
                         .send(RunnerEvent::Failed {
                             error: format!("[RESUME_FAILED] {body}"),
-                            kind: FailureKind::ResumeFailed,
-                        })
-                        .await;
-                } else if no_work {
-                    // ISS-626 — zero-turn pipeline result (CLI short-circuited, e.g.
-                    // an unknown /forge-<skill> command). Carry the result text so
-                    // core's classifier routes it (an "Unknown command" line matches
-                    // the cc-startup patterns → transient-cc → different-device
-                    // failover to a runner that HAS the skill).
-                    let detail = result_text.unwrap_or_default();
-                    let _ = tx
-                        .send(RunnerEvent::Failed {
-                            error: format!(
-                                "[NO_WORK] claude produced 0 turns — no work done (skill likely not installed on this device): {detail}"
-                            ),
-                            kind: FailureKind::Transient,
                         })
                         .await;
                 } else {
@@ -1163,12 +1014,7 @@ impl Runner for ClaudeCodeRunner {
                         &mcp_failed,
                         &stderr,
                     );
-                    let _ = tx
-                        .send(RunnerEvent::Failed {
-                            error,
-                            kind: FailureKind::Transient,
-                        })
-                        .await;
+                    let _ = tx.send(RunnerEvent::Failed { error }).await;
                 }
             }
             sessions.lock().await.remove(&job_id);
@@ -1213,19 +1059,10 @@ impl Runner for ClaudeCodeRunner {
             if let Some(mut child) = sess.child.take() {
                 graceful_kill(&mut child).await;
             }
-            sess.status = RunnerStatus::Failed;
             Ok(())
         } else {
             Err(Error::Other("session not found".into()))
         }
-    }
-
-    fn status(&self, session: &SessionId) -> RunnerStatus {
-        self.sessions
-            .try_lock()
-            .ok()
-            .and_then(|s| s.get(session).map(|x| x.status))
-            .unwrap_or(RunnerStatus::Idle)
     }
 }
 
@@ -1238,948 +1075,4 @@ fn project_env(spec: &JobSpec) -> Vec<(&'static str, String)> {
         out.push(("FORGE_PROJECT_SLUG", slug.clone()));
     }
     out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::runner::TurnCredential;
-    use serde_json::json;
-
-    #[test]
-    fn project_env_names_the_project_the_rest_path_needs() {
-        let mut s = spec(false);
-        s.project_id = "da368b0a-8e21-4763-9d90-8f7b9d0c7115".into();
-        s.project_slug = Some("forge-dev".into());
-        let env = project_env(&s);
-        let id = env.iter().find(|(k, _)| *k == "FORGE_PROJECT_ID");
-        assert_eq!(
-            id.map(|(_, v)| v.as_str()),
-            Some("da368b0a-8e21-4763-9d90-8f7b9d0c7115"),
-            "a bundled skill builds `projects/$FORGE_PROJECT_ID/...`; without this the path is `projects//...`"
-        );
-        assert_eq!(
-            env.iter()
-                .find(|(k, _)| *k == "FORGE_PROJECT_SLUG")
-                .map(|(_, v)| v.as_str()),
-            Some("forge-dev")
-        );
-    }
-
-    #[test]
-    fn project_env_omits_an_absent_id_rather_than_exporting_empty() {
-        let s = spec(false);
-        assert!(s.project_id.is_empty());
-        let env = project_env(&s);
-        assert!(
-            env.iter().all(|(k, _)| *k != "FORGE_PROJECT_ID"),
-            "exporting an empty FORGE_PROJECT_ID would build `projects//...` and 404 instead of failing loudly"
-        );
-    }
-
-    fn spec(counts_against_session_cap: bool) -> JobSpec {
-        JobSpec {
-            job_id: "j1".into(),
-            project_id: String::new(),
-            project_slug: None,
-            issue_id: None,
-            step: "chat".into(),
-            repo_path: "/tmp".into(),
-            prompt: Some("hello".into()),
-            system_prompt: None,
-            model: None,
-            permission_mode: None,
-            timeout_seconds: None,
-            mcp_servers_override: None,
-            resume_id: None,
-            agent_session_id: None,
-            counts_against_session_cap,
-            credential: None,
-        }
-    }
-
-    #[test]
-    fn a_chat_spawn_takes_no_session_permit_but_a_pipeline_job_does() {
-        assert!(
-            !takes_session_permit(&spec(false)),
-            "a chat turn that waits for a permit is reaped as `no_client_ack` at 90s"
-        );
-        assert!(
-            takes_session_permit(&spec(true)),
-            "a pipeline job is what the ceiling is for"
-        );
-    }
-
-    /// ISS-17: a session core handed a token runs under it. The box here holds only its
-    /// device token, which the box's own credential path refuses, so a start that got past
-    /// credentials at all did so on the token it was handed.
-    #[test]
-    fn a_handed_turn_credential_is_the_sessions_and_the_box_store_is_not_read() {
-        use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
-        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let home = crate::test_scratch::Scratch::new("iss17-spawn");
-        std::fs::create_dir_all(home.join("forge-runner")).unwrap();
-        std::fs::write(
-            home.join("forge-runner/credentials.json"),
-            format!(r#"{{"device_token":"forge_pat_dev_{}"}}"#, "a".repeat(64)),
-        )
-        .unwrap();
-        let _xdg = ScopedVar::set("XDG_CONFIG_HOME", &home);
-        let _store = ScopedVar::set("FORGE_RUNNER_CRED_STORE", "file");
-        let _pat = ScopedVar::unset("FORGE_PAT");
-
-        let runner = ClaudeCodeRunner::new("http://core.invalid", "tok", 1);
-        let mut job = spec(false);
-        job.project_slug = Some("iss-17".into());
-        job.repo_path = home.join("no-such-checkout");
-        job.credential = Some(TurnCredential(format!("forge_pat_dev_{}", "b".repeat(64))));
-        let (tx, _rx) = mpsc::channel(4);
-        let started = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(Runner::start(&runner, job, tx));
-        let err = match started {
-            Ok(id) => panic!("no checkout exists, so nothing may start; it started {id}"),
-            Err(e) => e.to_string(),
-        };
-        assert!(
-            !err.contains("personal access token"),
-            "the box's own credential was consulted though a turn token was handed: {err}"
-        );
-        assert!(err.contains("failed to spawn claude"), "{err}");
-    }
-
-    /// ISS-1218: a paired box whose store holds only the device token used to
-    /// write a config with no `forge` server and start the agent anyway.
-    #[test]
-    fn a_box_holding_only_its_device_token_refuses_the_spawn_naming_both_credentials() {
-        use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
-        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let home = crate::test_scratch::Scratch::new("1218-spawn");
-        std::fs::create_dir_all(home.join("forge-runner")).unwrap();
-        std::fs::write(
-            home.join("forge-runner/credentials.json"),
-            format!(r#"{{"device_token":"forge_pat_dev_{}"}}"#, "a".repeat(64)),
-        )
-        .unwrap();
-        let _xdg = ScopedVar::set("XDG_CONFIG_HOME", &home);
-        let _store = ScopedVar::set("FORGE_RUNNER_CRED_STORE", "file");
-        let _pat = ScopedVar::unset("FORGE_PAT");
-
-        let runner = ClaudeCodeRunner::new("http://core.invalid", "tok", 1);
-        let mut job = spec(true);
-        job.project_slug = Some("iss-1218".into());
-        // A directory that is not there, so a build that got past the refusal
-        // fails at `spawn` instead of starting a real `claude`.
-        job.repo_path = home.join("no-such-checkout");
-        let (tx, _rx) = mpsc::channel(4);
-        let started = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(Runner::start(&runner, job, tx));
-        let err = match started {
-            Ok(id) => panic!("the spawn must be refused, and it started session {id}"),
-            Err(e) => e.to_string(),
-        };
-
-        assert!(
-            err.contains("personal access token"),
-            "names what was wanted: {err}"
-        );
-        assert!(
-            err.contains("device token"),
-            "names what the box holds: {err}"
-        );
-        assert!(
-            err.contains("forge-runner login --pat"),
-            "names the way out: {err}"
-        );
-        assert!(
-            !err.contains("failed to spawn claude"),
-            "refused before the spawn: {err}"
-        );
-        let left: Vec<_> = std::fs::read_dir(home.join("forge-runner/mcp"))
-            .map(|d| d.flatten().map(|e| e.file_name()).collect())
-            .unwrap_or_default();
-        assert!(
-            left.is_empty(),
-            "a refused job leaves no config behind: {left:?}"
-        );
-        assert_eq!(
-            runner.session_sem.available_permits(),
-            1,
-            "a refused job holds no permit"
-        );
-        let _ = std::fs::remove_dir_all(&home);
-    }
-
-    fn args_for(counts_against_session_cap: bool) -> Vec<String> {
-        build_args(&spec(counts_against_session_cap), "/tmp/mcp.json")
-    }
-
-    fn has_pair(args: &[String], flag: &str, value: &str) -> bool {
-        args.windows(2).any(|w| w[0] == flag && w[1] == value)
-    }
-
-    #[test]
-    fn a_spawn_reads_its_turn_off_stdin() {
-        let args = args_for(true);
-        assert!(has_pair(&args, "--input-format", "stream-json"), "{args:?}");
-        assert!(
-            args.iter().any(|a| a == "--replay-user-messages"),
-            "{args:?}"
-        );
-        assert!(
-            !args.iter().any(|a| a == "-p"),
-            "a duplex spawn that also carries -p answers the flag and never reads stdin: {args:?}"
-        );
-    }
-
-    #[test]
-    fn no_spawn_can_reach_the_deleted_print_lane() {
-        for cap in [true, false] {
-            let args = args_for(cap);
-            assert!(
-                !args.iter().any(|a| a == "-p"),
-                "cap={cap}: a spawn carrying -p answers the flag and never reads stdin: {args:?}"
-            );
-            assert!(
-                has_pair(&args, "--input-format", "stream-json"),
-                "cap={cap}: {args:?}"
-            );
-            assert!(
-                has_pair(&args, "--output-format", "stream-json"),
-                "cap={cap}: {args:?}"
-            );
-        }
-    }
-
-    struct Harness {
-        sessions: Sessions,
-        outcome: Arc<Mutex<Outcome>>,
-        result_notify: Arc<tokio::sync::Notify>,
-        turn_tx: TurnTx,
-        turn_started: Arc<tokio::sync::Notify>,
-        turn_done: Arc<tokio::sync::Notify>,
-        rx: mpsc::Receiver<RunnerEvent>,
-    }
-
-    fn resident_harness() -> Harness {
-        let (tx, rx) = mpsc::channel(16);
-        let turn_tx: TurnTx = Arc::new(Mutex::new(tx));
-        let sessions: Sessions = Arc::new(Mutex::new(HashMap::new()));
-        Harness {
-            sessions,
-            outcome: Arc::new(Mutex::new(Outcome::default())),
-            result_notify: Arc::new(tokio::sync::Notify::new()),
-            turn_tx,
-            turn_started: Arc::new(tokio::sync::Notify::new()),
-            turn_done: Arc::new(tokio::sync::Notify::new()),
-            rx,
-        }
-    }
-
-    /// The bound exists so a full box FAILS instead of parking a job forever, and
-    /// the pre-fix code parked it while holding the repo root lock (ISS-920).
-    ///
-    /// `start_paused` makes the 600s wait cost nothing: the only thing this path
-    /// awaits is the semaphore and the timer, so the clock auto-advances.
-    #[tokio::test(start_paused = true)]
-    async fn a_saturated_box_fails_the_spawn_instead_of_waiting_forever() {
-        let sem = Arc::new(tokio::sync::Semaphore::new(2));
-        let _held = sem.clone().acquire_many_owned(2).await.unwrap();
-
-        let started = tokio::time::Instant::now();
-        let err = tokio::time::timeout(
-            SESSION_PERMIT_WAIT + Duration::from_secs(60),
-            acquire_session_permit(
-                sem,
-                2,
-                SESSION_PERMIT_WAIT,
-                "job-1",
-                vec!["codemap".into(), "forge-dev".into()],
-            ),
-        )
-        .await
-        .expect("the permit wait must be bounded — an unbounded wait is the whole defect")
-        .expect_err("a fully held semaphore must not hand out a permit");
-
-        assert_eq!(
-            started.elapsed(),
-            SESSION_PERMIT_WAIT,
-            "the wait must be the bound — no longer, and not a fail-fast either"
-        );
-        assert_eq!(
-            err.to_string(),
-            "session_permit_saturated: all 2 permits on this box held after 600s; \
-             holders at wait start: codemap, forge-dev"
-        );
-    }
-
-    /// One project's claims can exhaust a box-level ceiling another project's jobs
-    /// then fail on, with nothing in either record connecting the two (ISS-920 B4).
-    #[tokio::test(start_paused = true)]
-    async fn the_failure_names_the_projects_holding_the_permits() {
-        let sem = Arc::new(tokio::sync::Semaphore::new(1));
-        let _held = sem.clone().acquire_owned().await.unwrap();
-        let err = acquire_session_permit(
-            sem,
-            1,
-            SESSION_PERMIT_WAIT,
-            "job-2",
-            vec!["someone-elses-project".into()],
-        )
-        .await
-        .expect_err("no permit was free");
-        assert!(
-            err.to_string()
-                .contains("holders at wait start: someone-elses-project"),
-            "the loser must be told who is on the ceiling, got: {err}"
-        );
-    }
-
-    /// A permit that IS free is handed over with no wait at all — the bound must
-    /// not become a delay on the common path.
-    #[tokio::test(start_paused = true)]
-    async fn a_free_permit_is_taken_immediately() {
-        let sem = Arc::new(tokio::sync::Semaphore::new(1));
-        let started = tokio::time::Instant::now();
-        let permit = acquire_session_permit(sem, 1, SESSION_PERMIT_WAIT, "job-3", Vec::new())
-            .await
-            .expect("a free permit");
-        assert_eq!(started.elapsed(), Duration::ZERO);
-        drop(permit);
-    }
-
-    /// The holder list is the only thing an operator sees when the box is full, so
-    /// "nobody" must read as a sentence rather than as an empty tail.
-    #[test]
-    fn an_empty_holder_list_still_says_something() {
-        assert_eq!(describe_holders(&[]), "no session this runner still tracks");
-    }
-
-    /// The incident's own shape: jobs claimed seconds apart, each holding a permit
-    /// but none of them far enough through `start` to have a `Session` row yet. Read
-    /// `self.sessions` alone and the loser is told the box is held by nobody.
-    #[tokio::test]
-    async fn a_permit_held_before_its_session_row_exists_still_counts_as_a_holder() {
-        let runner = ClaudeCodeRunner::new("http://core.invalid", "tok", 3);
-        assert!(runner.permit_holders().await.is_empty());
-
-        let a = PendingPermit::register(&runner.pending_permits, "job-a", Some("codemap"));
-        let b = PendingPermit::register(&runner.pending_permits, "job-b", Some("forge-dev"));
-        assert_eq!(runner.permit_holders().await, vec!["codemap", "forge-dev"]);
-
-        drop(a);
-        assert_eq!(runner.permit_holders().await, vec!["forge-dev"]);
-        drop(b);
-        assert!(
-            runner.permit_holders().await.is_empty(),
-            "an early return between the permit and the session row must not leak a holder"
-        );
-    }
-
-    async fn never_ending() -> tokio::task::JoinHandle<()> {
-        tokio::spawn(async { std::future::pending::<()>().await })
-    }
-
-    /// A reader whose task is already complete — `is_finished()` is true and the
-    /// next poll of it panics.
-    async fn already_finished() -> tokio::task::JoinHandle<()> {
-        let h = tokio::spawn(async {});
-        while !h.is_finished() {
-            tokio::task::yield_now().await;
-        }
-        h
-    }
-
-    #[tokio::test]
-    async fn the_caller_may_not_await_a_reader_the_turn_loop_already_consumed() {
-        let Harness {
-            sessions,
-            outcome,
-            result_notify,
-            turn_tx,
-            turn_started,
-            turn_done,
-            rx: _rx,
-        } = resident_harness();
-        let mut reader = already_finished().await;
-        let reported = duplex_turns(
-            TurnLoop {
-                sessions: &sessions,
-                job_id: "job-1",
-                core: None,
-                outcome: &outcome,
-                result_notify: &result_notify,
-                turn_tx: &turn_tx,
-                turn_started: &turn_started,
-                turn_done: &turn_done,
-                is_issue_job: false,
-                residency: SESSION_IDLE_TIMEOUT,
-            },
-            &mut reader,
-        )
-        .await;
-        assert!(!reported, "no turn ran, so nothing was reported");
-        // What `consume`'s spawn does next, and the only thing that makes it safe.
-        assert!(reader.is_finished(), "the loop left the handle spent");
-        join_reader(&mut reader, Duration::from_secs(2)).await;
-    }
-
-    #[tokio::test]
-    async fn join_reader_waits_on_a_live_reader_and_gives_up_at_the_ceiling() {
-        let mut live = never_ending().await;
-        let start = tokio::time::Instant::now();
-        join_reader(&mut live, Duration::from_millis(50)).await;
-        assert!(start.elapsed() >= Duration::from_millis(50), "it waited");
-        assert!(!live.is_finished(), "and left the reader running");
-        live.abort();
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn a_finished_turn_reports_and_the_session_stays_open() {
-        let Harness {
-            sessions,
-            outcome,
-            result_notify,
-            turn_tx,
-            turn_started,
-            turn_done,
-            mut rx,
-        } = resident_harness();
-        let mut reader = never_ending().await;
-        let loop_handle = {
-            let (s, o, rn, tt, ts, td) = (
-                sessions.clone(),
-                outcome.clone(),
-                result_notify.clone(),
-                turn_tx.clone(),
-                turn_started.clone(),
-                turn_done.clone(),
-            );
-            tokio::spawn(async move {
-                duplex_turns(
-                    TurnLoop {
-                        sessions: &s,
-                        job_id: "j1",
-                        core: None,
-                        outcome: &o,
-                        result_notify: &rn,
-                        turn_tx: &tt,
-                        turn_started: &ts,
-                        turn_done: &td,
-                        residency: SESSION_IDLE_TIMEOUT,
-                        is_issue_job: false,
-                    },
-                    &mut reader,
-                )
-                .await
-            })
-        };
-
-        outcome.lock().await.succeeded = Some(true);
-        result_notify.notify_one();
-        let first = tokio::time::timeout(Duration::from_secs(1), rx.recv())
-            .await
-            .expect("a finished turn must report")
-            .expect("channel open");
-        assert!(
-            matches!(first, RunnerEvent::StateChanged("awaiting_input")),
-            "{first:?}"
-        );
-        let second = tokio::time::timeout(Duration::from_secs(1), rx.recv())
-            .await
-            .expect("the turn must also report its verdict")
-            .expect("channel open");
-        assert!(matches!(second, RunnerEvent::Done { .. }), "{second:?}");
-        assert!(
-            !loop_handle.is_finished(),
-            "the session must outlive its turn"
-        );
-        loop_handle.abort();
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn the_idle_ceiling_does_not_arm_while_a_turn_is_running() {
-        let Harness {
-            sessions,
-            outcome,
-            result_notify,
-            turn_tx,
-            turn_started,
-            turn_done,
-            rx: _rx,
-        } = resident_harness();
-        let mut reader = never_ending().await;
-        let loop_handle = tokio::spawn(async move {
-            duplex_turns(
-                TurnLoop {
-                    sessions: &sessions,
-                    job_id: "j1",
-                    core: None,
-                    outcome: &outcome,
-                    result_notify: &result_notify,
-                    turn_tx: &turn_tx,
-                    turn_started: &turn_started,
-                    turn_done: &turn_done,
-                    is_issue_job: false,
-                    residency: SESSION_IDLE_TIMEOUT,
-                },
-                &mut reader,
-            )
-            .await
-        });
-        tokio::time::sleep(SESSION_IDLE_TIMEOUT * 3).await;
-        assert!(
-            !loop_handle.is_finished(),
-            "a turn that has not produced a result yet is not an idle session"
-        );
-        loop_handle.abort();
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn an_abandoned_session_is_closed_by_the_idle_ceiling() {
-        let Harness {
-            sessions,
-            outcome,
-            result_notify,
-            turn_tx,
-            turn_started,
-            turn_done,
-            mut rx,
-        } = resident_harness();
-        let mut reader = never_ending().await;
-        let loop_handle = {
-            let (s, o, rn, tt, ts, td) = (
-                sessions.clone(),
-                outcome.clone(),
-                result_notify.clone(),
-                turn_tx.clone(),
-                turn_started.clone(),
-                turn_done.clone(),
-            );
-            tokio::spawn(async move {
-                duplex_turns(
-                    TurnLoop {
-                        sessions: &s,
-                        job_id: "j1",
-                        core: None,
-                        outcome: &o,
-                        result_notify: &rn,
-                        turn_tx: &tt,
-                        turn_started: &ts,
-                        turn_done: &td,
-                        residency: SESSION_IDLE_TIMEOUT,
-                        is_issue_job: false,
-                    },
-                    &mut reader,
-                )
-                .await
-            })
-        };
-        outcome.lock().await.succeeded = Some(true);
-        result_notify.notify_one();
-        let _ = rx.recv().await;
-        tokio::time::sleep(SESSION_IDLE_TIMEOUT + Duration::from_secs(1)).await;
-        let reported = tokio::time::timeout(Duration::from_secs(1), loop_handle)
-            .await
-            .expect("the ceiling must close an abandoned session")
-            .expect("loop panicked");
-        assert!(
-            reported,
-            "the last turn was reported, so exit must not report again"
-        );
-    }
-
-    /// A resident session around a trivial child, so the checkpoint path has a
-    /// real stdin to write to without spawning claude.
-    async fn parked_runner() -> (
-        ClaudeCodeRunner,
-        mpsc::Receiver<RunnerEvent>,
-        Arc<tokio::sync::Notify>,
-    ) {
-        let mut child = tokio::process::Command::new("cat")
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::null())
-            .spawn()
-            .expect("cat must spawn");
-        let stdin = child.stdin.take();
-        let (tx, rx) = mpsc::channel(16);
-        let turn_done = Arc::new(tokio::sync::Notify::new());
-        let runner = ClaudeCodeRunner::new("http://127.0.0.1:1", "tok", 1);
-        runner.sessions.lock().await.insert(
-            "j1".to_string(),
-            Session {
-                status: RunnerStatus::Running,
-                child: Some(child),
-                claude_session_id: None,
-                stdin,
-                turn_tx: Arc::new(Mutex::new(tx)),
-                turn_started: Arc::new(tokio::sync::Notify::new()),
-                pending_inbox: None,
-                turns: 0,
-                turn_done: turn_done.clone(),
-                is_issue_job: true,
-                model: None,
-                head_sha: None,
-                permit: None,
-                project_slug: None,
-            },
-        );
-        (runner, rx, turn_done)
-    }
-
-    #[tokio::test]
-    async fn an_aborted_session_is_no_longer_resident() {
-        let (runner, _rx, _done) = parked_runner().await;
-        let id = "j1".to_string();
-        assert!(runner.resident(&id).await.is_some());
-        Runner::abort(&runner, &id).await.expect("abort");
-        assert!(runner.resident(&id).await.is_none());
-        assert!(
-            runner.send_resident(&id, "hello", None).await.is_err(),
-            "an aborted session must refuse a send rather than write into a corpse"
-        );
-    }
-
-    #[tokio::test]
-    async fn an_aborted_session_is_not_checkpointed() {
-        let (runner, _rx, _done) = parked_runner().await;
-        Runner::abort(&runner, &"j1".to_string())
-            .await
-            .expect("abort");
-        let started = std::time::Instant::now();
-        assert!(runner
-            .checkpoint_and_close(std::time::Duration::from_secs(30))
-            .await
-            .is_empty());
-        assert!(started.elapsed() < std::time::Duration::from_secs(5));
-    }
-
-    #[tokio::test]
-    async fn a_checkpoint_waits_for_the_turn_it_asked_for() {
-        let (runner, _rx, _done) = parked_runner().await;
-        let started = std::time::Instant::now();
-        let closed = runner
-            .checkpoint_and_close(std::time::Duration::from_millis(300))
-            .await;
-        assert_eq!(closed, vec!["j1".to_string()]);
-        assert!(
-            started.elapsed() >= std::time::Duration::from_millis(300),
-            "a session that never finished its checkpoint must hold the full budget: {:?}",
-            started.elapsed()
-        );
-    }
-
-    #[tokio::test]
-    async fn a_finished_checkpoint_does_not_hold_the_restart_for_its_whole_budget() {
-        let (runner, _rx, done) = parked_runner().await;
-        tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-            done.notify_waiters();
-        });
-        let started = std::time::Instant::now();
-        runner
-            .checkpoint_and_close(std::time::Duration::from_secs(30))
-            .await;
-        assert!(
-            started.elapsed() < std::time::Duration::from_secs(5),
-            "the turn reported done, so the budget must not be waited out: {:?}",
-            started.elapsed()
-        );
-    }
-
-    #[tokio::test]
-    async fn a_session_that_never_answers_is_still_closed() {
-        let (runner, _rx, _done) = parked_runner().await;
-        runner
-            .checkpoint_and_close(std::time::Duration::from_millis(50))
-            .await;
-        assert!(
-            runner.resident(&"j1".to_string()).await.is_none(),
-            "the budget elapsing must not leave the session resident"
-        );
-    }
-
-    #[tokio::test]
-    async fn an_issue_job_reports_its_close_on_the_job_channel() {
-        let (tx, mut rx) = mpsc::channel(4);
-        let turn_tx: TurnTx = Arc::new(Mutex::new(tx));
-        report_session_closed(true, &turn_tx, None, "j1").await;
-        let ev = rx.try_recv().expect("the close must reach the job channel");
-        assert!(matches!(ev, RunnerEvent::StateChanged("closed")), "{ev:?}");
-    }
-
-    #[tokio::test]
-    async fn a_chat_session_does_not_report_its_close_on_the_job_channel() {
-        let (tx, mut rx) = mpsc::channel(4);
-        let turn_tx: TurnTx = Arc::new(Mutex::new(tx));
-        report_session_closed(false, &turn_tx, None, "s1").await;
-        assert!(
-            rx.try_recv().is_err(),
-            "chat has no job to post an event against — it reports over the session PATCH"
-        );
-    }
-
-    #[test]
-    fn a_turn_that_ends_with_no_result_is_not_a_success() {
-        let ev = turn_verdict(&Outcome::default(), false);
-        match ev {
-            RunnerEvent::Failed { error, .. } => {
-                assert!(error.starts_with("[NO_RESULT]"), "{error}")
-            }
-            other => panic!("{other:?}"),
-        }
-    }
-
-    #[test]
-    fn a_usage_limit_outranks_a_successful_result() {
-        let o = Outcome {
-            succeeded: Some(true),
-            usage_limit: Some("out of extra usage".into()),
-            ..Default::default()
-        };
-        match turn_verdict(&o, false) {
-            RunnerEvent::Failed { kind, .. } => assert_eq!(kind, FailureKind::UsageLimit),
-            other => panic!("{other:?}"),
-        }
-    }
-
-    #[test]
-    fn zero_turns_on_an_issue_job_is_no_work_and_on_chat_is_not() {
-        let o = Outcome {
-            succeeded: Some(true),
-            num_turns: Some(0),
-            ..Default::default()
-        };
-        match turn_verdict(&o, true) {
-            RunnerEvent::Failed { error, .. } => assert!(error.starts_with("[NO_WORK]"), "{error}"),
-            other => panic!("{other:?}"),
-        }
-        assert!(matches!(turn_verdict(&o, false), RunnerEvent::Done { .. }));
-    }
-
-    #[test]
-    fn resetting_a_turn_keeps_what_belongs_to_the_process() {
-        let mut o = Outcome {
-            succeeded: Some(true),
-            num_turns: Some(3),
-            mcp_failed: vec!["forge(failed)".into()],
-            ..Default::default()
-        };
-        o.reset_turn();
-        assert_eq!(o.succeeded, None);
-        assert_eq!(o.num_turns, None);
-        assert!(!o.result_seen);
-        assert_eq!(o.mcp_failed, vec!["forge(failed)".to_string()]);
-    }
-
-    #[test]
-    fn the_turn_envelope_is_the_one_the_cli_accepts() {
-        let line = user_message_line("hi");
-        assert!(line.ends_with('\n'), "{line:?}");
-        let v: Value = serde_json::from_str(line.trim()).expect("one JSON object per line");
-        assert_eq!(v["type"], "user");
-        assert_eq!(v["message"]["role"], "user");
-        assert_eq!(v["message"]["content"][0]["type"], "text");
-        assert_eq!(v["message"]["content"][0]["text"], "hi");
-    }
-
-    #[test]
-    fn a_prompt_that_would_break_the_line_is_escaped_not_embedded() {
-        let line = user_message_line("a\nb\"c");
-        assert_eq!(
-            line.matches('\n').count(),
-            1,
-            "a raw newline splits the message: {line:?}"
-        );
-        let v: Value = serde_json::from_str(line.trim()).unwrap();
-        assert_eq!(v["message"]["content"][0]["text"], "a\nb\"c");
-    }
-
-    #[test]
-    fn killed_by_signal_reports_signal_token() {
-        let r = classify_failure_reason(None, Some(9), false, None, &[], "");
-        assert!(r.starts_with("[SIGNAL_KILLED]"), "{r}");
-        assert!(r.contains("signal=9"), "{r}");
-    }
-
-    #[test]
-    fn clean_exit_without_result_is_no_result_clean_exit() {
-        let r = classify_failure_reason(Some(0), None, false, None, &[], "");
-        assert!(r.starts_with("[NO_RESULT_CLEAN_EXIT]"), "{r}");
-    }
-
-    #[test]
-    fn nonzero_exit_without_result_is_no_result_exit() {
-        let r = classify_failure_reason(Some(1), None, false, None, &[], "");
-        assert!(r.starts_with("[NO_RESULT_EXIT]"), "{r}");
-        assert!(r.contains("exitCode=1"), "{r}");
-    }
-
-    #[test]
-    fn mcp_init_failure_reports_mcp_token() {
-        let failed = vec!["forge(failed)".to_string()];
-        let r = classify_failure_reason(Some(0), None, false, None, &failed, "");
-        assert!(r.starts_with("[MCP_INIT_FAILED]"), "{r}");
-        assert!(r.contains("forge(failed)"), "{r}");
-    }
-
-    #[test]
-    fn result_error_reports_result_token() {
-        let r = classify_failure_reason(
-            Some(0),
-            None,
-            true,
-            Some("error_max_turns: hit cap"),
-            &[],
-            "",
-        );
-        assert!(r.starts_with("[RESULT_ERROR]"), "{r}");
-        assert!(r.contains("error_max_turns"), "{r}");
-    }
-
-    #[test]
-    fn nonempty_stderr_passes_through_for_existing_pattern_match() {
-        // Real provider error text should pass through untokenized so core's
-        // existing classifier patterns can match it.
-        let r = classify_failure_reason(
-            Some(1),
-            None,
-            false,
-            None,
-            &[],
-            "  invalid_request_error: bad  ",
-        );
-        assert_eq!(r, "invalid_request_error: bad");
-    }
-
-    #[test]
-    fn signal_wins_over_stderr_passthrough() {
-        let r = classify_failure_reason(None, Some(9), false, None, &[], "some noise");
-        assert!(r.starts_with("[SIGNAL_KILLED]"), "{r}");
-        assert!(r.contains("some noise"), "{r}");
-    }
-
-    #[test]
-    fn mcp_init_parse_flags_unconnected_servers() {
-        let init = json!({
-            "type": "system",
-            "subtype": "init",
-            "mcp_servers": [
-                { "name": "forge", "status": "failed" },
-                { "name": "playwright", "status": "connected" }
-            ]
-        });
-        let failed = mcp_failed_servers(&init).expect("system event");
-        assert_eq!(failed, vec!["forge(failed)".to_string()]);
-    }
-
-    #[test]
-    fn mcp_init_parse_ignores_transient_pending() {
-        // The race we fixed: claude emits init while servers are still connecting.
-        // `pending` / `connecting` are transient (claude waits for them), so they
-        // must NOT be reported as failed — only a genuinely terminal status is.
-        let init = json!({
-            "type": "system",
-            "subtype": "init",
-            "mcp_servers": [
-                { "name": "forge", "status": "pending" },
-                { "name": "chrome-devtools-mcp", "status": "connecting" },
-                { "name": "playwright", "status": "failed" }
-            ]
-        });
-        let failed = mcp_failed_servers(&init).expect("system event");
-        assert_eq!(failed, vec!["playwright(failed)".to_string()]);
-    }
-
-    #[test]
-    fn mcp_init_parse_all_connected_is_empty() {
-        let init = json!({
-            "type": "system",
-            "subtype": "init",
-            "mcp_servers": [ { "name": "forge", "status": "connected" } ]
-        });
-        assert_eq!(mcp_failed_servers(&init), Some(vec![]));
-    }
-
-    #[test]
-    fn non_system_event_is_ignored_by_mcp_parse() {
-        let assistant = json!({ "type": "assistant", "message": {} });
-        assert_eq!(mcp_failed_servers(&assistant), None);
-    }
-
-    #[test]
-    fn transient_statuses_classified() {
-        assert!(is_transient_mcp_status("pending"));
-        assert!(is_transient_mcp_status("Connecting"));
-        assert!(is_transient_mcp_status(" needs-restart "));
-        assert!(!is_transient_mcp_status("failed"));
-        assert!(!is_transient_mcp_status("needs-auth"));
-        assert!(!is_transient_mcp_status("connected"));
-    }
-
-    // required_mcp_down — ISS-570 (mcp_failed only ever holds TERMINAL statuses;
-    // pending is filtered upstream by mcp_failed_servers).
-    #[test]
-    fn required_mcp_down_forge_failed_is_true() {
-        assert!(required_mcp_down(&["forge(failed)".to_string()]));
-    }
-
-    #[test]
-    fn required_mcp_down_non_forge_server_is_false() {
-        assert!(!required_mcp_down(&["playwright(failed)".to_string()]));
-    }
-
-    #[test]
-    fn required_mcp_down_empty_is_false() {
-        assert!(!required_mcp_down(&[]));
-    }
-
-    #[test]
-    fn required_mcp_down_mixed_forge_and_non_forge_is_true() {
-        let failed = vec![
-            "playwright(failed)".to_string(),
-            "forge(failed)".to_string(),
-        ];
-        assert!(required_mcp_down(&failed));
-    }
-
-    // mcp_failure_is_fatal — scope the ISS-570 hard-fail to issue jobs only.
-    // (mcp_failed only ever holds TERMINAL statuses; pending never reaches here.)
-    #[test]
-    fn mcp_failure_fatal_for_issue_job_when_forge_down() {
-        // Reconciler-driven issue job loses forge terminally → fatal (ISS-570).
-        assert!(mcp_failure_is_fatal(true, &["forge(failed)".to_string()]));
-        assert!(mcp_failure_is_fatal(
-            true,
-            &["forge(needs-auth)".to_string()]
-        ));
-    }
-
-    #[test]
-    fn mcp_failure_not_fatal_for_chat_even_when_forge_down() {
-        // Chat / schedule (issue_id=None) must never be nuked by a down forge.
-        assert!(!mcp_failure_is_fatal(false, &["forge(failed)".to_string()]));
-        assert!(!mcp_failure_is_fatal(
-            false,
-            &[
-                "forge(failed)".to_string(),
-                "playwright(failed)".to_string()
-            ]
-        ));
-    }
-
-    #[test]
-    fn mcp_failure_not_fatal_when_forge_up() {
-        // Only the required `forge` server gates; a down override never is fatal.
-        assert!(!mcp_failure_is_fatal(
-            true,
-            &["playwright(failed)".to_string()]
-        ));
-        assert!(!mcp_failure_is_fatal(true, &[]));
-    }
 }

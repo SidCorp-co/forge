@@ -11,13 +11,13 @@ import { CONTENT_LANGUAGE_CHOICES, contentLanguageName, contentLanguageProblem }
 
 const OTHER = "other";
 
-export const CONTENT_LANGUAGE_HELP =
+const CONTENT_LANGUAGE_HELP =
 	"The language agents write this project's prose in: requirements and criteria, workflow design text, comments and notes, questionnaires and onboarding, feedback triage, suggestions, plans, summaries, release notes and assistant replies. A chat reply follows the language the person writes in. Never code, identifiers, commits, branch names, PR titles, machine-read fields or Forge's own UI: those stay English, as do technical terms such as API, webhook or deploy.";
 
 const isChoice = (tag: string) => CONTENT_LANGUAGE_CHOICES.some((c) => c.tag === tag);
 
 /** "checkout, storefront" → ["checkout", "storefront"]; blanks and repeats dropped. */
-export function termsOf(text: string): string[] {
+function termsOf(text: string): string[] {
 	return [...new Set(text.split(",").map((t) => t.trim()).filter(Boolean))];
 }
 

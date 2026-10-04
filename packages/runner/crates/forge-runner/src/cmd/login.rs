@@ -20,9 +20,6 @@ pub struct Args {
     /// headless boxes reached over SSH, where the URL is what you want.
     #[arg(long)]
     pub open: bool,
-    /// Accepted and ignored — printing the URL is now the default.
-    #[arg(long, hide = true)]
-    pub no_browser: bool,
     /// Store a personal access token, created in Forge's web app under
     /// Settings → API Tokens. Every job this box starts hands it to the job's
     /// Forge tools, and a box holding none refuses its jobs; `forge-runner api`

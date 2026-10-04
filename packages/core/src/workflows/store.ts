@@ -6,9 +6,9 @@ import {
   projectWorkflows,
   workflowBuilds,
 } from '../db/schema-workflows.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import type { DesignDecision, DesignStatus } from './design.js';
 import type { WorkflowWrite } from './schema.js';
-import { lockXact } from '../lib/advisory-lock.js';
 
 export interface StoredWorkflow {
   id: string;
@@ -25,7 +25,7 @@ export interface StoredWorkflow {
   updatedAt: Date;
 }
 
-export interface DesignState {
+interface DesignState {
   designStatus: DesignStatus | null;
   designFingerprint: string;
   approvedRevision: number | null;
@@ -133,7 +133,7 @@ export async function setDesignState(
     .where(eq(projectWorkflows.id, id));
 }
 
-export interface StoredDesign {
+interface StoredDesign {
   workflowId: string;
   revision: number;
   document: unknown;
@@ -245,7 +245,7 @@ export async function decideDesign(
     );
 }
 
-export interface StoredBuild {
+interface StoredBuild {
   issueId: string;
   workflowId: string;
   issSeq: number;
