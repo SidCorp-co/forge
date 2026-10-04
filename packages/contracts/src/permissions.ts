@@ -159,8 +159,6 @@ export interface OrgResource {
 	id: string;
 }
 
-export type PermissionResource = ProjectResource | OrgResource;
-
 /** The one refusal for a missing permission; `permission` and `scope` ride beside the envelope's fields. */
 export interface PermissionRefusal {
 	code: PermissionRefusalCode;
