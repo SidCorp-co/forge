@@ -1,6 +1,5 @@
 "use client";
 
-import { useQueries } from "@tanstack/react-query";
 import Link from "next/link";
 import { Fragment, useMemo, useState } from "react";
 import {
@@ -21,19 +20,18 @@ import {
   THead,
   TR,
 } from "@/design";
-import { useAgentReports, useTriageAgentReport } from "@/features/agent-reports/hooks";
+import { useTriageAgentReport } from "@/features/agent-reports/hooks";
 import type { AgentReport } from "@/features/agent-reports/types";
+import { useAutomationStanding } from "@/features/automation/hooks";
 import { FeedbackForm } from "@/features/feedback/components/feedback-form";
 import { feedbackHref } from "@/features/feedback/routes";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
-import { improvementMessagesApi } from "../api";
 import { useImprovementMessages } from "../hooks";
 import {
   IMPROVEMENT_FILTERS,
   type ImprovementFilter,
   type ImprovementRow,
-  type LoopRuns,
   feedbackDraftOf,
   improvementRows,
   matchesFilter,
@@ -53,18 +51,14 @@ const STATE_BADGE: Record<ImprovementRow["state"], { label: string; tone: "amber
   done: { label: "Done", tone: "green" },
 };
 
-function useLoopRuns(projectId: string) {
-  const catalogQ = useImprovementMessages(projectId);
-  const loops = (catalogQ.data ?? []).flatMap((e) => (e.enablement ? [{ title: e.title, id: e.enablement.scheduleId }] : []));
-  const runsQ = useQueries({
-    queries: loops.map((l) => ({
-      queryKey: ["improvement-messages", projectId, "runs", l.id],
-      queryFn: () => improvementMessagesApi.runs(l.id),
-    })),
-  });
-  const runs: LoopRuns[] = loops.map((l, i) => ({ title: l.title, runs: runsQ[i]?.data?.runs ?? [] }));
-  const error = catalogQ.error ?? runsQ.find((q) => q.error)?.error ?? null;
-  return { runs, isLoading: catalogQ.isLoading || runsQ.some((q) => q.isLoading), error };
+function useLoopTitles(projectId: string): (scheduleId: string) => string {
+  const catalog = useImprovementMessages(projectId).data;
+  return useMemo(() => {
+    const titles = new Map(
+      (catalog ?? []).flatMap((e) => (e.enablement ? [[e.enablement.scheduleId, e.title] as const] : [])),
+    );
+    return (scheduleId: string) => titles.get(scheduleId) ?? "Improvement loop";
+  }, [catalog]);
 }
 
 function DismissForm({ report, projectId, onDone }: { report: AgentReport; projectId: string; onDone: () => void }) {
@@ -206,12 +200,15 @@ export function ImprovementsScreen({
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [promoting, setPromoting] = useState<string | null>(null);
   const [dismissing, setDismissing] = useState<string | null>(null);
-  const reportsQ = useAgentReports(projectId);
-  const loops = useLoopRuns(projectId);
-  const rows = useMemo(() => improvementRows(reportsQ.data ?? [], loops.runs), [reportsQ.data, loops.runs]);
+  const standingQ = useAutomationStanding(projectId);
+  const loopTitle = useLoopTitles(projectId);
+  const rows = useMemo(
+    () => improvementRows(standingQ.data?.reports ?? [], standingQ.data?.proposals ?? [], loopTitle),
+    [standingQ.data, loopTitle],
+  );
   const shown = rows.filter((r) => matchesFilter(r, filter));
-  const loading = reportsQ.isLoading || loops.isLoading;
-  const error = reportsQ.error ?? loops.error;
+  const loading = standingQ.isLoading;
+  const error = standingQ.error;
 
   return (
     <PageContainer className="min-h-dvh">

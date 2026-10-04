@@ -26,6 +26,13 @@ export const AUTOMATION_ACTS = [
 ] as const;
 export type AutomationAct = (typeof AUTOMATION_ACTS)[number];
 
+/** How each act reads to a person, lower-case after "waiting on you". */
+export const AUTOMATION_ACT_LABELS: Record<AutomationAct, string> = {
+	triage_report: "triage a report",
+	fix_schedule: "fix a failing schedule",
+	reassign_owner: "take over a schedule whose owner is gone",
+};
+
 /** Whom a schedule, fire or report waits on: the viewer, its owner, the admins or writers, where a
  *  filed report went, or nobody. */
 export const AUTOMATION_WAITING_KINDS = [

@@ -23,4 +23,16 @@ describe("needsYouHint", () => {
       "Issues · waiting on you 1: act",
     );
   });
+
+  it("reads an automation act by its label, never the token core addresses it by", () => {
+    expect(
+      needsYouHint("Automation", {
+        you: 3,
+        acts: [
+          { act: "triage_report", count: 2 },
+          { act: "reassign_owner", count: 1 },
+        ],
+      }),
+    ).toBe("Automation · waiting on you 3: triage a report (2), take over a schedule whose owner is gone");
+  });
 });

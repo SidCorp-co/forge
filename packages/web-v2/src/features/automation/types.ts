@@ -66,3 +66,15 @@ export const PM_MODEL_OPTIONS: { label: string; value: string }[] = [
   { label: "Sonnet", value: "sonnet" },
   { label: "Haiku", value: "haiku" },
 ];
+
+export type {
+  AutomationStandingResponse,
+  AutomationWaitingOn,
+  FireDetailResponse,
+  FireProduced,
+  FireProposal,
+  FireStanding,
+  ReportStanding,
+  ScheduleDetailResponse,
+  ScheduleStanding,
+} from "@forge/contracts/automation-standing";

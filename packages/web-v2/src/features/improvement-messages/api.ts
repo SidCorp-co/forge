@@ -1,6 +1,6 @@
 import { apiClient } from "@/lib/api/client";
 import type { ImprovementMessageEntry } from "./types";
-import type { ScheduleRow, ScheduleRun } from "@/features/schedules/types";
+import type { ScheduleRow } from "@/features/schedules/types";
 
 export const improvementMessagesApi = {
   /** `GET /api/improvement-messages?projectId=` — catalog with per-project enablement. */
@@ -43,10 +43,4 @@ export const improvementMessagesApi = {
     apiClient<{ sessionId: string; message: string }>(`/schedules/${id}/run`, {
       method: "POST",
     }),
-
-  /** `GET /api/schedules/:id/runs?limit=` — recent run history (newest first). */
-  runs: (id: string, limit = 20) =>
-    apiClient<{ runs: ScheduleRun[] }>(
-      `/schedules/${id}/runs?limit=${encodeURIComponent(limit)}`,
-    ),
 };
