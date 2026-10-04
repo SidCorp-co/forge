@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.1] - 2026-10-04
+
+Requirements, feedback and suggestions get homes; issue statuses say who acts next
+
+
 ### Security
 
 - **You can change which projects your token reaches without a new secret (ISS-92).**
