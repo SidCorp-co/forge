@@ -360,7 +360,7 @@ needs_info / on_hold: entered from open, reopen, in_progress, approved, awaiting
 | \`approved\` | a master; the next run goes straight to build | plan and criteria written (\`PLAN_REQUIRED\`), and a person's move where the project document sets \`plan.approval.required\` |
 | \`needs_info\` | a person, to answer, decide or supply | the question as \`reason\` and its \`waitingKind\` (\`needs_answer\`, \`needs_decision\`, \`needs_resource\`) |
 | \`on_hold\` | the person who paused it | a reason |
-| \`awaiting_release\` | the release (a person, where nothing releases automatically) | every criterion's latest verdict passes and names its identity (\`NO_WORK_EVIDENCE\`, \`VERDICT_IDENTITY_REQUIRED\`), recorded after the issue's latest reopen (\`VERDICT_PREDATES_REOPEN\`) |
+| \`awaiting_release\` | the release (a person, where nothing releases automatically) | every criterion's latest verdict passes and names its identity (\`NO_WORK_EVIDENCE\`, \`VERDICT_IDENTITY_REQUIRED\`), recorded after the issue's latest reopen (\`VERDICT_PREDATES_REOPEN\`); a project document with \`delivery.verdictsRequired: false\` waives this, and the move's record says \`verdicts-waived\` |
 | \`closed\` | nobody | \`merged_at\` (\`CLOSE_REQUIRES_SHIPPED\`); from \`in_progress\` after a reopen, the \`awaiting_release\` rule too |
 | \`dropped\` | nobody | a reason (\`VOID_REASON_REQUIRED\`) |
 

@@ -10,7 +10,9 @@
  *                      the project document sets `plan.approval.required`
  *   awaiting_release   every criterion's latest verdict passes, with an          NO_WORK_EVIDENCE,
  *                      admissible identity, recorded after the latest reopen     VERDICT_IDENTITY_REQUIRED, VERDICT_PREDATES_REOPEN, VERDICT_IDENTITY_NOT_ADMISSIBLE, VERDICT_DRAFT_SUPERSEDED, VERDICT_UNCORROBORATED
- *                      and its requirement has not changed since its plan        REQUIREMENT_CHANGED_SINCE_PLAN
+ *                      (a project document with `delivery.verdictsRequired: false` passes the move
+ *                      and the move's record says `verdicts-waived`), and its     REQUIREMENT_CHANGED_SINCE_PLAN
+ *                      requirement has not changed since its plan
  *   closed             shipped; from in_progress, as awaiting_release           CLOSE_REQUIRES_SHIPPED + the codes above
  *
  *   needs_info         a question (the reason) and its kind                      TRANSITION_REASON_REQUIRED,
@@ -19,6 +21,7 @@
  *   dropped            a reason                                                  VOID_REASON_REQUIRED
  */
 
+import { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
@@ -114,6 +117,8 @@ export interface GuardContext {
   waitingKind?: WaitingKind | undefined;
   executor: Pick<Tx, 'select' | 'execute'>;
   readDraft?: DraftReader | undefined;
+  /** Called with the refusal a move passed only because the project does not require verdicts. */
+  onVerdictsWaived?: ((waived: GuardFault) => void) | undefined;
 }
 
 const hasText = (s: string | undefined) => Boolean(s?.trim());
@@ -246,10 +251,6 @@ async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
   return null;
 }
 
-/**
- * awaiting_release, and in_progress → closed: every criterion's latest verdict passes, says what it
- * held in, and was recorded after the issue's latest reopen.
- */
 // A flagged issue cannot reach awaiting_release until it is re-planned against the current head
 // (requirement-to-delivery, step `impact`).
 async function planDriftGuard(ctx: GuardContext): Promise<GuardFault | null> {
@@ -269,8 +270,21 @@ async function planDriftGuard(ctx: GuardContext): Promise<GuardFault | null> {
   };
 }
 
+/**
+ * awaiting_release, and in_progress → closed: every criterion's latest verdict passes, says what it
+ * held in, and was recorded after the issue's latest reopen. A project document with
+ * `delivery.verdictsRequired: false` lets the move through and reports what it would have refused,
+ * so the move's record says the verdicts were waived and not that they held.
+ */
 async function verdictGuard(ctx: GuardContext): Promise<GuardFault | null> {
-  const source = (await readProjectDocument(ctx.issue.projectId))?.document.source.type ?? null;
+  const document = (await readProjectDocument(ctx.issue.projectId))?.document;
+  const fault = await verdictFault(ctx, document?.source.type ?? null);
+  if (fault === null || verdictsRequiredOf(document?.delivery)) return fault;
+  ctx.onVerdictsWaived?.(fault);
+  return null;
+}
+
+async function verdictFault(ctx: GuardContext, source: SourceType): Promise<GuardFault | null> {
   const found = await unpassedCriteria(ctx.executor, ctx.issue, source, ctx.readDraft);
   const into = quote(ctx.to);
   if (found.kind === 'no-criteria') {

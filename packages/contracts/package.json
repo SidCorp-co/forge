@@ -118,6 +118,10 @@
       "types": "./dist/content-language.d.ts",
       "default": "./dist/content-language.js"
     },
+    "./delivery-policy": {
+      "types": "./dist/delivery-policy.d.ts",
+      "default": "./dist/delivery-policy.js"
+    },
     "./data-policy": {
       "types": "./dist/data-policy.d.ts",
       "default": "./dist/data-policy.js"
