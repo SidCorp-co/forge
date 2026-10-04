@@ -20,7 +20,6 @@ const FIELDS: Readonly<Record<string, readonly string[]>> = {
   github: ['installationId', 'owner', 'repo'],
   gitlab: ['projectPath', 'projectId'],
   sentry: [],
-  postman: [],
   rocketchat: ['rids'],
   google: ['defaultSpreadsheetId'],
   agent: [],

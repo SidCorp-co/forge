@@ -2245,8 +2245,8 @@ export const integrationConnections = pgTable(
     ownerId: uuid('owner_id').notNull(),
     provider: text('provider').notNull(),
     displayName: text('display_name'),
-    // Connection-scoped non-secret config (e.g. coolify baseUrl, postman
-    // region/mode, epodsystem store identity). Per-project overrides live on the
+    // Connection-scoped non-secret config (e.g. coolify baseUrl, epodsystem
+    // store identity). Per-project overrides live on the
     // binding.
     config: jsonb('config').notNull().default({}),
     // The ONE encrypted copy of the credential — rotate once, every binding
@@ -2299,7 +2299,7 @@ export const integrationBindings = pgTable(
     // (unlabeled) binding; a non-empty kebab slug = a named extra binding.
     // Non-epodsystem providers always leave this as '' (the DB default), so
     // `integration_bindings_service_uq` still keeps one service binding per
-    // (project, provider) for sentry/rocketchat/github/postman/google.
+    // (project, provider) for sentry/rocketchat/github/google.
     label: text('label').notNull().default(''),
     active: boolean('active').notNull().default(true),
     agentAccess: text('agent_access', { enum: axes.agentAccessValues }).notNull().default('none'),

@@ -45,7 +45,7 @@ const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecret
 
     // One attempt with a given token. Returns the parsed result OR a 401/403
     // sentinel so the caller can fall back to the previous token (ISS-405 dual-
-    // token rotation, mirrors postman/adapter.ts).
+    // token rotation).
     type AttemptResult =
       | { kind: 'ok'; body: SentryOrg[] }
       | { kind: 'unauthorized'; status: number }

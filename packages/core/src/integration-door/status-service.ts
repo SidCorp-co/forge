@@ -75,7 +75,7 @@ interface ProviderRow {
 }
 
 /**
- * Shared builder for the coolify/postman/epodsystem status cards (ISS-431) —
+ * Shared builder for the coolify/epodsystem status cards (ISS-431) —
  * the three blocks were ~95% identical; they differ only in env-keying, the
  * never-checked wording, and provider-specific meta fields.
  */

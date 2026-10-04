@@ -378,10 +378,6 @@
         "projectWebhooks"
       ]
     },
-    "integrations/postman": {
-      "kind": "adapter",
-      "context": "adapters"
-    },
     "integrations/published-releases": {
       "kind": "adapter",
       "context": "adapters"

@@ -34,7 +34,7 @@ export interface ConnectionSummary {
   ownerId: string;
   provider: IntegrationProvider;
   displayName: string | null;
-  /** Connection-scoped non-secret config (e.g. coolify baseUrl, postman region). */
+  /** Connection-scoped non-secret config (e.g. coolify baseUrl). */
   config: Record<string, unknown>;
   active: boolean;
   lastHealthStatus: string | null;
@@ -189,21 +189,6 @@ export type CoolifyConfigInput = {
 };
 export type CoolifySecretsInput = {
   apiToken: string;
-};
-
-export type PostmanRegion = 'us' | 'eu';
-export type PostmanMode = 'minimal' | 'full';
-
-/** Postman non-secret write-target (`connection.config`). */
-export type PostmanConfigInput = {
-  workspaceId?: string;
-  workspaceName: string;
-  collectionId?: string;
-  region: PostmanRegion;
-  mode: PostmanMode;
-};
-export type PostmanSecretsInput = {
-  apiKey: string;
 };
 
 /**

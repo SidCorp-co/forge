@@ -427,7 +427,7 @@ fn classify_failure_reason(
 /// and letting the reconciler re-dispatch forever (ISS-570 / ISS-563 loop).
 ///
 /// Scope is intentionally narrow: only servers whose name starts with `forge(`
-/// are considered required. Override servers (playwright, postman, …) are
+/// are considered required. Override servers (playwright, …) are
 /// opt-in per state and may legitimately be absent without invalidating the job.
 fn required_mcp_down(mcp_failed: &[String]) -> bool {
     mcp_failed.iter().any(|s| s.starts_with("forge("))

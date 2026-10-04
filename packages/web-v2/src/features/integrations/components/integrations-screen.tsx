@@ -194,7 +194,7 @@ export function IntegrationsScreen() {
       </PageTitle>
       <TopBarActions>
         <HelpButton
-          summary="A connection is a credential owned by you or one of your organizations (Coolify token, Postman key, GitHub App). Projects use a connection through bindings — share one connection with several projects without re-entering the secret. Health here is the connection's real last-known state; disabled connections stay listed so you can re-enable them."
+          summary="A connection is a credential owned by you or one of your organizations (Coolify token, GitHub App). Projects use a connection through bindings — share one connection with several projects without re-entering the secret. Health here is the connection's real last-known state; disabled connections stay listed so you can re-enable them."
           actions={HELP_ACTIONS}
         />
       </TopBarActions>

@@ -50,7 +50,6 @@ a vendor SDK, a `fetch` to a vendor host, or a vendor's types.
 | storefront | `epodsystem`, `autoflow` | ePodSystem, Autoflow | a project's binding |
 | documents | `google` | Google Sheets | a project's binding |
 | chat | `rocketchat` | Rocket.Chat | a project's binding |
-| contract testing | `postman` | Postman | a project's binding |
 | LLM | `llm` | any OpenAI-compatible endpoint (LiteLLM), Anthropic Messages | the deployment |
 | embeddings | `embeddings` | any OpenAI-compatible endpoint | the deployment |
 | mail | `mail` | SMTP | the deployment |

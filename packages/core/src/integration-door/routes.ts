@@ -324,5 +324,4 @@ integrationsRoutes.get('/:projectId/integrations/mcp-preview', async (c) => {
 });
 
 export { githubCallbackRoutes, githubConnectRoutes } from './github-connect-routes.js';
-export { integrationTargetRoutes } from './postman-target-routes.js';
 export { runnerReleaseRoutes } from './runner-release-routes.js';

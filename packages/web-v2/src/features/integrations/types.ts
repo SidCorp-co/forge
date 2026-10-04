@@ -1,9 +1,5 @@
 
-import type {
-  IntegrationHealthResult,
-  PostmanMode,
-  PostmanRegion,
-} from "@forge/contracts";
+import type { IntegrationHealthResult } from "@forge/contracts";
 
 export type {
   IntegrationCardStatus as CardStatus,
@@ -17,8 +13,6 @@ export type {
   CoolifySecretsInput,
   EpodsystemConfigInput,
   EpodsystemSecretsInput,
-  PostmanRegion,
-  PostmanMode,
   SentryConfigInput,
   SentrySecretsInput,
   RocketchatConfigInput,
@@ -37,18 +31,6 @@ export type {
     McpServerPreviewEntry,
   McpPreviewResponse,
 } from "@forge/contracts";
-
-// === ISS-336 — Postman integration config shape ===
-
-/** Non-secret Postman write-target stored in the connection `config`. */
-export interface PostmanConfig {
-  workspaceId?: string;
-  workspaceName: string;
-  collectionId?: string;
-  region: PostmanRegion;
-  mode: PostmanMode;
-  environment?: string;
-}
 
 // === ISS-524 / ISS-526 — Sentry integration config shape ===
 
@@ -92,7 +74,7 @@ export interface GitHubConnectStart {
 /**
  * Result of the test-connection (`POST .../test`) call. Bases the cutover-
  * agnostic shape on the contract `IntegrationHealthResult` and narrows
- * `diagnostics` to the Postman user fields the UI renders.
+ * `diagnostics` to the user fields the UI renders.
  */
 export interface IntegrationTestResult extends IntegrationHealthResult {
   diagnostics?: {
