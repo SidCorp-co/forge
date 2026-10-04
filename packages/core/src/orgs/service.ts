@@ -7,11 +7,7 @@ import {
   orgInvitations,
   users,
 } from '../db/schema.js';
-import {
-  addOrgMember,
-  removeOrgMember,
-  updateOrgMember,
-} from '../permissions/index.js';
+import { addOrgMember, removeOrgMember, updateOrgMember } from '../permissions/index.js';
 
 /** The user's personal org (created at signup, or by migration 0106 for older users). */
 export async function findPersonalOrgId(
@@ -135,7 +131,7 @@ const orgHead = {
   createdAt: organizations.createdAt,
 };
 
-/** A team org created by `userId`, who becomes its owner. A taken slug throws the unique violation. */
+/** A team org `userId` creates and owns; a taken slug throws the unique violation. */
 export async function createTeamOrg(userId: string, input: { slug: string; name: string }) {
   return db.transaction(async (tx) => {
     const [org] = await tx

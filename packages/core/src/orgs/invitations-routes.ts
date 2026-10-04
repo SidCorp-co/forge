@@ -89,6 +89,8 @@ orgInvitationRoutes.post('/:token/decline', requireAuth(), async (c) => {
     throw new HTTPException(401, { message: 'user not found', cause: { code: 'UNAUTHENTICATED' } });
   }
 
-  if (!(await declineOrgInvitation(token, email))) throw notFound('NOT_FOUND', 'invitation not found or email mismatch');
+  if (!(await declineOrgInvitation(token, email))) {
+    throw notFound('NOT_FOUND', 'invitation not found or email mismatch');
+  }
   return c.json({ dismissed: true });
 });

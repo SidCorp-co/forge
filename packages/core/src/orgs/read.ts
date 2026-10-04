@@ -47,7 +47,8 @@ export async function orgInvitationContext(orgId: string, inviterId: string) {
     .from(organizations)
     .where(eq(organizations.id, orgId))
     .limit(1);
-  return { orgName: org?.name ?? null, inviterEmail: (await readAuthUser(inviterId))?.email ?? null };
+  const inviter = await readAuthUser(inviterId);
+  return { orgName: org?.name ?? null, inviterEmail: inviter?.email ?? null };
 }
 
 /** The org's invitations nobody has accepted yet, each with its inviter's email. */
