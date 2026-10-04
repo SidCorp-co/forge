@@ -131,10 +131,28 @@ export interface ModuleIssuesRead {
 	open: number;
 }
 
+/**
+ * A coupling between two sibling modules (children of `parentId`, or roots when it is null), rolled
+ * up from every pair of modules beneath them. `declaredAToB`/`declaredBToA` count knowledge-graph
+ * edges in each direction; `sharedIssues` counts distinct unarchived issues carrying a module
+ * from each side. `twoWay` is a declared edge in both directions.
+ */
+export interface ModuleLevelCoupling {
+	parentId: string | null;
+	aId: string;
+	bId: string;
+	declaredAToB: number;
+	declaredBToA: number;
+	sharedIssues: number;
+	weight: number;
+	twoWay: boolean;
+}
+
 export interface ModuleRollupResponse {
 	activeWithinDays: number;
 	generatedAt: string;
 	modules: ModuleRollupRow[];
+	couplings: ModuleLevelCoupling[];
 	unassigned: ModuleCounts;
 	issuesRead: ModuleIssuesRead;
 }

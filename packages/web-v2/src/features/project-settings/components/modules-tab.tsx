@@ -7,10 +7,9 @@
 // endpoint, and everything here rides `POST /projects/:id/labels`,
 // `PATCH /labels/:id` and `DELETE /labels/:id`.
 //
-// Hierarchy is an indented flat list plus a parent <Select> per row, not a
-// drag-drop tree: the design system has no tree primitive and inventing one
-// here would be a one-off outside it. Depth carries the shape; the Select
-// carries the edit.
+// The tree is grouped under each root module: the root heads its group on the
+// sunken ground and its descendants follow, indented by depth, as flush rows
+// under hairlines. A parent <Select> per row carries the re-parent edit.
 
 import { useMemo, useState } from "react";
 import {
@@ -29,6 +28,7 @@ import {
   type SelectOption,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { cn } from "@/lib/utils/cn";
 import { useCreateLabel, useDeleteLabel, useLabels, useUpdateLabel } from "../hooks";
 import type { ProjectLabel } from "../types";
 
@@ -93,8 +93,10 @@ function ModuleRow({
   onPatch,
   onDelete,
   saving,
+  childCount,
 }: {
   node: ModuleNode;
+  childCount?: number;
   modules: ProjectLabel[];
   canEdit: boolean;
   onPatch: (patch: { name?: string; color?: string; parentId?: string | null; description?: string | null }) => void;
@@ -133,7 +135,11 @@ function ModuleRow({
   }
 
   return (
-    <li className="rounded-md border border-line" style={{ marginLeft: depth * INDENT_PER_DEPTH_PX }}>
+    <li
+      className={cn("border-b border-line-subtle", depth === 0 && "bg-sunken")}
+      style={{ paddingLeft: depth * INDENT_PER_DEPTH_PX }}
+      data-testid={depth === 0 ? "module-group" : "module-row"}
+    >
       <div className="flex flex-wrap items-center gap-2 px-3 py-2">
         <span
           aria-hidden
@@ -154,10 +160,13 @@ function ModuleRow({
             className="min-w-0 basis-full sm:basis-auto sm:flex-1 sm:max-w-56"
           />
         ) : (
-          <span className="min-w-0 basis-full truncate text-fg sm:basis-auto sm:flex-1">
+          <span className={cn("min-w-0 basis-full truncate text-fg sm:basis-auto sm:flex-1", depth === 0 && "font-semibold")}>
             {m.name}
           </span>
         )}
+        {childCount !== undefined ? (
+          <span className="flex-none text-12 text-subtle">{childCount ? `${childCount} child modules` : "No child modules"}</span>
+        ) : null}
         {canEdit && (
           <>
             <input
@@ -261,13 +270,14 @@ export function ModulesTab({ projectId, canEdit }: { projectId: string; canEdit:
             mascot={false}
           />
         ) : (
-          <ul className="space-y-1.5">
+          <ul className="border-t border-line-subtle">
             {tree.map((node) => (
               <ModuleRow
                 key={node.module.id}
                 node={node}
                 modules={modules}
                 canEdit={canEdit}
+                childCount={node.depth === 0 ? modules.filter((m) => m.parentId === node.module.id).length : undefined}
                 saving={update.isPending || remove.isPending}
                 onPatch={(patch) => update.mutate({ labelId: node.module.id, patch })}
                 onDelete={() => setPendingDelete(node.module)}
