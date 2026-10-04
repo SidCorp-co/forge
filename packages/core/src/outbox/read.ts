@@ -5,8 +5,8 @@ import type {
 import { sql } from 'drizzle-orm';
 import type { JobWithMetadata } from 'pg-boss';
 import { db } from '../db/client.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { BOSS_SCHEMA, boss } from '../queue/boss.js';
+import { requireOutboxAccess } from './access.js';
 import { DEAD_QUEUE, type DeliveryJob } from './queues.js';
 
 function errorOf(output: object | null): string | null {
@@ -59,7 +59,7 @@ export async function listDeadDeliveries(input: {
   limit: number;
   offset: number;
 }): Promise<DeadOutboxDeliveriesResponse> {
-  await requireCan(actorFor(input.userId), 'project.read', projectResource(input.projectId));
+  await requireOutboxAccess(input.userId, 'project.read', input.projectId);
   return readDead(input.projectId, input.limit, input.offset);
 }
 

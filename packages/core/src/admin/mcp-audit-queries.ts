@@ -1,7 +1,7 @@
 import { MCP_TOOL_NAMES } from '@forge/contracts/mcp-tools';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { retentionRuleFor } from '../pipeline/retention/policy.js';
+import { retentionRuleFor } from '../pipeline/index.js';
 
 /** One tool's lifetime call counts, split by the credential that made the call. */
 export interface McpToolCallCounts {

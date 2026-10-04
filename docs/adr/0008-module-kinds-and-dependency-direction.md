@@ -102,8 +102,9 @@ The choices inside that, and why:
 **The rules are measured by two scripts.** The import rules (direction, public face, cycles)
 are `scripts/check-module-boundaries.mjs`'s, a blocking check with a shrink-only baseline, as
 ISS-184's amendment below records. `scripts/check-module-shape.mjs` refuses a declaration that
-contradicts itself and reports per module, on demand, the rules an import graph cannot show:
-undeclared directories, table writers, database calls in routes and refusal shape; a status
+contradicts itself (an undeclared directory among it) and blocks, with type-aware ESLint rules
+ratcheted by bulk suppressions (ISS-196), the rules an import graph cannot show: table writers,
+database calls in routes, refusal shape and the global fetch outside an adapter; a status
 written outside the kernel transition is refused by a database trigger instead (ISS-189,
 `docs/conventions/domain-entities.md`, Status machines); `--markers` writes those findings as the Wrong markers of the
 reconciliation checklist, a JSON document the REQ-17/18 observation store can import. The owner
@@ -232,7 +233,7 @@ excluded.
   (`packages/core/src/assistant/tools/registry.ts`), the second place tools are composed; shared constants and types come from `@forge/contracts`; a
   type-only edge is `import type`, which `verbatimModuleSyntax` (already on in core and contracts)
   erases.
-- **dependency-cruiser replaces the import half of `scripts/check-module-shape.mjs`.** Its
+- **dependency-cruiser replaces the import half of the regex module script.** Its
   configuration is generated from `modules.json`, so kinds and contexts are declared once. Five
   rules: context direction, kind direction, runtime cycles between modules (type-only and dynamic
   imports excluded, since neither orders loading), face-only access, and adapters reached only

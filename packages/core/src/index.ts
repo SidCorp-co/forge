@@ -6,20 +6,24 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { readThresholds } from './admin-thresholds/index.js';
-import { registerRoomBridges, registerWebConversationAdapter } from './assistant/index.js';
+import {
+  provideChatTools,
+  registerRoomBridges,
+  registerRoomChat,
+  registerWebConversationAdapter,
+} from './assistant/index.js';
 import { runOnceBackfills } from './boot-backfills.js';
 import { env } from './config/env.js';
-import { registerRoomChat } from './conversations/index.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
+import { stampGitCredentialRef } from './devices/index.js';
 import { seedDomainTemplates } from './domain-templates/index.js';
-import { registerContractMeasureWorker } from './ecosystem/index.js';
+import { interfaceContractsOf, registerContractMeasureWorker } from './ecosystem/index.js';
 import { provideAdmissionThresholds } from './error-intake/index.js';
-import {
-  assertVaultBootSafety,
-  provideForgeReads,
-  registerAllIntegrations,
-} from './integrations/index.js';
+import { provideFeedbackDependents, requirementFeedbackAs } from './feedback/index.js';
+import { provideGitCredentialStamp } from './git/index.js';
+import { registerAllIntegrations } from './integration-registry.js';
+import { assertVaultBootSafety, provideForgeReads } from './integrations/index.js';
 import { bootstrapChatProviders } from './integrations/llm/index.js';
 import { registerOutboundDeliveryWorker } from './integrations/outbound-webhooks/index.js';
 import {
@@ -27,38 +31,71 @@ import {
   servesRunnerReleases,
 } from './integrations/published-releases/index.js';
 import { startRocketChatManager, stopRocketChatManager } from './integrations/rocketchat/index.js';
-import { closeBacklogStreams, resolveIssueForHeadRef } from './issues/index.js';
+import {
+  activeIssuePrefix,
+  closeBacklogStreams,
+  computeProjectProgress,
+  heldIssuePrefixes,
+  resolveIssueForHeadRef,
+} from './issues/index.js';
 import { provideProjectOrg } from './lib/authz.js';
+import { provideDataPolicy } from './lib/data-egress.js';
+import { CHAT_READ_MODEL_TOOLS } from './mcp/index.js';
 import { registerChunkReindex, registerMemoryReconcileWorker } from './memory/index.js';
+import { provideIssueFactReads } from './messaging/gather.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
+import { deleteFeedbackMockups } from './mockups/index.js';
 import { logger } from './observability/logger.js';
 import {
   declareOutboxQueues,
   emitEvents,
+  provideOutboxGate,
   startOutboxWorker,
   stopOutboxWorker,
 } from './outbox/index.js';
 import { registerOutboxConsumers } from './outbox-consumers.js';
-import { readDeclaredSource } from './project-config/index.js';
+import { actorFor, projectResource, requireCan } from './permissions/index.js';
+import { readDeclaredSource, readProjectDocument } from './project-config/index.js';
 import { findProjectOrgId } from './projects/index.js';
 import { startBoss, stopBoss } from './queue/boss.js';
 import { registerDeployWorker, registerReleaseBatchFinish } from './release-batch/index.js';
+import { provideInterfaceContracts, provideRequirementDependents } from './requirements/index.js';
 import { mountRoutes } from './route-registry.js';
 import { bootstrapRunnerAdapters } from './runners/index.js';
 import { startTimers, stopTimers } from './schedules/index.js';
 import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
+import { redactFeedbackSuggestions, staleOnTargetRevised } from './suggestions/index.js';
 import { coreTimers } from './timer-registry.js';
 import { provideWorkPorts } from './work-ports.js';
 import { attachWs, closeWs } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
 provideWorkPorts();
+provideChatTools(CHAT_READ_MODEL_TOOLS);
+provideDataPolicy(
+  async (projectId) => (await readProjectDocument(projectId))?.document.sensitiveData,
+);
+provideIssueFactReads({
+  activeIssuePrefix,
+  heldIssuePrefixes,
+  projectProgress: computeProjectProgress,
+});
+provideOutboxGate(async (userId, permission, projectId, act) => {
+  await requireCan(actorFor(userId), permission, projectResource(projectId), act);
+});
+provideGitCredentialStamp(stampGitCredentialRef);
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,
   issueForHeadRef: (projectId, headRef) => resolveIssueForHeadRef({ projectId, headRef }),
+});
+provideInterfaceContracts(interfaceContractsOf);
+provideRequirementDependents({ feedbackOf: requirementFeedbackAs, revised: staleOnTargetRevised });
+provideFeedbackDependents({
+  redactSuggestions: redactFeedbackSuggestions,
+  deleteMockups: deleteFeedbackMockups,
 });
 provideAdmissionThresholds(async () => {
   const policy = await readThresholds();

@@ -1,6 +1,6 @@
 import { HTTPException } from 'hono/http-exception';
 import { envelopeOf } from '../lib/write-envelope.js';
-import { isRecord } from '../project-config/documents.js';
+import { isRecord } from '../project-config/index.js';
 import type { WorkflowRefusal } from './rules.js';
 
 export interface IgnoredField {

@@ -1,4 +1,5 @@
 import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
+import { masterCharterPath } from '@forge/contracts/master-standing';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
@@ -6,7 +7,6 @@ import { runners } from '../db/schema.js';
 import { deviceRoom, roomManager } from '../lib/rooms.js';
 import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
-import { masterCharterPath } from '../projects/master-charter.js';
 
 /** Every status a master can take work from, plus the two it reads to decide (promote, release). */
 export const MASTER_WAKE_STATUSES: readonly IssueStatus[] = [
@@ -165,6 +165,13 @@ export function registerMasterWakeSubscribers(): void {
     handle: async (p) => {
       if (!isMasterWakeStatus(p.status)) return;
       await wakeMastersForProject({ projectId: p.projectId, issueId: p.issueId, status: p.status });
+    },
+  });
+
+  consume('workflow.designDecided', {
+    name: 'master-wake',
+    handle: async (p) => {
+      await wakeMastersForDesign(p);
     },
   });
 

@@ -1,7 +1,7 @@
 /** The shapes a Postman connection and binding are allowed to hold (moved here by ISS-1071). */
 
 import { z } from 'zod';
-import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../release-channel-schema.js';
+import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../index.js';
 
 export const postmanConfigBase = z.object({
   workspaceId: z.string().min(1).max(200).optional(),

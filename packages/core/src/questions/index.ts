@@ -6,4 +6,9 @@ export {
 } from './issue-coupling.js';
 export { answerAs } from './read.js';
 export { agentAuthoredSegments } from './screen.js';
-export { askParkQuestion, deleteFeedbackQuestions, insertBatchQuestions } from './write.js';
+export {
+  askParkQuestion,
+  askQuestion,
+  deleteFeedbackQuestions,
+  insertBatchQuestions,
+} from './write.js';

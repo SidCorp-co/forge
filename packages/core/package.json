@@ -27,7 +27,7 @@
     "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
     "build": "tsc -p tsconfig.build.json --noCheck",
     "start": "node --env-file-if-exists=.env dist/index.js",
-    "measure:catalog-cost": "tsx --env-file-if-exists=.env src/assistant/measure-catalog-cost.ts",
+    "measure:catalog-cost": "tsx --env-file-if-exists=.env scripts/measure-catalog-cost.ts",
     "bench:assistant": "tsx --env-file-if-exists=.env src/assistant/bench-assistant.ts",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",

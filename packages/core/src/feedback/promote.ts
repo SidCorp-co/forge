@@ -5,12 +5,15 @@ import {
   type PromoteAgentReportRequest,
 } from '@forge/contracts/feedback';
 import { eq, inArray } from 'drizzle-orm';
-import { alreadyTriagedRefusal, type TriageFacts } from '../agent-reports/rules.js';
-import { markReportFiled } from '../agent-reports/service.js';
+import {
+  alreadyTriagedRefusal,
+  markReportFiled,
+  type TriageFacts,
+} from '../agent-reports/index.js';
 import { db, type Tx } from '../db/client.js';
 import { agentReports, issues, projects } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { activeIssuePrefix } from '../issues/index.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
@@ -130,7 +133,11 @@ export async function promoteAgentReport(input: {
         copied.length ? `copied its ${copied.join(' and ')}` : 'nothing copied from it'
       }.`,
     });
-    await markReportFiled(tx, report.id, { feedbackId: id, by: actor.userId, agency: actor.agency });
+    await markReportFiled(tx, report.id, {
+      feedbackId: id,
+      by: actor.userId,
+      agency: actor.agency,
+    });
     return null;
   });
   if (refusals) return { ok: false, refusals };

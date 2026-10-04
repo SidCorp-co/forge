@@ -1,8 +1,7 @@
 import { approvalPermission } from '@forge/contracts/permissions';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
+import { activeIssuePrefix, resolveIssueRouteRef } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import {

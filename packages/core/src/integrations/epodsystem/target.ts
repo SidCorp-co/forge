@@ -1,6 +1,6 @@
 /** Epodsystem's half of `forge_storefront_target`: the store identity plus its themes, read live. */
 
-import type { StorefrontTargetArgs } from '../types.js';
+import type { StorefrontTargetArgs } from '../index.js';
 import { epodsystemEndpoint } from './endpoints.js';
 import { fetchStorefrontThemes } from './themes.js';
 import type { EpodsystemConfig, EpodsystemSecrets } from './types.js';

@@ -7,7 +7,7 @@ import {
 } from '../credentials/refresh-token.js';
 import { db, type Tx } from '../db/client.js';
 import { emailVerificationTokens, refreshTokens, users } from '../db/schema.js';
-import { ensurePersonalOrg } from '../orgs/service.js';
+import { ensurePersonalOrg } from '../orgs/index.js';
 
 /** A new refresh token for `userId`, written inside the caller's transaction; answers the raw value. */
 export async function issueRefreshToken(tx: Tx, userId: string): Promise<{ raw: string }> {

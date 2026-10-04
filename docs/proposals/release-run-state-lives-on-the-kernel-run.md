@@ -3,8 +3,8 @@
 `pipeline_runs` belongs to `pipeline` (`packages/core/src/modules.json`), but `release-batch` keeps
 its own state on that row: the columns `release_version` and `release_released_at`, and the
 `metadata` keys `abort`, `finish`, `method`, `verification` and `rosterClosed`. Every one of these
-is written by `release-batch`, so after ISS-163 they are the only foreign writes
-`node scripts/check-module-shape.mjs` still reports under `table-writer` (9 writes in
+is written by `release-batch`, and `node scripts/check-module-shape.mjs` freezes those writes in
+`.forge/module-shape-suppressions.json` under `table-writer` (9 writes in
 `release-batch/abort-stamp.ts`, `finish-record.ts`, `method.ts`, `releasing-recovery.ts`,
 `unverified-close.ts` and `version-store.ts`).
 

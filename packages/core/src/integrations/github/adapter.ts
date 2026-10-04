@@ -1,7 +1,4 @@
 import type { BindingRole } from '../../db/schema.js';
-import { recordDelivery, updateDelivery } from '../deliveries.js';
-import { sourceHostMismatch } from '../source-host/bind.js';
-import { type IntegrationConnectionRow, updateConnection } from '../store.js';
 import {
   type AdapterContext,
   declareIntegration,
@@ -10,7 +7,12 @@ import {
   type InboundDispatchResult,
   type InboundFact,
   type IntegrationAdapterMethods,
-} from '../types.js';
+  type IntegrationConnectionRow,
+  recordDelivery,
+  updateConnection,
+  updateDelivery,
+} from '../index.js';
+import { sourceHostMismatch } from '../source-host/index.js';
 import { compareBoundRepository, githubInboundSecret } from './bind-effects.js';
 import { githubGitCredential } from './git-credential.js';
 import { readAppHookConfig } from './hook-config.js';

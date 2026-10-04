@@ -1,16 +1,18 @@
-import type { ExternalChatTurnResult } from '../assistant/external-chat.js';
+import {
+  CORRECTIVE_PREFIX,
+  codeAuthored,
+  emptyFallbackReply,
+  errorFallbackReply,
+  type ScreenedMessage,
+  screened,
+  unverifiedFallbackReply,
+} from '../conversations/index.js';
 import { type DoorId, type MessageVerdict, problemsOf } from '../messaging/contract.js';
 import { doorPolicy } from '../messaging/doors.js';
 import { withRepairs } from '../messaging/repairs.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
 import { logger } from '../observability/logger.js';
-import {
-  CORRECTIVE_PREFIX,
-  emptyFallbackReply,
-  errorFallbackReply,
-  unverifiedFallbackReply,
-} from './fallback-replies.js';
-import { codeAuthored, type ScreenedMessage, screened } from './ports.js';
+import type { ExternalChatTurnResult } from './external-chat.js';
 
 /**
  * What a turn says when it has nothing to add.

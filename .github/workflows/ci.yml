@@ -287,6 +287,12 @@ jobs:
       # .forge/module-boundaries-baseline.json. exit 1 = a new violation, a stale entry, or a rule
       # whose frozen count rose · exit 2 = it could not run.
       - run: node scripts/check-module-boundaries.mjs
+      # Pattern v2's semantic rules (ISS-196): type-aware ESLint rules in scripts/eslint-module-shape
+      # (table writers outside the owner module, database calls in route files, refusals outside
+      # lib/refusal, the global fetch outside an adapter), ratcheted by the bulk suppressions in
+      # .forge/module-shape-suppressions.json. exit 1 = a refused declaration, a new violation, a
+      # stale entry, or a rule whose frozen count rose · exit 2 = it could not run.
+      - run: node scripts/check-module-shape.mjs
 
   changes:
     runs-on: ubuntu-latest

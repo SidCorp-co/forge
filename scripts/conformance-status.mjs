@@ -47,11 +47,12 @@ const PROBES = {
     ],
   },
   relations: {
-    gate: 'archmap check + check-module-boundaries',
+    gate: 'archmap check + check-module-boundaries + check-module-shape',
     probe: ['./.forge/archmap/archmap', 'check'],
     needs: ['deps'],
     also: [
       { from: 'none', needs: ['deps'], probe: ['node', 'scripts/check-module-boundaries.mjs'] },
+      { from: 'none', needs: ['deps'], probe: ['node', 'scripts/check-module-shape.mjs'] },
     ],
   },
   behaviour: {

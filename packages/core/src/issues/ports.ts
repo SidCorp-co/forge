@@ -176,13 +176,6 @@ export interface IssuePorts {
     issueId: string,
     plan: string | null,
   ) => Promise<{ plannedRevision: number | null; plannedBaselineSeq: number | null } | null>;
-  changedSincePlan: (input: {
-    plan: string | null;
-    plannedRevision: number | null;
-    currentRevision: number | null;
-    plannedBaselineSeq?: number | null | undefined;
-    latestBaselineSeq?: number | null | undefined;
-  }) => boolean;
   approvalRequired: (projectId: string) => Promise<boolean>;
   contractDrift: (
     issue: {
@@ -322,8 +315,6 @@ export const requirementOfIssue: IssuePorts['requirementOfIssue'] = (issueId) =>
   issuePorts().requirementOfIssue(issueId);
 export const plannedRevisionFor: IssuePorts['plannedRevisionFor'] = (tx, issueId, plan) =>
   issuePorts().plannedRevisionFor(tx, issueId, plan);
-export const changedSincePlan: IssuePorts['changedSincePlan'] = (input) =>
-  issuePorts().changedSincePlan(input);
 export const approvalRequired: IssuePorts['approvalRequired'] = (projectId) =>
   issuePorts().approvalRequired(projectId);
 export const contractDrift: IssuePorts['contractDrift'] = (issue, landed) =>

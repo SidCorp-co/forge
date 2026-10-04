@@ -95,7 +95,11 @@ const invalidInput = (result: { success: boolean; error?: z.core.$ZodError }) =>
 
 // cm:why membership is refused before the input is read, so a stranger learns nothing from a 400
 const projectMember: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
-  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(c.req.param('projectId') ?? ''));
+  await requireCan(
+    actorFor(c.get('userId')),
+    'project.read',
+    projectResource(c.req.param('projectId') ?? ''),
+  );
   await next();
 };
 

@@ -13,10 +13,10 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { mockups } from '../db/schema-mockups.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
-import { rowIn as feedbackRowIn } from '../feedback/read.js';
-import { issueRefIn, requirementRefIn } from '../feedback/refs.js';
+import { rowIn as feedbackRowIn, issueRefIn, requirementRefIn } from '../feedback/index.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
-import { movedRow, transition } from '../lifecycle/transition.js';
+import { movedRow, transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { getStorage } from '../storage/index.js';
@@ -31,7 +31,6 @@ import {
   revisionRefusal,
   withdrawRefusal,
 } from './rules.js';
-import { lockXact } from '../lib/advisory-lock.js';
 
 export type MockupOutcome =
   | { ok: true; mockup: MockupView; created?: boolean }

@@ -4,20 +4,32 @@ export {
   agentAccessRefusedMessage,
   agentAccessTier,
   grantHolds,
+  notGrantedMessage,
 } from './agent-access.js';
 export { listAgentGrantedBindings } from './agent-access-store.js';
+export { agentIntegration } from './agent-declaration.js';
 export {
   findDeliveryById,
   findDeliveryByRequestId,
   findLastOutbound,
   findLastOutboundForTarget,
   listBindingDeliveries,
+  recentOutboundDeliveries,
   recordDelivery,
   updateDelivery,
 } from './deliveries.js';
-export { provideForgeReads } from './forge-reads.js';
+export { forgeReads, provideForgeReads } from './forge-reads.js';
 export { runIntegrationsHealthSweep } from './health-sweep.js';
-export { recordTurnedAwayInboundCall, resolveApiBaseUrl } from './inbound-door.js';
+export type { InboundDoorState } from './inbound-door.js';
+export {
+  describeInboundDoor,
+  healthWithInboundDoor,
+  inboundDoorState,
+  inboundWebhookUrl,
+  readInboundDoorTraffic,
+  recordTurnedAwayInboundCall,
+  resolveApiBaseUrl,
+} from './inbound-door.js';
 export { applyGrantedMcpServers, type ProducedMcpServer } from './mcp-resolver.js';
 export { raceWithTimeout } from './probe.js';
 export {
@@ -30,16 +42,22 @@ export {
   updateSchema,
 } from './provider-schemas.js';
 export { enqueueOutboundDispatch, type OutboundDispatchJob, runOutboundDispatch } from './queue.js';
-export { registerAllIntegrations } from './register-all.js';
 export {
   directMcpIntegrations,
   getAdapter,
   getIntegration,
+  isRegistered,
   listIntegrations,
   mcpServerNameFor,
   providerCanDeploy,
+  registerIntegration,
 } from './registry.js';
-export { withdrawNulls } from './release-channel-schema.js';
+export {
+  RELEASE_CHANNEL_KEYS,
+  releaseChannelFields,
+  withdrawNulls,
+} from './release-channel-schema.js';
+export { isPreviousCredentialValid } from './rotation.js';
 export {
   adapterOrRefuse,
   assertVaultConfigured,
@@ -72,20 +90,42 @@ export {
   listConnectionsForPrincipalUser,
   softDeleteConnection,
   updateConnection,
+  writeConnectionSecrets,
 } from './store.js';
 export { readStorefrontDraft } from './storefront-draft-read.js';
 export type {
+  AdapterContext,
   AgentPath,
   AgentPathKind,
+  BindingTargetRefusal,
   DeployDispatchOutcome,
   DeployTargetDispatch,
+  DispatchingAdapterMethods,
+  HealthCheckResult,
+  HealthStatus,
+  InboundDispatchInput,
+  InboundDispatchResult,
+  InboundFact,
+  IntegrationAdapterMethods,
   IntegrationCapabilities,
   IntegrationProvider,
+  OutboundDispatchInput,
+  OutboundDispatchResult,
+  StorefrontTargetArgs,
+  VerifyBindingTargetArgs,
 } from './types.js';
 export {
+  declareIntegration,
   type GitCredentialMint,
   INTEGRATION_PROVIDERS,
   type IntegrationDeclaration,
   type StorefrontDraftReading,
 } from './types.js';
-export { assertVaultBootSafety, decryptSecret, encryptSecret, isVaultConfigured } from './vault.js';
+export {
+  assertVaultBootSafety,
+  decryptJson,
+  decryptSecret,
+  encryptJson,
+  encryptSecret,
+  isVaultConfigured,
+} from './vault.js';

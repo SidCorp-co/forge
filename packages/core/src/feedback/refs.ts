@@ -5,16 +5,15 @@
  */
 
 import type { FeedbackRefusal, FeedbackTargetType } from '@forge/contracts/feedback';
+import { requirementKey } from '@forge/contracts/requirements';
 import { and, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { requirements } from '../db/schema-requirements.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { isUuid, resolveIssueRouteRef } from '../issues/issue-route-ref.js';
+import { activeIssuePrefix, isUuid, resolveIssueRouteRef } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { requirementKey } from '../requirements/read.js';
 import type { Row } from './read.js';
 import type { TargetFields } from './rules.js';
 

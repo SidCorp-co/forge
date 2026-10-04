@@ -11,11 +11,16 @@
  * this.
  */
 
-import { correctFalseClaims } from '../assistant/confab.js';
-import { STOPPED_BY_A_PERSON } from '../assistant/conversation-stops.js';
-import { type ExternalChatTurnResult, runExternalChatTurn } from '../assistant/external-chat.js';
-import { type ChatToolset, mergeToolsets } from '../assistant/tools/mcp-adapter.js';
-import type { ImageResolver, TurnImage } from '../assistant/vision.js';
+import {
+  type ConversationVenue,
+  codeAuthored,
+  conversationTransport,
+  errorFallbackReply,
+  openConversation,
+  recordDeliveredReply,
+  recordSilence,
+  type ScreenedMessage,
+} from '../conversations/index.js';
 import {
   CHAT_TURN_MENU,
   mintTurnCredential,
@@ -29,22 +34,18 @@ import { egressDeep } from '../lib/data-egress.js';
 import type { DoorId } from '../messaging/contract.js';
 import { logger } from '../observability/logger.js';
 import { reportFailure } from '../observability/sentry.js';
-import { errorFallbackReply } from './fallback-replies.js';
-import {
-  type ConversationVenue,
-  codeAuthored,
-  conversationTransport,
-  type ScreenedMessage,
-} from './ports.js';
-import { roomSendCapture } from './room-send-tool.js';
+import { correctFalseClaims } from './confab.js';
+import { STOPPED_BY_A_PERSON } from './conversation-stops.js';
+import { type ExternalChatTurnResult, runExternalChatTurn } from './external-chat.js';
 import {
   assertAnswerableDoor,
   declinedTail,
   declinedTurn,
   screenedTurnReply,
 } from './screened-reply.js';
-import { openConversation } from './store.js';
-import { recordDeliveredReply, recordSilence } from './transcript.js';
+import { type ChatToolset, mergeToolsets } from './tools/mcp-adapter.js';
+import { roomSendCapture } from './tools/room-send-tool.js';
+import type { ImageResolver, TurnImage } from './vision.js';
 
 const TURN_TIMEOUT_MS = 90_000;
 const HANDLE_TIMEOUT_MS = 120_000;

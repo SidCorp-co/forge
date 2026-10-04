@@ -1,6 +1,8 @@
 export { landingDriftRefusal, landingWorld } from './contract/drift.js';
 export { registerContractMeasureWorker } from './contract/land.js';
+export { interfaceContractsOf } from './interface-contracts.js';
 export { registerSourcePushReactions } from './source-push.js';
+export { isActiveMember } from './store.js';
 export {
   assertWaitsSettledForIssue,
   assertWaitsSettledForSeqs,

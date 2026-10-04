@@ -78,7 +78,7 @@ import {
   settleOpenQuestions,
 } from './questions/index.js';
 import { approvalRequired } from './release-batch/index.js';
-import { changedSincePlan, plannedRevisionFor, requirementOfIssue } from './requirements/index.js';
+import { plannedRevisionFor, requirementOfIssue } from './requirements/index.js';
 import { runnerEventsRetention } from './runners/index.js';
 import { failReconcileRunForFailedJob } from './skills/index.js';
 import { getStorage, isEnoent } from './storage/index.js';
@@ -188,7 +188,6 @@ export function provideWorkPorts(): void {
     proposesWorkflowOf,
     requirementOfIssue,
     plannedRevisionFor,
-    changedSincePlan,
     approvalRequired,
     contractDrift: async (issue, landed) =>
       landingDriftRefusal(landed, await landingWorld(issue, landed)),

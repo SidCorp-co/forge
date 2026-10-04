@@ -1,6 +1,6 @@
-import { readAssistantPreferences } from '../preferences/index.js';
 import { db as defaultDb } from '../db/client.js';
-import { readSelvesFor } from '../orgs/agent-selves.js';
+import { readSelvesFor } from '../orgs/index.js';
+import { readAssistantPreferences } from '../preferences/index.js';
 import { speakerSection } from './preference-line.js';
 import type { SelfSummary } from './system-prompt.js';
 

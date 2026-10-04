@@ -16,6 +16,7 @@ import type {
   IssueStepHandoff,
 } from '@forge/contracts/issue-standing';
 import type { WorkStep } from '@forge/contracts/issue-vocabulary';
+import { changedSincePlan } from '@forge/contracts/requirements';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { WorkStepEntry } from '../db/schema-issue-work-state.js';
@@ -32,7 +33,7 @@ import { issueWorkMovingSql } from './issue-lease.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { loadIssuePark } from './park-view.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
-import { approvalRequired, changedSincePlan, holdsOpenHumanQuestion } from './ports.js';
+import { approvalRequired, holdsOpenHumanQuestion } from './ports.js';
 import {
   deriveIssueStanding,
   type IssueStandingInput,
@@ -511,7 +512,9 @@ async function stepFactsOf(projectId: string, issueId: string) {
             attempt: c.attempt,
             pipelineRunId: c.pipelineRunId,
             payload:
-              c.payload && typeof c.payload === 'object' ? (c.payload as Record<string, unknown>) : null,
+              c.payload && typeof c.payload === 'object'
+                ? (c.payload as Record<string, unknown>)
+                : null,
             createdAt: c.createdAt.toISOString(),
             updatedAt: c.updatedAt.toISOString(),
           },

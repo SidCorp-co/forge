@@ -4,11 +4,8 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import {
-  type ImprovementMessage,
-  listImprovementMessages,
-} from '../schedules/messages/registry.js';
 import { requireHeld } from '../permissions/index.js';
+import { type ImprovementMessage, listImprovementMessages } from '../schedules/index.js';
 import { templateSchedulesOf } from './read.js';
 
 const listQuerySchema = z

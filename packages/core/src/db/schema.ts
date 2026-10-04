@@ -1995,11 +1995,11 @@ export const agentSessions = pgTable(
     parentSessionId: uuid('parent_session_id'),
     diff: jsonb('diff'),
     pipelineControl: jsonb('pipeline_control').$type<
-      import('../agent-sessions/pipeline-control-types.js').PipelineControl | null
+      import('@forge/contracts/pipeline-control').PipelineControl | null
     >(),
     pipelineTelemetry: jsonb('pipeline_telemetry'),
     pipelineHealth: jsonb('pipeline_health').$type<
-      import('../agent-sessions/pipeline-control-types.js').PipelineHealth | null
+      import('@forge/contracts/pipeline-control').PipelineHealth | null
     >(),
     dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
     startedAt: timestamp('started_at', { withTimezone: true }),

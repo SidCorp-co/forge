@@ -1,13 +1,13 @@
 /**
  * ISS-983 — what the chat tool catalog costs per request, measured apart from the context around it.
  *
- * Run it: `pnpm --filter @forge/core measure:catalog-cost` (`measure-catalog-cost.ts`); a census
+ * Run it: `pnpm --filter @forge/core measure:catalog-cost` (`scripts/measure-catalog-cost.ts`); a census
  * additionally needs
  * `FORGE_CENSUS_DATABASE_URL`. The report it feeds is
  * the catalog cost note beside this module.
  *
  * The catalog is re-derived rather than quoted, because it moves whenever a factory joins
- * `CHAT_TOOL_ALLOWLIST` or a `forge_*` description is edited, and it is serialized by building one
+ * the chat allowlist (`chatToolSpecs`) or a `forge_*` description is edited, and it is serialized by building one
  * request through the Anthropic adapter itself so that what is counted is what the wire carries.
  */
 
@@ -18,7 +18,7 @@ import {
   countAnthropicInputTokens,
 } from '../integrations/llm/index.js';
 import { catalogOnlyContext } from './tools/principal.js';
-import { buildProjectToolset, CHAT_TOOL_ALLOWLIST } from './tools/registry.js';
+import { buildProjectToolset, chatToolSpecs } from './tools/registry.js';
 
 export const CHARS_PER_TOKEN = 4;
 
@@ -77,7 +77,7 @@ export async function measureLiveCatalog(): Promise<CatalogMeasurement> {
 
 /** The chat door's own allowlist with `DESCRIPTION_CAP` not applied — the shape the 28,343 figure was taken in, which is NOT what `/mcp` serves. The count is not written down here, because a number in this sentence goes stale in silence. */
 export function uncappedCatalogChars(ctx: Parameters<typeof buildProjectToolset>[0]): number {
-  const whole = CHAT_TOOL_ALLOWLIST.map((spec) => {
+  const whole = chatToolSpecs().map((spec) => {
     const tool = spec.factory(ctx);
     return {
       name: tool.name,

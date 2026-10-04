@@ -11,6 +11,12 @@ export {
   deployHoldsLocks,
   releaseDeployLocksForRun,
 } from './deploy-lock.js';
+export {
+  FAILURE_CAUSE_ORIGIN,
+  type FailureCause,
+  isRealFailureCause,
+  resolveFailureCause,
+} from './failure-causes.js';
 export { type IdleIssuesResult, reconcileIdleIssues } from './idle-issues.js';
 export {
   alarmAgedHolds,
@@ -29,6 +35,7 @@ export { backfillPhaseJournal } from './phase-journal-backfill.js';
 export { registerPhaseJournalClose } from './phase-journal-close.js';
 export { providePipelinePorts } from './ports.js';
 export { runReconcilerOnce } from './reconciler.js';
+export { retentionRuleFor } from './retention/policy.js';
 export { runRetentionSweep } from './retention/sweep.js';
 export { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
 export { type OrphanedPauseResult, resumeOrphanedPauses } from './run-pause.js';
@@ -39,6 +46,7 @@ export {
   reapConcludedRuns,
   reapJoblessRuns,
 } from './runs-concluded.js';
+export { firstShipped } from './shipped-at.js';
 export {
   reapStaleReleaseBatchClaims,
   type StaleReleaseBatchClaimsResult,

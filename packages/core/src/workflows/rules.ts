@@ -1,12 +1,8 @@
+import { REPO_PATH_MESSAGE } from '@forge/contracts/repo-path';
 import type { WorkflowTemplate } from '@forge/contracts/workflow-templates';
 import type { WorkflowRefusalCode } from '@forge/contracts/workflows';
-import { REPO_PATH_MESSAGE } from '../ecosystem/link-schema.js';
-import {
-  type ApiRefusal,
-  isRecord,
-  parseVersionedDocument,
-  pointer,
-} from '../project-config/documents.js';
+import { jsonPointer as pointer } from '../lib/refusal.js';
+import { type ApiRefusal, isRecord, parseVersionedDocument } from '../project-config/index.js';
 import {
   type AnyWorkflowStep,
   stepsOf,
