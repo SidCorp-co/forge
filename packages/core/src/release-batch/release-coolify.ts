@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
+import { coolifyIntegration } from '../integrations/coolify/index.js';
 import {
   enqueueOutboundDispatch,
   findDeliveryByRequestId,
@@ -29,6 +30,9 @@ import {
   locksOf,
   targetLabelOf,
 } from './release-coolify-hold.js';
+
+/** The provider these bindings belong to, as the adapter's own declaration names it (ADR 0006). */
+const COOLIFY = coolifyIntegration.provider;
 
 /**
  * Substep markers stamped onto pipelineRuns.currentStep so the UI / WS
@@ -79,7 +83,7 @@ export async function bindingReachesProduction(
   projectId: string,
   binding: { id: string; config: unknown },
 ): Promise<boolean> {
-  const pairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
+  const pairs = await listActiveDeployBindingsForProvider(projectId, COOLIFY);
   return reachesProductionOf(await readDeployMap(projectId), pairs)(binding);
 }
 
@@ -151,7 +155,7 @@ export async function tryDispatchCoolifyRelease(args: {
   const { projectId, issueId, runId, integrationId, allowLive = true } = args;
   const takeEnvironmentLock = args.takeEnvironmentLock === true;
   await warnIfRunAlreadyTerminal(runId, issueId);
-  const allPairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
+  const allPairs = await listActiveDeployBindingsForProvider(projectId, COOLIFY);
   const map = await readDeployMap(projectId);
   const reachesLive = reachesProductionOf(map, allPairs);
   const envOf = (binding: { id: string }) => map.environments.get(binding.id)?.name ?? null;
@@ -284,7 +288,7 @@ export async function dispatchCoolifyDeployDirect(args: {
   integrationId: string;
 }): Promise<DispatchOutcome> {
   const { projectId, integrationId } = args;
-  const pairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
+  const pairs = await listActiveDeployBindingsForProvider(projectId, COOLIFY);
   const pair = pairs.find((p) => p.binding.id === integrationId);
   if (!pair) {
     return {
