@@ -26,7 +26,7 @@ import {
 import { agentSessionsPorts } from './ports.js';
 
 /** The capability a runner declares on its heartbeat when it runs a session under the token it is handed. */
-export const TURN_CREDENTIAL_CAPABILITY = 'turnCredential';
+const TURN_CREDENTIAL_CAPABILITY = 'turnCredential';
 
 /** Bounds a session whose terminal write never arrives; a runner-hosted turn is minutes. */
 const SESSION_CREDENTIAL_TTL_MS = 2 * 60 * 60 * 1000;
@@ -131,7 +131,7 @@ export async function revokeSessionCredential(sessionId: string): Promise<void> 
 }
 
 /** What a room is told when the only free boxes run a runner that cannot carry the asker's token. */
-export const RUNNER_OUTDATED_REPLY =
+const RUNNER_OUTDATED_REPLY =
   "The paired boxes free to answer this run a forge-runner too old to act as the person asking — it would act with its own owner's access instead, so I have not dispatched it. Update forge-runner on the box (`forge-runner update`) and ask again.";
 
 /** What a room is told when an Agent turn was refused before a box took it. */

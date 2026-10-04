@@ -18,7 +18,7 @@ export const pipelineControlInputSchema = z
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no control fields' });
 
-export type PipelineControlInput = z.infer<typeof pipelineControlInputSchema>;
+type PipelineControlInput = z.infer<typeof pipelineControlInputSchema>;
 
 export const DEFAULT_RECOVERY_STATS: RecoveryStats = {
   totalFailures: 0,
@@ -44,7 +44,7 @@ export const pipelineHealthInputSchema = z
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no health fields' });
 
-export type PipelineHealthInput = z.infer<typeof pipelineHealthInputSchema>;
+type PipelineHealthInput = z.infer<typeof pipelineHealthInputSchema>;
 
 export const DEFAULT_PIPELINE_HEALTH: PipelineHealth = {
   retryCount: 0,

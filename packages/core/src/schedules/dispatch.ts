@@ -5,7 +5,6 @@ import {
   type SessionRefusal,
 } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
-import type { ScheduleMode } from '../db/schema.js';
 import { type agentSessions, projects } from '../db/schema.js';
 import { logger } from '../observability/logger.js';
 import { emitEvent } from '../outbox/index.js';
@@ -15,12 +14,6 @@ import type {
   RoutedFire,
 } from './dispatch-types.js';
 import { attachFireSession, openFire, settleFire } from './fires.js';
-import { buildDriftCheckPrompt } from './messages/drift-check-prompt.js';
-import { buildFeedbackDigestPrompt } from './messages/feedback-digest-prompt.js';
-import { buildProductMapRefreshPrompt } from './messages/product-map-refresh-prompt.js';
-import { getImprovementMessage } from './messages/registry.js';
-import { buildSkillImprovePrompt } from './messages/skill-improve-prompt.js';
-import { buildSkillStewardPrompt } from './messages/skill-steward-prompt.js';
 import { routeScheduleReleaseBatchFire } from './release-batch-dispatch.js';
 import {
   authorizeScheduledRun,
@@ -31,79 +24,6 @@ import {
 } from './scheduled-session.js';
 import { routeScheduleScriptFire } from './script-dispatch.js';
 import { routeScheduleSentryPullFire } from './sentry-pull-dispatch.js';
-
-// Keys for standing templates that build their own prompt instead of the steward.
-// Add new standing-template keys here when they have a dedicated builder.
-const DRIFT_CHECK_KEY = 'knowledge-drift-check';
-const PRODUCT_MAP_KEY = 'product-map-refresh';
-const FEEDBACK_DIGEST_KEY = 'feedback-triage-digest';
-
-// Standing templates with a DEDICATED non-steward builder: their sessions must
-// NOT be tagged metadata.steward (the steward-report parser would mis-handle
-// them — their effect is draft issues / upserted knowledge entries, not a
-// steward report). Add a key here whenever you add a non-steward standing builder.
-const NON_STEWARD_STANDING_KEYS = new Set<string>([
-  DRIFT_CHECK_KEY,
-  PRODUCT_MAP_KEY,
-  FEEDBACK_DIGEST_KEY,
-]);
-
-type StandingBuilder = (input: { mode: ScheduleMode; projectId: string }) => string;
-
-const STANDING_BUILDERS: Record<string, { build: StandingBuilder; defaultMode: ScheduleMode }> = {
-  [DRIFT_CHECK_KEY]: { build: buildDriftCheckPrompt, defaultMode: 'propose' },
-  [PRODUCT_MAP_KEY]: { build: buildProductMapRefreshPrompt, defaultMode: 'auto' },
-  [FEEDBACK_DIGEST_KEY]: { build: buildFeedbackDigestPrompt, defaultMode: 'propose' },
-};
-
-/**
- * Resolves the prompt a prompt-kind schedule dispatches with, before any DB
- * lookup. Returns `null` when a ONE-SHOT template was already applied at its
- * current version — the caller turns that into a `skipped` result. Standing
- * templates never return null: they bypass `appliedMessageVersions` because
- * their value is in observing fresh signals on every cadence run.
- */
-export function resolveTemplatePrompt(schedule: {
-  id: string;
-  projectId: string;
-  prompt: string | null;
-  templateKey?: string | null;
-  mode?: ScheduleMode | null;
-  appliedMessageVersions?: Record<string, number> | null;
-}): { prompt: string; standing: boolean } | null {
-  const { templateKey } = schedule;
-  if (!templateKey) return { prompt: schedule.prompt ?? '', standing: false };
-
-  if (getImprovementMessage(templateKey)?.standing) {
-    const entry = STANDING_BUILDERS[templateKey];
-    const build = entry?.build ?? buildSkillStewardPrompt;
-    logger.info(
-      { scheduleId: schedule.id, templateKey },
-      'schedule.dispatch: standing template dispatching (bypassing appliedMessageVersions)',
-    );
-    return {
-      prompt: build({
-        mode: schedule.mode ?? entry?.defaultMode ?? 'propose',
-        projectId: schedule.projectId,
-      }),
-      standing: true,
-    };
-  }
-
-  const built = buildSkillImprovePrompt({
-    templateKey,
-    mode: schedule.mode ?? 'propose',
-    appliedMessageVersions: schedule.appliedMessageVersions ?? null,
-  });
-  if (built === null) {
-    logger.info(
-      { scheduleId: schedule.id, templateKey },
-      'schedule.dispatch: skill-improve prompt skipped — message already applied at current version',
-    );
-    return null;
-  }
-  return { prompt: built, standing: false };
-}
 
 export async function dispatchScheduleRun(
   input: DispatchScheduleInput,
@@ -140,7 +60,7 @@ function routeFire(input: DispatchScheduleInput, fireId: string): Promise<Routed
   }
 }
 
-const skip = (reason: 'project-not-found' | 'no-device' | 'already-applied'): RoutedFire => ({
+const skip = (reason: 'project-not-found' | 'no-device'): RoutedFire => ({
   result: { ok: false, reason, status: 'skipped' },
   settle: { status: 'skipped', reason },
 });
@@ -153,18 +73,8 @@ const sessionFailed = (error: string): RoutedFire => ({
 async function routePromptFire(input: DispatchScheduleInput, fireId: string): Promise<RoutedFire> {
   const { schedule } = input;
 
-  if (schedule.prompt == null && !schedule.templateKey) {
-    return sessionFailed('this prompt-kind schedule has neither a prompt nor a templateKey');
-  }
-
-  if (schedule.templateKey && !getImprovementMessage(schedule.templateKey)) {
-    return sessionFailed(
-      `templateKey '${schedule.templateKey}' names no registered improvement message, so this fire has no prompt to send`,
-    );
-  }
-  const resolved = resolveTemplatePrompt(schedule);
-  if (resolved === null) return skip('already-applied');
-  const { prompt: effectivePrompt, standing: isStandingTemplate } = resolved;
+  if (schedule.prompt == null) return sessionFailed('this prompt-kind schedule has no prompt');
+  const effectivePrompt = schedule.prompt;
 
   let resolvedProjectId = schedule.projectId;
   if (schedule.targetProjectSlug) {
@@ -203,13 +113,6 @@ async function routePromptFire(input: DispatchScheduleInput, fireId: string): Pr
     asker,
   };
   if (input.tick) metadata.tick = true;
-  if (schedule.templateKey) metadata.templateKey = schedule.templateKey;
-  if (
-    isStandingTemplate &&
-    !(schedule.templateKey != null && NON_STEWARD_STANDING_KEYS.has(schedule.templateKey))
-  ) {
-    metadata.steward = true;
-  }
 
   let session: typeof agentSessions.$inferSelect;
   try {

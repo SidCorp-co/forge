@@ -1,6 +1,6 @@
 import { type GateReport, storedGateReport } from './gate-report.js';
 
-export interface HeartbeatReport {
+interface HeartbeatReport {
   agentVersion?: string | undefined;
   agentCommit?: string | undefined;
   capabilities?: Record<string, unknown> | undefined;

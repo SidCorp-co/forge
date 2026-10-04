@@ -23,12 +23,12 @@ export interface RunnerBuildComparison {
   detail: string;
 }
 
-export interface DeviceBuild {
+interface DeviceBuild {
   version: string | null;
   commit: string | null;
 }
 
-export interface ReferenceBuild {
+interface ReferenceBuild {
   /** The newest published release, or null where nothing is published. */
   published: { version: string; commit: string | null } | null;
   /** The newest commit under the runner package on the default branch, or null. */
@@ -104,10 +104,7 @@ function judgeBox(
   return { state: 'current', detail: `runner ${device.version} (${short(device.commit)})` };
 }
 
-export function compareRunnerBuild(
-  device: DeviceBuild,
-  reference: ReferenceBuild,
-): RunnerBuildComparison {
+function compareRunnerBuild(device: DeviceBuild, reference: ReferenceBuild): RunnerBuildComparison {
   const box = judgeBox(device, reference.published);
   const release = judgeRelease(reference);
   const outdated = box.state === 'behind' || release.state === 'behind';

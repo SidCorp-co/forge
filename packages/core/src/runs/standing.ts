@@ -46,7 +46,7 @@ function stepFor(f: RunFacts, live: boolean): RunStep {
   return { source: read.source, step: read.step, since: null };
 }
 
-export function laneOfRun(f: Pick<RunFacts, 'run' | 'issue' | 'job' | 'deployLocks'>): RunLane {
+function laneOfRun(f: Pick<RunFacts, 'run' | 'issue' | 'job' | 'deployLocks'>): RunLane {
   if (f.run.releaseVersion !== null || f.job?.type === 'release_batch') return 'release';
   if (f.issue || f.run.rawLane === 'run_session') return 'issue';
   if (f.deployLocks.length > 0) return 'deploy';
@@ -120,7 +120,7 @@ const GROUP_OF: Record<RunState, RunGroup> = {
   handed_back: 'finished',
 };
 
-export const runGroupOf = (state: RunState, waitingOn: RunWaitingOn): RunGroup =>
+const runGroupOf = (state: RunState, waitingOn: RunWaitingOn): RunGroup =>
   waitingOn.kind === 'you' ? 'needs_you' : GROUP_OF[state];
 
 // A live run nobody waits on names its holder at work, with the lease's end as the deadline.

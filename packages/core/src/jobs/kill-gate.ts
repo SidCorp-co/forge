@@ -32,7 +32,7 @@ export function killGraceMs(): number {
  *  gate resolves at one grace, so this tolerates a couple of skipped/failed
  *  loop ticks while still being far shorter than the gap between two reaps of
  *  the same long-lived job (the state that poisoned the gate pre-fix). */
-export function killEpisodeWindowMs(): number {
+function killEpisodeWindowMs(): number {
   return killGraceMs() * 2;
 }
 
@@ -44,7 +44,7 @@ export function isKillEpisodeLive(job: KillableJobRef, now: number = Date.now())
   return now - job.killRequestedAt.getTime() <= killEpisodeWindowMs();
 }
 
-export type RequestKillResult = 'requested' | 'no_device';
+type RequestKillResult = 'requested' | 'no_device';
 
 export async function requestJobKill(
   job: KillableJobRef,
@@ -64,7 +64,7 @@ export async function requestJobKill(
   return 'requested';
 }
 
-export interface KillConfirmation {
+interface KillConfirmation {
   confirmed: boolean;
   outcome: JobRow['killOutcome'];
 }

@@ -12,11 +12,6 @@ import { effectiveProjectRole } from '../lib/authz.js';
 import { GLOBAL_ROOM, roomManager } from '../lib/rooms.js';
 import { markWsListening } from '../lib/ws-listening.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
-import {
-  handleRunnerRegister,
-  handleRunnerUnregister,
-  handleRunnerUpdate,
-} from '../runners/index.js';
 
 type AnyServer = HttpServer | HttpsServer;
 
@@ -253,23 +248,9 @@ export function attachWs(server: AnyServer): void {
         })();
       } else if (type === 'unsubscribe' && typeof room === 'string') {
         roomManager.unsubscribe(ws, room);
-      } else if (
-        type === 'runner:register' ||
-        type === 'runner:unregister' ||
-        type === 'runner:update' ||
-        type === 'runner:sessions'
-      ) {
+      } else if (type === 'runner:sessions') {
         if (ws.principal.type !== 'device') return;
-        const socket = ws as unknown as import('ws').WebSocket;
-        if (type === 'runner:register') {
-          void handleRunnerRegister(socket, msg);
-        } else if (type === 'runner:unregister') {
-          void handleRunnerUnregister(socket, msg);
-        } else if (type === 'runner:update') {
-          void handleRunnerUpdate(socket, msg);
-        } else {
-          void handleRunnerSessions(socket, msg);
-        }
+        void handleRunnerSessions(ws as unknown as import('ws').WebSocket, msg);
       }
     });
 

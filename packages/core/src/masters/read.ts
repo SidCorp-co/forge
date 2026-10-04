@@ -87,7 +87,7 @@ async function closedPassWhere(executor: Tx, where: SQL): Promise<MasterClosedPa
   return row ? closedPassOf(row) : null;
 }
 
-export function readLastPass(executor: Tx, projectId: string): Promise<MasterClosedPass | null> {
+function readLastPass(executor: Tx, projectId: string): Promise<MasterClosedPass | null> {
   return closedPassWhere(executor, sql`project_id = ${projectId}`);
 }
 
@@ -101,7 +101,7 @@ export function readClosedPass(
   );
 }
 
-export async function slotsInUse(deviceId: string): Promise<number> {
+async function slotsInUse(deviceId: string): Promise<number> {
   const [row] = rowsOf<{ jobs: number; runs: number }>(
     await db.execute(sql`
       SELECT

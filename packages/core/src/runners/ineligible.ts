@@ -26,7 +26,7 @@ export type RunnerHoldReason =
   | 'below-floor';
 
 /** The columns the dispatch filter reads, plus the one name a screen shows. */
-export interface RunnerLivenessRow {
+interface RunnerLivenessRow {
   /** `devices.name` — what the Runners tab names a box; `runners.name` is on no screen. */
   deviceName: string;
   status: RunnerStatus;
@@ -50,26 +50,6 @@ export interface RunnerHold {
    *  at once, and a clause calling that one reporting is the same omission. */
   reporting: boolean;
 }
-
-/**
- * The order a hold is selected in: a presentation rule, not the database's.
- * `onlineCapableDeviceIds` ANDs its conditions, so a row failing four of them
- * fails them equally and the SQL ranks nothing. This is the order the operator
- * acts in, and the test pins it so it stays a decision.
- */
-export const RUNNER_HOLD_PRECEDENCE: readonly RunnerHoldReason[] = [
-  'device-disabled',
-  'retired',
-  'never-connected',
-  'disconnected',
-  'stale',
-  'auth',
-  'rate-limited',
-  'quarantined',
-  'provisioning',
-  'below-floor',
-];
-
 function secondsSince(at: Date, now: Date): number {
   return Math.max(0, Math.round((now.getTime() - at.getTime()) / 1000));
 }
@@ -105,7 +85,7 @@ function reasonFor(
 }
 
 /** The reading this box is held by, or `null` where it would be dispatched to. */
-export function classifyRunnerHold(
+function classifyRunnerHold(
   row: RunnerLivenessRow,
   now: Date = new Date(),
   // `runnerFresh` is `last_seen_at > now() - livenessSeconds()`, strictly, so
@@ -139,7 +119,7 @@ interface RunnerLivenessSqlRow extends Record<string, unknown> {
 
 const asDate = (raw: string | null): Date | null => (raw === null ? null : new Date(raw));
 
-export async function readRunnerLiveness(projectId: string): Promise<RunnerLivenessRow[]> {
+async function readRunnerLiveness(projectId: string): Promise<RunnerLivenessRow[]> {
   const rows = await db.execute<RunnerLivenessSqlRow>(sql`
     SELECT d.name AS device_name,
            r.status, r.last_seen_at, r.limit_reason, r.rate_limited_until,

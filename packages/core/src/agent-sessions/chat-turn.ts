@@ -14,7 +14,6 @@ import {
   type ModelTier,
   memberLenses,
 } from '../db/schema.js';
-import { buildChatPreamble, TOOL_REFERENCE } from '../lib/chat-preamble.js';
 import {
   findAvailableDeviceForProject,
   findChatCapableDeviceForProject,
@@ -193,7 +192,7 @@ export function buildRehydrationBlock(
   return `[This is a cold start; the previous local process context is unavailable. The prior conversation transcript follows — treat it as the established history and continue seamlessly.]\n\n${kept.join('\n\n')}\n\n[End of prior transcript. Continue with the new message below.]\n\n`;
 }
 
-export interface CreateChatSessionArgs {
+interface CreateChatSessionArgs {
   projectId: string;
   userId: string | null;
   title?: string | null;
@@ -456,7 +455,11 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
       prompt = languageSection + decoratedMessage;
       try {
         const forceLenses = args.forceLenses ?? readLensOverride(session.metadata);
-        const preamble = await buildChatPreamble(project.id, session.userId, forceLenses);
+        const preamble = await agentSessionsPorts().buildChatPreamble(
+          project.id,
+          session.userId,
+          forceLenses,
+        );
         const history = buildRehydrationBlock(prevMessages);
         prompt = preamble + languageSection + history + decoratedMessage;
       } catch {
@@ -479,7 +482,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         eventSeqBase,
         projectSlug: project.slug,
         preBuilt: args.preBuilt ?? false,
-        systemPrompt: TOOL_REFERENCE,
+        systemPrompt: agentSessionsPorts().toolReference(),
         mcpServersOverride,
         ...(model ? { model } : {}),
         ...(attachments.length ? { attachments } : {}),

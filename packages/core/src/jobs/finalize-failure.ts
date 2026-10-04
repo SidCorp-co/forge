@@ -61,7 +61,7 @@ const HOLD_WEDGE_CONTENT: Partial<
   },
 };
 
-export interface FinalizeFailedJobOptions {
+interface FinalizeFailedJobOptions {
   /** Human-readable failure reason; passed to the retry engine. */
   error: string;
   /** Exit code to surface on the broadcast (if any). */

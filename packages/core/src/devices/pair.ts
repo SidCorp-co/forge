@@ -5,11 +5,11 @@ import { type Device, pairingCodes } from '../db/schema.js';
 import { issueDeviceCredential } from './credential.js';
 import { type RegisterDeviceInput, registerDevice } from './register.js';
 
-export interface PairInput extends Omit<RegisterDeviceInput, 'ownerId'> {
+interface PairInput extends Omit<RegisterDeviceInput, 'ownerId'> {
   code: string;
 }
 
-export interface PairResult {
+interface PairResult {
   device: Device;
   plaintext: string;
   projectId: string | null;

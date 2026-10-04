@@ -116,7 +116,7 @@ export async function ensureAgentSessionForJob(
     const skillName = deriveSkillName(job.payload);
     const title = buildTitle(skillName, job.type, issueTitle);
 
-    const kind: AgentSessionKind = job.type === 'pm' ? 'pm' : 'pipeline';
+    const kind: AgentSessionKind = 'pipeline';
     const metadata: Record<string, unknown> = {
       jobId: job.id,
       jobType: job.type,
@@ -229,7 +229,7 @@ function deriveSessionFailure(job: JobRow): {
 
 // cm:why a job's terminal status is its session's: a cancelled job whose session read `completed`
 // told every reader counting finished sessions that work was done which never ran (ISS-100).
-export const SESSION_STATUS_OF_JOB_OUTCOME = {
+const SESSION_STATUS_OF_JOB_OUTCOME = {
   done: 'completed',
   failed: 'failed',
   cancelled: 'cancelled',

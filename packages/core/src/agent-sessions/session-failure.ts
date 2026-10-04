@@ -64,7 +64,7 @@ export function detectUnexpandedSkillFailure(
  * fact at classification time; the failover path re-states the other half from
  * what it actually did.
  */
-export function failureClassOf(reason: string): string {
+function failureClassOf(reason: string): string {
   const [head] = reason.split(' → ');
   return (head as string).trim() || reason;
 }
@@ -76,7 +76,7 @@ export function failureClassOf(reason: string): string {
  * failover). Best-effort — never throws (a recovery failure must not break the
  * status write that already persisted the classified reason).
  */
-export async function recoverScheduleOnFailoverAction(
+async function recoverScheduleOnFailoverAction(
   sessionId: string,
   metadata: unknown,
   reason: string,

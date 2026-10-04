@@ -1,6 +1,5 @@
 import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
-import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
-import { and, type Column, eq, getTableName, inArray, notInArray, sql } from 'drizzle-orm';
+import { and, type Column, eq, getTableName, notInArray, sql } from 'drizzle-orm';
 import { beatSession, insertSessionRow, transitionSessions } from '../agent-sessions/index.js';
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
@@ -170,29 +169,4 @@ export function residentMasterSql(deviceIdColumn: Column, projectIdColumn: Colum
      ORDER BY s.started_at DESC NULLS LAST
      LIMIT 1
   )`;
-}
-
-/** Every live master session on one device, for the daemon's own reconcile. */
-export async function listMasterSessionsForDevice(
-  deviceId: string,
-): Promise<Array<{ sessionId: string; projectId: string; name: string }>> {
-  const rows = await db
-    .select({
-      id: agentSessions.id,
-      projectId: agentSessions.projectId,
-      metadata: agentSessions.metadata,
-    })
-    .from(agentSessions)
-    .where(
-      and(
-        eq(agentSessions.deviceId, deviceId),
-        eq(agentSessions.kind, MASTER_SESSION_KIND),
-        inArray(agentSessions.status, [...LIVE_SESSION_STATUSES]),
-      ),
-    );
-  return rows.map((r) => ({
-    sessionId: r.id,
-    projectId: r.projectId,
-    name: String((r.metadata as { terminalName?: unknown } | null)?.terminalName ?? ''),
-  }));
 }

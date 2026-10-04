@@ -5,7 +5,7 @@ import { logger } from '../observability/logger.js';
 import { extractUsageFromEvents } from './from-job-events.js';
 
 /** Just the fields needed to attribute a usage row. */
-export interface MaterializeJobInput {
+interface MaterializeJobInput {
   id: string;
   agentSessionId: string | null;
   projectId: string;

@@ -1,13 +1,13 @@
 import { estimateCost } from './pricing.js';
 
 /** Minimal shape of a job_event row this extractor reads. */
-export interface UsageEventRow {
+interface UsageEventRow {
   kind: string;
   data: unknown;
   ts: Date;
 }
 
-export interface ExtractedUsage {
+interface ExtractedUsage {
   model: string;
   inputTokens: number;
   outputTokens: number;

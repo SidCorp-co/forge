@@ -26,7 +26,7 @@ const PRICING: Record<
 // Longest key first so the most specific substring wins.
 const PRICING_ENTRIES = Object.entries(PRICING).sort((a, b) => b[0].length - a[0].length);
 
-export function lookupPricing(model: string): {
+function lookupPricing(model: string): {
   input: number;
   output: number;
   cacheRead: number;

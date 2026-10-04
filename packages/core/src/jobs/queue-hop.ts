@@ -49,7 +49,7 @@ export function broadcastZombieTransition(
   });
 }
 
-export interface QueueHopInput {
+interface QueueHopInput {
   now: Date;
   /** Nothing has ever reported on a session dispatched before this. */
   queueCutoff: Date;
@@ -58,7 +58,7 @@ export interface QueueHopInput {
   projectFilter: SQL | undefined;
 }
 
-export interface QueueHopResult {
+interface QueueHopResult {
   queueTimedOut: number;
   turnNeverReported: number;
 }

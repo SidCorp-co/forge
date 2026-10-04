@@ -5,6 +5,7 @@ import {
   contentLanguageViewOf,
   jobContentContext,
 } from '@forge/contracts/content-language';
+import type { PreambleBlock, PreambleBlockId } from '@forge/contracts/jobs';
 import type { DispatchState } from '@forge/contracts/project-config';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -29,27 +30,7 @@ import {
 } from './facts/resolve.js';
 import { getStatePrompt } from './state-prompts/index.js';
 
-export type PreambleBlockId =
-  | 'pipeline-rules'
-  | 'tool-reference'
-  | 'project-config'
-  | 'policy'
-  | 'project-context'
-  | 'forge-facts'
-  | 'state-block'
-  | 'contract-context'
-  | 'artifact-context'
-  | 'pinned-contract-context'
-  | 'content-language';
-
-export interface PreambleBlock {
-  id: PreambleBlockId;
-  kind: 'system' | 'user';
-  chars: number;
-  estTokens: number;
-}
-
-export interface BuiltPreamble {
+interface BuiltPreamble {
   content: string;
   blocks: PreambleBlock[];
   /** The content language a step's preamble told it; absent where no step was named. */
@@ -58,11 +39,7 @@ export interface BuiltPreamble {
 
 const BRANCH_SENTINEL = '<detect-from-git>';
 
-// Canonical text for these two mandatory blocks now lives in the Forge Facts
-// registry (`./facts/registry.ts`) so author-time surfaces and the runtime
-// preamble share one source. Re-exported here unchanged for existing callers
-// (chat-preamble shim, schedules, agent-sessions).
-export { PIPELINE_RULES, TOOL_REFERENCE } from './facts/mandatory-blocks.js';
+export { TOOL_REFERENCE } from './facts/mandatory-blocks.js';
 
 const CHAT_ORIENTATION = `## Project Orientation
 You are working in a Forge-managed project. Its issues, comments, status and project memory are reached through the Forge REST API (\`forge-runner api <path>\` or the \`forge\` CLI): \`issues/<id>\`, \`issues/<id>/comments\`, \`projects/<id>/config\`, \`memory/search\`. Use them when the request relates to issues, tasks, status, or project memory.
@@ -84,7 +61,7 @@ When the conversation produces work to track, capture **one coherent request as 
  *                              no lens assigned).
  *   - both                   → lead with outcome, then concise technical detail.
  */
-export function buildChatRoleSection(lenses: readonly MemberLens[]): string {
+function buildChatRoleSection(lenses: readonly MemberLens[]): string {
   const tech = lenses.includes('technical');
   const product = lenses.includes('product');
   let audience: string;
@@ -148,7 +125,7 @@ function formatProjectContext(projectId: string): string {
 ${fetch} A testing profile names \`secret://\` references, never values. Do NOT echo passwords in commits, PR descriptions, or tool output beyond the immediate authentication step.`;
 }
 
-export function formatProjectConfig(baseBranch: string | null, deploysFrom: string | null): string {
+function formatProjectConfig(baseBranch: string | null, deploysFrom: string | null): string {
   const b = baseBranch ?? BRANCH_SENTINEL;
   const park = 'needs_info';
   const liveLine =
@@ -169,7 +146,7 @@ const QA_LINE: Record<DispatchState['qa'], string> = {
 };
 
 /** The policy state this job runs under, as the project's policy-v1 declares it. */
-export function formatPolicy(policy: DispatchState): string {
+function formatPolicy(policy: DispatchState): string {
   const how =
     policy.from === 'entry'
       ? `the entry state \`${policy.status}\`, because this job is for no status the policy governs`
@@ -242,7 +219,7 @@ async function renderChatIntegrations(
 }
 
 /** Options for the pipeline preamble builders. */
-export interface BuildPreambleOptions {
+interface BuildPreambleOptions {
   /**
    * The step (jobType) this preamble is for. Drives the built-in per-state
    * `state-block` (see `prompt/state-prompts`). Omit for non-pipeline callers
@@ -310,13 +287,4 @@ export async function buildPipelinePreambleStructured(
     estTokens: estimateTokens(s.body),
   }));
   return contentLanguage ? { content, blocks, contentLanguage } : { content, blocks };
-}
-
-/** Joined string form of buildPipelinePreambleStructured. */
-export async function buildPipelinePreamble(
-  projectId: string,
-  opts?: BuildPreambleOptions,
-): Promise<string> {
-  const { content } = await buildPipelinePreambleStructured(projectId, opts);
-  return content;
 }

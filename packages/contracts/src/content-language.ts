@@ -164,7 +164,6 @@ const ARTIFACT_JOB_TYPES: ReadonlySet<string> = new Set([
 	"triage",
 	"clarify",
 	"plan",
-	"pm",
 ]);
 
 export function jobContentContext(type: string): ContentLanguageContext {

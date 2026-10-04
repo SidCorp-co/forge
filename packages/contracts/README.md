@@ -43,12 +43,10 @@ const registry = pipelineRegistryResponseSchema.parse(await api.get("/pipeline/r
 | [`src/responses.ts`](./src/responses.ts) | Response envelope shapes |
 | [`src/integrations.ts`](./src/integrations.ts) | Cross-app integration types |
 | [`src/notifications.ts`](./src/notifications.ts) | Notification types |
-| [`src/skill-facts.ts`](./src/skill-facts.ts) | Skill-facts types |
 | [`src/pipeline-registry.ts`](./src/pipeline-registry.ts) | Pipeline-registry response — a runtime Zod schema (`pipelineRegistryResponseSchema`) plus enum tuples |
 | [`src/workflow-templates.ts`](./src/workflow-templates.ts) | workflow-template-v1: the diagram-template meta-schema, the built-in registry (`BUILTIN_WORKFLOW_TEMPLATES`) and project-template resolution — runtime, read by core to check designs and by the web to draw them |
 | [`src/issues.ts`](./src/issues.ts) | Release-notes types (`ReleaseNotes`, `ReleaseNotesSection`) re-exported from `src/release-notes.ts` |
 | [`src/ssh-keys.ts`](./src/ssh-keys.ts) | Org Private Keys pool + per-project git-credential types |
-| [`src/skill-activity.ts`](./src/skill-activity.ts) | Skill-update activity-log event types (ISS-797) |
 | [`src/index.ts`](./src/index.ts) | Aggregated barrel |
 
 ## Why "type-only"

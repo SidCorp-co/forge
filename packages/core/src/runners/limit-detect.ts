@@ -29,13 +29,13 @@ const MONTH_MAP: Record<string, number> = {
 /** Default cooldown when a usage/rate limit carries no parseable reset time. */
 export const DEFAULT_LIMIT_COOLDOWN_MS = 60 * 60 * 1000;
 
-export const SPEND_LIMIT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+const SPEND_LIMIT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
 /**
  * Detect an HTTP 429 / rate-limit error (distinct from a usage limit — these
  * are short provider throttles rather than account-level quota windows).
  */
-export function isRateLimitError(text: string): boolean {
+function isRateLimitError(text: string): boolean {
   if (!text) return false;
   return /\b429\b|\brate[\s_-]?limit/i.test(text);
 }
@@ -45,7 +45,7 @@ export function isRateLimitError(text: string): boolean {
  * (no reset time) — the runner's credentials need fixing — but we still flag
  * the runner so an operator sees why it stopped taking work.
  */
-export function isAuthError(text: string): boolean {
+function isAuthError(text: string): boolean {
   if (!text) return false;
   return (
     // CLI-specific phrasings are unambiguous → match anywhere.

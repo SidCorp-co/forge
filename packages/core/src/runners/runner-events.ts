@@ -7,7 +7,7 @@ import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';
 /** A drizzle executor: the base `db` or a transaction handle. */
 export type Executor = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
 
-export interface RunnerEventInput {
+interface RunnerEventInput {
   runnerId: string;
   projectId: string;
   oldStatus: string | null;
@@ -29,7 +29,7 @@ export async function insertRunnerEvent(
   });
 }
 
-export interface SetRunnerStatusResult {
+interface SetRunnerStatusResult {
   /** false when the runner does not exist. */
   found: boolean;
   /** true when the status value actually changed (and an event was written). */

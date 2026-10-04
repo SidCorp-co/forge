@@ -39,7 +39,7 @@ import { fileIssueIn, type IssueChannel } from './file.js';
 import { agentReportsPorts } from './ports.js';
 import { bulkMoves, filedIntoIssueRefusal, type TriageFacts, triageRefusals } from './rules.js';
 
-export const reportColumns = {
+const reportColumns = {
   id: agentReports.id,
   projectId: agentReports.projectId,
   projectSlug: projects.slug,
@@ -160,7 +160,7 @@ export async function fireOfCaller(caller: PipelineCaller): Promise<string | nul
   return resolved.ok ? fireOfSession(resolved.context.agentSessionId) : null;
 }
 
-export type NewAgentReport = typeof agentReports.$inferInsert;
+type NewAgentReport = typeof agentReports.$inferInsert;
 
 export async function insertReport(values: NewAgentReport): Promise<string | null> {
   const [row] = await db.insert(agentReports).values(values).returning({
@@ -252,9 +252,6 @@ async function lockedFacts(tx: Tx, scope: SQL[]) {
     } satisfies TriageFacts,
   }));
 }
-
-export type LockedReport = Awaited<ReturnType<typeof lockedFacts>>[number];
-
 const TO: Record<TriageAgentReportRequest['act'], AgentReportTriage> = {
   file: 'filed',
   dismiss: 'dismissed',

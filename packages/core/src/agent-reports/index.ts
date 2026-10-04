@@ -1,4 +1,4 @@
-export { type AgentReportsPorts, provideAgentReportsPorts } from './ports.js';
+export { provideAgentReportsPorts } from './ports.js';
 export { alreadyTriagedRefusal, type TriageFacts } from './rules.js';
 export {
   fireOfCaller,

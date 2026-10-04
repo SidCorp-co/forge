@@ -9,7 +9,7 @@ export interface SkillFile {
   encoding: 'utf8' | 'base64';
 }
 
-export interface EffectiveSkill {
+interface EffectiveSkill {
   skillId: string;
   name: string;
   /**
@@ -54,7 +54,7 @@ export interface EffectiveSkill {
 }
 
 /** The skill columns the resolver needs — a subset of the `skills` row. */
-export interface SkillBodyRow {
+interface SkillBodyRow {
   id: string;
   name: string;
   /** Optional so the pure helpers still accept legacy/partial fixtures. */
@@ -84,7 +84,7 @@ export function globalEffectiveMd(skill: {
   return skill.prompt ?? '';
 }
 
-export function computeEffectiveSkill(skill: SkillBodyRow): EffectiveSkill {
+function computeEffectiveSkill(skill: SkillBodyRow): EffectiveSkill {
   const files = (Array.isArray(skill.files) ? skill.files : []) as SkillFile[];
   const md = globalEffectiveMd(skill);
 
@@ -140,7 +140,7 @@ export async function resolveRegisteredEffectiveSkills(
 
 export const MANAGED_META_SKILLS: readonly string[] = ['forge-skills', 'forge-message-shape'];
 
-export interface ManagedMetaPrompt {
+interface ManagedMetaPrompt {
   name: string;
   description: string;
   body: string;

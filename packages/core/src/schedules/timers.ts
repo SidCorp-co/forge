@@ -13,11 +13,11 @@ import { boss } from '../queue/boss.js';
 import { nextRunFor } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';
 
-export const TICK_QUEUE = 'schedule.tick';
+const TICK_QUEUE = 'schedule.tick';
 const TICK_CRON = '* * * * *';
 
 /** Once per due minute on one core of the cluster; `name` is its pg-boss queue. */
-export interface ClusterTimer {
+interface ClusterTimer {
   kind: 'cluster';
   name: string;
   /** Five-field cron, read in UTC. */
@@ -26,7 +26,7 @@ export interface ClusterTimer {
 }
 
 /** Every `everyMs` on this core; a tick still running when the next is due is not overlapped. */
-export interface ProcessTimer {
+interface ProcessTimer {
   kind: 'process';
   name: string;
   everyMs: number;
@@ -46,7 +46,7 @@ function minuteOf(now: Date): Date {
   return new Date(Math.floor(now.getTime() / 60_000) * 60_000);
 }
 
-export function isDueAt(cron: string, now: Date): boolean {
+function isDueAt(cron: string, now: Date): boolean {
   const minute = minuteOf(now);
   const next = CronExpressionParser.parse(cron, {
     currentDate: new Date(minute.getTime() - 1),
@@ -73,7 +73,7 @@ function assertTimers(timers: readonly Timer[]): void {
 }
 
 /** Claim each enabled schedule whose nextRunAt has come, and fire it. */
-export async function runScheduleTickOnce(now: Date = new Date()): Promise<string[]> {
+async function runScheduleTickOnce(now: Date = new Date()): Promise<string[]> {
   const due = await db
     .select()
     .from(schedules)
@@ -105,11 +105,7 @@ export async function runScheduleTickOnce(now: Date = new Date()): Promise<strin
           projectId: schedule.projectId,
           prompt: schedule.prompt,
           targetProjectSlug: schedule.targetProjectSlug ?? null,
-          templateKey: schedule.templateKey ?? null,
           params: (schedule.params as Record<string, unknown> | null) ?? null,
-          mode: schedule.mode ?? null,
-          appliedMessageVersions:
-            (schedule.appliedMessageVersions as Record<string, number> | null) ?? null,
           kind: schedule.kind,
           script: schedule.script ?? null,
           ownerId: schedule.ownerId,
@@ -126,7 +122,7 @@ export async function runScheduleTickOnce(now: Date = new Date()): Promise<strin
 }
 
 /** Send every cluster timer due this minute; a second tick in the same minute sends nothing. */
-export async function sendDueTimers(now: Date = new Date()): Promise<string[]> {
+async function sendDueTimers(now: Date = new Date()): Promise<string[]> {
   const sent: string[] = [];
   for (const t of clusterTimers) {
     if (!isDueAt(t.cron, now)) continue;

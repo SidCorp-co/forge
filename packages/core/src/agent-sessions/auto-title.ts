@@ -36,7 +36,7 @@ function postProcessTitle(raw: string): string | null {
  * message's own language. Best-effort: returns `null` on any failure, empty
  * input, or a system-noise message — never throws.
  */
-export async function generateSessionTitle(userMessage: string): Promise<string | null> {
+async function generateSessionTitle(userMessage: string): Promise<string | null> {
   const sanitized = stripSystemNoise(userMessage.replace(/\s+/g, ' ').trim());
   if (!sanitized) return null;
   const raw = await agentSessionsPorts().callFastModel(
@@ -58,7 +58,7 @@ export async function generateSessionTitle(userMessage: string): Promise<string 
   return title;
 }
 
-export interface ApplyAutoTitleArgs {
+interface ApplyAutoTitleArgs {
   sessionId: string;
   userMessage: string;
   /** The synchronous `deriveChatTitle` value already persisted on the turn. */

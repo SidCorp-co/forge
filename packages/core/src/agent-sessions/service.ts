@@ -53,7 +53,7 @@ export const agentSessionListColumns = {
   updatedAt: agentSessions.updatedAt,
 } as const;
 
-export const agentSessionMcpListColumns = {
+const agentSessionMcpListColumns = {
   id: agentSessionListColumns.id,
   projectId: agentSessionListColumns.projectId,
   userId: agentSessionListColumns.userId,
@@ -75,7 +75,7 @@ export const agentSessionMcpListColumns = {
   updatedAt: agentSessionListColumns.updatedAt,
 } as const;
 
-export type AgentSessionQuery = {
+type AgentSessionQuery = {
   projectId: string;
   status?: AgentSessionStatus | undefined;
   issueId?: string | undefined;
@@ -97,7 +97,7 @@ export async function listAgentSessionsForMcp(q: AgentSessionQuery) {
 }
 
 /** How many messages a detail read returns. */
-export const MESSAGE_TAIL = 20;
+const MESSAGE_TAIL = 20;
 
 /**
  * One session with the LAST {@link MESSAGE_TAIL} messages, sliced by the database.
@@ -141,7 +141,7 @@ export async function markSessionAcked(
     .where(and(eq(agentSessions.id, sessionId), eq(agentSessions.status, 'running')));
 }
 
-export type SessionPatchWrite = {
+type SessionPatchWrite = {
   sessionId: string;
   existing: SessionRow;
   columns: Omit<AgentSessionPatch, 'status'>;
@@ -286,16 +286,7 @@ export async function setDesktopSessionStatus(
     sessionGone,
   );
 }
-
-/** Replace a session's metadata document. */
-export async function setSessionMetadata(
-  sessionId: string,
-  metadata: Record<string, unknown>,
-): Promise<void> {
-  await db.update(agentSessions).set({ metadata }).where(eq(agentSessions.id, sessionId));
-}
-
-export type ChatLine = {
+type ChatLine = {
   seq: number;
   kind: 'stdout';
   data: Record<string, unknown>;

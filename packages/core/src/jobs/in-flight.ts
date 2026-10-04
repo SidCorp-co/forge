@@ -27,28 +27,3 @@ export async function countInFlightByRunner(runnerIds: string[]): Promise<Map<st
     rows.filter((r) => r.runner_id !== null).map((r) => [r.runner_id as string, Number(r.n)]),
   );
 }
-
-/** The same count for a single runner. Per BINDING — a reporting number. */
-export async function countInFlightForOneRunner(runnerId: string): Promise<number> {
-  const rows = await db.execute<{ n: number | string }>(
-    OCCUPYING_JOBS_FOR(sql`j.runner_id = ${runnerId}`),
-  );
-  return Number(rows[0]?.n ?? 0);
-}
-
-/**
- * The same count for a whole BOX, across every project it serves.
- */
-export async function countInFlightForDevice(deviceId: string): Promise<number> {
-  const rows = await db.execute<{ n: number | string }>(
-    sql`
-      SELECT COUNT(*)::int AS n
-      FROM jobs j
-      LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
-      WHERE j.device_id = ${deviceId}
-        AND j.status IN ('dispatched', 'running')
-        AND (pr.id IS NULL OR pr.status IN ('running', 'paused'))
-    `,
-  );
-  return Number(rows[0]?.n ?? 0);
-}

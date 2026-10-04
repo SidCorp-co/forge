@@ -1,6 +1,5 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { jobs } from '../db/schema.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import {
   claimCapableSql,
@@ -11,7 +10,7 @@ import {
   runnerWorkspaceReady,
 } from '../runners/index.js';
 
-export type GateSkipReason =
+type GateSkipReason =
   | 'not_found'
   | 'not_queued'
   | 'pipeline_run_not_running'
@@ -21,7 +20,7 @@ export type GateSkipReason =
   | 'runner_stale'
   | 'release_label_missing';
 
-export interface BarrierFragments {
+interface BarrierFragments {
   /** Shared CTE chunk: `fresh_capable_runners`.
    *  Caller prefixes with `WITH ${ctes}` (and may comma-append more CTEs). */
   ctes: SQL;
