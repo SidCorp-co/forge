@@ -48,11 +48,11 @@ export type EntityCommentOutcome =
   | { ok: true; comment: EntityCommentView; created: boolean }
   | { ok: false; refusals: CommentRefusal[] };
 
-export interface EntityCommentAuthor extends EntityCommentActor {
+interface EntityCommentAuthor extends EntityCommentActor {
   deviceId: string | null;
 }
 
-export async function lockCommentTarget(tx: Tx, targetId: string): Promise<void> {
+async function lockCommentTarget(tx: Tx, targetId: string): Promise<void> {
   await lockXact(tx, 'commentTarget', targetId);
 }
 

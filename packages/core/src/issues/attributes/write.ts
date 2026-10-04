@@ -4,7 +4,7 @@ import { issueAttributes } from '../../db/schema.js';
 import { refuser } from '../../lib/refusal.js';
 import { type AttributeDef, attributeDef, writableKeys } from './registry.js';
 
-export type AttributeValue = string | number | boolean | Date;
+type AttributeValue = string | number | boolean | Date;
 
 export interface AttributeWrite {
   readonly issueId: string;
@@ -73,7 +73,7 @@ function columnsFor(def: AttributeDef, value: AttributeValue): ValueColumns {
   }
 }
 
-export function checkWritable(key: string): AttributeDef {
+function checkWritable(key: string): AttributeDef {
   const def = attributeDef(key);
   if (!def)
     throw refuseAttribute(
@@ -88,7 +88,7 @@ function attributeKeyList(): string {
   return writableKeys().join(', ');
 }
 
-export function checkObligationPair(writes: readonly AttributeWrite[]): void {
+function checkObligationPair(writes: readonly AttributeWrite[]): void {
   const hasObligation = writes.some((w) => w.key === 'obligation');
   const hasOwner = writes.some(
     (w) => w.key === 'obligation_owner' || w.key === 'obligation_carrier',
@@ -101,7 +101,7 @@ export function checkObligationPair(writes: readonly AttributeWrite[]): void {
     );
 }
 
-export interface AttributeExecutor {
+interface AttributeExecutor {
   insert: (table: typeof issueAttributes) => {
     values: (rows: (typeof issueAttributes.$inferInsert)[]) => PromiseLike<unknown>;
   };

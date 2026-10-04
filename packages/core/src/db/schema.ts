@@ -591,7 +591,6 @@ export const jobTypes = [
   'release',
   'fix',
   'custom',
-  'pm',
   'smoke',
   'release_batch',
   'drive',
@@ -604,7 +603,7 @@ export type JobType = (typeof jobTypes)[number];
 export const modelTiers = ['haiku', 'sonnet', 'opus'] as const;
 export type ModelTier = (typeof modelTiers)[number];
 
-export const pipelineRunKinds = ['issue', 'pm', 'interactive', 'system'] as const;
+export const pipelineRunKinds = ['issue', 'interactive', 'system'] as const;
 export type PipelineRunKind = (typeof pipelineRunKinds)[number];
 
 export const pipelineRunStatuses = PIPELINE_RUN_STATUSES;
@@ -729,11 +728,6 @@ export const jobs = pgTable(
     activeUniqueIdx: uniqueIndex('jobs_active_unique')
       .on(t.issueId, t.type)
       .where(sql`status IN ('queued','dispatched','running','held') AND issue_id IS NOT NULL`),
-    // PM jobs may have a NULL issue_id (project-scoped coordinator), so the
-    // existing per-issue index does not cover them. ISS-17.
-    pmActiveUniqueIdx: uniqueIndex('jobs_pm_per_project_unique_idx')
-      .on(t.projectId)
-      .where(sql`type = 'pm' AND status IN ('queued','dispatched','running','held')`),
     pipelineRunIdx: index('jobs_pipeline_run_idx').on(t.pipelineRunId),
     finishedArchiveIdx: index('jobs_finished_archive_idx')
       .on(t.finishedAt)

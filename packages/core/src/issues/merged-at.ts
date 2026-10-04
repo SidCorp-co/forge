@@ -8,14 +8,14 @@ import {
 import { type MergeMarkKind, type MergeRecordExecutor, mergeMarkKindOf } from './merge-record.js';
 
 /** What a refusal under the shipped-work rule says, or `null` where the call may proceed. */
-export interface ShippedRuleRefusal {
+interface ShippedRuleRefusal {
   detail: string;
   details: Record<string, unknown>;
 }
 
 /** What every refusal under the merge rule ends with: `dropped` for what was not work, and the
  *  route this project's shape has for recording where the work landed. */
-export function closedMeansShipped(shape: LandingShape | null, held?: MergeMarkKind): string {
+function closedMeansShipped(shape: LandingShape | null, held?: MergeMarkKind): string {
   return (
     '`closed` means the work shipped, and `awaiting_release` that it is merged and waits for its ' +
     'release. Use `dropped` for work that turned out not to be work — a note, a question, a ' +

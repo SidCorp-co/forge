@@ -16,7 +16,6 @@ import type { PipelineRunKind, PipelineRunListItem } from "@/features/pipeline/t
 
 const KIND_LABEL: Record<PipelineRunKind, string> = {
   issue: "Issue run",
-  pm: "PM run",
   interactive: "Interactive session",
   system: "System run",
 };

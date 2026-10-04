@@ -87,6 +87,7 @@ import {
   issueCriteriaRoutes,
   issueDependencyRoutes,
   issueExtrasRoutes,
+  issueGraphRoutes,
   issueMergeRoutes,
   issueProjectRoutes,
   issueRoutes,
@@ -129,14 +130,12 @@ import { patRoutes } from './pat/routes.js';
 import {
   phaseRoutes,
   pipelineAnalyticsRoutes,
-  pipelineRegistryRoutes,
   pipelineRunProjectRoutes,
   pipelineRunReadRoutes,
   pipelineRunRoutes,
   projectCostAnalyticsRoutes,
   stepHandoffRoutes,
 } from './pipeline/routes.js';
-import { pmReadRoutes } from './pm/routes.js';
 import { orgMemberPreferenceRoutes, preferenceRoutes } from './preferences/routes.js';
 import {
   environmentStateRoutes,
@@ -157,8 +156,8 @@ import { questionRoutes } from './questions/routes.js';
 import { releaseBatchRoutes } from './release-batch/routes.js';
 import { requirementRoutes } from './requirements/routes.js';
 import { mcpMessageBody, mcpNoBody, rootRoutes } from './root-routes.js';
-import { projectRunnerRoutes, runnerRoutes } from './runners/routes.js';
-import { runStandingRoutes } from './runs/routes.js';
+import { projectRunnerRoutes, runnerLoadRoutes, runnerRoutes } from './runners/routes.js';
+import { projectSnapshotRoutes, runStandingRoutes } from './runs/routes.js';
 import { scheduleRoutes } from './schedules/routes.js';
 import { skillFactsRoutes } from './skill-facts/routes.js';
 import {
@@ -170,7 +169,6 @@ import {
   skillStudioRoutes,
 } from './skills/routes.js';
 import { suggestionRoutes } from './suggestions/routes.js';
-import { taskIssueRoutes, taskRoutes } from './tasks/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
 import { webhookInboundRoutes } from './webhooks/routes.js';
 import { workflowJsonSchemas } from './workflows/index.js';
@@ -313,8 +311,6 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issues', issueSteerRoutes);
   app.route('/api/issues', issueCriteriaRoutes);
   app.route('/api/issues', contractWaitRoutes);
-  app.route('/api/issues', taskIssueRoutes);
-  app.route('/api/tasks', taskRoutes);
   app.route('/api/body', bodyRoutes);
   app.route('/api/comments', commentRoutes);
   app.route('/api/attachments', attachmentRoutes);
@@ -374,7 +370,6 @@ function mountAdminAndDeviceRoutes(app: Hono<{ Variables: RequestIdVars }>): voi
 
 /** Pipeline analytics, release batches, schedules, knowledge and the remaining resources. */
 function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
-  app.route('/api/pipeline/registry', pipelineRegistryRoutes);
   app.route('/api/pipeline', pipelineAnalyticsRoutes);
   app.route('/api/projects', releaseBatchRoutes);
   app.route('/api/projects', projectCostAnalyticsRoutes);
@@ -390,6 +385,8 @@ function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/app-config', appConfigRoutes);
   app.route('/api/runners', runnerRoutes);
 
-  app.route('/api/projects', pmReadRoutes);
+  app.route('/api/projects', projectSnapshotRoutes);
+  app.route('/api/projects', issueGraphRoutes);
+  app.route('/api/projects', runnerLoadRoutes);
   app.route('/api/projects', agentSessionProjectReadRoutes);
 }

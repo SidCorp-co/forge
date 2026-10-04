@@ -3,14 +3,14 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 
-export const DEPLOY_CONFIRM_METADATA_KEY = '__forge_deploy_confirm';
-export const DEPLOY_CLOSE_PENDING_METADATA_KEY = '__forge_deploy_close_pending';
+const DEPLOY_CONFIRM_METADATA_KEY = '__forge_deploy_confirm';
+const DEPLOY_CLOSE_PENDING_METADATA_KEY = '__forge_deploy_close_pending';
 
 export { DEPLOY_CONFIRM_WINDOW_MS };
 
-export type DeployConfirmationStatus = 'pending' | 'succeeded' | 'failed';
+type DeployConfirmationStatus = 'pending' | 'succeeded' | 'failed';
 
-export interface DeployConfirmation {
+interface DeployConfirmation {
   bindingId: string;
   /** `null` while the dispatch is enqueued and Coolify has not named a deployment yet. */
   deploymentUuid: string | null;
@@ -32,7 +32,7 @@ export interface DeployLockRef {
 }
 
 /** Key for the placeholder a dispatcher opens before the targets are known. */
-export const dispatchHoldKey = (requestId: string): string => `dispatch:${requestId}`;
+const dispatchHoldKey = (requestId: string): string => `dispatch:${requestId}`;
 /** Key for a real per-target hold, once Coolify has named the deployment. */
 export const targetHoldKey = (deliveryId: string): string => `target:${deliveryId}`;
 
@@ -191,7 +191,7 @@ export async function settleDeployTarget(args: {
   return readDeployHolds(args.runId);
 }
 
-export type DeployGateVerdict =
+type DeployGateVerdict =
   | { verdict: 'clear' }
   | { verdict: 'defer'; confirmed: number; total: number }
   | { verdict: 'failed'; detail: string };

@@ -48,7 +48,7 @@ export function issueArchiveSide(includeArchived: boolean | undefined): SQL[] {
 
 const refList = z.array(z.string().trim().min(1).max(40)).max(10_000);
 
-export const issueArchiveFilterSchema = z
+const issueArchiveFilterSchema = z
   .object({
     keys: refList.min(1).optional(),
     statuses: z.array(z.enum(issueStatuses)).min(1).optional(),
@@ -65,10 +65,10 @@ export const issueArchiveRequestSchema = z
   .object({ filter: issueArchiveFilterSchema, dryRun: z.boolean().optional() })
   .strict();
 
-export type IssueArchiveFilter = z.infer<typeof issueArchiveFilterSchema>;
+type IssueArchiveFilter = z.infer<typeof issueArchiveFilterSchema>;
 export type ArchiveDirection = 'archive' | 'unarchive';
 
-export type IssueArchiveRefusal =
+type IssueArchiveRefusal =
   | { kind: 'unknown_key'; field: 'keys' | 'exclude'; key: string; message: string }
   | { kind: 'status_not_terminal'; status: IssueStatus; message: string }
   | { kind: 'not_terminal'; key: string; status: IssueStatus; message: string }
@@ -83,7 +83,7 @@ export type IssueArchiveRefusal =
       message: string;
     };
 
-export type IssueArchiveReport = {
+type IssueArchiveReport = {
   direction: ArchiveDirection;
   dryRun: boolean;
   /** Every key the filter matched, in sequence order. */
@@ -352,7 +352,7 @@ function isDeadlock(err: unknown): boolean {
  * Postgres aborts one. The aborted one wrote nothing, so it runs again, now behind the winner.
  * Anything else, and a third deadlock, is thrown as it came.
  */
-export async function withDeadlockRetry<T>(run: () => Promise<T>): Promise<T> {
+async function withDeadlockRetry<T>(run: () => Promise<T>): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
       return await run();
@@ -363,7 +363,7 @@ export async function withDeadlockRetry<T>(run: () => Promise<T>): Promise<T> {
 }
 
 /** The refusal an edge write or a transition gets when it names an archived issue. */
-export function archivedIssueSentence(key: string, projectId: string): string {
+function archivedIssueSentence(key: string, projectId: string): string {
   return `${key} is archived. Unarchive it first — POST /api/projects/${projectId}/issues/unarchive with {"filter":{"keys":["${key}"]}} — then retry`;
 }
 

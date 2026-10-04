@@ -52,7 +52,7 @@ export function nameTakenError(existing: ExistingAttachmentRef, scope: string): 
   );
 }
 
-export interface PersistIssueAttachmentInput {
+interface PersistIssueAttachmentInput {
   issueId: string;
   name: string;
   mime: string;
@@ -78,11 +78,7 @@ export interface PersistedIssueAttachment {
  * Returns the type the row will be stored under, which is read from the BYTES
  * and only then narrowed by the name (ISS-957).
  */
-export function validateIssueAttachment(input: {
-  name: string;
-  mime: string;
-  bytes: Buffer;
-}): string {
+function validateIssueAttachment(input: { name: string; mime: string; bytes: Buffer }): string {
   if (!input.name) throw refuse('INVALID_NAME', 'name is empty after sanitisation', '/name');
   if (nameExceedsByteBudget(input.name))
     throw refuse(

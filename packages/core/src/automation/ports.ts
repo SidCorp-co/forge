@@ -26,7 +26,7 @@ export interface ScheduleStreak {
   streakStartedAt: Date | null;
 }
 
-export interface AutomationPorts {
+interface AutomationPorts {
   reportRows: (scope: {
     projectId: string;
     scheduleId?: string;

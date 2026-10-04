@@ -3,9 +3,8 @@ import type { IssueUpdateRefusalCode } from '@forge/contracts/issues';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { BodyInvalidError } from '../body/errors.js';
-import { BODY_FORMATS } from '../body/formats.js';
 import { bodyInvalidHttp } from '../body/http-error.js';
-import { type IssueStatus, issueComplexities, issuePriorities, jobTypes } from '../db/schema.js';
+import { type IssueStatus, jobTypes } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
@@ -18,11 +17,10 @@ import { logger } from '../observability/logger.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { registerIssueAttributeRoutes } from './attributes/routes.js';
 import { heldTakeRefusal } from './blocked-by.js';
-import { CREATE_ENTRY_STATUSES, createIssue } from './create-service.js';
+import { createIssue } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
 import { serializeIssue } from './detail-projection.js';
 import { dispatchGatesOf } from './dispatch-gates.js';
-import { attachmentInputSchema, labelAttachItemSchema } from './input-schemas.js';
 import { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
 import {
   issueRouteIdParamSchema,
@@ -48,7 +46,6 @@ import {
   isProjectMember,
   jobHistoryForStep,
 } from './read-service.js';
-import { issueRelationInputSchema } from './relations-service.js';
 import { issueCreateSchema, issueFiltersSchema, issuePatchSchema } from './request-schemas.js';
 import { deleteIssue } from './service.js';
 import { refuseLegacyStatusFields } from './status-input.js';
@@ -494,6 +491,7 @@ export { backlogStreamRoutes } from './backlog/routes.js';
 export { issueCriteriaRoutes } from './criteria/routes.js';
 export { issueDependencyRoutes } from './dependency-routes.js';
 export { issueExtrasRoutes } from './extras-routes.js';
+export { issueGraphRoutes } from './graph-routes.js';
 export { issueMergeRoutes } from './merge-routes.js';
 export { searchRoutes } from './search.js';
 export { issueStandingRoutes } from './standing-routes.js';

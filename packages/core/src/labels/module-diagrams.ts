@@ -14,9 +14,9 @@ import { type FlowArrow, type ModuleFlow, parseModuleFlow } from './module-diagr
 const refuse = refuser<LabelRefusalCode>('LABEL_REFUSED');
 
 export const moduleDiagramKinds = ['mindmap', 'context', 'user-flow', 'swimlane'] as const;
-export type ModuleDiagramKind = (typeof moduleDiagramKinds)[number];
+type ModuleDiagramKind = (typeof moduleDiagramKinds)[number];
 
-export interface ModuleNodeSnapshot {
+interface ModuleNodeSnapshot {
   body: string;
   relatedIssueCount: number;
   actor: string | null;

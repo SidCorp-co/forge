@@ -8,7 +8,7 @@ const BLANK_BODY =
   'the comment body is whitespace only — write the sentence somebody is meant to read';
 
 /** Stored as written: leading whitespace decides what markdown draws, so this door decides none of it. */
-export const commentBodyField = z
+const commentBodyField = z
   .string()
   .max(COMMENT_BODY_MAX_CHARS)
   .refine((body) => body.trim().length > 0, { message: BLANK_BODY });

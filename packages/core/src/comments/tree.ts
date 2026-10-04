@@ -8,7 +8,7 @@ import type { RecordLens } from '../messaging/record-screen.js';
  * The record a comment carries, with the reading its project is drawn under, and where its content
  * was read from: the typed event it was mirrored into, or the fence itself for a legacy comment.
  */
-export type CommentRecord = ForgeRecord & {
+type CommentRecord = ForgeRecord & {
   readonly lens: RecordLens;
   readonly source: 'event' | 'comment';
   readonly eventId: string | null;
@@ -111,7 +111,7 @@ export function buildCommentTree<R extends CommentRow>(
   return roots;
 }
 
-export function walkCommentTree<R extends CommentRow>(
+function walkCommentTree<R extends CommentRow>(
   nodes: CommentNode<R>[],
   visit: (node: CommentNode<R>) => void,
 ): void {

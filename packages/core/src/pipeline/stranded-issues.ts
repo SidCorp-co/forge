@@ -15,7 +15,7 @@ import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js
  * the row it surfaces and so never removes it from its own candidate set. `sweep-cursor.ts` is the
  * other half: the pass resumes after the last key it read and wraps at the end.
  */
-export const STRANDED_SCAN_LIMIT = 200;
+const STRANDED_SCAN_LIMIT = 200;
 
 /** One pass's memo of `projectAdminUserIdsFor`, filled in one round trip before the loop. */
 type AdminsByProject = ReadonlyMap<string, string[]>;
@@ -28,7 +28,7 @@ type AdminsByProject = ReadonlyMap<string, string[]>;
  * the first case at 29h, and far below the 7–12 days the three known cases
  * actually sat.
  */
-export const STRANDED_GRACE_MS = 6 * 60 * 60 * 1000;
+const STRANDED_GRACE_MS = 6 * 60 * 60 * 1000;
 
 export interface StrandedIssuesResult {
   /** Issues matching the stranded predicate this tick. */

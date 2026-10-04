@@ -14,7 +14,7 @@ import {
 } from '@forge/contracts/onboarding';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
-export type QuestionnaireRefusal = OnboardingRefusal;
+type QuestionnaireRefusal = OnboardingRefusal;
 
 const EVIDENCE = /^(\S+:\S+|(REQ|ISS|FB|BC)-\d+\b.*|design \S+.*|workflow \S+.*)$/;
 
@@ -124,7 +124,7 @@ export function alreadyOpenRefusal(
   };
 }
 
-export interface BatchState {
+interface BatchState {
   id: string;
   status: QuestionnaireStatus;
   round: number;

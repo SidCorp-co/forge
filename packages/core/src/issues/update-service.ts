@@ -22,7 +22,7 @@ import {
 
 const refuse = refuser<IssueUpdateRefusalCode>('ISSUE_UPDATE_REFUSED');
 
-export type IssueUpdateInput = {
+type IssueUpdateInput = {
   issueId: string;
   /** Plain column writes, already filtered through `collectIssueFieldUpdates`. */
   updates: Record<string, unknown>;

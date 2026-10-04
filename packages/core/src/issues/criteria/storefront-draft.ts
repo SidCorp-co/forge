@@ -10,7 +10,7 @@ import type { VerdictIdentity, VerdictRefusal } from './verdict-input.js';
 
 type StorefrontDraft = Extract<VerdictIdentity, { kind: 'storefront_draft' }>;
 
-export interface DraftCorroboration {
+interface DraftCorroboration {
   readonly corroboration: VerdictCorroboration;
   readonly note: string | null;
 }
@@ -67,12 +67,12 @@ export const readSourceDraft: DraftReader = async (document, workflowId) => {
   return readStorefrontDraft({ ...storefront, workflowId });
 };
 
-export interface DraftReading {
+interface DraftReading {
   readonly corroboration: VerdictDraftReading;
   readonly note: string | null;
 }
 
-export function currentDraftReading(
+function currentDraftReading(
   judged: { workflowId: string; draftVersion: string },
   reading: StorefrontDraftReading,
 ): DraftReading {

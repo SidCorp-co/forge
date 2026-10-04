@@ -19,7 +19,6 @@ export function isPipelineSessionKind(kind: AgentSessionKind): boolean {
 
 export const NON_CLIENT_SESSION_KINDS = [
   'pipeline',
-  'pm',
   'master',
   'run_session',
 ] as const satisfies readonly AgentSessionKind[];

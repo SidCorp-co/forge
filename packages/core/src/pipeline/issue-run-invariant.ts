@@ -17,12 +17,12 @@ import { sweepGroupKey } from './stranded-issues.js';
  * is a second or two; this is minutes, so what it excludes is the race and not
  * the condition.
  */
-export const ORPHAN_ASSERTION_GRACE_MS = 10 * 60 * 1000;
+const ORPHAN_ASSERTION_GRACE_MS = 10 * 60 * 1000;
 
 /**
  * How long a named orphan stays named before it may be named again.
  */
-export const ORPHAN_RENOTIFY_MS = 24 * 60 * 60 * 1000;
+const ORPHAN_RENOTIFY_MS = 24 * 60 * 60 * 1000;
 
 export interface IssueRunInvariantResult {
   /** Issues matching the predicate this tick. */
@@ -34,7 +34,7 @@ export interface IssueRunInvariantResult {
 /**
  * The notification type this reports under.
  */
-export function orphanedAssertionResolutionKey(issueId: string): string {
+function orphanedAssertionResolutionKey(issueId: string): string {
   return `issue:${issueId}:run-assertion-orphaned`;
 }
 

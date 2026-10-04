@@ -116,7 +116,7 @@ export async function ensureAgentSessionForJob(
     const skillName = deriveSkillName(job.payload);
     const title = buildTitle(skillName, job.type, issueTitle);
 
-    const kind: AgentSessionKind = job.type === 'pm' ? 'pm' : 'pipeline';
+    const kind: AgentSessionKind = 'pipeline';
     const metadata: Record<string, unknown> = {
       jobId: job.id,
       jobType: job.type,
@@ -148,8 +148,7 @@ export async function ensureAgentSessionForJob(
     // Pipeline sessions enter `queued`; worker CAS flips to `running` on
     // first write (routes.ts PATCH/send). Separates "waiting for worker"
     // from "actually streaming" so the sweeper can distinguish zombies.
-    // ISS-101 — inherit the parent job's pipeline_run so issue-driven and
-    // PM sessions share the same run lifecycle as their job.
+    // ISS-101 — inherit the parent job's pipeline_run so the session shares its job's run lifecycle.
     const parentSessionId = await resolveHoldingMaster(job);
     const inserted = await insertSessionRow(db, {
       projectId: job.projectId,
@@ -247,7 +246,7 @@ export async function syncAgentSessionLifecycle(
 ): Promise<void> {
   if (!job.agentSessionId) {
     // ISS-101 — even without a linked session, close one-shot runs whose
-    // backing job terminated (e.g. PM jobs that never spawned a session).
+    // backing job terminated without spawning a session.
     if (!options?.retryPending) {
       try {
         const runOutcome =

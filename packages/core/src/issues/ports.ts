@@ -17,8 +17,22 @@ import type { KernelActor } from '../lifecycle/index.js';
 /** The project document as the issue kernel reads it. */
 export interface IssueProjectDocument {
   environments: Record<string, { tier: string }>;
-  source: { type: string; storefront?: { provider: string; binding: string } };
+  source: {
+    type: 'git' | 'storefront' | 'none';
+    storefront?: { provider: string; binding: string };
+  };
   delivery?: Parameters<typeof verdictsRequiredOf>[0];
+  plan?: { approval: { required: boolean } } | undefined;
+}
+
+/** Whether the issue's requirement moved since its plan was written; null when it delivers none. */
+interface IssuePlanDrift {
+  key: string;
+  plannedRevision: number | null;
+  currentRevision: number | null;
+  changed: boolean;
+  repinned: boolean;
+  detail: string;
 }
 
 export type StorefrontDraftReading =
@@ -53,7 +67,7 @@ export interface DispatchGateError extends Error {
 
 export type GateReader = Pick<Tx, 'execute' | 'select'>;
 
-export type UsageTotalsSelection = {
+type UsageTotalsSelection = {
   estimatedCost: SQL<number>;
   inputTokens: SQL<number>;
   outputTokens: SQL<number>;
@@ -63,15 +77,15 @@ export type UsageTotalsSelection = {
   sampleCount: SQL<number>;
 };
 
-export type UsageTotals = { readonly [K in keyof UsageTotalsSelection]: number };
+type UsageTotals = { readonly [K in keyof UsageTotalsSelection]: number };
 
-export interface StoredFiles {
+interface StoredFiles {
   put(key: string, data: Buffer | Uint8Array, mime: string): Promise<{ path: string }>;
   get(path: string): Promise<Buffer>;
   delete(path: string): Promise<void>;
 }
 
-export interface IssuePorts {
+interface IssuePorts {
   settleOpenQuestions: (
     tx: Tx,
     args: {
@@ -101,6 +115,7 @@ export interface IssuePorts {
   messageRefusalHttp: (err: unknown) => RefusalError | null;
 
   readProjectDocument: (projectId: string) => Promise<{ document: IssueProjectDocument } | null>;
+  planDriftOf: (executor: Pick<Tx, 'execute'>, issueId: string) => Promise<IssuePlanDrift | null>;
   readLandingBranches: (
     projectId: string,
   ) => Promise<{ defaultBranch: string | null; promoted: string | null }>;
@@ -225,7 +240,7 @@ export function provideIssuePorts(given: IssuePorts): void {
   ports = given;
 }
 
-export function issuePorts(): IssuePorts {
+function issuePorts(): IssuePorts {
   if (!ports) {
     throw new Error(
       'issues: no ports were provided; the process entry calls provideIssuePorts before it serves',
@@ -251,6 +266,8 @@ export const messageRefusalHttp: IssuePorts['messageRefusalHttp'] = (err) =>
 
 export const readProjectDocument: IssuePorts['readProjectDocument'] = (projectId) =>
   issuePorts().readProjectDocument(projectId);
+export const planDriftOf: IssuePorts['planDriftOf'] = (executor, issueId) =>
+  issuePorts().planDriftOf(executor, issueId);
 export const readLandingBranches: IssuePorts['readLandingBranches'] = (projectId) =>
   issuePorts().readLandingBranches(projectId);
 export const issueRefPattern: IssuePorts['issueRefPattern'] = (prefixes) =>

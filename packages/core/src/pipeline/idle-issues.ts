@@ -53,9 +53,9 @@ const NOTHING_LIVE_ON_THIS_ISSUE = sql`NOT ${issueWorkInFlightSql({
 })}`;
 
 /** How many rows one arm reads per pass, matching the other sweep axes. */
-export const IDLE_SCAN_LIMIT = 200;
+const IDLE_SCAN_LIMIT = 200;
 
-export function strandResolutionKey(issueId: string): string {
+function strandResolutionKey(issueId: string): string {
   return `issue:${issueId}:idle`;
 }
 

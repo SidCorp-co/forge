@@ -228,7 +228,6 @@ async function alertRunnerStarved(starvedGraceSeconds: number): Promise<AdminAle
     JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
     JOIN projects p ON p.id = j.project_id
     WHERE j.status = 'queued'
-      AND j.type <> 'pm'
       AND pr.status = 'running'
       AND j.queued_at < now() - (${starvedGraceSeconds}::int * interval '1 second')
   `);
@@ -250,8 +249,7 @@ async function alertRunnerStarved(starvedGraceSeconds: number): Promise<AdminAle
       JOIN pipeline_runs r ON r.id = j.pipeline_run_id
       WHERE j.project_id = ${c.project_id}
         AND j.status = 'queued'
-        AND j.type <> 'pm'
-        AND r.status = 'running'
+          AND r.status = 'running'
         AND j.queued_at < now() - (${starvedGraceSeconds}::int * interval '1 second')
         AND (j.retry_after_at IS NULL OR j.retry_after_at <= now())
         AND NOT (${predicates.issueBusySession})

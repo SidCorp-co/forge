@@ -38,7 +38,7 @@ import {
 } from './module-standing.js';
 import { listFeedbackAs } from './ports.js';
 
-export interface ModuleViewer {
+interface ModuleViewer {
   userId: string;
   agency: ActorAgency;
 }

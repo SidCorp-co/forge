@@ -13,7 +13,7 @@ export const SHARED_ISSUE_PATCH_FIELDS = [
   'detectorKey',
 ] as const;
 
-export interface CollectedIssueFieldUpdates {
+interface CollectedIssueFieldUpdates {
   updates: Record<string, unknown>;
   /** What the body sanitizer removed, for the transport to hand back. */
   warnings: string[];

@@ -4,7 +4,7 @@ import { notifications, projects } from '../db/schema.js';
 import { logger } from '../observability/logger.js';
 import { createNotification, resolveNotifications } from './ports.js';
 
-export function wedgeResolutionKey(entityId: string): string {
+function wedgeResolutionKey(entityId: string): string {
   return `wedge:${entityId}`;
 }
 
@@ -38,7 +38,7 @@ export async function resolvePipelineWedge(entityId: string): Promise<number> {
 
 export type WedgeHop = 'ack' | 'claim' | 'heartbeat' | 'result' | 'dispatch';
 
-export interface PipelineWedgeEvent {
+interface PipelineWedgeEvent {
   projectId: string;
   issueId?: string | null;
   /** WHERE — which loop hop missed. */

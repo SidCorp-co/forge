@@ -8,12 +8,12 @@ export type BacklogStreamKind = 'ordering' | 'alike';
 
 export type TruncationReason = 'items' | 'budget' | null;
 
-export interface BacklogBound {
+interface BacklogBound {
   items: number;
   budgetMs: number;
 }
 
-export interface MetaFrame {
+interface MetaFrame {
   type: 'meta';
   kind: BacklogStreamKind;
   projectId: string;
@@ -22,20 +22,20 @@ export interface MetaFrame {
   at: string;
 }
 
-export interface ItemFrame {
+interface ItemFrame {
   type: 'item';
   seq: number;
   payload: unknown;
 }
 
-export interface ProgressFrame {
+interface ProgressFrame {
   type: 'progress';
   emitted: number;
   total: number;
   elapsedMs: number;
 }
 
-export interface EndFrame {
+interface EndFrame {
   type: 'end';
   complete: boolean;
   truncated: boolean;
@@ -44,7 +44,7 @@ export interface EndFrame {
   total: number;
 }
 
-export interface ErrorFrame {
+interface ErrorFrame {
   type: 'error';
   code: string;
   message: string;
@@ -55,7 +55,7 @@ export type BacklogFrame = MetaFrame | ItemFrame | ProgressFrame | EndFrame | Er
 
 export const SHUTTING_DOWN = 'SERVER_SHUTTING_DOWN' as const;
 
-export function frameData(frame: BacklogFrame): string {
+function frameData(frame: BacklogFrame): string {
   if (frame.type !== 'item') return JSON.stringify(frame);
   const { payload, ...rest } = frame;
   return JSON.stringify({ ...rest, ...(payload as Record<string, unknown>) });

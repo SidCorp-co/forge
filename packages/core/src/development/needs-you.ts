@@ -30,7 +30,7 @@ import { holds } from '../permissions/index.js';
 import { listReleases } from '../release-batch/release-read.js';
 import { listRequirementsAs } from '../requirements/read.js';
 
-export interface NeedsYouViewer {
+interface NeedsYouViewer {
   userId: string;
   agency: ActorAgency;
   isAdmin: boolean;

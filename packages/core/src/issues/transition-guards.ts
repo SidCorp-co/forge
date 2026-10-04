@@ -43,18 +43,17 @@ import type { Tx } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import type { Refusal } from '../lib/refusal.js';
 import { isRefusal } from '../lib/refusal.js';
-import type { Guard, GuardInput } from '../lifecycle/transition.js';
+import type { Guard, GuardInput } from '../lifecycle/index.js';
 import {
   type PermissionFacts,
   permissionFactsOf,
   permissionRefusal,
 } from '../permissions/index.js';
-import { readProjectDocument } from '../project-config/service.js';
-import { planDriftOf } from '../requirements/plan-drift.js';
 import { refuseHeldTake } from './blocked-by.js';
 import type { CurrentDrafts } from './criteria/storefront-draft.js';
 import { isDispatchGateError } from './dispatch-gates.js';
 import { mergeNotRecorded } from './merged-at.js';
+import { planDriftOf, readProjectDocument } from './ports.js';
 import {
   type CriteriaEvidence,
   readMoveDrafts,
@@ -69,7 +68,7 @@ export type GuardCode = Exclude<
   'NO_OP' | 'STALE_TRANSITION' | 'WAITING_KIND_NOT_APPLICABLE' | 'ISSUE_ARCHIVED' | 'OPEN_QUESTIONS'
 >;
 
-export interface GuardFault {
+interface GuardFault {
   code: GuardCode;
   detail: string;
   details: Record<string, unknown>;
@@ -80,7 +79,7 @@ const list = (statuses: readonly string[]) => statuses.map(quote).join(', ');
 
 /** The moves out of `from` a person may name: a park's return (to the status it left, or any
  *  parkable one where none is recorded), then the machine's other lifecycle exits. */
-export function allowedExits(from: IssueStatus, leftStatus: IssueStatus | null): IssueStatus[] {
+function allowedExits(from: IssueStatus, leftStatus: IssueStatus | null): IssueStatus[] {
   const out: IssueStatus[] = [];
   for (const e of ISSUE_MACHINE.edges) {
     if (e.from !== from || e.recovery || out.includes(e.to)) continue;
@@ -122,7 +121,7 @@ export function edgeFault(args: {
   };
 }
 
-export interface GuardContext {
+interface GuardContext {
   issue: { id: string; projectId: string };
   from: IssueStatus;
   to: IssueStatus;
@@ -140,7 +139,7 @@ export interface GuardContext {
 }
 
 /** What the guards read from outside the issue's rows, read before the move takes its lock. */
-export interface IssueMoveFacts {
+interface IssueMoveFacts {
   /** The project document sets `plan.approval.required`. */
   planApprovalRequired: boolean;
   /** The project document requires verdicts for a release (`delivery.verdictsRequired`). */
@@ -433,7 +432,7 @@ function entryGuardsOf(to: IssueStatus): readonly string[] {
   return entry?.guards ?? [];
 }
 
-export type IssueGuardContext = Omit<GuardContext, 'from' | 'to' | 'executor'> & {
+type IssueGuardContext = Omit<GuardContext, 'from' | 'to' | 'executor'> & {
   /** The run a recovery move hands the issue back from: its own hold is the one ending. */
   recoveringRunId?: string | null | undefined;
 };

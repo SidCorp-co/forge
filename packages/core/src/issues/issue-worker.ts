@@ -5,7 +5,7 @@
 import { type LeaseReading, type LeaseVerdict, leaseIsWorkInProgress } from './session-claim.js';
 
 /** The session lanes, richer record first — the order a reader prefers them in. */
-export const SESSION_WORKER_LANES = ['job', 'run_session'] as const;
+const SESSION_WORKER_LANES = ['job', 'run_session'] as const;
 export type SessionWorkerLane = (typeof SESSION_WORKER_LANES)[number];
 
 export interface WorkerSession {

@@ -6,7 +6,6 @@ export {
   type KernelActor,
   type KernelExecutor,
   movedRow,
-  type PriorRow,
   type TransitionArgs,
   type TransitionResult,
   transition,

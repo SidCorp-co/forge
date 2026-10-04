@@ -8,6 +8,8 @@ export interface RunnersPorts {
   mainRunnerHead(): string | null;
   /** The operator's thresholds; the reaper reads how long a runner may stay offline. */
   readThresholds(): Promise<{ ghostRunnerOfflineDays: number }>;
+  /** The live jobs occupying each runner, from the job ledger. */
+  countInFlightByRunner(runnerIds: string[]): Promise<Map<string, number>>;
 }
 
 let provided: RunnersPorts | null = null;

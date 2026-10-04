@@ -3,7 +3,7 @@ import { and, eq, notInArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 
-export interface DetectorKeyClaim {
+interface DetectorKeyClaim {
   /** An existing non-terminal issue already owns this key — comment on it. */
   existingIssueId: string | null;
 }

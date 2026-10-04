@@ -25,7 +25,7 @@ export type IssueRelationInput = {
   validUntil?: string | undefined;
 };
 
-export const RELATION_KINDS = ['blocks', 'relates'] as const;
+const RELATION_KINDS = ['blocks', 'relates'] as const;
 
 /**
  * The wire shape of one `relations` entry, shared by every transport that

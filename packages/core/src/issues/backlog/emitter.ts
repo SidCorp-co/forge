@@ -22,7 +22,7 @@ import {
 import { registerBacklogStream } from './open-streams.js';
 
 /** How often liveness is reported while a producer is still working. */
-export const PROGRESS_INTERVAL_MS = 5_000;
+const PROGRESS_INTERVAL_MS = 5_000;
 
 /** What a source says when it stops: whether it had run out, or was cut off mid-work. */
 export interface SourceDone {
@@ -31,7 +31,7 @@ export interface SourceDone {
 
 export type BacklogSource<T> = AsyncGenerator<T, SourceDone, undefined>;
 
-export interface EmitOptions<T> {
+interface EmitOptions<T> {
   kind: BacklogStreamKind;
   projectId: string;
   /** Matching rows, counted once before the first item. */

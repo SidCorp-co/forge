@@ -115,7 +115,7 @@ async function deliverToPark(issueId: string, commentId: string, body: string): 
 /**
  * Whether a box registered itself to read THIS answer back.
  */
-export async function aBoxWillReadThisAnswer(questionId: string): Promise<boolean> {
+async function aBoxWillReadThisAnswer(questionId: string): Promise<boolean> {
   const [row] = await db
     .select({ id: questionWaiters.id })
     .from(questionWaiters)

@@ -11,8 +11,8 @@ import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { listRunStanding, readRunStanding } from './read.js';
 import { requireHeld } from '../permissions/index.js';
+import { listRunStanding, readRunStanding } from './read.js';
 
 const projectParam = z.object({ id: z.uuid() });
 const runParam = z.object({ id: z.uuid(), runId: z.uuid() });
@@ -27,6 +27,8 @@ const listQuery = z.strictObject({
   offset: z.coerce.number().int().min(0).default(0),
 });
 const noQuery = z.strictObject({});
+
+export { projectSnapshotRoutes } from './snapshot-routes.js';
 
 export const runStandingRoutes = new Hono<{ Variables: AuthVars }>();
 runStandingRoutes.use('/:id/runs/standing', requireAuth(), assertEmailVerified());

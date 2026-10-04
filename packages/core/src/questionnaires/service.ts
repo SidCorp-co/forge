@@ -55,12 +55,12 @@ function questionnaireKernelActor(actor: QuestionnaireActor): KernelActor {
   return { type: 'user', id: actor.userId, agency: actor.agency };
 }
 
-export interface QuestionnaireActor {
+interface QuestionnaireActor {
   userId: string;
   agency: ActorAgency;
 }
 
-export type QuestionnaireOutcome =
+type QuestionnaireOutcome =
   | { ok: true; questionnaire: QuestionnaireView; created?: boolean }
   | { ok: false; refusals: Refusal[] };
 
@@ -118,7 +118,7 @@ function stepOf(item: QuestionnaireItem): QuestionStep {
   };
 }
 
-export interface PostInput {
+interface PostInput {
   projectId: string;
   conversationId: string;
   onboardingId: string | null;
@@ -326,7 +326,7 @@ function answeredStep(
     : choice;
 }
 
-export interface SubmitInput {
+interface SubmitInput {
   projectId: string;
   batchId: string;
   actor: QuestionnaireActor;

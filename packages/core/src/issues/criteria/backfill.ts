@@ -23,11 +23,11 @@ import {
   planIssueBackfill,
 } from './backfill-plan.js';
 
-export const CRITERIA_BACKFILL_KEY = 'iss-55-issue-criteria-and-verdicts';
+const CRITERIA_BACKFILL_KEY = 'iss-55-issue-criteria-and-verdicts';
 
 const WHOLE_SHA = /\b[0-9a-f]{40}\b/giu;
 
-export interface CriteriaBackfillReport {
+interface CriteriaBackfillReport {
   issues: number;
   criteria: number;
   verdicts: number;
@@ -167,7 +167,7 @@ async function insertPlan(
 }
 
 /** Read every issue's criteria and verdicts into the tables. One transaction; the plan decides. */
-export async function backfillCriteria(tx: Tx): Promise<CriteriaBackfillReport> {
+async function backfillCriteria(tx: Tx): Promise<CriteriaBackfillReport> {
   const issueRows = await rows<IssueRow>(
     tx,
     sql`SELECT i.id, i.project_id, i.status, i.acceptance_criteria, i.merged_commit_sha, w.head_sha

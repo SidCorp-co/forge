@@ -131,7 +131,7 @@ export async function commentRowIn(tx: Tx, commentId: string): Promise<EntityCom
 
 type Authors = Awaited<ReturnType<typeof peopleOf>>;
 
-export type CommentEgress = ReturnType<typeof egressReading>;
+type CommentEgress = ReturnType<typeof egressReading>;
 
 export function entityCommentView(
   row: EntityCommentRow,
@@ -232,7 +232,7 @@ async function egressOfScopes(projectId: string, actor: EntityCommentActor, door
   } satisfies Record<CommentScope, CommentEgress>;
 }
 
-export const DECISIONS_DEFAULT_LIMIT = 100;
+const DECISIONS_DEFAULT_LIMIT = 100;
 
 export async function listDecisionsAs(
   actor: EntityCommentActor,

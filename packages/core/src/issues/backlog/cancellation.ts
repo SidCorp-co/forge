@@ -3,7 +3,7 @@
  *  per-seed search — so a client that goes mid-page does not buy the rest of it. Work already in
  *  flight finishes and is discarded, and the first cause wins. */
 
-export type CancelCause = 'disconnect' | 'budget' | 'shutdown';
+type CancelCause = 'disconnect' | 'budget' | 'shutdown';
 
 export class Cancellation {
   private cause: CancelCause | null = null;

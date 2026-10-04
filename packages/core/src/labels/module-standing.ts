@@ -1,4 +1,4 @@
-import type { IssueStandingRow } from '@forge/contracts/issue-standing';
+import type { IssueStandingRow, IssueWaitingKind } from '@forge/contracts/issue-standing';
 import {
   MODULE_ACTIVITY_DAYS,
   MODULE_KEY_PATHS_SHOWN,
@@ -12,7 +12,6 @@ import {
   type ModuleRequirementTrace,
   type ModuleStanding,
 } from '@forge/contracts/modules';
-import type { IssueWaitingKind } from '@forge/contracts/issue-standing';
 import type { WaitingOn } from '@forge/contracts/standing';
 
 export interface ModuleNode {
@@ -131,7 +130,7 @@ function waitingOf(
   };
 }
 
-export function attentionOf(byKind: Record<ModuleOpenKind, number>): ModuleAttentionGroup {
+function attentionOf(byKind: Record<ModuleOpenKind, number>): ModuleAttentionGroup {
   if (byKind.needs_you > 0) return 'needs_you';
   if (byKind.stuck > 0) return 'stuck';
   if (byKind.moving > 0) return 'moving';
@@ -294,13 +293,13 @@ export function activityDays(
   return out;
 }
 
-export interface DeclaredEdge {
+interface DeclaredEdge {
   fromId: string;
   toId: string;
   predicate: string;
 }
 
-export interface ObservedCoupling {
+interface ObservedCoupling {
   aId: string;
   bId: string;
   issueCount: number;
@@ -349,7 +348,7 @@ export function couplingsOf(
   };
 }
 
-export const OPEN_RAIL_ORDER: readonly ModuleOpenKind[] = [
+const OPEN_RAIL_ORDER: readonly ModuleOpenKind[] = [
   'needs_you',
   'stuck',
   'moving',

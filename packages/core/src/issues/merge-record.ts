@@ -7,7 +7,7 @@ import { sqlTimestamp } from '../db/sql-timestamp.js';
 /** The pool or a caller's open transaction. A close stamps inside one; a mark does not. */
 export type MergeRecordExecutor = Pick<Db, 'update' | 'select'>;
 
-export type MergeEvidence =
+type MergeEvidence =
   | {
       kind: 'observed';
       commitSha: string;

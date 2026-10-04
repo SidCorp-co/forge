@@ -6,12 +6,12 @@ import { heldIssuePrefixes, type IssueRefReader } from './issue-prefix-read.js';
 
 const HEAD_REF_SHAPE = /^([A-Za-z][A-Za-z0-9]{1,5})-(\d{1,10})(?:[-_/.]|$)/;
 
-export interface HeadRefReference {
+interface HeadRefReference {
   prefix: string;
   issSeq: number;
 }
 
-export function referenceInHeadRef(headRef: string): HeadRefReference | null {
+function referenceInHeadRef(headRef: string): HeadRefReference | null {
   const hit = HEAD_REF_SHAPE.exec(headRef.trim());
   if (!hit?.[1] || !hit[2]) return null;
   const issSeq = Number(hit[2]);

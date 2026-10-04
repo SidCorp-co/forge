@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 
 const DEFAULT_BATCH_RUNS = 200;
 
-export interface BackfillResult {
+interface BackfillResult {
   runs: number;
   rows: number;
 }

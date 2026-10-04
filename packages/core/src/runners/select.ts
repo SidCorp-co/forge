@@ -1,6 +1,6 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type RunnerType, runners } from '../db/schema.js';
+import type { RunnerType } from '../db/schema.js';
 import { CLAIM_CAPABLE_DEVICE } from './device-cap.js';
 import {
   deviceNotDisabled,
@@ -25,44 +25,12 @@ function poolClause(deviceIds: string[] | null | undefined, column = sql`device_
   )})`;
 }
 
-/**
- * Decide the initial `capabilities` jsonb for a freshly-created runner row.
- *
- * Dev-mode (`NODE_ENV !== 'production'`) defaults `claude-code` runners with
- * `pm: true` so a stock `pnpm dev` setup can pick up PM jobs without an
- * extra opt-in step. Production never auto-grants PM — operators must enable
- * it explicitly via PATCH /api/runners/:id (ISS-18 requirement).
- *
- * Always returns the caller-provided capabilities verbatim when they are
- * supplied, so explicit `{}` from a callsite still clears the default.
- */
+/** The initial `capabilities` jsonb for a freshly-created runner row: what the caller supplied, else none. */
 export function defaultRunnerCapabilities(
-  type: RunnerType,
+  _type: RunnerType,
   provided?: Record<string, unknown>,
 ): Record<string, unknown> {
-  if (provided !== undefined) return provided;
-  if (type === 'claude-code' && process.env.NODE_ENV !== 'production') {
-    return { pm: true };
-  }
-  return {};
-}
-
-/**
- * The `capabilities` jsonb of the device's `claude-code` runner, or `null`
- * when the device has none registered.
- *
- * `capabilities.pm` is the PM opt-in written by {@link defaultRunnerCapabilities}.
- */
-export async function readDeviceClaudeCodeCapabilities(
-  deviceId: string,
-): Promise<Record<string, unknown> | null> {
-  const [runner] = await db
-    .select({ capabilities: runners.capabilities })
-    .from(runners)
-    .where(and(eq(runners.deviceId, deviceId), eq(runners.type, 'claude-code')))
-    .limit(1);
-  if (!runner) return null;
-  return (runner.capabilities ?? {}) as Record<string, unknown>;
+  return provided ?? {};
 }
 
 /**

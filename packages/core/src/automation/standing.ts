@@ -46,7 +46,7 @@ export interface ScheduleFacts {
   owner: AutomationPerson | null;
 }
 
-export type LastFireFacts = LastFire;
+type LastFireFacts = LastFire;
 
 export interface FireFacts extends LastFireFacts {
   scheduleId: string;
@@ -114,7 +114,7 @@ function groupWait(
   return owed(kind, kind === 'admins' ? 'A project admin' : 'A project writer', act, rule);
 }
 
-export function scheduleStateOf(
+function scheduleStateOf(
   s: Pick<ScheduleFacts, 'enabled' | 'owner'>,
   streak: Pick<ScheduleStreak, 'streak' | 'lastCountedAt'> | null,
   lastFire: Pick<LastFireFacts, 'status'> | null,
@@ -221,7 +221,7 @@ export function scheduleStandingOf(
 }
 
 /** Who triages a report: its fire's schedule owner first, otherwise any member with write access. */
-export function triageWaitOf(
+function triageWaitOf(
   fire: { owner: AutomationPerson | null } | null,
   viewer: AutomationViewer,
 ): AutomationWaitingOn {
@@ -244,7 +244,7 @@ export function triageWaitOf(
 }
 
 /** The steward actions a fire's session proposed or applied; feedback and skipped are not proposals. */
-export function proposalsOf(actions: readonly StewardAction[] | null): StewardAction[] {
+function proposalsOf(actions: readonly StewardAction[] | null): StewardAction[] {
   return (actions ?? []).filter((a) => a.kind === 'proposed' || a.kind === 'applied');
 }
 
@@ -270,7 +270,7 @@ export function fireProposals(
   }));
 }
 
-export function producedOf(f: FireFacts, proposals: number): FireProduced {
+function producedOf(f: FireFacts, proposals: number): FireProduced {
   return {
     reports: f.reports,
     newReports: f.newReports,

@@ -3,7 +3,7 @@
 
 import type { Cancellation } from './cancellation.js';
 
-export interface OpenStream {
+interface OpenStream {
   cancellation: Cancellation;
   close: () => Promise<void>;
 }
@@ -13,10 +13,6 @@ const open = new Set<OpenStream>();
 export function registerBacklogStream(stream: OpenStream): () => void {
   open.add(stream);
   return () => open.delete(stream);
-}
-
-export function openBacklogStreamCount(): number {
-  return open.size;
 }
 
 export async function closeBacklogStreams(): Promise<void> {

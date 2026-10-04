@@ -8,7 +8,7 @@ import type { ContentBlock } from '../lib/agent-stream-parser.js';
 /** A transaction, never the pool: the questionnaire writes and its room message commit together. */
 export type TxOnly = Parameters<Parameters<(typeof db)['transaction']>[0]>[0];
 
-export interface QuestionnaireMessage {
+interface QuestionnaireMessage {
   role: 'assistant' | 'user';
   authorUserId: string;
   authorLabel?: string;
@@ -16,7 +16,7 @@ export interface QuestionnaireMessage {
   blocks: readonly ContentBlock[];
 }
 
-export interface QuestionnairePorts {
+interface QuestionnairePorts {
   appendMessagesIn: (
     tx: TxOnly,
     args: { conversationId: string; messages: readonly QuestionnaireMessage[] },

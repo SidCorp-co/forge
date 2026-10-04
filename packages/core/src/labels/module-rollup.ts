@@ -20,12 +20,12 @@ import { issueArchiveSide } from '../issues/index.js';
 
 export const DEFAULT_ACTIVE_WITHIN_DAYS = 30;
 
-export type ModuleCountsRow = Omit<
+type ModuleCountsRow = Omit<
   ModuleRollupRow,
   'path' | 'description' | 'knowledgeEntryId' | 'standing'
 >;
 
-export interface ModuleCountsResponse {
+interface ModuleCountsResponse {
   activeWithinDays: number;
   generatedAt: string;
   modules: ModuleCountsRow[];
@@ -250,7 +250,7 @@ export async function readIssueModuleSets(projectId: string): Promise<Map<string
   return out;
 }
 
-export interface LevelCouplingInput {
+interface LevelCouplingInput {
   nodes: readonly { id: string; parentId: string | null }[];
   declared: readonly { fromId: string; toId: string }[];
   issueModules: ReadonlyMap<string, readonly string[]>;

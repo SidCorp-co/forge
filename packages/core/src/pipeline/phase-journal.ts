@@ -15,7 +15,7 @@ import {
   phaseJournal,
 } from '../db/schema-journal.js';
 
-export interface StartPhaseInput {
+interface StartPhaseInput {
   projectId: string;
   runId: string;
   phase: string;
@@ -24,7 +24,7 @@ export interface StartPhaseInput {
   agentSessionId?: string | null;
 }
 
-export interface EndPhaseInput {
+interface EndPhaseInput {
   runId: string;
   phase: string;
   attempt: number;

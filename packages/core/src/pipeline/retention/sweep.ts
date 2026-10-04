@@ -20,13 +20,13 @@ const MAX_BATCHES = 1000;
 const NAMED_HELD_SESSIONS = 20;
 
 /** The batch shape the delete loop runs at. */
-export interface SweepBounds {
+interface SweepBounds {
   batchSize: number;
   maxBatches: number;
 }
 
 /** What one table's rule did this tick. */
-export interface TableSweepResult {
+interface TableSweepResult {
   table: string;
   /** The window this tick swept at, or null where the rule sweeps nothing. */
   windowDays: number | null;
@@ -52,7 +52,7 @@ export interface TableSweepResult {
 }
 
 /** What the finalise-repair pass did this tick. */
-export interface RepairSweepResult {
+interface RepairSweepResult {
   attempted: number;
   finalized: number;
   /** Sessions that were attempted and still carry no finalisation. */
@@ -65,7 +65,7 @@ export interface RepairSweepResult {
   withTruncatedHistory: string[];
 }
 
-export interface RetentionSweepResult {
+interface RetentionSweepResult {
   durationMs: number;
   deleted: number;
   tables: TableSweepResult[];

@@ -59,7 +59,7 @@ function draftFinding(
  */
 // cm:why a storefront draft stands in for a landed commit only where the work lives on a storefront
 // (`source.type: "storefront"`), and only once the source read the draft back (ISS-91).
-export function evaluateCriteria(
+function evaluateCriteria(
   criteria: readonly CriterionWithVerdict[],
   reopenedAt: Date | null = null,
   source: SourceType = null,

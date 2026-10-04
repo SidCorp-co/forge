@@ -12,7 +12,7 @@ import {
   writeRecordEvent,
 } from './store.js';
 
-export interface ScreenedRecordEventInput extends Omit<WriteRecordEventInput, 'commentId' | 'at'> {
+interface ScreenedRecordEventInput extends Omit<WriteRecordEventInput, 'commentId' | 'at'> {
   readonly projectId: string;
 }
 

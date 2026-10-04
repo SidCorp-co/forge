@@ -1,4 +1,4 @@
-import { type IssueStatus, issueStatuses } from '../db/schema.js';
+import type { IssueStatus } from '../db/schema.js';
 
 /** Which gate the work sits at. Says nothing about what exists. */
 export type Gate =
@@ -13,14 +13,14 @@ export type Gate =
   | 'terminal';
 
 /** Whose move it is for the issue to leave this gate. */
-export type NextActor = 'agent' | 'human' | 'none';
+type NextActor = 'agent' | 'human' | 'none';
 
 export interface StatusAssertion {
   gate: Gate;
   nextActor: NextActor;
 }
 
-export const STATUS_ASSERTIONS: Record<IssueStatus, StatusAssertion> = {
+const STATUS_ASSERTIONS: Record<IssueStatus, StatusAssertion> = {
   draft: { gate: 'intake', nextActor: 'human' },
   open: { gate: 'queue', nextActor: 'agent' },
   approved: { gate: 'build', nextActor: 'human' },
@@ -33,25 +33,6 @@ export const STATUS_ASSERTIONS: Record<IssueStatus, StatusAssertion> = {
   dropped: { gate: 'terminal', nextActor: 'none' },
 };
 
-export const EVIDENCE_FIELDS = {
-  landed: 'issues.merged_at',
-  branch: 'issue_work_state.branch',
-  commit: "issue_step_contexts kind='handoff' payload.commitSha",
-} as const;
-
-/**
- * True when nothing in Forge will move this issue on its own. `open` is the
- * single status a job is dispatched at, so every other live status is a person's
- * move — including the ones that read like work in flight.
- */
-export function awaitsHuman(status: IssueStatus): boolean {
-  return STATUS_ASSERTIONS[status].nextActor === 'human';
-}
-
 export function isTerminalPlacement(status: IssueStatus): boolean {
   return STATUS_ASSERTIONS[status].gate === 'terminal';
 }
-
-export const LIVE_STATUSES: readonly IssueStatus[] = issueStatuses.filter(
-  (s) => !isTerminalPlacement(s),
-);

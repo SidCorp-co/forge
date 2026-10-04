@@ -3,11 +3,11 @@ import { db } from '../db/client.js';
 import { downloadTickets } from '../db/schema.js';
 
 /** Short by design — the TTL is the whole containment for a bearer-in-the-URL. */
-export const DOWNLOAD_TICKET_TTL_MS = 10 * 60 * 1000;
+const DOWNLOAD_TICKET_TTL_MS = 10 * 60 * 1000;
 
 export type DownloadTargetType = 'issue' | 'comment' | 'session';
 
-export interface CreateDownloadTicketInput {
+interface CreateDownloadTicketInput {
   targetType: DownloadTargetType;
   attachmentId: string;
   projectId: string;
@@ -34,7 +34,7 @@ export async function createDownloadTicket(
   return { id: row.id, expiresAt };
 }
 
-export interface ResolvedDownloadTicket {
+interface ResolvedDownloadTicket {
   targetType: DownloadTargetType;
   attachmentId: string;
   projectId: string;
@@ -65,13 +65,4 @@ export async function resolveDownloadTicket(
     attachmentId: row.attachmentId,
     projectId: row.projectId,
   };
-}
-
-/** Delete tickets whose TTL has passed. Called by the same sweep as uploads. */
-export async function purgeExpiredDownloadTickets(): Promise<number> {
-  const rows = await db
-    .delete(downloadTickets)
-    .where(sql`${downloadTickets.expiresAt} < now()`)
-    .returning({ id: downloadTickets.id });
-  return rows.length;
 }

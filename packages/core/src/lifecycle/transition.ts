@@ -64,7 +64,7 @@ function credentialOf(actor: KernelActor): { tokenId: string | null; onBehalfOf:
 }
 
 /** A row as the guards and hooks see it before the write: its id and the status it is leaving. */
-export interface PriorRow<E extends MachineEntity> {
+interface PriorRow<E extends MachineEntity> {
   id: string;
   status: StateOf<E>;
 }

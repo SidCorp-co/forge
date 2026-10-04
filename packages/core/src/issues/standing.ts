@@ -339,7 +339,7 @@ export function deriveIssueStanding(
   };
 }
 
-export interface WaveNode {
+interface WaveNode {
   id: string;
   /** It holds its dependents (`blocked-by.ts:blockerUnsettledSql`). */
   holds: boolean;
@@ -412,7 +412,7 @@ const OPEN_BLOCKER = { label: 'Open blocking issue', kind: 'open_blocker' } as c
 const resumeAct = (at: IssueStatus) =>
   ({ label: `Resume at ${ISSUE_STATUS_LABELS[at]}`, kind: 'resume_park' }) as const;
 
-export interface IssueBlockerInput {
+interface IssueBlockerInput {
   status: IssueStatus;
   leftStatus: IssueStatus | null;
   pausedRun: { runId: string; reading: PipelineReading } | null;

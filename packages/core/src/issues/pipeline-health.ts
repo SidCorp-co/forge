@@ -72,7 +72,7 @@ import { freshRunnerAvailability } from './ports.js';
  * exercise each L1..L4 branch without mocking drizzle. The loader composes
  * this for every requested issue id.
  */
-export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHealth {
+function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHealth {
   const { issue, sessions, jobs: issueJobs, runnerPool } = input;
 
   const queuedJobs = issueJobs.filter((j) => j.status === 'queued');
@@ -177,7 +177,7 @@ type SessionRow = {
   lane: SessionWorkerLane;
 };
 
-export async function hydratePipelineHealthForIssues(
+async function hydratePipelineHealthForIssues(
   projectId: string,
   issueIds: readonly string[],
 ): Promise<Map<string, PipelineHealth>> {

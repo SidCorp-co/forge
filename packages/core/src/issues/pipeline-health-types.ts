@@ -94,7 +94,7 @@ export interface PipelineHealthJob {
   /** Parent `pipeline_runs.status`. The picker requires `running`. */
   pipelineRunStatus?: string | null;
   /** `payload.stageStatus` — the trigger status the enqueuer declared this job
-   *  answers. Null for jobs nobody declared one for (pm, custom). */
+   *  answers. Null for jobs nobody declared one for (custom). */
   stageStatus?: string | null;
   retryAfterAt?: Date | null;
 }

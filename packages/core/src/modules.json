@@ -138,7 +138,6 @@
         "issues",
         "notifications",
         "pipelineRuns",
-        "projects",
         "scheduleRuns",
         "schedules"
       ]
@@ -582,10 +581,6 @@
       "kind": "platform",
       "context": "platform"
     },
-    "pm": {
-      "kind": "domain",
-      "context": "work"
-    },
     "preferences": {
       "kind": "domain",
       "context": "project-config",
@@ -727,13 +722,6 @@
       "context": "design",
       "owns": [
         "suggestions"
-      ]
-    },
-    "tasks": {
-      "kind": "domain",
-      "context": "work",
-      "owns": [
-        "tasks"
       ]
     },
     "uploads": {

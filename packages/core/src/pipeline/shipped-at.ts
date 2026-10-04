@@ -1,6 +1,6 @@
 import { type SQL, sql } from 'drizzle-orm';
 
-export const SHIPPED_STATUSES = ['closed', 'released', 'awaiting_release'] as const;
+const SHIPPED_STATUSES = ['closed', 'released', 'awaiting_release'] as const;
 
 const shippedTransition = (alias: string) => sql`
   ${sql.raw(alias)}.action = 'issue.statusChanged'
@@ -9,7 +9,7 @@ const shippedTransition = (alias: string) => sql`
     sql`, `,
   )})`;
 
-export interface FirstShippedWindow {
+interface FirstShippedWindow {
   projectIds: readonly string[] | null;
   from: SQL;
   until?: SQL;

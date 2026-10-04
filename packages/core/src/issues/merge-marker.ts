@@ -29,7 +29,7 @@ import { contractDrift, postIssueNotice } from './ports.js';
 import { findIssueById, type IssueRow } from './read-service.js';
 import { collectWorkEvidence, findMissingWorkEvidence } from './work-evidence.js';
 
-export type AuditComment = { id: string; body: string; parentId: string | null };
+type AuditComment = { id: string; body: string; parentId: string | null };
 
 /**
  * ISS-959 — the commit a merged mark was made at, on both doors.
@@ -63,7 +63,7 @@ async function resolveRecordedCommit(issueId: string): Promise<string | null> {
   }
 }
 
-export async function writeAuditComment(
+async function writeAuditComment(
   issueId: string,
   authorId: string,
   body: string,
@@ -77,7 +77,7 @@ const refuse = refuser<MergeRefusalCode | 'CONTRACT_DRIFT' | 'CONTRACT_LANDING_U
   'MERGE_MARK_REFUSED',
 );
 
-export type MergeMarkerActor = {
+type MergeMarkerActor = {
   agency: ActorAgency;
   /** Who the audit comment is attributed to. */
   commentAuthorId: string;

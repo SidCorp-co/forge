@@ -1,9 +1,9 @@
 import { asc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
-import { countInFlightByRunner } from './ports.js';
+import { runnersPorts } from './ports.js';
 
-export type RunnerLoad = {
+type RunnerLoad = {
   id: string;
   type: string;
   status: string;
@@ -27,7 +27,7 @@ export async function readRunnerLoad(projectId: string): Promise<RunnerLoad[]> {
 
   if (runnerRows.length === 0) return [];
 
-  const inFlightById = await countInFlightByRunner(runnerRows.map((r) => r.id));
+  const inFlightById = await runnersPorts().countInFlightByRunner(runnerRows.map((r) => r.id));
 
   return runnerRows.map((r) => ({ ...r, inFlight: inFlightById.get(r.id) ?? 0 }));
 }

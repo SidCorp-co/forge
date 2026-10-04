@@ -35,7 +35,6 @@ export {
   type FailureAction,
   type FailureKind,
 } from './failure-classifier.js';
-export { handoffInjectSteps } from './handoff-policy.js';
 export { type IdleIssuesResult, reconcileIdleIssues } from './idle-issues.js';
 export {
   alarmAgedHolds,
@@ -60,7 +59,6 @@ export { registerPhaseJournalClose } from './phase-journal-close.js';
 export { providePipelinePorts } from './ports.js';
 export { runReconcilerOnce } from './reconciler.js';
 export { classifyVerdict, JOB_TYPE_ENTRY_STATUS, verifyRecovery } from './recovery-verifier.js';
-export { RUNNER_CAPABILITIES } from './registry.js';
 export { NO_PROGRESS_ROUNDS } from './reopen-policy.js';
 export { resolvedWindowDaysFor, retentionRuleFor } from './retention/policy.js';
 export { runRetentionSweep } from './retention/sweep.js';
@@ -100,14 +98,7 @@ export {
   reapStaleReleaseBatchClaims,
   type StaleReleaseBatchClaimsResult,
 } from './stale-release-claims.js';
-export {
-  type HandoffScope,
-  type HandoffStep,
-  isHandoffStep,
-  renderDriveTerminationBlock,
-  renderTerminationBlock,
-  type StepHandoffPayload,
-} from './step-handoff-schema.js';
+export { type HandoffStep, isHandoffStep, type StepHandoffPayload } from './step-handoff-schema.js';
 export {
   detectOwedCloses,
   detectStrandedIssues,

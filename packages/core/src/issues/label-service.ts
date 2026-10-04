@@ -4,7 +4,7 @@ import { db } from '../db/client.js';
 import { issueLabels, type LabelKind, labels } from '../db/schema.js';
 import { refuser } from '../lib/refusal.js';
 
-export type IssueLabelLite = {
+type IssueLabelLite = {
   id: string;
   name: string;
   color: string;
@@ -43,7 +43,7 @@ export async function listIssueLabels(issueId: string): Promise<IssueLabelLite[]
 
 const refuse = refuser<LabelAttachRefusalCode>('LABELS_REFUSED');
 
-export const LABEL_UUID_PATTERN =
+const LABEL_UUID_PATTERN =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 /**
