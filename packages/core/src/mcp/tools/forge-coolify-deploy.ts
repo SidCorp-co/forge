@@ -9,7 +9,7 @@
  * that goes stale. ISS-925 added the controls beside deploy: `cancel`,
  * `rollback-images`, `rollback`, `applications`, `targets`.
  *
- * Authorization is `project.read`, raised to `project.write` for the three actions that change something;
+ * Authorization is `project.read`, raised to `deploys.run` for the three actions that change something;
  * prod safety is the human-confirm gate inside `tryDispatchCoolifyRelease` and
  * `prodActionNeedsHumanConfirm`, not RBAC. No DEVICE_REQUIRED entry — the tool
  * has no runner dependency.
@@ -46,6 +46,7 @@ import {
   zodToMcpSchema,
 } from './lib.js';
 import { requireCan } from '../../permissions/index.js';
+import { requireCoolifyRun } from '../../integrations/coolify/access.js';
 
 const inputSchema = z
   .object({
@@ -193,7 +194,7 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Coolify identity and `found:false` when Coolify does not list the bound uuid — which is how a ' +
     'wrong binding is visible without opening Coolify. ' +
     'Project scope comes from the X-Forge-Project-Slug header (or an explicit projectId). ' +
-    'Authorization: project membership.',
+    'Authorization: project membership; deploy, cancel and rollback need deploys.run.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
@@ -240,7 +241,7 @@ async function dispatchAction(
 
     case 'deploy': {
       const projectId = await resolveProjectId(input, ctx);
-      await requireCan({ userId: principal.userId }, 'project.write', projectId);
+      await requireCoolifyRun({ userId: principal.userId }, projectId, 'deploy');
       return runCoolifyDeploy({
         projectId,
         ...(input.issueId ? { issueId: input.issueId } : {}),
@@ -368,7 +369,7 @@ async function dispatchControlAction(
   switch (input.action) {
     case 'cancel': {
       const projectId = await resolveProjectId(input, ctx);
-      await requireCan({ userId: principal.userId }, 'project.write', projectId);
+      await requireCoolifyRun({ userId: principal.userId }, projectId, 'cancel');
       return runCoolifyCancel({
         projectId,
         ...(input.integrationId ? { integrationId: input.integrationId } : {}),
@@ -386,7 +387,7 @@ async function dispatchControlAction(
     }
     case 'rollback': {
       const projectId = await resolveProjectId(input, ctx);
-      await requireCan({ userId: principal.userId }, 'project.write', projectId);
+      await requireCoolifyRun({ userId: principal.userId }, projectId, 'rollback');
       if (!input.commit) {
         throw new Error(
           'BAD_REQUEST: rollback needs `commit` — the image tag from rollback-images',

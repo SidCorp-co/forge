@@ -45,6 +45,7 @@ import {
 } from './controls.js';
 import type { CoolifyConfig, CoolifySecrets } from './types.js';
 import { requireCan } from '../../permissions/index.js';
+import { requireCoolifyRun } from './access.js';
 
 const deployBodySchema = z
   .object({
@@ -95,6 +96,13 @@ const projectMember: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next
   await requireCan({ userId: c.get('userId') }, 'project.read', c.req.param('projectId') ?? '');
   await next();
 };
+
+const coolifyRun =
+  (act: 'deploy' | 'cancel' | 'rollback'): MiddlewareHandler<{ Variables: AuthVars }> =>
+  async (c, next) => {
+    await requireCoolifyRun({ userId: c.get('userId') }, c.req.param('projectId') ?? '', act);
+    await next();
+  };
 
 const asHttp = (err: unknown): never => {
   if (err instanceof CoolifyCommandError) {
@@ -157,7 +165,7 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
 
   routes.post(
     '/:projectId/integrations/coolify/deploy',
-    projectMember,
+    coolifyRun('deploy'),
     zValidator('json', deployBodySchema, invalidInput),
     async (c) => {
       const projectId = c.req.param('projectId');
@@ -173,7 +181,7 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
 
   routes.post(
     '/:projectId/integrations/coolify/cancel',
-    projectMember,
+    coolifyRun('cancel'),
     zValidator('json', cancelBodySchema, invalidInput),
     async (c) => {
       const projectId = c.req.param('projectId');
@@ -209,7 +217,7 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
 
   routes.post(
     '/:projectId/integrations/coolify/rollback',
-    projectMember,
+    coolifyRun('rollback'),
     zValidator('json', rollbackBodySchema, invalidInput),
     async (c) => {
       const projectId = c.req.param('projectId');
