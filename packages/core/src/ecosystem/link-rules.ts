@@ -3,8 +3,8 @@ import { REPO_PATH_MESSAGE } from '@forge/contracts/repo-path';
 import type { z } from 'zod';
 import { jsonPointer as pointer } from '../lib/refusal.js';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
-import { type ApiRefusal, parseVersionedDocument } from '../project-config/documents.js';
 import type { ProjectDocument, STOREFRONT_PROVIDERS } from '../project-config/index.js';
+import { type ApiRefusal, parseVersionedDocument } from '../project-config/index.js';
 import { ownLinkRefusals, versionRefusals } from './link-own-rules.js';
 import {
   ARTEFACT_KINDS,
