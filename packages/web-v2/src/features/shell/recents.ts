@@ -8,7 +8,7 @@ import { useCallback } from 'react';
 import { usePersistedState } from '@/lib/utils/use-persisted-state';
 import type { IconName } from '@/design/icons/icon';
 
-export type RecentKind = 'project' | 'issue' | 'session' | 'run';
+type RecentKind = 'project' | 'issue' | 'session' | 'run';
 
 export interface RecentEntry {
   kind: RecentKind;
@@ -21,7 +21,7 @@ export interface RecentEntry {
 
 const CAP = 8;
 
-export interface RecentsState {
+interface RecentsState {
   items: RecentEntry[];
   push: (entry: Omit<RecentEntry, 'ts'>) => void;
   clear: () => void;

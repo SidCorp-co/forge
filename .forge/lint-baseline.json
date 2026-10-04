@@ -304,19 +304,8 @@
     "packages/web-v2/src/features/settings/components/notifications-tab.tsx": {
       "lint/suspicious/noArrayIndexKey": 1
     },
-    "packages/web-v2/src/features/settings/components/tokens-tab.tsx": {
-      "lint/suspicious/noArrayIndexKey": 1
-    },
-    "packages/web-v2/src/features/shell/components/mobile-nav-drawer.tsx": {
-      "lint/style/noNonNullAssertion": 2
-    },
     "packages/web-v2/src/features/shell/nav-rail-compact.tsx": {
-      "lint/a11y/noAutofocus": 1,
-      "lint/a11y/noStaticElementInteractions": 1,
       "lint/performance/noImgElement": 1
-    },
-    "packages/web-v2/src/features/shell/sidebar.ts": {
-      "lint/complexity/noUselessTernary": 1
     },
     "packages/web-v2/src/features/skills/types.ts": {
       "lint/style/noNonNullAssertion": 1

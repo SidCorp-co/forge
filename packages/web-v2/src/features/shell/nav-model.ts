@@ -29,22 +29,22 @@ export interface ProjItem extends NavItem {
   sub: string;
 }
 
-export interface ProjGroup {
+interface ProjGroup {
   key: string;
   label: string;
   icon: NavItem["icon"];
   items: ProjItem[];
 }
 
-export type ProjEntry = ProjItem | ProjGroup;
+type ProjEntry = ProjItem | ProjGroup;
 
 export const isProjGroup = (e: ProjEntry): e is ProjGroup => "items" in e;
 
-export const DEVELOPMENT_GROUP_KEY = "development";
+const DEVELOPMENT_GROUP_KEY = "development";
 
 // cm:why the owner's IA ruling (ISS-65, FB-6): what a project is for comes first, and the
 // machinery that builds it sits under one Development group.
-export const PROJECT_MENU: ProjEntry[] = [
+const PROJECT_MENU: ProjEntry[] = [
   { key: "proj-overview", label: "Dashboard", icon: "grid", sub: "" },
   { key: "proj-requirements", label: "Requirements", icon: "book", sub: "/requirements" },
   { key: "proj-workflows", label: "Workflows", icon: "flow", sub: "/workflows" },
@@ -101,8 +101,8 @@ export function projectMenu(badges: ProjectBadges): ProjEntry[] {
   return PROJECT_MENU.map((e) => (isProjGroup(e) ? { ...e, items: e.items.map(withBadge) } : withBadge(e)));
 }
 
-export const ECO_THREADS_KEY = "eco-threads";
-export const ECO_NEW_KEY = "eco-new";
+const ECO_THREADS_KEY = "eco-threads";
+const ECO_NEW_KEY = "eco-new";
 const ECO_PREFIX = "eco:";
 
 // cm:why the Ecosystem group is the workspace's: Threads, one row per ecosystem the person belongs to, and New ecosystem — nothing project-scoped, so it shows whichever project is open
@@ -158,13 +158,13 @@ export function resolveRailSlug(opts: {
 
 /** Project items by descending sub-length so the longest match wins (e.g.
  *  "/issues" beats "" for Overview). Sorted once — the list is a module const. */
-export const PROJECT_ITEMS_BY_SPECIFICITY = [...PROJECT_ITEMS].sort(
+const PROJECT_ITEMS_BY_SPECIFICITY = [...PROJECT_ITEMS].sort(
   (a, b) => b.sub.length - a.sub.length,
 );
 
 /** Match a project-relative path remainder against a project-tier `sub`
  *  (mirrors the project tab bar's logic so the rail lights the right row). */
-export function matchesSub(rest: string, sub: string): boolean {
+function matchesSub(rest: string, sub: string): boolean {
   return sub === "" ? rest === "" : rest === sub || rest.startsWith(`${sub}/`);
 }
 

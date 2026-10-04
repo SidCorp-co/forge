@@ -10,13 +10,11 @@
 // Presentational: all data + navigation handlers are passed in by the workspace
 // layout (the single routing source of truth). Display prefs (labels / badges)
 // live in `useRailPrefs` and are toggled from the account menu.
-import { useCallback, useMemo, useRef, useState } from 'react';
 import { Icon, type IconName } from '@/design/icons/icon';
 import { Menu, type MenuItem } from '@/design/patterns/menu';
-import { Popover } from '@/design/primitives/popover';
-import { ProjectMark } from '@/design/primitives/project-mark';
 import { assetPath } from '@/lib/asset';
 import { cn } from '@/lib/utils/cn';
+import { RailProjectSwitcher } from './rail-project-switcher';
 
 export interface RailItem {
   key: string;
@@ -29,7 +27,7 @@ export interface RailItem {
 }
 
 /** A titled run of project rows the rail folds under one head (Development). */
-export interface RailGroup {
+interface RailGroup {
   key: string;
   label: string;
   icon: IconName;
@@ -38,7 +36,7 @@ export interface RailGroup {
 
 export type RailEntry = RailItem | RailGroup;
 
-export const isRailGroup = (e: RailEntry): e is RailGroup => "items" in e;
+const isRailGroup = (e: RailEntry): e is RailGroup => "items" in e;
 
 export interface SwitcherProject {
   id: string;
@@ -51,7 +49,7 @@ export interface SwitcherProject {
   pinned: boolean;
 }
 
-export interface NavRailCompactProps {
+interface NavRailCompactProps {
   workspaceItems: RailItem[];
   /** Project-tier rows and groups — null/empty when no project is active. */
   projectItems?: RailEntry[] | null;
@@ -102,6 +100,19 @@ function RailKicker({ label, className }: { label: string; className?: string })
   );
 }
 
+/** The count pill pinned to a rail row's corner; nothing at zero. */
+function RailCount({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      className="absolute right-2 top-3px inline-flex h-[15px] min-w-[15px] items-center justify-center rounded-pill px-[3px] font-mono text-9 font-bold text-white"
+      style={{ background: 'var(--accent)', border: '1.5px solid var(--bg-surface)' }}
+    >
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
+
 function RailButton({
   item,
   active,
@@ -145,15 +156,26 @@ function RailButton({
       >
         {item.label}
       </span>
-      {count > 0 && (
-        <span
-          className="absolute right-2 top-3px inline-flex h-[15px] min-w-[15px] items-center justify-center rounded-pill px-[3px] font-mono text-9 font-bold text-white"
-          style={{ background: 'var(--accent)', border: '1.5px solid var(--bg-surface)' }}
-        >
-          {count > 99 ? '99+' : count}
-        </span>
-      )}
+      <RailCount count={count} />
     </button>
+  );
+}
+
+function RailItems({
+  items,
+  activeKey,
+  onNavigate,
+}: {
+  items: RailItem[];
+  activeKey: string;
+  onNavigate: (key: string) => void;
+}) {
+  return (
+    <div className="mt-1 flex flex-col items-center gap-3px">
+      {items.map((it) => (
+        <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
+      ))}
+    </div>
   );
 }
 
@@ -188,14 +210,7 @@ function RailGroupBlock({
           <Icon name="chevronDown" size={11} className={cn("transition-transform", !open && "-rotate-90")} />
         </span>
         <span className="block min-w-0 max-w-full truncate text-10 font-semibold tracking-[-0.01em] text-fg">{group.label}</span>
-        {folded > 0 && (
-          <span
-            className="absolute right-2 top-3px inline-flex h-[15px] min-w-[15px] items-center justify-center rounded-pill px-[3px] font-mono text-9 font-bold text-white"
-            style={{ background: 'var(--accent)', border: '1.5px solid var(--bg-surface)' }}
-          >
-            {folded > 99 ? '99+' : folded}
-          </span>
-        )}
+        <RailCount count={folded} />
       </button>
       {open && (
         <div className="ml-2.5 flex flex-col items-center gap-3px border-l border-line-subtle pl-0.5">
@@ -232,38 +247,9 @@ export function NavRailCompact({
   groupOpen,
   onToggleGroup,
 }: NavRailCompactProps) {
-  const [flyOpen, setFlyOpen] = useState(false);
-  const [q, setQ] = useState('');
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const switcherRef = useRef<HTMLDivElement>(null);
-
-  const show = useCallback(() => {
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-    setFlyOpen(true);
-  }, []);
-  const hide = useCallback(() => {
-    closeTimer.current = setTimeout(() => setFlyOpen(false), 150);
-  }, []);
-
-  const rows = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    const filtered = term
-      ? switcherProjects.filter((p) => p.name.toLowerCase().includes(term))
-      : switcherProjects;
-    return [...filtered].sort((a, b) => {
-      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
-  }, [switcherProjects, q]);
-
   const userMenu: MenuItem[] = [];
   if (onAccount) userMenu.push({ label: 'Account & Settings', icon: 'settings', onSelect: onAccount });
   if (onSignOut) userMenu.push({ label: 'Sign out', icon: 'logOut', danger: true, onSelect: onSignOut });
-
-  const selectProject = (slug: string) => {
-    setFlyOpen(false);
-    onSelectProject(slug);
-  };
 
   return (
     <nav className="flex h-full w-[88px] flex-none flex-col items-center border-r border-line bg-surface pb-3 pt-[14px]">
@@ -284,130 +270,15 @@ export function NavRailCompact({
       {search && <div className="mb-2">{search}</div>}
 
       {projectItems && projectItems.length > 0 && activeProject && (
-        // biome-ignore lint/a11y/noStaticElementInteractions: hover only keeps the flyout open for a pointer; the button inside opens it from the keyboard
-        <div ref={switcherRef} className="relative" onMouseEnter={show} onMouseLeave={hide}>
-          <button
-            type="button"
-            onClick={show}
-            aria-haspopup="dialog"
-            aria-expanded={flyOpen}
-            aria-label={`Switch project — current ${activeProject.name}`}
-            className={cn(
-              'flex w-[76px] flex-col items-center gap-1 rounded-md pb-1.5 pt-5px transition-colors',
-              flyOpen ? 'bg-hover' : 'hover:bg-hover',
-            )}
-          >
-            <span className="relative">
-              <ProjectMark
-                tint={activeProject.tint}
-                ink={activeProject.ink}
-                initials={activeProject.initials}
-                size={30}
-                radius="var(--r-md)"
-              />
-              <span
-                className="absolute -bottom-[3px] -right-1 inline-flex size-[15px] items-center justify-center rounded-pill text-subtle"
-                style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
-              >
-                <Icon name="chevronUpDown" size={9} strokeWidth={2.4} />
-              </span>
-            </span>
-            {activeProject.liveRuns > 0 && (
-              <span className="font-mono text-9-5 font-semibold text-accent-text">
-                {activeProject.liveRuns} live
-              </span>
-            )}
-          </button>
-
-          <Popover
-            open={flyOpen}
-            anchor={switcherRef}
-            onDismiss={() => setFlyOpen(false)}
-            placement="right-start"
-            gap={10}
-            role="dialog"
-            aria-label="Switch project"
-            className="w-64 rounded-lg border border-line bg-surface p-[7px] shadow-[var(--shadow-lg)]"
-          >
-            {/* Diamond arrow on the left edge. */}
-            <span
-              aria-hidden
-              className="absolute left-[-6px] top-[22px] size-[11px] rotate-45"
-              style={{
-                background: 'var(--bg-surface)',
-                borderLeft: '1px solid var(--border-default)',
-                borderBottom: '1px solid var(--border-default)',
-              }}
-            />
-            <div className="mb-1 flex items-center gap-[7px] border-b border-line-subtle px-2 py-1.5">
-              <Icon name="search" size={14} className="text-subtle" />
-              <input
-                // the flyout opens to type in: focus lands in its search as it mounts
-                ref={(el) => el?.focus()}
-                aria-label="Find a project"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Find a project…"
-                className="flex-1 border-none bg-transparent py-0.5 text-13 text-fg outline-none placeholder:text-disabled"
-              />
-            </div>
-            <div className="max-h-[300px] overflow-y-auto">
-              {rows.map((p) => (
-                <div
-                  key={p.id}
-                  className={cn(
-                    'flex w-full items-center gap-[9px] rounded-sm px-2 py-[7px]',
-                    p.slug === activeSlug ? 'bg-accent-tint' : 'hover:bg-hover',
-                  )}
-                >
-                  <button
-                    type="button"
-                    onClick={() => selectProject(p.slug)}
-                    className="flex min-w-0 flex-1 items-center gap-[9px] text-left focus-visible:outline-none"
-                  >
-                    <ProjectMark tint={p.tint} ink={p.ink} initials={p.initials} size={20} radius="var(--r-sm)" />
-                    <span className="min-w-0 flex-1 truncate text-13 font-medium text-fg">{p.name}</span>
-                    {p.liveRuns > 0 && (
-                      <span className="size-1.5 flex-none rounded-pill" style={{ background: 'var(--accent)' }} />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onTogglePin(p.id)}
-                    aria-label={p.pinned ? `Unpin ${p.name}` : `Pin ${p.name}`}
-                    aria-pressed={p.pinned}
-                    className={cn(
-                      'flex flex-none rounded-xs p-3px transition-colors hover:bg-active',
-                      p.pinned ? 'text-accent' : 'text-disabled hover:text-fg',
-                    )}
-                  >
-                    <Icon name="pin" size={14} strokeWidth={p.pinned ? 2.4 : 1.75} />
-                  </button>
-                </div>
-              ))}
-              {rows.length === 0 && (
-                <p className="px-2 py-3 text-13 text-muted">No projects match.</p>
-              )}
-            </div>
-            <div className="my-1.5 mx-1 h-px bg-[color:var(--border-subtle)]" />
-            <button
-              type="button"
-              onClick={() => { setFlyOpen(false); onAllProjects(); }}
-              className="flex w-full items-center gap-2.5 rounded-sm p-2 text-13 font-medium text-fg hover:bg-hover"
-            >
-              <Icon name="folder" size={16} className="text-subtle" />
-              View all
-            </button>
-            <button
-              type="button"
-              onClick={() => { setFlyOpen(false); onNewProject(); }}
-              className="flex w-full items-center gap-2.5 rounded-sm p-2 text-13 font-medium text-fg hover:bg-hover"
-            >
-              <Icon name="plus" size={16} className="text-subtle" />
-              New project
-            </button>
-          </Popover>
-        </div>
+        <RailProjectSwitcher
+          activeProject={activeProject}
+          activeSlug={activeSlug}
+          switcherProjects={switcherProjects}
+          onSelectProject={onSelectProject}
+          onTogglePin={onTogglePin}
+          onAllProjects={onAllProjects}
+          onNewProject={onNewProject}
+        />
       )}
 
       {/* The tiers are the only part of the rail that may outgrow it, so they
@@ -469,19 +340,11 @@ export function NavRailCompact({
 
         {/* Workspace tier — demoted below the project tier (project-first). */}
         <RailKicker label="Space" />
-        <div className="mt-1 flex flex-col items-center gap-3px">
-          {workspaceItems.map((it) => (
-            <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
-          ))}
-        </div>
+        <RailItems items={workspaceItems} activeKey={activeKey} onNavigate={onNavigate} />
         {ecosystemItems && ecosystemItems.length > 0 && (
           <>
             <RailKicker label="Ecosystem" className="mt-2.5" />
-            <div className="mt-1 flex flex-col items-center gap-3px">
-              {ecosystemItems.map((it) => (
-                <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
-              ))}
-            </div>
+            <RailItems items={ecosystemItems} activeKey={activeKey} onNavigate={onNavigate} />
           </>
         )}
       </div>

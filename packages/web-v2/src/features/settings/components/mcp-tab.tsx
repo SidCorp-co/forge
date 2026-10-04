@@ -47,8 +47,6 @@ const TOKENS_TAB_HREF = "/settings?tab=tokens";
 
 export function McpTab() {
   const projectsQ = useProjects();
-  const { toast } = useToast();
-
   // The MCP endpoint is same-origin with core; resolve client-side.
   const [endpoint, setEndpoint] = useState("/mcp");
   useEffect(() => setEndpoint(getMcpUrl()), []);
@@ -72,27 +70,6 @@ export function McpTab() {
     label: `${p.name} · ${p.slug}`,
   }));
 
-  const [client, setClient] = useState<ClientKind>("claude-cli");
-  const snippet = useMemo(
-    () => generateSnippet(client, { projectSlug, mcpUrl: endpoint }),
-    [client, projectSlug, endpoint],
-  );
-
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const t = setTimeout(() => setCopied(false), 2000);
-    return () => clearTimeout(t);
-  }, [copied]);
-
-  async function copySnippet() {
-    try {
-      await navigator.clipboard.writeText(snippet.content);
-      setCopied(true);
-    } catch {
-      toast({ title: "Copy failed", description: "Select and copy it manually.", tone: "error" });
-    }
-  }
 
   if (projectsQ.isLoading) {
     return (
@@ -155,57 +132,7 @@ export function McpTab() {
 
       {selectedProject ? (
         <>
-          <Card>
-            <CardContent>
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <SectionTitle className="fg-h3">Config snippet</SectionTitle>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={copySnippet}
-                  className="min-h-11"
-                  aria-live="polite"
-                >
-                  {copied ? "Copied ✓" : "Copy"}
-                </Button>
-              </div>
-              <p className="fg-body-sm mb-4 text-fg" data-testid="mcp-snippet-target">
-                This snippet configures <strong>{selectedProject.name}</strong>{" "}
-                <MonoTag>{selectedProject.slug}</MonoTag>
-                {currentProject && currentProject.id !== selectedProject.id ? (
-                  <> — not {currentProject.name}, the project you are working in.</>
-                ) : currentProject ? (
-                  <>, the project you are working in.</>
-                ) : (
-                  "."
-                )}
-              </p>
-
-              <div className="mb-3 overflow-x-auto">
-                <Tabs tabs={CLIENT_TABS} value={client} onChange={(v) => setClient(v as ClientKind)} />
-              </div>
-
-              <p className="fg-caption mb-2" data-testid="mcp-snippet-how">
-                {snippet.howTo === "command" ? (
-                  <>
-                    Replace <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> with your token, then
-                    run this line once in a terminal.
-                  </>
-                ) : (
-                  <>
-                    Add to <MonoTag>{snippet.filePath}</MonoTag> and replace{" "}
-                    <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> with your token.
-                  </>
-                )}
-              </p>
-              <pre className="overflow-x-auto rounded-md border border-line bg-sunken p-3 text-12-5 leading-relaxed text-fg">
-                <code>
-                  <SnippetCode content={snippet.content} />
-                </code>
-              </pre>
-            </CardContent>
-          </Card>
-
+          <SnippetCard project={selectedProject} currentProject={currentProject} endpoint={endpoint} />
           <TestConnectionPanel mcpUrl={endpoint} projectSlug={projectSlug} />
         </>
       ) : (
@@ -215,6 +142,93 @@ export function McpTab() {
         />
       )}
     </div>
+  );
+}
+
+/** The config snippet for one client and project, with its copy button and how-to line. */
+function SnippetCard({
+  project,
+  currentProject,
+  endpoint,
+}: {
+  project: { id: string; name: string; slug: string };
+  currentProject: { id: string; name: string } | null | undefined;
+  endpoint: string;
+}) {
+  const { toast } = useToast();
+  const [client, setClient] = useState<ClientKind>("claude-cli");
+  const snippet = useMemo(
+    () => generateSnippet(client, { projectSlug: project.slug, mcpUrl: endpoint }),
+    [client, project.slug, endpoint],
+  );
+
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(t);
+  }, [copied]);
+
+  async function copySnippet() {
+    try {
+      await navigator.clipboard.writeText(snippet.content);
+      setCopied(true);
+    } catch {
+      toast({ title: "Copy failed", description: "Select and copy it manually.", tone: "error" });
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <SectionTitle className="fg-h3">Config snippet</SectionTitle>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={copySnippet}
+            className="min-h-11"
+            aria-live="polite"
+          >
+            {copied ? "Copied ✓" : "Copy"}
+          </Button>
+        </div>
+        <p className="fg-body-sm mb-4 text-fg" data-testid="mcp-snippet-target">
+          This snippet configures <strong>{project.name}</strong>{" "}
+          <MonoTag>{project.slug}</MonoTag>
+          {currentProject && currentProject.id !== project.id ? (
+            <> — not {currentProject.name}, the project you are working in.</>
+          ) : currentProject ? (
+            <>, the project you are working in.</>
+          ) : (
+            "."
+          )}
+        </p>
+
+        <div className="mb-3 overflow-x-auto">
+          <Tabs tabs={CLIENT_TABS} value={client} onChange={(v) => setClient(v as ClientKind)} />
+        </div>
+
+        <p className="fg-caption mb-2" data-testid="mcp-snippet-how">
+          {snippet.howTo === "command" ? (
+            <>
+              Replace <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> with your token, then
+              run this line once in a terminal.
+            </>
+          ) : (
+            <>
+              Add to <MonoTag>{snippet.filePath}</MonoTag> and replace{" "}
+              <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> with your token.
+            </>
+          )}
+        </p>
+        <pre className="overflow-x-auto rounded-md border border-line bg-sunken p-3 text-12-5 leading-relaxed text-fg">
+          <code>
+            <SnippetCode content={snippet.content} />
+          </code>
+        </pre>
+      </CardContent>
+    </Card>
   );
 }
 
