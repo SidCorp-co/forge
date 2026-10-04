@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { AgentAccess, BindingRole } from '../db/release-axes.js';
 import { integrationBindings, integrationConnections } from '../db/schema.js';
@@ -6,6 +6,7 @@ import { loadOrgRole } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { findProjectOrgId } from '../projects/service.js';
 import { holdsOrg } from '../permissions/index.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 export interface StoredBinding {
   id: string;
@@ -115,9 +116,7 @@ export const drizzleBindingStore: BindingStore = {
   async casBinding({ baseRevision, integrationSecret, ...write }) {
     try {
       return await db.transaction(async (tx) => {
-        await tx.execute(
-          sql`SELECT pg_advisory_xact_lock(hashtextextended(${`project-config:binding:${write.id}`}, 0))`,
-        );
+        await lockXact(tx, 'projectConfigBinding', write.id);
         const [current] = await tx
           .select(bindingColumns)
           .from(integrationBindings)

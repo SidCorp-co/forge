@@ -3,13 +3,14 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessionEvents } from '../db/schema-agent-session-events.js';
 import { toCanonicalMessages } from './canonical-legacy.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type DbOrTx = typeof db | Tx;
 
 /** The highest `seq` this session's carrier holds, under a lock that makes it usable. */
 async function nextSeq(tx: DbOrTx, agentSessionId: string): Promise<number> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${agentSessionId}))`);
+  await lockXact(tx, 'agentSession', agentSessionId);
   const rows = await tx.execute<{ max_seq: number | string | null }>(sql`
     SELECT COALESCE(MAX(seq), 0) AS max_seq
     FROM agent_session_events

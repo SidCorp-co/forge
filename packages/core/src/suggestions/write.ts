@@ -4,7 +4,7 @@
  */
 
 import type { SuggestionView } from '@forge/contracts/suggestions';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { lockFeedback } from '../feedback/service.js';
@@ -14,6 +14,7 @@ import { lockRequirements } from '../requirements/service.js';
 import type { Effect } from './effects.js';
 import { type Row, type SuggestionActor, type SuggestionTarget, viewOf } from './read.js';
 import { baseStaleRefusal } from './rules.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 export type SuggestionOutcome =
   | { ok: true; suggestion: SuggestionView; effect?: Effect; created?: boolean }
@@ -39,9 +40,7 @@ export async function inTx(
 export async function lockTarget(tx: Tx, projectId: string, t: SuggestionTarget) {
   if (t.type === 'requirement') return lockRequirements(tx, projectId);
   if (t.type === 'feedback') return lockFeedback(tx, projectId);
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`suggestions:${t.id}`}, 0))`,
-  );
+  await lockXact(tx, 'suggestions', t.id);
 }
 
 export async function answer(id: string, extra: { effect?: Effect; created?: boolean } = {}) {

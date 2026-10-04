@@ -22,6 +22,7 @@ import type { Actor } from '../pipeline/activity.js';
 import { type CommentCursor, encodeCommentCursor } from './cursor.js';
 import { parseMentions, resolveMentions } from './mentions.js';
 import { screenAgentComment, screenRecordFence } from './screen.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 const refuse = refuser<CommentRefusalCode>('COMMENT_REFUSED');
 
@@ -369,9 +370,7 @@ export async function postIssueNoticeOnce(
 ): Promise<CommentThreadRow | null> {
   const { marker, ...rest } = notice;
   return tx.transaction(async (t) => {
-    await t.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`comment-once:${notice.issueId}:${marker}`}, 0))`,
-    );
+    await lockXact(t, 'commentOnce', `${notice.issueId}:${marker}`);
     const [existing] = await t
       .select({ id: comments.id })
       .from(comments)

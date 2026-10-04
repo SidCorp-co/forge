@@ -6,12 +6,12 @@ import {
   getTableName,
   inArray,
   notInArray,
-  type SQL,
   sql,
 } from 'drizzle-orm';
 import { beatSession, insertSessionRow } from '../agent-sessions/index.js';
 import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { db, type Tx } from '../db/client.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { logger } from '../observability/logger.js';
@@ -47,11 +47,6 @@ async function liveMasterOn(
   return row ?? null;
 }
 
-/** The advisory-lock key two registrations for one (device, project) both compute. */
-function masterLockKey(args: { deviceId: string; projectId: string }): SQL<number> {
-  return sql<number>`hashtextextended(${`master-session:${args.deviceId}:${args.projectId}`}, 0)`;
-}
-
 /**
  * The live master session for one (device, project), creating it if there is
  * none.
@@ -81,7 +76,7 @@ export async function ensureMasterSession(args: {
     metadata: { type: MASTER_SESSION_KIND, deviceId: args.deviceId },
   };
   const claimed = await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(${masterLockKey(args)})`);
+    await lockXact(tx, 'masterSession', `${args.deviceId}:${args.projectId}`);
     const winner = await liveMasterOn(tx, args);
     if (winner) return { existing: winner.id };
     const run = await insertOneShotRun(tx, spec);

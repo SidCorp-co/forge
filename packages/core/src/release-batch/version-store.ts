@@ -8,6 +8,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { refuseRelease } from './refuse.js';
 import {
@@ -39,12 +40,8 @@ const versionConflict = (projectId: string, version: string) =>
 const OPEN_RUN_STATUSES = ['running', 'paused'] as const;
 
 /** Serialize allocation per project for the transaction, so two cuts queue rather than race. */
-const VERSION_LOCK_NAMESPACE = 1120;
-
 async function lockProjectVersions(tx: Tx, projectId: string): Promise<void> {
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(${VERSION_LOCK_NAMESPACE}, hashtext(${projectId}))`,
-  );
+  await lockXact(tx, 'releaseVersion', projectId);
 }
 
 export interface ReleaseRowReading {

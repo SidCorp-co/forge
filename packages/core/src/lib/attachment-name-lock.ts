@@ -1,5 +1,5 @@
-import { sql } from 'drizzle-orm';
 import type { db } from '../db/client.js';
+import { lockXact } from './advisory-lock.js';
 
 export type NameCheckExecutor = Pick<typeof db, 'select'>;
 
@@ -13,7 +13,5 @@ export async function lockAttachmentName(
   parentId: string,
   name: string,
 ): Promise<void> {
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${scope}:${parentId}:${name}`}, 0))`,
-  );
+  await lockXact(tx, 'attachmentName', `${scope}:${parentId}:${name}`);
 }

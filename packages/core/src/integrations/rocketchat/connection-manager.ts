@@ -15,6 +15,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
+import { tryLockSession, unlockSession } from '../../lib/advisory-lock.js';
 import { integrationConnections } from '../../db/schema.js';
 import { logger } from '../../observability/logger.js';
 import { reportFailure } from '../../observability/sentry.js';
@@ -30,7 +31,6 @@ import { resolveRoomShape } from './room-shape.js';
 import { subjectForThread } from './thread-registry.js';
 import type { RocketChatConfig, RocketChatSecrets } from './types.js';
 
-const LOCK_NAMESPACE = 'forge:rocketchat';
 const MAX_BACKOFF_MS = 30_000;
 const LOCK_REACQUIRE_DELAY_MS = 5000;
 const RELOAD_CHANNEL = 'forge_rocketchat_reload';
@@ -111,11 +111,7 @@ class RocketChatConnectionManager {
 
     const lockClient = new pg.Client({ connectionString: env.DATABASE_URL });
     await lockClient.connect();
-    const res = await lockClient.query<{ ok: boolean }>(
-      'select pg_try_advisory_lock(hashtext($1), hashtext($2)) as ok',
-      [LOCK_NAMESPACE, connectionId],
-    );
-    if (!res.rows[0]?.ok) {
+    if (!(await tryLockSession(lockClient, 'rocketchatConnection', connectionId))) {
       await lockClient.end();
       logger.info({ connectionId }, 'rocketchat: another process owns this connection; skipping');
       return;
@@ -310,10 +306,7 @@ class RocketChatConnectionManager {
       ac.client?.close();
     } catch {}
     try {
-      await ac.lockClient.query('select pg_advisory_unlock(hashtext($1), hashtext($2))', [
-        LOCK_NAMESPACE,
-        connectionId,
-      ]);
+      await unlockSession(ac.lockClient, 'rocketchatConnection', connectionId);
       await ac.lockClient.end();
     } catch {}
     this.conns.delete(connectionId);

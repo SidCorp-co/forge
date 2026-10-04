@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import type { db } from '../db/client.js';
 import { jobEvents } from '../db/schema.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -27,7 +28,7 @@ export async function appendJobEvent(
   kind: (typeof jobEvents.$inferInsert)['kind'],
   data: Record<string, unknown>,
 ): Promise<void> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${jobId}))`);
+  await lockXact(tx, 'job', jobId);
   const maxRows = await tx.execute<{ max_seq: number | string | null }>(
     sql`SELECT COALESCE(MAX(seq), 0) AS max_seq FROM job_events WHERE job_id = ${jobId}`,
   );

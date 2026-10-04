@@ -1,7 +1,8 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { projectMembers } from '../db/schema.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 export const badRequest = (message: string, code: string) =>
   new HTTPException(400, { message, cause: { code } });
@@ -22,7 +23,7 @@ export async function withAgentFenceLock<T>(
   run: (tx: Tx) => Promise<T>,
 ): Promise<T> {
   return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${agentUserId}, 0))`);
+    await lockXact(tx, 'agentFence', agentUserId);
     return run(tx);
   });
 }

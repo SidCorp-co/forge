@@ -12,7 +12,7 @@ import {
   REQUIREMENT_READINESS_GATE_DEFAULT,
   type RequirementReadinessGate,
 } from '@forge/contracts/requirements';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import {
   type RequirementStatus,
@@ -69,6 +69,7 @@ import {
   staleBaseRefusal,
   stateRefusal,
 } from './rules.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 async function readinessGateOf(projectId: string): Promise<RequirementReadinessGate> {
   const doc = await readProjectDocument(projectId);
@@ -80,9 +81,7 @@ export type RequirementOutcome =
   | { ok: false; refusals: RequirementRefusal[] };
 
 export async function lockRequirements(tx: Tx, projectId: string): Promise<void> {
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`requirements:${projectId}`}, 0))`,
-  );
+  await lockXact(tx, 'requirements', projectId);
 }
 
 export async function answer(

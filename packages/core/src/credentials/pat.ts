@@ -11,6 +11,7 @@ import {
   patPrefixOf,
 } from './pat-format.js';
 import { patIsLive } from './pat-live.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 const ARGON2_OPTIONS = {
   type: argon2.argon2id,
@@ -99,7 +100,7 @@ export async function mintPat(input: MintPatInput, tx: Tx = db): Promise<MintedP
  * well as their own, so a user-scoped key would order them against nothing.
  */
 export async function lockPatName(tx: Tx, name: string): Promise<void> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${name}, 0))`);
+  await lockXact(tx, 'patName', name);
 }
 
 /** Who a live token is revoked for: its holder, the box it was issued to, or its name. */

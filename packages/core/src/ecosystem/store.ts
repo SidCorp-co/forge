@@ -15,6 +15,7 @@ import {
 import type { MembershipRow, MembershipVerb } from './membership-rules.js';
 import type { RevisionBy } from './provider-writer-rules.js';
 import type { MembershipState } from './schema.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 export interface StoredDocument {
   revision: number;
@@ -37,7 +38,7 @@ export interface StoredRevision {
 
 export async function lockKeys(tx: Tx, keys: readonly string[]): Promise<void> {
   for (const key of [...new Set(keys)].sort()) {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`ecosystem:${key}`}, 0))`);
+    await lockXact(tx, 'ecosystem', key);
   }
 }
 

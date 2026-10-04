@@ -29,6 +29,7 @@ import {
   RUN_ISSUES_METADATA_KEY,
   RUN_SESSION_KIND,
 } from './run-session.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 /**
  * The box's half, exactly as `daemon/checkpoint.rs` puts it on the wire.
@@ -336,9 +337,7 @@ async function insertHeldReportOnChange(args: {
   deviceId: string;
 }): Promise<boolean> {
   return await db.transaction(async (tx) => {
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`run-evidence:${args.issueId}:${args.family}`}, 0))`,
-    );
+    await lockXact(tx, 'runEvidence', `${args.issueId}:${args.family}`);
     // Whole markers only, each closed by its backtick and matched literally: a
     // bare family is a prefix of every longer head's, and a match over it would
     // let another commit's report stand in for this one's latest.

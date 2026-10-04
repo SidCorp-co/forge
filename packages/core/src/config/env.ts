@@ -99,7 +99,6 @@ const EnvSchema = z.object({
   FEEDBACK_MAX_PER_JOB: z.coerce.number().int().positive().default(5),
   DATABASE_IDLE_IN_TX_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   DATABASE_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
-  PIPELINE_ADVISORY_LOCK_TIMEOUT_MS: z.coerce.number().int().positive().default(3_000),
 });
 
 const RETIRED_ENV_VARS: Record<string, string> = {

@@ -25,6 +25,7 @@ import {
   ME_PREFERENCE_DEFAULTS,
   ME_PREFERENCES,
 } from './read.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 const refuse = refuser<AuthRefusalCode>('AUTH_REFUSED');
 
@@ -74,9 +75,7 @@ async function lockPreferences(
   tx: Pick<typeof defaultDb, 'execute'>,
   userId: string,
 ): Promise<void> {
-  await tx.execute(
-    sql`select pg_advisory_xact_lock(hashtext('user_preferences'), hashtext(${userId}))`,
-  );
+  await lockXact(tx, 'userPreferences', userId);
 }
 
 const FIELD_OF: Record<keyof AssistantPreferencePatch, PreferenceChangeField> = {

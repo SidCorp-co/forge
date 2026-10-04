@@ -1,7 +1,8 @@
-import { desc, eq, sql } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projectMasterCharters } from '../db/schema-master-charter.js';
 import type { MasterCharterWrite } from './master-charter.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 export interface MasterCharter {
   version: number;
@@ -82,9 +83,7 @@ export async function declareCharter(input: {
   write: MasterCharterWrite;
 }): Promise<DeclareCharterResult> {
   return db.transaction(async (tx) => {
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`master-charter:${input.projectId}`}, 0))`,
-    );
+    await lockXact(tx, 'masterCharter', input.projectId);
 
     const [current] = await tx
       .select(projection)

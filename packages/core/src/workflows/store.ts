@@ -8,6 +8,7 @@ import {
 } from '../db/schema-workflows.js';
 import type { DesignDecision, DesignStatus } from './design.js';
 import type { WorkflowWrite } from './schema.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 export interface StoredWorkflow {
   id: string;
@@ -53,9 +54,7 @@ const values = (doc: WorkflowWrite) => ({
 });
 
 export async function lockWorkflows(tx: Tx, projectId: string): Promise<void> {
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`workflows:${projectId}`}, 0))`,
-  );
+  await lockXact(tx, 'workflows', projectId);
 }
 
 export async function readWorkflow(tx: Tx, id: string): Promise<StoredWorkflow | null> {

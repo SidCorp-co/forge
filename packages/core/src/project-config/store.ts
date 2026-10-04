@@ -9,6 +9,7 @@ import {
   projectSecrets,
   projectTestingProfiles,
 } from '../db/schema-project-config.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
 import { projectDocumentNames } from '../projects/index.js';
 import { type ApiRefusal, parseSecretRef, secretRefOf } from './documents.js';
@@ -90,8 +91,8 @@ export interface ConfigStore {
 
 const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 
-const lockKey = (kind: string, projectId: string, extra = '') =>
-  sql`SELECT pg_advisory_xact_lock(hashtextextended(${`project-config:${kind}:${projectId}:${extra}`}, 0))`;
+const lockConfig = (tx: Tx, kind: string, projectId: string, extra = '') =>
+  lockXact(tx, 'projectConfig', `${kind}:${projectId}:${extra}`);
 
 export const drizzleConfigStore: ConfigStore = {
   async workflowTemplatesInUse(projectId) {
@@ -135,7 +136,7 @@ export const drizzleConfigStore: ConfigStore = {
     const { slug, name } = (document as ProjectDocument).project;
     try {
       return await db.transaction(async (tx) => {
-        await tx.execute(lockKey('project', projectId));
+        await lockConfig(tx, 'project', projectId);
         const [current] = await tx
           .select()
           .from(projectConfigDocuments)
@@ -193,7 +194,7 @@ export const drizzleConfigStore: ConfigStore = {
 
   async casPolicy({ projectId, baseRevision, document, userId }) {
     return db.transaction(async (tx) => {
-      await tx.execute(lockKey('policy', projectId));
+      await lockConfig(tx, 'policy', projectId);
       const [current] = await tx
         .select()
         .from(projectPolicies)
@@ -243,7 +244,7 @@ export const drizzleConfigStore: ConfigStore = {
 
   async casTestingProfile({ projectId, profileId, baseRevision, document, userId }) {
     return db.transaction(async (tx) => {
-      await tx.execute(lockKey('testing-profile', projectId, profileId));
+      await lockConfig(tx, 'testing-profile', projectId, profileId);
       const where = and(
         eq(projectTestingProfiles.projectId, projectId),
         eq(projectTestingProfiles.profileId, profileId),

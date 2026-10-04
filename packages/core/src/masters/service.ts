@@ -20,6 +20,7 @@ import {
   sessionEndedRefusal,
   slotsUndeclaredRefusal,
 } from './rules.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 type Refused = { ok: false; refusals: MasterRefusal[] };
 
@@ -57,9 +58,7 @@ export async function declareMasterSession(args: {
 }
 
 async function lockMasterPasses(tx: Tx, sessionId: string): Promise<void> {
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`master-pass:${sessionId}`}, 0))`,
-  );
+  await lockXact(tx, 'masterPass', sessionId);
 }
 
 async function ownedMaster(

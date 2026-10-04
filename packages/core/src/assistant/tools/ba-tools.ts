@@ -13,7 +13,7 @@ import {
   type QuestionnaireRefusalCode,
 } from '@forge/contracts/onboarding';
 import { SUGGESTION_KINDS } from '@forge/contracts/suggestions';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { conversationMessages } from '../../db/schema-conversations.js';
@@ -41,6 +41,7 @@ import { listSuggestions } from '../../suggestions/read.js';
 import { createSuggestion } from '../../suggestions/service.js';
 import { drawMockup } from './ba-mockup-tool.js';
 import { buildToolset, type ChatToolset } from './mcp-adapter.js';
+import { lockXact } from '../../lib/advisory-lock.js';
 
 export interface BaRoom {
   projectId: string;
@@ -286,9 +287,7 @@ const sendQuestionnaire =
       let batchId = '';
       let messageId: string | null = null;
       const refused = await inTx(async (tx) => {
-        await tx.execute(
-          sql`SELECT pg_advisory_xact_lock(hashtextextended(${`questionnaire:${conversationId}`}, 0))`,
-        );
+        await lockXact(tx, 'questionnaire', conversationId);
         const sent = await roundsInConversation(tx, conversationId);
         const exhausted = roundsRefusal(sent);
         if (exhausted) return [exhausted];

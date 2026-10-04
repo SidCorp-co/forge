@@ -17,6 +17,7 @@ import { recordReportedTranscript } from './session-events.js';
 import type { AgentSessionPatch } from './session-failure.js';
 import { transitionSessions } from './session-transition.js';
 import { syncTurnsWithMessages, truncateTurnsAfter } from './turns-helpers.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 export const agentSessionListColumns = {
   id: agentSessions.id,
@@ -302,7 +303,7 @@ export async function appendChatLines(
   { ok: true; inserted: { seq: number }[] } | { ok: false; taken: { seq: number; kind: string } }
 > {
   return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${sessionId}))`);
+    await lockXact(tx, 'agentSession', sessionId);
     const claimed = await tx
       .select({ seq: agentSessionEvents.seq, kind: agentSessionEvents.kind })
       .from(agentSessionEvents)

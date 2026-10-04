@@ -1,6 +1,7 @@
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import type { PgTransaction } from 'drizzle-orm/pg-core';
 import { issueDependencies, issues } from '../db/schema.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 export interface UnblockedDependent {
   issueId: string;
@@ -26,7 +27,7 @@ export async function expireBlocksEdgesOnDrop(
   projectId: string,
   issueId: string,
 ): Promise<UnblockedDependent[]> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${projectId}))`);
+  await lockXact(tx, 'issueDependencies', projectId);
   const scope = and(
     eq(issueDependencies.fromIssueId, issueId),
     eq(issueDependencies.kind, 'blocks'),

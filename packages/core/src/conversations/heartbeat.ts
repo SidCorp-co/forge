@@ -24,6 +24,7 @@ import { heartbeatOf } from './presence.js';
 import { GUARD_WINDOW } from './proactivity.js';
 import { readMessages, type StoredConversationMessage } from './store.js';
 import { openOrExtendWindow } from './windows.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 export type HeartbeatSkip =
   | 'window-open'
@@ -196,9 +197,7 @@ export async function runHeartbeatTick(
   const result: HeartbeatTickResult = { rooms: rooms.length, opened: 0, skipped: {} };
   for (const room of rooms) {
     const verdict = await dbi.transaction(async (tx) => {
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtext('conversation_heartbeat'), hashtext(${room.conversationId}))`,
-      );
+      await lockXact(tx, 'conversationHeartbeat', room.conversationId);
       const due = heartbeatDue(await factsFor(room, now, tx as unknown as Executor));
       if (!due.due) return due;
       await openOrExtendWindow(

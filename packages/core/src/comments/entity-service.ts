@@ -7,7 +7,7 @@ import type {
   EntityCommentView,
 } from '@forge/contracts/comments';
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { comments } from '../db/schema.js';
 import { commentEvents } from '../db/schema-comments.js';
@@ -42,6 +42,7 @@ import {
   sitsOn,
 } from './entity-rules.js';
 import { requireCan } from '../permissions/index.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 export type EntityCommentOutcome =
   | { ok: true; comment: EntityCommentView; created: boolean }
@@ -52,9 +53,7 @@ export interface EntityCommentAuthor extends EntityCommentActor {
 }
 
 export async function lockCommentTarget(tx: Tx, targetId: string): Promise<void> {
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`comments:${targetId}`}, 0))`,
-  );
+  await lockXact(tx, 'commentTarget', targetId);
 }
 
 const present = <T>(v: T | null): v is T => v !== null;

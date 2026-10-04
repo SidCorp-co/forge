@@ -12,10 +12,11 @@
  * `issues/issue-lease.ts` is the only thing that writes or reads it.
  */
 
-import { and, eq, inArray, notInArray, type SQL, sql } from 'drizzle-orm';
+import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { insertSessionRow } from '../agent-sessions/index.js';
 import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { db, type Tx } from '../db/client.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import { agentSessions, issues, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
 import { refuseHeldTakeForSeqs } from '../issues/blocked-by.js';
 import {
@@ -125,13 +126,6 @@ async function openSessionForBoxRun(
   return row ? { sessionId: row.sessionId, runId: row.runId } : null;
 }
 
-/**
- * The advisory-lock key two requests for one box run both compute.
- */
-function boxRunLockKey(args: { deviceId: string; boxRunId?: string }): SQL<number> {
-  return sql<number>`hashtextextended(${`run-session:${args.deviceId}:${args.boxRunId}`}, 0)`;
-}
-
 export async function openRunSession(args: {
   deviceId: string;
   projectId: string;
@@ -200,7 +194,7 @@ export async function openRunSession(args: {
   };
   const claimed = await db.transaction(async (tx) => {
     if (args.boxRunId) {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(${boxRunLockKey(args)})`);
+      await lockXact(tx, 'runSession', `${args.deviceId}:${args.boxRunId}`);
       const winner = await openSessionForBoxRun(tx, {
         deviceId: args.deviceId,
         boxRunId: args.boxRunId,

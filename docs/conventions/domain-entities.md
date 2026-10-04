@@ -142,7 +142,7 @@ One file per responsibility, under `packages/core/src/<module>/`. The references
 |---|---|---|
 | **rules.ts** | Pure guards over what the service read; each returns `<Module>Refusal \| null` or a list | Touch the DB, throw a refusal |
 | **read.ts** | `rowIn(tx, projectId, ref)`, list and detail views, the actor type | Write |
-| **service.ts** | Writes. Each runs in one transaction under the entity's advisory lock (`packages/core/src/requirements/service.ts:lockRequirements`) and returns `{ ok: true, … } \| { ok: false; refusals }` | Throw a refusal. It throws only a 404 and invariant `Error`s |
+| **service.ts** | Writes. Each runs in one transaction under the entity's advisory lock, taken with `packages/core/src/lib/advisory-lock.ts:lockXact` in the entity's own namespace from `LOCK_NAMESPACES` (`packages/core/src/requirements/service.ts:lockRequirements`) and returns `{ ok: true, … } \| { ok: false; refusals }` | Throw a refusal. It throws only a 404 and invariant `Error`s |
 | **standing.ts** | The module's derived facts, when it has any, extending `packages/contracts/src/standing.ts:Standing` | Write |
 | **events.ts** | The outbox events this module emits, typed in contracts | Emit an event no module consumes |
 | **routes.ts** | Hono routes: param validators, `strictBody`, the actor, `answer`. It is the heavy face: every router the module serves is exported from it | Hold a rule or a database call (BC-15); be imported by anything but the route registry |

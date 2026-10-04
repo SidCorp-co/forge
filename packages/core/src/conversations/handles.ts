@@ -7,8 +7,7 @@ import { organizationMembers, projectMembers, projects, users } from '../db/sche
 import { addOrgMember, addProjectMembers } from '../permissions/index.js';
 import type { Executor } from './db-executor.js';
 import { refuseConversation } from './refusals.js';
-
-const LOCK_NAMESPACE = 'forge:conversation-handle';
+import { lockXact } from '../lib/advisory-lock.js';
 
 export interface ProjectHandle {
   userId: string;
@@ -70,9 +69,7 @@ export async function resolveProjectHandle(
   projectId: string,
   mintAs?: string,
 ): Promise<ProjectHandle> {
-  await tx.execute(
-    sql`select pg_advisory_xact_lock(hashtext(${LOCK_NAMESPACE}), hashtext(${projectId}))`,
-  );
+  await lockXact(tx, 'conversationHandle', projectId);
 
   const existing = await existingProjectHandle(tx, projectId);
   if (existing?.handle) {

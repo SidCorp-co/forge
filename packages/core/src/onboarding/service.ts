@@ -63,6 +63,7 @@ import {
   settlesPhaseJob,
   startRefusal,
 } from './rules.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 export interface OnboardingActor {
   userId: string;
@@ -79,9 +80,7 @@ export type OnboardingQuestionnaireOutcome =
 
 /** Serialises every onboarding write on one project. */
 async function lockOnboarding(tx: TxOnly, projectId: string) {
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`onboarding:${projectId}`}, 0))`,
-  );
+  await lockXact(tx, 'onboarding', projectId);
 }
 
 const factsOf = (actor: OnboardingActor, projectId: string) =>

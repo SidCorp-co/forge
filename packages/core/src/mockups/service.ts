@@ -31,15 +31,14 @@ import {
   revisionRefusal,
   withdrawRefusal,
 } from './rules.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 export type MockupOutcome =
   | { ok: true; mockup: MockupView; created?: boolean }
   | { ok: false; refusals: MockupRefusal[] };
 
 export async function lockMockups(tx: Tx, projectId: string): Promise<void> {
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`mockups:${projectId}`}, 0))`,
-  );
+  await lockXact(tx, 'mockups', projectId);
 }
 
 interface Target {

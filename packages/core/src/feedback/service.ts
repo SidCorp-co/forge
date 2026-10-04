@@ -42,6 +42,7 @@ import {
   verifyActRefusal,
   verifyRefusal,
 } from './rules.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 export type FeedbackOutcome =
   | { ok: true; feedback: FeedbackView; created?: boolean; effect?: FeedbackTriageEffect }
@@ -67,9 +68,7 @@ export async function inTx(
 
 /** Serialises every feedback write of a project, which also orders the FB-n it allocates. */
 export async function lockFeedback(tx: Tx, projectId: string): Promise<void> {
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`feedback:${projectId}`}, 0))`,
-  );
+  await lockXact(tx, 'feedback', projectId);
 }
 
 export async function answer(

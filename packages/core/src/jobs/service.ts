@@ -7,6 +7,7 @@ import { agentSessions, jobEvents, jobs, skills } from '../db/schema.js';
 import { transition } from '../lifecycle/transition.js';
 import { recordSkillActivityEvent, resolvePacketIdForHash } from '../skills/activity.js';
 import type { JobGateRow } from './job-queries.js';
+import { lockXact } from '../lib/advisory-lock.js';
 
 /** A job created by REST, queued on the given run; answers the whole row. */
 export async function createQueuedJob(
@@ -156,7 +157,7 @@ export async function finishJobFromRunner(args: {
 
 /** The next server-assigned job_events seq, under the job's advisory lock. */
 async function lockNextEventSeq(tx: Tx, jobId: string): Promise<number> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${jobId}))`);
+  await lockXact(tx, 'job', jobId);
   const maxRows = await tx.execute<{ max_seq: number | string | null }>(
     sql`SELECT COALESCE(MAX(seq), 0) AS max_seq FROM job_events WHERE job_id = ${jobId}`,
   );
