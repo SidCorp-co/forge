@@ -4,20 +4,20 @@
  * ever said (ISS-428).
  */
 
+import type { PipelineControl, PipelineHealth } from '@forge/contracts/pipeline-control';
 import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import { and, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { type AgentSessionStatus, agentSessions, agentSessionTurns } from '../db/schema.js';
 import { agentSessionEvents } from '../db/schema-agent-session-events.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import { type KernelActor, movedRow } from '../lifecycle/transition.js';
-import type { PipelineControl, PipelineHealth } from './pipeline-control-types.js';
 import { notFound } from './session-access.js';
 import { recordReportedTranscript } from './session-events.js';
 import type { AgentSessionPatch } from './session-failure.js';
 import { transitionSessions } from './session-transition.js';
 import { syncTurnsWithMessages, truncateTurnsAfter } from './turns-helpers.js';
-import { lockXact } from '../lib/advisory-lock.js';
 
 export const agentSessionListColumns = {
   id: agentSessions.id,

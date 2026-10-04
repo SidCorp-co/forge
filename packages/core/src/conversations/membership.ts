@@ -7,6 +7,7 @@
 
 import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
+import { handleNameForProject } from '../credentials/agent-account.js';
 import { db as defaultDb } from '../db/client.js';
 import { organizationMembers, projectMembers, projects, users } from '../db/schema.js';
 import {
@@ -15,11 +16,11 @@ import {
   conversations,
 } from '../db/schema-conversations.js';
 import { effectiveProjectRole } from '../lib/authz.js';
+import { holds } from '../permissions/index.js';
 import type { Executor, TxOnly } from './db-executor.js';
-import { existingProjectHandle, handleNameForProject } from './handles.js';
+import { existingProjectHandle } from './handles.js';
 import { conversationTransport } from './ports.js';
 import { appendMessagesIn } from './store.js';
-import { holds } from '../permissions/index.js';
 
 const badRequest = (message: string, code: string) =>
   new HTTPException(400, { message, cause: { code } });

@@ -14,9 +14,10 @@ export {
 export { referenceInHeadRef, resolveIssueForHeadRef } from './head-ref-link.js';
 export { registerHostMergeStamp, stampHostMerge } from './host-merge.js';
 export { issueWorkInFlightSql } from './issue-lease.js';
-export { activeIssuePrefix } from './issue-prefix-read.js';
+export { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
 export { resolveIssueRouteRef } from './issue-route-ref.js';
 export { recordIssueMerge } from './merge-record.js';
+export { computeProjectProgress } from './progress.js';
 export { claimIssuesForRelease, releaseEndedRunClaims, releaseRunClaims } from './release-claim.js';
 export {
   type IssueCreateInput,
@@ -32,3 +33,4 @@ export {
   type PlannedAgainst,
   unlinkIssueFromRequirement,
 } from './requirement-link.js';
+export { buildIlikePattern } from './search-predicate.js';

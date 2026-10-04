@@ -1,17 +1,11 @@
-import { randomBytes } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type ProjectMemberRole, projectInvitations } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
+import { generateInvitationToken, INVITATION_TTL_MS } from '../lib/invitation.js';
 import { addProjectMembers } from '../permissions/index.js';
 
-export const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-
 const MAX_INSERT_RETRIES = 3;
-
-export function generateToken(): string {
-  return randomBytes(32).toString('base64url');
-}
 
 export interface IssueInvitationInput {
   projectId: string;
@@ -49,7 +43,7 @@ export async function issueInvitationToken(
     // preceding DELETE runs in the same tx.
     let lastErr: unknown;
     for (let attempt = 0; attempt < MAX_INSERT_RETRIES; attempt++) {
-      const token = generateToken();
+      const token = generateInvitationToken();
       const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
       try {
         await tx.insert(projectInvitations).values({

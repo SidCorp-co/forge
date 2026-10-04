@@ -146,6 +146,14 @@
       "types": "./dist/data-policy.d.ts",
       "default": "./dist/data-policy.js"
     },
+    "./pipeline-control": {
+      "types": "./dist/pipeline-control.d.ts",
+      "default": "./dist/pipeline-control.js"
+    },
+    "./resume-drop": {
+      "types": "./dist/resume-drop.d.ts",
+      "default": "./dist/resume-drop.js"
+    },
     "./comments": {
       "types": "./dist/comments.d.ts",
       "default": "./dist/comments.js"

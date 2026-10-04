@@ -4,15 +4,15 @@
  *
  * The self RENDERS and decides nothing: no key, no address, no authority reads
  * it. Its one structured part, `presence`, is validated by
- * `conversations/presence.ts`, the module that reads it.
+ * `agent-presence.ts` and read by `conversations/presence.ts`.
  */
 
 import { eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { validatePresence } from '../conversations/presence.js';
 import { db as defaultDb } from '../db/client.js';
 import { agentSelves, type PresenceConfig } from '../db/schema-agent-selves.js';
 import { loadOrgAgent } from './agent-accounts.js';
+import { validatePresence } from './agent-presence.js';
 
 export interface AgentSelf {
   userId: string;

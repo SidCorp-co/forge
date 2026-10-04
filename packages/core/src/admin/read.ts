@@ -18,7 +18,7 @@ import {
   users,
 } from '../db/schema.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
-import { buildIlikePattern } from '../issues/search-predicate.js';
+import { buildIlikePattern } from '../issues/index.js';
 import { utcDateTrunc } from '../lib/time-buckets.js';
 import { computeAlerts } from './alert-queries.js';
 import {

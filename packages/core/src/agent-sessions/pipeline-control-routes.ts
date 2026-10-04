@@ -1,3 +1,4 @@
+import { type PipelineControl, type PipelineHealth } from '@forge/contracts/pipeline-control';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { type AuthVars, restActor } from '../middleware/auth.js';
@@ -9,8 +10,6 @@ import {
   buildPipelineHealth,
   DEFAULT_PIPELINE_HEALTH,
   normalisePipelineControl,
-  type PipelineControl,
-  type PipelineHealth,
   pipelineControlInputSchema,
   pipelineHealthInputSchema,
 } from './pipeline-control-types.js';
