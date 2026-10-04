@@ -116,6 +116,7 @@ export async function slotsInUse(deviceId: string): Promise<number> {
 
 interface MasterRow {
   id: string;
+  title: string | null;
   device_id: string | null;
   device_name: string | null;
   max_job_panes: number | null;
@@ -129,7 +130,7 @@ async function liveMaster(projectId: string): Promise<MasterRow | null> {
     await db.execute(sql`
       SELECT m.*, m.last_beat < now() - make_interval(secs => ${SESSION_SILENCE_TIMEOUT_S}) AS silent
         FROM (
-          SELECT s.id, s.device_id, d.name AS device_name, d.max_job_panes,
+          SELECT s.id, COALESCE(s.metadata ->> 'terminalName', s.title) AS title, s.device_id, d.name AS device_name, d.max_job_panes,
                  COALESCE(s.started_at, s.created_at) AS started_at,
                  ${masterLastBeatSql('s')} AS last_beat
             FROM agent_sessions s
@@ -162,6 +163,7 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
       ...base,
       state: 'none',
       sessionId: null,
+      name: null,
       device: null,
       since: null,
       pass: null,
@@ -181,6 +183,7 @@ export async function readMasterStanding(projectId: string): Promise<MasterStand
     ...base,
     state: master.silent ? 'silent' : pass ? 'in_pass' : 'idle',
     sessionId: master.id,
+    name: master.title,
     device,
     since: master.started_at ? iso(master.started_at) : null,
     pass,
