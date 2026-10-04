@@ -73,6 +73,50 @@ async function observeInboundEndpoint(
   return { fault: null, url: hook.url };
 }
 
+type InstallationCred = Parameters<typeof installationOctokit>[0];
+
+/** Read the bound repository as the installation; an HTTP refusal is told in the operator's terms. */
+async function readRepository(
+  cred: InstallationCred,
+  owner: string,
+  repo: string,
+): Promise<{ body: { full_name?: string; default_branch?: string } } | { refused: string }> {
+  try {
+    const res = await installationOctokit(cred).request({
+      method: 'GET',
+      url: `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
+      request: { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) },
+    });
+    return { body: res.data as { full_name?: string; default_branch?: string } };
+  } catch (err) {
+    const status = responseOf(err)?.status;
+    if (status === undefined) throw err;
+    if (status === 403) {
+      return {
+        refused: `the App is installed but not permitted on ${owner}/${repo} (HTTP 403) — grant the permission on the installation rather than reconnecting`,
+      };
+    }
+    if (status === 404) {
+      return {
+        refused: `${owner}/${repo} is not among the repositories this App was installed on`,
+      };
+    }
+    return { refused: `GitHub returned HTTP ${status}` };
+  }
+}
+
+/**
+ * What the installation is not allowed to do that Forge's code asks of it (ISS-1153): an App
+ * granted less answered every probe above and reported `ok` while it could not merge. It is
+ * collected beside the webhook fault rather than returned first, so one probe names both.
+ */
+async function grantShortfall(
+  args: Parameters<typeof checkInstallationGrant>[0],
+): Promise<string | null> {
+  const grant = await checkInstallationGrant(args);
+  return grant.kind === 'unread' ? grant.reason : grant.kind === 'short' ? grant.message : null;
+}
+
 const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecrets> = {
   inboundSecret: (connection) => githubInboundSecret(connection as IntegrationConnectionRow),
   verifyBindingTarget: ({ projectId, connection, config }) =>
@@ -92,9 +136,8 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
   async healthcheck(ctx: AdapterContext<GitHubConfig, GitHubSecrets>): Promise<HealthCheckResult> {
     const { owner, repo, installationId } = ctx.config ?? {};
     const { appId, privateKey } = ctx.secrets ?? {};
-
-    // The sentence goes to the connection beside the status. Until ISS-1140 the sweep dropped it,
-    // so an operator reading `error` an hour later had the verdict and not one word of why.
+    // The sentence goes to the connection beside the status (ISS-1140): a verdict with no why
+    // leaves the operator reading `error` an hour later with nothing to act on.
     const finish = async (status: HealthCheckResult['status'], message?: string) => {
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: status,
@@ -103,83 +146,34 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
       });
       return message === undefined ? { status } : { status, message };
     };
-
     if (!appId || !privateKey)
       return finish('error', 'this connection holds no GitHub App credential');
     if (!installationId) return finish('error', 'the App is not installed for this binding');
     if (!owner || !repo) return finish('error', 'no owner/repo configured for this binding');
 
+    const apiBase = ctx.config?.apiBaseUrl ? { apiBaseUrl: ctx.config.apiBaseUrl } : {};
+    const repository = `${owner}/${repo}`;
     try {
-      const cred = {
-        appId,
-        privateKey,
-        installationId,
-        ...(ctx.config?.apiBaseUrl ? { apiBaseUrl: ctx.config.apiBaseUrl } : {}),
-      };
+      const cred = { appId, privateKey, installationId, ...apiBase };
       await mintInstallationToken(cred);
-      let body: { full_name?: string; default_branch?: string };
-      try {
-        body = (
-          await installationOctokit(cred).request({
-            method: 'GET',
-            url: `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
-            request: { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) },
-          })
-        ).data as typeof body;
-      } catch (err) {
-        const status = responseOf(err)?.status;
-        if (status === undefined) throw err;
-        if (status === 403) {
-          return finish(
-            'error',
-            `the App is installed but not permitted on ${owner}/${repo} (HTTP 403) — grant the permission on the installation rather than reconnecting`,
-          );
-        }
-        if (status === 404) {
-          return finish(
-            'error',
-            `${owner}/${repo} is not among the repositories this App was installed on`,
-          );
-        }
-        return finish('error', `GitHub returned HTTP ${status}`);
-      }
-
+      const read = await readRepository(cred, owner, repo);
+      if ('refused' in read) return finish('error', read.refused);
       const inbound = await observeInboundEndpoint(ctx.connectionId, {
         appId,
         privateKey,
-        repository: `${owner}/${repo}`,
-        ...(ctx.config?.apiBaseUrl ? { apiBaseUrl: ctx.config.apiBaseUrl } : {}),
+        repository,
+        ...apiBase,
       });
-
-      // ISS-1153: every branch above turns on whether GitHub ANSWERS, and none of them on what the
-      // installation is allowed to do. An App granted less than Forge's code asks of it passed all
-      // of them and reported `ok` while it could not merge. Both faults are collected rather than
-      // returned on the first, because an App with a switched-off webhook AND a missing permission
-      // would otherwise be told about the webhook, and learn about the permission only on the probe
-      // after that — the second round this issue exists to remove.
-      const grant = await checkInstallationGrant({
-        appId,
-        privateKey,
-        installationId,
-        repository: `${owner}/${repo}`,
-        ...(ctx.config?.apiBaseUrl ? { apiBaseUrl: ctx.config.apiBaseUrl } : {}),
-      });
-      const shortfall =
-        grant.kind === 'unread' ? grant.reason : grant.kind === 'short' ? grant.message : null;
-
-      const faults = [inbound.fault, shortfall].filter((f): f is string => f !== null);
+      const faults = [inbound.fault, await grantShortfall({ ...cred, repository })].filter(
+        (f): f is string => f !== null,
+      );
       if (faults.length > 0) return finish('degraded', faults.join(' '));
-
-      await updateConnection(ctx.connectionId, {
-        lastHealthStatus: 'ok',
-        lastHealthDetail: null,
-        lastHealthAt: new Date(),
-      });
+      await finish('ok');
       return {
         status: 'ok',
         diagnostics: {
-          repository: body.full_name,
-          defaultBranch: body.default_branch,
+          repository: read.body.full_name,
+          defaultBranch: read.body.default_branch,
           installationId,
           webhookUrl: inbound.url,
         },
