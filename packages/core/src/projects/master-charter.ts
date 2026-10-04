@@ -14,11 +14,6 @@ export const MASTER_CHARTER_GOAL_MAX = 4000;
 export const MASTER_CHARTER_RULES_MAX = 50;
 export const MASTER_CHARTER_RULE_MAX = 2000;
 
-/** The path a `master.wake` frame points a master at. */
-export function masterCharterPath(projectId: string): string {
-  return `/api/projects/${projectId}/master-charter`;
-}
-
 export interface MasterCharterWrite {
   goal: string;
   rules: string[];

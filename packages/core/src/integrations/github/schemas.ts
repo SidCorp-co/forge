@@ -1,7 +1,7 @@
 /** The shapes a GitHub connection and binding are allowed to hold (moved here by ISS-1071). */
 
 import { z } from 'zod';
-import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../release-channel-schema.js';
+import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../index.js';
 
 export const githubConfigBase = z.object({
   installationId: z.number().int().positive().optional(),

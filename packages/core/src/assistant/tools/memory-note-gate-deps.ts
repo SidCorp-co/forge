@@ -12,7 +12,7 @@ export function memoryNoteGateFor(projectId: string): PreCall {
   return memoryNotePreCall({
     existingNotes: async (text) => {
       if (text.trim().length === 0) return [];
-      const { runMemorySearch } = await import('../../memory/search-service.js');
+      const { runMemorySearch } = await import('../../memory/index.js');
       const found = await runMemorySearch({
         projectId,
         query: text,

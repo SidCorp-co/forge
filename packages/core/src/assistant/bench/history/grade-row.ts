@@ -5,7 +5,7 @@
  * question answered with no Vietnamese word — live here beside them.
  */
 
-import { CORRECTIVE_PREFIX } from '../../../conversations/fallback-replies.js';
+import { CORRECTIVE_PREFIX } from '../../../conversations/index.js';
 import {
   type Evidence,
   type FailureMode,

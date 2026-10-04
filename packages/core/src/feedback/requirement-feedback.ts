@@ -1,9 +1,9 @@
 import type { FeedbackPhase } from '@forge/contracts/feedback';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { RequirementFeedbackItem } from '@forge/contracts/requirements';
-import { summariesAs } from '../feedback/about.js';
-import type { ReadDoor } from '../feedback/egress.js';
-import { feedbackLinksOf } from './feedback-links.js';
+import { feedbackLinksOf } from '../requirements/index.js';
+import { summariesAs } from './about.js';
+import type { ReadDoor } from './egress.js';
 
 const ORDER: readonly FeedbackPhase[] = [
   'new',

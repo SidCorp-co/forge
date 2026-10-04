@@ -9,7 +9,7 @@ import { WIREFRAME_VERSION } from '@forge/contracts/wireframe';
 import { z } from 'zod';
 import { principalAgency } from '../../issues/index.js';
 import type { ContextScopedMcpToolFactory } from '../../lib/tool.js';
-import { proposeMockup } from '../../mockups/service.js';
+import { proposeMockup } from '../../mockups/index.js';
 
 const drawInput = z.strictObject({
   revision: z.number().int().min(1),

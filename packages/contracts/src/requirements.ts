@@ -12,6 +12,7 @@ import type {
 } from "./feedback.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
+import type { RefusalStatuses } from "./refusal.js";
 import type {
 	Standing,
 	StandingGroup,
@@ -19,7 +20,6 @@ import type {
 	WaitingKind,
 	WaitingOn,
 } from "./standing.js";
-import type { RefusalStatuses } from "./refusal.js";
 
 export const REQUIREMENT_STATUSES = [
 	"draft",
@@ -574,3 +574,23 @@ export type RequirementRefusalCode = (typeof REQUIREMENT_REFUSAL_CODES)[number];
 export const REQUIREMENT_REFUSAL_STATUSES = {
 	REQUIREMENT_REVISION_STALE: 409,
 } as const satisfies RefusalStatuses<RequirementRefusalCode>;
+
+/** A requirement's key, `REQ-<seq>`. */
+export const requirementKey = (seq: number) => `REQ-${seq}`;
+
+/**
+ * Whether a requirement has changed since an issue's plan was written: its head is another
+ * revision than the one the plan names, or that revision was re-pinned onto newly approved designs
+ * after the plan. Read, never stored; an issue with no plan has nothing to drift from.
+ */
+export function changedSincePlan(input: {
+	plan: string | null;
+	plannedRevision: number | null;
+	currentRevision: number | null;
+	plannedBaselineSeq?: number | null | undefined;
+	latestBaselineSeq?: number | null | undefined;
+}): boolean {
+	if (!input.plan?.trim()) return false;
+	if (input.plannedRevision !== input.currentRevision) return true;
+	return (input.latestBaselineSeq ?? 1) > (input.plannedBaselineSeq ?? 1);
+}

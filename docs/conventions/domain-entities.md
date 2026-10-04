@@ -21,11 +21,16 @@ requirements and workflow designs.
   Today's violations are frozen in `.forge/module-boundaries-baseline.json`; a new violation, an
   entry that no longer occurs, or a rule whose frozen count rose fails, so the baseline only
   shrinks. It runs in `pnpm verify` and CI.
-- **The semantic rules are reported on demand.** `scripts/check-module-shape.mjs` refuses a
-  declaration that contradicts itself and reports table writers, database calls in routes and the
-  refusal shape; `--markers` writes its findings as Wrong markers. The orchestrator or QA runs it;
-  nothing runs it before a push. A status written outside the kernel is not reported: the database
-  refuses it (Status machines, below).
+- **The semantic rules block too.** `scripts/check-module-shape.mjs` refuses a declaration that
+  contradicts itself, then runs the type-aware ESLint rules in `scripts/eslint-module-shape/`: a
+  write to a table outside its owner module (any receiver typed as a Drizzle database or
+  transaction, any value typed as the table, raw SQL naming it), a database call in a route file, a
+  refusal built outside `packages/core/src/lib/refusal.ts`, and the global `fetch` outside an
+  adapter. Today's violations are frozen in `.forge/module-shape-suppressions.json` (ESLint bulk
+  suppressions): a new violation, an entry that no longer occurs, or a rule whose frozen total rose
+  fails. It runs in `pnpm verify` and CI; `--markers` writes every finding as Wrong markers. A
+  status written outside the kernel is not linted: the database refuses it (Status machines,
+  below).
 - **The API comes first.** The CLI wraps the routes, and MCP keeps only what neither covers
   ([api-first.md](../proposals/destination/api-first.md)), so every rule below is stated for the
   route first.
@@ -46,7 +51,7 @@ business contexts and two are technical layers.
 | 2 | `adapters` | Adapters | Every adapter (each `integrations/<port>`, the registry, `git`, `storage`) and the integration door |
 | 3 | `access` | Identity & access | Sign-in and users (`auth`), orgs, the permission kernel, install |
 | 4 | `project-config` | Projects & config | Projects, the project document and its revisions, assistant settings, preferences |
-| 5 | `knowledge` | Knowledge | Knowledge entries and edges, memory, guides, onboarding |
+| 5 | `knowledge` | Knowledge | Knowledge entries and edges, memory, item embeddings, guides, onboarding |
 | 6 | `work` | Work & delivery | Issues, the transition engine, the pipeline, comments, tasks, questions, PM, labels, uploads, error intake |
 | 7 | `execution` | Execution | Agents, sessions, jobs, runs, masters, runners, devices, prompts, skills, schedules, usage records |
 | 8 | `design` | Product design | Requirements, workflow designs, mockups, suggestions, feedback |
@@ -81,7 +86,7 @@ a door.
 | **domain** | One product entity family: requirements, feedback, release, chat, users and sign-in, and so on | Compute a fact another module also computes |
 | **read-model** | Derived facts only: standing, waiting-on, needs-you, coverage, counts, the system graph | Write any table but its own projection; SELECT a table its `reads` does not declare |
 | **adapter** | One external system behind a role-named port ([ADR 0006](../adr/0006-every-external-system-is-reached-through-one-adapter-port.md)) | Import a domain, a kernel module or a read model |
-| **door** | The route-mount registry, the MCP registry, WebSocket, inbound webhooks, and the integration door (a provider's routes and MCP tools, which reach its adapter through the port) | Hold a rule or a query |
+| **door** | The route-mount registry, the MCP registry, WebSocket, inbound webhooks, the API contract generator, and the integration door (a provider's routes and MCP tools, which reach its adapter through the port) | Hold a rule or a query |
 | **platform** | The db client and schema, `lib`, middleware, queue, config, observability, the credential helpers (`credentials`) | Import any other kind |
 
 **Who owns tables.** A kernel, a domain, an adapter or a platform module may own tables; a read
@@ -157,7 +162,8 @@ One file per responsibility, under `packages/core/src/<module>/`. The references
 | **index.ts** | The light face (BC-13): services, read functions, types | Mount anything; export a router or a tool; construct anything at import |
 
 - **Routes hold no queries (BC-15).** A route file validates, calls one service or read function,
-  and answers. A `db` or `tx` call in a route file is a finding. A route file is one named
+  and answers. A call on any value typed as a Drizzle database or transaction in a route file is
+  refused (`scripts/eslint-module-shape/rules/route-query.mjs`). A route file is one named
   `routes.ts`, `*-routes.ts` or under `routes/`, and any other file that builds a Hono router
   (`scripts/lib/module-shape.mjs:isRouteFile`).
 - A route's prefix is in `packages/core/src/credentials/pat-permissions.ts:PAT_PERMISSION_RESOURCES`, so a
@@ -502,8 +508,9 @@ Every external system is reached through one adapter port under
 their vendors and their callers are in `packages/core/src/integrations/README.md`.
 
 - **A domain imports the port's index.ts.** It never imports a vendor directory, a vendor SDK, a
-  vendor's types, or calls the global `fetch`; `scripts/check-provider-literals.mjs` refuses the
-  last two outside `packages/core/src/integrations/`.
+  vendor's types, or calls the global `fetch`; `scripts/check-provider-literals.mjs` refuses a
+  vendor SDK import outside `packages/core/src/integrations/`, and the module-shape lint
+  (`scripts/eslint-module-shape/rules/global-fetch.mjs`) the global `fetch` outside an adapter.
 - **An adapter imports no domain, kernel module or read model.** What the vendor sends back enters
   through a door, and a provider's routes and tools are the integration door's
   (`packages/core/src/integration-door/`), never the adapter's.
@@ -534,7 +541,7 @@ numbered 1..n.
 
 - **Shape.** A human key reads `<PREFIX>-<n>`. `n` is an `integer` `<x>_seq` column, unique per
   `(project_id, <x>_seq)`.
-- **Format and resolve.** A formatter builds the key (`packages/core/src/requirements/read.ts:requirementKey`,
+- **Format and resolve.** A formatter builds the key (`packages/contracts/src/requirements.ts:requirementKey`,
   `packages/core/src/lib/issue-ref.ts:formatIssueRef`). `rowIn` resolves a uuid, a key or a bare
   `n`, and answers 404 naming the ref (`packages/core/src/requirements/read.ts:rowIn`).
 - **Allocation.** `max(seq)+1` inside the entity's advisory-locked transaction

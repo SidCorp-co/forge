@@ -5,10 +5,9 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { type RunnerStatus, runners, runnerTypes } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
+import { projectRoom, roomManager, runnerRoom } from '../lib/rooms.js';
 import { transition } from '../lifecycle/transition.js';
 import { logger } from '../observability/logger.js';
-import { roomManager } from '../ws/room-manager.js';
-import { projectRoom, runnerRoom } from '../ws/rooms.js';
 import { defaultRunnerCapabilities } from './select.js';
 
 type DevicePrincipal = { type: 'device'; deviceId: string; ownerId: string };

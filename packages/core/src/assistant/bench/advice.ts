@@ -50,7 +50,7 @@ const SCREEN_MODES: readonly FailureMode[] = ['screen_repair', 'fallback_sent'];
 const LINK_MODES: readonly FailureMode[] = ['wrong_link_shape', 'dead_link'];
 const LOOP_MODES: readonly FailureMode[] = ['over_budget', 'repeated_call'];
 
-const SCREEN_SURFACE = 'conversations/screened-reply.ts:screenReply';
+const SCREEN_SURFACE = 'assistant/screened-reply.ts:screenedTurnReply';
 
 /** The rows carrying any of the modes: one row, one count, however many of its modes match. */
 const withModes = (input: AdviceInput, modes: readonly FailureMode[]): FlaggedInput[] =>
@@ -189,7 +189,7 @@ export function advise(inputs: readonly AdviceInput[]): AdviceLine[] {
           'unanswered',
           unanswered,
           'above 0',
-          'conversations/turn-runner.ts',
+          'assistant/turn-runner.ts',
           'the door lets a provider error or an empty reply reach the person; retry once or say so',
         ),
       );

@@ -9,8 +9,8 @@ import { fromDrizzle } from 'pg-boss';
 import { afterCommit, db } from '../db/client.js';
 import type { Refusal } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { affectedBy, BOSS_SCHEMA, boss } from '../queue/boss.js';
+import { requireOutboxAccess } from './access.js';
 import { consumerOfDeliveryId, DEAD_QUEUE, type DeliveryJob, queueOf } from './queues.js';
 import { wakeConsumers } from './worker.js';
 
@@ -77,10 +77,10 @@ export async function replayDelivery(input: {
   projectId: string;
   deliveryId: string;
 }): Promise<ReplayOutcome> {
-  await requireCan(
-    actorFor(input.userId),
+  await requireOutboxAccess(
+    input.userId,
     'outbox.replay',
-    projectResource(input.projectId),
+    input.projectId,
     'Replaying an outbox delivery',
   );
   return replay(input.deliveryId, input.projectId);

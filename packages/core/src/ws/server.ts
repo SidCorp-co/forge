@@ -7,20 +7,18 @@ import { verifyDeviceCredential } from '../credentials/device-credential.js';
 import { verifyUserToken } from '../credentials/jwt.js';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
-import { handleRunnerSessions } from '../devices/run-ledger-ws.js';
+import { handleRunnerSessions } from '../devices/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
+import { GLOBAL_ROOM, roomManager } from '../lib/rooms.js';
+import { markWsListening } from '../lib/ws-listening.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
 import {
   handleRunnerRegister,
   handleRunnerUnregister,
   handleRunnerUpdate,
-} from '../runners/heartbeat-ws.js';
-import { roomManager } from './room-manager.js';
-import { GLOBAL_ROOM } from './rooms.js';
+} from '../runners/index.js';
 
 type AnyServer = HttpServer | HttpsServer;
-
-export { roomManager };
 
 let wss: WebSocketServer | null = null;
 let heartbeatTimer: NodeJS.Timeout | null = null;
@@ -178,6 +176,7 @@ export function attachWs(server: AnyServer): void {
   if (wss) return;
 
   wss = new WebSocketServer({ noServer: true });
+  markWsListening(true);
 
   server.on('upgrade', (req, socket, head) => {
     if (!req.url) {
@@ -298,14 +297,6 @@ export function attachWs(server: AnyServer): void {
   heartbeatTimer.unref?.();
 }
 
-export function isWsListening(): boolean {
-  return wss !== null;
-}
-
-export function wsClientCount(): number {
-  return wss ? wss.clients.size : 0;
-}
-
 const WS_CLOSE_FALLBACK_MS = 2_000;
 
 export async function closeWs(): Promise<void> {
@@ -316,6 +307,7 @@ export async function closeWs(): Promise<void> {
   if (!wss) return;
   const server = wss;
   wss = null;
+  markWsListening(false);
   // Notify clients with 1001 (going away); fall back to terminate if any
   // client fails to close within the grace window so `server.close()` resolves.
   for (const client of server.clients) client.close(1001, 'server shutting down');

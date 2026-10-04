@@ -1,3 +1,4 @@
+import { releaseApprovalRequired } from '@forge/contracts/releases';
 import type { DeploymentTrigger, EnvironmentDeclaration, ProjectDocument } from './schema.js';
 import { readProjectDocument } from './service.js';
 import { defaultBranchOf } from './source.js';
@@ -131,6 +132,5 @@ export async function readDeployMap(projectId: string): Promise<DeployMap> {
 
 /** `release.approval.required` of the project document; a project with no document requires none. */
 export async function approvalRequired(projectId: string): Promise<boolean> {
-  const held = await readProjectDocument(projectId);
-  return held?.document.release?.approval.required === true;
+  return releaseApprovalRequired((await readProjectDocument(projectId))?.document);
 }

@@ -4,9 +4,9 @@
  * guard alike, so the flag a reader sees is the one the gate refuses on.
  */
 
+import { changedSincePlan } from '@forge/contracts/requirements';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
-import { changedSincePlan } from './rules.js';
 
 export interface PlanDrift {
   key: string;

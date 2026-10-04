@@ -10,7 +10,7 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { ContextScopedMcpToolFactory } from '../../lib/tool.js';
-import { runMemoryWrite } from '../../memory/write-service.js';
+import { runMemoryWrite } from '../../memory/index.js';
 import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
 import { NOTE_TEXT_MAX } from './memory-note-gate.js';
 

@@ -6,13 +6,13 @@
 
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import type { Executor } from '../conversations/db-executor.js';
-import { listParticipants } from '../conversations/participants.js';
-import { assertConversationReadable, assertConversationWritable } from '../conversations/scope.js';
-import { type ConversationRow, getConversation } from '../conversations/store.js';
 import { db as defaultDb } from '../db/client.js';
 import { conversations } from '../db/schema-conversations.js';
 import { forbidden } from '../middleware/route-errors.js';
+import type { Executor } from './db-executor.js';
+import { listParticipants } from './participants.js';
+import { assertConversationReadable, assertConversationWritable } from './scope.js';
+import { type ConversationRow, getConversation } from './store.js';
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });

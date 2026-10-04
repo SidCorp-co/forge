@@ -1,4 +1,4 @@
-import type { GitCredentialMint } from '../types.js';
+import type { GitCredentialMint } from '../index.js';
 import { mintInstallationToken } from './octokit.js';
 import { githubHostOf } from './source-host.js';
 import type { GitHubConfig, GitHubSecrets } from './types.js';

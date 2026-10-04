@@ -5,7 +5,9 @@
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
+import { releaseApprovalRequired } from '@forge/contracts/releases';
 import type { RequirementStanding } from '@forge/contracts/requirements';
+import { changedSincePlan } from '@forge/contracts/requirements';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -21,10 +23,10 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
-import { approvalRequired } from '../project-config/index.js';
+import { readProjectDocument } from '../project-config/index.js';
 import { linkedContractsOf } from './baselines.js';
 import { feedbackCountsOf, feedbackLinksOf } from './feedback-links.js';
-import { changedSincePlan, staleContractPinsOf, stalePinsOf } from './rules.js';
+import { staleContractPinsOf, stalePinsOf } from './rules.js';
 import { deriveStanding } from './standing.js';
 import {
   closedAtOf,
@@ -67,6 +69,11 @@ const firstBaselineAt = (
       b.requirementId === id && b.revision === revision && (!m || b.agreedAt < m) ? b.agreedAt : m,
     null,
   );
+
+/** Whether `projectId`'s document requires a release approval, by the one predicate release reads too. */
+export async function approvalRequiredIn(projectId: string): Promise<boolean> {
+  return releaseApprovalRequired((await readProjectDocument(projectId))?.document);
+}
 
 /** The standing of each requirement in `rows`, keyed by id; all rows belong to `projectId`. */
 export async function standingsOf(
@@ -143,7 +150,7 @@ export async function standingsOf(
       })
       .from(requirementBaselines)
       .where(inArray(requirementBaselines.requirementId, ids)),
-    approvalRequired(projectId),
+    approvalRequiredIn(projectId),
     linkedContractsOf(db, ids),
     latestContractPinsOf(ids),
   ]);

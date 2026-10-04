@@ -1,4 +1,3 @@
-import { stampGitCredentialRef } from '../devices/index.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { logger } from '../observability/logger.js';
 
@@ -14,6 +13,24 @@ export interface GitCredential {
   password: string;
   /** Human-readable note the CLI prints after writing the helper entry. */
   instructions: string;
+}
+
+/** Records which credential a device was handed; the process entry fills it from devices at boot. */
+export type GitCredentialStamp = (deviceId: string, ref: string) => Promise<void>;
+
+let stampProvided: GitCredentialStamp | null = null;
+
+export function provideGitCredentialStamp(stamp: GitCredentialStamp): void {
+  stampProvided = stamp;
+}
+
+function stampGitCredentialRef(deviceId: string, ref: string): Promise<void> {
+  if (!stampProvided) {
+    throw new Error(
+      'git: no credential stamp was provided, so the device row cannot record which credential it holds; the process entry calls provideGitCredentialStamp before it serves',
+    );
+  }
+  return stampProvided(deviceId, ref);
 }
 
 export function classifyGitRemote(url: string | null | undefined): GitTransport {

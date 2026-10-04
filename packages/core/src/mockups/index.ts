@@ -1,1 +1,1 @@
-export { deleteFeedbackMockups } from './service.js';
+export { deleteFeedbackMockups, proposeMockup } from './service.js';

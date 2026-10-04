@@ -4,6 +4,11 @@
 
 import { z } from "zod";
 
+/** The path a `master.wake` frame points a master at. */
+export function masterCharterPath(projectId: string): string {
+	return `/api/projects/${projectId}/master-charter`;
+}
+
 export const MASTER_VERBS = [
 	"triage",
 	"dispatch",

@@ -12,8 +12,8 @@ import {
 } from '@forge/contracts/suggestions';
 import { and, eq, isNotNull, lt, ne, or, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { transition } from '../lifecycle/transition.js';
 import { suggestions } from '../db/schema-suggestions.js';
+import { transition } from '../lifecycle/index.js';
 
 // cm:guard a newer revision of the target is written → every proposed suggestion whose base is not
 // that revision is stale, in the same transaction, so no accept can apply it on a moved head

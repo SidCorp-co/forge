@@ -1,4 +1,4 @@
-import type { ResumeDropReason } from '../jobs/resume-policy.js';
+import type { ResumeDropReason } from '@forge/contracts/resume-drop';
 
 interface ResumeDropCounters {
   reason: ResumeDropReason;

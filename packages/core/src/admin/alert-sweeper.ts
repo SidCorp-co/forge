@@ -5,10 +5,13 @@
  * when one crosses into warn/crit.
  */
 
-import { resolveNotifications } from '../notifications/auto-resolve.js';
-import { deliverExisting } from '../notifications/deliver.js';
-import { claimOpsAlert, unreadAlertDeliveries } from '../notifications/ops-alerts.js';
-import { platformAdminUserIds } from '../notifications/platform-admins.js';
+import {
+  claimOpsAlert,
+  deliverExisting,
+  platformAdminUserIds,
+  resolveNotifications,
+  unreadAlertDeliveries,
+} from '../notifications/index.js';
 import { logger } from '../observability/logger.js';
 import { computeAlerts, opsAlertResolutionKey } from './alert-queries.js';
 import type { AdminAlert } from './types.js';

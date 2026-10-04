@@ -2,8 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs, runners } from '../db/schema.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
-import { deviceRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
+import { deviceRoom, roomManager } from '../lib/rooms.js';
 
 type JobRow = typeof jobs.$inferSelect;
 

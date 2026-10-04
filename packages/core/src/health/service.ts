@@ -7,9 +7,9 @@ import { count, inArray, sql } from 'drizzle-orm';
 import pkg from '../../package.json' with { type: 'json' };
 import { db } from '../db/client.js';
 import { agentSessions, jobs, projects, runners } from '../db/schema.js';
-import { countInFlightByRunner } from '../jobs/in-flight.js';
+import { countInFlightByRunner } from '../jobs/index.js';
+import { isWsListening } from '../lib/ws-listening.js';
 import { isBossStarted } from '../queue/boss.js';
-import { isWsListening } from '../ws/server.js';
 
 export type LivenessSnapshot = {
   ok: boolean;

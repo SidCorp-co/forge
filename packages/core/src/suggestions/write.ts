@@ -7,14 +7,14 @@ import type { SuggestionView } from '@forge/contracts/suggestions';
 import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { lockFeedback } from '../feedback/service.js';
-import { writeRecordEvent } from '../issues/record-events/store.js';
+import { lockFeedback } from '../feedback/index.js';
+import { writeRecordEvent } from '../issues/index.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
-import { lockRequirements } from '../requirements/service.js';
+import { lockRequirements } from '../requirements/index.js';
 import type { Effect } from './effects.js';
 import { type Row, type SuggestionActor, type SuggestionTarget, viewOf } from './read.js';
 import { baseStaleRefusal } from './rules.js';
-import { lockXact } from '../lib/advisory-lock.js';
 
 export type SuggestionOutcome =
   | { ok: true; suggestion: SuggestionView; effect?: Effect; created?: boolean }

@@ -1,3 +1,4 @@
+export { sentryIntegration } from './adapter.js';
 export {
   readProjectSentryIssue,
   readProjectSentryIssues,

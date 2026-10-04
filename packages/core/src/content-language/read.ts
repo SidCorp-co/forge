@@ -4,7 +4,7 @@ import {
   contentLanguageOf,
 } from '@forge/contracts/content-language';
 import { mergeSessionMetadata } from '../agent-sessions/index.js';
-import { readProjectDocument } from '../project-config/service.js';
+import { readProjectDocument } from '../project-config/index.js';
 import { CONTENT_LANGUAGE_KEY } from './block.js';
 
 /** The project's setting at the document revision read; a project with no document writes `en`. */

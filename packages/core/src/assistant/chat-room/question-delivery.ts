@@ -21,7 +21,7 @@ import {
 } from '../../integrations/rocketchat/index.js';
 import { activeIssuePrefix } from '../../issues/index.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
-import { type KernelActor, transition } from '../../lifecycle/transition.js';
+import { type KernelActor, transition } from '../../lifecycle/index.js';
 import { problemsOf } from '../../messaging/contract.js';
 import { screenForDoor } from '../../messaging/proven.js';
 import { emitNotification, resolveNotifications } from '../../notifications/index.js';

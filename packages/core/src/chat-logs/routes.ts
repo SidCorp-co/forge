@@ -7,7 +7,7 @@ import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { type ProjectPermission, requireHeld } from '../permissions/index.js';
-import { findProjectIdBySlug } from '../projects/service.js';
+import { findProjectIdBySlug } from '../projects/index.js';
 import {
   chatLogById,
   flaggedChatLogs,

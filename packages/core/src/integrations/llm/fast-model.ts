@@ -8,7 +8,8 @@
  * backend", "the call failed", "the budget ran out" and "the data policy withholds it" it was.
  */
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { generateText } from 'ai';
+import { generateText, NoObjectGeneratedError, NoOutputGeneratedError, Output } from 'ai';
+import type { z } from 'zod';
 import { env } from '../../config/env.js';
 import { type EgressScope, egressScoped } from '../../lib/data-egress.js';
 import { openAiCompatBaseUrl } from '../../lib/openai-compat-url.js';
@@ -31,26 +32,35 @@ const REJECTS_REASONING_EFFORT = /reasoning_effort|unsupported|unrecognized|unkn
 
 type Completion = { text: string; finishReason: string } | { failed: string; body: string | null };
 
+function fastModelSdk() {
+  return createOpenAICompatible({
+    name: PROVIDER,
+    baseURL: openAiCompatBaseUrl(env.LITELLM_API_URL ?? ''),
+    ...(env.LITELLM_API_KEY ? { apiKey: env.LITELLM_API_KEY } : {}),
+  });
+}
+
+function callSettings(maxTokens: number, reasoningEffort: string | undefined) {
+  return {
+    maxOutputTokens: maxTokens,
+    temperature: 0,
+    maxRetries: 0,
+    abortSignal: AbortSignal.timeout(COMPLETION_TIMEOUT_MS),
+    ...(reasoningEffort ? { providerOptions: { [PROVIDER]: { reasoningEffort } } } : {}),
+  };
+}
+
 async function complete(
   prompt: string,
   maxTokens: number,
   model: string,
   reasoningEffort: string | undefined,
 ): Promise<Completion> {
-  const sdk = createOpenAICompatible({
-    name: PROVIDER,
-    baseURL: openAiCompatBaseUrl(env.LITELLM_API_URL ?? ''),
-    ...(env.LITELLM_API_KEY ? { apiKey: env.LITELLM_API_KEY } : {}),
-  });
   try {
     const out = await generateText({
-      model: sdk.chatModel(model),
+      model: fastModelSdk().chatModel(model),
       prompt,
-      maxOutputTokens: maxTokens,
-      temperature: 0,
-      maxRetries: 0,
-      abortSignal: AbortSignal.timeout(COMPLETION_TIMEOUT_MS),
-      ...(reasoningEffort ? { providerOptions: { [PROVIDER]: { reasoningEffort } } } : {}),
+      ...callSettings(maxTokens, reasoningEffort),
     });
     return { text: out.text, finishReason: out.finishReason };
   } catch (err) {
@@ -121,4 +131,53 @@ export async function callFastModel(
 /** True when the fast-model backend is configured. */
 export function fastModelConfigured(): boolean {
   return Boolean(env.LITELLM_API_URL);
+}
+
+/**
+ * Why a typed fast-model call has no answer: no backend, the data policy withholds the prompt, the
+ * call failed, or the model answered something the schema does not accept.
+ */
+export type FastModelMiss = 'unconfigured' | 'withheld' | 'failed' | 'unreadable';
+
+export type FastModelAnswer<T> =
+  | { ok: true; value: T; modelId: string }
+  | { ok: false; miss: FastModelMiss; detail: string };
+
+/**
+ * One completion whose answer must parse against `schema` through the AI SDK's structured output.
+ * `modelId` is the model the endpoint says answered, which pins an alias to the version behind it.
+ * The prompt still states the answer's shape: an OpenAI-compatible proxy may only honour JSON mode.
+ */
+export async function callFastModelObject<T>(
+  scope: EgressScope,
+  prompt: string,
+  schema: z.ZodType<T>,
+  opts: { maxTokens: number; model?: string },
+): Promise<FastModelAnswer<T>> {
+  if (!env.LITELLM_API_URL) return { ok: false, miss: 'unconfigured', detail: 'LITELLM_API_URL is not set' };
+  const sent = await egressScoped(scope, prompt);
+  if (!sent.ok) return { ok: false, miss: 'withheld', detail: sent.refusal.code };
+  const model = opts.model ?? fastModelName();
+  let reasoningEffort: string | undefined = env.LITELLM_FAST_REASONING_EFFORT;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const out = await generateText({
+        model: fastModelSdk().chatModel(model),
+        prompt: sent.text,
+        output: Output.object({ schema }),
+        ...callSettings(opts.maxTokens, reasoningEffort),
+      });
+      return { ok: true, value: out.output as T, modelId: out.response.modelId || model };
+    } catch (err) {
+      if (NoObjectGeneratedError.isInstance(err) || NoOutputGeneratedError.isInstance(err)) {
+        return { ok: false, miss: 'unreadable', detail: err.message.slice(0, 200) };
+      }
+      const body = badRequestBody(err);
+      if (attempt === 0 && reasoningEffort && body !== null && REJECTS_REASONING_EFFORT.test(body)) {
+        reasoningEffort = undefined;
+        continue;
+      }
+      return { ok: false, miss: 'failed', detail: errorText(err, 'llm.fast-model') };
+    }
+  }
 }

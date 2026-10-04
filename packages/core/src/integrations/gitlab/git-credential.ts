@@ -1,4 +1,4 @@
-import type { GitCredentialMint } from '../types.js';
+import type { GitCredentialMint } from '../index.js';
 import { gitlabHostOf } from './types.js';
 
 /** How long a helper answer is good for before git asks again. The token itself is the connection's. */

@@ -6,6 +6,7 @@ import {
   findChatCapableDeviceForProject,
   resolveSessionRepoPathForDevice,
 } from '../lib/device-pool.js';
+import { deviceRoom, roomManager } from '../lib/rooms.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
@@ -14,8 +15,6 @@ import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { extractReportFromMessages } from '../schedules/messages/skill-improve-prompt.js';
 import { extractStewardReportFromMessages } from '../schedules/messages/skill-steward-prompt.js';
 import { mergeAppliedMessageVersions } from '../schedules/service.js';
-import { deviceRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
 import { broadcastSession } from './broadcast.js';
 import { checkoutUnbound, noClaudeClient } from './chat-turn.js';
 import { abortBodySchema, desktopStatusSchema, setRunnerBodySchema } from './lifecycle-schemas.js';

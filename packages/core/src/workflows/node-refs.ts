@@ -8,7 +8,7 @@ import type { EdgeRef, NodeRef, NodeSet } from '@forge/contracts/workflow-health
 import { and, eq } from 'drizzle-orm';
 import type { db, Tx } from '../db/client.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
-import { isUuid } from '../issues/issue-route-ref.js';
+import { isUuid } from '../issues/index.js';
 import type { Refusal } from '../lib/refusal.js';
 import { readStoredWorkflow, type WorkflowWrite } from './schema.js';
 

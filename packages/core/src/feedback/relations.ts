@@ -2,8 +2,7 @@ import type { FeedbackSourceView } from '@forge/contracts/feedback';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentReports } from '../db/schema.js';
-import { feedbackLinksOf } from '../requirements/feedback-links.js';
-import { rowIn as requirementIn } from '../requirements/read.js';
+import { feedbackLinksOf, rowIn as requirementIn } from '../requirements/index.js';
 
 export const NO_FEEDBACK = '00000000-0000-0000-0000-000000000000';
 
