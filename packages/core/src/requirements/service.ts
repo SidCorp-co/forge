@@ -23,7 +23,7 @@ import {
   requirements,
 } from '../db/schema-requirements.js';
 import { RefusalError } from '../lib/refusal.js';
-import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
+import { type KernelActor, movedRow, transition } from '../lifecycle/transition.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { staleOnTargetRevised } from '../suggestions/stale.js';
 import { linkedContracts, writePinsIn } from './baselines.js';
@@ -457,7 +457,7 @@ export async function agreeRequirement(input: {
     );
     const agreed = await transition(tx, REQUIREMENT_MACHINE, {
       to: 'agreed',
-      from: 'draft',
+      expect: 'draft',
       set: { updatedAt: new Date() },
       where: eq(requirements.id, row.id),
       reason: input.reason?.trim() || null,
@@ -465,9 +465,7 @@ export async function agreeRequirement(input: {
       source: 'requirements',
       returning: ['id'],
     });
-    if (agreed.rows.length === 0) {
-      throw notAnEdgeError(REQUIREMENT_MACHINE, current.status as RequirementStatus, 'agreed');
-    }
+    movedRow(agreed);
     return null;
   });
   return answer(projectId, row.id, actor, refusals);

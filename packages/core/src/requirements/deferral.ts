@@ -15,7 +15,7 @@ import {
 } from '../db/schema-requirements.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { notAnEdgeError, transition } from '../lifecycle/transition.js';
+import { movedRow, transition } from '../lifecycle/transition.js';
 import { latestDeferOf } from './deferral-read.js';
 import { type RequirementActor, rowIn, signerRefusal } from './read.js';
 import { deferRefusals, undeferRefusal } from './rules.js';
@@ -73,6 +73,7 @@ export async function deferRequirement(input: {
     });
     const deferred = await transition(tx, REQUIREMENT_MACHINE, {
       to: 'deferred',
+      expect: status,
       set: { updatedAt: new Date() },
       where: eq(requirements.id, row.id),
       reason: input.reason.trim(),
@@ -80,7 +81,7 @@ export async function deferRequirement(input: {
       source: 'requirement-deferral',
       returning: ['id'],
     });
-    if (deferred.rows.length === 0) throw notAnEdgeError(REQUIREMENT_MACHINE, status, 'deferred');
+    movedRow(deferred);
     return null;
   });
   return answer(projectId, row.id, actor, refusals);
@@ -114,7 +115,7 @@ export async function undeferRequirement(input: {
     });
     const undeferred = await transition(tx, REQUIREMENT_MACHINE, {
       to: defer.fromStatus,
-      from: 'deferred',
+      expect: 'deferred',
       set: { updatedAt: new Date() },
       where: eq(requirements.id, row.id),
       reason: input.reason?.trim() || null,
@@ -122,13 +123,7 @@ export async function undeferRequirement(input: {
       source: 'requirement-deferral',
       returning: ['id'],
     });
-    if (undeferred.rows.length === 0) {
-      throw notAnEdgeError(
-        REQUIREMENT_MACHINE,
-        current.status as RequirementStatus,
-        defer.fromStatus,
-      );
-    }
+    movedRow(undeferred);
     return null;
   });
   return answer(projectId, row.id, actor, refusals);

@@ -143,18 +143,37 @@ export async function readCurrentDrafts(
     );
 }
 
+/** The storefront workflows the criteria's latest verdicts were judged at. */
+export function draftWorkflowIds(criteria: readonly CriterionWithVerdict[]): string[] {
+  return criteria.flatMap((c) =>
+    c.latest?.identityKind === 'storefront_draft' && c.latest.storefrontWorkflowId
+      ? [c.latest.storefrontWorkflowId]
+      : [],
+  );
+}
+
+/** A reading of no draft: every draft verdict reads as not among the drafts read. */
+export const NO_DRAFTS_READ: CurrentDrafts = (judged) =>
+  currentDraftReading(judged, {
+    kind: 'unreadable',
+    detail: `workflow \`${judged.workflowId}\` was not among the drafts read`,
+  });
+
 export async function withCurrentDrafts(
   projectId: string,
   criteria: readonly CriterionWithVerdict[],
   readDraft: DraftReader = readSourceDraft,
 ): Promise<CriterionWithVerdict[]> {
-  const workflowIds = criteria.flatMap((c) =>
-    c.latest?.identityKind === 'storefront_draft' && c.latest.storefrontWorkflowId
-      ? [c.latest.storefrontWorkflowId]
-      : [],
-  );
+  const workflowIds = draftWorkflowIds(criteria);
   if (workflowIds.length === 0) return [...criteria];
-  const current = await readCurrentDrafts(projectId, workflowIds, readDraft);
+  return withDrafts(criteria, await readCurrentDrafts(projectId, workflowIds, readDraft));
+}
+
+/** The criteria with each draft verdict corroborated against drafts already read. */
+export function withDrafts(
+  criteria: readonly CriterionWithVerdict[],
+  current: CurrentDrafts,
+): CriterionWithVerdict[] {
   return criteria.map((c) => {
     const latest = c.latest;
     if (latest?.identityKind !== 'storefront_draft' || !latest.storefrontWorkflowId) return c;

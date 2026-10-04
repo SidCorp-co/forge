@@ -14,7 +14,7 @@ import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { nearestFeedbackOf } from '../feedback/embeddings.js';
 import type { Refusal } from '../lib/refusal.js';
-import { notAnEdgeError, transition } from '../lifecycle/transition.js';
+import { movedRow, transition } from '../lifecycle/transition.js';
 import { actorFor, permissionFactsOf, permissionRefusalFor, projectResource, requireCan } from '../permissions/index.js';
 import { designNodesIn, nodeSetRefusals } from '../workflows/node-refs.js';
 import { breakdownGuardIn } from './breakdown.js';
@@ -263,7 +263,7 @@ export async function reviseSuggestion(input: {
     const rejected = `${reason} (revised by its reviewer as suggestion ${id})`;
     const decidedRejected = await transition(tx, SUGGESTION_MACHINE, {
       to: 'rejected',
-      from: 'proposed',
+      expect: 'proposed',
       set: { decidedBy: actor.userId, decidedAt: new Date(), reason: rejected },
       where: eq(suggestions.id, row.id),
       reason: rejected,
@@ -271,9 +271,7 @@ export async function reviseSuggestion(input: {
       source: 'suggestions-revise',
       returning: ['id'],
     });
-    if (decidedRejected.rows.length === 0) {
-      throw notAnEdgeError(SUGGESTION_MACHINE, row.status, 'rejected');
-    }
+    movedRow(decidedRejected);
     await recordDecision(tx, row, actor, 'rejected', rejected);
     return null;
   });

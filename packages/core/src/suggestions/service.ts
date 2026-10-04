@@ -25,7 +25,7 @@ import {
 } from '../issues/relations-service.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
-import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
+import { type KernelActor, movedRow, transition } from '../lifecycle/transition.js';
 import { actorFor, permissionRefusalFor, projectResource, requireCan } from '../permissions/index.js';
 import { lockRequirements } from '../requirements/service.js';
 import { type AcceptChannel, type Effect, type EffectWritten, writeEffect } from './effects.js';
@@ -135,7 +135,7 @@ async function acceptDuplicateOfIssue(
           );
           const decidedAccepted = await transition(tx, SUGGESTION_MACHINE, {
             to: 'accepted',
-            from: 'proposed',
+            expect: 'proposed',
             set: { decidedBy: actor.userId, decidedAt: new Date(), reason },
             where: eq(suggestions.id, row.id),
             reason: reason,
@@ -143,9 +143,7 @@ async function acceptDuplicateOfIssue(
             source: 'suggestions',
             returning: ['id'],
           });
-          if (decidedAccepted.rows.length === 0) {
-            throw notAnEdgeError(SUGGESTION_MACHINE, row.status, 'accepted');
-          }
+          movedRow(decidedAccepted);
           await recordDecision(tx, row, actor, 'accepted', reason);
         },
       },
@@ -210,7 +208,7 @@ export async function acceptSuggestion(input: {
     if (written.refusals) return written.refusals;
     const decidedAccepted = await transition(tx, SUGGESTION_MACHINE, {
       to: 'accepted',
-      from: 'proposed',
+      expect: 'proposed',
       set: { decidedBy: actor.userId, decidedAt: new Date(), reason },
       where: eq(suggestions.id, row.id),
       reason: reason,
@@ -218,9 +216,7 @@ export async function acceptSuggestion(input: {
       source: 'suggestions',
       returning: ['id'],
     });
-    if (decidedAccepted.rows.length === 0) {
-      throw notAnEdgeError(SUGGESTION_MACHINE, row.status, 'accepted');
-    }
+    movedRow(decidedAccepted);
     await recordDecision(tx, row, actor, 'accepted', reason);
     return null;
   });
@@ -265,7 +261,7 @@ export async function rejectSuggestion(input: {
     if (decided) return [decided];
     const decidedRejected = await transition(tx, SUGGESTION_MACHINE, {
       to: 'rejected',
-      from: 'proposed',
+      expect: 'proposed',
       set: { decidedBy: actor.userId, decidedAt: new Date(), reason },
       where: eq(suggestions.id, row.id),
       reason: reason,
@@ -273,9 +269,7 @@ export async function rejectSuggestion(input: {
       source: 'suggestions',
       returning: ['id'],
     });
-    if (decidedRejected.rows.length === 0) {
-      throw notAnEdgeError(SUGGESTION_MACHINE, row.status, 'rejected');
-    }
+    movedRow(decidedRejected);
     await recordDecision(tx, row, actor, 'rejected', reason);
     return null;
   });
@@ -296,7 +290,7 @@ export async function withdrawSuggestion(input: {
     if (refusal) return [refusal];
     const decidedWithdrawn = await transition(tx, SUGGESTION_MACHINE, {
       to: 'withdrawn',
-      from: 'proposed',
+      expect: 'proposed',
       set: { decidedAt: new Date(), reason: 'withdrawn by its producer' },
       where: eq(suggestions.id, row.id),
       reason: 'withdrawn by its producer',
@@ -304,9 +298,7 @@ export async function withdrawSuggestion(input: {
       source: 'suggestions',
       returning: ['id'],
     });
-    if (decidedWithdrawn.rows.length === 0) {
-      throw notAnEdgeError(SUGGESTION_MACHINE, row.status, 'withdrawn');
-    }
+    movedRow(decidedWithdrawn);
     await recordDecision(tx, row, actor, 'withdrawn');
     return null;
   });

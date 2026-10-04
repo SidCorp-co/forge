@@ -3,7 +3,7 @@
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { type CriterionWithVerdict, listCriteria } from './criteria/store.js';
-import { type DraftReader, withCurrentDrafts } from './criteria/storefront-draft.js';
+import { type CurrentDrafts, withDrafts } from './criteria/storefront-draft.js';
 
 const PASSING: ReadonlySet<string> = new Set(['pass', 'short']);
 
@@ -107,15 +107,11 @@ export async function reopenedAtOf(
 export async function unpassedCriteria(
   executor: Pick<Tx, 'execute'>,
   issue: { id: string; projectId: string },
-  source: SourceType = null,
-  readDraft?: DraftReader,
+  source: SourceType,
+  drafts: CurrentDrafts,
 ): Promise<CriteriaEvidence & { reopenedAt: Date | null }> {
   // Sequential: inside the transition's transaction both reads share one connection.
-  const criteria = await withCurrentDrafts(
-    issue.projectId,
-    await listCriteria(executor, issue.id),
-    readDraft,
-  );
+  const criteria = withDrafts(await listCriteria(executor, issue.id), drafts);
   const reopened = await reopenedAtOf(executor, [issue.id]);
   const reopenedAt = reopened.get(issue.id) ?? null;
   return { ...evaluateCriteria(criteria, reopenedAt, source), reopenedAt };

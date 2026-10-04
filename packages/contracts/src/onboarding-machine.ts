@@ -6,6 +6,7 @@ import { defineMachine, fromEach } from "./state-machine.js";
 
 export const QUESTIONNAIRE_MACHINE = defineMachine({
 	entity: "questionnaire",
+	shapes: ["3318f162"],
 	design: null,
 	states: QUESTIONNAIRE_STATUSES,
 	initial: ["open"],

@@ -22,7 +22,7 @@ import { agentQuestions } from '../db/schema-questions.js';
 import { deleteFeedbackEmbedding } from '../embeddings/item-writer.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
-import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
+import { type KernelActor, movedRow, transition } from '../lifecycle/transition.js';
 import { deleteFeedbackMockups } from '../mockups/index.js';
 import { logger } from '../observability/logger.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
@@ -254,6 +254,7 @@ export async function declineIn(
   if (refused) return refused;
   const moved = await transition(tx, FEEDBACK_MACHINE, {
     to: 'declined',
+    expect: row.status,
     set: { updatedAt: new Date() },
     where: eq(feedback.id, row.id),
     reason: reason ?? null,
@@ -261,7 +262,7 @@ export async function declineIn(
     source: 'feedback',
     returning: ['id'],
   });
-  if (moved.rows.length === 0) throw notAnEdgeError(FEEDBACK_MACHINE, row.status, 'declined');
+  movedRow(moved);
   await decide(tx, row, actor, { decision: 'declined', reason: reason ?? null });
   await closeClarification(tx, row.id, 'declined');
   return null;
@@ -287,6 +288,7 @@ async function personalAct(
     if (refused) return [refused];
     const moved = await transition(tx, FEEDBACK_MACHINE, {
       to: act,
+      expect: row.status,
       set: { updatedAt: new Date() },
       where: eq(feedback.id, row.id),
       reason: input.note?.trim() || null,
@@ -294,7 +296,7 @@ async function personalAct(
       source: 'feedback',
       returning: ['id'],
     });
-    if (moved.rows.length === 0) throw notAnEdgeError(FEEDBACK_MACHINE, row.status, act);
+    movedRow(moved);
     const onBehalf = actor.userId === row.reportedBy ? null : 'on behalf of the reporter';
     await decide(tx, row, actor, {
       decision: act,

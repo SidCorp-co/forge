@@ -90,8 +90,9 @@ The choices inside that, and why:
 are `scripts/check-module-boundaries.mjs`'s, a blocking check with a shrink-only baseline, as
 ISS-184's amendment below records. `scripts/check-module-shape.mjs` refuses a declaration that
 contradicts itself and reports per module, on demand, the rules an import graph cannot show:
-undeclared directories, table writers, database calls in routes, refusal shape and status writes
-outside the kernel transition; `--markers` writes those findings as the Wrong markers of the
+undeclared directories, table writers, database calls in routes and refusal shape; a status
+written outside the kernel transition is refused by a database trigger instead (ISS-189,
+`docs/conventions/domain-entities.md`, Status machines); `--markers` writes those findings as the Wrong markers of the
 reconciliation checklist, a JSON document the REQ-17/18 observation store can import. The owner
 ruled on 2026-10-04 that dev is code only and QA comes later ("build trước đi đã test gọi QA test
 sau"), so neither ships with unit tests, and the only check before a push on dev is
@@ -228,7 +229,7 @@ excluded.
   ArchUnit's freeze, ESLint's bulk suppressions). The declaration checks stay in the small script's
   library: each table owned once, `owns` consistent with `kind`, every module a known context, and
   the two technical layers by kind. The semantic rules (table writers, database calls in routes,
-  the refusal shape, status writes) stay regex reports run on demand; off-the-shelf tools see
+  the refusal shape) stay regex reports run on demand; off-the-shelf tools see
   imports, not behaviour, and a type-aware lint for them is a later change. Sheriff and
   eslint-plugin-boundaries would have served too; one tool is enough, and dependency-cruiser
   already resolves archmap's graph. Nx needs a project file per module and custom rules on an

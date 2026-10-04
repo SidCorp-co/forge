@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { SESSION_MACHINE } from '@forge/contracts/session-machine';
 import { eq } from 'drizzle-orm';
 import {
   CONTENT_LANGUAGE_KEY,
@@ -23,7 +22,7 @@ import {
   findChatCapableDeviceForProject,
   resolveSessionRepoPathForDevice,
 } from '../lib/device-pool.js';
-import { type KernelActor, notAnEdgeError } from '../lifecycle/transition.js';
+import { type KernelActor, movedRow } from '../lifecycle/transition.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import { isSlashCommandSkillName } from '../skills/skill-name.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
@@ -393,15 +392,17 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
       .where(eq(agentSessions.id, session.id))
       .returning();
     if (!written) throw new Error('agent_sessions: update returned no row');
-    const moved = await transitionSessions(tx, {
-      to: 'running',
-      where: eq(agentSessions.id, session.id),
-      actor: args.actor ?? { type: 'system' },
-      source: 'chat-turn',
-      returning: ['id'],
-    });
-    if (moved.rows.length === 0 && written.status !== 'running') {
-      throw notAnEdgeError(SESSION_MACHINE, written.status, 'running');
+    if (written.status !== 'running') {
+      movedRow(
+        await transitionSessions(tx, {
+          to: 'running',
+          expect: written.status,
+          where: eq(agentSessions.id, session.id),
+          actor: args.actor ?? { type: 'system' },
+          source: 'chat-turn',
+          returning: ['id'],
+        }),
+      );
     }
     const row = { ...written, status: 'running' as const };
     // Materialize the appended user turn in the same transaction so the legacy

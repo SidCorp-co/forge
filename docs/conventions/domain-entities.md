@@ -21,9 +21,10 @@ requirements and workflow designs.
   entry that no longer occurs, or a rule whose frozen count rose fails, so the baseline only
   shrinks. It runs in `pnpm verify` and CI.
 - **The semantic rules are reported on demand.** `scripts/check-module-shape.mjs` refuses a
-  declaration that contradicts itself and reports table writers, database calls in routes, the
-  refusal shape and status writes; `--markers` writes its findings as Wrong markers. The
-  orchestrator or QA runs it; nothing runs it before a push.
+  declaration that contradicts itself and reports table writers, database calls in routes and the
+  refusal shape; `--markers` writes its findings as Wrong markers. The orchestrator or QA runs it;
+  nothing runs it before a push. A status written outside the kernel is not reported: the database
+  refuses it (Status machines, below).
 - **The API comes first.** The CLI wraps the routes, and MCP keeps only what neither covers
   ([api-first.md](../proposals/destination/api-first.md)), so every rule below is stated for the
   route first.
@@ -285,11 +286,49 @@ written:
   `{ states, edges: [{ from, to, act, permission, guards }] }`, checked against the approved
   state-machine design of the same name, and every machine is listed in
   `packages/contracts/src/machines.ts:MACHINES`. The status column's CHECK holds its `states`.
+- **A machine has a version.** Its `shapes` lists the fingerprint of every shape it has had
+  (`packages/contracts/src/state-machine.ts:machineShape`, over states and edges), and its
+  `version` is their count. `defineMachine` refuses at load a machine whose states or edges no
+  recorded shape matches, naming the fingerprint to append, so a change is a new version and a
+  version is never reused. Every `kernel_transitions` row records the version that judged the move
+  (`machine_version`, null on rows recorded before versions), and so does its
+  `<entity>.transitioned` event (`machineVersion`).
 - **Only the kernel transition writes a status**, for every machine: the edge's guards, a
   compare-and-set on the row, and one `kernel_transitions` record, in one transaction
   (`packages/core/src/lifecycle/transition.ts:transition`); the outbox event is written at its
-  `emitTransitionEvents` hook. A status set anywhere else is a finding; an adapter's own delivery
-  status is the one exception, because an adapter imports no kernel module.
+  `emitTransitionEvents` hook. The database holds the rule: a trigger on every machine's status
+  column (`forge_kernel_status_guard`, installed per column by `forge_guard_status_column`) refuses
+  an UPDATE that changes the status, `KERNEL_STATUS_WRITE_REFUSED` naming the row and the move,
+  unless the transaction-local flag `forge.kernel_txn` holds the current transaction. The kernel
+  sets it for its own status write only and puts it back after
+  (`packages/core/src/db/kernel-marker.ts:asKernelStatusWrite`). A migration that adds a machine
+  calls `forge_guard_status_column` for its column. One database-side writer remains:
+  `enforce_no_active_child_under_terminal_run` (migration 0113) rewrites a job or session made
+  active under a finished run to `cancelled`/`cancelled_stale` inside the move that made it active,
+  and records its own `kernel_transitions` row with no version.
+- **Guards are pure and run under the lock.** The kernel locks the rows (`FOR UPDATE`), then runs
+  the guards the edge names, then writes. A guard reads only through the move's transaction; a fact
+  from anywhere else (the project document, the actor's permissions, a provider such as a
+  storefront draft) is read before the move and handed in
+  (`packages/core/src/issues/transition-guards.ts:readIssueMoveFacts`). A guard never opens a
+  second connection or calls the network while the lock is held.
+- **A lost compare-and-set is a 409.** A caller that read a status moves with `expect: <status>`;
+  a row that left it first is refused `STALE_TRANSITION` with `expected` and `actual`
+  (`packages/contracts/src/state-machine.ts:staleTransitionRefusal`), and a read status with no edge
+  to the target is refused `TRANSITION_NOT_AN_EDGE`. `from` is for a sweep, which leaves a row
+  standing elsewhere as it is.
+- **Removing a state or an edge is a declared migration.** The migration that ships the new version
+  moves every row the change strands, or aborts naming them: `forge_migrate_state_rows(entity,
+  table, column, from, to, version, reason)` moves every row standing at `from` to `to`, each move a
+  `kernel_transitions` row (`source = 'migration'`) under the new version, and with `to` NULL raises
+  `MACHINE_ROWS_UNMIGRATED` naming the rows still standing there. A removed state moves its rows
+  before the CHECK drops it, and so does every live column holding the machine's states (a park's
+  `issue_work_state.left_status`). A removed edge moves the rows at its `from` when it was their way
+  out; where `from` keeps another exit, the version alone records the change. A migration's move
+  writes no outbox event.
+- **History keeps the values it recorded.** `kernel_transitions.from_status` and `to_status`, the
+  outbox payloads and the record events carry no CHECK and are never rewritten or upcast; a reader
+  types them as text and reads a retired state as the version that recorded it named it.
 - **A derived phase is a read-model value**: computed in one function, never stored, never a SQL
   view plus a TypeScript override.
 - **A retired value is refused by name.** The kernel never maps an old status onto a new one; the
@@ -538,8 +577,9 @@ web-v2/src/features/feedback/     api.ts, hooks.ts, types.ts, routes.ts, compone
 | A light face and a heavy face | Two entry files per module instead of one, and a constant another module needs moves to contracts rather than riding the face |
 | Direction between twelve contexts first | A back edge between two contexts is cut by an outbox event or a port filled at boot rather than a direct call, and each cut is a change of its own; the order was read from today's graph, so a context whose code is wrongly placed reads as a back edge until it moves |
 | One owner per table | A cross-module write becomes a call into the owner's service, one more function and one more transaction boundary to get right |
-| The machine as data and one kernel transition | Every status write in core moves into one engine, and a slice can no longer set its own status in a one-line update |
+| The machine as data and one kernel transition | Every status write in core moves into one engine, and a slice can no longer set its own status in a one-line update; the database refuses one that tries, so a missed path fails at runtime rather than in review |
+| A version per machine | Any edit to a machine's states or edges appends a fingerprint to its `shapes`, and one that removes a state or an edge ships a data migration with it |
 | One durable outbox | Every reaction is asynchronous and survives a crash, at the price of a table write per event plus one per consumer, and a consumer whose effect leaves the database must be idempotent |
 | The status chosen by what the client should do | Each code that is not 422 is declared in a status map beside it; a code thrown in core but declared in no contracts array answers 422, whatever it means |
-| The semantic rules run on demand, not before a push | New code can break a table-writer, route-query, refusal or status-write rule and land; the break shows only when the orchestrator or QA next runs the script |
+| The semantic rules run on demand, not before a push | New code can break a table-writer, route-query or refusal rule and land; the break shows only when the orchestrator or QA next runs the script |
 | A shrink-only baseline for the import rules | A file move rewrites its baseline keys, so the move carries `--update-baseline` with it; a violation can never be admitted by re-freezing, only fixed |

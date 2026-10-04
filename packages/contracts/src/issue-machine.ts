@@ -183,6 +183,7 @@ const recovery = (to: IssueStatus, guards: readonly IssueGuard[]): IssueEdge => 
 
 export const ISSUE_MACHINE = defineMachine({
 	entity: "issue",
+	shapes: ["853ac6ba"],
 	design: { flow: "issue-lifecycle", revision: 8 },
 	states: ISSUE_STATUSES,
 	initial: ISSUE_INITIAL_STATUSES,

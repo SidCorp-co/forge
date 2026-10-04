@@ -2,7 +2,7 @@
 // between them. Core's one kernel transition (`packages/core/src/lifecycle/transition.ts:transition`)
 // writes a status only along an edge declared here; the column's CHECK holds the same `states`.
 
-import type { Refusal } from "./refusal.js";
+import type { Refusal, RefusalStatuses } from "./refusal.js";
 
 /** One move. `act` is the edge's name in its design; `permission` is what `can()` asks of the
  *  actor, null where only the kernel itself moves it; `guards` name the checks core runs on the row
@@ -22,6 +22,12 @@ export interface StatusMachine<
 > {
 	/** The `kernel_transitions.entity` a move of this machine is recorded under. */
 	readonly entity: E;
+	/** The machine's version: the number of shapes it has had, recorded on every
+	 *  `kernel_transitions` row as the version that judged the move. Never reused. */
+	readonly version: number;
+	/** The fingerprint of each shape the machine has had, oldest first; the last one is the shape
+	 *  declared now. A change to its states or edges appends one, which is the version bump. */
+	readonly shapes: readonly string[];
 	/** The approved state design this machine is checked against, or null where none is drawn. */
 	readonly design: { readonly flow: string; readonly revision: number } | null;
 	readonly states: readonly S[];
@@ -33,9 +39,35 @@ export interface StatusMachine<
 	readonly edges: readonly MachineEdge<S>[];
 }
 
-/** Declares a machine, refusing at load any edge that names a state the machine does not hold. */
+/** What a machine file declares; `defineMachine` derives its `version` from `shapes`. */
+export type MachineDeclaration<E extends string, S extends string> = Omit<
+	StatusMachine<E, S>,
+	"version"
+>;
+
+/** FNV-1a over the machine's states and edges, as 8 hex digits: what its `shapes` record. */
+export function machineShape(machine: MachineDeclaration<string, string>): string {
+	const canonical = JSON.stringify([
+		machine.states,
+		machine.initial,
+		machine.terminal,
+		machine.reasonRequired,
+		machine.edges.map((e) => [e.from, e.to, e.act, e.permission, e.guards, e.recovery === true]),
+	]);
+	let hash = 0x811c9dc5;
+	for (let i = 0; i < canonical.length; i++) {
+		hash ^= canonical.charCodeAt(i);
+		hash = Math.imul(hash, 0x01000193) >>> 0;
+	}
+	return hash.toString(16).padStart(8, "0");
+}
+
+/**
+ * Declares a machine, refusing at load any edge that names a state the machine does not hold, and
+ * a shape that is not the last one its `shapes` records: a changed machine is a new version.
+ */
 export function defineMachine<const E extends string, const S extends string>(
-	machine: StatusMachine<E, S>,
+	machine: MachineDeclaration<E, S>,
 ): StatusMachine<E, S> {
 	const known = new Set<string>(machine.states);
 	const named = [
@@ -50,7 +82,13 @@ export function defineMachine<const E extends string, const S extends string>(
 			`machine \`${machine.entity}\` names ${[...new Set(unknown)].join(", ")}, which are not among its states (${machine.states.join(", ")})`,
 		);
 	}
-	return machine;
+	const shape = machineShape(machine);
+	if (machine.shapes.at(-1) !== shape) {
+		throw new Error(
+			`machine \`${machine.entity}\` has states or edges that no version records: its shape is now ${shape}, and its last recorded shape is ${machine.shapes.at(-1) ?? "none"}. Append "${shape}" to its \`shapes\` (version ${machine.shapes.length + 1}); a change that removes a state or an edge ships the declared migration that moves its rows (docs/conventions/domain-entities.md, Status machines).`,
+		);
+	}
+	return { ...machine, version: machine.shapes.length };
 }
 
 /** Edges from every listed state to `to`, for a move drawn once "from any of these". */
@@ -128,8 +166,32 @@ export function guardNamesOf(machine: StatusMachine): string[] {
 export const STATE_MACHINE_REFUSAL_CODES = [
 	"TRANSITION_NOT_AN_EDGE",
 	"TRANSITION_REASON_REQUIRED",
+	"STALE_TRANSITION",
 ] as const;
 export type StateMachineRefusalCode = (typeof STATE_MACHINE_REFUSAL_CODES)[number];
+export const STATE_MACHINE_REFUSAL_STATUSES = {
+	STALE_TRANSITION: 409,
+} as const satisfies RefusalStatuses<StateMachineRefusalCode>;
+
+/** A lost compare-and-set: the row left the status the caller read before the move took it. */
+export function staleTransitionRefusal<S extends string>(
+	machine: StatusMachine<string, S>,
+	id: string,
+	expected: S,
+	actual: string,
+	to: S,
+	path = "/status",
+): Refusal & { code: "STALE_TRANSITION"; id: string; expected: S; actual: string; to: S } {
+	return {
+		code: "STALE_TRANSITION",
+		path,
+		detail: `${machine.entity} ${id} was expected at \`${expected}\` for the move to \`${to}\`, and another writer moved it to \`${actual}\` first. Re-read it and decide whether the move still stands.`,
+		id,
+		expected,
+		actual,
+		to,
+	};
+}
 
 /** A move the machine does not draw, named with the moves it does. */
 export function notAnEdgeRefusal<S extends string>(

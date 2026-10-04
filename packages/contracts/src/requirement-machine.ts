@@ -7,6 +7,7 @@ import { defineMachine, fromEach } from "./state-machine.js";
 
 export const REQUIREMENT_MACHINE = defineMachine({
 	entity: "requirement",
+	shapes: ["7bf2075a"],
 	design: { flow: "requirement-lifecycle", revision: 3 },
 	states: REQUIREMENT_STATUSES,
 	initial: ["draft"],

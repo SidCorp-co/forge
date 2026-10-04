@@ -12,6 +12,7 @@ import {
   assertDesignsApprovedForSeqs,
   buildsWorkflowOf,
   designUnapprovedSql,
+  type GateReader,
 } from '../workflows/build-gate.js';
 import { WorkflowDesignNotApprovedError } from '../workflows/design.js';
 
@@ -37,9 +38,10 @@ export async function assertDispatchGatesForSeqs(
 export async function assertDispatchGatesForIssue(
   projectId: string,
   issueId: string,
+  executor?: GateReader,
 ): Promise<void> {
-  await assertDesignApprovedForIssue(projectId, issueId);
-  await assertWaitsSettledForIssue(projectId, issueId);
+  await assertDesignApprovedForIssue(projectId, issueId, executor);
+  await assertWaitsSettledForIssue(projectId, issueId, executor);
 }
 
 export async function dispatchGatesOf(issueId: string, projectId: string) {

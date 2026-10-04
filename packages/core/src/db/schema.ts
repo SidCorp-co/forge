@@ -794,7 +794,8 @@ export const jobEvents = pgTable(
 // Append-only record of every status move on every machine (`@forge/contracts/machines`), written
 // by the one kernel transition `lifecycle/transition.ts:transition` in the move's own transaction:
 // one row per moved entity. `from_status` is the status the row actually left (read under the row
-// lock); `actor_id` is a bare uuid (no FK), so a system actor records NULL.
+// lock); `actor_id` is a bare uuid (no FK), so a system actor records NULL. `from_status` and
+// `to_status` are history: they carry no CHECK and keep a state a later machine version retired.
 export const kernelTransitionEntities = MACHINE_ENTITIES;
 export type KernelTransitionEntity = (typeof kernelTransitionEntities)[number];
 
@@ -809,6 +810,9 @@ export const kernelTransitions = pgTable(
     entityId: uuid('entity_id').notNull(),
     fromStatus: text('from_status'),
     toStatus: text('to_status').notNull(),
+    /** The version of the machine that judged the move (`StatusMachine.version`); null on a row
+     *  recorded before machines were versioned. */
+    machineVersion: integer('machine_version'),
     reason: text('reason'),
     actorType: text('actor_type', { enum: kernelTransitionActorTypes }).notNull(),
     actorAgency: text('actor_agency', { enum: actorAgencies }).notNull(),

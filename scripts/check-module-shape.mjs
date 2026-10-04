@@ -3,8 +3,9 @@
 // declaration that contradicts itself (packages/core/src/modules.json: a table owned twice, `owns`
 // on a kind that owns nothing, a module with no known context) and reports, per core module, the
 // semantic rules no import graph shows: undeclared directories, writes to a table another module
-// owns, database calls in route files, refusals outside the envelope, and status writes outside
-// the kernel transition. The import rules are scripts/check-module-boundaries.mjs's.
+// owns, database calls in route files and refusals outside the envelope. A status written outside
+// the kernel transition is refused by the database (`forge_kernel_status_guard`), not reported here.
+// The import rules are scripts/check-module-boundaries.mjs's.
 //
 // The semantic report is regex over source and runs on demand for the orchestrator or QA. It exits
 // 0 with its findings, 1 on a refused declaration, 2 when it cannot run; --markers writes the
@@ -27,7 +28,6 @@ import {
   RULES,
   refusalFindings,
   routeQueryFindings,
-  statusWriteFindings,
   tableWriterFindings,
   tableWrites,
   tally,
@@ -102,7 +102,6 @@ for (const [file, text] of texts) {
     for (const w of tableWrites(text, tables)) writes.push({ ...w, file, module: mod });
   findings.push(...routeQueryFindings(file, text, mod));
   findings.push(...refusalFindings(file, text, mod, kind));
-  findings.push(...statusWriteFindings(file, text, mod, kind, owners));
 }
 const { findings: writerHits, multiWriter } = tableWriterFindings(writes, owners);
 findings.push(...writerHits);

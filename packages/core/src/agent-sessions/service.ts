@@ -10,7 +10,7 @@ import { db, type Tx } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { type AgentSessionStatus, agentSessions, agentSessionTurns } from '../db/schema.js';
 import { agentSessionEvents } from '../db/schema-agent-session-events.js';
-import type { KernelActor } from '../lifecycle/transition.js';
+import { type KernelActor, movedRow } from '../lifecycle/transition.js';
 import type { PipelineControl, PipelineHealth } from './pipeline-control-types.js';
 import { notFound } from './session-access.js';
 import { recordReportedTranscript } from './session-events.js';
@@ -157,11 +157,11 @@ export type SessionPatchWrite = {
 
 /**
  * A worker or user PATCH, written in one transaction with the turn rows mirrored to the messages
- * blob so the two never diverge. `updated` is null when the status move stood on no edge.
+ * blob so the two never diverge. A status move is a compare-and-set on the status `existing` read.
  */
 export async function writeSessionPatch(
   w: SessionPatchWrite,
-): Promise<{ updated: SessionRow | null; sync: TurnSync | null }> {
+): Promise<{ updated: SessionRow; sync: TurnSync | null }> {
   const mirror = async (tx: Tx, rowId: string) => {
     if (w.snapshot) await recordReportedTranscript(tx, w.sessionId, w.snapshot, w.at);
     if (!w.messages) return null;
@@ -170,9 +170,10 @@ export async function writeSessionPatch(
   };
   let sync: TurnSync | null = null;
   if (w.to !== undefined && w.to !== w.existing.status) {
-    const [row] = (
+    const row = movedRow(
       await transitionSessions(db, {
         to: w.to,
+        expect: w.existing.status,
         set: w.columns,
         where: eq(agentSessions.id, w.sessionId),
         actor: w.actor,
@@ -180,9 +181,10 @@ export async function writeSessionPatch(
         afterWrite: async (tx, rows) => {
           if (rows[0]) sync = await mirror(tx, rows[0].id);
         },
-      })
-    ).rows;
-    return { updated: row ?? null, sync };
+      }),
+      sessionGone,
+    );
+    return { updated: row, sync };
   }
   const updated = await db.transaction(async (tx) => {
     const [row] = await tx
@@ -204,18 +206,25 @@ export async function deleteSession(sessionId: string): Promise<void> {
   );
 }
 
-/** Move a session to `idle` so its owner can resume it; null when it stood on no edge. */
-export async function abortSession(sessionId: string, actor: KernelActor) {
-  const [row] = (
+const sessionGone = () => notFound('agent session not found');
+
+/** Move a session to `idle` so its owner can resume it, from the status the caller read. */
+export async function abortSession(
+  sessionId: string,
+  expect: AgentSessionStatus,
+  actor: KernelActor,
+) {
+  return movedRow(
     await transitionSessions(db, {
       to: 'idle',
+      expect,
       set: { updatedAt: new Date() },
       where: eq(agentSessions.id, sessionId),
       actor,
       source: 'session-abort',
-    })
-  ).rows;
-  return row ?? null;
+    }),
+    sessionGone,
+  );
 }
 
 /**
@@ -261,20 +270,21 @@ export async function rebindSessionRunner(
 /** A desktop client's status report, moved through the session machine; null on no edge. */
 export async function setDesktopSessionStatus(
   sessionId: string,
-  to: AgentSessionStatus,
+  move: { expect: AgentSessionStatus; to: AgentSessionStatus },
   columns: Omit<AgentSessionPatch, 'status'>,
   actor: KernelActor,
 ) {
-  const [row] = (
+  return movedRow(
     await transitionSessions(db, {
-      to,
+      to: move.to,
+      expect: move.expect,
       set: columns,
       where: eq(agentSessions.id, sessionId),
       actor,
       source: 'desktop-status',
-    })
-  ).rows;
-  return row ?? null;
+    }),
+    sessionGone,
+  );
 }
 
 /** Replace a session's metadata document. */

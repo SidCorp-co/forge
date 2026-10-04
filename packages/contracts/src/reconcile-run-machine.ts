@@ -17,6 +17,7 @@ const LIVE: readonly ReconcileRunStatus[] = ["pending", "running", "verifying", 
 
 export const RECONCILE_RUN_MACHINE = defineMachine({
 	entity: "reconcile_run",
+	shapes: ["1055d915"],
 	design: null,
 	states: RECONCILE_RUN_STATUSES,
 	initial: ["pending"],

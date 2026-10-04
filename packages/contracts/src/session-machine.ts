@@ -32,6 +32,7 @@ const move = (act: string) => ({ act, permission: null, guards: [] as const });
 
 export const SESSION_MACHINE = defineMachine({
 	entity: "session",
+	shapes: ["b4779e31"],
 	design: null,
 	states: AGENT_SESSION_STATUSES,
 	initial: ["idle", "queued", "running"],

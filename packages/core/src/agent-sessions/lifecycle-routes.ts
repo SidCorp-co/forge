@@ -1,4 +1,3 @@
-import { SESSION_MACHINE } from '@forge/contracts/session-machine';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
@@ -7,7 +6,6 @@ import {
   findChatCapableDeviceForProject,
   resolveSessionRepoPathForDevice,
 } from '../lib/device-pool.js';
-import { notAnEdgeError } from '../lifecycle/transition.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
@@ -53,8 +51,7 @@ agentSessionLifecycleRoutes.post(
 
     const { session } = await ensureSessionOwnerOrAdmin(input.sessionId, userId);
 
-    const updated = await abortSession(input.sessionId, restActor(c));
-    if (!updated) throw notAnEdgeError(SESSION_MACHINE, session.status, 'idle');
+    const updated = await abortSession(input.sessionId, session.status, restActor(c));
 
     // Aborting a pipeline session just flips it to `idle`; the failure path
     // (ISS-393) reverts the issue to its stage entry-status or holds the job,
@@ -201,8 +198,12 @@ agentSessionLifecycleRoutes.post(
         : null;
 
     const { status: _to, ...columns } = statusSet;
-    const updated = await setDesktopSessionStatus(sessionId, status, columns, restActor(c));
-    if (!updated) throw notAnEdgeError(SESSION_MACHINE, existing.status, status);
+    const updated = await setDesktopSessionStatus(
+      sessionId,
+      { expect: existing.status, to: status },
+      columns,
+      restActor(c),
+    );
 
     // ISS-101 — close one-shot runs on terminal status writes. No-op on
     // kind='issue' (closed by issue state-machine); fires for pm/interactive.

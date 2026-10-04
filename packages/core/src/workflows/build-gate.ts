@@ -8,7 +8,7 @@
  */
 
 import { type SQL, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import {
@@ -33,8 +33,15 @@ interface Blocked {
   status: DesignStatus | null;
 }
 
-async function blockedWhere(projectId: string, filter: SQL): Promise<Blocked[]> {
-  const rows = (await db.execute(sql`
+/** Where a gate reads: the root `db`, or the transaction of a move that asks it under its lock. */
+export type GateReader = Pick<Tx, 'execute' | 'select'>;
+
+async function blockedWhere(
+  projectId: string,
+  filter: SQL,
+  executor: GateReader = db,
+): Promise<Blocked[]> {
+  const rows = (await executor.execute(sql`
     SELECT i.iss_seq, w.id AS workflow_id, w.flow, w.design_status
     FROM workflow_builds wb
     JOIN issues i ON i.id = wb.issue_id
@@ -52,9 +59,13 @@ async function blockedWhere(projectId: string, filter: SQL): Promise<Blocked[]> 
   }));
 }
 
-async function refuseBlocked(projectId: string, blocked: Blocked[]): Promise<void> {
+async function refuseBlocked(
+  projectId: string,
+  blocked: Blocked[],
+  executor: GateReader = db,
+): Promise<void> {
   if (blocked.length === 0) return;
-  const prefix = await activeIssuePrefix(projectId);
+  const prefix = await activeIssuePrefix(projectId, executor);
   throw new WorkflowDesignNotApprovedError(
     blocked.map((b) => ({
       issue: formatIssueRef(prefix, b.issSeq),
@@ -81,8 +92,13 @@ export async function assertDesignsApprovedForSeqs(
 export async function assertDesignApprovedForIssue(
   projectId: string,
   issueId: string,
+  executor: GateReader = db,
 ): Promise<void> {
-  await refuseBlocked(projectId, await blockedWhere(projectId, sql`i.id = ${issueId}`));
+  await refuseBlocked(
+    projectId,
+    await blockedWhere(projectId, sql`i.id = ${issueId}`, executor),
+    executor,
+  );
 }
 
 /** The issue read's answer: which workflow it builds, and whether that lets it be dispatched. */

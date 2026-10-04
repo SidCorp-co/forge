@@ -16,7 +16,7 @@ import { requirementRevisions, requirements } from '../db/schema-requirements.js
 import { rowIn as feedbackRowIn } from '../feedback/read.js';
 import { issueRefIn, requirementRefIn } from '../feedback/refs.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
-import { notAnEdgeError, transition } from '../lifecycle/transition.js';
+import { movedRow, transition } from '../lifecycle/transition.js';
 import { logger } from '../observability/logger.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { getStorage } from '../storage/index.js';
@@ -213,6 +213,7 @@ async function decide(
     if (refused) return [refused];
     const moved = await transition(tx, MOCKUP_MACHINE, {
       to: set.status,
+      expect: row.status,
       set: { reason: set.reason, decidedBy: actor.userId, decidedAt: new Date() },
       where: eq(mockups.id, row.id),
       reason: set.reason,
@@ -220,7 +221,7 @@ async function decide(
       source: 'mockups',
       returning: ['id'],
     });
-    if (moved.rows.length === 0) throw notAnEdgeError(MOCKUP_MACHINE, row.status, set.status);
+    movedRow(moved);
     return null;
   });
   if (refusals) return { ok: false, refusals };

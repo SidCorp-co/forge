@@ -5,6 +5,7 @@ import { defineMachine } from "./state-machine.js";
 
 export const MOCKUP_MACHINE = defineMachine({
 	entity: "mockup",
+	shapes: ["2e89f76b"],
 	design: null,
 	states: MOCKUP_STATUSES,
 	initial: ["proposed"],

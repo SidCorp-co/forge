@@ -1,7 +1,11 @@
 /**
  * The guards the issue machine (`@forge/contracts/issue-machine:ISSUE_MACHINE`) names, each refusing
  * by name. `apply-transition.ts` asks `edgeFault` before anything is written; the kernel transition
- * runs `issueGuards` inside its own transaction, so a guard reads the row the move will change.
+ * runs `issueGuards` under its row lock, so a guard reads the row the move will change through the
+ * move's transaction. What a guard needs from outside the issue's rows (the project document, the
+ * actor's permissions, the storefront drafts its verdicts name) is read once before the lock
+ * (`readIssueMoveFacts`) and handed in: no guard opens a second connection or calls a provider while
+ * the lock is held.
  *
  *   into               condition                                                code
  *   any (edge)         the move is an edge of the lifecycle                      ILLEGAL_TRANSITION
@@ -37,14 +41,22 @@ import type { Tx } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import type { Guard, GuardInput } from '../lifecycle/transition.js';
 import type { Refusal } from '../lib/refusal.js';
-import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
+import { db } from '../db/client.js';
+import { type PermissionFacts, permissionFactsOf, permissionRefusal } from '../permissions/index.js';
+import type { ProjectDocument } from '../project-config/schema.js';
 import { readProjectDocument } from '../project-config/service.js';
 import { planDriftOf } from '../requirements/plan-drift.js';
 import type { ActorAgency } from './actor-agency.js';
 import { refuseHeldTake } from './blocked-by.js';
 import type { IssueTransitionRefusalCode } from '@forge/contracts/issue-machine';
 import { isRefusal } from '../lib/refusal.js';
-import type { DraftReader } from './criteria/storefront-draft.js';
+import { listCriteria } from './criteria/store.js';
+import {
+  type CurrentDrafts,
+  draftWorkflowIds,
+  NO_DRAFTS_READ,
+  readCurrentDrafts,
+} from './criteria/storefront-draft.js';
 import { isDispatchGateError } from './dispatch-gates.js';
 import { type CriteriaEvidence, type SourceType, unpassedCriteria } from './release-evidence.js';
 import { mergeNotRecorded } from './merged-at.js';
@@ -121,16 +133,40 @@ export interface GuardContext {
   transitionReason?: string | undefined;
   waitingKind?: WaitingKind | undefined;
   executor: Pick<Tx, 'select' | 'execute'>;
-  readDraft?: DraftReader | undefined;
+  facts: IssueMoveFacts;
   /** Called with the refusal a move passed only because the project does not require verdicts. */
   onVerdictsWaived?: ((waived: GuardFault) => void) | undefined;
+}
+
+/** What the guards read from outside the issue's rows, read before the move takes its lock. */
+export interface IssueMoveFacts {
+  document: ProjectDocument | null;
+  /** The mover's role and grants on the project. */
+  permissions: PermissionFacts;
+  /** The drafts the criteria's storefront verdicts name, as the source holds them now. */
+  drafts: CurrentDrafts;
+}
+
+export async function readIssueMoveFacts(args: {
+  issue: { id: string; projectId: string };
+  actorUserId: string;
+  to: IssueStatus;
+}): Promise<IssueMoveFacts> {
+  const { issue } = args;
+  const document = (await readProjectDocument(issue.projectId))?.document ?? null;
+  const permissions = await permissionFactsOf(args.actorUserId, issue.projectId);
+  const workflowIds =
+    args.to === 'awaiting_release' ? draftWorkflowIds(await listCriteria(db, issue.id)) : [];
+  const drafts =
+    workflowIds.length > 0 ? await readCurrentDrafts(issue.projectId, workflowIds) : NO_DRAFTS_READ;
+  return { document, permissions, drafts };
 }
 
 const hasText = (s: string | undefined) => Boolean(s?.trim());
 
 /** Reasons and kinds: the guards that read only the request. Asked before the write begins. */
 export function reasonFault(
-  ctx: Omit<GuardContext, 'executor' | 'issue' | 'leftStatus' | 'actorUserId'>,
+  ctx: Omit<GuardContext, 'executor' | 'issue' | 'leftStatus' | 'actorUserId' | 'facts'>,
 ): GuardFault | null {
   const details = { from: ctx.from, to: ctx.to };
   if (ctx.to === 'needs_info') {
@@ -209,11 +245,6 @@ async function holderGuard(ctx: GuardContext): Promise<GuardFault | null> {
   };
 }
 
-async function planApprovalRequired(projectId: string): Promise<boolean> {
-  const held = await readProjectDocument(projectId);
-  return held?.document.plan?.approval.required === true;
-}
-
 /** approved, the plan checkpoint: a plan and criteria, and plans.approve where the project says so. */
 async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
   const rows = (await ctx.executor.execute(sqlPlanRow(ctx.issue.id))) as unknown as Array<{
@@ -232,11 +263,10 @@ async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
       details: { from: ctx.from, to: ctx.to, missing },
     };
   }
-  if (await planApprovalRequired(ctx.issue.projectId)) {
-    const denied = await permissionRefusalFor(
-      actorFor(ctx.actorUserId),
+  if (ctx.facts.document?.plan?.approval.required === true) {
+    const denied = permissionRefusal(
+      ctx.facts.permissions,
       'plans.approve',
-      projectResource(ctx.issue.projectId),
       'moving an issue to `approved` (project document `plan.approval.required`)',
     );
     if (denied) {
@@ -282,7 +312,7 @@ async function planDriftGuard(ctx: GuardContext): Promise<GuardFault | null> {
  * so the move's record says the verdicts were waived and not that they held.
  */
 async function verdictGuard(ctx: GuardContext): Promise<GuardFault | null> {
-  const document = (await readProjectDocument(ctx.issue.projectId))?.document;
+  const document = ctx.facts.document;
   const fault = await verdictFault(ctx, document?.source.type ?? null);
   if (fault === null || verdictsRequiredOf(document?.delivery)) return fault;
   ctx.onVerdictsWaived?.(fault);
@@ -290,7 +320,7 @@ async function verdictGuard(ctx: GuardContext): Promise<GuardFault | null> {
 }
 
 async function verdictFault(ctx: GuardContext, source: SourceType): Promise<GuardFault | null> {
-  const found = await unpassedCriteria(ctx.executor, ctx.issue, source, ctx.readDraft);
+  const found = await unpassedCriteria(ctx.executor, ctx.issue, source, ctx.facts.drafts);
   const into = quote(ctx.to);
   if (found.kind === 'no-criteria') {
     return {
@@ -412,10 +442,9 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
   });
   const guards: Record<IssueGuard, Guard<'issue'>> = {
     admit: async () => {
-      const denied = await permissionRefusalFor(
-        actorFor(base.actorUserId),
+      const denied = permissionRefusal(
+        base.facts.permissions,
         ISSUE_ADMIT_PERMISSION,
-        projectResource(base.issue.projectId),
         'promoting a `draft` to `open`',
       );
       return denied ? ({ ...denied, path: '/status' } as Refusal) : null;

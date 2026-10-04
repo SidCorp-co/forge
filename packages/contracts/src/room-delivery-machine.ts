@@ -13,6 +13,7 @@ export type CommentMirrorStatus = (typeof COMMENT_MIRROR_STATUSES)[number];
 
 export const COMMENT_MIRROR_MACHINE = defineMachine({
 	entity: "comment_mirror",
+	shapes: ["6505189c"],
 	design: null,
 	states: COMMENT_MIRROR_STATUSES,
 	// An outbound comment is claimed before it is posted; a reply taken in from the room is
@@ -55,6 +56,7 @@ export type QuestionDeliveryStatus =
 
 export const QUESTION_DELIVERY_MACHINE = defineMachine({
 	entity: "question_delivery",
+	shapes: ["54b4c260"],
 	design: null,
 	states: QUESTION_DELIVERY_STATUSES,
 	initial: ["claimed"],

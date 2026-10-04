@@ -81,6 +81,8 @@ export interface TransitionEvent<E extends TransitionEventEntity> {
 	issueId: string | null;
 	from: StateOf<E>;
 	to: StateOf<E>;
+	/** The version of the machine that judged the move; `from` and `to` are its states. */
+	machineVersion: number;
 	reason: string | null;
 	actor: OutboxActor;
 	/** When the move was written (ISO 8601). */

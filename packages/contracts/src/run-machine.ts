@@ -23,6 +23,7 @@ export const TERMINAL_PIPELINE_RUN_STATUSES: readonly PipelineRunStatus[] = [
 
 export const RUN_MACHINE = defineMachine({
 	entity: "run",
+	shapes: ["93cda98b"],
 	design: null,
 	states: PIPELINE_RUN_STATUSES,
 	initial: ["running"],

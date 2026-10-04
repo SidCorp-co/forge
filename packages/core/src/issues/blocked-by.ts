@@ -161,7 +161,7 @@ export async function refuseBlockedTake(
 // admissible set holds an unstarted issue out for: an unsettled blocks edge, then the design and
 // contract-wait gates (issues/dispatch-gates.ts), each refused by its own name
 export async function refuseHeldTake(
-  executor: Pick<Tx, 'execute'>,
+  executor: Pick<Tx, 'execute' | 'select'>,
   issueId: string,
   door: string,
 ): Promise<void> {
@@ -169,7 +169,7 @@ export async function refuseHeldTake(
   if (!issue || !isTakeable(issue.status)) return;
   const held = await blockedOf(executor, issue);
   if (held) throw issueBlocked([held], door);
-  await assertDispatchGatesForIssue(issue.projectId, issue.id);
+  await assertDispatchGatesForIssue(issue.projectId, issue.id, executor);
 }
 
 export async function refuseBlockedTakeForSeqs(

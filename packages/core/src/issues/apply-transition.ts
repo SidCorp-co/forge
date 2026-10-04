@@ -5,7 +5,7 @@ import {
   type IssueTransitionRefusalCode,
   PARK_STATUSES,
 } from '@forge/contracts/issue-machine';
-import { edgeBetween } from '@forge/contracts/state-machine';
+import { edgeBetween, type staleTransitionRefusal } from '@forge/contracts/state-machine';
 import { eq, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import { type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
@@ -21,7 +21,13 @@ import { recordDropUnblock } from './drop-unblock.js';
 import { mintParkQuestion } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { moveOf, recordMove } from './record-events/kernel-records.js';
-import { edgeFault, type GuardCode, issueGuards, reasonFault } from './transition-guards.js';
+import {
+  edgeFault,
+  type GuardCode,
+  issueGuards,
+  readIssueMoveFacts,
+  reasonFault,
+} from './transition-guards.js';
 import {
   postLeaveComment,
   postTransitionReasonComment,
@@ -32,6 +38,9 @@ import { readWorkState, setLeftStatus, setWorkStep } from './work-state.js';
 export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(ISSUE_DISPATCH_TERMINAL_STATUSES);
 
 export type TransitionErrorCode = IssueTransitionRefusalCode;
+
+const isStale = (r: Refusal): r is ReturnType<typeof staleTransitionRefusal> =>
+  r.code === 'STALE_TRANSITION';
 
 /**
  * Typed transition failure. `message` keeps the legacy `CODE: detail` shape
@@ -263,10 +272,11 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
   const by = authorOf(actor);
   const waiver = { waived: false };
   let unblockedDependents: UnblockedDependent[] = [];
+  const facts = await readIssueMoveFacts({ issue, actorUserId: by, to: toStatus });
   const moved = await transition(db, ISSUE_MACHINE, {
     to: toStatus,
     where: eq(issues.id, issue.id),
-    from: fromStatus,
+    expect: fromStatus,
     recovery: recovering,
     set: {
       reopenCount: toStatus === 'reopen' ? sql`${issues.reopenCount} + 1` : issues.reopenCount,
@@ -282,6 +292,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
       leftStatus: input.leftStatus,
       agency: actorAgency(actor),
       actorUserId: by,
+      facts,
       transitionReason: options.transitionReason,
       waitingKind: options.waitingKind,
       recoveringRunId: options.recoveringRunId,
@@ -329,16 +340,24 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
       }
     },
   });
-  const refused = moved.refusals[0] as
-    | (Refusal & { code: GuardCode; details?: Record<string, unknown> })
-    | undefined;
+  const lead: Refusal | undefined = moved.refusals[0];
+  if (lead && isStale(lead)) {
+    throw new TransitionError('STALE_TRANSITION', lead.detail, {
+      from: fromStatus,
+      to: toStatus,
+      expected: lead.expected,
+      actual: lead.actual,
+    });
+  }
+  const refused = lead as (Refusal & { code: GuardCode; details?: Record<string, unknown> }) | undefined;
   if (refused) throw new TransitionError(refused.code, refused.detail, refused.details ?? {});
   const [row] = moved.rows;
   if (!row) {
-    throw new TransitionError('STALE_TRANSITION', 'issue status changed concurrently', {
-      from: fromStatus,
-      to: toStatus,
-    });
+    throw new TransitionError(
+      'STALE_TRANSITION',
+      `the issue was expected at \`${fromStatus}\` for the move to \`${toStatus}\`, and it was deleted first`,
+      { from: fromStatus, to: toStatus, expected: fromStatus, actual: null },
+    );
   }
   return {
     row: { ...row, status: row.status as IssueStatus },

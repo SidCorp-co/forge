@@ -8,6 +8,7 @@ export type RunnerStatus = (typeof RUNNER_STATUSES)[number];
 
 export const RUNNER_MACHINE = defineMachine({
 	entity: "runner",
+	shapes: ["403a0154"],
 	design: null,
 	states: RUNNER_STATUSES,
 	initial: ["online", "offline"],
@@ -36,6 +37,7 @@ export type RunnerProvisionStatus = (typeof RUNNER_PROVISION_STATUSES)[number];
  *  provisions again after a reset. */
 export const RUNNER_PROVISION_MACHINE = defineMachine({
 	entity: "runner_provision",
+	shapes: ["b2460212"],
 	design: null,
 	states: RUNNER_PROVISION_STATUSES,
 	initial: ["queued"],
@@ -51,6 +53,7 @@ export type DeviceStatus = (typeof DEVICE_STATUSES)[number];
 
 export const DEVICE_MACHINE = defineMachine({
 	entity: "device",
+	shapes: ["9c512d74"],
 	design: null,
 	states: DEVICE_STATUSES,
 	initial: ["offline"],

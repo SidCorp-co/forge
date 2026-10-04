@@ -2,7 +2,7 @@ import { RUNNER_MACHINE } from '@forge/contracts/runner-machine';
 import { eq } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import { type RunnerStatus, runnerEvents, runners } from '../db/schema.js';
-import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
+import { type KernelActor, movedRow, transition } from '../lifecycle/transition.js';
 
 /** A drizzle executor: the base `db` or a transaction handle. */
 export type Executor = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -64,13 +64,14 @@ export async function setRunnerStatus(input: {
 
     const moved = await transition(tx, RUNNER_MACHINE, {
       to: input.newStatus,
+      expect: oldStatus,
       where: eq(runners.id, input.runnerId),
       reason: input.reason,
       actor: input.actor,
       source: 'runners',
       returning: ['id'],
     });
-    if (moved.rows.length === 0) throw notAnEdgeError(RUNNER_MACHINE, oldStatus, input.newStatus);
+    movedRow(moved);
 
     await insertRunnerEvent(tx, {
       runnerId: input.runnerId,

@@ -28,6 +28,7 @@ export const TERMINAL_JOB_STATUSES: readonly JobStatus[] = ["done", "failed", "c
 
 export const JOB_MACHINE = defineMachine({
 	entity: "job",
+	shapes: ["df8e6dc6"],
 	design: null,
 	states: JOB_STATUSES,
 	initial: ["queued", "held"],

@@ -29,7 +29,7 @@ import { agentQuestions, type QuestionOrigin, type QuestionStep } from '../db/sc
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { dataPolicyOf, storedAnswers } from '../lib/data-egress.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
-import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
+import { type KernelActor, movedRow, transition } from '../lifecycle/transition.js';
 import { permissionFactsOf } from '../permissions/index.js';
 import { insertBatchQuestions } from '../questions/index.js';
 import {
@@ -373,15 +373,14 @@ export async function submitAnswers(input: SubmitInput): Promise<QuestionnaireOu
     if (skip) {
       const skipped = await transition(tx, QUESTIONNAIRE_MACHINE, {
         to: 'skipped',
+        expect: batch.status,
         set: { skippedBy: input.actor.userId, skippedAt: now },
         where: eq(questionnaireBatches.id, batch.id),
         actor: questionnaireKernelActor(input.actor),
         source: 'questionnaire-submit',
         returning: ['id'],
       });
-      if (skipped.rows.length === 0) {
-        throw notAnEdgeError(QUESTIONNAIRE_MACHINE, batch.status, 'skipped');
-      }
+      movedRow(skipped);
       await input.onSubmittedIn?.(tx, batch, true);
       return null;
     }
@@ -397,6 +396,7 @@ export async function submitAnswers(input: SubmitInput): Promise<QuestionnaireOu
       if (!last) throw new Error(`questionnaires: item ${a.itemId} has no step`);
       const answered = await transition(tx, QUESTION_MACHINE, {
         to: 'answered',
+        expect: entry.row.status,
         set: {
           steps: [...steps.slice(0, -1), answeredStep(last, entry.item, a, input.actor.userId, at)],
           updatedAt: now,
@@ -406,9 +406,7 @@ export async function submitAnswers(input: SubmitInput): Promise<QuestionnaireOu
         source: 'questionnaire-submit',
         returning: ['id'],
       });
-      if (answered.rows.length === 0) {
-        throw notAnEdgeError(QUESTION_MACHINE, entry.row.status, 'answered');
-      }
+      movedRow(answered);
     }
     const items = [...byId.values()]
       .filter((e) => e.open)
@@ -441,15 +439,14 @@ export async function submitAnswers(input: SubmitInput): Promise<QuestionnaireOu
     }
     const submitted = await transition(tx, QUESTIONNAIRE_MACHINE, {
       to: 'submitted',
+      expect: batch.status,
       set: { submittedBy: input.actor.userId, submittedAt: now, answersMessageId: messageId },
       where: eq(questionnaireBatches.id, batch.id),
       actor: questionnaireKernelActor(input.actor),
       source: 'questionnaire-submit',
       returning: ['id'],
     });
-    if (submitted.rows.length === 0) {
-      throw notAnEdgeError(QUESTIONNAIRE_MACHINE, batch.status, 'submitted');
-    }
+    movedRow(submitted);
     await input.onSubmittedIn?.(tx, batch, false);
     return null;
   });

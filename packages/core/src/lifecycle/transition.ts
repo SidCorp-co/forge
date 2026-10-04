@@ -1,9 +1,10 @@
 /**
  * The one kernel transition: every status write, on every machine, goes through `transition`. It
- * finds the machine's edge for the move, runs the guards that edge names, writes the status as a
- * compare-and-set, records the move in `kernel_transitions` and writes its outbox event, all in one
- * transaction. Every reaction to a move (the activity feed, a broadcast, a dispatch) is a consumer of
- * that event.
+ * locks the rows, runs the guards the edge names under that lock, writes the status as a
+ * compare-and-set under the kernel's transaction-local flag (the only write the status triggers let
+ * through), records the move in `kernel_transitions` with the version of the machine that judged
+ * it, and writes its outbox event, all in one transaction. Every reaction to a move (the activity
+ * feed, a broadcast, a dispatch) is a consumer of that event.
  */
 
 import type { MachineEntity, MachineOf, StateOf } from '@forge/contracts/machines';
@@ -19,11 +20,12 @@ import {
   type MachineEdge,
   notAnEdgeRefusal,
   type StatusMachine,
+  staleTransitionRefusal,
 } from '@forge/contracts/state-machine';
 import { and, inArray, type SQL } from 'drizzle-orm';
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core';
 import { delegationOf } from '../credentials/pat-scope.js';
-import { type KernelExecutor, stampKernelTxn } from '../db/kernel-marker.js';
+import { asKernelStatusWrite, type KernelExecutor } from '../db/kernel-marker.js';
 import { type KernelTransitionActorType, kernelTransitions } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
@@ -74,7 +76,12 @@ export interface GuardInput<E extends MachineEntity> {
   edge: MachineEdge<StateOf<E>>;
 }
 
-/** A guard answers its refusal, or null to let the move through. It never throws a refusal. */
+/**
+ * A guard answers its refusal, or null to let the move through. It never throws a refusal. It runs
+ * under the row lock and is pure over what it is given: it reads only through `tx`, and a fact from
+ * anywhere else (the project document, the actor's permissions, a provider) is read before the move
+ * and handed to it, never fetched over a second connection or the network while the lock is held.
+ */
 export type Guard<E extends MachineEntity> = (input: GuardInput<E>) => Promise<Refusal | null>;
 
 export interface TransitionArgs<E extends MachineEntity, K extends keyof MachineRow<E>> {
@@ -82,8 +89,12 @@ export interface TransitionArgs<E extends MachineEntity, K extends keyof Machine
   /** Which rows; the engine adds the machine's edge condition to it. */
   where: SQL | undefined;
   /** The statuses the caller moves from. Each must have an edge to `to`; absent, every state with
-   *  one does, and a row elsewhere is left as it is. */
+   *  one does, and a row elsewhere is left as it is. Not with `expect`. */
   from?: StateOf<E> | readonly StateOf<E>[];
+  /** The status the caller read: the move is a compare-and-set on it. A row `where` matches that
+   *  stands elsewhere is refused `STALE_TRANSITION` with the expected and actual status (409), and a
+   *  read status with no edge to `to` is refused `TRANSITION_NOT_AN_EDGE`. Not with `from`. */
+  expect?: StateOf<E>;
   /** Take the machine's recovery edge rather than its lifecycle edge. */
   recovery?: boolean;
   /** Further columns written with the status; an `undefined` value leaves its column as it is. */
@@ -103,9 +114,25 @@ export interface TransitionArgs<E extends MachineEntity, K extends keyof Machine
 }
 
 export interface TransitionResult<R> {
-  /** The rows the move wrote; empty when no row stood on an edge into `to`, or a guard refused. */
+  /** The rows the move wrote; empty when no row stood on an edge into `to`, or anything refused. */
   rows: R[];
   refusals: Refusal[];
+}
+
+/**
+ * The one row a compare-and-set move (`expect`) wrote. Its refusals are thrown in the envelope; no
+ * row means `where` matched none, answered by `gone`: by default an invariant, for a caller that
+ * read the row in the same transaction.
+ */
+export function movedRow<R>(
+  result: TransitionResult<R>,
+  gone: () => Error = () => new Error('transition: the row a compare-and-set moves matched nothing'),
+): R {
+  const [lead] = result.refusals;
+  if (lead) throw new RefusalError(result.refusals, lead.code);
+  const [row] = result.rows;
+  if (!row) throw gone();
+  return row;
 }
 
 export async function transition<
@@ -126,6 +153,12 @@ function startingStates<E extends MachineEntity>(
   args: TransitionArgs<E, never>,
 ): StateOf<E>[] {
   const entries = entriesOf<StateOf<E>>(machine, args.to, args.recovery === true);
+  if (args.expect !== undefined) {
+    if (args.from !== undefined) {
+      throw new Error(`transition: ${args.source} names both \`from\` and \`expect\`; a move takes one`);
+    }
+    return entries.includes(args.expect) ? [args.expect] : [];
+  }
   if (args.from === undefined) {
     if (entries.length === 0) {
       throw new Error(`transition: no edge of machine \`${machine.entity}\` enters \`${args.to}\``);
@@ -169,16 +202,29 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
   const columns = table as unknown as Record<string, PgColumn>;
   const idColumn = columns[idKey] as PgColumn;
   const statusColumn = columns[statusKey] as PgColumn;
-  const onEdge = and(args.where, inArray(statusColumn, from as string[]));
 
-  await stampKernelTxn(tx);
-
+  const expected = args.expect;
+  const shape = machine as unknown as StatusMachine<string, StateOf<E>>;
+  if (expected !== undefined && from.length === 0) {
+    return { rows: [], refusals: [notAnEdgeRefusal(shape, expected, args.to)] };
+  }
   const prior = (await tx
     .select({ id: idColumn, status: statusColumn })
     .from(table as PgTable)
-    .where(onEdge)
+    .where(expected === undefined ? and(args.where, inArray(statusColumn, from as string[])) : args.where)
     .for('update')) as PriorRow<E>[];
   if (prior.length === 0) return { rows: [], refusals: [] };
+  if (expected !== undefined) {
+    const stale = prior.filter((r) => r.status !== expected);
+    if (stale.length > 0) {
+      return {
+        rows: [],
+        refusals: stale.map((r) =>
+          staleTransitionRefusal(shape, r.id, expected, r.status, args.to),
+        ),
+      };
+    }
+  }
 
   const refusals: Refusal[] = [];
   for (const row of prior) {
@@ -218,9 +264,9 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
         inArray(statusColumn, from as string[]),
       ),
     );
-  const rows = (projection ? await write.returning(projection) : await write.returning()) as Array<
-    Pick<MachineRow<E>, K | 'id'> & { id: string }
-  >;
+  const rows = (await asKernelStatusWrite(tx, () =>
+    projection ? write.returning(projection) : write.returning(),
+  )) as Array<Pick<MachineRow<E>, K | 'id'> & { id: string }>;
 
   const left = new Map(prior.map((r) => [r.id, r.status]));
   const credential = credentialOf(args.actor);
@@ -229,6 +275,7 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
     entityId: row.id,
     fromStatus: left.get(row.id) ?? null,
     toStatus: args.to,
+    machineVersion: machine.version,
     reason: args.reason ?? null,
     actorType: args.actor.type,
     actorAgency: agencyOf(args.actor),
@@ -240,7 +287,7 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
   if (records.length > 0) await tx.insert(kernelTransitions).values(records);
 
   await args.afterWrite?.(tx, rows);
-  await emitTransitionEvents(tx, machine.entity, records, args.actor);
+  await emitTransitionEvents(tx, machine, records, args.actor);
   return { rows, refusals: [] };
 }
 
@@ -279,7 +326,7 @@ async function subjectsOf(
  *  (`@forge/contracts/outbox-events:TRANSITION_EVENTS`), in the move's own transaction. */
 async function emitTransitionEvents(
   tx: Tx,
-  entity: MachineEntity,
+  machine: MachineOf<MachineEntity>,
   records: ReadonlyArray<{
     entityId: string;
     fromStatus: string | null;
@@ -288,6 +335,7 @@ async function emitTransitionEvents(
   }>,
   actor: KernelActor,
 ): Promise<void> {
+  const entity = machine.entity;
   const emitted = records.filter((r) => emitsTransition(entity, r.toStatus));
   if (emitted.length === 0) return;
   const evented = entity as TransitionEventEntity;
@@ -313,6 +361,7 @@ async function emitTransitionEvents(
           issueId: subject.issueId,
           from: r.fromStatus,
           to: r.toStatus,
+          machineVersion: machine.version,
           reason: r.reason,
           actor: by,
           at,
@@ -320,9 +369,4 @@ async function emitTransitionEvents(
       } as never;
     }),
   );
-}
-
-/** A move a caller asked for that the machine does not draw, refused by name with the moves it does. */
-export function notAnEdgeError(machine: StatusMachine, from: string, to: string): RefusalError {
-  return new RefusalError([notAnEdgeRefusal(machine, from, to)], 'TRANSITION_NOT_AN_EDGE');
 }

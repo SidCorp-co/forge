@@ -6,6 +6,7 @@ import { defineMachine } from "./state-machine.js";
 
 export const SCHEDULE_RUN_MACHINE = defineMachine({
 	entity: "schedule_run",
+	shapes: ["b035a2fc"],
 	design: null,
 	states: SCHEDULE_RUN_STATUSES,
 	initial: ["running"],

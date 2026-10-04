@@ -1,6 +1,6 @@
 import { CONTRACT_WAIT_UNSETTLED } from '@forge/contracts/contract-waits';
 import { type SQL, sql } from 'drizzle-orm';
-import { db } from '../../db/client.js';
+import { db, type Tx } from '../../db/client.js';
 import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { holdsDispatch, unsettledDetail } from './rules.js';
@@ -29,8 +29,14 @@ export class ContractWaitUnsettledError extends Error {
   }
 }
 
-async function heldWhere(projectId: string, filter: SQL): Promise<UnsettledWait[]> {
-  const rows = (await db.execute(sql`
+type GateReader = Pick<Tx, 'execute' | 'select'>;
+
+async function heldWhere(
+  projectId: string,
+  filter: SQL,
+  executor: GateReader = db,
+): Promise<UnsettledWait[]> {
+  const rows = (await executor.execute(sql`
     SELECT i.iss_seq, p.slug AS provider_slug, cw.contract_slug, cw.min_version,
            cw.retracted_at, cw.settled_at,
            (SELECT v.version FROM contract_versions v
@@ -44,7 +50,7 @@ async function heldWhere(projectId: string, filter: SQL): Promise<UnsettledWait[
       AND ${filter}
     ORDER BY i.iss_seq, cw.created_at
   `)) as unknown as Array<Record<string, unknown>>;
-  const prefix = rows.length > 0 ? await activeIssuePrefix(projectId) : null;
+  const prefix = rows.length > 0 ? await activeIssuePrefix(projectId, executor) : null;
   return rows
     .filter((r) =>
       holdsDispatch({
@@ -79,6 +85,7 @@ export async function assertWaitsSettledForSeqs(
 export async function assertWaitsSettledForIssue(
   projectId: string,
   issueId: string,
+  executor: GateReader = db,
 ): Promise<void> {
-  refuseHeld(await heldWhere(projectId, sql`i.id = ${issueId}`));
+  refuseHeld(await heldWhere(projectId, sql`i.id = ${issueId}`, executor));
 }

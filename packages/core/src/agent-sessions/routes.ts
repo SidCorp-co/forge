@@ -1,4 +1,3 @@
-import { SESSION_MACHINE } from '@forge/contracts/session-machine';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -11,7 +10,6 @@ import {
 import { isPipelineSessionKind } from '../jobs/session-kinds.js';
 import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
-import { notAnEdgeError } from '../lifecycle/transition.js';
 import {
   type AuthVars,
   assertEmailVerified,
@@ -525,9 +523,6 @@ agentSessionRoutes.patch(
       messages: patch.messages !== undefined ? (patchedMessages ?? []) : null,
       at: patchNow,
     });
-    if (!written) {
-      throw notAnEdgeError(SESSION_MACHINE, existing.status, nextStatus ?? existing.status);
-    }
     const updated = written;
 
     if (sync) {

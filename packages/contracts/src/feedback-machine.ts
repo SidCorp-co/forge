@@ -6,6 +6,7 @@ import { defineMachine, fromEach } from "./state-machine.js";
 
 export const FEEDBACK_MACHINE = defineMachine({
 	entity: "feedback",
+	shapes: ["a2122359"],
 	design: { flow: "feedback-lifecycle", revision: 2 },
 	states: FEEDBACK_STATUSES,
 	initial: ["new"],

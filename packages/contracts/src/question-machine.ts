@@ -9,6 +9,7 @@ export type QuestionStatus = (typeof QUESTION_STATUSES)[number];
 
 export const QUESTION_MACHINE = defineMachine({
 	entity: "question",
+	shapes: ["016076ad"],
 	design: null,
 	states: QUESTION_STATUSES,
 	initial: ["open"],

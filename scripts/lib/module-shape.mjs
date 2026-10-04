@@ -5,7 +5,7 @@
 
 export const KINDS = ['kernel', 'domain', 'read-model', 'adapter', 'door', 'platform'];
 
-export const RULES = ['kind', 'table-writer', 'route-query', 'refusal', 'status-write'];
+export const RULES = ['kind', 'table-writer', 'route-query', 'refusal'];
 
 export const ROOT_MODULE = '(root)';
 const SRC = 'packages/core/src/';
@@ -248,30 +248,6 @@ export function refusalFindings(file, text, mod, kind) {
         detail: p.say(m),
       });
     }
-  }
-  return out;
-}
-
-export const TRANSITION_MODULE = 'lifecycle';
-
-/**
- * A status column written anywhere but the kernel transition. An adapter's status on a table it
- * owns is the one exception the pattern names: an adapter imports no kernel module.
- */
-export function statusWriteFindings(file, text, mod, kind = null, owners = new Map()) {
-  if (mod === TRANSITION_MODULE) return [];
-  const out = [];
-  const re = /\.update\(\s*(?:\w+\.)?(\w+)\s*\)\s*\.set\(\s*\{([^}]{0,600})\}/g;
-  for (const m of text.matchAll(re)) {
-    if (!/(^|[\s,{])(?:status|\w+Status)\s*:/.test(m[2])) continue;
-    if (kind === 'adapter' && owners.get(m[1]) === mod) continue;
-    out.push({
-      rule: 'status-write',
-      module: mod,
-      file,
-      line: lineAt(text, m.index),
-      detail: `writes a status on ${m[1]} outside the kernel transition`,
-    });
   }
   return out;
 }

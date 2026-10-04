@@ -11,6 +11,7 @@ import { QUESTION_REFUSAL_STATUSES } from "./questions.js";
 import type { RefusalStatus } from "./refusal.js";
 import { RELEASE_REFUSAL_STATUSES } from "./releases.js";
 import { REQUIREMENT_REFUSAL_STATUSES } from "./requirements.js";
+import { STATE_MACHINE_REFUSAL_STATUSES } from "./state-machine.js";
 import { SUGGESTION_REFUSAL_STATUSES } from "./suggestions.js";
 import { DESIGN_REFUSAL_STATUSES } from "./workflows.js";
 
@@ -30,6 +31,7 @@ const DECLARED: ReadonlyArray<Readonly<Record<string, Exclude<RefusalStatus, 422
 	QUESTION_REFUSAL_STATUSES,
 	RELEASE_REFUSAL_STATUSES,
 	REQUIREMENT_REFUSAL_STATUSES,
+	STATE_MACHINE_REFUSAL_STATUSES,
 	SUGGESTION_REFUSAL_STATUSES,
 	DESIGN_REFUSAL_STATUSES,
 ];
