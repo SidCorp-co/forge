@@ -24,9 +24,10 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { approvalRequired } from '../release-batch/approvals.js';
 import { feedbackCountsOf, feedbackLinksOf } from './feedback-links.js';
-import { changedSincePlan, stalePinsOf } from './rules.js';
+import { linkedContractsOf } from './baselines.js';
+import { changedSincePlan, staleContractPinsOf, stalePinsOf } from './rules.js';
 import { deriveStanding } from './standing.js';
-import { issueCriteriaOf, latestPinsOf } from './standing-facts.js';
+import { issueCriteriaOf, latestContractPinsOf, latestPinsOf } from './standing-facts.js';
 
 export interface StandingRow {
   id: string;
@@ -72,8 +73,19 @@ export async function standingsOf(
 ): Promise<Map<string, RequirementStanding>> {
   if (rows.length === 0) return new Map();
   const ids = rows.map((r) => r.id);
-  const [revisions, criteria, delivery, linked, open, prefix, pins, baselineSeqs, releaseApproval] =
-    await Promise.all([
+  const [
+    revisions,
+    criteria,
+    delivery,
+    linked,
+    open,
+    prefix,
+    pins,
+    baselineSeqs,
+    releaseApproval,
+    contracts,
+    contractPins,
+  ] = await Promise.all([
       db
         .select({
           requirementId: requirementRevisions.requirementId,
@@ -130,6 +142,8 @@ export async function standingsOf(
         .from(requirementBaselines)
         .where(inArray(requirementBaselines.requirementId, ids)),
       approvalRequired(projectId),
+      linkedContractsOf(db, ids),
+      latestContractPinsOf(ids),
     ]);
   const [people, issueCriteria, feedbackLinks] = await Promise.all([
     peopleOf([...revisions.map((r) => r.authorId), ...rows.map((r) => r.ownerId)]),
@@ -185,6 +199,7 @@ export async function standingsOf(
         issueCriteria: issueCriteria.filter((c) => issueIds.has(c.issueId)),
         openSuggestionKinds: by(open, row.id).map((s) => s.kind),
         stalePins: stalePinsOf(by(pins, row.id)),
+        staleContractPins: staleContractPinsOf(by(contracts, row.id), by(contractPins, row.id)),
         feedback: feedbackBy.get(row.id) ?? { open: 0, untriaged: [] },
         agreedAt: firstBaselineAt(baselineSeqs, row.id, row.currentRevision),
         updatedAt: row.updatedAt,

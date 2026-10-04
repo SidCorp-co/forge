@@ -3,6 +3,7 @@ import {
   agreeRefusals,
   baselineReadiness,
   changedSincePlan,
+  contractLinkRefusal,
   deferRefusals,
   deferredRefusal,
   linkIssueRefusal,
@@ -14,6 +15,7 @@ import {
   scenarioParses,
   signoffRefusal,
   staleBaseRefusal,
+  staleContractPinsOf,
   stalePinsOf,
   stateRefusal,
   undeferRefusal,
@@ -315,6 +317,8 @@ describe('repinRefusals (ISS-86)', () => {
     headState: 'current' as const,
     designs: [design(6)],
     pins: [{ workflowId: 'w1', designRevision: 5 }],
+    contracts: [],
+    contractPins: [],
   };
 
   it('re-pins an agreed head whose design was approved past the pin', () => {
@@ -372,6 +376,85 @@ describe('repinRefusals (ISS-86)', () => {
     });
     expect(refusals.map((r) => r.code)).toEqual(['REQUIREMENT_DESIGN_UNAPPROVED']);
     expect(refusals[0]?.detail).toContain('"reminder"');
+  });
+
+  const contract = (currentVersion: string | null) => ({
+    providerProjectId: 'p1',
+    contract: 'shop/orders',
+    contractSlug: 'orders',
+    currentVersion,
+  });
+  const pinOf = (contractVersion: string) => ({
+    providerProjectId: 'p1',
+    contractSlug: 'orders',
+    contractVersion,
+  });
+
+  it('a linked contract approved past its pin re-pins with no design moved', () => {
+    expect(
+      repinRefusals({
+        ...base,
+        designs: [design(5)],
+        contracts: [contract('2026-10-02')],
+        contractPins: [pinOf('2026-09-01')],
+      }),
+    ).toEqual([]);
+  });
+
+  it('a contract at its pinned version, or with none approved, is nothing to re-pin', () => {
+    for (const c of [contract('2026-09-01'), contract(null)]) {
+      expect(
+        repinRefusals({
+          ...base,
+          designs: [design(5)],
+          contracts: [c],
+          contractPins: [pinOf('2026-09-01')],
+        }).map((r) => r.code),
+      ).toEqual(['REQUIREMENT_PINS_CURRENT']);
+    }
+  });
+});
+
+describe('staleContractPinsOf: the one detector of a contract pin behind its contract', () => {
+  const linked = (currentVersion: string | null) => ({
+    providerProjectId: 'p1',
+    contract: 'shop/orders',
+    contractSlug: 'orders',
+    currentVersion,
+  });
+  const pin = { providerProjectId: 'p1', contractSlug: 'orders', contractVersion: 'v1' };
+
+  it('names a contract whose current version is not the pinned one', () => {
+    expect(staleContractPinsOf([linked('v2')], [pin])).toEqual([
+      { contract: 'shop/orders', pinned: 'v1', current: 'v2' },
+    ]);
+  });
+  it('names a contract approved since the agree pinned none', () => {
+    expect(staleContractPinsOf([linked('v1')], [])).toEqual([
+      { contract: 'shop/orders', pinned: null, current: 'v1' },
+    ]);
+  });
+  it('is empty when the pin is current or no version is approved yet', () => {
+    expect(staleContractPinsOf([linked('v1')], [pin])).toEqual([]);
+    expect(staleContractPinsOf([linked(null)], [])).toEqual([]);
+  });
+});
+
+describe('contractLinkRefusal (REQUIREMENT_CONTRACT_UNKNOWN)', () => {
+  const own = { publishes: ['shop/orders'], consumes: ['pay/charges'] };
+  it('links a contract the project publishes or consumes', () => {
+    expect(contractLinkRefusal({ ...own, contract: 'shop/orders' })).toBeNull();
+    expect(contractLinkRefusal({ ...own, contract: 'pay/charges' })).toBeNull();
+  });
+  it('refuses any other ref, naming what the interface holds', () => {
+    const r = contractLinkRefusal({ ...own, contract: 'shop/refunds' });
+    expect(codeOf(r)).toBe('REQUIREMENT_CONTRACT_UNKNOWN');
+    expect(r?.path).toBe('/contract');
+    expect(r?.detail).toContain('shop/orders, pay/charges');
+  });
+  it('a project with no interface names no contract', () => {
+    const r = contractLinkRefusal({ publishes: [], consumes: [], contract: 'shop/orders' });
+    expect(r?.detail).toContain('no contract');
   });
 });
 

@@ -77,6 +77,7 @@ export interface StandingInput {
   openSuggestionKinds: readonly string[];
   /** The latest baseline's design pins whose design is now approved at a newer revision. */
   stalePins: readonly { flow: string; pinned: number; approved: number }[];
+  staleContractPins: readonly { contract: string; pinned: string | null; current: string }[];
   feedback: { open: number; untriaged: readonly string[] };
   /** When the current revision was first agreed: its first baseline. */
   agreedAt: Date | null;
@@ -235,9 +236,13 @@ function turnOf(
   }
   const triage = feedbackTurn(input);
   if (triage) return triage;
-  if (input.stalePins.length > 0) {
-    const act = `re-pin ${input.stalePins.map((p) => `${p.flow} r${p.approved}`).join(', ')}`;
-    const rule = 'a linked design was approved past the revision the agreed baseline pins';
+  if (input.stalePins.length > 0 || input.staleContractPins.length > 0) {
+    const act = `re-pin ${[
+      ...input.stalePins.map((p) => `${p.flow} r${p.approved}`),
+      ...input.staleContractPins.map((p) => `${p.contract}@${p.current}`),
+    ].join(', ')}`;
+    const rule =
+      'a linked design was approved past the revision the agreed baseline pins, or a linked contract has a current version it does not pin';
     if (viewer?.canSignOff) return { group: 'needs_you', waitingOn: wait('you', 'You', act, rule) };
     const owner = input.owner?.kind === 'human' ? input.owner.name : null;
     return { group: 'others', waitingOn: wait('person', owner ?? SIGNER, act, rule) };
@@ -397,6 +402,7 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
       proposedRevision: input.revisions.find((r) => r.state === 'proposed')?.revision ?? null,
       draftRevision: input.revisions.find((r) => r.state === 'draft')?.revision ?? null,
       stalePins: [...input.stalePins],
+      staleContractPins: [...input.staleContractPins],
       feedbackOpen: input.feedback.open,
       feedbackUntriaged: input.feedback.untriaged.length,
     },

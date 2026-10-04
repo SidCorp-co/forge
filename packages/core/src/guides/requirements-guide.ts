@@ -56,7 +56,7 @@ routes under \`/api/projects/:id/requirements\` are the same services.
    (or goes back to) \`agreed\`, a new baseline is written, and the accept's \`reason\` is that
    re-baseline's sign-off. The agree's design guards apply to it.
 7. **repin** writes a new baseline of the same text revision once a linked design has been approved
-   past what the latest baseline pins. Only an agreed requirement is re-pinned
+   past what the latest baseline pins, or a linked contract has a current version it does not pin. Only an agreed requirement is re-pinned
    (\`REQUIREMENT_NOT_AGREED\`), and a re-pin with nothing moved is \`REQUIREMENT_PINS_CURRENT\`.
 
 ### Issues against a requirement
@@ -71,6 +71,10 @@ routes under \`/api/projects/:id/requirements\` are the same services.
   \`adoptPlan: true\`, attesting the plan already satisfies the current revision
   (\`REQUIREMENT_NO_PLAN_TO_ADOPT\` when the issue has no plan).
 - **link_workflow** names a design the next agree or repin pins.
+- **link_contract** \`{ contract: "<project>/<contract>" }\` names a contract this project publishes or
+  consumes (\`REQUIREMENT_CONTRACT_UNKNOWN\` otherwise). The next agree or repin pins its current
+  (newest approved) version; while none is approved nothing is pinned for it, and the standing waits
+  on a re-pin once one is.
 
 ### Deferring
 **defer** \`{ reason }\` takes a draft or agreed requirement out of the current release

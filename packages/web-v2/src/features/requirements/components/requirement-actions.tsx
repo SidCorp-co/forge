@@ -102,9 +102,13 @@ export function PrimaryActions({
         Propose r{draft.revision}
       </Button>
     );
-  } else if (d.canSignOff && d.status === "agreed" && head && s.facts.stalePins.length > 0) {
+  } else if (d.canSignOff && d.status === "agreed" && head && s.facts.stalePins.length + s.facts.staleContractPins.length > 0) {
+    const moved = [
+      ...s.facts.stalePins.map((p) => `${p.flow} r${p.approved} (was r${p.pinned})`),
+      ...s.facts.staleContractPins.map((p) => `${p.contract}@${p.current} (was ${p.pinned ?? "unpinned"})`),
+    ];
     primary = (
-      <Tooltip label={`Pins ${s.facts.stalePins.map((p) => `${p.flow} r${p.approved} (was r${p.pinned})`).join(", ")} in a new baseline of r${head.revision}`} multiline>
+      <Tooltip label={`Pins ${moved.join(", ")} in a new baseline of r${head.revision}`} multiline>
         <Button type="button" size="sm" variant="primary" loading={busy} onClick={() => act.mutate({ kind: "repin", revision: head.revision })}>
           Re-pin r{head.revision}
         </Button>

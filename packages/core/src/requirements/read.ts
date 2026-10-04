@@ -31,6 +31,7 @@ import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
 import { approvalRequired } from '../release-batch/approvals.js';
+import { linkedContracts } from './baselines.js';
 import { deferralOf } from './deferral-read.js';
 import { tracesOf } from './criterion-traces.js';
 import { requirementFeedbackAs } from './feedback-read.js';
@@ -226,6 +227,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null, door: 
     releaseApproval,
     feedback,
     traces,
+    contracts,
   ] = await Promise.all([
     db
       .select()
@@ -289,6 +291,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null, door: 
     approvalRequired(row.projectId),
     requirementFeedbackAs(viewer ?? NO_PERSON, row.projectId, row.id, door),
     tracesOf(db, row.id),
+    linkedContracts(db, row.id),
   ]);
   const people = await peopleOf([
     ...revisions.flatMap((r) => [r.authorId, r.decidedBy]),
@@ -308,6 +311,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null, door: 
         ? []
         : rowsOfRevision(criteria, row.currentRevision).map(criterionView),
     workflows: designs.map((d) => ({ ...d, title: d.title ?? d.flow })),
+    contracts,
     traces,
     baselines: baselines.map((b) => ({
       revision: b.revision,

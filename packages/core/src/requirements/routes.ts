@@ -4,6 +4,8 @@ import {
   acceptRevisionRequestSchema,
   DEFER_REQUIREMENT_SHAPE,
   deferRequirementRequestSchema,
+  LINK_REQUIREMENT_CONTRACT_SHAPE,
+  linkRequirementContractRequestSchema,
   REPIN_REQUIREMENT_SHAPE,
   repinRequirementRequestSchema,
   UNDEFER_REQUIREMENT_SHAPE,
@@ -20,6 +22,7 @@ import { egressForRequest } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { refused } from '../project-config/respond.js';
+import { linkContract, unlinkContract } from './contract-links.js';
 import { putCriterionSteps } from './criterion-steps.js';
 import { deferRequirement, undeferRequirement } from './deferral.js';
 import { linkIssue, linkWorkflow, unlinkIssue, unlinkWorkflow } from './issue-links.js';
@@ -379,6 +382,55 @@ requirementRoutes.post(
         ref: req,
         actor: actorOf(c),
         workflowId: c.req.valid('json').workflowId,
+      }),
+    );
+  },
+);
+
+requirementRoutes.post(
+  '/:id/requirements/:req/contracts',
+  reqParam,
+  strictBody(linkRequirementContractRequestSchema, LINK_REQUIREMENT_CONTRACT_SHAPE),
+  async (c) => {
+    const { id, req } = c.req.valid('param');
+    return answer(
+      c,
+      await linkContract({
+        projectId: id,
+        ref: req,
+        actor: actorOf(c),
+        contract: c.req.valid('json').contract,
+      }),
+    );
+  },
+);
+
+requirementRoutes.delete(
+  '/:id/requirements/:req/contracts/:project/:contract',
+  zValidator(
+    'param',
+    z.object({
+      id: z.uuid(),
+      req: z.string().trim().min(1).max(64),
+      project: z.string().trim().min(1).max(63),
+      contract: z.string().trim().min(1).max(63),
+    }),
+    (r) => {
+      if (!r.success)
+        throw badRequest(
+          'invalid path: a project uuid, a requirement, and the contract as <project>/<contract>',
+        );
+    },
+  ),
+  async (c) => {
+    const { id, req, project, contract } = c.req.valid('param');
+    return answer(
+      c,
+      await unlinkContract({
+        projectId: id,
+        ref: req,
+        actor: actorOf(c),
+        contract: `${project}/${contract}`,
       }),
     );
   },
