@@ -1,5 +1,7 @@
 import type { Tx } from '../db/client.js';
 import { type NotificationType, notifications } from '../db/schema.js';
+import { emissionAllowed, noteSuppressed } from './emission-switch.js';
+import { INITIAL_STATE, kindOf, tierOf } from './kinds.js';
 import { createNotification } from './service.js';
 
 const DEFAULT_SEVERITY_BY_TYPE: Record<NotificationType, string> = {
@@ -70,4 +72,33 @@ export async function insertNotificationRecord(
     .values(values)
     .returning({ id: notifications.id });
   return record?.id ?? null;
+}
+
+/**
+ * One record of `type` written in the caller's transaction, its kind, tier and state derived from
+ * the type; null when the emission switch holds the type off. The caller delivers it once the
+ * transaction committed.
+ */
+export async function insertTypedNotificationRecord(
+  tx: Tx,
+  input: {
+    projectId: string;
+    type: NotificationType;
+    title: string;
+    body: string;
+    issueId: string | null;
+    agentSessionId: string | null;
+  },
+): Promise<string | null> {
+  if (!emissionAllowed(input.type)) {
+    noteSuppressed(input.type, input.title);
+    return null;
+  }
+  const kind = kindOf(input.type);
+  return insertNotificationRecord(tx, {
+    ...input,
+    kind,
+    tier: tierOf(input.type),
+    state: INITIAL_STATE[kind],
+  });
 }

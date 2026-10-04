@@ -20,6 +20,7 @@ export { rocketChatPersona } from './chat-room/persona.js';
 export { parseRocketChatVenueId, rocketChatVenueId } from './chat-room/port.js';
 export { consumeQuestionThreadReply } from './chat-room/question-inbound.js';
 export { drainRoomWindows, registerRoomChat } from './chat-room/room-chat.js';
+export { publishToConversationReaders, WEB_CONVERSATION_EVENT } from './conversation-adapter.js';
 export {
   drainWebConversationWindows,
   registerWebConversationAdapter,

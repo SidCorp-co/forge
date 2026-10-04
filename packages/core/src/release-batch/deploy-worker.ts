@@ -7,14 +7,12 @@ import {
 } from '../integrations/index.js';
 import { logger } from '../observability/logger.js';
 import {
-  readDeployHolds,
-  replaceDispatchHoldWithTargets,
-} from '../pipeline/deploy-confirmations.js';
-import {
   deployHoldsIdle,
   deployHoldsLocks,
+  readDeployHolds,
   releaseDeployLocksForRun,
-} from '../pipeline/deploy-lock.js';
+  replaceDispatchHoldWithTargets,
+} from '../pipeline/index.js';
 import { boss } from '../queue/boss.js';
 import { INTEGRATIONS_QUEUE_NAME } from '../queue/names.js';
 import {

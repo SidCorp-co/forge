@@ -14,7 +14,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
 import { issueLabels, issues, labels } from '../db/schema.js';
-import { issueArchiveSide } from '../issues/archive.js';
+import { issueArchiveSide } from '../issues/index.js';
 
 export interface ModuleDriftNode {
   labelId: string;

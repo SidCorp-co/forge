@@ -1,8 +1,8 @@
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { tasks } from '../db/schema.js';
+import type { Actor } from '../issues/index.js';
 import { emitEvent, emitEvents } from '../outbox/index.js';
-import type { Actor } from '../pipeline/activity.js';
 
 export type TaskRow = typeof tasks.$inferSelect;
 

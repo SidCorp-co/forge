@@ -2,9 +2,16 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issuePrefixAliases } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { validateIssuePrefix } from '../lib/issue-ref.js';
-import type { AssignPrefixResult, PrefixWriter } from '../projects/index.js';
+import { type IssuePrefixShapeError, validateIssuePrefix } from '../lib/issue-ref.js';
 import { issuePrefixHolder } from './issue-prefix-read.js';
+
+/** What a prefix claim writes through: the pool, or the projects domain's open transaction. */
+type PrefixWriter = Pick<typeof db, 'transaction' | 'select' | 'insert' | 'update'>;
+
+type AssignPrefixResult =
+  | { ok: true; prefix: string }
+  | IssuePrefixShapeError
+  | { ok: false; reason: 'taken'; holderProjectId: string | null };
 
 /** Hold a prefix for a project, or find it already held by that project. The projects domain writes
  *  the project's active prefix once this answers ok. */

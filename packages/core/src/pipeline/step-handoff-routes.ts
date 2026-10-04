@@ -1,13 +1,12 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { resolveIssueKeyInProject } from '../issues/issue-route-ref.js';
-import { stepHandoffSchema } from '../memory/step-handoff-schema.js';
+import { resolveActor, resolveIssueKeyInProject } from '../issues/index.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { resolveActor } from './activity.js';
-import { deleteIssueContext, getIssueContexts, writeIssueContext } from './issue-context-store.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { deleteIssueContext, getIssueContexts, writeIssueContext } from './issue-context-store.js';
+import { stepHandoffSchema } from './step-handoff-schema.js';
 
 /**
  * REST surface for step-handoff persistence (proposal Y), over the one

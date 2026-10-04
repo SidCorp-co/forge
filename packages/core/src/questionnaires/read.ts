@@ -25,6 +25,9 @@ import {
   egressAt,
   isProviderBound,
 } from '../lib/data-egress.js';
+import { questionnaireSurface } from '../questions/index.js';
+
+export { questionnaireSurface };
 
 export type Executor = typeof db | Tx;
 export type BatchRow = typeof questionnaireBatches.$inferSelect;
@@ -159,17 +162,6 @@ export async function batchesOfConversation(
       levels.get(b.projectId) ?? 'off',
     ),
   );
-}
-
-// cm:why a questionnaire's surface is read off its own arc, never off the caller's claim: an
-// onboarding round is product (`onboarding.answers`), a BA clarification about a requirement is
-// operational (`requirement.clarification`), and a batch with neither belongs to its conversation
-export function questionnaireSurface(b: {
-  onboardingId: string | null;
-  requirementId: string | null;
-}): EgressSurface {
-  if (b.requirementId !== null) return 'requirement.clarification';
-  return b.onboardingId !== null ? 'onboarding.answers' : 'conversation';
 }
 
 export async function questionnairesAs(

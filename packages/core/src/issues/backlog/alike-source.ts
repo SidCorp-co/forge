@@ -11,9 +11,8 @@
 
 import type { IssueStatus } from '../../db/schema.js';
 import { issues } from '../../db/schema.js';
-import { embedBatch } from '../../integrations/embeddings/index.js';
-import { runMemorySearch } from '../../memory/search-service.js';
 import { issueRefFormatter } from '../issue-prefix-read.js';
+import { embedBatch, runMemorySearch } from '../ports.js';
 import type { Cancellation } from './cancellation.js';
 import type { BacklogSource, SourceDone } from './emitter.js';
 import { cursorFrom, issuePage, type PageCursor } from './page-read.js';

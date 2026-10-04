@@ -5,8 +5,7 @@ export {
   policyRefusalOf,
   requirePolicy,
 } from './dispatch-policy.js';
-export type { ApiRefusal } from './documents.js';
-export { isRecord, parseVersionedDocument, staleBase } from './documents.js';
+export { type ApiRefusal, isRecord, parseVersionedDocument, staleBase } from './documents.js';
 export { readEffectivePolicy } from './effective.js';
 export { readEnvironmentState } from './environment-state-read.js';
 export { announceIntegrationChanged } from './integration-changed.js';
@@ -16,31 +15,35 @@ export {
   approvalRequired,
   bindingOf,
   crossesByCherryPick,
+  type DeployMap,
   describeCrossings,
   environmentsOf,
   type NamedEnvironment,
   type Promotion,
+  productionOf,
   promotedBranch,
   type ReleasePath,
   readDeployMap,
+  readLandingBranches,
   readReleasePath,
   releasePathOf,
 } from './release-path.js';
-export type { ProjectDocument, TestingProfile } from './schema.js';
 export {
   type DeploymentTrigger,
   type EnvironmentState,
+  type ProjectDocument,
   STOREFRONT_PROVIDERS,
   sized,
   slug,
+  type TestingProfile,
   unique,
   uuid,
 } from './schema.js';
-export type { WriteOutcome } from './service.js';
 export {
   listTestingProfiles,
   readProjectConfig,
   readProjectDocument,
+  type WriteOutcome,
   writeProjectConfig,
 } from './service.js';
 export {

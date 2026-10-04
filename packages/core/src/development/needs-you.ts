@@ -19,7 +19,7 @@ import {
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { needsViewer, type Standing } from '@forge/contracts/standing';
 import { inArray } from 'drizzle-orm';
-import { automationViewerOf, readAutomationStanding } from '../automation/read.js';
+import { automationViewerOf, readAutomationStanding } from '../automation/index.js';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { readContractStanding } from '../ecosystem/standing/read.js';

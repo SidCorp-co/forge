@@ -9,7 +9,7 @@
 
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import {
   type DesignStatus,

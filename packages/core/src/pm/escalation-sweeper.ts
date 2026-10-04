@@ -25,13 +25,12 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type JobType, pmDecisions, projects } from '../db/schema.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
-import { insertJobRow } from '../jobs/index.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { indexMemory } from '../memory/indexer.js';
+import { indexMemory } from '../memory/index.js';
 import { logger } from '../observability/logger.js';
 import { reportFailure } from '../observability/sentry.js';
-import { openIssueRun } from '../pipeline/runs.js';
-import { buildJobPromptString } from '../prompt/index.js';
+import { openIssueRun } from '../pipeline/index.js';
+import { buildJobPromptString, insertJobRow } from './ports.js';
 
 const SWEEP_BATCH_LIMIT = 50;
 

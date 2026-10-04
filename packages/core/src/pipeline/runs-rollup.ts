@@ -9,6 +9,7 @@
  * here so the front-end stays a thin renderer.
  */
 
+import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '@forge/contracts/jobs';
 import { asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -22,10 +23,7 @@ import {
   projects,
   usageRecords,
 } from '../db/schema.js';
-import { type RunGate, readRunGate } from '../devices/gate-report.js';
-import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { usageSessionMatch } from '../usage-records/rollup.js';
 import {
   groupOf,
   laneOf,
@@ -43,6 +41,8 @@ export type {
   PipelineRunStep,
   ResidentMaster,
 } from './runs-lane.js';
+
+import { type RunGateReading, readRunGate, usageSessionMatch } from './ports.js';
 
 export type PipelineStepStatus =
   | 'pending'
@@ -161,7 +161,7 @@ export interface PipelineRunSummary {
   retrySummary: PipelineRunRetrySummary | null;
   /** ISS-1192 — the box's declaration gate when this run opened; `null` where
    *  the box reported none. The list row omits it: it carries a breakdown. */
-  gateAtOpen: RunGate | null;
+  gateAtOpen: RunGateReading | null;
 }
 
 export type PipelineRunListItem = Omit<

@@ -38,7 +38,7 @@ import {
 } from '../db/schema.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
-import type { Actor } from '../pipeline/activity.js';
+import type { Actor } from './activity.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
 
 /** The condition a discovery read composes: nothing when the caller asked for archived rows too. */

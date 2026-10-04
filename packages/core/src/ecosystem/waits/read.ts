@@ -12,7 +12,7 @@ import { issues, projects } from '../../db/schema.js';
 import { contractRequests, issueContractWaits } from '../../db/schema-contract-waits.js';
 import { channelDocuments, contractVersions } from '../../db/schema-ecosystem.js';
 import { requirements } from '../../db/schema-requirements.js';
-import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
+import { activeIssuePrefix } from '../../issues/index.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { splitContractRef } from '../interface-rules.js';
 import { loadInterface } from '../interface-service.js';

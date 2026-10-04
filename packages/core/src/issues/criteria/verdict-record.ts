@@ -1,5 +1,5 @@
 import type { criterionVerdicts } from '../../db/schema-issue-criteria.js';
-import type { Actor } from '../../pipeline/activity.js';
+import type { Actor } from '../activity.js';
 import type { RecordEventField } from '../record-events/store.js';
 import type { VerdictAuthor } from './store.js';
 import type { VerdictDraft } from './verdict-input.js';

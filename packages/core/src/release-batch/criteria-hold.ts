@@ -4,7 +4,6 @@ import {
   issueDisplayIds,
   unearnedCriteriaReports,
 } from '../issues/index.js';
-import { productionDeploysOnLand } from '../pipeline/production-trigger.js';
 import { attempt, blocker, evaluate } from './blocker-kit.js';
 import {
   type HeldIssueRef,
@@ -13,6 +12,7 @@ import {
   type ReleaseWarning,
   uncorroboratedWarningSentence,
 } from './blocker-sentences.js';
+import { productionDeploysOnLand } from './production-trigger.js';
 import { type ServingReading, whyUncorroborated } from './serving-reading.js';
 
 const NO_READING =

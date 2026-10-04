@@ -1,8 +1,10 @@
 export {
   discardCommentAttachments,
+  findCommentAttachmentByName,
   persistCommentAttachment,
   validateCommentAttachment,
 } from './attachment-service.js';
+export { provideCommentPorts } from './ports.js';
 export {
   noteReviewOnIssue,
   type ReviewNoteOutcome,
@@ -10,6 +12,7 @@ export {
   type ReviewToNote,
   registerReviewNotes,
 } from './review-note.js';
+export { messageRefusalHttp } from './screen.js';
 export {
   type CommentThreadRow,
   deleteComment,

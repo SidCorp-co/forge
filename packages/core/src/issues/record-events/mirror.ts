@@ -4,13 +4,13 @@
 // records to `POST /api/issues/:id/events` (logged in forge-local-docs/plugin-followups.md); then a
 // fence in a comment is refused `FORGE_RECORD_IN_COMMENT` and this file goes.
 
+import { isKernelOnlyRecordKind, isRecordEventKind } from '@forge/contracts/record-events';
 import { and, eq } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import { activityLog } from '../../db/schema-activity.js';
 import { parseForgeRecord } from '../../messaging/forge-record.js';
-import type { Actor } from '../../pipeline/activity.js';
+import type { Actor } from '../activity.js';
 import { recordEventVerdicts } from '../criteria/event-verdicts.js';
-import { isKernelOnlyRecordKind, isRecordEventKind } from '@forge/contracts/record-events';
 import { commentMirrorKey, writeRecordEvent } from './store.js';
 
 export interface MirroredComment {

@@ -3,9 +3,8 @@ import { db } from '../db/client.js';
 import { notifications, projects } from '../db/schema.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { retryRescuesSince } from '../metrics/queries.js';
-import { emitNotification } from '../notifications/emit.js';
 import { logger } from '../observability/logger.js';
+import { emitNotification, retryRescuesSince } from './ports.js';
 
 export const RETRY_RESCUE_ALERT_THRESHOLD = 5;
 export const RETRY_RESCUE_ALERT_WINDOW_MS = 24 * 60 * 60 * 1000;

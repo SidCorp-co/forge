@@ -101,9 +101,11 @@ import { startTimers, stopTimers } from './schedules/index.js';
 import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
 import { redactFeedbackSuggestions, staleOnTargetRevised } from './suggestions/index.js';
 import { coreTimers } from './timer-registry.js';
+import { provideWorkPorts } from './work-ports.js';
 import { attachWs, closeWs, wakeMastersForBuild, wakeMastersForChannel } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
+provideWorkPorts();
 provideExecutionPorts();
 provideAssistantMethod(composeLayers(METHOD_LAYERS));
 provideMemoryIssueReads({

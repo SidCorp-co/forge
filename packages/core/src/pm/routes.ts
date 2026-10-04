@@ -6,7 +6,7 @@ import { postIssueNotice } from '../comments/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { refuser } from '../lib/refusal.js';
-import { deleteMemory, indexMemoryBestEffort } from '../memory/indexer.js';
+import { deleteMemory, indexMemoryBestEffort } from '../memory/index.js';
 import {
   type AuthVars,
   assertEmailVerified,
@@ -15,9 +15,9 @@ import {
   restAuthored,
 } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { closeEscalationTasks } from '../notifications/close-escalation.js';
 import { logger } from '../observability/logger.js';
 import { requireHeld } from '../permissions/index.js';
+import { closeEscalationTasks } from './ports.js';
 import { decisionInProject, issueIsInProject, listPmDecisions, listPmPolicies } from './read.js';
 import {
   createPmPolicy,

@@ -5,11 +5,11 @@
  * fits in the agent's priming context without crowding out memory excerpts.
  */
 
+import { UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, jobs } from '../db/schema.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
+import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readRunnerLoad } from './runner-load-service.js';
 

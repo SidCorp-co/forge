@@ -4,10 +4,12 @@
  * rather than a row falling out of the sweep — the hole ISS-1122 was filed about.
  */
 
+import type { ReleaseHoldView } from '@forge/contracts/releases';
 import type { IssueStatus } from '../db/schema.js';
 import type { WorkStep } from '../db/schema-issue-work-state.js';
-import type { ReleaseHold } from '../release-batch/index.js';
 import type { LeaseReading } from './session-claim.js';
+
+type ReleaseHold = Omit<ReleaseHoldView, 'heldAt'>;
 
 /** Whose move it is for a stranded row to leave the status it is stuck at. */
 export type StrandOwner = 'agent' | 'human';

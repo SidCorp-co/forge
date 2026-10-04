@@ -27,9 +27,13 @@ import {
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { isRefusal } from '../lib/refusal.js';
 import { logger } from '../observability/logger.js';
-import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import type { OneShotRunSpec } from '../pipeline/index.js';
-import { cancelConcludedRun, closeRunIfOneShot, insertOneShotRun } from '../pipeline/runs.js';
+import {
+  cancelConcludedRun,
+  closeRunIfOneShot,
+  insertAndEnqueueJob,
+  insertOneShotRun,
+} from '../pipeline/index.js';
 import {
   abortedError,
   batchAborted,

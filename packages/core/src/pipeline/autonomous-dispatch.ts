@@ -1,9 +1,7 @@
 import type { IssueStatus } from '../db/schema.js';
+import type { Actor } from '../issues/index.js';
 import { stampRunStarted } from '../issues/index.js';
 import { logger } from '../observability/logger.js';
-import type { PolicyDocument } from '../project-config/schema.js';
-import { wakeMastersForProject } from '../ws/master-wake.js';
-import type { Actor } from './activity.js';
 import { AUTONOMOUS_ENTRY_STATUS, autonomousStepFor, isAutonomous } from './autonomous-mode.js';
 import { refusePipeline } from './refuse.js';
 
@@ -16,12 +14,14 @@ export {
   isEntryGateClosed,
 } from './autonomous-mode.js';
 
+import { type ProjectPolicy, wakeMastersForProject } from './ports.js';
+
 export interface DispatchAutonomousArgs {
   projectId: string;
   issueId: string;
   status: IssueStatus;
   actor: Actor;
-  policy: PolicyDocument | null;
+  policy: ProjectPolicy | null;
   projectCreatedBy: string | null;
 }
 

@@ -1,8 +1,13 @@
-export type { MachineRow } from './machine-tables.js';
-export type {
-  KernelActor,
-  KernelExecutor,
-  TransitionArgs,
-  TransitionResult,
+export { type MachineRow, machineTable } from './machine-tables.js';
+export { kernelTransitionsRetention } from './retention.js';
+export {
+  type Guard,
+  type GuardInput,
+  type KernelActor,
+  type KernelExecutor,
+  movedRow,
+  type PriorRow,
+  type TransitionArgs,
+  type TransitionResult,
+  transition,
 } from './transition.js';
-export { movedRow, transition } from './transition.js';

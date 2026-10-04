@@ -18,7 +18,7 @@ import { issues, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/index.js';
 import { isRefusal, refusalCodeOf } from '../lib/refusal.js';
 import { logger } from '../observability/logger.js';
-import { closeRunIfOneShot } from '../pipeline/runs.js';
+import { closeRunIfOneShot } from '../pipeline/index.js';
 import { abortedError, batchAborted, rewordStoredAbort } from './abort-stamp.js';
 import { assertApprovalAllowsAttempt } from './approvals.js';
 import {

@@ -1,13 +1,6 @@
-import {
-  overdueReleases,
-  RUNNER_RELEASE_DEADLINE_MS,
-  type RunnerReleaseRow,
-  repositoryTruth,
-  settleFailed,
-} from '../integrations/github/index.js';
-import { logger } from '../observability/logger.js';
-
-export { RUNNER_RELEASE_DEADLINE_MS };
+import { logger } from '../../observability/logger.js';
+import { repositoryTruth } from './runner-release-preflight.js';
+import { overdueReleases, type RunnerReleaseRow, settleFailed } from './runner-release-store.js';
 
 export interface RunnerReleaseDeadlineResult {
   named: number;

@@ -15,23 +15,22 @@ import { QUESTIONNAIRE_MACHINE } from '@forge/contracts/onboarding-machine';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
-import {
-  publishToConversationReaders,
-  WEB_CONVERSATION_EVENT,
-} from '../assistant/conversation-adapter.js';
-import type { TxOnly } from '../conversations/db-executor.js';
-import { handleForProject } from '../conversations/participants.js';
-import { appendMessagesIn } from '../conversations/store.js';
-import { openOrExtendWindow } from '../conversations/windows.js';
 import { db } from '../db/client.js';
 import { conversations } from '../db/schema-conversations.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions, type QuestionOrigin, type QuestionStep } from '../db/schema-questions.js';
 import { dataPolicyOf, storedAnswers } from '../lib/data-egress.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
-import { type KernelActor, movedRow, transition } from '../lifecycle/transition.js';
+import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';
 import { permissionFactsOf } from '../permissions/index.js';
 import { insertBatchQuestions } from '../questions/index.js';
+import {
+  announceConversationChange,
+  appendMessagesIn,
+  handleForProject,
+  openOrExtendWindow,
+  type TxOnly,
+} from './ports.js';
 import {
   type BatchRow,
   batchIn,
@@ -83,9 +82,11 @@ export async function inTx(
 
 /** Tells every reader of the room that it changed; the web refetches the thread on it. */
 export async function announce(conversationId: string, messageId: string | null, role: string) {
-  await publishToConversationReaders(conversationId, {
-    event: WEB_CONVERSATION_EVENT,
-    data: { conversationId, messageId, role, content: '' },
+  await announceConversationChange(conversationId, {
+    conversationId,
+    messageId,
+    role,
+    content: '',
   }).catch(() => 0);
 }
 
@@ -189,8 +190,7 @@ export async function postQuestionnaireIn(
   if (!batch) throw new Error('questionnaires: the batch insert returned no row');
 
   const author =
-    (await handleForProject(input.conversationId, input.projectId, tx as never)) ??
-    input.actor.userId;
+    (await handleForProject(input.conversationId, input.projectId, tx)) ?? input.actor.userId;
   const [message] = await appendMessagesIn(tx, {
     conversationId: input.conversationId,
     messages: [

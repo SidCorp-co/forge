@@ -1,8 +1,8 @@
 import { ISSUE_MACHINE } from '@forge/contracts/issue-machine';
 import { edgeBetween, exitsOf } from '@forge/contracts/state-machine';
 import type { IssueStatus } from '../db/schema.js';
-import { guideRef } from '../guides/guide-ref.js';
 import { TransitionError } from './apply-transition.js';
+import { guideRef } from './ports.js';
 
 const RECOVERY_EXITS = exitsOf(ISSUE_MACHINE, 'in_progress', true);
 const RECOVERY_TARGETS = RECOVERY_EXITS.map((t) => `\`${t}\``).join(', ');

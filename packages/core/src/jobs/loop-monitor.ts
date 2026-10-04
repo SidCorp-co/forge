@@ -5,9 +5,12 @@ import { db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
 import { transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
-import { resumeLapsedAnswers } from '../pipeline/answer-resume.js';
-import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
-import { emitPipelineWedge, type WedgeHop } from '../pipeline/wedge.js';
+import {
+  CLASSIFIER_VERSION,
+  emitPipelineWedge,
+  resumeLapsedAnswers,
+  type WedgeHop,
+} from '../pipeline/index.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { JOB_AXIS_SCAN_LIMIT, reportHopPage } from './hop-bounds.js';
 import {

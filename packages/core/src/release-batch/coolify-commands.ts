@@ -19,17 +19,17 @@ import {
   listActiveDeployBindingsForProvider,
 } from '../integrations/index.js';
 import { refuser } from '../lib/refusal.js';
-import type { DispatchOutcome } from '../pipeline/index.js';
-import {
-  dispatchCoolifyDeployDirect,
-  isIssueAtReleaseStage,
-  resolveLatestIssueRunId,
-  tryDispatchCoolifyRelease,
-} from '../pipeline/release-coolify.js';
 import { approvalRequired, readDeployMap } from '../project-config/index.js';
 import { assertApprovalAllowsAttempt } from './approvals.js';
 import { readRunMethod } from './method.js';
 import { refuseRelease } from './refuse.js';
+import {
+  type DispatchOutcome,
+  dispatchCoolifyDeployDirect,
+  isIssueAtReleaseStage,
+  resolveLatestIssueRunId,
+  tryDispatchCoolifyRelease,
+} from './release-coolify.js';
 import { isOpenReleaseBatchRun } from './service.js';
 
 /** A Coolify rule refused by name, in the one refusal envelope. */

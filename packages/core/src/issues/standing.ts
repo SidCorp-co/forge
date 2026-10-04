@@ -5,6 +5,8 @@
  * `standing-read.ts` gathers the facts.
  */
 
+import type { IssuePark, ParkOwes } from '@forge/contracts';
+import type { IssueStatus } from '@forge/contracts/issue-machine';
 import {
   ISSUE_RESOLVED_STATUSES,
   ISSUE_TERMINAL_STATUSES,
@@ -23,17 +25,15 @@ import type {
   IssueStepOutcome,
   IssueWaitingKind,
 } from '@forge/contracts/issue-standing';
-import type { WaitingOn } from '@forge/contracts/standing';
-import type { IssueStatus } from '@forge/contracts/issue-machine';
-import type { IssuePark, ParkOwes } from '@forge/contracts';
 import {
   ISSUE_STATUS_LABELS,
   type IssueStatusTone,
   issueStatusToneOn,
   type WorkStep,
 } from '@forge/contracts/issue-vocabulary';
-import { landedWait } from '../pipeline/strand-rules.js';
+import type { WaitingOn } from '@forge/contracts/standing';
 import type { PipelineReading } from './pipeline-health-types.js';
+import { landedWait } from './strand-rules.js';
 
 /** Settled blockers release their dependents (`dependency-effects.ts:BLOCKER_SETTLED_STATUSES`). */
 const SETTLED: readonly string[] = ISSUE_RESOLVED_STATUSES;
@@ -138,7 +138,7 @@ const held = (lease: IssueLeaseView | null) =>
 // where the project requires it, else queued for the release; a live lease or a job in flight →
 // moving; a live unsettled blocker → stuck on the first, worded as waiting on its judge where its
 // change landed; a landed row nothing holds → queued for its judge
-// (`pipeline/strand-rules.ts:landedWait`); in_progress with no holder or reopen → stuck; open or
+// (`strand-rules.ts:landedWait`); in_progress with no holder or reopen → stuck; open or
 // approved → queued for a master slot.
 function turnOf(input: IssueStandingInput): {
   group: IssueAttentionGroup;

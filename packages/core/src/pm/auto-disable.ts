@@ -1,11 +1,8 @@
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs, pmConfig, projects } from '../db/schema.js';
-import { deliverExisting } from '../notifications/deliver.js';
-import { emissionAllowed, noteSuppressed } from '../notifications/emission-switch.js';
-import { insertNotificationRecord } from '../notifications/emit.js';
-import { INITIAL_STATE, kindOf, tierOf } from '../notifications/kinds.js';
 import { logger } from '../observability/logger.js';
+import { deliverExisting, insertTypedNotificationRecord } from './ports.js';
 
 const WINDOW_MS = 60 * 60 * 1000;
 const FAILURE_LIMIT = 3;
@@ -56,23 +53,15 @@ export async function handlePmJobFailedAutoDisable(payload: {
       .limit(1);
     if (!project) return;
 
-    if (!emissionAllowed('pm_escalation')) {
-      noteSuppressed('pm_escalation', 'PM agent auto-disabled');
-      return;
-    }
-
-    recordId = await insertNotificationRecord(tx, {
+    recordId = await insertTypedNotificationRecord(tx, {
       projectId: payload.projectId,
       type: 'pm_escalation',
-      kind: kindOf('pm_escalation'),
-      tier: tierOf('pm_escalation'),
-      state: INITIAL_STATE[kindOf('pm_escalation')],
       title: 'PM agent auto-disabled',
       body: `PM agent failed ${count} times in the last hour. The PM agent is off until you re-enable it in project settings.`,
       issueId: null,
       agentSessionId: null,
     });
-    recipient = project.createdBy;
+    if (recordId) recipient = project.createdBy;
   });
 
   if (recordId && recipient) await deliverExisting(recordId, [recipient]);

@@ -32,16 +32,23 @@ import {
 } from './memory/index.js';
 import { logger } from './observability/logger.js';
 import { pruneOutbox } from './outbox/index.js';
-import {
-  backfillPhaseJournal,
-  runPipelineSweep,
-  runReconcilerOnce,
-  runRetentionSweep,
-} from './pipeline/index.js';
+import { backfillPhaseJournal, runReconcilerOnce, runRetentionSweep } from './pipeline/index.js';
+import { runPipelineSweep } from './pipeline-sweep.js';
 import { runPmEscalationSweep, runPmQueuePressureSweepOnce } from './pm/index.js';
 import { recoverUnstartedReleaseBatches, resumeStrandedFinishes } from './release-batch/index.js';
 import { reapGhostRunners, runRunnerStaleSweep } from './runners/index.js';
 import type { Timer } from './schedules/index.js';
+import { sweepSuggestions } from './suggestions/index.js';
+
+/** The nightly retention pass, and the suggestions it stales and purges beside it (ISS-58). */
+async function retentionTick(): Promise<object> {
+  const retention = await runRetentionSweep();
+  const suggestions = await sweepSuggestions();
+  if (suggestions.staled > 0 || suggestions.purged > 0) {
+    logger.info(suggestions, 'retention: suggestions staled and payloads purged');
+  }
+  return { ...retention, suggestions };
+}
 
 const logged =
   (message: string, run: () => Promise<object>, when: (r: object) => boolean = () => true) =>
@@ -67,7 +74,7 @@ export function coreTimers(): Timer[] {
       kind: 'cluster',
       name: 'job-event-retention',
       cron: '0 3 * * *',
-      run: logged('retention: sweep complete', runRetentionSweep),
+      run: logged('retention: sweep complete', retentionTick),
     },
     {
       kind: 'cluster',

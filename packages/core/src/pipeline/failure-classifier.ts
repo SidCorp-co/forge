@@ -1,4 +1,4 @@
-import { isSpendLimitError, isUsageLimitError } from '../runners/limit-detect.js';
+import { isSpendLimitError, isUsageLimitError } from '@forge/contracts/runners';
 import type { FailureCause } from './failure-causes.js';
 import {
   BOX_SATURATION_PATTERNS,

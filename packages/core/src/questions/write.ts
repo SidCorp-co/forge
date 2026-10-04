@@ -4,6 +4,7 @@
 // runner on a box that compiles against none of these types, so a shape held
 // only by TypeScript is a shape held nowhere (ISS-964 criteria 14, 16, 21).
 
+import type { PersonVia } from '@forge/contracts/ecosystem';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
@@ -21,16 +22,14 @@ import {
   type QuestionOrigin,
   type QuestionStep,
 } from '../db/schema-questions.js';
-import { decideChannelGate } from '../ecosystem/channel-gate.js';
-import type { PersonVia } from '../ecosystem/channel-schema.js';
-import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
+import type { IssueDependencyExecutor } from '../issues/index.js';
 import { refuser } from '../lib/refusal.js';
-import { type KernelActor, transition } from '../lifecycle/transition.js';
+import { type KernelActor, transition } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
 import { holds, type PermissionFacts, requireHeld } from '../permissions/index.js';
-import { wakeMastersForAnswer } from '../ws/master-wake.js';
 import { resolveAskOrigin } from './origin.js';
+import { decideChannelGate, wakeMastersForAnswer } from './ports.js';
 import { screenRound } from './screen.js';
 
 /** The pool, or a caller's open transaction — a park writes its question inside the transition's. */

@@ -1,13 +1,13 @@
 import { type SQL, sql } from 'drizzle-orm';
-import { agentSessionEventsRetention } from '../../agent-sessions/retention.js';
+import {
+  JOB_TERMINAL,
+  olderThan,
+  type RetentionStatements,
+  type TableStatements,
+} from '../../db/retention-shape.js';
 import { TRANSCRIPT_ATTEMPTED_KEY, TRANSCRIPT_FINALIZED_KEY } from '../../db/transcript-marker.js';
-import { jobEventsRetention } from '../../jobs/retention.js';
-import { kernelTransitionsRetention } from '../../lifecycle/retention.js';
-import { retrievalAnalyticsRetention } from '../../memory/retention.js';
-import { runnerEventsRetention } from '../../runners/retention.js';
-import { JOB_TERMINAL, olderThan, type TableStatements } from './shape.js';
-
-export type { TableStatements } from './shape.js';
+import { kernelTransitionsRetention } from '../../lifecycle/index.js';
+import { retentionStatements } from '../ports.js';
 
 const queueSnapshots: TableStatements = {
   deleteBatch: (days, limit) => sql`
@@ -22,15 +22,17 @@ const queueSnapshots: TableStatements = {
   heldBack: null,
 };
 
-/** Keyed by the physical table name a `RetentionRule` carries. */
-export const RETENTION_STATEMENTS: Readonly<Record<string, TableStatements>> = {
-  job_events: jobEventsRetention,
-  agent_session_events: agentSessionEventsRetention,
-  queue_snapshots: queueSnapshots,
-  runner_events: runnerEventsRetention,
-  kernel_transitions: kernelTransitionsRetention,
-  retrieval_analytics: retrievalAnalyticsRetention,
-};
+/**
+ * Keyed by the physical table name a `RetentionRule` carries: the pipeline's and the kernel's own,
+ * and those the owning modules hand in at boot.
+ */
+export function retentionStatementsByTable(): RetentionStatements {
+  return {
+    ...retentionStatements(),
+    queue_snapshots: queueSnapshots,
+    kernel_transitions: kernelTransitionsRetention,
+  };
+}
 
 /**
  * Whether a job's surviving events are the whole history it produced.

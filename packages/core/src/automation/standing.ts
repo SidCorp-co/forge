@@ -21,8 +21,7 @@ import {
   type ScheduleState,
 } from '@forge/contracts/automation-standing';
 import { nobodyWaits, type WaitingOn } from '@forge/contracts/standing';
-import type { LastFire } from '../schedules/fires.js';
-import { type ScheduleStreak, streakFails } from '../schedules/streak.js';
+import { type LastFire, type ScheduleStreak, streakFails } from './ports.js';
 
 export interface AutomationViewer {
   userId: string;

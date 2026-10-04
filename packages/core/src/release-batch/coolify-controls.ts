@@ -30,7 +30,6 @@ import {
   recordDelivery,
   updateDelivery,
 } from '../integrations/index.js';
-import { liveActionNeedsHumanConfirm } from '../pipeline/release-coolify.js';
 import {
   activeCoolifyIntegrations,
   type CoolifyIntegrationRow,
@@ -38,6 +37,7 @@ import {
   resolveIntegrationRow,
 } from './coolify-commands.js';
 import { enqueueCoolifyConfirm } from './coolify-confirm.js';
+import { liveActionNeedsHumanConfirm } from './release-coolify.js';
 
 /** A bound target with the identity Coolify reports for it. */
 export interface CoolifyTargetIdentity extends CoolifyApplicationSummary {

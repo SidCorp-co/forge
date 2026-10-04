@@ -8,7 +8,6 @@ import {
 } from '@forge/contracts/record-events';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { messageRefusalHttp } from '../../comments/screen.js';
 import { loadProjectAccess } from '../../lib/authz.js';
 import { refuser } from '../../lib/refusal.js';
 import {
@@ -20,7 +19,8 @@ import {
 import { badRequest, idParamSchema, notFound } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { requireHeld } from '../../permissions/index.js';
-import type { Actor } from '../../pipeline/activity.js';
+import type { Actor } from '../activity.js';
+import { messageRefusalHttp } from '../ports.js';
 import { issueScopeOf } from '../read-service.js';
 import { listRecordEvents, type RecordEvent } from './store.js';
 import { writeScreenedRecordEvent } from './write.js';

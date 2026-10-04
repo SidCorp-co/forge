@@ -3,19 +3,31 @@ import {
   SUBMIT_ANSWERS_SHAPE,
   submitAnswersRequestSchema,
 } from '@forge/contracts/onboarding';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
+import { type Refusal, refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
-import { actorOf, refusedOnboarding } from '../onboarding/routes.js';
-import { afterOnboardingSubmit, onboardingSubmittedIn } from '../onboarding/service.js';
+import { afterOnboardingSubmit, onboardingSubmittedIn } from '../onboarding/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { batchIn, batchView, questionnairesAs } from './read.js';
 import { submitAnswers } from './service.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 export const questionnaireRoutes = new Hono<{ Variables: AuthVars }>();
+
+function actorOf(c: Context<{ Variables: AuthVars }>) {
+  const agency = c.get('agency');
+  if (!agency)
+    throw new Error('questionnaires: a request reached its handler without an auth gate');
+  return { userId: c.get('userId'), agency };
+}
+
+/** The onboarding envelope every questionnaire answer is refused in, `ONBOARDING_REFUSED` when the codes differ. */
+function refusedOnboarding(c: Context, refusals: readonly Refusal[]) {
+  return refused(c, refusals, 'ONBOARDING_REFUSED');
+}
 
 questionnaireRoutes.use('/:id/questionnaires/*', requireAuth(), assertEmailVerified());
 

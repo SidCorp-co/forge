@@ -1,7 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projectMembers, projects, users } from '../db/schema.js';
-import { userLabel } from '../issues/actor-resolution.js';
+import { userLabel } from '../issues/index.js';
 import { logger } from '../observability/logger.js';
 import type { ChannelDocument, ThreadHold } from './channel-schema.js';
 import { ecosystemSignals } from './ports.js';

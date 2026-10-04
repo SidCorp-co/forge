@@ -2,11 +2,9 @@ import { diffFieldValue } from '@forge/contracts/field-changes';
 import type { IssueUpdateRefusalCode } from '@forge/contracts/issues';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { fireOfCaller, issueDeleteRefusal } from '../agent-reports/service.js';
 import { BodyInvalidError } from '../body/errors.js';
 import { BODY_FORMATS } from '../body/formats.js';
 import { bodyInvalidHttp } from '../body/http-error.js';
-import { registerIssueCommentRoutes } from '../comments/routes.js';
 import { type IssueStatus, issueComplexities, issuePriorities, jobTypes } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
@@ -14,12 +12,9 @@ import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { refused, refuser } from '../lib/refusal.js';
-import { deleteMemory } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
-import { requirementOfIssue } from '../requirements/issue-links.js';
-import { proposesWorkflowOf } from '../workflows/design-issue.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { registerIssueAttributeRoutes } from './attributes/routes.js';
 import { heldTakeRefusal } from './blocked-by.js';
@@ -68,6 +63,13 @@ export {
 
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { requireHeld } from '../permissions/index.js';
+import {
+  deleteMemory,
+  fireOfCaller,
+  issueDeleteRefusal,
+  proposesWorkflowOf,
+  requirementOfIssue,
+} from './ports.js';
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
 const issueIdParamSchema = z.object({ id: z.uuid() });
@@ -279,7 +281,6 @@ issueProjectRoutes.get(
 export const issueRoutes = new Hono<{ Variables: AuthVars }>();
 issueRoutes.use('*', requireAuth(), assertEmailVerified());
 
-registerIssueCommentRoutes(issueRoutes);
 registerIssueAttributeRoutes(issueRoutes);
 
 async function loadIssue(issueId: string): Promise<IssueRow> {

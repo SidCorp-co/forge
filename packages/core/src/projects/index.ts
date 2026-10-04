@@ -19,3 +19,13 @@ export {
   projectDocumentNames,
   type VisibleProjectWithRole,
 } from './service.js';
+// Loaded on call: the live reading reaches git and the release path, and both import this face back.
+export const liveReachForIssue: typeof import('./live-reach-read.js').liveReachForIssue = async (
+  ...args
+) => (await import('./live-reach-read.js')).liveReachForIssue(...args);
+export type { ReadingOwnership } from './commit-owners.js';
+export { declaredIssueSeqs, readingOwnership, subjectOf, unclaimedShas } from './commit-owners.js';
+export { issueWorkRecordsAt } from './issue-work-records.js';
+export type { LiveReading } from './live-reach.js';
+export { evidenceFor, issueRefPattern } from './live-reach.js';
+export { liveReadingForRow, projectReleaseRows } from './live-reading.js';

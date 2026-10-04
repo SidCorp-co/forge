@@ -1,13 +1,29 @@
 import { JOB_MACHINE } from '@forge/contracts/job-machine';
+import {
+  AUTO_RELEASE_REASONS,
+  AUTO_RETRY_PAYLOAD_KEY,
+  HOLD_PAYLOAD_KEY,
+  type HoldState,
+  holdReleasesItself,
+  readHoldState,
+  TIME_CHECKED_REASONS,
+} from '@forge/contracts/jobs';
 import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type JobType, jobs } from '../db/schema.js';
 import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
-import { resolvePipelineWedge } from '../pipeline/wedge.js';
-import type { RequiredCapabilities } from '../runners/index.js';
-import { onlineCapableDeviceIds } from '../runners/index.js';
-import { AUTO_RETRY_PAYLOAD_KEY } from './retry.js';
+import { resolvePipelineWedge } from '../pipeline/index.js';
+import { onlineCapableDeviceIds } from '../runners/select.js';
+import type { RequiredCapabilities } from '../runners/types.js';
+
+export {
+  AUTO_RELEASE_REASONS,
+  HOLD_PAYLOAD_KEY,
+  type HoldState,
+  holdReleasesItself,
+  readHoldState,
+} from '@forge/contracts/jobs';
 
 type JobRow = typeof jobs.$inferSelect;
 
@@ -18,57 +34,8 @@ export const HOLD_REASONS: ReadonlySet<string> = new Set([
   'verify_unavailable',
 ]);
 
-/** Payload key carrying the hold bookkeeping on the successor row. */
-export const HOLD_PAYLOAD_KEY = '__hold';
-
-export interface HoldState {
-  reason: string;
-  heldAt: string;
-  /** False once this lineage has already spent its single auto-release. */
-  autoRelease: boolean;
-}
-
-/**
- * Reasons whose clearance this module can VERIFY before re-queueing, by
- * re-running the check that failed.
- */
-const CONDITION_CHECKED_REASONS: ReadonlySet<string> = new Set(['all_devices_exhausted']);
-
-/**
- * Reasons with nothing to re-check: waiting IS the whole remedy, so the hold
- * simply retries once {@link HOLD_RECHECK_MS} has passed.
- */
-const TIME_CHECKED_REASONS: ReadonlySet<string> = new Set(['verify_unavailable']);
-
-/**
- * Every reason that may auto-release. Derived, never hand-listed — a reason
- * has to pick a lane above to get in.
- */
-export const AUTO_RELEASE_REASONS: ReadonlySet<string> = new Set([
-  ...CONDITION_CHECKED_REASONS,
-  ...TIME_CHECKED_REASONS,
-]);
-
 /** How long a {@link TIME_CHECKED_REASONS} hold waits before it tries again. */
 export const HOLD_RECHECK_MS = 10 * 60_000;
-
-function holdResumesItself(reason: string | null | undefined): boolean {
-  return reason !== null && reason !== undefined && AUTO_RELEASE_REASONS.has(reason);
-}
-
-/**
- * Whether a held job releases itself: a self-clearing reason on a lineage that has not spent its
- * one auto-release. The release sweep below acts on it, and every surface that describes a held job
- * asks it with the job's own hold state, so no copy promises a resume the sweep will not perform.
- */
-export function holdReleasesItself(
-  hold: HoldState | null,
-  failureReason: string | null = null,
-): boolean {
-  return hold
-    ? hold.autoRelease && holdResumesItself(hold.reason)
-    : holdResumesItself(failureReason);
-}
 
 /**
  * Whether holding `job` for `reason` produces a hold that will release itself: a self-clearing
@@ -76,15 +43,6 @@ export function holdReleasesItself(
  */
 export function holdAutoReleases(priorPayload: unknown, reason: string): boolean {
   return readHoldState(priorPayload) === null && AUTO_RELEASE_REASONS.has(reason);
-}
-
-export function readHoldState(payload: unknown): HoldState | null {
-  if (!payload || typeof payload !== 'object') return null;
-  const raw = (payload as Record<string, unknown>)[HOLD_PAYLOAD_KEY];
-  if (!raw || typeof raw !== 'object') return null;
-  const { reason, heldAt, autoRelease } = raw as Record<string, unknown>;
-  if (typeof reason !== 'string' || typeof heldAt !== 'string') return null;
-  return { reason, heldAt, autoRelease: autoRelease === true };
 }
 
 /**

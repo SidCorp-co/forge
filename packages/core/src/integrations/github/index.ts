@@ -10,6 +10,10 @@ export { findConnectionOwningInstallation } from './install-resolve.js';
 export { connectProjectOf } from './read.js';
 export { listInstallationRepositories } from './repositories.js';
 export { startRunnerRelease } from './runner-release.js';
+export {
+  nameOverdueRunnerReleases,
+  type RunnerReleaseDeadlineResult,
+} from './runner-release-deadline.js';
 export { RUNNER_RELEASE_DEADLINE_MS, repositoryTruth } from './runner-release-preflight.js';
 export {
   findById,

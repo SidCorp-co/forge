@@ -1,4 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import {
+  AUTO_RETRY_PAYLOAD_KEY,
+  type AutoRetryPayload,
+  RETRY_MAX_ROUNDS,
+  readAutoRetryPayload,
+} from '@forge/contracts/jobs';
 import { eq, sql } from 'drizzle-orm';
 import {
   incrementAutoRetryCount,
@@ -10,18 +16,26 @@ import { db } from '../db/client.js';
 import { jobEvents, jobs } from '../db/schema.js';
 import { logger } from '../observability/logger.js';
 import { traceStep } from '../observability/sentry.js';
-import { classifyFailure, deriveActionFromKind } from '../pipeline/failure-classifier.js';
-import { verifyRecovery } from '../pipeline/recovery-verifier.js';
 import {
   capacityWedgeEntityId,
+  classifyFailure,
+  deriveActionFromKind,
   emitPipelineWedge,
   resolvePipelineWedge,
-} from '../pipeline/wedge.js';
+  verifyRecovery,
+} from '../pipeline/index.js';
 import type { RequiredCapabilities } from '../runners/index.js';
 import { onlineCapableDeviceIds } from '../runners/index.js';
 import { jobsPorts } from './ports.js';
 
 type JobRow = typeof jobs.$inferSelect;
+
+export {
+  AUTO_RETRY_PAYLOAD_KEY,
+  type AutoRetryPayload,
+  RETRY_MAX_ROUNDS,
+  readAutoRetryPayload,
+} from '@forge/contracts/jobs';
 
 export interface RetryOutcome {
   scheduled: boolean;
@@ -35,35 +49,11 @@ export const RETRY_COOLDOWN_MS = 60_000;
 /** Attempts a single device gets before the chain rotates to the next one. */
 export const RETRY_TRIES_PER_DEVICE = 3;
 
-/** Full device sweeps before the chain gives up and the caller parks the
- *  issue at `needs_info`. */
-export const RETRY_MAX_ROUNDS = 10;
-
 /**
  * How long a job may sit deferred for want of ANY usable device before it stops
  * retrying and holds instead.
  */
 export const CAPACITY_DEFER_CEILING_MS = 5 * 60_000;
-
-/**
- * Round-robin rotation state carried on `payload[AUTO_RETRY_PAYLOAD_KEY]`.
- *
- *   - `round`  — 1-based sweep counter (1..RETRY_MAX_ROUNDS).
- *   - `target` — device the NEXT attempt should land on (dispatcher pins it).
- *   - `tries`  — attempts already spent on `target` this round (1..TRIES).
- *   - `done`   — devices that finished their tries this round (dispatcher
- *                excludes them so the sweep doesn't repeat a device).
- */
-export const AUTO_RETRY_PAYLOAD_KEY = '_autoRetry';
-
-export interface AutoRetryPayload {
-  round: number;
-  target: string | null;
-  tries: number;
-  done: string[];
-  /** When this chain first found NO usable device. Null once one appears. */
-  deferredSince?: string | null;
-}
 
 /**
  * What {@link nextRotation} decided. Three outcomes, not two: "nowhere to send
@@ -73,30 +63,6 @@ export type RotationOutcome =
   | { kind: 'rotate'; state: AutoRetryPayload }
   | { kind: 'defer'; state: AutoRetryPayload }
   | { kind: 'give_up'; reason: 'retry_rounds_exhausted' | 'all_devices_exhausted' };
-
-/** Always returns a normalized state — never undefined — so callers can read
- *  fields without guards. A first dispatch (no prior state) reads as the
- *  round-1 zero state. */
-export function readAutoRetryPayload(payload: unknown): AutoRetryPayload {
-  const zero: AutoRetryPayload = {
-    round: 1,
-    target: null,
-    tries: 0,
-    done: [],
-    deferredSince: null,
-  };
-  if (!payload || typeof payload !== 'object') return zero;
-  const raw = (payload as Record<string, unknown>)[AUTO_RETRY_PAYLOAD_KEY];
-  if (!raw || typeof raw !== 'object') return zero;
-  const r = raw as Partial<AutoRetryPayload>;
-  return {
-    round: typeof r.round === 'number' && r.round >= 1 ? r.round : 1,
-    target: typeof r.target === 'string' ? r.target : null,
-    tries: typeof r.tries === 'number' && r.tries >= 0 ? r.tries : 0,
-    done: Array.isArray(r.done) ? r.done.filter((x): x is string => typeof x === 'string') : [],
-    deferredSince: typeof r.deferredSince === 'string' ? r.deferredSince : null,
-  };
-}
 
 export function nextRotation(
   job: JobRow,

@@ -3,6 +3,8 @@ export { type InterfaceContracts, provideInterfaceContracts } from './contract-l
 export { provideRequirementDependents, type RequirementDependents } from './dependents.js';
 export { similarRequirements } from './embeddings.js';
 export { feedbackLinksOf } from './feedback-links.js';
+export { plannedRevisionFor, requirementOfIssue } from './issue-links.js';
+export { planDriftOf } from './plan-drift.js';
 export { readRequirementAs, rowIn } from './read.js';
 export { linkIssueRefusal } from './rules.js';
 export {

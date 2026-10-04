@@ -1,15 +1,12 @@
-import { type SQL, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
+import { olderThan, type TableStatements } from '../db/retention-shape.js';
 
-/** retrieval_analytics' rule for the retention sweep, in the sweep's `TableStatements` shape: past the window it goes, and nothing is held back. */
-export const retrievalAnalyticsRetention: {
-  deleteBatch: (days: number, limit: number) => SQL;
-  heldBack: null;
-} = {
+export const retrievalAnalyticsRetention: TableStatements = {
   deleteBatch: (days, limit) => sql`
     DELETE FROM retrieval_analytics
     WHERE id IN (
       SELECT id FROM retrieval_analytics
-      WHERE created_at < now() - make_interval(days => ${days})
+      WHERE ${olderThan(sql`created_at`, days)}
       LIMIT ${limit}
     )
     RETURNING id

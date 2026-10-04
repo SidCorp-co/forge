@@ -1,6 +1,5 @@
 import { logger } from '../observability/logger.js';
-import { productionOf } from '../project-config/release-path.js';
-import { readProjectDocument } from '../project-config/service.js';
+import { productionOf, readProjectDocument } from '../project-config/index.js';
 
 /** Whether the release sweep alone cuts releases here: production deploys `on-land`. */
 // cm:edge naming -> packages/core/src/project-config/schema.ts:DEPLOYMENT_TRIGGERS

@@ -2,10 +2,13 @@
 // each fire produced counted by join (reports and issues by schedule_run_id, notifications by the
 // fire id, proposals through the fire's session), and agent reports with the fire that filed them
 
-import { AGENT_REPORT_TRIAGES, type AgentReportTriage } from '@forge/contracts/agent-reports';
+import {
+  AGENT_REPORT_TRIAGES,
+  type AgentReportTriage,
+  type AgentReportView,
+} from '@forge/contracts/agent-reports';
 import type { AutomationPerson, FireProducedItems } from '@forge/contracts/automation-standing';
 import { and, asc, count, desc, eq, inArray, ne, type SQL, sql } from 'drizzle-orm';
-import { reportColumns, reportViews } from '../agent-reports/service.js';
 import { db } from '../db/client.js';
 import {
   agentReports,
@@ -149,47 +152,6 @@ export async function stewardActions(
   return new Map(rows.map((r) => [r.id, stewardActionsOf(r.report)]));
 }
 
-/** Every report at triage new, then the newest `triaged` triaged ones, of a project or of one schedule's fires. */
-export async function reportRows(scope: {
-  projectId: string;
-  scheduleId?: string;
-  triaged: number;
-}) {
-  const inProject = eq(agentReports.projectId, scope.projectId);
-  const fromSchedule = scope.scheduleId
-    ? inArray(
-        agentReports.scheduleRunId,
-        db
-          .select({ id: scheduleRuns.id })
-          .from(scheduleRuns)
-          .where(eq(scheduleRuns.scheduleId, scope.scheduleId)),
-      )
-    : inProject;
-  const base = () =>
-    db
-      .select(reportColumns)
-      .from(agentReports)
-      .leftJoin(projects, eq(projects.id, agentReports.projectId));
-  const [fresh, triaged] = await Promise.all([
-    base().where(and(fromSchedule, eq(agentReports.triage, 'new'))),
-    base()
-      .where(and(fromSchedule, ne(agentReports.triage, 'new')))
-      .orderBy(desc(agentReports.createdAt), desc(agentReports.id))
-      .limit(scope.triaged),
-  ]);
-  return reportViews([...fresh, ...triaged]);
-}
-
-export async function reportRow(projectId: string, reportId: string) {
-  const rows = await db
-    .select(reportColumns)
-    .from(agentReports)
-    .leftJoin(projects, eq(projects.id, agentReports.projectId))
-    .where(and(eq(agentReports.projectId, projectId), eq(agentReports.id, reportId)))
-    .limit(1);
-  return reportViews(rows);
-}
-
 export async function reportCounts(projectId: string): Promise<Record<AgentReportTriage, number>> {
   const rows = await db
     .select({ triage: agentReports.triage, n: count() })
@@ -236,9 +198,7 @@ async function issueKeys(
 }
 
 /** Each report with the fire that filed it, that fire's schedule owner, and the issue it went to. */
-export async function reportFacts(
-  views: Awaited<ReturnType<typeof reportRows>>,
-): Promise<ReportFacts[]> {
+export async function reportFacts(views: readonly AgentReportView[]): Promise<ReportFacts[]> {
   const fireIds = [...new Set(views.flatMap((v) => (v.scheduleRunId ? [v.scheduleRunId] : [])))];
   const fires =
     fireIds.length === 0

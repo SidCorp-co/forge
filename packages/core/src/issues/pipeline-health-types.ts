@@ -1,8 +1,8 @@
+import type { PauseResumer } from '@forge/contracts/run-standing';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
-import type { RunnerAvailability } from '../jobs/queued-gates.js';
-import type { PauseResumer } from '../pipeline/run-pause.js';
-import type { LeaseReading } from '../pipeline/session-claim.js';
 import type { IssueWorker, SessionWorkerLane } from './issue-worker.js';
+import type { RunnerAvailability } from './ports.js';
+import type { LeaseReading } from './session-claim.js';
 
 export type PipelineWaitingReason =
   | 'issue_busy'
@@ -89,7 +89,7 @@ export interface PipelineHealthJob {
   agentSessionId: string | null;
   /** The hold reason when `status === 'held'` (`jobs/hold.ts`). */
   failureReason?: string | null;
-  /** The job's payload, which carries a held job's hold bookkeeping (`jobs/hold.ts:readHoldState`). */
+  /** The job's payload, which carries a held job's hold bookkeeping (`@forge/contracts/jobs:readHoldState`). */
   payload?: unknown;
   /** Parent `pipeline_runs.status`. The picker requires `running`. */
   pipelineRunStatus?: string | null;
@@ -107,7 +107,7 @@ export interface ClassifyInput {
   runnerPool: RunnerAvailability;
   /** ISS-853 — the issue's paused pipeline run, from `loadPausedRunsByIssue`. */
   pausedRun?: PipelineHealthPausedRun;
-  /** ISS-1273 — the issue's own claim, read by `pipeline/lease-fanout.ts`. `null` where the
+  /** ISS-1273 — the issue's own claim, read by `lease-fanout.ts`. `null` where the
    *  caller did not read one, which is not the same as a row carrying none. */
   claim?: LeaseReading | null;
   /** Injectable clock for the retry-cooldown comparison; defaults to now. */

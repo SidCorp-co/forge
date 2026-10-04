@@ -9,13 +9,16 @@ import {
 } from '../integrations/index.js';
 import { logger } from '../observability/logger.js';
 import { traceStep } from '../observability/sentry.js';
-import { type DeployMap, readDeployMap } from '../project-config/release-path.js';
-import { abandonDeployDispatchHold, openDeployDispatchHold } from './deploy-confirmations.js';
 import {
+  abandonDeployDispatchHold,
   acquireDeployLocks,
   type DeployLockHeld,
+  openDeployDispatchHold,
+  RELEASE_DEPLOY_IN_FLIGHT_STEP,
   releaseDeployLocksForRun,
-} from './deploy-lock.js';
+  setCurrentStep,
+} from '../pipeline/index.js';
+import { type DeployMap, readDeployMap } from '../project-config/index.js';
 import { productionDeploysOnLand } from './production-trigger.js';
 import {
   type DeployLockIntent,
@@ -25,7 +28,6 @@ import {
   locksOf,
   targetLabelOf,
 } from './release-coolify-hold.js';
-import { RELEASE_DEPLOY_IN_FLIGHT_STEP, setCurrentStep } from './runs.js';
 
 /**
  * Substep markers stamped onto pipelineRuns.currentStep so the UI / WS

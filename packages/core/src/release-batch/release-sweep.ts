@@ -10,10 +10,12 @@ import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { postIssueNoticeOnce } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/criteria-verdicts.js';
+import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/index.js';
 import { isRefusal } from '../lib/refusal.js';
 import { logger } from '../observability/logger.js';
-import { RELEASE_GATE_STATUS, resolveReleaseGate } from '../release-batch/gate.js';
+import { advanceSweep, type SweepPosition, sweepWindow } from '../pipeline/index.js';
+import { cutWaitingRelease, loadCreatedBy } from '../schedules/index.js';
+import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
 import {
   clearProjectReleaseHolds,
   clearReleaseHolds,
@@ -30,16 +32,9 @@ import {
   runtimeUnroutedHold,
   targetUndeclaredHold,
   writeReleaseHolds,
-} from '../release-batch/index.js';
-import {
-  readServingNow,
-  servingClause,
-  whyUncorroborated,
-} from '../release-batch/serving-reading.js';
-import { loadCreatedBy } from '../schedules/release-batch-dispatch.js';
-import { cutWaitingRelease } from '../schedules/release-batch-run.js';
+} from './hold.js';
 import { productionDeploysOnLand } from './release-coolify.js';
-import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
+import { readServingNow, servingClause, whyUncorroborated } from './serving-reading.js';
 
 const CANDIDATE_CURSOR_KEY = 'release-sweep';
 const CANDIDATE_PAGE_LIMIT = 200;

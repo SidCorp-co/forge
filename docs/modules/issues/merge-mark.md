@@ -61,7 +61,7 @@ Where the caller names a `landing` and no merged pull request exists, it stamps 
 column — it reaches the audit trail as the caller's claim.
 
 A merged commit on the row is work evidence: `collectWorkEvidence`
-(`packages/core/src/pipeline/work-evidence.ts`) reads `merged_commit_sha` where `merged_at` is
+(`packages/core/src/issues/work-evidence.ts`) reads `merged_commit_sha` where `merged_at` is
 set, so an issue the mark accepted is not refused `NO_WORK_EVIDENCE` on its next move.
 
 Where the row already holds a stamp, the gated UPDATE moves nothing and the answer

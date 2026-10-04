@@ -1,8 +1,8 @@
+import { noPromptMessage, POOL_JOB_NO_PROMPT } from '@forge/contracts/jobs';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type IssueStatus, issuePriorities, issueStatuses } from '../db/schema.js';
-import { noPromptMessage, POOL_JOB_NO_PROMPT } from '../jobs/pool-served.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
@@ -10,7 +10,7 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
-import { triggerPipelineStepManual } from '../pipeline/orchestrator.js';
+import { triggerPipelineStepManual } from '../pipeline/index.js';
 import { statusChangeRows } from './activity-read.js';
 import { TransitionError, transitionIssueStatus } from './apply-transition.js';
 import { BATCH_SKIP_BY_CODE, type BatchSkipReason } from './batch-skip-reason.js';

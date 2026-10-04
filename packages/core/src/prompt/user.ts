@@ -8,12 +8,12 @@ import { markUntrusted } from '../lib/untrusted-text.js';
 import {
   type HandoffScope,
   type HandoffStep,
+  handoffInjectSteps,
   isHandoffStep,
   renderDriveTerminationBlock,
   renderTerminationBlock,
   type StepHandoffPayload,
-} from '../memory/index.js';
-import { handoffInjectSteps } from '../pipeline/index.js';
+} from '../pipeline/index.js';
 
 /** ISS-699 — steps that finished after `sessionContext.lastUpdated`, measured
  *  from the jobs ledger by `loadIssueSnapshot`. null when nothing is newer. */

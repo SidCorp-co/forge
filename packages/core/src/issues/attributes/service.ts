@@ -1,7 +1,7 @@
 /** The one writer. Every refusal is raised here or below; a door renders it (ISS-1158). */
 
-import { pgConstraintName, pgErrorCode } from '../../comments/error-mapping.js';
 import { db } from '../../db/client.js';
+import { pgConstraintName, pgErrorCode } from '../../lib/db-errors.js';
 import { loadIssueAttributes, type RenderedAttribute } from './read.js';
 import { assertSourceCommentsOnIssue } from './source-comment.js';
 import { type AttributeWrite, writeAttributes } from './write.js';
