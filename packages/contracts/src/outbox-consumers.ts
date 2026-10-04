@@ -27,11 +27,7 @@ export const OUTBOX_CONSUMERS = {
 	"job.transitioned": ["pm", "phase-journal-close", "memory-extraction"],
 	"run.transitioned": ["paused-run-wedge-resolve", "release-batch-claims"],
 	"dependency.changed": ["pm"],
-	"comment.created": [
-		"activity-feed",
-		"master-wake",
-		"rocketchat-comment-mirror",
-	],
+	"comment.created": ["activity-feed", "master-wake"],
 	"comment.updated": ["activity-feed"],
 	"comment.deleted": ["activity-feed"],
 	"comment.mentioned": ["activity-feed", "notify-mentions"],

@@ -9,7 +9,7 @@ import type { RoomShape } from './room-shape.js';
 import type { ThreadSubject } from './thread-registry.js';
 
 export interface RoomHandlers {
-  /** A reply in a thread Forge opened, for the issue or question that owns it. Never throws. */
+  /** A reply in a thread Forge opened, for the question that owns it. Never throws. */
   threadReply(input: {
     subject: ThreadSubject;
     connectionId: string;

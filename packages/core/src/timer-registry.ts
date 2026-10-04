@@ -3,7 +3,6 @@
 
 import { runAlertSweep } from './admin/index.js';
 import {
-  drainRoomCommentMirror,
   drainRoomQuestions,
   drainRoomWindows,
   drainWebConversationWindows,
@@ -237,13 +236,6 @@ export function coreTimers(): Timer[] {
       everyMs: 30_000,
       runAtStart: true,
       run: drainRoomQuestions,
-    },
-    {
-      kind: 'process',
-      name: 'rocketchat.comment-mirror',
-      everyMs: 30_000,
-      runAtStart: true,
-      run: drainRoomCommentMirror,
     },
     ...(servesRunnerReleases()
       ? [

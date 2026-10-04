@@ -46,7 +46,11 @@ export const LOCK_NAMESPACES = {
 export type LockNamespace = keyof typeof LOCK_NAMESPACES;
 
 /** Wait for the transaction-scoped lock on `key` in `namespace`; it releases at commit or rollback. */
-export async function lockXact(tx: LockExecutor, namespace: LockNamespace, key: string): Promise<void> {
+export async function lockXact(
+  tx: LockExecutor,
+  namespace: LockNamespace,
+  key: string,
+): Promise<void> {
   await tx.execute(
     sql`SELECT pg_advisory_xact_lock(${LOCK_NAMESPACES[namespace]}::int4, hashtext(${key}))`,
   );

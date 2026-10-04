@@ -13,7 +13,7 @@ import { mockups } from '../db/schema-mockups.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { requirements } from '../db/schema-requirements.js';
-import { rocketchatCommentMirrors, rocketchatQuestionDeliveries } from '../db/schema-rocketchat.js';
+import { rocketchatQuestionDeliveries } from '../db/schema-rocketchat.js';
 import { scheduleRuns } from '../db/schema-schedule-runs.js';
 import { suggestions } from '../db/schema-suggestions.js';
 
@@ -34,7 +34,6 @@ export interface MachineTables {
   runner: typeof runners;
   runner_provision: typeof runners;
   device: typeof devices;
-  comment_mirror: typeof rocketchatCommentMirrors;
   question_delivery: typeof rocketchatQuestionDeliveries;
 }
 
@@ -83,8 +82,6 @@ export function machineTable<E extends MachineEntity>(entity: E): MachineTable<E
       return at(runners, 'provisionStatus');
     case 'device':
       return at(devices);
-    case 'comment_mirror':
-      return at(rocketchatCommentMirrors);
     case 'question_delivery':
       return at(rocketchatQuestionDeliveries);
     default:

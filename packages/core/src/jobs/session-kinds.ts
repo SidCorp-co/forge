@@ -41,11 +41,10 @@ export const AGENT_SESSION_KIND_LIST = agentSessionKinds.join(', ');
 
 /**
  * The sessions the loop monitor fails on a silent heartbeat (`loop-monitor.ts:reapZombieSessions`):
- * a pipeline step's, an escalation's or an agent chat's. The run standing's heartbeat clock asks the
+ * a pipeline step's or an escalation's. The run standing's heartbeat clock asks the
  * same, so it promises a reap only where one happens.
  */
 export function heartbeatReapedSql(session: SQL): SQL {
   return sql`(${session}.kind IN ${kindTuple(PIPELINE_SESSION_KINDS)}
-    OR ${session}.metadata -> 'escalation' IS NOT NULL
-    OR ${session}.metadata -> 'agentChat' IS NOT NULL)`;
+    OR ${session}.metadata -> 'escalation' IS NOT NULL)`;
 }

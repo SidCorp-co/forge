@@ -1,4 +1,3 @@
-import { registerCommentMirror } from './assistant/index.js';
 import { registerReviewNotes } from './comments/index.js';
 import { registerSourcePushReactions } from './ecosystem/index.js';
 import { registerErrorSightings } from './error-intake/index.js';
@@ -43,7 +42,6 @@ export function registerOutboxConsumers(): void {
   registerPhaseJournalClose();
   registerPausedRunWedgeResolve();
   registerReleaseBatchClaimSubscriber();
-  registerCommentMirror();
   registerMemoryIndexer();
   registerMemoryReconcileTrigger();
   registerMemoryExtraction();

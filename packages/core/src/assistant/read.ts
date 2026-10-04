@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { projects, users } from '../db/schema.js';
+import { users } from '../db/schema.js';
 import {
   conversationParticipants,
   conversationPins,

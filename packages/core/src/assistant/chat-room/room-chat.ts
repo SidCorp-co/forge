@@ -1,6 +1,6 @@
 // The chat room as a door into conversations and the assistant: what the Rocket.Chat connection
 // hands over is collected into its conversation here, and a reply in a thread Forge opened goes
-// to the issue or question that owns it.
+// to the question that owns it.
 
 import { webBaseUrl } from '../../config/web-base-url.js';
 import { collectInboundMessage, registerConversationTransport } from '../../conversations/index.js';
@@ -11,7 +11,6 @@ import {
   sendFixedReply,
 } from '../../integrations/rocketchat/index.js';
 import { logger } from '../../observability/logger.js';
-import { consumeIssueThreadReply } from './comment-inbound.js';
 import { type RocketChatFrame, rocketChatConversationPorts } from './port.js';
 import { consumeQuestionThreadReply } from './question-inbound.js';
 import { drainConversationWindows } from './window-drain.js';
@@ -21,17 +20,7 @@ export function registerRoomChat(): void {
   registerConversationTransport(rocketChatConversationPorts);
   provideRoomHandlers({
     threadReply: ({ subject, connectionId, ac, m }) => {
-      if (subject.kind === 'question') {
-        consumeQuestionThreadReply({ questionId: subject.questionId, connectionId, ac, m });
-      } else {
-        consumeIssueThreadReply({
-          issueId: subject.issueId,
-          retired: subject.retired,
-          connectionId,
-          ac,
-          m,
-        });
-      }
+      consumeQuestionThreadReply({ questionId: subject.questionId, connectionId, ac, m });
     },
     collect: async ({ connectionId, ac, route, m, shape }) => {
       const logCtx = { connectionId, rid: m.rid, msgId: m.id, projectId: route.projectId };

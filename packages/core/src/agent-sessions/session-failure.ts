@@ -128,7 +128,7 @@ export async function finalizeScheduleSessionFailure(opts: {
       ...base,
       ...(reset ? { limitResetAt: reset.toISOString() } : {}),
     };
-    if (base.source !== 'schedule.run' && base.agentChat == null) {
+    if (base.source !== 'schedule.run') {
       opts.set.failureDetail = `${failureClassOf(classified.reason)} → no failover (plain chat session)`;
     }
   }

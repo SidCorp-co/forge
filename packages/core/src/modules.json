@@ -128,10 +128,7 @@
       "owns": [
         "assistantSpeakerLinks",
         "conversationPins",
-        "rocketchatCommentMirrorState",
-        "rocketchatCommentMirrors",
-        "rocketchatQuestionDeliveries",
-        "rocketchatThreadOpenings"
+        "rocketchatQuestionDeliveries"
       ]
     },
     "auth": {

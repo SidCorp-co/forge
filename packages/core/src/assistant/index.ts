@@ -1,15 +1,9 @@
-export { consumeIssueThreadReply } from './chat-room/comment-inbound.js';
-export { registerCommentMirror } from './chat-room/comment-mirror.js';
 export {
   buildConversationContext,
   buildRocketChatHistoryToolset,
   buildRocketChatQuoteContextToolset,
 } from './chat-room/context.js';
-export {
-  drainRoomCommentMirror,
-  drainRoomQuestions,
-  registerRoomBridges,
-} from './chat-room/drains.js';
+export { drainRoomQuestions, registerRoomBridges } from './chat-room/drains.js';
 export {
   ESCALATION_ACK,
   ESCALATION_DEDUP_REPLY,

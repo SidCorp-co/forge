@@ -11,14 +11,11 @@
 // leaves the work to be found rather than lost.
 
 import {
-  COMMENT_MIRROR_STATUSES,
-  type CommentMirrorStatus,
   QUESTION_DELIVERY_STATUSES,
   type QuestionDeliveryStatus,
 } from '@forge/contracts/room-delivery-machine';
 import { sql } from 'drizzle-orm';
 import {
-  boolean,
   check,
   index,
   integer,
@@ -28,7 +25,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { comments, integrationConnections, issues } from './schema.js';
+import { integrationConnections } from './schema.js';
 import { agentQuestions } from './schema-questions.js';
 
 export const questionDeliveryStatuses = QUESTION_DELIVERY_STATUSES;
@@ -63,77 +60,18 @@ export const rocketchatThreads = pgTable(
   'rocketchat_question_threads',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    questionId: uuid('question_id').references(() => agentQuestions.id, { onDelete: 'cascade' }),
-    issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'cascade' }),
+    questionId: uuid('question_id')
+      .notNull()
+      .references(() => agentQuestions.id, { onDelete: 'cascade' }),
     connectionId: uuid('connection_id')
       .notNull()
       .references(() => integrationConnections.id, { onDelete: 'cascade' }),
     rid: text('rid').notNull(),
     tmid: text('tmid').notNull(),
-    retiredAt: timestamp('retired_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex('rcq_threads_room_idx').on(t.connectionId, t.rid, t.tmid),
     uniqueIndex('rcq_threads_question_idx').on(t.questionId).where(sql`question_id IS NOT NULL`),
-    uniqueIndex('rcq_threads_issue_live_idx')
-      .on(t.issueId)
-      .where(sql`issue_id IS NOT NULL AND retired_at IS NULL`),
-    check('rcq_threads_subject_chk', sql`num_nonnulls(${t.questionId}, ${t.issueId}) = 1`),
   ],
 );
-
-export const commentMirrorDirections = ['outbound', 'inbound'] as const;
-export type CommentMirrorDirection = (typeof commentMirrorDirections)[number];
-export const commentMirrorStatuses = COMMENT_MIRROR_STATUSES;
-export type { CommentMirrorStatus };
-
-export const rocketchatCommentMirrors = pgTable(
-  'rocketchat_comment_mirrors',
-  {
-    id: uuid('id').notNull().defaultRandom().unique('rcq_mirrors_id_key'),
-    commentId: uuid('comment_id')
-      .primaryKey()
-      .references(() => comments.id, { onDelete: 'cascade' }),
-    connectionId: uuid('connection_id')
-      .notNull()
-      .references(() => integrationConnections.id, { onDelete: 'cascade' }),
-    direction: text('direction', { enum: commentMirrorDirections }).notNull(),
-    status: text('status', { enum: commentMirrorStatuses }).notNull(),
-    externalMessageId: text('external_message_id'),
-    attempts: integer('attempts').notNull().default(0),
-    lastError: text('last_error'),
-    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [
-    uniqueIndex('rcq_mirrors_external_idx').on(t.connectionId, t.externalMessageId),
-    index('rcq_mirrors_status_idx').on(t.status, t.nextAttemptAt),
-    check(
-      'rcq_mirrors_status_chk',
-      sql`${t.status} IN (${sql.raw(COMMENT_MIRROR_STATUSES.map((s) => `'${s}'`).join(', '))})`,
-    ),
-  ],
-);
-
-export const rocketchatCommentMirrorState = pgTable(
-  'rocketchat_comment_mirror_state',
-  {
-    only: boolean('only').primaryKey().default(true),
-    since: timestamp('since', { withTimezone: true }).notNull(),
-  },
-  (t) => [check('rcq_mirror_state_one_row_chk', sql`${t.only}`)],
-);
-
-export const rocketchatThreadOpenings = pgTable('rocketchat_thread_openings', {
-  issueId: uuid('issue_id')
-    .primaryKey()
-    .references(() => issues.id, { onDelete: 'cascade' }),
-  connectionId: uuid('connection_id')
-    .notNull()
-    .references(() => integrationConnections.id, { onDelete: 'cascade' }),
-  rid: text('rid').notNull(),
-  claimedAt: timestamp('claimed_at', { withTimezone: true }).notNull().defaultNow(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-});
