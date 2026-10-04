@@ -1,8 +1,9 @@
 /**
  * Feedback writes (workflows `feedback-lifecycle` rev 2 and `feedback-triage` rev 2). Each runs in
  * one transaction under the project's feedback lock and answers an outcome, refusals named and
- * nothing written. A person verifies or reopens; triage, decline and the case are `triage.ts`, attachments and
- * the clarification `attachments.ts`. Every decision is a `feedback_decisions` row.
+ * nothing written. Triage, the case and the route write are `triage.ts`, which reaches the decline
+ * act here; attachments and the clarification are `attachments.ts`. Every decision is a
+ * `feedback_decisions` row.
  */
 
 import type {
@@ -115,7 +116,7 @@ export async function decide(
   });
 }
 
-// cm:why a route picked closes the assistant's open clarification (feedback-lifecycle new -> triaged)
+// a route picked closes the assistant's open clarification (feedback-lifecycle new -> triaged)
 export async function closeClarification(tx: Tx, feedbackId: string, why: string) {
   await tx
     .update(agentQuestions)
