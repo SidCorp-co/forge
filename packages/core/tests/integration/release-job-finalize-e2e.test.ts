@@ -3,10 +3,8 @@
  * (ISS-863): the deploy dispatch that a landing triggers, and the CAS that
  * flips a job to `done`.
  *
- * `tryDispatchCoolifyRelease` carries `cm:flow release/deploy`, and
- * `check-flow-coverage.mjs` settles a step only from THIS suite — its six unit
- * describes cannot, which is why the step sat frozen in the baseline with the
- * function apparently well covered.
+ * `tryDispatchCoolifyRelease` carries `cm:flow release/deploy`; its six unit
+ * describes mock its neighbours, so only this suite shows the step connected.
  *
  * `finalizeJobDone` was reachable only through `finalizeFailedJob`'s unit test,
  * where `lifecycle/transition.js` is mocked out — so the compare-and-set that

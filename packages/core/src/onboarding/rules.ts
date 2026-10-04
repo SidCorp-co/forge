@@ -5,6 +5,8 @@
  */
 
 import type { OnboardingRefusal, OnboardingStatus } from '@forge/contracts/onboarding';
+import type { ActorAgency } from '../issues/actor-agency.js';
+import { OCCUPYING_JOB_STATUSES } from '../jobs/status-sets.js';
 import {
   type ActorFacts,
   type ActRule,
@@ -138,4 +140,16 @@ export function dataFlowRefusal(
     detail:
       'this project holds sensitive data, so its onboarding draws a data flow (template data-flow) with trust boundaries and where redaction runs; none of its designs is one. Draft it, propose it and name it in an update before closing.',
   };
+}
+
+// cm:why a phase's last act is the agent's own questionnaire or its mark_done: that write is the
+// evidence the job finished, so the job is settled done there. Left to the runner, an issue-less job
+// is concluded failed a quarter hour after its last turn, and until then a submit finds it live and
+// queues no revise job
+export function settlesPhaseJob(agency: ActorAgency, jobStatus: string | null): boolean {
+  return (
+    agency === 'agent' &&
+    jobStatus !== null &&
+    (OCCUPYING_JOB_STATUSES as readonly string[]).includes(jobStatus)
+  );
 }
