@@ -122,6 +122,10 @@
       "types": "./dist/comments.d.ts",
       "default": "./dist/comments.js"
     },
+    "./workflow-health": {
+      "types": "./dist/workflow-health.d.ts",
+      "default": "./dist/workflow-health.js"
+    },
     "./feedback": {
       "types": "./dist/feedback.d.ts",
       "default": "./dist/feedback.js"

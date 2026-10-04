@@ -3,6 +3,7 @@
 
 import { z } from "zod";
 import { COMMENT_INTENTS, type CommentIntent } from "./record-events.js";
+import { NODE_DECISION_SHAPE, nodeDecisionSchema } from "./workflow-health.js";
 
 export const COMMENT_SCOPES = [
 	"issue",
@@ -36,6 +37,9 @@ export const COMMENT_REFUSAL_CODES = [
 	"COMMENT_POST_FORBIDDEN",
 	"COMMENT_EDIT_FORBIDDEN",
 	"COMMENT_RECORD_KEPT",
+	"COMMENT_DECISION_NODE_SCOPE",
+	"WORKFLOW_NODE_UNKNOWN",
+	"WORKFLOW_NODE_AMBIGUOUS",
 ] as const;
 
 export type CommentRefusalCode = (typeof COMMENT_REFUSAL_CODES)[number];
@@ -60,12 +64,13 @@ export const decisionFieldsSchema = z.strictObject({
 	options: z.array(text(1_000)).max(20).optional(),
 	authority: text(1_000).optional(),
 	reversedWhen: text(2_000).optional(),
+	/** On a workflow decision only: the step or edge decided, and keep, rewrite or delete (REQ-17 BC-26). */
+	node: nodeDecisionSchema.optional(),
 });
 
 export type DecisionFields = z.infer<typeof decisionFieldsSchema>;
 
-export const DECISION_FIELDS_SHAPE =
-	"{ decision, reason, options?: string[], authority?, reversedWhen? }";
+export const DECISION_FIELDS_SHAPE = `{ decision, reason, options?: string[], authority?, reversedWhen?, node?: ${NODE_DECISION_SHAPE} (workflow decisions only) }`;
 
 export const createEntityCommentRequestSchema = z.strictObject({
 	intent: z.enum(COMMENT_INTENTS),

@@ -64,6 +64,11 @@ export const feedback = pgTable(
     workflowId: uuid('workflow_id').references((): AnyPgColumn => projectWorkflows.id, {
       onDelete: 'no action',
     }),
+    /** On a workflow target, the one step or edge of it the item is about; none keeps it workflow-level. */
+    stepId: text('step_id'),
+    edgeFrom: text('edge_from'),
+    edgeTo: text('edge_to'),
+    edgeLabel: text('edge_label'),
     // cm:why the fifth arc member is a provider's contract version, filed by core alone (E3); its
     // deadline is that version's approval plus the provider's commitment window
     contractProviderProjectId: uuid('contract_provider_project_id').references(() => projects.id, {
@@ -107,6 +112,10 @@ export const feedback = pgTable(
     arcChk: check(
       'feedback_arc_chk',
       sql`num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.releaseRunId}, ${t.workflowId}, ${t.contractVersion}) = 1 OR (num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.releaseRunId}, ${t.workflowId}, ${t.contractVersion}) = 0 AND ${t.whereSeen} IS NOT NULL)`,
+    ),
+    nodeChk: check(
+      'feedback_node_chk',
+      sql`(${t.stepId} IS NULL AND ${t.edgeFrom} IS NULL AND ${t.edgeTo} IS NULL AND ${t.edgeLabel} IS NULL) OR (${t.workflowId} IS NOT NULL AND ((${t.stepId} IS NOT NULL AND ${t.edgeFrom} IS NULL AND ${t.edgeTo} IS NULL AND ${t.edgeLabel} IS NULL) OR (${t.stepId} IS NULL AND ${t.edgeFrom} IS NOT NULL AND ${t.edgeTo} IS NOT NULL)))`,
     ),
     contractTargetChk: check(
       'feedback_contract_target_chk',
