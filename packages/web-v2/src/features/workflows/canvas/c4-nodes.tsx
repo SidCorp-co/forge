@@ -191,8 +191,17 @@ function C4Line({ id, data, markerEnd, markerStart }: EdgeProps & { data: C4Line
             style={{ fontSize: FONT.label, width: label.w, height: label.h, transform: `translate(${label.x}px, ${label.y}px)` }}
             {...card.trigger}
           >
-            <span className="wfc-c4-label-text">{label.text}</span>
-            {label.more ? <span className="wfc-c4-more">+{label.more} more</span> : null}
+            {label.lines.map((t, i) => (
+              <span key={t} className="wfc-c4-label-line">
+                {t}
+                {label.more && !label.chipBelow && i === label.lines.length - 1 ? <span className="wfc-c4-more">+{label.more} more</span> : null}
+              </span>
+            ))}
+            {label.more && label.chipBelow ? (
+              <span className="wfc-c4-label-line">
+                <span className="wfc-c4-more">+{label.more} more</span>
+              </span>
+            ) : null}
           </div>
           <Popover open={card.open} anchor={anchor} onDismiss={card.close} placement="bottom-start" role="tooltip" maxWidth={420} className="rounded-lg border border-line bg-surface px-3 py-2 shadow-lg" {...card.card}>
             <ul className="m-0 grid list-none gap-1 p-0" data-testid="c4-line-card">

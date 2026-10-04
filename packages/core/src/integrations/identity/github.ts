@@ -1,5 +1,10 @@
-import type { ProviderConfig } from './providers.js';
-import type { AuthorizeArgs, CallbackArgs, OAuthIdentity, OAuthProvider } from './types.js';
+import type {
+  AuthorizeArgs,
+  CallbackArgs,
+  OAuthIdentity,
+  OAuthProvider,
+  ProviderConfig,
+} from './types.js';
 
 const AUTHORIZE_URL = 'https://github.com/login/oauth/authorize';
 const TOKEN_URL = 'https://github.com/login/oauth/access_token';

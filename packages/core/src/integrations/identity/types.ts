@@ -1,4 +1,17 @@
-import type { ProviderConfig } from './providers.js';
+export type ProviderId = 'github' | 'google' | 'oidc';
+
+export interface ProviderConfig {
+  id: ProviderId;
+  /** Human-facing button label, e.g. "Continue with GitHub". */
+  label: string;
+  /** OAuth 2.0 client id from the provider's developer console. */
+  clientId: string;
+  /** OAuth 2.0 client secret. */
+  clientSecret: string;
+  /** Default scopes requested at the authorize step. */
+  scopes: string[];
+  issuerUrl: string | null;
+}
 
 export interface OAuthIdentity {
   providerAccountId: string;

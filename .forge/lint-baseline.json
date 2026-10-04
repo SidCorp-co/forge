@@ -204,7 +204,7 @@
     "packages/core/src/update-packets/routes.ts": {
       "lint/correctness/noUnusedFunctionParameters": 1
     },
-    "packages/core/src/webhooks/outbound.ts": {
+    "packages/core/src/integrations/outbound-webhooks/delivery.ts": {
       "lint/complexity/useOptionalChain": 1
     },
     "packages/core/src/ws/broadcast-subscribers.test.ts": {

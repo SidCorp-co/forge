@@ -4,9 +4,9 @@
  * is agentic — the model gets `rocketchat_history` (50 msgs/call, 3 calls/turn) and decides itself.
  */
 
-import type { ChatTool } from '../../assistant/providers/types.js';
 import { type ChatToolset, toolError } from '../../assistant/tools/mcp-adapter.js';
 import type { CallToolResult } from '../../mcp/tool-result.js';
+import type { ChatTool } from '../llm/types.js';
 import {
   buildMessagePermalink,
   fetchMessage,

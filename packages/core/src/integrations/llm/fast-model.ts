@@ -5,11 +5,12 @@
  * so this stays independent of the per-project chat stack; LITELLM_FAST_MODEL
  * lets it run a cheaper model than the chat default on the same proxy. A null
  * return means skip this run, always preceded by a log saying which of "no
- * backend", "the call failed" and "the budget ran out" it was.
+ * backend", "the call failed", "the budget ran out" and "the data policy withholds it" it was.
  */
-import { env } from '../config/env.js';
-import { openAiCompatUrl } from '../lib/openai-compat-url.js';
-import { logger } from '../logger.js';
+import { env } from '../../config/env.js';
+import { type EgressScope, egressScoped } from '../../lib/data-egress.js';
+import { openAiCompatUrl } from '../../lib/openai-compat-url.js';
+import { logger } from '../../logger.js';
 
 /** Hard cap so a hung endpoint can never wedge a pg-boss worker. */
 const COMPLETION_TIMEOUT_MS = 60_000;
@@ -128,12 +129,21 @@ async function callLiteLlm(
 }
 
 export async function callFastModel(
+  scope: EgressScope,
   prompt: string,
   maxTokens: number,
   opts?: { model?: string },
 ): Promise<string | null> {
-  if (env.LITELLM_API_URL) return callLiteLlm(prompt, maxTokens, opts?.model ?? fastModelName());
-  return null;
+  if (!env.LITELLM_API_URL) return null;
+  const sent = await egressScoped(scope, prompt);
+  if (!sent.ok) {
+    logger.warn(
+      { code: sent.refusal.code, surface: scope.surface },
+      'llm.fast-model: the data policy withholds this prompt',
+    );
+    return null;
+  }
+  return callLiteLlm(sent.text, maxTokens, opts?.model ?? fastModelName());
 }
 
 /** True when the fast-model backend is configured. */

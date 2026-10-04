@@ -7,8 +7,8 @@
 
 import { createHash, randomInt } from 'node:crypto';
 import { env } from '../config/env.js';
+import { callFastModel, fastModelName } from '../integrations/llm/fast-model.js';
 import { logger } from '../logger.js';
-import { callFastModel, fastModelName } from './llm.js';
 import type { MemoryHit } from './search.js';
 
 export const RERANK_POOL_FACTOR = 3;
@@ -137,6 +137,7 @@ async function orderFromModel(query: string, hits: MemoryHit[]): Promise<number[
   const cached = cacheGet(key, now);
   if (cached) return cached;
   const raw = await callFastModel(
+    { surface: 'memory' },
     buildRerankPrompt(query, hits.map(shownText)),
     maxTokensFor(hits.length),
     { model },

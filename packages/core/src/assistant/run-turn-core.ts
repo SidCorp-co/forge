@@ -7,6 +7,13 @@
  * NO DB writes here; the caller owns transport and persistence.
  */
 
+import type {
+  ChatMessage,
+  ChatProvider,
+  ChatResponseFormat,
+  ChatStreamEvent,
+  ChatStreamUsage,
+} from '../integrations/llm/types.js';
 import type { CallToolResult } from '../mcp/tool-result.js';
 import {
   addElision,
@@ -15,13 +22,6 @@ import {
   type ElisionReport,
   emptyElision,
 } from './context-budget.js';
-import type {
-  ChatMessage,
-  ChatProvider,
-  ChatResponseFormat,
-  ChatStreamEvent,
-  ChatStreamUsage,
-} from './providers/types.js';
 import { refusalCodeOf } from './refusal-code.js';
 import { type ChatToolset, toolError, toolResultText } from './tools/mcp-adapter.js';
 

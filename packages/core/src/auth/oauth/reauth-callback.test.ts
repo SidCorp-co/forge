@@ -22,13 +22,13 @@ vi.mock('../../lib/feature-flags.js', () => ({
 // Stub the provider impl so handleCallback's token-exchange step returns a
 // deterministic identity without doing real HTTP.
 const callbackStub = vi.fn();
-vi.mock('./github.js', () => ({
+vi.mock('../../integrations/identity/github.js', () => ({
   githubProvider: {
     buildAuthorizeUrl: vi.fn(),
     callback: (...args: unknown[]) => callbackStub(...args),
   },
 }));
-vi.mock('./oidc-provider.js', () => ({
+vi.mock('../../integrations/identity/oidc-provider.js', () => ({
   googleProvider: { buildAuthorizeUrl: vi.fn(), callback: vi.fn() },
   oidcProvider: { buildAuthorizeUrl: vi.fn(), callback: vi.fn() },
 }));

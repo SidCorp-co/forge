@@ -6,12 +6,12 @@
  * `allowedActions` allowlist plus an optional arg `guard`.
  */
 
+import type { ChatTool } from '../../integrations/llm/types.js';
 import { toolCallRefusal } from '../../mcp/tool-call-guard.js';
 import { assertToolDeclaresAccess } from '../../mcp/tool-grant.js';
 import { type CallToolResult, toToolCallContent } from '../../mcp/tool-result.js';
 import type { ContextScopedMcpToolFactory, McpContext, McpTool } from '../../mcp/tools/lib.js';
 import { patEffectiveProjectIds } from '../../mcp/tools/project-scope.js';
-import type { ChatTool } from '../providers/types.js';
 
 /** One entry in the chat tool allowlist. */
 export interface ChatToolSpec {

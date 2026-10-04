@@ -119,15 +119,17 @@ export default function BoardCanvas({ doc: given }: { doc?: WireframeDoc } = {})
   const board = useBoard();
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const shown = useRef<unknown>(null);
-  const doc = given ?? board.doc;
-  const version = given ?? board.loaded;
+  const doc = board.doc;
+  const version = board.loaded;
 
+  // cm:why a given board is complete at mount, so it goes in as initialData; a scene pushed through the
+  // API before Excalidraw's first load is replaced by its empty initial scene, and the board shows blank
   useEffect(() => {
-    if (!api || shown.current === version || !doc) return;
+    if (given || !api || shown.current === version || !doc) return;
     shown.current = version;
     api.updateScene({ elements: toScene(doc), captureUpdate: CaptureUpdateAction.IMMEDIATELY });
     api.scrollToContent(undefined, { fitToContent: true });
-  }, [api, version, doc]);
+  }, [api, version, doc, given]);
 
   useEffect(() => {
     if (!api || given) return;
@@ -146,6 +148,7 @@ export default function BoardCanvas({ doc: given }: { doc?: WireframeDoc } = {})
     <div className="h-full w-full" data-testid="board-canvas">
       <Excalidraw
         excalidrawAPI={setApi}
+        initialData={given ? { elements: toScene(given), scrollToContent: true } : null}
         viewModeEnabled
         UIOptions={{ tools: { image: false } }}
       />

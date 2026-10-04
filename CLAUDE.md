@@ -145,8 +145,11 @@ rule itself. Which axes a step owes, and the evidence it must show: the `forge-t
 ## Documentation is deleted, not carried
 
 **Better no document than a wrong one.** A doc that cannot be verified is removed in the change
-that discovers it — no deprecation note, no "may be stale" header. **Where a doc and the code
-disagree, the code is right**; fix the doc in the same change.
+that discovers it — no deprecation note, no "may be stale" header. **Where a doc that describes
+code disagrees with the code, the code is right**; fix the doc in the same change. **Approved
+requirements and workflow designs are the other way round: they are the root, and code that
+disagrees with them is drift** — marked and reconciled to the design, never used to rewrite it
+(`docs/proposals/design-is-the-root-and-code-is-reconciled-to-it.md`).
 
 **The files you read are your doc-review worklist.** Every `.md` you opened while working comes
 back marked *still true* / *edited* / *deleted*; "did not touch" is not one of the three. The

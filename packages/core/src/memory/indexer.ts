@@ -2,7 +2,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { bodyText } from '../body/prepare.js';
 import { db } from '../db/client.js';
 import { type MemorySource, memories } from '../db/schema.js';
-import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
+import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/index.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
 import {
@@ -222,7 +222,7 @@ async function writeOnce(
     const embedText =
       input.text.length > MAX_EMBED_CHARS ? input.text.slice(0, MAX_EMBED_CHARS) : input.text;
     try {
-      vector = await embed(embedText);
+      vector = await embed({ surface: 'memory' }, embedText);
     } catch (err) {
       if (!(err instanceof EmbeddingUnavailableError)) throw err;
       outage = true;

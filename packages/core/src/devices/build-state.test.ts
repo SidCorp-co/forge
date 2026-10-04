@@ -7,7 +7,7 @@ vi.mock('../install/routes.js', () => ({
   getPublishedRunnerBuild: () => publishedRunnerBuild(),
 }));
 const runnerHead = vi.fn((): string | null => null);
-vi.mock('../install/main-runner-head.js', () => ({
+vi.mock('../integrations/github/main-runner-head.js', () => ({
   mainRunnerHead: () => runnerHead(),
 }));
 

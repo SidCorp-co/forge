@@ -21,16 +21,18 @@ import { settleShape } from '../conversations/membership.js';
 import { addPerson } from '../conversations/participants.js';
 import { appendMessagesIn, openConversationIn } from '../conversations/store.js';
 import { db } from '../db/client.js';
-import { projects } from '../db/schema.js';
+import { jobs, projects } from '../db/schema.js';
 import { conversationParticipants } from '../db/schema-conversations.js';
 import { onboardings } from '../db/schema-onboarding.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
+import { finalizeJobDone } from '../jobs/finalize-done.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import type { EgressReader } from '../lib/data-egress.js';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import type { NamedRefusal } from '../project-config/respond.js';
+import { readDeclaredSource } from '../project-config/source.js';
 import {
   type BatchRow,
   batchesOfConversation,
@@ -47,7 +49,6 @@ import {
   type OnboardingRow,
   onboardingOf,
   onboardingView,
-  projectHasRepository,
   projectHoldsSensitiveData,
 } from './read.js';
 import {
@@ -59,6 +60,7 @@ import {
   notStarted,
   personActRefusal,
   reanalyzeRefusal,
+  settlesPhaseJob,
   startRefusal,
 } from './rules.js';
 
@@ -108,6 +110,14 @@ async function systemLine(tx: TxOnly, conversationId: string, content: string) {
   return m?.id ?? null;
 }
 
+/** The agent's last act of a phase settles the job that ran it. */
+async function settlePhaseJob(agency: ActorAgency, jobId: string | null) {
+  if (!jobId) return;
+  const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId));
+  if (job && settlesPhaseJob(agency, job.status))
+    await finalizeJobDone(job, 'onboarding_phase_settled');
+}
+
 /** The one job of an onboarding phase: an issue-less one-shot run whose prompt is the method. */
 async function enqueueJob(
   row: OnboardingRow,
@@ -119,13 +129,15 @@ async function enqueueJob(
     .select({ name: projects.name })
     .from(projects)
     .where(eq(projects.id, row.projectId));
+  const source = await readDeclaredSource(row.projectId);
   const ctx: OnboardingPromptContext = {
     projectId: row.projectId,
     projectName: project?.name ?? row.projectId,
     onboardingId: row.id,
     conversationId: row.conversationId,
     sensitiveData: await projectHoldsSensitiveData(row.projectId),
-    hasRepository: await projectHasRepository(row.projectId),
+    repository: source.repository,
+    defaultBranch: source.defaultBranch,
     roundsSent: row.roundsSent,
     reason: extra.reason ?? null,
   };
@@ -303,6 +315,7 @@ export async function postOnboardingQuestionnaire(input: {
   let batchId = '';
   let conversationId = '';
   let messageId: string | null = null;
+  let jobId: string | null = null;
   const refused = await inTx(async (tx) => {
     await lockOnboarding(tx, projectId);
     const row = await onboardingOf(tx, projectId, true);
@@ -310,6 +323,7 @@ export async function postOnboardingQuestionnaire(input: {
     const blocked = doneRefusal(row.status) ?? roundsRefusal(row.roundsSent);
     if (blocked) return [blocked];
     conversationId = row.conversationId;
+    jobId = row.lastJobId;
     const posted = await postQuestionnaireIn(tx, {
       projectId,
       conversationId: row.conversationId,
@@ -334,6 +348,7 @@ export async function postOnboardingQuestionnaire(input: {
   });
   if (refused) return { ok: false, refusals: refused };
   await announce(conversationId, messageId, 'assistant');
+  await settlePhaseJob(actor.agency, jobId);
   return { ok: true, questionnaire: await batchView(db, projectId, batchId), created: true };
 }
 
@@ -407,6 +422,7 @@ export async function markOnboardingDone(input: {
   if (who) return { ok: false, refusals: [who] };
   const sensitive = await projectHoldsSensitiveData(projectId);
   let conversationId = '';
+  let jobId: string | null = null;
   const refused = await inTx(async (tx) => {
     await lockOnboarding(tx, projectId);
     const row = await onboardingOf(tx, projectId, true);
@@ -414,6 +430,7 @@ export async function markOnboardingDone(input: {
     const done = doneRefusal(row.status);
     if (done) return [done];
     conversationId = row.conversationId;
+    jobId = row.lastJobId;
     const designs = await designsOf(tx, projectId, row.designs);
     const flow = dataFlowRefusal(
       sensitive,
@@ -447,6 +464,7 @@ export async function markOnboardingDone(input: {
   });
   if (refused) return { ok: false, refusals: refused };
   await announce(conversationId, null, 'assistant');
+  await settlePhaseJob(actor.agency, jobId);
   return settled(projectId);
 }
 

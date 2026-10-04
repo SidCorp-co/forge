@@ -26,7 +26,9 @@ vi.mock('../issue-prefix-read.js', () => ({
 }));
 
 const embedBatch = vi.fn();
-vi.mock('../../embeddings/index.js', () => ({ embedBatch: (...a: unknown[]) => embedBatch(...a) }));
+vi.mock('../../integrations/embeddings/index.js', () => ({
+  embedBatch: (...a: unknown[]) => embedBatch(...a),
+}));
 
 const runMemorySearch = vi.fn();
 vi.mock('../../memory/search-service.js', () => ({

@@ -5,7 +5,7 @@ import { projects } from '../../db/schema.js';
 export interface AssistantWeeklyConfig {
   /** The issue key the week-over-week series is posted on, e.g. `ISS-1060`. */
   pinnedIssue: string;
-  /** A provider id the app registered (`providers/registry.ts`); the judge's credential. */
+  /** A provider id the app registered (`integrations/llm/registry.ts`); the judge's credential. */
   judgeProviderId: string;
   judgeModel: string;
   /** One door only, when set (`chat_logs.source`). */
