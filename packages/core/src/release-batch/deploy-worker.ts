@@ -1,5 +1,4 @@
 import { DEPLOY_CONFIRM_WINDOW_MS } from '@forge/contracts/pipeline';
-import { probeHealth } from '../integrations/coolify/index.js';
 import {
   type DeployDispatchOutcome,
   type OutboundDispatchJob,
@@ -16,7 +15,6 @@ import {
 import { boss } from '../queue/boss.js';
 import { INTEGRATIONS_QUEUE_NAME } from '../queue/names.js';
 import {
-  applyDeploySettlement,
   type CoolifyConfirmJob,
   enqueueCoolifyConfirm,
   runCoolifyConfirm,
@@ -96,21 +94,6 @@ async function runDispatch(data: OutboundDispatchJob): Promise<void> {
   });
 }
 
-/**
- * The collaborators the health gate calls out to, bound here so the gate
- * itself stays a decision function a test drives without a queue or a network.
- */
-function healthGateDeps(data: CoolifyHealthGateJob) {
-  return {
-    probe: (url: string) => probeHealth(url),
-    settle: async (verdict: 'succeeded' | 'failed', detail?: string) => {
-      const deliveryId = data.deliveryId;
-      if (!deliveryId) return;
-      await applyDeploySettlement({ ...data, deliveryId }, verdict, detail);
-    },
-  };
-}
-
 let workerId: string | null = null;
 
 /**
@@ -140,7 +123,7 @@ export async function registerDeployWorker(): Promise<void> {
               );
             }
           } else if (data.jobKind === 'coolify.health-gate') {
-            const outcome = await runCoolifyHealthGate(data, healthGateDeps(data));
+            const outcome = await runCoolifyHealthGate(data);
             if (outcome.verdict) {
               logger.info(
                 { bindingId: data.bindingId, runId: data.runId, ...outcome },

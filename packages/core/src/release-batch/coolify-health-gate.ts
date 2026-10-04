@@ -1,8 +1,9 @@
-import type { CoolifyConfig, HealthReading } from '../integrations/coolify/index.js';
+import { type CoolifyConfig, probeHealth } from '../integrations/coolify/index.js';
 import { recordDelivery } from '../integrations/index.js';
 import { logger } from '../observability/logger.js';
 import { boss } from '../queue/boss.js';
 import { INTEGRATIONS_QUEUE_NAME } from '../queue/names.js';
+import { applyDeploySettlement } from './coolify-confirm.js';
 
 export interface CoolifyHealthGateJob {
   jobKind: 'coolify.health-gate';
@@ -101,49 +102,44 @@ interface HealthGateOutcome {
   reason?: string;
 }
 
-interface HealthGateDeps {
-  probe: (url: string) => Promise<HealthReading>;
-  /** Settle the deploy hold this gate deferred — `confirm.ts` owns the write. */
-  settle: (verdict: 'succeeded' | 'failed', detail?: string) => Promise<void>;
-  now?: () => number;
+/** Settle the deploy hold this gate deferred — `coolify-confirm.ts` owns the write. */
+async function settle(
+  data: CoolifyHealthGateJob,
+  verdict: 'succeeded' | 'failed',
+  detail?: string,
+): Promise<void> {
+  if (!data.deliveryId) return;
+  await applyDeploySettlement({ ...data, deliveryId: data.deliveryId }, verdict, detail);
 }
 
 /**
  * Poll one deployment's health once: settle it, fail it, or queue the next poll.
  */
-export async function runCoolifyHealthGate(
-  data: CoolifyHealthGateJob,
-  deps: HealthGateDeps,
-): Promise<HealthGateOutcome> {
-  const now = deps.now ?? Date.now;
-  if (now() < new Date(data.graceUntil).getTime()) {
+export async function runCoolifyHealthGate(data: CoolifyHealthGateJob): Promise<HealthGateOutcome> {
+  if (Date.now() < new Date(data.graceUntil).getTime()) {
     await enqueueCoolifyHealthGate(data);
     return { verdict: null };
   }
 
-  const reading = await deps.probe(data.healthUrl);
+  const reading = await probeHealth(data.healthUrl);
   if (reading.healthy) {
-    await deps.settle('succeeded');
+    await settle(data, 'succeeded');
     return { verdict: 'healthy' };
   }
 
-  if (now() < new Date(data.deadlineAt).getTime()) {
+  if (Date.now() < new Date(data.deadlineAt).getTime()) {
     await enqueueCoolifyHealthGate(data);
     return { verdict: null, reason: reading.reason };
   }
 
-  return failGate(data, reading.reason, deps);
+  return failGate(data, reading.reason);
 }
 
 /**
  * The window closed with no healthy reading: record which deploy failed and on
  * what signal, page, and fail the hold.
  */
-async function failGate(
-  data: CoolifyHealthGateJob,
-  reason: string,
-  deps: HealthGateDeps,
-): Promise<HealthGateOutcome> {
+async function failGate(data: CoolifyHealthGateJob, reason: string): Promise<HealthGateOutcome> {
   const detail = `never became healthy within ${Math.round(HEALTH_WINDOW_MS / 1000)}s — last reading: ${reason}`;
 
   await recordGateFailure(data, 'deploy.unhealthy', detail);
@@ -157,7 +153,7 @@ async function failGate(
     },
     'coolify health gate: the deploy never became healthy — the build that failed is still serving and NOTHING was rolled back; repair forward, or roll back by hand from the integration routes if that is the decision',
   );
-  await deps.settle('failed', detail);
+  await settle(data, 'failed', detail);
   return { verdict: 'unhealthy', reason: detail };
 }
 
