@@ -1,0 +1,798 @@
+{
+  "workflowId": "hop-system-context",
+  "revision": 1,
+  "against": null,
+  "focal": {
+    "boundary": "hop",
+    "title": "HOP trên Autoflow",
+    "tip": "Site hop trên auto.sidcorp.co (release-procedure). Dữ liệu chỉ lưu và xử lý tại Việt Nam (chủ dự án, 2026-10-03).",
+    "purpose": "",
+    "parts": [
+      "hop",
+      "intake",
+      "evaluate",
+      "record-action",
+      "sweep",
+      "retention",
+      "hop-db"
+    ]
+  },
+  "nodes": [
+    {
+      "id": "his",
+      "kind": "external",
+      "title": "HIS / EMR",
+      "name": "HIS / EMR",
+      "purpose": "HIS của Nam Sài Gòn quản lý dữ liệu nhập viện, xuất viện, thủ thuật, chẩn đoán và số điện thoại bệnh nhân; HOP chỉ đọc, không ghi ngược lại. HIS gửi webhook có chữ ký (chủ dự án, 2026-10-03, giữ mặc định). Căn cứ: rev 4 his, BC-1; nguồn dữ liệu liên hệ do chủ dự án xác nhận ngày 2026-10-03. Chưa rõ: nhà cung cấp.",
+      "owner": "Bộ phận IT bệnh viện Nam Sài Gòn (phụ trách HIS)",
+      "boundary": "hospital",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "scheduling",
+      "kind": "external",
+      "title": "Scheduling",
+      "name": "Scheduling",
+      "purpose": "Quản lý lịch hẹn; chỉ tính là đã đặt khi hệ thống xác nhận. Căn cứ: rev 4 book-follow-up, BC-7. Chưa rõ: thuộc HIS hay hệ thống riêng và bên nào phụ trách.",
+      "owner": "Nam Sài Gòn (chưa rõ nhóm phụ trách)",
+      "boundary": "hospital",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "records-policy",
+      "kind": "external",
+      "title": "Quy định retention hồ sơ",
+      "name": "Quy định retention hồ sơ",
+      "purpose": "Quy định retention hồ sơ bệnh án của Nam Sài Gòn, theo từng loại hồ sơ. HOP giữ dữ liệu bệnh nhân theo thời hạn quy định (chủ dự án, 2026-10-03). Chưa rõ: bên phụ trách và hình thức công bố.",
+      "owner": "Nam Sài Gòn (cần xác nhận bên phụ trách hồ sơ)",
+      "boundary": "hospital",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "staff",
+      "kind": "person",
+      "title": "Nhân viên chăm sóc (điều phối viên, tổng đài viên, VIP desk)",
+      "name": "Nhân viên chăm sóc (điều phối viên, tổng đài viên, VIP desk)",
+      "purpose": "Điều phối viên, tổng đài viên, VIP desk và Patient relations xử lý task. Điều phối viên được phân công, tổng đài viên (với task của mình), VIP desk và Patient relations xem được tên và số điện thoại bệnh nhân (chủ dự án, 2026-10-03). Căn cứ: nhóm đối tượng trong REQ-1; rev 4 N-108a/b/c, N-109.",
+      "owner": null,
+      "boundary": "people",
+      "integration": null,
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "leads",
+      "kind": "person",
+      "title": "Trưởng nhóm: chăm sóc, vận hành lâm sàng, vận hành",
+      "name": "Trưởng nhóm: chăm sóc, vận hành lâm sàng, vận hành",
+      "purpose": "Care Coordination lead, Clinical operations lead và Operations manager phụ trách SLA, quy tắc và escalation. Care Coordination lead và Operations manager xem được tên và số điện thoại bệnh nhân; Clinical operations lead thì không (chủ dự án, 2026-10-03). Căn cứ: nhóm đối tượng trong REQ-1; rev 4 sla-attention.",
+      "owner": null,
+      "boundary": "people",
+      "integration": null,
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "patient",
+      "kind": "person",
+      "title": "Bệnh nhân đã xuất viện",
+      "name": "Bệnh nhân đã xuất viện",
+      "purpose": "Bệnh nhân đã xuất viện, chỉ được liên hệ khi đã đồng ý, qua cuộc gọi hoặc Zalo ZNS (chủ dự án, 2026-10-03). Căn cứ: BC-2, BC-6; rev 4 contact-patient.",
+      "owner": null,
+      "boundary": "people",
+      "integration": null,
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "caregiver",
+      "kind": "person",
+      "title": "Người chăm sóc (đã có sự đồng ý)",
+      "name": "Người chăm sóc (đã có sự đồng ý)",
+      "purpose": "Chỉ nhận thông tin về episode khi có caregiver_info_consent. Căn cứ: BC-6; rev 4 patient-context.",
+      "owner": null,
+      "boundary": "people",
+      "integration": null,
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "hop",
+      "kind": "system",
+      "title": "Site HOP (trang cho nhân viên, chưa thiết kế)",
+      "name": "Site HOP (trang cho nhân viên, chưa thiết kế)",
+      "purpose": "Site dành cho nhân viên: hàng đợi công việc, thông tin bệnh nhân, attention. Trang chỉ hiển thị tên và số điện thoại cho sáu vai trò chủ dự án liệt kê ngày 2026-10-03. Chưa thiết kế trang; rev 4 chỉ nêu route end_user. Căn cứ: release-procedure.",
+      "owner": "Bộ phận vận hành nền tảng HOP",
+      "boundary": "hop",
+      "integration": null,
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "intake",
+      "kind": "container",
+      "title": "hop-discharge-intake",
+      "name": "hop-discharge-intake",
+      "purpose": "Workflow Autoflow cho POST /hop/his/discharge (xác thực bằng chữ ký): http_in, db_insert discharge_events (sáu trường), http_request his_episode (kèm số điện thoại bệnh nhân) và scheduling_appointments.",
+      "owner": null,
+      "boundary": "hop",
+      "integration": null,
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "evaluate",
+      "kind": "container",
+      "title": "hop-post-discharge-evaluate",
+      "name": "hop-post-discharge-evaluate",
+      "purpose": "Workflow Autoflow cho POST /hop/post-discharge/evaluate (xác thực api_key): quy tắc trong code, ghi vào cơ sở dữ liệu episode_state, expectations, cases, tasks.",
+      "owner": null,
+      "boundary": "hop",
+      "integration": null,
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "record-action",
+      "kind": "container",
+      "title": "hop-record-action",
+      "name": "hop-record-action",
+      "purpose": "Workflow Autoflow xử lý POST /hop/actions (xác thực end_user): db_insert actions và outcomes, http_request scheduling_book và zalo_send (ZNS).",
+      "owner": null,
+      "boundary": "hop",
+      "integration": null,
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "sweep",
+      "kind": "container",
+      "title": "hop-attention-sweep",
+      "name": "hop-attention-sweep",
+      "purpose": "Workflow Autoflow chạy theo schedule_trigger '*/5 * * * *': db_query, for_each, db_insert attention, db_update tasks.",
+      "owner": null,
+      "boundary": "hop",
+      "integration": null,
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "retention",
+      "kind": "container",
+      "title": "hop-retention-job (đề xuất)",
+      "name": "hop-retention-job (đề xuất)",
+      "purpose": "Workflow Autoflow chạy theo lịch: đọc thời hạn retention của bệnh viện theo loại hồ sơ, xóa hoặc ẩn danh hóa dòng hop_* quá hạn, xóa payload HIS thô sau 30 ngày, chỉ ghi ID vào log.",
+      "owner": null,
+      "boundary": "hop",
+      "integration": null,
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "hop-db",
+      "kind": "container",
+      "title": "Bảng HOP (hop_*)",
+      "name": "Bảng HOP (hop_*)",
+      "purpose": "Bảng Autoflow: discharge_events (sáu trường + hash), payload HIS thô (mã hóa, 30 ngày), episode_facts, patient_context (có số điện thoại), care_circle, consent, episode_state, expectations, cases, tasks, actions, outcomes, attention.",
+      "owner": null,
+      "boundary": "hop",
+      "integration": null,
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "zalo",
+      "kind": "external",
+      "title": "Zalo ZNS",
+      "name": "Zalo ZNS",
+      "purpose": "Chuyển tin nhắn theo template ZNS do nhân viên gửi đến số điện thoại (chủ dự án 2026-10-03). Template không nêu chẩn đoán hay thủ thuật: chỉ có tên bệnh viện, lời chào và số điện thoại để gọi lại (r-message). Bằng chứng: rev 4 N-109 zalo_send. Chưa chốt: OA bệnh viện dùng để gửi.",
+      "owner": "VNG (Zalo), Việt Nam",
+      "boundary": "outside",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "forge",
+      "kind": "external",
+      "title": "Forge",
+      "name": "Forge",
+      "purpose": "Lưu issue, thiết kế và phản hồi của HOP. HOP chạy với sensitive_data ở mức no_egress (chủ dự án 2026-10-03, ràng buộc nghiêm ngặt về nơi lưu dữ liệu): không chuyển nội dung bệnh nhân, dù đã che thông tin hay chưa, đến LLM, embedding hoặc BA assistant của Forge. Agent chỉ đọc schema và thiết kế, không bao giờ đọc dòng dữ liệu hay nội dung tin nhắn. Core còn thiếu chính sách này (ISS-59). Chưa chốt: vùng Forge lưu phản hồi HOP.",
+      "owner": "SidCorp",
+      "boundary": "delivery",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    },
+    {
+      "id": "llm",
+      "kind": "external",
+      "title": "LLM, embedding, BA assistant (ở nước ngoài)",
+      "name": "LLM, embedding, BA assistant (ở nước ngoài)",
+      "purpose": "LLM, embedding và BA assistant của Forge chạy ngoài Việt Nam. sensitive_data ở mức no_egress chặn nội dung bệnh nhân, dù đã che thông tin hay chưa (chủ dự án 2026-10-03); các thành phần này chỉ đọc schema và thiết kế. Bằng chứng: quyết định Q8, câu trả lời về nơi lưu dữ liệu.",
+      "owner": "Nhà cung cấp mô hình cho agent Forge",
+      "boundary": "delivery",
+      "integration": "confirmed",
+      "mark": null,
+      "removed": false
+    }
+  ],
+  "relationships": [
+    {
+      "id": "intake>scheduling",
+      "from": "intake",
+      "to": "scheduling",
+      "label": "Đọc lịch hẹn sắp tới",
+      "technology": "HTTPS REST (scheduling_api_key)",
+      "kind": {
+        "id": "reads-from",
+        "label": "Reads from",
+        "tooltip": "Reads an outside system.",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "toTypes": [
+          "SYSTEM"
+        ],
+        "line": "dotted",
+        "colour": "teal"
+      }
+    },
+    {
+      "id": "evaluate>scheduling",
+      "from": "evaluate",
+      "to": "scheduling",
+      "label": "Đọc lại lịch hẹn mỗi khi có kết quả",
+      "technology": "HTTPS REST (scheduling_api_key)",
+      "kind": {
+        "id": "reads-from",
+        "label": "Reads from",
+        "tooltip": "Reads an outside system.",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "toTypes": [
+          "SYSTEM"
+        ],
+        "line": "dotted",
+        "colour": "teal"
+      }
+    },
+    {
+      "id": "record-action>scheduling",
+      "from": "record-action",
+      "to": "scheduling",
+      "label": "Đặt lịch tái khám",
+      "technology": "HTTPS REST, Idempotency-Key = task_id",
+      "kind": {
+        "id": "writes-to",
+        "label": "Writes to",
+        "tooltip": "Writes into an outside system.",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "toTypes": [
+          "SYSTEM"
+        ],
+        "line": "dashed",
+        "colour": "amber"
+      }
+    },
+    {
+      "id": "retention>records-policy",
+      "from": "retention",
+      "to": "records-policy",
+      "label": "Đọc thời hạn retention theo loại bản ghi",
+      "technology": "Chính sách bệnh viện (biểu mẫu xác nhận)",
+      "kind": {
+        "id": "reads-from",
+        "label": "Reads from",
+        "tooltip": "Reads an outside system.",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "toTypes": [
+          "SYSTEM"
+        ],
+        "line": "dotted",
+        "colour": "teal"
+      }
+    },
+    {
+      "id": "staff>patient",
+      "from": "staff",
+      "to": "patient",
+      "label": "Gọi bệnh nhân",
+      "technology": "Cuộc gọi điện thoại",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "zalo>patient",
+      "from": "zalo",
+      "to": "patient",
+      "label": "Chuyển tin nhắn ZNS",
+      "technology": "Ứng dụng Zalo (theo số điện thoại)",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "staff>caregiver",
+      "from": "staff",
+      "to": "caregiver",
+      "label": "Gọi người chăm sóc đã có sự đồng ý",
+      "technology": "Cuộc gọi điện thoại",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "zalo>caregiver",
+      "from": "zalo",
+      "to": "caregiver",
+      "label": "Chuyển tin nhắn ZNS (đồng ý)",
+      "technology": "Ứng dụng Zalo (theo số điện thoại)",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "staff>hop",
+      "from": "staff",
+      "to": "hop",
+      "label": "Xử lý case, task và thông tin bệnh nhân",
+      "technology": "HTTPS qua trình duyệt (đăng nhập end_user)",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "leads>hop",
+      "from": "leads",
+      "to": "hop",
+      "label": "Theo dõi attention, SLA và chỉ số",
+      "technology": "HTTPS qua trình duyệt (đăng nhập end_user)",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "his>intake",
+      "from": "his",
+      "to": "intake",
+      "label": "Gửi thông tin xuất viện (có chữ ký), phản hồi yêu cầu đọc",
+      "technology": "HTTPS: nhận webhook có chữ ký, đọc dữ liệu qua REST",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "intake>evaluate",
+      "from": "intake",
+      "to": "evaluate",
+      "label": "Chạy quy tắc khi có đợt xuất viện mới",
+      "technology": "HTTPS POST (api_key)",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "record-action>evaluate",
+      "from": "record-action",
+      "to": "evaluate",
+      "label": "Chạy lại quy tắc khi có kết quả",
+      "technology": "HTTPS POST (api_key)",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "staff>record-action",
+      "from": "staff",
+      "to": "record-action",
+      "label": "Lưu hành động trên task",
+      "technology": "HTTPS POST /hop/actions (end_user)",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "intake>hop-db",
+      "from": "intake",
+      "to": "hop-db",
+      "label": "Ghi thông tin xuất viện, dữ kiện và lượt đọc ngữ cảnh",
+      "technology": "Node bảng Autoflow",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "evaluate>hop-db",
+      "from": "evaluate",
+      "to": "hop-db",
+      "label": "Ghi trạng thái, kỳ vọng, case và task",
+      "technology": "Node bảng Autoflow",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "record-action>hop-db",
+      "from": "record-action",
+      "to": "hop-db",
+      "label": "Ghi hành động, kết quả và sự đồng ý",
+      "technology": "Node bảng Autoflow",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "sweep>hop-db",
+      "from": "sweep",
+      "to": "hop-db",
+      "label": "Ghi attention, đổi người phụ trách task",
+      "technology": "Node bảng Autoflow",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "hop>hop-db",
+      "from": "hop",
+      "to": "hop-db",
+      "label": "Trang đọc hàng đợi công việc",
+      "technology": "Node bảng Autoflow",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "forge>hop-db",
+      "from": "forge",
+      "to": "hop-db",
+      "label": "Agent đọc schema bảng, không bao giờ đọc dòng dữ liệu",
+      "technology": "Autoflow MCP qua HTTPS",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "retention>hop-db",
+      "from": "retention",
+      "to": "hop-db",
+      "label": "Xóa dòng dữ liệu quá hạn theo quy định bệnh viện",
+      "technology": "Node bảng Autoflow",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "record-action>zalo",
+      "from": "record-action",
+      "to": "zalo",
+      "label": "Gửi tin nhắn ZNS theo template",
+      "technology": "HTTPS REST (Zalo ZNS API)",
+      "kind": {
+        "id": "writes-to",
+        "label": "Writes to",
+        "tooltip": "Writes into an outside system.",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "toTypes": [
+          "SYSTEM"
+        ],
+        "line": "dashed",
+        "colour": "amber"
+      }
+    },
+    {
+      "id": "staff>forge",
+      "from": "staff",
+      "to": "forge",
+      "label": "Gửi phản hồi (không bao giờ gửi đến LLM)",
+      "technology": "HTTPS (phản hồi Forge)",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    },
+    {
+      "id": "forge>llm",
+      "from": "forge",
+      "to": "llm",
+      "label": "Chỉ nhận schema và thiết kế; từ chối nội dung bệnh nhân",
+      "technology": "API HTTPS",
+      "kind": {
+        "id": "uses",
+        "label": "Uses",
+        "tooltip": "One talks to the other: what for (`label`), over what (`protocol`).",
+        "direction": "forward",
+        "required": [
+          "label",
+          "protocol"
+        ],
+        "line": "solid",
+        "colour": "neutral"
+      }
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "people:people",
+      "lane": "people",
+      "side": "people",
+      "label": "Con người",
+      "tip": "Bệnh nhân, người chăm sóc và nhân viên bệnh viện (nhóm đối tượng trong REQ-1).",
+      "members": [
+        "staff",
+        "leads",
+        "patient",
+        "caregiver"
+      ]
+    },
+    {
+      "id": "outside:hospital",
+      "lane": "hospital",
+      "side": "outside",
+      "label": "Hệ thống bệnh viện Nam Sài Gòn",
+      "tip": "Hệ thống nguồn lưu dữ liệu gốc (hop-product). Chủ dự án xác định tên bệnh viện ngày 2026-10-03.",
+      "members": [
+        "his",
+        "scheduling",
+        "records-policy"
+      ]
+    },
+    {
+      "id": "focal:hop",
+      "lane": "hop",
+      "side": "focal",
+      "label": "HOP trên Autoflow",
+      "tip": "Site hop trên auto.sidcorp.co (release-procedure). Dữ liệu chỉ lưu và xử lý tại Việt Nam (chủ dự án, 2026-10-03).",
+      "members": [
+        "hop",
+        "intake",
+        "evaluate",
+        "record-action",
+        "sweep",
+        "retention",
+        "hop-db"
+      ]
+    },
+    {
+      "id": "outside:outside",
+      "lane": "outside",
+      "side": "outside",
+      "label": "Nhà cung cấp dịch vụ nhắn tin (Việt Nam)",
+      "tip": "Chỉ Zalo ZNS. SMS ngoài phạm vi (chủ dự án, 2026-10-03).",
+      "members": [
+        "zalo"
+      ]
+    },
+    {
+      "id": "outside:delivery",
+      "lane": "delivery",
+      "side": "outside",
+      "label": "Forge và nhà cung cấp LLM",
+      "tip": "Forge và LLM của Forge chạy ở nước ngoài: không nhận nội dung bệnh nhân, dù đã che thông tin hay chưa (sensitive_data ở mức no_egress).",
+      "members": [
+        "forge",
+        "llm"
+      ]
+    }
+  ],
+  "facts": {
+    "people": [
+      {
+        "name": "Nhân viên chăm sóc (điều phối viên, tổng đài viên, VIP desk)"
+      },
+      {
+        "name": "Trưởng nhóm: chăm sóc, vận hành lâm sàng, vận hành"
+      },
+      {
+        "name": "Bệnh nhân đã xuất viện"
+      },
+      {
+        "name": "Người chăm sóc (đã có sự đồng ý)"
+      }
+    ],
+    "externals": 6,
+    "boundaries": [
+      {
+        "name": "Hệ thống bệnh viện Nam Sài Gòn",
+        "count": 3,
+        "unconfirmed": 0
+      },
+      {
+        "name": "Nhà cung cấp dịch vụ nhắn tin (Việt Nam)",
+        "count": 1,
+        "unconfirmed": 0
+      },
+      {
+        "name": "Forge và nhà cung cấp LLM",
+        "count": 2,
+        "unconfirmed": 0
+      }
+    ],
+    "namedBoundaries": 3
+  }
+}

@@ -1,10 +1,9 @@
 import { SENSITIVE_DATA_LEVELS, type SensitiveDataLevel } from "@forge/contracts/data-policy";
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { LEGACY_V2_TEMPLATE } from "@forge/contracts/workflow-templates";
+import { SYSTEM_CONTEXT_TEMPLATE } from "@forge/contracts/system-graph";
 import { projectDescriptionOf } from "@/features/project-settings/project-document";
-import { templateFor } from "./canvas/model";
-import { readSystemGraph, SYSTEM_CONTEXT_TEMPLATE, type FactRow, type SystemGraph } from "./c4/graph";
-import type { WorkflowRecord } from "./types";
+import type { FactRow, SystemGraph, WorkflowRecord } from "./types";
 
 export type Purpose = "system" | "journeys" | "lifecycles" | "integrations" | "data" | "decisions" | "service" | "other";
 
@@ -88,23 +87,22 @@ export interface OverviewFact {
 
 export interface SystemOverview {
   record: WorkflowRecord;
-  graph: SystemGraph;
-  facts: OverviewFact[];
   journey: WorkflowRecord | null;
 }
 
-/** What the top of Workflows says about the system: its context design, read as C4, and the facts it states. */
-export function systemOverview(records: readonly WorkflowRecord[], templates: readonly WorkflowTemplate[]): SystemOverview | null {
+/** What the top of Workflows is drawn from: the system-context design, and the journey it points to. */
+export function systemOverview(records: readonly WorkflowRecord[]): SystemOverview | null {
   const record = systemContextOf(records);
-  if (!record) return null;
-  const doc = record.document;
-  const graph = readSystemGraph(doc, templateFor(doc, templates));
-  const f = graph.facts;
-  const facts: OverviewFact[] = [
+  return record ? { record, journey: mainJourneyOf(records) } : null;
+}
+
+/** The facts the overview states, as core counted them in the design's graph. */
+export function overviewFacts(g: SystemGraph): OverviewFact[] {
+  const f = g.facts;
+  return [
     { label: "Users", value: `${f.people.length} ${f.people.length === 1 ? "role" : "roles"}`, rows: f.people },
     { label: "External systems", value: `${f.externals}${f.namedBoundaries > 1 ? ` in ${f.namedBoundaries} boundaries` : ""}`, rows: f.boundaries },
   ];
-  return { record, graph, facts, journey: mainJourneyOf(records) };
 }
 
 /** Where the overview's one line about the system came from. */
@@ -127,10 +125,10 @@ export function firstSentence(text: string): string {
  * purpose in its system-context design; else the first sentence of that design's summary, which records
  * how the design was drawn and so is only shown to a viewer who cannot write a description instead.
  */
-export function describeSystem(projectDocument: unknown, o: SystemOverview): SystemDescription | null {
+export function describeSystem(projectDocument: unknown, o: SystemOverview, graph: SystemGraph | null): SystemDescription | null {
   const project = projectDescriptionOf(projectDocument);
   if (project) return { text: project, source: "project" };
-  const purpose = o.graph.focal?.purpose;
+  const purpose = graph?.focal?.purpose;
   if (purpose) return { text: purpose, source: "purpose" };
   const first = firstSentence(o.record.document.summary);
   return first ? { text: first, source: "summary" } : null;
