@@ -2,6 +2,14 @@
 // skipped and streak; ISS-112): core's schedule_runs CHECKs, the one fire writer, alert A5 and the web
 // read the values from here.
 
+export const SCHEDULE_KINDS = [
+	"prompt",
+	"script",
+	"release_batch",
+	"sentry_pull",
+] as const;
+export type ScheduleKind = (typeof SCHEDULE_KINDS)[number];
+
 export const SCHEDULE_RUN_TRIGGERS = ["manual", "scheduled"] as const;
 export type ScheduleRunTrigger = (typeof SCHEDULE_RUN_TRIGGERS)[number];
 

@@ -48,7 +48,7 @@ function FireRow({
   const why = fire.refusal ?? fire.error ?? fire.reason;
   const head = (
     <div className="flex flex-wrap items-center gap-2 py-1.5">
-      <EnumBadge family="trigger" value={fire.trigger} />
+      <EnumBadge family="fireTrigger" value={fire.trigger} />
       <StatusBadge family="scheduleRun" value={fire.status} />
       <span className="fg-caption text-subtle">{fmtTime(fire.startedAt)}</span>
       <span className="fg-caption font-mono text-subtle">{fmtDuration(fire.durationSeconds)}</span>

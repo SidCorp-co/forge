@@ -156,6 +156,10 @@
   these public guides instead of designs only Forge's own project could read, as do the issue
   status refusals.
 
+- **Every schedule kind and fire reads as words (ISS-115).** `forge_schedules` creates release
+  batch and Sentry pull schedules, and schedule state, fire status, fire trigger and report triage
+  each have one badge.
+
 - **Automation says where each schedule, fire and report stands (ISS-114).**
   `GET /api/projects/:id/automation/standing` and `forge_automation` give each schedule its state
   and owner, each fire what it produced, and each report whom it waits on. Needs you counts

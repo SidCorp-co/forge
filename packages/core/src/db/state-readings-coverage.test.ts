@@ -1,5 +1,12 @@
+import { AGENT_REPORT_TRIAGES } from '@forge/contracts/agent-reports';
+import { SCHEDULE_STATES } from '@forge/contracts/automation-standing';
 import { MASTER_STATES } from '@forge/contracts/master-standing';
 import { RUN_STATES, RUN_STUCK_RULES } from '@forge/contracts/run-standing';
+import {
+  SCHEDULE_KINDS,
+  SCHEDULE_RUN_STATUSES,
+  SCHEDULE_RUN_TRIGGERS,
+} from '@forge/contracts/schedules';
 import { ENUM_LABELS, STATE_READINGS } from '@forge/contracts/ui-vocabulary';
 import { describe, expect, it } from 'vitest';
 import { jobStatuses, pipelineRunStatuses } from './schema.js';
@@ -14,6 +21,9 @@ const FAMILIES = {
   pipelineRun: pipelineRunStatuses,
   masterState: MASTER_STATES,
   session: agentSessionStatuses,
+  scheduleRun: SCHEDULE_RUN_STATUSES,
+  scheduleStanding: SCHEDULE_STATES,
+  reportTriage: AGENT_REPORT_TRIAGES,
 } satisfies Partial<Record<keyof typeof STATE_READINGS, readonly string[]>>;
 
 describe('each served state reads as words through its badge family', () => {
@@ -50,5 +60,16 @@ describe('each served state reads as words through its badge family', () => {
 describe('each stuck rule core serves reads as words', () => {
   it('ENUM_LABELS.runStuckRule names every RUN_STUCK_RULES value and no other', () => {
     expect(Object.keys(ENUM_LABELS.runStuckRule).sort()).toEqual([...RUN_STUCK_RULES].sort());
+  });
+});
+
+describe('each schedule kind and fire trigger core serves reads as words', () => {
+  it('ENUM_LABELS.scheduleKind names every SCHEDULE_KINDS value', () => {
+    const missing = SCHEDULE_KINDS.filter((k) => !(k in ENUM_LABELS.scheduleKind));
+    expect(missing, `ENUM_LABELS.scheduleKind has no label for: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  it('ENUM_LABELS.fireTrigger names every SCHEDULE_RUN_TRIGGERS value and no other', () => {
+    expect(Object.keys(ENUM_LABELS.fireTrigger).sort()).toEqual([...SCHEDULE_RUN_TRIGGERS].sort());
   });
 });

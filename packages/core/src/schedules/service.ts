@@ -146,6 +146,12 @@ export async function createSchedule(input: CreateScheduleInput, actorUserId: st
   if (kind === 'prompt' && !input.prompt) {
     throw badRequest('prompt is required when kind is "prompt"');
   }
+  if (kind === 'release_batch' || kind === 'sentry_pull') {
+    const set = (['prompt', 'script', 'templateKey'] as const).filter((f) => input[f] != null);
+    if (set.length > 0) {
+      throw badRequest(`${set.join(', ')} must be omitted when kind is "${kind}"`);
+    }
+  }
 
   const enabled = input.enabled ?? true;
   const nextRunAt = enabled ? nextRunFor(input.cron) : null;

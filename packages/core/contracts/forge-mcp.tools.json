@@ -4551,7 +4551,7 @@
       "name": "forge_runs"
     },
     {
-      "description": "Manage improvement schedules for a project. action=list/get/runs/create/update/delete/run/catalog. Requires device or PAT principal. Gate: list/get/runs/catalog → member; create/update/delete → admin; run → writer. list returns a body-free projection (no prompt/script field) to stay under the MCP output cap. catalog returns the full improvement-message registry (static list, no prompt 20k). runs answers the schedule's fires as forge_automation action=schedule reads them (status, why, produced), newest first, limit (default 20). kind='script' runs a standalone sandboxed Node.js script (ctx.log/ctx.http.fetch/ctx.notify/ctx.params) on the cron cadence with no agent session and no Claude session — pass `script` instead of `prompt`/`templateKey`. Mirrors REST /api/schedules but accepts device/PAT principals without a user JWT.",
+      "description": "Manage improvement schedules for a project. action=list/get/runs/create/update/delete/run/catalog. Requires device or PAT principal. Gate: list/get/runs/catalog → member; create/update/delete → admin; run → writer. list returns a body-free projection (no prompt/script field) to stay under the MCP output cap. catalog returns the full improvement-message registry (static list, no prompt 20k). runs answers the schedule's fires as forge_automation action=schedule reads them (status, why, produced), newest first, limit (default 20). kind='script' runs a standalone sandboxed Node.js script (ctx.log/ctx.http.fetch/ctx.notify/ctx.params) on the cron cadence with no agent session and no Claude session — pass `script` instead of `prompt`/`templateKey`. kind='release_batch' cuts whatever waits at the release gate and kind='sentry_pull' pulls the project's Sentry binding; both take no prompt, script or templateKey. Mirrors REST /api/schedules but accepts device/PAT principals without a user JWT.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -4580,7 +4580,9 @@
           "kind": {
             "enum": [
               "prompt",
-              "script"
+              "script",
+              "release_batch",
+              "sentry_pull"
             ],
             "type": "string"
           },

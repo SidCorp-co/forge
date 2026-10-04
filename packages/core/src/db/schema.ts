@@ -56,7 +56,7 @@ export { MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
 import type { DecisionFields } from '@forge/contracts/comments';
 import { MASTER_JOB_PANES_MAX } from '@forge/contracts/master-standing';
-import { SCHEDULE_RUN_STATUSES } from '@forge/contracts/schedules';
+import { SCHEDULE_KINDS, SCHEDULE_RUN_STATUSES } from '@forge/contracts/schedules';
 import { BODY_FORMATS } from '../body/formats.js';
 import type { IssueBranchOverride } from '../branches/resolve.js';
 import { COMMENT_INTENTS } from '../issues/record-events/kinds.js';
@@ -1798,7 +1798,7 @@ export type ScheduleStatus = (typeof scheduleStatuses)[number];
 export const scheduleModes = ['propose', 'auto'] as const;
 export type ScheduleMode = (typeof scheduleModes)[number];
 
-export const scheduleKinds = ['prompt', 'script', 'release_batch', 'sentry_pull'] as const;
+export const scheduleKinds = SCHEDULE_KINDS;
 
 export type ScheduleKind = (typeof scheduleKinds)[number];
 

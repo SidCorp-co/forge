@@ -6,7 +6,6 @@ import {
   Badge,
   Button,
   EmptyState,
-  EnumBadge,
   ErrorState,
   Input,
   PageContainer,
@@ -183,7 +182,7 @@ function RowAction({
 }
 
 function StateBadge({ row }: { row: ImprovementRow }) {
-  if (row.source === "report") return <EnumBadge family="agentReportTriage" value={row.report.triage} />;
+  if (row.source === "report") return <StatusBadge family="reportTriage" value={row.report.triage} />;
   return <Badge tone={STATE_BADGE[row.state].tone}>{STATE_BADGE[row.state].label}</Badge>;
 }
 

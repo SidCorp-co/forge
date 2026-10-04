@@ -1,15 +1,13 @@
-export type ScheduleLastStatus = "success" | "failed" | "running" | "skipped" | null;
+import type { ScheduleKind, ScheduleRunStatus } from "@forge/contracts/schedules";
 
-/** A schedule is either 'prompt' (existing agent-session behavior) or
- *  'script' (a standalone sandboxed Node.js script, no LLM/agent at all). */
-export type ScheduleKind = "prompt" | "script";
+export type { ScheduleKind } from "@forge/contracts/schedules";
+export type ScheduleLastStatus = ScheduleRunStatus | null;
 
 export interface ScheduleRow {
   id: string;
   projectId: string;
   name: string;
   cron: string;
-  /** Nullable — a kind='script' row carries no prompt. */
   prompt: string | null;
   kind: ScheduleKind;
   script: string | null;
