@@ -254,4 +254,3 @@ jobRoutes.get(
 
 export { jobEventsListRoutes, jobEventsRoutes } from './events-routes.js';
 export { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './lifecycle-routes.js';
-export { jobTestingSecretsRoutes } from './testing-secrets-routes.js';

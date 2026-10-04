@@ -19,7 +19,7 @@ import {
 } from '../pipeline/wedge.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
-import { buildVerifierPrompt } from '../skills/reconcile-service.js';
+import { jobsPorts } from './ports.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
@@ -423,7 +423,10 @@ export async function scheduleAutoRetryWithVerify(
   let newJobId: string | undefined;
   if (job.type === 'verify_skill' && typeof basePayload.reconcileRunId === 'string') {
     newJobId = randomUUID();
-    nextPayload.promptString = await buildVerifierPrompt(basePayload.reconcileRunId, newJobId);
+    nextPayload.promptString = await jobsPorts().reconcileRuns.buildVerifierPrompt(
+      basePayload.reconcileRunId,
+      newJobId,
+    );
   }
 
   const [created] = await db

@@ -12,7 +12,7 @@ import {
   safeName,
 } from '../lib/attachment-mime.js';
 import { refuser } from '../lib/refusal.js';
-import { getStorage } from '../storage/index.js';
+import { agentSessionsPorts } from './ports.js';
 
 export { safeName };
 
@@ -60,7 +60,10 @@ export async function persistSessionAttachment(
     throw refuse('EMPTY_FILE', 'empty file');
   }
   if (bytes.byteLength > env.UPLOADS_MAX_BYTES) {
-    throw refuse('FILE_TOO_LARGE', `file too large: ${bytes.byteLength} bytes, at most ${env.UPLOADS_MAX_BYTES}`);
+    throw refuse(
+      'FILE_TOO_LARGE',
+      `file too large: ${bytes.byteLength} bytes, at most ${env.UPLOADS_MAX_BYTES}`,
+    );
   }
   const resolved = resolveAttachmentMime({
     target: 'session',
@@ -77,7 +80,7 @@ export async function persistSessionAttachment(
   const mime = resolved.mime;
 
   const key = `sessions/${sessionId}/${Date.now()}-${name}`;
-  const { path: storedPath } = await getStorage().put(key, bytes, mime);
+  const { path: storedPath } = await agentSessionsPorts().attachments().put(key, bytes, mime);
 
   const [inserted] = await db
     .insert(sessionAttachments)

@@ -15,6 +15,7 @@ import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { seedDomainTemplates } from './domain-templates/index.js';
 import { registerContractMeasureWorker } from './ecosystem/index.js';
 import { provideAdmissionThresholds } from './error-intake/index.js';
+import { provideExecutionPorts } from './execution-ports.js';
 import {
   assertVaultBootSafety,
   provideForgeReads,
@@ -54,6 +55,7 @@ import { coreTimers } from './timer-registry.js';
 import { attachWs, closeWs } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
+provideExecutionPorts();
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,
   issueForHeadRef: (projectId, headRef) => resolveIssueForHeadRef({ projectId, headRef }),

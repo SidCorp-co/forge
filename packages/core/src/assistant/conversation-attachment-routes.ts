@@ -8,8 +8,8 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { readConversationAgentTurns } from '../agent-sessions/conversation-agent.js';
 import { loadConversationAttachment } from '../conversations/attachment-service.js';
+import { readConversationAgentTurns } from '../conversations/conversation-agent.js';
 import { refuseConversation } from '../conversations/refusals.js';
 import { listWindowsForConversation } from '../conversations/windows.js';
 import { contentDisposition } from '../lib/attachment-headers.js';

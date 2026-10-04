@@ -25,3 +25,11 @@ export type QuestionRefusalCode = (typeof QUESTION_REFUSAL_CODES)[number];
 export const QUESTION_REFUSAL_STATUSES = {
 	QUESTION_ROUND_STALE: 409,
 } as const satisfies RefusalStatuses<QuestionRefusalCode>;
+
+export const PARK_PROTECTIONS = [
+	"park-exempt-residency",
+	"park-exempt-oneshot",
+	"answer-resume-park",
+] as const;
+
+export type ParkProtection = (typeof PARK_PROTECTIONS)[number];

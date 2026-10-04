@@ -185,6 +185,7 @@ skillRegisterRoutes.delete(
 
 export { skillActivityRoutes } from './activity-routes.js';
 export { skillCrudRoutes } from './crud-routes.js';
+export { deviceSkillRoutes, deviceSkillStatusRoutes } from './device-routes.js';
 export { divergenceCharterRoutes } from './divergence-charter-routes.js';
 export { skillPinRoutes } from './pin-routes.js';
 export { reconcileRoutes } from './reconcile-routes.js';

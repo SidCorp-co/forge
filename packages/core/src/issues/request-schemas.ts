@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { BODY_FORMATS } from '../body/formats.js';
 import { issueComplexities, issuePriorities, issueStatuses } from '../db/schema.js';
 import { paginationSchema } from '../lib/pagination.js';
-import { CREATE_ENTRY_STATUSES } from './create-service.js';
+import { ISSUE_INITIAL_STATUSES as CREATE_ENTRY_STATUSES } from '@forge/contracts/issue-machine';
 import {
   attachmentInputSchema,
   labelAttachItemSchema,

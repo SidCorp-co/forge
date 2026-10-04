@@ -9,11 +9,11 @@
  * row is written either way.
  */
 
+import { contentLanguageBlock } from '@forge/contracts/content-language';
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import { eq } from 'drizzle-orm';
 import { insertChatLog } from '../chat-logs/service.js';
 import { env } from '../config/env.js';
-import { contentLanguageBlock } from '../content-language/block.js';
 import { readContentLanguage } from '../content-language/read.js';
 import { db as defaultDb } from '../db/client.js';
 import { appConfig, projects } from '../db/schema.js';

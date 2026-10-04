@@ -1,32 +1,8 @@
 import { and, desc, eq } from 'drizzle-orm';
-import type { Db } from '../db/client.js';
-import {
-  type SkillActivityEventType,
-  type SkillActivityOutcome,
-  type SkillActivityTrigger,
-  skillActivityEvents,
-} from '../db/schema.js';
+import { skillActivityEvents } from '../db/schema.js';
+import type { RecordSkillActivityEventInput, SkillActivityExecutor } from '../jobs/index.js';
 
-type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
-
-/** A drizzle executor: the base `db` or a transaction handle. */
-export type SkillActivityExecutor = Db | Tx;
-
-export interface RecordSkillActivityEventInput {
-  eventType: SkillActivityEventType;
-  /** `human:<user>` | `agent:master` | `system:seeder` | `runner:<device>`. */
-  actor: string;
-  trigger: SkillActivityTrigger;
-  packetId?: string;
-  projectId?: string;
-  skillId?: string;
-  deviceId?: string;
-  beforeHash?: string;
-  afterHash?: string;
-  deltaSummary?: string;
-  reason?: string;
-  outcome?: SkillActivityOutcome;
-}
+export type { RecordSkillActivityEventInput, SkillActivityExecutor };
 
 /**
  * Best-effort lookup of the `skill.body.changed` packet that produced `hash`

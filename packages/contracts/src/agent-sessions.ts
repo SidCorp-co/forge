@@ -29,3 +29,18 @@ export const AGENT_SESSION_REFUSAL_STATUSES = {
 	TURN_STALE: 409,
 	SEQ_TAKEN_BY_CORE: 409,
 } as const satisfies RefusalStatuses<AgentSessionRefusalCode>;
+
+/** Who asked, as a session's metadata carries it so a failover can mint again. */
+export interface SessionAsker {
+	userId: string;
+	viaTokenId: string | null;
+}
+
+export function readSessionAsker(raw: unknown): SessionAsker | null {
+	const m = raw as { userId?: unknown; viaTokenId?: unknown } | null;
+	if (!m || typeof m.userId !== "string") return null;
+	return {
+		userId: m.userId,
+		viaTokenId: typeof m.viaTokenId === "string" ? m.viaTokenId : null,
+	};
+}

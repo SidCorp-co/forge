@@ -16,7 +16,7 @@
  */
 
 import { JOB_MACHINE } from '@forge/contracts/job-machine';
-import type { PolicyRefusalCode } from '@forge/contracts/project-config';
+import type { DispatchState, PolicyRefusalCode } from '@forge/contracts/project-config';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
@@ -37,8 +37,8 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { refusalCodeOf } from '../lib/refusal.js';
 import { transition } from '../lifecycle/transition.js';
 import { logger } from '../observability/logger.js';
-import { type DispatchState, policyRefusalOf } from '../project-config/dispatch-policy.js';
 import { runnerAdmission } from './pool-admission.js';
+import { devicesPorts } from './ports.js';
 import { releaseLabelVerdict } from './release-label.js';
 
 export type PrepareResult =
@@ -191,7 +191,7 @@ async function policyStateFor(
   try {
     return { ok: true, state: await resolveJobPolicy(job) };
   } catch (err) {
-    const refused = policyRefusalOf(err);
+    const refused = devicesPorts().policyRefusalOf(err);
     if (!refused) throw err;
     logger.warn({ jobId, projectId: job.projectId, code: refused.code }, refused.detail);
     return {

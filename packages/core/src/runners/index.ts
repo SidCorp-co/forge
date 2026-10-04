@@ -1,6 +1,7 @@
 export { bootstrapRunnerAdapters } from './bootstrap.js';
 export { reapGhostRunners } from './ghost-reaper.js';
 export { type HeartbeatRunnerTransition, mirrorHeartbeatToRunners } from './heartbeat-mirror.js';
+export { provideRunnersPorts, type RunnersPorts } from './ports.js';
 export { runRunnerStaleSweep } from './stale-detector.js';
 export {
   deleteDeviceRunners,

@@ -1,3 +1,4 @@
+import { RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
 import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/criteria-verdicts.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
 import { productionDeploysOnLand } from '../pipeline/production-trigger.js';
@@ -5,7 +6,6 @@ import { attempt, blocker, evaluate } from './blocker-kit.js';
 import {
   type HeldIssueRef,
   heldBackWarningSentence,
-  RELEASE_ROSTER_LIMIT,
   type ReleaseBlocker,
   type ReleaseWarning,
   uncorroboratedWarningSentence,

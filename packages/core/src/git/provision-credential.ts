@@ -1,4 +1,3 @@
-import { stampGitCredentialRef } from '../devices/index.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { logger } from '../observability/logger.js';
 
@@ -24,7 +23,7 @@ export function classifyGitRemote(url: string | null | undefined): GitTransport 
   return 'unknown';
 }
 
-export async function provisionGitCredential(deviceId: string): Promise<GitCredential | null> {
+export async function provisionGitCredential(): Promise<GitCredential | null> {
   if (!isEnabled('runnerGitCredProvision')) return null;
 
   const token = process.env.GIT_PROVISION_TOKEN;
@@ -37,13 +36,6 @@ export async function provisionGitCredential(deviceId: string): Promise<GitCrede
       'runnerGitCredProvision is enabled but GIT_PROVISION_TOKEN is unset — skipping git-cred provisioning',
     );
     return null;
-  }
-
-  const ref = `https:${host}`;
-  try {
-    await stampGitCredentialRef(deviceId, ref);
-  } catch (err) {
-    logger.error({ err, deviceId }, 'failed to stamp devices.git_credential_ref');
   }
 
   return {

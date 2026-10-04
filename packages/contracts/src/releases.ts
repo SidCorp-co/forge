@@ -424,3 +424,6 @@ export const RELEASE_REFUSAL_STATUSES = {
 	RELEASE_VERSION_CONFLICT: 409,
 	CLAIM_CONFLICT: 409,
 } as const satisfies RefusalStatuses<ReleaseRefusalCode | ReleaseBlockerCode>;
+
+/** How many issues one release batch carries at most. */
+export const RELEASE_ROSTER_LIMIT = 50;

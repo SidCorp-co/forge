@@ -4,13 +4,13 @@ import {
   CONVERSATION_AGENT_MARKER,
   readConversationAgentMeta,
   turnState,
-} from '../agent-sessions/conversation-agent.js';
+} from '../conversations/conversation-agent.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { conversationWindows } from '../db/schema-conversations.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
-import { onboardingStatusesOf } from '../onboarding/read.js';
 import { requirements } from '../db/schema-requirements.js';
+import { onboardingStatusesOf } from '../onboarding/read.js';
 import { requirementKey } from '../requirements/read.js';
 
 export interface ThreadMark {

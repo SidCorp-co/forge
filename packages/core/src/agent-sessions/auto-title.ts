@@ -1,11 +1,10 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
-import { callFastModel } from '../integrations/llm/index.js';
-import { foreignScriptChars } from '../memory/script-guard.js';
 import { logger } from '../observability/logger.js';
 import { broadcastSession } from './broadcast.js';
 import { isSystemNoise, stripSystemNoise } from './content-filter.js';
+import { agentSessionsPorts } from './ports.js';
 
 const MAX_TITLE_CHARS = 60;
 const TITLE_MAX_TOKENS = 24;
@@ -40,7 +39,7 @@ function postProcessTitle(raw: string): string | null {
 export async function generateSessionTitle(userMessage: string): Promise<string | null> {
   const sanitized = stripSystemNoise(userMessage.replace(/\s+/g, ' ').trim());
   if (!sanitized) return null;
-  const raw = await callFastModel(
+  const raw = await agentSessionsPorts().callFastModel(
     { surface: 'agent-session' },
     TITLE_PROMPT.replace('{message}', sanitized),
     TITLE_MAX_TOKENS,
@@ -48,7 +47,7 @@ export async function generateSessionTitle(userMessage: string): Promise<string 
   if (!raw) return null;
   const title = postProcessTitle(raw);
   if (title === null) return null;
-  const foreign = foreignScriptChars(title, sanitized);
+  const foreign = agentSessionsPorts().foreignScriptChars(title, sanitized);
   if (foreign.length > 0) {
     logger.warn(
       { chars: foreign, title: title.slice(0, 60) },

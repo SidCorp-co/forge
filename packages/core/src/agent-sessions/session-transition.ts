@@ -14,7 +14,7 @@ import {
   transition,
 } from '../lifecycle/transition.js';
 import { logger } from '../observability/logger.js';
-import { settleSessionFires } from '../schedules/fires.js';
+import { agentSessionsPorts } from './ports.js';
 import { fireTerminalSessionBridges, sessionCarriesBridgeMarker } from './terminal-effects.js';
 
 type SessionRow = MachineRow<'session'>;
@@ -52,7 +52,7 @@ export async function transitionSessions<K extends keyof SessionRow = keyof Sess
     afterWrite: async (tx, rows) => {
       await args.afterWrite?.(tx, rows);
       if (ending) {
-        await settleSessionFires(tx, {
+        await agentSessionsPorts().settleSessionFires(tx, {
           sessionIds: rows.map((r) => r.id),
           sessionStatus: args.to,
           actor: args.actor,

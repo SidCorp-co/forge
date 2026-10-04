@@ -1,4 +1,4 @@
-import { conversationAgentUnavailableReason } from '../agent-sessions/conversation-agent.js';
+import { conversationAgentUnavailableReason } from '../conversations/conversation-agent.js';
 import { type ConversationRow, effectiveConversationMode } from '../conversations/store.js';
 
 export async function agentModeOffer(

@@ -7,5 +7,12 @@ export {
   releaseJobHold,
 } from './master-holds.js';
 export { probePgBossBackstop } from './pgboss-health.js';
+export {
+  type JobsPorts,
+  provideJobsPorts,
+  type RecordSkillActivityEventInput,
+  type SkillActivityExecutor,
+  type SkillActivityPort,
+} from './ports.js';
 export { runStaleSweep } from './stale-detector.js';
 export { insertJobRow } from './writes.js';

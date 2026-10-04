@@ -12,20 +12,20 @@
  * nothing behind for the release to undo.
  */
 
+import { CONTENT_LANGUAGE_KEY } from '@forge/contracts/content-language';
+import type { DispatchState, PolicyStateSource } from '@forge/contracts/project-config';
 import { and, eq } from 'drizzle-orm';
-import { recordContentLanguage } from '../content-language/read.js';
+import { mergeSessionMetadata } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { devices, issues, jobs, runners } from '../db/schema.js';
-import { recordContractContext } from '../ecosystem/contract/run-context-service.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import type { DispatchState, PolicyStateSource } from '../project-config/dispatch-policy.js';
-import { injectAfterInvocation, injectTurnLevelRules } from '../prompt/user.js';
 import { AGENT_NAMING_MIN_RUNNER, atLeastVersion } from '../runners/device-cap.js';
-import { recordArtifactContext } from '../workflows/run-context-service.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
 import { buildJobSystemPrompt } from './job-system-prompt.js';
+import { jobsPorts } from './ports.js';
 import { loadPriorAttempts, renderPriorAttemptsBlock } from './prior-attempts.js';
+import { injectAfterInvocation, injectTurnLevelRules } from './prompt-inject.js';
 import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { finalizeResumeForDevice, resolveResumePolicy } from './resume-policy.js';
 
@@ -173,8 +173,9 @@ export async function prepareClaimedJob(args: {
   if (!agentSessionId) {
     throw new Error(`prepare: no agent session could be created for job ${job.id}`);
   }
+  const context = jobsPorts().jobContext;
   if (designs.length || requirement) {
-    await recordArtifactContext(
+    await context.recordArtifactContext(
       agentSessionId,
       designs,
       requirement ? 'baseline-pins+requirement' : 'workflow-builds',
@@ -182,12 +183,13 @@ export async function prepareClaimedJob(args: {
       pinnedContracts,
     );
   }
-  // cm:why the language the preamble told this job is on its session beside `artifactContext`, so a
+  // the language the preamble told this job is on its session beside `artifactContext`, so a
   // reader sees what it was asked to write in without replaying the prompt
   if (built.contentLanguage) {
-    await recordContentLanguage(agentSessionId, built.contentLanguage);
+    await mergeSessionMetadata(agentSessionId, { [CONTENT_LANGUAGE_KEY]: built.contentLanguage });
   }
-  if (contracts.length) await recordContractContext(agentSessionId, contracts, 'issue-paths');
+  if (contracts.length)
+    await context.recordContractContext(agentSessionId, contracts, 'issue-paths');
 
   return {
     jobId: job.id,

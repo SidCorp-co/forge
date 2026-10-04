@@ -14,10 +14,10 @@ import { stampRunnerLimit } from '../runners/apply-runner-limit.js';
 import { attributeFailureToRunner } from '../runners/attribute-failure.js';
 import { detectRunnerLimit } from '../runners/limit-detect.js';
 import { maybeQuarantineRunner } from '../runners/quarantine.js';
-import { failReconcileRunForFailedJob } from '../skills/reconcile-service.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { finalizeJobDone, hasTerminalHandoffForAttempt } from './finalize-done.js';
 import { holdAutoReleases, holdJobForReason } from './hold.js';
+import { jobsPorts } from './ports.js';
 import type { RetryOutcome } from './retry.js';
 import { scheduleAutoRetryWithVerify } from './retry.js';
 
@@ -203,12 +203,14 @@ export async function finalizeFailedJob(
   await reconcileIssueStatusAfterFailure(updated, retry, recoveredViaVerify);
 
   if (!retry.scheduled) {
-    await failReconcileRunForFailedJob(updated).catch((err) =>
-      logger.warn(
-        { err, jobId: updated.id, type: updated.type },
-        'finalize-failure: failReconcileRunForFailedJob failed',
-      ),
-    );
+    await jobsPorts()
+      .reconcileRuns.failReconcileRunForFailedJob(updated)
+      .catch((err) =>
+        logger.warn(
+          { err, jobId: updated.id, type: updated.type },
+          'finalize-failure: failReconcileRunForFailedJob failed',
+        ),
+      );
   }
 
   // Mirror lifecycle to the linked agent_session row. ISS-101 — pass

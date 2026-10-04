@@ -14,6 +14,7 @@ import {
   type FeedbackRouteView,
   type FeedbackSummary,
   type FeedbackView,
+  feedbackKey,
 } from '@forge/contracts/feedback';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
@@ -57,7 +58,7 @@ export type Row = typeof feedback.$inferSelect;
 export const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-export const feedbackKey = (seq: number) => `FB-${seq}`;
+export { feedbackKey };
 
 /** An item of `projectId` by uuid, `FB-n` or `n`, locked for update when asked; 404 otherwise. */
 export async function rowIn(tx: Tx, projectId: string, ref: string, lock = false): Promise<Row> {
@@ -515,7 +516,8 @@ export async function detailAs(
       openSuggestions: open?.n ?? 0,
       can: {
         triage:
-          holds(facts, 'feedback.approve') && ['new', 'triaged', 'reopened'].includes(summary.phase),
+          holds(facts, 'feedback.approve') &&
+          ['new', 'triaged', 'reopened'].includes(summary.phase),
         route:
           summary.phase === 'triaged' &&
           summary.case !== null &&

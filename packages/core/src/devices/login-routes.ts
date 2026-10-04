@@ -23,7 +23,6 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
-import { provisionGitCredential } from '../git/provision-credential.js';
 import { roomManager, userRoom } from '../lib/rooms.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
@@ -33,9 +32,12 @@ import { logger } from '../observability/logger.js';
 import { reportFailure } from '../observability/sentry.js';
 import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import { issueDeviceCredential } from './credential.js';
+import type { GitCredential } from './ports.js';
+import { devicesPorts } from './ports.js';
 import { loginCodeState, userExists, userKindAndOrg } from './read.js';
 import { registerDevice } from './register.js';
 import { approveLoginCode, consumeLoginCode, insertLoginCode } from './service.js';
+import { stampGitCredentialRef } from './writes.js';
 
 type LoginPlatform = 'windows' | 'macos' | 'linux';
 
@@ -343,9 +345,10 @@ deviceLoginRoutes.get(
       });
 
       // Optional, flag-gated, best-effort git push-credential provisioning.
-      let gitCredential: Awaited<ReturnType<typeof provisionGitCredential>> = null;
+      let gitCredential: GitCredential | null = null;
       try {
-        gitCredential = await provisionGitCredential(device.id);
+        gitCredential = await devicesPorts().provisionGitCredential();
+        if (gitCredential) await stampGitCredentialRef(device.id, `https:${gitCredential.host}`);
       } catch (err) {
         logger.error(
           { err, deviceId: device.id },

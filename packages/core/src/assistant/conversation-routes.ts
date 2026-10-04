@@ -16,15 +16,15 @@ import { uiSnapshotSchema } from '@forge/contracts/ui-actions';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { listConversationAttachmentsByIds } from '../conversations/attachment-service.js';
 import {
   conversationAgentUnavailableReason,
   readConversationAgentTurns,
-} from '../agent-sessions/conversation-agent.js';
-import { listConversationAttachmentsByIds } from '../conversations/attachment-service.js';
+} from '../conversations/conversation-agent.js';
 import { projectsNamed } from '../conversations/membership.js';
 import { listParticipants } from '../conversations/participants.js';
-import { refuseConversation } from '../conversations/refusals.js';
 import { validateRoomPresence } from '../conversations/presence.js';
+import { refuseConversation } from '../conversations/refusals.js';
 import { derivedScope } from '../conversations/scope.js';
 import {
   type ConversationRow,
@@ -42,6 +42,7 @@ import { effectiveProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 import { batchesOfConversation } from '../questionnaires/read.js';
 import {
   mayChangeMembership,
@@ -61,11 +62,10 @@ import {
 } from './conversation-scope.js';
 import { sendWebConversationMessage } from './conversation-send.js';
 import { conversationToolCallRoutes } from './conversation-tool-calls.js';
-import { threadMarks } from './thread-marks.js';
 import { pinnedBy, speakerLabelOf } from './read.js';
 import { openWebConversation } from './service.js';
+import { threadMarks } from './thread-marks.js';
 import { rememberUiSnapshot } from './ui-snapshot.js';
-import { requireHeld } from '../permissions/index.js';
 
 const READ_WINDOW = 200;
 
