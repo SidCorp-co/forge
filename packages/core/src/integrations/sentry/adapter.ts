@@ -2,20 +2,18 @@ import { logger } from '../../observability/logger.js';
 import {
   declareIntegration,
   type HealthCheckResult,
-  type HealthStatus,
   type IntegrationAdapterMethods,
-  isPreviousCredentialValid,
   updateConnection,
 } from '../index.js';
+import { callSentry, sentryRefusalHealth } from './call.js';
 import { sentryRestBase } from './endpoints.js';
 import { dispatchSentryOutbound } from './issues.js';
+import { SentryRefusal } from './refusals.js';
 import { buildSentryMcpEntry } from './resolver.js';
 import { SENTRY_BINDING_CONFIG_KEYS, sentryConfigBase, sentrySecretsSchema } from './schemas.js';
 import { readTargets, renderSentryTargetsLine } from './targets.js';
 import type { SentryConfig, SentrySecrets } from './types.js';
 import { handleSentryWebhook, SENTRY_RESOURCE_HEADER, SENTRY_SIGNATURE_HEADER } from './webhook.js';
-
-const PROBE_TIMEOUT_MS = 15_000;
 
 /** Minimal shape of a Sentry org returned by `GET /api/0/organizations/`. */
 interface SentryOrg {
@@ -24,97 +22,50 @@ interface SentryOrg {
   name?: string;
 }
 
-type AttemptResult =
-  | { kind: 'ok'; body: SentryOrg[] }
-  | { kind: 'unauthorized'; status: number }
-  | { kind: 'http-error'; status: number };
-
-/** One read of the token's organizations; a 401/403 is told apart so the previous token can be tried (ISS-405). */
-async function readOrganizations(base: string, token: string): Promise<AttemptResult> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${base}/api/0/organizations/`, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-      signal: controller.signal,
-    });
-    if (res.status === 401 || res.status === 403)
-      return { kind: 'unauthorized', status: res.status };
-    if (!res.ok) return { kind: 'http-error', status: res.status };
-    const body = (await res.json()) as SentryOrg[];
-    return { kind: 'ok', body: Array.isArray(body) ? body : [] };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function markHealth(connectionId: string, status: HealthStatus) {
-  await updateConnection(connectionId, { lastHealthStatus: status, lastHealthAt: new Date() });
-}
-
-/** A token still rejected after the previous-token retry must be re-entered (ISS-409); any other HTTP error stays an error. */
-function verdict(result: AttemptResult): HealthCheckResult {
-  if (result.kind === 'unauthorized') {
-    return {
-      status: 'needs_reauth',
-      message: 'invalid Sentry auth token',
-      diagnostics: { httpStatus: result.status },
-    };
-  }
-  if (result.kind === 'http-error') {
-    return {
-      status: 'error',
-      message: `Sentry API error (HTTP ${result.status})`,
-      diagnostics: { httpStatus: result.status },
-    };
-  }
-  const orgs = result.body;
-  return {
-    status: 'ok',
-    message: orgs.length
-      ? `Authenticated — ${orgs.length} organization(s) accessible`
-      : 'Sentry auth token is valid',
-    // Only non-secret identity fields — never the token.
-    diagnostics: {
-      organizations: orgs
-        .slice(0, 10)
-        .map((o) => ({ id: o.id ?? null, slug: o.slug ?? null, name: o.name ?? null })),
-    },
-  };
-}
-
 const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecrets> = {
   async healthcheck(ctx): Promise<HealthCheckResult> {
     const authToken = ctx.secrets?.authToken;
     if (!authToken || !ctx.config?.host) {
-      await markHealth(ctx.connectionId, 'error');
+      await updateConnection(ctx.connectionId, {
+        lastHealthStatus: 'error',
+        lastHealthAt: new Date(),
+      });
       return {
         status: 'error',
         message: authToken ? 'no Sentry host configured' : 'no Sentry auth token configured',
       };
     }
-    const base = sentryRestBase(ctx.config.host);
+    // `callSentry` makes the previous-token retry and writes the connection's health either way.
     try {
-      let result = await readOrganizations(base, authToken);
-      if (
-        result.kind === 'unauthorized' &&
-        ctx.secrets.previousAuthToken &&
-        isPreviousCredentialValid(ctx.secrets)
-      ) {
-        result = await readOrganizations(base, ctx.secrets.previousAuthToken);
-      }
-      const health = verdict(result);
-      await markHealth(ctx.connectionId, health.status);
-      return health;
+      const body = await callSentry(
+        ctx,
+        `${sentryRestBase(ctx.config.host)}/api/0/organizations/`,
+        'GET',
+      );
+      const orgs = Array.isArray(body) ? (body as SentryOrg[]) : [];
+      return {
+        status: 'ok',
+        message: orgs.length
+          ? `Authenticated — ${orgs.length} organization(s) accessible`
+          : 'Sentry auth token is valid',
+        // Only non-secret identity fields — never the token.
+        diagnostics: {
+          organizations: orgs
+            .slice(0, 10)
+            .map((o) => ({ id: o.id ?? null, slug: o.slug ?? null, name: o.name ?? null })),
+        },
+      };
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'unknown error';
-      await markHealth(ctx.connectionId, 'error');
+      if (!(err instanceof SentryRefusal)) throw err;
       logger.warn(
-        { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: message },
+        { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: err.message },
         'sentry: healthcheck failed',
       );
-      return { status: 'error', message };
+      return {
+        status: sentryRefusalHealth(err.reason),
+        message: err.message,
+        ...(err.httpStatus !== null ? { diagnostics: { httpStatus: err.httpStatus } } : {}),
+      };
     }
   },
 
