@@ -7,8 +7,8 @@
   "type": "module",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     },
     "./mcp-tools": {
       "types": "./dist/mcp-tools.d.ts",
@@ -27,16 +27,16 @@
       "default": "./dist/issue-vocabulary.js"
     },
     "./notifications": {
-      "types": "./src/notifications.ts",
-      "default": "./src/notifications.ts"
+      "types": "./dist/notifications.d.ts",
+      "default": "./dist/notifications.js"
     },
     "./attachments": {
       "types": "./dist/attachments.d.ts",
       "default": "./dist/attachments.js"
     },
     "./deploy-capability": {
-      "types": "./src/deploy-capability.ts",
-      "default": "./src/deploy-capability.ts"
+      "types": "./dist/deploy-capability.d.ts",
+      "default": "./dist/deploy-capability.js"
     },
     "./status-sets": {
       "types": "./dist/status-sets.d.ts",
@@ -363,8 +363,8 @@
       "default": "./dist/storefront.js"
     },
     "./integrations": {
-      "types": "./src/integrations.ts",
-      "default": "./src/integrations.ts"
+      "types": "./dist/integrations.d.ts",
+      "default": "./dist/integrations.js"
     },
     "./git": {
       "types": "./dist/git.d.ts",
@@ -390,7 +390,7 @@
     "vitest": "^5.0.2"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.emit.json --noCheck",
+    "build": "tsc -p tsconfig.emit.json --noCheck && node scripts/check-exports.mjs",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   }
