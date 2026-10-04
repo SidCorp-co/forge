@@ -32,8 +32,8 @@ function vectorFor(seed: number): number[] {
 
 let harness: TestDatabase;
 let server: TestServer;
-let embeddingsMod: typeof import('../../src/embeddings/index.js');
-let parseSseStream: typeof import('../../src/assistant/providers/sse.js').parseSseStream;
+let embeddingsMod: typeof import('../../src/integrations/embeddings/index.js');
+let parseSseStream: typeof import('../../src/integrations/llm/sse.js').parseSseStream;
 let signUserToken: (id: string) => Promise<string>;
 
 // Read off the code rather than copied, so a page size that moves moves these cases with it. They
@@ -153,8 +153,8 @@ beforeAll(async () => {
   process.env.EMBEDDINGS_BASE_URL ??= 'http://embeddings.invalid';
   process.env.EMBEDDINGS_API_KEY ??= 'test-key';
   ({ signUserToken } = await import('../../src/auth/jwt.js'));
-  ({ parseSseStream } = await import('../../src/assistant/providers/sse.js'));
-  embeddingsMod = await import('../../src/embeddings/index.js');
+  ({ parseSseStream } = await import('../../src/integrations/llm/sse.js'));
+  embeddingsMod = await import('../../src/integrations/embeddings/index.js');
   ({ ORDERING_PAGE_SIZE } = await import('../../src/issues/backlog/ordering-source.js'));
   ({ EMBED_BATCH_SIZE } = await import('../../src/issues/backlog/alike-source.js'));
   server = await startTestServer();

@@ -1,7 +1,7 @@
 import { BUILTIN_WORKFLOW_TEMPLATES } from "@forge/contracts/workflow-templates";
 import { describe, expect, it } from "vitest";
 import hop from "./c4/hop-system-context.fixture.json";
-import hop5 from "./c4/hop-system-context-rev5.fixture.json";
+import hopNow from "./c4/hop-system-context-current.fixture.json";
 import {
   catalogue,
   describeSystem,
@@ -88,21 +88,20 @@ describe("the system overview", () => {
     expect(o?.journey).toBeNull();
   });
 
-  it("breaks HOP rev 5's nineteen outside systems down by boundary, in lane order, with how many are unconfirmed", () => {
+  it("breaks HOP's seventeen outside systems down by boundary, in lane order, with how many are unconfirmed", () => {
     const r = record("hop-system-context", "system-context", "approved", "2026-10-04", 31);
-    const o = systemOverview([{ ...r, document: { ...r.document, ...(hop5 as unknown as WorkflowBody), id: "hop-system-context" } }], BUILTIN_WORKFLOW_TEMPLATES);
-    expect(o?.facts[1]?.value).toBe("19 in 5 boundaries");
-    const doc = hop5 as unknown as WorkflowBody;
+    const doc = hopNow as unknown as WorkflowBody;
+    const o = systemOverview([{ ...r, document: { ...r.document, ...doc, id: "hop-system-context" } }], BUILTIN_WORKFLOW_TEMPLATES);
+    expect(o?.facts[1]?.value).toBe("17 in 4 boundaries");
     const lane = (id: string) => doc.lanes?.find((l) => l.id === id)?.label;
     expect(o?.facts[1]?.rows).toEqual([
       { name: lane("hospital"), count: 9, unconfirmed: 6 },
       { name: lane("partners"), count: 3, unconfirmed: 3 },
-      { name: lane("channels"), count: 2, unconfirmed: 2 },
-      { name: lane("outside"), count: 3, unconfirmed: 2 },
-      { name: lane("delivery"), count: 2, unconfirmed: 0 },
+      { name: lane("channels"), count: 2, unconfirmed: 0 },
+      { name: lane("outside"), count: 3, unconfirmed: 0 },
     ]);
     const role = (id: string) => doc.steps.find((s) => s.id === id)?.node?.label;
-    expect(o?.facts[0]?.rows.map((x) => x.name)).toEqual(["staff", "leads", "patient", "caregiver"].map(role));
+    expect(o?.facts[0]?.rows.map((x) => x.name)).toEqual(["staff", "leads", "hospital-it", "patient", "caregiver"].map(role));
   });
 });
 
@@ -132,7 +131,7 @@ describe("what the overview says the system is", () => {
 
   it("does not read a step's `does` as the system's purpose", () => {
     const o = overview(provenance);
-    expect(o.model.focal?.purpose).toBe("");
+    expect(o.graph.focal?.purpose).toBe("");
   });
 
   it("ignores a blank description", () => {

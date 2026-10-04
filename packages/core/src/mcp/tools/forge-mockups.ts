@@ -74,7 +74,7 @@ const GRANTS = {
 const DESCRIPTION =
   `Mockups MK-n: what a screen or a call should look like, proposed about exactly one target. Actions: ${ACTIONS.join(' | ')}. ` +
   `propose: { target: { requirement, revision } | { feedback } | { issue }, kind: ${MOCKUP_KINDS.join(' | ')}, caption?, and exactly one of ` +
-  `document (a ${WIREFRAME_VERSION} board, kind wireframe: draw one from the requirement text), contentBase64 + name (+ mime?), or ` +
+  `document (a ${WIREFRAME_VERSION} board { v: "${WIREFRAME_VERSION}", title?, shapes }, kind wireframe: draw one from the requirement text), contentBase64 + name (+ mime?), or ` +
   `source { from: ${MOCKUP_SOURCES.join(' | ')}, attachmentId } (a file uploaded first with forge_uploads request) }. ` +
   'Refused by name: MOCKUP_TYPE_INVALID (a type the kind does not take, or a board that is not wireframe-v1), MOCKUP_TOO_LARGE, ' +
   "MOCKUP_SOURCE_OTHER_PROJECT (another project's upload), MOCKUP_REVISION_SUPERSEDED (propose against the head instead), " +

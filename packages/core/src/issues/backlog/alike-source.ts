@@ -11,7 +11,7 @@
 
 import type { IssueStatus } from '../../db/schema.js';
 import { issues } from '../../db/schema.js';
-import { embedBatch } from '../../embeddings/index.js';
+import { embedBatch } from '../../integrations/embeddings/index.js';
 import { runMemorySearch } from '../../memory/search-service.js';
 import { issueRefFormatter } from '../issue-prefix-read.js';
 import type { Cancellation } from './cancellation.js';
@@ -89,7 +89,10 @@ export async function* alikeSource(input: AlikeInput): BacklogSource<unknown> {
     if (seeds.length === 0) return { exhausted: true } satisfies SourceDone;
 
     if (input.cancellation.cancelled) return { exhausted: false } satisfies SourceDone;
-    const vectors = await embedBatch(seeds.map((s) => s.title.slice(0, SEED_QUERY_MAX)));
+    const vectors = await embedBatch(
+      { surface: 'issue' },
+      seeds.map((s) => s.title.slice(0, SEED_QUERY_MAX)),
+    );
     if (vectors.length !== seeds.length) throw shortBatch(seeds.length, vectors.length);
 
     for (const [index, seed] of seeds.entries()) {

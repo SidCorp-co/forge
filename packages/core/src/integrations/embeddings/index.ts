@@ -1,4 +1,5 @@
-import { env } from '../config/env.js';
+import { env } from '../../config/env.js';
+import { EgressRefused, type EgressScope, egressScoped } from '../../lib/data-egress.js';
 import { type EmbedDetailed, EmbeddingsClient, EmbeddingUnavailableError } from './client.js';
 
 /** What `embed` needs of a client; the real one and a test's stand-in both fit. */
@@ -33,14 +34,21 @@ export const QUERY_CACHE_TTL_MS = 10 * 60_000;
 
 const queryCache = new Map<string, { vec: number[]; at: number }>();
 
+async function sent(scope: EgressScope, text: string): Promise<string> {
+  const out = await egressScoped(scope, text);
+  if (!out.ok) throw new EgressRefused(out.refusal);
+  return out.text;
+}
+
 /** The write path: one request per call, nothing remembered. */
-export async function embed(text: string): Promise<number[]> {
-  return get().embed(text);
+export async function embed(scope: EgressScope, text: string): Promise<number[]> {
+  return get().embed(await sent(scope, text));
 }
 
 /** The query path: a text asked twice within the TTL costs one request. */
-export async function embedQuery(text: string): Promise<number[]> {
+export async function embedQuery(scope: EgressScope, asked: string): Promise<number[]> {
   const client = get();
+  const text = await sent(scope, asked);
   const key = `${env.EMBEDDINGS_MODEL}\u0000${text}`;
   const hit = queryCache.get(key);
   const now = Date.now();
@@ -71,8 +79,12 @@ export function embeddingsConfigured(): boolean {
 }
 
 /** One vector and the model that produced it — the configured one, or its fallback. */
-export async function embedWithModel(text: string): Promise<{ vector: number[]; model: string }> {
+export async function embedWithModel(
+  scope: EgressScope,
+  asked: string,
+): Promise<{ vector: number[]; model: string }> {
   const client = get();
+  const text = await sent(scope, asked);
   const { vectors, model } = client.embedDetailed
     ? await client.embedDetailed([text])
     : { vectors: [await client.embed(text)], model: env.EMBEDDINGS_MODEL };
@@ -81,8 +93,9 @@ export async function embedWithModel(text: string): Promise<{ vector: number[]; 
   return { vector, model };
 }
 
-export async function embedBatch(texts: string[]): Promise<number[][]> {
-  return get().embedBatch(texts);
+export async function embedBatch(scope: EgressScope, texts: string[]): Promise<number[][]> {
+  const client = get();
+  return client.embedBatch(await Promise.all(texts.map((t) => sent(scope, t))));
 }
 
 /** Test-only. */

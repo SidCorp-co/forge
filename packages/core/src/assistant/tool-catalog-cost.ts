@@ -12,9 +12,8 @@
  */
 
 import postgres from 'postgres';
-import { openAiCompatUrl } from '../lib/openai-compat-url.js';
-import { toRequestBody } from './providers/anthropic.js';
-import type { ChatTool } from './providers/types.js';
+import { countAnthropicInputTokens, toRequestBody } from '../integrations/llm/anthropic.js';
+import type { ChatTool } from '../integrations/llm/types.js';
 import { catalogOnlyContext } from './tools/principal.js';
 import { buildProjectToolset, CHAT_TOOL_ALLOWLIST } from './tools/registry.js';
 
@@ -130,34 +129,18 @@ export interface CountOptions {
   fetchImpl?: typeof fetch;
 }
 
-async function countRequest(
+function countRequest(
   tools: unknown[] | undefined,
   apiKey: string,
   opts: CountOptions,
 ): Promise<number | null> {
-  const fetchImpl = opts.fetchImpl ?? fetch;
-  const url = `${openAiCompatUrl(opts.baseUrl ?? process.env.ANTHROPIC_API_URL ?? 'https://api.anthropic.com', 'messages')}/count_tokens`;
-  const res = await fetchImpl(url, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: PRICING.model,
-      messages: [{ role: 'user', content: 'x' }],
-      ...(tools ? { tools } : {}),
-    }),
+  return countAnthropicInputTokens({
+    model: PRICING.model,
+    tools,
+    apiKey,
+    baseUrl: opts.baseUrl,
+    fetchImpl: opts.fetchImpl,
   });
-  if (!res.ok) return null;
-  let json: { input_tokens?: number };
-  try {
-    json = (await res.json()) as { input_tokens?: number };
-  } catch {
-    return null;
-  }
-  return typeof json.input_tokens === 'number' ? json.input_tokens : null;
 }
 
 export async function countCatalogTokens(

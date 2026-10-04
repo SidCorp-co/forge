@@ -5,8 +5,8 @@
  * check. An answer the parser cannot read is an error on the row, never a guessed verdict.
  */
 
-import { createOpenAIProvider } from '../providers/openai.js';
-import type { ChatMessage, ChatProvider } from '../providers/types.js';
+import { createOpenAIProvider } from '../../integrations/llm/openai.js';
+import type { ChatMessage, ChatProvider } from '../../integrations/llm/types.js';
 import type { FetchLike } from './client.js';
 import type { FailureMode } from './grade.js';
 import type { ToolCall } from './trail.js';

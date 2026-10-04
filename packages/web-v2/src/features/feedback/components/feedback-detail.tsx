@@ -1,8 +1,8 @@
 "use client";
 
-// A feedback item's full page: what the reporter said and the acts a person can take (Overview), and
-// every decision on it (History), as tabs beside the sticky facts rail. The phase, whose turn and
-// what carries it live in the rail only.
+// A feedback item's full page: what the reporter said and the acts a person can take (Overview), the
+// mockups proposed about it (Mockups), and every decision on it (History), as tabs beside the sticky
+// facts rail. The phase, whose turn and what carries it live in the rail only.
 
 import type { ReactNode } from "react";
 import {
@@ -19,6 +19,8 @@ import {
   StatusBadge,
   useUrlTab,
 } from "@/design";
+import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
+import { useMockups } from "@/features/mockups/hooks";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { formatRelativeTime, formatStamp } from "@/lib/utils/format";
 import { useFeedbackItem } from "../hooks";
@@ -26,7 +28,7 @@ import type { FeedbackView } from "../types";
 import { FeedbackActions, Proposals } from "./feedback-actions";
 import { FeedbackBanner, FeedbackFacts } from "./feedback-facts";
 
-export const FEEDBACK_TABS = ["overview", "history"] as const;
+export const FEEDBACK_TABS = ["overview", "mockups", "history"] as const;
 export type FeedbackTab = (typeof FEEDBACK_TABS)[number];
 export const useFeedbackTab = () => useUrlTab(FEEDBACK_TABS);
 
@@ -115,6 +117,7 @@ export function FeedbackPage({
   onTab: (t: FeedbackTab) => void;
 }) {
   const q = useFeedbackItem(projectId, fbKey);
+  const mockups = useMockups(projectId, { type: "feedback", key: fbKey });
   if (q.isLoading) {
     return (
       <div className="grid min-h-[40vh] place-items-center">
@@ -132,6 +135,7 @@ export function FeedbackPage({
   const f = q.data.feedback;
   const tabs = [
     { value: "overview" as const, label: "Overview" },
+    { value: "mockups" as const, label: "Mockups", count: mockups.data?.returned },
     { value: "history" as const, label: "History", count: f.decisions.length },
   ];
   return (
@@ -147,7 +151,8 @@ export function FeedbackPage({
       <DetailMobileTitle itemKey={f.key} title={f.title} badge={<StatusBadge family="feedbackPhase" value={f.phase} />} />
       <FeedbackBanner f={f} className="px-8 py-2.5 max-md:px-4" />
       <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="feedback-tabs" />
-      <DetailPane label={tab === "history" ? "History" : "Overview"}>
+      <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Overview"}>
+        {tab === "mockups" ? <MockupsPanel projectId={projectId} target={{ type: "feedback", key: f.key }} canPropose={!f.redacted} /> : null}
         {tab === "overview" ? (
           <div className="grid gap-8" data-testid="view-overview">
             <Proposals projectId={projectId} f={f} />
@@ -158,11 +163,12 @@ export function FeedbackPage({
             ) : null}
             <Body f={f} />
           </div>
-        ) : (
+        ) : null}
+        {tab === "history" ? (
           <section aria-label="History">
             <History f={f} />
           </section>
-        )}
+        ) : null}
       </DetailPane>
     </DetailLayout>
   );

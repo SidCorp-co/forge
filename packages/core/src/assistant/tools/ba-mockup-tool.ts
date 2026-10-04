@@ -24,7 +24,7 @@ export const drawMockup =
     reach: 'project',
     route: '/api/projects',
     grant: 'projects:write',
-    description: `Draw a ${WIREFRAME_VERSION} board of the screen this requirement describes and propose it as a mockup of one revision (the current one, or the open draft). document is the board: { version: "${WIREFRAME_VERSION}", shapes: [frame | text | button | input | list | image | arrow | pen, each with a stable id] }. A person accepts or returns it; MOCKUP_TYPE_INVALID names the first fault of a board that is not ${WIREFRAME_VERSION}.`,
+    description: `Draw a ${WIREFRAME_VERSION} board of the screen this requirement describes and propose it as a mockup of one revision (the current one, or the open draft). document is the board: { v: "${WIREFRAME_VERSION}", title?, shapes: [frame | text | button | input | list | image | arrow | pen, each with a stable id] }. A person accepts or returns it; MOCKUP_TYPE_INVALID names the first fault of a board that is not ${WIREFRAME_VERSION}.`,
     inputSchema: z.toJSONSchema(drawInput) as Record<string, unknown>,
     handler: async (args) => {
       const input = drawInput.parse(args);

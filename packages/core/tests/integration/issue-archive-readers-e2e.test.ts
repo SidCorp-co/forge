@@ -22,10 +22,10 @@ import {
 } from '../helpers/index.js';
 
 const llm = vi.hoisted(() => ({ prompts: [] as string[] }));
-vi.mock('../../src/memory/llm.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/memory/llm.js')>()),
+vi.mock('../../src/integrations/llm/fast-model.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/integrations/llm/fast-model.js')>()),
   fastModelConfigured: () => true,
-  callFastModel: async (prompt: string) => {
+  callFastModel: async (_scope: unknown, prompt: string) => {
     llm.prompts.push(prompt);
     return '{"create":[],"update":[],"archive":[]}';
   },

@@ -1,0 +1,732 @@
+{
+ "$schema": "https://forge.sidcorp.co/schemas/workflow-v2.json",
+ "version": 2,
+ "project": "d1bb4907-74d9-4228-85ff-76121523af7d",
+ "flow": "system-context",
+ "kind": "flow",
+ "title": "Forge in context",
+ "summary": "Who uses Forge, the parts that run (web app, core API with its in-process workers, Postgres, upload disk, the runner daemon on a paired box), the outside systems each part talks to and over what. Per-connection integrations hold their credentials in the vault; platform ones in env.",
+ "status": "current",
+ "steps": [
+  {
+   "id": "member",
+   "does": "A person in an org and its projects: files and reads issues, answers questions, approves releases, pairs boxes. Signs in by password, GitHub, Google or OIDC.",
+   "status": "current",
+   "after": [],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/core/src/auth/login.ts",
+    "symbol": "loginRoutes",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "PERSON",
+    "label": "Team member",
+    "band": "people"
+   }
+  },
+  {
+   "id": "operator",
+   "does": "Runs the instance: an email on the ADMIN_EMAILS list reaches /api/admin and the /admin screens.",
+   "status": "current",
+   "after": [],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/core/src/middleware/require-admin.ts",
+    "symbol": "requireAdmin",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "PERSON",
+    "label": "Platform operator",
+    "band": "people"
+   }
+  },
+  {
+   "id": "mcp-client",
+   "does": "Any MCP client holding a forge_pat_* token (a developer's Claude Code, an agent account) calling /mcp. Cookies, JWTs and device tokens are refused there.",
+   "status": "current",
+   "after": [],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/core/src/middleware/require-pat.ts",
+    "symbol": "requirePat",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "SYSTEM",
+    "label": "MCP client with a PAT",
+    "band": "outside",
+    "owner": "The PAT holder"
+   }
+  },
+  {
+   "id": "web",
+   "does": "Next.js app (standalone build). The browser calls core directly with the forge_auth cookie; the only server route is /forge-config, and middleware gates /admin by asking core /admin/whoami.",
+   "status": "current",
+   "after": [
+    "member",
+    "operator"
+   ],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/web-v2/src/middleware.ts",
+    "symbol": "middleware",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "CONTAINER",
+    "label": "Web app (web-v2)",
+    "band": "forge",
+    "purpose": "Next.js UI for issues, runs, sessions, conversations, settings and admin."
+   }
+  },
+  {
+   "id": "runner",
+   "does": "forge-runner daemon on a paired box: holds a device token, keeps a /ws connection, heartbeats, opens run sessions that take issue leases, spawns Claude Code in tmux panes and worktrees, reports hook events and job events.",
+   "status": "current",
+   "after": [
+    "member"
+   ],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/runner/crates/forge-runner-core/src/daemon/mod.rs",
+    "symbol": "run",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "CONTAINER",
+    "label": "Runner daemon (forge-runner)",
+    "band": "box",
+    "purpose": "Rust daemon that executes work on a box the person paired."
+   }
+  },
+  {
+   "id": "claude",
+   "does": "The claude CLI the runner spawns with FORGE_PAT, FORGE_PROJECT_ID and FORGE_PROJECT_SLUG; it uses the box's own Claude login and calls Forge back over /mcp.",
+   "status": "current",
+   "after": [
+    "runner"
+   ],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/runner/crates/forge-runner-core/src/runner/claude_code.rs",
+    "symbol": "ClaudeCodeRunner",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "SYSTEM",
+    "label": "Claude Code CLI",
+    "band": "box",
+    "owner": "Anthropic (logged in per box)"
+   }
+  },
+  {
+   "id": "core",
+   "does": "Hono server: REST under /api, /mcp, /ws. Runs in-process the pg-boss crons and workers, the outbox worker, the hooks bus, Rocket.Chat connections and the transcript drains. Every router brings its own gate.",
+   "status": "current",
+   "after": [
+    "web",
+    "mcp-client",
+    "runner",
+    "claude"
+   ],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/core/src/index.ts",
+    "symbol": "app",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "CONTAINER",
+    "label": "Core API and workers",
+    "band": "forge",
+    "purpose": "Backend over Postgres: issues, pipeline, devices, sessions, memory, integrations, MCP server and WebSocket rooms."
+   }
+  },
+  {
+   "id": "postgres",
+   "does": "PostgreSQL 17 with pgvector: 125 tables, the pg-boss queue, the pipeline outbox and advisory locks.",
+   "status": "current",
+   "after": [
+    "core"
+   ],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/core/src/db/client.ts",
+    "symbol": "db",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "CONTAINER",
+    "label": "Postgres + pgvector",
+    "band": "forge",
+    "purpose": "System of record, job queue and vector index."
+   }
+  },
+  {
+   "id": "uploads",
+   "does": "Attachments on local disk under UPLOADS_DIR, served by single-use tickets. The S3 driver is a stub that throws.",
+   "status": "current",
+   "after": [
+    "core"
+   ],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/core/src/storage/local-fs.ts",
+    "symbol": "LocalFsStorage",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "CONTAINER",
+    "label": "Upload disk",
+    "band": "forge",
+    "purpose": "Issue, comment, session and conversation attachments."
+   }
+  },
+  {
+   "id": "github",
+   "does": "GitHub login (OAuth) and the GitHub App per connection: repos, pull requests, releases, installation tokens for runner git; webhooks in signed x-hub-signature-256. Runner binaries are downloaded from GitHub releases.",
+   "status": "current",
+   "after": [
+    "core",
+    "runner"
+   ],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/core/src/integrations/github/app-auth.ts",
+    "symbol": "buildAppJwt",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "SYSTEM",
+    "label": "GitHub",
+    "band": "outside",
+    "owner": "GitHub (Microsoft)"
+   }
+  },
+  {
+   "id": "google",
+   "does": "Google OIDC sign-in (platform) and Google Sheets read/write per connection with a service account.",
+   "status": "current",
+   "after": [
+    "core"
+   ],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/core/src/integrations/google/auth.ts",
+    "symbol": "googleAccessToken",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "SYSTEM",
+    "label": "Google (OIDC, Sheets)",
+    "band": "outside",
+    "owner": "Google"
+   }
+  },
+  {
+   "id": "oidc",
+   "does": "A generic OIDC identity provider the operator configures (OIDC_ISSUER_URL) for SSO.",
+   "status": "current",
+   "after": [
+    "core"
+   ],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/core/src/auth/oauth/oidc-provider.ts",
+    "symbol": "oidcProvider",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "SYSTEM",
+    "label": "SSO identity provider",
+    "band": "outside",
+    "owner": "The operator's IdP"
+   }
+  },
+  {
+   "id": "smtp",
+   "does": "Mail relay for verification and invitation emails.",
+   "status": "current",
+   "after": [
+    "core"
+   ],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/core/src/auth/email.ts",
+    "symbol": "sendVerificationEmail",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "SYSTEM",
+    "label": "SMTP relay",
+    "band": "outside",
+    "owner": "The operator's mail provider"
+   }
+  },
+  {
+   "id": "sentry",
+   "does": "Error reporting from core and the browser (scrubbed by scrubSentryEvent), and, per connection, Sentry issue intake by pull and signed webhook.",
+   "status": "current",
+   "after": [
+    "core",
+    "web"
+   ],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/core/src/observability/sentry.ts",
+    "symbol": "initSentry",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "SYSTEM",
+    "label": "Sentry",
+    "band": "outside",
+    "owner": "Sentry (the operator's and each project's org)"
+   }
+  },
+  {
+   "id": "coolify",
+   "does": "Deploy host per connection: dispatch, confirm and health-gate deploys through pg-boss forge.integrations jobs; deploy logs fetched and scrubbed.",
+   "status": "current",
+   "after": [
+    "core"
+   ],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/core/src/integrations/coolify/client.ts",
+    "symbol": "CoolifyClient",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "SYSTEM",
+    "label": "Coolify",
+    "band": "outside",
+    "owner": "The project's deploy host (to confirm)"
+   }
+  },
+  {
+   "id": "rocketchat",
+   "does": "Chat per connection: core opens a DDP websocket for inbound messages and posts questions, comment mirrors and replies over REST.",
+   "status": "current",
+   "after": [
+    "core"
+   ],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/core/src/integrations/rocketchat/ddp-client.ts",
+    "symbol": "RocketChatDdpClient",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "SYSTEM",
+    "label": "Rocket.Chat",
+    "band": "outside",
+    "owner": "The org's chat server (to confirm)"
+   }
+  },
+  {
+   "id": "postman",
+   "does": "Postman per connection: a key test from core, and an MCP endpoint handed to agent sessions.",
+   "status": "current",
+   "after": [
+    "core",
+    "claude"
+   ],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/core/src/integrations/postman/resolver.ts",
+    "symbol": "buildPostmanMcpEntry",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "SYSTEM",
+    "label": "Postman",
+    "band": "outside",
+    "owner": "Postman"
+   }
+  },
+  {
+   "id": "epodsystem",
+   "does": "Epodsystem per connection: GraphQL from core and an MCP endpoint handed to agent sessions.",
+   "status": "current",
+   "after": [
+    "core",
+    "claude"
+   ],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/core/src/integrations/epodsystem/resolver.ts",
+    "symbol": "buildEpodsystemMcpEntry",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "SYSTEM",
+    "label": "Epodsystem",
+    "band": "outside",
+    "owner": "Epodsystem (to confirm)"
+   }
+  },
+  {
+   "id": "anthropic",
+   "does": "Anthropic Messages API for the in-app assistant when it is the chosen chat provider.",
+   "status": "current",
+   "after": [
+    "core"
+   ],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/core/src/assistant/providers/anthropic.ts",
+    "symbol": "createAnthropicProvider",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "SYSTEM",
+    "label": "Anthropic API",
+    "band": "outside",
+    "owner": "Anthropic"
+   }
+  },
+  {
+   "id": "llm-gateway",
+   "does": "OpenAI-compatible gateway (LiteLLM): assistant chat, the fast model for memory extraction, consolidation, rerank and session titles, and vision for images.",
+   "status": "current",
+   "after": [
+    "core"
+   ],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/core/src/memory/llm.ts",
+    "symbol": "callFastModel",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "SYSTEM",
+    "label": "LLM gateway (LiteLLM)",
+    "band": "outside",
+    "owner": "The operator (to confirm)"
+   }
+  },
+  {
+   "id": "embeddings",
+   "does": "OpenAI-shape /v1/embeddings endpoint: memory chunks, knowledge entries, issue titles and search queries.",
+   "status": "current",
+   "after": [
+    "core"
+   ],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/core/src/embeddings/client.ts",
+    "symbol": "EmbeddingsClient",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "SYSTEM",
+    "label": "Embeddings provider",
+    "band": "outside",
+    "owner": "The operator (to confirm)"
+   }
+  },
+  {
+   "id": "webhook-receivers",
+   "does": "Each project's configured URLs: Forge POSTs events signed x-forge-signature-256 through the webhook-delivery queue.",
+   "status": "current",
+   "after": [
+    "core"
+   ],
+   "evidence": {
+    "kind": "repo",
+    "file": "packages/core/src/webhooks/outbound.ts",
+    "symbol": "handleDelivery",
+    "coverage": {
+     "reading": "unmeasured",
+     "atSha": null
+    }
+   },
+   "node": {
+    "type": "SYSTEM",
+    "label": "Project webhook receivers",
+    "band": "outside",
+    "owner": "Each project"
+   }
+  }
+ ],
+ "drift": null,
+ "writtenBy": {},
+ "refreshedAtSha": "4248b8a1073ab8dc6b8c9cab4145a746ac008156",
+ "template": {
+  "id": "system-context",
+  "version": 1
+ },
+ "lanes": [
+  {
+   "id": "people",
+   "label": "People",
+   "tooltip": "Who signs in and works the product."
+  },
+  {
+   "id": "forge",
+   "label": "Forge (hosted)",
+   "tooltip": "What the operator runs: the docker-compose stack."
+  },
+  {
+   "id": "box",
+   "label": "Paired box",
+   "tooltip": "A machine a person paired: the runner daemon and the Claude Code processes it spawns."
+  },
+  {
+   "id": "outside",
+   "label": "Outside systems",
+   "tooltip": "Third-party and operator-run systems Forge calls or is called by."
+  }
+ ],
+ "edges": [
+  {
+   "from": "member",
+   "to": "web",
+   "label": "works issues, runs, chat",
+   "protocol": "HTTPS (browser)"
+  },
+  {
+   "from": "operator",
+   "to": "web",
+   "label": "admin screens",
+   "protocol": "HTTPS (browser)"
+  },
+  {
+   "from": "member",
+   "to": "runner",
+   "label": "pairs the box, binds repos",
+   "protocol": "forge-runner CLI"
+  },
+  {
+   "from": "web",
+   "to": "core",
+   "label": "REST and live rooms",
+   "protocol": "HTTPS + /ws, forge_auth cookie"
+  },
+  {
+   "from": "mcp-client",
+   "to": "core",
+   "label": "Forge tools",
+   "protocol": "MCP over HTTPS, PAT"
+  },
+  {
+   "from": "runner",
+   "to": "core",
+   "label": "claims, leases, events; wake in",
+   "protocol": "REST + /ws, device token"
+  },
+  {
+   "kind": "uses",
+   "from": "runner",
+   "to": "claude",
+   "label": "spawns sessions in panes",
+   "protocol": "local process (tmux)"
+  },
+  {
+   "from": "claude",
+   "to": "core",
+   "label": "phases, comments, memory",
+   "protocol": "MCP over HTTPS, scoped PAT"
+  },
+  {
+   "from": "core",
+   "to": "postgres",
+   "label": "records, queue, outbox, locks",
+   "protocol": "SQL"
+  },
+  {
+   "from": "core",
+   "to": "uploads",
+   "label": "attachments",
+   "protocol": "file I/O"
+  },
+  {
+   "kind": "uses",
+   "from": "core",
+   "to": "github",
+   "label": "login, App API out; webhooks in",
+   "protocol": "OAuth, REST, HMAC webhook"
+  },
+  {
+   "kind": "uses",
+   "from": "runner",
+   "to": "github",
+   "label": "git fetch/push, binaries",
+   "protocol": "git HTTPS/SSH"
+  },
+  {
+   "kind": "uses",
+   "from": "core",
+   "to": "google",
+   "label": "sign-in; Sheets read/write",
+   "protocol": "OIDC, Sheets v4 REST"
+  },
+  {
+   "kind": "reads-from",
+   "from": "core",
+   "to": "oidc",
+   "label": "SSO sign-in",
+   "protocol": "OIDC + PKCE"
+  },
+  {
+   "kind": "writes-to",
+   "from": "core",
+   "to": "smtp",
+   "label": "verification, invitations",
+   "protocol": "SMTP"
+  },
+  {
+   "kind": "uses",
+   "from": "core",
+   "to": "sentry",
+   "label": "errors out; intake pull, webhook in",
+   "protocol": "SDK, REST, HMAC webhook"
+  },
+  {
+   "kind": "writes-to",
+   "from": "web",
+   "to": "sentry",
+   "label": "browser errors",
+   "protocol": "Sentry SDK"
+  },
+  {
+   "kind": "uses",
+   "from": "core",
+   "to": "coolify",
+   "label": "deploy, confirm, health, logs",
+   "protocol": "REST, Bearer"
+  },
+  {
+   "kind": "uses",
+   "from": "core",
+   "to": "rocketchat",
+   "label": "messages out; DDP inbound",
+   "protocol": "REST + DDP websocket"
+  },
+  {
+   "kind": "uses",
+   "from": "core",
+   "to": "postman",
+   "label": "key test",
+   "protocol": "REST"
+  },
+  {
+   "kind": "uses",
+   "from": "claude",
+   "to": "postman",
+   "label": "API tools",
+   "protocol": "MCP, key from Forge"
+  },
+  {
+   "kind": "uses",
+   "from": "core",
+   "to": "epodsystem",
+   "label": "store data",
+   "protocol": "GraphQL"
+  },
+  {
+   "kind": "uses",
+   "from": "claude",
+   "to": "epodsystem",
+   "label": "store tools",
+   "protocol": "MCP, key from Forge"
+  },
+  {
+   "kind": "uses",
+   "from": "core",
+   "to": "anthropic",
+   "label": "assistant chat",
+   "protocol": "Messages REST"
+  },
+  {
+   "kind": "uses",
+   "from": "core",
+   "to": "llm-gateway",
+   "label": "chat, fast model, vision",
+   "protocol": "OpenAI-compatible REST"
+  },
+  {
+   "kind": "uses",
+   "from": "core",
+   "to": "embeddings",
+   "label": "embed text",
+   "protocol": "REST /v1/embeddings"
+  },
+  {
+   "kind": "writes-to",
+   "from": "core",
+   "to": "webhook-receivers",
+   "label": "signed event POSTs",
+   "protocol": "HTTPS, HMAC"
+  }
+ ],
+ "id": "d1a4a17f-fa40-4155-8588-106f10f828d8",
+ "createdAt": "2026-10-04T11:05:33.049Z",
+ "updatedAt": "2026-10-04T11:06:37.567Z"
+}

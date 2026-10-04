@@ -10,7 +10,7 @@ import {
   UI_ACTIONS,
   uiActionJsonSchema,
 } from '@forge/contracts/ui-actions';
-import type { ChatTool } from '../providers/types.js';
+import type { ChatTool } from '../../integrations/llm/types.js';
 import { type ChatToolset, toolError } from './mcp-adapter.js';
 
 export function buildUiActionToolset(): ChatToolset {
