@@ -1,4 +1,4 @@
-export type GitTransport = 'https' | 'ssh' | 'unknown';
+type GitTransport = 'https' | 'ssh' | 'unknown';
 
 export function classifyGitRemote(url: string | null | undefined): GitTransport {
   if (!url) return 'unknown';

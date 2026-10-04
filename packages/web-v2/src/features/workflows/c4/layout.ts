@@ -10,7 +10,7 @@ export interface Pt {
   y: number;
 }
 
-export interface Rect {
+interface Rect {
   x: number;
   y: number;
   w: number;
@@ -24,11 +24,11 @@ export interface Rect {
 export const FONT = { title: 13.5, focal: 15, label: 12, chip: 12, frame: 13 } as const;
 
 /** No text is drawn smaller than this on screen at fit; a diagram that cannot fit folds instead. */
-export const MIN_FONT_PX = 12;
+const MIN_FONT_PX = 12;
 export const MIN_READABLE_ZOOM = MIN_FONT_PX / Math.min(...Object.values(FONT));
 
 export const BOX = { w: 156, h: 60 } as const;
-export const FOCAL_BOX = { w: 168, h: 88 } as const;
+const FOCAL_BOX = { w: 168, h: 88 } as const;
 const LABEL_MAX = 36;
 /** A line label wraps inside this width, onto at most two lines of words. */
 const LABEL_W = 128;
@@ -36,10 +36,10 @@ const LABEL_LINE = 15;
 const FRAME_PAD = { top: 34, side: 16 } as const;
 
 /** A string's drawn width in the UI face, estimated: Vietnamese with its diacritics runs close to 0.56em. */
-export const textWidth = (s: string, size: number) => s.length * size * 0.56;
+const textWidth = (s: string, size: number) => s.length * size * 0.56;
 
 /** A line's words on a diagram: the clause before its first aside, cut at a word inside `max` characters. */
-export function shortLabel(text: string, max = LABEL_MAX): string {
+function shortLabel(text: string, max = LABEL_MAX): string {
   const t = text.trim();
   const clause = t.split(/\s*[(,;:–—]\s*/)[0]?.trim() ?? t;
   const base = clause.length >= 6 ? clause : t;
@@ -116,7 +116,7 @@ export interface Diagram {
 }
 
 /** One kind's dash and colour, or a plain line when it merges relationships of different kinds. */
-export function lineStyle(rels: readonly Relationship[]): { dash: string | undefined; colour: string } {
+function lineStyle(rels: readonly Relationship[]): { dash: string | undefined; colour: string } {
   const kinds = new Map<string, TemplateEdgeKind>(rels.map((r) => [r.kind.id, r.kind]));
   const only = kinds.size === 1 ? [...kinds.values()][0] : undefined;
   return only ? { dash: DASH[only.line], colour: edgeHue(only) } : { dash: undefined, colour: "var(--wf-edge)" };

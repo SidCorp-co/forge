@@ -24,7 +24,7 @@ function duplicates(ids: readonly string[]): string[] {
 }
 
 /** A complete template held to its own consistency: every id it names, it declares. */
-export function templateConsistencyRefusals(t: WorkflowTemplate, base = ''): TemplateRefusal[] {
+function templateConsistencyRefusals(t: WorkflowTemplate, base = ''): TemplateRefusal[] {
   const out: TemplateRefusal[] = [];
   const bad = (path: string, detail: string) =>
     out.push({
@@ -169,7 +169,7 @@ export function templateConsistencyRefusals(t: WorkflowTemplate, base = ''): Tem
 }
 
 /** An extension applied to its base; what it adds is appended, and an id it re-declares is refused. */
-export function applyExtension(
+function applyExtension(
   baseTemplate: WorkflowTemplate,
   ext: WorkflowTemplateExtension,
   base = '',
@@ -250,7 +250,7 @@ export const answersLink = (t: Pick<WorkflowTemplate, 'id' | 'presetOf'>, id: st
   t.id === id || t.presetOf === id;
 
 /** A template's links and preset held to the other templates: each names a template, and types it declares. */
-export function templateLinkRefusals(
+function templateLinkRefusals(
   t: WorkflowTemplate,
   all: readonly WorkflowTemplate[],
   base = '',

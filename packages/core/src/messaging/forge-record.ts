@@ -54,7 +54,7 @@ export interface ForgeRecordFault {
 /**
  * What a body says about a record: one arm or the other, never both and never neither.
  */
-export interface ForgeRecordRead {
+interface ForgeRecordRead {
   readonly record: ForgeRecord | null;
   readonly fault: ForgeRecordFault | null;
 }

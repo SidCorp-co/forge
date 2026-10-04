@@ -9,7 +9,6 @@ import {
 } from '../db/schema.js';
 import { logger } from '../observability/logger.js';
 import { emitEvent } from '../outbox/index.js';
-import { emissionAllowed, noteSuppressed } from './emission-switch.js';
 import { INITIAL_STATE, inhibitorsOf, kindOf, pendingEvaluationsFor, tierOf } from './kinds.js';
 
 /**
@@ -19,7 +18,7 @@ import { INITIAL_STATE, inhibitorsOf, kindOf, pendingEvaluationsFor, tierOf } fr
  * `pipeline/sweeper.ts`, which ticks every 60 seconds. A type declaring
  * `pendingEvaluations: 2` therefore waits two minutes for a second sighting.
  */
-export const EVALUATION_MS = 60_000;
+const EVALUATION_MS = 60_000;
 
 /** A pending record unseen for this long cleared before it earned a delivery. */
 export const PENDING_STALE_MS = 3 * EVALUATION_MS;
@@ -219,11 +218,6 @@ export async function recordAndDeliver(
   input: DeliverInput,
   now: Date = new Date(),
 ): Promise<{ id: string; delivered: number } | null> {
-  if (!emissionAllowed(input.type)) {
-    noteSuppressed(input.type, input.title);
-    return null;
-  }
-
   const kind = kindOf(input.type);
 
   if (kind === 'signal' && input.resolutionKey) {

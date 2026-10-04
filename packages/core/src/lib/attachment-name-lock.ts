@@ -3,9 +3,9 @@ import { lockXact } from './advisory-lock.js';
 
 export type NameCheckExecutor = Pick<typeof db, 'select'>;
 
-export type NameLockTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type NameLockTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-export type NameLockScope = 'issue' | 'comment';
+type NameLockScope = 'issue' | 'comment';
 
 export async function lockAttachmentName(
   tx: NameLockTx,

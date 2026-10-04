@@ -213,7 +213,7 @@ export function linkIssueRefusal(status: RequirementStatus): RequirementRefusal 
 
 // cm:why scenario form is optional per project (Q12); when chosen, the body must read as
 // Given … When … Then, each keyword starting a line, or it is refused rather than stored unparsed
-export function scenarioParses(body: string): boolean {
+function scenarioParses(body: string): boolean {
   const starts = body.split('\n').map((l) => l.trim().split(/\s+/)[0]?.toLowerCase() ?? '');
   const g = starts.indexOf('given');
   const w = starts.indexOf('when');
@@ -234,7 +234,7 @@ export interface LiveCriterion {
   form: CriterionForm;
 }
 
-export interface CriteriaPlan {
+interface CriteriaPlan {
   /** Rows of the base revision this revision keeps unchanged. */
   keep: string[];
   /** Rows of the base revision this revision retires (reworded or removed). */
@@ -319,12 +319,12 @@ export function planCriteria(
   return { ok: true, plan };
 }
 
-export interface BaselinePin {
+interface BaselinePin {
   workflowId: string;
   designRevision: number;
 }
 
-export interface PinPosition {
+interface PinPosition {
   flow: string;
   pinned: number | null;
   approved: number | null;
@@ -342,7 +342,7 @@ export function stalePinsOf(
   );
 }
 
-export interface ContractPin {
+interface ContractPin {
   providerProjectId: string;
   contractSlug: string;
   contractVersion: string;

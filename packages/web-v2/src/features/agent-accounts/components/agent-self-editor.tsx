@@ -65,7 +65,7 @@ const num = (v: string, scale = 1): number | null =>
  * The patch a draft sends: text fields whole, presence keys one by one — an
  * emptied number is sent as `null`, which UNSETS the key so the default folds back.
  */
-export function patchOf(draft: Draft): AgentSelfPatch {
+function patchOf(draft: Draft): AgentSelfPatch {
   return {
     soul: text(draft.soul),
     instructions: text(draft.instructions),

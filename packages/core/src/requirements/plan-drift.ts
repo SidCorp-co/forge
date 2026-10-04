@@ -8,7 +8,7 @@ import { changedSincePlan } from '@forge/contracts/requirements';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 
-export interface PlanDrift {
+interface PlanDrift {
   key: string;
   plannedRevision: number | null;
   currentRevision: number | null;

@@ -73,7 +73,7 @@ export async function runOutboundDispatch(
   }
 }
 
-export interface EnqueueOptions {
+interface EnqueueOptions {
   /** Override default 5x exp backoff for testing. */
   retryLimit?: number;
   retryBackoff?: boolean;

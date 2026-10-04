@@ -53,7 +53,7 @@ export const agentSelfPatchSchema = z
 export type AgentSelfPatch = z.infer<typeof agentSelfPatchSchema>;
 
 /** What a handle with no row reads as: nothing set, today's presence. */
-export function emptySelf(userId: string): AgentSelf {
+function emptySelf(userId: string): AgentSelf {
   return {
     userId,
     soul: null,

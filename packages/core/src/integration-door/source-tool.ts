@@ -35,7 +35,7 @@ import { resolveEffectiveProjectId } from '../projects/index.js';
  * merge, and a `z.enum` that merely omitted `merge` would read as a missing verb rather than as the
  * boundary it is.
  */
-export const KERNEL_VERBS: ReadonlySet<string> = new Set([
+const KERNEL_VERBS: ReadonlySet<string> = new Set([
   'merge',
   'merge-pull-request',
   'merge-request-merge',
@@ -46,7 +46,7 @@ export const KERNEL_VERBS: ReadonlySet<string> = new Set([
   'delete-branch',
 ]);
 
-export function kernelVerbRefusal(action: string): string {
+function kernelVerbRefusal(action: string): string {
   return (
     `\`${action}\` is not one of this tool's actions and will not become one. Merging a pull or ` +
     'merge request is POST /api/issues/:id/merge-pull-request, where the same operation that merges ' +
@@ -207,7 +207,8 @@ async function dispatchAction(input: Input, ctx: McpContext): Promise<unknown> {
   }
 
   const reading = input.action === 'diff' || input.action === 'check-log';
-  if (reading) await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
+  if (reading)
+    await requireCan(actorFor(principal.userId), 'project.read', projectResource(projectId));
   else await requireCan(actorFor(principal.userId), 'project.write', projectResource(projectId));
 
   const host = await resolveSourceHost(projectId, 'agent');

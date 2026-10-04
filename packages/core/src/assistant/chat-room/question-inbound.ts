@@ -64,7 +64,7 @@ async function say(transport: ReplyTransport, text: string): Promise<void> {
 /**
  * Answer, or refuse by name. Always consumes the message.
  */
-export async function handleQuestionThreadReply(args: {
+async function handleQuestionThreadReply(args: {
   questionId: string;
   serverUrl: string;
   m: RocketChatIncomingMessage;

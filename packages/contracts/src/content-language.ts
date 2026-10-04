@@ -4,7 +4,7 @@
 
 import { z } from "zod";
 
-export const CONTENT_LANGUAGE_DEFAULT = "en";
+const CONTENT_LANGUAGE_DEFAULT = "en";
 
 export const CONTENT_LANGUAGE_CHOICES = [
 	{ tag: "en", label: "English" },
@@ -18,8 +18,6 @@ export type ContentLanguageContext = (typeof CONTENT_LANGUAGE_CONTEXTS)[number];
 export const CONTENT_LANGUAGE_REFUSAL_CODES = [
 	"CONTENT_LANGUAGE_INVALID",
 ] as const;
-export type ContentLanguageRefusalCode =
-	(typeof CONTENT_LANGUAGE_REFUSAL_CODES)[number];
 
 export const CONTENT_LANGUAGE_LIMITS = {
 	tagMax: 35,

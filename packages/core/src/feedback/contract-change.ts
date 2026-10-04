@@ -7,7 +7,7 @@ import { feedback } from '../db/schema-feedback.js';
 import { storedText } from '../lib/data-egress.js';
 import { lockFeedback } from './service.js';
 
-export interface ContractChangeFiling {
+interface ContractChangeFiling {
   consumerId: string;
   level: SensitiveDataLevel;
   provider: { id: string; slug: string };
@@ -18,7 +18,7 @@ export interface ContractChangeFiling {
   filer: { userId: string; agency: ActorAgency };
 }
 
-export const contractChangeKey = (providerId: string, slug: string, version: string) =>
+const contractChangeKey = (providerId: string, slug: string, version: string) =>
   `contract-change:${providerId}/${slug}@${version}`;
 
 function bodyOf(f: ContractChangeFiling): string {

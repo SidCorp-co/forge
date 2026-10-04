@@ -18,13 +18,12 @@ import {
   conversations,
   conversationWindows,
 } from '../db/schema-conversations.js';
-import { logger } from '../observability/logger.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import type { Executor } from './db-executor.js';
 import { heartbeatOf } from './presence.js';
 import { GUARD_WINDOW } from './proactivity.js';
 import { readMessages, type StoredConversationMessage } from './store.js';
 import { openOrExtendWindow } from './windows.js';
-import { lockXact } from '../lib/advisory-lock.js';
 
 export type HeartbeatSkip =
   | 'window-open'
@@ -61,7 +60,7 @@ function isAgent(m: StoredConversationMessage, agents: ReadonlySet<string>): boo
 /**
  * Whether a room is owed a heartbeat window, and over which messages.
  */
-export function heartbeatDue(facts: HeartbeatFacts): HeartbeatVerdict {
+function heartbeatDue(facts: HeartbeatFacts): HeartbeatVerdict {
   if (facts.windowOpen) return { due: false, reason: 'window-open' };
   if (facts.lastSettledDecision !== 'nothing-to-say') {
     return { due: false, reason: 'last-window-not-quiet' };

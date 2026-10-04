@@ -12,11 +12,11 @@ import { RETRIEVAL_MAX_RESULTS, searchConversationTranscript } from '../../conve
 import type { CallToolResult } from '../../lib/tool-result.js';
 import { type ChatToolset, toolError } from './mcp-adapter.js';
 
-export const TRANSCRIPT_SEARCH_TOOL_NAME = 'conversation_transcript_search';
+const TRANSCRIPT_SEARCH_TOOL_NAME = 'conversation_transcript_search';
 /** Calls one turn may spend on it. */
-export const SEARCH_MAX_CALLS_PER_TURN = 3;
+const SEARCH_MAX_CALLS_PER_TURN = 3;
 /** Characters of a query this reads; a longer one is refused rather than silently cut. */
-export const SEARCH_QUERY_CAP = 300;
+const SEARCH_QUERY_CAP = 300;
 
 /** Turns a message's transport id into a link the room can follow, or null. */
 export type PermalinkResolver = (externalId: string) => Promise<string | null>;

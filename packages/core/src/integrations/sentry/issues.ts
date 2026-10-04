@@ -21,25 +21,12 @@ import { SENTRY_ISSUE_STATUSES, type SentryIssueDetail, type SentryIssueStatus }
 
 export type { SentryAdapterContext } from './call.js';
 
-export {
-  assertStatsPeriod,
-  nextSentryCursor,
-  SENTRY_LIST_DEFAULT_LIMIT,
-  SENTRY_LIST_DEFAULT_QUERY,
-  SENTRY_LIST_MAX_LIMIT,
-  SENTRY_LIST_MAX_PAGES,
-  type SentryIssueListing,
-  SentryListingFailed,
-  type SentryListRefusal,
-  type SentryListRequest,
-} from './listing.js';
-
-export const SENTRY_ISSUE_READ = 'sentry.issue.read';
-export const SENTRY_ISSUE_SET_STATUS = 'sentry.issue.set-status';
-export const SENTRY_ISSUE_LIST = 'sentry.issue.list';
+const SENTRY_ISSUE_READ = 'sentry.issue.read';
+const SENTRY_ISSUE_SET_STATUS = 'sentry.issue.set-status';
+const SENTRY_ISSUE_LIST = 'sentry.issue.list';
 
 /** Every event name `dispatchOutbound` implements. Named in the refusal for anything else. */
-export const SENTRY_DISPATCH_EVENTS = [
+const SENTRY_DISPATCH_EVENTS = [
   SENTRY_ISSUE_READ,
   SENTRY_ISSUE_SET_STATUS,
   SENTRY_ISSUE_LIST,
@@ -51,13 +38,13 @@ export const SENTRY_DISPATCH_EVENTS = [
  * That identity is what makes a retry a replay rather than a fresh guess: the retry route hands
  * the recorded payload back to the worker, which dispatches it unchanged.
  */
-export interface SentryIssueRequest {
+interface SentryIssueRequest {
   issueId: string;
   targetLabel?: string;
   status?: SentryIssueStatus;
 }
 
-export interface SentryIssueCall {
+interface SentryIssueCall {
   result: OutboundDispatchResult;
   issue: SentryIssueDetail;
 }
@@ -215,7 +202,7 @@ export async function readSentryIssue(
 }
 
 /** Set one Sentry issue's status, and answer with the issue as Sentry now holds it. */
-export async function setSentryIssueStatus(
+async function setSentryIssueStatus(
   ctx: SentryAdapterContext,
   input: SentryIssueRequest,
   requestId?: string,

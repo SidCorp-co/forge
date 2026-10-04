@@ -7,7 +7,6 @@ import { describeMergeRefusal, type MergeCallRefusal } from './merge-refusal.js'
 
 /** GitHub's three ways of landing a branch. Nothing here invents a fourth. */
 export const MERGE_METHODS = ['merge', 'squash', 'rebase'] as const;
-export type MergeMethod = (typeof MERGE_METHODS)[number];
 
 interface MergeAnswer {
   sha?: string;

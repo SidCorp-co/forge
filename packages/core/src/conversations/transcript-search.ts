@@ -24,13 +24,13 @@ import { hasText, PASSAGE_MAX_MESSAGES, WATERMARK_EMPTY } from './transcript-ind
 /** Passages one call may return, however many the caller asks for. */
 export const RETRIEVAL_MAX_RESULTS = 5;
 /** Characters of a passage one hit may carry. */
-export const RETRIEVAL_PASSAGE_CHAR_CAP = 1200;
+const RETRIEVAL_PASSAGE_CHAR_CAP = 1200;
 /** The author label a source row carries. */
-export const SOURCE_LABEL_CAP = 40;
+const SOURCE_LABEL_CAP = 40;
 /**
  * The transport id a source row carries.
  */
-export const SOURCE_EXTERNAL_ID_CAP = 64;
+const SOURCE_EXTERNAL_ID_CAP = 64;
 
 /** One message a passage was built from. */
 export interface PassageSource {

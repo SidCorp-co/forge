@@ -15,7 +15,7 @@ import type {
 import type { WaitingOn } from "@forge/contracts/standing";
 import type { DesignBuildGate, DesignRequirementLink, DesignWaitingKind } from "@forge/contracts/workflows";
 
-export type { DesignBuildGate, DesignRequirementLink, DesignRevisionState };
+export type { DesignBuildGate, DesignRequirementLink };
 export type { Boundary, FactRow, FocalSystem, GraphFacts, GraphNode, IntegrationState, NodeKind, Relationship, SystemGraph };
 
 /** Where core reads a system-context design's graph: one revision, and one whose removed steps it draws too. */
@@ -30,7 +30,7 @@ export type WorkflowKind = "flow" | "state";
 export type DesignStatus = "draft" | "proposed" | "approved" | "returned";
 
 /** A node type is whatever the design's template declares (EVENT, STATE, SCREEN …). */
-export type NodeType = string;
+type NodeType = string;
 
 export interface WorkflowNode {
   type: NodeType;

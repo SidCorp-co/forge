@@ -17,7 +17,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import type { Row } from './read.js';
 import type { TargetFields } from './rules.js';
 
-export interface ResolvedTarget {
+interface ResolvedTarget {
   type: FeedbackTargetType;
   requirementId: string | null;
   issueId: string | null;

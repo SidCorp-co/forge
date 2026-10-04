@@ -181,4 +181,3 @@ export type SkillActivityEventRow = typeof schema.skillActivityEvents.$inferSele
 
 export type KnowledgeEntry = typeof schema.knowledgeEntries.$inferSelect;
 
-

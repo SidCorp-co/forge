@@ -13,7 +13,7 @@ const execFileAsync = promisify(execFile);
 export const GIT_ACCESS = "the project's Settings → Runners → Git access";
 
 /** Waiting commits listed per reading. A longer wait than this is reported as cut short. */
-export const REMOTE_MAX_COMMITS = 1000;
+const REMOTE_MAX_COMMITS = 1000;
 
 /**
  * What one fetch may spend before it is stopped and the reading refused. The byte budget is what
@@ -25,12 +25,12 @@ export const REMOTE_MAX_COMMITS = 1000;
  * under four packs' worth) and its reverse index (4 bytes per object), so the files together stay
  * within the budget with no write landing between two checks.
  */
-export interface FetchLimits {
+interface FetchLimits {
   timeoutMs: number;
   maxBytes: number;
 }
 
-export const REMOTE_FETCH_LIMITS: FetchLimits = { timeoutMs: 60_000, maxBytes: 256 * 1024 * 1024 };
+const REMOTE_FETCH_LIMITS: FetchLimits = { timeoutMs: 60_000, maxBytes: 256 * 1024 * 1024 };
 
 /** The pack, its index and its reverse index share the budget; each file may take this fraction. */
 const PER_FILE_SHARE = 5;
@@ -139,7 +139,7 @@ function boundedFetch(
  * bare repository under `dir`. Only commits are fetched (`--filter=tree:0`) and nothing is fetched
  * lazily afterwards, so a reading costs the branches' history and no file contents.
  */
-export async function fetchDivergence(
+async function fetchDivergence(
   remote: string,
   env: NodeJS.ProcessEnv,
   refs: BranchRefs,

@@ -9,11 +9,11 @@ import { sourceHostForBinding } from './resolve.js';
 import type { SourceHost } from './types.js';
 
 /** The delivery event every merge, refusal and already-merged reading is logged under. */
-export const MERGE_EVENT = 'pull_request.merge';
+const MERGE_EVENT = 'pull_request.merge';
 
 /** Every merge method any host has. A host that lacks one refuses it by name (`words.mergeMethods`). */
 export const CHANGE_REQUEST_MERGE_METHODS = ['merge', 'squash', 'rebase'] as const;
-export type ChangeRequestMergeMethod = (typeof CHANGE_REQUEST_MERGE_METHODS)[number];
+type ChangeRequestMergeMethod = (typeof CHANGE_REQUEST_MERGE_METHODS)[number];
 
 /**
  * Writes the issue's merge stamp in the transaction that marks the projection row, and answers whether
@@ -24,7 +24,7 @@ export type IssueMergeStamp = (
   args: { issueId: string; commitSha: string; mergedAt: Date },
 ) => Promise<{ wrote: boolean }>;
 
-export interface MergeRequest {
+interface MergeRequest {
   /** The `repo_pull_requests` row to merge. */
   pullRequestId: string;
   /** Who asked. A merge with nobody's name on it is refused before anything is read. */
@@ -36,7 +36,7 @@ export interface MergeRequest {
   method?: ChangeRequestMergeMethod | undefined;
 }
 
-export type MergeOutcome =
+type MergeOutcome =
   | {
       kind: 'merged';
       deliveryId: string;

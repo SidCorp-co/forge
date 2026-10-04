@@ -5,14 +5,14 @@ import type { Device } from '../db/schema.js';
 import { parseBearerHeader } from './bearer.js';
 import { declareGate } from './declared-gate.js';
 
-export type AuthedDevice = Device;
+type AuthedDevice = Device;
 
 export type DeviceVars = { device: AuthedDevice };
 
 const unauth = (message: string) =>
   new HTTPException(401, { message, cause: { code: 'UNAUTHENTICATED' } });
 
-export const NOT_A_DEVICE_CREDENTIAL =
+const NOT_A_DEVICE_CREDENTIAL =
   'this route needs the credential a paired box was issued — the token presented ' +
   'carries no device, so it speaks for a person or an agent rather than a machine. ' +
   'Run `forge login` on the box to be issued one. Device tokens minted before Forge ' +

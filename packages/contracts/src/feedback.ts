@@ -8,8 +8,8 @@ import type {
 	AgentReportSeverity,
 	AgentReportTarget,
 } from "./agent-reports.js";
-import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
+import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import type {
 	Standing,
 	StandingGroup,
@@ -193,32 +193,33 @@ export const FEEDBACK_TARGET_LABELS: Record<FeedbackTargetType, string> = {
 	screen: "Screen",
 };
 
-export const FEEDBACK_ATTENTION_LABELS: StandingGroupLabels<FeedbackAttentionGroup> = {
-	needs_you: {
-		label: "Needs you",
-		hint: "Triage it, or confirm the fix you reported",
-		tone: "you",
-		collapsed: false,
-	},
-	moving: {
-		label: "Moving",
-		hint: "An issue, revision or requirement carries it",
-		tone: "run",
-		collapsed: false,
-	},
-	waiting: {
-		label: "Someone else’s turn",
-		hint: "The reporter confirms the fix",
-		tone: "neutral",
-		collapsed: false,
-	},
-	done: {
-		label: "Done",
-		hint: "Verified or declined",
-		tone: "done",
-		collapsed: true,
-	},
-};
+export const FEEDBACK_ATTENTION_LABELS: StandingGroupLabels<FeedbackAttentionGroup> =
+	{
+		needs_you: {
+			label: "Needs you",
+			hint: "Triage it, or confirm the fix you reported",
+			tone: "you",
+			collapsed: false,
+		},
+		moving: {
+			label: "Moving",
+			hint: "An issue, revision or requirement carries it",
+			tone: "run",
+			collapsed: false,
+		},
+		waiting: {
+			label: "Someone else’s turn",
+			hint: "The reporter confirms the fix",
+			tone: "neutral",
+			collapsed: false,
+		},
+		done: {
+			label: "Done",
+			hint: "Verified or declined",
+			tone: "done",
+			collapsed: true,
+		},
+	};
 
 export const FEEDBACK_PHASE_TONES: Record<FeedbackPhase, IssueStatusTone> = {
 	new: "you",
@@ -316,7 +317,7 @@ const ref = z.string().trim().min(1).max(200);
 const reason = z.string().max(FEEDBACK_LIMITS.reason);
 
 /** The target fields a create names exactly one of (FEEDBACK_TARGET_NOT_ONE otherwise). */
-export const feedbackTargetFields = {
+const feedbackTargetFields = {
 	requirement: ref.optional(),
 	issue: ref.optional(),
 	release: ref.optional(),

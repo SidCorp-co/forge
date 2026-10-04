@@ -18,7 +18,7 @@ import { type ChangeRequestHost, repoPullRequests } from '../../db/schema-repo-p
 import { applyPullRequestEvent, type PullRequestPayload } from './projection.js';
 import type { OpenedChangeRequest } from './types.js';
 
-export type OpenedProjectionOutcome =
+type OpenedProjectionOutcome =
   /** This call wrote the row. */
   | 'recorded'
   /**
@@ -31,7 +31,7 @@ export type OpenedProjectionOutcome =
   /** Nothing was written, and `reason` says what stopped it. The pull request still exists. */
   | 'not-recorded';
 
-export interface OpenedProjectionResult {
+interface OpenedProjectionResult {
   outcome: OpenedProjectionOutcome;
   /** The Forge issue the row is linked to, where the head branch names one. */
   issueId: string | null;

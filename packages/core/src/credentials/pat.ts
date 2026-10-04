@@ -3,6 +3,7 @@ import { and, eq, type InferSelectModel, isNull, or, sql } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db, type Tx } from '../db/client.js';
 import { personalAccessTokens, type UserKind, users } from '../db/schema.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import {
   generatePatPlaintext,
   isPatValid,
@@ -12,7 +13,6 @@ import {
 } from './pat-format.js';
 import { patIsLive } from './pat-live.js';
 import { PAT_EXPLICIT_PERMISSIONS, PAT_PERMISSION_ALL } from './pat-permissions.js';
-import { lockXact } from '../lib/advisory-lock.js';
 
 const ARGON2_OPTIONS = {
   type: argon2.argon2id,
@@ -21,11 +21,11 @@ const ARGON2_OPTIONS = {
   parallelism: 1,
 } as const;
 
-export type Pat = InferSelectModel<typeof personalAccessTokens>;
+type Pat = InferSelectModel<typeof personalAccessTokens>;
 
 export { patIsLive } from './pat-live.js';
 
-export interface MintPatInput {
+interface MintPatInput {
   userId: string;
   name: string;
   scopes?: string[] | undefined;
@@ -46,7 +46,7 @@ export interface MintPatInput {
   onBehalfOf?: string | null | undefined;
 }
 
-export interface MintedPat {
+interface MintedPat {
   row: Pat;
   plaintext: string;
 }
@@ -108,7 +108,7 @@ export async function lockPatName(tx: Tx, name: string): Promise<void> {
 }
 
 /** Who a live token is revoked for: its holder, the box it was issued to, or its name. */
-export type TokenHolder = { userId: string } | { deviceId: string } | { name: string };
+type TokenHolder = { userId: string } | { deviceId: string } | { name: string };
 
 /** Revoke every live token of one holder; answers how many. */
 export async function revokeLiveTokens(holder: TokenHolder, tx: Tx = db): Promise<number> {
@@ -149,29 +149,6 @@ export async function supersedeNamedToken(
       ),
     );
 }
-
-export type TokenFence = { projectIds: string[] | null; boundProjectId: string | null };
-
-/** One token's project fence; null when the token is gone. */
-export async function setTokenFence(tx: Tx, tokenId: string, fence: TokenFence): Promise<Pat | null> {
-  const [row] = await tx
-    .update(personalAccessTokens)
-    .set({ projectIds: fence.projectIds, boundProjectId: fence.boundProjectId })
-    .where(eq(personalAccessTokens.id, tokenId))
-    .returning();
-  return row ?? null;
-}
-
-/** Every live token of one holder takes the same fence; answers how many. */
-export async function refenceLiveTokens(tx: Tx, userId: string, fence: TokenFence): Promise<number> {
-  const rows = await tx
-    .update(personalAccessTokens)
-    .set({ projectIds: fence.projectIds, boundProjectId: fence.boundProjectId })
-    .where(and(eq(personalAccessTokens.userId, userId), patIsLive()))
-    .returning({ id: personalAccessTokens.id });
-  return rows.length;
-}
-
 /**
  * A grant with its token-explicit names replaced by `explicit`, its route grant kept; a grant that
  * named no route group (a legacy token) keeps its whole reach as `*`.
@@ -290,123 +267,6 @@ export async function revokePat(id: string, userId: string): Promise<Pat | null>
     .returning();
   return updated ?? existing;
 }
-
-/**
- * Bulk revoke every live PAT for a user. Called from password-change /
- * account-disable hooks (T1, T4 mitigations in the threat model). `reason` is
- * logged, never persisted.
- */
-export async function revokeAllPatsForUser(
-  userId: string,
-  reason: 'password_changed' | 'user_disabled' | 'admin_revoke',
-): Promise<number> {
-  const result = await db
-    .update(personalAccessTokens)
-    .set({ revokedAt: sql`now()` })
-    .where(and(eq(personalAccessTokens.userId, userId), isNull(personalAccessTokens.revokedAt)))
-    .returning({ id: personalAccessTokens.id });
-  if (result.length > 0) {
-    console.info(`[pat] revoked ${result.length} PAT(s) for user ${userId} reason=${reason}`);
-  }
-  return result.length;
-}
-
-export interface RotatePatInput {
-  id: string;
-  userId: string;
-  expiresAt?: Date | null;
-}
-
-/**
- * Replace a token with a fresh one of the same name. The row is read INSIDE the
- * transaction and the revoke scoped to what is live under `(user_id, name)` with
- * the SAME binding (ISS-1184): a read outside is the race, and a rotation may
- * not displace a device-bound row when it is not one — it collides, loudly.
- */
-async function deviceCredentialIsHeldBy(tx: Tx, row: Pat, userId: string): Promise<boolean> {
-  const [live] = await tx
-    .select({ userId: personalAccessTokens.userId })
-    .from(personalAccessTokens)
-    .where(
-      and(
-        eq(personalAccessTokens.deviceId, row.deviceId as string),
-        eq(personalAccessTokens.name, row.name),
-        isNull(personalAccessTokens.revokedAt),
-      ),
-    )
-    .limit(1);
-  return live?.userId === userId;
-}
-
-export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null> {
-  const plaintext = generatePatPlaintext(patEnvForNodeEnv(env.NODE_ENV));
-  const tokenPrefix = plaintext.slice(0, PAT_PREFIX_LEN);
-  const tokenHash = await hashPatPlaintext(plaintext);
-
-  return db.transaction(async (tx) => {
-    const readOwned = async () =>
-      (
-        await tx
-          .select()
-          .from(personalAccessTokens)
-          .where(
-            and(
-              eq(personalAccessTokens.id, input.id),
-              eq(personalAccessTokens.userId, input.userId),
-            ),
-          )
-          .limit(1)
-      )[0];
-    const seen = await readOwned();
-    if (!seen) return null;
-
-    await lockPatName(tx, seen.name);
-    const existing = await readOwned();
-    if (!existing) return null;
-
-    // A device-bound row names a box, and a box has one holder. Rotating one the
-    // box has superseded would mint a second live credential for a machine this
-    // user no longer holds, so it is refused rather than resurrected (ISS-1184).
-    if (existing.deviceId && !(await deviceCredentialIsHeldBy(tx, existing, input.userId))) {
-      return null;
-    }
-
-    await tx
-      .update(personalAccessTokens)
-      .set({ revokedAt: sql`now()` })
-      .where(
-        and(
-          eq(personalAccessTokens.userId, existing.userId),
-          eq(personalAccessTokens.name, existing.name),
-          isNull(personalAccessTokens.revokedAt),
-          sql`${personalAccessTokens.deviceId} is not distinct from ${existing.deviceId}`,
-        ),
-      );
-
-    const [row] = await tx
-      .insert(personalAccessTokens)
-      .values({
-        userId: existing.userId,
-        name: existing.name,
-        tokenHash,
-        tokenPrefix,
-        scopes: existing.scopes,
-        projectIds: existing.projectIds,
-        permissions: existing.permissions,
-        grantEpoch: existing.grantEpoch,
-        boundProjectId: existing.boundProjectId,
-        deviceId: existing.deviceId,
-        expiresAt: input.expiresAt ?? existing.expiresAt,
-        rateLimitMax: existing.rateLimitMax,
-        onBehalfOf: existing.onBehalfOf,
-      })
-      .returning();
-
-    if (!row) throw new Error('rotatePat: insert returned no row');
-    return { row, plaintext };
-  });
-}
-
 /** Count active PATs for a user. Used for the per-user cap. */
 export async function countActivePatsForUser(userId: string): Promise<number> {
   const rows = await db

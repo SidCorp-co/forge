@@ -53,7 +53,7 @@ export async function agentCredentialFence(
  * credential core mints for an agent names them, because a token reaches one only by name: the
  * org admin's grant on the membership is what decides, and the credential carries it.
  */
-export async function agentExplicitGrant(agentUserId: string, tx: Tx = db): Promise<string[]> {
+async function agentExplicitGrant(agentUserId: string, tx: Tx = db): Promise<string[]> {
   const rows = await tx
     .select({ grants: projectMembers.grants })
     .from(projectMembers)

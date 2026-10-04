@@ -86,13 +86,13 @@ export interface RunTotals {
   isError?: boolean | undefined;
 }
 
-export interface ParseResult {
+interface ParseResult {
   messages: AgentMessage[];
   sessionId?: string | undefined;
 }
 
 /** Monotonic id generator scoped to a single derive pass. */
-export function createIdFactory(): () => string {
+function createIdFactory(): () => string {
   let counter = 0;
   return () => `msg-${++counter}`;
 }
@@ -356,19 +356,13 @@ export function mergeMessages(messages: AgentMessage[], parsed: AgentMessage[]):
 }
 
 /** A persisted job_event row, narrowed to the fields the derive reads. */
-export interface JobEventLike {
+interface JobEventLike {
   kind: string;
   data: unknown;
   /** Persisted event time (job_events.ts). Used as the message timestamp so
    *  re-derives are deterministic; absent → falls back to Date.now(). */
   ts?: Date | string | number | null;
 }
-
-export interface DerivedSession {
-  messages: AgentMessage[];
-  claudeSessionId: string | null;
-}
-
 /** Coerce a job_event `ts` (Date | ISO string | epoch ms) to epoch ms, or
  *  undefined when absent/unparseable so parseStreamMessages keeps its default. */
 function toEventTimestamp(ts: Date | string | number | null | undefined): number | undefined {
@@ -439,20 +433,4 @@ export function applyEventsToState(state: DeriveState, events: JobEventLike[]): 
       if (typeof sid === 'string' && sid.length > 0) state.claudeSessionId = sid;
     }
   }
-}
-
-/**
- * Re-derive the full session transcript from a job's ordered job_events — the
- * whole-list call of the fold above, and the authoritative one.
- *
- * The result is byte-equivalent to what the desktop SessionTracker accumulates
- * incrementally, so it is fully idempotent: the same events always yield the
- * same `AgentMessage[]`.
- *
- * `events` MUST be ordered by seq (caller responsibility).
- */
-export function buildSessionFromEvents(events: JobEventLike[]): DerivedSession {
-  const state = createDeriveState();
-  applyEventsToState(state, events);
-  return { messages: state.messages, claudeSessionId: state.claudeSessionId };
 }

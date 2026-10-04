@@ -1,6 +1,4 @@
 "use client";
-
-import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -222,73 +220,6 @@ export function useActiveRunners(projectId: string | null) {
 		queryFn: () => runnersApi.listActiveRunners(projectId as string),
 		enabled: !!projectId,
 		refetchInterval: 10_000,
-	});
-}
-
-export function useGitCredential(projectId: string | null) {
-	return useQuery({
-		queryKey: ["projects", projectId, "git-credential"],
-		queryFn: () => runnersApi.getGitCredential(projectId as string),
-		enabled: !!projectId,
-	});
-}
-
-export function useSetGitCredential(projectId: string) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: (sshKeyId: string) => runnersApi.setGitCredential(projectId, sshKeyId),
-		onSuccess: () => {
-			qc.invalidateQueries({
-				queryKey: ["projects", projectId, "git-credential"],
-			});
-			toast({ title: "Git access key set", tone: "success" });
-		},
-		onError: (err) => {
-			const description =
-				err instanceof ApiError && err.code === "WRONG_ORG"
-					? "That key belongs to a different organization — pick one from this project's org."
-					: formatApiError(err);
-			toast({ title: "Could not set key", description, tone: "error" });
-		},
-	});
-}
-
-export function useDeleteGitCredential(projectId: string) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: () => runnersApi.deleteGitCredential(projectId),
-		onSuccess: () => {
-			qc.invalidateQueries({
-				queryKey: ["projects", projectId, "git-credential"],
-			});
-			toast({ title: "Deploy key removed", tone: "success" });
-		},
-		onError: (err) =>
-			toast({
-				title: "Remove failed",
-				description: formatApiError(err),
-				tone: "error",
-			}),
-	});
-}
-
-/**
- * Probe the stored deploy key against the repo (git ls-remote). Non-mutating —
- * exposes the result via `mutation.data` for an inline banner; only surfaces a
- * toast when the request itself fails (misconfig: no key / non-SSH URL / 503).
- */
-export function useTestGitCredential(projectId: string) {
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: () => runnersApi.testGitCredential(projectId),
-		onError: (err) =>
-			toast({
-				title: "Could not test connection",
-				description: formatApiError(err),
-				tone: "error",
-			}),
 	});
 }
 

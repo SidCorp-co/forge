@@ -28,7 +28,7 @@ export function cmpVersion(a: string, b: string): number {
 }
 
 /** Strip the `runner-v` tag prefix to the bare version, e.g. `runner-v0.2.11` → `0.2.11`. */
-export function tagToVersion(tag: string): string {
+function tagToVersion(tag: string): string {
   return tag.startsWith(TAG_PREFIX) ? tag.slice(TAG_PREFIX.length) : tag;
 }
 
@@ -37,7 +37,7 @@ export function tagToVersion(tag: string): string {
  * prereleases, and non-`runner-v` tags. Returns null when none qualify. Pure —
  * unit-tested in fetch-release.test.ts.
  */
-export function pickLatestRunnerTag(releases: Release[]): Release | null {
+function pickLatestRunnerTag(releases: Release[]): Release | null {
   const runner = releases.filter(
     (r) => !r.draft && !r.prerelease && r.tag_name.startsWith(TAG_PREFIX),
   );
@@ -60,7 +60,7 @@ async function latestRunnerRelease(): Promise<Release | null> {
   return pickLatestRunnerTag(await listRepoReleases(REPO));
 }
 
-export async function run(): Promise<void> {
+async function run(): Promise<void> {
   const dir = process.env.RUNNER_RELEASE_DIR;
   if (!dir) {
     console.log('[runner-release] RUNNER_RELEASE_DIR unset — skipping runner asset fetch');

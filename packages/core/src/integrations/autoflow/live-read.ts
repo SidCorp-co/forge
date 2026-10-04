@@ -6,7 +6,7 @@ import type { AutoflowConfig, AutoflowSecrets } from './types.js';
 
 const LIVE_READ_TIMEOUT_MS = 5_000;
 
-export type AutoflowLiveRead =
+type AutoflowLiveRead =
   | { readonly ok: true; readonly data: Record<string, unknown> }
   | { readonly ok: false; readonly reason: string };
 

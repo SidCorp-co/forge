@@ -4,7 +4,7 @@ import type { ResolvedSentryTarget } from './targets.js';
 import type { SentryIssueDetail } from './types.js';
 
 /** What a pull asks Sentry for when the caller names nothing narrower. */
-export const SENTRY_LIST_DEFAULT_QUERY = 'is:unresolved';
+const SENTRY_LIST_DEFAULT_QUERY = 'is:unresolved';
 export const SENTRY_LIST_DEFAULT_LIMIT = 100;
 export const SENTRY_LIST_MAX_LIMIT = 100;
 export const SENTRY_LIST_MAX_PAGES = 10;

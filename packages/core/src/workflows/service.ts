@@ -105,7 +105,7 @@ async function designsOf(
 }
 
 const templateFor = (doc: WorkflowWrite, templates: readonly WorkflowTemplate[]) =>
-  doc.version === 2 ? findTemplate(templates, doc.template) : null;
+  findTemplate(templates, doc.template);
 
 export async function assertWriter(writer: WorkflowWriter, projectId: string): Promise<void> {
   await requireCan(
@@ -153,7 +153,7 @@ export async function createWorkflow(input: {
     const holding = await workflowHolding(tx, projectId, doc.flow);
     if (holding) return { ok: false, refusals: [duplicateWorkflowRefusal(doc.flow, holding)] };
     const row = await insertWorkflow(tx, doc, writer.userId, {
-      designStatus: designStatusAtCreate(doc),
+      designStatus: designStatusAtCreate(),
       designFingerprint: designFingerprint(doc, templateFor(doc, facts.templates)),
       approvedRevision: null,
     });

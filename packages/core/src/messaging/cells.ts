@@ -100,22 +100,6 @@ const SHIPPED: readonly CellSpec[] = [
 ];
 
 const registry = new Map<CellId, CellSpec>(SHIPPED.map((c) => [c.id, c]));
-
-/** How a third audience arrives: its cells are rows, not a branch in the screen. */
-export function registerCell(spec: CellSpec): void {
-  registry.set(spec.id, spec);
-}
-
 export function cellFor(audience: Audience, intent: Intent): CellSpec | undefined {
   return registry.get(cellId(audience, intent));
-}
-
-export function registeredCells(): CellSpec[] {
-  return [...registry.values()].sort((a, b) => a.id.localeCompare(b.id));
-}
-
-/** Test seam — resets to what ships, rather than to nothing. */
-export function clearRegisteredCells(): void {
-  registry.clear();
-  for (const c of SHIPPED) registry.set(c.id, c);
 }

@@ -27,7 +27,7 @@ function speakerPhrase(ref: SpeakerRef): string {
  * The way out, carried in the refusal itself rather than left for the reader to
  * find: what was wrong, who was not found, and the step that fixes it.
  */
-export function unlinkedMessage(ref: SpeakerRef, projectId?: string): string {
+function unlinkedMessage(ref: SpeakerRef, projectId?: string): string {
   const url = projectId
     ? speakerLinkUrl({ projectId, source: ref.source, externalId: ref.externalId })
     : null;

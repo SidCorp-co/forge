@@ -12,7 +12,7 @@ import { answerStyles } from '../../db/schema.js';
 import type { ContextScopedMcpToolFactory } from '../../lib/tool.js';
 import { writeAssistantPreferences } from '../../preferences/index.js';
 
-export const ASSISTANT_INSTRUCTIONS_MAX = 2000;
+const ASSISTANT_INSTRUCTIONS_MAX = 2000;
 
 const input = z
   .object({

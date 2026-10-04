@@ -18,7 +18,7 @@ import {
 import { logger } from '../observability/logger.js';
 import type { RoutedWindow, RouteWindowArgs } from './route-window.js';
 
-export const AUTHORITY_REFUSED_REPLY =
+const AUTHORITY_REFUSED_REPLY =
   'I cannot answer in this room: the account speaking here is not linked to a Forge user, so there is nobody for me to act as. Link your chat account to your Forge account and ask again.';
 
 /**

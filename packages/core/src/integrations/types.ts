@@ -12,7 +12,6 @@ export type IntegrationProvider =
   | 'rocketchat'
   | 'github'
   | 'gitlab'
-  | 'google'
   | 'agent'
   | 'autoflow';
 
@@ -23,7 +22,6 @@ export const INTEGRATION_PROVIDERS = [
   'rocketchat',
   'github',
   'gitlab',
-  'google',
   'agent',
   'autoflow',
 ] as const satisfies readonly IntegrationProvider[];
@@ -186,7 +184,7 @@ export type AgentPath =
 export type AgentPathKind = AgentPath['kind'];
 
 /** The shape every provider that is not `direct-mcp` takes when it does not say otherwise. */
-export const CORE_MEDIATED_BY_DEFAULT: AgentPath = { kind: 'core-mediated', tools: [] };
+const CORE_MEDIATED_BY_DEFAULT: AgentPath = { kind: 'core-mediated', tools: [] };
 
 /**
  * Declares which integration surfaces a provider actually supports, so the UI, the connection and
@@ -502,7 +500,7 @@ export interface GitCredentialMint {
 }
 
 /** The declaration as an author writes it: `agentPath` is the one field that may be left out. */
-export type IntegrationDeclarationInput<
+type IntegrationDeclarationInput<
   TConfig extends Record<string, unknown> = Record<string, unknown>,
   TSecrets extends Record<string, unknown> = Record<string, unknown>,
 > = Omit<IntegrationDeclaration<TConfig, TSecrets>, 'capabilities'> & {

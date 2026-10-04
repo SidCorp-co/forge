@@ -33,7 +33,7 @@ function notFound(err: unknown): boolean {
 }
 
 /** The GitLab host over one binding's client. */
-export function gitlabSourceHostOf(client: GitLabClient): SourceHost {
+function gitlabSourceHostOf(client: GitLabClient): SourceHost {
   const commitsBetween = async (from: string, to: string): Promise<CommitBody[]> =>
     (
       await client.json<CompareBody>(

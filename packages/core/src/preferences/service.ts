@@ -17,6 +17,7 @@ import {
   type PreferenceChangeField,
   preferenceChanges,
 } from '../db/schema-agent-selves.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import { refuser } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
 import {
@@ -25,10 +26,8 @@ import {
   ME_PREFERENCE_DEFAULTS,
   ME_PREFERENCES,
 } from './read.js';
-import { lockXact } from '../lib/advisory-lock.js';
 
 const refuse = refuser<AuthRefusalCode>('AUTH_REFUSED');
-
 
 export interface AssistantPreferences {
   userId: string;
@@ -254,7 +253,10 @@ type PreferenceValues = typeof userPreferences.$inferInsert;
  */
 export async function writeDisplayPreferences(
   userId: string,
-  patch: { theme?: PreferenceValues['theme'] | undefined; language?: PreferenceValues['language'] | undefined },
+  patch: {
+    theme?: PreferenceValues['theme'] | undefined;
+    language?: PreferenceValues['language'] | undefined;
+  },
 ) {
   const { theme, language } = patch;
   return defaultDb.transaction(async (tx) => {
@@ -288,7 +290,6 @@ export interface MePreferencePatch {
   theme?: PreferenceValues['theme'] | undefined;
   language?: PreferenceValues['language'] | undefined;
   notifyOnMention?: boolean | undefined;
-  lastSeenWhatsNew?: string | undefined;
   activeOrgId?: string | null | undefined;
 }
 
@@ -301,7 +302,6 @@ export async function writeMePreferences(userId: string, patch: MePreferencePatc
       theme: patch.theme ?? ME_PREFERENCE_DEFAULTS.theme,
       language: patch.language ?? ME_PREFERENCE_DEFAULTS.language,
       notifyOnMention: patch.notifyOnMention ?? ME_PREFERENCE_DEFAULTS.notifyOnMention,
-      lastSeenWhatsNew: patch.lastSeenWhatsNew ?? ME_PREFERENCE_DEFAULTS.lastSeenWhatsNew,
       activeOrgId: patch.activeOrgId ?? ME_PREFERENCE_DEFAULTS.activeOrgId,
     })
     .onConflictDoUpdate({
@@ -310,9 +310,6 @@ export async function writeMePreferences(userId: string, patch: MePreferencePatc
         ...(patch.theme !== undefined ? { theme: patch.theme } : {}),
         ...(patch.language !== undefined ? { language: patch.language } : {}),
         ...(patch.notifyOnMention !== undefined ? { notifyOnMention: patch.notifyOnMention } : {}),
-        ...(patch.lastSeenWhatsNew !== undefined
-          ? { lastSeenWhatsNew: patch.lastSeenWhatsNew }
-          : {}),
         ...(patch.activeOrgId !== undefined ? { activeOrgId: patch.activeOrgId } : {}),
         updatedAt: new Date(),
       },

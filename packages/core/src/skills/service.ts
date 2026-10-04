@@ -1,4 +1,4 @@
-import { and, eq, isNotNull } from 'drizzle-orm';
+import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects, runners, type SkillTarget, skills } from '../db/schema.js';
 import { RefusalError } from '../lib/refusal.js';
@@ -163,7 +163,59 @@ export async function createProjectSkill(input: CreateProjectSkillInput): Promis
   return inserted;
 }
 
-interface UpdateProjectSkillPatch {
+/**
+ * Installs a seeded global skill into a project as its install-only copy, so the device manifest
+ * carries it; refreshed when the template moved. Meta skills come only this way, never through
+ * `createProjectSkill`. Null when no global template of that name was seeded.
+ */
+export async function installBuiltinSkill(
+  projectId: string,
+  name: string,
+): Promise<{ skillId: string } | null> {
+  const [template] = await db
+    .select()
+    .from(skills)
+    .where(and(eq(skills.scope, 'global'), eq(skills.name, name)))
+    .limit(1);
+  if (!template) return null;
+  const body = {
+    description: template.description,
+    prompt: template.prompt,
+    tools: template.tools,
+    manifest: template.manifest,
+    source: template.source,
+    contentHash: template.contentHash,
+    skillMd: template.skillMd,
+    target: template.target,
+    files: template.files,
+    localGuide: template.localGuide,
+    basedOnGlobalSkillId: template.id,
+    basedOnGlobalVersion: template.version,
+    installOnly: true,
+  };
+  const [existing] = await db
+    .select({ id: skills.id, contentHash: skills.contentHash, installOnly: skills.installOnly })
+    .from(skills)
+    .where(and(eq(skills.scope, 'project'), eq(skills.projectId, projectId), eq(skills.name, name)))
+    .limit(1);
+  if (!existing) {
+    const [inserted] = await db
+      .insert(skills)
+      .values({ name, scope: 'project', projectId, ...body })
+      .returning({ id: skills.id });
+    if (!inserted) throw new Error('skills: insert returned no row');
+    return { skillId: inserted.id };
+  }
+  if (existing.contentHash !== template.contentHash || !existing.installOnly) {
+    await db
+      .update(skills)
+      .set({ ...body, version: sql`${skills.version} + 1`, updatedAt: new Date() })
+      .where(eq(skills.id, existing.id));
+  }
+  return { skillId: existing.id };
+}
+
+export interface UpdateProjectSkillPatch {
   name?: string | undefined;
   description?: string | undefined;
   skillMd?: string | undefined;
