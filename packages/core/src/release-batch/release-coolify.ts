@@ -19,6 +19,7 @@ import {
   setCurrentStep,
 } from '../pipeline/index.js';
 import { type DeployMap, readDeployMap } from '../project-config/index.js';
+import { releaseBatchPorts } from './ports.js';
 import { productionDeploysOnLand } from './production-trigger.js';
 import {
   type DeployLockIntent,
@@ -361,13 +362,10 @@ async function markPendingHumanConfirm(input: {
     confirmedAt: null,
     ...(input.lock ? { lock: input.lock } : {}),
   };
-  await db
-    .update(pipelineRuns)
-    .set({
-      metadata: { ...current, [GATE_METADATA_KEY]: gates },
-      updatedAt: new Date(),
-    })
-    .where(eq(pipelineRuns.id, input.runId));
+  await releaseBatchPorts().writeRunMetadata(input.runId, {
+    merge: { [GATE_METADATA_KEY]: gates },
+    touch: true,
+  });
 
   await setCurrentStep(input.runId, RELEASE_DEPLOY_PENDING);
 
@@ -460,10 +458,10 @@ export async function confirmPendingProdDeploy(
       confirmedAt: new Date().toISOString(),
       ...(confirmedByUserId ? { confirmedByUserId } : {}),
     };
-    await db
-      .update(pipelineRuns)
-      .set({ metadata: { ...md, [GATE_METADATA_KEY]: gates }, updatedAt: new Date() })
-      .where(eq(pipelineRuns.id, run.id));
+    await releaseBatchPorts().writeRunMetadata(run.id, {
+      merge: { [GATE_METADATA_KEY]: gates },
+      touch: true,
+    });
 
     await setCurrentStep(run.id, RELEASE_DEPLOY_IN_FLIGHT_STEP);
 

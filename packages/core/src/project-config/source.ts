@@ -1,7 +1,7 @@
 import type { ProjectDocument } from './schema.js';
 import { readProjectDocument } from './service.js';
 
-export type GitTransport = 'ssh' | 'https';
+type GitTransport = 'ssh' | 'https';
 
 export function repositoryOf(document: ProjectDocument | null | undefined): string | null {
   return document?.source.type === 'git' ? document.source.git.repository : null;

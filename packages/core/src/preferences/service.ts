@@ -30,7 +30,7 @@ import {
 
 const refuse = refuser<AuthRefusalCode>('AUTH_REFUSED');
 
-export interface AssistantPreferences {
+interface AssistantPreferences {
   userId: string;
   answerStyle: AnswerStyle;
   assistantInstructions: string | null;
@@ -57,7 +57,7 @@ interface PreferenceActor {
   userId: string | null;
 }
 
-export interface PreferenceChange {
+interface PreferenceChange {
   id: string;
   userId: string;
   field: PreferenceChangeField;

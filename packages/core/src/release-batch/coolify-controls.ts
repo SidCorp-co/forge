@@ -40,7 +40,7 @@ import { enqueueCoolifyConfirm } from './coolify-confirm.js';
 import { liveActionNeedsHumanConfirm } from './release-coolify.js';
 
 /** A bound target with the identity Coolify reports for it. */
-export interface CoolifyTargetIdentity extends CoolifyApplicationSummary {
+interface CoolifyTargetIdentity extends CoolifyApplicationSummary {
   targetId: string;
   label: string;
   /** `false` when Coolify does not list this `resourceUuid` at all. */

@@ -402,7 +402,7 @@ const RETIRED_APPROVERS = [
 
 // Approval is a permission (ADR 0007): a write naming the person-or-master knob is refused by name,
 // so nobody sets a policy that no longer decides anything.
-export function checkRetiredApprovers(
+function checkRetiredApprovers(
   doc: Pick<ProjectDocument, 'workflows' | 'contracts'>,
 ): ConfigRefusal[] {
   return RETIRED_APPROVERS.flatMap(([section, key, permission]) => {

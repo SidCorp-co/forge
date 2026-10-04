@@ -90,7 +90,7 @@ export async function readLiveCommit(cfg: VerifyConfig): Promise<string | null> 
   return (await readLiveState(cfg)).identity;
 }
 
-export type VerifyOutcome =
+type VerifyOutcome =
   | {
       ok: true;
       commit: string;

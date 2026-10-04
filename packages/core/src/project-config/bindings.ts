@@ -11,7 +11,7 @@ const store: BindingStore = drizzleBindingStore;
 
 type HeldBinding = { revision: number; document: BindingDocument };
 
-export type BindingRead = { ok: true; held: HeldBinding } | { ok: false; unrepresentable: string };
+type BindingRead = { ok: true; held: HeldBinding } | { ok: false; unrepresentable: string };
 
 function toDocument(row: StoredBinding): BindingRead {
   const decoded = decodeTarget(row);

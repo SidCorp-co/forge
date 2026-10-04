@@ -169,7 +169,7 @@ export async function isOpenReleaseBatchRun(projectId: string, runId: string): P
   );
 }
 
-export interface ActiveReleaseBatchInfo {
+interface ActiveReleaseBatchInfo {
   runId: string;
   issueIds: string[];
   startedAt: string;
@@ -211,7 +211,7 @@ export async function getActiveReleaseBatch(
   };
 }
 
-export interface ReleaseBatchIssue {
+interface ReleaseBatchIssue {
   id: string;
   displayId: string;
   title: string;
@@ -235,7 +235,7 @@ interface ReleaseRunnerAccount {
   claimedByDeviceId: string | null;
 }
 
-export interface ReleaseBatchContext {
+interface ReleaseBatchContext {
   runId: string;
   projectId: string;
   gateStatus: IssueStatus;

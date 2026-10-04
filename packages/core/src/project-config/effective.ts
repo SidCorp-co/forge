@@ -9,20 +9,15 @@ import {
   readProjectConfig,
 } from './service.js';
 
-export type EffectiveLayer =
-  | 'project'
-  | 'policy'
-  | 'testing-profile'
-  | 'device-binding'
-  | 'binding';
+type EffectiveLayer = 'project' | 'policy' | 'testing-profile' | 'device-binding' | 'binding';
 
-export interface EffectiveValue {
+interface EffectiveValue {
   value: unknown;
   from: EffectiveLayer;
   revision?: number;
 }
 
-export type EffectiveConfig =
+type EffectiveConfig =
   | { declared: false; revision: null }
   | {
       declared: true;

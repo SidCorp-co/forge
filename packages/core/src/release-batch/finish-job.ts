@@ -49,13 +49,7 @@ const FINISH_UNTAKEN_MS = 60_000;
 
 const RELEASE_FINISH_QUEUE = 'release-batch-finish';
 
-export {
-  type FinishRefusal,
-  type FinishState,
-  isInFlight,
-  type ReleaseFinishRecord,
-  readFinishRecord,
-} from './finish-record.js';
+export { isInFlight, type ReleaseFinishRecord, readFinishRecord } from './finish-record.js';
 
 // ── The door ────────────────────────────────────────────────────────────────
 

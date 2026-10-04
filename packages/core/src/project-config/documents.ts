@@ -11,7 +11,7 @@ export interface ApiRefusal extends Omit<ConfigRefusal, 'code'> {
   code: ProjectConfigRefusalCode;
 }
 
-export type Parsed<T> = { ok: true; value: T } | { ok: false; refusals: ApiRefusal[] };
+type Parsed<T> = { ok: true; value: T } | { ok: false; refusals: ApiRefusal[] };
 
 export { pointer };
 

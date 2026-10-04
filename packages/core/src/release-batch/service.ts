@@ -511,14 +511,9 @@ export async function abortReleaseBatch(
 }
 
 export {
-  type ActiveReleaseBatchInfo,
   findReleaseBatchRun,
   getActiveReleaseBatch,
   isOpenReleaseBatchRun,
   loadReleaseBatchContext,
   loadReleaseRoster,
-  type ReleaseBatchContext,
-  type ReleaseBatchIssue,
-  type ReleaseRoster,
-  type ReleaseRosterEntry,
 } from './queries.js';

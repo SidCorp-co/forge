@@ -2,7 +2,7 @@ import type { StoredBinding } from './binding-store.js';
 import { isRecord } from './documents.js';
 import { type BindingDocument, bindingDocumentSchema } from './schema.js';
 
-export type Target = BindingDocument['target'];
+type Target = BindingDocument['target'];
 
 interface Encoded {
   provider: string;
@@ -56,9 +56,7 @@ export function encodeTarget(target: Target): Encoded {
   };
 }
 
-export type Decoded =
-  | { ok: true; target: Target }
-  | { ok: false; reason: string; wouldDrop: boolean };
+type Decoded = { ok: true; target: Target } | { ok: false; reason: string; wouldDrop: boolean };
 
 function applicationsOf(targets: unknown): unknown {
   if (!Array.isArray(targets)) return targets;

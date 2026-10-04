@@ -14,14 +14,7 @@ import {
 import { blockerRefusal } from './refuse.js';
 import type { VerifyConfig } from './verify.js';
 
-export type {
-  CloseVerification,
-  ReleaseChannel,
-  ReleasePlan,
-  ReleaseRollback,
-  ReleaseVerification,
-} from './plan.js';
-export { RELEASE_PROCEDURE_FACT } from './plan.js';
+export type { CloseVerification, ReleaseChannel, ReleaseVerification } from './plan.js';
 
 /**
  * Read the production connection's stored `rollback` into what a release agent may act on.
@@ -92,7 +85,7 @@ export async function resolveReleaseChannels(projectId: string): Promise<Release
 }
 
 /** How the binding is named where a person has to find it: environment, provider, store slug, id. */
-export function bindingName(channel: ReleaseChannel): string {
+function bindingName(channel: ReleaseChannel): string {
   const named = channel.label ? `${channel.provider} [${channel.label}]` : channel.provider;
   return `environment \`${channel.environment}\` (${named} ${channel.bindingId})`;
 }
