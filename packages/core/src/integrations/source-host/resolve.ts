@@ -57,7 +57,7 @@ function buildFrom(pair: BindingWithConnection): SourceHost {
  * Where the project document declares a repository, only a binding serving that repository's host
  * is a candidate: a GitHub binding on a project whose repository is on gitlab.com is refused as
  * `host_mismatch`, never read as if it reached that repository. A `kernel` read takes only active
- * bindings, so a project with none answers `no_binding` and its deploy key may be used instead; an
+ * bindings, so a project with none answers `no_binding`; an
  * `agent` verb tells a switched-off binding and an ungranted one apart.
  */
 export async function resolveSourceHost(

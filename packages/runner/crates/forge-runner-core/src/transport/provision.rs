@@ -17,11 +17,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-/// One queued provision for this device. `ssh_private_key` is present only when
-/// the project has a git credential AND the server could decrypt it;
-/// `mcp_credential` only when the server could resolve the identity this box
-/// acts as. Both are secrets — see the hand-written `Debug` below, which
-/// redacts them so a `{:?}` in a log line cannot leak one.
+/// One queued provision for this device. `mcp_credential` is present only when
+/// the server could resolve the identity this box acts as. It is a secret — see the hand-written `Debug` below, which
+/// redacts it so a `{:?}` in a log line cannot leak one.
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Provision {
@@ -31,9 +29,6 @@ pub struct Provision {
     pub repo_path: Option<String>,
     pub branch: Option<String>,
     pub repo_url: Option<String>,
-    pub ssh_key_source: Option<String>,
-    pub ssh_public_key: Option<String>,
-    pub ssh_private_key: Option<String>,
     /// Point git's credential helper at the repository's host: core mints a credential per ask,
     /// whichever source host it is (ISS-50).
     #[serde(default)]
@@ -58,9 +53,6 @@ impl std::fmt::Debug for Provision {
             .field("repo_path", &self.repo_path)
             .field("branch", &self.branch)
             .field("repo_url", &self.repo_url)
-            .field("ssh_key_source", &self.ssh_key_source)
-            .field("ssh_public_key", &self.ssh_public_key)
-            .field("ssh_private_key", &held(&self.ssh_private_key))
             .field("host_credential", &self.host_credential)
             .field("github_app_credential", &self.github_app_credential)
             .field("mcp_credential", &held(&self.mcp_credential))

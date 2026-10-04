@@ -105,7 +105,7 @@ pub async fn at_risk(run: &Run) -> Option<Held> {
     }
     // The credential is read at the path too, so it is resolved only here,
     // once the path has answered for itself (consult on 9ecec0c09 F1).
-    let cred = &RepoCred::of(run.project_id.as_deref(), worktree).await;
+    let cred = &RepoCred::of(worktree).await;
     let head = git_line(worktree, &["rev-parse", "HEAD"]).await?;
     // A detached checkout answers `HEAD`, which is no branch at all, and a
     // report naming it as one sends a reader looking for a branch that is not

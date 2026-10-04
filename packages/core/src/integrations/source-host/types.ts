@@ -130,7 +130,7 @@ export interface SourceHost {
   compare(base: string, head: string): Promise<HostCompare>;
   /** Whether `branch` contains `sha`. */
   branchContains(branch: string, sha: string): Promise<boolean>;
-  readDivergence(refs: { baseRef: string; liveRef: string }): Promise<LiveDivergence>;
+  readDivergence(refs: BranchRefs): Promise<LiveDivergence>;
   /** A file's text at `ref`, held to the blob id the host names, or why there is none. */
   readFile(path: string, ref: string, maxBytes: number): Promise<string | { missing: string }>;
 
@@ -169,4 +169,10 @@ export interface SourceHostFactory {
   }): SourceHost;
   /** What `forge_source list` reports for this provider's bindings on a project. Contacts no host. */
   listBindings?(projectId: string): Promise<Array<{ provider: string } & Record<string, unknown>>>;
+}
+
+/** The two branches a divergence read compares: what base holds that live lacks. */
+export interface BranchRefs {
+  baseRef: string;
+  liveRef: string;
 }

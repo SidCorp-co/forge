@@ -1,5 +1,4 @@
-import type { BranchRefs } from '../git/index.js';
-import type { LiveDivergence } from '../integrations/source-host/index.js';
+import type { BranchRefs, LiveDivergence } from '../integrations/source-host/index.js';
 import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
 import { crossesByCherryPick, promotedBranch, readReleasePath } from '../project-config/index.js';

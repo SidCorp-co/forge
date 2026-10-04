@@ -1,6 +1,6 @@
 /**
- * A runner row's reports, written once: one row can be short its ssh key AND
- * unable to mint, and a write per report would leave only the last. Each row is
+ * A runner row's reports, written once: a row can carry more than one report,
+ * and a write per report would leave only the last. Each row is
  * its own attempt and nothing is raised — a lock wait on one must not cost the
  * device its provisions (ISS-1184) — and what was not written says so and is
  * never terminal, nothing having left the queue.
