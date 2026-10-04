@@ -390,3 +390,35 @@ describe('coverage by business criterion', () => {
     expect(deriveStanding(base({ currentRevision: null, revisions: [] })).coverage).toEqual([]);
   });
 });
+
+describe('step breakdown: the master owes the breakdown within 2 working days of the agree', () => {
+  it('an agreed revision with no live issue and no open breakdown holds the task, due 2 working days on', () => {
+    // NOW is Saturday 2026-10-03; agreed Thursday 2026-10-01 is due Monday 2026-10-05
+    const agreedAt = new Date('2026-10-01T09:00:00Z');
+    const s = deriveStanding(base({ phase: 'agreed', issues: [], agreedAt }));
+    expect(s.tasks).toEqual([
+      {
+        kind: 'breakdown',
+        owner: 'Project master',
+        revision: 2,
+        openedAt: agreedAt.toISOString(),
+        dueAt: '2026-10-05T09:00:00.000Z',
+        overdue: false,
+      },
+    ]);
+    expect(s.waitingOn).toMatchObject({ act: 'break down', dueAt: '2026-10-05T09:00:00.000Z' });
+  });
+
+  it('past its due it reads overdue; an open breakdown or a live issue closes it', () => {
+    const agreedAt = new Date('2026-09-28T09:00:00Z');
+    expect(deriveStanding(base({ phase: 'agreed', issues: [], agreedAt })).tasks[0]?.overdue).toBe(
+      true,
+    );
+    expect(
+      deriveStanding(
+        base({ phase: 'agreed', issues: [], agreedAt, openSuggestionKinds: ['breakdown'] }),
+      ).tasks,
+    ).toEqual([]);
+    expect(deriveStanding(base({ agreedAt })).tasks).toEqual([]);
+  });
+});
