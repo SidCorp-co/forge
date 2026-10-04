@@ -16,8 +16,7 @@ import {
   requirementBaselines,
   requirements,
 } from '../db/schema-requirements.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { isUuid } from '../issues/issue-route-ref.js';
+import { activeIssuePrefix, isUuid } from '../issues/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf, egressReading } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';

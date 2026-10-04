@@ -53,6 +53,7 @@ export const OUTBOX_CONSUMERS = {
 	"source.reviewed": ["review-note"],
 	"error.sighted": ["error-intake"],
 	"integration.changed": ["ws-broadcast"],
+	"workflow.designDecided": ["master-wake"],
 } as const satisfies {
 	readonly [T in OutboxEventType]: readonly [string, ...string[]];
 };

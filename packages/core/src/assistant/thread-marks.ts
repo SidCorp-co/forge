@@ -1,4 +1,5 @@
 import type { OnboardingStatus } from '@forge/contracts/onboarding';
+import { requirementKey } from '@forge/contracts/requirements';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
   CONVERSATION_AGENT_MARKER,
@@ -11,7 +12,6 @@ import { conversationWindows } from '../db/schema-conversations.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { requirements } from '../db/schema-requirements.js';
 import { onboardingStatusesOf } from '../onboarding/index.js';
-import { requirementKey } from '../requirements/index.js';
 
 export interface ThreadMark {
   kind: 'onboarding' | 'requirement' | null;

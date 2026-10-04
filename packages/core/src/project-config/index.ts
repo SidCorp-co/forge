@@ -1,5 +1,11 @@
 export { setBindingInboundSecret } from './binding-store.js';
+export type { ApiRefusal } from './documents.js';
+export { isRecord, parseVersionedDocument, staleBase } from './documents.js';
 export { announceIntegrationChanged } from './integration-changed.js';
+export { emitJsonSchema } from './json-schema.js';
 export { readDeployMap } from './release-path.js';
-export { readProjectDocument } from './service.js';
+export type { ProjectDocument } from './schema.js';
+export { SCHEMA_BASE, STOREFRONT_PROVIDERS, slug, uuid } from './schema.js';
+export type { WriteOutcome } from './service.js';
+export { readProjectConfig, readProjectDocument, writeProjectConfig } from './service.js';
 export { readDeclaredSource, webUrlOf } from './source.js';

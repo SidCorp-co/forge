@@ -8,8 +8,7 @@ import type { ArtifactContextRefusalCode } from '@forge/contracts/workflows';
 import { and, desc, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
-import { contractVersions } from '../db/schema-ecosystem.js';
-import { readArtifact } from '../ecosystem/contract/store.js';
+import { contractArtifacts, contractVersions } from '../db/schema-ecosystem.js';
 import { RefusalError } from '../lib/refusal.js';
 import type { RequirementPinRow } from './requirement-context.js';
 
@@ -132,11 +131,21 @@ export async function loadPinnedContracts(
       version: w.version,
       type: hit.contractType,
       elements: hit.elements,
-      artifact: hit.artifactSha256 ? await readArtifact(db, hit.artifactSha256) : null,
+      artifact: null,
       sha256: hit.artifactSha256,
     });
   }
-  return out;
+  const artifacts = await artifactsOf(out.flatMap((c) => (c.sha256 ? [c.sha256] : [])));
+  return out.map((c) => (c.sha256 ? { ...c, artifact: artifacts.get(c.sha256) ?? null } : c));
+}
+
+async function artifactsOf(shas: readonly string[]): Promise<Map<string, string>> {
+  if (shas.length === 0) return new Map();
+  const rows = await db
+    .select({ sha256: contractArtifacts.sha256, content: contractArtifacts.content })
+    .from(contractArtifacts)
+    .where(inArray(contractArtifacts.sha256, [...new Set(shas)]));
+  return new Map(rows.map((r) => [r.sha256, r.content]));
 }
 
 /** The prompt block: each pinned version, its elements and its text. */

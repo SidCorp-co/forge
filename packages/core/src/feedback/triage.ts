@@ -13,22 +13,23 @@ import type {
   FeedbackTriageRoute,
 } from '@forge/contracts/feedback';
 import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
-import { eq } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
+import { requirementKey } from '@forge/contracts/requirements';
+import { and, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackCases } from '../db/schema-feedback.js';
-import { insertIssueRow } from '../issues/create-service.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { writeRecordEvent } from '../issues/record-events/store.js';
+import { suggestions } from '../db/schema-suggestions.js';
+import { activeIssuePrefix, insertIssueRow, writeRecordEvent } from '../issues/index.js';
 import { dataPolicyOf, egressAt, storedText } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { Refusal } from '../lib/refusal.js';
-import { transition } from '../lifecycle/transition.js';
+import { transition } from '../lifecycle/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { requirementKey, rowIn as requirementRowIn } from '../requirements/read.js';
-import { linkIssueRefusal } from '../requirements/rules.js';
-import { createRequirementIn, lockRequirements } from '../requirements/service.js';
-import { rowOf as suggestionRowOf } from '../suggestions/read.js';
+import {
+  createRequirementIn,
+  linkIssueRefusal,
+  lockRequirements,
+  rowIn as requirementRowIn,
+} from '../requirements/index.js';
 import {
   type CaseRow,
   caseIn,
@@ -160,10 +161,14 @@ async function namedCarrierIn(tx: Tx, input: RouteInput): Promise<{ refusal: Ref
     return { ...none, columns: { ...NO_ROUTE, routedIssueId: issue.id }, key: issue.key };
   }
   if (route === 'revision' && w.suggestion) {
-    const s = await suggestionRowOf(tx, projectId, w.suggestion).catch((err: unknown) => {
-      if (err instanceof HTTPException && err.status === 404) return null;
-      throw err;
-    });
+    const [s] = await tx
+      .select({
+        id: suggestions.id,
+        kind: suggestions.kind,
+        requirementId: suggestions.requirementId,
+      })
+      .from(suggestions)
+      .where(and(eq(suggestions.id, w.suggestion), eq(suggestions.projectId, projectId)));
     if (!s) {
       return {
         refusal: unknownCarrier(

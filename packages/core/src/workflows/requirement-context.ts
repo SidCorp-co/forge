@@ -4,10 +4,10 @@
  * refused by name when it cannot be given at its current revision.
  */
 
+import { changedSincePlan } from '@forge/contracts/requirements';
 import type { ArtifactContextRefusalCode } from '@forge/contracts/workflows';
 import { RefusalError } from '../lib/refusal.js';
 import { estimateTokens } from '../lib/token-estimator.js';
-import { changedSincePlan } from '../requirements/rules.js';
 import { fetchLine, planLine } from './run-context-plan.js';
 
 export interface RequirementPinRow {

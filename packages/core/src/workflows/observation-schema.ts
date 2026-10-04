@@ -4,10 +4,10 @@
  * naming the planned step it is, or none. Stored apart from the design and never written into it.
  */
 
+import { repoPath } from '@forge/contracts/repo-path';
 import { OBSERVATION_LIMITS } from '@forge/contracts/workflow-health';
 import { z } from 'zod';
-import { repoPath } from '../ecosystem/link-schema.js';
-import { STOREFRONT_PROVIDERS } from '../project-config/schema.js';
+import { STOREFRONT_PROVIDERS } from '../project-config/index.js';
 import {
   COVERAGE_READINGS,
   edgeSchema,

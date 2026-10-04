@@ -1,7 +1,7 @@
+import { requirementKey } from '@forge/contracts/requirements';
 import type { DesignRequirementLink } from '@forge/contracts/workflows';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { requirementKey } from '../requirements/read.js';
 
 type LinkRow = {
   req_seq: number;

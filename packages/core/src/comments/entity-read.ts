@@ -8,6 +8,7 @@ import type {
 } from '@forge/contracts/comments';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { CommentIntent } from '@forge/contracts/record-events';
+import { requirementKey } from '@forge/contracts/requirements';
 import { and, asc, desc, eq, isNotNull, or } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
@@ -23,7 +24,7 @@ import { dataPolicyOf, type EgressSurface, egressReading } from '../lib/data-egr
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { requirementKey, rowIn as requirementRowIn } from '../requirements/read.js';
+import { rowIn as requirementRowIn } from '../requirements/read.js';
 import { type CommentArc, scopeOfArc } from './entity-rules.js';
 
 export interface EntityCommentActor {

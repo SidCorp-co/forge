@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { requirementKey } from '@forge/contracts/requirements';
 import { and, eq } from 'drizzle-orm';
 import {
   addHandle,
@@ -16,7 +17,7 @@ import {
 import { db } from '../db/client.js';
 import { conversationParticipants, conversationPins } from '../db/schema-conversations.js';
 import { assistantSpeakerLinks } from '../db/schema-speaker-links.js';
-import { requirementKey, rowIn } from '../requirements/index.js';
+import { rowIn } from '../requirements/index.js';
 import type { SpeakerProfile } from './identity/directory.js';
 import { requirementRoomOf } from './read.js';
 

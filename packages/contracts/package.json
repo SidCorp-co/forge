@@ -378,6 +378,10 @@
       "types": "./dist/git.d.ts",
       "default": "./dist/git.js"
     },
+    "./repo-path": {
+      "types": "./dist/repo-path.d.ts",
+      "default": "./dist/repo-path.js"
+    },
     "./pm": {
       "types": "./dist/pm.d.ts",
       "default": "./dist/pm.js"
