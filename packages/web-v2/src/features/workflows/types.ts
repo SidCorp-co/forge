@@ -4,31 +4,7 @@ import type { DesignBuildGate, DesignRequirementLink, DesignWaitingOn } from "@f
 export type { DesignBuildGate, DesignRequirementLink, DesignRevisionState, DesignWaitingOn };
 
 export type WorkflowKind = "flow" | "state";
-export type WorkflowStatus = "writing" | "current" | "rechecking" | "designed";
 export type DesignStatus = "draft" | "proposed" | "approved" | "returned";
-
-export interface WorkflowCoverage {
-  reading: "walked" | "not_walked" | "unmeasured";
-  atSha: string | null;
-}
-
-export interface RepoEvidence {
-  kind?: "repo";
-  file: string;
-  symbol?: string;
-  annotation?: string;
-  coverage: WorkflowCoverage;
-}
-
-export interface StorefrontEvidence {
-  kind: "storefront";
-  provider: string;
-  ref: "workflow" | "route" | "node";
-  id: string;
-  coverage?: WorkflowCoverage;
-}
-
-export type WorkflowEvidence = RepoEvidence | StorefrontEvidence;
 
 /** A node type is whatever the design's template declares (EVENT, STATE, SCREEN …). */
 export type NodeType = string;
@@ -62,6 +38,8 @@ export interface WorkflowNode {
   values?: string[];
   mapsTo?: string;
   channel?: string;
+  /** The contracts the step uses. */
+  contracts?: { provider: string; slug: string }[];
   /** Steps of the project's other designs this one is. */
   refs?: { template: string; flow: string; step: string }[];
 }
@@ -70,9 +48,7 @@ export interface WorkflowStep {
   id: string;
   title?: string;
   does: string;
-  status: WorkflowStatus;
   after: string[];
-  evidence: WorkflowEvidence | null;
   node?: WorkflowNode;
 }
 
@@ -107,16 +83,13 @@ export interface WorkflowBody {
   kind: WorkflowKind;
   title: string;
   summary: string;
-  status: WorkflowStatus;
   steps: WorkflowStep[];
   /** Version 2: the diagram template the design is drawn in; a design stored before templates names none. */
   template?: { id: string; version: number };
   lanes?: WorkflowLane[];
   personas?: WorkflowLane[];
   edges?: WorkflowEdgeContract[];
-  drift: { sha: string; steps: string[]; reason: string } | null;
   writtenBy: { runId?: string; sessionId?: string; sha?: string };
-  refreshedAtSha: string | null;
 }
 
 export interface WorkflowDocument extends WorkflowBody {

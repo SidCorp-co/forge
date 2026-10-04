@@ -91,18 +91,11 @@ describe('the design lifecycle', () => {
     expect(designStatusAfterWrite('draft', true)).toEqual({ status: 'draft', proposes: false });
   });
 
-  it('fingerprints the design and not the reading: evidence and status move nothing', () => {
+  it('fingerprints the design: a stamp moves nothing, an edge contract or a node type does', () => {
     const base = fingerprint(parsed(design()));
-    const built = design();
-    built.status = 'writing';
-    built.steps[0].status = 'current';
-    built.steps[0].evidence = {
-      kind: 'storefront',
-      provider: 'autoflow',
-      ref: 'workflow',
-      id: 'post_discharge',
-    };
-    expect(fingerprint(parsed(built))).toBe(base);
+    const stamped = design();
+    stamped.writtenBy = { sha: 'a'.repeat(40) };
+    expect(fingerprint(parsed(stamped))).toBe(base);
     const moved = design();
     moved.edges[0].onFailure = 'retry_then_attention';
     expect(fingerprint(parsed(moved))).not.toBe(base);

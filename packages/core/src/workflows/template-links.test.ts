@@ -210,9 +210,7 @@ describe('a cross-link between designs', () => {
     d.steps.push({
       id: 'followup-state',
       does: 'The task is in progress.',
-      status: 'designed',
       after: ['followup-rule'],
-      evidence: null,
       node: {
         type: 'STATE',
         label: 'In progress',

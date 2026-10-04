@@ -70,7 +70,6 @@ function StepCard({ data }: NodeProps & { data: StepNodeData }) {
       data-hit={data.hit}
       data-visited={data.visited}
       data-mark={data.mark ?? undefined}
-      data-designed={step.status === "designed" || step.status === "writing"}
       data-testid="workflow-node"
       data-step={step.id}
       title={full ? undefined : purposeOf(step)}

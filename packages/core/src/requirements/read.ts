@@ -31,8 +31,8 @@ import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
 import { approvalRequired } from '../release-batch/approvals.js';
-import { deferralOf } from './deferral-read.js';
 import { tracesOf } from './criterion-traces.js';
+import { deferralOf } from './deferral-read.js';
 import { requirementFeedbackAs } from './feedback-read.js';
 import { historyOf } from './history-read.js';
 import {

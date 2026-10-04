@@ -16,7 +16,6 @@ import {
   checkWorkflow,
   duplicateWorkflowRefusal,
   type EvidenceSource,
-  evidenceSourceRefusals,
   parseWorkflow,
   type WorkflowRefusal,
   workflowIdentityRefusals,
@@ -58,7 +57,7 @@ export function storedWorkflow(row: StoredWorkflow): WorkflowWrite {
   return parsed;
 }
 
-/** What a write is checked against, from the project document: where its evidence lives and the templates it may draw in. */
+/** What a write is checked against, from the project document: where its code lives (what an observation cites) and the templates it may draw in. */
 export async function projectFactsOf(
   projectId: string,
 ): Promise<{ source: EvidenceSource; templates: WorkflowTemplate[] }> {
@@ -146,7 +145,6 @@ export async function createWorkflow(input: {
         templates: facts.templates,
         designs: await designsOf(tx, projectId, doc.flow, facts.templates),
       }),
-      ...evidenceSourceRefusals(doc, facts.source),
       ...baseRefusals(doc, await workflowsOf(tx, projectId)),
     ];
     if (refusals.length > 0) return { ok: false, refusals };
@@ -190,7 +188,6 @@ export async function updateWorkflow(input: {
         templates: facts.templates,
         designs: await designsOf(tx, projectId, doc.flow, facts.templates),
       }),
-      ...evidenceSourceRefusals(doc, facts.source),
       ...baseRefusals(doc, await workflowsOf(tx, projectId)),
     ];
     if (refusals.length > 0) return { ok: false, refusals };

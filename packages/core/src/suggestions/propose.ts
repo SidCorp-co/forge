@@ -81,7 +81,11 @@ async function proposeIn(
   if (p.kind === 'design_change' && p.target.type === 'workflow') {
     const nodes = await designNodesIn(tx, p.projectId, p.target.id);
     const wrong = nodes
-      ? nodeSetRefusals(nodes, SUGGESTION_PAYLOADS.design_change.schema.parse(p.payload), '/payload')
+      ? nodeSetRefusals(
+          nodes,
+          SUGGESTION_PAYLOADS.design_change.schema.parse(p.payload),
+          '/payload',
+        )
       : [];
     if (wrong.length) return { refusals: wrong };
   }

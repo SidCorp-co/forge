@@ -9,7 +9,7 @@ import {
 } from '@forge/contracts/workflow-templates';
 import { z } from 'zod';
 import { repoPath } from '../ecosystem/link-schema.js';
-import { SCHEMA_BASE, STOREFRONT_PROVIDERS, slug, uuid } from '../project-config/schema.js';
+import { SCHEMA_BASE, slug, uuid } from '../project-config/schema.js';
 
 export const WORKFLOW_SCHEMA_ID = `${SCHEMA_BASE}/workflow-v1.json`;
 export const WORKFLOW_V2_SCHEMA_ID = `${SCHEMA_BASE}/workflow-v2.json`;
@@ -20,10 +20,6 @@ export type WorkflowKind = (typeof WORKFLOW_KINDS)[number];
 
 export const WORKFLOW_STATUSES = ['writing', 'current', 'rechecking'] as const;
 export type WorkflowStatus = (typeof WORKFLOW_STATUSES)[number];
-
-// cm:why `designed` is a step drawn before any code exists: version 2 only, and the one status that owes no evidence by right
-export const WORKFLOW_V2_STATUSES = [...WORKFLOW_STATUSES, 'designed'] as const;
-export type WorkflowV2Status = (typeof WORKFLOW_V2_STATUSES)[number];
 
 // cm:why a node's type and an edge's kind are no longer one global list: the template a design names
 // declares them (`@forge/contracts/workflow-templates`), so the schema holds only their shape and
@@ -142,7 +138,7 @@ const conditionRow = z.strictObject({
 const textList = (max: number) =>
   z.array(z.string().min(1).max(WORKFLOW_LIMITS.contract)).max(max).optional();
 
-const nodeSchema = z.strictObject({
+export const nodeSchema = z.strictObject({
   type: z.string().regex(NODE_TYPE),
   /** The short business title an approver reads on the card; absent, the step's `title` is shown. */
   label: z.string().min(1).max(WORKFLOW_LIMITS.label).optional(),
@@ -199,42 +195,18 @@ const nodeSchema = z.strictObject({
 });
 export type WorkflowNode = z.infer<typeof nodeSchema>;
 
-const repoEvidenceSchema = z.strictObject({
-  kind: z.literal('repo'),
-  file: repoPath(),
-  symbol: z.string().min(1).max(WORKFLOW_LIMITS.symbol).optional(),
-  annotation: z.string().regex(FLOW_STEP_ID).optional(),
-  coverage: coverageSchema,
-});
-
-// cm:why a storefront project has no checkout: its evidence is the provider's own artefact id, stored as written and never resolved here
-const storefrontEvidenceSchema = z.strictObject({
-  kind: z.literal('storefront'),
-  provider: z.enum(STOREFRONT_PROVIDERS),
-  ref: z.enum(STOREFRONT_REF_KINDS),
-  id: z.string().min(1).max(WORKFLOW_LIMITS.ref),
-  coverage: coverageSchema.optional(),
-});
-
-export const EVIDENCE_KINDS = ['repo', 'storefront'] as const;
-
-const evidenceV2Schema = z.discriminatedUnion('kind', [
-  repoEvidenceSchema,
-  storefrontEvidenceSchema,
-]);
-
+// What the code holds (step status, evidence, coverage, drift and the commit read) is never part of a
+// design: it is an observation, stored apart (observation-schema.ts), so the plan cannot be overwritten
 export const workflowStepV2Schema = z.strictObject({
   id: stepId(),
   title: z.string().min(1).max(WORKFLOW_LIMITS.title).optional(),
   does: z.string().min(1).max(WORKFLOW_LIMITS.does),
-  status: z.enum(WORKFLOW_V2_STATUSES),
   after: z.array(stepId()).max(WORKFLOW_LIMITS.after),
-  evidence: evidenceV2Schema.nullable(),
   node: nodeSchema.optional(),
 });
 export type WorkflowStepV2 = z.infer<typeof workflowStepV2Schema>;
 
-const edgeSchema = z.strictObject({
+export const edgeSchema = z.strictObject({
   kind: z.string().regex(EDGE_KIND).optional(),
   from: stepId(),
   to: stepId(),
@@ -264,11 +236,12 @@ const laneSchema = z.strictObject({
   tooltip: z.string().min(1).max(WORKFLOW_LIMITS.purpose).optional(),
 });
 
+const { status: _status, drift: _drift, refreshedAtSha: _sha, ...designFields } = workflowFields;
+
 const workflowV2Fields = {
-  ...workflowFields,
+  ...designFields,
   $schema: z.literal(WORKFLOW_V2_SCHEMA_ID),
   version: z.literal(2),
-  status: z.enum(WORKFLOW_V2_STATUSES),
   steps: z.array(workflowStepV2Schema).min(1).max(WORKFLOW_LIMITS.steps),
   /** The diagram template the design is drawn in; it decides the node types, bands and edge kinds. */
   template: templateRefSchema,
@@ -287,7 +260,6 @@ const workflowV2Fields = {
     sessionId: uuid().optional(),
     sha: sha().optional(),
   }),
-  refreshedAtSha: sha().nullable(),
 };
 
 export const workflowWriteV2Schema = z.strictObject(workflowV2Fields);
@@ -299,13 +271,6 @@ export type WorkflowWrite = WorkflowWriteV1 | WorkflowWriteV2;
 export type AnyWorkflowStep = WorkflowStep | WorkflowStepV2;
 
 export const stepsOf = (doc: WorkflowWrite): readonly AnyWorkflowStep[] => doc.steps;
-
-/** What a step's evidence is, read the same way for both versions: version 1 knows only a repo file. */
-export function evidenceKindOf(
-  evidence: NonNullable<AnyWorkflowStep['evidence']>,
-): (typeof EVIDENCE_KINDS)[number] {
-  return 'kind' in evidence ? evidence.kind : 'repo';
-}
 
 // cm:hack dev-workflow-templates until:every stored workflow-v2 document and design revision carries `template` — a version 2 design written before templates names none, and it was drawn in HOP's journey vocabulary, which is `operational-flow@1`; it is read as that and never re-guessed, and a write still owes `template`
 export function withLegacyTemplate(raw: unknown): unknown {
