@@ -51,7 +51,7 @@ business contexts and two are technical layers.
 | 2 | `adapters` | Adapters | Every adapter (each `integrations/<port>`, the registry, `git`, `storage`) and the integration door |
 | 3 | `access` | Identity & access | Sign-in and users (`auth`), orgs, the permission kernel, install |
 | 4 | `project-config` | Projects & config | Projects, the project document and its revisions, assistant settings, preferences |
-| 5 | `knowledge` | Knowledge | Knowledge entries and edges, memory, guides, onboarding |
+| 5 | `knowledge` | Knowledge | Knowledge entries and edges, memory, item embeddings, guides, onboarding |
 | 6 | `work` | Work & delivery | Issues, the transition engine, the pipeline, comments, tasks, questions, PM, labels, uploads, error intake |
 | 7 | `execution` | Execution | Agents, sessions, jobs, runs, masters, runners, devices, prompts, skills, schedules, usage records |
 | 8 | `design` | Product design | Requirements, workflow designs, mockups, suggestions, feedback |
@@ -86,7 +86,7 @@ a door.
 | **domain** | One product entity family: requirements, feedback, release, chat, users and sign-in, and so on | Compute a fact another module also computes |
 | **read-model** | Derived facts only: standing, waiting-on, needs-you, coverage, counts, the system graph | Write any table but its own projection; SELECT a table its `reads` does not declare |
 | **adapter** | One external system behind a role-named port ([ADR 0006](../adr/0006-every-external-system-is-reached-through-one-adapter-port.md)) | Import a domain, a kernel module or a read model |
-| **door** | The route-mount registry, the MCP registry, WebSocket, inbound webhooks, and the integration door (a provider's routes and MCP tools, which reach its adapter through the port) | Hold a rule or a query |
+| **door** | The route-mount registry, the MCP registry, WebSocket, inbound webhooks, the API contract generator, and the integration door (a provider's routes and MCP tools, which reach its adapter through the port) | Hold a rule or a query |
 | **platform** | The db client and schema, `lib`, middleware, queue, config, observability, the credential helpers (`credentials`) | Import any other kind |
 
 **Who owns tables.** A kernel, a domain, an adapter or a platform module may own tables; a read

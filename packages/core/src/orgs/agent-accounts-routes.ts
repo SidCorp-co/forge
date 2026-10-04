@@ -9,11 +9,11 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { writeAssistantPreferences } from '../preferences/index.js';
-import { answerStyles, projectMemberRoles } from '../db/schema.js';
+import { projectMemberRoles } from '../db/schema.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import {
   createAgentAccount,
   listAgentAccounts,
@@ -24,8 +24,6 @@ import {
   setAgentProjects,
 } from './agent-accounts.js';
 import { agentSelfPatchSchema, readAgentSelf, writeAgentSelf } from './agent-selves.js';
-import { orgMemberRole } from './read.js';
-import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 
 export const agentAccountRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -205,39 +203,5 @@ agentAccountRoutes.patch(
     const self = await writeAgentSelf(orgId, agentUserId, c.req.valid('json'), actor);
     if (!self) throw notFound('agent not found');
     return c.json(self);
-  },
-);
-
-const memberParamSchema = z.object({ orgId: z.uuid(), userId: z.uuid() });
-
-const memberAssistantPrefsSchema = z
-  .object({
-    answerStyle: z.enum(answerStyles).optional(),
-    assistantInstructions: z.string().trim().max(2000).nullable().optional(),
-  })
-  .strict()
-  .refine((v) => v.answerStyle !== undefined || v.assistantInstructions !== undefined, {
-    error: 'at least one of answerStyle/assistantInstructions is required',
-  });
-
-agentAccountRoutes.patch(
-  '/:orgId/members/:userId/assistant-preferences',
-  zValidator('param', memberParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  zValidator('json', memberAssistantPrefsSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const { orgId, userId } = c.req.valid('param');
-    const actor = c.get('userId');
-    await requireOrgCan(actorFor(actor), 'org.admin', orgResource(orgId));
-    if ((await orgMemberRole(orgId, userId)) === null) throw notFound('membership not found');
-    const prefs = await writeAssistantPreferences({
-      userId,
-      patch: c.req.valid('json'),
-      actor: { kind: 'admin', userId: actor },
-    });
-    return c.json(prefs);
   },
 );

@@ -2,7 +2,7 @@ import { and, asc, eq, ne, notExists, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { HTTPException } from 'hono/http-exception';
 import { insertAgentAccount } from '../auth/index.js';
-import { isAgentHandle } from '../credentials/agent-account.js';
+import { handleNameForProject, isAgentHandle } from '../credentials/agent-account.js';
 import { organizationMembers, projectMembers, projects, users } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { addOrgMember, addProjectMembers } from '../permissions/index.js';
@@ -14,14 +14,6 @@ export interface ProjectHandle {
   handle: string;
   /** True only when THIS call created it — what the reverse migration deletes on. */
   minted: boolean;
-}
-
-export function handleNameForProject(slug: string, projectId: string): string {
-  const derived = slug
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return isAgentHandle(derived) ? derived : `agent-${projectId.slice(0, 8)}`;
 }
 
 /**

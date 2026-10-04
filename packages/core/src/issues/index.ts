@@ -36,3 +36,4 @@ export {
   type PlannedAgainst,
   unlinkIssueFromRequirement,
 } from './requirement-link.js';
+export { buildIlikePattern } from './search-predicate.js';

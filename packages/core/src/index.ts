@@ -30,10 +30,18 @@ import {
   servesRunnerReleases,
 } from './integrations/published-releases/index.js';
 import { startRocketChatManager, stopRocketChatManager } from './integrations/rocketchat/index.js';
-import { closeBacklogStreams, resolveIssueForHeadRef } from './issues/index.js';
+import {
+  activeIssuePrefix,
+  closeBacklogStreams,
+  computeProjectProgress,
+  heldIssuePrefixes,
+  resolveIssueForHeadRef,
+} from './issues/index.js';
 import { provideProjectOrg } from './lib/authz.js';
+import { provideDataPolicy } from './lib/data-egress.js';
 import { CHAT_READ_MODEL_TOOLS } from './mcp/index.js';
 import { registerChunkReindex, registerMemoryReconcileWorker } from './memory/index.js';
+import { provideIssueFactReads } from './messaging/gather.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
@@ -42,11 +50,13 @@ import { logger } from './observability/logger.js';
 import {
   declareOutboxQueues,
   emitEvents,
+  provideOutboxGate,
   startOutboxWorker,
   stopOutboxWorker,
 } from './outbox/index.js';
 import { registerOutboxConsumers } from './outbox-consumers.js';
-import { readDeclaredSource } from './project-config/index.js';
+import { actorFor, projectResource, requireCan } from './permissions/index.js';
+import { readDeclaredSource, readProjectDocument } from './project-config/index.js';
 import { findProjectOrgId } from './projects/index.js';
 import { startBoss, stopBoss } from './queue/boss.js';
 import { registerDeployWorker, registerReleaseBatchFinish } from './release-batch/index.js';
@@ -59,6 +69,17 @@ import { attachWs, closeWs } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
 provideChatTools(CHAT_READ_MODEL_TOOLS);
+provideDataPolicy(
+  async (projectId) => (await readProjectDocument(projectId))?.document.sensitiveData,
+);
+provideIssueFactReads({
+  activeIssuePrefix,
+  heldIssuePrefixes,
+  projectProgress: computeProjectProgress,
+});
+provideOutboxGate(async (userId, permission, projectId, act) => {
+  await requireCan(actorFor(userId), permission, projectResource(projectId), act);
+});
 provideGitCredentialStamp(stampGitCredentialRef);
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,

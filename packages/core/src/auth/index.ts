@@ -1,4 +1,4 @@
-export { insertAgentAccount } from './agent-users.js';
+export { insertAgentAccount, setUserDisplayName } from './agent-users.js';
 export {
   type LoginInput,
   loginSchema,

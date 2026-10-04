@@ -1,4 +1,5 @@
 export { setBindingInboundSecret } from './binding-store.js';
 export { announceIntegrationChanged } from './integration-changed.js';
 export { readDeployMap } from './release-path.js';
+export { readProjectDocument } from './service.js';
 export { readDeclaredSource, webUrlOf } from './source.js';

@@ -10,7 +10,7 @@ import {
   type FailureCause,
   isRealFailureCause,
   resolveFailureCause,
-} from '../pipeline/failure-causes.js';
+} from '../pipeline/index.js';
 import { resumeDropsForProject, retryRescues, sessionFailures } from './queries.js';
 
 function num(x: number | string | null | undefined): number {

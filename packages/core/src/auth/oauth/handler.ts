@@ -25,7 +25,7 @@ import {
   type ProviderId,
 } from '../../integrations/identity/index.js';
 import { logger } from '../../observability/logger.js';
-import { ensurePersonalOrg } from '../../orgs/service.js';
+import { ensurePersonalOrg } from '../../orgs/index.js';
 import { assertNotAgentUser } from '../agent-login-gate.js';
 import { getCallbackUrl, getProvider } from './providers.js';
 import {

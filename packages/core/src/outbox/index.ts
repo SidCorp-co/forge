@@ -1,3 +1,4 @@
+export { type OutboxGate, provideOutboxGate } from './access.js';
 export { type Consumer, consume, type Delivery } from './consumers.js';
 export { emitEvent, emitEvents, type OutboxEvent } from './emit.js';
 export { declareOutboxQueues } from './queues.js';

@@ -6,7 +6,6 @@ import {
 } from '@forge/contracts/data-policy';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { redactionCount, scrubPersonalData } from '@forge/observability';
-import { readProjectDocument } from '../project-config/service.js';
 import { RefusalError } from './refusal.js';
 
 // cm:why the one egress rule (decision on ISS-59, 2026-10-04): every read that hands content to an
@@ -91,9 +90,23 @@ export function isProviderBound(reader: EgressReader): boolean {
   return reader.providerBound === true || reader.agency === 'agent';
 }
 
+/** A project's declared data policy, or undefined where its document sets none. */
+export type DataPolicySource = (projectId: string) => Promise<SensitiveDataLevel | undefined>;
+
+let dataPolicySource: DataPolicySource | null = null;
+
+/** The project-config domain hands the egress guard each project's policy; the process entry provides it at boot. */
+export function provideDataPolicy(source: DataPolicySource): void {
+  dataPolicySource = source;
+}
+
 export async function dataPolicyOf(projectId: string): Promise<SensitiveDataLevel> {
-  const doc = await readProjectDocument(projectId);
-  return doc?.document.sensitiveData ?? SENSITIVE_DATA_DEFAULT;
+  if (!dataPolicySource) {
+    throw new Error(
+      "data egress: no data policy source was provided, so a project's policy cannot be read; the process entry calls provideDataPolicy with the project document reader before it serves",
+    );
+  }
+  return (await dataPolicySource(projectId)) ?? SENSITIVE_DATA_DEFAULT;
 }
 
 export function storedText(level: SensitiveDataLevel, text: string) {

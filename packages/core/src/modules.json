@@ -112,7 +112,7 @@
       ]
     },
     "api-contract": {
-      "kind": "platform",
+      "kind": "door",
       "context": "platform"
     },
     "app-config": {
@@ -283,8 +283,8 @@
       ]
     },
     "embeddings": {
-      "kind": "platform",
-      "context": "platform",
+      "kind": "domain",
+      "context": "knowledge",
       "owns": [
         "itemEmbeddings"
       ]

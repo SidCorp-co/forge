@@ -19,7 +19,8 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
-import { deleteFeedbackEmbedding } from '../embeddings/item-writer.js';
+import { deleteFeedbackEmbedding } from '../embeddings/index.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { type KernelActor, movedRow, transition } from '../lifecycle/transition.js';
@@ -42,7 +43,6 @@ import {
   verifyActRefusal,
   verifyRefusal,
 } from './rules.js';
-import { lockXact } from '../lib/advisory-lock.js';
 
 export type FeedbackOutcome =
   | { ok: true; feedback: FeedbackView; created?: boolean; effect?: FeedbackTriageEffect }
