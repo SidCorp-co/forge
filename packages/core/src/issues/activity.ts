@@ -23,14 +23,6 @@ export interface RecordActivityInput {
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
-function buildPayload(input: RecordActivityInput): Record<string, unknown> {
-  return {
-    ...(input.before !== undefined ? { before: input.before } : {}),
-    ...(input.after !== undefined ? { after: input.after } : {}),
-    ...(input.payload ?? {}),
-  };
-}
-
 function buildValues(input: RecordActivityInput) {
   return {
     issueId: input.issueId,
@@ -38,14 +30,14 @@ function buildValues(input: RecordActivityInput) {
     actorId: input.actor.id,
     actorAgency: input.actor.agency,
     action: input.action,
-    payload: buildPayload(input),
+    payload: {
+      ...(input.before !== undefined ? { before: input.before } : {}),
+      ...(input.after !== undefined ? { after: input.after } : {}),
+      ...(input.payload ?? {}),
+    },
     dedupeKey: input.dedupeKey ?? null,
     ...(input.at ? { createdAt: input.at } : {}),
   };
-}
-
-async function recordActivity(input: RecordActivityInput): Promise<void> {
-  await insertActivityRow(buildValues(input));
 }
 
 export async function recordActivityTx(tx: Tx, input: RecordActivityInput): Promise<void> {
@@ -55,7 +47,7 @@ export async function recordActivityTx(tx: Tx, input: RecordActivityInput): Prom
 // Never throws. A failed audit insert must not fail the business operation.
 export async function safeRecordActivity(input: RecordActivityInput): Promise<void> {
   try {
-    await recordActivity(input);
+    await insertActivityRow(buildValues(input));
   } catch (err) {
     logger.error(
       { err, action: input.action, issueId: input.issueId },

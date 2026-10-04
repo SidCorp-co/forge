@@ -28,7 +28,7 @@ import type { IssueLabel } from "../types";
 
 const NO_PRIMARY = "";
 
-export interface ModulePickerProps {
+interface ModulePickerProps {
   open: boolean;
   onClose: () => void;
   issueId: string;

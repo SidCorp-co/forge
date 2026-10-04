@@ -1,7 +1,7 @@
 
 import type { IssueAgentStatus, IssueStatus } from "./types";
 
-export const ANSWERABLE_WHILE_RUNNING = new Set<IssueStatus>(["needs_info"]);
+const ANSWERABLE_WHILE_RUNNING = new Set<IssueStatus>(["needs_info"]);
 
 export function heldByAgent(
 	status: IssueStatus,

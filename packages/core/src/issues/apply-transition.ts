@@ -33,7 +33,7 @@ import {
 } from './transition-reason.js';
 import { readWorkState, setLeftStatus, setWorkStep } from './work-state.js';
 
-export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(ISSUE_DISPATCH_TERMINAL_STATUSES);
+const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(ISSUE_DISPATCH_TERMINAL_STATUSES);
 
 export type TransitionErrorCode = IssueTransitionRefusalCode;
 

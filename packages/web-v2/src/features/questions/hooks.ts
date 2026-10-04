@@ -14,7 +14,7 @@ import { useToast } from "@/providers/toast-provider";
 import { questionsApi } from "./api";
 import type { AnswerInput } from "./types";
 
-export const issueQuestionsKey = (issueId: string) => ["questions", issueId];
+const issueQuestionsKey = (issueId: string) => ["questions", issueId];
 export const projectQuestionsKey = (projectId: string) => ["questions", "project", projectId];
 /** Under the project's key, so answering from either surface refreshes the other. */
 export const gateQuestionKey = (projectId: string, documentId: string) => [
@@ -84,7 +84,7 @@ export function useProjectQuestions(projectId: string | undefined) {
   };
 }
 
-export function linkedVerdict(q: {
+function linkedVerdict(q: {
   isError: boolean;
   isSuccess: boolean;
   error?: unknown;

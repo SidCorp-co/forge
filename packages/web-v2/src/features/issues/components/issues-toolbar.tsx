@@ -12,7 +12,7 @@ export interface ToolbarOption {
 }
 
 /** One filter the popover sets, read from and written to one URL param. */
-export interface ToolbarField {
+interface ToolbarField {
   param: string;
   title: string;
   value: string;

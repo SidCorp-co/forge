@@ -7,7 +7,7 @@ import { useMemo, useState } from "react";
 import { HtmlAttachmentCard } from "./html-attachment-card";
 import { ImageLightbox, type LightboxImage } from "./image-lightbox";
 
-export interface AttachmentListItem {
+interface AttachmentListItem {
   id: string;
   name: string;
   mime: string;

@@ -33,7 +33,7 @@ export interface CriterionRow {
 }
 
 /** The one reading each state takes on every screen is contracts' `CRITERION_STANDINGS`. */
-export type CriterionBadge = CriterionStanding;
+type CriterionBadge = CriterionStanding;
 
 export const criterionBadge = (latest: CriterionVerdict | null): CriterionBadge => criterionStandingOf(latest);
 

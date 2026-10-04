@@ -9,17 +9,10 @@ import {
 } from "@/features/issues/derive";
 import { type SemanticTone, STATUS_KEY_TONE, type StatusKey, TONE_META } from "@/design/status";
 import type { IssueStatus } from "@/features/issues/types";
-import { type StageKey, stageColor } from "@/design/stages";
+import { type StageKey } from "@/design/stages";
 import { gateReasonLine } from "@/features/runners/types";
 import { formatElapsed } from "@/lib/utils/format";
-import {
-  BOARD_EXCLUDED_STATUSES,
-  type PipelineIssueRow,
-  type PipelineRunListItem,
-  type PipelineRunStatus,
-  type RunGate,
-  type StepDurationRow,
-} from "./types";
+import { BOARD_EXCLUDED_STATUSES, type PipelineIssueRow, type PipelineRunListItem, type PipelineRunStatus, type RunGate } from "./types";
 
 export function jobTypeToStage(jobType: string | null | undefined): StageKey | null {
   switch (jobType) {
@@ -93,10 +86,10 @@ export function runsByIssue(
  * `in_progress` says a run holds the issue; where nothing has checked in for it the board files the
  * row beside the held ones rather than calling it in progress (ISS-1213).
  */
-export type BoardColumnKey = IssueStatus | "unheld";
+type BoardColumnKey = IssueStatus | "unheld";
 
 /** One column of the board: its key, the word and colour it reads in, and its issues. */
-export interface BoardColumnGroup {
+interface BoardColumnGroup {
   key: BoardColumnKey;
   title: string;
   color: string;
@@ -104,7 +97,7 @@ export interface BoardColumnGroup {
 }
 
 /** How the `unheld` column and card read: its word, and the chip of work nothing is moving. */
-export const UNHELD_VIEW: { title: string; status: StatusKey } = {
+const UNHELD_VIEW: { title: string; status: StatusKey } = {
   title: "No check-in",
   status: "paused",
 };
@@ -126,17 +119,17 @@ export function boardColumns(
 }
 
 /** The colour a column reads in — the same `SemanticTone` its status chip resolves through. */
-export function columnTone(key: BoardColumnKey): SemanticTone {
+function columnTone(key: BoardColumnKey): SemanticTone {
   return key === "unheld" ? STATUS_KEY_TONE[UNHELD_VIEW.status] : statusToTone(key);
 }
 
 /** The column's heading: the status's own word, or `No check-in`. */
-export function columnTitle(key: BoardColumnKey): string {
+function columnTitle(key: BoardColumnKey): string {
   return key === "unheld" ? UNHELD_VIEW.title : statusLabel(key);
 }
 
 /** The column a board row files under: its status, or `unheld` for an `in_progress` row nothing holds. */
-export function rowColumn(issue: PipelineIssueRow): BoardColumnKey {
+function rowColumn(issue: PipelineIssueRow): BoardColumnKey {
   const status = issue.status as IssueStatus;
   return status === "in_progress" && !issue.held ? "unheld" : status;
 }
@@ -167,44 +160,10 @@ export function median(values: number[]): number | null {
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
-
-/** One row of the Insights view's "Where time goes" — a REAL job type over the window. */
-export interface StepCost {
-  /** The job type exactly as the `step_durations` rows carry it. */
-  step: string;
-  /** The seven-name colour when this job type is one of them, a neutral token when it is not. */
-  color: string;
-  medianSec: number;
-  cost: number;
-  samples: number;
-}
-
-/**
- * Fold the `step-durations` window onto the job types it actually contains, slowest median first.
- */
-export function aggregateStepCosts(durations: StepDurationRow[] | undefined): StepCost[] {
-  const byStep = new Map<string, { secs: number[]; cost: number }>();
-  for (const r of durations ?? []) {
-    const cur = byStep.get(r.step) ?? { secs: [], cost: 0 };
-    cur.secs.push(r.durationSeconds);
-    cur.cost += r.costUsd;
-    byStep.set(r.step, cur);
-  }
-  return [...byStep.entries()]
-    .map(([step, agg]) => ({
-      step,
-      color: stageColor(step),
-      medianSec: median(agg.secs) ?? 0,
-      cost: agg.cost,
-      samples: agg.secs.length,
-    }))
-    .sort((a, b) => b.medianSec - a.medianSec || a.step.localeCompare(b.step));
-}
-
 /** Everything a kanban card's status chip needs, from the three signals that
  *  can claim it: a queued step, the issue's live run, and the issue's own
  *  lifecycle status. */
-export interface CardStatusView {
+interface CardStatusView {
   status: StatusKey;
   pipelineRun?: PipelineRunStatus;
   /** Undefined lets `StatusChip` use the run vocabulary's own label. */
@@ -220,7 +179,7 @@ export interface CardStatusView {
  * What the board can say about a row nothing holds: when anything last spoke for it. Core cannot
  * tell a quiet run from a gone one, so the card gives the time and leaves the gap to the reader.
  */
-export function checkInLine(lastCheckInAt: string | null, now: number): string {
+function checkInLine(lastCheckInAt: string | null, now: number): string {
   if (lastCheckInAt === null) return "No check-in on record";
   const at = new Date(lastCheckInAt);
   const clock = `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;

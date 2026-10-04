@@ -57,12 +57,8 @@ issueDependencyRoutes.use('*', requireAuth(), assertEmailVerified());
  */
 issueDependencyRoutes.get(
   '/:id/dependencies',
-  zValidator('param', issueRouteIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', projectScopeQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', issueRouteIdParamSchema),
+  zValidator('query', projectScopeQuerySchema),
   async (c) => {
     const { id: rawId } = c.req.valid('param');
     const { projectId: projectIdQuery } = c.req.valid('query');
@@ -83,12 +79,8 @@ issueDependencyRoutes.get(
  */
 issueDependencyRoutes.post(
   '/:id/dependencies',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', createBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', createBodySchema),
   async (c) => {
     const { id: toIssueId } = c.req.valid('param');
     const { dependsOnId: fromIssueId, kind, reason, validUntil } = c.req.valid('json');
@@ -140,9 +132,7 @@ issueDependencyRoutes.post(
  */
 issueDependencyRoutes.delete(
   '/:id/dependencies/:edgeId',
-  zValidator('param', edgeParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', edgeParamSchema),
   async (c) => {
     const { id: issueId, edgeId } = c.req.valid('param');
     const userId = c.get('userId');

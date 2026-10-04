@@ -45,9 +45,7 @@ searchRoutes.use('*', requireAuth(), assertEmailVerified());
 
 searchRoutes.get(
   '/:id/issues/search',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
   zValidator('query', searchQuerySchema, (r) => {
     if (!r.success) {
       refuseLegacyStatusFields(r.data, 'query', ['status', 'statusNot']);

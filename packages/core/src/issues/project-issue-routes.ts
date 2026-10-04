@@ -16,7 +16,6 @@ import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { createIssue } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
 import { serializeIssue } from './detail-projection.js';
-import { dispatchGatesOf } from './dispatch-gates.js';
 import { activeIssuePrefix, heldIssuePrefixes } from './issue-prefix-read.js';
 import { assertAssigneeIsMember, toHttpCreateError } from './issue-write-refusals.js';
 import { listIssueLabels } from './label-service.js';
@@ -25,7 +24,7 @@ import { serializeRestListRow } from './list-projection.js';
 import { listIssues } from './list-service.js';
 import { liveReachForIssue } from './live-reach-read.js';
 import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './pipeline-health.js';
-import { fireOfCaller, proposesWorkflowOf, requirementOfIssue } from './ports.js';
+import { buildsWorkflowOf, fireOfCaller, proposesWorkflowOf, requirementOfIssue } from './ports.js';
 import { findIssueByDisplaySeq, type IssueRow } from './read-service.js';
 import { issueCreateSchema, issueFiltersSchema } from './request-schemas.js';
 import { refuseLegacyStatusFields } from './status-input.js';
@@ -35,12 +34,8 @@ issueProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 
 issueProjectRoutes.post(
   '/:id/issues',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', issueCreateSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', issueCreateSchema),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const input = c.req.valid('json');
@@ -92,9 +87,7 @@ const displayIdParamSchema = z.object({
 
 issueProjectRoutes.get(
   '/:id/issues/by-display/:displayId',
-  zValidator('param', displayIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', displayIdParamSchema),
   async (c) => {
     const { id: projectId, displayId } = c.req.valid('param');
     const userId = c.get('userId');
@@ -125,7 +118,7 @@ issueProjectRoutes.get(
       ...creatorMap.get(issue.id),
       pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(issue.status),
       liveReach: await liveReachForIssue(issue),
-      ...(await dispatchGatesOf(issue.id)),
+      buildsWorkflow: await buildsWorkflowOf(issue.id),
       proposesWorkflow: await proposesWorkflowOf(issue.id),
       requirement: await requirementOfIssue(issue.id),
       labels: labelRows,
@@ -137,9 +130,7 @@ issueProjectRoutes.get(
 
 issueProjectRoutes.get(
   '/:id/issues',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
   zValidator('query', issueFiltersSchema, (r) => {
     if (!r.success) {
       refuseLegacyStatusFields(r.data, 'query', ['status', 'statusNot']);

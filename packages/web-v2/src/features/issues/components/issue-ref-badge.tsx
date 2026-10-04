@@ -6,7 +6,7 @@ import { STATUS_META } from "@/design/status";
 import { statusToChip } from "../derive";
 import type { IssueStatus } from "../types";
 
-export interface IssueRefBadgeProps {
+interface IssueRefBadgeProps {
   /** Issue UUID — the routable id (`/projects/:slug/issues/:id`). */
   id: string;
   /** Project slug for the link target. */

@@ -119,7 +119,7 @@ export function resolveRetention(rule: RetentionRule, env: Env = process.env): R
 }
 
 /** The rule for one table, or undefined where this schema states none. */
-export function retentionRuleFor(table: string): RetentionRule | undefined {
+function retentionRuleFor(table: string): RetentionRule | undefined {
   return RETENTION_RULES.find((rule) => rule.table === table);
 }
 

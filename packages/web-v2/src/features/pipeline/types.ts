@@ -9,10 +9,10 @@ import { PIPELINE_RUN_STATUSES, type PipelineRunStatus } from "@forge/contracts/
 
 export { PIPELINE_RUN_STATUSES, type PipelineRunStatus };
 
-export const PIPELINE_RUN_KINDS = REGISTRY_PIPELINE_RUN_KINDS;
+const PIPELINE_RUN_KINDS = REGISTRY_PIPELINE_RUN_KINDS;
 export type PipelineRunKind = (typeof PIPELINE_RUN_KINDS)[number];
 
-export const PIPELINE_JOB_TYPES = [
+const PIPELINE_JOB_TYPES = [
   "triage",
   "clarify",
   "plan",
@@ -25,7 +25,7 @@ export const PIPELINE_JOB_TYPES = [
   "smoke",
   "release_batch",
 ] as const satisfies readonly (typeof REGISTRY_JOB_TYPES)[number][];
-export type PipelineJobType = (typeof PIPELINE_JOB_TYPES)[number];
+type PipelineJobType = (typeof PIPELINE_JOB_TYPES)[number];
 
 /** Per-step status precedence computed by the read-side rollup. */
 export type PipelineStepStatus = "pending" | "running" | "completed" | "failed" | "cancelled" | "skipped";
@@ -120,7 +120,7 @@ export type RunGate =
   | { read: "unreadable"; reason: string };
 
 /** What a box said about its own declaration gate, as the run holds it. */
-export interface RunGateCondition {
+interface RunGateCondition {
   verdict: "clear" | "marked" | "failing_open";
   count: number;
   perDay: number | null;

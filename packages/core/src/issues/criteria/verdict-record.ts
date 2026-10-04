@@ -31,9 +31,9 @@ import {
   verdictDraftFault,
 } from './verdict-input.js';
 
-export type VerdictColumns = Partial<typeof criterionVerdicts.$inferInsert>;
+type VerdictColumns = Partial<typeof criterionVerdicts.$inferInsert>;
 
-export function verdictActor(author: VerdictAuthor): Actor {
+function verdictActor(author: VerdictAuthor): Actor {
   if (author.deviceId) return { type: 'device', id: author.deviceId, agency: author.agency };
   if (author.userId) return { type: 'user', id: author.userId, agency: author.agency };
   throw new Error('a verdict names its author: an account or a device, and this one names neither');
@@ -53,7 +53,7 @@ const IDENTITY_FIELDS: ReadonlyArray<readonly [keyof VerdictColumns, string]> = 
   ['corroboration', 'corroboration'],
 ];
 
-export function verdictRecordFields(args: {
+function verdictRecordFields(args: {
   id: string;
   draft: VerdictDraft;
   identity: VerdictColumns;

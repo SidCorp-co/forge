@@ -5,24 +5,9 @@
 // `<BodyView>` (markdown or a `forge-*` component tree), author initials
 // resolved against the project members, and reply/add boxes.
 
-import {
-  Avatar,
-  Badge,
-  Banner,
-  BodyView,
-  Button,
-  EmptyState,
-  Icon,
-  IconButton,
-} from "@/design";
+import { Avatar, Badge, BodyView, Button, EmptyState, Icon } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
-import {
-  type ClipboardEvent,
-  type DragEvent,
-  useCallback,
-  useRef,
-  useState,
-} from "react";
+import { useState } from "react";
 import {
   COMMENT_KIND_META,
   deriveCommentKind,
@@ -33,35 +18,7 @@ import { useCreateComment } from "../detail-hooks";
 import type { CommentNode, ProjectMember } from "../types";
 import { AttachmentList } from "./attachment-list";
 import { BodyEditor } from "./body-editor";
-
-const MAX_BYTES = 10 * 1024 * 1024;
-const MAX_FILES = 10;
-const ALLOWED_MIMES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "application/pdf",
-  "text/html",
-  "text/plain",
-  "text/markdown",
-  "text/csv",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-]);
-const ACCEPT_ATTR =
-  "image/png,image/jpeg,image/gif,image/webp,application/pdf,text/html,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.png,.jpg,.jpeg,.gif,.webp,.pdf,.html,.txt,.md,.csv,.docx,.xls,.xlsx,.log,.sql,text/*";
-
-function isStageable(mime: string): boolean {
-  return ALLOWED_MIMES.has(mime) || mime === "" || mime.startsWith("text/");
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
+import { StagedFileList, useStagedFiles } from "./staged-files";
 
 function AddCommentBox({
   issueId,
@@ -75,117 +32,29 @@ function AddCommentBox({
   onDone?: () => void;
 }) {
   const [body, setBody] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
-  const [warnings, setWarnings] = useState<string[]>([]);
-  const [dragOver, setDragOver] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const staged = useStagedFiles({ unit: "comment", video: false, uniqueNames: false });
   const create = useCreateComment(issueId);
-
-  // Validate + stage picked/dropped/pasted files against the comment allow-list
-  // (size/mime/count caps) so the server never rejects what we accepted.
-  const acceptFiles = useCallback((picked: FileList | File[]) => {
-    const accepted: File[] = [];
-    const errs: string[] = [];
-    for (const f of Array.from(picked)) {
-      if (f.size <= 0) {
-        errs.push(`Empty file skipped: ${f.name || "(unnamed)"}`);
-        continue;
-      }
-      if (f.size > MAX_BYTES) {
-        errs.push(`Too large (max 10 MB): ${f.name || "(unnamed)"}`);
-        continue;
-      }
-      if (!isStageable(f.type)) {
-        errs.push(`File type not allowed: ${f.name || f.type}`);
-        continue;
-      }
-      accepted.push(f);
-    }
-    setFiles((prev) => {
-      const room = MAX_FILES - prev.length;
-      if (accepted.length > room) {
-        errs.push(`Max ${MAX_FILES} attachments per comment. Extras skipped.`);
-      }
-      return [...prev, ...accepted.slice(0, Math.max(0, room))];
-    });
-    setWarnings(errs);
-  }, []);
-
-  const onDrop = useCallback(
-    (e: DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      setDragOver(false);
-      if (e.dataTransfer.files?.length) acceptFiles(e.dataTransfer.files);
-    },
-    [acceptFiles],
-  );
-
-  const onPick = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files?.length) acceptFiles(e.target.files);
-      e.target.value = "";
-    },
-    [acceptFiles],
-  );
-
-  const onPaste = useCallback(
-    (e: ClipboardEvent) => {
-      const blobs: File[] = [];
-      for (const item of Array.from(e.clipboardData.items)) {
-        if (item.kind === "file" && item.type.startsWith("image/")) {
-          const file = item.getAsFile();
-          if (!file) continue;
-          if (file.name) {
-            blobs.push(file);
-          } else {
-            const ext = item.type.split("/")[1] ?? "png";
-            blobs.push(
-              new File([file], `pasted-${blobs.length + 1}.${ext}`, {
-                type: item.type,
-              }),
-            );
-          }
-        }
-      }
-      if (blobs.length) {
-        e.preventDefault();
-        acceptFiles(blobs);
-      }
-    },
-    [acceptFiles],
-  );
-
-  const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
-    setWarnings([]);
-  };
 
   const submit = () => {
     const text = body.trim();
     if (!text) return;
     create.mutate(
-      { body: text, parentId, files },
+      { body: text, parentId, files: staged.files },
       {
         onSuccess: () => {
           setBody("");
-          setFiles([]);
-          setWarnings([]);
+          staged.reset();
           onDone?.();
         },
       },
     );
   };
   return (
-    <div className="space-y-2" onPaste={onPaste}>
+    <div className="space-y-2" onPaste={staged.onPaste}>
       <div
-        onDrop={onDrop}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragOver(true);
-        }}
-        onDragLeave={() => setDragOver(false)}
+        {...staged.dropZone}
         className={`rounded-lg transition-colors ${
-          dragOver ? "ring-2 ring-cobalt-400 ring-offset-1" : ""
+          staged.dragOver ? "ring-2 ring-cobalt-400 ring-offset-1" : ""
         }`}
       >
         <BodyEditor
@@ -198,65 +67,13 @@ function AddCommentBox({
         />
       </div>
 
-      {warnings.length > 0 && (
-        <Banner tone="attention">
-          <ul className="space-y-0.5">
-            {warnings.map((w, i) => (
-              <li key={i}>{w}</li>
-            ))}
-          </ul>
-        </Banner>
-      )}
-
-      {files.length > 0 && (
-        <ul className="flex flex-col gap-1.5">
-          {files.map((f, i) => (
-            <li
-              key={`${f.name}-${i}`}
-              className="flex items-center gap-2.5 rounded-md border border-line-subtle bg-surface px-2.5 py-1.5"
-            >
-              <Icon
-                name={f.type.startsWith("image/") ? "grid" : "folder"}
-                size={15}
-                className="flex-none text-subtle"
-              />
-              <span
-                className="fg-body-sm min-w-0 flex-1 truncate text-fg"
-                title={f.name}
-              >
-                {f.name}
-              </span>
-              <span className="fg-caption flex-none">{formatSize(f.size)}</span>
-              <IconButton
-                type="button"
-                icon="x"
-                size="sm"
-                aria-label={`Remove ${f.name}`}
-                onClick={() => removeFile(i)}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
+      <StagedFileList files={staged.files} warnings={staged.warnings} remove={staged.remove} />
 
       <div className="flex items-center justify-between gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          icon="plus"
-          onClick={() => fileInputRef.current?.click()}
-        >
+        <Button type="button" variant="ghost" size="sm" icon="plus" onClick={staged.choose}>
           Attach
         </Button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept={ACCEPT_ATTR}
-          className="hidden"
-          onChange={onPick}
-        />
+        {staged.input}
         <div className="flex gap-2">
           {onDone && (
             <Button variant="ghost" size="sm" onClick={onDone}>

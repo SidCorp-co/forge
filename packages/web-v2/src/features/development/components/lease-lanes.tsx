@@ -13,7 +13,7 @@ const LABEL_FROM_SHARE = 0.09;
 
 const TICK_STEPS_MIN = [15, 30, 60, 120, 180, 360, 720];
 
-export function ticksOf(from: number, to: number, most = 5): number[] {
+function ticksOf(from: number, to: number, most = 5): number[] {
   const span = to - from;
   const step = (TICK_STEPS_MIN.find((m) => span / (m * 60_000) <= most) ?? 1440) * 60_000;
   const out: number[] = [];

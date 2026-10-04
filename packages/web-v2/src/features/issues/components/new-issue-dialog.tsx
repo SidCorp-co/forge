@@ -1,67 +1,17 @@
 "use client";
 
 
-import {
-  type ClipboardEvent,
-  type DragEvent,
-  type FormEvent,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Banner,
-  Button,
-  Field,
-  Icon,
-  IconButton,
-  Input,
-  Select,
-  SlideOver,
-  Tabs,
-  Textarea,
-} from "@/design";
+import { Banner, Button, Field, Icon, Input, Select, SlideOver, Tabs, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import { useToast } from "@/providers/toast-provider";
 import { useCreateIssue } from "../hooks";
 import type { IssueComplexity, IssuePriority } from "../types";
 import { BodyEditor } from "./body-editor";
+import { MAX_FILES, StagedFileList, useStagedFiles } from "./staged-files";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
-
-const MAX_BYTES = 10 * 1024 * 1024;
-const MAX_FILES = 10;
-const ALLOWED_MIMES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "application/pdf",
-  "text/html",
-  "video/mp4",
-  "video/webm",
-  "video/quicktime",
-  "text/plain",
-  "text/markdown",
-  "text/csv",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-]);
-const ACCEPT_ATTR =
-  "image/png,image/jpeg,image/gif,image/webp,application/pdf,text/html,video/mp4,video/webm,video/quicktime,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.png,.jpg,.jpeg,.gif,.webp,.pdf,.html,.mp4,.webm,.mov,.txt,.md,.csv,.docx,.xls,.xlsx,.log,.sql,text/*";
-
-function isStageable(mime: string): boolean {
-  return ALLOWED_MIMES.has(mime) || mime === "" || mime.startsWith("text/");
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
 
 async function fileToBase64(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
@@ -74,7 +24,7 @@ async function fileToBase64(file: File): Promise<string> {
   return btoa(binary);
 }
 
-export interface NewIssueDialogProps {
+interface NewIssueDialogProps {
   open: boolean;
   onClose: () => void;
   scope: { projectId: string; slug: string };
@@ -86,25 +36,6 @@ const MODE_TABS = [
   { value: "standard", label: "Standard" },
   { value: "quick", label: "Quick capture" },
 ];
-
-function uniqueStagedName(name: string, used: Set<string>): string {
-  if (!used.has(nameKey(name))) return name;
-  const dot = name.lastIndexOf(".");
-  const base = dot > 0 ? name.slice(0, dot) : name;
-  const ext = dot > 0 ? name.slice(dot) : "";
-  for (let n = 2; ; n += 1) {
-    const candidate = `${base}-${n}${ext}`;
-    if (!used.has(nameKey(candidate))) return candidate;
-  }
-}
-
-function nameKey(name: string): string {
-  return name
-    .normalize("NFC")
-    .replace(/[\\/]+/g, "_")
-    .replace(/[\p{C}\p{Z}]/gu, "_")
-    .replace(/[^\p{L}\p{M}\p{N}._-]/gu, "_");
-}
 
 const ATTACHMENT_ERROR_COPY: Record<string, string> = {
   ATTACHMENT_NAME_TAKEN: "this issue already has a file with that name",
@@ -133,10 +64,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
   const [category, setCategory] = useState("");
   const [complexity, setComplexity] = useState("");
   const [errors, setErrors] = useState<{ title?: string; form?: string }>({});
-  const [files, setFiles] = useState<File[]>([]);
-  const [warnings, setWarnings] = useState<string[]>([]);
-  const [dragOver, setDragOver] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const staged = useStagedFiles({ unit: "issue", video: true, uniqueNames: true });
 
   useEffect(() => {
     if (open) {
@@ -148,104 +76,12 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
       setCategory("");
       setComplexity("");
       setErrors({});
-      setFiles([]);
-      setWarnings([]);
-      setDragOver(false);
+      staged.reset();
       create.reset();
       submitting.release();
     }
     // `create` is stable from React Query; resetting only on `open` is intended.
   }, [open, submitting]);
-
-  const acceptFiles = useCallback((picked: FileList | File[]) => {
-    const accepted: File[] = [];
-    const errs: string[] = [];
-    for (const f of Array.from(picked)) {
-      if (f.size <= 0) {
-        errs.push(`Empty file skipped: ${f.name || "(unnamed)"}`);
-        continue;
-      }
-      if (f.size > MAX_BYTES) {
-        errs.push(`Too large (max 10 MB): ${f.name || "(unnamed)"}`);
-        continue;
-      }
-      if (!isStageable(f.type)) {
-        errs.push(`File type not allowed: ${f.name || f.type}`);
-        continue;
-      }
-      accepted.push(f);
-    }
-    setFiles((prev) => {
-      const room = MAX_FILES - prev.length;
-      if (accepted.length > room) {
-        errs.push(`Max ${MAX_FILES} attachments per issue. Extras skipped.`);
-      }
-      const staged = accepted.slice(0, Math.max(0, room));
-      const used = new Set(prev.map((f) => nameKey(f.name)));
-      const renamed: File[] = [];
-      for (const f of staged) {
-        const unique = uniqueStagedName(f.name, used);
-        used.add(nameKey(unique));
-        if (unique === f.name) {
-          renamed.push(f);
-        } else {
-          errs.push(`Renamed ${f.name} to ${unique} — one issue holds one file per name.`);
-          renamed.push(new File([f], unique, { type: f.type }));
-        }
-      }
-      return [...prev, ...renamed];
-    });
-    setWarnings(errs);
-  }, []);
-
-  const onDrop = useCallback(
-    (e: DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      setDragOver(false);
-      if (e.dataTransfer.files?.length) acceptFiles(e.dataTransfer.files);
-    },
-    [acceptFiles],
-  );
-
-  const onPick = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files?.length) acceptFiles(e.target.files);
-      e.target.value = "";
-    },
-    [acceptFiles],
-  );
-
-  const onPaste = useCallback(
-    (e: ClipboardEvent) => {
-      // Quick capture sends no attachments — never stage invisible files there.
-      if (mode === "quick") return;
-      const blobs: File[] = [];
-      for (const item of Array.from(e.clipboardData.items)) {
-        if (item.kind === "file" && item.type.startsWith("image/")) {
-          const file = item.getAsFile();
-          if (!file) continue;
-          if (file.name) {
-            blobs.push(file);
-          } else {
-            const ext = item.type.split("/")[1] ?? "png";
-            blobs.push(
-              new File([file], `pasted-${blobs.length + 1}.${ext}`, { type: item.type }),
-            );
-          }
-        }
-      }
-      if (blobs.length) {
-        e.preventDefault();
-        acceptFiles(blobs);
-      }
-    },
-    [acceptFiles, mode],
-  );
-
-  const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
-    setWarnings([]);
-  };
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -273,7 +109,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
         const trimmedDesc = description.trim();
         const trimmedCategory = category.trim();
         const attachments = await Promise.all(
-          files.map(async (f) => ({
+          staged.files.map(async (f) => ({
             name: f.name,
             mime: f.type || "application/octet-stream",
             dataBase64: await fileToBase64(f),
@@ -308,7 +144,11 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
 
   return (
     <SlideOver open={open} onClose={onClose} title="New issue" width={480}>
-      <form onSubmit={onSubmit} onPaste={onPaste} className="flex h-full flex-col gap-4">
+      <form
+        onSubmit={onSubmit}
+        // Quick capture sends no attachments — never stage invisible files there.
+        onPaste={mode === "quick" ? undefined : staged.onPaste}
+        className="flex h-full flex-col gap-4">
         <Tabs
           tabs={MODE_TABS}
           value={mode}
@@ -406,14 +246,9 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
               hint="Optional — drop files, choose them, or paste a screenshot (⌘/Ctrl+V)."
             >
               <div
-                onDrop={onDrop}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOver(true);
-                }}
-                onDragLeave={() => setDragOver(false)}
+                {...staged.dropZone}
                 className={`flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed px-4 py-5 text-center transition-colors ${
-                  dragOver ? "border-cobalt-400 bg-cobalt-50/50" : "border-line-strong bg-sunken"
+                  staged.dragOver ? "border-cobalt-400 bg-cobalt-50/50" : "border-line-strong bg-sunken"
                 }`}
               >
                 <Icon name="plus" size={18} className="text-subtle" />
@@ -427,52 +262,19 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
                   variant="secondary"
                   size="sm"
                   className="mt-1"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={staged.choose}
                 >
                   Choose files
                 </Button>
-                <input ref={fileInputRef} type="file" multiple accept={ACCEPT_ATTR} className="hidden" onChange={onPick} />
+                {staged.input}
               </div>
 
-              {warnings.length > 0 && (
-                <div className="mt-2">
-                  <Banner tone="attention">
-                    <ul className="space-y-0.5">
-                      {warnings.map((w, i) => (
-                        <li key={i}>{w}</li>
-                      ))}
-                    </ul>
-                  </Banner>
-                </div>
-              )}
-
-              {files.length > 0 && (
-                <ul className="mt-2.5 flex flex-col gap-1.5">
-                  {files.map((f, i) => (
-                    <li
-                      key={`${f.name}-${i}`}
-                      className="flex items-center gap-2.5 rounded-md border border-line-subtle bg-surface px-2.5 py-1.5"
-                    >
-                      <Icon
-                        name={f.type.startsWith("image/") ? "grid" : "folder"}
-                        size={15}
-                        className="flex-none text-subtle"
-                      />
-                      <span className="fg-body-sm min-w-0 flex-1 truncate text-fg" title={f.name}>
-                        {f.name}
-                      </span>
-                      <span className="fg-caption flex-none">{formatSize(f.size)}</span>
-                      <IconButton
-                        type="button"
-                        icon="x"
-                        size="sm"
-                        aria-label={`Remove ${f.name}`}
-                        onClick={() => removeFile(i)}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <StagedFileList
+                files={staged.files}
+                warnings={staged.warnings}
+                remove={staged.remove}
+                spaced
+              />
             </Field>
           </>
         )}

@@ -125,7 +125,7 @@ export function useProjectModules(projectId: string | undefined) {
  * has to travel with the modules; a payload of modules alone deletes them, and the server cannot
  * tell that from a deliberate clear.
  */
-export function buildModuleLabelWrite(
+function buildModuleLabelWrite(
   current: IssueLabel[],
   moduleIds: string[],
   primaryId: string | null,
@@ -227,7 +227,7 @@ type TransitionArgs = {
  * ISS-1257 — the ids a terminal move was refused over, when it was refused because
  * the issue still holds open questions; null for every other failure.
  */
-export function openQuestionIdsOf(err: unknown): string[] | null {
+function openQuestionIdsOf(err: unknown): string[] | null {
   if (!(err instanceof ApiError) || err.code !== "OPEN_QUESTIONS") return null;
   const ids = refusalFact(err, "openQuestionIds");
   return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string") : [];
@@ -378,7 +378,7 @@ export function useBatchRelease(projectId: string, { showsRefusal }: { showsRefu
 
 /** Outcome tally of a bulk apply. `skipped` = the server refused the change
  *  (403 permission, 409 stale, 422 invalid transition / no-op) — surfaced, not failed. */
-export interface BulkSummary {
+interface BulkSummary {
   updated: number;
   skipped: number;
   failed: number;

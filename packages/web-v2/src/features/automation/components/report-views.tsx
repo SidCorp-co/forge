@@ -81,7 +81,7 @@ export function ReportLines({ reports, slug }: { reports: readonly ReportStandin
   );
 }
 
-export function ReportBanner({ r, className }: { r: ReportStanding; className?: string }) {
+function ReportBanner({ r, className }: { r: ReportStanding; className?: string }) {
   if (r.triage !== "new") return null;
   const w = r.waitingOn;
   return (
@@ -202,7 +202,7 @@ export function ReportPrimary({ r, projectId, canWrite }: { r: ReportStanding; p
 type Form = "dismiss" | "duplicate" | "promote" | null;
 
 /** Every triage act a writer may take, each posting to the triage door. */
-export function ReportTriage({ r, projectId, slug }: { r: ReportStanding; projectId: string; slug: string }) {
+function ReportTriage({ r, projectId, slug }: { r: ReportStanding; projectId: string; slug: string }) {
   const triage = useTriageAgentReport(projectId);
   const standing = useAutomationStanding(projectId).data;
   const [form, setForm] = useState<Form>(null);
@@ -342,7 +342,7 @@ export function ReportPeek({
   );
 }
 
-export const REPORT_TABS = ["report", "source", "history"] as const;
+const REPORT_TABS = ["report", "source", "history"] as const;
 
 function Prose({ title, children }: { title: string; children: string | null }) {
   if (!children) return null;

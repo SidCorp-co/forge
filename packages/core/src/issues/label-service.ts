@@ -175,7 +175,7 @@ export async function resolveModuleIdsTolerant(
  * all; a per-row read of `listIssueLabels` would be one request per row. Modules only: a plain
  * label on the same junction is not an attribution and the list has no column for it.
  */
-export type ModuleAttribution = {
+type ModuleAttribution = {
   labelId: string;
   name: string;
   color: string;

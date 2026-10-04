@@ -50,9 +50,8 @@ import {
 } from '../permissions/index.js';
 import { refuseHeldTake } from './blocked-by.js';
 import type { CurrentDrafts } from './criteria/storefront-draft.js';
-import { isDispatchGateError } from './dispatch-gates.js';
 import { mergeNotRecorded } from './merged-at.js';
-import { planDriftOf, readProjectDocument } from './ports.js';
+import { isDispatchGateError, planDriftOf, readProjectDocument } from './ports.js';
 import {
   type CriteriaEvidence,
   readMoveDrafts,

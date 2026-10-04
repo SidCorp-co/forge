@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { jobTypes } from '../db/schema.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest, idParamSchema } from '../middleware/route-errors.js';
+import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { readCostSummary, readStepDurations } from './read.js';
@@ -29,27 +29,19 @@ pipelineAnalyticsRoutes.use('*', requireAuth(), assertEmailVerified());
  * Issues shipped per project per UTC day, one row for each of the last `days` calendar dates
  * whether or not anything shipped on it — see `shippedPerDay`.
  */
-pipelineAnalyticsRoutes.get(
-  '/throughput',
-  zValidator('query', querySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { days, projectId } = c.req.valid('query');
-    const userId = c.get('userId');
+pipelineAnalyticsRoutes.get('/throughput', zValidator('query', querySchema), async (c) => {
+  const { days, projectId } = c.req.valid('query');
+  const userId = c.get('userId');
 
-    const projectIds = await loadVisibleProjectIdsScoped(userId, projectId);
-    if (projectIds.length === 0) return c.json([]);
+  const projectIds = await loadVisibleProjectIdsScoped(userId, projectId);
+  if (projectIds.length === 0) return c.json([]);
 
-    return c.json(await shippedPerDay(projectIds, days, new Date()));
-  },
-);
+  return c.json(await shippedPerDay(projectIds, days, new Date()));
+});
 
 pipelineAnalyticsRoutes.get(
   '/step-durations',
-  zValidator('query', stepDurationsQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('query', stepDurationsQuerySchema),
   async (c) => {
     const { days, projectId, step } = c.req.valid('query');
     const userId = c.get('userId');
@@ -75,12 +67,8 @@ const costSummaryQuerySchema = z.object({
  */
 projectCostAnalyticsRoutes.get(
   '/:id/analytics/cost-summary',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', costSummaryQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('query', costSummaryQuerySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { days } = c.req.valid('query');

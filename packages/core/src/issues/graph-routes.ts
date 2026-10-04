@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest, idParamSchema } from '../middleware/route-errors.js';
+import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { PM_GRAPH_DEFAULT_DEPTH, PM_GRAPH_MAX_DEPTH, readPmGraph } from './graph-read.js';
@@ -24,12 +24,8 @@ issueGraphRoutes.use('/:id/pm/graph', requireAuth(), assertEmailVerified());
 
 issueGraphRoutes.get(
   '/:id/pm/graph',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', graphQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('query', graphQuerySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { rootIssueId, depth } = c.req.valid('query');

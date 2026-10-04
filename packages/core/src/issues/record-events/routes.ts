@@ -16,7 +16,7 @@ import {
   requireAuth,
   restActor,
 } from '../../middleware/auth.js';
-import { badRequest, idParamSchema, notFound } from '../../middleware/route-errors.js';
+import { idParamSchema, notFound } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { requireHeld } from '../../permissions/index.js';
 import type { Actor } from '../activity.js';
@@ -65,12 +65,8 @@ recordEventRoutes.use('/:id/events', requireAuth(), assertEmailVerified());
 
 recordEventRoutes.post(
   '/:id/events',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', eventBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', eventBodySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const draft = c.req.valid('json');
@@ -97,12 +93,8 @@ recordEventRoutes.post(
 
 recordEventRoutes.get(
   '/:id/events',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('query', listQuerySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { kind, limit } = c.req.valid('query');

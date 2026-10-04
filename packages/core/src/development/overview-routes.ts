@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest, idParamSchema } from '../middleware/route-errors.js';
+import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { readDevelopmentOverview } from './overview-read.js';
@@ -15,9 +15,7 @@ developmentOverviewRoutes.use('*', requireAuth(), assertEmailVerified());
 
 developmentOverviewRoutes.get(
   '/:id/development/overview',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
   zValidator('query', noQuery, (r) => {
     if (!r.success) throw queryBadRequest(noQuery, r.error);
   }),

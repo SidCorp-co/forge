@@ -5,7 +5,7 @@ import { issuePriorities, issueStatuses } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { RefusalError } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
+import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { triggerPipelineStepManual } from '../pipeline/index.js';
@@ -46,49 +46,33 @@ const pipelineTimingQuerySchema = z
 export const issueExtrasRoutes = new Hono<{ Variables: AuthVars }>();
 issueExtrasRoutes.use('*', requireAuth(), assertEmailVerified());
 
-issueExtrasRoutes.patch(
-  '/batch',
-  zValidator('json', batchPatchBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { ids, data } = c.req.valid('json');
-    return c.json(await patchIssueBatch(ids, data, c.get('userId'), restActor(c)));
-  },
-);
+issueExtrasRoutes.patch('/batch', zValidator('json', batchPatchBodySchema), async (c) => {
+  const { ids, data } = c.req.valid('json');
+  return c.json(await patchIssueBatch(ids, data, c.get('userId'), restActor(c)));
+});
 
-issueExtrasRoutes.post(
-  '/:id/enrich',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id: issueId } = c.req.valid('param');
-    const userId = c.get('userId');
+issueExtrasRoutes.post('/:id/enrich', zValidator('param', idParamSchema), async (c) => {
+  const { id: issueId } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    const issue = await issueScopeOf(issueId);
-    if (!issue) throw notFound('issue not found');
+  const issue = await issueScopeOf(issueId);
+  if (!issue) throw notFound('issue not found');
 
-    const access = await loadProjectAccess(issue.projectId, userId);
-    requireHeld(access, 'project.write');
+  const access = await loadProjectAccess(issue.projectId, userId);
+  requireHeld(access, 'project.write');
 
-    // No enrich prompt is built anywhere, and the job pool runs only the prompt a
-    // job is minted with (ISS-1135).
-    throw new RefusalError(
-      [{ code: POOL_JOB_NO_PROMPT, path: '', detail: noPromptMessage('custom') }],
-      POOL_JOB_NO_PROMPT,
-    );
-  },
-);
+  // No enrich prompt is built anywhere, and the job pool runs only the prompt a
+  // job is minted with (ISS-1135).
+  throw new RefusalError(
+    [{ code: POOL_JOB_NO_PROMPT, path: '', detail: noPromptMessage('custom') }],
+    POOL_JOB_NO_PROMPT,
+  );
+});
 
 issueExtrasRoutes.post(
   '/:id/run-pipeline-step',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', runPipelineStepBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', runPipelineStepBodySchema),
   async (c) => {
     const { id: issueId } = c.req.valid('param');
     const userId = c.get('userId');
@@ -116,9 +100,7 @@ issueExtrasRoutes.post(
 // as the dwell time of `current.from` status. Returns avg/median/p90 per status.
 issueExtrasRoutes.get(
   '/pipeline-timing',
-  zValidator('query', pipelineTimingQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('query', pipelineTimingQuerySchema),
   async (c) => {
     const { projectId, from, to, limit } = c.req.valid('query');
     const userId = c.get('userId');
@@ -184,12 +166,8 @@ issueExtrasRoutes.get(
 
 issueExtrasRoutes.get(
   '/:id/cost-summary',
-  zValidator('param', issueRouteIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', projectScopeQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', issueRouteIdParamSchema),
+  zValidator('query', projectScopeQuerySchema),
   async (c) => {
     const { id: rawId } = c.req.valid('param');
     const { projectId: projectIdQuery } = c.req.valid('query');

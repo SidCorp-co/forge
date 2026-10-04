@@ -61,7 +61,7 @@ export { providePipelinePorts } from './ports.js';
 export { runReconcilerOnce } from './reconciler.js';
 export { classifyVerdict, JOB_TYPE_ENTRY_STATUS, verifyRecovery } from './recovery-verifier.js';
 export { NO_PROGRESS_ROUNDS } from './reopen-policy.js';
-export { resolvedWindowDaysFor, retentionRuleFor } from './retention/policy.js';
+export { resolvedWindowDaysFor } from './retention/policy.js';
 export { runRetentionSweep } from './retention/sweep.js';
 export { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
 export type { PauseResumer } from './run-pause.js';
@@ -99,7 +99,7 @@ export {
   reapStaleReleaseBatchClaims,
   type StaleReleaseBatchClaimsResult,
 } from './stale-release-claims.js';
-export { type HandoffStep, isHandoffStep, type StepHandoffPayload } from './step-handoff-schema.js';
+export { type StepHandoffPayload } from './step-handoff-schema.js';
 export {
   detectOwedCloses,
   detectStrandedIssues,

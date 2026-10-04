@@ -35,7 +35,7 @@ const keyOf = (r: ModuleRollupRow) => r.slug ?? r.id;
 type Trace = Map<string, string[]>;
 
 /** The core modules of the build's trace, by name; a module label named after one shows its trace. */
-export function traceByModule(data: CodeTraceResponse | undefined): Trace | null {
+function traceByModule(data: CodeTraceResponse | undefined): Trace | null {
   return data ? new Map(data.units.filter((u) => u.scope === "core").map((u) => [u.unit, u.serves])) : null;
 }
 

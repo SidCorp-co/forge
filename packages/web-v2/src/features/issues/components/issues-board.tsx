@@ -42,7 +42,7 @@ import { priorityLabel, statusesFromParam, statusLabel } from "../derive";
 import { issueBadge, issueRowView } from "./issue-standing-bits";
 import { IssuePeek } from "./issue-peek";
 
-export type BoardMode = "attention" | "module" | "waves";
+type BoardMode = "attention" | "module" | "waves";
 
 const QUICK = [
   { id: "you", label: "Waiting on you", mono: false },
@@ -114,7 +114,7 @@ const WAVE_NOTE = [
 ];
 
 /** The blocks edges between the visible wave cards, blocker first. */
-export function waveEdges(rows: readonly IssueStandingRow[]): { from: string; to: string }[] {
+function waveEdges(rows: readonly IssueStandingRow[]): { from: string; to: string }[] {
   const shown = new Set(rows.filter((r) => r.standing.wave !== null).map((r) => r.key));
   return rows.flatMap((r) => (shown.has(r.key) ? r.standing.blockedBy.filter((b) => shown.has(b.key)).map((b) => ({ from: b.key, to: r.key })) : []));
 }

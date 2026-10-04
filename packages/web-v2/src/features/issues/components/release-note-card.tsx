@@ -6,7 +6,7 @@ import type { IssueDetail, IssueStatus } from "../types";
 
 /** Built and not yet released — the only reading that earns the future-tense heading; anything else,
  *  an `in_progress` row with no known step included, gets the neutral heading, never a guess. */
-export function builtNotReleased(status: IssueStatus, step: WorkStep | null | undefined): boolean {
+function builtNotReleased(status: IssueStatus, step: WorkStep | null | undefined): boolean {
   if (status === "awaiting_release") return true;
   return status === "in_progress" && step === "test";
 }

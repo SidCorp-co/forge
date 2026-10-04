@@ -13,7 +13,6 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { pulseActionsOf } from './pulse-actions.js';
 import { readPulseFlow } from './pulse-flow.js';
@@ -74,38 +73,32 @@ function emptyPulse(now: Date): PulseResponse {
 export const mePulseRoutes = new Hono<{ Variables: AuthVars }>();
 mePulseRoutes.use('/pulse', requireAuth(), assertEmailVerified());
 
-mePulseRoutes.get(
-  '/pulse',
-  zValidator('query', pulseQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { orgId } = c.req.valid('query');
-    const now = new Date();
+mePulseRoutes.get('/pulse', zValidator('query', pulseQuerySchema), async (c) => {
+  const { orgId } = c.req.valid('query');
+  const now = new Date();
 
-    const visibleIds = await loadVisibleProjectIds(c.get('userId'));
-    if (visibleIds.length === 0) return c.json(emptyPulse(now));
+  const visibleIds = await loadVisibleProjectIds(c.get('userId'));
+  if (visibleIds.length === 0) return c.json(emptyPulse(now));
 
-    const projectIds = orgId ? await projectIdsInOrg(visibleIds, orgId) : visibleIds;
+  const projectIds = orgId ? await projectIdsInOrg(visibleIds, orgId) : visibleIds;
 
-    if (projectIds.length === 0) return c.json(emptyPulse(now));
+  if (projectIds.length === 0) return c.json(emptyPulse(now));
 
-    const [liveness, work, flow, quality] = await Promise.all([
-      readPulseLiveness(projectIds, PULSE_THRESHOLDS, now),
-      readPulseWork(projectIds, PULSE_THRESHOLDS, now),
-      readPulseFlow(projectIds, now),
-      readPulseQuality(projectIds),
-    ]);
+  const [liveness, work, flow, quality] = await Promise.all([
+    readPulseLiveness(projectIds, PULSE_THRESHOLDS, now),
+    readPulseWork(projectIds, PULSE_THRESHOLDS, now),
+    readPulseFlow(projectIds, now),
+    readPulseQuality(projectIds),
+  ]);
 
-    const response: PulseResponse = {
-      generatedAt: now.toISOString(),
-      thresholds: PULSE_THRESHOLDS,
-      liveness,
-      work,
-      flow,
-      quality,
-      actions: pulseActionsOf(liveness, work, now),
-    };
-    return c.json(response);
-  },
-);
+  const response: PulseResponse = {
+    generatedAt: now.toISOString(),
+    thresholds: PULSE_THRESHOLDS,
+    liveness,
+    work,
+    flow,
+    quality,
+    actions: pulseActionsOf(liveness, work, now),
+  };
+  return c.json(response);
+});

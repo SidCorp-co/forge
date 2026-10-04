@@ -80,7 +80,7 @@ export function FireLines({ fires, slug }: { fires: readonly FireStanding[]; slu
   );
 }
 
-export function FireBanner({ f, className }: { f: FireStanding; className?: string }) {
+function FireBanner({ f, className }: { f: FireStanding; className?: string }) {
   if (f.waitingOn.kind === "none") return null;
   const w = f.waitingOn;
   return (
@@ -167,7 +167,7 @@ export function FirePeek({
   );
 }
 
-export const FIRE_TABS = ["produced", "output"] as const;
+const FIRE_TABS = ["produced", "output"] as const;
 
 function Produced({ d, slug }: { d: FireDetailResponse; slug: string }) {
   const p = d.produced;

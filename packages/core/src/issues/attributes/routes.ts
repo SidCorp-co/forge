@@ -10,7 +10,7 @@ import type { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../../lib/authz.js';
 import type { AuthVars } from '../../middleware/auth.js';
-import { badRequest, idParamSchema, notFound } from '../../middleware/route-errors.js';
+import { idParamSchema, notFound } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { requireHeld } from '../../permissions/index.js';
 import { issueScopeOf } from '../read-service.js';
@@ -30,12 +30,8 @@ const writeBodySchema = z.object({ attributes: z.array(attributeSchema).min(1).m
 export function registerIssueAttributeRoutes(router: Hono<{ Variables: AuthVars }>): void {
   router.post(
     '/:id/attributes',
-    zValidator('param', idParamSchema, (r) => {
-      if (!r.success) throw badRequest(r.error);
-    }),
-    zValidator('json', writeBodySchema, (r) => {
-      if (!r.success) throw badRequest(r.error);
-    }),
+    zValidator('param', idParamSchema),
+    zValidator('json', writeBodySchema),
     async (c) => {
       const { id: issueId } = c.req.valid('param');
       const { attributes } = c.req.valid('json');
@@ -56,19 +52,13 @@ export function registerIssueAttributeRoutes(router: Hono<{ Variables: AuthVars 
     },
   );
 
-  router.get(
-    '/:id/attributes',
-    zValidator('param', idParamSchema, (r) => {
-      if (!r.success) throw badRequest(r.error);
-    }),
-    async (c) => {
-      const { id: issueId } = c.req.valid('param');
-      const issue = await loadIssueRow(issueId);
-      const access = await loadProjectAccess(issue.projectId, c.get('userId'));
-      requireHeld(access, 'project.read');
-      return c.json({ attributes: await loadIssueAttributes(issue.id) });
-    },
-  );
+  router.get('/:id/attributes', zValidator('param', idParamSchema), async (c) => {
+    const { id: issueId } = c.req.valid('param');
+    const issue = await loadIssueRow(issueId);
+    const access = await loadProjectAccess(issue.projectId, c.get('userId'));
+    requireHeld(access, 'project.read');
+    return c.json({ attributes: await loadIssueAttributes(issue.id) });
+  });
 }
 
 async function loadIssueRow(issueId: string): Promise<{ id: string; projectId: string }> {

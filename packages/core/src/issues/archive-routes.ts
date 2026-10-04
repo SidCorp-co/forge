@@ -8,7 +8,7 @@ import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { badRequest, idParamSchema } from '../middleware/route-errors.js';
+import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { type ArchiveDirection, issueArchiveRequestSchema, runIssueArchive } from './archive.js';
@@ -44,13 +44,9 @@ function archiveHandler(direction: ArchiveDirection) {
   };
 }
 
-const validProjectId = zValidator('param', idParamSchema, (r) => {
-  if (!r.success) throw badRequest(r.error);
-});
+const validProjectId = zValidator('param', idParamSchema);
 
-const validRequest = zValidator('json', issueArchiveRequestSchema, (r) => {
-  if (!r.success) throw badRequest(r.error);
-});
+const validRequest = zValidator('json', issueArchiveRequestSchema);
 
 issueArchiveRoutes.post(
   '/:id/issues/archive',

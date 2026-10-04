@@ -27,9 +27,7 @@ issueStandingRoutes.use('*', requireAuth(), assertEmailVerified());
 
 issueStandingRoutes.get(
   '/:id/issues/standing',
-  zValidator('param', projectParam, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', projectParam),
   zValidator('query', scopeQuery, (r) => {
     if (!r.success) throw queryBadRequest(scopeQuery, r.error);
   }),
@@ -46,23 +44,17 @@ issueStandingRoutes.get(
   },
 );
 
-issueStandingRoutes.get(
-  '/:id/issues/standing/:key',
-  zValidator('param', keyParam, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id: projectId, key } = c.req.valid('param');
-    const userId = c.get('userId');
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
-    const parsed = parseIssueRef(
-      key,
-      issueRefNeedsHeldPrefixes(key) ? await heldIssuePrefixes(projectId) : [],
-    );
-    if (!parsed.ok) throw badRequest(parsed.message);
-    const row = await readIssueStanding(projectId, parsed.issSeq, userId ? { userId } : null);
-    if (!row) throw notFound(`issue ${key} not found in this project`);
-    return c.json(await egressForRequest(restActor(c).agency, projectId, 'issue', row, key));
-  },
-);
+issueStandingRoutes.get('/:id/issues/standing/:key', zValidator('param', keyParam), async (c) => {
+  const { id: projectId, key } = c.req.valid('param');
+  const userId = c.get('userId');
+  const access = await loadProjectAccess(projectId, userId);
+  requireHeld(access, 'project.read');
+  const parsed = parseIssueRef(
+    key,
+    issueRefNeedsHeldPrefixes(key) ? await heldIssuePrefixes(projectId) : [],
+  );
+  if (!parsed.ok) throw badRequest(parsed.message);
+  const row = await readIssueStanding(projectId, parsed.issSeq, userId ? { userId } : null);
+  if (!row) throw notFound(`issue ${key} not found in this project`);
+  return c.json(await egressForRequest(restActor(c).agency, projectId, 'issue', row, key));
+});

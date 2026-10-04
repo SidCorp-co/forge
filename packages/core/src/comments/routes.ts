@@ -146,12 +146,8 @@ async function issueThreadPage(
 export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>): void {
   router.post(
     '/:id/comments',
-    zValidator('param', idParamSchema, (r) => {
-      if (!r.success) throw badRequest(r.error);
-    }),
-    zValidator('json', commentCreateSchema, (r) => {
-      if (!r.success) throw badRequest(r.error);
-    }),
+    zValidator('param', idParamSchema),
+    zValidator('json', commentCreateSchema),
     async (c) => {
       const { id: issueId } = c.req.valid('param');
       const { body, format, parentId, intent } = c.req.valid('json');
@@ -186,12 +182,8 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
 
   router.get(
     '/:id/comments',
-    zValidator('param', issueRouteIdParamSchema, (r) => {
-      if (!r.success) throw badRequest(r.error);
-    }),
-    zValidator('query', threadQuerySchema, (r) => {
-      if (!r.success) throw badRequest(r.error);
-    }),
+    zValidator('param', issueRouteIdParamSchema),
+    zValidator('query', threadQuerySchema),
     async (c) => {
       const { id: rawId } = c.req.valid('param');
       const { limit, cursor, projectId: projectIdQuery, intent } = c.req.valid('query');
@@ -221,12 +213,8 @@ commentRoutes.get(
   '/:id/replies',
   requireAuth(),
   assertEmailVerified(),
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', paginationSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('query', paginationSchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { limit, offset } = c.req.valid('query');
@@ -252,12 +240,8 @@ commentRoutes.patch(
   '/:id',
   requireAuth(),
   assertEmailVerified(),
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', commentBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', commentBodySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { body, format } = c.req.valid('json');
@@ -293,9 +277,7 @@ commentRoutes.delete(
   '/:id',
   requireAuth(),
   assertEmailVerified(),
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');

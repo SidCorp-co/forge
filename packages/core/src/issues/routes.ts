@@ -13,7 +13,6 @@ import { registerIssueAttributeRoutes } from './attributes/routes.js';
 import { heldTakeRefusal } from './blocked-by.js';
 import { hydrateCreatorsForIssues } from './creator.js';
 import { serializeIssue } from './detail-projection.js';
-import { dispatchGatesOf } from './dispatch-gates.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import {
   issueRouteIdParamSchema,
@@ -43,9 +42,10 @@ export {
   issueMetadataSchema,
 } from './metadata.js';
 
-import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
+import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { requireHeld } from '../permissions/index.js';
 import {
+  buildsWorkflowOf,
   deleteMemory,
   issueDeleteRefusal,
   proposesWorkflowOf,
@@ -67,12 +67,8 @@ async function loadIssue(issueId: string): Promise<IssueRow> {
 
 issueRoutes.get(
   '/:id',
-  zValidator('param', issueRouteIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', projectScopeQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', issueRouteIdParamSchema),
+  zValidator('query', projectScopeQuerySchema),
   async (c) => {
     const { id: rawId } = c.req.valid('param');
     const { projectId: projectIdQuery } = c.req.valid('query');
@@ -106,7 +102,7 @@ issueRoutes.get(
       agentStatus: agentBucket?.agentStatus ?? null,
       pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(issue.status),
       liveReach: await liveReachForIssue(issue),
-      ...(await dispatchGatesOf(issue.id)),
+      buildsWorkflow: await buildsWorkflowOf(issue.id),
       proposesWorkflow: await proposesWorkflowOf(issue.id),
       requirement: await requirementOfIssue(issue.id),
       labels: labelRows,
@@ -122,12 +118,8 @@ const jobHistoryQuerySchema = z.object({
 
 issueRoutes.get(
   '/:id/job-history',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', jobHistoryQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('query', jobHistoryQuerySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { step } = c.req.valid('query');
@@ -143,12 +135,8 @@ issueRoutes.get(
 
 issueRoutes.patch(
   '/:id',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', issuePatchSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', issuePatchSchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const patch = c.req.valid('json');
@@ -232,36 +220,30 @@ issueRoutes.patch(
   },
 );
 
-issueRoutes.delete(
-  '/:id',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
+issueRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    const issue = await loadIssue(id);
-    const access = await loadProjectAccess(issue.projectId, userId);
-    requireHeld(access, 'project.admin');
+  const issue = await loadIssue(id);
+  const access = await loadProjectAccess(issue.projectId, userId);
+  requireHeld(access, 'project.admin');
 
-    const carried = await issueDeleteRefusal(issue);
-    if (carried) return refused(c, [carried], carried.code);
+  const carried = await issueDeleteRefusal(issue);
+  if (carried) return refused(c, [carried], carried.code);
 
-    await deleteIssue(id);
+  await deleteIssue(id);
 
-    queueMicrotask(() => {
-      deleteMemory(issue.projectId, 'issue', id).catch((err) => {
-        logger.warn(
-          { err: (err as Error).message, issueId: id, projectId: issue.projectId },
-          'issues.delete: memory cleanup failed',
-        );
-      });
+  queueMicrotask(() => {
+    deleteMemory(issue.projectId, 'issue', id).catch((err) => {
+      logger.warn(
+        { err: (err as Error).message, issueId: id, projectId: issue.projectId },
+        'issues.delete: memory cleanup failed',
+      );
     });
+  });
 
-    return c.body(null, 204);
-  },
-);
+  return c.body(null, 204);
+});
 
 export { issueActivityRoutes, projectActivityRoutes } from './activity-routes.js';
 export { issueArchiveRoutes } from './archive-routes.js';

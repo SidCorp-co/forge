@@ -192,7 +192,7 @@ export const releaseBatchApi = {
 };
 
 /** `already_merged` moved nothing: the mark that stands was kept (ISS-1327). */
-export interface MarkMergedAnswer {
+interface MarkMergedAnswer {
   id: string;
   action: "merged" | "already_merged";
   mark?: string;

@@ -7,7 +7,7 @@ import { refuser } from '../lib/refusal.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { getStorage } from '../storage/index.js';
-import { loadAttachmentBytesTarget } from './attachment-bytes.js';
+import { loadAttachment } from './attachment-lookup.js';
 import { resolveDownloadTicket } from './download-ticket-service.js';
 import { persistUpload } from './persist-upload.js';
 import { claimUploadTicket, releaseUploadTicket } from './ticket-service.js';
@@ -85,7 +85,7 @@ uploadRoutes.get(
       });
     }
 
-    const att = await loadAttachmentBytesTarget(ticket.targetType, ticket.attachmentId);
+    const att = await loadAttachment(ticket.targetType, ticket.attachmentId);
     if (!att) {
       throw new HTTPException(404, {
         message: 'attachment not found',

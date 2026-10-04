@@ -144,7 +144,7 @@ export function deriveActivityFeed(attempts: PipelineRunAttempt[] | undefined): 
   return entries;
 }
 
-export function isFailureEntry(entry: ActivityEntry): boolean {
+function isFailureEntry(entry: ActivityEntry): boolean {
   return entry.tone === "failure";
 }
 

@@ -2,7 +2,7 @@
 import { apiClient } from "@/lib/api/client";
 import type { AgentQuestion, AnswerInput, QuestionListResponse } from "./types";
 
-export const PROJECT_PAGE_SIZE = 50;
+const PROJECT_PAGE_SIZE = 50;
 
 export const questionsApi = {
   listForIssue: (issueId: string) =>

@@ -16,8 +16,9 @@ import {
   issues,
   sessionAttachments,
 } from '../db/schema.js';
+import type { DownloadTargetType } from './download-ticket-service.js';
 
-interface AttachmentForFetch {
+interface AttachmentRow {
   name: string;
   mime: string;
   size: number;
@@ -26,10 +27,11 @@ interface AttachmentForFetch {
   url: string;
 }
 
-export async function loadAttachmentForFetch(
-  target: 'issue' | 'comment' | 'session',
+/** The row behind a download ticket or an MCP fetch, or null when no row has that id. */
+export async function loadAttachment(
+  target: DownloadTargetType,
   attachmentId: string,
-): Promise<AttachmentForFetch> {
+): Promise<AttachmentRow | null> {
   if (target === 'session') {
     const [row] = await db
       .select({
@@ -44,7 +46,7 @@ export async function loadAttachmentForFetch(
       .innerJoin(agentSessions, eq(agentSessions.id, sessionAttachments.sessionId))
       .where(eq(sessionAttachments.id, attachmentId))
       .limit(1);
-    if (!row) throw new Error('NOT_FOUND: attachment not found');
+    if (!row) return null;
     const { sessionId, ...rest } = row;
     return {
       ...rest,
@@ -64,7 +66,7 @@ export async function loadAttachmentForFetch(
       .innerJoin(issues, eq(issues.id, issueAttachments.issueId))
       .where(eq(issueAttachments.id, attachmentId))
       .limit(1);
-    if (!row) throw new Error('NOT_FOUND: attachment not found');
+    if (!row) return null;
     return { ...row, url: `/api/attachments/${attachmentId}/download` };
   }
   const [row] = await db
@@ -80,6 +82,6 @@ export async function loadAttachmentForFetch(
     .innerJoin(issues, eq(issues.id, comments.issueId))
     .where(eq(commentAttachments.id, attachmentId))
     .limit(1);
-  if (!row) throw new Error('NOT_FOUND: attachment not found');
+  if (!row) return null;
   return { ...row, url: `/api/comments/attachments/${attachmentId}` };
 }

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { phaseJournalOutcomes } from '../db/schema-journal.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
+import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { endPhase, listPhases, resumePoint, startPhase } from './phase-journal.js';
@@ -44,12 +44,8 @@ phaseRoutes.use('*', requireAuth(), assertEmailVerified());
 
 phaseRoutes.post(
   '/:id/phases',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', startBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', startBodySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
@@ -68,12 +64,8 @@ phaseRoutes.post(
 
 phaseRoutes.post(
   '/:id/phases/end',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', endBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', endBodySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
@@ -89,42 +81,28 @@ phaseRoutes.post(
   },
 );
 
-phaseRoutes.get(
-  '/:id/resume-point',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    await runProjectFor(id, c.get('userId'), 'project.read');
-    const row = await resumePoint(id);
-    return c.json({
-      resumePoint: row
-        ? { phase: row.phase, attempt: row.attempt, startedAt: row.startedAt }
-        : null,
-    });
-  },
-);
+phaseRoutes.get('/:id/resume-point', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  await runProjectFor(id, c.get('userId'), 'project.read');
+  const row = await resumePoint(id);
+  return c.json({
+    resumePoint: row ? { phase: row.phase, attempt: row.attempt, startedAt: row.startedAt } : null,
+  });
+});
 
-phaseRoutes.get(
-  '/:id/phases',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    await runProjectFor(id, c.get('userId'), 'project.read');
-    const rows = await listPhases(id);
-    return c.json({
-      phases: rows.map((row) => ({
-        phase: row.phase,
-        attempt: row.attempt,
-        source: row.source,
-        outcome: row.outcome,
-        startedAt: row.startedAt,
-        endedAt: row.endedAt,
-        artifact: row.artifact,
-      })),
-    });
-  },
-);
+phaseRoutes.get('/:id/phases', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  await runProjectFor(id, c.get('userId'), 'project.read');
+  const rows = await listPhases(id);
+  return c.json({
+    phases: rows.map((row) => ({
+      phase: row.phase,
+      attempt: row.attempt,
+      source: row.source,
+      outcome: row.outcome,
+      startedAt: row.startedAt,
+      endedAt: row.endedAt,
+      artifact: row.artifact,
+    })),
+  });
+});

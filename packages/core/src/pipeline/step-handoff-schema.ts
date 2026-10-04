@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { type JobType, testResults } from '../db/schema.js';
+import { testResults } from '../db/schema.js';
 
 const triageHandoff = z.object({
   step: z.literal('triage'),
@@ -123,19 +123,3 @@ export const stepHandoffSchema = z.discriminatedUnion('step', [
   driveHandoff,
 ]);
 export type StepHandoffPayload = z.infer<typeof stepHandoffSchema>;
-
-const HANDOFF_STEPS = [
-  'triage',
-  'clarify',
-  'plan',
-  'code',
-  'review',
-  'test',
-  'fix',
-  'drive',
-] as const satisfies ReadonlyArray<JobType>;
-export type HandoffStep = (typeof HANDOFF_STEPS)[number];
-
-export function isHandoffStep(step: JobType): step is HandoffStep {
-  return (HANDOFF_STEPS as readonly JobType[]).includes(step);
-}

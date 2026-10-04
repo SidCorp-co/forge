@@ -87,7 +87,7 @@ function pageQuery(where: SQL | undefined, page: IssueListPage, search: string |
     .offset(page.offset);
 }
 
-export type IssueListRow = Awaited<ReturnType<typeof pageQuery>>[number];
+type IssueListRow = Awaited<ReturnType<typeof pageQuery>>[number];
 
 type IssueListAnswer =
   | { ok: true; rows: IssueListRow[]; total: number; buckets: IssueBuckets | null }

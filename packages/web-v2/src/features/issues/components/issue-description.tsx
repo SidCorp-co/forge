@@ -15,7 +15,7 @@ import { BodyEditor } from "./body-editor";
 import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
 import { useSaveDescription } from "../hooks";
 
-export interface IssueDescriptionProps {
+interface IssueDescriptionProps {
   issue: IssueDetail;
   attachments: AttachmentRow[];
   canWrite: boolean;

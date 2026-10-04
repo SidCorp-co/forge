@@ -5,7 +5,7 @@ import { markUntrusted } from '../lib/untrusted-text.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { getStorage } from '../storage/index.js';
-import { loadAttachmentForFetch } from './attachment-lookup.js';
+import { loadAttachment } from './attachment-lookup.js';
 import { createDownloadTicket } from './download-ticket-service.js';
 
 const inputSchema = z
@@ -68,7 +68,8 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
     const { principal } = ctx;
 
     const { target, attachmentId } = input.data;
-    const att = await loadAttachmentForFetch(target, attachmentId);
+    const att = await loadAttachment(target, attachmentId);
+    if (!att) throw new Error('NOT_FOUND: attachment not found');
     await requireCan(actorFor(principal.userId), 'project.write', projectResource(att.projectId));
 
     const download = await mintDownloadTicket(target, attachmentId, att.projectId, principal);

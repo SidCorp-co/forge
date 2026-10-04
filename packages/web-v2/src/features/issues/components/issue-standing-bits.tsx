@@ -93,7 +93,7 @@ export function IssueBanner({ standing, className }: { standing: IssueStanding; 
 }
 
 /** Triage → … → Release with the current step lit; an issue past release is all done. */
-export function IssueSteps({ standing }: { standing: IssueStanding }) {
+function IssueSteps({ standing }: { standing: IssueStanding }) {
   const over = standing.state === "awaiting_release" || standing.state === "closed";
   const at = standing.step ? WORK_STEPS.indexOf(standing.step) : -1;
   if (!over && at < 0) return null;

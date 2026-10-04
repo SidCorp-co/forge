@@ -6,7 +6,7 @@ import { labelKinds } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest, idParamSchema } from '../middleware/route-errors.js';
+import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { moduleDetailOf } from './module-detail-read.js';
@@ -83,12 +83,8 @@ labelProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 
 labelProjectRoutes.post(
   '/:id/labels',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', labelCreateSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', labelCreateSchema),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const { name, color, kind, parentId, knowledgeEntryId, description } = c.req.valid('json');
@@ -123,30 +119,20 @@ labelProjectRoutes.post(
   },
 );
 
-labelProjectRoutes.get(
-  '/:id/labels',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id: projectId } = c.req.valid('param');
-    const userId = c.get('userId');
+labelProjectRoutes.get('/:id/labels', zValidator('param', idParamSchema), async (c) => {
+  const { id: projectId } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
+  const access = await loadProjectAccess(projectId, userId);
+  requireHeld(access, 'project.read');
 
-    return c.json(await listProjectLabels(projectId));
-  },
-);
+  return c.json(await listProjectLabels(projectId));
+});
 
 labelProjectRoutes.get(
   '/:id/modules/rollup',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', rollupQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('query', rollupQuerySchema),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const { activeWithinDays } = c.req.valid('query');
@@ -167,9 +153,7 @@ labelProjectRoutes.get(
 
 labelProjectRoutes.get(
   '/:id/modules/:module/detail',
-  zValidator('param', moduleDetailParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', moduleDetailParamSchema),
   async (c) => {
     const { id: projectId, module } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
@@ -184,12 +168,8 @@ const driftQuerySchema = z
 
 labelProjectRoutes.get(
   '/:id/modules/drift',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', driftQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('query', driftQuerySchema),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const { minCoOccurrence } = c.req.valid('query');
@@ -213,12 +193,8 @@ async function loadLabel(labelId: string) {
 
 labelRoutes.patch(
   '/:id',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', labelPatchSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', labelPatchSchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const patch = c.req.valid('json');
@@ -264,29 +240,23 @@ labelRoutes.patch(
   },
 );
 
-labelRoutes.delete(
-  '/:id',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
+labelRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    const label = await loadLabel(id);
-    const access = await loadProjectAccess(label.projectId, userId);
-    requireHeld(access, 'project.admin');
+  const label = await loadLabel(id);
+  const access = await loadProjectAccess(label.projectId, userId);
+  requireHeld(access, 'project.admin');
 
-    if ((await labelAttachmentCount(id)) > 0) {
-      throw refuse(
-        'LABEL_IN_USE',
-        'this label is attached to issues; detach it from every issue before deleting it',
-      );
-    }
+  if ((await labelAttachmentCount(id)) > 0) {
+    throw refuse(
+      'LABEL_IN_USE',
+      'this label is attached to issues; detach it from every issue before deleting it',
+    );
+  }
 
-    await deleteLabel(id);
-    return c.body(null, 204);
-  },
-);
+  await deleteLabel(id);
+  return c.body(null, 204);
+});
 
 export { moduleDiagramRoutes } from './module-diagram-routes.js';

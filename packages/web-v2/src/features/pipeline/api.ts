@@ -32,7 +32,7 @@ function isCheckIn(value: unknown): boolean {
 }
 
 /** Issues fetched for the kanban (one page is enough for a board view). */
-export const PIPELINE_ISSUES_PAGE_SIZE = 200;
+const PIPELINE_ISSUES_PAGE_SIZE = 200;
 
 function analyticsParams(opts: AnalyticsOpts): string {
   const params = new URLSearchParams();

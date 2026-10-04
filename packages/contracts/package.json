@@ -38,6 +38,10 @@
       "types": "./dist/deploy-capability.d.ts",
       "default": "./dist/deploy-capability.js"
     },
+    "./pulse": {
+      "types": "./dist/pulse.d.ts",
+      "default": "./dist/pulse.js"
+    },
     "./status-sets": {
       "types": "./dist/status-sets.d.ts",
       "default": "./dist/status-sets.js"

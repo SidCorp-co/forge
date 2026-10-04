@@ -154,7 +154,7 @@ export async function readAdmissibleIssues(args: {
         ${a.entryOnRelease ? sql`AND (i.status <> ${AUTONOMOUS_ENTRY_STATUS} OR i.session_context ? 'runRelease')` : sql``}
         AND NOT ${blockedByUnsettledSql({ issueId: sql`i.id`, projectId: a.projectId })}
         -- an issue that builds a workflow whose design is not approved, or waits on a contract version
-        -- not yet published, waits; the issue read names which (issues/dispatch-gates.ts)
+        -- not yet published, waits; the issue read names which (workflows/build-gate.ts)
         AND NOT ${dispatchGateHeldSql(sql`i.id`)}
         -- one predicate for "is this issue being worked", shared with the orphan sweep that
         -- used to carry a verbatim copy of it (ISS-1109). The key is canonicalised and never
