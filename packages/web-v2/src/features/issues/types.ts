@@ -89,8 +89,6 @@ export interface IssueWorkStateRow {
   branch: string | null;
   headSha: string | null;
   leftStatus: IssueStatus | null;
-  /** The retired status a 17-status client last wrote; shown nowhere, carried for the wire's sake. */
-  legacyStatus: string | null;
 }
 
 /** The detail read's work state: the list row's, plus the step log. */

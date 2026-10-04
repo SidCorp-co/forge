@@ -97,19 +97,6 @@ export async function setLeftStatus(
     .onConflictDoUpdate({ target: issueWorkState.issueId, set: values });
 }
 
-/** cm:hack the retired rung forge-plugin last wrote; see `issues/legacy-status.ts`. */
-export async function setLegacyStatus(
-  executor: Executor,
-  issueId: string,
-  legacyStatus: string | null,
-): Promise<void> {
-  const values = { legacyStatus, updatedAt: new Date() };
-  await executor
-    .insert(issueWorkState)
-    .values({ issueId, ...values })
-    .onConflictDoUpdate({ target: issueWorkState.issueId, set: values });
-}
-
 /** A write of the branch or head a run built, from a client on the 10-status model. */
 export interface WorkStateWrite {
   step?: WorkStep | null | undefined;
@@ -204,7 +191,6 @@ export interface WorkStateView {
   branch: string | null;
   headSha: string | null;
   leftStatus: IssueStatus | null;
-  legacyStatus: string | null;
 }
 
 /** The list rows' `WorkStateView`: the step log is a detail read, never a page of 200 rows'. */
@@ -220,8 +206,7 @@ function workStateObjectSql(withSteps: boolean): SQL {
            'leaseHolder', w.lease_holder,
            'branch', w.branch,
            'headSha', w.head_sha,
-           'leftStatus', w.left_status,
-           'legacyStatus', w.legacy_status)
+           'leftStatus', w.left_status)
     FROM issue_work_state w WHERE w.issue_id = "issues"."id")`;
 }
 

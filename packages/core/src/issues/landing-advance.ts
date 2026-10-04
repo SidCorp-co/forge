@@ -14,7 +14,7 @@ import { TransitionError, transitionIssueStatus } from './apply-transition.js';
 import { issueWorkInFlightSql } from './issue-lease.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import type { GuardCode } from './transition-guards.js';
-import { readWorkState, setLegacyStatus, setWorkStep } from './work-state.js';
+import { readWorkState, setWorkStep } from './work-state.js';
 
 export const LANDING_JUDGE_STEP = 'test' as const;
 
@@ -117,9 +117,6 @@ async function endWorkStateLease(
   });
 }
 
-// cm:hack the rung is written beside the step so a reader on forge-plugin's seventeen statuses finds
-// the issue where its judge drains from, `developed` (`legacy-status.ts:LEGACY_TARGETS`). Exit: with
-// that module, when forge-plugin moves to the 10-status model (plugin-followups.md).
 async function moveToJudgeStep(issueId: string): Promise<boolean | typeof IN_FLIGHT> {
   return db.transaction(async (tx) => {
     const [row] = await tx
@@ -131,7 +128,6 @@ async function moveToJudgeStep(issueId: string): Promise<boolean | typeof IN_FLI
     if (!row) return false;
     if (await runInFlight(tx, issueId)) return IN_FLIGHT;
     await setWorkStep(tx, issueId, LANDING_JUDGE_STEP);
-    await setLegacyStatus(tx, issueId, 'developed');
     await tx.update(issues).set({ updatedAt: sql`now()` }).where(eq(issues.id, issueId));
     return true;
   });

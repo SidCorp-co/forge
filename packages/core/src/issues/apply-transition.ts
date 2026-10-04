@@ -16,7 +16,6 @@ import { archivedAmong, archiveRefusalForTransition } from './archive.js';
 import { noOpSentence } from './close-substitution.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { recordDropUnblock } from './drop-unblock.js';
-import { heldRung, type LegacyRung, type LegacyTarget } from './legacy-status.js';
 import { refuseUnshippedClose } from './merged-at.js';
 import { mintParkQuestion } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
@@ -24,20 +23,13 @@ import { moveOf, recordMove } from './record-events/kernel-records.js';
 import { resolveAgentCloseTarget } from './release-gate-hold.js';
 import { refuseUnrecordedClose } from './release-record-required.js';
 import { ISSUE_TERMINAL_STATUSES } from './status-sets.js';
-import { legacyRungEvidenceFault } from './transition-evidence.js';
 import { edgeFault, type GuardCode, guardFault, reasonFault } from './transition-guards.js';
 import {
   postLeaveComment,
   postTransitionReasonComment,
   requiresAuthoredReason,
 } from './transition-reason.js';
-import {
-  issueHolder,
-  readWorkState,
-  setLeftStatus,
-  setLegacyStatus,
-  setWorkStep,
-} from './work-state.js';
+import { issueHolder, readWorkState, setLeftStatus, setWorkStep } from './work-state.js';
 
 export const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>([
   'awaiting_release',
@@ -79,19 +71,6 @@ export type TransitionIssueRow = {
 
 type TransitionTx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
-/**
- * cm:hack a move named in forge-plugin 3.36.542's seventeen statuses (`legacy-status.ts`). `target`
- * is the retired name's mapping, or null where the name is one of the ten; `client17` is a caller
- * reading replies in the old words, for whom naming the status the row already holds while it
- * stands at a retired rung is a step forward, not a no-op. Exit: until forge-plugin moves to the
- * 10-status model (plugin-followups.md).
- */
-export interface LegacyMove {
-  named: string;
-  target: (LegacyTarget & { named: string }) | null;
-  client17: boolean;
-}
-
 export interface ApplyStatusTransitionOptions {
   beforeStatusWrite?: (tx: TransitionTx) => Promise<void>;
   /**
@@ -128,8 +107,6 @@ export interface ApplyStatusTransitionOptions {
    * This close is the release itself, so it may write `closed` past the gate.
    */
   viaReleasePath?: boolean;
-  /** cm:hack see `LegacyMove`. */
-  legacy?: LegacyMove | undefined;
 }
 
 export interface StatusTransitionResult {
@@ -147,10 +124,6 @@ export interface StatusTransitionResult {
   unblockedDependents: UnblockedDependent[];
   /** The step the run is at inside the status after this move, or null. */
   step: WorkStep | null;
-  /** cm:hack the retired rung a 17-status caller wrote and reads back, or null. */
-  legacyRung: LegacyRung | null;
-  /** True where the move changed only the step inside the status (a 17-status rung). */
-  stepOnly: boolean;
 }
 
 /** WS `issue.statusChanged` publish. The bus subscriber for `transition` deliberately does NOT
@@ -176,17 +149,11 @@ export function publishIssueStatusChange(
 const authorOf = (actor: TransitionActor) => (actor.type === 'user' ? actor.id : actor.ownerId);
 
 /**
- * The step a move leaves the run at. A retired rung names its own; a claim from the backlog starts
+ * The step a move leaves the run at. A claim from the backlog starts
  * at triage, from the plan checkpoint or a reopen at build; a park keeps the step it paused, and
  * its return finds it there; every other status holds no step.
  */
-function stepAfter(
-  from: IssueStatus,
-  to: IssueStatus,
-  held: WorkStep | null,
-  legacy: LegacyMove | undefined,
-): WorkStep | null {
-  if (legacy?.target && legacy.target.status === to) return legacy.target.step ?? held;
+function stepAfter(from: IssueStatus, to: IssueStatus, held: WorkStep | null): WorkStep | null {
   if (PARK_STATUSES.includes(to)) return held;
   if (to === 'in_progress') {
     if (PARK_STATUSES.includes(from)) return held;
@@ -214,13 +181,8 @@ export async function transitionIssueStatus(
   if (archived) throw new TransitionError('ISSUE_ARCHIVED', archived.message, { from: fromStatus });
   const work = await readWorkState(db, issue.id);
   const leftStatus = (work?.leftStatus ?? null) as IssueStatus | null;
-  const rungHeld = heldRung(fromStatus, work?.legacyStatus ?? null);
 
   if (fromStatus === requestedStatus) {
-    const asked = options.legacy?.target?.rung ?? null;
-    if (options.legacy?.client17 && asked !== rungHeld) {
-      return moveStepOnly({ issue, actor, options, rung: asked, held: work?.step ?? null });
-    }
     throw new TransitionError('NO_OP', `issue already in status ${requestedStatus}`, {
       status: fromStatus,
     });
@@ -270,8 +232,7 @@ export async function transitionIssueStatus(
     throw new TransitionError('RELEASE_RECORD_REQUIRED', unrecorded.detail, unrecorded.details);
   }
 
-  const step = stepAfter(fromStatus, toStatus, work?.step ?? null, options.legacy);
-  const rungAfter = options.legacy?.client17 ? (options.legacy.target?.rung ?? null) : null;
+  const step = stepAfter(fromStatus, toStatus, work?.step ?? null);
   const txResult = await executeTransitionWrite({
     issue,
     fromStatus,
@@ -281,7 +242,6 @@ export async function transitionIssueStatus(
     options,
     recovering,
     step,
-    rungAfter,
     leftStatus,
   });
   const updated = txResult.row;
@@ -332,62 +292,6 @@ export async function transitionIssueStatus(
     terminal,
     unblockedDependents: txResult.unblockedDependents,
     step,
-    legacyRung: PARK_STATUSES.includes(toStatus) ? null : rungAfter,
-    stepOnly: false,
-  };
-}
-
-/**
- * A 17-status caller moving between rungs one stored status holds (`LegacyMove`) — `confirmed` →
- * `in_progress` → `developed` → `testing` are all `in_progress` now. The status does not move, so
- * nothing is written to `kernel_transitions`; the step and the rung move on the work state. The
- * evidence rule the old `developed`/`testing` carried still holds an agent to it.
- */
-async function moveStepOnly(args: {
-  issue: TransitionIssueRow;
-  actor: TransitionActor;
-  options: ApplyStatusTransitionOptions;
-  rung: LegacyRung | null;
-  held: WorkStep | null;
-}): Promise<StatusTransitionResult> {
-  const { issue, actor, options, rung } = args;
-  const step: WorkStep | null =
-    options.legacy?.target?.step ?? (issue.status === 'in_progress' ? 'build' : args.held);
-  const row = await db.transaction(async (tx) => {
-    await tx.execute(sql`select 1 from issues where id = ${issue.id} for update`);
-    const fault = await legacyRungEvidenceFault({
-      issue,
-      rung,
-      agency: actorAgency(actor),
-      executor: tx,
-    });
-    if (fault) throw new TransitionError(fault.code, fault.detail, fault.details);
-    await setWorkStep(tx, issue.id, step);
-    await setLegacyStatus(tx, issue.id, rung);
-    const [current] = await tx
-      .update(issues)
-      .set({ updatedAt: sql`now()` })
-      .where(and(eq(issues.id, issue.id), eq(issues.status, issue.status)))
-      .returning({ id: issues.id, reopenCount: issues.reopenCount, updatedAt: issues.updatedAt });
-    if (!current) {
-      throw new TransitionError('STALE_TRANSITION', 'issue status changed concurrently', {
-        from: issue.status,
-        to: issue.status,
-      });
-    }
-    return current;
-  });
-  await publishPipelineHealthChanged(issue.projectId, [issue.id]);
-  return {
-    id: row.id,
-    status: issue.status,
-    reopenCount: row.reopenCount,
-    updatedAt: row.updatedAt,
-    terminal: false,
-    unblockedDependents: [],
-    step,
-    legacyRung: rung,
-    stepOnly: true,
   };
 }
 
@@ -400,7 +304,6 @@ export type TransitionWriteInput = {
   options: ApplyStatusTransitionOptions;
   recovering: boolean;
   step: WorkStep | null;
-  rungAfter: LegacyRung | null;
   /** The status the park being left was entered from, or null (`issue_work_state.left_status`). */
   leftStatus: IssueStatus | null;
 };
@@ -425,15 +328,14 @@ function kernelActorFor(actor: TransitionActor): KernelActor {
   return { type: 'runner', id: actor.id };
 }
 
-/** The work state a move leaves: the park's left status, the step, and the 17-status rung. */
+/** The work state a move leaves: the park's left status and the step. */
 async function writeWorkStateOfMove(tx: TransitionTx, input: TransitionWriteInput): Promise<void> {
-  const { issue, fromStatus, toStatus, step, rungAfter } = input;
+  const { issue, fromStatus, toStatus, step } = input;
   const enteringPark = PARK_STATUSES.includes(toStatus);
   const leavingPark = PARK_STATUSES.includes(fromStatus);
   if (enteringPark && !leavingPark) await setLeftStatus(tx, issue.id, fromStatus);
   if (!enteringPark && leavingPark) await setLeftStatus(tx, issue.id, null);
   await setWorkStep(tx, issue.id, step);
-  if (!enteringPark) await setLegacyStatus(tx, issue.id, rungAfter);
 }
 
 async function executeTransitionWrite(input: TransitionWriteInput): Promise<TransitionWriteResult> {

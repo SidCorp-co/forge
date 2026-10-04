@@ -65,8 +65,8 @@ export function forgeIssuesDescription(refClause: string): string {
     '(VERDICT_DRAFT_SUPERSEDED once the draft moved, VERDICT_UNCORROBORATED when it cannot be read); ' +
     'needs_info needs reason + waitingKind ' +
     '(needs_answer, needs_decision, needs_resource), on_hold and reopen a reason, dropped a reason ' +
-    '(VOID_REASON_REQUIRED); a park returns only to the status it left. A retired name (confirmed, ' +
-    'developed, testing, waiting, ...) is refused STATUS_RETIRED. on_hold is a deliberate pause, and ' +
+    '(VOID_REASON_REQUIRED); a park returns only to the status it left. A legacy name (confirmed, ' +
+    'developed, testing, waiting, ...) is refused ISSUE_STATUS_LEGACY. on_hold is a deliberate pause, and ' +
     'closed means the work shipped: a close on an issue with no merged_at is refused ' +
     '(CLOSE_REQUIRES_SHIPPED), and work that turned out not to be work leaves by dropped. On a ' +
     'project whose work lands outside git (source.type storefront or none) the close also needs ' +

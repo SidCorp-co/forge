@@ -1,4 +1,16 @@
-import { and, count, desc, eq, exists, inArray, isNotNull, or, type SQL, sql } from 'drizzle-orm';
+import {
+  and,
+  count,
+  desc,
+  eq,
+  exists,
+  inArray,
+  isNotNull,
+  notInArray,
+  or,
+  type SQL,
+  sql,
+} from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/client.js';
@@ -6,6 +18,7 @@ import {
   type IssueStatus,
   issueLabels,
   issuePriorities,
+  issueStatuses,
   issues,
   type JobType,
   jobs,
@@ -30,20 +43,11 @@ import { loadIssueDependencyEdgesForIssues } from './dependency-read.js';
 import { hydrateHeldForIssues } from './held-hydrator.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { listModulesForIssues, resolveModuleIdsTolerant } from './label-service.js';
-import {
-  ACCEPTED_STATUS_NAMES,
-  anyStatusFilterSql,
-  issueForReader,
-  LIFECYCLE_HEADER,
-  legacyFilterWarnings,
-  readsLegacyStatuses,
-  refuseRetiredFromTenStatusClient,
-  STATUS_COMPAT_HEADER,
-} from './legacy-status.js';
 import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
 import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { buildIssueSearchCondition, matchedSearchFieldsSql } from './search-predicate.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
+import { refuseLegacyStatusFields } from './status-input.js';
 
 export interface IssueBuckets {
   /** How many issues sit at each kernel status, under every filter except status and origin. */
@@ -95,14 +99,12 @@ export { issueSortValues } from './sort.js';
 const searchQuerySchema = z
   .object({
     q: z.string().trim().min(1).max(200).optional(),
-    // cm:hack the seven retired names filter as `legacy-status.ts:statusFilterSql` reads them. Exit:
-    // until forge-plugin moves to the 10-status model (plugin-followups.md).
     status: z
-      .union([z.enum(ACCEPTED_STATUS_NAMES), z.array(z.enum(ACCEPTED_STATUS_NAMES))])
+      .union([z.enum(issueStatuses), z.array(z.enum(issueStatuses))])
       .optional()
       .transform(coerceArray),
     statusNot: z
-      .union([z.enum(ACCEPTED_STATUS_NAMES), z.array(z.enum(ACCEPTED_STATUS_NAMES))])
+      .union([z.enum(issueStatuses), z.array(z.enum(issueStatuses))])
       .optional()
       .transform(coerceArray),
     priority: z
@@ -236,7 +238,10 @@ searchRoutes.get(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   zValidator('query', searchQuerySchema, (r) => {
-    if (!r.success) throw queryBadRequest(searchQuerySchema, r.error);
+    if (!r.success) {
+      refuseLegacyStatusFields(r.data, 'query', ['status', 'statusNot']);
+      throw queryBadRequest(searchQuerySchema, r.error);
+    }
   }),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
@@ -263,21 +268,14 @@ searchRoutes.get(
           'widens a `status` filter to also match an issue a person owes an answer, and this request names no `status`. Send it with `status`, or send neither',
       });
     }
-    const client17 = readsLegacyStatuses({
-      principal: c.get('principal'),
-      lifecycleHeader: c.req.header(LIFECYCLE_HEADER),
-    });
-    refuseRetiredFromTenStatusClient([...(q.status ?? []), ...(q.statusNot ?? [])], client17);
-    const retired = legacyFilterWarnings([...(q.status ?? []), ...(q.statusNot ?? [])]);
-    if (retired.length > 0) c.header(STATUS_COMPAT_HEADER, retired.join(' '));
     if (q.status && q.status.length > 0) {
-      const atStatus = anyStatusFilterSql(q.status, client17);
+      const atStatus = inArray(issues.status, q.status);
       conditions.push(
         q.orWaitingOnPerson ? (or(atStatus, holdsOpenHumanQuestion(issues.id)) as SQL) : atStatus,
       );
     }
     if (q.statusNot && q.statusNot.length > 0) {
-      conditions.push(sql`NOT ${anyStatusFilterSql(q.statusNot, client17)}`);
+      conditions.push(notInArray(issues.status, q.statusNot));
     }
     if (q.priority && q.priority.length > 0) {
       both(inArray(issues.priority, q.priority));
@@ -341,7 +339,7 @@ searchRoutes.get(
 
     const searchPrefix = await activeIssuePrefix(projectId);
     let serialized: Record<string, unknown>[] = rows.map((r) => ({
-      ...issueForReader(serializeRestListRow(r, searchPrefix), client17),
+      ...serializeRestListRow(r, searchPrefix),
     }));
 
     if (q.withCost && serialized.length > 0) {
