@@ -7,6 +7,7 @@
 
 import type { RequirementAct } from '@forge/contracts/requirements';
 import { z } from 'zod';
+import { guideRef } from '../../guides/guide-ref.js';
 import { egressShown, MCP_DOOR } from '../../lib/data-egress.js';
 import type { NamedRefusal } from '../../project-config/respond.js';
 import { deferRequirement, undeferRequirement } from '../../requirements/deferral.js';
@@ -113,7 +114,7 @@ const GRANTS = {
 
 const DESCRIPTION =
   "This project's requirements (REQ-n): the business intent issues deliver, in immutable revisions " +
-  'with stable business criteria (BC-n). Workflow requirement-lifecycle. Actions: ' +
+  `with stable business criteria (BC-n). Guide: ${guideRef('requirement-lifecycle')}. Actions: ` +
   `${ACTIONS.join(' | ')}. ` +
   'create: { title, reason, spec?, tldr?, criteria: [{ body, form? }] } writes REQ-n at revision 1 (draft). ' +
   'revise: { requirement, baseRevision, reason, criteria: [{ code?, body, form? }], … } writes a new draft ' +

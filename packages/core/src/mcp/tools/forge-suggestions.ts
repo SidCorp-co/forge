@@ -1,6 +1,6 @@
 /**
- * `forge_suggestions` — workflow `suggestion-lifecycle`: an agent proposes a change against a base
- * revision and a person decides it. accept and reject refuse an agent (SUGGESTION_ACCEPT_FORBIDDEN);
+ * `forge_suggestions` — an agent proposes a change against a base revision and a person decides it
+ * (guide `suggestions`). accept and reject refuse an agent (SUGGESTION_ACCEPT_FORBIDDEN);
  * the REST routes in `suggestions/routes.ts` are the same services.
  */
 
@@ -10,6 +10,7 @@ import {
   suggestionSummaryOf,
 } from '@forge/contracts/suggestions';
 import { z } from 'zod';
+import { guideRef } from '../../guides/guide-ref.js';
 import { dataPolicyOf, egressAt, egressOr } from '../../lib/data-egress.js';
 import type { NamedRefusal } from '../../project-config/respond.js';
 import {
@@ -70,7 +71,7 @@ const GRANTS = {
 } as const;
 
 const DESCRIPTION =
-  'Suggestions (workflow suggestion-lifecycle): a proposed change that waits on a person instead of ' +
+  `Suggestions (${guideRef('suggestions')}): a proposed change that waits on a person instead of ` +
   `changing anything. Actions: ${ACTIONS.join(' | ')}. ` +
   `create: { kind: ${SUGGESTION_KINDS.join(' | ')}, requirement | issue, baseRevision, payload } — ` +
   'baseRevision is the requirement head you read (null for an issue, or a requirement with no current ' +

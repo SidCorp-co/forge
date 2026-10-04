@@ -7,6 +7,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
+import { guideRef } from '../guides/guide-ref.js';
 import { leaseHolderOf } from '../pipeline/session-claim.js';
 import type { TransitionActor } from './actor-agency.js';
 import { TransitionError, transitionIssueStatus } from './apply-transition.js';
@@ -179,7 +180,7 @@ export async function advanceLandedIssue(args: {
       outcome: 'awaiting_release',
       status: 'awaiting_release',
       leaseEnded,
-      detail: `Landing recorded and every criterion already holds a passing verdict, so it moved \`in_progress\` -> \`awaiting_release\` (workflow issue-lifecycle, edge verdicts.passed).${leaseClause(leaseEnded)}`,
+      detail: `Landing recorded and every criterion already holds a passing verdict, so it moved \`in_progress\` -> \`awaiting_release\` (${guideRef('pipeline-and-issue-lifecycle')}).${leaseClause(leaseEnded)}`,
     };
   } catch (err) {
     if (err instanceof RunTookTheIssue) return leftToRun(issue.status, leaseEnded);
@@ -211,6 +212,6 @@ export async function advanceLandedIssue(args: {
     status: 'in_progress',
     step: LANDING_JUDGE_STEP,
     leaseEnded,
-    detail: `Landing recorded and not every criterion holds a passing verdict, so it waits at \`in_progress\`, step \`${LANDING_JUDGE_STEP}\`, for a judge to record them; \`awaiting_release\` follows once each passes (workflow issue-lifecycle, edge verdicts.passed).${leaseClause(leaseEnded)}`,
+    detail: `Landing recorded and not every criterion holds a passing verdict, so it waits at \`in_progress\`, step \`${LANDING_JUDGE_STEP}\`, for a judge to record them; \`awaiting_release\` follows once each passes (${guideRef('pipeline-and-issue-lifecycle')}).${leaseClause(leaseEnded)}`,
   };
 }

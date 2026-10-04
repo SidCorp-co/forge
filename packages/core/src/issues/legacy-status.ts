@@ -7,6 +7,9 @@ import { type SQL, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { type IssueStatus, issueStatuses } from '../db/schema.js';
 import type { WorkStep } from '../db/schema-issue-work-state.js';
+import { guideRef } from '../guides/guide-ref.js';
+
+const LIFECYCLE_GUIDE = guideRef('pipeline-and-issue-lifecycle');
 
 export const LEGACY_STATUSES = [
   'confirmed',
@@ -69,7 +72,7 @@ export function resolveStatusInput(named: IssueStatus | LegacyStatus): ResolvedS
 export function legacyWarning(named: LegacyStatus): string {
   const target = LEGACY_TARGETS[named];
   const step = target.step ? ` at step \`${target.step}\`` : '';
-  return `STATUS_RETIRED: \`${named}\` is retired (ISS-54, workflow issue-lifecycle); it was stored as \`${target.status}\`${step}. A client on the ten-status model names \`${target.status}\`, and writes the step through \`workState\`.`;
+  return `STATUS_RETIRED: \`${named}\` is retired (${LIFECYCLE_GUIDE}); it was stored as \`${target.status}\`${step}. A client on the ten-status model names \`${target.status}\`, and writes the step through \`workState\`.`;
 }
 
 /** How MCP, which never spoke the seventeen, refuses a retired name: what it became, how to say it. */
@@ -77,13 +80,13 @@ export function legacyRefusal(named: LegacyStatus): string {
   const target = LEGACY_TARGETS[named];
   const step = target.step ? ` and write \`workState.step: ${target.step}\`` : '';
   const kind = named === 'waiting' ? ' with a `waitingKind`' : '';
-  return `STATUS_RETIRED: \`${named}\` is retired (ISS-54, workflow issue-lifecycle). Name \`${target.status}\`${kind}${step}.`;
+  return `STATUS_RETIRED: \`${named}\` is retired (${LIFECYCLE_GUIDE}). Name \`${target.status}\`${kind}${step}.`;
 }
 
 export function tenStatusRefusal(named: LegacyStatus): string {
   const target = LEGACY_TARGETS[named];
   const step = target.step ? ` at step \`${target.step}\`` : '';
-  return `STATUS_RETIRED: \`${named}\` is not an issue status (ISS-54, workflow issue-lifecycle); the statuses are ${issueStatuses.map((s) => `\`${s}\``).join(', ')}. \`${named}\` became \`${target.status}\`${step}. Only forge-plugin 3.36.542, a personal token sending no \`${LIFECYCLE_HEADER}\` header, may still name it.`;
+  return `STATUS_RETIRED: \`${named}\` is not an issue status (${LIFECYCLE_GUIDE}); the statuses are ${issueStatuses.map((s) => `\`${s}\``).join(', ')}. \`${named}\` became \`${target.status}\`${step}. Only forge-plugin 3.36.542, a personal token sending no \`${LIFECYCLE_HEADER}\` header, may still name it.`;
 }
 
 // cm:guard REQ-2 BC-1: a ten-status client is refused every retired name, as a move or a filter;
@@ -191,6 +194,6 @@ export function anyStatusFilterSql(names: readonly AcceptedStatusName[], client1
 export function legacyFilterWarnings(names: readonly AcceptedStatusName[]): string[] {
   return [...new Set(names.filter(isLegacyStatus))].map(
     (named) =>
-      `STATUS_RETIRED: \`${named}\` is retired (ISS-54, workflow issue-lifecycle); the filter matched the rows a seventeen-status reader is shown at it.`,
+      `STATUS_RETIRED: \`${named}\` is retired (${LIFECYCLE_GUIDE}); the filter matched the rows a seventeen-status reader is shown at it.`,
   );
 }
