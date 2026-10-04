@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { db } from '../db/client.js';
 import { channelRoleRefusal, type Writer } from './channel-author.js';
-import { holdRefusals, parseHold } from './channel-rules.js';
+import { holdRefusals, parseHold } from './channel-hold-rules.js';
 import { HOLD_SCHEMA_ID, type HoldAction, type ThreadHold } from './channel-schema.js';
 import { announceHold } from './channel-signals.js';
 import { holdsOn, insertHold, readNumbered } from './channel-store.js';

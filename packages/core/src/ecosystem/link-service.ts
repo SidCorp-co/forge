@@ -3,26 +3,29 @@ import { db, type Tx } from '../db/client.js';
 import { permissionFactsOf } from '../permissions/index.js';
 import { readProjectDocument, staleBase } from '../project-config/index.js';
 import { notFound } from './access.js';
-import type { ImpactLink } from './contract/impact.js';
-import { storedAs } from './ecosystem-service.js';
-import { heldInterface } from './interface-service.js';
 import {
   type BuilderRunWorld,
-  type BuilderSource,
   builderRunIdentityRefusals,
-  builderSourceOf,
   checkBuilderRun,
-  checkLink,
   contractKey,
   type DeclaredWithoutCallSite,
   declaredWithoutCallSite,
   isOpenRun,
+  openedRun,
+  stepsStale,
+} from './builder-run-rules.js';
+import type { ImpactLink } from './contract/impact.js';
+import { storedAs } from './ecosystem-service.js';
+import { heldInterface } from './interface-service.js';
+import { readInterface, readInterfaces } from './interface-store.js';
+import {
+  type BuilderSource,
+  builderSourceOf,
+  checkLink,
   type LinkWorld,
   linkIdentityRefusals,
-  openedRun,
   parseBuilderRun,
   parseLink,
-  stepsStale,
   writerRefusal,
 } from './link-rules.js';
 import {
@@ -45,16 +48,9 @@ import {
   type StoredLink,
   type StoredRecord,
 } from './link-store.js';
+import { activeEcosystemIdsOf, activeMembersOf } from './membership-store.js';
 import type { Checked, EcosystemRefusal } from './refusals.js';
-import {
-  activeEcosystemIdsOf,
-  activeMembersOf,
-  lockKeys,
-  projectsWhere,
-  readInterface,
-  readInterfaces,
-  recordedVersions,
-} from './store.js';
+import { lockKeys, projectsWhere, recordedVersions } from './store.js';
 
 export interface RecordWriter {
   userId: string;

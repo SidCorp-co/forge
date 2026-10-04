@@ -1,9 +1,11 @@
+import { and, eq } from 'drizzle-orm';
 import { mergeSessionMetadata } from '../../agent-sessions/index.js';
 import { db } from '../../db/client.js';
+import { agentSessions } from '../../db/schema.js';
 import { heldInterface } from '../interface-service.js';
+import { readInterfaces } from '../interface-store.js';
 import { storedLink } from '../link-service.js';
 import { linksWhere } from '../link-store.js';
-import { readInterfaces } from '../store.js';
 import {
   type ContextLink,
   type ContextVersion,
@@ -68,4 +70,14 @@ export async function recordContractContext(
   await mergeSessionMetadata(agentSessionId, {
     [CONTRACT_CONTEXT_KEY]: contractContextRecord(loaded, source),
   });
+}
+
+/** Whether `projectId` holds the agent session `id`, so a load is recorded only on its own project's session. */
+export async function sessionInProject(projectId: string, id: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: agentSessions.id })
+    .from(agentSessions)
+    .where(and(eq(agentSessions.id, id), eq(agentSessions.projectId, projectId)))
+    .limit(1);
+  return Boolean(row);
 }
