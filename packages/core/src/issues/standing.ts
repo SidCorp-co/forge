@@ -22,10 +22,11 @@ import {
   type WorkStep,
 } from '@forge/contracts/issue-vocabulary';
 import { landedWait } from '../pipeline/strand-rules.js';
+import { ISSUE_RESOLVED_STATUSES, ISSUE_TERMINAL_STATUSES } from './status-sets.js';
 
-/** Settled blockers release their dependents (`dependency-effects.ts:BLOCKER_SETTLED`). */
-const SETTLED: readonly string[] = ['awaiting_release', 'closed'];
-const DONE: readonly string[] = ['closed', 'dropped'];
+/** Settled blockers release their dependents (`dependency-effects.ts:BLOCKER_SETTLED_STATUSES`). */
+const SETTLED: readonly string[] = ISSUE_RESOLVED_STATUSES;
+const DONE: readonly string[] = ISSUE_TERMINAL_STATUSES;
 
 const STEP_WORD: Record<WorkStep, string> = {
   triage: 'Triage',
