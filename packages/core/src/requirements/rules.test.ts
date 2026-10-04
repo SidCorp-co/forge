@@ -194,6 +194,34 @@ describe('planCriteria: stable BC codes across revisions', () => {
     );
     expect(!dup.ok && dup.refusals.map((r) => r.code)).toEqual(['CRITERION_CODE_DUPLICATE']);
   });
+  it('keeps the codes a draft gave its own criteria when that draft is rewritten (FB-59)', () => {
+    const own = new Set(['BC-1', 'BC-2']);
+    const echoed = planCriteria(
+      [
+        { code: 'BC-1', body: 'Reminder sent 3 days before' },
+        { body: 'Reminder names the clinic' },
+        { code: 'BC-2', body: 'Patient can opt out by SMS' },
+      ],
+      [],
+      0,
+      own,
+    );
+    expect(echoed.ok && echoed.plan.insert.map((c) => c.code)).toEqual(['BC-1', 'BC-2', 'BC-3']);
+    const onBase = planCriteria(
+      [
+        { code: 'BC-1', body: 'Reminder sent 3 days before' },
+        { code: 'BC-3', body: 'new in r2' },
+      ],
+      live,
+      2,
+      new Set(['BC-3']),
+    );
+    expect(onBase.ok && onBase.plan.keep).toEqual(['a']);
+    expect(onBase.ok && onBase.plan.retire).toEqual(['b']);
+    expect(onBase.ok && onBase.plan.insert.map((c) => c.code)).toEqual(['BC-3']);
+    const unknown = planCriteria([{ code: 'BC-4', body: 'x' }], [], 0, own);
+    expect(!unknown.ok && unknown.refusals[0]?.detail).toContain('(BC-1, BC-2)');
+  });
   it('refuses a scenario that does not read Given / When / Then (CRITERION_SCENARIO_UNPARSEABLE)', () => {
     const bad = planCriteria([{ body: 'the patient gets a reminder', form: 'scenario' }], [], 0);
     expect(!bad.ok && bad.refusals.map((r) => r.code)).toEqual(['CRITERION_SCENARIO_UNPARSEABLE']);

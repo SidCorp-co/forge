@@ -4,6 +4,7 @@ import { type PersonActFacts, personActRefusal } from '../lib/person-act.js';
 import {
   baseStaleRefusal,
   blockerRefusal,
+  breakdownBuilds,
   breakdownFaults,
   decidedRefusal,
   duplicateRefusal,
@@ -12,6 +13,8 @@ import {
   producerRefusal,
   queueFullRefusal,
   rejectReasonRefusal,
+  reviseProducerRefusal,
+  unchangedRevisionRefusal,
   withdrawRefusal,
 } from './rules.js';
 
@@ -96,8 +99,8 @@ describe('a breakdown, checked at propose and again at accept', () => {
   it('traces to live BCs and blockers among the proposed issues pass', () => {
     const p = {
       issues: [
-        { title: 'A', criteria: [{ body: 'a', tracesTo: 'BC-1' }] },
-        { title: 'B', blockedBy: [0] },
+        { title: 'A', complexity: 's' as const, criteria: [{ body: 'a', tracesTo: 'BC-1' }] },
+        { title: 'B', complexity: 's' as const, blockedBy: [0] },
       ],
     };
     expect(breakdownFaults(p, codes, 1)).toEqual([]);
@@ -105,7 +108,11 @@ describe('a breakdown, checked at propose and again at accept', () => {
 
   it('a trace to a BC the base revision does not hold is SUGGESTION_PAYLOAD_INVALID at its path', () => {
     const faults = breakdownFaults(
-      { issues: [{ title: 'A', criteria: [{ body: 'a', tracesTo: 'BC-9' }] }] },
+      {
+        issues: [
+          { title: 'A', complexity: 's' as const, criteria: [{ body: 'a', tracesTo: 'BC-9' }] },
+        ],
+      },
       codes,
       3,
     );
@@ -122,8 +129,8 @@ describe('a breakdown, checked at propose and again at accept', () => {
     const faults = breakdownFaults(
       {
         issues: [
-          { title: 'A', blockedBy: [0] },
-          { title: 'B', blockedBy: [5] },
+          { title: 'A', complexity: 's' as const, blockedBy: [0] },
+          { title: 'B', complexity: 's' as const, blockedBy: [5] },
         ],
       },
       codes,
@@ -139,8 +146,8 @@ describe('a breakdown, checked at propose and again at accept', () => {
     const faults = breakdownFaults(
       {
         issues: [
-          { title: 'A', blockedBy: [1] },
-          { title: 'B', blockedBy: [0] },
+          { title: 'A', complexity: 's' as const, blockedBy: [1] },
+          { title: 'B', complexity: 's' as const, blockedBy: [0] },
         ],
       },
       codes,
@@ -157,7 +164,11 @@ describe('a breakdown blocker named by key or uuid (ISS-89)', () => {
   it('a live issue of this project passes, and a string index never reads as a payload index', () => {
     expect(blockerRefusal(at, 'ISS-9', 'p1', live)).toBeNull();
     expect(
-      breakdownFaults({ issues: [{ title: 'A', blockedBy: ['ISS-9'] }] }, new Map(), 1),
+      breakdownFaults(
+        { issues: [{ title: 'A', complexity: 's' as const, blockedBy: ['ISS-9'] }] },
+        new Map(),
+        1,
+      ),
     ).toEqual([]);
   });
 
@@ -180,5 +191,90 @@ describe('a breakdown blocker named by key or uuid (ISS-89)', () => {
         path: at,
       });
     }
+  });
+});
+
+describe('a reviewer revises a proposed suggestion (ISS-117, FB-62)', () => {
+  it('an agent or a non-member is SUGGESTION_REVISE_FORBIDDEN, by the shared person-act check', () => {
+    const revise = (f: PersonActFacts) =>
+      personActRefusal(f, 'p', 'revising a suggestion', 'SUGGESTION_REVISE_FORBIDDEN')?.code ??
+      null;
+    expect(revise(person)).toBeNull();
+    expect(revise({ ...person, agency: 'agent' })).toBe('SUGGESTION_REVISE_FORBIDDEN');
+    expect(revise({ ...person, role: 'viewer' })).toBe('SUGGESTION_REVISE_FORBIDDEN');
+  });
+
+  it('its producer is SUGGESTION_REVISE_FORBIDDEN, and the reviewer then produced the revision', () => {
+    expect(reviseProducerRefusal('u1', 'p1')).toBeNull();
+    expect(reviseProducerRefusal('u1', null)).toBeNull();
+    expect(reviseProducerRefusal('p1', 'p1')?.code).toBe('SUGGESTION_REVISE_FORBIDDEN');
+    expect(producerRefusal('u1', 'u1')?.code).toBe('SUGGESTION_ACCEPT_FORBIDDEN');
+  });
+
+  it('a payload that proposes the same change is SUGGESTION_REVISION_UNCHANGED', () => {
+    const before = fingerprintOf('triage', { note: 'n', priority: 'high' });
+    expect(
+      unchangedRevisionRefusal(
+        before,
+        fingerprintOf('triage', { priority: 'high', note: 'n' }),
+        's1',
+      )?.code,
+    ).toBe('SUGGESTION_REVISION_UNCHANGED');
+    expect(
+      unchangedRevisionRefusal(
+        before,
+        fingerprintOf('triage', { note: 'n', priority: 'low' }),
+        's1',
+      ),
+    ).toBeNull();
+  });
+});
+
+describe('a breakdown issue is sized and builds a pinned design (ISS-117, FB-60, FB-61)', () => {
+  const one = { workflowId: 'w1', flow: 'automation' };
+  const two = { workflowId: 'w2', flow: 'agent-run-standing' };
+  const item = { title: 'A', complexity: 's' as const };
+
+  it('an item with no complexity is SUGGESTION_PAYLOAD_INVALID at its path', () => {
+    const refused = payloadRefusal('breakdown', 'requirement', { issues: [{ title: 'A' }] });
+    expect(refused).toMatchObject({
+      code: 'SUGGESTION_PAYLOAD_INVALID',
+      path: '/payload/issues/0/complexity',
+    });
+    expect(
+      payloadRefusal('breakdown', 'requirement', {
+        issues: [{ ...item, priority: 'high', category: 'chore', builds: null }],
+      }),
+    ).toBeNull();
+  });
+
+  it('left out, the one pinned design is taken and no pin links nothing', () => {
+    expect(breakdownBuilds({ issues: [item] }, [one])).toEqual({ builds: [one], refusals: [] });
+    expect(breakdownBuilds({ issues: [item] }, [])).toEqual({ builds: [null], refusals: [] });
+    expect(breakdownBuilds({ issues: [{ ...item, builds: null }] }, [one]).builds).toEqual([null]);
+  });
+
+  it('several pinned and none named is SUGGESTION_BUILD_UNNAMED, a named one is taken', () => {
+    const unnamed = breakdownBuilds({ issues: [item] }, [one, two]);
+    expect(unnamed.refusals).toEqual([
+      expect.objectContaining({
+        code: 'SUGGESTION_BUILD_UNNAMED',
+        path: '/payload/issues/0/builds',
+      }),
+    ]);
+    expect(unnamed.refusals[0]?.detail).toContain('automation, agent-run-standing');
+    expect(
+      breakdownBuilds({ issues: [{ ...item, builds: 'agent-run-standing' }] }, [one, two]).builds,
+    ).toEqual([two]);
+  });
+
+  it('a flow the baseline does not pin is SUGGESTION_BUILD_UNPINNED', () => {
+    const unpinned = breakdownBuilds({ issues: [item, { ...item, builds: 'billing' }] }, [one]);
+    expect(unpinned.refusals).toEqual([
+      expect.objectContaining({
+        code: 'SUGGESTION_BUILD_UNPINNED',
+        path: '/payload/issues/1/builds',
+      }),
+    ]);
   });
 });

@@ -257,6 +257,7 @@ export function suggestionList() {
     payload: { issues: [{ title: 'piece', description: words(800, `payload${i}`) }] },
     payloadVersion: 1,
     fingerprint: 'f'.repeat(32),
+    revises: null,
     producerKind: 'agent' as const,
     producerId: USER,
     conversationMessageId: null,

@@ -253,18 +253,25 @@ const codeNumber = (code: string) => Number(code.slice(3));
 /**
  * How a revision's criteria list becomes rows: a criterion naming a live code keeps it (unchanged,
  * or retired and re-worded under the same code), one naming no code takes the next code never used,
- * and a live code the list leaves out is retired.
+ * and a live code the list leaves out is retired. `ownCodes` are the codes a draft being rewritten
+ * gave its new criteria on its earlier write; naming one keeps that code (FB-59).
  */
 export function planCriteria(
   input: readonly CriterionInput[],
   live: readonly LiveCriterion[],
   highestCodeEver: number,
+  ownCodes: ReadonlySet<string> = new Set(),
 ): { ok: true; plan: CriteriaPlan } | { ok: false; refusals: RequirementRefusal[] } {
   const refusals: RequirementRefusal[] = [];
   const byCode = new Map(live.map((c) => [c.code, c]));
   const seen = new Set<string>();
   const plan: CriteriaPlan = { keep: [], retire: [], insert: [] };
-  let next = highestCodeEver;
+  const kept = input
+    .map((c) => c.code)
+    .filter(
+      (code): code is string => code !== undefined && ownCodes.has(code) && !byCode.has(code),
+    );
+  let next = Math.max(highestCodeEver, ...kept.map(codeNumber));
   input.forEach((c, i) => {
     const form = c.form ?? 'statement';
     const body = c.body.trim();
@@ -291,11 +298,16 @@ export function planCriteria(
     }
     seen.add(c.code);
     const prior = byCode.get(c.code);
+    if (!prior && ownCodes.has(c.code)) {
+      plan.insert.push({ code: c.code, body, form });
+      return;
+    }
     if (!prior) {
+      const known = [...byCode.keys(), ...ownCodes].filter((k, n, all) => all.indexOf(k) === n);
       refusals.push({
         code: 'CRITERION_CODE_UNKNOWN',
         path: `/criteria/${i}/code`,
-        detail: `${c.code} is not a live criterion of the revision this one is based on (${[...byCode.keys()].join(', ') || 'none'}); a new criterion names no code and is given the next one.`,
+        detail: `${c.code} is neither a live criterion of the revision this one is based on nor one this draft holds (${known.sort((a, b) => codeNumber(a) - codeNumber(b)).join(', ') || 'none'}); a new criterion names no code and is given the next one.`,
       });
       return;
     }

@@ -1,6 +1,6 @@
 # 0001 — A release's version is a counter, and MAJOR is a product era
 
-**Status:** accepted · **Date:** 2026-09-27 · **Supersedes:** none
+**Status:** accepted · **Date:** 2026-09-27 · **Supersedes:** none · **Amended by:** [0005](0005-a-project-may-number-releases-as-prereleases.md) for a project that declares a prerelease line
 
 ## Context
 
