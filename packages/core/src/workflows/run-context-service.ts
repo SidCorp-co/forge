@@ -8,18 +8,45 @@ import {
   type RequirementContextRow,
   requirementContext,
 } from './requirement-context.js';
+import type { LoadedPinnedContract } from './pinned-contracts.js';
 import {
   ARTIFACT_CONTEXT_KEY,
+  ArtifactContextError,
   artifactContext,
   artifactContextRecord,
   type LoadedArtifact,
   type TracedDesignRow,
 } from './run-context.js';
 
-/** Every workflow `issueId` builds, with the design row of its approved revision (null when none holds it). */
+const designRowOf = (r: Record<string, unknown>): TracedDesignRow => ({
+  workflowId: String(r.id),
+  flow: String(r.flow),
+  designStatus: (r.design_status as DesignStatus | null) ?? null,
+  workflowRevision: Number(r.revision),
+  approvedRevision: r.given_revision == null ? null : Number(r.given_revision),
+  revisionRow: r.has_row
+    ? { document: r.document, decision: (r.decision as string | null) ?? null }
+    : null,
+});
+
+/**
+ * The designs a job on `issueId` is given. An issue that delivers a requirement is given every
+ * design revision the requirement's latest baseline pins (REQ-1 BC-7, REQ-4 BC-12), and a workflow
+ * it builds that the baseline does not pin is refused by name; any other issue is given the
+ * approved revision of the workflow it builds (REQ-1 BC-1).
+ */
 export async function tracedDesignsOf(issueId: string): Promise<TracedDesignRow[]> {
+  const [issue] = (await db.execute(sql`
+    SELECT i.requirement_id, r.req_seq, w.id AS built_id, w.flow AS built_flow
+    FROM issues i
+    LEFT JOIN requirements r ON r.id = i.requirement_id
+    LEFT JOIN workflow_builds wb ON wb.issue_id = i.id
+    LEFT JOIN project_workflows w ON w.id = wb.workflow_id
+    WHERE i.id = ${issueId}
+  `)) as unknown as Array<Record<string, unknown>>;
+  if (issue?.requirement_id) return pinnedDesignsOf(issue);
   const rows = (await db.execute(sql`
-    SELECT w.id, w.flow, w.design_status, w.revision, w.approved_revision,
+    SELECT w.id, w.flow, w.design_status, w.revision, w.approved_revision AS given_revision,
            d.workflow_id IS NOT NULL AS has_row, d.document, d.decision
     FROM workflow_builds wb
     JOIN project_workflows w ON w.id = wb.workflow_id
@@ -28,19 +55,48 @@ export async function tracedDesignsOf(issueId: string): Promise<TracedDesignRow[
     WHERE wb.issue_id = ${issueId}
     ORDER BY w.flow
   `)) as unknown as Array<Record<string, unknown>>;
+  return rows.map(designRowOf);
+}
+
+async function pinnedDesignsOf(issue: Record<string, unknown>): Promise<TracedDesignRow[]> {
+  const requirementId = String(issue.requirement_id);
+  const key = `REQ-${Number(issue.req_seq)}`;
+  const rows = (await db.execute(sql`
+    SELECT w.id, w.flow, w.design_status, w.revision, w.approved_revision,
+           p.design_revision AS given_revision,
+           d.workflow_id IS NOT NULL AS has_row, d.document, d.decision
+    FROM requirement_baseline_pins p
+    JOIN project_workflows w ON w.id = p.workflow_id
+    LEFT JOIN project_workflow_designs d
+      ON d.workflow_id = p.workflow_id AND d.revision = p.design_revision
+    WHERE p.requirement_id = ${requirementId}
+      AND (p.revision, p.baseline_seq) = (
+        SELECT revision, seq FROM requirement_baselines WHERE requirement_id = ${requirementId}
+         ORDER BY revision DESC, seq DESC LIMIT 1)
+    ORDER BY w.flow
+  `)) as unknown as Array<Record<string, unknown>>;
+  if (issue.built_id && !rows.some((r) => String(r.id) === String(issue.built_id))) {
+    throw new ArtifactContextError(
+      'ARTIFACT_CONTEXT_UNLOADABLE',
+      {
+        kind: 'workflow-design',
+        ref: String(issue.built_flow),
+        workflowId: String(issue.built_id),
+        revision: null,
+      },
+      `the issue builds it, and ${key}'s latest baseline pins no revision of it; link the design to ${key} and re-pin, or unlink the build`,
+    );
+  }
   return rows.map((r) => ({
-    workflowId: String(r.id),
-    flow: String(r.flow),
-    designStatus: (r.design_status as DesignStatus | null) ?? null,
-    workflowRevision: Number(r.revision),
-    approvedRevision: r.approved_revision == null ? null : Number(r.approved_revision),
-    revisionRow: r.has_row
-      ? { document: r.document, decision: (r.decision as string | null) ?? null }
-      : null,
+    ...designRowOf(r),
+    pinnedBy: {
+      key,
+      currentApproved: r.approved_revision == null ? null : Number(r.approved_revision),
+    },
   }));
 }
 
-/** The approved designs a build job on `issueId` is given; empty when the issue builds none. */
+/** The designs a build job on `issueId` is given; empty when there are none. */
 export async function loadArtifactContext(issueId: string): Promise<LoadedArtifact[]> {
   return artifactContext(await tracedDesignsOf(issueId));
 }
@@ -157,8 +213,11 @@ export async function recordArtifactContext(
   loaded: readonly LoadedArtifact[],
   source: string,
   requirement: LoadedRequirement | null = null,
+  contracts: readonly LoadedPinnedContract[] = [],
 ): Promise<void> {
-  const patch = { [ARTIFACT_CONTEXT_KEY]: artifactContextRecord(loaded, source, requirement) };
+  const patch = {
+    [ARTIFACT_CONTEXT_KEY]: artifactContextRecord(loaded, source, requirement, contracts),
+  };
   await db
     .update(agentSessions)
     .set({

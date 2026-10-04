@@ -113,24 +113,23 @@ const DESCRIPTION =
   'WORKFLOW_EDGE_ENDPOINT_NOT_IN_KIND, WORKFLOW_EDGE_KIND_NONE, WORKFLOW_NODE_LINES, WORKFLOW_REF_DANGLING, ' +
   'WORKFLOW_TEMPLATE_RULE and the rest each name the fix. ' +
   'write: { workflowId?, baseRevision, document } — no workflowId and baseRevision null creates; ' +
-  'the document is workflow-v1 (a flow the code already has) or workflow-v2 (a design: steps may be ' +
-  '`designed` with no evidence and carry `node` { type, label, band, purpose, inputs, outputs, owner, ' +
-  'sla, conditions, refs, … } whose type and required fields come from the template, and whose ' +
+  'the document is workflow-v2 (a design: version 1 is retired, and what the code holds is an observation, ' +
+  'never part of the design; each step carries `node` { type, label, band, purpose, inputs, outputs, owner, ' +
+  'sla, conditions, contracts, refs, … } whose type and required fields come from the template, and whose ' +
   "`refs` [{ template, flow, step }] link steps of the project's other designs; `basedOn` " +
   '[{ workflow, revision }] names the designs it builds on, each a flow this project holds at a revision it held ' +
   '(WORKFLOW_BASE_SELF, WORKFLOW_BASE_UNKNOWN, WORKFLOW_BASE_DUPLICATE); `edges` carry ' +
   'the contract of a line — a forward kind is a line `after` draws (its kind read from its endpoint ' +
   'types unless named), a return kind (operational-flow `feeds-back`, state-machine `back`) goes back to an earlier step, is never drawn in `after` ' +
   '(WORKFLOW_AFTER_CYCLE) and carries what its kind requires). ' +
-  'Schemas: GET /api/schemas/workflow-v1.json, workflow-v2.json and workflow-template-v1.json. A v2 workflow starts as a draft. ' +
-  'Evidence matches the project source: a storefront project cites { kind: "storefront", provider, ' +
-  'ref: workflow|route|node, id }, a repository project { kind: "repo", file, coverage } — the other ' +
-  'is WORKFLOW_EVIDENCE_KIND_MISMATCH. ' +
+  'Schemas: GET /api/schemas/workflow-v2.json and workflow-template-v1.json. A v2 workflow starts as a draft. ' +
+  'What the code holds is written as an observation (POST /api/projects/:id/workflows/:workflow/observations), ' +
+  'never into the design. ' +
   'propose: { workflowId, revision, issue } puts a draft in front of its approver; `issue` names the issue ' +
   "the design is drawn under (later revisions inherit it), and a decision wakes this project's master — a " +
   'return reopens that issue with the reason on it, shown by forge_issues get under `proposesWorkflow`. A write that changes the ' +
   'design (its template, steps, order, nodes, edge contracts, return edges) of a proposed, approved or returned workflow ' +
-  'proposes that revision again; a write that only refreshes status or evidence does not. ' +
+  'proposes that revision again. ' +
   'design: { workflowId } — the status (draft | proposed | approved | returned), every proposed ' +
   'revision with its decision, reason and step count (no document), the approved revision, and the issues ' +
   "that build it; view: 'steps' adds one revision's steps ({ revision? (the newest by default), stepFrom?, " +

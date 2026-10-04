@@ -11,9 +11,9 @@ if (!operational || !machine) throw new Error("built-ins lost operational-flow o
 const step = (id: string, type: string, after: string[] = [], extra: Partial<WorkflowStep["node"]> = {}): WorkflowStep => ({
   id,
   does: `does ${id}`,
-  status: "current",
+ 
   after,
-  evidence: null,
+ 
   node: { type, label: `Label ${id}`, ...extra },
 });
 

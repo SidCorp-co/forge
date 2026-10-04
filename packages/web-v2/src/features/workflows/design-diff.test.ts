@@ -10,23 +10,19 @@ const body = (patch: Partial<WorkflowBody> = {}): WorkflowBody => ({
   kind: "flow",
   title: "F",
   summary: "s",
-  status: "designed",
+ 
   steps: [
-    { id: "a", does: "a", status: "designed", after: [], evidence: null, node: { type: "EVENT" } },
-    { id: "b", does: "b", status: "designed", after: ["a"], evidence: null, node: { type: "CASE", sla: "48h" } },
+    { id: "a", does: "a", after: [], node: { type: "EVENT" } },
+    { id: "b", does: "b", after: ["a"], node: { type: "CASE", sla: "48h" } },
   ],
   edges: [{ from: "a", to: "b", condition: "x" }],
-  drift: null,
   writtenBy: {},
-  refreshedAtSha: null,
   ...patch,
 });
 
 describe("what a proposed design changes against the approved one", () => {
-  it("names nothing when only the reading moved", () => {
-    const built = body();
-    built.steps[0] = { ...built.steps[0], status: "current" };
-    const d = designDiff(body(), built);
+  it("names nothing when nothing moved", () => {
+    const d = designDiff(body(), body());
     expect([...d.steps]).toEqual([]);
     expect([...d.edges]).toEqual([]);
   });
@@ -34,8 +30,8 @@ describe("what a proposed design changes against the approved one", () => {
   it("marks an added, a changed and a removed step, and a changed contract", () => {
     const next = body({
       steps: [
-        { id: "a", does: "a", status: "designed", after: [], evidence: null, node: { type: "EVENT" } },
-        { id: "c", does: "c", status: "designed", after: ["a"], evidence: null },
+        { id: "a", does: "a", after: [], node: { type: "EVENT" } },
+        { id: "c", does: "c", after: ["a"] },
       ],
       edges: [{ from: "a", to: "b", condition: "y" }],
     });

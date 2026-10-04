@@ -1,9 +1,10 @@
 import { ANSWER_VIEWS } from '@forge/contracts/projection';
-import { DESIGN_VIEWS } from '@forge/contracts/workflows';
 import { WORKFLOW_STEP_ID } from '@forge/contracts/workflow-health';
+import { DESIGN_VIEWS } from '@forge/contracts/workflows';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { assertProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
@@ -17,6 +18,8 @@ import {
   readDesignAs,
   unlinkBuildAs,
 } from './design-service.js';
+import { WRITE_OBSERVATION_SHAPE, writeObservationSchema } from './observation-schema.js';
+import { listObservations, observationAs, writeObservation } from './observations.js';
 import { designStepsOf, designSummaryOf, workflowSummaryOf } from './projection.js';
 import {
   createWorkflow,
@@ -316,3 +319,65 @@ workflowRoutes.get('/:id/workflow-templates/:templateId/:version', async (c) => 
     ),
   );
 });
+
+const workflowRefParam = zValidator(
+  'param',
+  z.object({ id: z.uuid(), workflow: z.string().trim().min(1).max(200) }),
+  (r) => {
+    if (!r.success) throw badRequest('invalid path: a project uuid and a workflow uuid or flow');
+  },
+);
+
+workflowRoutes.post(
+  '/:id/workflows/:workflow/observations',
+  workflowRefParam,
+  strictBody(writeObservationSchema, WRITE_OBSERVATION_SHAPE),
+  async (c) => {
+    const { id, workflow } = c.req.valid('param');
+    const outcome = await writeObservation({
+      projectId: id,
+      workflow,
+      writer: writerOf(c),
+      write: c.req.valid('json'),
+    });
+    if (!outcome.ok) return refused(c, outcome.refusals);
+    return c.json({ observation: outcome.observation }, outcome.created ? 201 : 200);
+  },
+);
+
+workflowRoutes.get('/:id/workflows/:workflow/observations', workflowRefParam, async (c) => {
+  const { id, workflow } = c.req.valid('param');
+  await assertProjectAccess(id, c.get('userId'), 'viewer');
+  return c.json(await listObservations(id, workflow));
+});
+
+workflowRoutes.get(
+  '/:id/workflows/:workflow/observations/:at',
+  zValidator(
+    'param',
+    z.object({
+      id: z.uuid(),
+      workflow: z.string().trim().min(1).max(200),
+      at: z.string().trim().min(1).max(64),
+    }),
+    (r) => {
+      if (!r.success)
+        throw badRequest(
+          'invalid path: a project uuid, a workflow uuid or flow, and latest, a commit sha or an observation id',
+        );
+    },
+  ),
+  async (c) => {
+    const { id, workflow, at } = c.req.valid('param');
+    await assertProjectAccess(id, c.get('userId'), 'viewer');
+    return c.json({
+      observation: await egressForRequest(
+        c.get('agency'),
+        id,
+        'design',
+        await observationAs(id, workflow, at),
+        `workflow ${workflow} observation ${at}`,
+      ),
+    });
+  },
+);

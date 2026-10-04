@@ -4,7 +4,6 @@
  * target or a carrier with. Phases come from `rules.ts:phaseOf`; nothing here stores one.
  */
 
-import type { NodeRef } from '@forge/contracts/workflow-health';
 import type {
   FeedbackAttention,
   FeedbackDecisionView,
@@ -16,6 +15,7 @@ import type {
   FeedbackView,
 } from '@forge/contracts/feedback';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
+import type { NodeRef } from '@forge/contracts/workflow-health';
 import { and, asc, count, desc, eq, ilike, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';

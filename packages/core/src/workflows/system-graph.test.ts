@@ -21,9 +21,7 @@ const step = (id: string, type: string, band: string | null, after: string[] = [
   id,
   title: id,
   does: id,
-  status: 'designed',
   after,
-  evidence: null,
   node: {
     type,
     label: id,
