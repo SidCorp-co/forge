@@ -34,12 +34,12 @@ import { embedFeedbackLater } from './embeddings.js';
 import { detailAs, type FeedbackActor, feedbackKey, phaseOfRow, type Row, rowIn } from './read.js';
 import { isRefusal, resolveTarget } from './refs.js';
 import {
+  decideActRefusal,
   declineRefusal,
   redactActRefusal,
   redactedRefusal,
   reopenRefusal,
   targetCountRefusal,
-  verifyActRefusal,
   verifyRefusal,
 } from './rules.js';
 
@@ -124,7 +124,7 @@ export async function closeClarification(tx: Tx, feedbackId: string, why: string
   });
 }
 
-export type NewFeedback = Omit<typeof feedback.$inferInsert, 'fbSeq'>;
+type NewFeedback = Omit<typeof feedback.$inferInsert, 'fbSeq'>;
 
 export function feedbackKernelActor(actor: FeedbackActor): KernelActor {
   return { type: 'user', id: actor.userId, agency: actor.agency };
@@ -273,7 +273,7 @@ async function personalAct(
 ): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
   await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
-  const forbidden = verifyActRefusal(
+  const forbidden = decideActRefusal(
     await roleFacts(actor, projectId),
     act === 'verified' ? 'verifying feedback' : 'reopening feedback',
   );

@@ -114,7 +114,6 @@ export function buildWorkspaceCommands(deps: WorkspaceCommandDeps): Command[] {
     // Automation's two tabs, by name: the rail names only Automation (ISS-65).
     for (const [label, tab, icon] of [
       ["Schedules", "schedules", "clock"],
-      ["Improvements", "improvements", "star"],
     ] as const) {
       out.push({
         label: `${activeProjectName ?? slug} · ${label}`,

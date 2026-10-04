@@ -19,8 +19,6 @@ import type { WorkflowWrite, WorkflowWriteV2 } from './schema.js';
 import { inboundRefRefusals, refRefusals } from './template-refs.js';
 import { ruleRefusals, structureRefusals } from './template-rules.js';
 
-export { nodeOf };
-
 export interface ProjectDesignStep {
   type: string | null;
   refs: readonly { template: string; flow: string; step: string }[];
@@ -39,7 +37,6 @@ export function projectDesignOf(
   doc: WorkflowWrite,
   templates: readonly WorkflowTemplate[],
 ): ProjectDesign | null {
-  if (doc.version !== 2) return null;
   const t = findTemplate(templates, doc.template);
   return {
     template: doc.template,

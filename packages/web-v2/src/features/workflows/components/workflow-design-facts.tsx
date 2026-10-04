@@ -67,7 +67,7 @@ function BuildGate({ d, slug }: { d: WorkflowDesign; slug: string }) {
   );
 }
 
-export interface DesignFactsProps {
+interface DesignFactsProps {
   d: WorkflowDesign;
   record: WorkflowRecord;
   shown: WorkflowBody;

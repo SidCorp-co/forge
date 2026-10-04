@@ -7,15 +7,14 @@ import { z } from 'zod';
 
 export const WIREFRAME_VERSION = 'wireframe-v1' as const;
 /** The canvas every coordinate lives in: 0..CANVAS on both axes. */
-export const WIREFRAME_CANVAS = 4000;
-export const WIREFRAME_MAX_SHAPES = 500;
-export const WIREFRAME_MAX_PEN_POINTS = 2000;
+const WIREFRAME_CANVAS = 4000;
+const WIREFRAME_MAX_SHAPES = 500;
+const WIREFRAME_MAX_PEN_POINTS = 2000;
 
 /** The closed set. `pen` is in it so a stroke the person draws survives the round trip as itself. */
-export const WIREFRAME_SHAPE_TYPES = ['frame', 'text', 'button', 'input', 'list', 'image', 'arrow', 'pen'] as const;
-export type WireframeShapeType = (typeof WIREFRAME_SHAPE_TYPES)[number];
+const WIREFRAME_SHAPE_TYPES = ['frame', 'text', 'button', 'input', 'list', 'image', 'arrow', 'pen'] as const;
 
-export const WIREFRAME_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+const WIREFRAME_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
 const id = z.string().regex(WIREFRAME_ID_PATTERN, 'a shape id: 1-64 of A-Z a-z 0-9 _ -');
 const coord = z.number().finite().min(0).max(WIREFRAME_CANVAS);
@@ -26,7 +25,7 @@ const box = { id, x: coord, y: coord, w: size, h: size };
 const point = z.strictObject({ x: coord, y: coord });
 const end = z.union([z.strictObject({ id }), point]);
 
-export const wireframeShapeSchemas = {
+const wireframeShapeSchemas = {
   frame: z.strictObject({ type: z.literal('frame'), ...box, label: label.optional() }),
   text: z.strictObject({ type: z.literal('text'), ...box, text: z.string().min(1).max(2000) }),
   button: z.strictObject({ type: z.literal('button'), ...box, label }),
@@ -52,7 +51,6 @@ export const wireframeShapeSchema = z.discriminatedUnion('type', [
   wireframeShapeSchemas.pen,
 ]);
 export type WireframeShape = z.infer<typeof wireframeShapeSchema>;
-export type WireframeBoxShape = Exclude<WireframeShape, { type: 'arrow' } | { type: 'pen' }>;
 export type WireframeArrowEnd = z.infer<typeof end>;
 
 export const wireframeDocSchema = z.strictObject({
@@ -63,12 +61,12 @@ export const wireframeDocSchema = z.strictObject({
 export type WireframeDoc = z.infer<typeof wireframeDocSchema>;
 
 const shapeFields = z.record(z.string(), z.unknown());
-export const wireframePatchOpSchema = z.discriminatedUnion('op', [
+const wireframePatchOpSchema = z.discriminatedUnion('op', [
   z.strictObject({ op: z.literal('add'), shape: wireframeShapeSchema }),
   z.strictObject({ op: z.literal('update'), id, set: shapeFields }),
   z.strictObject({ op: z.literal('remove'), id }),
 ]);
-export type WireframePatchOp = z.infer<typeof wireframePatchOpSchema>;
+type WireframePatchOp = z.infer<typeof wireframePatchOpSchema>;
 export const wireframePatchSchema = z.array(wireframePatchOpSchema).min(1).max(200);
 
 export type WireframeRefusalCode =
@@ -79,7 +77,7 @@ export type WireframeRefusalCode =
   | 'WIREFRAME_ARROW_DANGLING'
   | 'WIREFRAME_ID_MISSING';
 
-export type WireframeParse =
+type WireframeParse =
   | { ok: true; doc: WireframeDoc }
   | { ok: false; code: WireframeRefusalCode; path: string; message: string };
 

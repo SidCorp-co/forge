@@ -13,9 +13,9 @@ import { RefusalError } from '../lib/refusal.js';
 import type { RequirementPinRow } from './requirement-context.js';
 
 /** How much of one artifact a prompt carries; the rest is fetched from the artifact route. */
-export const PINNED_ARTIFACT_CHARS = 40_000;
+const PINNED_ARTIFACT_CHARS = 40_000;
 
-export interface PinnedVersionRow {
+interface PinnedVersionRow {
   providerProjectId: string;
   contractSlug: string;
   version: string;
@@ -44,7 +44,7 @@ const pinnedRefusal = (code: ArtifactContextRefusalCode, detail: string) =>
  * Why one pinned version cannot be given, or null. `versions` are the contract's recorded versions,
  * newest first; the current one is the newest approved.
  */
-export function pinnedContractProblem(
+function pinnedContractProblem(
   key: string,
   at: string,
   version: string,

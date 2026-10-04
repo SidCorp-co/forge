@@ -298,10 +298,6 @@
         "users"
       ]
     },
-    "improvement-messages": {
-      "kind": "domain",
-      "context": "design"
-    },
     "install": {
       "kind": "door",
       "context": "access"

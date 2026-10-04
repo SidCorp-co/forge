@@ -5,8 +5,8 @@
  * service answers it with nothing written, except a stale base on accept, which marks the row stale.
  */
 
-import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { createHash } from 'node:crypto';
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import {
   SUGGESTION_MAX_OPEN_PER_TARGET,
   SUGGESTION_PAYLOADS,
@@ -16,8 +16,6 @@ import {
   type SuggestionTargetType,
 } from '@forge/contracts/suggestions';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
-
-export type { SuggestionRefusal, SuggestionRefusalCode } from '@forge/contracts/suggestions';
 
 // cm:guard kind is one of the 6 and the payload parses for it (SUGGESTION_PAYLOAD_INVALID), on a target
 // the kind takes (SUGGESTION_TARGET_INVALID)
@@ -263,7 +261,7 @@ export function breakdownFaults(
 }
 
 /** An existing issue a breakdown names as a blocker, as it was read; null when nothing answers. */
-export interface BlockerFound {
+interface BlockerFound {
   key: string;
   projectId: string;
   status: string;

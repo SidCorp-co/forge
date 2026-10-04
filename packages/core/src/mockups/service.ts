@@ -36,7 +36,7 @@ export type MockupOutcome =
   | { ok: true; mockup: MockupView; created?: boolean }
   | { ok: false; refusals: MockupRefusal[] };
 
-export async function lockMockups(tx: Tx, projectId: string): Promise<void> {
+async function lockMockups(tx: Tx, projectId: string): Promise<void> {
   await lockXact(tx, 'mockups', projectId);
 }
 
@@ -55,7 +55,7 @@ const invalidTarget = (path: string, detail: string): MockupRefusal => ({
 });
 
 /** The one target a proposal names, inside `projectId`, or the refusal naming why it is not one. */
-export async function resolveMockupTarget(
+async function resolveMockupTarget(
   projectId: string,
   target: MockupTargetInput,
   userId: string,
