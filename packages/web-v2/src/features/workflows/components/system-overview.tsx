@@ -4,7 +4,7 @@ import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { Pencil } from "lucide-react";
 import Link from "next/link";
 import { type FormEvent, useMemo, useState } from "react";
-import { Button, HoverCard, Icon, Input } from "@/design";
+import { Button, HoverCard, Icon, Input, rememberListOrigin } from "@/design";
 import { useOpenOnboarding } from "@/features/onboarding/components/onboarding-hint";
 import { useOnboardingState } from "@/features/onboarding/hooks";
 import { useWriteProjectDocument } from "@/features/project-settings/config-hooks";
@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils/cn";
 import { templateFor } from "../canvas/model";
 import { WorkflowCanvas } from "../canvas/workflow-canvas";
 import { describeSystem, type OverviewFact, type SystemDescription, type SystemOverview, sensitivityOf, systemOverview } from "../catalogue";
-import { workflowHref } from "../routes";
+import { WORKFLOWS_LIST, workflowHref } from "../routes";
 import type { WorkflowRecord } from "../types";
 import { DesignPill, SensitivityBadge } from "./workflow-parts";
 
@@ -165,7 +165,7 @@ function Facts({ o, slug, projectDocument }: { o: SystemOverview; slug: string; 
         <div className="flex min-w-0 items-baseline gap-2">
           <dt className="text-12-5 text-muted">Main journey</dt>
           <dd className="m-0 min-w-0 truncate text-13-5 font-semibold">
-            <Link href={workflowHref(slug, o.journey.document.flow)} className="text-link hover:underline">
+            <Link href={workflowHref(slug, o.journey.document.flow)} onClick={() => rememberListOrigin(WORKFLOWS_LIST)} className="text-link hover:underline">
               {o.journey.document.title}
             </Link>
           </dd>
@@ -269,6 +269,7 @@ export function SystemOverviewRegion({ records, templates, projectId, slug, proj
             {status ? <DesignPill status={status} reason={design.design.returnReason ?? null} /> : null}
             <Link
               href={compact ? workflows : workflowHref(slug, design.document.flow)}
+              onClick={compact ? undefined : () => rememberListOrigin(WORKFLOWS_LIST)}
               className="inline-flex items-center gap-1 text-13 font-semibold text-link hover:underline"
               data-testid="open-system-context"
             >

@@ -63,6 +63,12 @@ export function dischargeDesign() {
     approvedRevision: 6,
     approver: 'owner' as const,
     canDecide: false,
+    waitingOn: {
+      kind: 'none' as const,
+      who: 'Nobody',
+      act: '',
+      rule: 'revision 6 is approved; work that builds it may start',
+    },
     revisions: [6, 5, 4, 3, 2].map((revision) => ({
       revision,
       designIssueId: ISSUE,
@@ -75,6 +81,7 @@ export function dischargeDesign() {
       decidedByName: 'Owner',
       decidedAt: '2026-10-04T01:00:00.000Z',
       reason: words(20, `reason${revision}`),
+      state: revision === 6 ? ('current' as const) : ('superseded' as const),
     })),
     builds: Array.from({ length: 6 }, (_, i) => ({
       issueId: ISSUE,
@@ -82,6 +89,8 @@ export function dischargeDesign() {
       title: `Build discharge step ${i}`,
       status: 'open',
     })),
+    gate: { open: true, rule: 'issues that build it may be dispatched: revision 6 is approved' },
+    requirements: [{ key: 'REQ-12', title: words(8, 'req'), status: 'agreed', pinnedRevision: 6 }],
   };
 }
 
