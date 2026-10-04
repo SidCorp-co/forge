@@ -3,7 +3,7 @@ import type { SystemGraph } from "../types";
 import forgeJson from "./forge.graph.fixture.json";
 import hopJson from "./hop.graph.fixture.json";
 import hopNowJson from "./hop-now.graph.fixture.json";
-import { type Diagram, layoutView, type Pt, type Rect, shortLabel } from "./layout";
+import { type Diagram, fitZoom, layoutView, MIN_READABLE_ZOOM, type Pt, type Rect, shortLabel } from "./layout";
 import { type Detail, FOCAL, type Level, PEOPLE_AT_A_GLANCE, relationshipText, viewOf } from "./view";
 
 // Core's read model (`packages/core/src/workflows/system-graph.ts`) of HOP's system-context design at
@@ -147,6 +147,24 @@ describe("view → layout", () => {
     const zns = d.lines.find((l) => l.ends.includes("zalo") && l.ends.includes("patient"));
     expect(zns?.ends).toEqual(["patient", "zalo"]);
     expect(zns).toMatchObject({ arrowStart: true, arrowEnd: false });
+  });
+
+  it("fits forge's Boundaries view in the 1440x900 Workflows canvas at the 12px floor, the outside boxes stacked in one column", async () => {
+    // The canvas the overview draws in at 1440x900, less its padding.
+    const box = { width: 920, height: 681 };
+    const d = await layoutView(viewOf(forge, "context", "boundaries") as NonNullable<ReturnType<typeof viewOf>>);
+    expect(fitZoom(d, box, 2)).toBeGreaterThanOrEqual(MIN_READABLE_ZOOM);
+    const outside = d.boxes.filter((b) => b.node.column === 2);
+    expect(new Set(outside.map((b) => b.x)).size).toBe(1);
+  });
+
+  it("draws a line between two stacked outside boxes straight down the column, its words across it", async () => {
+    const d = await layoutView(viewOf(forge, "context", "boundaries") as NonNullable<ReturnType<typeof viewOf>>);
+    const l = d.lines.find((x) => x.ends.includes("outside:box") && x.ends.includes("outside:outside"));
+    expect(l?.points).toHaveLength(2);
+    expect(l?.points[0]?.x).toBe(l?.points[1]?.x);
+    const mid = ((l?.points[0]?.y ?? 0) + (l?.points[1]?.y ?? 0)) / 2;
+    expect(l?.label && l.label.y < mid && l.label.y + l.label.h > mid).toBe(true);
   });
 
   it("lays out the same view to the same picture every time", async () => {
