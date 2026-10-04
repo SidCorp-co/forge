@@ -1,6 +1,6 @@
 import { db } from '../db/client.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { pointer } from '../project-config/documents.js';
-import { wakeMastersForBuild } from '../ws/master-wake.js';
 import { assertStewardAdmin, forbidden, notFound, readerProjects, stewardRole } from './access.js';
 import { owedTrigger } from './builder-head.js';
 import { type HeldEcosystem, loadEcosystem, storedAs } from './ecosystem-service.js';
@@ -9,6 +9,7 @@ import type { BuilderRunWrite } from './link-schema.js';
 import { openOwedRun, sourceOf } from './link-service.js';
 import { type MembershipRow, type MembershipVerb, TRANSITIONS } from './membership-rules.js';
 import { visibleMembers } from './party.js';
+import { ecosystemSignals } from './ports.js';
 import type { EcosystemRefusal } from './refusals.js';
 import { type InterfaceDocument, interfaceDocumentSchema } from './schema.js';
 import {
@@ -21,7 +22,6 @@ import {
   readInterface,
   readMembership,
 } from './store.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
 export type MembershipOutcome =
   | { ok: true; membership: MembershipRow }
@@ -162,7 +162,7 @@ export async function transition(input: {
     }
     return { ok: true, membership: moved } as MembershipOutcome;
   });
-  if (outcome.ok && verb === 'accept') await wakeMastersForBuild(row.projectId);
+  if (outcome.ok && verb === 'accept') await ecosystemSignals().wakeForBuild(row.projectId);
   return outcome;
 }
 

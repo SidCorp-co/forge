@@ -3,9 +3,9 @@ import type { Tx } from '../../db/client.js';
 import { fileContractChangeIn } from '../../feedback/contract-change.js';
 import { embedFeedbackLater } from '../../feedback/embeddings.js';
 import { dataPolicyOf } from '../../lib/data-egress.js';
-import { emitNotification } from '../../notifications/emit.js';
 import { logger } from '../../observability/logger.js';
 import { tellEachSide } from '../channel-signals.js';
+import { ecosystemSignals } from '../ports.js';
 import { consumersOf } from '../store.js';
 import type { StoredVersion } from './store.js';
 
@@ -66,7 +66,7 @@ export async function announceApproved(tx: Tx, a: Approved, filed: string[]): Pr
       consumers.map((c) => c.id),
       a.filer.agency === 'human' ? a.filer.userId : null,
       (side, recipients) =>
-        emitNotification({
+        ecosystemSignals().notify({
           recipients,
           projectId: side,
           type: 'contract_version_published',

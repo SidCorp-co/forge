@@ -13,7 +13,7 @@ import { registerRoomChat } from './conversations/index.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { seedDomainTemplates } from './domain-templates/index.js';
-import { registerContractMeasureWorker } from './ecosystem/index.js';
+import { provideEcosystemSignals, registerContractMeasureWorker } from './ecosystem/index.js';
 import { provideAdmissionThresholds } from './error-intake/index.js';
 import {
   assertVaultBootSafety,
@@ -34,6 +34,11 @@ import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
+import {
+  emitNotification,
+  projectAdminUserIdsFor,
+  resolveNotifications,
+} from './notifications/index.js';
 import { logger } from './observability/logger.js';
 import {
   declareOutboxQueues,
@@ -51,12 +56,19 @@ import { bootstrapRunnerAdapters } from './runners/index.js';
 import { startTimers, stopTimers } from './schedules/index.js';
 import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
 import { coreTimers } from './timer-registry.js';
-import { attachWs, closeWs } from './ws/index.js';
+import { attachWs, closeWs, wakeMastersForBuild, wakeMastersForChannel } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,
   issueForHeadRef: (projectId, headRef) => resolveIssueForHeadRef({ projectId, headRef }),
+});
+provideEcosystemSignals({
+  notify: emitNotification,
+  resolve: resolveNotifications,
+  projectAdmins: projectAdminUserIdsFor,
+  wakeForChannel: wakeMastersForChannel,
+  wakeForBuild: wakeMastersForBuild,
 });
 provideAdmissionThresholds(async () => {
   const policy = await readThresholds();

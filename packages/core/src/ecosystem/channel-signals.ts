@@ -2,12 +2,9 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projectMembers, projects, users } from '../db/schema.js';
 import { userLabel } from '../issues/actor-resolution.js';
-import { resolveNotifications } from '../notifications/auto-resolve.js';
-import { emitNotification } from '../notifications/emit.js';
-import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
 import { logger } from '../observability/logger.js';
-import { wakeMastersForChannel } from '../ws/master-wake.js';
 import type { ChannelDocument, ThreadHold } from './channel-schema.js';
+import { ecosystemSignals } from './ports.js';
 
 async function humans(ids: readonly string[]): Promise<Set<string>> {
   if (ids.length === 0) return new Set();
@@ -28,7 +25,7 @@ async function peopleBySide(projectIds: readonly string[]): Promise<Map<string, 
           .select({ projectId: projectMembers.projectId, userId: projectMembers.userId })
           .from(projectMembers)
           .where(inArray(projectMembers.projectId, ids)),
-    projectAdminUserIdsFor(ids),
+    ecosystemSignals().projectAdmins(ids),
   ]);
   const all = new Map(ids.map((id) => [id, new Set(admins.get(id) ?? [])]));
   for (const m of members) all.get(m.projectId)?.add(m.userId);
@@ -116,7 +113,7 @@ export async function announcePublished(documentId: string, d: ChannelDocument):
       [d.from, ...d.to],
       d.authoredBy.kind === 'person' ? d.authoredBy.id : null,
       (side, recipients) =>
-        emitNotification({
+        ecosystemSignals().notify({
           recipients,
           projectId: side,
           type: 'channel_document_published',
@@ -126,19 +123,20 @@ export async function announcePublished(documentId: string, d: ChannelDocument):
         }),
     );
   });
-  for (const side of d.to) await signal('master.wake', () => wakeMastersForChannel(side));
+  for (const side of d.to)
+    await signal('master.wake', () => ecosystemSignals().wakeForChannel(side));
 }
 
 export async function announceHold(h: ThreadHold, parties: readonly string[]): Promise<void> {
   await signal('channel_thread_held', async () => {
     if (h.action === 'release') {
       const outcome = await releasedOutcome(h);
-      for (const side of parties) await resolveNotifications(holdKey(h, side), outcome);
+      for (const side of parties) await ecosystemSignals().resolve(holdKey(h, side), outcome);
       return;
     }
     const slugs = await slugsOf([h.side]);
     await tellEachSide(parties, h.by.id, (side, recipients) =>
-      emitNotification({
+      ecosystemSignals().notify({
         recipients,
         projectId: side,
         type: 'channel_thread_held',
@@ -148,12 +146,13 @@ export async function announceHold(h: ThreadHold, parties: readonly string[]): P
       }),
     );
   });
-  for (const side of parties) await signal('master.wake', () => wakeMastersForChannel(side));
+  for (const side of parties)
+    await signal('master.wake', () => ecosystemSignals().wakeForChannel(side));
 }
 
 export async function announceGatePending(documentId: string, d: ChannelDocument): Promise<void> {
   await signal('channel_gate_pending', async () => {
-    const admins = (await projectAdminUserIdsFor([d.from])).get(d.from) ?? [];
+    const admins = (await ecosystemSignals().projectAdmins([d.from])).get(d.from) ?? [];
     const human = await humans(admins);
     const recipients = admins.filter((u) => human.has(u));
     if (recipients.length === 0) {
@@ -163,7 +162,7 @@ export async function announceGatePending(documentId: string, d: ChannelDocument
       );
       return;
     }
-    await emitNotification({
+    await ecosystemSignals().notify({
       recipients,
       projectId: d.from,
       type: 'channel_gate_pending',
@@ -176,7 +175,7 @@ export async function announceGatePending(documentId: string, d: ChannelDocument
 
 export async function announceGateDecided(documentId: string, d: ChannelDocument): Promise<void> {
   await signal('channel_gate_pending', async () =>
-    resolveNotifications(gateKey(documentId), await gateOutcome(d)),
+    ecosystemSignals().resolve(gateKey(documentId), await gateOutcome(d)),
   );
   if (d.state === 'published') await announcePublished(documentId, d);
 }
