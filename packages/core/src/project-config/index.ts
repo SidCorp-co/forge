@@ -23,6 +23,7 @@ export {
   type ProjectDocument,
   STOREFRONT_PROVIDERS,
   slug,
+  unique,
   uuid,
 } from './schema.js';
 export {
