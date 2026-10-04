@@ -5,7 +5,7 @@ import { bodyText } from '../../body/prepare.js';
 import { issueComplexities, issuePriorities, taskStatuses, waitingKinds } from '../../db/schema.js';
 import { LANDED_CONTRACT } from '../../ecosystem/contract/drift.js';
 import { actorAgency } from '../../issues/actor-agency.js';
-import { transitionIssueStatus } from '../../issues/apply-transition.js';
+import { TransitionError, transitionIssueStatus } from '../../issues/apply-transition.js';
 import { issueArchiveFilterSchema } from '../../issues/archive.js';
 import { listIssueAttachments } from '../../issues/attachment-service.js';
 import { loadIssueAttributes } from '../../issues/attributes/read.js';
@@ -33,6 +33,7 @@ import { mergeMarkFields } from '../../issues/merge-record.js';
 import { parkQuestionNotMinted } from '../../issues/park-question.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from '../../issues/patch-fields.js';
 import { findIssueById, findIssueProjectId, type IssueRow } from '../../issues/read-service.js';
+import { refuseOffRecoveryEdge, withRecoveryHint } from '../../issues/recovery-move.js';
 import { applyIssueRelations, issueRelationInputSchema } from '../../issues/relations-service.js';
 import { ReleaseNotesSchema } from '../../issues/release-notes.js';
 import { sessionContextExpectSchema, sessionContextSchema } from '../../issues/session-context.js';
@@ -156,6 +157,12 @@ const dataObject = z
       .optional()
       .describe(
         'What a person must supply for a `needs_info` park to start again — NOT `reason`, which is why the work stopped. Sending it mints the free-text question that person answers; omitting it mints one saying the run did not say what would settle this. Minted only for an agent-held credential.',
+      ),
+    recovery: z
+      .literal(true)
+      .optional()
+      .describe(
+        'With `transition`: the kernel hand-back of an `in_progress` issue nothing holds any more, to `open`, `approved` or `reopen` (REQ-2 BC-10). A judge that failed a criterion lets go of the issue, then sends `status: reopen`, `recovery: true` and the failed criteria as `reason`. Refused while anything holds the issue, and on any other move.',
       ),
     voidQuestions: z
       .string()
@@ -803,12 +810,22 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!target) throw new Error('BAD_REQUEST: data.status is required for transition');
         const issue = await loadIssue(await refs.issue('documentId', input.documentId));
         await assertPrincipalIsWriter(principal, issue.projectId);
-        await transitionIssueStatus(issue, target, principalActor(principal), {
-          transitionReason: input.data?.reason ?? input.data?.note,
-          waitingKind: input.data?.waitingKind,
-          needs: input.data?.needs,
-          voidQuestions: input.data?.voidQuestions,
-        });
+        const recovery = input.data?.recovery === true;
+        try {
+          if (recovery) refuseOffRecoveryEdge(issue.status, target);
+          await transitionIssueStatus(issue, target, principalActor(principal), {
+            transitionReason: input.data?.reason ?? input.data?.note,
+            waitingKind: input.data?.waitingKind,
+            needs: input.data?.needs,
+            voidQuestions: input.data?.voidQuestions,
+            ...(recovery ? { recovery } : {}),
+          });
+        } catch (err) {
+          if (err instanceof TransitionError) {
+            throw withRecoveryHint(err, issue.status, target, recovery);
+          }
+          throw err;
+        }
         const fresh = await issueEgress(issue.projectId, await loadIssue(issue.id), issue.id);
         const transitionOutput: Record<string, unknown> = await serializeWithAttachments(fresh);
         const unheard = parkQuestionNotMinted({

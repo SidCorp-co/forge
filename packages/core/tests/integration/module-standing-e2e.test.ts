@@ -52,6 +52,33 @@ describe('GET /modules/rollup with standing', () => {
   });
 });
 
+describe('GET /modules/rollup counts open the way the Issues list does (ISS-69)', () => {
+  it('counts awaiting_release and draft as open, closed only when shipped, dropped apart', async () => {
+    const zalo = await fx.defineModule('zalo');
+    const at = async (title: string, status: string, moduleId: string | null) => {
+      const id = await fx.createIssue(title);
+      if (moduleId) await fx.setLabels(id, [{ labelId: moduleId, isPrimary: true }]);
+      await fx
+        .db()
+        .db.execute(
+          sql`UPDATE issues SET status = ${status}, merged_at = CASE WHEN ${status} = 'closed' THEN now() ELSE merged_at END WHERE id = ${id}`,
+        );
+    };
+    await at('Waits on release', 'awaiting_release', zalo.id);
+    await at('Not admitted', 'draft', zalo.id);
+    await at('Shipped', 'closed', zalo.id);
+    await at('Not work', 'dropped', zalo.id);
+    await at('Loose and released', 'awaiting_release', null);
+    await at('Loose and dropped', 'dropped', null);
+
+    const body = (await (await fx.get('/modules/rollup')).json()) as ModuleRollupResponse;
+    const own = body.modules.find((m) => m.id === zalo.id)?.own.primary;
+    expect(own).toMatchObject({ total: 4, open: 2, closed: 1, dropped: 1 });
+    expect(body.unassigned).toMatchObject({ total: 2, open: 1, closed: 0, dropped: 1 });
+    expect((own?.open ?? 0) + body.unassigned.open).toBe(body.issuesRead.open);
+  });
+});
+
 describe('GET /modules/:module/detail', () => {
   it('reads one module by slug with its parent, landings and the facts nothing records', async () => {
     await seed();

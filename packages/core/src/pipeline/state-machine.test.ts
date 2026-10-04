@@ -12,7 +12,7 @@ import {
   transitions,
 } from './state-machine.js';
 
-// Workflow `issue-lifecycle`, approved revision 2 (ISS-54): the forward edges, written out here so a
+// Workflow `issue-lifecycle`, approved revision 3 (ISS-54): the forward edges, written out here so a
 // change to the table is a change to this file too.
 const EXPECTED_EXITS: Record<IssueStatus, readonly IssueStatus[]> = {
   draft: ['dropped', 'open'],

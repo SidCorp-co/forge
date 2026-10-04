@@ -57,6 +57,7 @@ import {
   issueForReader,
   legacyFilterWarnings,
   readerOnSeventeen,
+  refuseRetiredFromTenStatusClient,
   STATUS_COMPAT_HEADER,
   statusFilterSql,
 } from './legacy-status.js';
@@ -295,6 +296,7 @@ issueProjectRoutes.get(
     const conditions = [eq(issues.projectId, projectId)];
     const client17 = readerOnSeventeen(c);
     if (q.status) {
+      refuseRetiredFromTenStatusClient([q.status], client17);
       conditions.push(statusFilterSql(q.status, client17));
       const retired = legacyFilterWarnings([q.status]);
       if (retired.length > 0) c.header(STATUS_COMPAT_HEADER, retired.join(' '));

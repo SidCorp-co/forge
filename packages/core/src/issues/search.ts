@@ -37,6 +37,7 @@ import {
   LIFECYCLE_HEADER,
   legacyFilterWarnings,
   readsLegacyStatuses,
+  refuseRetiredFromTenStatusClient,
   STATUS_COMPAT_HEADER,
 } from './legacy-status.js';
 import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
@@ -266,6 +267,7 @@ searchRoutes.get(
       principal: c.get('principal'),
       lifecycleHeader: c.req.header(LIFECYCLE_HEADER),
     });
+    refuseRetiredFromTenStatusClient([...(q.status ?? []), ...(q.statusNot ?? [])], client17);
     const retired = legacyFilterWarnings([...(q.status ?? []), ...(q.statusNot ?? [])]);
     if (retired.length > 0) c.header(STATUS_COMPAT_HEADER, retired.join(' '));
     if (q.status && q.status.length > 0) {

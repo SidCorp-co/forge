@@ -33,7 +33,7 @@ const set = (over: Partial<ModuleRollupResponse> = {}) => {
   DATA = {
     activeWithinDays: 30,
     generatedAt: "2026-10-04T00:00:00.000Z",
-    unassigned: { total: 2, open: 2, closed: 0, recentlyActive: 0 },
+    unassigned: { total: 2, open: 2, closed: 0, dropped: 0, recentlyActive: 0 },
     issuesRead: { returned: 5, open: 5 },
     modules: [
       rollupRow("outreach", { name: "Outreach", description: "Calls and messages to families.", standing: { ...needsYou, childCount: 1 } }),

@@ -29,22 +29,26 @@ import {
   LIFECYCLE_HEADER,
   legacyWarning,
   readsLegacyStatuses,
+  refuseRetiredFromTenStatusClient,
   resolveStatusInput,
   STATUS_COMPAT_HEADER,
 } from './legacy-status.js';
 import { parkQuestionNotMinted } from './park-question.js';
 import { issueParkRoutes } from './park-routes.js';
 import { recordEventRoutes } from './record-events/routes.js';
+import { refuseOffRecoveryEdge, withRecoveryHint } from './recovery-move.js';
 
 const transitionBodySchema = z
   .object({
-    // cm:hack the seven retired names are accepted and mapped (`legacy-status.ts`). Exit: until
-    // forge-plugin moves to the 10-status model (plugin-followups.md).
+    // cm:hack the seven retired names are accepted from forge-plugin 3.36.542 alone and mapped
+    // (`legacy-status.ts`); a ten-status client is refused them. Exit: until forge-plugin moves to
+    // the 10-status model (plugin-followups.md).
     toStatus: z.enum([...issueStatuses, ...LEGACY_STATUSES]),
     reason: z.string().trim().min(1).max(2000).optional(),
     waitingKind: z.enum(waitingKinds).optional(),
     needs: z.string().trim().min(1).max(2000).optional(),
     voidQuestions: z.string().max(2000).optional(),
+    recovery: z.literal(true).optional(),
   })
   .strict();
 
@@ -236,13 +240,21 @@ transitionRoutes.post(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { toStatus: named, reason, waitingKind, needs, voidQuestions } = c.req.valid('json');
-    const resolved = resolveStatusInput(named);
-    const toStatus = resolved.status;
+    const {
+      toStatus: named,
+      reason,
+      waitingKind,
+      needs,
+      voidQuestions,
+      recovery,
+    } = c.req.valid('json');
     const client17 = readsLegacyStatuses({
       principal: c.get('principal'),
       lifecycleHeader: c.req.header(LIFECYCLE_HEADER),
     });
+    refuseRetiredFromTenStatusClient([named], client17);
+    const resolved = resolveStatusInput(named);
+    const toStatus = resolved.status;
     const userId = c.get('userId');
 
     const [issue] = await db
@@ -262,9 +274,9 @@ transitionRoutes.post(
 
     const access = await loadProjectAccess(issue.projectId, userId);
     assertProjectRole(access, 'member');
-
     let result: StatusTransitionResult;
     try {
+      if (recovery) refuseOffRecoveryEdge(fromStatus, toStatus);
       result = await transitionIssueStatus(
         {
           id: issue.id,
@@ -281,10 +293,13 @@ transitionRoutes.post(
           needs,
           voidQuestions,
           legacy: { named, target: resolved.legacy, client17 },
+          ...(recovery ? { recovery } : {}),
         },
       );
     } catch (err) {
-      if (err instanceof TransitionError) throw transitionErrorToHttp(err);
+      if (err instanceof TransitionError) {
+        throw transitionErrorToHttp(withRecoveryHint(err, fromStatus, toStatus, recovery));
+      }
       throw err;
     }
 

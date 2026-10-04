@@ -206,14 +206,79 @@ describe('ILLEGAL_TRANSITION: only the lifecycle edges are moves', () => {
     expect(String(res.body.message)).toContain('never entered again');
   });
 
-  it('maps a retired name it is sent, and says so in a warning', async () => {
+  it('refuses a retired name by name from a ten-status client, naming the ten (REQ-2 BC-1)', async () => {
     const w = await world();
     const id = await insertIssue(w, 'open');
     await holdLease(id);
     const res = await move(id, w.human, { toStatus: 'confirmed' });
-    expect(res.status).toBe(200);
-    expect(res.body.status).toBe('in_progress');
-    expect(String((res.body.warnings as string[])[0])).toContain('STATUS_RETIRED');
+    expectRefused(res, 400, 'STATUS_RETIRED');
+    expect(String(res.body.message)).toContain('`in_progress`');
+    expect((await statusOf(id)).status).toBe('open');
+  });
+});
+
+describe('the recovery move: an in_progress issue nothing holds is handed back (REQ-2 BC-10)', () => {
+  it('a judge that failed a criterion and let go hands the issue back to reopen with its reason', async () => {
+    const w = await world();
+    const id = await insertIssue(w, 'in_progress', { criteria: '1. one\n2. two' });
+    await postVerdicts(w, id, [
+      { criterion: 1, verdict: 'pass' },
+      { criterion: 2, verdict: 'fail' },
+    ]);
+    const res = await move(id, w.human, {
+      toStatus: 'reopen',
+      recovery: true,
+      reason: 'judge failed criterion 2',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.status).toBe('reopen');
+    expect(res.body.reopenCount).toBe(1);
+    await holdLease(id);
+    expect((await move(id, w.agent, { toStatus: 'in_progress' })).status).toBe(200);
+    await postVerdicts(w, id, [{ criterion: 2, verdict: 'pass' }]);
+    const stale = await move(id, w.agent, { toStatus: 'awaiting_release' });
+    expectRefused(stale, 409, 'VERDICT_PREDATES_REOPEN');
+    expect((stale.body.details as { predateReopen: number[] }).predateReopen).toEqual([1]);
+    await postVerdicts(w, id, [{ criterion: 1, verdict: 'pass' }]);
+    expect((await move(id, w.agent, { toStatus: 'awaiting_release' })).status).toBe(200);
+  });
+
+  it('without recovery the move is off the lifecycle, and the refusal names the recovery move', async () => {
+    const w = await world();
+    const id = await insertIssue(w, 'in_progress');
+    const res = await move(id, w.human, { toStatus: 'reopen', reason: 'judge failed' });
+    expectRefused(res, 409, 'ILLEGAL_TRANSITION');
+    expect(String(res.body.message)).toContain('`recovery: true`');
+    expect((await statusOf(id)).status).toBe('in_progress');
+  });
+
+  it('never displaces a live holder', async () => {
+    const w = await world();
+    const id = await insertIssue(w, 'in_progress');
+    await holdLease(id);
+    const res = await move(id, w.human, { toStatus: 'reopen', recovery: true, reason: 'r' });
+    expectRefused(res, 409, 'ILLEGAL_TRANSITION');
+    expect(String(res.body.message)).toContain('holds this one');
+    expect((await statusOf(id)).status).toBe('in_progress');
+  });
+
+  it('still needs the reason reopen needs', async () => {
+    const w = await world();
+    const id = await insertIssue(w, 'in_progress');
+    expectRefused(
+      await move(id, w.human, { toStatus: 'reopen', recovery: true }),
+      422,
+      'TRANSITION_REASON_REQUIRED',
+    );
+  });
+
+  it('reaches no move but the hand-back of in_progress', async () => {
+    const w = await world();
+    const id = await insertIssue(w, 'draft');
+    const res = await move(id, w.human, { toStatus: 'reopen', recovery: true, reason: 'r' });
+    expectRefused(res, 409, 'ILLEGAL_TRANSITION');
+    expect(String(res.body.message)).toContain('is not one');
+    expect((await statusOf(id)).status).toBe('draft');
   });
 });
 

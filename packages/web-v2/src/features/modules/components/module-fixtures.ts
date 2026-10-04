@@ -12,7 +12,7 @@ export const standing = (over: Partial<ModuleStanding> = {}): ModuleStanding => 
   ...over,
 });
 
-const counts = { total: 0, open: 0, closed: 0, recentlyActive: 0 };
+const counts = { total: 0, open: 0, closed: 0, dropped: 0, recentlyActive: 0 };
 
 export const rollupRow = (slug: string, over: Partial<ModuleRollupRow> = {}): ModuleRollupRow => ({
   id: `id-${slug}`,

@@ -78,6 +78,7 @@ export interface ModuleCounts {
   total: number;
   open: number;
   closed: number;
+  dropped: number;
   recentlyActive: number;
 }
 

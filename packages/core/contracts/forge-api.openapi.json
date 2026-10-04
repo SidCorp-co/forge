@@ -12146,6 +12146,10 @@
                     "minLength": 1,
                     "type": "string"
                   },
+                  "recovery": {
+                    "const": true,
+                    "type": "boolean"
+                  },
                   "toStatus": {
                     "enum": [
                       "draft",

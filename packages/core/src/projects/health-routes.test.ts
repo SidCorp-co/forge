@@ -147,19 +147,20 @@ describe('GET /api/projects/health', () => {
     expect(beta?.pendingEscalations).toBe(2); // needs_info bucket
   });
 
-  it('totalActive counts all non-terminal statuses and excludes released/closed/draft (ISS-528)', async () => {
+  it('totalActive counts all non-terminal statuses and excludes released/closed/draft/dropped (ISS-528)', async () => {
     authVerified();
     queryQueue.push([{ id: PROJECT_A_ID }]); // loadVisibleProjectIds
     queryQueue.push([{ id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null }]); // visibleProjects
     queryQueue.push([
       { projectId: PROJECT_A_ID, status: 'open', n: 2 },
-      { projectId: PROJECT_A_ID, status: 'clarified', n: 1 },
+      { projectId: PROJECT_A_ID, status: 'approved', n: 1 },
       { projectId: PROJECT_A_ID, status: 'on_hold', n: 3 },
       { projectId: PROJECT_A_ID, status: 'needs_info', n: 1 },
-      { projectId: PROJECT_A_ID, status: 'tested', n: 1 },
+      { projectId: PROJECT_A_ID, status: 'reopen', n: 1 },
       { projectId: PROJECT_A_ID, status: 'awaiting_release', n: 5 },
       { projectId: PROJECT_A_ID, status: 'closed', n: 100 },
       { projectId: PROJECT_A_ID, status: 'draft', n: 4 },
+      { projectId: PROJECT_A_ID, status: 'dropped', n: 7 },
     ]); // statusRows
     queryQueue.push([]); // blockerRowsAll
     queryQueue.push([]); // throughputRows

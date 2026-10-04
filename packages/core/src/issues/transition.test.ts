@@ -153,14 +153,14 @@ describe('POST /api/issues/:id/transition', () => {
     const token = await signUserToken(USER_ID);
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     selectLimit.mockResolvedValueOnce([]);
-    const res = await req({ toStatus: 'confirmed' }, token);
+    const res = await req({ toStatus: 'in_progress' }, token);
     expect(res.status).toBe(404);
   });
 
   it('403 when user is not a project member', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'open', member: false });
-    const res = await req({ toStatus: 'confirmed' }, token);
+    const res = await req({ toStatus: 'in_progress' }, token);
     expect(res.status).toBe(403);
   });
 
@@ -185,7 +185,6 @@ describe('POST /api/issues/:id/transition', () => {
 
   it.each([
     ['reopen', 'closed'],
-    ['waiting', 'in_progress'],
     ['needs_info', 'open'],
   ])('422 TRANSITION_REASON_REQUIRED entering %s with no reason', async (to, from) => {
     const token = await signUserToken(USER_ID);
@@ -412,6 +411,30 @@ describe('POST /api/issues/:id/transition — draft is never entered again (ISS-
     expect(body.message).toContain('`open`, `dropped`');
     expect(updateWhere).not.toHaveBeenCalled();
   });
+});
+
+describe('POST /api/issues/:id/transition — a ten-status client names a retired status (REQ-2 BC-1)', () => {
+  it.each(['tested', 'developed', 'waiting', 'confirmed'])(
+    '400 STATUS_RETIRED for `%s` from a signed-in session, naming the ten, before any read',
+    async (named) => {
+      const token = await signUserToken(USER_ID);
+      selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+      const res = await req({ toStatus: named, reason: 'r', waitingKind: 'needs_answer' }, token);
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as {
+        code: string;
+        message: string;
+        details: { retired: string[]; statuses: string[] };
+      };
+      expect(body.code).toBe('STATUS_RETIRED');
+      expect(body.message).toContain(`\`${named}\``);
+      expect(body.message).toContain('`in_progress`');
+      expect(body.details.retired).toEqual([named]);
+      expect(body.details.statuses).toHaveLength(10);
+      expect(projectAccess).not.toHaveBeenCalled();
+      expect(dbUpdate).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('POST /api/issues/:id/transition — a refusal answers in its own words', () => {

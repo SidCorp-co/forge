@@ -4,6 +4,7 @@
 // `issue_work_state.legacy_status` and `issue_session_context()` are deleted together.
 
 import { type SQL, sql } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
 import { type IssueStatus, issueStatuses } from '../db/schema.js';
 import type { WorkStep } from '../db/schema-issue-work-state.js';
 
@@ -77,6 +78,35 @@ export function legacyRefusal(named: LegacyStatus): string {
   const step = target.step ? ` and write \`workState.step: ${target.step}\`` : '';
   const kind = named === 'waiting' ? ' with a `waitingKind`' : '';
   return `STATUS_RETIRED: \`${named}\` is retired (ISS-54, workflow issue-lifecycle). Name \`${target.status}\`${kind}${step}.`;
+}
+
+export function tenStatusRefusal(named: LegacyStatus): string {
+  const target = LEGACY_TARGETS[named];
+  const step = target.step ? ` at step \`${target.step}\`` : '';
+  return `STATUS_RETIRED: \`${named}\` is not an issue status (ISS-54, workflow issue-lifecycle); the statuses are ${issueStatuses.map((s) => `\`${s}\``).join(', ')}. \`${named}\` became \`${target.status}\`${step}. Only forge-plugin 3.36.542, a personal token sending no \`${LIFECYCLE_HEADER}\` header, may still name it.`;
+}
+
+// cm:guard REQ-2 BC-1: a ten-status client is refused every retired name, as a move or a filter;
+// only the reader `readsLegacyStatuses` names keeps the BC-14 amnesty.
+export function refuseRetiredFromTenStatusClient(
+  names: readonly string[],
+  client17: boolean,
+): void {
+  if (client17) return;
+  const retired = [...new Set(names.filter(isLegacyStatus))];
+  const first = retired[0];
+  if (first === undefined) return;
+  throw new HTTPException(400, {
+    message: retired.map(tenStatusRefusal).join(' '),
+    cause: {
+      code: 'STATUS_RETIRED',
+      details: {
+        retired,
+        statuses: issueStatuses,
+        became: Object.fromEntries(retired.map((n) => [n, LEGACY_TARGETS[n].status])),
+      },
+    },
+  });
 }
 
 export const STATUS_COMPAT_HEADER = 'X-Forge-Status-Compat';

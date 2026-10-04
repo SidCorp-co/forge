@@ -1,4 +1,4 @@
-// Workflow `issue-lifecycle` rev 2's moves (ISS-54): a status says who it waits on, the run's step
+// Workflow `issue-lifecycle` rev 3's moves (ISS-54): a status says who it waits on, the run's step
 // lives in `issue_work_state`. Enforced by `issues/apply-transition.ts` and `transition-guards.ts`.
 
 import { type IssueStatus, issueStatuses } from '../db/schema.js';
@@ -58,7 +58,8 @@ export function canTransition(
 }
 
 // cm:why the kernel hands an `in_progress` issue nothing holds back to where a master takes it, or a
-// dead run's issue rests there ownerless — the defect ISS-54 removes. Only `recovery: true` reaches it.
+// dead run's issue rests there ownerless — the defect ISS-54 removes. Only `recovery: true` reaches it:
+// the kernel's own sweeps, and a judge that failed a criterion and let go (rev 3, REQ-2 BC-10).
 export const RECOVERY_EDGES: Readonly<Partial<Record<IssueStatus, readonly IssueStatus[]>>> = {
   in_progress: ['open', 'approved', 'reopen'],
 };

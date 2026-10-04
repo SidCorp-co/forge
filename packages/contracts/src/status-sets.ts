@@ -18,6 +18,7 @@ export const NON_OPEN_ISSUE_STATUSES = [
 	"awaiting_release",
 	"closed",
 	"draft",
+	"dropped",
 ] as const;
 
 /* status-tuple: differs — the browser's copy of core's `issues/transition-reason.ts`

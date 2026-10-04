@@ -86,8 +86,10 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
     'to a third-party service that must fetch the file itself (e.g. re-hosting an owner-supplied ' +
     'image into a store media library). Use it instead of `url`, which requires a Forge session ' +
     'the runner does not have. Treat it as a secret: do not log it or paste it into a comment. ' +
-    '(png/jpeg/gif/webp) return as a viewable image block (you SEE the screenshot), and the structured ' +
-    'answer names it as `image: { contentIndex, mimeType }`; text/markdown return inline as text, in ' +
+    '(png/jpeg/gif/webp) return as a viewable image block (you SEE the screenshot); the structured ' +
+    'answer carries no bytes, so it says `inlined: false` with `reason: image_block_in_content` and names ' +
+    'the block as `image: { contentIndex, mimeType }`. `inlined: true` always means the structured answer ' +
+    'holds the body itself. Text/markdown return inline as text, in ' +
     "the content and as the structured answer's `text`, framed as data. PDFs/video and oversized files (> inline cap) return metadata + the " +
     'download url only (not inlined). Use this whenever an issue/comment references an attached ' +
     'image or file — the prompt does NOT inline attachment bytes.',
@@ -156,8 +158,10 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
             { type: 'image', data: bytes.toString('base64'), mimeType: att.mime },
           ],
           ...meta,
-          inlined: true,
+          inlined: false,
+          reason: 'image_block_in_content',
           image: { contentIndex: 1, mimeType: att.mime },
+          note: 'The image is content block 1, which this structured answer does not repeat; read that block, or download it via `downloadUrl`.',
         };
       }
 

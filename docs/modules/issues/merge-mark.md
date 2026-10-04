@@ -83,7 +83,7 @@ like any other repeat.
 ## What a mark does to the issue
 
 A mark is the last act of the work it records, so it moves the issue where workflow
-`issue-lifecycle` (rev 2) puts landed work (`packages/core/src/issues/landing-advance.ts:advanceLandedIssue`,
+`issue-lifecycle` (rev 3) puts landed work (`packages/core/src/issues/landing-advance.ts:advanceLandedIssue`,
 ISS-80). Before ISS-80 it stamped the columns and nothing else, and an issue landed by hand kept the
 status and the lease its run had when it stopped: `in_progress` read as a run working on code that
 had shipped.

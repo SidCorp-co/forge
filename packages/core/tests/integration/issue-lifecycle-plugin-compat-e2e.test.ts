@@ -392,3 +392,72 @@ describe('list and search filters in the retired words', () => {
     expect((live.body.items as Array<{ id: string }>).map((r) => r.id)).toEqual([other]);
   });
 });
+
+describe('a ten-status client naming a retired status (REQ-2 BC-1)', () => {
+  const TEN = { 'X-Forge-Lifecycle': '10' };
+
+  it.each(['confirmed', 'clarified', 'waiting', 'developed', 'testing', 'tested', 'releasing'])(
+    'refuses `%s` as a move by name, naming the ten, and moves nothing',
+    async (named) => {
+      const w = await world();
+      const id = await insertIssue(w, 'open');
+      await call(w, 'PATCH', `/api/issues/${id}`, {
+        sessionContext: { lease: await lease('ten-run') },
+        expect: { sessionContext: null },
+      });
+      await transition(w, id, 'in_progress');
+      const before = await kernelMoves(id);
+
+      const res = await call(
+        w,
+        'POST',
+        `/api/issues/${id}/transition`,
+        { toStatus: named, reason: 'r', waitingKind: 'needs_answer' },
+        TEN,
+      );
+      expect(res.status, JSON.stringify(res.body)).toBe(400);
+      expect(res.body.code).toBe('STATUS_RETIRED');
+      expect(res.body.message).toContain(`\`${named}\``);
+      expect(res.body.message).toContain('`awaiting_release`');
+      expect((res.body.details as { statuses: string[] }).statuses).toHaveLength(10);
+      expect(res.headers.get('X-Forge-Status-Compat')).toBeNull();
+      expect(await kernelMoves(id)).toEqual(before);
+      expect((await stored(id)).status).toBe('in_progress');
+    },
+  );
+
+  it('refuses a retired name in a list or search filter, and keeps the ten', async () => {
+    const w = await world();
+    await insertIssue(w, 'open');
+
+    const list = await call(
+      w,
+      'GET',
+      `/api/projects/${w.projectId}/issues?status=developed`,
+      undefined,
+      TEN,
+    );
+    expect(list.status, JSON.stringify(list.body)).toBe(400);
+    expect(list.body.code).toBe('STATUS_RETIRED');
+
+    const search = await call(
+      w,
+      'GET',
+      `/api/projects/${w.projectId}/issues/search?statusNot=closed&statusNot=tested`,
+      undefined,
+      TEN,
+    );
+    expect(search.status, JSON.stringify(search.body)).toBe(400);
+    expect(search.body.code).toBe('STATUS_RETIRED');
+
+    const ten = await call(
+      w,
+      'GET',
+      `/api/projects/${w.projectId}/issues?status=open`,
+      undefined,
+      TEN,
+    );
+    expect(ten.status).toBe(200);
+    expect((ten.body.items as unknown[]).length).toBe(1);
+  });
+});

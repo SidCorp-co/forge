@@ -1,5 +1,5 @@
 // cm:why a recorded landing is the last act of the work it records, so the issue moves where workflow
-// `issue-lifecycle` rev 2 puts landed work: edge `verdicts.passed` (in_progress -> awaiting_release)
+// `issue-lifecycle` rev 3 puts landed work: edge `verdicts.passed` (in_progress -> awaiting_release)
 // where every criterion already passes, else the run step after the landing (`test`, inside
 // in_progress) where a judge records the verdicts. It never takes edge `shipped` (in_progress ->
 // closed): closing is the release step, and a close needs the verdicts (ISS-96). ISS-80.
