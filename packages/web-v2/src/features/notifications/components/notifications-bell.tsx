@@ -1,6 +1,6 @@
 "use client";
 
-import { type RefObject, useState } from "react";
+import { type RefObject, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { NotificationsMenu, Popover } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
@@ -71,6 +71,16 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
   });
   // ISS-523: the open count on the favicon and the title, from the same source as the bell.
   useOpenIndicator(openCount?.count ?? 0);
+
+  // Esc closes the notifications dropdown (AC11 — always dismissable), wherever focus is.
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
   return (
     <>
