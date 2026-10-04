@@ -81,7 +81,7 @@ describe('a gate reads as a sentence', () => {
       }),
       'blocker',
     );
-    expect(v.sentence).toContain('ISS-4 owes criterion 2, 3; ISS-5 owes criterion 1');
+    expect(v.sentence).toContain('ISS-4 owes criteria 2, 3; ISS-5 owes criterion 1');
   });
 
   it('lists blockers before warnings and marks each kind', () => {
@@ -91,6 +91,32 @@ describe('a gate reads as a sentence', () => {
     };
     const views = gateViews([blocker('BATCH_IN_FLIGHT')], [warning]);
     expect(views.map((v) => v.kind)).toEqual(['blocker', 'warning']);
+  });
+
+  it('agrees with one issue a refusal names', () => {
+    const v = gateView(
+      blocker('RELEASE_RECORD_MISSING', { issueIds: ['a'], displayIds: ['ISS-1'] }),
+      'blocker',
+    );
+    expect(v.sentence).toBe(
+      'ISS-1 has no release note, so the release would claim a ship nobody described.',
+    );
+    const unmerged = gateView(
+      blocker('RELEASE_WORK_UNMERGED', { displayIds: ['ISS-1'] }),
+      'blocker',
+    );
+    expect(unmerged.sentence).toContain(
+      'ISS-1 has no merge Forge saw land, so nothing says its work',
+    );
+  });
+
+  it('names five issues and counts the rest, while the view keeps every key', () => {
+    const ids = Array.from({ length: 31 }, (_, i) => `ISS-${i + 1}`);
+    const v = gateView(blocker('RELEASE_RECORD_MISSING', { displayIds: ids }), 'blocker');
+    expect(v.sentence).toBe(
+      'ISS-1, ISS-2, ISS-3, ISS-4, ISS-5 and 26 more have no release note, so the release would claim a ship nobody described.',
+    );
+    expect(v.issues).toHaveLength(31);
   });
 
   it('says how many issues a count-only refusal is about when no ids were named', () => {

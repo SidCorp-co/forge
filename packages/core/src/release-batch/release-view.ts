@@ -10,6 +10,7 @@ import type {
   ReleaseWaiting,
 } from '@forge/contracts/releases';
 import type { BcVerdict } from '@forge/contracts/requirements';
+import { agrees, counted } from '../lib/plural.js';
 
 export interface ViewerFacts {
   userId: string;
@@ -62,7 +63,7 @@ function draftTurn(f: TurnFacts): Turn {
         kind: 'system',
         who: 'Release gate',
         act: `${lower((f.gates[0] as { title: string }).title)}${more}`,
-        rule: `${f.gates.length} reason${f.gates.length === 1 ? '' : 's'} stand against cutting ${f.version}`,
+        rule: `${counted(f.gates.length, 'reason')} ${agrees(f.gates.length, 'stands', 'stand')} against cutting ${f.version}`,
       },
     };
   }

@@ -186,7 +186,7 @@ describe('CLAIM_CONFLICT through the one sentence every door composes', () => {
 
   it('keeps the generic sentence where no standings ride on the details', () => {
     expect(releaseBlockerSentence('CLAIM_CONFLICT', { issueIds: ['a', 'b'] })).toMatch(
-      /^2 issue\(s\) named here are not at the release gate/,
+      /^2 issues named here are not at the release gate, are not on this project/,
     );
     expect(readClaimConflictDetails({ issueIds: ['a'], conflicts: [] })).toBeNull();
   });

@@ -15,9 +15,7 @@ export function ReleaseItemScreen({ projectId, slug, version }: { projectId: str
     <div className="min-h-full bg-app" data-testid="release-item-screen">
       <DetailHeader
         back={{ href: back, label: "Releases" }}
-        itemKey={version}
-        keyTitle={r?.runId ?? undefined}
-        title={r?.headline || `Release ${version}`}
+        title={`Release ${version}`}
         badge={r ? <StatusBadge family="releaseState" value={r.state} /> : null}
         action={r ? <ReleaseActions projectId={projectId} r={r} /> : null}
       />

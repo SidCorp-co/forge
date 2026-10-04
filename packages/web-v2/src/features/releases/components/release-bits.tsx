@@ -1,6 +1,7 @@
 "use client";
 
 import { RELEASE_STATE_LABELS } from "@forge/contracts/releases";
+import { useState } from "react";
 import { type BannerTone, Icon, LEGEND, Tooltip, WaitBanner, type WaitingOnView } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { ApiError } from "@/lib/api/client";
@@ -24,7 +25,11 @@ const BANNER_TONE: Record<ReleaseAttention, BannerTone> = {
 
 export const shortSha = (sha: string) => sha.slice(0, 7);
 
+const NAMED_IN_SENTENCE = 5;
+
 export function GateLine({ gate }: { gate: ReleaseGateView }) {
+  const [open, setOpen] = useState(false);
+  const more = gate.issues.length > NAMED_IN_SENTENCE;
   return (
     <li className="flex items-start gap-2 py-2 text-13" data-testid="release-gate" data-code={gate.code}>
       <span
@@ -34,6 +39,26 @@ export function GateLine({ gate }: { gate: ReleaseGateView }) {
       />
       <span className="min-w-0 flex-1">
         <b className="font-semibold">{gate.title}.</b> {gate.sentence}
+        {more ? (
+          <>
+            {" "}
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 text-12-5 font-medium text-link"
+              aria-expanded={open}
+              onClick={() => setOpen((o) => !o)}
+              data-testid="gate-issues-toggle"
+            >
+              <Icon name="chevronDown" size={12} className={open ? "" : "-rotate-90"} />
+              {open ? "Hide the issues" : `All ${gate.issues.length} issues`}
+            </button>
+            {open ? (
+              <span className="mt-1 block font-mono text-12 text-muted" data-testid="gate-issues">
+                {gate.issues.join(", ")}
+              </span>
+            ) : null}
+          </>
+        ) : null}
       </span>
       <Tooltip label={`${gate.code} · ${gate.detail}`} multiline>
         <span className="mt-0.5 text-subtle" role="img" aria-label={`Details of ${gate.title}`}>
@@ -62,12 +87,7 @@ export function ReleaseBanner({ r, className }: { r: ReleaseDetail; className?: 
     : stuck
       ? `${w.who}: ${w.act}`
       : w.act;
-  const first = r.state === "draft" ? r.gates.find((g) => g.kind === "blocker") : undefined;
-  return (
-    <WaitBanner tone={BANNER_TONE[r.attention]} head={head} body={body} rule={w.rule || undefined} className={className}>
-      {first ? <span className="text-12-5 text-muted">{first.sentence}</span> : null}
-    </WaitBanner>
-  );
+  return <WaitBanner tone={BANNER_TONE[r.attention]} head={head} body={body} rule={w.rule || undefined} className={className} />;
 }
 
 export function RefusalText({ error }: { error: unknown }) {

@@ -1,3 +1,4 @@
+import { agrees, counted } from '../lib/plural.js';
 import type { ClaimConflictDetails } from './claim-conflicts.js';
 
 export class NoReleaseGateError extends Error {
@@ -165,7 +166,9 @@ export class ClaimConflictError extends Error {
  */
 export class ReleaseRecordMissingError extends Error {
   constructor(public readonly issueIds: string[]) {
-    super(`RELEASE_RECORD_MISSING: ${issueIds.length} issue(s) have no release note`);
+    super(
+      `RELEASE_RECORD_MISSING: ${counted(issueIds.length, 'issue')} ${agrees(issueIds.length, 'has', 'have')} no release note`,
+    );
     this.name = 'ReleaseRecordMissingError';
   }
 }
@@ -174,7 +177,7 @@ export class ContractProviderNotLiveError extends Error {
   readonly code = 'CONTRACT_PROVIDER_NOT_LIVE' as const;
   constructor(public readonly issueIds: string[]) {
     super(
-      `CONTRACT_PROVIDER_NOT_LIVE: ${issueIds.length} issue(s) wait on a provider version not live`,
+      `CONTRACT_PROVIDER_NOT_LIVE: ${counted(issueIds.length, 'issue')} ${agrees(issueIds.length, 'waits', 'wait')} on a provider version not live`,
     );
     this.name = 'ContractProviderNotLiveError';
   }
@@ -270,7 +273,9 @@ export class ReleaseVersionExhaustedError extends Error {
  */
 export class ReleaseWorkUnmergedError extends Error {
   constructor(public readonly issueIds: string[]) {
-    super(`RELEASE_WORK_UNMERGED: ${issueIds.length} issue(s) have no merge Forge watched land`);
+    super(
+      `RELEASE_WORK_UNMERGED: ${counted(issueIds.length, 'issue')} ${agrees(issueIds.length, 'has', 'have')} no merge Forge watched land`,
+    );
     this.name = 'ReleaseWorkUnmergedError';
   }
 }

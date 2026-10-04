@@ -8,6 +8,7 @@ import { type ReleaseApprovalRow, releaseApprovals } from '../db/schema-release-
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { peopleOf } from '../lib/people.js';
+import { agrees } from '../lib/plural.js';
 import { environmentsOf, readReleasePath } from '../project-config/release-path.js';
 import { readProjectDocument } from '../project-config/service.js';
 
@@ -67,7 +68,7 @@ export function parseDecision(raw: unknown): Decision {
     throw approvalRefusal(
       422,
       'RELEASE_APPROVAL_SHAPE',
-      `unknown key(s) ${extra.join(', ')}; a decision is { decision: "approve" } or { decision: "return", reason }`,
+      `unknown ${agrees(extra.length, 'key', 'keys')} ${extra.join(', ')}; a decision is { decision: "approve" } or { decision: "return", reason }`,
     );
   }
   if (body.decision !== 'approve' && body.decision !== 'return') {

@@ -137,6 +137,7 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
                 selected={peek.open}
                 onPeek={(k) => peek.set(k === peek.open ? null : k)}
                 empty="Nothing matches this search."
+                columns={{ meta: rows.some((r) => r.owner) ? "Owner · age" : "Age" }}
               />
             </>
           )}
