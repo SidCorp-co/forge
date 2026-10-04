@@ -31,6 +31,7 @@ import type { EgressReader } from '../lib/data-egress.js';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import type { NamedRefusal } from '../project-config/respond.js';
+import { readDeclaredSource } from '../project-config/source.js';
 import {
   type BatchRow,
   batchesOfConversation,
@@ -47,7 +48,6 @@ import {
   type OnboardingRow,
   onboardingOf,
   onboardingView,
-  projectHasRepository,
   projectHoldsSensitiveData,
 } from './read.js';
 import {
@@ -119,13 +119,15 @@ async function enqueueJob(
     .select({ name: projects.name })
     .from(projects)
     .where(eq(projects.id, row.projectId));
+  const source = await readDeclaredSource(row.projectId);
   const ctx: OnboardingPromptContext = {
     projectId: row.projectId,
     projectName: project?.name ?? row.projectId,
     onboardingId: row.id,
     conversationId: row.conversationId,
     sensitiveData: await projectHoldsSensitiveData(row.projectId),
-    hasRepository: await projectHasRepository(row.projectId),
+    repository: source.repository,
+    defaultBranch: source.defaultBranch,
     roundsSent: row.roundsSent,
     reason: extra.reason ?? null,
   };

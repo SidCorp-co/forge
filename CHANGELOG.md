@@ -3369,6 +3369,13 @@
 
 ### Fixed
 
+- **Onboarding reads the project's code as it is on its default branch, not as a runner's checkout
+  last left it.** The analysis job opened in the device binding's checkout and read it as it stood,
+  which on the forge project was 519 commits behind, so the drafts described a product that no
+  longer existed. The job now fetches and reads the tree at `origin/<source.git.defaultBranch>` in
+  a worktree of its own. Its code-map entries are also named `onboarding-code-map-<section>`, a slug
+  the knowledge store accepts; the prompt asked for a slashed one it refuses.
+
 - **A prompt schedule naming a message that no longer exists now fails, and says so (ISS-112).** It
   used to read as already applied. A release batch skipped for want of a release gate now names
   `NO_RELEASE_GATE`.
