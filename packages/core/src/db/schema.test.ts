@@ -692,7 +692,13 @@ describe('agentReports table (ISS-552 C1)', () => {
         'suggestion',
         'signal_key',
         'session_id',
-        'reviewed_at',
+        'schedule_run_id',
+        'triage',
+        'triaged_by',
+        'triaged_agency',
+        'triaged_at',
+        'triage_reason',
+        'duplicate_of',
         'linked_issue_id',
         'feedback_id',
         'created_at',
@@ -736,5 +742,14 @@ describe('agentReports table (ISS-552 C1)', () => {
     expect(names).toContain('agent_reports_created_at_idx');
     expect(names).toContain('agent_reports_session_id_idx');
     expect(names).toContain('agent_reports_linked_issue_id_idx');
+    expect(names).toContain('agent_reports_project_triage_idx');
+    expect(names).toContain('agent_reports_schedule_run_idx');
+  });
+
+  it('triage defaults to new (ISS-113)', () => {
+    const col = getTableConfig(agentReports).columns.find((c) => c.name === 'triage');
+    if (!col) throw new Error('triage column not found');
+    expect(col.default).toBe('new');
+    expect(col.notNull).toBe(true);
   });
 });

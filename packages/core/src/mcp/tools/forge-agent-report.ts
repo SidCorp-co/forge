@@ -1,13 +1,24 @@
-import { eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import {
+  AGENT_REPORT_LIMITS,
+  AGENT_REPORT_TRIAGE_ACTS,
+  AGENT_REPORT_TRIAGES,
+  TRIAGE_AGENT_REPORT_SHAPE,
+  type TriageAgentReportRequest,
+  triageAgentReportRequestSchema,
+} from '@forge/contracts/agent-reports';
+import { eq, inArray, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import {
+  announceFiled,
   countReportsForJob,
+  fireOfSession,
   insertReport,
-  issueVisibleIn,
   listReports,
   readReport,
   reportViews,
-  stampReviewed,
+  triageReports,
+  visibleIssue,
+  writableProjectIds,
 } from '../../agent-reports/service.js';
 import { env } from '../../config/env.js';
 import {
@@ -22,7 +33,9 @@ import {
   assertPrincipalIsMember,
   type ContextScopedMcpToolFactory,
   loadVisibleProjectIdsForPrincipal,
+  loadVisibleProjectsWithRoleForPrincipal,
   type McpContext,
+  principalAgency,
   refusedAnswer,
   resolveEffectiveProjectId,
   zodToMcpSchema,
@@ -31,13 +44,21 @@ import { buildListEnvelope, overfetch } from './list-envelope.js';
 
 const inputSchema = z
   .object({
-    action: z.enum(['submit', 'list', 'review', 'get']),
+    action: z.enum(['submit', 'list', 'triage', 'get']),
     projectId: z.uuid().optional(),
     scope: z.enum(['project', 'all']).optional(),
     reportId: z.uuid().optional(),
-    reviewed: z.boolean().optional(),
-    linkedIssueId: z.uuid().optional(),
-    // bulk-review field: stamp every report sharing this signalKey
+    act: z.enum(AGENT_REPORT_TRIAGE_ACTS).optional(),
+    issue: z.uuid().optional(),
+    createIssue: z
+      .object({
+        title: z.string().min(1).max(AGENT_REPORT_LIMITS.title).optional(),
+        description: z.string().max(AGENT_REPORT_LIMITS.description).optional(),
+      })
+      .strict()
+      .optional(),
+    reason: z.string().max(AGENT_REPORT_LIMITS.reason).optional(),
+    duplicateOf: z.uuid().optional(),
     signalKey: z.string().max(500).optional(),
     // submit fields
     kind: z.enum(agentReportKinds).optional(),
@@ -53,7 +74,7 @@ const inputSchema = z
         kind: z.enum(agentReportKinds).optional(),
         target: z.enum(agentReportTargets).optional(),
         severity: z.enum(agentReportSeverities).optional(),
-        reviewed: z.boolean().optional(),
+        triage: z.enum(AGENT_REPORT_TRIAGES).optional(),
       })
       .strict()
       .optional(),
@@ -66,6 +87,7 @@ type ReportRow = {
   detail: string | null;
   suggestion: string | null;
   targetRef: string | null;
+  triageReason: string | null;
 };
 
 // Untrusted-framing shared by list and get: agent-submitted text must be
@@ -81,6 +103,9 @@ function frameReport<T extends ReportRow>(r: T): T {
     targetRef: r.targetRef
       ? markUntrusted(r.targetRef, { source: 'agent_report.targetRef' })
       : null,
+    triageReason: r.triageReason
+      ? markUntrusted(r.triageReason, { source: 'agent_report.triageReason' })
+      : null,
   };
 }
 
@@ -94,31 +119,32 @@ function buildSignalKey(
 }
 
 const DESCRIPTION =
-  'Submit, list, get, or review agent friction reports. ' +
+  'Submit, list, get, or triage agent friction reports. ' +
   'action=submit: report friction, skill gaps, unclear steps, or learnings mid-run. ' +
-  'Pipeline context (issueId/runId/jobId/stage) is resolved server-side from your active job — do NOT supply it. ' +
+  'Pipeline context (issueId/runId/jobId/stage) is resolved server-side from your active job — do NOT supply it; a report filed from a scheduled run also carries scheduleRunId, the fire that ran it. ' +
   'Required fields: projectId, kind, target, summary. ' +
   'projectId names the project the report is ABOUT, which need not be the one you are working in; it is REQUIRED and never inferred, because a report filed into the wrong feed is never read (`forge_projects.list` prints it beside each slug — it is its own tool, not an action on one). ' +
   'Optional: severity (default low), targetRef, detail, suggestion. ' +
   'Returns {ok:true,id,signalKey} on success; {ok:false,reason:"rate_limited"} when the per-job cap is hit (not a 500 — agent continues). ' +
-  'action=list: read the friction feed. Supports filters.kind/target/severity/reviewed, limit (default 25, fleet default 50). ' +
+  'action=list: read the friction feed. Supports filters.kind/target/severity/triage (new | filed | dismissed | duplicate), limit (default 25, fleet default 50). ' +
   'scope="project" (default) reads the resolved project; scope="all" unions every project you own or are a member of and adds projectId/projectSlug to each row. ' +
   'EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete. `truncated:true` + `truncatedBy` say which cap bit (your limit, or the hard response-size cap). ' +
   'action=get: fetch one report by reportId, resolving its project from the row itself — no projectId needed. NOT_FOUND if missing or not visible to you. ' +
-  'A report promoted into product feedback carries `feedback` { key, phase, route } and stays reviewed: reviewed:false or a linkedIssueId on it is AGENT_REPORT_PROMOTED (promote with forge_feedback_items action=promote). ' +
-  'action=review: stamp reviewedAt on report(s) once triaged/addressed (reviewed:false clears the stamp). ' +
-  'reportId stamps a single report (unchanged single-project behaviour). ' +
-  'When folding a report into an issue, also pass linkedIssueId (must belong to the same project as the report, or NOT_FOUND) — it is stamped atomically with reviewedAt and returned, so the report becomes traceable to what it became. ' +
-  'Omitting linkedIssueId on a later review call leaves any existing link untouched (back-compat); reviewed:false clears BOTH reviewedAt and linkedIssueId. ' +
-  'Curators (e.g. forge-memory-curator, or anyone triaging reports into an issue) SHOULD pass linkedIssueId so the loop closes. ' +
-  'signalKey bulk-stamps every report sharing that signalKey — add scope="all" to bulk-stamp across every project you can see (scope="all" without signalKey is a BAD_REQUEST); returns {ok:true,count,scope,linkedIssueId}. linkedIssueId IS supported on the bulk path: N duplicate reports of one Forge defect fold into ONE issue in a single call. A report is ABOUT FORGE — its projectId records where the defect was OBSERVED, not who owns the fix — so linkedIssueId may name an issue in ANY project you can see (normally the Forge project), not just the one the report was filed from. reviewed:false clears reviewedAt AND linkedIssueId.';
+  'Every report carries triage (new | filed | dismissed | duplicate) with triagedBy, triagedAt and triageReason; a filed one has exactly one target, linkedIssueId or `feedback` { key, phase, route } (promote with forge_feedback_items action=promote, which files it). ' +
+  'action=triage: decide what a report is, with act: ' +
+  "file (exactly one of issue: <uuid of an issue in any project you can see> | createIssue: { title?, description? }, which creates the issue at draft in the report's project with the report as its evidence) · " +
+  'dismiss (reason REQUIRED: AGENT_REPORT_DISMISS_REASON_REQUIRED) · duplicate (duplicateOf: an earlier report of the same project, else AGENT_REPORT_DUPLICATE_UNKNOWN; reason?) · reopen (back to new; AGENT_REPORT_NOT_TRIAGED when it is new already, AGENT_REPORT_PROMOTED when it became feedback). ' +
+  'A report is triaged once: a second file, dismiss or duplicate is AGENT_REPORT_ALREADY_TRIAGED naming who triaged it and how — reopen it first. ' +
+  'reportId triages one report (projectId resolves which project it must sit in). signalKey triages every report sharing it — add scope="all" for every project you can see (scope="all" without signalKey is a BAD_REQUEST; createIssue needs scope project). ' +
+  'A bulk act moves the reports it applies to (file, dismiss and duplicate move the new ones, reopen the triaged ones) and lists the others under `untouched`; N reports of one defect fold into ONE issue in a single call. ' +
+  'Returns { effect: { act, triage, reports, issue: { id, key, created } | null, untouched } }.';
 
 // The grant strings keep the `feedback` resource name issued tokens store (auth/pat-permissions.ts).
 const GRANT = {
   byAction: {
     submit: 'feedback:write',
     list: 'feedback:read',
-    review: 'feedback:write',
+    triage: 'feedback:write',
     get: 'feedback:read',
   },
 } as const;
@@ -149,6 +175,7 @@ async function handleAgentReport(ctx: McpContext, args: unknown) {
       const issueId = active?.issueId ?? null;
       const stage = active?.stage ?? null;
       const sessionId = active?.agentSessionId ?? null;
+      const scheduleRunId = await fireOfSession(sessionId);
 
       // Per-job rate-limit (server-enforced). Interactive callers (no jobId)
       // have no pipeline run to cap by; skip the check.
@@ -177,6 +204,7 @@ async function handleAgentReport(ctx: McpContext, args: unknown) {
         suggestion: input.suggestion ?? undefined,
         signalKey,
         sessionId: sessionId ?? undefined,
+        scheduleRunId: scheduleRunId ?? undefined,
       });
 
       if (!insertedId) throw new Error('forge_agent_report: insert returned no row');
@@ -190,12 +218,7 @@ async function handleAgentReport(ctx: McpContext, args: unknown) {
       const severityCondition = filters.severity
         ? eq(agentReports.severity, filters.severity)
         : undefined;
-      const reviewedCondition =
-        filters.reviewed === true
-          ? isNotNull(agentReports.reviewedAt)
-          : filters.reviewed === false
-            ? isNull(agentReports.reviewedAt)
-            : undefined;
+      const triageCondition = filters.triage ? eq(agentReports.triage, filters.triage) : undefined;
 
       let scopeCondition: ReturnType<typeof eq> | ReturnType<typeof inArray>;
       let limit: number;
@@ -213,7 +236,7 @@ async function handleAgentReport(ctx: McpContext, args: unknown) {
       }
 
       const rows = await listReports(
-        [scopeCondition, kindCondition, targetCondition, severityCondition, reviewedCondition],
+        [scopeCondition, kindCondition, targetCondition, severityCondition, triageCondition],
         overfetch(limit),
       );
 
@@ -221,7 +244,7 @@ async function handleAgentReport(ctx: McpContext, args: unknown) {
         key: 'reports',
         items: (await reportViews(rows)).map((r) => frameReport(r)),
         limit,
-        hint: 'narrow with kind/target/severity/reviewed filters',
+        hint: 'narrow with kind/target/severity/triage filters',
       });
     }
 
@@ -239,95 +262,87 @@ async function handleAgentReport(ctx: McpContext, args: unknown) {
       return { report: view ? frameReport(view) : null };
     }
 
-    case 'review': {
-      const reviewed = input.reviewed ?? true;
+    case 'triage':
+      return triage(ctx, input);
+  }
+}
 
-      let visibleIdsOnce: Promise<string[]> | null = null;
-      const visibleIds = (): Promise<string[]> => {
-        visibleIdsOnce ??= loadVisibleProjectIdsForPrincipal(principal);
-        return visibleIdsOnce;
-      };
+function triageOf(input: z.infer<typeof inputSchema>): TriageAgentReportRequest {
+  const parsed = triageAgentReportRequestSchema.safeParse({
+    act: input.act,
+    ...(input.issue !== undefined ? { issue: input.issue } : {}),
+    ...(input.createIssue !== undefined ? { createIssue: input.createIssue } : {}),
+    ...(input.reason !== undefined ? { reason: input.reason } : {}),
+    ...(input.duplicateOf !== undefined ? { duplicateOf: input.duplicateOf } : {}),
+  });
+  if (!parsed.success) {
+    throw new Error(
+      `BAD_REQUEST: triage needs ${TRIAGE_AGENT_REPORT_SHAPE}; ${parsed.error.issues.map((i) => i.message).join('; ')}`,
+    );
+  }
+  return parsed.data;
+}
 
-      const resolveLinkedIssue = async (linkedIssueId: string): Promise<string> => {
-        const ids = await visibleIds();
-        if (ids.length === 0) {
-          throw new Error('NOT_FOUND: linkedIssueId not found in any project you can see');
-        }
-        if (!(await issueVisibleIn(linkedIssueId, ids))) {
-          throw new Error('NOT_FOUND: linkedIssueId not found in any project you can see');
-        }
-        return linkedIssueId;
-      };
-      const linkPatch = async (): Promise<{ linkedIssueId?: string | null }> => {
-        if (!reviewed) return { linkedIssueId: null };
-        if (!input.linkedIssueId) return {};
-        return { linkedIssueId: await resolveLinkedIssue(input.linkedIssueId) };
-      };
-
-      if (input.signalKey) {
-        // Bulk stamp: every report carrying this signalKey, within scope.
-        if (input.scope === 'all') {
-          const ids = await visibleIds();
-          if (ids.length === 0) {
-            return { ok: true, count: 0, scope: 'all', linkedIssueId: null };
-          }
-          const out = await stampReviewed(
-            [inArray(agentReports.projectId, ids), eq(agentReports.signalKey, input.signalKey)],
-            { reviewed, ...(await linkPatch()) },
-          );
-          if (!out.ok) return refusedAnswer(out.refusals, 'AGENT_REPORT_REFUSED');
-          return {
-            ok: true,
-            count: out.rows.length,
-            scope: 'all',
-            linkedIssueId: reviewed ? (input.linkedIssueId ?? null) : null,
-          };
-        }
-
-        const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-        await assertPrincipalIsMember(principal, projectId);
-        const out = await stampReviewed(
-          [eq(agentReports.projectId, projectId), eq(agentReports.signalKey, input.signalKey)],
-          { reviewed, ...(await linkPatch()) },
+async function triage(ctx: McpContext, input: z.infer<typeof inputSchema>) {
+  const { principal } = ctx;
+  const act = triageOf(input);
+  const actor = { userId: principal.userId, agency: principalAgency(principal) };
+  let visibleOnce: Promise<string[]> | null = null;
+  const visible = () => {
+    visibleOnce ??= loadVisibleProjectIdsForPrincipal(principal);
+    return visibleOnce;
+  };
+  let linkIssue: { id: string; key: string } | null = null;
+  if (act.act === 'file' && act.issue) {
+    linkIssue = await visibleIssue(act.issue, await visible());
+    if (!linkIssue)
+      throw new Error(`NOT_FOUND: issue ${act.issue} not found in any project you can see`);
+  }
+  let scope: SQL[];
+  if (input.signalKey) {
+    if (input.scope === 'all') {
+      if (act.act === 'file' && act.createIssue) {
+        throw new Error(
+          'BAD_REQUEST: createIssue files into one project, so a scope="all" triage names an existing issue instead',
         );
-        if (!out.ok) return refusedAnswer(out.refusals, 'AGENT_REPORT_REFUSED');
-        return {
-          ok: true,
-          count: out.rows.length,
-          scope: 'project',
-          linkedIssueId: reviewed ? (input.linkedIssueId ?? null) : null,
-        };
       }
-
-      if (input.scope === 'all') {
-        throw new Error('BAD_REQUEST: scope="all" requires signalKey for a bulk review');
+      const writable = writableProjectIds(await loadVisibleProjectsWithRoleForPrincipal(principal));
+      if (writable.length === 0) {
+        throw new Error('NOT_FOUND: no project you can write to holds agent reports');
       }
-
-      // Single-report path — scope the update to the resolved project so a
-      // member of project A can never stamp a report belonging to project
-      // B by guessing its id.
+      scope = [
+        inArray(agentReports.projectId, writable),
+        eq(agentReports.signalKey, input.signalKey),
+      ];
+    } else {
       const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
       await assertPrincipalIsMember(principal, projectId);
-      if (!input.reportId) throw new Error('BAD_REQUEST: reportId is required for review');
-
-      const patch = await linkPatch();
-
-      const out = await stampReviewed(
-        [eq(agentReports.id, input.reportId), eq(agentReports.projectId, projectId)],
-        { reviewed, ...patch },
-      );
-      if (!out.ok) return refusedAnswer(out.refusals, 'AGENT_REPORT_REFUSED');
-      const [updated] = out.rows;
-
-      if (!updated) throw new Error('NOT_FOUND: agent report not found in this project');
-      return {
-        ok: true,
-        id: updated.id,
-        reviewedAt: updated.reviewedAt?.toISOString() ?? null,
-        linkedIssueId: updated.linkedIssueId ?? null,
-      };
+      scope = [eq(agentReports.projectId, projectId), eq(agentReports.signalKey, input.signalKey)];
     }
+  } else {
+    if (input.scope === 'all') {
+      throw new Error('BAD_REQUEST: scope="all" requires signalKey for a bulk triage');
+    }
+    if (!input.reportId) throw new Error('BAD_REQUEST: triage needs reportId or signalKey');
+    const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
+    await assertPrincipalIsMember(principal, projectId);
+    const row = await readReport(input.reportId);
+    if (!row || row.projectId !== projectId) {
+      throw new Error(`NOT_FOUND: agent report ${input.reportId} not found in this project`);
+    }
+    scope = [eq(agentReports.id, input.reportId)];
   }
+  const out = await triageReports({
+    scope,
+    bulk: Boolean(input.signalKey),
+    act,
+    actor,
+    channel: 'mcp',
+    linkIssue,
+  });
+  if (!out.ok) return refusedAnswer(out.refusals, 'AGENT_REPORT_REFUSED');
+  await announceFiled(out, actor);
+  return { effect: out.effect };
 }
 
 export const forgeAgentReportTool: ContextScopedMcpToolFactory = (ctx) => ({

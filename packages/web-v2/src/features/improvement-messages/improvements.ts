@@ -39,7 +39,7 @@ function reportRow(r: AgentReport): ImprovementRow {
     source: "report",
     title: r.summary,
     from: `${enumLabel("agentReportKind", r.kind)} · ${enumLabel("agentReportTarget", r.target)}${r.targetRef ? ` ${r.targetRef}` : ""}`,
-    state: r.reviewedAt ? "done" : "report",
+    state: r.triage === "new" ? "report" : "done",
     at: r.createdAt,
     report: r,
   };
@@ -75,11 +75,6 @@ export function matchesFilter(row: ImprovementRow, f: ImprovementFilter): boolea
   if (f === "all") return true;
   if (f === "done") return row.state === "done";
   return f === "reports" ? row.state === "report" : row.state === "proposal";
-}
-
-export function issueFromReport(r: AgentReport): { title: string; description: string } {
-  const parts = [r.detail, r.suggestion ? `Suggested: ${r.suggestion}` : null, `Agent report ${r.id} (${r.kind}, ${r.severity}).`];
-  return { title: r.summary.slice(0, 200), description: parts.filter(Boolean).join("\n\n") };
 }
 
 const FEEDBACK_KIND_OF: Record<AgentReport["kind"], FeedbackDraft["kind"]> = {

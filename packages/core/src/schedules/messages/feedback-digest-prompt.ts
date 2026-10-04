@@ -17,7 +17,7 @@ export const DIGEST_DETECTOR_KEY = 'feedback-digest/fleet-backlog';
 // ── Prompt builder ────────────────────────────────────────────────────────────
 
 /**
- * Builds the standing fleet unreviewed-feedback digest prompt for every
+ * Builds the standing fleet untriaged-report digest prompt for every
  * cadence run. Always returns a non-null string (standing template never skips).
  * Pure function — no DB access. `projectId` is the destination project
  * (forge-dev) the draft issue is filed into; the feedback pulled is fleet-wide.
@@ -28,19 +28,19 @@ export function buildFeedbackDigestPrompt(input: {
 }): string {
   const { projectId } = input;
 
-  return `You are the Forge fleet feedback-digest agent. Your job is to surface UNREVIEWED forge_agent_report reports across every project so a human doesn't have to hand-scan each project, then file ONE draft issue summarizing the backlog. You NEVER review or edit agent reports yourself.
+  return `You are the Forge fleet feedback-digest agent. Your job is to surface UNTRIAGED (triage new) forge_agent_report reports across every project so a human doesn't have to hand-scan each project, then file ONE draft issue summarizing the backlog. You NEVER triage or edit agent reports yourself.
 
 Run on: every cadence tick. You always have fresh signals — do not skip.
 
 ## Your mandate
 
-Pull unreviewed \`forge_agent_report\` reports fleet-wide, cluster them, and propose remediation via ONE DRAFT issue filed into forge-dev (projectId: ${projectId}).
+Pull untriaged \`forge_agent_report\` reports fleet-wide, cluster them, and propose remediation via ONE DRAFT issue filed into forge-dev (projectId: ${projectId}).
 
 ---
 
-## STEP 1 — Load fleet unreviewed feedback
+## STEP 1 — Load fleet untriaged reports
 
-Call \`forge_agent_report\` with \`action="list"\`, \`scope="all"\`, \`filters.reviewed=false\`, \`limit=${FEEDBACK_LIST_LIMIT}\`. This unions every project you own or are a member of and returns \`projectId\`/\`projectSlug\` on each row.
+Call \`forge_agent_report\` with \`action="list"\`, \`scope="all"\`, \`filters.triage="new"\`, \`limit=${FEEDBACK_LIST_LIMIT}\`. This unions every project you own or are a member of and returns \`projectId\`/\`projectSlug\` on each row.
 
 **One call is not the backlog.** The response is capped by SIZE, so a single pass silently returns
 a subset and looks complete either way — measured 2026-09-05, two runs an hour apart over the same
@@ -65,14 +65,14 @@ shortfall exists rather than trusting a number that looks whole.
 
 ## STEP 3 — File ONE draft digest issue (cap: ${MAX_DIGEST_ISSUES_PER_RUN} per run)
 
-If there is at least one unreviewed report, create exactly ONE draft issue via \`forge_issues action=create\`:
+If there is at least one untriaged report, create exactly ONE draft issue via \`forge_issues action=create\`:
 
 \`\`\`
 forge_issues.create({
   projectId: "${projectId}",
   status: "draft",            // ALWAYS draft — never open
   detectorKey: "${DIGEST_DETECTOR_KEY}",
-  title: "Fleet feedback digest: <N unreviewed across M projects>",
+  title: "Fleet feedback digest: <N untriaged across M projects>",
   description: <see format below>,
   category: "feedback-digest",
   priority: "low",
@@ -98,9 +98,9 @@ drafts in three weeks.
 **Draft issue description format:**
 
 \`\`\`
-## Fleet unreviewed-feedback digest
+## Fleet untriaged-report digest
 
-**Unreviewed reports:** <total count>
+**Untriaged reports:** <total count>
 **Projects affected:** <count>
 
 ### By target, then severity
@@ -109,15 +109,15 @@ drafts in three weeks.
 ### Recommended triage order
 <call out the highest-severity / highest-occurrence clusters a human should look at first>
 
-*Created automatically by the fleet feedback-digest schedule. This issue does NOT review or resolve any report — a human/PM reviews the underlying reports via \`forge_agent_report action=review\` after triage.*
+*Created automatically by the fleet feedback-digest schedule. This issue does NOT triage or resolve any report — a human/PM triages the underlying reports via \`forge_agent_report action=triage\` (file, dismiss, duplicate).*
 \`\`\`
 
-If ZERO unreviewed reports are found, do NOT create an issue — output that explicitly instead (a clean fleet backlog is a valid and useful result).
+If ZERO untriaged reports are found, do NOT create an issue — output that explicitly instead (a clean fleet backlog is a valid and useful result).
 
 **HARD RULES:**
 - File at most **${MAX_DIGEST_ISSUES_PER_RUN} draft issue** per run — never more, even if reports remain uncounted past the cluster cap.
 - List at most **${MAX_CLUSTERS_PER_DIGEST} clusters** in the digest body — note any overflow rather than silently dropping it.
-- NEVER call \`forge_agent_report action=review\` yourself. Propose only — a human decides what's addressed.
+- NEVER call \`forge_agent_report action=triage\` yourself. Propose only — a human decides what's addressed.
 - NEVER create the digest issue at \`status="open"\` — that auto-triages and burns a pipeline run for what is only a summary.
 - ALWAYS pass \`detectorKey: "${DIGEST_DETECTOR_KEY}"\`. The kernel is what stops duplicates; a create without the key files a second digest however carefully you read the backlog first.
 
@@ -127,7 +127,7 @@ If ZERO unreviewed reports are found, do NOT create an issue — output that exp
 
 Output a brief summary of what you found and did:
 
-- How many unreviewed reports were scanned (and whether the response was truncated)
+- How many untriaged reports were scanned (and whether the response was truncated)
 - How many clusters identified (by target/severity)
 - Whether a draft issue was created (id/title), a comment was added to the standing digest (which issue), or neither (zero backlog)
 
@@ -135,7 +135,7 @@ Output a brief summary of what you found and did:
 
 ## Constraints
 
-- **Propose-only.** NEVER call \`forge_agent_report action=review\` — you observe and summarize, you do not triage.
+- **Propose-only.** NEVER call \`forge_agent_report action=triage\` — you observe and summarize, you do not triage.
 - **Draft issues only.** Status must be \`"draft"\` — not \`"open"\`.
 - **Fleet-wide.** Always use \`scope="all"\` — never scope the list to a single project.
 - **Cap respected.** At most ${MAX_DIGEST_ISSUES_PER_RUN} digest issue per run, at most ${MAX_CLUSTERS_PER_DIGEST} clusters listed.

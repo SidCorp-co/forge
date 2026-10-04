@@ -2,6 +2,7 @@
 // import the values, the refusal codes and the row shape from here. An agent report is what an
 // agent says about the harness it ran under; a person's report on the product is feedback (FB-n).
 
+import { z } from "zod";
 import type { FeedbackPhase, FeedbackRoute } from "./feedback.js";
 
 export const AGENT_REPORT_KINDS = [
@@ -28,7 +29,50 @@ export const AGENT_REPORT_TARGETS = [
 	"other",
 ] as const;
 export type AgentReportTarget = (typeof AGENT_REPORT_TARGETS)[number];
-export const AGENT_REPORT_REFUSAL_CODES = ["AGENT_REPORT_PROMOTED"] as const;
+// cm:why design automation rev 1 (steps triage, file, dismiss; ISS-113): what a person decided a
+// report is, with who and when. `filed` has exactly one target, an issue or the feedback item a
+// promote made, so where a report went is the target and never a fifth state
+export const AGENT_REPORT_TRIAGES = [
+	"new",
+	"filed",
+	"dismissed",
+	"duplicate",
+] as const;
+export type AgentReportTriage = (typeof AGENT_REPORT_TRIAGES)[number];
+
+export const AGENT_REPORT_TRIAGE_LABELS: Record<AgentReportTriage, string> = {
+	new: "New",
+	filed: "Filed",
+	dismissed: "Dismissed",
+	duplicate: "Duplicate",
+};
+
+export const AGENT_REPORT_TRIAGE_ACTS = [
+	"file",
+	"dismiss",
+	"duplicate",
+	"reopen",
+] as const;
+export type AgentReportTriageAct = (typeof AGENT_REPORT_TRIAGE_ACTS)[number];
+
+/** The reason every report reviewed before triage was recorded, with no link, carries (migration 0368). */
+export const AGENT_REPORT_BACKFILL_DISMISS_REASON =
+	"reviewed before triage was recorded";
+
+export const AGENT_REPORT_LIMITS = {
+	reason: 2000,
+	title: 200,
+	description: 20000,
+} as const;
+
+export const AGENT_REPORT_REFUSAL_CODES = [
+	"AGENT_REPORT_PROMOTED",
+	"AGENT_REPORT_ALREADY_TRIAGED",
+	"AGENT_REPORT_DISMISS_REASON_REQUIRED",
+	"AGENT_REPORT_DUPLICATE_UNKNOWN",
+	"AGENT_REPORT_NOT_TRIAGED",
+	"AGENT_REPORT_FILED_INTO_ISSUE",
+] as const;
 export type AgentReportRefusalCode =
 	(typeof AGENT_REPORT_REFUSAL_CODES)[number];
 export interface AgentReportFeedbackLink {
@@ -54,8 +98,72 @@ export interface AgentReportView {
 	suggestion: string | null;
 	signalKey: string;
 	sessionId: string | null;
-	reviewedAt: string | null;
+	scheduleRunId: string | null;
+	triage: AgentReportTriage;
+	triagedBy: { id: string; name: string | null } | null;
+	triagedAt: string | null;
+	triageReason: string | null;
+	duplicateOf: string | null;
 	linkedIssueId: string | null;
 	feedback: AgentReportFeedbackLink | null;
 	createdAt: string;
+}
+
+const reason = z.string().max(AGENT_REPORT_LIMITS.reason);
+
+/** One triage act. A dismiss without a reason is a refusal (AGENT_REPORT_DISMISS_REASON_REQUIRED), not a bad body. */
+export const triageAgentReportRequestSchema = z
+	.discriminatedUnion("act", [
+		z.strictObject({
+			act: z.literal("file"),
+			issue: z.uuid().optional(),
+			createIssue: z
+				.strictObject({
+					title: z.string().min(1).max(AGENT_REPORT_LIMITS.title).optional(),
+					description: z
+						.string()
+						.max(AGENT_REPORT_LIMITS.description)
+						.optional(),
+				})
+				.optional(),
+		}),
+		z.strictObject({ act: z.literal("dismiss"), reason: reason.optional() }),
+		z.strictObject({
+			act: z.literal("duplicate"),
+			duplicateOf: z.uuid(),
+			reason: reason.optional(),
+		}),
+		z.strictObject({ act: z.literal("reopen"), reason: reason.optional() }),
+	])
+	.refine(
+		(t) =>
+			t.act !== "file" ||
+			(t.issue === undefined) !== (t.createIssue === undefined),
+		{
+			message: "file names exactly one of issue or createIssue",
+			path: ["issue"],
+		},
+	);
+export type TriageAgentReportRequest = z.infer<
+	typeof triageAgentReportRequestSchema
+>;
+export const TRIAGE_AGENT_REPORT_SHAPE =
+	"{ act: file, exactly one of issue: uuid | createIssue: { title?, description? } } | { act: dismiss, reason } | { act: duplicate, duplicateOf: uuid, reason? } | { act: reopen, reason? }";
+
+/** The bulk door: every report of one signal, in one project or every project the caller sees. */
+export const triageAgentReportsBySignalRequestSchema = z.strictObject({
+	signalKey: z.string().min(1).max(500),
+	projectId: z.uuid().optional(),
+	scope: z.enum(["project", "all"]).optional(),
+	triage: triageAgentReportRequestSchema,
+});
+export const TRIAGE_AGENT_REPORTS_BY_SIGNAL_SHAPE = `{ signalKey, projectId? (required unless scope: all), scope?: project | all, triage: ${TRIAGE_AGENT_REPORT_SHAPE} }`;
+
+/** What a triage wrote: the reports it moved, to which triage, and the issue a file created or linked. */
+export interface AgentReportTriageEffect {
+	act: AgentReportTriageAct;
+	triage: AgentReportTriage;
+	reports: string[];
+	issue: { id: string; key: string; created: boolean } | null;
+	untouched: { id: string; triage: AgentReportTriage }[];
 }

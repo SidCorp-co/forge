@@ -3,9 +3,9 @@
 //
 // Altitude (NT1): the order of the work and what refuses it. `forge_workflows` carries its schema.
 
-import type { ForgeGuide } from './types.js';
+import type { CoreGuide } from './types.js';
 
-export const WORKFLOW_DESIGN_GUIDE: ForgeGuide = {
+export const WORKFLOW_DESIGN_GUIDE: CoreGuide = {
   slug: 'workflow-design',
   audience: 'agent',
   title: 'Design a workflow first, build it once it is approved',

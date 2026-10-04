@@ -10,6 +10,10 @@
 
 ### Security
 
+- **You can change which projects your token reaches without a new secret (ISS-92).**
+  `PUT /api/pat/:id/fence`, from a fresh session, records who changed it and why and applies on the
+  next request. No token can change a fence.
+
 - **An older token is refused a project's agent sessions, runners and usage reports wherever they are
   served (ISS-105).** A route nested under a project or issue now takes the age of the data it serves,
   so a token made before agent sessions, pipeline reports, usage or runners could be granted is refused
@@ -147,6 +151,14 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+
+- **Guides for requirements, suggestions and feedback triage (ISS-90).** The tools for them cite
+  these public guides instead of designs only Forge's own project could read, as do the issue
+  status refusals.
+
+- **An agent report records its triage, who decided and when (ISS-113).** Filing makes a draft
+  issue, a dismissal needs a reason, and a scheduled run's report links that run. Improvements
+  shows triage and offers Dismiss.
 
 - **Every schedule run is one row in its history (ISS-112).** A run of any kind records how it
   started, ended and why, and links its session; older runs are rebuilt. A run skipped for want of a
@@ -2692,6 +2704,9 @@
   (ISS-1313)
 
 ### Removed
+- **An agent report has no reviewed flag (ISS-113).** `POST /api/agent-reports/:id/reviewed`,
+  the `reviewed` list filter and `forge_agent_report action=review` are gone; triage replaces them,
+  and the issue a report was filed into cannot be deleted until it is reopened.
 - **A binding is written only as its binding document.** Connecting, sharing a connection and
   picking a GitHub repository all write it; the old binding routes refuse by name and point there.
   A binding holds no rollback.

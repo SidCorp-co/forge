@@ -12,7 +12,7 @@ import {
   type TemplateNodeType,
   type WorkflowTemplate,
 } from '@forge/contracts/workflow-templates';
-import type { ForgeGuide } from './types.js';
+import type { CoreGuide } from './types.js';
 
 /** What the agent builder is drawing, and the template that draws it. */
 export const TEMPLATE_CHOICES: readonly [string, string][] = [
@@ -358,7 +358,7 @@ ${code('workflows.templates')} (${code('PUT /api/projects/<id>/config')}), check
   how every design drawn in it is checked. Draft the template, show the owner one design drawn in it, and
   write it once they agree. HOP needs nothing custom: ${code('operational-flow')} is its template.`;
 
-export const WORKFLOW_TEMPLATES_GUIDE: ForgeGuide = {
+export const WORKFLOW_TEMPLATES_GUIDE: CoreGuide = {
   slug: 'workflow-templates',
   audience: 'agent',
   title: 'Pick a diagram template for a workflow design',

@@ -6,6 +6,7 @@
 
 import { DESIGN_VIEWS } from '@forge/contracts/workflows';
 import { z } from 'zod';
+import { guideRef } from '../../guides/guide-ref.js';
 import { egressShown } from '../../lib/data-egress.js';
 import type { NamedRefusal } from '../../project-config/respond.js';
 import { DESIGN_DECISIONS, DESIGN_REASON_MAX } from '../../workflows/design.js';
@@ -144,7 +145,7 @@ const DESCRIPTION =
   'link: { workflowId, issue } names the issue that builds the workflow; dispatching that issue is ' +
   'then refused WORKFLOW_DESIGN_NOT_APPROVED until the design is approved, and forge_issues get ' +
   'shows why under `buildsWorkflow`. unlink lifts the gate, so only the approver may. ' +
-  'Guides: forge_guide get workflow-templates (which template to pick) and workflow-design.';
+  `Guides: ${guideRef('workflow-templates')} (which template to pick) and ${guideRef('workflow-design')}.`;
 
 function answerView(input: Input) {
   if (input.view === 'steps' && input.action !== 'design') {

@@ -23,20 +23,24 @@ const { forgeAgentReportTool, forgeFeedbackAliasTool, FORGE_FEEDBACK_DEPRECATION
 
 const REPORT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
+const SESSION_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const FIRE_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+
 /** One `submit`'s reads and its insert, queued so either tool name walks the same path. */
-function queueSubmit(): void {
+function queueSubmit(fire: string | null = null, job = true): void {
   h.queueMemberOnly();
   h.selectLimit.mockResolvedValueOnce([
     {
-      jobId: JOB_ID,
-      runId: RUN_ID,
-      issueId: ISSUE_ID,
-      stage: 'code',
+      jobId: job ? JOB_ID : null,
+      runId: job ? RUN_ID : null,
+      issueId: job ? ISSUE_ID : null,
+      stage: job ? 'code' : null,
       deviceId: null,
-      agentSessionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      agentSessionId: SESSION_ID,
     },
   ]);
-  h.selectLimit.mockResolvedValueOnce([{ n: 0 }]);
+  h.selectLimit.mockResolvedValueOnce(fire ? [{ id: fire }] : []);
+  if (job) h.selectLimit.mockResolvedValueOnce([{ n: 0 }]);
   h.insertReturning.mockResolvedValueOnce([{ id: REPORT_ID }]);
 }
 
@@ -75,6 +79,22 @@ describe('forge_agent_report and its forge_feedback alias', () => {
     expect(FORGE_FEEDBACK_DEPRECATION.replacement).toBe('forge_agent_report');
     expect([...deprecations]).toEqual(['forge_feedback']);
     expect(h.insertValues).toHaveBeenCalledOnce();
+  });
+
+  it('links a report from a scheduled session to its fire (REQ-16 BC-2)', async () => {
+    queueSubmit(FIRE_ID, false);
+    await forgeAgentReportTool(makeCtx()).handler(SUBMIT);
+    expect(h.insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: SESSION_ID, scheduleRunId: FIRE_ID }),
+    );
+  });
+
+  it('keeps an issue-run report unlinked from any fire, with its issue, run and job', async () => {
+    queueSubmit(null, true);
+    await forgeAgentReportTool(makeCtx()).handler(SUBMIT);
+    const [values] = h.insertValues.mock.calls[0] ?? [];
+    expect(values).toMatchObject({ issueId: ISSUE_ID, runId: RUN_ID, jobId: JOB_ID });
+    expect(values.scheduleRunId).toBeUndefined();
   });
 
   it('keeps one grant and one schema across both names, and marks only the alias deprecated', () => {

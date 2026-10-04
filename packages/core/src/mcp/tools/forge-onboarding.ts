@@ -12,6 +12,7 @@ import {
   postUpdateRequestSchema,
 } from '@forge/contracts/onboarding';
 import { z } from 'zod';
+import { guideRef } from '../../guides/guide-ref.js';
 import { MCP_DOOR } from '../../lib/data-egress.js';
 import {
   markOnboardingDone,
@@ -53,7 +54,7 @@ const GRANTS = {
 } as const;
 
 const DESCRIPTION =
-  'Onboarding (workflow project-onboarding): the thread in the chat panel where the project agent ' +
+  'Onboarding: the thread in the chat panel where the project agent ' +
   `agrees the key designs with a person. Actions: ${ACTIONS.join(' | ')}. ` +
   `post_questionnaire: { questionnaire: ${POST_QUESTIONNAIRE_SHAPE} } — one batch answered once; ` +
   'a second open batch is QUESTIONNAIRE_ALREADY_OPEN, a 4th round QUESTIONNAIRE_ROUNDS_EXHAUSTED, an ' +
@@ -63,7 +64,7 @@ const DESCRIPTION =
   `post_update: { update: ${POST_UPDATE_SHAPE} } — a message in the thread; designs it names are ` +
   'registered with the onboarding and take only a person’s approval. mark_done: { text? } — refused ' +
   'ONBOARDING_DATA_FLOW_MISSING on a sensitive-data project with no data-flow design. Start, ' +
-  're-analysis and answering are a person’s acts (REST).';
+  `re-analysis and answering are a person’s acts (REST). Drawing and proposing a design: ${guideRef('workflow-design')}.`;
 
 function need<K extends keyof Input>(input: Input, key: K): NonNullable<Input[K]> {
   const value = input[key];

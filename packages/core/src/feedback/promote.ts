@@ -5,12 +5,14 @@ import {
   type PromoteAgentReportRequest,
 } from '@forge/contracts/feedback';
 import { eq, inArray } from 'drizzle-orm';
+import { alreadyTriagedRefusal, type TriageFacts } from '../agent-reports/rules.js';
 import { db, type Tx } from '../db/client.js';
 import { agentReports, issues, projects } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { assertProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { peopleOf } from '../lib/people.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import { embedFeedbackLater } from './embeddings.js';
 import { detailAs, type FeedbackActor, feedbackKey, notFound, rowIn } from './read.js';
@@ -29,13 +31,18 @@ async function slugsOf(ids: string[]) {
   return new Map(rows.map((r) => [r.id, r.slug]));
 }
 
-async function routedKeys(tx: Tx, id: string, lock: boolean) {
+async function routedKeys(tx: Tx, id: string, lock: boolean): Promise<TriageFacts> {
   const query = tx
     .select({
       projectId: agentReports.projectId,
       feedbackSeq: feedback.fbSeq,
       issueSeq: issues.issSeq,
-      reviewedAt: agentReports.reviewedAt,
+      issueProjectId: issues.projectId,
+      triage: agentReports.triage,
+      triagedAt: agentReports.triagedAt,
+      triageReason: agentReports.triageReason,
+      duplicateOf: agentReports.duplicateOf,
+      triagedBy: agentReports.triagedBy,
     })
     .from(agentReports)
     .leftJoin(feedback, eq(feedback.id, agentReports.feedbackId))
@@ -43,20 +50,36 @@ async function routedKeys(tx: Tx, id: string, lock: boolean) {
     .where(eq(agentReports.id, id));
   const [r] = lock ? await query.for('update', { of: agentReports }) : await query;
   if (!r) throw notFound(`agent report ${id} is gone`);
-  const prefix = r.issueSeq === null ? null : await activeIssuePrefix(r.projectId);
+  const prefix =
+    r.issueSeq === null || !r.issueProjectId ? null : await activeIssuePrefix(r.issueProjectId);
   return {
+    id,
+    projectId: r.projectId,
+    triage: r.triage,
+    triagedByName: r.triagedBy
+      ? ((await peopleOf([r.triagedBy])).get(r.triagedBy)?.name ?? null)
+      : null,
+    triagedAt: r.triagedAt,
+    triageReason: r.triageReason,
+    duplicateOf: r.duplicateOf,
     feedbackKey: r.feedbackSeq === null ? null : feedbackKey(r.feedbackSeq),
     linkedIssueKey: r.issueSeq === null ? null : formatIssueRef(prefix, r.issueSeq),
-    reviewedAt: r.reviewedAt,
   };
+}
+
+/** The ISS-93 codes name a report already routed; any other triage is a second triage (ISS-113). */
+function promoteRefusals(
+  facts: { reportId: string; reportProject: string; project: string },
+  held: TriageFacts,
+) {
+  return promoteRefusal({ ...facts, ...held }) ?? alreadyTriagedRefusal(held);
 }
 
 // cm:why ISS-93 (feedback-triage decision, 2026-10-04): promoting an agent report files feedback, so
 // any member may do it, person or agent; the promoter is the item's reporter and verifies the fix.
-// It is the report's review: an unreviewed report is stamped reviewed at the promotion, and the
-// promoter is who reviewed it, recorded as the `promoted` decision row's decider; the report gets no
-// reviewer column (that is ISS-77's triage). The text it copies is named on the answer and on that
-// row, and the reference is kept on the report and read back on the item
+// It is the report's triage (ISS-113, design automation's filed-target decision): the report becomes
+// filed, with the feedback item as its one target and the promoter as triagedBy, in the write that
+// links it. The text it copies is named on the answer and on the `promoted` decision row
 export async function promoteAgentReport(input: {
   projectId: string;
   actor: FeedbackActor;
@@ -78,7 +101,7 @@ export async function promoteAgentReport(input: {
     reportProject: slugs.get(report.projectId) ?? report.projectId,
     project: slugs.get(projectId) ?? projectId,
   };
-  const before = promoteRefusal({ ...facts, ...(await routedKeys(db, report.id, false)) });
+  const before = promoteRefusals(facts, await routedKeys(db, report.id, false));
   if (before) return { ok: false, refusals: [before] };
   const copied: FeedbackPromoteEffect['copied'] = [];
   if (request.title === undefined) copied.push('title');
@@ -95,7 +118,7 @@ export async function promoteAgentReport(input: {
   const refusals = await inTx(async (tx) => {
     await lockFeedback(tx, projectId);
     const held = await routedKeys(tx, report.id, true);
-    const refused = promoteRefusal({ ...facts, ...held });
+    const refused = promoteRefusals(facts, held);
     if (refused) return [refused];
     id = await insertFeedbackIn(tx, prepared.values);
     const ref = report.targetRef ? ` ${report.targetRef}` : '';
@@ -107,7 +130,13 @@ export async function promoteAgentReport(input: {
     });
     await tx
       .update(agentReports)
-      .set({ feedbackId: id, ...(held.reviewedAt ? {} : { reviewedAt: new Date() }) })
+      .set({
+        feedbackId: id,
+        triage: 'filed',
+        triagedBy: actor.userId,
+        triagedAgency: actor.agency,
+        triagedAt: new Date(),
+      })
       .where(eq(agentReports.id, report.id));
     return null;
   });

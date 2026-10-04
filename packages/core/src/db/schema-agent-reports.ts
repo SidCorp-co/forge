@@ -2,9 +2,11 @@ import {
   AGENT_REPORT_KINDS,
   AGENT_REPORT_SEVERITIES,
   AGENT_REPORT_TARGETS,
+  AGENT_REPORT_TRIAGES,
   type AgentReportKind,
   type AgentReportSeverity,
   type AgentReportTarget,
+  type AgentReportTriage,
 } from '@forge/contracts/agent-reports';
 import { relations, sql } from 'drizzle-orm';
 import {
@@ -18,13 +20,18 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { issues, jobs, pipelineRuns, projects } from './schema.js';
+import { issues, jobs, pipelineRuns, projects, users } from './schema.js';
+import { actorAgencies } from './schema-activity.js';
 import { feedback } from './schema-feedback.js';
+import { scheduleRuns } from './schema-schedule-runs.js';
 
 export const agentReportKinds = AGENT_REPORT_KINDS;
 export const agentReportSeverities = AGENT_REPORT_SEVERITIES;
 export const agentReportTargets = AGENT_REPORT_TARGETS;
-export type { AgentReportKind, AgentReportSeverity, AgentReportTarget };
+export const agentReportTriages = AGENT_REPORT_TRIAGES;
+export type { AgentReportKind, AgentReportSeverity, AgentReportTarget, AgentReportTriage };
+
+const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 
 /**
  * What an agent reports about the harness it ran under — friction, a skill gap, a learning. Not a
@@ -56,15 +63,30 @@ export const agentReports = pgTable(
     // ISS-557 — bare uuid pointing at the agent_session that emitted this report.
     // No hard FK so steward sessions (which have no job row) can link cleanly.
     sessionId: uuid('session_id'),
-    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
-    // ISS-712 — issue the report was curated INTO (distinct from `issueId`,
-    // which is the SOURCE issue the agent was working on when it reported).
-    // Set only via the `review` action's explicit linkedIssueId param.
-    linkedIssueId: uuid('linked_issue_id').references((): AnyPgColumn => issues.id, {
+    // cm:why ISS-113 (design automation rev 1, step report): the fire whose session filed the report,
+    // resolved at submit from the session's `scheduleRunId`, so a fire's reports are a join
+    scheduleRunId: uuid('schedule_run_id').references((): AnyPgColumn => scheduleRuns.id, {
       onDelete: 'set null',
     }),
-    // cm:why ISS-93: the report's other route, the feedback item it was promoted into; exclusive
-    // with `linked_issue_id`, one report per item, and a promoted report stays reviewed
+    // cm:why ISS-113 (steps triage, file, dismiss; reports_table): one triage value with who, when
+    // and why replaces `reviewed_at`, which stood for three outcomes; the shape CHECK below holds
+    // each value to the columns it owns, so `filed` has exactly one target
+    triage: text('triage', { enum: agentReportTriages }).notNull().default('new'),
+    triagedBy: uuid('triaged_by').references(() => users.id, { onDelete: 'restrict' }),
+    triagedAgency: text('triaged_agency', { enum: actorAgencies }),
+    triagedAt: timestamp('triaged_at', { withTimezone: true }),
+    triageReason: text('triage_reason'),
+    duplicateOf: uuid('duplicate_of').references((): AnyPgColumn => agentReports.id, {
+      onDelete: 'no action',
+    }),
+    // cm:why ISS-712: the issue a report was filed INTO, distinct from `issueId`, the SOURCE issue the
+    // agent was working on. `no action` since ISS-113: deleting that issue would leave a filed report
+    // with no target, so the issue delete is refused AGENT_REPORT_FILED_INTO_ISSUE instead
+    linkedIssueId: uuid('linked_issue_id').references((): AnyPgColumn => issues.id, {
+      onDelete: 'no action',
+    }),
+    // cm:why ISS-93: the report's other target, the feedback item it was promoted into; exclusive
+    // with `linked_issue_id`, one report per item
     feedbackId: uuid('feedback_id').references((): AnyPgColumn => feedback.id, {
       onDelete: 'no action',
     }),
@@ -75,9 +97,18 @@ export const agentReports = pgTable(
       'agent_reports_route_chk',
       sql`num_nonnulls(${t.linkedIssueId}, ${t.feedbackId}) <= 1`,
     ),
-    promotedReviewedChk: check(
-      'agent_reports_promoted_reviewed_chk',
-      sql`${t.feedbackId} IS NULL OR ${t.reviewedAt} IS NOT NULL`,
+    triageChk: check(
+      'agent_reports_triage_chk',
+      sql`${t.triage} IN (${inList(AGENT_REPORT_TRIAGES)}) AND CASE ${t.triage}
+        WHEN 'new' THEN num_nonnulls(${t.triagedBy}, ${t.triagedAgency}, ${t.triagedAt}, ${t.triageReason}, ${t.duplicateOf}, ${t.linkedIssueId}, ${t.feedbackId}) = 0
+        WHEN 'filed' THEN ${t.triagedAt} IS NOT NULL AND num_nonnulls(${t.linkedIssueId}, ${t.feedbackId}) = 1 AND ${t.duplicateOf} IS NULL
+        WHEN 'dismissed' THEN ${t.triagedAt} IS NOT NULL AND btrim(coalesce(${t.triageReason}, '')) <> '' AND num_nonnulls(${t.duplicateOf}, ${t.linkedIssueId}, ${t.feedbackId}) = 0
+        WHEN 'duplicate' THEN ${t.triagedAt} IS NOT NULL AND ${t.duplicateOf} IS NOT NULL AND ${t.duplicateOf} <> ${t.id} AND num_nonnulls(${t.linkedIssueId}, ${t.feedbackId}) = 0
+        ELSE false END`,
+    ),
+    triagedByChk: check(
+      'agent_reports_triaged_by_chk',
+      sql`(${t.triagedBy} IS NULL) = (${t.triagedAgency} IS NULL) AND (${t.triagedAgency} IS NULL OR ${t.triagedAgency} IN (${inList(actorAgencies)}))`,
     ),
     feedbackUq: uniqueIndex('agent_reports_feedback_uq')
       .on(t.feedbackId)
@@ -93,6 +124,10 @@ export const agentReports = pgTable(
     createdAtIdx: index('agent_reports_created_at_idx').on(t.createdAt),
     sessionIdx: index('agent_reports_session_id_idx').on(t.sessionId),
     linkedIssueIdIdx: index('agent_reports_linked_issue_id_idx').on(t.linkedIssueId),
+    projectTriageIdx: index('agent_reports_project_triage_idx').on(t.projectId, t.triage),
+    scheduleRunIdx: index('agent_reports_schedule_run_idx')
+      .on(t.scheduleRunId)
+      .where(sql`schedule_run_id IS NOT NULL`),
   }),
 );
 
@@ -104,6 +139,10 @@ export const agentReportsRelations = relations(agentReports, ({ one }) => ({
     references: [issues.id],
   }),
   feedback: one(feedback, { fields: [agentReports.feedbackId], references: [feedback.id] }),
+  scheduleRun: one(scheduleRuns, {
+    fields: [agentReports.scheduleRunId],
+    references: [scheduleRuns.id],
+  }),
   run: one(pipelineRuns, { fields: [agentReports.runId], references: [pipelineRuns.id] }),
   job: one(jobs, { fields: [agentReports.jobId], references: [jobs.id] }),
 }));

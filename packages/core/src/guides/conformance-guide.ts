@@ -4,9 +4,9 @@
 // Altitude (NT1): teach an agent how to behave when a gate says something
 // inconvenient. Not what each checker measures — scripts/README.md owns that.
 
-import type { ForgeGuide } from './types.js';
+import type { CoreGuide } from './types.js';
 
-export const CONFORMANCE_GUIDE: ForgeGuide = {
+export const CONFORMANCE_GUIDE: CoreGuide = {
   slug: 'conformance-and-verify',
   audience: 'agent',
   title: 'Conformance gates & `pnpm verify`',

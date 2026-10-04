@@ -3,9 +3,9 @@
 //
 // Altitude (NT1): the order of the work and what refuses it. Each tool carries its own schema.
 
-import type { ForgeGuide } from './types.js';
+import type { CoreGuide } from './types.js';
 
-export const ECOSYSTEM_INBOX_GUIDE: ForgeGuide = {
+export const ECOSYSTEM_INBOX_GUIDE: CoreGuide = {
   slug: 'ecosystem-inbox',
   audience: 'agent',
   title: "Working a project's ecosystem inbox",

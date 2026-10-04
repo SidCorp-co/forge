@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
+import { guideRef } from '../guides/guide-ref.js';
 import { isRecoveryEdge, RECOVERY_EDGES } from '../pipeline/state-machine.js';
 import type { TransitionActor } from './actor-agency.js';
 import {
@@ -16,7 +17,7 @@ export function refuseOffRecoveryEdge(from: IssueStatus, to: IssueStatus): void 
   if (isRecoveryEdge(from, to)) return;
   throw new TransitionError(
     'ILLEGAL_TRANSITION',
-    `\`recovery: true\` names the hand-back of an \`in_progress\` issue nothing holds, to ${RECOVERY_TARGETS} (REQ-2 BC-10, workflow issue-lifecycle). \`${from}\` → \`${to}\` is not one; send the move without \`recovery\`.`,
+    `\`recovery: true\` names the hand-back of an \`in_progress\` issue nothing holds, to ${RECOVERY_TARGETS} (${guideRef('pipeline-and-issue-lifecycle')}). \`${from}\` → \`${to}\` is not one; send the move without \`recovery\`.`,
     { from, to, recovery: true, recoveryEdges: RECOVERY_EDGES },
   );
 }
@@ -39,7 +40,7 @@ export const recoveryField = z
   .literal(true)
   .optional()
   .describe(
-    'With `transition`: the kernel hand-back of an `in_progress` issue nothing holds any more, to `open`, `approved` or `reopen` (REQ-2 BC-10). A judge that failed a criterion lets go of the issue, then sends `status: reopen`, `recovery: true` and the failed criteria as `reason`. Refused while anything holds the issue, and on any other move.',
+    `With \`transition\`: the kernel hand-back of an \`in_progress\` issue nothing holds any more, to \`open\`, \`approved\` or \`reopen\` (${guideRef('pipeline-and-issue-lifecycle')}). A judge that failed a criterion lets go of the issue, then sends \`status: reopen\`, \`recovery: true\` and the failed criteria as \`reason\`. Refused while anything holds the issue, and on any other move.`,
   );
 
 export async function transitionNamingRecovery(

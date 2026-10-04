@@ -10,11 +10,11 @@ import {
   RECORD_DESTINATIONS,
   RECORD_GUIDE_SLUG,
 } from '../messaging/record-screen.js';
-import type { ForgeGuide } from './types.js';
+import type { CoreGuide } from './types.js';
 
 const route = (kind: string): string => `\`${RECORD_DESTINATIONS.get(kind) ?? ''}\``;
 
-export const RECORDS_GUIDE: ForgeGuide = {
+export const RECORDS_GUIDE: CoreGuide = {
   slug: RECORD_GUIDE_SLUG,
   audience: 'agent',
   title: 'What a comment is for, and where a record goes',

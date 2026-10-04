@@ -7,7 +7,9 @@ import {
   Badge,
   Button,
   EmptyState,
+  EnumBadge,
   ErrorState,
+  Input,
   PageContainer,
   PageTitle,
   Skeleton,
@@ -19,14 +21,12 @@ import {
   THead,
   TR,
 } from "@/design";
-import { useAgentReports, useMarkAgentReportReviewed } from "@/features/agent-reports/hooks";
+import { useAgentReports, useTriageAgentReport } from "@/features/agent-reports/hooks";
 import type { AgentReport } from "@/features/agent-reports/types";
 import { FeedbackForm } from "@/features/feedback/components/feedback-form";
 import { feedbackHref } from "@/features/feedback/routes";
-import { useCreateIssue } from "@/features/issues/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
-import { useToast } from "@/providers/toast-provider";
 import { improvementMessagesApi } from "../api";
 import { useImprovementMessages } from "../hooks";
 import {
@@ -36,7 +36,6 @@ import {
   type LoopRuns,
   feedbackDraftOf,
   improvementRows,
-  issueFromReport,
   matchesFilter,
 } from "../improvements";
 import { ImproveCatalog } from "./improve-catalog";
@@ -68,53 +67,55 @@ function useLoopRuns(projectId: string) {
   return { runs, isLoading: catalogQ.isLoading || runsQ.some((q) => q.isLoading), error };
 }
 
-function OpenIssueButton({ report, projectId }: { report: AgentReport; projectId: string }) {
-  const create = useCreateIssue(projectId);
-  const review = useMarkAgentReportReviewed(projectId);
-  const { toast } = useToast();
+function DismissForm({ report, projectId, onDone }: { report: AgentReport; projectId: string; onDone: () => void }) {
+  const triage = useTriageAgentReport(projectId);
+  const [reason, setReason] = useState("");
+  return (
+    <form
+      className="flex flex-wrap items-center gap-2 bg-surface px-3 py-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        triage.mutate({ id: report.id, act: { act: "dismiss", reason } }, { onSuccess: onDone });
+      }}
+    >
+      <label htmlFor={`dismiss-${report.id}`} className="fg-label text-fg">
+        Why is this not work?
+      </label>
+      <Input
+        id={`dismiss-${report.id}`}
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder="Already fixed in ISS-12, or the agent misread the step"
+        className="min-w-[280px] flex-1"
+      />
+      <Button type="submit" variant="secondary" size="sm" disabled={triage.isPending}>
+        Dismiss
+      </Button>
+      <Button type="button" variant="ghost" size="sm" onClick={onDone}>
+        Cancel
+      </Button>
+    </form>
+  );
+}
+
+function ReopenButton({ report, projectId }: { report: AgentReport; projectId: string }) {
+  const triage = useTriageAgentReport(projectId);
   return (
     <Button
-      variant="secondary"
+      variant="ghost"
       size="sm"
-      disabled={create.isPending || review.isPending}
-      onClick={async () => {
-        try {
-          const issue = await create.mutateAsync(issueFromReport(report));
-          review.mutate({ id: report.id, reviewed: true, linkedIssueId: issue.id });
-          toast({ title: `Opened ${issue.displayId}`, tone: "success" });
-        } catch (err) {
-          toast({ title: "Couldn't open an issue", description: formatApiError(err), tone: "error" });
-        }
-      }}
-      aria-label={`Open an issue for ${report.summary}`}
+      disabled={triage.isPending}
+      onClick={() => triage.mutate({ id: report.id, act: { act: "reopen" } })}
+      aria-label={`Reopen triage of ${report.summary}`}
     >
-      Open issue
+      Reopen
     </Button>
   );
 }
 
-function RowAction({
-  row,
-  projectId,
-  slug,
-  canWrite,
-  onPromote,
-}: {
-  row: ImprovementRow;
-  projectId: string;
-  slug: string;
-  canWrite: boolean;
-  onPromote: () => void;
-}) {
-  if (row.source === "proposal") {
-    return (
-      <Link href={`/projects/${slug}/agents/${row.sessionId}`} className="fg-caption text-accent hover:underline">
-        View run →
-      </Link>
-    );
-  }
-  if (row.report.feedback) {
-    const fb = row.report.feedback;
+function TriagedAction({ report, projectId, slug, canWrite }: { report: AgentReport; projectId: string; slug: string; canWrite: boolean }) {
+  if (report.feedback) {
+    const fb = report.feedback;
     return (
       <span className="inline-flex items-center gap-1.5" data-testid="report-became">
         <Link href={feedbackHref(slug, fb.key)} className="fg-caption text-accent hover:underline">
@@ -124,24 +125,72 @@ function RowAction({
       </span>
     );
   }
-  if (row.report.linkedIssueId) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      {report.linkedIssueId ? (
+        <Link href={`/projects/${slug}/issues/${report.linkedIssueId}`} className="fg-caption text-accent hover:underline">
+          View issue →
+        </Link>
+      ) : (
+        <span className="fg-caption max-w-[260px] truncate text-muted" title={report.triageReason ?? undefined}>
+          {report.triage === "duplicate" ? "Repeats an earlier report" : report.triageReason}
+          {report.triagedBy?.name ? ` · ${report.triagedBy.name}` : ""}
+        </span>
+      )}
+      {canWrite ? <ReopenButton report={report} projectId={projectId} /> : null}
+    </span>
+  );
+}
+
+function RowAction({
+  row,
+  projectId,
+  slug,
+  canWrite,
+  onPromote,
+  onDismiss,
+}: {
+  row: ImprovementRow;
+  projectId: string;
+  slug: string;
+  canWrite: boolean;
+  onPromote: () => void;
+  onDismiss: () => void;
+}) {
+  const triage = useTriageAgentReport(projectId);
+  if (row.source === "proposal") {
     return (
-      <Link href={`/projects/${slug}/issues/${row.report.linkedIssueId}`} className="fg-caption text-accent hover:underline">
-        View issue →
+      <Link href={`/projects/${slug}/agents/${row.sessionId}`} className="fg-caption text-accent hover:underline">
+        View run →
       </Link>
     );
   }
-  if (row.state === "report" && canWrite) {
-    return (
-      <span className="inline-flex gap-1.5">
-        <OpenIssueButton report={row.report} projectId={projectId} />
-        <Button variant="secondary" size="sm" onClick={onPromote} aria-label={`Promote ${row.report.summary} to feedback`}>
-          Promote to feedback
-        </Button>
-      </span>
-    );
-  }
-  return null;
+  if (row.report.triage !== "new") return <TriagedAction report={row.report} projectId={projectId} slug={slug} canWrite={canWrite} />;
+  if (!canWrite) return null;
+  return (
+    <span className="inline-flex gap-1.5">
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={triage.isPending}
+        onClick={() => triage.mutate({ id: row.report.id, act: { act: "file", createIssue: {} } })}
+        aria-label={`File an issue for ${row.report.summary}`}
+      >
+        File an issue
+      </Button>
+      <Button variant="secondary" size="sm" onClick={onDismiss} aria-label={`Dismiss ${row.report.summary}`}>
+        Dismiss
+      </Button>
+      <Button variant="secondary" size="sm" onClick={onPromote} aria-label={`Promote ${row.report.summary} to feedback`}>
+        Promote to feedback
+      </Button>
+    </span>
+  );
+}
+
+function StateBadge({ row }: { row: ImprovementRow }) {
+  if (row.source === "report") return <EnumBadge family="agentReportTriage" value={row.report.triage} />;
+  return <Badge tone={STATE_BADGE[row.state].tone}>{STATE_BADGE[row.state].label}</Badge>;
 }
 
 export function ImprovementsScreen({
@@ -156,6 +205,7 @@ export function ImprovementsScreen({
   const [filter, setFilter] = useState<ImprovementFilter>("all");
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [promoting, setPromoting] = useState<string | null>(null);
+  const [dismissing, setDismissing] = useState<string | null>(null);
   const reportsQ = useAgentReports(projectId);
   const loops = useLoopRuns(projectId);
   const rows = useMemo(() => improvementRows(reportsQ.data ?? [], loops.runs), [reportsQ.data, loops.runs]);
@@ -215,12 +265,26 @@ export function ImprovementsScreen({
                   </TD>
                   <TD className="fg-caption text-muted">{row.from}</TD>
                   <TD>
-                    <Badge tone={STATE_BADGE[row.state].tone}>{STATE_BADGE[row.state].label}</Badge>
+                    <StateBadge row={row} />
                   </TD>
                   <TD className="text-right">
-                    <RowAction row={row} projectId={projectId} slug={slug} canWrite={scope.canWrite} onPromote={() => setPromoting(row.id)} />
+                    <RowAction
+                      row={row}
+                      projectId={projectId}
+                      slug={slug}
+                      canWrite={scope.canWrite}
+                      onPromote={() => setPromoting(row.id)}
+                      onDismiss={() => setDismissing(row.id)}
+                    />
                   </TD>
                 </TR>
+                {dismissing === row.id && row.source === "report" ? (
+                  <TR data-testid="improvement-dismiss">
+                    <TD colSpan={4} className="p-0">
+                      <DismissForm report={row.report} projectId={projectId} onDone={() => setDismissing(null)} />
+                    </TD>
+                  </TR>
+                ) : null}
                 {promoting === row.id && row.source === "report" ? (
                   <TR data-testid="improvement-promote">
                     <TD colSpan={4} className="p-0">

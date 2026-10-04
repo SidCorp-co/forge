@@ -711,22 +711,16 @@
           },
           {
             "in": "query",
-            "name": "reviewed",
+            "name": "triage",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "const": "true",
-                  "type": "string"
-                },
-                {
-                  "const": "false",
-                  "type": "string"
-                },
-                {
-                  "type": "boolean"
-                }
-              ]
+              "enum": [
+                "new",
+                "filed",
+                "dismissed",
+                "duplicate"
+              ],
+              "type": "string"
             }
           },
           {
@@ -755,7 +749,154 @@
         ]
       }
     },
-    "/api/agent-reports/{id}/reviewed": {
+    "/api/agent-reports/triage": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "projectId": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  },
+                  "scope": {
+                    "enum": [
+                      "project",
+                      "all"
+                    ],
+                    "type": "string"
+                  },
+                  "signalKey": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "triage": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "act": {
+                            "const": "file",
+                            "type": "string"
+                          },
+                          "createIssue": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "description": {
+                                "maxLength": 20000,
+                                "type": "string"
+                              },
+                              "title": {
+                                "maxLength": 200,
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "type": "object"
+                          },
+                          "issue": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "act"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "act": {
+                            "const": "dismiss",
+                            "type": "string"
+                          },
+                          "reason": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "act"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "act": {
+                            "const": "duplicate",
+                            "type": "string"
+                          },
+                          "duplicateOf": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "reason": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "act",
+                          "duplicateOf"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "act": {
+                            "const": "reopen",
+                            "type": "string"
+                          },
+                          "reason": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "act"
+                        ],
+                        "type": "object"
+                      }
+                    ],
+                    "x-forge-refinements": [
+                      "file names exactly one of issue or createIssue"
+                    ]
+                  }
+                },
+                "required": [
+                  "signalKey",
+                  "triage"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json"
+        ]
+      }
+    },
+    "/api/agent-reports/{id}/triage": {
       "post": {
         "parameters": [
           {
@@ -771,21 +912,101 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "linkedIssueId": {
-                    "format": "uuid",
-                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-                    "type": "string"
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "act": {
+                        "const": "file",
+                        "type": "string"
+                      },
+                      "createIssue": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "description": {
+                            "maxLength": 20000,
+                            "type": "string"
+                          },
+                          "title": {
+                            "maxLength": 200,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "issue": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "act"
+                    ],
+                    "type": "object"
                   },
-                  "reviewed": {
-                    "type": "boolean"
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "act": {
+                        "const": "dismiss",
+                        "type": "string"
+                      },
+                      "reason": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "act"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "act": {
+                        "const": "duplicate",
+                        "type": "string"
+                      },
+                      "duplicateOf": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      },
+                      "reason": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "act",
+                      "duplicateOf"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "act": {
+                        "const": "reopen",
+                        "type": "string"
+                      },
+                      "reason": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "act"
+                    ],
+                    "type": "object"
                   }
-                },
-                "required": [
-                  "reviewed"
                 ],
-                "type": "object"
+                "x-forge-refinements": [
+                  "file names exactly one of issue or createIssue"
+                ]
               }
             }
           },
@@ -8681,22 +8902,16 @@
           },
           {
             "in": "query",
-            "name": "reviewed",
+            "name": "triage",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "const": "true",
-                  "type": "string"
-                },
-                {
-                  "const": "false",
-                  "type": "string"
-                },
-                {
-                  "type": "boolean"
-                }
-              ]
+              "enum": [
+                "new",
+                "filed",
+                "dismissed",
+                "duplicate"
+              ],
+              "type": "string"
             }
           },
           {
@@ -8725,7 +8940,154 @@
         ]
       }
     },
-    "/api/feedback-reports/{id}/reviewed": {
+    "/api/feedback-reports/triage": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "projectId": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  },
+                  "scope": {
+                    "enum": [
+                      "project",
+                      "all"
+                    ],
+                    "type": "string"
+                  },
+                  "signalKey": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "triage": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "act": {
+                            "const": "file",
+                            "type": "string"
+                          },
+                          "createIssue": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "description": {
+                                "maxLength": 20000,
+                                "type": "string"
+                              },
+                              "title": {
+                                "maxLength": 200,
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "type": "object"
+                          },
+                          "issue": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "act"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "act": {
+                            "const": "dismiss",
+                            "type": "string"
+                          },
+                          "reason": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "act"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "act": {
+                            "const": "duplicate",
+                            "type": "string"
+                          },
+                          "duplicateOf": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          },
+                          "reason": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "act",
+                          "duplicateOf"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "act": {
+                            "const": "reopen",
+                            "type": "string"
+                          },
+                          "reason": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "act"
+                        ],
+                        "type": "object"
+                      }
+                    ],
+                    "x-forge-refinements": [
+                      "file names exactly one of issue or createIssue"
+                    ]
+                  }
+                },
+                "required": [
+                  "signalKey",
+                  "triage"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json"
+        ]
+      }
+    },
+    "/api/feedback-reports/{id}/triage": {
       "post": {
         "parameters": [
           {
@@ -8741,21 +9103,101 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "linkedIssueId": {
-                    "format": "uuid",
-                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-                    "type": "string"
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "act": {
+                        "const": "file",
+                        "type": "string"
+                      },
+                      "createIssue": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "description": {
+                            "maxLength": 20000,
+                            "type": "string"
+                          },
+                          "title": {
+                            "maxLength": 200,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "issue": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "act"
+                    ],
+                    "type": "object"
                   },
-                  "reviewed": {
-                    "type": "boolean"
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "act": {
+                        "const": "dismiss",
+                        "type": "string"
+                      },
+                      "reason": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "act"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "act": {
+                        "const": "duplicate",
+                        "type": "string"
+                      },
+                      "duplicateOf": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      },
+                      "reason": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "act",
+                      "duplicateOf"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "act": {
+                        "const": "reopen",
+                        "type": "string"
+                      },
+                      "reason": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "act"
+                    ],
+                    "type": "object"
                   }
-                },
-                "required": [
-                  "reviewed"
                 ],
-                "type": "object"
+                "x-forge-refinements": [
+                  "file names exactly one of issue or createIssue"
+                ]
               }
             }
           },
@@ -16609,6 +17051,117 @@
       }
     },
     "/api/pat/{id}/audit": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "exclusiveMinimum": 0,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "param",
+          "query"
+        ]
+      }
+    },
+    "/api/pat/{id}/fence": {
+      "put": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "boundProjectId": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  },
+                  "projectIds": {
+                    "items": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
+                    },
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "reason": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object",
+                "x-forge-refinements": [
+                  "name exactly one of projectIds or boundProjectId",
+                  "projectIds names a project twice"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified",
+          "requireFreshAuth"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/pat/{id}/fence-changes": {
       "get": {
         "parameters": [
           {

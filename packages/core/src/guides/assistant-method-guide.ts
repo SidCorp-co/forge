@@ -1,11 +1,11 @@
 import { composeLayers } from '../assistant/prompt/layer.js';
 import { METHOD_LAYERS } from '../assistant/prompt/layers.js';
-import type { ForgeGuide } from './types.js';
+import type { CoreGuide } from './types.js';
 
 /** The one spelling of this guide's slug. Every door persona points at it. */
 export const ASSISTANT_METHOD_SLUG = 'answering-as-the-assistant';
 
-export const ASSISTANT_METHOD_GUIDE: ForgeGuide = {
+export const ASSISTANT_METHOD_GUIDE: CoreGuide = {
   slug: ASSISTANT_METHOD_SLUG,
   audience: 'agent',
   title: 'Answering as the assistant',

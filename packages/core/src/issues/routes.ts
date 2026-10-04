@@ -3,6 +3,7 @@ import { and, count, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { issueDeleteRefusal } from '../agent-reports/service.js';
 import { BodyInvalidError } from '../body/errors.js';
 import { BODY_FORMATS } from '../body/formats.js';
 import { bodyInvalidHttp } from '../body/http-error.js';
@@ -21,6 +22,7 @@ import { egressForRequest } from '../lib/data-egress.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
+import { refusalEnvelope } from '../lib/refusal.js';
 import { logger } from '../logger.js';
 import { deleteMemory } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
@@ -567,6 +569,9 @@ issueRoutes.delete(
     const issue = await loadIssue(id);
     const access = await loadProjectAccess(issue.projectId, userId);
     assertProjectRole(access, 'admin', 'not a project admin');
+
+    const carried = await issueDeleteRefusal(issue);
+    if (carried) return c.json(refusalEnvelope([carried], carried.code), 422);
 
     await withKernelMarker(db, async (tx) => tx.delete(issues).where(eq(issues.id, id)));
 
