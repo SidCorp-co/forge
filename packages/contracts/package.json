@@ -110,6 +110,10 @@
       "types": "./dist/feedback.d.ts",
       "default": "./dist/feedback.js"
     },
+    "./agent-reports": {
+      "types": "./dist/agent-reports.d.ts",
+      "default": "./dist/agent-reports.js"
+    },
     "./releases": {
       "types": "./dist/releases.d.ts",
       "default": "./dist/releases.js"

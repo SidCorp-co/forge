@@ -5,7 +5,8 @@
  * slug in, so a caller reading the feed never has to resolve one itself.
  */
 
-import { and, count, desc, eq, inArray, type SQL } from 'drizzle-orm';
+import type { AgentReportView } from '@forge/contracts/agent-reports';
+import { and, count, desc, eq, inArray, isNotNull, type SQL } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type AgentReportKind,
@@ -15,6 +16,10 @@ import {
   issues,
   projects,
 } from '../db/schema.js';
+import { feedback } from '../db/schema-feedback.js';
+import { reportLinksOf } from '../feedback/about.js';
+import type { Refusal } from '../lib/refusal.js';
+import { promotedRefusals } from './rules.js';
 
 export const reportColumns = {
   id: agentReports.id,
@@ -35,6 +40,7 @@ export const reportColumns = {
   sessionId: agentReports.sessionId,
   reviewedAt: agentReports.reviewedAt,
   linkedIssueId: agentReports.linkedIssueId,
+  feedbackId: agentReports.feedbackId,
   createdAt: agentReports.createdAt,
 } as const;
 
@@ -87,16 +93,58 @@ export async function insertReport(values: NewAgentReport): Promise<string | nul
   return row?.id ?? null;
 }
 
-export async function stampReviewed(scope: Array<SQL | undefined>, patch: Record<string, unknown>) {
-  return db
+type ReportRow = Awaited<ReturnType<typeof listReports>>[number];
+
+export async function reportViews(rows: readonly ReportRow[]): Promise<AgentReportView[]> {
+  const byProject = new Map<string, string[]>();
+  for (const r of rows) {
+    if (r.feedbackId)
+      byProject.set(r.projectId, [...(byProject.get(r.projectId) ?? []), r.feedbackId]);
+  }
+  const links = new Map(
+    (
+      await Promise.all([...byProject].map(([projectId, ids]) => reportLinksOf(projectId, ids)))
+    ).flatMap((m) => [...m]),
+  );
+  return rows.map(({ feedbackId, ...r }) => ({
+    ...r,
+    reviewedAt: r.reviewedAt?.toISOString() ?? null,
+    createdAt: r.createdAt.toISOString(),
+    feedback: feedbackId ? (links.get(feedbackId) ?? null) : null,
+  }));
+}
+
+export type ReviewOutcome =
+  | { ok: true; rows: { id: string; reviewedAt: Date | null; linkedIssueId: string | null }[] }
+  | { ok: false; refusals: Refusal[] };
+
+export async function stampReviewed(
+  scope: Array<SQL | undefined>,
+  patch: { reviewed: boolean; linkedIssueId?: string | null },
+): Promise<ReviewOutcome> {
+  const touchesRoute = !patch.reviewed || typeof patch.linkedIssueId === 'string';
+  const promoted = touchesRoute
+    ? await db
+        .select({ id: agentReports.id, seq: feedback.fbSeq })
+        .from(agentReports)
+        .innerJoin(feedback, eq(feedback.id, agentReports.feedbackId))
+        .where(and(...scope, isNotNull(agentReports.feedbackId)))
+    : [];
+  const refusals = promotedRefusals(promoted, patch.reviewed);
+  if (refusals.length > 0) return { ok: false, refusals };
+  const rows = await db
     .update(agentReports)
-    .set(patch)
+    .set({
+      reviewedAt: patch.reviewed ? new Date() : null,
+      ...(patch.linkedIssueId !== undefined ? { linkedIssueId: patch.linkedIssueId } : {}),
+    })
     .where(and(...scope))
     .returning({
       id: agentReports.id,
       reviewedAt: agentReports.reviewedAt,
       linkedIssueId: agentReports.linkedIssueId,
     });
+  return { ok: true, rows };
 }
 
 export type { AgentReportKind, AgentReportSeverity, AgentReportTarget };

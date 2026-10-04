@@ -1,45 +1,81 @@
 "use client";
 
 // The at-a-glance facts of one requirement: status and whose turn, lifecycle, owner, revision,
-// coverage, issues, open feedback, designs, needs and dates. The full page's sticky rail and the peek
+// coverage, issues, feedback, designs, needs and dates. The full page's sticky rail and the peek
 // draw this one component through the shared FactsGroup/Fact rows, so the main column never repeats a
 // fact and both surfaces read the same.
 
 import Link from "next/link";
-import { ActorChip, Fact, FactsEmpty, FactsGroup, LEGEND, StatusBadge, Tooltip, WaitingOn } from "@/design";
-import { useFeedbackList } from "@/features/feedback/hooks";
+import { ActorChip, enumLabel, Fact, FactsEmpty, FactsGroup, LEGEND, StatusBadge, Tooltip, WaitingOn } from "@/design";
+import { FeedbackRailItem } from "@/features/feedback/components/feedback-rail-item";
 import { feedbackHref } from "@/features/feedback/routes";
 import { issueHref } from "@/features/issues/routes";
 import { workflowHref } from "@/features/workflows/routes";
 import { formatRelativeTime, formatStamp as stamp } from "@/lib/utils/format";
-import type { RequirementDetail } from "../types";
+import { requirementHref } from "../routes";
+import type { RequirementDetail, RequirementFeedbackItem } from "../types";
 import { CoverageSummary, Stepper, waitingView } from "./standing-bits";
 
-/** Feedback about this requirement that is not yet verified or declined (ISS-59's target arc). */
-function OpenFeedback({ projectId, slug, reqKey }: { projectId: string; slug: string; reqKey: string }) {
-  const q = useFeedbackList(projectId);
-  const open = (q.data?.feedback ?? []).filter((f) => f.target.type === "requirement" && f.target.key === reqKey && f.attention !== "done");
-  if (q.isLoading) return null;
+const VIA_LABEL: Record<RequirementFeedbackItem["via"]["type"], string> = {
+  requirement: "",
+  issue: "On",
+  workflow: "On design",
+  release: "On release",
+  route: "Carried by",
+};
+
+function FeedbackRow({ f, slug }: { f: RequirementFeedbackItem; slug: string }) {
+  const r = f.route;
+  const carrier = r?.key && (r.route === "issue" || r.route === "new_requirement" || r.route === "duplicate") ? r.key : null;
+  const carrierHref = carrier && r ? (r.route === "issue" ? issueHref(slug, carrier) : r.route === "new_requirement" ? requirementHref(slug, carrier) : feedbackHref(slug, carrier)) : null;
+  const via = f.via.type === "requirement" || f.via.type === "route" ? null : `${VIA_LABEL[f.via.type]} ${f.via.key}`;
   return (
-    <FactsGroup title="Open feedback" count={open.length ? `Open ${open.length}` : undefined} testId="facts-feedback">
-      {q.isError ? (
-        <FactsEmpty>Feedback could not be read.</FactsEmpty>
-      ) : open.length === 0 ? (
-        <FactsEmpty>No open feedback about it.</FactsEmpty>
+    <FeedbackRailItem slug={slug} itemKey={f.key} title={f.title} phase={f.phase}>
+      {via || r ? (
+        <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-12 text-muted" data-testid="rail-feedback-route">
+          {via ? <span>{via}</span> : null}
+          {via && r ? <span aria-hidden>·</span> : null}
+          {r ? <span>{enumLabel("feedbackRoute", r.route)}</span> : null}
+          {carrier && carrierHref ? (
+            <Link href={carrierHref} className="font-mono text-link hover:underline">
+              {carrier}
+            </Link>
+          ) : null}
+        </span>
+      ) : null}
+    </FeedbackRailItem>
+  );
+}
+
+function FeedbackFacts({ items, slug }: { items: RequirementFeedbackItem[]; slug: string }) {
+  const open = items.filter((f) => f.open);
+  const closed = items.filter((f) => !f.open);
+  return (
+    <FactsGroup title="Feedback" count={items.length ? `Open ${open.length} of ${items.length}` : undefined} testId="facts-feedback">
+      {items.length === 0 ? (
+        <FactsEmpty>No feedback about it.</FactsEmpty>
       ) : (
-        <ul className="grid gap-1">
-          {open.map((f) => (
-            <li key={f.id} className="flex min-w-0 items-center gap-1.5 text-13" data-testid="rail-feedback">
-              <Link href={feedbackHref(slug, f.key)} className="flex-none font-mono text-12 font-semibold text-link hover:underline">
-                {f.key}
-              </Link>
-              <span className="min-w-0 flex-1 truncate" title={f.title}>
-                {f.title}
-              </span>
-              <StatusBadge family="feedbackPhase" value={f.phase} />
-            </li>
-          ))}
-        </ul>
+        <>
+          {open.length ? (
+            <ul className="grid gap-1.5">
+              {open.map((f) => (
+                <FeedbackRow key={f.id} f={f} slug={slug} />
+              ))}
+            </ul>
+          ) : (
+            <FactsEmpty>No open feedback.</FactsEmpty>
+          )}
+          {closed.length ? (
+            <details className="mt-2" data-testid="rail-feedback-closed">
+              <summary className="cursor-pointer select-none text-12-5 font-medium text-muted hover:text-fg">Closed {closed.length}</summary>
+              <ul className="mt-1.5 grid gap-1.5">
+                {closed.map((f) => (
+                  <FeedbackRow key={f.id} f={f} slug={slug} />
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </>
       )}
     </FactsGroup>
   );
@@ -47,12 +83,10 @@ function OpenFeedback({ projectId, slug, reqKey }: { projectId: string; slug: st
 
 export function RequirementFacts({
   d,
-  projectId,
   slug,
   onOpenRevisions,
 }: {
   d: RequirementDetail;
-  projectId: string;
   slug: string;
   /** Opens the revisions view; the peek, which has none, leaves it out and the revision reads as text. */
   onOpenRevisions?: () => void;
@@ -122,7 +156,7 @@ export function RequirementFacts({
         )}
       </FactsGroup>
 
-      <OpenFeedback projectId={projectId} slug={slug} reqKey={d.key} />
+      <FeedbackFacts items={d.feedback} slug={slug} />
 
       <FactsGroup title="Design" testId="facts-design">
         {d.workflows.length === 0 ? (

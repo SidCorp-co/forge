@@ -8,13 +8,16 @@ export type {
   FeedbackKind,
   FeedbackListResponse,
   FeedbackPhase,
+  FeedbackPromoteEffect,
   FeedbackResponse,
   FeedbackRoute,
   FeedbackSeverity,
+  FeedbackSourceView,
   FeedbackSummary,
   FeedbackTargetType,
   FeedbackTriage,
   FeedbackView,
+  PromoteAgentReportRequest,
   SimilarFeedbackResponse,
 } from "@forge/contracts/feedback";
 

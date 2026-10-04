@@ -1,12 +1,13 @@
 import type { IssueStatusTone } from "@forge/contracts/issue-vocabulary";
 import type {
   RequirementDeferral,
+  RequirementFeedbackItem,
   RequirementHistoryEntry,
   RequirementStanding,
   RequirementStatus,
 } from '@forge/contracts/requirements';
 
-export type { RequirementStatus };
+export type { RequirementFeedbackItem, RequirementStatus };
 export type RevisionState = 'draft' | 'proposed' | 'current' | 'superseded';
 export type DeliveryPhase = 'agreed' | 'in_delivery' | 'delivered';
 export interface RequirementSpec { goal?: string; personas?: string[]; scopeIn?: string[]; scopeOut?: string[] }
@@ -53,6 +54,7 @@ export interface RequirementDetail extends RequirementSummary {
   history: RequirementHistoryEntry[];  // newest first
   readiness: { revision: number; ready: boolean; failed: string[]; suggestionId: string; decidedAt: string | null } | null;
   deferral: RequirementDeferral | null; // the defer it stands on, while deferred
+  feedback: RequirementFeedbackItem[];
 }
 
 export interface RequirementList { requirements: RequirementSummary[]; returned: number }

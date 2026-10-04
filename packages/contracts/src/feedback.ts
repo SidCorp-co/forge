@@ -3,6 +3,11 @@
 // request schemas and the response shapes from here.
 
 import { z } from "zod";
+import type {
+	AgentReportKind,
+	AgentReportSeverity,
+	AgentReportTarget,
+} from "./agent-reports.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 
 /** What the reporter says it is; `contract_change` is filed by core for a breaking version (E3). */
@@ -79,6 +84,7 @@ export const FEEDBACK_DECISIONS = [
 	"verified",
 	"reopened",
 	"redacted",
+	"promoted",
 ] as const;
 export type FeedbackDecision = (typeof FEEDBACK_DECISIONS)[number];
 
@@ -125,6 +131,7 @@ export const FEEDBACK_DECISION_LABELS: Record<FeedbackDecision, string> = {
 	verified: "Verified",
 	reopened: "Reopened",
 	redacted: "Reporter data deleted",
+	promoted: "Promoted from an agent report",
 };
 
 export const FEEDBACK_TARGET_LABELS: Record<FeedbackTargetType, string> = {
@@ -242,6 +249,9 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_VERIFY_FORBIDDEN",
 	"FEEDBACK_REDACT_FORBIDDEN",
 	"FEEDBACK_SEARCH_WITHHELD",
+	"FEEDBACK_SOURCE_ALREADY_PROMOTED",
+	"FEEDBACK_SOURCE_NOT_IN_PROJECT",
+	"FEEDBACK_SOURCE_ROUTED_ELSEWHERE",
 ] as const;
 export type FeedbackRefusalCode = (typeof FEEDBACK_REFUSAL_CODES)[number];
 
@@ -301,6 +311,20 @@ export const feedbackTriageSchema = z.strictObject({
 export type FeedbackTriage = z.infer<typeof feedbackTriageSchema>;
 export const FEEDBACK_TRIAGE_SHAPE = `{ route: ${FEEDBACK_ROUTES.join(" | ")}, issue? | createIssue?: { title?, description? } | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? }`;
 
+export const promoteAgentReportRequestSchema = z.strictObject({
+	agentReport: z.uuid(),
+	kind: z.enum(FEEDBACK_KINDS),
+	severity: z.enum(FEEDBACK_SEVERITIES).optional(),
+	title: z.string().trim().min(1).max(FEEDBACK_LIMITS.title).optional(),
+	body: z.string().max(FEEDBACK_LIMITS.body).optional(),
+	whereSeen: z.string().trim().max(FEEDBACK_LIMITS.whereSeen).optional(),
+	...feedbackTargetFields,
+});
+export type PromoteAgentReportRequest = z.infer<
+	typeof promoteAgentReportRequestSchema
+>;
+export const PROMOTE_AGENT_REPORT_SHAPE = `{ agentReport: uuid, kind: ${FEEDBACK_KINDS.join(" | ")}, title?, body?, severity?, whereSeen?, exactly one of requirement | issue | release | workflow | screen }`;
+
 /** `POST …/feedback/:fb/decline` and `…/reopen`: the reason the reporter reads. */
 export const feedbackReasonRequestSchema = z.strictObject({ reason });
 export const FEEDBACK_REASON_SHAPE = "{ reason } says why";
@@ -348,6 +372,7 @@ export const listFeedbackQuerySchema = z.strictObject({
 		.transform((s) => (s ? s.split(",") : undefined))
 		.pipe(z.array(z.enum(FEEDBACK_PHASES)).optional()),
 	q: z.string().max(200).optional(),
+	requirement: z.string().trim().min(1).max(64).optional(),
 });
 
 export interface FeedbackTargetView {
@@ -376,6 +401,17 @@ export interface FeedbackDecisionView {
 	decidedAgency: "human" | "agent";
 	decidedAt: string;
 	fromSuggestionId: string | null;
+}
+
+export interface FeedbackSourceView {
+	agentReport: {
+		id: string;
+		kind: AgentReportKind;
+		severity: AgentReportSeverity;
+		target: AgentReportTarget;
+		targetRef: string | null;
+		createdAt: string;
+	};
 }
 
 export interface FeedbackAttachmentView {
@@ -434,6 +470,7 @@ export interface FeedbackView extends FeedbackSummary {
 	whereSeen: string | null;
 	duplicateOf: string | null;
 	duplicates: string[];
+	source: FeedbackSourceView | null;
 	decisions: FeedbackDecisionView[];
 	attachments: FeedbackAttachmentView[];
 	clarification: {
@@ -475,6 +512,12 @@ export interface SimilarFeedbackResponse {
 		phase: FeedbackPhase;
 		similarity: number;
 	}[];
+}
+
+export interface FeedbackPromoteEffect {
+	feedback: string;
+	agentReport: string;
+	copied: ("title" | "body")[];
 }
 
 /** What a triage accept wrote, read back for the caller. */

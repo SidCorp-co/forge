@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { feedbackApi } from "./api";
-import type { CreateFeedbackRequest, FeedbackAction, FeedbackResponse } from "./types";
+import type { CreateFeedbackRequest, FeedbackAction, FeedbackResponse, PromoteAgentReportRequest } from "./types";
 
 export function useFeedbackList(projectId: string | undefined) {
   return useQuery({
@@ -45,6 +45,18 @@ export function useCreateFeedback(projectId: string) {
   return useMutation({
     mutationFn: (body: CreateFeedbackRequest) => feedbackApi.create(projectId, body),
     onSettled: invalidate,
+  });
+}
+
+export function usePromoteFeedback(projectId: string) {
+  const qc = useQueryClient();
+  const invalidate = useInvalidate(projectId);
+  return useMutation({
+    mutationFn: (body: PromoteAgentReportRequest) => feedbackApi.promote(projectId, body),
+    onSettled: () => {
+      invalidate();
+      qc.invalidateQueries({ queryKey: ["agent-reports", projectId] });
+    },
   });
 }
 

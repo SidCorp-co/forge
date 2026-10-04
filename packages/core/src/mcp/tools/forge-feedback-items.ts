@@ -12,11 +12,13 @@ import {
   FEEDBACK_ROUTES,
   FEEDBACK_SEVERITIES,
   feedbackTriageSchema,
+  promoteAgentReportRequestSchema,
 } from '@forge/contracts/feedback';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { askClarification } from '../../feedback/attachments.js';
 import { similarFeedbackAs } from '../../feedback/embeddings.js';
+import { promoteAgentReport } from '../../feedback/promote.js';
 import { detailAs, type FeedbackActor, listFeedbackAs, rowIn } from '../../feedback/read.js';
 import {
   createFeedback,
@@ -44,6 +46,7 @@ const ACTIONS = [
   'get',
   'similar',
   'create',
+  'promote',
   'propose_triage',
   'triage',
   'decline',
@@ -60,6 +63,7 @@ const inputSchema = z
     projectId: z.uuid().optional(),
     /** The item: uuid or FB-n. */
     feedback: z.string().trim().min(1).max(64).optional(),
+    agentReport: z.uuid().optional(),
     kind: z.enum(FEEDBACK_KINDS).optional(),
     severity: z.enum(FEEDBACK_SEVERITIES).optional(),
     title: z.string().optional(),
@@ -91,6 +95,7 @@ const GRANTS = {
     get: 'projects:read',
     similar: 'projects:read',
     create: write,
+    promote: write,
     propose_triage: write,
     triage: write,
     decline: write,
@@ -107,6 +112,10 @@ const DESCRIPTION =
   `deprecated name of forge_agent_report. Actions: ${ACTIONS.join(' | ')}. ` +
   `create: { kind: ${FEEDBACK_KINDS.join(' | ')}, title, body?, severity?, whereSeen?, exactly one of requirement | issue | release | workflow | screen }; ` +
   'a target outside the project is FEEDBACK_TARGET_UNKNOWN / FEEDBACK_TARGET_NOT_IN_PROJECT, two targets FEEDBACK_TARGET_NOT_ONE. ' +
+  "promote: { agentReport, kind, the create fields } turns an agent report of this project into FB-n, title and body defaulting to the report's " +
+  'summary and detail (`effect.copied` names what was copied); the report keeps the reference and reads back the item. A second promotion is ' +
+  "FEEDBACK_SOURCE_ALREADY_PROMOTED naming the item, another project's report FEEDBACK_SOURCE_NOT_IN_PROJECT, a report curated into an issue " +
+  'FEEDBACK_SOURCE_ROUTED_ELSEWHERE. ' +
   'On a sensitive project the text is scrubbed on write; on a no_egress one every answer here carries metadata only. ' +
   `propose_triage: { feedback, triage: { route: ${FEEDBACK_ROUTES.join(' | ')}, issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? } } ` +
   'writes a feedback_triage suggestion a person accepts (forge_suggestions accept); an agent proposes, never routes. ' +
@@ -115,7 +124,7 @@ const DESCRIPTION =
   'duplicate refuses FEEDBACK_DUPLICATE_CHAIN when the root is itself a duplicate. clarify { prompt, needed }: one open question to the ' +
   'reporter per item (FEEDBACK_CLARIFICATION_ALREADY_OPEN); its answer becomes a suggestion, never an edit. ' +
   'delete_reporter_data: a project admin person deletes text, attachments and embedding, keeping the row. ' +
-  'list: { phase?, q? } answers the derived phase and who each item waits on; similar: { feedback } compares stored vectors.';
+  'list: { phase?, q?, requirement? } answers the derived phase and who each item waits on; similar: { feedback } compares stored vectors.';
 
 function need<K extends keyof Input>(input: Input, key: K): NonNullable<Input[K]> {
   const value = input[key];
@@ -147,7 +156,12 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
   const item = () => need(input, 'feedback');
   switch (input.action) {
     case 'list': {
-      const out = await listFeedbackAs(actor, projectId, { phases: input.phase, q: input.q }, door);
+      const out = await listFeedbackAs(
+        actor,
+        projectId,
+        { phases: input.phase, q: input.q, requirement: input.requirement },
+        door,
+      );
       return out.ok ? out.list : refusedBy(out.refusals);
     }
     case 'get':
@@ -168,6 +182,27 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         screen: input.screen,
       });
       return settle(await createFeedback({ projectId, actor, request }), actor, projectId);
+    }
+    case 'promote': {
+      const request = promoteAgentReportRequestSchema.parse({
+        agentReport: need(input, 'agentReport'),
+        kind: input.kind,
+        title: input.title,
+        body: input.body,
+        severity: input.severity,
+        whereSeen: input.whereSeen,
+        requirement: input.requirement,
+        issue: input.issue,
+        release: input.release,
+        workflow: input.workflow,
+        screen: input.screen,
+      });
+      const out = await promoteAgentReport({ projectId, actor, request });
+      if (!out.ok) return refusedBy(out.refusals);
+      return {
+        feedback: await detailAs(actor, projectId, out.feedback.id, door),
+        effect: out.effect,
+      };
     }
     case 'propose_triage': {
       const row = await rowIn(db, projectId, item());

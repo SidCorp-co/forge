@@ -694,6 +694,7 @@ describe('agentReports table (ISS-552 C1)', () => {
         'session_id',
         'reviewed_at',
         'linked_issue_id',
+        'feedback_id',
         'created_at',
       ].sort(),
     );
