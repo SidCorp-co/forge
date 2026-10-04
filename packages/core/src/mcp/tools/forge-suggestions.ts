@@ -47,6 +47,8 @@ const inputSchema = z
     issue: z.string().trim().min(1).max(200).optional(),
     /** Or a feedback item (uuid or FB-n), for a feedback_triage suggestion. */
     feedback: z.string().trim().min(1).max(64).optional(),
+    /** Or a workflow (uuid or flow), for a design_change suggestion. */
+    workflow: z.string().trim().min(1).max(200).optional(),
     suggestionId: z.uuid().optional(),
     kind: z.enum(SUGGESTION_KINDS).optional(),
     baseRevision: z.number().int().min(1).nullable().optional(),
@@ -90,6 +92,7 @@ const DESCRIPTION =
   'the base revision lacks or a blocker cycle, SUGGESTION_BLOCKER_UNKNOWN, SUGGESTION_BLOCKER_TERMINAL), and accepting it files ' +
   'every issue at draft, linked, traced and edged, in one transaction; ' +
   'triage { note, priority?, category?, route? } on an issue; duplicate { duplicateOf, similarity?, note? }; ' +
+  'design_change on `workflow` (uuid or flow), baseRevision null: { steps?, edges?: [{ from, to, label? }], change: change | remove | rewire, reason }; a node the latest revision does not hold is WORKFLOW_NODE_UNKNOWN, and accepting it writes nothing into the design. ' +
   'feedback_triage on `feedback` (FB-n), baseRevision null: { route: issue | revision | new_requirement | answer | duplicate, issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? }; accepting it writes the route (forge_feedback_items). ' +
   'accept { suggestionId, reason? } and reject { suggestionId, reason } are a person’s acts (SUGGESTION_ACCEPT_FORBIDDEN for an agent); ' +
   'an accept’s reason is kept on the suggestion, and is where the authority behind it is named. ' +
@@ -123,9 +126,10 @@ const settle = (input: Input, outcome: SuggestionOutcome) =>
     : refusedBy(outcome.refusals);
 
 function targetOf(input: Input): SuggestionTargetRef | undefined {
-  if ([input.requirement, input.issue, input.feedback].filter(Boolean).length > 1) {
-    throw new Error('BAD_REQUEST: name one target, `requirement`, `issue` or `feedback`');
+  if ([input.requirement, input.issue, input.feedback, input.workflow].filter(Boolean).length > 1) {
+    throw new Error('BAD_REQUEST: name one target, `requirement`, `issue`, `feedback` or `workflow`');
   }
+  if (input.workflow) return { workflow: input.workflow };
   if (input.requirement) return { requirement: input.requirement };
   if (input.issue) return { issue: input.issue };
   if (input.feedback) return { feedback: input.feedback };
@@ -171,7 +175,7 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
     case 'create': {
       const target = targetOf(input);
       if (!target)
-        throw new Error('BAD_REQUEST: create needs `requirement`, `issue` or `feedback`');
+        throw new Error('BAD_REQUEST: create needs `requirement`, `issue`, `feedback` or `workflow`');
       return settle(
         input,
         await createSuggestion({

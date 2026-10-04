@@ -1,25 +1,62 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { agentsApi } from "./api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { runsApi } from "./api";
+import type { RunStandingScope } from "./types";
 
-const RUN_SESSIONS_POLL_MS = 20_000;
+const RUNS_POLL_MS = 20_000;
 
-export function useRunStanding(projectId: string | undefined) {
+/** Every key the runs read model answers under; a write that moves a run invalidates it. */
+export const runsKey = (projectId: string | undefined) => ["runs-standing", projectId] as const;
+
+export function useRunStanding(projectId: string | undefined, scope: RunStandingScope) {
   return useQuery({
-    queryKey: ["runs-standing", projectId, "live"],
-    queryFn: () => agentsApi.runStanding(projectId as string),
+    queryKey: [...runsKey(projectId), "list", scope],
+    queryFn: () => runsApi.standing(projectId as string, scope),
     enabled: !!projectId,
-    refetchInterval: RUN_SESSIONS_POLL_MS,
+    refetchInterval: RUNS_POLL_MS,
   });
 }
 
-/** The fleet's runs for one project. Keyed `['run-sessions',projectId]`. */
-export function useRunSessions(projectId: string | undefined) {
+export function useRunDetail(projectId: string | undefined, runId: string) {
   return useQuery({
-    queryKey: ["run-sessions", projectId],
-    queryFn: () => agentsApi.runSessions(projectId as string),
+    queryKey: [...runsKey(projectId), "run", runId],
+    queryFn: () => runsApi.run(projectId as string, runId),
+    enabled: !!projectId && !!runId,
+    refetchInterval: RUNS_POLL_MS,
+  });
+}
+
+export function useMasterStanding(projectId: string | undefined) {
+  return useQuery({
+    queryKey: [...runsKey(projectId), "master"],
+    queryFn: () => runsApi.master(projectId as string),
     enabled: !!projectId,
-    refetchInterval: RUN_SESSIONS_POLL_MS,
+    refetchInterval: RUNS_POLL_MS,
+  });
+}
+
+export function useMasterPasses(projectId: string | undefined) {
+  return useQuery({
+    queryKey: [...runsKey(projectId), "passes"],
+    queryFn: () => runsApi.passes(projectId as string),
+    enabled: !!projectId,
+    refetchInterval: RUNS_POLL_MS,
+  });
+}
+
+export function useMasterCharter(projectId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: [...runsKey(projectId), "charter"],
+    queryFn: () => runsApi.charter(projectId as string),
+    enabled: enabled && !!projectId,
+  });
+}
+
+export function useCancelRun(projectId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (runId: string) => runsApi.cancel(runId),
+    onSettled: () => qc.invalidateQueries({ queryKey: runsKey(projectId) }),
   });
 }

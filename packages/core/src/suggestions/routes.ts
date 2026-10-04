@@ -63,10 +63,12 @@ function targetOf(v: {
   requirement?: string | undefined;
   issue?: string | undefined;
   feedback?: string | undefined;
+  workflow?: string | undefined;
 }): SuggestionTargetRef | undefined {
-  if ([v.requirement, v.issue, v.feedback].filter(Boolean).length > 1) {
-    throw badRequest('name one target: `requirement`, `issue` or `feedback`');
+  if ([v.requirement, v.issue, v.feedback, v.workflow].filter(Boolean).length > 1) {
+    throw badRequest('name one target: `requirement`, `issue`, `feedback` or `workflow`');
   }
+  if (v.workflow) return { workflow: v.workflow };
   if (v.requirement) return { requirement: v.requirement };
   if (v.issue) return { issue: v.issue };
   if (v.feedback) return { feedback: v.feedback };
@@ -79,7 +81,7 @@ suggestionRoutes.get(
   zValidator('query', listSuggestionsQuerySchema, (r) => {
     if (!r.success)
       throw badRequest(
-        `invalid query: requirement?, issue?, feedback?, status? (comma-separated: ${SUGGESTION_STATUSES.join(', ')}), view? (summary | full, full by default)`,
+        `invalid query: requirement?, issue?, feedback?, workflow?, status? (comma-separated: ${SUGGESTION_STATUSES.join(', ')}), view? (summary | full, full by default)`,
       );
   }),
   async (c) => {

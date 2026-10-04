@@ -2,7 +2,7 @@
 
 import { AutomationScreen } from "@/features/automation/components/automation-screen";
 import { canWriteProject } from "@/features/projects/write-access";
-import { ProjectGate } from "./project-gate";
+import { ProjectGate } from "@/features/projects/components/project-gate";
 
 export default function ProjectAutomationPage() {
   return (

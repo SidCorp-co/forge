@@ -4,6 +4,7 @@
  * target or a carrier with. Phases come from `rules.ts:phaseOf`; nothing here stores one.
  */
 
+import type { NodeRef } from '@forge/contracts/workflow-health';
 import type {
   FeedbackAttention,
   FeedbackDecisionView,
@@ -265,7 +266,23 @@ function targetView(r: Row, l: Linked): FeedbackTargetView {
   }
   if (type === 'workflow') {
     const w = l.workflows.get(r.workflowId as string);
-    return { type, key: w?.flow ?? (r.workflowId as string), title: w?.title ?? null };
+    const node: NodeRef | null = r.stepId
+      ? { step: r.stepId }
+      : r.edgeFrom && r.edgeTo
+        ? {
+            edge: {
+              from: r.edgeFrom,
+              to: r.edgeTo,
+              ...(r.edgeLabel ? { label: r.edgeLabel } : {}),
+            },
+          }
+        : null;
+    return {
+      type,
+      key: w?.flow ?? (r.workflowId as string),
+      title: w?.title ?? null,
+      ...(node ? { node } : {}),
+    };
   }
   if (type === 'contract') {
     const provider = l.providers.get(r.contractProviderProjectId as string);

@@ -8,7 +8,11 @@
 
 import type { FailureCause } from "./failure-causes.js";
 import type { IssueLeaseVerdict } from "./issue-standing.js";
-import type { KernelIssueStatus, WorkStep } from "./issue-vocabulary.js";
+import type {
+	IssueStatusTone,
+	KernelIssueStatus,
+	WorkStep,
+} from "./issue-vocabulary.js";
 import type { MasterStanding } from "./master-standing.js";
 import { pickFields } from "./projection.js";
 
@@ -99,6 +103,83 @@ export type RunActorType = (typeof RUN_ACTOR_TYPES)[number];
 
 export const RUN_STANDING_SCOPES = ["live", "finished", "all"] as const;
 export type RunStandingScope = (typeof RUN_STANDING_SCOPES)[number];
+
+/** The list groups by attention, Needs you first; `waiting` holds a person wait owed by someone else. */
+export const RUN_GROUPS = [
+	"needs_you",
+	"waiting",
+	"stuck",
+	"running",
+	"waiting_gate",
+	"queued",
+	"finished",
+] as const;
+export type RunGroup = (typeof RUN_GROUPS)[number];
+
+export interface RunGroupLabel {
+	label: string;
+	hint: string;
+	tone: IssueStatusTone;
+	collapsed: boolean;
+}
+
+export const RUN_GROUP_LABELS: Record<RunGroup, RunGroupLabel> = {
+	needs_you: {
+		label: "Needs you",
+		hint: "Answer or approve; the run holds no slot meanwhile",
+		tone: "you",
+		collapsed: false,
+	},
+	waiting: {
+		label: "Waiting on someone else",
+		hint: "A named person owes the next act",
+		tone: "neutral",
+		collapsed: false,
+	},
+	stuck: {
+		label: "Stuck",
+		hint: "Silent, lease expired, or the box and core disagree",
+		tone: "err",
+		collapsed: false,
+	},
+	running: {
+		label: "Running",
+		hint: "Holds the lease and beats",
+		tone: "run",
+		collapsed: false,
+	},
+	waiting_gate: {
+		label: "Waiting on a gate",
+		hint: "Resumes by itself",
+		tone: "blocked",
+		collapsed: false,
+	},
+	queued: {
+		label: "Queued",
+		hint: "Admitted; waits for the master or a slot",
+		tone: "ready",
+		collapsed: false,
+	},
+	finished: {
+		label: "Finished",
+		hint: "Done, failed, cancelled or handed back",
+		tone: "done",
+		collapsed: true,
+	},
+};
+
+/** The row the list draws above every run group, read from `master` beside the items. */
+export const RUN_MASTER_GROUP: RunGroupLabel = {
+	label: "Project master",
+	hint: "What the master is doing now",
+	tone: "neutral",
+	collapsed: false,
+};
+
+export const RUN_EVENT_ENTITIES = ["run", "session", "job"] as const;
+export type RunEventEntity = (typeof RUN_EVENT_ENTITIES)[number];
+
+export const RUN_EVENTS_MAX = 200;
 
 export const RUN_STANDING_LIST_DEFAULT = 50;
 export const RUN_STANDING_LIST_MAX = 200;
@@ -299,6 +380,13 @@ export interface RunDeployLock {
 	reclaimedFromRunId: string | null;
 }
 
+/** The job behind a run, where one exists: its type and its own status. */
+export interface RunJob {
+	id: string;
+	type: string;
+	status: string;
+}
+
 export interface RunStanding {
 	id: string;
 	projectId: string;
@@ -318,12 +406,14 @@ export interface RunStanding {
 	holder: RunHolder;
 	waitingOn: RunWaitingOn;
 	needsViewer: boolean;
+	attentionGroup: RunGroup;
 	outcome: RunOutcome | null;
 	master: RunMasterRef;
 	stuck: RunStuck;
 	release: RunRelease | null;
 	deployLocks: RunDeployLock[];
 	pipelineStatus: string;
+	job: RunJob | null;
 	startedAt: string;
 	finishedAt: string | null;
 }
@@ -349,6 +439,8 @@ export interface RunStandingList {
 		finished: number;
 		liveByState: Record<RunLiveState, number>;
 		needsViewer: number;
+		/** Live runs whose holder is held: an issue lease, a claim or a deploy lock. */
+		held: number;
 	};
 	excluded: RunExcluded[];
 	master: MasterStanding;
@@ -362,10 +454,28 @@ export interface RunAttemptRow {
 	finishedAt: string | null;
 }
 
+/** One kernel_transitions row of the run, its root session or its job, oldest first. */
+export interface RunEvent {
+	id: string;
+	at: string;
+	entity: RunEventEntity;
+	from: string | null;
+	to: string;
+	reason: string | null;
+	actor: {
+		type: RunActorType;
+		agency: "human" | "agent";
+		name: string | null;
+	};
+	source: string;
+}
+
 export interface RunStandingDetail {
 	generatedAt: string;
 	run: RunStanding;
 	attempts: RunAttemptRow[];
+	events: RunEvent[];
+	eventsHasMore: boolean;
 }
 
 export const RUN_SUMMARY_FIELDS = [

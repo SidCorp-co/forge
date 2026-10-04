@@ -10,7 +10,7 @@ export interface WfEdgeData extends Record<string, unknown> {
   d: string;
   kind: TemplateEdgeKind;
   label: string;
-  /** The untrimmed condition when `label` cuts it short or names it in other words. */
+  /** The untrimmed condition when `label` cuts it short or names it in other words; on a merged line, every line it stands for. */
   full: string | null;
   /** The contract line shown under the label in the Contract view. */
   detail: string | null;
@@ -48,7 +48,7 @@ function WfEdge({ id, data, markerEnd }: EdgeProps & { data: WfEdgeData }) {
             data-return={data.isReturn}
             data-on={data.on}
             data-rel={!data.dim}
-            title={data.merged ? "Lines between folded stages — click to open both" : (data.full ?? data.kind.tooltip)}
+            title={data.merged ? `${data.full ?? ""}\nClick to open both stages` : (data.full ?? data.kind.tooltip)}
             style={{
               ["--tc" as string]: edgeHue(data.kind),
               transform: `translate(-50%, -50%) translate(${data.labelAt.x}px, ${data.labelAt.y}px)`,

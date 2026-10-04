@@ -6,8 +6,15 @@
 import type { AgentReportTriage } from "./agent-reports.js";
 import type { ScheduleState } from "./automation-standing.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
-import type { MasterState } from "./master-standing.js";
-import type { RunState } from "./run-standing.js";
+import type { MasterState, MasterVerb } from "./master-standing.js";
+import type {
+	RunActorType,
+	RunEventEntity,
+	RunExpirySource,
+	RunHandbackClose,
+	RunLane,
+	RunState,
+} from "./run-standing.js";
 import type {
 	ScheduleKind,
 	ScheduleRunSkipReason,
@@ -316,6 +323,7 @@ export const ENUM_LABELS = {
 		reconcile: "Reconcile",
 		verify_skill: "Verify skill",
 		drive: "Drive",
+		onboarding: "Onboarding",
 	},
 	changeKind: {
 		added: "Added",
@@ -502,6 +510,54 @@ export const ENUM_LABELS = {
 		stranded: "Stranded",
 		overdue: "Gate overdue",
 	},
+	runLane: {
+		issue: "Issue run",
+		release: "Release",
+		deploy: "Deploy",
+		job: "Job",
+	} satisfies Record<RunLane, string>,
+	masterVerb: {
+		triage: "Triage",
+		dispatch: "Dispatch",
+		fold: "Fold",
+		judge: "Judge",
+		release: "Release",
+		park: "Park",
+	} satisfies Record<MasterVerb, string>,
+	runExpirySource: {
+		claim: "Claim",
+		silence_reap: "Silence reap",
+		deploy_lock: "Deploy lock",
+	} satisfies Record<RunExpirySource, string>,
+	runHandbackClose: {
+		ended: "Ended",
+		killed_idle: "Killed idle",
+		died: "Died",
+	} satisfies Record<RunHandbackClose, string>,
+	/** What a run waits on when no person does (core `runs/standing-live.ts` gate arms). */
+	runGate: {
+		all_devices_exhausted: "All devices busy",
+		verify_unavailable: "Verify unavailable",
+		retry_cooldown: "Retry cooldown",
+		issue_busy: "Issue busy",
+		runner_stale: "Runner stale",
+		runner_too_old: "Runner too old",
+		blocked_on_machine: "Blocked on a machine",
+		blocked_on_master_or_peer: "Blocked on another agent",
+		blocked_on_nobody: "Blocked on nobody",
+		paused: "Paused",
+	},
+	runEventEntity: {
+		run: "Run",
+		session: "Session",
+		job: "Job",
+	} satisfies Record<RunEventEntity, string>,
+	runActorType: {
+		user: "Person",
+		system: "Core",
+		runner: "Runner",
+		sweeper: "Sweeper",
+	} satisfies Record<RunActorType, string>,
 	/** What a schedule runs (contracts `schedules.ts:SCHEDULE_KINDS`, plus the PM and improve rows). */
 	scheduleKind: {
 		prompt: "Prompt",

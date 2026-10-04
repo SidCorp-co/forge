@@ -135,10 +135,16 @@ describe("folding and semantic zoom", () => {
     expect(at1.edges.find((e) => e.key === "due>late")?.merged).toBe(false);
   });
 
-  it("names a merged line by how many lines it stands for, never by their conditions", () => {
-    const e = { key: "k", from: "a", to: "b", merged: true, src: c.edges.slice(0, 3) };
-    expect(mergedLabel(e)).toBe("3 links");
-    expect(mergedLabel({ ...e, src: c.edges.slice(0, 1) })).toBe("1 link");
+  it("names a merged line by its first line's words and how many more, never by a count of links (REQ-12 BC-9)", () => {
+    const src = c.edges.slice(0, 3);
+    const e = { key: "k", from: "a", to: "b", merged: true, src };
+    const first = lineLabel(src[0] as Canvas["edges"][number]).text || (src[0] as Canvas["edges"][number]).kind.label;
+    const m = mergedLabel(e, c);
+    expect(m.text).toBe(`${first} +2 more`);
+    expect(m.text).not.toMatch(/\blinks?\b/);
+    expect(m.full.split("\n")).toHaveLength(3);
+    expect(m.full.split("\n")[0]).toBe(`Label ${src[0]?.from} → Label ${src[0]?.to}: ${edgeText(src[0] as Canvas["edges"][number]) || src[0]?.kind.label}`);
+    expect(mergedLabel({ ...e, src: src.slice(0, 1) }, c).text).toBe(first);
   });
 
   it("shows a line's label, else its condition cut short with the whole of it kept for the tooltip", () => {

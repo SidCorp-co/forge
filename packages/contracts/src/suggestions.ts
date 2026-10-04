@@ -10,8 +10,9 @@ import {
 	REGISTRY_ISSUE_PRIORITIES,
 } from "./pipeline-registry.js";
 import { ANSWER_VIEWS, pickFields } from "./projection.js";
+import { designChangePayloadSchema } from "./workflow-health.js";
 
-/** The six kinds rev 2 names, and feedback_triage (workflow feedback-triage, ISS-59); cluster, stale_requirement, conflict, verify and ask_reporter are deferred. */
+/** The six kinds rev 2 names, feedback_triage (workflow feedback-triage, ISS-59) and design_change (workflow step-health, REQ-17 BC-12); cluster, stale_requirement, conflict, verify and ask_reporter are deferred. */
 export const SUGGESTION_KINDS = [
 	"requirement_draft",
 	"revision_diff",
@@ -20,6 +21,7 @@ export const SUGGESTION_KINDS = [
 	"triage",
 	"duplicate",
 	"feedback_triage",
+	"design_change",
 ] as const;
 export type SuggestionKind = (typeof SUGGESTION_KINDS)[number];
 
@@ -74,6 +76,7 @@ export const SUGGESTION_TARGET_TYPES = [
 	"requirement",
 	"issue",
 	"feedback",
+	"workflow",
 ] as const;
 export type SuggestionTargetType = (typeof SUGGESTION_TARGET_TYPES)[number];
 
@@ -114,6 +117,8 @@ export const SUGGESTION_REFUSAL_CODES = [
 	"SUGGESTION_BREAKDOWN_PROPOSE_FORBIDDEN",
 	"SUGGESTION_BREAKDOWN_OPEN",
 	"CLARIFICATION_ALREADY_OPEN",
+	"WORKFLOW_NODE_UNKNOWN",
+	"WORKFLOW_NODE_AMBIGUOUS",
 ] as const;
 export type SuggestionRefusalCode = (typeof SUGGESTION_REFUSAL_CODES)[number];
 
@@ -242,6 +247,10 @@ export const SUGGESTION_PAYLOADS = {
 		targets: ["feedback"],
 		schema: feedbackTriageSchema,
 	},
+	design_change: {
+		targets: ["workflow"],
+		schema: designChangePayloadSchema,
+	},
 	duplicate: {
 		targets: ["requirement", "issue"],
 		schema: z.strictObject({
@@ -259,9 +268,10 @@ const targetFields = {
 	requirement: z.string().trim().min(1).max(64).optional(),
 	issue: z.string().trim().min(1).max(200).optional(),
 	feedback: z.string().trim().min(1).max(64).optional(),
+	workflow: z.string().trim().min(1).max(200).optional(),
 };
 
-/** `POST /api/projects/:id/suggestions` — one of `requirement`, `issue` or `feedback`. */
+/** `POST /api/projects/:id/suggestions` — one of `requirement`, `issue`, `feedback` or `workflow`. */
 export const createSuggestionRequestSchema = z.strictObject({
 	kind: z.enum(SUGGESTION_KINDS),
 	...targetFields,
@@ -272,7 +282,7 @@ export const createSuggestionRequestSchema = z.strictObject({
 export type CreateSuggestionRequest = z.infer<
 	typeof createSuggestionRequestSchema
 >;
-export const CREATE_SUGGESTION_SHAPE = `{ kind: ${SUGGESTION_KINDS.join(" | ")}, requirement | issue | feedback, baseRevision, payload, model? }`;
+export const CREATE_SUGGESTION_SHAPE = `{ kind: ${SUGGESTION_KINDS.join(" | ")}, requirement | issue | feedback | workflow, baseRevision, payload, model? }`;
 
 /** `POST /api/projects/:id/suggestions/:sid/accept` — the person's reason, kept on the row. */
 export const acceptSuggestionRequestSchema = z.strictObject({

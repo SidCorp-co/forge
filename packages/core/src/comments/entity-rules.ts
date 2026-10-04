@@ -170,6 +170,10 @@ export function decisionBody(d: DecisionFields): string {
   if (d.options?.length) lines.push(`**Options considered:** ${d.options.join('; ')}`);
   if (d.authority) lines.push(`**Authority:** ${d.authority}`);
   if (d.reversedWhen) lines.push(`**Reversed when:** ${d.reversedWhen}`);
+  if (d.node) {
+    const at = 'step' in d.node ? d.node.step : `${d.node.edge.from} > ${d.node.edge.to}`;
+    lines.push(`**Node:** ${at}: ${d.node.verdict}`);
+  }
   return lines.join('\n\n');
 }
 
