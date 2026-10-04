@@ -1,1 +1,1 @@
-export { knowledgeEdgeRoutes } from './routes.js';
+export {};

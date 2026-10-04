@@ -4,9 +4,8 @@
  * `result.toolCalls` for this call and drives `startEscalation` — the record is the signal.
  */
 
+import { ESCALATE_TOOL_NAME } from '@forge/contracts/assistant';
 import type { ChatToolset } from './mcp-adapter.js';
-
-export const ESCALATE_TOOL_NAME = 'escalate';
 
 export function buildEscalationToolset(): ChatToolset {
   return {

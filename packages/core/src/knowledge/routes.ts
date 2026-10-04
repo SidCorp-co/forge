@@ -203,3 +203,5 @@ knowledgeRoutes.delete(
     return c.json({ deleted: removed > 0 });
   },
 );
+
+export { knowledgeIngestRoutes } from './ingest-routes.js';

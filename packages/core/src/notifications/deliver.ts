@@ -207,10 +207,9 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
 /**
  * Whether this reader has opted out of being told about this type.
  *
- * One preference exists today and it is `notifyOnMention`. ISS-1063 moved it here from
- * `notifications/routes.ts#createNotification`, where it gated the whole write: under the
- * split the RECORD is the system's own account of what happened and is not one person's
- * to suppress, so an opt-out now stops the delivery and leaves the record standing.
+ * One preference exists today and it is `notifyOnMention`. The RECORD is the system's own
+ * account of what happened and is not one person's to suppress, so an opt-out stops the
+ * delivery and leaves the record standing.
  */
 async function wantsDelivery(userId: string, type: NotificationType): Promise<boolean> {
   if (type !== 'mention') return true;

@@ -2,12 +2,10 @@ export {
   readProjectSentryIssue,
   readProjectSentryIssues,
   resolveGrantedSentryBinding,
-  SENTRY_AGENT_STATUSES,
   type SentryAgentFilter,
   type SentryAgentGetRequest,
   type SentryAgentListing,
   type SentryAgentListRequest,
-  type SentryAgentStatus,
 } from './agent-read.js';
 export type { SentryAdapterContext } from './call.js';
 export { listSentryIssues } from './issues.js';

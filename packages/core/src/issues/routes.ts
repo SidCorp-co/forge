@@ -54,7 +54,7 @@ import {
   jobHistoryForStep,
 } from './read-service.js';
 import { issueRelationInputSchema } from './relations-service.js';
-import { issueFiltersSchema, issuePatchSchema } from './request-schemas.js';
+import { issueCreateSchema, issueFiltersSchema, issuePatchSchema } from './request-schemas.js';
 import { deleteIssue } from './service.js';
 import { refuseLegacyStatusFields } from './status-input.js';
 import { updateIssueFields } from './update-service.js';
@@ -68,33 +68,6 @@ export {
 
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { requireHeld } from '../permissions/index.js';
-
-export const issueCreateSchema = z
-  .object({
-    title: z.string().trim().min(1).max(500),
-    description: z.string().max(100_000).nullable().optional(),
-    descriptionFormat: z.enum(BODY_FORMATS).optional(),
-    priority: z.enum(issuePriorities).optional(),
-    category: z.string().trim().min(1).max(100).nullable().optional(),
-    complexity: z.enum(issueComplexities).nullable().optional(),
-    reportedBy: z.string().trim().min(1).max(200).nullable().optional(),
-    assigneeId: z.uuid().nullable().optional(),
-    labels: z.array(labelAttachItemSchema).max(100).optional(),
-    attachments: z.array(attachmentInputSchema).max(10).optional(),
-    detectorKey: z.string().trim().min(1).max(120).optional(),
-    relations: z.array(issueRelationInputSchema).max(20).optional(),
-    status: z.enum(CREATE_ENTRY_STATUSES).optional(),
-  })
-  .strict();
-
-export type IssueCreateInput = z.infer<typeof issueCreateSchema>;
-
-export {
-  type IssueFilters,
-  type IssuePatchInput,
-  issueFiltersSchema,
-  issuePatchSchema,
-} from './request-schemas.js';
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
 const issueIdParamSchema = z.object({ id: z.uuid() });
@@ -512,3 +485,16 @@ issueRoutes.delete(
     return c.body(null, 204);
   },
 );
+
+export { issueActivityRoutes, projectActivityRoutes } from './activity-routes.js';
+export { issueArchiveRoutes } from './archive-routes.js';
+export { attachmentRoutes, issueAttachmentRoutes } from './attachment-routes.js';
+export { backlogStreamRoutes } from './backlog/routes.js';
+export { issueCriteriaRoutes } from './criteria/routes.js';
+export { issueDependencyRoutes } from './dependency-routes.js';
+export { issueExtrasRoutes } from './extras-routes.js';
+export { issueMergeRoutes } from './merge-routes.js';
+export { searchRoutes } from './search.js';
+export { issueStandingRoutes } from './standing-routes.js';
+export { issueSteerRoutes } from './steer-routes.js';
+export { transitionRoutes } from './transition.js';

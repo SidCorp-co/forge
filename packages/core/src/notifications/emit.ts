@@ -1,6 +1,6 @@
 import type { Tx } from '../db/client.js';
 import { type NotificationType, notifications } from '../db/schema.js';
-import { createNotification } from './routes.js';
+import { createNotification } from './service.js';
 
 const DEFAULT_SEVERITY_BY_TYPE: Record<NotificationType, string> = {
   issue_status_changed: 'info',

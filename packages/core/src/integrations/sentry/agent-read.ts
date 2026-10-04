@@ -7,6 +7,7 @@
  * caller holding a Sentry credential: the binding is resolved here and the token never leaves core.
  */
 
+import type { SentryAgentStatus } from '@forge/contracts/integrations';
 import { scrubLogText } from '@forge/observability';
 import { grantHolds, notGrantedMessage } from '../agent-access.js';
 import { getIntegration } from '../registry.js';
@@ -31,9 +32,6 @@ const FILTER_TERMS = {
 } as const;
 
 export type SentryAgentFilter = keyof typeof FILTER_TERMS;
-
-export const SENTRY_AGENT_STATUSES = ['unresolved', 'resolved', 'ignored', 'any'] as const;
-export type SentryAgentStatus = (typeof SENTRY_AGENT_STATUSES)[number];
 
 export interface SentryAgentReadRequest {
   projectId: string;

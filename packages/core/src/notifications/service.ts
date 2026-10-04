@@ -1,13 +1,14 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
+  type NotificationType,
   notificationDeliveries,
   notificationDeliveryMembers,
   notificationSilences,
   notifications,
-  type NotificationType,
 } from '../db/schema.js';
 import { emitEvent } from '../outbox/index.js';
+import { recordAndDeliver } from './deliver.js';
 import { liveConditionOf, ownsDelivery } from './read.js';
 
 /** Every unread delivery of the caller, marked read; answers how many. */
@@ -106,4 +107,27 @@ export async function endSilence(silenceId: string, userId: string): Promise<boo
     .where(and(eq(notificationSilences.id, silenceId), eq(notificationSilences.createdBy, userId)))
     .returning({ id: notificationSilences.id });
   return updated.length > 0;
+}
+
+export async function createNotification(input: {
+  userId?: string;
+  recipients?: string[];
+  projectId?: string | null;
+  type: NotificationType;
+  title: string;
+  body?: string | null;
+  issueId?: string | null;
+  secondaryIssueId?: string | null;
+  agentSessionId?: string | null;
+  scheduleRunId?: string | null;
+  severity?: string | null;
+  resolutionKey?: string | null;
+  dedupeKey?: string | null;
+  decisionId?: string | null;
+  groupKey?: string | null;
+  groupTitle?: string | null;
+}): Promise<{ id: string; delivered: number } | null> {
+  const recipients = input.recipients ?? (input.userId ? [input.userId] : []);
+  const result = await recordAndDeliver({ ...input, recipients });
+  return result;
 }

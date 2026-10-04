@@ -1,12 +1,12 @@
-import { forgeChannelTool } from '../../ecosystem/index.js';
-import { forgeKnowledgeTool } from '../../knowledge/index.js';
+import { forgeChannelTool } from '../../ecosystem/tool.js';
+import { forgeKnowledgeTool } from '../../knowledge/tool.js';
 import type { McpContext } from '../../lib/tool.js';
-import { forgeMemoryTool } from '../../memory/index.js';
+import { forgeMemoryTool } from '../../memory/tool.js';
 import {
   forgeMetricsProjectStepDurationsTool,
   forgeMetricsProjectTimeseriesTool,
-} from '../../metrics/index.js';
-import { forgeProjectPipelineRunsTool } from '../../pipeline/index.js';
+} from '../../metrics/tool.js';
+import { forgeProjectPipelineRunsTool } from '../../pipeline/tool.js';
 import { forgeCliTool } from './forge-cli-tool.js';
 import { forgeMemoryNoteTool } from './forge-memory-note-tool.js';
 import { forgePreferencesTool } from './forge-preferences-tool.js';

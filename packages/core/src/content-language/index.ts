@@ -1,1 +1,1 @@
-export { contentLanguageRoutes } from './routes.js';
+export {};

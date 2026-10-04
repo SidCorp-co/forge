@@ -458,3 +458,7 @@ export const RUNNER_RELEASE_REFUSAL_CODES = [
   'RUNNER_RELEASE_STOPPED',
 ] as const;
 export type RunnerReleaseRefusalCode = (typeof RUNNER_RELEASE_REFUSAL_CODES)[number];
+
+/** The issue statuses an agent may filter a Sentry read by. */
+export const SENTRY_AGENT_STATUSES = ['unresolved', 'resolved', 'ignored', 'any'] as const;
+export type SentryAgentStatus = (typeof SENTRY_AGENT_STATUSES)[number];

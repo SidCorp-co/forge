@@ -1,1 +1,1 @@
-export { onboardingRoutes } from './routes.js';
+export {};

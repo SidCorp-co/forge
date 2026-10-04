@@ -1,11 +1,3 @@
-export { skillActivityRoutes } from './activity-routes.js';
 export { seedBuiltinSkills } from './builtin-seed.js';
-export { skillCrudRoutes } from './crud-routes.js';
-export { divergenceCharterRoutes } from './divergence-charter-routes.js';
 export { resolveManagedMetaPrompts } from './effective.js';
-export { skillPinRoutes } from './pin-routes.js';
 export { sweepPolicyLanded } from './policy-landed.js';
-export { reconcileRoutes } from './reconcile-routes.js';
-export { skillRegisterRoutes, skillSyncRoutes } from './routes.js';
-export { skillSmokeVerifyRoutes } from './smoke-verify-routes.js';
-export { skillStudioRoutes } from './studio-routes.js';

@@ -19,10 +19,10 @@ import {
   readDesignAs,
   unlinkBuildAs,
 } from './design-service.js';
-import { type IgnoredField, readBackOf } from './read-back.js';
 import { WRITE_OBSERVATION_SHAPE, writeObservationSchema } from './observation-schema.js';
 import { listObservations, observationAs, writeObservation } from './observations.js';
 import { designStepsOf, designSummaryOf, workflowSummaryOf } from './projection.js';
+import { type IgnoredField, readBackOf } from './read-back.js';
 import {
   createWorkflow,
   listWorkflowsAs,
@@ -389,3 +389,5 @@ workflowRoutes.get(
     });
   },
 );
+
+export { workflowTemplateCatalogueRoutes } from './template-routes.js';

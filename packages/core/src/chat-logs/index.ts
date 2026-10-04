@@ -1,1 +1,1 @@
-export { chatLogRoutes } from './routes.js';
+export {};

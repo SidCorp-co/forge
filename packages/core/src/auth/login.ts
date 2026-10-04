@@ -2,21 +2,15 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
-import { rateLimit } from '../middleware/rate-limit.js';
-import { zValidator } from '../middleware/zod-validator.js';
 import { assertNotAgent } from '../credentials/agent-account.js';
 import { setAuthCookie, setRefreshCookie } from '../credentials/cookie.js';
 import { signUserToken } from '../credentials/jwt.js';
+import { rateLimit } from '../middleware/rate-limit.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { getDummyPasswordHash, verifyPassword } from './password.js';
 import { userByEmail } from './read.js';
+import { loginSchema } from './request-schemas.js';
 import { openRefreshToken } from './service.js';
-
-export const loginSchema = z.object({
-  email: z.string().trim().toLowerCase().pipe(z.email().max(254)),
-  password: z.string().min(1).max(1024),
-});
-
-export type LoginInput = z.infer<typeof loginSchema>;
 
 export const loginRoutes = new Hono();
 

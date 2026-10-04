@@ -1,13 +1,11 @@
+import type { NotificationRefusalCode } from '@forge/contracts/notifications';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import type { NotificationRefusalCode } from '@forge/contracts/notifications';
 import { z } from 'zod';
-import type { NotificationType } from '../db/schema.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { recordAndDeliver } from './deliver.js';
 import { deliveryMembers, listDeliveries, openNotificationCount } from './read.js';
 import {
   closeDeliveryTasks,
@@ -184,26 +182,3 @@ notificationRoutes.delete(
     return c.body(null, 204);
   },
 );
-
-export async function createNotification(input: {
-  userId?: string;
-  recipients?: string[];
-  projectId?: string | null;
-  type: NotificationType;
-  title: string;
-  body?: string | null;
-  issueId?: string | null;
-  secondaryIssueId?: string | null;
-  agentSessionId?: string | null;
-  scheduleRunId?: string | null;
-  severity?: string | null;
-  resolutionKey?: string | null;
-  dedupeKey?: string | null;
-  decisionId?: string | null;
-  groupKey?: string | null;
-  groupTitle?: string | null;
-}): Promise<{ id: string; delivered: number } | null> {
-  const recipients = input.recipients ?? (input.userId ? [input.userId] : []);
-  const result = await recordAndDeliver({ ...input, recipients });
-  return result;
-}

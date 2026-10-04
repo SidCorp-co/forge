@@ -1,18 +1,11 @@
-export { collaboratorsMeRoutes } from './collaborators-routes.js';
-export { gitCredentialRoutes } from './git-credential-routes.js';
-export { projectHealthRoutes } from './health-routes.js';
-export { invitationRoutes } from './invitations-routes.js';
 export { registerLiveReadingInvalidation } from './live-reading.js';
-export { masterCharterRoutes } from './master-charter-routes.js';
-export { memberRoutes } from './members-routes.js';
 export { resolveEffectiveProjectId, resolveProjectIdFromSlug } from './project-scope.js';
 export {
   type CreateProjectInput,
   createProjectSchema,
-  projectRoutes,
   type UpdateProjectInput,
   updateProjectSchema,
-} from './routes.js';
+} from './request-schemas.js';
 export {
   findProjectIdBySlug,
   findProjectOrgId,

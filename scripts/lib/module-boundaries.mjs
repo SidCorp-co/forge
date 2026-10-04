@@ -24,8 +24,14 @@ export const BOUNDARY_RULES = [
   'adapter-port',
 ];
 
-/** The composition roots: the only files that import a module's heavy face. */
-export const REGISTRIES = { routes: 'route-registry.ts', tool: 'mcp/registry.ts' };
+/**
+ * The composition roots, by the heavy face each may import: the route-mount registry takes
+ * routes.ts, and the MCP registry and the assistant's chat toolset take tool.ts.
+ */
+export const REGISTRIES = {
+  'routes.ts': ['route-registry.ts'],
+  'tool.ts': ['mcp/registry.ts', 'assistant/tools/registry.ts'],
+};
 
 const TESTS =
   '\\.test\\.ts$|\\.spec\\.ts$|\\.d\\.ts$|/tests?/|/__tests__/|/test-helpers?(/|\\.ts$)';
@@ -81,7 +87,8 @@ export function importRuleSet({ modules, contexts }) {
     );
   }
 
-  const registries = Object.values(REGISTRIES).map((f) => `^${esc(SRC)}${esc(f)}$`);
+  const rootOf = (f) => `^${esc(SRC)}${esc(f)}$`;
+  const registries = Object.values(REGISTRIES).flat().map(rootOf);
   for (const mod of names) {
     const { kind } = modules[mod];
     if (kind === 'platform' || mod === ROOT_MODULE) continue;
@@ -93,15 +100,14 @@ export function importRuleSet({ modules, contexts }) {
         ? `${mod} is reached only through its port, ${mod}/index.ts`
         : `${mod} is reached only through ${mod}/index.ts; its routes.ts and tool.ts only from the registries`;
     push(rule, say, { pathNot: any([self, ...registries]) }, { path: self, pathNot: index });
-    push(
-      rule,
-      say,
-      { path: any(registries), pathNot: self },
-      {
-        path: self,
-        pathNot: any([index, fileOf(mod, 'routes.ts'), fileOf(mod, 'tool.ts')]),
-      },
-    );
+    for (const [face, roots] of Object.entries(REGISTRIES)) {
+      push(
+        rule,
+        say,
+        { path: any(roots.map(rootOf)), pathNot: self },
+        { path: self, pathNot: any([index, fileOf(mod, face)]) },
+      );
+    }
   }
 
   return { forbidden };

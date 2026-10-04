@@ -1,1 +1,1 @@
-export { promptRoutes } from './routes.js';
+export {};

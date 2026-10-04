@@ -129,3 +129,9 @@ whoamiRoutes.get('/whoami', async (c) => {
 
 adminRoutes.route('/', whoamiRoutes);
 adminRoutes.route('/', adminProtected);
+
+export { adminAggregateRoutes } from './aggregate-routes.js';
+export { adminAlertRoutes } from './alert-routes.js';
+export { adminMcpAuditRoutes } from './mcp-audit-routes.js';
+export { adminMetricSeriesRoutes } from './metric-series-routes.js';
+export { pipelineHealthAdminRoutes } from './pipeline-health-routes.js';

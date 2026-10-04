@@ -3,7 +3,6 @@ export {
   persistCommentAttachment,
   validateCommentAttachment,
 } from './attachment-service.js';
-export { entityCommentRoutes } from './entity-routes.js';
 export {
   noteReviewOnIssue,
   type ReviewNoteOutcome,
@@ -11,7 +10,6 @@ export {
   type ReviewToNote,
   registerReviewNotes,
 } from './review-note.js';
-export { commentRoutes } from './routes.js';
 export {
   type CommentThreadRow,
   deleteComment,

@@ -1,4 +1,3 @@
-export { preferenceRoutes as routes } from './routes.js';
 export { ASSISTANT_PREFERENCE_DEFAULTS } from './read.js';
 export {
   type AssistantPreferencePatch,

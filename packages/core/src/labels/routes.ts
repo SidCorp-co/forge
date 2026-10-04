@@ -1,12 +1,13 @@
+import type { LabelRefusalCode } from '@forge/contracts/labels';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import type { LabelRefusalCode } from '@forge/contracts/labels';
 import { z } from 'zod';
 import { labelKinds } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 import { moduleDrift } from './module-drift.js';
 import { DEFAULT_ACTIVE_WITHIN_DAYS } from './module-rollup.js';
 import {
@@ -21,7 +22,6 @@ import { moduleDetailOf, moduleRollupWithStanding } from './module-standing-read
 import { labelAttachmentCount, labelHead, listProjectLabels } from './read.js';
 import { createLabel, deleteLabel, updateLabel } from './service.js';
 import { labelUniqueConflict } from './unique-conflicts.js';
-import { requireHeld } from '../permissions/index.js';
 
 const colorRegex = /^#[0-9a-f]{6}$/i;
 
@@ -292,3 +292,5 @@ labelRoutes.delete(
     return c.body(null, 204);
   },
 );
+
+export { moduleDiagramRoutes } from './module-diagram-routes.js';

@@ -8,8 +8,8 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { isMetaSkillName, metaSkillReserved } from './meta-skills.js';
-import { registerSkillForProject } from './registration-service.js';
 import { listSkillRegistrations, registeredSkillIdAt } from './read.js';
+import { registerSkillForProject } from './registration-service.js';
 import { getSkillForProject, syncProjectSkillManifests } from './service.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
@@ -182,3 +182,11 @@ skillRegisterRoutes.delete(
     return c.json({ deleted: true, stage });
   },
 );
+
+export { skillActivityRoutes } from './activity-routes.js';
+export { skillCrudRoutes } from './crud-routes.js';
+export { divergenceCharterRoutes } from './divergence-charter-routes.js';
+export { skillPinRoutes } from './pin-routes.js';
+export { reconcileRoutes } from './reconcile-routes.js';
+export { skillSmokeVerifyRoutes } from './smoke-verify-routes.js';
+export { skillStudioRoutes } from './studio-routes.js';

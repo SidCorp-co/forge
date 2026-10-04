@@ -1,1 +1,1 @@
-export { installRoutes } from './routes.js';
+export {};

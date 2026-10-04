@@ -85,3 +85,5 @@ appConfigRoutes.put(
     return c.json(row);
   },
 );
+
+export { memoryModelRoutes } from './memory-model-routes.js';
