@@ -14,8 +14,7 @@ import { buildProjectToolset } from '../tools/registry.js';
 import { buildTranscriptSearchToolset } from '../tools/transcript-search-tool.js';
 import { withTurnImages } from '../tools/turn-images.js';
 import type { ImageResolver, TurnImage } from '../vision.js';
-import { buildRocketChatHistoryToolset } from './context.js';
-import { buildRocketChatQuoteContextToolset } from './quote-context.js';
+import { buildRocketChatHistoryToolset, buildRocketChatQuoteContextToolset } from './context.js';
 
 /**
  * Per-message ceiling. A room can attach a dozen files to one post; the model

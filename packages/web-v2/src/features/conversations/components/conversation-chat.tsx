@@ -1,26 +1,64 @@
 "use client";
 
-// One conversation, open: its thread, and the box you type in. A conversation is an append-only
-// log, so the run-shaped verbs (model and runner pick, fork, rerun, edit, regenerate) stay on the
-// session surface.
+// One conversation, open: its thread, and the box you type in.
+//
+// This replaces `features/session/components/chat-screen.tsx` (ISS-1004 step 5).
+// What it deliberately does not carry, and where each went: model pick and
+// runner pick name the tier and the device a RUN uses; fork, rerun, per-turn
+// edit and regenerate all rewrite a run's turns. A conversation is an
+// append-only log — the store's own `appendMessages` leaves every row already in
+// it alone — so all six stayed on the session surface, which keeps every
+// run-shaped verb it had.
 
-import { useMemo, useState } from "react";
-import { ErrorState, IconButton, ProjectLoader } from "@/design";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  EmptyState,
+  ErrorState,
+  IconButton,
+  ProjectLoader,
+} from "@/design";
 import { ThreadDataProvider } from "@/features/onboarding/components/thread-blocks";
 import { ThreadSub } from "@/features/onboarding/components/thread-sub";
 import { useProjects } from "@/features/projects/hooks";
+import { canWriteProject } from "@/features/projects/write-access";
+import { CONVERSATION_ATTACHMENTS } from "@/features/chat/attachments";
+import { ChatComposer, ReadOnlyComposerNote } from "@/features/chat/components/chat-composer";
+import {
+  TurnStage,
+  turnStageOf,
+} from "@/features/session/components/turn-stage";
+import { NewOutput } from "@/features/session/components/new-output";
+import { useStickToBottom } from "@/features/session/components/use-stick-to-bottom";
+import { parseMessages } from "@/features/session/types";
 import { formatApiError } from "@/lib/api/error";
-import { useAcceptedMessages, useConversation, useConversationProgress, useWithdrawnDrafts } from "../hooks";
-import { type ConversationDetail, type ConversationMode, conversationTitle } from "../types";
-import { useUiActions, useUiSnapshot } from "../ui-actions/use-ui-actions";
-import { ConversationComposer } from "./conversation-composer";
+import {
+  useConversation,
+  useDraftAgentMode,
+  useOpenConversation,
+  useAcceptedMessages,
+  useConversationProgress,
+  useSendMessage,
+  useStopConversation,
+  useUploadAttachment,
+  useWithdrawnDrafts,
+} from "../hooks";
+import { composerRefusal } from "../membership";
+import { type ConversationMode, type OutboxMessage, conversationTitle } from "../types";
+import { ConversationModeControl, modePlaceholder } from "./mode-control";
 import { ConversationMembers } from "./conversation-members";
 import { ConversationThread } from "./conversation-thread";
-import { RoomScroll } from "./room-scroll";
 import { ScopeNotice } from "./scope-notice";
-import { useOutbox } from "./use-outbox";
+import { seesDetail, useUiActions, useUiSnapshot } from "../ui-actions/use-ui-actions";
 
-export interface ConversationChatProps {
+export function ConversationChat({
+  projectId,
+  conversationId,
+  onConversationActive,
+  initialDraft,
+  ecosystemId,
+  headerActions,
+  scopeChip,
+}: {
   projectId: string;
   /** Omitted = a draft: no room exists until the first message opens one. */
   conversationId?: string | undefined;
@@ -30,173 +68,317 @@ export interface ConversationChatProps {
   ecosystemId?: string | null;
   headerActions?: React.ReactNode;
   scopeChip?: React.ReactNode;
-}
-
-export function ConversationChat(props: ConversationChatProps) {
-  const { projectId, conversationId, ecosystemId } = props;
+}) {
   const [activeId, setActiveId] = useState<string | undefined>(conversationId);
-  const [pick, setPick] = useState<ConversationMode>("assistant");
+  const [membersOpen, setMembersOpen] = useState(false);
   const resolvedId = conversationId ?? activeId;
 
-  const projectRow = useProjects().data?.find((p) => p.id === projectId);
+  const projectsQ = useProjects();
+  const projectRow = projectsQ.data?.find((p) => p.id === projectId);
+  const canWrite = canWriteProject(projectRow?.role);
+
   const roomQ = useConversation(resolvedId);
-  const room = roomQ.data;
   const accepted = useAcceptedMessages(resolvedId);
   const progress = useConversationProgress(resolvedId);
-  const messages = useMemo(() => room?.messages ?? [], [room]);
+  const withdrawn = useWithdrawnDrafts(resolvedId);
+  const streamedChars = useMemo(() => JSON.stringify(progress?.entry ?? null).length, [progress]);
+  const open = useOpenConversation();
+  const send = useSendMessage();
+  const upload = useUploadAttachment();
+  const stop = useStopConversation();
 
+  const [outbox, setOutbox] = useState<OutboxMessage[]>([]);
+  const sending = useRef(false);
+  /**
+   * What a queued message has already put in storage, kept so a retry after a
+   * failed send does not upload the same picture twice and leave the first copy
+   * stored and cited by nothing.
+   */
+  const stored = useRef(new Map<string, string[]>());
+
+  const [pick, setPick] = useState<ConversationMode>("assistant");
+
+  const messages = useMemo(() => roomQ.data?.messages ?? [], [roomQ.data]);
   const page = useUiSnapshot(projectRow?.slug);
-  const ready = Boolean(projectRow) && (!resolvedId || roomQ.isSuccess);
-  const ui = useUiActions({ slug: projectRow?.slug ?? "", ready, messages, progress });
-
-  const settledMode: ConversationMode | null =
-    room && (room.mode !== null || messages.length > 0) ? (room.mode ?? "assistant") : null;
-  const { outbox, enqueue, retry, busy } = useOutbox({
-    projectId,
-    ecosystemId: ecosystemId ?? null,
-    conversationId: resolvedId,
-    onOpened: (id) => {
-      setActiveId(id);
-      props.onConversationActive?.(id);
-    },
+  const pageRef = useRef(page);
+  pageRef.current = page;
+  const ui = useUiActions({
+    slug: projectRow?.slug ?? "",
+    ready: Boolean(projectRow) && (!resolvedId || roomQ.isSuccess),
     messages,
-    accepted,
-    settled: settledMode !== null,
-    mode: pick,
-    page,
+    progress,
   });
 
-  const blocked = resolvedId && outbox.length === 0 && (roomQ.isLoading || roomQ.isError);
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      <RoomHeader room={room} conversationId={resolvedId} firstSaid={messages[0]?.content} actions={props.headerActions} />
-      {blocked ? <RoomUnread query={roomQ} /> : (
-        <>
-          {room && <ScopeNotice room={room} />}
-          <RoomScroll
-            conversationKey={resolvedId}
-            ready={roomQ.isSuccess}
-            itemCount={messages.length + outbox.length}
-            busy={busy}
-            progress={progress}
-          >
-            {(atBottom) => (
-              <RoomThread
-                projectId={projectId}
-                conversationId={resolvedId}
-                room={room}
-                atBottom={atBottom}
-                messages={messages}
-                outbox={outbox}
-                progress={progress}
-                onRetry={retry}
-                afterEntry={ui.cardsFor}
-              />
-            )}
-          </RoomScroll>
-          <ConversationComposer
-            room={room}
-            projectId={projectId}
-            conversationId={resolvedId}
-            project={projectRow}
-            live={progress != null}
-            busy={busy}
-            onSend={async (message, files) => enqueue(message, files)}
-            mode={pick}
-            onModeChange={setPick}
-            settledMode={settledMode}
-            initialDraft={props.initialDraft}
-            scopeChip={props.scopeChip}
-            page={page}
-            scope={ecosystemId ? "ecosystem" : "project"}
-          />
-        </>
-      )}
-    </div>
-  );
-}
+  useEffect(() => {
+    const seen = new Set(messages.map((m) => m.id));
+    setOutbox((o) => {
+      let moved = false;
+      const next = o.flatMap((m) => {
+        const ack = accepted[m.id];
+        if (ack && seen.has(ack.messageId)) {
+          moved = true;
+          return [];
+        }
+        if (ack && m.state !== "sent") {
+          moved = true;
+          return [{ ...m, state: "sent" as const, messageId: ack.messageId }];
+        }
+        return [m];
+      });
+      return moved ? next : o;
+    });
+  }, [accepted, messages]);
+  const windows = useMemo(() => roomQ.data?.windows ?? [], [roomQ.data]);
+  const agentTurns = useMemo(() => roomQ.data?.agentTurns ?? [], [roomQ.data]);
+  const busy = send.isPending || open.isPending;
+  const streaming = busy || progress != null;
 
-type ThreadProps = Parameters<typeof ConversationThread>[0];
+  const stage = turnStageOf({
+    // `streaming` above is `busy || progress != null` and says the same thing for the same reason.
+    live: streaming && !progress?.replaced,
+    ...(progress ? { blocks: parseMessages([progress.entry])[0]?.blocks } : {}),
+  });
 
-function RoomUnread({ query }: { query: ReturnType<typeof useConversation> }) {
-  return (
-    <div className="grid min-h-0 flex-1 place-items-center px-4 py-12">
-      {query.isLoading ? (
-        <ProjectLoader label="loading conversation…" />
-      ) : (
-        <ErrorState
-          title="Couldn't load this conversation"
-          message={formatApiError(query.error)}
-          onRetry={() => query.refetch()}
-        />
-      )}
-    </div>
-  );
-}
+  const settled = Boolean(roomQ.data && (roomQ.data.mode !== null || messages.length > 0));
+  const settledMode: ConversationMode | null = settled
+    ? (roomQ.data?.mode ?? "assistant")
+    : null;
+  const draftOfferQ = useDraftAgentMode(projectId, !resolvedId);
+  const agentOffer =
+    roomQ.data?.agentMode ??
+    draftOfferQ.data ?? { available: false, reason: "checking whether a box is free" };
 
-function RoomThread({
-  projectId,
-  conversationId,
-  room,
-  ...thread
-}: {
-  projectId: string;
-  conversationId: string | undefined;
-  room: ConversationDetail | undefined;
-} & Pick<ThreadProps, "atBottom" | "messages" | "outbox" | "progress" | "onRetry" | "afterEntry">) {
-  const withdrawn = useWithdrawnDrafts(conversationId);
-  return (
-    <ThreadDataProvider
-      value={{
-        projectId,
-        conversationId: conversationId ?? "",
-        kind: room?.kind ?? null,
-        questionnaires: room?.questionnaires ?? [],
-      }}
-    >
-      <ConversationThread
-        {...thread}
-        windows={room?.windows ?? []}
-        withdrawn={withdrawn}
-        agentTurns={room?.agentTurns ?? []}
-      />
-    </ThreadDataProvider>
-  );
-}
+  const refusal = roomQ.data ? composerRefusal(roomQ.data) : null;
 
-function RoomHeader({
-  room,
-  conversationId,
-  firstSaid,
-  actions,
-}: {
-  room: ConversationDetail | undefined;
-  conversationId: string | undefined;
-  firstSaid: string | undefined;
-  actions: React.ReactNode;
-}) {
-  const [membersOpen, setMembersOpen] = useState(false);
-  return (
+  const { scrollRef, bottomRef, onScroll, atBottom, newOutput, toBottom } = useStickToBottom({
+    conversationKey: resolvedId,
+    ready: roomQ.isSuccess,
+    itemCount: messages.length + outbox.length,
+    live: busy,
+    streaming,
+    streamedChars,
+  });
+
+  const handleSend = async (message: string, files: File[]) => {
+    setOutbox((o) => [
+      ...o,
+      { id: crypto.randomUUID(), content: message, state: "queued", ...(files.length ? { files } : {}) },
+    ]);
+  };
+
+  const retry = useCallback((id: string) => {
+    setOutbox((o) => o.map((m) => (m.id === id ? { ...m, state: "queued", error: undefined } : m)));
+  }, []);
+
+  useEffect(() => {
+    if (sending.current) return;
+    if (outbox.some((m) => m.state === "failed")) return;
+    const next = outbox.find((m) => m.state === "queued");
+    if (!next) return;
+    sending.current = true;
+    setOutbox((o) => o.map((m) => (m.id === next.id ? { ...m, state: "sending" } : m)));
+    void (async () => {
+      try {
+        let id = resolvedId;
+        if (!id) {
+          id = (await open.mutateAsync({ projectId, ecosystemId: ecosystemId ?? null })).id;
+          setActiveId(id);
+          onConversationActive?.(id);
+        }
+        const fresh = !settled && messages.length === 0;
+        const attachmentIds = [...(stored.current.get(next.id) ?? [])];
+        for (const file of (next.files ?? []).slice(attachmentIds.length)) {
+          const put = await upload.mutateAsync({ conversationId: id, file });
+          attachmentIds.push(put.id);
+          stored.current.set(next.id, [...attachmentIds]);
+        }
+        await send.mutateAsync({
+          conversationId: id,
+          content: next.content,
+          ...(fresh ? { mode: pick } : {}),
+          clientToken: next.id,
+          ...(attachmentIds.length ? { attachmentIds } : {}),
+          ...(pageRef.current.sees ? { uiSnapshot: pageRef.current.snapshot } : {}),
+        });
+        stored.current.delete(next.id);
+        setOutbox((o) => o.filter((m) => m.id !== next.id));
+      } catch (err) {
+        setOutbox((o) =>
+          o.map((m) =>
+            m.id === next.id ? { ...m, state: "failed", error: formatApiError(err) } : m,
+          ),
+        );
+      } finally {
+        sending.current = false;
+      }
+    })();
+  }, [
+    outbox,
+    resolvedId,
+    projectId,
+    open,
+    send,
+    upload,
+    onConversationActive,
+    ecosystemId,
+    settled,
+    messages.length,
+    pick,
+  ]);
+
+  const header = (
     <header className="@container flex-none border-b border-line bg-app/95 px-3 py-2 @2xl:px-4 @2xl:py-3">
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-[13.5px] font-bold leading-snug text-fg @2xl:text-[22px] @2xl:leading-tight">
-            {room ? conversationTitle(room, firstSaid) : "New conversation"}
+            {roomQ.data ? conversationTitle(roomQ.data, messages[0]?.content) : "New conversation"}
           </h2>
-          <ThreadSub kind={room?.kind} status={room?.threadStatus} />
+          <ThreadSub kind={roomQ.data?.kind} status={roomQ.data?.threadStatus} />
         </div>
-        {room && <IconButton icon="users" size="sm" aria-label="Who is in this room" onClick={() => setMembersOpen(true)} />}
-        {actions}
+        {roomQ.data && (
+          <IconButton
+            icon="users"
+            size="sm"
+            aria-label="Who is in this room"
+            onClick={() => setMembersOpen(true)}
+          />
+        )}
+        {headerActions}
       </div>
-      {room?.participants && conversationId && (
+    </header>
+  );
+
+  if (resolvedId && roomQ.isLoading && outbox.length === 0) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        {header}
+        <div className="grid min-h-0 flex-1 place-items-center py-12">
+          <ProjectLoader label="loading conversation…" />
+        </div>
+      </div>
+    );
+  }
+
+  if (resolvedId && roomQ.isError && outbox.length === 0) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        {header}
+        <div className="grid min-h-0 flex-1 place-items-center px-4 py-12">
+          <ErrorState
+            title="Couldn't load this conversation"
+            message={formatApiError(roomQ.error)}
+            onRetry={() => roomQ.refetch()}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      {header}
+
+      {roomQ.data && <ScopeNotice room={roomQ.data} />}
+
+      <div ref={scrollRef} onScroll={onScroll} className="@container min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-3xl px-3 py-3 @2xl:px-8 @2xl:py-8 xl:max-w-4xl">
+          {messages.length === 0 && outbox.length === 0 ? (
+            <div className="flex min-h-[40dvh] flex-col">
+              <div className="grid flex-1 place-items-center">
+                <EmptyState
+                  title="Start a conversation"
+                  message="Ask the agent anything about this project — its issues, its progress and what it knows."
+                  mascot
+                />
+              </div>
+            </div>
+          ) : (
+            <ThreadDataProvider
+              value={{
+                projectId,
+                conversationId: resolvedId ?? "",
+                kind: roomQ.data?.kind ?? null,
+                questionnaires: roomQ.data?.questionnaires ?? [],
+              }}
+            >
+            <ConversationThread
+              atBottom={atBottom}
+              messages={messages}
+              windows={windows}
+              outbox={outbox}
+              progress={progress}
+              withdrawn={withdrawn}
+              agentTurns={agentTurns}
+              onRetry={retry}
+              afterEntry={ui.cardsFor}
+            />
+            </ThreadDataProvider>
+          )}
+          {stage && (
+            <div className="mt-4">
+              <TurnStage stage={stage} />
+            </div>
+          )}
+          {newOutput && <NewOutput onGo={toBottom} />}
+          <div ref={bottomRef} />
+        </div>
+      </div>
+
+      {refusal ? (
+        <div className="flex-none border-t border-line bg-surface px-4 py-3" data-testid="composer-refused">
+          <p className="fg-body-sm text-fg">{refusal.reason}</p>
+          <p className="fg-caption mt-0.5 text-muted">{refusal.wayOut}</p>
+        </div>
+      ) : canWrite ? (
+        <ChatComposer
+          onSend={handleSend}
+          busy={busy}
+          queueWhileBusy
+          sticky={false}
+          attachments={CONVERSATION_ATTACHMENTS}
+          placeholder={modePlaceholder(settledMode ?? pick)}
+          {...(progress && resolvedId
+            ? { onStop: () => stop.mutate(resolvedId), stopping: stop.isPending }
+            : {})}
+          {...(initialDraft ? { initialValue: initialDraft } : {})}
+          footerControl={
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <ConversationModeControl
+                value={pick}
+                onChange={setPick}
+                offer={agentOffer}
+                settled={settledMode}
+                disabled={busy}
+              />
+              {scopeChip}
+              {page.sees && (
+                <span
+                  data-testid="composer-sees"
+                  title={seesDetail(page.snapshot, {
+                    project: projectRow?.name ?? null,
+                    scope: ecosystemId ? "ecosystem" : "project",
+                  })}
+                  className="fg-caption inline-flex max-w-[16rem] items-center gap-1 truncate text-subtle"
+                >
+                  Sees {page.sees}
+                </span>
+              )}
+            </div>
+          }
+        />
+      ) : (
+        <ReadOnlyComposerNote sticky={false} />
+      )}
+
+      {roomQ.data?.participants && resolvedId && (
         <ConversationMembers
-          conversationId={conversationId}
-          room={room}
-          canChange={room.canChangeMembership === true}
+          conversationId={resolvedId}
+          room={roomQ.data}
+          canChange={roomQ.data.canChangeMembership === true}
           open={membersOpen}
           onClose={() => setMembersOpen(false)}
         />
       )}
-    </header>
+    </div>
   );
 }

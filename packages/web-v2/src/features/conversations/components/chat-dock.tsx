@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Icon, IconButton, SecondaryRegion, SlideOver, useMediaQuery } from "@/design";
 import { useProjectEcosystems } from "@/features/ecosystem/hooks";
 import { useProjects } from "@/features/projects/hooks";
@@ -98,10 +98,13 @@ export function ChatDockBody({ dock, fullScreen }: { dock: ChatDockApi; fullScre
     target?.kind === "room" ? (roomQ.data?.ecosystemId ?? null) : target?.kind === "draft" ? (target.ecosystemId ?? null) : null;
   const subjectKey = target?.kind === "room" ? (roomQ.data?.subjectKey ?? null) : null;
 
-  const pick = (t: Parameters<ChatDockApi["select"]>[0]) => {
-    dock.select(t);
-    setListing(false);
-  };
+  const pick = useCallback(
+    (t: Parameters<ChatDockApi["select"]>[0]) => {
+      dock.select(t);
+      setListing(false);
+    },
+    [dock],
+  );
 
   const body = () => {
     if (listing) {
@@ -114,10 +117,18 @@ export function ChatDockBody({ dock, fullScreen }: { dock: ChatDockApi; fullScre
         />
       );
     }
-    if (!target || target.kind === "people")
-      return <StartConversation onStarted={(id, projectId) => pick({ kind: "room", projectId, conversationId: id })} />;
-    if (!project)
-      return <p className="fg-body-sm p-4 text-muted">{projectsQ.isLoading ? "Reading projects…" : "This chat's project is not one you can open."}</p>;
+    if (!target || target.kind === "people") {
+      return (
+        <StartConversation onStarted={(id, projectId) => pick({ kind: "room", projectId, conversationId: id })} />
+      );
+    }
+    if (!project) {
+      return (
+        <p className="fg-body-sm p-4 text-muted">
+          {projectsQ.isLoading ? "Reading projects…" : "This chat's project is not one you can open."}
+        </p>
+      );
+    }
     const chat = (
       <>
         <RoomSub projectId={project.id} />
@@ -146,83 +157,54 @@ export function ChatDockBody({ dock, fullScreen }: { dock: ChatDockApi; fullScre
   return (
     <SecondaryRegion>
       <div className="flex h-full min-h-0 flex-col" data-testid="chat-dock-body">
-        <DockHeader
-          dock={dock}
-          fullScreen={fullScreen}
-          backTo={pageLabel(pathname)}
-          listing={listing}
-          onListing={() => setListing((v) => !v)}
-          onNew={() => pick(dock.projectId ? { kind: "draft", projectId: dock.projectId } : { kind: "people" })}
-        />
+        {fullScreen && (
+          <div className="flex flex-none items-center border-b border-line px-3 py-2">
+            <button
+              type="button"
+              onClick={dock.close}
+              aria-label={`Back to ${pageLabel(pathname)}`}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md bg-sunken px-2.5 text-[13px] font-semibold text-fg hover:bg-hover"
+            >
+              <span aria-hidden>←</span>
+              {pageLabel(pathname)}
+            </button>
+          </div>
+        )}
+        <header className="flex flex-none items-center gap-1 border-b border-line bg-surface px-3 py-2">
+          <h2 className="fg-body-sm min-w-0 flex-1 truncate font-semibold text-fg">
+            {listing ? "Conversations" : DOCK_TITLE}
+          </h2>
+          <IconButton
+            icon="history"
+            size="sm"
+            aria-label={listing ? "Back to the conversation" : "Past conversations"}
+            title={listing ? "Back to the conversation" : "Past conversations"}
+            aria-pressed={listing}
+            onClick={() => setListing((v) => !v)}
+          />
+          <IconButton
+            icon="plus"
+            size="sm"
+            aria-label="New conversation"
+            title="New conversation"
+            onClick={() => pick(dock.projectId ? { kind: "draft", projectId: dock.projectId } : { kind: "people" })}
+          />
+          {!fullScreen && (
+            <IconButton
+              icon="pin"
+              size="sm"
+              aria-pressed={dock.pinned}
+              aria-label={dock.pinned ? "Unpin: close when you change page" : "Pin: keep open across pages"}
+              title={dock.pinned ? "Pinned: stays open across pages" : "Pin to keep it open across pages"}
+              className={dock.pinned ? "text-accent-text" : undefined}
+              onClick={() => dock.setPinned(!dock.pinned)}
+            />
+          )}
+          <IconButton icon="x" size="sm" aria-label={`Close ${DOCK_TITLE}`} title="Close" onClick={dock.close} />
+        </header>
         <div className="min-h-0 flex-1 overflow-hidden">{body()}</div>
       </div>
     </SecondaryRegion>
-  );
-}
-
-function DockHeader({
-  dock,
-  fullScreen,
-  backTo,
-  listing,
-  onListing,
-  onNew,
-}: {
-  dock: ChatDockApi;
-  fullScreen: boolean | undefined;
-  backTo: string;
-  listing: boolean;
-  onListing: () => void;
-  onNew: () => void;
-}) {
-  return (
-    <>
-      {fullScreen && (
-        <div className="flex flex-none items-center border-b border-line px-3 py-2">
-          <button
-            type="button"
-            onClick={dock.close}
-            aria-label={`Back to ${backTo}`}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-sunken px-2.5 text-[13px] font-semibold text-fg hover:bg-hover"
-          >
-            <span aria-hidden>←</span>
-            {backTo}
-          </button>
-        </div>
-      )}
-      <header className="flex flex-none items-center gap-1 border-b border-line bg-surface px-3 py-2">
-        <h2 className="fg-body-sm min-w-0 flex-1 truncate font-semibold text-fg">
-          {listing ? "Conversations" : DOCK_TITLE}
-        </h2>
-        <IconButton
-          icon="history"
-          size="sm"
-          aria-label={listing ? "Back to the conversation" : "Past conversations"}
-          title={listing ? "Back to the conversation" : "Past conversations"}
-          aria-pressed={listing}
-          onClick={onListing}
-        />
-        <IconButton
-          icon="plus"
-          size="sm"
-          aria-label="New conversation"
-          title="New conversation"
-          onClick={onNew}
-        />
-        {!fullScreen && (
-          <IconButton
-            icon="pin"
-            size="sm"
-            aria-pressed={dock.pinned}
-            aria-label={dock.pinned ? "Unpin: close when you change page" : "Pin: keep open across pages"}
-            title={dock.pinned ? "Pinned: stays open across pages" : "Pin to keep it open across pages"}
-            className={dock.pinned ? "text-accent-text" : undefined}
-            onClick={() => dock.setPinned(!dock.pinned)}
-          />
-        )}
-        <IconButton icon="x" size="sm" aria-label={`Close ${DOCK_TITLE}`} title="Close" onClick={dock.close} />
-      </header>
-    </>
   );
 }
 

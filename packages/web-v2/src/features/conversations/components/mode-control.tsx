@@ -217,11 +217,34 @@ function ModeMenu({
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   /** Close, and put the caret back where the person left it. */
   const close = (returnFocus: boolean) => {
     setOpen(false);
     if (returnFocus) triggerRef.current?.focus();
+  };
+
+  // Opening a menu that keeps the keyboard outside it is a menu a keyboard
+  // cannot use: focus lands on the option already chosen.
+  useEffect(() => {
+    if (!open) return;
+    const checked = MODES.findIndex((m) => m.mode === value);
+    itemRefs.current[checked < 0 ? 0 : checked]?.focus();
+  }, [open, value]);
+
+  const onItemKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      close(true);
+      return;
+    }
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const step = e.key === "ArrowDown" ? 1 : -1;
+    const next = (index + step + MODES.length) % MODES.length;
+    itemRefs.current[next]?.focus();
   };
 
   return (
@@ -247,81 +270,43 @@ function ModeMenu({
         <Icon name="chevronDown" size={13} />
       </button>
       {open && (
-        <ModeMenuItems
-          value={value}
-          blocked={blocked}
-          onClose={close}
-          onPick={(mode) => (mode === "agent" && blocked ? onBlockedPress() : onChange(mode))}
-        />
-      )}
-    </div>
-  );
-}
-
-/** The open menu: focus starts on the chosen option, the arrows move between them, Escape leaves. */
-function ModeMenuItems({
-  value,
-  blocked,
-  onClose,
-  onPick,
-}: {
-  value: ConversationMode;
-  blocked: boolean;
-  onClose: (returnFocus: boolean) => void;
-  onPick: (mode: ConversationMode) => void;
-}) {
-  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
-
-  useEffect(() => {
-    const checked = MODES.findIndex((m) => m.mode === value);
-    itemRefs.current[checked < 0 ? 0 : checked]?.focus();
-  }, [value]);
-
-  const onItemKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      onClose(true);
-      return;
-    }
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-    e.preventDefault();
-    const step = e.key === "ArrowDown" ? 1 : -1;
-    itemRefs.current[(index + step + MODES.length) % MODES.length]?.focus();
-  };
-
-  return (
-    <div
-      role="menu"
-      aria-label="What this conversation talks to"
-      data-testid="conversation-mode-menu"
-      onBlur={(e) => {
-        // The keyboard left the menu for something outside it: close, and
-        // do not drag the caret back to the trigger it is leaving.
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onClose(false);
-      }}
-      className="absolute bottom-full left-0 z-20 mb-2 w-64 rounded-md border border-line bg-surface p-1 shadow-lg"
-    >
-      {MODES.map(({ mode, label, hint }, index) => (
-        <button
-          key={mode}
-          type="button"
-          role="menuitemradio"
-          aria-checked={value === mode}
-          ref={(node) => {
-            itemRefs.current[index] = node;
+        <div
+          role="menu"
+          aria-label="What this conversation talks to"
+          data-testid="conversation-mode-menu"
+          onBlur={(e) => {
+            // The keyboard left the menu for something outside it: close, and
+            // do not drag the caret back to the trigger it is leaving.
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) close(false);
           }}
-          onKeyDown={(e) => onItemKeyDown(e, index)}
-          onClick={() => {
-            onClose(!(mode === "agent" && blocked));
-            onPick(mode);
-          }}
-          className="flex w-full flex-col items-start gap-0.5 rounded-sm px-2 py-1.5 text-left hover:bg-sunken"
+          className="absolute bottom-full left-0 z-20 mb-2 w-64 rounded-md border border-line bg-surface p-1 shadow-lg"
         >
-          <span className="fg-body-sm font-semibold text-fg">{label}</span>
-          <span className="fg-caption text-muted">{hint}</span>
-        </button>
-      ))}
+          {MODES.map(({ mode, label, hint }, index) => {
+            const isBlocked = mode === "agent" && blocked;
+            return (
+              <button
+                key={mode}
+                type="button"
+                role="menuitemradio"
+                aria-checked={value === mode}
+                ref={(node) => {
+                  itemRefs.current[index] = node;
+                }}
+                onKeyDown={(e) => onItemKeyDown(e, index)}
+                onClick={() => {
+                  close(!isBlocked);
+                  if (isBlocked) onBlockedPress();
+                  else onChange(mode);
+                }}
+                className="flex w-full flex-col items-start gap-0.5 rounded-sm px-2 py-1.5 text-left hover:bg-sunken"
+              >
+                <span className="fg-body-sm font-semibold text-fg">{label}</span>
+                <span className="fg-caption text-muted">{hint}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

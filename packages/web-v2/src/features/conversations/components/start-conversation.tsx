@@ -24,24 +24,6 @@ type PickedHandle = { userId: string | null; projectId: string };
 const sameHandle = (a: PickedHandle, b: PickedHandle) =>
   a.projectId === b.projectId && a.userId === b.userId;
 
-/** What the room will be once opened: the base project, every project a picked agent brings, and how many agents. */
-function openingClaims(
-  projectId: string,
-  base: ConversationProject | undefined,
-  handles: PickedHandle[],
-  candidates: HandleCandidate[],
-) {
-  const chosen = handles.flatMap((h) => {
-    const found = candidates.find((c) => sameHandle({ userId: c.userId, projectId: c.project.id }, h));
-    return found ? [found.project] : [];
-  });
-  const scopeProjects: ConversationProject[] = [
-    ...(base ? [{ id: base.id, name: base.name, slug: base.slug }] : []),
-    ...chosen.filter((p) => p.id !== projectId),
-  ];
-  return roomOpeningClaims({ projects: scopeProjects, agentCount: 1 + chosen.length });
-}
-
 export function StartConversation({ onStarted }: { onStarted: (id: string, projectId: string) => void }) {
   const { projects } = useOrgScopedProjects();
   const [projectId, setProjectId] = useState("");
@@ -55,6 +37,26 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
     list.some((x) => same(x, value)) ? list.filter((x) => !same(x, value)) : [...list, value];
 
   const base = projects.find((p) => p.id === projectId);
+  const chosen: ConversationProject[] = handles.flatMap((h) => {
+    const found = (candidates.data?.handles ?? []).find((c: HandleCandidate) =>
+      sameHandle({ userId: c.userId, projectId: c.project.id }, h),
+    );
+    return found ? [found.project] : [];
+  });
+  const brought = chosen.filter((p) => p.id !== projectId);
+  const scopeProjects: ConversationProject[] = [
+    ...(base ? [{ id: base.id, name: base.name, slug: base.slug }] : []),
+    ...brought,
+  ];
+  const claims = roomOpeningClaims({ projects: scopeProjects, agentCount: 1 + chosen.length });
+
+  const start = () => {
+    if (!projectId) return;
+    open.mutate(
+      { projectId, people, handles },
+      { onSuccess: (row) => onStarted(row.id, projectId) },
+    );
+  };
 
   return (
     <div className="grid h-full min-h-0 place-items-center overflow-y-auto px-4 py-8">
@@ -66,16 +68,28 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
           </p>
         </div>
 
-        <ProjectPick
-          projects={projects}
-          value={projectId}
-          onChange={(v) => {
-            setProjectId(v);
-            setPeople([]);
-            setHandles([]);
-            setConfirming(false);
-          }}
-        />
+        <div>
+          <label htmlFor="conversations-new-project" className="fg-body-sm mb-1.5 block text-muted">
+            Project
+          </label>
+          <Select
+            id="conversations-new-project"
+            options={projects.map((p) => ({ value: p.id, label: p.name }))}
+            value={projectId}
+            onChange={(v) => {
+              setProjectId(v);
+              setPeople([]);
+              setHandles([]);
+              setConfirming(false);
+            }}
+            placeholder="Select a project…"
+          />
+          {projectId && (
+            <p className="fg-caption mt-1 text-subtle">
+              The room starts with this project&apos;s own agent, and is about this project.
+            </p>
+          )}
+        </div>
 
         {projectId && !confirming && (
           <Extras
@@ -89,7 +103,7 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
 
         {confirming && (
           <ul className="flex flex-col gap-2" data-testid="start-confirmation">
-            {openingClaims(projectId, base, handles, candidates.data?.handles ?? []).map((claim) => (
+            {claims.map((claim) => (
               <li key={claim.key} data-claim={claim.key} className="fg-body-sm text-fg">
                 {claim.text}
               </li>
@@ -114,46 +128,12 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
             <Button variant="ghost" onClick={() => setConfirming(false)} disabled={open.isPending}>
               Back
             </Button>
-            <Button
-              variant="primary"
-              loading={open.isPending}
-              onClick={() => open.mutate({ projectId, people, handles }, { onSuccess: (row) => onStarted(row.id, projectId) })}
-            >
+            <Button variant="primary" loading={open.isPending} onClick={start}>
               Open the room
             </Button>
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function ProjectPick({
-  projects,
-  value,
-  onChange,
-}: {
-  projects: { id: string; name: string }[];
-  value: string;
-  onChange: (projectId: string) => void;
-}) {
-  return (
-    <div>
-      <label htmlFor="conversations-new-project" className="fg-body-sm mb-1.5 block text-muted">
-        Project
-      </label>
-      <Select
-        id="conversations-new-project"
-        options={projects.map((p) => ({ value: p.id, label: p.name }))}
-        value={value}
-        onChange={onChange}
-        placeholder="Select a project…"
-      />
-      {value && (
-        <p className="fg-caption mt-1 text-subtle">
-          The room starts with this project&apos;s own agent, and is about this project.
-        </p>
-      )}
     </div>
   );
 }
@@ -201,7 +181,9 @@ function Extras({
   return (
     <div className="flex flex-col gap-3">
       {data.handles.length > 0 && (
-        <PickGroup title="Agents — what the room can see">
+        <div>
+          <p className="fg-overline text-subtle">Agents — what the room can see</p>
+          <div className="mt-1 flex flex-col gap-1">
             {data.handles.map((h) => (
               <Checkbox
                 key={`${h.userId ?? "unminted"}:${h.project.id}`}
@@ -216,10 +198,13 @@ function Extras({
                 }
               />
             ))}
-        </PickGroup>
+          </div>
+        </div>
       )}
       {data.people.length > 0 && (
-        <PickGroup title="People — who reads the room">
+        <div>
+          <p className="fg-overline text-subtle">People — who reads the room</p>
+          <div className="mt-1 flex flex-col gap-1">
             {data.people.map((p) => (
               <Checkbox
                 key={p.userId}
@@ -228,17 +213,9 @@ function Extras({
                 label={p.displayName ?? p.email}
               />
             ))}
-        </PickGroup>
+          </div>
+        </div>
       )}
-    </div>
-  );
-}
-
-function PickGroup({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <p className="fg-overline text-subtle">{title}</p>
-      <div className="mt-1 flex flex-col gap-1">{children}</div>
     </div>
   );
 }

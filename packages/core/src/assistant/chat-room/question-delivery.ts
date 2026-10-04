@@ -1,5 +1,5 @@
 // Carrying a parked run's question to a room, and remembering which thread it went to. The
-// ledger of owed rounds is `question-ledger.ts`; the operator alerts are `question-alerts.ts`.
+// ledger of owed rounds and its operator alerts are `question-ledger.ts`.
 
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
@@ -16,20 +16,18 @@ import { problemsOf } from '../../messaging/contract.js';
 import { type ProvenMessage, screenForDoor } from '../../messaging/proven.js';
 import { logger } from '../../observability/logger.js';
 import {
-  clearWebDecidedAlerts,
-  reportUndeliverable,
-  resolveUndeliverableAlert,
-} from './question-alerts.js';
-import {
   isUnreachableRoom,
   type QuestionDestination,
   resolveQuestionDestination,
 } from './question-destination.js';
 import {
   claimRound,
+  clearWebDecidedAlerts,
   MAX_ATTEMPTS,
   type OwedRound,
   owedRounds,
+  reportUndeliverable,
+  resolveUndeliverableAlert,
   roundOf,
   settle,
 } from './question-ledger.js';
