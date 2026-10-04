@@ -8,7 +8,7 @@
     "dev": "pnpm gen:help && next dev --port 3100",
     "build": "node scripts/no-dev-server-holding-next.mjs && pnpm gen:help && next build",
     "start": "next start --port 3100",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "lint": "node ../../scripts/check-lint-budget.mjs --all",
     "lint:raw": "biome check src"
   },

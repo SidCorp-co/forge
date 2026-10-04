@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { suspendedWithoutTests } from './lib/suspended-without-tests.mjs';
 import { CONFIG_RE } from './lib/test-reachability.mjs';
 import {
   declarationExit,
@@ -42,6 +43,8 @@ function die(msg) {
 const ls = spawnSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' });
 if (ls.status !== 0) die('could not list tracked files — not a git repository?');
 const tracked = ls.stdout.split('\n').filter(Boolean);
+
+if (suspendedWithoutTests(ROOT, 'whole-tree-gates: 0 test file(s) read')) process.exit(0);
 
 const files = [];
 for (const path of tracked.filter((f) => SOURCE_FILE_RE.test(f))) {
