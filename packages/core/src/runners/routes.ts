@@ -1,19 +1,8 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import {
-  agentSessions,
-  type RunnerStatus,
-  type RunnerType,
-  runnerEvents,
-  runnerStatuses,
-  runners,
-  runnerTypes,
-} from '../db/schema.js';
+import { type RunnerStatus, type RunnerType, runnerStatuses, runnerTypes } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { resolvedWindowDaysFor } from '../pipeline/retention/policy.js';
@@ -21,10 +10,11 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { runnerHealthWithBuild } from './build-comparison.js';
 import { clearRunnerQuarantine } from './quarantine.js';
+import { activeRunnersOf, listProjectRunners, type RunnerRow, runnerActivity, runnerRow } from './read.js';
 import { getRunnerAdapter, listRunnerTypes } from './registry.js';
 import { setRunnerStatus } from './runner-events.js';
 import { defaultRunnerCapabilities } from './select.js';
-import { insertRunner } from './service.js';
+import { deleteRunner, insertRunner, storeRunnerQuota, updateRunner } from './service.js';
 import type { Runner } from './types.js';
 import { requireHeld } from '../permissions/index.js';
 
@@ -34,7 +24,7 @@ const badRequest = (details: unknown) =>
 const notFound = () =>
   new HTTPException(404, { message: 'runner not found', cause: { code: 'NOT_FOUND' } });
 
-function rowToRunner(r: typeof runners.$inferSelect): Runner {
+function rowToRunner(r: RunnerRow): Runner {
   return {
     id: r.id,
     projectId: r.projectId,
@@ -112,20 +102,13 @@ runnerRoutes.get(
   async (c) => {
     const userId = c.get('userId');
     const q = c.req.valid('query');
-    const filters = [];
-    if (q.projectId) {
-      const access = await loadProjectAccess(q.projectId, userId);
-      requireHeld(access, 'project.read');
-      filters.push(eq(runners.projectId, q.projectId));
-    } else {
-      return c.json({ runners: [] });
-    }
-    if (q.type) filters.push(eq(runners.type, q.type as RunnerType));
-    if (q.status) filters.push(eq(runners.status, q.status as RunnerStatus));
-    const rows = await db
-      .select()
-      .from(runners)
-      .where(and(...filters));
+    if (!q.projectId) return c.json({ runners: [] });
+    const access = await loadProjectAccess(q.projectId, userId);
+    requireHeld(access, 'project.read');
+    const rows = await listProjectRunners(q.projectId, {
+      type: q.type as RunnerType | undefined,
+      status: q.status as RunnerStatus | undefined,
+    });
     return c.json({ runners: rows.map((r) => publicRunner(rowToRunner(r))) });
   },
 );
@@ -143,71 +126,7 @@ runnerRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    const rows = await db.execute<{
-      runner_id: string;
-      runner_name: string;
-      status: string;
-      last_seen_at: string | null;
-      job_id: string | null;
-      job_type: string | null;
-      dispatched_at: string | null;
-      issue_id: string | null;
-      iss_seq: number | null;
-      issue_prefix: string | null;
-      issue_title: string | null;
-    }>(sql`
-      SELECT
-        r.id          AS runner_id,
-        r.name        AS runner_name,
-        r.status      AS status,
-        r.last_seen_at AS last_seen_at,
-        j.id          AS job_id,
-        j.type        AS job_type,
-        j.dispatched_at AS dispatched_at,
-        i.id          AS issue_id,
-        i.iss_seq     AS iss_seq,
-        rp.issue_prefix AS issue_prefix,
-        i.title       AS issue_title
-      FROM runners r
-      -- Orphan exclusion (ISS-258) lives in the JOIN, not a WHERE clause, so a
-      -- runner whose only active job is parented by a terminal pipeline_run
-      -- still appears — as IDLE — instead of dropping out of the result.
-      LEFT JOIN jobs j
-        ON j.runner_id = r.id
-       AND j.status IN ('dispatched','running')
-      LEFT JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
-      LEFT JOIN issues i ON i.id = j.issue_id
-      LEFT JOIN projects rp ON rp.id = i.project_id
-      WHERE r.project_id = ${projectId}
-        AND (j.id IS NULL OR pr.id IS NULL OR pr.status IN ('running','paused'))
-      ORDER BY r.name ASC, j.dispatched_at ASC NULLS LAST
-    `);
-
-    const byRunner = new Map<string, (typeof rows)[number]>();
-    for (const row of rows) {
-      const existing = byRunner.get(row.runner_id);
-      if (!existing || (!existing.job_id && row.job_id)) byRunner.set(row.runner_id, row);
-    }
-
-    const runnersOut = [...byRunner.values()].map((row) => ({
-      runnerId: row.runner_id,
-      name: row.runner_name,
-      status: row.status,
-      lastSeenAt: row.last_seen_at,
-      current: row.job_id
-        ? {
-            jobId: row.job_id,
-            stage: row.job_type,
-            startedAt: row.dispatched_at,
-            issueId: row.issue_id,
-            issueRef: row.iss_seq != null ? formatIssueRef(row.issue_prefix, row.iss_seq) : null,
-            issueTitle: row.issue_title,
-          }
-        : null,
-    }));
-
-    const busy = runnersOut.filter((r) => r.current).length;
-    return c.json({ runners: runnersOut, busy, total: runnersOut.length });
+    return c.json(await activeRunnersOf(projectId));
   },
 );
 
@@ -219,7 +138,7 @@ runnerRoutes.get(
   async (c) => {
     const userId = c.get('userId');
     const { id } = c.req.valid('param');
-    const [row] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
+    const row = await runnerRow(id);
     if (!row) throw notFound();
     const access = await loadProjectAccess(row.projectId, userId);
     requireHeld(access, 'project.read');
@@ -250,55 +169,12 @@ runnerRoutes.get(
     const userId = c.get('userId');
     const { id } = c.req.valid('param');
     const { limit } = c.req.valid('query');
-    const [row] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
+    const row = await runnerRow(id);
     if (!row) throw notFound();
     const access = await loadProjectAccess(row.projectId, userId);
     requireHeld(access, 'project.read');
 
-    const events = await db
-      .select({
-        id: runnerEvents.id,
-        oldStatus: runnerEvents.oldStatus,
-        newStatus: runnerEvents.newStatus,
-        reason: runnerEvents.reason,
-        ts: runnerEvents.ts,
-      })
-      .from(runnerEvents)
-      .where(eq(runnerEvents.runnerId, id))
-      .orderBy(desc(runnerEvents.ts))
-      .limit(limit);
-
-    // Recent sessions that ran on this runner's device (device-bound runners
-    // only; remote/NULL-device runners have no device-scoped sessions). The
-    // error excerpt is the last transcript line mentioning a tool/result error,
-    // extracted in SQL so we never ship the full `messages` jsonb over the wire.
-    const sessions = row.deviceId
-      ? await db
-          .select({
-            id: agentSessions.id,
-            title: agentSessions.title,
-            status: agentSessions.status,
-            failureReason: agentSessions.failureReason,
-            updatedAt: agentSessions.updatedAt,
-            errorExcerpt: sql<string | null>`(
-              SELECT left(msg->>'content', 500)
-              FROM jsonb_array_elements(${agentSessions.messages}) AS msg
-              WHERE msg->>'content' ILIKE '%RESULT_ERROR%'
-                 OR msg->>'content' ILIKE '%API Error%'
-              ORDER BY (msg->>'timestamp')::numeric DESC NULLS LAST
-              LIMIT 1
-            )`,
-          })
-          .from(agentSessions)
-          .where(
-            and(
-              eq(agentSessions.deviceId, row.deviceId),
-              eq(agentSessions.projectId, row.projectId),
-            ),
-          )
-          .orderBy(desc(agentSessions.updatedAt))
-          .limit(limit)
-      : [];
+    const { events, sessions } = await runnerActivity(row, limit);
 
     return c.json({
       events,
@@ -356,7 +232,7 @@ runnerRoutes.patch(
     const userId = c.get('userId');
     const { id } = c.req.valid('param');
     const input = c.req.valid('json');
-    const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
+    const existing = await runnerRow(id);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
     requireHeld(access, 'project.admin');
@@ -371,13 +247,13 @@ runnerRoutes.patch(
       nextConfig = result.config;
     }
 
-    const update: Partial<typeof runners.$inferInsert> = { updatedAt: new Date() };
+    const update: Parameters<typeof updateRunner>[1] = {};
     if (input.name !== undefined) update.name = input.name;
     if (input.labels !== undefined) update.labels = input.labels;
     if (input.capabilities !== undefined) update.capabilities = input.capabilities;
     if (input.config) update.config = nextConfig;
 
-    const [updated] = await db.update(runners).set(update).where(eq(runners.id, id)).returning();
+    const updated = await updateRunner(id, update);
     if (!updated) throw notFound();
 
     // ISS-381 (2.3) — route the status mutation through the audited, change-gated
@@ -410,11 +286,11 @@ runnerRoutes.delete(
   async (c) => {
     const userId = c.get('userId');
     const { id } = c.req.valid('param');
-    const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
+    const existing = await runnerRow(id);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
     requireHeld(access, 'project.admin');
-    await db.delete(runners).where(eq(runners.id, id));
+    await deleteRunner(id);
     roomManager.publish(projectRoom(existing.projectId), {
       event: 'runner.deleted',
       data: { runnerId: id },
@@ -431,7 +307,7 @@ runnerRoutes.post(
   async (c) => {
     const userId = c.get('userId');
     const { id } = c.req.valid('param');
-    const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
+    const existing = await runnerRow(id);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
     requireHeld(access, 'project.read');
@@ -449,7 +325,7 @@ runnerRoutes.post(
   async (c) => {
     const userId = c.get('userId');
     const { id } = c.req.valid('param');
-    const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
+    const existing = await runnerRow(id);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
     requireHeld(access, 'project.write');
@@ -459,19 +335,7 @@ runnerRoutes.post(
     }
     const result = await adapter.refreshQuota({ runner: rowToRunner(existing) });
     if (Object.keys(result).length > 0) {
-      const config = (existing.config ?? {}) as Record<string, unknown>;
-      const next = {
-        ...config,
-        quota: {
-          ...(config.quota as object | undefined),
-          ...result,
-          refreshedAt: new Date().toISOString(),
-        },
-      };
-      await db
-        .update(runners)
-        .set({ config: next, updatedAt: new Date() })
-        .where(eq(runners.id, id));
+      await storeRunnerQuota(id, (existing.config ?? {}) as Record<string, unknown>, result);
     }
     return c.json(result);
   },
@@ -485,7 +349,7 @@ runnerRoutes.post(
   async (c) => {
     const userId = c.get('userId');
     const { id } = c.req.valid('param');
-    const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
+    const existing = await runnerRow(id);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
     // Same gate as PATCH `status` — exclude/include are status mutations.
@@ -508,7 +372,7 @@ runnerRoutes.post(
   async (c) => {
     const userId = c.get('userId');
     const { id } = c.req.valid('param');
-    const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
+    const existing = await runnerRow(id);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
     requireHeld(access, 'project.admin');
@@ -530,7 +394,7 @@ runnerRoutes.post(
   async (c) => {
     const userId = c.get('userId');
     const { id } = c.req.valid('param');
-    const [existing] = await db.select().from(runners).where(eq(runners.id, id)).limit(1);
+    const existing = await runnerRow(id);
     if (!existing) throw notFound();
     const access = await loadProjectAccess(existing.projectId, userId);
     requireHeld(access, 'project.admin');

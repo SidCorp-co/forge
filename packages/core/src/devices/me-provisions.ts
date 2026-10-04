@@ -1,13 +1,11 @@
-import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { db } from '../db/client.js';
-import { projectGitCredentials, projects, runners, workspaceSshKeys } from '../db/schema.js';
 import { isHttpsGitUrl, projectsWithHostCredential } from '../git/host-credential.js';
 import { logger } from '../logger.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { readDeclaredSource, remoteOf } from '../project-config/source.js';
 import { recordProvisionReports } from './provision-reports.js';
+import { queuedProvisionRows } from './read.js';
 import {
   buildProvisionRow,
   PROVISION_FAILURES_HEADER,
@@ -22,36 +20,11 @@ export const deviceProvisionRoutes = new Hono<{ Variables: DeviceVars }>();
 const unauth = () =>
   new HTTPException(401, { message: 'device revoked', cause: { code: 'UNAUTHENTICATED' } });
 
-function queuedRows(deviceId: string) {
-  return db
-    .select({
-      runnerId: runners.id,
-      projectId: runners.projectId,
-      slug: projects.slug,
-      repoPath: runners.repoPath,
-      branch: runners.branch,
-      sshSource: workspaceSshKeys.source,
-      sshPublicKey: workspaceSshKeys.publicKey,
-      sshPrivateKeyEnc: workspaceSshKeys.privateKeyEnc,
-    })
-    .from(runners)
-    .innerJoin(projects, eq(projects.id, runners.projectId))
-    .leftJoin(projectGitCredentials, eq(projectGitCredentials.projectId, runners.projectId))
-    .leftJoin(workspaceSshKeys, eq(workspaceSshKeys.id, projectGitCredentials.sshKeyId))
-    .where(
-      and(
-        eq(runners.deviceId, deviceId),
-        eq(runners.type, 'claude-code'),
-        eq(runners.provisionStatus, 'queued'),
-      ),
-    );
-}
-
 deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
   const device = c.get('device');
   if (device.status === 'revoked') throw unauth();
 
-  const rows = await queuedRows(device.id);
+  const rows = await queuedProvisionRows(device.id);
   const credentialed = await projectsWithHostCredential(rows.map((r) => r.projectId));
   // The identity the box acts as, resolved once: a box paired as an agent hands
   // its checkouts that agent's reach and not the approving person's.

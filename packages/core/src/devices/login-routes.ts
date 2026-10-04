@@ -19,13 +19,10 @@
  */
 
 import { createHash, randomBytes } from 'node:crypto';
-import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
-import { db } from '../db/client.js';
-import { deviceLoginCodes, organizationMembers, users } from '../db/schema.js';
 import { provisionGitCredential } from '../git/provision-credential.js';
 import { logger } from '../logger.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
@@ -34,7 +31,9 @@ import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { Sentry } from '../observability/sentry.js';
 import { issueDeviceCredential } from './credential.js';
+import { loginCodeState, userExists, userKindAndOrg } from './read.js';
 import { registerDevice } from './register.js';
+import { approveLoginCode, consumeLoginCode, insertLoginCode } from './service.js';
 import { requireOrgCan } from '../permissions/index.js';
 
 type LoginPlatform = 'windows' | 'macos' | 'linux';
@@ -193,24 +192,17 @@ deviceLoginRoutes.post(
     for (let attempt = 0; attempt < MAX_INSERT_RETRIES; attempt++) {
       canonical = generateCanonical();
       const codeHash = sha256Hex(canonical);
-      const [row] = await db
-        .insert(deviceLoginCodes)
-        .values({
-          codeHash,
-          deviceLabel,
-          devicePlatform,
-          deviceHostname,
-          machineId,
-          createdIp,
-          createdUserAgent,
-          expiresAt,
-        })
-        .onConflictDoNothing({ target: deviceLoginCodes.codeHash })
-        .returning({ id: deviceLoginCodes.id });
-      if (row) {
-        insertedId = row.id;
-        break;
-      }
+      insertedId = await insertLoginCode({
+        codeHash,
+        deviceLabel,
+        devicePlatform,
+        deviceHostname,
+        machineId,
+        createdIp,
+        createdUserAgent,
+        expiresAt,
+      });
+      if (insertedId !== null) break;
     }
     if (insertedId === null) {
       logger.error(
@@ -249,12 +241,7 @@ async function resolveApprovableAgent(raw: unknown, approverId: string): Promise
       cause: { code: 'INVALID_BODY' },
     });
   }
-  const [agent] = await db
-    .select({ id: users.id, kind: users.kind, orgId: organizationMembers.orgId })
-    .from(users)
-    .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
-    .where(eq(users.id, raw))
-    .limit(1);
+  const agent = await userKindAndOrg(raw);
   if (agent?.kind !== 'agent') {
     throw new HTTPException(404, {
       message: 'agent not found',
@@ -281,34 +268,13 @@ deviceLoginRoutes.post(
     const codeHash = sha256Hex(canonical);
     const agentUserId = await resolveApprovableAgent(body.agent_id, userId);
 
-    const updated = await db
-      .update(deviceLoginCodes)
-      .set({
-        approvedUserId: userId,
-        agentUserId,
-        approvedAt: sql`now()`,
-        grantEpoch: mintEpochFor(c),
-      })
-      .where(
-        and(
-          eq(deviceLoginCodes.codeHash, codeHash),
-          isNull(deviceLoginCodes.approvedUserId),
-          isNull(deviceLoginCodes.consumedAt),
-          gt(deviceLoginCodes.expiresAt, sql`now()`),
-        ),
-      )
-      .returning({
-        id: deviceLoginCodes.id,
-        deviceLabel: deviceLoginCodes.deviceLabel,
-        devicePlatform: deviceLoginCodes.devicePlatform,
-        deviceHostname: deviceLoginCodes.deviceHostname,
-        createdIp: deviceLoginCodes.createdIp,
-        createdUserAgent: deviceLoginCodes.createdUserAgent,
-        createdAt: deviceLoginCodes.createdAt,
-        expiresAt: deviceLoginCodes.expiresAt,
-      });
+    const row = await approveLoginCode(codeHash, {
+      userId,
+      agentUserId,
+      grantEpoch: mintEpochFor(c),
+    });
 
-    if (updated.length === 0) {
+    if (!row) {
       // Single error shape across "unknown" / "already approved" / "expired"
       // so we don't leak a brute-force oracle.
       throw new HTTPException(404, {
@@ -316,7 +282,6 @@ deviceLoginRoutes.post(
         cause: { code: 'PAIRING_CODE_NOT_FOUND' },
       });
     }
-    const row = updated[0]!;
 
     logger.info({ approvedUserId: userId, loginCodeId: row.id }, 'device login: approved');
     await publishLoginEvent(userId, 'device.login', {
@@ -348,48 +313,23 @@ deviceLoginRoutes.get(
     const codeHash = sha256Hex(canonical);
 
     // Atomic single-use consumption. Two concurrent polls can't both win.
-    const consumed = await db
-      .update(deviceLoginCodes)
-      .set({ consumedAt: sql`now()` })
-      .where(
-        and(
-          eq(deviceLoginCodes.codeHash, codeHash),
-          sql`approved_user_id IS NOT NULL`,
-          isNull(deviceLoginCodes.consumedAt),
-          gt(deviceLoginCodes.expiresAt, sql`now()`),
-        ),
-      )
-      .returning({
-        id: deviceLoginCodes.id,
-        approvedUserId: deviceLoginCodes.approvedUserId,
-        agentUserId: deviceLoginCodes.agentUserId,
-        deviceLabel: deviceLoginCodes.deviceLabel,
-        devicePlatform: deviceLoginCodes.devicePlatform,
-        machineId: deviceLoginCodes.machineId,
-        grantEpoch: deviceLoginCodes.grantEpoch,
-      });
-
-    const [row] = consumed;
-    if (consumed.length === 1 && row) {
+    const row = await consumeLoginCode(codeHash);
+    if (row) {
       if (!row.approvedUserId) {
         throw new HTTPException(500, {
           message: 'pairing missing user',
           cause: { code: 'PAIRING_NO_USER' },
         });
       }
-      const [user] = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.id, row.approvedUserId))
-        .limit(1);
-      if (!user) {
+      if (!(await userExists(row.approvedUserId))) {
         throw new HTTPException(500, {
           message: 'pairing user no longer exists',
           cause: { code: 'PAIRING_USER_MISSING' },
         });
       }
 
-      const holderId = row.agentUserId ?? user.id;
+      const approvedUserId = row.approvedUserId;
+      const holderId = row.agentUserId ?? approvedUserId;
       const device = await registerDevice({
         ownerId: holderId,
         name: row.deviceLabel,
@@ -420,11 +360,11 @@ deviceLoginRoutes.get(
       }
 
       logger.info(
-        { approvedUserId: user.id, loginCodeId: row.id, deviceId: device.id },
+        { approvedUserId, loginCodeId: row.id, deviceId: device.id },
         'device login: consumed',
       );
       // Refresh the owner's device list on the web Runners surface.
-      await publishLoginEvent(user.id, 'device.paired', { deviceId: device.id });
+      await publishLoginEvent(approvedUserId, 'device.paired', { deviceId: device.id });
 
       return c.json({
         device_token: plaintext,
@@ -434,15 +374,7 @@ deviceLoginRoutes.get(
     }
 
     // No row consumed — disambiguate so the CLI shows the right message.
-    const [existing] = await db
-      .select({
-        approvedUserId: deviceLoginCodes.approvedUserId,
-        consumedAt: deviceLoginCodes.consumedAt,
-        expiresAt: deviceLoginCodes.expiresAt,
-      })
-      .from(deviceLoginCodes)
-      .where(eq(deviceLoginCodes.codeHash, codeHash))
-      .limit(1);
+    const existing = await loginCodeState(codeHash);
 
     if (!existing) {
       throw new HTTPException(410, {
