@@ -60,9 +60,14 @@ const EnvSchema = z.object({
     .int()
     .positive()
     .default(5 * 1024 * 1024),
-  STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
-  S3_BUCKET: z.string().optional(),
-  S3_REGION: z.string().optional(),
+  STORAGE_DRIVER: z
+    .enum(['local'], {
+      error: (issue) =>
+        issue.input === 's3'
+          ? "STORAGE_DRIVER=s3 is refused: no object-storage driver is built, so 's3' would accept the config and fail on the first upload; the only valid value is 'local'"
+          : undefined,
+    })
+    .default('local'),
   LITELLM_API_URL: z.url().optional(),
   LITELLM_API_KEY: z.string().min(1).optional(),
   LITELLM_MODEL: z.string().min(1).default('gpt-4o-mini'),

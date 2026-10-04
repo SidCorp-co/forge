@@ -99,8 +99,8 @@ sentence that justifies it, and an exception with no reason is refused.
 - **The oasdiff binary** (`packages/core/src/ecosystem/contract/oasdiff.ts`) is a local process the
   contract differ runs over two specs it already holds; it reaches no system. Only its pinned
   download crosses a boundary, and that sits in `packages/core/src/integrations/published-releases/public-releases.ts`.
-- **Object storage** is not an external system today: `packages/core/src/storage/s3.ts` is an unimplemented stub.
-  When it is implemented it becomes an `object-storage` port under `integrations`.
+- **Object storage** is not an external system today: `STORAGE_DRIVER` accepts only `local`, and `s3`
+  is refused by name. A driver for an object store would be an `object-storage` port under `integrations`.
 
 ## Consequences
 

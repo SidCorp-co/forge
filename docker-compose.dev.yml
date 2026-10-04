@@ -21,8 +21,7 @@ services:
     volumes:
       # Comment attachments default to local-fs storage at UPLOADS_DIR
       # (=./uploads = /app/uploads in the container). Without a volume the
-      # directory is wiped on every container recreate. Switch to S3 by
-      # setting STORAGE_DRIVER=s3 + S3_BUCKET/S3_REGION when ready.
+      # directory is wiped on every container recreate.
       - core_uploads:/app/uploads
       # forge-runner release assets (ISS-310). Boot-time `fetch-release.js`
       # populates this from the latest `runner-v*` GitHub Release; the install
