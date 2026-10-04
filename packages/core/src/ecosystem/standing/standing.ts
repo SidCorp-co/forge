@@ -25,24 +25,11 @@ export interface ConsumerFact {
   builtAgainst: string;
 }
 
-export interface RequestFact {
-  number: string;
-  direction: 'incoming' | 'outgoing';
-  counterpart: string;
-  requirementKey: string;
-  open: boolean;
-}
-
 export interface ChangeFact {
   feedback: string;
   version: string;
   dueAt: Date;
   open: boolean;
-}
-
-export interface WaitFact {
-  issue: string;
-  minVersion: string;
 }
 
 export interface ContractFacts {
@@ -54,8 +41,6 @@ export interface ContractFacts {
   windowDues: ReadonlyMap<string, Date>;
   change: ChangeFact | null;
   consumers: readonly ConsumerFact[];
-  requests: readonly RequestFact[];
-  waits: readonly WaitFact[];
 }
 
 export interface StandingViewer {
@@ -164,27 +149,12 @@ function providedTurn(
         }
       : {
           group: 'waiting',
-          waitingOn: { kind: 'person', who: 'An org admin', act, rule, ref: pending.version, dueAt: null },
-        };
-  }
-  const asked = f.requests.find((r) => r.direction === 'incoming' && r.open);
-  if (asked) {
-    const act = `reply to ${asked.counterpart}`;
-    const rule =
-      'providedTurn: a change request lands as a draft requirement here and is owed an agree or a drop';
-    return v.acts
-      ? {
-          group: 'needs_you',
-          waitingOn: { kind: 'you', who: 'You', act, rule, ref: asked.requirementKey, dueAt: null },
-        }
-      : {
-          group: 'waiting',
           waitingOn: {
             kind: 'person',
-            who: 'A project member',
+            who: 'An org admin',
             act,
             rule,
-            ref: asked.requirementKey,
+            ref: pending.version,
             dueAt: null,
           },
         };
@@ -218,7 +188,7 @@ function providedTurn(
       kind: 'none',
       who: 'Nobody',
       act,
-      rule: 'providedTurn: nothing is proposed, asked or owed inside a window',
+      rule: 'providedTurn: nothing is proposed or owed inside a window',
       ref: null,
       dueAt: null,
     },
@@ -234,7 +204,14 @@ function consumedTurn(f: ContractFacts, v: StandingViewer, current: VersionFact 
     return v.acts
       ? {
           group: 'needs_you',
-          waitingOn: { kind: 'you', who: 'You', act, rule, ref: change.feedback, dueAt: change.dueAt.toISOString() },
+          waitingOn: {
+            kind: 'you',
+            who: 'You',
+            act,
+            rule,
+            ref: change.feedback,
+            dueAt: change.dueAt.toISOString(),
+          },
         }
       : {
           group: 'waiting',
@@ -248,34 +225,7 @@ function consumedTurn(f: ContractFacts, v: StandingViewer, current: VersionFact 
           },
         };
   }
-  const asked = f.requests.find((r) => r.direction === 'outgoing' && r.open);
-  if (asked) {
-    return {
-      group: 'waiting',
-      waitingOn: {
-        kind: 'project',
-        who: f.providerSlug,
-        act: `agree ${asked.number} · their ${asked.requirementKey}`,
-        rule: 'consumedTurn: the change request landed as the provider’s draft requirement, not agreed yet',
-        ref: asked.number,
-        dueAt: null,
-      },
-    };
-  }
-  if (f.waits.length > 0) {
-    const need = [...new Set(f.waits.map((w) => w.minVersion))].join(', ');
-    return {
-      group: 'waiting',
-      waitingOn: {
-        kind: 'project',
-        who: f.providerSlug,
-        act: `publish ≥ ${need} · ${f.waits.length} ${plural(f.waits.length, 'issue waits', 'issues wait')}`,
-        rule: 'consumedTurn: an unsettled contract wait holds its issue out of dispatch until the provider approves a version at or above it (ecosystem/waits/rules.ts:holdsDispatch)',
-        ref: f.waits[0]?.issue ?? null,
-        dueAt: null,
-      },
-    };
-  }
+
   const act = !current
     ? 'the provider has published no version'
     : f.ours === current.version
@@ -287,7 +237,7 @@ function consumedTurn(f: ContractFacts, v: StandingViewer, current: VersionFact 
       kind: 'none',
       who: 'Nobody',
       act,
-      rule: 'consumedTurn: no breaking item, request or wait is open',
+      rule: 'consumedTurn: no breaking item is open',
       ref: null,
       dueAt: null,
     },

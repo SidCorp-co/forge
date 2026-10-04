@@ -18,12 +18,7 @@ import { runOnceBackfills } from './boot-backfills.js';
 import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
-import {
-  contractProviderShortfalls,
-  interfaceContractsOf,
-  provideEcosystemSignals,
-  registerContractMeasureWorker,
-} from './ecosystem/index.js';
+import { interfaceContractsOf, provideEcosystemSignals } from './ecosystem/index.js';
 import { provideAdmissionThresholds } from './error-intake/index.js';
 import { provideExecutionPorts } from './execution-ports.js';
 import { provideFeedbackDependents, requirementFeedbackAs } from './feedback/index.js';
@@ -51,10 +46,7 @@ import { recordSecretResolve, rememberHandedOut, resolvePipelineContext } from '
 import { provideProjectOrg } from './lib/authz.js';
 import { provideDataPolicy } from './lib/data-egress.js';
 import { CHAT_READ_MODEL_TOOLS } from './mcp/index.js';
-import {
-  provideMemoryIssueReads,
-  registerMemoryReconcileWorker,
-} from './memory/index.js';
+import { provideMemoryIssueReads, registerMemoryReconcileWorker } from './memory/index.js';
 import { provideIssueFactReads } from './messaging/gather.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
@@ -123,7 +115,6 @@ provideProjectConfigPorts({
   rememberHandedOut,
 });
 provideReleaseBatchPorts({
-  contractProviderShortfalls,
   writeRunMetadata,
   stampReleaseVersion,
   stampReleaseShipped,
@@ -270,7 +261,6 @@ if (isMain) {
   registerRoomBridges();
   bootstrapRunnerAdapters();
   await registerMemoryReconcileWorker();
-  await registerContractMeasureWorker();
   await registerReleaseBatchFinish();
   registerOutboxConsumers();
   await startOutboxWorker();

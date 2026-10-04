@@ -181,8 +181,6 @@ export interface ContractStandingRow
 	window: ContractWindow | null;
 	noticeDays: number | null;
 	consumers: { total: number; current: number; behind: number };
-	waits: number;
-	openRequests: number;
 	state: ContractState;
 	touchedAt: string | null;
 }
@@ -214,30 +212,6 @@ export interface ContractConsumerView {
 	self: boolean;
 }
 
-export interface ContractIssueWait {
-	issue: string;
-	title: string;
-	status: IssueStatus;
-	minVersion: string;
-	reason: string | null;
-	settled: boolean;
-}
-
-export interface ContractDemand {
-	project: ContractProjectRef;
-	issues: number;
-	minVersions: string[];
-}
-
-export interface ContractRequestRow {
-	number: string;
-	direction: "incoming" | "outgoing";
-	counterpart: ContractProjectRef;
-	requirement: { key: string; title: string; status: string; project: string };
-	open: boolean;
-	createdAt: string;
-}
-
 export interface ContractFeedbackRef {
 	key: string;
 	title: string;
@@ -246,22 +220,10 @@ export interface ContractFeedbackRef {
 	dueAt: string | null;
 }
 
-export interface ContractMeasurementView {
-	outcome: string;
-	version: string | null;
-	environments: string[];
-	branch: string;
-	commit: string;
-	observedAt: string;
-	reason: string | null;
-}
-
 export interface ContractUnavailable {
 	available: false;
 	reason: string;
 }
-
-export const CONTRACT_MEASUREMENTS_SHOWN = 10;
 
 export interface ContractStandingDetail {
 	generatedAt: string;
@@ -269,10 +231,6 @@ export interface ContractStandingDetail {
 	contract: ContractStandingRow;
 	versions: ContractVersionView[];
 	consumers: ContractConsumerView[];
-	waits: ContractIssueWait[];
-	demand: ContractDemand[];
-	requests: ContractRequestRow[];
 	feedback: ContractFeedbackRef[];
-	measurements: ContractMeasurementView[] | null;
 	module: ContractUnavailable;
 }

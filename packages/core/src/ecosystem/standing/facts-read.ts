@@ -1,9 +1,6 @@
 import type { FeedbackStatus } from '@forge/contracts/feedback';
-import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { activeIssuePrefix } from '../../issues/index.js';
-import { formatIssueRef } from '../../lib/issue-ref.js';
 import { holds, permissionFactsOf } from '../../permissions/index.js';
 import { versionsOf } from '../contract/store.js';
 import type { StandingViewer, VersionFact } from './standing.js';
@@ -106,86 +103,5 @@ export async function changeItems(projectId: string): Promise<ChangeRow[]> {
     version: f.contract_version,
     dueAt: f.due_at ? new Date(f.due_at) : null,
     createdAt: new Date(f.created_at),
-  }));
-}
-
-export interface WaitRow {
-  issue: string;
-  title: string;
-  status: IssueStatus;
-  providerId: string;
-  providerSlug: string;
-  slug: string;
-  minVersion: string;
-  reason: string | null;
-  settled: boolean;
-}
-
-export async function issueWaits(projectId: string): Promise<WaitRow[]> {
-  const found = rowsOf<{
-    iss_seq: number;
-    title: string;
-    status: IssueStatus;
-    provider: string;
-    provider_slug: string;
-    contract_slug: string;
-    min_version: string;
-    reason: string | null;
-    settled: boolean;
-  }>(
-    await db.execute(sql`
-      SELECT i.iss_seq, i.title, i.status, cw.provider_project_id AS provider, p.slug AS provider_slug,
-             cw.contract_slug, cw.min_version, cw.reason, cw.settled_at IS NOT NULL AS settled
-        FROM issue_contract_waits cw
-        JOIN issues i ON i.id = cw.issue_id
-        JOIN projects p ON p.id = cw.provider_project_id
-       WHERE cw.project_id = ${projectId} AND cw.retracted_at IS NULL AND i.archived_at IS NULL
-         AND i.status NOT IN ('closed', 'dropped')
-       ORDER BY i.iss_seq, cw.created_at`),
-  );
-  if (found.length === 0) return [];
-  const prefix = await activeIssuePrefix(projectId);
-  return found.map((w) => ({
-    issue: formatIssueRef(prefix, w.iss_seq),
-    title: w.title,
-    status: w.status,
-    providerId: w.provider,
-    providerSlug: w.provider_slug,
-    slug: w.contract_slug,
-    minVersion: w.min_version,
-    reason: w.reason,
-    settled: w.settled,
-  }));
-}
-
-export interface DemandRow {
-  consumerId: string;
-  slug: string;
-  issues: number;
-  minVersions: string[];
-}
-
-// cm:why a provider reads how many of a consumer's issues wait on its contract, never which: the issues are the consumer's own record
-export async function consumerDemand(providerId: string): Promise<DemandRow[]> {
-  const found = rowsOf<{
-    project_id: string;
-    contract_slug: string;
-    n: number;
-    min_versions: string[];
-  }>(
-    await db.execute(sql`
-      SELECT cw.project_id, cw.contract_slug, count(*)::int AS n,
-             array_agg(DISTINCT cw.min_version ORDER BY cw.min_version) AS min_versions
-        FROM issue_contract_waits cw
-        JOIN issues i ON i.id = cw.issue_id
-       WHERE cw.provider_project_id = ${providerId} AND cw.retracted_at IS NULL
-         AND cw.settled_at IS NULL AND i.status NOT IN ('closed', 'dropped')
-       GROUP BY cw.project_id, cw.contract_slug`),
-  );
-  return found.map((d) => ({
-    consumerId: d.project_id,
-    slug: d.contract_slug,
-    issues: d.n,
-    minVersions: d.min_versions,
   }));
 }

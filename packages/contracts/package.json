@@ -178,10 +178,6 @@
       "types": "./dist/releases.d.ts",
       "default": "./dist/releases.js"
     },
-    "./contract-waits": {
-      "types": "./dist/contract-waits.d.ts",
-      "default": "./dist/contract-waits.js"
-    },
     "./contract-standing": {
       "types": "./dist/contract-standing.d.ts",
       "default": "./dist/contract-standing.js"

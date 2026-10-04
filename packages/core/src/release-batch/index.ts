@@ -38,7 +38,6 @@ export {
 } from './hold.js';
 export { provideReleaseBatchPorts } from './ports.js';
 export { loadReleaseRoster } from './queries.js';
-export { heldBackByProviders } from './refuse.js';
 export { bindingReachesProduction, confirmPendingProdDeploy } from './release-coolify.js';
 export { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';
 export { createReleaseBatch } from './service.js';

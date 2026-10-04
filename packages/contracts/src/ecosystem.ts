@@ -1,7 +1,6 @@
 // One declaration of the ecosystem module's refusal codes: core throws them, both doors answer them
 // in the refusal envelope, and the web reads them by name.
 
-import { CONTRACT_WAIT_REFUSAL_CODES } from "./contract-waits.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import type { RefusalStatuses } from "./refusal.js";
 
@@ -147,7 +146,6 @@ export const ECOSYSTEM_REFUSAL_CODES = [
 	...ECOSYSTEM_TOOL_REFUSAL_CODES,
 	...CONTRACT_REFUSAL_CODES,
 	...CONTRACT_APPROVAL_REFUSAL_CODES,
-	...CONTRACT_WAIT_REFUSAL_CODES,
 	...LINK_REFUSAL_CODES,
 ] as const;
 export type EcosystemRefusalCode = (typeof ECOSYSTEM_REFUSAL_CODES)[number];

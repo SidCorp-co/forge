@@ -3,23 +3,19 @@ import { sql } from 'drizzle-orm';
 import {
   assertDesignApprovedForIssue,
   assertDesignsApprovedForSeqs,
-  assertWaitsSettledForIssue,
-  assertWaitsSettledForSeqs,
   buildsWorkflowOf,
   type DispatchGateCode,
   type DispatchGateError,
   designUnapprovedSql,
   type GateReader,
   isDispatchGateError,
-  waitsOnContractsOf,
-  waitUnsettledSql,
 } from './ports.js';
 
 export { type DispatchGateCode, type DispatchGateError, isDispatchGateError };
 
-// Every dispatch door asks the pair here, so none can check the design gate and forget the contract wait
+// Every dispatch door asks the gate here, so none can skip the design gate
 export function dispatchGateHeldSql(issueId: SQL): SQL {
-  return sql`(${designUnapprovedSql(issueId)} OR ${waitUnsettledSql(issueId)})`;
+  return sql`(${designUnapprovedSql(issueId)})`;
 }
 
 export async function assertDispatchGatesForSeqs(
@@ -27,7 +23,6 @@ export async function assertDispatchGatesForSeqs(
   seqs: readonly number[],
 ): Promise<void> {
   await assertDesignsApprovedForSeqs(projectId, seqs);
-  await assertWaitsSettledForSeqs(projectId, seqs);
 }
 
 export async function assertDispatchGatesForIssue(
@@ -36,13 +31,8 @@ export async function assertDispatchGatesForIssue(
   executor?: GateReader,
 ): Promise<void> {
   await assertDesignApprovedForIssue(projectId, issueId, executor);
-  await assertWaitsSettledForIssue(projectId, issueId, executor);
 }
 
-export async function dispatchGatesOf(issueId: string, projectId: string) {
-  const [buildsWorkflow, waitsOnContracts] = await Promise.all([
-    buildsWorkflowOf(issueId),
-    waitsOnContractsOf(issueId, projectId),
-  ]);
-  return { buildsWorkflow, waitsOnContracts };
+export async function dispatchGatesOf(issueId: string) {
+  return { buildsWorkflow: await buildsWorkflowOf(issueId) };
 }

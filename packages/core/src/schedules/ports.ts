@@ -23,8 +23,6 @@ export interface SchedulesPorts {
     gateStatus: string | null;
     issues: { id: string; claimedByRunId: string | null }[];
   }>;
-  /** The issues a refusal holds back for a provider not yet live, or null. */
-  heldBackByProviders(err: unknown, named: readonly string[]): string[] | null;
   createReleaseBatch(args: {
     projectId: string;
     issueIds: string[];

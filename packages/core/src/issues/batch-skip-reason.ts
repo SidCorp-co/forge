@@ -19,7 +19,6 @@ export const BATCH_SKIP_BY_CODE = {
   NO_HOLDER: 'no_holder',
   ISSUE_BLOCKED: 'issue_blocked',
   WORKFLOW_DESIGN_NOT_APPROVED: 'workflow_design_not_approved',
-  CONTRACT_WAIT_UNSETTLED: 'contract_wait_unsettled',
   PLAN_REQUIRED: 'plan_required',
   PERMISSION_FORBIDDEN: 'permission_forbidden',
   VERDICT_IDENTITY_REQUIRED: 'verdict_identity_required',

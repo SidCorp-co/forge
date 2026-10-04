@@ -238,8 +238,8 @@ export async function refuseBlockedTake(
 }
 
 // cm:guard a door that hands out work and does not already ask the dispatch gates asks everything the
-// admissible set holds an unstarted issue out for: an unsettled blocks edge, then the design and
-// contract-wait gates (issues/dispatch-gates.ts), each refused by its own name
+// admissible set holds an unstarted issue out for: an unsettled blocks edge, then the design gate
+// (issues/dispatch-gates.ts), each refused by its own name
 export async function refuseHeldTake(
   executor: Pick<Tx, 'execute' | 'select'>,
   issueId: string,
@@ -285,11 +285,7 @@ export async function refuseHeldTakeForSeqs(
 
 /** A refused take in the envelope: a blocked issue as thrown, a dispatch gate's refusal named. */
 export function heldTakeRefusal(err: unknown): RefusalError | null {
-  if (
-    isRefusal(err, 'ISSUE_BLOCKED') ||
-    isRefusal(err, 'WORKFLOW_DESIGN_NOT_APPROVED') ||
-    isRefusal(err, 'CONTRACT_WAIT_UNSETTLED')
-  ) {
+  if (isRefusal(err, 'ISSUE_BLOCKED') || isRefusal(err, 'WORKFLOW_DESIGN_NOT_APPROVED')) {
     return err;
   }
   if (isDispatchGateError(err)) {

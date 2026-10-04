@@ -13,13 +13,10 @@ import { slotsNoteOf } from '@forge/contracts/master-standing';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { listIssueStanding, STANDING_LIMIT, type StandingViewer } from '../issues/standing-read.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
 import { readMasterStanding } from '../masters/read.js';
 import {
   type ContractChangeFact,
-  type ContractWaitFact,
   flowOf,
   type LaneFacts,
   type ModuleFact,
@@ -82,39 +79,6 @@ async function laneFacts(
     });
   }
   return out;
-}
-
-// cm:why an unsettled, unretracted wait is what holds an issue out of dispatch (`ecosystem/waits/rules.ts:holdsDispatch`); the same two columns, read for the whole project at once
-async function contractWaits(projectId: string): Promise<ContractWaitFact[]> {
-  const found = rowsOf<{
-    iss_seq: number;
-    provider_slug: string;
-    contract_slug: string;
-    min_version: string;
-    current: string | null;
-  }>(
-    await db.execute(sql`
-      SELECT i.iss_seq, p.slug AS provider_slug, cw.contract_slug, cw.min_version,
-             (SELECT v.version FROM contract_versions v
-               WHERE v.provider_project_id = cw.provider_project_id
-                 AND v.contract_slug = cw.contract_slug AND v.approval = 'approved'
-               ORDER BY v.recorded_at DESC LIMIT 1) AS current
-        FROM issue_contract_waits cw
-        JOIN issues i ON i.id = cw.issue_id
-        JOIN projects p ON p.id = cw.provider_project_id
-       WHERE cw.project_id = ${projectId} AND i.archived_at IS NULL
-         AND cw.retracted_at IS NULL AND cw.settled_at IS NULL
-         AND i.status NOT IN ('closed', 'dropped')
-       ORDER BY i.iss_seq, cw.created_at`),
-  );
-  if (found.length === 0) return [];
-  const prefix = await activeIssuePrefix(projectId);
-  return found.map((w) => ({
-    issueKey: formatIssueRef(prefix, w.iss_seq),
-    contract: `${w.provider_slug}/${w.contract_slug}`,
-    minVersion: w.min_version,
-    current: w.current,
-  }));
 }
 
 interface ModuleRaw {
@@ -277,9 +241,8 @@ export async function readDevelopmentOverview(
     listIssueStanding(projectId, 'closed', viewer, now),
   ]);
   const rows = [...open.issues, ...closed.issues];
-  const [lanes, waits, mods, master, proposed, changes] = await Promise.all([
+  const [lanes, mods, master, proposed, changes] = await Promise.all([
     laneFacts(projectId, open.issues),
-    contractWaits(projectId),
     moduleFacts(projectId),
     masterSignal(projectId),
     proposedVersions(projectId),
@@ -297,7 +260,7 @@ export async function readDevelopmentOverview(
     },
     flow: flowOf(rows, now),
     moving: movingOf(open.issues, lanes, now),
-    stuck: stuckOf(open.issues, waits),
+    stuck: stuckOf(open.issues),
     modules: modulesOf(open.issues, mods.modules, mods.unassigned),
     coverage: {
       open: open.counts.open,

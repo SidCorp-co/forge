@@ -6,7 +6,7 @@ import { loadGraph } from '../graph.js';
 import { loadInterface } from '../interface-service.js';
 import { liveEdges } from '../party.js';
 import { activeEcosystemIdsOf, projectsWhere } from '../store.js';
-import { type MeasurementRow, measurementsOf, type StoredVersion, versionsOf } from './store.js';
+import { type StoredVersion, versionsOf } from './store.js';
 
 // cm:why a consumer reads a provider's contract only through a live consumption edge in an ecosystem the provider still publishes it to, and only as the project it holds a role on
 export async function consumedContract(args: {
@@ -56,19 +56,6 @@ export const versionForParty = (v: StoredVersion) => ({
   },
 });
 
-/** A measurement as a consumer reads it: what was measured where, never the provider's branch, commit or reason. */
-export const measurementForParty = (r: MeasurementRow) => ({
-  outcome: r.outcome,
-  version: r.version,
-  environments: r.environments,
-  observedAt: r.observedAt.toISOString(),
-  settledAt: r.settledAt?.toISOString() ?? null,
-});
-
 export async function consumedVersions(providerId: string, contract: string) {
   return (await versionsOf(db, [providerId], contract)).map(versionForParty);
-}
-
-export async function consumedMeasurements(providerId: string, contract: string) {
-  return (await measurementsOf(providerId, contract, 100)).map(measurementForParty);
 }

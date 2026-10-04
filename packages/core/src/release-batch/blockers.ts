@@ -40,7 +40,6 @@ import {
 import { claimConflictDetails, readClaimConflicts } from './claim-conflicts.js';
 import { criteriaHold } from './criteria-hold.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
-import { releaseBatchPorts } from './ports.js';
 import { getActiveReleaseBatch } from './queries.js';
 
 export * from './blocker-sentences.js';
@@ -165,21 +164,6 @@ async function rosterBlockers(
   if (unrecorded && unrecorded.length > 0) {
     const displayIds = await namedAs(unrecorded);
     out.push(blocker('RELEASE_RECORD_MISSING', { issueIds: unrecorded, displayIds }));
-  }
-  const notLive = await evaluate(
-    'contract-provider-live',
-    async () => await releaseBatchPorts().contractProviderShortfalls(issueIds),
-    out,
-  );
-  if (notLive && notLive.length > 0) {
-    const ids = [...new Set(notLive.map((s) => s.issueId))];
-    out.push(
-      blocker('CONTRACT_PROVIDER_NOT_LIVE', {
-        issueIds: ids,
-        displayIds: await namedAs(ids),
-        waits: notLive,
-      }),
-    );
   }
   if (door !== 'record') return;
   // Unmerged means what the close would refuse, on this project's shape: `landing-evidence.ts`.

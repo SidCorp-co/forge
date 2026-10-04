@@ -51,7 +51,7 @@ export async function cutWaitingRelease(args: {
     return { status: 'skipped', output: 'nothing is waiting at the release gate', named: [] };
   }
 
-  let named = args.issueIds.slice(0, RELEASE_ROSTER_LIMIT);
+  const named = args.issueIds.slice(0, RELEASE_ROSTER_LIMIT);
   try {
     const cut = (issueIds: string[]) =>
       schedulesPorts().createReleaseBatch({
@@ -59,14 +59,7 @@ export async function cutWaitingRelease(args: {
         issueIds,
         userId: args.userId,
       });
-    const result = await cut(named).catch((err: unknown) => {
-      // A provider not yet live holds back only the issue that waits on it; the rest still ship.
-      const held = schedulesPorts().heldBackByProviders(err, named);
-      const rest = held ? named.filter((id) => !held.includes(id)) : [];
-      if (rest.length === 0) throw err;
-      named = rest;
-      return cut(rest);
-    });
+    const result = await cut(named);
     return {
       status: 'success',
       output: `cut ${counted(result.issueIds.length, 'issue')} as run ${result.runId}`,

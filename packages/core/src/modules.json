@@ -205,7 +205,6 @@
         "contractVersions",
         "devices",
         "feedback",
-        "issueContractWaits",
         "issueLabels",
         "issueLeases",
         "issueWorkState",
@@ -236,8 +235,6 @@
         "channelDocuments",
         "channelThreadHolds",
         "contractArtifacts",
-        "contractMeasurements",
-        "contractRequests",
         "contractVersions",
         "ecosystemBuilderRuns",
         "ecosystemConsumptions",
@@ -246,7 +243,6 @@
         "ecosystemMemberships",
         "ecosystemRevisions",
         "ecosystems",
-        "issueContractWaits",
         "projectInterfaceRevisions",
         "projectInterfaces"
       ]

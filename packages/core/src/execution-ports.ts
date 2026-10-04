@@ -51,11 +51,7 @@ import {
   registerWaiter,
   waiterFor,
 } from './questions/index.js';
-import {
-  createReleaseBatch,
-  heldBackByProviders,
-  loadReleaseRoster,
-} from './release-batch/index.js';
+import { createReleaseBatch, loadReleaseRoster } from './release-batch/index.js';
 import { provideRunnersPorts } from './runners/index.js';
 import {
   provideSchedulesPorts,
@@ -156,7 +152,6 @@ export function provideExecutionPorts(): void {
   provideSchedulesPorts({
     emitNotification,
     loadReleaseRoster,
-    heldBackByProviders,
     createReleaseBatch,
   });
 

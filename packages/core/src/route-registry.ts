@@ -50,10 +50,8 @@ import { ecosystemJsonSchemas } from './ecosystem/index.js';
 import {
   busRoutes,
   channelProjectRoutes,
-  contractRequestRoutes,
   contractRoutes,
   contractStandingRoutes,
-  contractWaitRoutes,
   deviceChannelInboxRoutes,
   ecosystemProjectRoutes,
   ecosystemRoutes,
@@ -250,7 +248,6 @@ function mountEcosystemRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', channelProjectRoutes);
   app.route('/api/projects', contractRoutes);
   app.route('/api/projects', linkProjectRoutes);
-  app.route('/api/projects', contractRequestRoutes);
   app.route('/api/projects', contractStandingRoutes);
   app.route('/api/ecosystems', ecosystemRoutes);
   app.route('/api/ecosystems', busRoutes);
@@ -309,7 +306,6 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issues', issueDependencyRoutes);
   app.route('/api/issues', issueSteerRoutes);
   app.route('/api/issues', issueCriteriaRoutes);
-  app.route('/api/issues', contractWaitRoutes);
   app.route('/api/body', bodyRoutes);
   app.route('/api/comments', commentRoutes);
   app.route('/api/attachments', attachmentRoutes);
