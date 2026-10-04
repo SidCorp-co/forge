@@ -1,10 +1,11 @@
-import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import {
   CONTENT_LANGUAGE_LIMITS,
   keepTermsInEnglishSchema,
 } from '@forge/contracts/content-language';
 import { SENSITIVE_DATA_LEVELS } from '@forge/contracts/data-policy';
 import { deliveryPolicySchema } from '@forge/contracts/delivery-policy';
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { REQUIREMENT_READINESS_GATES } from '@forge/contracts/requirements';
 import {
   projectWorkflowTemplateSchema,
@@ -15,8 +16,6 @@ import { agentAccessValues } from '../db/release-axes.js';
 import type { IssueStatus } from '../db/schema.js';
 import { AUTONOMOUS_DRIVER_STATUSES } from '../pipeline/autonomous-mode.js';
 import { releaseRuleSchema } from './release-rule-schema.js';
-
-export const SCHEMA_BASE = 'https://forge.sidcorp.co/schemas';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SLUG = /^[a-z][a-z0-9-]{0,62}$/;

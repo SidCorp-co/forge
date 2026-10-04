@@ -1,5 +1,5 @@
+import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { z } from 'zod';
-import { SCHEMA_BASE } from '../../project-config/schema.js';
 import {
   CHANGE_KINDS,
   CHANGE_LEVELS,

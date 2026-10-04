@@ -1,3 +1,4 @@
+import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import {
   BAND_ID,
   EDGE_KIND_ID,
@@ -9,7 +10,7 @@ import {
 } from '@forge/contracts/workflow-templates';
 import { z } from 'zod';
 import { repoPath } from '../ecosystem/link-schema.js';
-import { SCHEMA_BASE, slug, uuid } from '../project-config/schema.js';
+import { slug, uuid } from '../project-config/schema.js';
 
 export const WORKFLOW_SCHEMA_ID = `${SCHEMA_BASE}/workflow-v1.json`;
 export const WORKFLOW_V2_SCHEMA_ID = `${SCHEMA_BASE}/workflow-v2.json`;

@@ -13,7 +13,7 @@ import { channelDocuments, contractVersions } from '../../db/schema-ecosystem.js
 import { requirements } from '../../db/schema-requirements.js';
 import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
-import { requirementKey } from '../../requirements/read.js';
+import { requirementKey } from '../../requirements/index.js';
 import { splitContractRef } from '../interface-rules.js';
 import { loadInterface } from '../interface-service.js';
 import { activeEcosystemIdsOf, projectsWhere } from '../store.js';

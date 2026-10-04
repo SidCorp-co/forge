@@ -1,6 +1,6 @@
 import { db } from '../db/client.js';
+import { jsonPointer as pointer } from '../lib/refusal.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { pointer } from '../project-config/documents.js';
 import { assertStewardAdmin, forbidden, notFound, readerProjects, stewardRole } from './access.js';
 import { owedTrigger } from './builder-head.js';
 import { type HeldEcosystem, loadEcosystem, storedAs } from './ecosystem-service.js';

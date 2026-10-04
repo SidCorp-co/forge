@@ -1,11 +1,6 @@
+import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { z } from 'zod';
-import {
-  SCHEMA_BASE,
-  type STOREFRONT_PROVIDERS,
-  slug,
-  unique,
-  uuid,
-} from '../project-config/schema.js';
+import { type STOREFRONT_PROVIDERS, slug, unique, uuid } from '../project-config/schema.js';
 
 type StorefrontProvider = (typeof STOREFRONT_PROVIDERS)[number];
 

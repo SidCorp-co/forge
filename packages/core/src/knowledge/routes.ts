@@ -1,3 +1,4 @@
+import { ALWAYS_INJECT_GUARANTEE_NOTE, ALWAYS_INJECT_MAX_CHARS } from '@forge/contracts/knowledge';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -12,10 +13,6 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import {
-  ALWAYS_INJECT_GUARANTEE_NOTE,
-  ALWAYS_INJECT_MAX_CHARS,
-} from '../projects/project-facts.js';
 import {
   deleteKnowledgeEntry,
   getKnowledgeEntry,

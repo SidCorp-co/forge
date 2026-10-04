@@ -1,4 +1,5 @@
-import { parseVersionedDocument, pointer } from '../project-config/documents.js';
+import { jsonPointer as pointer } from '../lib/refusal.js';
+import { parseVersionedDocument } from '../project-config/documents.js';
 import { contentRefusals, internalNamesOf } from './channel-content.js';
 import {
   type ChannelDocument,

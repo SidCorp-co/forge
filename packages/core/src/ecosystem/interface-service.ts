@@ -1,7 +1,8 @@
+import { isPlainObject as isRecord } from '@forge/contracts/document-patch';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { db, type Tx } from '../db/client.js';
 import { permissionFactsOf } from '../permissions/index.js';
-import { isRecord, parseVersionedDocument, staleBase } from '../project-config/documents.js';
+import { parseVersionedDocument, staleBase } from '../project-config/documents.js';
 import { notFound } from './access.js';
 import { versionsOf } from './contract/store.js';
 import { heldEcosystem, storedAs } from './ecosystem-service.js';

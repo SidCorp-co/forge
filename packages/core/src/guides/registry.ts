@@ -16,7 +16,7 @@ import { WORK_EVIDENCE_WAIVER_NOTE } from '@forge/contracts/issue-machine';
 import {
   ALWAYS_INJECT_ENFORCEMENT_NOTE,
   ALWAYS_INJECT_GUARANTEE_NOTE,
-} from '../projects/project-facts.js';
+} from '@forge/contracts/knowledge';
 import { ASSISTANT_METHOD_GUIDE } from './assistant-method-guide.js';
 import { CONFORMANCE_GUIDE } from './conformance-guide.js';
 import { ECOSYSTEM_INBOX_GUIDE } from './ecosystem-inbox-guide.js';

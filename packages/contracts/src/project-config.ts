@@ -120,3 +120,6 @@ export const TESTING_SECRETS_REFUSAL_CODES = [
 ] as const;
 
 export type TestingSecretsRefusalCode = (typeof TESTING_SECRETS_REFUSAL_CODES)[number];
+
+// The base every Forge document schema id hangs off.
+export const SCHEMA_BASE = "https://forge.sidcorp.co/schemas";

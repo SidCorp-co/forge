@@ -10,7 +10,7 @@ import { projects } from '../../db/schema.js';
 import { contractRequests } from '../../db/schema-contract-waits.js';
 import { channelDocuments } from '../../db/schema-ecosystem.js';
 import { requirements } from '../../db/schema-requirements.js';
-import { requirementKey } from '../../requirements/read.js';
+import { requirementKey } from '../../requirements/index.js';
 
 const consumer = alias(projects, 'consumer');
 const provider = alias(projects, 'provider');
