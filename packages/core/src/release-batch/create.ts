@@ -5,19 +5,19 @@ import { RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
-import { activeIssuePrefix, claimIssuesForRelease, setWorkStep } from '../issues/index.js';
+import { activeIssuePrefix, setWorkStep } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { isRefusal } from '../lib/refusal.js';
 import { logger } from '../observability/logger.js';
 import type { OneShotRunSpec } from '../pipeline/index.js';
 import { closeRunIfOneShot, insertAndEnqueueJob, insertOneShotRun } from '../pipeline/index.js';
-import { collectReleaseBlockers } from './blockers.js';
+import { admitRoster } from './blockers.js';
 import { closeVerification, type ReleaseVerification, resolveReleasePlan } from './channel.js';
-import { claimConflictAt } from './claim-conflicts.js';
+import { claimRoster } from './claim-conflicts.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
-import { blockerRefusal, refuseRelease, releaseBlockedRefusal } from './refuse.js';
+import { blockerRefusal, refuseRelease } from './refuse.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 import { RELEASE_UNSTARTED_DEADLINE_MS } from './unstarted-recovery.js';
 import { liveCarriesRoster, readLiveCommit } from './verify.js';
@@ -53,30 +53,19 @@ export interface CreateReleaseBatchResult {
   verification: ReleaseVerification;
 }
 
-/** The blocker report, and the roster's ids in the row's own spelling — or the door's refusal. */
-async function admitRoster(projectId: string, named: string[]) {
-  // ISS-1127 — one enumerator, and this door refuses with every reason it found, the first first.
-  const report = await collectReleaseBlockers(projectId, {
-    issueIds: named,
-    door: 'batch',
-  });
-  if (!report.projectExists) throw blockerRefusal('NO_RELEASE_GATE');
-  const refusal = releaseBlockedRefusal(report);
-  if (refusal) throw refusal;
-  // Every id is now an issue at this project's gate, so its lower-case spelling is the row's own.
-  const issueIds = named.map((id) => id.toLowerCase());
-  // After the report, so every project reason outranks it. An empty gate is
-  // already `RELEASE_ROSTER_EMPTY` above; reaching here, issues are waiting and
-  // this call named none of them, which is the caller's list to fix.
-  if (issueIds.length === 0) {
+/** The batch door's admission, and a call naming no issue while issues wait refused by name. */
+async function admitBatch(projectId: string, named: string[]) {
+  const admitted = await admitRoster(projectId, named, 'batch');
+  // After the report, so every project reason outranks it. An empty gate is already
+  // `RELEASE_ROSTER_EMPTY` there; reaching here, issues are waiting and this call named none.
+  if (admitted.issueIds.length === 0) {
     throw refuseRelease(
       'RELEASE_ISSUES_UNNAMED',
       `This call names no issue to release, and issues are waiting at the release gate. Send the ids GET /api/projects/${projectId}/release-batches/roster lists, oldest merge first, at most ${RELEASE_ROSTER_LIMIT} in one release.`,
       '/issueIds',
     );
   }
-
-  return { report, issueIds };
+  return admitted;
 }
 
 /** ISS-54: a release run holding the issue is a step inside `awaiting_release`, not a status. */
@@ -147,12 +136,7 @@ async function openClaimedRun(args: {
     const cut = await cutReleaseVersion(tx, { runId: row.id, projectId, recutOf });
     return { run: row, version: cut };
   });
-  const gateStatus = RELEASE_GATE_STATUS;
-  const claimed = await claimIssuesForRelease({ projectId, issueIds, gateStatus, runId: run.id });
-  if (claimed.length !== issueIds.length) {
-    await closeRunIfOneShot(run.id, 'cancelled');
-    throw await claimConflictAt(projectId, gateStatus, issueIds, claimed);
-  }
+  const claimed = await claimRoster(projectId, issueIds, run.id);
   await markReleaseSteps(
     claimed.map((r) => r.id),
     run.id,
@@ -181,7 +165,7 @@ export async function createReleaseBatch(
 ): Promise<CreateReleaseBatchResult> {
   const { projectId, userId, recutOf } = args;
 
-  const { report, issueIds } = await admitRoster(projectId, args.issueIds);
+  const { report, issueIds } = await admitBatch(projectId, args.issueIds);
 
   const gateStatus = RELEASE_GATE_STATUS;
   const plan = await resolveReleasePlan(projectId);

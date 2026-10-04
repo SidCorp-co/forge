@@ -78,6 +78,76 @@ interface RecoverStrandedReleasingOptions {
   fence?: ((tx: Tx) => Promise<void>) | undefined;
 }
 
+type ClaimedRow = {
+  id: string;
+  projectId: string;
+  status: IssueStatus;
+  reopenCount: number;
+  projectCreatedBy: string | null;
+  step: string | null;
+};
+
+/** One issue off its release step: told why, then moved to `destination` unless it stands there. */
+async function recoverOne(
+  issue: ClaimedRow,
+  ctx: {
+    runId: string;
+    options: RecoverStrandedReleasingOptions;
+    promoted: boolean;
+    destination: IssueStatus;
+  },
+): Promise<boolean> {
+  const { runId, options, promoted, destination } = ctx;
+  if (options.comment && options.actorUserId) {
+    try {
+      await postIssueNotice({
+        issueId: issue.id,
+        authorId: options.actorUserId,
+        body: promoted
+          ? `${options.reason}. ${settledNote(issue.projectId, destination)}`
+          : `${options.reason}. The issue is at \`${destination}\` — a person decides whether it goes back to work or into another batch.`,
+      });
+    } catch (err) {
+      logger.warn({ err, issueId: issue.id, runId }, 'release-batch: recovery comment failed');
+    }
+  }
+
+  // Back at the gate is where it already stands: releasing the claim and the step is the move.
+  if (destination === issue.status) return true;
+
+  const fallbackId = issue.projectCreatedBy ?? issue.projectId;
+  const actor: TransitionActor = options.actorUserId
+    ? await accountActor(options.actorUserId)
+    : { type: 'device', id: fallbackId, ownerId: fallbackId };
+
+  try {
+    await transitionIssueStatus(
+      {
+        id: issue.id,
+        projectId: issue.projectId,
+        status: issue.status,
+        reopenCount: issue.reopenCount,
+      },
+      destination,
+      actor,
+      {
+        transitionReason: options.reason,
+        ...(options.fence ? { beforeStatusWrite: options.fence } : {}),
+      },
+    );
+    return true;
+  } catch (err) {
+    if (isRefusal(err, FENCE_LOST)) throw err;
+    if (!(err instanceof TransitionError && err.code === 'NO_OP')) {
+      logger.warn(
+        { err, issueId: issue.id, runId },
+        'release-batch: could not recover a stranded releasing issue',
+      );
+    }
+  }
+  return false;
+}
+
 /**
  * Release every claim on `runId` and rescue whatever it left mid-release.
  *
@@ -127,57 +197,8 @@ export async function recoverStrandedReleasing(
 
   for (const issue of claimed) {
     if (!heldMidRelease(issue)) continue;
-
-    if (options.comment && options.actorUserId) {
-      try {
-        await postIssueNotice({
-          issueId: issue.id,
-          authorId: options.actorUserId,
-          body: promoted
-            ? `${options.reason}. ${settledNote(issue.projectId, destination)}`
-            : `${options.reason}. The issue is at \`${destination}\` — a person decides whether it goes back to work or into another batch.`,
-        });
-      } catch (err) {
-        logger.warn({ err, issueId: issue.id, runId }, 'release-batch: recovery comment failed');
-      }
-    }
-
-    // Back at the gate is where it already stands: releasing the claim and the step is the move.
-    if (destination === issue.status) {
+    if (await recoverOne(issue, { runId, options, promoted, destination }))
       recovered.push(issue.id);
-      continue;
-    }
-
-    const fallbackId = issue.projectCreatedBy ?? issue.projectId;
-    const actor: TransitionActor = options.actorUserId
-      ? await accountActor(options.actorUserId)
-      : { type: 'device', id: fallbackId, ownerId: fallbackId };
-
-    try {
-      await transitionIssueStatus(
-        {
-          id: issue.id,
-          projectId: issue.projectId,
-          status: issue.status,
-          reopenCount: issue.reopenCount,
-        },
-        destination,
-        actor,
-        {
-          transitionReason: options.reason,
-          ...(options.fence ? { beforeStatusWrite: options.fence } : {}),
-        },
-      );
-      recovered.push(issue.id);
-    } catch (err) {
-      if (isRefusal(err, FENCE_LOST)) throw err;
-      if (!(err instanceof TransitionError && err.code === 'NO_OP')) {
-        logger.warn(
-          { err, issueId: issue.id, runId },
-          'release-batch: could not recover a stranded releasing issue',
-        );
-      }
-    }
   }
 
   const { fence } = options;

@@ -17,18 +17,17 @@ import { issues, pipelineRuns } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
 import {
   accountActor,
-  claimIssuesForRelease,
   releaseRunClaims,
   TransitionError,
   transitionIssueStatus,
 } from '../issues/index.js';
 import { logger } from '../observability/logger.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/index.js';
-import { collectReleaseBlockers } from './blockers.js';
+import { admitRoster } from './blockers.js';
 import { closeVerification, type ReleaseVerification } from './channel.js';
-import { claimConflictAt, RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
+import { claimRoster, RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
-import { blockerRefusal, notVerifiedRefusal, reasonOf, releaseBlockedRefusal } from './refuse.js';
+import { notVerifiedRefusal, reasonOf } from './refuse.js';
 import { type ServingNowOutcome, verifyServingNow } from './verify.js';
 
 /** The one ledger key a recorded release writes under. */
@@ -99,6 +98,56 @@ function issueNote(args: {
   return `${how}\n\n- commit claimed: \`${args.commit}\`\n${read}${args.account}${handle}`;
 }
 
+/** Each recorded issue told how it shipped, then closed; one that will not close is named. */
+async function closeRecorded(
+  roster: Array<{ id: string }>,
+  ctx: {
+    projectId: string;
+    userId: string;
+    account: string;
+    note: string;
+    runId: string;
+    verified: boolean;
+  },
+): Promise<{ closed: string[]; failed: Array<{ id: string; reason: string }> }> {
+  const { projectId, userId, account, note, runId, verified } = ctx;
+  const closed: string[] = [];
+  const failed: Array<{ id: string; reason: string }> = [];
+
+  for (const issue of roster) {
+    try {
+      await postIssueNotice({ issueId: issue.id, authorId: userId, body: note });
+    } catch (err) {
+      logger.warn({ err, issueId: issue.id, runId }, 'release-record: comment failed');
+      // With no probe the note is the issue's only word that nothing verified it, so no close.
+      if (!verified) {
+        failed.push({
+          id: issue.id,
+          reason: `its not-verified note could not be written: ${err instanceof Error ? err.message : String(err)}`,
+        });
+        continue;
+      }
+    }
+    try {
+      await transitionIssueStatus(
+        { id: issue.id, projectId, status: RELEASE_GATE_STATUS, reopenCount: 0 },
+        'closed',
+        await accountActor(userId),
+        { reason: account },
+      );
+      closed.push(issue.id);
+    } catch (err) {
+      if (err instanceof TransitionError && err.code === 'NO_OP') {
+        closed.push(issue.id);
+      } else {
+        logger.warn({ err, issueId: issue.id, runId }, 'release-record: could not close');
+        failed.push({ id: issue.id, reason: reasonOf(err) });
+      }
+    }
+  }
+  return { closed, failed };
+}
+
 /**
  * Record a release that has already happened, and close what it carried. The
  * probes are read BEFORE anything is claimed, so a record that cannot be earned
@@ -110,16 +159,7 @@ export async function recordPerformedRelease(
   const { projectId, commit, account, userId } = args;
   const providerRef = args.providerRef ?? null;
 
-  // ONE pass before anything refuses, so probes, notes and merges arrive together (ISS-1127).
-  const report = await collectReleaseBlockers(projectId, {
-    issueIds: args.issueIds,
-    door: 'record',
-  });
-  if (!report.projectExists) throw blockerRefusal('NO_RELEASE_GATE');
-  const refusal = releaseBlockedRefusal(report);
-  if (refusal) throw refusal;
-  // Every id is now an issue at this project's gate, so its lower-case spelling is the row's own.
-  const issueIds = args.issueIds.map((id) => id.toLowerCase());
+  const { report, issueIds } = await admitRoster(projectId, args.issueIds, 'record');
 
   const gateStatus = RELEASE_GATE_STATUS;
   // Taken from the report rather than read again: a second read would refuse in its own order
@@ -151,50 +191,19 @@ export async function recordPerformedRelease(
     },
   });
 
-  const claimed = await claimIssuesForRelease({ projectId, issueIds, gateStatus, runId: run.id });
-
-  if (claimed.length !== issueIds.length) {
-    await closeRunIfOneShot(run.id, 'cancelled');
-    throw await claimConflictAt(projectId, gateStatus, issueIds, claimed);
-  }
+  await claimRoster(projectId, issueIds, run.id);
 
   await writeLedger(run.id, { commit, outcome, account, providerRef });
 
   const note = issueNote({ commit, identity, account, providerRef });
-  const closed: string[] = [];
-  const failed: Array<{ id: string; reason: string }> = [];
-
-  for (const issue of roster) {
-    try {
-      await postIssueNotice({ issueId: issue.id, authorId: userId, body: note });
-    } catch (err) {
-      logger.warn({ err, issueId: issue.id, runId: run.id }, 'release-record: comment failed');
-      // With no probe the note is the issue's only word that nothing verified it, so no close.
-      if (!outcome) {
-        failed.push({
-          id: issue.id,
-          reason: `its not-verified note could not be written: ${err instanceof Error ? err.message : String(err)}`,
-        });
-        continue;
-      }
-    }
-    try {
-      await transitionIssueStatus(
-        { id: issue.id, projectId, status: gateStatus, reopenCount: 0 },
-        'closed',
-        await accountActor(userId),
-        { reason: account },
-      );
-      closed.push(issue.id);
-    } catch (err) {
-      if (err instanceof TransitionError && err.code === 'NO_OP') {
-        closed.push(issue.id);
-      } else {
-        logger.warn({ err, issueId: issue.id, runId: run.id }, 'release-record: could not close');
-        failed.push({ id: issue.id, reason: reasonOf(err) });
-      }
-    }
-  }
+  const { closed, failed } = await closeRecorded(roster, {
+    projectId,
+    userId,
+    account,
+    note,
+    runId: run.id,
+    verified: outcome !== null,
+  });
 
   // The claim column is the LOCK this write holds, never the index onto what
   // the record carried — `metadata.issues` is that, and it survives. Leaving a

@@ -5,9 +5,11 @@ import { TERMINAL_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
+import { claimIssuesForRelease } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { agrees, counted } from '../lib/plural.js';
-import type { RefusalError } from '../lib/refusal.js';
+import { closeRunIfOneShot } from '../pipeline/index.js';
+import { RELEASE_GATE_STATUS } from './gate.js';
 import { blockerRefusal, refuseRelease } from './refuse.js';
 
 /**
@@ -200,19 +202,21 @@ export function claimConflictSentence(
 }
 
 /**
- * The refusal a claim that lost a race throws: the ids it did not take, and each one's standing read
- * after the loss, so the refusal names what took it. A list the read found nothing for keeps the
- * generic sentence.
+ * The roster claimed onto `runId`. A roster another caller claimed first cancels the run and
+ * refuses `CLAIM_CONFLICT`, naming who holds each issue it lost.
  */
-export async function claimConflictAt(
+export async function claimRoster(
   projectId: string,
-  gateStatus: IssueStatus,
   issueIds: string[],
-  claimed: Array<{ id: string }>,
-): Promise<RefusalError> {
+  runId: string,
+): Promise<Array<{ id: string }>> {
+  const gateStatus = RELEASE_GATE_STATUS;
+  const claimed = await claimIssuesForRelease({ projectId, issueIds, gateStatus, runId });
+  if (claimed.length === issueIds.length) return claimed;
+  await closeRunIfOneShot(runId, 'cancelled');
   const lost = issueIds.filter((id) => !claimed.some((r) => r.id === id));
   const conflicts = await readClaimConflicts(projectId, gateStatus, lost);
-  return blockerRefusal(
+  throw blockerRefusal(
     'CLAIM_CONFLICT',
     conflicts.length > 0
       ? claimConflictDetails(projectId, gateStatus, conflicts)
