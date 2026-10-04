@@ -23,7 +23,7 @@ export function useProjects() {
   });
 }
 
-export interface OrgScopedProjects {
+interface OrgScopedProjects {
   projects: ProjectListItem[];
   projectIds: Set<string>;
   projectSlugs: Set<string>;
@@ -58,7 +58,7 @@ export function useProjectsIncludingArchived() {
   });
 }
 
-export const PROJECT_HEALTH_STALE_MS = 300_000;
+const PROJECT_HEALTH_STALE_MS = 300_000;
 
 export function useProjectHealth() {
   return useQuery({

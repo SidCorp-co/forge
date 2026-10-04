@@ -388,10 +388,9 @@ written:
   least once.
 - **Retries back off over hours** (`OUTBOX_MAX_ATTEMPTS` starts, pg-boss doubling the delay from
   `OUTBOX_RETRY_DELAY_SECONDS` to `OUTBOX_RETRY_DELAY_MAX_SECONDS`), then the job is `failed`, which
-  is dead, and pg-boss copies it into `outbox.dead`. Dead deliveries are listed from that queue at
-  `GET /api/projects/:id/outbox/dead` (and every project's, project-less events included, at
-  `GET /api/admin/outbox/dead`), replayed with a fresh attempt count by
-  `POST /api/projects/:id/outbox/deliveries/:did/replay` under `outbox.replay`, and raised as the
+  is dead, and pg-boss copies it into `outbox.dead`. Dead deliveries, project-less events'
+  included, are listed from that queue to platform admins at `GET /api/admin/outbox/dead`, replayed
+  with a fresh attempt count by `POST /api/admin/outbox/deliveries/:did/replay`, and raised as the
   `A6` ops alert (`packages/core/src/admin/alert-queries.ts:computeAlerts`). A consumer with a row
   of its own waiting on the delivery settles it in `onDeadLetter`.
 - **An issue's events reach each consumer in order**: each queue is `key_strict_fifo` keyed by

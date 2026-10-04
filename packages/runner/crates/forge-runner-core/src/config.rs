@@ -284,8 +284,8 @@ pub struct Binding {
     pub repo_path: PathBuf,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
-    /// Core project id (uuid). Required to match incoming jobs and to
-    /// `runner:register`. Resolved at pair/bind time.
+    /// Core project id (uuid). Required to match incoming jobs. Resolved at
+    /// pair/bind time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project_id: Option<String>,
 }

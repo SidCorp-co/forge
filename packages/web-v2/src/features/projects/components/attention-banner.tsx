@@ -4,7 +4,7 @@
 // offline runners, and toggles the attention-only filter.
 import { Banner, Button } from '@/design';
 
-export interface AttentionBannerProps {
+interface AttentionBannerProps {
   count: number;
   attentionOnly: boolean;
   onToggle: () => void;

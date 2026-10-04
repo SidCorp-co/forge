@@ -3,7 +3,7 @@
 // feature component is the right home for the per-project live-run indicator.)
 import { cn } from '@/lib/utils/cn';
 
-export interface LiveCountProps {
+interface LiveCountProps {
   n: number;
 }
 

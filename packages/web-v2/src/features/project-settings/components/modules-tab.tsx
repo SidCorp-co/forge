@@ -47,7 +47,7 @@ interface ModuleNode {
  * server has since demoted — is rendered at the root rather than dropped, so it stays reachable
  * and re-parentable instead of vanishing from the only screen that can fix it.
  */
-export function flattenModules(modules: ProjectLabel[]): ModuleNode[] {
+function flattenModules(modules: ProjectLabel[]): ModuleNode[] {
   const byParent = new Map<string, ProjectLabel[]>();
   const ids = new Set(modules.map((m) => m.id));
   for (const m of modules) {
@@ -71,7 +71,7 @@ export function flattenModules(modules: ProjectLabel[]): ModuleNode[] {
 }
 
 /** Every module that would create a cycle if it became `moduleId`'s parent: itself + its subtree. */
-export function descendantIds(modules: ProjectLabel[], moduleId: string): Set<string> {
+function descendantIds(modules: ProjectLabel[], moduleId: string): Set<string> {
   const out = new Set<string>([moduleId]);
   let grew = true;
   while (grew) {

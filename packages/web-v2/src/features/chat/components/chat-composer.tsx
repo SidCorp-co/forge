@@ -22,13 +22,6 @@ import {
 import { useDropzone } from "react-dropzone";
 import TextareaAutosize from "react-textarea-autosize";
 import { Banner, Button, Icon, IconButton } from "@/design";
-import { SlashSkillsMenu, type SlashSkillsSource } from "@/features/session/components/slash-skills-menu";
-import {
-  filterSkillsByQuery,
-  findSlashToken,
-  replaceSlashToken,
-} from "@/features/session/slash-token";
-import type { InvokableSkill } from "@/features/skills/types";
 import {
   acceptAttribute,
   type AttachmentPolicy,
@@ -81,15 +74,9 @@ export interface ChatComposerProps {
   attachments?: AttachmentPolicy;
   sticky?: boolean;
   /**
-   * The surface's own control, in the footer row between the slash trigger and
-   * the send button. The conversations pane puts its mode control here.
+   * The surface's own control, in the footer row before the send button. The conversations pane puts its mode control here.
    */
   footerControl?: ReactNode;
-  /**
-   * Enables the `/`-autocomplete. Absent, or empty with nothing loading and no
-   * error, and the trigger is not rendered at all.
-   */
-  slashSkills?: SlashSkillsSource;
   /**
    * End the turn that is running. Given, the send button IS the stop button, so
    * a caller passes it only while there is a turn to end. Absent, and no stop
@@ -125,7 +112,6 @@ export function ChatComposer({
   attachments,
   sticky = true,
   footerControl,
-  slashSkills,
   onStop,
   stopping,
   initialValue = "",
@@ -137,7 +123,6 @@ export function ChatComposer({
   const nextFileId = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
-  const slashPanelRef = useRef<HTMLDivElement>(null);
   const [frameWidth, setFrameWidth] = useState<number | null>(null);
 
   useEffect(() => {
@@ -158,77 +143,6 @@ export function ChatComposer({
   // room watching an answer arrive may end it, and `onStop` is given only while
   // there is a turn to end, so its presence is the whole condition.
   const showStop = Boolean(onStop);
-
-  const [slashOpen, setSlashOpen] = useState(false);
-  const [slashHighlight, setSlashHighlight] = useState(0);
-  const [slashCaret, setSlashCaret] = useState(0);
-  const slashDismissedAt = useRef<number | null>(null);
-  const skillsKnown = !!slashSkills;
-  const hasSkills =
-    skillsKnown && (slashSkills.items.length > 0 || slashSkills.loading || !!slashSkills.error);
-  const slashToken = skillsKnown ? findSlashToken(value, slashCaret) : null;
-  const slashMatches = slashToken
-    ? filterSkillsByQuery(slashSkills?.items ?? [], slashToken.query)
-    : [];
-  const slashMenuOpen = slashOpen && !!slashToken && hasSkills && !disabled;
-
-  /** Sync the token state from the live box after any edit or caret move. */
-  const syncSlash = useCallback((next: string, caret: number, reopen: boolean) => {
-    setSlashCaret(caret);
-    const token = findSlashToken(next, caret);
-    if (!token) {
-      setSlashOpen(false);
-      slashDismissedAt.current = null;
-      return;
-    }
-    setSlashHighlight(0);
-    const dismissed = slashDismissedAt.current === token.start;
-    if (!dismissed) slashDismissedAt.current = null;
-    if (reopen && !dismissed) setSlashOpen(true);
-  }, []);
-
-  /** Put the caret back after a programmatic edit of the box's value. */
-  const restoreCaret = useCallback((caret: number) => {
-    requestAnimationFrame(() => {
-      const node = textareaRef.current;
-      if (!node) return;
-      node.focus();
-      node.setSelectionRange(caret, caret);
-    });
-  }, []);
-
-  const insertSkill = useCallback(
-    (skill: InvokableSkill) => {
-      const caret = textareaRef.current?.selectionStart ?? slashCaret;
-      const token = findSlashToken(value, caret);
-      if (!token) return;
-      const next = replaceSlashToken(value, token, skill.name);
-      setValue(next.value);
-      setSlashOpen(false);
-      setSlashCaret(next.caret);
-      restoreCaret(next.caret);
-    },
-    [value, slashCaret, restoreCaret],
-  );
-
-  /** The `/` trigger: open on an existing token, else insert one at the caret. */
-  const openSlashMenu = useCallback(() => {
-    const caret = textareaRef.current?.selectionStart ?? value.length;
-    slashDismissedAt.current = null;
-    setSlashHighlight(0);
-    setSlashOpen(true);
-    if (findSlashToken(value, caret)) {
-      setSlashCaret(caret);
-      textareaRef.current?.focus();
-      return;
-    }
-    const before = value.slice(0, caret);
-    const insert = `${before.length > 0 && !/\s$/.test(before) ? " " : ""}/`;
-    const nextCaret = caret + insert.length;
-    setValue(before + insert + value.slice(caret));
-    setSlashCaret(nextCaret);
-    restoreCaret(nextCaret);
-  }, [value, restoreCaret]);
 
   /**
    * Every route in — the dialog, a drop, a paste — lands here, so a file is
@@ -295,8 +209,6 @@ export function ChatComposer({
       setValue("");
       setFiles([]);
       setRefusals([]);
-      setSlashOpen(false);
-      setSlashCaret(0);
     };
     if (queueWhileBusy) {
       clear();
@@ -311,41 +223,7 @@ export function ChatComposer({
     }
   };
 
-  const onSlashKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>): boolean => {
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      e.preventDefault();
-      if (slashMatches.length === 0) return true;
-      const step = e.key === "ArrowDown" ? 1 : -1;
-      setSlashHighlight((h) => (h + step + slashMatches.length) % slashMatches.length);
-      return true;
-    }
-    if (e.key === "Tab" && !e.shiftKey && slashSkills?.error) {
-      const focusable = slashPanelRef.current?.querySelector<HTMLElement>("button");
-      if (focusable) {
-        e.preventDefault();
-        focusable.focus();
-        return true;
-      }
-    }
-    if (e.key === "Enter" && !e.shiftKey) {
-      const picked = slashMatches[slashHighlight];
-      if (picked) {
-        e.preventDefault();
-        insertSkill(picked);
-        return true;
-      }
-    }
-    if (e.key === "Escape") {
-      e.preventDefault();
-      setSlashOpen(false);
-      slashDismissedAt.current = slashToken?.start ?? null;
-      return true;
-    }
-    return false;
-  };
-
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (slashMenuOpen && onSlashKeyDown(e)) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       submit();
@@ -430,19 +308,8 @@ export function ChatComposer({
             <TextareaAutosize
               ref={textareaRef}
               value={value}
-              onChange={(e) => {
-                setValue(e.target.value);
-                syncSlash(e.target.value, e.target.selectionStart ?? 0, true);
-              }}
+              onChange={(e) => setValue(e.target.value)}
               onKeyDown={onKeyDown}
-              onSelect={(e) => {
-                const el = e.currentTarget;
-                syncSlash(el.value, el.selectionStart ?? 0, false);
-              }}
-              onBlur={(e) => {
-                if (slashPanelRef.current?.contains(e.relatedTarget as Node | null)) return;
-                setSlashOpen(false);
-              }}
               disabled={disabled}
               minRows={1}
               maxRows={MAX_ROWS}
@@ -473,19 +340,6 @@ export function ChatComposer({
                   className="h-11 w-11 flex-none"
                   disabled={disabled || busy}
                   onClick={() => setSketching(true)}
-                />
-              )}
-              {hasSkills && (
-                <IconButton
-                  type="button"
-                  variant="ghost"
-                  icon="command"
-                  aria-label="Insert a skill"
-                  aria-haspopup="listbox"
-                  aria-expanded={slashMenuOpen}
-                  className="h-11 w-11 flex-none"
-                  disabled={disabled}
-                  onClick={openSlashMenu}
                 />
               )}
               {footerControl}
@@ -523,31 +377,6 @@ export function ChatComposer({
             </p>
           )}
 
-          {slashSkills && (
-            <SlashSkillsMenu
-              open={slashMenuOpen}
-              onClose={() => setSlashOpen(false)}
-              query={slashToken?.query ?? ""}
-              matches={slashMatches}
-              highlight={slashHighlight}
-              onHighlight={setSlashHighlight}
-              onPick={insertSkill}
-              anchorRef={rowRef}
-              panelRef={slashPanelRef}
-              onLeave={(dismissed) => {
-                setSlashOpen(false);
-                if (dismissed) slashDismissedAt.current = slashToken?.start ?? null;
-                textareaRef.current?.focus();
-              }}
-              onReturnFocus={() => textareaRef.current?.focus()}
-              homeRef={textareaRef}
-              items={slashSkills.items}
-              loading={slashSkills.loading}
-              error={slashSkills.error}
-              fetching={slashSkills.fetching}
-              retry={slashSkills.retry}
-            />
-          )}
         </div>
       </div>
       {sketching && <SketchPad open onClose={() => setSketching(false)} onAttach={(file) => take([file])} />}

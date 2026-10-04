@@ -304,7 +304,7 @@ export function couplingsOf(
   id: string,
   refs: ReadonlyMap<string, ModuleRef>,
   observed: readonly ObservedCoupling[],
-): { declared: ModuleCoupling[]; observed: ModuleCoupling[] } {
+): ModuleCoupling[] {
   const byName = (a: ModuleCoupling, b: ModuleCoupling) =>
     a.module.path.localeCompare(b.module.path);
   const observedOut: ModuleCoupling[] = [];
@@ -314,17 +314,11 @@ export function couplingsOf(
     if (!other) continue;
     observedOut.push({
       module: other,
-      source: 'issue_stream',
-      predicate: null,
-      direction: null,
       issueCount: e.issueCount,
       recentIssueKeys: e.recentIssueKeys,
     });
   }
-  return {
-    declared: [],
-    observed: observedOut.sort((a, b) => (b.issueCount ?? 0) - (a.issueCount ?? 0) || byName(a, b)),
-  };
+  return observedOut.sort((a, b) => b.issueCount - a.issueCount || byName(a, b));
 }
 
 const OPEN_RAIL_ORDER: readonly ModuleOpenKind[] = [

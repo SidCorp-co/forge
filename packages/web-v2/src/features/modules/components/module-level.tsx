@@ -10,7 +10,6 @@ import { useRouter } from "next/navigation";
 import { type ReactNode, useCallback, useMemo } from "react";
 import {
   GroupedList,
-  LEGEND,
   type ListGroup,
   type ListRowView,
   rememberListOrigin,
@@ -145,9 +144,7 @@ export function ModuleLevel({
           <ViewHeading
             right={
               couplings.length ? (
-                <span className="text-12 text-subtle">
-                  Line width is the coupling&apos;s weight · <span style={{ color: LEGEND.err.fg }}>red</span> is declared both ways
-                </span>
+                <span className="text-12 text-subtle">Line width is the coupling&apos;s weight</span>
               ) : undefined
             }
           >
@@ -156,7 +153,7 @@ export function ModuleLevel({
           <ModuleMap rows={rows} couplings={couplings} selected={peek.open} onSelect={toggle} onOpen={open} />
           {couplings.length === 0 ? (
             <p className="mt-2 text-12-5 text-subtle" data-testid="module-map-no-couplings">
-              No coupling between these modules: no knowledge-graph edge links two of them and no issue carries modules from two of them.
+              No coupling between these modules: no issue carries modules from two of them.
             </p>
           ) : null}
         </section>

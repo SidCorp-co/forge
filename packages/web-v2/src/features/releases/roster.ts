@@ -35,7 +35,7 @@ export interface ReleaseRoster {
   issues: ReleaseRosterEntry[];
 }
 
-export class RosterShapeError extends Error {
+class RosterShapeError extends Error {
   readonly endpoint: string;
   readonly at: string;
 

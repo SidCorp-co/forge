@@ -307,7 +307,6 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
     master: 0,
     run_session: 0,
     pipeline: 0,
-    pm: 0,
     chat: 0,
   };
   for (const r of kindRows) kindCounts[sessionKind(r)] += 1;
@@ -823,12 +822,11 @@ function SessionTableRow({
   );
 }
 
-/** What species the row says it is: one word per kind, five of them. */
+/** What species the row says it is: one word per kind, four of them. */
 const KIND_TONE = {
   master: "accent",
   run_session: "cobalt",
   pipeline: "neutral",
-  pm: "neutral",
   chat: "neutral",
 } as const satisfies Record<AgentSessionKind, "neutral" | "accent" | "cobalt">;
 

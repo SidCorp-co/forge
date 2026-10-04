@@ -317,11 +317,8 @@ export function levelCouplings(input: LevelCouplingInput): ModuleLevelCoupling[]
         parentId: m.parentId,
         aId,
         bId,
-        declaredAToB: 0,
-        declaredBToA: 0,
         sharedIssues: 0,
         weight: 0,
-        twoWay: false,
       };
       byKey.set(key, row);
     }

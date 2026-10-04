@@ -62,12 +62,10 @@ import { logger } from './observability/logger.js';
 import {
   declareOutboxQueues,
   emitEvents,
-  provideOutboxGate,
   startOutboxWorker,
   stopOutboxWorker,
 } from './outbox/index.js';
 import { registerOutboxConsumers } from './outbox-consumers.js';
-import { actorFor, projectResource, requireCan } from './permissions/index.js';
 import { stampReleaseShipped, stampReleaseVersion, writeRunMetadata } from './pipeline/index.js';
 import {
   provideProjectConfigPorts,
@@ -127,9 +125,6 @@ provideIssueFactReads({
   activeIssuePrefix,
   heldIssuePrefixes,
   projectProgress: computeProjectProgress,
-});
-provideOutboxGate(async (userId, permission, projectId, act) => {
-  await requireCan(actorFor(userId), permission, projectResource(projectId), act);
 });
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,

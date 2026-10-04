@@ -87,7 +87,7 @@ export interface ReleaseWarning {
 }
 
 /** One promotion of the project document — mirrors `promotions[]` in core `project-config/schema.ts`. */
-export interface ReleasePromotion {
+interface ReleasePromotion {
 	from: string;
 	to: string;
 	via: "merge" | "cherry-pick";

@@ -11,7 +11,7 @@ import type { ProjectConsoleItem } from '../types';
 import { LiveCount } from './live-count';
 import { MemberStack } from './member-stack';
 
-export interface ProjectCardProps {
+interface ProjectCardProps {
   project: ProjectConsoleItem;
   now: number;
   onTogglePin: (id: string) => void;

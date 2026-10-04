@@ -4,7 +4,7 @@ import { pointerOf } from "./document-edit";
 export const NAME = /^[a-z][a-z0-9-]{0,62}$/;
 const SECRET_REF = /^secret:\/\/([a-z][a-z0-9-]{0,62})\/([a-z][a-z0-9-]{0,62})$/;
 
-export interface SecretUse {
+interface SecretUse {
 	ref: string;
 	scope: string;
 	name: string;

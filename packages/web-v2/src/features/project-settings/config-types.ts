@@ -17,7 +17,7 @@ export interface V1Write {
 	document: V1Document;
 }
 
-export interface TestingProfileRow extends Extract<V1Read, { declared: true }> {
+interface TestingProfileRow extends Extract<V1Read, { declared: true }> {
 	profileId: string;
 }
 

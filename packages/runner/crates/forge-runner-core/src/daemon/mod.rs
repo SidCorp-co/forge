@@ -1,8 +1,8 @@
 //! Daemon orchestration.
 //!
-//! Loop: connect WS → subscribe `device:<id>` (+ `runner:register` when
-//! enabled) → heartbeat every 30s → ask which issues are admissible, keep a
-//! resident master up for each project that has some, and nudge it. The runs
+//! Loop: connect WS → subscribe `device:<id>` → heartbeat every 30s → ask
+//! which issues are admissible, keep a resident master up for each project
+//! that has some, and nudge it. The runs
 //! are the master's own subagents and never reach this process. Interactive
 //! chat (`agent:start` / `agent:send` / `agent:abort`) is handled out-of-band
 //! by `chat`, under its own concurrency budget (ISS-321).
@@ -1220,7 +1220,6 @@ pub async fn run(
                             tracing::debug!("[ws] catch-up read coalesced — a sweep is already pending");
                         }
                     }
-                    "runner.registered" => tracing::info!("[ws] runner registered"),
                     other => tracing::debug!("[ws] ignored event {other}"),
                 }
             }

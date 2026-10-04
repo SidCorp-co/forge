@@ -154,7 +154,6 @@ export const PAT_UNGRANTABLE: Readonly<Record<string, string>> = Object.freeze({
   '/api/guides': PUBLIC,
   '/api/llms.txt': PUBLIC,
   '/pair': PUBLIC,
-  '/api/pipeline/registry': PUBLIC,
   '/api/schemas': PUBLIC,
   '/api/workflow-templates': PUBLIC,
   '/orgs':
@@ -166,7 +165,6 @@ export const PAT_UNGRANTABLE: Readonly<Record<string, string>> = Object.freeze({
   '/api/auth/local': SESSION,
   '/api/auth/refresh': SESSION,
   '/api/auth/verify': SESSION,
-  '/api/auth/dev': SESSION,
   '/api/auth/logout': SESSION,
   '/api/auth/reauth': SESSION,
   '/api/auth/oauth': SESSION,

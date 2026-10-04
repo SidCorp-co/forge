@@ -41,7 +41,7 @@ function childAt(value: unknown, segment: string): { found: boolean; value: unkn
 	return { found: false, value: undefined };
 }
 
-export function nearestHeld(document: unknown, pointer: string): string {
+function nearestHeld(document: unknown, pointer: string): string {
 	const held: string[] = [];
 	let cursor = document;
 	for (const segment of segmentsOf(pointer)) {
@@ -66,7 +66,7 @@ export function placeRefusals(
 	return placed;
 }
 
-export interface MovedValue {
+interface MovedValue {
 	path: string;
 	read: unknown;
 	stored: unknown;

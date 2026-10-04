@@ -49,10 +49,7 @@ export interface AutomationAccess {
   canManage: boolean;
 }
 
-const kindOf = (s: ScheduleStanding) => (s.templateKey ? "improve" : s.kind);
-
 function whatItRuns(s: ScheduleStanding): string {
-  if (s.templateKey) return `Improvement message ${s.templateKey}`;
   if (s.targetProjectSlug) return `Runs on ${s.targetProjectSlug}`;
   return "Runs on this project";
 }
@@ -65,7 +62,7 @@ export const scheduleRow =
     href: hrefOf(s.id),
     title: whatItRuns(s),
     facts: [
-      <EnumBadge key="kind" family="scheduleKind" value={kindOf(s)} />,
+      <EnumBadge key="kind" family="scheduleKind" value={s.kind} />,
       <span key="cron" className="font-mono">
         {s.cron}
       </span>,
@@ -168,14 +165,8 @@ export function ScheduleFacts({ s, slug, failStreak }: { s: ScheduleStanding; sl
       </FactsGroup>
       <FactsGroup title="Properties">
         <Fact label="Kind">
-          <EnumBadge family="scheduleKind" value={kindOf(s)} />
+          <EnumBadge family="scheduleKind" value={s.kind} />
         </Fact>
-        {s.mode ? (
-          <Fact label="Mode">
-            <EnumBadge family="mode" value={s.mode} />
-          </Fact>
-        ) : null}
-        <Fact label="Template">{s.templateKey ? <span className="font-mono">{s.templateKey}</span> : "—"}</Fact>
         <Fact label="Target">{s.targetProjectSlug ?? "This project"}</Fact>
         <Fact label="Created">
           <span title={formatStamp(s.createdAt)}>{new Date(s.createdAt).toLocaleDateString()}</span>

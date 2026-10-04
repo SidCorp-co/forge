@@ -526,7 +526,7 @@ export function IssueDetailScreen({
 
 const ISSUE_TABS = ["overview", "criteria", "runs", "mockups", "activity"] as const;
 
-/** Skeleton placeholder for the detail tab bodies (comments / activity / tasks)
+/** Skeleton placeholder for the detail tab bodies (overview / runs / activity)
  *  while their queries load — replaces the bare "Loading …" text (ISS-308 F1). */
 function TabLoading() {
   return (

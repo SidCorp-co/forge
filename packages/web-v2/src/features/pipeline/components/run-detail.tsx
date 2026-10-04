@@ -3,7 +3,7 @@
 // RunDetail SlideOver (ISS-295) — an issue's pipeline run opens here rather
 // than navigating away. Reordered for ISS-436 so it reads top-down as a
 // status panel: header (title + issue meta) → run
-// controls → Timeline / Tasks / Cost tabs, all driven by
+// controls → History / Timeline / Cost tabs, all driven by
 // `GET /api/pipeline-runs/:id` (`useRun`, WS-live via key
 // `['pipeline-run', id]`). Pause/Resume/Cancel hit real endpoints; Rerun/Fork
 // have NO backend (info toast, no phantom call).

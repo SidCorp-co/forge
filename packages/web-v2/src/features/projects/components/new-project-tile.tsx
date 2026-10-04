@@ -4,7 +4,7 @@
 // dialog (ISS-319) hosted by the projects console.
 import { Icon } from '@/design';
 
-export interface NewProjectTileProps {
+interface NewProjectTileProps {
   onClick: () => void;
 }
 

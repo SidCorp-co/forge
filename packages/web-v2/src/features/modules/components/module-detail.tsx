@@ -82,16 +82,13 @@ function Overview({ d }: { d: ModuleDetail }) {
 function CouplingRow({ c, slug }: { c: ModuleCoupling; slug: string }) {
   return (
     <li className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-line-subtle py-2 text-13" data-testid="coupling-row">
-      {c.direction ? <span className="flex-none text-12 text-subtle">{c.direction === "out" ? `${c.predicate} →` : `← ${c.predicate}`}</span> : null}
       <Link href={moduleHref(slug, c.module.slug)} className="font-mono text-12-5 font-semibold text-link hover:underline">
         {c.module.path}
       </Link>
       <span className="text-muted">{c.module.name}</span>
-      {c.issueCount !== null ? (
-        <span className="text-12 text-subtle" title="Issues that carry both modules">
-          Shared by {c.issueCount} issues
-        </span>
-      ) : null}
+      <span className="text-12 text-subtle" title="Issues that carry both modules">
+        Shared by {c.issueCount} issues
+      </span>
       {c.recentIssueKeys.map((k) => (
         <Link key={k} href={issueHref(slug, k)} className="font-mono text-11-5 text-link hover:underline">
           {k}
@@ -124,32 +121,18 @@ function Code({ d, slug }: { d: ModuleDetail; slug: string }) {
       </section>
       <section>
         <ViewHeading>Couplings</ViewHeading>
-        {c.declared.length === 0 && c.observed.length === 0 ? (
-          <p className="text-13 text-subtle">No coupling is declared, and the issue stream shows none.</p>
+        {c.length === 0 ? (
+          <p className="text-13 text-subtle">The issue stream shows no coupling.</p>
         ) : (
-          <div className="grid gap-5">
-            {c.declared.length ? (
-              <div>
-                <h3 className="mb-1 text-12-5 font-medium text-muted">Declared in the knowledge graph</h3>
-                <ul className="border-t border-line-subtle">
-                  {c.declared.map((x) => (
-                    <CouplingRow key={`${x.module.id}-${x.direction}-${x.predicate}`} c={x} slug={slug} />
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            {c.observed.length ? (
-              <div>
-                <h3 className="mb-1 text-12-5 font-medium text-muted" title="Modules attributed to the same issues that the module tree does not declare as related">
-                  Seen in the issue stream, not declared
-                </h3>
-                <ul className="border-t border-line-subtle">
-                  {c.observed.map((x) => (
-                    <CouplingRow key={x.module.id} c={x} slug={slug} />
-                  ))}
-                </ul>
-              </div>
-            ) : null}
+          <div>
+            <h3 className="mb-1 text-12-5 font-medium text-muted" title="Modules attributed to the same issues">
+              Seen in the issue stream
+            </h3>
+            <ul className="border-t border-line-subtle">
+              {c.map((x) => (
+                <CouplingRow key={x.module.id} c={x} slug={slug} />
+              ))}
+            </ul>
           </div>
         )}
       </section>

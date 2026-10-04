@@ -18,9 +18,7 @@ export interface ScheduleRow {
   lastStatus: ScheduleLastStatus;
   lastSessionId: string | null;
   metadata: Record<string, unknown> | null;
-  templateKey: string | null;
   params: Record<string, unknown> | null;
-  mode: "propose" | "auto" | null;
   createdAt: string;
   updatedAt: string;
 }

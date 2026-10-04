@@ -4,7 +4,7 @@ import { Avatar, type AvatarHue } from '@/design';
 
 const HUES: AvatarHue[] = ['cobalt', 'flame', 'green'];
 
-export interface MemberStackProps {
+interface MemberStackProps {
   /** Up to 5 avatar initials from the health rollup. */
   members: string[];
   /** True total membership count (drives the `+N` overflow). */
