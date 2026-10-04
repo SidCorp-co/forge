@@ -15,12 +15,12 @@ import { repoPullRequests } from '../../db/schema-repo-projection.js';
 import { readInboundDoorTraffic } from '../index.js';
 
 /** How many inbound deliveries have come through one binding's door, and when the last one did. */
-export interface InboundDeliveryReport {
+interface InboundDeliveryReport {
   count: number;
   lastAt: Date | null;
 }
 
-export interface ProjectionPipeReport {
+interface ProjectionPipeReport {
   projectId: string;
   /** Rows in `repo_pull_requests` for this project, of any state. */
   rows: number;

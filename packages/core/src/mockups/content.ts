@@ -26,7 +26,7 @@ import {
   typeRefusal,
 } from './rules.js';
 
-export interface MockupContent {
+interface MockupContent {
   kind: MockupKind;
   name: string;
   mime: string;
@@ -34,7 +34,7 @@ export interface MockupContent {
   caption: string | null;
 }
 
-export type MockupContentOutcome =
+type MockupContentOutcome =
   | { ok: true; content: MockupContent }
   | { ok: false; refusals: MockupRefusal[] };
 

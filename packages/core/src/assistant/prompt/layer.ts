@@ -1,5 +1,5 @@
 /** The layers this repository ships, in the order a door renders them. */
-export const LAYER_IDS = [
+const LAYER_IDS = [
   'identity',
   'base',
   'tools',
@@ -24,12 +24,6 @@ export interface PromptLayer {
 export type LayerValues = Readonly<Record<string, string | null>>;
 
 const PLACEHOLDER_RE = /\{(\w+)\}/g;
-
-/** Every `{token}` a layer reads, in the order they appear. */
-export function placeholdersOf(layer: PromptLayer): string[] {
-  return [...new Set([...layer.text.matchAll(PLACEHOLDER_RE)].map((m) => m[1] as string))];
-}
-
 function renderLine(line: string, layer: PromptLayer, values: LayerValues): string | null {
   const tokens = [...line.matchAll(PLACEHOLDER_RE)].map((m) => m[1] as string);
   for (const token of tokens) {
@@ -44,7 +38,7 @@ function renderLine(line: string, layer: PromptLayer, values: LayerValues): stri
 }
 
 /** One layer's text, filled, with the lines its absent values drop taken out. */
-export function renderLayer(layer: PromptLayer, values: LayerValues): string {
+function renderLayer(layer: PromptLayer, values: LayerValues): string {
   const kept: string[] = [];
   for (const line of layer.text.split('\n')) {
     const rendered = renderLine(line, layer, values);

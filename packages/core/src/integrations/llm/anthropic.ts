@@ -15,10 +15,9 @@ import type {
   ChatResponseFormat,
   ChatStreamEvent,
   ChatStreamRequest,
-  ChatTool,
 } from './types.js';
 
-export interface AnthropicConfig {
+interface AnthropicConfig {
   baseUrl: string;
   apiKey: string;
   defaultModel: string;
@@ -27,9 +26,7 @@ export interface AnthropicConfig {
   fetchImpl?: typeof fetch | undefined;
   maxRetries?: number | undefined;
 }
-
-export const ANTHROPIC_VERSION = '2023-06-01';
-export const DEFAULT_MAX_TOKENS = 8192;
+const DEFAULT_MAX_TOKENS = 8192;
 
 const PROVIDER = 'anthropic';
 const CACHE = { anthropic: { cacheControl: { type: 'ephemeral' } } } as const;
@@ -89,67 +86,4 @@ export function createAnthropicProvider(cfg: AnthropicConfig): ChatProvider {
       });
     },
   };
-}
-
-class Captured extends Error {}
-
-/** The `tools` array exactly as this adapter puts it on the Messages wire, `cache_control` marker included: one request is built and caught before it leaves the process. */
-export async function anthropicWireTools(tools: ChatTool[], model: string): Promise<unknown[]> {
-  let body: { tools?: unknown[] } | null = null;
-  const provider = createAnthropicProvider({
-    baseUrl: 'https://anthropic.invalid',
-    apiKey: 'unused',
-    defaultModel: model,
-    maxTokens: 1,
-    maxRetries: 0,
-    fetchImpl: async (_url, init) => {
-      body = JSON.parse(String(init?.body ?? '{}')) as { tools?: unknown[] };
-      throw new Captured('captured');
-    },
-  });
-  for await (const _ of provider.stream({
-    model,
-    messages: [{ role: 'user', content: 'x' }],
-    tools,
-  })) {
-    // drained only to make the request
-  }
-  const captured = body as { tools?: unknown[] } | null;
-  if (!captured) throw new Error('the Messages request was never built');
-  return captured.tools ?? [];
-}
-
-export interface CountTokensRequest {
-  model: string;
-  tools?: unknown[] | undefined;
-  apiKey: string;
-  baseUrl?: string | undefined;
-  fetchImpl?: typeof fetch | undefined;
-}
-
-/** Input tokens one request would bill, by the Messages `count_tokens` endpoint the AI SDK does not cover; null when it does not answer a count. */
-export async function countAnthropicInputTokens(req: CountTokensRequest): Promise<number | null> {
-  const fetchImpl = req.fetchImpl ?? fetch;
-  const base = req.baseUrl ?? process.env.ANTHROPIC_API_URL ?? 'https://api.anthropic.com';
-  const res = await fetchImpl(`${openAiCompatBaseUrl(base)}/messages/count_tokens`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': req.apiKey,
-      'anthropic-version': ANTHROPIC_VERSION,
-    },
-    body: JSON.stringify({
-      model: req.model,
-      messages: [{ role: 'user', content: 'x' }],
-      ...(req.tools ? { tools: req.tools } : {}),
-    }),
-  });
-  if (!res.ok) return null;
-  let json: { input_tokens?: number };
-  try {
-    json = (await res.json()) as { input_tokens?: number };
-  } catch {
-    return null;
-  }
-  return typeof json.input_tokens === 'number' ? json.input_tokens : null;
 }

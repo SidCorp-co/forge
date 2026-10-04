@@ -47,7 +47,7 @@ export const citationSchema = z.discriminatedUnion('kind', [
 ]);
 export type Citation = z.infer<typeof citationSchema>;
 
-export const observedStepSchema = z.strictObject({
+const observedStepSchema = z.strictObject({
   id: stepId(),
   /** The planned step this is, by id, or null for code the design does not hold. */
   matches: stepId().nullable(),
@@ -57,10 +57,8 @@ export const observedStepSchema = z.strictObject({
   node: nodeSchema.optional(),
   evidence: citationSchema.nullable(),
 });
-export type ObservedStep = z.infer<typeof observedStepSchema>;
 
-export const observedEdgeSchema = edgeSchema.extend({ evidence: citationSchema.nullable() });
-export type ObservedEdge = z.infer<typeof observedEdgeSchema>;
+const observedEdgeSchema = edgeSchema.extend({ evidence: citationSchema.nullable() });
 
 const driftSchema = z.strictObject({
   steps: z.array(stepId()).min(1).max(OBSERVATION_LIMITS.steps),

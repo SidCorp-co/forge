@@ -30,7 +30,7 @@ export {
   recordTurnedAwayInboundCall,
   resolveApiBaseUrl,
 } from './inbound-door.js';
-export { applyGrantedMcpServers, type ProducedMcpServer } from './mcp-resolver.js';
+export { applyGrantedMcpServers } from './mcp-resolver.js';
 export { raceWithTimeout } from './probe.js';
 export {
   applySecretsPatch,

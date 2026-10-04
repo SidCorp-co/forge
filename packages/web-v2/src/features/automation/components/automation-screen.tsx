@@ -30,7 +30,6 @@ import {
   useUrlTab,
   visibleRows,
 } from "@/design";
-import { ImproveCatalog } from "@/features/improvement-messages/components/improve-catalog";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { useAutomationStanding } from "../hooks";
@@ -63,22 +62,6 @@ const COLUMNS: Record<AutomationTab, { key: string; title: string; state: string
 };
 
 const NOUN: Record<AutomationTab, string> = { schedules: "schedules", fires: "fires", reports: "reports" };
-
-function Configure({ access }: { access: AutomationAccess }) {
-  return (
-    <div className="grid gap-4 border-t border-line-subtle px-5 py-6 max-md:px-3" data-testid="automation-configure">
-      <details>
-        <summary className="cursor-pointer text-14 font-bold text-accent-text">
-          Improvement loop{" "}
-          <span className="text-12-5 font-medium text-muted">Which improvement messages run here, how often, and whether they propose or apply</span>
-        </summary>
-        <div className="mt-3">
-          <ImproveCatalog scope={{ projectId: access.projectId, canManage: access.canManage }} />
-        </div>
-      </details>
-    </div>
-  );
-}
 
 export function AutomationScreen({ access }: { access: AutomationAccess }) {
   const { projectId, slug } = access;
@@ -169,7 +152,6 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
             empty={text ? "Nothing matches this search." : `No ${NOUN[tab]} yet.`}
             columns={COLUMNS[tab]}
           />
-          {tab === "schedules" ? <Configure access={access} /> : null}
         </div>
         {open && tab === "schedules" ? (
           <SchedulePeek key={open.id} s={open as ScheduleStanding} access={access} peek={peek} onOpenFull={() => openFull(open.id)} />

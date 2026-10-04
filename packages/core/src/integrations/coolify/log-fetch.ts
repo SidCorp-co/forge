@@ -32,7 +32,7 @@ export function buildClient(
   return new CoolifyClient(opts);
 }
 
-export interface CoolifyDeploymentLogsResult {
+interface CoolifyDeploymentLogsResult {
   deploymentUuid: string;
   status: string | null;
   /** Git SHA this deployment built, or null when Coolify did not report one. */
@@ -72,7 +72,7 @@ export async function fetchCoolifyDeploymentLogs(
   };
 }
 
-export interface CoolifyRuntimeLogsResult {
+interface CoolifyRuntimeLogsResult {
   resourceUuid: string;
   logs: string;
   truncated: boolean;

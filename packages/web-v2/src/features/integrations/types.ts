@@ -17,8 +17,6 @@ export type {
   SentrySecretsInput,
   RocketchatConfigInput,
   RocketchatSecretsInput,
-  GoogleConfigInput,
-  GoogleSecretsInput,
   BindingSummary,
   ConnectionSummary,
   ConnectionCreateInput,

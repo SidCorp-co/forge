@@ -8,7 +8,6 @@ import { coolify } from "./coolify";
 import { epodsystem } from "./epodsystem";
 import { github } from "./github";
 import { gitlab } from "./gitlab";
-import { google } from "./google";
 import { rocketchat } from "./rocketchat";
 import { sentry } from "./sentry";
 
@@ -51,7 +50,6 @@ export const PROVIDER_MODULES: readonly ProviderModule[] = [
   rocketchat,
   github,
   gitlab,
-  google,
   agent,
   autoflow,
 ];

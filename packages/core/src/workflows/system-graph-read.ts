@@ -2,19 +2,19 @@ import type { SystemGraph, SystemGraphRefusalCode } from '@forge/contracts/syste
 import { findTemplate } from '@forge/contracts/workflow-templates';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { readStoredWorkflow, type WorkflowWriteV2 } from './schema.js';
 import { templatesOf } from './service.js';
 import { designsOf, readWorkflow } from './store.js';
 import { type GraphDoc, isSystemContext, systemGraphOf, withRemoved } from './system-graph.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 
-export interface SystemGraphRefusal {
+interface SystemGraphRefusal {
   code: SystemGraphRefusalCode;
   path: string;
   detail: string;
 }
 
-export type SystemGraphOutcome =
+type SystemGraphOutcome =
   | { ok: true; graph: SystemGraph }
   | { ok: false; refusals: SystemGraphRefusal[] };
 
@@ -48,7 +48,7 @@ export async function readSystemGraphAs(input: {
         ? row.document
         : designs.find((d) => d.revision === revision)?.document;
     const doc = raw === undefined ? null : readStoredWorkflow(raw);
-    if (doc?.version === 2) return doc;
+    if (doc) return doc;
     return {
       code: 'SYSTEM_GRAPH_REVISION_UNKNOWN',
       path,

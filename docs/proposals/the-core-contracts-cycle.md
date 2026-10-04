@@ -44,7 +44,7 @@ convention.
 
 `packages/contracts`'s own `description` field says **"Type-only surface — no runtime coupling."**
 It re-exports Drizzle row types and request types from core, and every import of `@forge/core` under
-`packages/contracts/src` (`admin.ts`, `integrations.ts`, `requests.ts`, `rows.ts`, `ssh-keys.ts`,
+`packages/contracts/src` (`admin.ts`, `integrations.ts`, `requests.ts`, `rows.ts`,
 `body-components.ts`) is an `import type` or `export type`. `src/document-patch.ts` has **zero
 imports**.
 

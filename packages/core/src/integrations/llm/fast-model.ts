@@ -139,7 +139,7 @@ export function fastModelConfigured(): boolean {
  */
 export type FastModelMiss = 'unconfigured' | 'withheld' | 'failed' | 'unreadable';
 
-export type FastModelAnswer<T> =
+type FastModelAnswer<T> =
   | { ok: true; value: T; modelId: string }
   | { ok: false; miss: FastModelMiss; detail: string };
 
@@ -154,7 +154,8 @@ export async function callFastModelObject<T>(
   schema: z.ZodType<T>,
   opts: { maxTokens: number; model?: string },
 ): Promise<FastModelAnswer<T>> {
-  if (!env.LITELLM_API_URL) return { ok: false, miss: 'unconfigured', detail: 'LITELLM_API_URL is not set' };
+  if (!env.LITELLM_API_URL)
+    return { ok: false, miss: 'unconfigured', detail: 'LITELLM_API_URL is not set' };
   const sent = await egressScoped(scope, prompt);
   if (!sent.ok) return { ok: false, miss: 'withheld', detail: sent.refusal.code };
   const model = opts.model ?? fastModelName();
@@ -173,7 +174,12 @@ export async function callFastModelObject<T>(
         return { ok: false, miss: 'unreadable', detail: err.message.slice(0, 200) };
       }
       const body = badRequestBody(err);
-      if (attempt === 0 && reasoningEffort && body !== null && REJECTS_REASONING_EFFORT.test(body)) {
+      if (
+        attempt === 0 &&
+        reasoningEffort &&
+        body !== null &&
+        REJECTS_REASONING_EFFORT.test(body)
+      ) {
         reasoningEffort = undefined;
         continue;
       }

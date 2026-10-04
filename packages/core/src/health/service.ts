@@ -3,15 +3,15 @@
  * them (`health/routes.ts`).
  */
 
-import { count, inArray, sql } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 import pkg from '../../package.json' with { type: 'json' };
 import { db } from '../db/client.js';
-import { agentSessions, jobs, projects, runners } from '../db/schema.js';
+import { agentSessions, projects, runners } from '../db/schema.js';
 import { countInFlightByRunner } from '../jobs/index.js';
 import { isWsListening } from '../lib/ws-listening.js';
 import { isBossStarted } from '../queue/boss.js';
 
-export type LivenessSnapshot = {
+type LivenessSnapshot = {
   ok: boolean;
   dbOk: boolean;
   queueOk: boolean;
@@ -33,7 +33,7 @@ export async function readLiveness(): Promise<LivenessSnapshot> {
   return { ok: dbOk && queueOk && wsOk, dbOk, queueOk, wsOk };
 }
 
-export type OpsRunner = {
+type OpsRunner = {
   id: string;
   name: string | null;
   projectId: string;
@@ -42,7 +42,7 @@ export type OpsRunner = {
   inFlightCount: number;
 };
 
-export type OpsStuckJob = {
+type OpsStuckJob = {
   jobId: string;
   type: string;
   runnerId: string | null;

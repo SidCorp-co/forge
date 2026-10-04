@@ -39,7 +39,7 @@ const FLOWS_LISTED = 10;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 /** A workflow a design identity resolved to, and every revision of it that exists. */
-export interface FoundDesign {
+interface FoundDesign {
   readonly id: string;
   readonly flow: string;
   readonly projectId: string;
@@ -48,7 +48,7 @@ export interface FoundDesign {
 }
 
 /** What a design identity resolved to: the workflow, or the flows the project does hold. */
-export type DesignLookupResult =
+type DesignLookupResult =
   | { readonly kind: 'found'; readonly design: FoundDesign }
   | { readonly kind: 'missing'; readonly flows: readonly string[] };
 
@@ -115,7 +115,7 @@ function listed(values: readonly (string | number)[]): string {
 }
 
 /** The refusal one block earns for the design it names, or null where that design exists here. */
-export function designRefusal(
+function designRefusal(
   block: CriterionBlock,
   named: DesignIdentity,
   found: DesignLookupResult,

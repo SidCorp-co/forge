@@ -28,8 +28,3 @@ export function unregisterLiveConnection(connectionId: string): void {
 export function liveConnectionFor(connectionId: string): LiveConnection | undefined {
   return live.get(connectionId);
 }
-
-/** Test seam — the registry is process-global by design. */
-export function clearLiveConnections(): void {
-  live.clear();
-}

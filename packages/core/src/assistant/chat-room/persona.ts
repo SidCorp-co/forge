@@ -1,26 +1,12 @@
 import type { ConversationWindowCutReason } from '../../db/schema-conversations.js';
-import {
-  MID_CONVERSATION_INSTRUCTION,
-  rocketChatDoorLines,
-  rocketChatDoorPersona,
-} from '../door-persona.js';
+import { MID_CONVERSATION_INSTRUCTION, rocketChatDoorPersona } from '../door-persona.js';
 
 /**
  * The room line a cut reason earns: the instruction for a window cut before quiet, nothing for one that settled.
  */
-export function midConversationLine(
-  cut: ConversationWindowCutReason | null | undefined,
-): string | null {
+function midConversationLine(cut: ConversationWindowCutReason | null | undefined): string | null {
   return cut === 'deadline' || cut === 'overflow' ? MID_CONVERSATION_INSTRUCTION : null;
 }
-
-export function rocketChatChannelLines(
-  authorUsername?: string,
-  opts?: { botName?: string | undefined; cut?: ConversationWindowCutReason | null | undefined },
-): string[] {
-  return rocketChatDoorLines(opts?.botName, authorUsername, midConversationLine(opts?.cut));
-}
-
 export function rocketChatPersona(
   projectName: string,
   authorUsername?: string,

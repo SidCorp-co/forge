@@ -18,10 +18,8 @@ import {
   createAgentAccount,
   listAgentAccounts,
   mintAgentCredential,
-  revokeAgentAccount,
   revokeAgentCredentials,
   setAgentDisplayName,
-  setAgentProjects,
 } from './agent-accounts.js';
 import { agentSelfPatchSchema, readAgentSelf, writeAgentSelf } from './agent-selves.js';
 
@@ -50,9 +48,6 @@ const createAgentSchema = z
     projectRole: z.enum(projectMemberRoles).optional(),
   })
   .strict();
-
-const setAgentProjectsSchema = z.object({ projectIds: agentProjectsSchema }).strict();
-
 agentAccountRoutes.get(
   '/:orgId/agents',
   zValidator('param', orgParamSchema, (result) => {
@@ -87,36 +82,6 @@ agentAccountRoutes.post(
       ...(body.projectRole ? { projectRole: body.projectRole } : {}),
     });
     return c.json({ ...agent, plaintext }, 201);
-  },
-);
-
-agentAccountRoutes.put(
-  '/:orgId/agents/:agentUserId/projects',
-  zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  zValidator('json', setAgentProjectsSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const { orgId, agentUserId } = c.req.valid('param');
-    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
-    const out = await setAgentProjects(orgId, agentUserId, c.req.valid('json').projectIds);
-    if (!out) throw notFound('agent not found');
-    return c.json(out);
-  },
-);
-
-agentAccountRoutes.delete(
-  '/:orgId/agents/:agentUserId',
-  zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const { orgId, agentUserId } = c.req.valid('param');
-    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
-    if (!(await revokeAgentAccount(orgId, agentUserId))) throw notFound('agent not found');
-    return c.body(null, 204);
   },
 );
 

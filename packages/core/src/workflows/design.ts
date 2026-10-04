@@ -10,7 +10,7 @@ import { type PermissionFacts, permissionRefusal } from '../permissions/index.js
 import { impliedKind } from './edges.js';
 import { stepsOf, type WorkflowWrite } from './schema.js';
 
-export { DESIGN_STATUSES, type DesignStatus } from '@forge/contracts/design-status';
+export type { DesignStatus } from '@forge/contracts/design-status';
 
 export const DESIGN_DECISIONS = ['approve', 'return'] as const;
 export type DesignDecision = (typeof DESIGN_DECISIONS)[number];
@@ -51,29 +51,25 @@ export function designFingerprint(doc: WorkflowWrite, template: WorkflowTemplate
     node: 'node' in s && s.node ? nodeShape(s.node) : null,
   }));
   const implied = (e: { from: string; to: string }) => {
-    if (doc.version !== 2 || !template) return null;
+    if (!template) return null;
     const k = impliedKind(doc, template, e.from, e.to);
     return 'kind' in k ? k.kind : null;
   };
-  const edges =
-    doc.version === 2
-      ? [...(doc.edges ?? [])]
-          .map(({ kind, ...e }) => (kind === undefined || kind === implied(e) ? e : { kind, ...e }))
-          .sort((a, b) => `${a.from}>${a.to}`.localeCompare(`${b.from}>${b.to}`))
-      : [];
+  const edges = [...(doc.edges ?? [])]
+    .map(({ kind, ...e }) => (kind === undefined || kind === implied(e) ? e : { kind, ...e }))
+    .sort((a, b) => `${a.from}>${a.to}`.localeCompare(`${b.from}>${b.to}`));
   const legacy =
-    doc.version !== 2 ||
-    (doc.template.id === LEGACY_V2_TEMPLATE.id &&
-      doc.template.version === LEGACY_V2_TEMPLATE.version);
+    doc.template.id === LEGACY_V2_TEMPLATE.id &&
+    doc.template.version === LEGACY_V2_TEMPLATE.version;
   const shape = {
     kind: doc.kind,
     title: doc.title,
     summary: doc.summary,
     steps,
     edges,
-    ...(legacy || doc.version !== 2 ? {} : { template: doc.template }),
-    ...(doc.version === 2 && doc.lanes ? { lanes: doc.lanes } : {}),
-    ...(doc.version === 2 && doc.basedOn ? { basedOn: doc.basedOn } : {}),
+    ...(legacy ? {} : { template: doc.template }),
+    ...(doc.lanes ? { lanes: doc.lanes } : {}),
+    ...(doc.basedOn ? { basedOn: doc.basedOn } : {}),
   };
   return createHash('sha256').update(JSON.stringify(shape)).digest('hex');
 }
@@ -87,9 +83,8 @@ export function designStatusAfterWrite(
   return { status: 'proposed', proposes: true };
 }
 
-/** The lifecycle a workflow enters when it is first written: a version 2 document is a design. */
-export const designStatusAtCreate = (doc: WorkflowWrite): DesignStatus | null =>
-  doc.version === 2 ? 'draft' : null;
+/** The lifecycle a workflow enters when it is first written: every document is a design. */
+export const designStatusAtCreate = (): DesignStatus => 'draft';
 
 export function proposeRefusal(
   status: DesignStatus | null,

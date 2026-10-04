@@ -32,7 +32,7 @@ const HANDLE_RULE = /^[a-z0-9](?:[a-z0-9-]{1,38})[a-z0-9]$/;
 /**
  * Whether this handle is one the server will take, and what is wrong when it is not.
  */
-export function handleProblem(handle: string): string | null {
+function handleProblem(handle: string): string | null {
   const v = handle.trim();
   if (!v) return "An agent needs a handle — it is the address typed after @.";
   if (v !== v.toLowerCase()) return "A handle is lowercase.";

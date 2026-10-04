@@ -8,7 +8,7 @@ import type { FactRow, SystemGraph, WorkflowRecord } from "./types";
 export type Purpose = "system" | "journeys" | "lifecycles" | "integrations" | "data" | "decisions" | "service" | "other";
 
 /** What a design is for, by the template it is drawn in. The order is the order the catalogue reads in. */
-export const PURPOSES: readonly { id: Purpose; label: string; hint: string; templates: readonly string[] }[] = [
+const PURPOSES: readonly { id: Purpose; label: string; hint: string; templates: readonly string[] }[] = [
   { id: "system", label: "System", hint: "Where the product sits between its users and the systems around it.", templates: [SYSTEM_CONTEXT_TEMPLATE] },
   { id: "journeys", label: "Journeys", hint: "How work and people move through the product.", templates: ["operational-flow", "ux-flow"] },
   { id: "lifecycles", label: "Lifecycles", hint: "The states one thing passes through.", templates: ["state-machine"] },
@@ -44,7 +44,7 @@ export function templateTitle(id: string, templates: readonly WorkflowTemplate[]
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-export interface CatalogueGroup {
+interface CatalogueGroup {
   id: Purpose;
   label: string;
   hint: string;
@@ -72,7 +72,7 @@ export function systemContextOf(records: readonly WorkflowRecord[]): WorkflowRec
 }
 
 /** The journey the overview points to: the largest approved journey, else the largest one. */
-export function mainJourneyOf(records: readonly WorkflowRecord[]): WorkflowRecord | null {
+function mainJourneyOf(records: readonly WorkflowRecord[]): WorkflowRecord | null {
   const journeys = records.filter((r) => purposeOf(r) === "journeys");
   const rank = (r: WorkflowRecord) => (r.design.status === "approved" ? 1000 : 0) + r.document.steps.length;
   return [...journeys].sort((a, b) => rank(b) - rank(a))[0] ?? null;
@@ -114,7 +114,7 @@ export interface SystemDescription {
 }
 
 /** A text's first sentence: up to its first full stop, question or exclamation mark followed by a space. */
-export function firstSentence(text: string): string {
+function firstSentence(text: string): string {
   const t = text.trim();
   const m = /^([\s\S]+?[.!?…])(?:\s|$)/u.exec(t);
   return (m?.[1] ?? t).trim();

@@ -21,14 +21,14 @@ import { landingOf, type MergeRequestBody } from './merge.js';
 import { checkStatusOf, conclusionOf } from './status.js';
 import type { GitLabConfig, GitLabSecrets } from './types.js';
 
-export const GITLAB_EVENTS = ['Push Hook', 'Merge Request Hook', 'Pipeline Hook'] as const;
-export type GitLabEvent = (typeof GITLAB_EVENTS)[number];
+const GITLAB_EVENTS = ['Push Hook', 'Merge Request Hook', 'Pipeline Hook'] as const;
+type GitLabEvent = (typeof GITLAB_EVENTS)[number];
 
-export function isGitLabEvent(name: string): name is GitLabEvent {
+function isGitLabEvent(name: string): name is GitLabEvent {
   return (GITLAB_EVENTS as readonly string[]).includes(name);
 }
 
-export interface GitLabDeliveryContext {
+interface GitLabDeliveryContext {
   projectId: string;
   bindingId: string;
   config: GitLabConfig;
@@ -43,13 +43,13 @@ interface ProjectPart {
   web_url?: string;
 }
 
-export interface PushHook {
+interface PushHook {
   ref?: string;
   after?: string;
   project?: ProjectPart;
 }
 
-export interface MergeRequestHook {
+interface MergeRequestHook {
   project?: ProjectPart;
   object_attributes?: {
     iid?: number;
@@ -69,7 +69,7 @@ export interface MergeRequestHook {
   };
 }
 
-export interface PipelineHook {
+interface PipelineHook {
   project?: ProjectPart;
   merge_request?: { iid?: number } | null;
   object_attributes?: {
@@ -82,13 +82,13 @@ export interface PipelineHook {
   };
 }
 
-export interface GitLabEventResult {
+interface GitLabEventResult {
   actions: number;
   refusal?: string;
 }
 
 /** GitLab writes hook times as `2026-10-02 08:00:00 UTC`; anything else is passed through as sent. */
-export function gitlabTime(raw: string | null | undefined): string | null {
+function gitlabTime(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const legacy = /^(\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d) UTC$/.exec(raw);
   const iso = legacy ? `${legacy[1]}T${legacy[2]}Z` : raw;

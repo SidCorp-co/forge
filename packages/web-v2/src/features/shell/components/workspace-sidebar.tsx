@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { NavRail } from "@/design";
 import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { ProjectFlyout } from "@/features/projects/components/project-flyout";
-import { useWhatsNewStatus } from "@/features/whats-new/hooks";
 import { NavRailCompact } from "../nav-rail-compact";
 import { SidebarVersion } from "./sidebar-version";
 import { useMyEcosystems } from "@/features/ecosystem/hooks";
@@ -60,7 +59,6 @@ function useFlyoutHover() {
 
 export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
   const { collapsed, activeKey, attentionCount, rail, onRoute, badges } = props;
-  const { hasUnseen } = useWhatsNewStatus();
   const flyout = useFlyoutHover();
   const workspaceItems = useMemo(() => workspaceNavItems(attentionCount), [attentionCount]);
   const ecosystems = useMyEcosystems().data;
@@ -71,9 +69,7 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
   };
   const version = (compact: boolean) => (
     <SidebarVersion
-      onWhatsNew={() => onRoute("/whats-new")}
       onDocs={() => onRoute("/docs")}
-      unseen={hasUnseen}
       activeKey={activeKey}
       compact={compact}
     />

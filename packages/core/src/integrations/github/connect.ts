@@ -12,7 +12,7 @@ import { anonymousOctokit, responseOf } from './octokit.js';
 
 const STATE_TTL_MS = 10 * 60_000;
 
-export interface ConnectState {
+interface ConnectState {
   projectId: string;
   userId: string;
   /** Org that will own the credential, when the operator chose an org-owned
@@ -95,7 +95,7 @@ export function manifestPostUrl(owner?: string | null): string {
     : 'https://github.com/settings/apps/new';
 }
 
-export interface ConvertedApp {
+interface ConvertedApp {
   appId: string;
   privateKey: string;
   webhookSecret: string;

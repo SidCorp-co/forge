@@ -15,7 +15,7 @@ export function validateLogin(input: { email: string; password: string }): Login
   return errors;
 }
 
-export type RegisterFieldKey = 'email' | 'password' | 'confirmPassword';
+type RegisterFieldKey = 'email' | 'password' | 'confirmPassword';
 export type RegisterFieldErrors = Partial<Record<RegisterFieldKey, string>>;
 
 export function validateRegister(input: {

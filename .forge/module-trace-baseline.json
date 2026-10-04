@@ -1,0 +1,13 @@
+{
+ "$comment": "Units packages/core/src/modules.json does not yet trace to a requirement or workflow step, under the rule they break (scripts/lib/module-trace.mjs). Shrink-only: a new entry fails, an entry that no longer occurs fails, and a rule whose count rose over the base revision fails. Rewrite with node scripts/check-module-shape.mjs --update-trace-baseline after tracing or deleting a unit, never to admit one.",
+ "rules": {
+  "trace-empty": [
+   "core:improvement-messages",
+   "core:pm",
+   "core:tasks",
+   "web:improvement-messages"
+  ],
+  "trace-unknown": [],
+  "trace-via": []
+ }
+}

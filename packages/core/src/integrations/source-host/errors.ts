@@ -3,7 +3,7 @@
  * reader branches on the reason rather than on which host raised it.
  */
 
-export type SourceHostRefusalReason =
+type SourceHostRefusalReason =
   | 'no_binding'
   | 'binding_disabled'
   | 'not_granted'

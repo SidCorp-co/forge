@@ -14,7 +14,6 @@ export interface Preferences {
   theme: ThemePref;
   language: LanguagePref;
   notifyOnMention: boolean;
-  lastSeenWhatsNew: string | null;
   /** The org the user is currently "working in" (ISS-469 global org switcher);
    *  null = no explicit choice (client resolves to the personal org). */
   activeOrgId: string | null;
@@ -24,7 +23,7 @@ export interface Preferences {
 export type PatScope = "read" | "write" | "admin";
 export const PAT_SCOPES: PatScope[] = ["read", "write", "admin"];
 
-export type PatGrant = "legacy" | "full" | "named";
+type PatGrant = "legacy" | "full" | "named";
 
 /** What `GET /api/pat` says the create door will accept. */
 export interface PatMenu {

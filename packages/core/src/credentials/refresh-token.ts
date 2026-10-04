@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import argon2 from 'argon2';
 
 export const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
-export const REFRESH_TOKEN_PREFIX_LEN = 8;
+const REFRESH_TOKEN_PREFIX_LEN = 8;
 const RAW_TOKEN_BYTES = 32;
 
 const ARGON2_OPTIONS = {

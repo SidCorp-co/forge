@@ -51,7 +51,7 @@ export function issueRefNeedsHeldPrefixes(raw: string): boolean {
   return given !== null && given !== LEGACY_ISSUE_PREFIX;
 }
 
-export type ParsedIssueRef =
+type ParsedIssueRef =
   | { ok: true; issSeq: number }
   | { ok: false; code: 'SHAPE' | 'FOREIGN_PREFIX' | 'RANGE'; message: string };
 

@@ -35,7 +35,7 @@ import {
   latestPinsOf,
 } from './standing-facts.js';
 
-export interface StandingRow {
+interface StandingRow {
   id: string;
   projectId: string;
   status: string;
@@ -44,7 +44,7 @@ export interface StandingRow {
   updatedAt: Date;
 }
 
-export interface StandingViewer {
+interface StandingViewer {
   userId: string;
   canSignOff: boolean;
 }

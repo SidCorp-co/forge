@@ -70,7 +70,7 @@ function refuseUnmatchedActions(
 
 // cm:guard the per-action table must name exactly the schema's `action` enum, so an action added
 // to a tool cannot reach the transport undeclared.
-export function assertToolDeclaresGrant(tool: GrantedTool): void {
+function assertToolDeclaresGrant(tool: GrantedTool): void {
   const refuse = (why: string): never => {
     throw new Error(`MCP tool ${tool.name} is not registered: ${why}`);
   };
@@ -173,7 +173,7 @@ function reachProblem(entry: unknown, grant: ToolGrantEntry | undefined): string
 
 // cm:guard every tool on the transport states whether its work belongs to one project, so a
 // project-fenced token cannot reach account-wide work through a tool that never said.
-export function assertToolDeclaresReach(tool: GrantedTool): void {
+function assertToolDeclaresReach(tool: GrantedTool): void {
   const refuse = (why: string): never => {
     throw new Error(`MCP tool ${tool.name} is not registered: ${why}`);
   };
@@ -227,7 +227,7 @@ function routeFor(tool: GrantedTool, permission: PatPermission): string | undefi
 
 // cm:guard every permission a tool names is dated by a REST mount it declares under that
 // permission's resource, so a tool cannot take an older epoch than the route serving its rows.
-export function assertToolDeclaresRoute(tool: GrantedTool): void {
+function assertToolDeclaresRoute(tool: GrantedTool): void {
   const refuse = (why: string): never => {
     throw new Error(`MCP tool ${tool.name} is not registered: ${why}`);
   };

@@ -1,10 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { emissionAllowed, noteSuppressed } from './emission-switch.js';
 
 /**
  * Raise an ops alert, or re-word the one already firing under its key: `escalated` when its
- * severity moved. Null when ops alerts are switched off.
+ * severity moved. Null when the alert under the key was resolved while it was being re-worded.
  */
 export async function claimOpsAlert(input: {
   title: string;
@@ -13,11 +12,6 @@ export async function claimOpsAlert(input: {
   resolutionKey: string;
 }): Promise<{ id: string; escalated: boolean } | null> {
   const { title, body, severity, resolutionKey } = input;
-
-  if (!emissionAllowed('ops_alert')) {
-    noteSuppressed('ops_alert', title);
-    return null;
-  }
 
   const claimed = await db.execute<{ id: string }>(sql`
     INSERT INTO notifications (project_id, type, kind, tier, state, title, body, severity, resolution_key, pending_since, last_seen_at, created_at)

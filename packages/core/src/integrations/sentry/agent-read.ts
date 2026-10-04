@@ -32,9 +32,9 @@ const FILTER_TERMS = {
   requestId: 'request.id',
 } as const;
 
-export type SentryAgentFilter = keyof typeof FILTER_TERMS;
+type SentryAgentFilter = keyof typeof FILTER_TERMS;
 
-export interface SentryAgentReadRequest {
+interface SentryAgentReadRequest {
   projectId: string;
   /** Which declared target to read, where the binding declares more than one. */
   target?: string;
@@ -54,11 +54,11 @@ export interface SentryAgentListRequest extends SentryAgentReadRequest {
   limit?: number;
 }
 
-export interface SentryAgentGetRequest extends SentryAgentReadRequest {
+interface SentryAgentGetRequest extends SentryAgentReadRequest {
   issueId: string;
 }
 
-export interface SentryAgentListing {
+interface SentryAgentListing {
   target: string;
   organizationSlug: string;
   projectSlug: string | null;
@@ -78,7 +78,7 @@ function term(key: string, value: string): string {
   return `${key}:"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
-export function sentryAgentQuery(input: SentryAgentListRequest): string {
+function sentryAgentQuery(input: SentryAgentListRequest): string {
   const parts: string[] = [];
   const status = input.status ?? 'unresolved';
   if (status !== 'any') parts.push(`is:${status}`);
@@ -98,9 +98,7 @@ export function sentryAgentQuery(input: SentryAgentListRequest): string {
  * Sentry, the binding is switched off, the credential behind it is switched off for every project
  * sharing it, and it works but no agent here may use it.
  */
-export async function resolveGrantedSentryBinding(
-  projectId: string,
-): Promise<BindingWithConnection> {
+async function resolveGrantedSentryBinding(projectId: string): Promise<BindingWithConnection> {
   const pairs = (await listBindingsForProject(projectId))
     .filter((r) => r.binding.provider === 'sentry')
     .sort((a, b) => a.binding.createdAt.getTime() - b.binding.createdAt.getTime());

@@ -30,7 +30,6 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			scheduleInvalidation(qc, ["needs-you"]);
 			scheduleInvalidation(qc, ["attention"]);
 			scheduleInvalidation(qc, ["pulse"]);
-			scheduleInvalidation(qc, ["recent-changes"]);
 			if (data?.issueId) {
 				scheduleInvalidation(qc, ["issue", data.issueId]);
 				scheduleInvalidation(qc, ["activities", data.issueId]);
@@ -45,7 +44,6 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			scheduleInvalidation(qc, ["projects", "health"]);
 			scheduleInvalidation(qc, ["pulse"]);
 			scheduleInvalidation(qc, ["attention"]);
-			scheduleInvalidation(qc, ["recent-changes"]);
 			if (data?.issueId) {
 				scheduleInvalidation(qc, ["issue", data.issueId]);
 				scheduleInvalidation(qc, ["activities", data.issueId]);

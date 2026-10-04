@@ -16,6 +16,11 @@ export function useModuleRollup(projectId: string | undefined) {
   });
 }
 
+/** The build's requirement trace: which requirements and workflow steps each code module serves. */
+export function useCodeTrace() {
+  return useQuery({ queryKey: ["code-trace"], queryFn: modulesApi.trace, staleTime: Infinity });
+}
+
 export function useModuleDetail(projectId: string | undefined, module: string | undefined) {
   return useQuery({
     queryKey: [...KEY, projectId ?? "", "detail", module ?? ""],

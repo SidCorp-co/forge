@@ -13,7 +13,7 @@ import type { OrgListItem } from "./types";
 const PREFS_KEY = ["settings", "preferences"] as const;
 
 /** Personal org first, then alphabetical by name — matches Settings → Orgs. */
-export function sortOrgs(orgs: OrgListItem[]): OrgListItem[] {
+function sortOrgs(orgs: OrgListItem[]): OrgListItem[] {
   return [...orgs].sort(
     (a, b) => Number(b.isPersonal) - Number(a.isPersonal) || a.name.localeCompare(b.name),
   );

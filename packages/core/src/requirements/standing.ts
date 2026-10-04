@@ -12,9 +12,9 @@ import {
   CHECK_SLA_WORKING_DAYS,
   type CoverageIssue,
   type DeliveryPhase,
-  type RequirementDelivery,
   type RequirementAttentionGroup,
   type RequirementCoverage,
+  type RequirementDelivery,
   type RequirementStanding,
   type RequirementState,
   type RequirementTask,
@@ -25,10 +25,10 @@ import type { RequirementStatus, RevisionState } from '../db/schema-requirements
 import { addWorkingDays } from '../lib/working-days.js';
 
 /** Untouched this long, an open requirement is listed as stuck. */
-export const STUCK_AFTER_DAYS = 21;
+const STUCK_AFTER_DAYS = 21;
 const DAY_MS = 86_400_000;
 
-export interface StandingRevision {
+interface StandingRevision {
   revision: number;
   state: RevisionState;
   authorId: string;
@@ -39,7 +39,7 @@ export interface StandingRevision {
   decidedAt: Date | null;
 }
 
-export interface StandingCriterion {
+interface StandingCriterion {
   id: string;
   code: string;
   body: string;
@@ -47,7 +47,7 @@ export interface StandingCriterion {
   retiredRevision: number | null;
 }
 
-export interface StandingIssue {
+interface StandingIssue {
   id: string;
   displayId: string;
   title: string;
@@ -69,7 +69,7 @@ export interface StandingIssueCriterion {
   verdictAt: Date | null;
 }
 
-export interface StandingInput {
+interface StandingInput {
   status: RequirementStatus;
   owner: RequirementStanding['owner'];
   /** Null for a reader with no person behind it; nothing then reads as theirs. */
@@ -96,7 +96,7 @@ type Phased = StandingInput & { phase: DeliveryPhase | null };
 
 const SIGNER = 'BA or owner';
 
-export function stateOf(status: RequirementStatus, phase: DeliveryPhase | null): RequirementState {
+function stateOf(status: RequirementStatus, phase: DeliveryPhase | null): RequirementState {
   if (status !== 'agreed') return status;
   return phase === 'in_delivery' || phase === 'delivered' ? phase : 'agreed';
 }
@@ -115,10 +115,7 @@ const wordingsAt = (criteria: readonly StandingCriterion[], revision: number) =>
 // the live links: any latest verdict `fail` → failing; every one `pass` or `short` → passing;
 // otherwise (none yet, or `skipped`) → not judged. No live link but an earlier one → stale; no link
 // at all → gap. A dropped issue proves nothing and is left out.
-export function coverageOf(
-  input: StandingInput,
-  shownRevision: number | null,
-): RequirementCoverage[] {
+function coverageOf(input: StandingInput, shownRevision: number | null): RequirementCoverage[] {
   if (shownRevision === null) return [];
   const live = wordingsAt(input.criteria, shownRevision);
   const byId = new Map(input.criteria.map((c) => [c.id, c]));
@@ -354,7 +351,7 @@ const taskOf = (
 // workflow requirement-to-delivery step `breakdown`: the project master proposes the breakdown of
 // an agreed revision within 2 working days; the task is open while the revision has no live issue
 // and no open breakdown suggestion
-export function breakdownTaskOf(
+function breakdownTaskOf(
   input: StandingInput,
   live: readonly StandingIssue[],
 ): RequirementTask | null {
@@ -374,10 +371,7 @@ export function breakdownTaskOf(
 // one acceptance check for that revision, owned by the BA and due 5 working days after the evidence
 // completed (the last live issue closed, or the newest passing traced verdict). `input.phase` is
 // `deliveryOf`'s, so the task is read from the same computation as delivered
-export function checkTaskOf(
-  input: Phased,
-  live: readonly StandingIssue[],
-): RequirementTask | null {
+function checkTaskOf(input: Phased, live: readonly StandingIssue[]): RequirementTask | null {
   if (input.status !== 'agreed' || input.phase !== 'delivered') return null;
   if (input.currentRevision === null || live.length === 0) return null;
   const ids = new Set(live.map((i) => i.id));
@@ -391,7 +385,7 @@ export function checkTaskOf(
   return taskOf('check', 'BA', input.currentRevision, openedAt, CHECK_SLA_WORKING_DAYS, input.now);
 }
 
-export function touchedAt(input: StandingInput): Date {
+function touchedAt(input: StandingInput): Date {
   const times = [
     input.updatedAt,
     ...input.revisions.flatMap((r) => [r.createdAt, r.proposedAt, r.decidedAt]),
@@ -404,7 +398,7 @@ export function touchedAt(input: StandingInput): Date {
 // agreed or accepted requirement has one; no live issue → agreed; every live issue closed AND every
 // current BC covered by a passing verdict → delivered, a closed set with an unproven BC → in_delivery;
 // a live issue past draft and open → in_delivery; else agreed
-export function deliveryOf(
+function deliveryOf(
   status: RequirementStatus,
   live: readonly StandingIssue[],
   coverage: readonly RequirementCoverage[],

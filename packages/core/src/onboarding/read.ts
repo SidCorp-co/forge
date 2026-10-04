@@ -3,6 +3,7 @@
  * live status, its open batch and its job, and the dashboard's one-line hint derived from them.
  */
 
+import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import {
   ONBOARDING_JOB_PHASES,
   type OnboardingHint,
@@ -19,10 +20,9 @@ import { jobs } from '../db/schema.js';
 import { onboardings, questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
-import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { dataPolicyOf } from '../lib/data-egress.js';
-import type { LiveJob } from './rules.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import type { LiveJob } from './rules.js';
 
 export type Executor = typeof db | Tx;
 export type OnboardingRow = typeof onboardings.$inferSelect;
@@ -53,7 +53,11 @@ export async function onboardingStatusesOf(
   if (conversationIds.length === 0) return new Map();
   const [rows, answerable] = await Promise.all([
     db
-      .select({ id: onboardings.id, conversationId: onboardings.conversationId, doneAt: onboardings.doneAt })
+      .select({
+        id: onboardings.id,
+        conversationId: onboardings.conversationId,
+        doneAt: onboardings.doneAt,
+      })
       .from(onboardings)
       .where(inArray(onboardings.conversationId, [...conversationIds])),
     db
@@ -338,10 +342,4 @@ export async function systemContextOf(projectId: string): Promise<SystemContextS
     );
   if (rows.some((r) => r.designStatus === 'approved')) return 'approved';
   return rows.length ? 'unapproved' : 'none';
-}
-
-/** Whether a workflow was drafted by this project's onboarding: such a design takes only a person's approval. */
-export async function isOnboardingDesign(projectId: string, workflowId: string): Promise<boolean> {
-  const row = await onboardingOf(db, projectId);
-  return row?.designs.includes(workflowId) ?? false;
 }

@@ -1,13 +1,4 @@
-export type {
-  ApprovalResource,
-  OrgPermission,
-  OrgResource,
-  Permission,
-  PermissionRefusal,
-  PermissionResource,
-  ProjectPermission,
-  ProjectResource,
-} from '@forge/contracts/permissions';
+export type { ProjectPermission } from '@forge/contracts/permissions';
 export { type Actor, actorFor } from './actor.js';
 export {
   type AgentCredentialFence,
@@ -38,13 +29,8 @@ export {
 export {
   addOrgMember,
   addProjectMembers,
-  type NewOrgMembership,
-  type NewProjectMembership,
-  type OrgMembershipRow,
-  type ProjectMembershipRow,
   removeOrgMember,
   removeProjectMember,
-  removeProjectMembershipsOf,
   updateOrgMember,
   updateProjectMember,
 } from './memberships.js';

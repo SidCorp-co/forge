@@ -30,7 +30,7 @@ export interface MockupContextRow {
 // cm:why a job is given each accepted mockup as a manifest line and a fetch, never its bytes: an
 // image or a board read on demand costs only the run that needs it, and at no_egress the bytes are
 // withheld (surface `mockup.content`), so the line says so instead of offering a fetch that refuses
-export function mockupLines(rows: readonly MockupContextRow[], withheld: boolean): string[] {
+function mockupLines(rows: readonly MockupContextRow[], withheld: boolean): string[] {
   return rows.map(
     (m) =>
       `- ${m.key} ${m.kind} \`${m.name}\`${m.caption ? ` — ${m.caption}` : ''} — ${withheld ? 'bytes withheld: this project is no_egress' : `\`GET /api/projects/:id/mockups/${m.key}/content\``}`,
@@ -90,7 +90,7 @@ export interface LoadedRequirement {
 }
 
 // cm:why one requirement's revision, criteria and pins; a requirement past it is refused whole, never cut, since a criterion left out is one the run would not build to
-export const REQUIREMENT_CONTEXT_CAP_CHARS = 12_000;
+const REQUIREMENT_CONTEXT_CAP_CHARS = 12_000;
 
 /** A requirement the job cannot be given at its current revision, refused by name. */
 const requirementRefusal = (code: ArtifactContextRefusalCode, key: string, reason: string) =>

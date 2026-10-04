@@ -9,7 +9,7 @@ import { WireframeThumb } from "./wireframe-thumb";
 
 export type Selection = { step: string } | { edge: string } | null;
 
-export interface PanelProps {
+interface PanelProps {
   canvas: Canvas;
   selection: Selection;
   walk: { order: string[]; at: number } | null;

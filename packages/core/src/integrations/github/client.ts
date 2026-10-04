@@ -1,23 +1,3 @@
-/**
- * Reading a project's repository as the GitHub App, not as a person.
- *
- * Every write and every read Forge makes to GitHub is the App acting for a
- * named run: attributable, scoped per project, and revocable from one place
- * without touching a box. The alternative is what ISS-1062 measured — every
- * merge on forge-dev made under `junixlabs`, a personal account in a `gh`
- * config file on the runner, invisible to Forge and impossible to audit.
- *
- * Resolution here is by PROJECT, which is what a webhook delivery and a kernel
- * transition both know. `git-credential.ts` resolves the same App by
- * DEVICE and repository, because a git credential helper is handed a URL and
- * nothing else; the two are different keys onto the same credential and share
- * the token mint rather than either one's lookup.
- */
-
-import { and, asc, eq } from 'drizzle-orm';
-import { db } from '../../db/client.js';
-import { integrationBindings } from '../../db/schema.js';
-import { decryptConnectionSecrets, findConnectionById } from '../index.js';
 import { SourceHostCallError, SourceHostUnavailable } from '../source-host/index.js';
 import {
   GitHubAuthError,
@@ -45,7 +25,7 @@ export type GitHubPublishOp = 'mint' | 'lookup' | 'create' | 'update' | 'merge';
  * Why this project cannot be read as the App. The `reason` is what a caller
  * branches on; the message is what an operator is shown.
  */
-export type GitHubClientRefusal =
+type GitHubClientRefusal =
   | 'no_binding'
   | 'no_repository'
   | 'no_installation'
@@ -115,27 +95,6 @@ export interface GitHubRepoClient {
     path: string;
     body?: unknown;
   }): Promise<T>;
-}
-
-/** The binding a project's github reads go through, or a named refusal. */
-async function findGitHubBinding(projectId: string) {
-  const [row] = await db
-    .select({
-      id: integrationBindings.id,
-      connectionId: integrationBindings.connectionId,
-      config: integrationBindings.config,
-    })
-    .from(integrationBindings)
-    .where(
-      and(
-        eq(integrationBindings.provider, 'github'),
-        eq(integrationBindings.projectId, projectId),
-        eq(integrationBindings.active, true),
-      ),
-    )
-    .orderBy(asc(integrationBindings.createdAt))
-    .limit(1);
-  return row ?? null;
 }
 
 /**
@@ -273,26 +232,4 @@ function bodyText(data: unknown): string | null {
   if (data === undefined || data === null || data === '') return null;
   const text = typeof data === 'string' ? data : JSON.stringify(data);
   return text.length > 0 ? text.slice(0, 2000) : null;
-}
-
-export async function githubRepoClient(projectId: string): Promise<GitHubRepoClient> {
-  const binding = await findGitHubBinding(projectId);
-  if (!binding) {
-    throw new GitHubClientError(
-      'no_binding',
-      `this project has no active GitHub binding — bind a repository on its Integrations page`,
-    );
-  }
-  const connection = await findConnectionById(binding.connectionId);
-  if (!connection?.active) {
-    throw new GitHubClientError(
-      'no_connection',
-      `the GitHub connection behind this project's binding is gone or deactivated`,
-    );
-  }
-  return buildRepoClient({
-    bindingId: binding.id,
-    config: (binding.config ?? {}) as GitHubConfig,
-    secrets: decryptConnectionSecrets<GitHubSecrets>(connection),
-  });
 }

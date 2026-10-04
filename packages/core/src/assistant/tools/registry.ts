@@ -9,7 +9,7 @@ import { forgePreferencesTool } from './forge-preferences-tool.js';
 import { buildToolset, type ChatToolSpec, type ChatToolset } from './mcp-adapter.js';
 
 /** Curated allowlist exposed to the chat model. */
-export const CHAT_TOOL_ALLOWLIST: ChatToolSpec[] = [
+const CHAT_TOOL_ALLOWLIST: ChatToolSpec[] = [
   { factory: forgeCliTool },
   {
     factory: forgeKnowledgeTool,
@@ -33,7 +33,7 @@ export function provideChatTools(specs: readonly ChatToolSpec[]): void {
 }
 
 /** The whole allowlist: this module's own tools, then the provided ones. */
-export function chatToolSpecs(): ChatToolSpec[] {
+function chatToolSpecs(): ChatToolSpec[] {
   if (!providedSpecs) {
     throw new Error(
       'chat toolset: the composed tools were not provided, so the allowlist is incomplete; the process entry calls provideChatTools(CHAT_READ_MODEL_TOOLS) from mcp/index.ts before it serves',

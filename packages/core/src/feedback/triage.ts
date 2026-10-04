@@ -70,7 +70,7 @@ import {
 } from './service.js';
 
 /** What a triage or a route write did, which its caller announces once the transaction committed. */
-export interface TriageWritten {
+interface TriageWritten {
   refusals: Refusal[] | null;
   effect?: FeedbackTriageEffect;
   createdIssueId?: string;

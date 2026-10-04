@@ -22,7 +22,7 @@ import { fetchLine } from './run-context-plan.js';
 import { readStoredWorkflow, type WorkflowWrite } from './schema.js';
 
 // cm:why a placeholder priced against the schema's own ceiling (40 steps, one design's header and cut manifest stay under 10k chars), until the record's chars/estTokens of the first twenty build jobs give a measured p90 to set it from — the design note asks for that measurement before a number
-export const ARTIFACT_CONTEXT_CAP_CHARS = 24_000;
+const ARTIFACT_CONTEXT_CAP_CHARS = 24_000;
 
 export const ARTIFACT_CONTEXT_KEY = 'artifactContext';
 
@@ -112,7 +112,7 @@ interface Slice {
 }
 
 // cm:why the order fields are shed in when a slice is over budget: rule test cases and wireframe pointers first (fetchable, and restated by the rule and screen they belong to), then descriptive prose; guards are in no tier
-export const TRIM_TIERS: readonly { node: readonly string[]; edge: readonly string[] }[] = [
+const TRIM_TIERS: readonly { node: readonly string[]; edge: readonly string[] }[] = [
   { node: ['tests'], edge: [] },
   { node: ['wireframe'], edge: [] },
   { node: ['purpose', 'expectedOutcome', 'owner', 'sla', 'channel'], edge: ['label'] },
@@ -149,9 +149,7 @@ function readApproved(row: TracedDesignRow): { revision: number; doc: WorkflowWr
   }
   const doc = readStoredWorkflow(row.revisionRow.document);
   if (!doc) {
-    throw refuse(
-      `revision ${row.approvedRevision}'s document does not read as workflow-v1 or workflow-v2`,
-    );
+    throw refuse(`revision ${row.approvedRevision}'s document does not read as workflow-v2`);
   }
   return { revision: row.approvedRevision, doc };
 }
@@ -167,17 +165,6 @@ function sliceOf(doc: WorkflowWrite): Slice {
       ...(node ? { node } : {}),
     };
   });
-  if (doc.version !== 2) {
-    return {
-      title: doc.title,
-      summary: doc.summary,
-      template: null,
-      lanes: [],
-      personas: [],
-      steps,
-      edges: [],
-    };
-  }
   const label = (l: { id: string; label: string }) => ({ id: l.id, label: l.label });
   return {
     title: doc.title,

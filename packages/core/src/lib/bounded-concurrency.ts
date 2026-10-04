@@ -1,4 +1,4 @@
-export interface Limiter {
+interface Limiter {
   /** Run `task` once a slot is free; the slot is released even if it throws. */
   run<T>(task: () => Promise<T>): Promise<T>;
   /** Tasks currently holding a slot. Read by tests and by nothing else. */

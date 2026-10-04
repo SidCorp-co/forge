@@ -157,7 +157,7 @@ export function requireUserOrDevice(): MiddlewareHandler<{ Variables: AuthVars }
 }
 
 /** The columns of the caller's `users` row that an auth gate decides on. */
-export type AuthUserRow = { email: string; emailVerifiedAt: Date | null };
+type AuthUserRow = { email: string; emailVerifiedAt: Date | null };
 
 /**
  * The caller's `users` row, read straight from the database.

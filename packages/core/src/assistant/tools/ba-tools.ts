@@ -394,13 +394,3 @@ export function buildBaToolset(ctx: McpContext, room: BaRoom): ChatToolset {
     { factory: drawMockup(room) },
   ]);
 }
-
-export const BA_TOOL_NAMES = [
-  'ba_read_requirement',
-  'ba_read_issue',
-  'ba_find_similar',
-  'ba_suggest',
-  'ba_ask_clarification',
-  'ba_send_questionnaire',
-  'ba_draw_mockup',
-] as const;

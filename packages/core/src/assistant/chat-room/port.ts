@@ -157,7 +157,7 @@ async function authForVenue(
 /**
  * The emoji a received request is marked with, and the one the terminal clear removes.
  */
-export const RECEIVED_EMOJI = 'eyes';
+const RECEIVED_EMOJI = 'eyes';
 
 /**
  * Show the room the bot is typing, under the name the server will accept.

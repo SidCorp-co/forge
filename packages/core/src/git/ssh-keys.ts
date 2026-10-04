@@ -8,7 +8,7 @@ import { isHostUnresolved, type PinnedSshHost, pinSafeSshHost } from './ssh-host
 
 const execFileAsync = promisify(execFile);
 
-export interface GeneratedSshKey {
+interface GeneratedSshKey {
   /** OpenSSH public key line, e.g. "ssh-ed25519 AAAA… forge-<slug>". */
   publicKey: string;
   /** OpenSSH private key (PEM-ish OpenSSH format) — caller MUST encrypt before persisting. */
@@ -68,7 +68,7 @@ export async function generateSshKeypair(comment: string): Promise<GeneratedSshK
 }
 
 /** Result of probing a repo's reachability with a stored deploy key. */
-export interface SshConnTest {
+interface SshConnTest {
   ok: boolean;
   /** Machine-readable outcome for the UI to phrase / colour. */
   code: 'authenticated' | 'auth_denied' | 'host_unreachable' | 'not_found' | 'timeout' | 'error';
