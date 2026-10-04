@@ -5,26 +5,27 @@
  * Who may act is `actMiss` against a declared rule (`lib/person-act.ts`).
  */
 
-import type { NodeRef } from '@forge/contracts/workflow-health';
-import type {
-  FeedbackAttention,
-  FeedbackKind,
-  FeedbackPhase,
-  FeedbackRefusal,
-  FeedbackRefusalCode,
-  FeedbackRoute,
-  FeedbackStatus,
-  FeedbackTargetType,
-  FeedbackTriage,
-  FeedbackWaiting,
+import {
+  FEEDBACK_CASE_OWNER_LABELS,
+  type FeedbackAttention,
+  type FeedbackCaseView,
+  type FeedbackPhase,
+  type FeedbackRefusal,
+  type FeedbackRefusalCode,
+  type FeedbackRoute,
+  type FeedbackStatus,
+  type FeedbackTriageRoute,
+  type FeedbackWaiting,
 } from '@forge/contracts/feedback';
-import type { SuggestionKind, SuggestionStatus } from '@forge/contracts/suggestions';
+import type { SuggestionStatus } from '@forge/contracts/suggestions';
+import type { NodeRef } from '@forge/contracts/workflow-health';
 import {
   type ActorFacts,
   type ActRule,
   actMiss,
   PERSON_ACT,
   PERSON_ADMIN_ACT,
+  PROJECT_MEMBER_WRITE,
 } from '../lib/person-act.js';
 
 export type { FeedbackRefusal, FeedbackRefusalCode } from '@forge/contracts/feedback';
@@ -99,19 +100,43 @@ export function attentionOf(phase: FeedbackPhase, viewerIsReporter: boolean): Fe
   return 'done';
 }
 
+const ROUTE_ACTS: Record<FeedbackTriageRoute, string> = {
+  issue: 'create or link the issue',
+  revision: 'name the revision proposal',
+  new_requirement: 'start the draft requirement',
+  answer: 'write the answer',
+  duplicate: 'name the root',
+  decline: 'decline it',
+};
+
+// step fb-case: a triaged item whose route is not written waits on its case's owner by name, by its
+// due; a written route whose carrier died reads triaged with no open case, so a person routes it again
+function caseWaiting(c: FeedbackCaseView | null): FeedbackWaiting {
+  if (!c || c.routedAt !== null) {
+    return { kind: 'person', who: 'A person', act: 'route it again: its route carries nothing' };
+  }
+  const due = `${c.overdue ? 'overdue since' : 'due'} ${c.dueAt.slice(0, 10)}`;
+  return {
+    kind: c.owner === 'master' ? 'agent' : 'person',
+    who: FEEDBACK_CASE_OWNER_LABELS[c.owner],
+    act: `${ROUTE_ACTS[c.route]}, ${due}`,
+  };
+}
+
 /** Who or what an item waits on, whoever reads it: the "Waiting on" cell's name and act. */
 export function waitingOf(
   phase: FeedbackPhase,
   route: FeedbackRoute | null,
   carrier: string | null,
   reporter: string,
+  kase: FeedbackCaseView | null = null,
 ): FeedbackWaiting {
   switch (phase) {
     case 'new':
     case 'reopened':
       return { kind: 'person', who: 'A person', act: 'triage it' };
     case 'triaged':
-      return { kind: 'person', who: 'A person', act: 'route it again: its route carries nothing' };
+      return caseWaiting(kase);
     case 'planned':
       if (route === 'issue')
         return { kind: 'issue', who: carrier ?? 'The linked issue', act: 'ship' };
@@ -139,8 +164,9 @@ export function waitingOnOf(
   route: FeedbackRoute | null,
   carrier: string | null,
   reporter: string,
+  kase: FeedbackCaseView | null = null,
 ): string {
-  const w = waitingOf(phase, route, carrier, reporter);
+  const w = waitingOf(phase, route, carrier, reporter, kase);
   return w.act ? `${w.who} to ${w.act}` : w.who;
 }
 
@@ -181,131 +207,6 @@ export function targetCountRefusal(
       'FEEDBACK_TARGET_NOT_ONE',
       '/whereSeen',
       'an item about a screen names it in `screen`, which is where it was seen; send one of them, not both.',
-    );
-  }
-  return null;
-}
-
-const OPEN_FOR_TRIAGE: readonly FeedbackPhase[] = ['new', 'triaged', 'reopened'];
-
-// cm:guard a route is picked while the item is new, reopened, or triaged with a dead carrier; a
-// planned, resolved, verified or declined item is FEEDBACK_STATUS_INVALID
-export function triagePhaseRefusal(phase: FeedbackPhase): FeedbackRefusal | null {
-  if (OPEN_FOR_TRIAGE.includes(phase)) return null;
-  return refusal(
-    'FEEDBACK_STATUS_INVALID',
-    '/status',
-    `the item reads ${phase}; a route is picked only while it is new, reopened, or triaged with nothing carrying it.`,
-  );
-}
-
-// cm:guard each route names what carries it (FEEDBACK_ROUTE_INCOMPLETE), and an answer carries its
-// text (FEEDBACK_ANSWER_MISSING)
-export function routeShapeRefusal(t: FeedbackTriage): FeedbackRefusal | null {
-  const incomplete = (needs: string) =>
-    refusal('FEEDBACK_ROUTE_INCOMPLETE', '/route', `route ${t.route} needs ${needs}.`);
-  switch (t.route) {
-    case 'issue':
-      if (t.issue && t.createIssue)
-        return incomplete('either `issue` to link or `createIssue`, not both');
-      return t.issue || t.createIssue
-        ? null
-        : incomplete('`issue` to link or `createIssue` to file a draft');
-    case 'revision':
-      return t.suggestion
-        ? null
-        : incomplete('`suggestion`, a revision_diff suggestion to carry it');
-    case 'new_requirement':
-      if (t.requirement && t.title) return incomplete('either `requirement` or `title`, not both');
-      return t.requirement || t.title
-        ? null
-        : incomplete('`requirement`, a draft to carry it, or `title` to start one');
-    case 'answer':
-      return t.answer?.trim()
-        ? null
-        : refusal(
-            'FEEDBACK_ANSWER_MISSING',
-            '/answer',
-            'route answer carries the answer the reporter reads.',
-          );
-    case 'duplicate':
-      return t.duplicateOf ? null : incomplete('`duplicateOf`, the root item');
-  }
-}
-
-export interface RouteFacts {
-  kind: FeedbackKind;
-  targetType: FeedbackTargetType;
-  targetRequirementId: string | null;
-  suggestion: { kind: SuggestionKind; requirementId: string | null } | null;
-  routedRequirement: { key: string; status: string } | null;
-}
-
-// cm:guard a route fits the item (FEEDBACK_ROUTE_TARGET_MISMATCH): contract-change feedback goes to
-// an upgrade issue; a revision is a revision_diff of the target's own requirement; a new
-// requirement route names a draft
-export function routeFitRefusal(t: FeedbackTriage, f: RouteFacts): FeedbackRefusal | null {
-  const mismatch = (path: string, detail: string) =>
-    refusal('FEEDBACK_ROUTE_TARGET_MISMATCH', path, detail);
-  if (f.kind === 'contract_change' && t.route !== 'issue') {
-    return mismatch(
-      '/route',
-      `contract-change feedback routes to an upgrade issue, not ${t.route}.`,
-    );
-  }
-  if (t.route === 'revision' && f.suggestion) {
-    if (f.suggestion.kind !== 'revision_diff') {
-      return mismatch(
-        '/suggestion',
-        `route revision is carried by a revision_diff suggestion, and this one is ${f.suggestion.kind}.`,
-      );
-    }
-    if (f.targetType === 'requirement' && f.suggestion.requirementId !== f.targetRequirementId) {
-      return mismatch(
-        '/suggestion',
-        'the suggestion revises another requirement than the one this item is about.',
-      );
-    }
-  }
-  if (
-    t.route === 'new_requirement' &&
-    f.routedRequirement &&
-    f.routedRequirement.status !== 'draft'
-  ) {
-    return mismatch(
-      '/requirement',
-      `${f.routedRequirement.key} is ${f.routedRequirement.status}; a new-requirement route is carried by a draft. Route an agreed requirement's change as a revision.`,
-    );
-  }
-  return null;
-}
-
-// cm:guard duplicate_of names a root that is not itself a duplicate, and an item other items point
-// at never becomes a duplicate (FEEDBACK_DUPLICATE_CHAIN); an item is never its own (FEEDBACK_DUPLICATE_SELF)
-export function duplicateRefusal(
-  selfId: string,
-  root: { id: string; key: string; duplicateOfKey: string | null },
-  pointedAtBy: readonly string[],
-): FeedbackRefusal | null {
-  if (root.id === selfId) {
-    return refusal(
-      'FEEDBACK_DUPLICATE_SELF',
-      '/duplicateOf',
-      'an item is not a duplicate of itself.',
-    );
-  }
-  if (root.duplicateOfKey) {
-    return refusal(
-      'FEEDBACK_DUPLICATE_CHAIN',
-      '/duplicateOf',
-      `${root.key} is itself a duplicate of ${root.duplicateOfKey}; point at the root, ${root.duplicateOfKey}.`,
-    );
-  }
-  if (pointedAtBy.length > 0) {
-    return refusal(
-      'FEEDBACK_DUPLICATE_CHAIN',
-      '/duplicateOf',
-      `${pointedAtBy.join(', ')} ${pointedAtBy.length === 1 ? 'is a duplicate' : 'are duplicates'} of this item, so it stays a root; mark ${root.key} a duplicate of this one instead.`,
     );
   }
   return null;
@@ -423,6 +324,16 @@ export const decideActRefusal = (facts: ActorFacts, act: string) =>
     'FEEDBACK_DECIDE_FORBIDDEN',
     act,
     'a person of the project (member or above)',
+  );
+
+/** Writing the route of a case: any member of the project, person or agent; the owner is whom it waits on. */
+export const routeWriteActRefusal = (facts: ActorFacts) =>
+  actRefusal(
+    facts,
+    PROJECT_MEMBER_WRITE,
+    'FEEDBACK_ROUTE_WRITE_FORBIDDEN',
+    "writing a feedback case's route",
+    'a member of the project',
   );
 
 /** Verifying or reopening: the reporter or a BA naming them, so a person of the project. */

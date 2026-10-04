@@ -16,9 +16,9 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { rowIn as feedbackRowIn } from '../feedback/read.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
-import { designNodesIn } from '../workflows/node-refs.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { rowIn } from '../requirements/read.js';
+import { designNodesIn } from '../workflows/node-refs.js';
 
 export interface SuggestionActor {
   userId: string;

@@ -2409,6 +2409,13 @@
       "when": 1815350400000,
       "tag": "0375_a_requirement_links_the_contracts_it_is_built_on",
       "breakpoints": true
+    },
+    {
+      "idx": 376,
+      "version": "7",
+      "when": 1815436800000,
+      "tag": "0376_a_feedback_item_holds_one_case",
+      "breakpoints": true
     }
   ]
 }

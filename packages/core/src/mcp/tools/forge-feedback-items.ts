@@ -7,10 +7,12 @@
 
 import {
   createFeedbackRequestSchema,
+  FEEDBACK_KIND_ROUTES,
   FEEDBACK_KINDS,
   FEEDBACK_PHASES,
-  FEEDBACK_ROUTES,
   FEEDBACK_SEVERITIES,
+  FEEDBACK_TRIAGE_ROUTES,
+  feedbackRouteWriteSchema,
   feedbackTriageSchema,
   promoteAgentReportRequestSchema,
 } from '@forge/contracts/feedback';
@@ -22,13 +24,12 @@ import { promoteAgentReport } from '../../feedback/promote.js';
 import { detailAs, type FeedbackActor, listFeedbackAs, rowIn } from '../../feedback/read.js';
 import {
   createFeedback,
-  declineFeedback,
   type FeedbackOutcome,
   redactReporterData,
   reopenFeedback,
   verifyFeedback,
 } from '../../feedback/service.js';
-import { triageFeedback } from '../../feedback/triage.js';
+import { routeFeedback, triageFeedback } from '../../feedback/triage.js';
 import { guideRef } from '../../guides/guide-ref.js';
 import { MCP_DOOR } from '../../lib/data-egress.js';
 import type { NamedRefusal } from '../../project-config/respond.js';
@@ -50,8 +51,7 @@ const ACTIONS = [
   'promote',
   'propose_triage',
   'triage',
-  'decline',
-  'duplicate',
+  'route',
   'verify',
   'reopen',
   'clarify',
@@ -76,9 +76,9 @@ const inputSchema = z
     workflow: z.string().optional(),
     screen: z.string().optional(),
     triage: feedbackTriageSchema.optional(),
+    write: feedbackRouteWriteSchema.optional(),
     reason: z.string().max(4_000).optional(),
     note: z.string().max(4_000).optional(),
-    of: z.string().trim().min(1).max(64).optional(),
     prompt: z.string().optional(),
     needed: z.string().optional(),
     phase: z.array(z.enum(FEEDBACK_PHASES)).optional(),
@@ -99,8 +99,7 @@ const GRANTS = {
     promote: write,
     propose_triage: write,
     triage: write,
-    decline: write,
-    duplicate: write,
+    route: write,
     verify: write,
     reopen: write,
     clarify: write,
@@ -118,11 +117,20 @@ const DESCRIPTION =
   "FEEDBACK_SOURCE_ALREADY_PROMOTED naming the item, another project's report FEEDBACK_SOURCE_NOT_IN_PROJECT, a report curated into an issue " +
   'FEEDBACK_SOURCE_ROUTED_ELSEWHERE. ' +
   'On a sensitive project the text is scrubbed on write; on a no_egress one every answer here carries metadata only. ' +
-  `propose_triage: { feedback, triage: { route: ${FEEDBACK_ROUTES.join(' | ')}, issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? } } ` +
-  'writes a feedback_triage suggestion a person accepts (forge_suggestions accept); an agent proposes, never routes. ' +
-  'triage / decline { reason } / duplicate { of } / verify { note? } / reopen { reason } are a person’s acts (FEEDBACK_DECIDE_FORBIDDEN, ' +
-  'FEEDBACK_VERIFY_FORBIDDEN for an agent). verify only follows resolved (FEEDBACK_NOT_RESOLVED): feedback is never verified automatically. ' +
-  'duplicate refuses FEEDBACK_DUPLICATE_CHAIN when the root is itself a duplicate. clarify { prompt, needed }: one open question to the ' +
+  `propose_triage: { feedback, triage: { route: ${FEEDBACK_TRIAGE_ROUTES.join(' | ')}, issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? } } ` +
+  'writes a feedback_triage suggestion a person accepts (forge_suggestions accept), stamped by core with the nearest item (dedup); an agent proposes, never triages. ' +
+  `triage { feedback, triage } is a person’s act (FEEDBACK_DECIDE_FORBIDDEN for an agent) by the rule table: ${Object.entries(
+    FEEDBACK_KIND_ROUTES,
+  )
+    .map(([k, r]) => `${k} → ${r.join('/')}`)
+    .join('; ')} ` +
+  '(FEEDBACK_ROUTE_KIND_MISMATCH); a revision needs an agreed requirement the item is about (FEEDBACK_ROUTE_TARGET_MISMATCH); duplicate names its root ' +
+  '(FEEDBACK_DUPLICATE_CHAIN when the root is itself one), decline its reason in note (FEEDBACK_DECLINE_REASON_REQUIRED). Triage opens the item’s case: ' +
+  'owned by the project master for an issue route and by the BA otherwise, due by severity or at the commitment window. When triage names what carries ' +
+  'the route it is written at once; otherwise route { feedback, write: { issue? | createIssue? | suggestion? | requirement? | title? | answer? | duplicateOf?, note? } } ' +
+  'writes it later, by any member of the project, person or agent (FEEDBACK_ROUTE_WRITE_FORBIDDEN below member, ' +
+  'FEEDBACK_CASE_NOT_OPEN when no case waits). verify { note? } / reopen { reason } are a person’s acts (FEEDBACK_VERIFY_FORBIDDEN for an agent); ' +
+  'verify only follows resolved (FEEDBACK_NOT_RESOLVED): feedback is never verified automatically. clarify { prompt, needed }: one open question to the ' +
   'reporter per item (FEEDBACK_CLARIFICATION_ALREADY_OPEN); its answer becomes a suggestion, never an edit. ' +
   'delete_reporter_data: a project admin person deletes text, attachments and embedding, keeping the row. ' +
   'list: { phase?, q?, requirement? } answers the derived phase and who each item waits on; similar: { feedback } compares stored vectors.';
@@ -232,25 +240,15 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
         actor,
         projectId,
       );
-    case 'duplicate':
+    case 'route':
       return settle(
-        await triageFeedback({
+        await routeFeedback({
           projectId,
           ref: item(),
           actor,
-          triage: {
-            route: 'duplicate',
-            duplicateOf: need(input, 'of'),
-            ...(input.note ? { note: input.note } : {}),
-          },
+          write: need(input, 'write'),
           channel: 'mcp',
         }),
-        actor,
-        projectId,
-      );
-    case 'decline':
-      return settle(
-        await declineFeedback({ projectId, ref: item(), actor, reason: input.reason }),
         actor,
         projectId,
       );

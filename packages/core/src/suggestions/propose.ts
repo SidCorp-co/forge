@@ -11,6 +11,7 @@ import {
 import { and, eq, ne } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
+import { nearestFeedbackOf } from '../feedback/embeddings.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
 import { personActRefusalFor } from '../lib/person-act.js';
 import type { NamedRefusal } from '../project-config/respond.js';
@@ -83,7 +84,11 @@ async function proposeIn(
   if (p.kind === 'design_change' && p.target.type === 'workflow') {
     const nodes = await designNodesIn(tx, p.projectId, p.target.id);
     const wrong = nodes
-      ? nodeSetRefusals(nodes, SUGGESTION_PAYLOADS.design_change.schema.parse(p.payload), '/payload')
+      ? nodeSetRefusals(
+          nodes,
+          SUGGESTION_PAYLOADS.design_change.schema.parse(p.payload),
+          '/payload',
+        )
       : [];
     if (wrong.length) return { refusals: wrong };
   }
@@ -153,7 +158,12 @@ export async function createSuggestion(input: {
   const target = await resolveTarget(projectId, input.target, input.actor.userId);
   const invalid = payloadRefusal(kind, target.type, input.payload);
   if (invalid) return { ok: false, refusals: [invalid] };
-  const payload = SUGGESTION_PAYLOADS[kind].schema.parse(input.payload);
+  const parsed = SUGGESTION_PAYLOADS[kind].schema.parse(input.payload);
+  // step triage takes the nearest item as an input: core stamps it, or says dedup did not run
+  const payload =
+    kind === 'feedback_triage' && target.type === 'feedback'
+      ? { ...parsed, dedup: await nearestFeedbackOf(projectId, target.id) }
+      : parsed;
   let id = '';
   const refusals = await inTx(async (tx) => {
     await lockTarget(tx, projectId, target);
@@ -168,7 +178,7 @@ export async function createSuggestion(input: {
         target,
         baseRevision: input.baseRevision,
         payload,
-        fingerprint: fingerprintOf(kind, payload),
+        fingerprint: fingerprintOf(kind, parsed),
         producerKind: input.producerKind,
         producerId: input.producerId,
         model: input.model ?? null,

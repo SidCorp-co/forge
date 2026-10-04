@@ -78,6 +78,41 @@ export const FEEDBACK_ROUTES = [
 ] as const;
 export type FeedbackRoute = (typeof FEEDBACK_ROUTES)[number];
 
+/** What triage may decide (requirement-to-delivery step `triage`): a stored route, or decline, which
+ *  is its own act and status and never a route column value. */
+export const FEEDBACK_TRIAGE_ROUTES = [...FEEDBACK_ROUTES, "decline"] as const;
+export type FeedbackTriageRoute = (typeof FEEDBACK_TRIAGE_ROUTES)[number];
+
+/** The triage rule table: the routes each kind may take. Duplicate and decline fit any kind. */
+export const FEEDBACK_KIND_ROUTES: Record<
+	FeedbackKind,
+	readonly FeedbackTriageRoute[]
+> = {
+	bug: ["issue", "duplicate", "decline"],
+	contract_change: ["issue", "duplicate", "decline"],
+	question: ["answer", "duplicate", "decline"],
+	change_request: ["revision", "new_requirement", "duplicate", "decline"],
+	idea: ["revision", "new_requirement", "duplicate", "decline"],
+};
+
+/** Who owns a feedback case (step `fb-case`): the project master for an issue route, the BA otherwise. */
+export const FEEDBACK_CASE_OWNERS = ["ba", "master"] as const;
+export type FeedbackCaseOwner = (typeof FEEDBACK_CASE_OWNERS)[number];
+export const FEEDBACK_CASE_OWNER_LABELS: Record<FeedbackCaseOwner, string> = {
+	ba: "BA",
+	master: "Project master",
+};
+
+/** The route of an opened case is written within this many working days, by severity; a contract
+ *  change is due at the end of the provider's commitment window instead. */
+export const FEEDBACK_ROUTE_SLA_WORKING_DAYS: Record<FeedbackSeverity, number> =
+	{
+		critical: 1,
+		high: 2,
+		medium: 5,
+		low: 10,
+	};
+
 /** One row per decision on an item, insert-only, so a re-triage keeps the history (domain-entities.md "Records and audit"). */
 export const FEEDBACK_DECISIONS = [
 	"triaged",
@@ -86,6 +121,7 @@ export const FEEDBACK_DECISIONS = [
 	"reopened",
 	"redacted",
 	"promoted",
+	"routed",
 ] as const;
 export type FeedbackDecision = (typeof FEEDBACK_DECISIONS)[number];
 
@@ -132,6 +168,7 @@ export const FEEDBACK_DECISION_LABELS: Record<FeedbackDecision, string> = {
 	verified: "Verified",
 	reopened: "Reopened",
 	redacted: "Reporter data deleted",
+	routed: "Route written",
 	promoted: "Promoted from an agent report",
 };
 
@@ -198,7 +235,7 @@ export const FEEDBACK_PHASE_GLYPHS: Record<FeedbackPhase, string> = {
 export const FEEDBACK_PHASE_HINTS: Record<FeedbackPhase, string> = {
 	new: "new: not triaged; a person picks a route",
 	triaged:
-		"triaged: routed, but the route carries nothing yet; a person routes it again",
+		"triaged: its case waits on the BA or the project master to write the route, or the route's carrier died and a person routes it again",
 	planned: "planned: an issue, revision or requirement carries it",
 	resolved:
 		"resolved: the linked work shipped; waiting on the reporter to verify",
@@ -234,6 +271,9 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_TARGET_NOT_IN_PROJECT",
 	"FEEDBACK_TARGET_NOT_ONE",
 	"FEEDBACK_ROUTE_TARGET_MISMATCH",
+	"FEEDBACK_ROUTE_KIND_MISMATCH",
+	"FEEDBACK_CASE_NOT_OPEN",
+	"FEEDBACK_ROUTE_WRITE_FORBIDDEN",
 	"FEEDBACK_ROUTE_INCOMPLETE",
 	"FEEDBACK_ANSWER_MISSING",
 	"FEEDBACK_DECLINE_REASON_REQUIRED",
@@ -291,13 +331,7 @@ export const createFeedbackRequestSchema = z.strictObject({
 export type CreateFeedbackRequest = z.infer<typeof createFeedbackRequestSchema>;
 export const CREATE_FEEDBACK_SHAPE = `{ kind: ${FEEDBACK_KINDS.join(" | ")}, title, body?, severity?: ${FEEDBACK_SEVERITIES.join(" | ")}, whereSeen?, exactly one of requirement | issue | release | workflow | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only) }`;
 
-/**
- * A route as a person picks it, or as a `feedback_triage` suggestion carries it. issue: `issue`
- * links one, `createIssue` files a draft; revision: `suggestion` names a revision_diff suggestion;
- * new_requirement: `requirement` names a draft, `title` starts one; answer: `answer`; duplicate: `duplicateOf`.
- */
-export const feedbackTriageSchema = z.strictObject({
-	route: z.enum(FEEDBACK_ROUTES),
+const carrierFields = {
 	issue: ref.optional(),
 	createIssue: z
 		.strictObject({
@@ -310,12 +344,39 @@ export const feedbackTriageSchema = z.strictObject({
 	title: z.string().trim().min(1).max(FEEDBACK_LIMITS.title).optional(),
 	answer: z.string().max(FEEDBACK_LIMITS.answer).optional(),
 	duplicateOf: ref.optional(),
+	note: z.string().max(FEEDBACK_LIMITS.reason).optional(),
+};
+
+/**
+ * A route as a person picks it, or as a `feedback_triage` suggestion carries it, which opens the
+ * item's case. What carries it may come with it or be written later through the case: issue:
+ * `issue` links one, `createIssue` files a draft; revision: `suggestion` names a revision_diff
+ * suggestion; new_requirement: `requirement` names a draft, `title` starts one; answer: `answer`.
+ * duplicate names its root (`duplicateOf`), and decline its reason (`note`).
+ */
+export const feedbackTriageSchema = z.strictObject({
+	route: z.enum(FEEDBACK_TRIAGE_ROUTES),
+	...carrierFields,
 	kind: z.enum(FEEDBACK_KINDS).optional(),
 	severity: z.enum(FEEDBACK_SEVERITIES).optional(),
-	note: z.string().max(FEEDBACK_LIMITS.reason).optional(),
 });
 export type FeedbackTriage = z.infer<typeof feedbackTriageSchema>;
-export const FEEDBACK_TRIAGE_SHAPE = `{ route: ${FEEDBACK_ROUTES.join(" | ")}, issue? | createIssue?: { title?, description? } | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? }`;
+export const FEEDBACK_TRIAGE_SHAPE = `{ route: ${FEEDBACK_TRIAGE_ROUTES.join(" | ")}, issue? | createIssue?: { title?, description? } | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? (decline: the reason) }`;
+
+/** `POST …/feedback/:fb/route`: the case's owner writes what carries the route triage decided. */
+export const feedbackRouteWriteSchema = z.strictObject(carrierFields);
+export type FeedbackRouteWrite = z.infer<typeof feedbackRouteWriteSchema>;
+export const FEEDBACK_ROUTE_WRITE_SHAPE =
+	"{ issue? | createIssue?: { title?, description? } | suggestion? | requirement? | title? | answer? | duplicateOf?, note? }, the carrier of the case's route";
+
+/** Stamped by core on a `feedback_triage` suggestion: the nearest item, or why dedup did not run. */
+export const feedbackDedupSchema = z.strictObject({
+	ran: z.boolean(),
+	nearest: z.string().nullable(),
+	similarity: z.number().min(-1).max(1).optional(),
+	why: z.string().max(500).optional(),
+});
+export type FeedbackDedup = z.infer<typeof feedbackDedupSchema>;
 
 export const promoteAgentReportRequestSchema = z.strictObject({
 	agentReport: z.uuid(),
@@ -331,16 +392,9 @@ export type PromoteAgentReportRequest = z.infer<
 >;
 export const PROMOTE_AGENT_REPORT_SHAPE = `{ agentReport: uuid, kind: ${FEEDBACK_KINDS.join(" | ")}, title?, body?, severity?, whereSeen?, exactly one of requirement | issue | release | workflow | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only) }`;
 
-/** `POST …/feedback/:fb/decline` and `…/reopen`: the reason the reporter reads. */
+/** `POST …/feedback/:fb/reopen`: the reason the reporter gives. */
 export const feedbackReasonRequestSchema = z.strictObject({ reason });
 export const FEEDBACK_REASON_SHAPE = "{ reason } says why";
-
-/** `POST …/feedback/:fb/duplicate`. */
-export const feedbackDuplicateRequestSchema = z.strictObject({
-	of: ref,
-	note: z.string().max(FEEDBACK_LIMITS.reason).optional(),
-});
-export const FEEDBACK_DUPLICATE_SHAPE = "{ of: FB-n, note? }";
 
 /** `POST …/feedback/:fb/verify`. */
 export const feedbackVerifyRequestSchema = z.strictObject({
@@ -399,6 +453,17 @@ export interface FeedbackRouteView {
 	answer: string | null;
 }
 
+/** The item's case: the route triage decided, its owner, and the route task's due. */
+export interface FeedbackCaseView {
+	route: FeedbackTriageRoute;
+	owner: FeedbackCaseOwner;
+	openedAt: string;
+	dueAt: string;
+	/** When the route was written; null while the case waits on its owner. */
+	routedAt: string | null;
+	overdue: boolean;
+}
+
 export interface FeedbackDecisionView {
 	decision: FeedbackDecision;
 	route: FeedbackRoute | null;
@@ -438,6 +503,7 @@ export interface FeedbackAttachmentView {
 export const FEEDBACK_WAITING_KINDS = [
 	"you",
 	"person",
+	"agent",
 	"issue",
 	"none",
 ] as const;
@@ -465,6 +531,7 @@ export interface FeedbackSummary {
 	waiting: FeedbackWaiting;
 	target: FeedbackTargetView;
 	route: FeedbackRouteView | null;
+	case: FeedbackCaseView | null;
 	reporter: { id: string; name: string | null; agency: "human" | "agent" };
 	dueAt: string | null;
 	redacted: boolean;
@@ -490,7 +557,7 @@ export interface FeedbackView extends FeedbackSummary {
 	/** Proposed triage suggestions waiting on a person. */
 	openSuggestions: number;
 	/** What the viewer may do now; a refusal still names why when they try anyway. */
-	can: { triage: boolean; verify: boolean; redact: boolean };
+	can: { triage: boolean; route: boolean; verify: boolean; redact: boolean };
 	sensitive: boolean;
 }
 
@@ -531,6 +598,6 @@ export interface FeedbackPromoteEffect {
 /** What a triage accept wrote, read back for the caller. */
 export interface FeedbackTriageEffect {
 	feedback: string;
-	route: FeedbackRoute;
+	route: FeedbackTriageRoute;
 	carrier: string | null;
 }

@@ -3,7 +3,11 @@
 // response shapes from here, so no surface can name a kind, status or code another does not know.
 
 import { z } from "zod";
-import { type FeedbackTriageEffect, feedbackTriageSchema } from "./feedback.js";
+import {
+	type FeedbackTriageEffect,
+	feedbackDedupSchema,
+	feedbackTriageSchema,
+} from "./feedback.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import {
 	REGISTRY_ISSUE_COMPLEXITIES,
@@ -245,7 +249,9 @@ export const SUGGESTION_PAYLOADS = {
 	},
 	feedback_triage: {
 		targets: ["feedback"],
-		schema: feedbackTriageSchema,
+		schema: feedbackTriageSchema.extend({
+			dedup: feedbackDedupSchema.optional(),
+		}),
 	},
 	design_change: {
 		targets: ["workflow"],

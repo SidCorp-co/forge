@@ -7,7 +7,7 @@ import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { namedRefusals } from "@/lib/api/refusals";
 import { useDecideProposal, useFeedbackAction, useFeedbackProposals } from "../hooks";
-import type { FeedbackTriage, FeedbackView } from "../types";
+import type { FeedbackDedup, FeedbackRouteWrite, FeedbackTriage, FeedbackView } from "../types";
 
 /** A refusal is one tinted line: the code core named, then what was wrong. */
 export function RefusalLine({ error }: { error: unknown }) {
@@ -28,40 +28,53 @@ export function RefusalLine({ error }: { error: unknown }) {
   );
 }
 
-type Choice = "link_issue" | "file_issue" | "new_requirement" | "answer" | "duplicate" | "decline";
+type Choice = "link_issue" | "file_issue" | "master_issue" | "revision" | "new_requirement" | "answer" | "duplicate" | "decline";
 
 const CHOICES: { value: Choice; label: string; hint: string }[] = [
   { value: "file_issue", label: "Bug: file a draft issue", hint: "A master picks it up once it is accepted as work." },
   { value: "link_issue", label: "Bug: link an issue", hint: "An issue already carries it." },
+  { value: "master_issue", label: "Bug: leave the issue to the project master", hint: "Its case waits on the master to create or link one." },
+  { value: "revision", label: "Scope change: revise the requirement", hint: "Name the revision proposal, or leave it to the BA." },
   { value: "new_requirement", label: "Out of scope: start a requirement", hint: "A new draft requirement carries it." },
   { value: "answer", label: "Question: answer it", hint: "The reporter reads the answer; it resolves the item." },
   { value: "duplicate", label: "Duplicate of an item", hint: "It follows its root from here." },
   { value: "decline", label: "Decline", hint: "A reason is required; the reporter reads it." },
 ];
 
+const OPTIONAL: readonly Choice[] = ["file_issue", "master_issue", "revision"];
+
 function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const act = useFeedbackAction(projectId, f.key);
   const [choice, setChoice] = useState<Choice>("file_issue");
   const [text, setText] = useState("");
-  const needsText = choice !== "file_issue";
+  const needsText = !OPTIONAL.includes(choice);
   const submit = () => {
     const value = text.trim();
-    if (choice === "decline") return act.mutate({ kind: "decline", reason: value });
     const triage: FeedbackTriage =
       choice === "file_issue"
         ? { route: "issue", createIssue: value ? { title: value } : {} }
         : choice === "link_issue"
           ? { route: "issue", issue: value }
-          : choice === "new_requirement"
-            ? { route: "new_requirement", title: value }
-            : choice === "answer"
-              ? { route: "answer", answer: value }
-              : { route: "duplicate", duplicateOf: value };
+          : choice === "master_issue"
+            ? { route: "issue" }
+            : choice === "revision"
+              ? value
+                ? { route: "revision", suggestion: value }
+                : { route: "revision" }
+              : choice === "new_requirement"
+                ? { route: "new_requirement", title: value }
+                : choice === "answer"
+                  ? { route: "answer", answer: value }
+                  : choice === "decline"
+                    ? { route: "decline", note: value }
+                    : { route: "duplicate", duplicateOf: value };
     act.mutate({ kind: "triage", triage });
   };
   const placeholder: Record<Choice, string> = {
     file_issue: "Issue title (optional; the item's title by default)",
     link_issue: "ISS-12",
+    master_issue: "",
+    revision: "Revision proposal id (optional)",
     new_requirement: "Requirement title",
     answer: "The answer the reporter reads",
     duplicate: "FB-3",
@@ -84,7 +97,7 @@ function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
           />
         ))}
       </RadioGroup>
-      {choice === "answer" || choice === "decline" ? (
+      {choice === "master_issue" ? null : choice === "answer" || choice === "decline" ? (
         <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} placeholder={placeholder[choice]} />
       ) : (
         <Input value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder[choice]} />
@@ -100,6 +113,52 @@ function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
           onClick={submit}
         >
           {choice === "decline" ? "Decline" : "Route it"}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+const WRITE_FIELD: Record<string, { key: keyof FeedbackRouteWrite; placeholder: string }> = {
+  issue: { key: "issue", placeholder: "ISS-12 to link (or leave empty to file a draft)" },
+  revision: { key: "suggestion", placeholder: "Revision proposal id" },
+  new_requirement: { key: "requirement", placeholder: "REQ-n of a draft requirement" },
+  answer: { key: "answer", placeholder: "The answer the reporter reads" },
+  duplicate: { key: "duplicateOf", placeholder: "FB-3" },
+};
+
+/** The case's owner writes what carries the route triage decided. */
+function RouteForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
+  const act = useFeedbackAction(projectId, f.key);
+  const [text, setText] = useState("");
+  const c = f.case;
+  const field = c ? WRITE_FIELD[c.route] : undefined;
+  if (!c || !field) return null;
+  const submit = () => {
+    const value = text.trim();
+    const write: FeedbackRouteWrite =
+      c.route === "issue" && !value ? { createIssue: {} } : ({ [field.key]: value } as FeedbackRouteWrite);
+    act.mutate({ kind: "route", write });
+  };
+  return (
+    <section className="grid gap-3" data-testid="feedback-route">
+      <h3 className="text-12 font-semibold text-muted">Write the route: {enumLabel("feedbackRoute", c.route)}</h3>
+      {c.route === "answer" ? (
+        <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} placeholder={field.placeholder} />
+      ) : (
+        <Input value={text} onChange={(e) => setText(e.target.value)} placeholder={field.placeholder} />
+      )}
+      <RefusalLine error={act.error} />
+      <div>
+        <Button
+          type="button"
+          variant="primary"
+          size="sm"
+          loading={act.isPending}
+          disabled={c.route !== "issue" && !text.trim()}
+          onClick={submit}
+        >
+          Write the route
         </Button>
       </div>
     </section>
@@ -166,6 +225,7 @@ function RedactBar({ projectId, f }: { projectId: string; f: FeedbackView }) {
 export function FeedbackActions({ projectId, f }: { projectId: string; f: FeedbackView }) {
   return (
     <div className="grid gap-4">
+      {f.can.route ? <RouteForm projectId={projectId} f={f} /> : null}
       {f.can.triage ? <TriageForm projectId={projectId} f={f} /> : null}
       {f.can.verify ? <VerifyBar projectId={projectId} f={f} /> : null}
       {f.can.redact ? <RedactBar projectId={projectId} f={f} /> : null}
@@ -191,6 +251,7 @@ export function Proposals({ projectId, f }: { projectId: string; f: FeedbackView
     <section className="grid gap-2" data-testid="feedback-proposals">
       {rows.map((s) => {
         const note = (s.payload as { note?: string } | null)?.note;
+        const dedup = (s.payload as { dedup?: FeedbackDedup } | null)?.dedup;
         return (
           <div key={s.id} className="grid gap-1.5 py-1 pl-3" style={{ borderLeft: `3px solid ${LEGEND.run.dot}` }}>
             <span className="text-12 font-semibold" style={{ color: LEGEND.run.fg }}>
@@ -198,6 +259,15 @@ export function Proposals({ projectId, f }: { projectId: string; f: FeedbackView
             </span>
             <span className="text-13">{routeLine(s)}</span>
             {note ? <span className="text-12 text-muted">{note}</span> : null}
+            {dedup ? (
+              <span className="text-12 text-muted">
+                {!dedup.ran
+                  ? (dedup.why ?? "Triage without dedup")
+                  : dedup.nearest
+                    ? `Nearest item: ${dedup.nearest}${dedup.similarity !== undefined ? ` (${dedup.similarity})` : ""}`
+                    : "No similar item found"}
+              </span>
+            ) : null}
             {f.can.triage ? (
               rejecting === s.id ? (
                 <span className="flex gap-2">
