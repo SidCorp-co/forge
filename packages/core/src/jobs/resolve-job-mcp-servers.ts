@@ -1,4 +1,4 @@
-import { applyGrantedMcpServers, type ProducedMcpServer } from '../integrations/index.js';
+import { jobsPorts, type ProducedMcpServer } from './ports.js';
 
 export type McpServersMap = Record<string, unknown> | null;
 
@@ -17,7 +17,7 @@ export interface ResolvedJobMcpServers {
 export async function resolveJobMcpServers(args: {
   projectId: string;
 }): Promise<ResolvedJobMcpServers> {
-  const granted = await applyGrantedMcpServers(args.projectId);
+  const granted = await jobsPorts().mcpServers.applyGrantedMcpServers(args.projectId);
   return {
     mcpServers: granted.map,
     resolvedNames: Object.keys(granted.map ?? {}),

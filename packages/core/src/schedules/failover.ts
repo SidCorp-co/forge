@@ -9,16 +9,18 @@
  */
 
 import { eq } from 'drizzle-orm';
-import { createChatSessionRow } from '../agent-sessions/chat-turn.js';
-import { setSessionFailureDetail } from '../agent-sessions/index.js';
-import { dispatchInteractiveTurn } from '../agent-sessions/interactive-credential.js';
-import { readSessionAsker } from '../agent-sessions/session-credential.js';
-import { firstUserMessageText } from '../agent-sessions/turns-helpers.js';
+import {
+  createChatSessionRow,
+  dispatchInteractiveTurn,
+  firstUserMessageText,
+  readSessionAsker,
+  setSessionFailureDetail,
+} from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { agentSessions, projects } from '../db/schema.js';
-import { emitNotification } from '../notifications/emit.js';
 import { logger } from '../observability/logger.js';
 import { handFireToRetry, recordFireDisposition, scheduleRunIdOf } from './fires.js';
+import { schedulesPorts } from './ports.js';
 import { authorizeScheduledRun, failUndeliveredRun } from './scheduled-session.js';
 
 const MAX_SCHEDULE_FAILOVERS = 2;
@@ -128,7 +130,7 @@ async function alertAbandonedScheduleWork(row: {
 }): Promise<void> {
   if (!row.userId) return;
   try {
-    await emitNotification({
+    await schedulesPorts().emitNotification({
       userId: row.userId,
       projectId: row.projectId,
       type: 'schedule_report',

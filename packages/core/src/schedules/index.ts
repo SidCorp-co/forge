@@ -1,3 +1,7 @@
+export { redispatchScheduleSessionOnFailover } from './failover.js';
+export { settleSessionFires } from './fires.js';
+export { provideSchedulesPorts, type SchedulesPorts } from './ports.js';
+export { writeBackScheduleSession } from './session-report.js';
 export type { ImprovementMessage } from './messages/registry.js';
 export { listImprovementMessages } from './messages/registry.js';
 export type { ScheduleStreak } from './streak.js';

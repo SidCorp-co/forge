@@ -8,14 +8,11 @@
 // normal state of a healthy project, and a nightly cron that reports failure on
 // a quiet night trains everyone to ignore it.
 
-import { RELEASE_BLOCKER_CODES } from '@forge/contracts/releases';
+import { RELEASE_BLOCKER_CODES, RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
 import { counted } from '../lib/plural.js';
 import { RefusalError } from '../lib/refusal.js';
 import { logger } from '../observability/logger.js';
-import { RELEASE_ROSTER_LIMIT } from '../release-batch/blocker-sentences.js';
-import { loadReleaseRoster } from '../release-batch/queries.js';
-import { heldBackByProviders } from '../release-batch/refuse.js';
-import { createReleaseBatch } from '../release-batch/service.js';
+import { schedulesPorts } from './ports.js';
 
 export interface ScheduledCutOutcome {
   status: 'success' | 'skipped' | 'failed';
@@ -57,10 +54,14 @@ export async function cutWaitingRelease(args: {
   let named = args.issueIds.slice(0, RELEASE_ROSTER_LIMIT);
   try {
     const cut = (issueIds: string[]) =>
-      createReleaseBatch({ projectId: args.projectId, issueIds, userId: args.userId });
+      schedulesPorts().createReleaseBatch({
+        projectId: args.projectId,
+        issueIds,
+        userId: args.userId,
+      });
     const result = await cut(named).catch((err: unknown) => {
       // A provider not yet live holds back only the issue that waits on it; the rest still ship.
-      const held = heldBackByProviders(err, named);
+      const held = schedulesPorts().heldBackByProviders(err, named);
       const rest = held ? named.filter((id) => !held.includes(id)) : [];
       if (rest.length === 0) throw err;
       named = rest;
@@ -98,7 +99,7 @@ export async function runScheduledReleaseCut(args: {
   projectId: string;
   userId: string;
 }): Promise<ScheduledCutOutcome> {
-  const roster = await loadReleaseRoster(args.projectId);
+  const roster = await schedulesPorts().loadReleaseRoster(args.projectId);
   if (!roster.gateStatus) {
     return {
       status: 'skipped',

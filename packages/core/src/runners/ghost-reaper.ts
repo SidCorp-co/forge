@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
-import { readThresholds } from '../admin-thresholds/index.js';
 import { db } from '../db/client.js';
 import { logger } from '../observability/logger.js';
+import { runnersPorts } from './ports.js';
 import { setRunnerStatus } from './runner-events.js';
 
 export interface GhostRunnerReapResult {
@@ -32,7 +32,7 @@ async function selectGhosts(offlineDays: number): Promise<GhostRow[]> {
 /** Never throws — same contract as the sibling sweeper passes. */
 export async function reapGhostRunners(): Promise<GhostRunnerReapResult> {
   try {
-    const { ghostRunnerOfflineDays } = await readThresholds();
+    const { ghostRunnerOfflineDays } = await runnersPorts().readThresholds();
     const ghosts = await selectGhosts(ghostRunnerOfflineDays);
 
     let flagged = 0;

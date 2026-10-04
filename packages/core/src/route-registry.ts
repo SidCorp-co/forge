@@ -51,8 +51,6 @@ import {
   deviceOwnerRoutes,
   devicePoolRoutes,
   devicePublicRoutes,
-  deviceSkillRoutes,
-  deviceSkillStatusRoutes,
   deviceUserRoutes,
   runLedgerRoutes,
 } from './devices/routes.js';
@@ -65,6 +63,7 @@ import {
   contractRoutes,
   contractStandingRoutes,
   contractWaitRoutes,
+  deviceChannelInboxRoutes,
   ecosystemProjectRoutes,
   ecosystemRoutes,
   linkProjectRoutes,
@@ -115,7 +114,6 @@ import {
   jobLifecycleUserRoutes,
   jobProjectRoutes,
   jobRoutes,
-  jobTestingSecretsRoutes,
 } from './jobs/routes.js';
 import { knowledgeIngestRoutes, knowledgeRoutes } from './knowledge/routes.js';
 import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
@@ -154,6 +152,7 @@ import { pmReadRoutes, pmRoutes } from './pm/routes.js';
 import { orgMemberPreferenceRoutes, preferenceRoutes } from './preferences/routes.js';
 import {
   environmentStateRoutes,
+  jobTestingSecretsRoutes,
   projectConfigRoutes,
   projectConfigSchemaRoutes,
 } from './project-config/routes.js';
@@ -176,6 +175,8 @@ import { runStandingRoutes } from './runs/routes.js';
 import { scheduleRoutes } from './schedules/routes.js';
 import { skillFactsRoutes } from './skill-facts/routes.js';
 import {
+  deviceSkillRoutes,
+  deviceSkillStatusRoutes,
   divergenceCharterRoutes,
   projectOnboardRoutes,
   reconcileRoutes,
@@ -399,6 +400,7 @@ function mountAdminAndDeviceRoutes(app: Hono<{ Variables: RequestIdVars }>): voi
   app.route('/api/devices', deviceSkillRoutes);
   app.route('/api/devices', deviceMcpServerRoutes);
   app.route('/api/devices', devicePoolRoutes);
+  app.route('/api/devices', deviceChannelInboxRoutes);
   app.route('/api/devices', deviceMasterRoutes);
   app.route('/api', deviceOwnerRoutes);
   app.route('/api/projects', deviceUserRoutes);

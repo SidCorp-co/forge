@@ -2,13 +2,13 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { unanswered } from '../ecosystem/channel-read.js';
-import { unansweredView } from '../ecosystem/channel-view.js';
-import { openRunsOf } from '../ecosystem/link-service.js';
+import { assertDeviceBoundToProject } from '../devices/index.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { assertDeviceBoundToProject } from './device-project.js';
+import { unanswered } from './channel-read.js';
+import { unansweredView } from './channel-view.js';
+import { openRunsOf } from './link-service.js';
 
 export const deviceChannelInboxRoutes = new Hono<{ Variables: DeviceVars }>();
 

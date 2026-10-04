@@ -4,6 +4,7 @@
  * revoked when the session goes terminal. The runner puts it where the box's own would have gone.
  */
 
+import { readSessionAsker, type SessionAsker } from '@forge/contracts/agent-sessions';
 import { revokeLiveTokens } from '../credentials/pat.js';
 import { turnTokenNameFor } from '../credentials/pat-format.js';
 import type { PatPermission } from '../credentials/pat-permissions.js';
@@ -13,7 +14,6 @@ import {
   type TurnAuthority,
   type TurnAuthorityRefusal,
 } from '../credentials/turn-credential.js';
-import { deviceHolderUserId } from '../devices/workspace-credential.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { findAvailableDeviceForProject } from '../lib/device-pool.js';
 import { logger } from '../observability/logger.js';
@@ -23,6 +23,7 @@ import {
   type PermissionFacts,
   resolveTurnAuthority,
 } from '../permissions/index.js';
+import { agentSessionsPorts } from './ports.js';
 
 /** The capability a runner declares on its heartbeat when it runs a session under the token it is handed. */
 export const TURN_CREDENTIAL_CAPABILITY = 'turnCredential';
@@ -30,17 +31,7 @@ export const TURN_CREDENTIAL_CAPABILITY = 'turnCredential';
 /** Bounds a session whose terminal write never arrives; a runner-hosted turn is minutes. */
 const SESSION_CREDENTIAL_TTL_MS = 2 * 60 * 60 * 1000;
 
-/** Who asked, as a session's metadata carries it so a failover can mint again. */
-export interface SessionAsker {
-  userId: string;
-  viaTokenId: string | null;
-}
-
-export function readSessionAsker(raw: unknown): SessionAsker | null {
-  const m = raw as { userId?: unknown; viaTokenId?: unknown } | null;
-  if (!m || typeof m.userId !== 'string') return null;
-  return { userId: m.userId, viaTokenId: typeof m.viaTokenId === 'string' ? m.viaTokenId : null };
-}
+export { readSessionAsker, type SessionAsker };
 
 export interface SessionAuthority {
   authority: TurnAuthority;
@@ -76,7 +67,7 @@ export async function resolveSessionAuthority(args: {
     viaTokenId: args.asker.viaTokenId,
   });
   if (!resolved.ok) return resolved;
-  const holder = await deviceHolderUserId(args.deviceId);
+  const holder = await agentSessionsPorts().deviceHolderUserId(args.deviceId);
   const none = { projectId: args.projectId, role: null, grants: [] };
   const holderFacts = (holder ? await effectiveProjectRole(holder, args.projectId) : null) ?? none;
   if (!holds(holderFacts, 'project.read')) {

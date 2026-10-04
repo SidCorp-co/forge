@@ -4,4 +4,7 @@ export {
   getKnowledgeEntry,
   knowledgeEmbedInput,
   selectAllSlugsFromKnowledge,
+  selectAlwaysInjectFromKnowledge,
+  selectKnowledgeBodies,
+  selectOnDemandSlugsFromKnowledge,
 } from './service.js';

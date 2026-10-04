@@ -4,7 +4,7 @@ import type {
   RunNone,
   RunReturned,
 } from '@forge/contracts/run-standing';
-import { resolveFailureCause } from '../pipeline/failure-causes.js';
+import { resolveFailureCause } from '../pipeline/index.js';
 import {
   type Derived,
   iso,

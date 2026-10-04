@@ -14,10 +14,7 @@ export async function insertSessionRow(
   tx: Tx,
   values: typeof agentSessions.$inferInsert,
 ): Promise<{ id: string }> {
-  const [row] = await tx
-    .insert(agentSessions)
-    .values(values)
-    .returning({ id: agentSessions.id });
+  const [row] = await tx.insert(agentSessions).values(values).returning({ id: agentSessions.id });
   if (!row) throw new Error('agent_sessions: insert returned no row');
   return row;
 }
@@ -58,6 +55,64 @@ export async function claimSessionMetadataDelivery(
     )
     .returning({ id: agentSessions.id });
   return claimed.length > 0;
+}
+
+/**
+ * Merge `stamp` into one metadata key while neither its `claimedAt` nor its `deliveredAt` is set:
+ * false when another writer claimed it first. `metadata` is the row as the caller read it.
+ */
+export async function claimSessionMarker(
+  session: { id: string; metadata: unknown },
+  key: string,
+  stamp: Record<string, unknown>,
+): Promise<boolean> {
+  const prev = (session.metadata as Record<string, unknown>) ?? {};
+  const prevMarker = (prev[key] as Record<string, unknown>) ?? {};
+  const claimed = await db
+    .update(agentSessions)
+    .set({ metadata: { ...prev, [key]: { ...prevMarker, ...stamp } } as never })
+    .where(
+      and(
+        eq(agentSessions.id, session.id),
+        sql`(${agentSessions.metadata} -> ${key}::text ->> 'claimedAt') IS NULL AND (${agentSessions.metadata} -> ${key}::text ->> 'deliveredAt') IS NULL`,
+      ),
+    )
+    .returning({ id: agentSessions.id });
+  return claimed.length > 0;
+}
+
+/** Merge `stamp` into one metadata key as the row holds it now. */
+export async function stampSessionMarker(
+  agentSessionId: string,
+  key: string,
+  stamp: Record<string, unknown>,
+): Promise<void> {
+  const [row] = await db
+    .select({ metadata: agentSessions.metadata })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, agentSessionId))
+    .limit(1);
+  const prev = (row?.metadata as Record<string, unknown>) ?? {};
+  const marker = (prev[key] as Record<string, unknown>) ?? {};
+  await db
+    .update(agentSessions)
+    .set({ metadata: { ...prev, [key]: { ...marker, ...stamp } } as never })
+    .where(eq(agentSessions.id, agentSessionId));
+}
+
+/** Set one field under one metadata key, leaving the rest of the document as it is. */
+export async function setSessionMarkerField(
+  agentSessionId: string,
+  key: string,
+  field: string,
+  value: unknown,
+): Promise<void> {
+  await db
+    .update(agentSessions)
+    .set({
+      metadata: sql`jsonb_set(${agentSessions.metadata}, ARRAY[${key}::text, ${field}::text], ${JSON.stringify(value)}::jsonb, true)`,
+    })
+    .where(eq(agentSessions.id, agentSessionId));
 }
 
 /**

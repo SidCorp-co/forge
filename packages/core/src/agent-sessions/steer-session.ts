@@ -1,8 +1,8 @@
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, eq, isNotNull, notInArray } from 'drizzle-orm';
-import { insertComment } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { agentSessions, jobs, terminalAgentSessionStatuses } from '../db/schema.js';
+import { agentSessionsPorts } from './ports.js';
 import { refuseSession } from './refusals.js';
 import { requestSessionSend } from './session-send.js';
 
@@ -80,12 +80,10 @@ export async function steerIssue(
     );
   }
 
-  const { row: comment } = await insertComment({
+  const comment = await agentSessionsPorts().postSteerComment({
     issueId,
     authorId: opts.actorUserId,
-    authorDeviceId: null,
     body,
-    parentId: null,
   });
 
   const { row, published, duplicate } = await requestSessionSend({

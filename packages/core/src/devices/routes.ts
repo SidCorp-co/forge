@@ -13,7 +13,6 @@ import { badRequest, forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, orgResource, requireHeld, requireOrgCan } from '../permissions/index.js';
 import { readPluginDesignations, unionPluginDesignations } from '../plugins/designation.js';
-import { withDeclaredSource } from '../project-config/source.js';
 import { patchDeviceRunnerCheckout } from '../runners/index.js';
 import { annotateDeviceBuilds } from './build-state.js';
 import { heartbeatGate, withDeviceGate } from './gate-report.js';
@@ -21,6 +20,7 @@ import { heartbeatPatch } from './heartbeat-patch.js';
 import { deviceProvisionRoutes } from './me-provisions.js';
 import { listDeviceAssignments } from './me-runners.js';
 import { redeemPairingCode } from './pair.js';
+import { devicesPorts } from './ports.js';
 import {
   deviceOwnership,
   deviceProjectAgentConfigs,
@@ -247,7 +247,7 @@ deviceOwnerRoutes.get(
 
     const rows = await listDeviceRunners(id);
 
-    return c.json(await withDeclaredSource(rows));
+    return c.json(await devicesPorts().withDeclaredSource(rows));
   },
 );
 
@@ -427,4 +427,3 @@ export { deviceMcpServerRoutes } from './mcp-servers-routes.js';
 export { deviceOrgRoutes } from './org-routes.js';
 export { devicePoolRoutes } from './pool-routes.js';
 export { runLedgerRoutes } from './run-ledger-routes.js';
-export { deviceSkillRoutes, deviceSkillStatusRoutes } from './skills-routes.js';

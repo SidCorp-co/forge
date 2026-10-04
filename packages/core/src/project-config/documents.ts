@@ -94,10 +94,3 @@ export function staleBase(baseRevision: number | null, storedRevision: number | 
     detail: `this write was based on ${base}, and the store holds ${stored}. Read it again and reapply the change; nothing was written.`,
   };
 }
-
-export function parseSecretRef(ref: string): { scope: string; name: string } | null {
-  const m = /^secret:\/\/([a-z][a-z0-9-]{0,62})\/([a-z][a-z0-9-]{0,62})$/.exec(ref);
-  return m?.[1] && m[2] ? { scope: m[1], name: m[2] } : null;
-}
-
-export const secretRefOf = (scope: string, name: string) => `secret://${scope}/${name}`;

@@ -5,7 +5,7 @@ import { agentSessions, jobs } from '../db/schema.js';
 import { recordResumeDrop } from '../observability/hold-metrics.js';
 import { logger } from '../observability/logger.js';
 import { traceStep } from '../observability/sentry.js';
-import { getTrippedDeviceIds } from '../runners/select.js';
+import { getTrippedDeviceIds } from '../runners/index.js';
 import { readAutoRetryPayload } from './retry.js';
 import { estimateIssueContextTokens, MAX_RESUME_TOKENS } from './session-resume.js';
 

@@ -1,5 +1,5 @@
-import { holdReleasesItself } from '../jobs/hold.js';
-import { describePause } from '../pipeline/run-pause.js';
+import { holdReleasesItself } from '../jobs/index.js';
+import { describePause } from '../pipeline/index.js';
 import {
   type Derived,
   iso,

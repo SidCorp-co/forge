@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
+import { resolveSessionMcpServers } from '../jobs/index.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';

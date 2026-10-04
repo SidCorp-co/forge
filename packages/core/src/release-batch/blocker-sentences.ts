@@ -4,7 +4,11 @@
  */
 
 import { type LiveShortfall, notLiveSentence } from '@forge/contracts/contract-waits';
-import { RELEASE_RECORD_REMEDY, type ReleaseBlockerCode } from '@forge/contracts/releases';
+import {
+  RELEASE_RECORD_REMEDY,
+  RELEASE_ROSTER_LIMIT,
+  type ReleaseBlockerCode,
+} from '@forge/contracts/releases';
 import { agrees, counted } from '../lib/plural.js';
 import {
   AGENT_NAMING_MIN_RUNNER,
@@ -17,8 +21,6 @@ import type { ReleaseChannel } from './plan.js';
 import type { ServingReading } from './serving-reading.js';
 
 /** The most issues one release may carry; `resolveRoster` holds every door to it. */
-export const RELEASE_ROSTER_LIMIT = 50;
-
 export type { ReleaseBlockerCode };
 
 export type ReleaseWarningCode =

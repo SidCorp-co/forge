@@ -5,8 +5,8 @@ import { jobTypes } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { listResolvedFacts } from '../prompt/facts/resolve.js';
 import { requireHeld } from '../permissions/index.js';
+import { listResolvedFacts } from '../prompt/index.js';
 
 const querySchema = z.object({
   projectId: z.uuid(),

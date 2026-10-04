@@ -1,11 +1,7 @@
 import type { ReleaseGateView } from '@forge/contracts/releases';
+import { RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
 import { agrees, counted } from '../lib/plural.js';
-import {
-  RELEASE_ROSTER_LIMIT,
-  type ReleaseBlocker,
-  type ReleaseReasonCode,
-  type ReleaseWarning,
-} from './blocker-sentences.js';
+import type { ReleaseBlocker, ReleaseReasonCode, ReleaseWarning } from './blocker-sentences.js';
 
 type Details = Record<string, unknown> | undefined;
 

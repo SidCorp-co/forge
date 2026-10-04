@@ -10,7 +10,7 @@ import {
   promptBlobs,
   usageRecords,
 } from '../db/schema.js';
-import { canonicalSessionId, usageSessionMatch } from '../usage-records/rollup.js';
+import { canonicalSessionId, usageSessionMatch } from '../usage-records/index.js';
 import type { ActualUsage } from './prompt-route.js';
 
 /** The project an issue belongs to, or null when there is no such issue. */

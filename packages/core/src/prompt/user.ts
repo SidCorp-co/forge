@@ -12,8 +12,8 @@ import {
   renderDriveTerminationBlock,
   renderTerminationBlock,
   type StepHandoffPayload,
-} from '../memory/step-handoff-schema.js';
-import { handoffInjectSteps } from '../pipeline/handoff-policy.js';
+} from '../memory/index.js';
+import { handoffInjectSteps } from '../pipeline/index.js';
 
 /** ISS-699 — steps that finished after `sessionContext.lastUpdated`, measured
  *  from the jobs ledger by `loadIssueSnapshot`. null when nothing is newer. */
@@ -135,33 +135,6 @@ function formatSessionContext(
   lines.push(`_Context from ${sessionCount} previous session(s), last updated ${lastUpdated}_`);
 
   return lines.join('\n');
-}
-
-export function injectTurnLevelRules(
-  promptString: string,
-  turnLevelSystemPrompt: string | null | undefined,
-): string {
-  const tlSp = turnLevelSystemPrompt?.trim();
-  if (!tlSp || tlSp.length === 0) return promptString;
-  const block = [
-    '',
-    '## Pipeline Rules (this turn)',
-    'These rules apply to this turn — apply them in addition to any session-level system prompt:',
-    '',
-    tlSp,
-  ].join('\n');
-  const firstNl = promptString.indexOf('\n');
-  if (firstNl === -1) return `${promptString}${block}`;
-  return `${promptString.slice(0, firstNl)}${block}${promptString.slice(firstNl)}`;
-}
-
-export function injectAfterInvocation(promptString: string, block: string): string {
-  const b = block.trim();
-  if (b.length === 0) return promptString;
-  const wrapped = `\n\n${b}`;
-  const firstNl = promptString.indexOf('\n');
-  if (firstNl === -1) return `${promptString}${wrapped}`;
-  return `${promptString.slice(0, firstNl)}${wrapped}${promptString.slice(firstNl)}`;
 }
 
 export function buildJobPromptString(args: {

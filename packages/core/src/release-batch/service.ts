@@ -12,6 +12,7 @@
 // claim release to `releasing-recovery.ts`, which is also what a batch that
 // died without either outcome goes through.
 
+import { RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
 import { eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
@@ -36,7 +37,6 @@ import {
   settleAbortStamp,
   stampAbort,
 } from './abort-stamp.js';
-import { RELEASE_ROSTER_LIMIT } from './blocker-sentences.js';
 import { collectReleaseBlockers } from './blockers.js';
 import {
   type CloseVerification,

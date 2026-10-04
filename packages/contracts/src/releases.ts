@@ -471,3 +471,6 @@ export function releaseApprovalRequired(
 ): boolean {
 	return document?.release?.approval.required === true;
 }
+
+/** How many issues one release batch carries at most. */
+export const RELEASE_ROSTER_LIMIT = 50;

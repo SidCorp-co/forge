@@ -1,9 +1,9 @@
 import { JOB_MACHINE, OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { and, eq, inArray, isNotNull, lt, or, type SQL, sql } from 'drizzle-orm';
-import { SWEEP_SESSION_COLUMNS, transitionSessions } from '../agent-sessions/session-transition.js';
+import { SWEEP_SESSION_COLUMNS, transitionSessions } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
-import { transition } from '../lifecycle/transition.js';
+import { transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
 import { resumeLapsedAnswers } from '../pipeline/answer-resume.js';
 import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
@@ -25,25 +25,14 @@ import {
 } from './loop-monitor-axis.js';
 import { getLoopThresholds, RESULT_QUIET_MINUTES } from './loop-monitor-thresholds.js';
 import { reapExpiredParks, reapUnansweredParks } from './park-deadline.js';
+import { jobsPorts } from './ports.js';
 import { quietJobCandidateQuery } from './progress-signal.js';
 import { broadcastZombieTransition, lookupIssueForRun, reapQueueHop } from './queue-hop.js';
 import { RESULT_EVENT_LATERAL, RESULT_GUARD } from './resident-session.js';
 import { CLIENT_SESSION_KINDS, heartbeatReapedSql } from './session-kinds.js';
 import { type SessionLostCause, sessionLostCause } from './session-lost-cause.js';
 
-type RedispatchFn = (
-  sessionId: string,
-) => Promise<{ ok: boolean; status: string; sessionId?: string; deviceId?: string }>;
 type JobRow = typeof jobs.$inferSelect;
-
-let _redispatchScheduleFn: RedispatchFn | null = null;
-async function getRedispatchScheduleFn(): Promise<RedispatchFn> {
-  if (!_redispatchScheduleFn) {
-    const mod = await import('../schedules/dispatch.js');
-    _redispatchScheduleFn = mod.redispatchScheduleSessionOnFailover;
-  }
-  return _redispatchScheduleFn;
-}
 
 export interface LoopScope {
   projectId?: string;
@@ -408,8 +397,7 @@ export async function reapZombieSessions(
     // the user to retry. Best-effort: a throw here must not abort the sweep.
     let failover: { ok: boolean; sessionId?: string; deviceId?: string } | null = null;
     try {
-      const redispatch = await getRedispatchScheduleFn();
-      failover = await redispatch(z.id);
+      failover = await jobsPorts().redispatchScheduleSessionOnFailover(z.id);
       if (failover.ok) {
         logger.info(
           {

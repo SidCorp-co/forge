@@ -4,7 +4,6 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { resolveRegisteredEffectiveSkills } from '../skills/effective.js';
 import { broadcastSession } from './broadcast.js';
 import { createChatSessionRow } from './chat-turn.js';
 import {
@@ -15,6 +14,7 @@ import {
 } from './interactive-credential.js';
 import { assertCallerDeclaresNoKind } from './kind-query.js';
 import { sendBodySchema, startBodySchema } from './lifecycle-schemas.js';
+import { agentSessionsPorts } from './ports.js';
 import { issueRefsOf, loadProjectBySlug, projectHandle } from './read.js';
 import { refuseSession } from './refusals.js';
 import { badRequest, ensureSessionOwnerOrAdmin, notFound } from './session-access.js';
@@ -124,7 +124,7 @@ agentSessionInteractiveRoutes.post(
     // THIS project before it can ride turn 1 as a slash-command; otherwise any
     // caller could slash-inject an arbitrary command via /start.
     if (input.skillName) {
-      const effective = await resolveRegisteredEffectiveSkills(project.id);
+      const effective = await agentSessionsPorts().resolveRegisteredEffectiveSkills(project.id);
       if (!effective.some((s) => s.name === input.skillName && s.installOnly)) {
         throw badRequest({
           message: `skillName '${input.skillName}' is not install_only for this project`,

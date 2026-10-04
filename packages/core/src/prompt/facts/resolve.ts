@@ -9,7 +9,7 @@ import {
   labels,
   projects,
 } from '../../db/schema.js';
-import { integrationGuideSlug, loadOrgGuideProviders } from '../../guides/integration-guides.js';
+import { integrationGuideSlug, loadOrgGuideProviders } from '../../guides/index.js';
 import {
   effectiveConfig,
   getIntegration,
@@ -20,20 +20,23 @@ import {
   selectAllSlugsFromKnowledge,
   selectAlwaysInjectFromKnowledge,
   selectOnDemandSlugsFromKnowledge,
-} from '../../knowledge/service.js';
+} from '../../knowledge/index.js';
 import { logger } from '../../observability/logger.js';
-import { promotedBranch, readDeployMap, releasePathOf } from '../../project-config/release-path.js';
-import type { ProjectDocument, TestingProfile } from '../../project-config/schema.js';
-import { listTestingProfiles, readProjectDocument } from '../../project-config/service.js';
-import { repositoryOf } from '../../project-config/source.js';
+import type { ProjectDocument, TestingProfile } from '../../project-config/index.js';
+import {
+  listTestingProfiles,
+  promotedBranch,
+  readDeployMap,
+  readProjectDocument,
+  releasePathOf,
+  repositoryOf,
+} from '../../project-config/index.js';
 import {
   type KnowledgeObligation,
   missingProjectKnowledge,
-} from '../../projects/autonomous-contract.js';
-import {
   type RESERVED_PROJECT_FACT_KEYS,
   unreservedProjectKeyRefusal,
-} from '../../projects/project-facts.js';
+} from '../../projects/index.js';
 import { renderTestCreds, renderTestNotes, renderTestUrls } from './environment-keys.js';
 import {
   CANONICAL_LADDER,

@@ -3,7 +3,7 @@
  *
  * Three readers ask it — the dispatch candidate query in `select.ts`, the
  * `fresh_capable_runners` barrier CTE in `jobs/queued-gates.ts`, and the
- * release preference probe in `devices/release-label.ts`. A fourth spelling is
+ * release preference probe in `runners/release-label.ts`. A fourth spelling is
  * how a job reads as dispatchable to one of them and invisible to another; the
  * barrier CTE already carried a comment saying its device gate MUST mirror
  * `select.ts`, which is the drift this file removes.

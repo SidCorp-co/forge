@@ -1,3 +1,4 @@
+import { secretRefOf } from '@forge/contracts/project-config';
 import type { z } from 'zod';
 import {
   encryptSecret,
@@ -10,7 +11,6 @@ import {
   isRecord,
   parseVersionedDocument,
   pointer,
-  secretRefOf,
   staleBase,
 } from './documents.js';
 import { checkPolicy, checkProjectConfig, type ProjectConfigContext } from './rules.js';

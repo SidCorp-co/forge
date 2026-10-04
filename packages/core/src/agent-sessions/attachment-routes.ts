@@ -8,8 +8,8 @@ import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../midd
 import { forbidden } from '../middleware/route-errors.js';
 import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { getStorage, isEnoent } from '../storage/index.js';
 import { loadSessionAttachment, persistSessionAttachment } from './attachment-service.js';
+import { agentSessionsPorts } from './ports.js';
 import { sessionPlacement } from './read.js';
 
 const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
@@ -102,9 +102,9 @@ agentSessionAttachmentRoutes.get(
 
     let buffer: Buffer;
     try {
-      buffer = await getStorage().get(row.path);
+      buffer = await agentSessionsPorts().attachments().get(row.path);
     } catch (err) {
-      if (isEnoent(err)) {
+      if ((err as { code?: string } | null)?.code === 'ENOENT') {
         throw new HTTPException(410, {
           message: 'attachment file missing on disk',
           cause: { code: 'ATTACHMENT_FILE_MISSING' },

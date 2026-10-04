@@ -2,7 +2,7 @@ import { and, desc, eq, gte, lte } from 'drizzle-orm';
 import {
   CONVERSATION_AGENT_MARKER,
   readConversationAgentMeta,
-} from '../agent-sessions/conversation-agent.js';
+} from '../conversations/conversation-agent-meta.js';
 import { agentSessions } from '../db/schema.js';
 import { conversationMessages, conversationWindows } from '../db/schema-conversations.js';
 import type { QuestionOrigin } from '../db/schema-questions.js';

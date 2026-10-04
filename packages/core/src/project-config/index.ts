@@ -1,5 +1,13 @@
 export { setBindingInboundSecret } from './binding-store.js';
-export { type ApiRefusal, isRecord, parseVersionedDocument, staleBase } from './documents.js';
+export {
+  dispatchStateOf,
+  policyRefusal,
+  policyRefusalOf,
+  requirePolicy,
+} from './dispatch-policy.js';
+export type { ApiRefusal } from './documents.js';
+export { isRecord, parseVersionedDocument, staleBase } from './documents.js';
+export { readEffectivePolicy } from './effective.js';
 export { readEnvironmentState } from './environment-state-read.js';
 export { announceIntegrationChanged } from './integration-changed.js';
 export { emitJsonSchema } from './json-schema.js';
@@ -16,22 +24,31 @@ export {
   type ReleasePath,
   readDeployMap,
   readReleasePath,
+  releasePathOf,
 } from './release-path.js';
+export type { ProjectDocument, TestingProfile } from './schema.js';
 export {
   type DeploymentTrigger,
   type EnvironmentState,
-  type ProjectDocument,
   STOREFRONT_PROVIDERS,
   sized,
   slug,
   unique,
   uuid,
 } from './schema.js';
+export type { WriteOutcome } from './service.js';
 export {
+  listTestingProfiles,
   readProjectConfig,
   readProjectDocument,
-  type WriteOutcome,
   writeProjectConfig,
 } from './service.js';
-export { NO_REPOSITORY, readDeclaredSource, remoteOf, webUrlOf } from './source.js';
+export {
+  NO_REPOSITORY,
+  readDeclaredSource,
+  remoteOf,
+  repositoryOf,
+  webUrlOf,
+  withDeclaredSource,
+} from './source.js';
 export { seedProjectPolicy } from './store.js';

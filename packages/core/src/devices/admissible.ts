@@ -17,18 +17,14 @@ import type { PolicyRefusalCode } from '@forge/contracts/project-config';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
-  type IssuePullRequest,
-  readPullRequestsForIssues,
-} from '../integrations/source-host/index.js';
-import { blockedByUnsettledSql } from '../issues/blocked-by.js';
-import { dispatchGateHeldSql } from '../issues/dispatch-gates.js';
-import { issueWorkInFlightSql } from '../issues/issue-lease.js';
+  blockedByUnsettledSql,
+  dispatchGateHeldSql,
+  issueWorkInFlightSql,
+} from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { AUTONOMOUS_ENTRY_STATUS, isEntryGateClosed } from '../pipeline/autonomous-mode.js';
-import { policyRefusal } from '../project-config/dispatch-policy.js';
-import { readEffectivePolicy } from '../project-config/effective.js';
-import type { PolicyDocument } from '../project-config/schema.js';
+import { AUTONOMOUS_ENTRY_STATUS, isEntryGateClosed } from '../pipeline/index.js';
 import type { PoolRelation } from './pool.js';
+import { devicesPorts } from './ports.js';
 
 const DEFAULT_ADMISSIBLE_LIMIT = 20;
 
@@ -52,7 +48,7 @@ export type AdmissibleIssue = {
    * bound to — the same shape, because a master that has to tell those two apart reads the project's
    * integrations rather than guessing from a null here.
    */
-  pullRequests: IssuePullRequest[];
+  pullRequests: unknown[];
 };
 
 export type Admission = {
@@ -64,7 +60,10 @@ export type Admission = {
 /** A project this device serves that admits nothing, and the refusal that says why. */
 export type AdmissionRefusal = { projectId: string; code: PolicyRefusalCode; message: string };
 
-function admissionOf(projectId: string, policy: PolicyDocument): Admission {
+function admissionOf(
+  projectId: string,
+  policy: Parameters<typeof isEntryGateClosed>[0],
+): Admission {
   return {
     projectId,
     limit: DEFAULT_ADMISSIBLE_LIMIT,
@@ -95,12 +94,14 @@ export async function readAdmissions(args: {
   const refused: AdmissionRefusal[] = [];
   for (const row of rows) {
     const projectId = String(row.id);
-    const held = await readEffectivePolicy(projectId);
+    const held = await devicesPorts().readEffectivePolicy(projectId);
     if (held) {
-      admissions.push(admissionOf(projectId, held.document));
+      admissions.push(
+        admissionOf(projectId, held.document as Parameters<typeof isEntryGateClosed>[0]),
+      );
       continue;
     }
-    const [refusal] = policyRefusal('POLICY_UNDECLARED', projectId, null).refusals;
+    const [refusal] = devicesPorts().policyRefusal('POLICY_UNDECLARED', projectId, null).refusals;
     refused.push({ projectId, code: 'POLICY_UNDECLARED', message: refusal?.detail ?? '' });
   }
   return { admissions, refused };
@@ -167,7 +168,7 @@ export async function readAdmissibleIssues(args: {
       LIMIT ${a.limit}
     `)) as unknown as Array<Record<string, unknown>>;
 
-    const byIssue = await readPullRequestsForIssues(rows.map((r) => String(r.id)));
+    const byIssue = await devicesPorts().readPullRequestsForIssues(rows.map((r) => String(r.id)));
 
     for (const row of rows) {
       out.push({

@@ -8,11 +8,11 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { readConversationAgentTurns } from '../agent-sessions/conversation-agent.js';
 import {
   listWindowsForConversation,
   loadConversationAttachment,
   readableConversation,
+  readConversationAgentTurns,
   refuseConversation,
   writableConversation,
 } from '../conversations/index.js';

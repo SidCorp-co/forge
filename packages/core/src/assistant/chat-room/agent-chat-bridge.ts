@@ -3,7 +3,7 @@
  * ISS-727's metadata shape — a connection id, a room id, a thread id and a bot
  * name, and no venue.
  *
- * ISS-1039 moved that lane onto `agent-sessions/conversation-agent-bridge.ts`,
+ * ISS-1039 moved that lane onto `conversations/conversation-agent-bridge.ts`,
  * which reads a venue and delivers through that venue's own transport. Nothing
  * writes `metadata.agentChat` any more. This exists for the sessions that were
  * already running when that landed and go terminal afterwards: their rows name

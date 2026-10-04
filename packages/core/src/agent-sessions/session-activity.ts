@@ -1,4 +1,4 @@
-import { type Actor, safeRecordActivity } from '../pipeline/activity.js';
+import { type Actor, safeRecordActivity } from '../pipeline/index.js';
 
 export function extractIssueId(metadata: unknown): string | null {
   if (!metadata || typeof metadata !== 'object') return null;

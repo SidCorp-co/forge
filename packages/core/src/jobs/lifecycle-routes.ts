@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { deriveSessionFinal } from '../agent-sessions/index.js';
-import { publishPipelineHealthChanged } from '../issues/pipeline-health.js';
+import { publishPipelineHealthChanged } from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
@@ -13,15 +13,14 @@ import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
 import { holds, requireHeld } from '../permissions/index.js';
-import { clearRunnerLimit } from '../runners/apply-runner-limit.js';
-import { clearRunnerQuarantine } from '../runners/quarantine.js';
-import { failReconcileRunIfNoVerdictRecorded } from '../skills/reconcile-service.js';
-import { materializeJobUsage } from '../usage-records/materialize.js';
+import { clearRunnerLimit, clearRunnerQuarantine } from '../runners/index.js';
+import { materializeJobUsage } from '../usage-records/index.js';
 import { SYNTHETIC_REAP_ERRORS, syncAgentSessionLifecycle } from './agent-session-link.js';
 import { cancelJob } from './cancel-job.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { isResumeFailedError, reclassifyAbortedResume } from './handle-resume-failed.js';
 import { readJobGate } from './job-queries.js';
+import { jobsPorts } from './ports.js';
 import { salvageSchema, salvageSet } from './prior-attempts.js';
 import { refuseJob } from './refusals.js';
 import { resumeHeldJob } from './resume-job.js';
@@ -249,12 +248,14 @@ jobLifecycleDeviceRoutes.post(
     // /pipeline + issue detail tab reflect completion. Best-effort.
     await syncAgentSessionLifecycle(updated, status);
 
-    await failReconcileRunIfNoVerdictRecorded(updated).catch((err) =>
-      logger.warn(
-        { err, jobId: updated.id, type: updated.type },
-        'lifecycle: failReconcileRunIfNoVerdictRecorded failed',
-      ),
-    );
+    await jobsPorts()
+      .reconcileRuns.failReconcileRunIfNoVerdictRecorded(updated)
+      .catch((err) =>
+        logger.warn(
+          { err, jobId: updated.id, type: updated.type },
+          'lifecycle: failReconcileRunIfNoVerdictRecorded failed',
+        ),
+      );
 
     roomManager.publish(projectRoom(updated.projectId), {
       event: status === 'done' ? 'job.completed' : 'job.cancelled',

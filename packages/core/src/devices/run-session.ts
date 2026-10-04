@@ -12,41 +12,35 @@
  * `issues/issue-lease.ts` is the only thing that writes or reads it.
  */
 
-import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
-import { insertSessionRow } from '../agent-sessions/index.js';
-import { transitionSessions } from '../agent-sessions/session-transition.js';
-import { db, type Tx } from '../db/client.js';
-import { lockXact } from '../lib/advisory-lock.js';
-import { agentSessions, issues, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
-import { refuseHeldTakeForSeqs } from '../issues/blocked-by.js';
 import {
+  RUN_GROUP_METADATA_KEY,
+  RUN_ISSUE_STATUSES_METADATA_KEY,
+  RUN_ISSUES_METADATA_KEY,
+  RUN_SESSION_KIND,
+} from '@forge/contracts/agent-sessions';
+import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
+import {
+  insertSessionRow,
+  liveMasterSessionId,
+  transitionSessions,
+} from '../agent-sessions/index.js';
+import { db, type Tx } from '../db/client.js';
+import { agentSessions, issues, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
+import {
+  heldIssuePrefixes,
   type IssueLeaseRelease,
   readDeviceIssueLease,
+  refuseHeldTakeForSeqs,
   releaseIssueLeaseRow,
   takeIssueLeases,
-} from '../issues/issue-lease.js';
-import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
-import { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
+} from '../issues/index.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import { canonicalIssueKey, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../observability/logger.js';
-import { closeRunIfOneShot, insertOneShotRun, type OneShotRunSpec } from '../pipeline/runs.js';
-import { requirePolicy } from '../project-config/dispatch-policy.js';
+import { closeRunIfOneShot, insertOneShotRun, type OneShotRunSpec } from '../pipeline/index.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
-import { liveMasterSessionId } from './master-owner.js';
 import { projectAdmission, runnerNotAdmitted } from './pool-admission.js';
-import {
-  RUN_GROUP_METADATA_KEY,
-  RUN_ISSUE_STATUSES_METADATA_KEY,
-  RUN_ISSUES_METADATA_KEY,
-} from './run-session-keys.js';
-
-export { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
-
-export {
-  RUN_GROUP_METADATA_KEY,
-  RUN_ISSUE_STATUSES_METADATA_KEY,
-  RUN_ISSUES_METADATA_KEY,
-} from './run-session-keys.js';
+import { devicesPorts } from './ports.js';
 
 /** The box's own run id for this dispatch, so the two records can be joined. */
 export const BOX_RUN_ID_METADATA_KEY = 'boxRunId';
@@ -161,7 +155,7 @@ export async function openRunSession(args: {
   }
   // cm:guard a run works issues the policy says how to run; a project with none is refused here by
   // the same name the job claim uses, before any run, session or lease is written.
-  await requirePolicy(args.projectId);
+  await devicesPorts().requirePolicy(args.projectId);
   // Core issues the owner edge. The box is authenticated as a device and says
   // which project it is running for; which master that is, core already knows.
   // No master registered yet leaves a root rather than a guess.

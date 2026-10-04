@@ -1,12 +1,9 @@
 import type { agentSessions } from '../db/schema.js';
 import { logger } from '../observability/logger.js';
-import type { FailureCause } from '../pipeline/failure-causes.js';
-import {
-  classifyFailure,
-  type FailureAction,
-  type FailureKind,
-} from '../pipeline/failure-classifier.js';
-import { parseUsageLimitReset } from '../runners/limit-detect.js';
+import type { FailureCause } from '../pipeline/index.js';
+import { classifyFailure, type FailureAction, type FailureKind } from '../pipeline/index.js';
+import { parseUsageLimitReset } from '../runners/index.js';
+import { agentSessionsPorts } from './ports.js';
 import { extractPromptString } from './turns-helpers.js';
 
 /**
@@ -87,8 +84,7 @@ export async function recoverScheduleOnFailoverAction(
   const meta = (metadata ?? {}) as Record<string, unknown>;
   if (meta.source !== 'schedule.run') return;
   try {
-    const { redispatchScheduleSessionOnFailover } = await import('../schedules/dispatch.js');
-    const result = await redispatchScheduleSessionOnFailover(sessionId, {
+    const result = await agentSessionsPorts().redispatchScheduleSessionOnFailover(sessionId, {
       failureClass: failureClassOf(reason),
     });
     logger.info(

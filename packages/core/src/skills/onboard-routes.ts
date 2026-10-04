@@ -22,7 +22,7 @@ import { requestSkillSync } from './service.js';
 // ISS-733 — the "Build Project Brain" trigger: web calls this once, after
 // bootstrap, to open a fresh chat session that runs `forge-onboard` as turn 1
 // (the chat-runs-skill mechanism in `agent-sessions/chat-turn.ts`). Mirrors
-// the dedup-free dispatch shape of `agent-sessions/conversation-agent.ts`
+// the dedup-free dispatch shape of `conversations/conversation-agent.ts`
 // (resolveChatDevice → createChatSessionRow → dispatchChatTurn), plus an
 // explicit skill-sync push first since sync is explicit-only (the runner
 // won't have the file on disk otherwise).

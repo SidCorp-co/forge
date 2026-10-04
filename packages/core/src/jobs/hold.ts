@@ -2,11 +2,11 @@ import { JOB_MACHINE } from '@forge/contracts/job-machine';
 import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type JobType, jobs } from '../db/schema.js';
-import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/transition.js';
+import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
 import { resolvePipelineWedge } from '../pipeline/wedge.js';
-import { onlineCapableDeviceIds } from '../runners/select.js';
-import type { RequiredCapabilities } from '../runners/types.js';
+import type { RequiredCapabilities } from '../runners/index.js';
+import { onlineCapableDeviceIds } from '../runners/index.js';
 import { AUTO_RETRY_PAYLOAD_KEY } from './retry.js';
 
 type JobRow = typeof jobs.$inferSelect;
@@ -65,7 +65,9 @@ export function holdReleasesItself(
   hold: HoldState | null,
   failureReason: string | null = null,
 ): boolean {
-  return hold ? hold.autoRelease && holdResumesItself(hold.reason) : holdResumesItself(failureReason);
+  return hold
+    ? hold.autoRelease && holdResumesItself(hold.reason)
+    : holdResumesItself(failureReason);
 }
 
 /**
