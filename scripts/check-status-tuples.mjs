@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { dieAs, ROOT, stripComments, walkFiles } from './lib/gate.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const die = dieAs('check-status-tuples');
+
 const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
 const VOCABULARIES = {
   issue: { file: 'packages/contracts/src/issue-machine.ts', symbol: 'ISSUE_STATUSES' },
@@ -40,11 +41,6 @@ const DEFAULTS = {
   scanExts: ['.ts', '.tsx'],
   skipDirs: ['node_modules', 'dist', 'coverage', '.next', '.turbo', 'drizzle'],
 };
-
-function die(message) {
-  console.error(`check-status-tuples: ${message}`);
-  process.exit(2);
-}
 
 function config() {
   if (!existsSync(CONFIG_PATH)) return DEFAULTS;
@@ -88,12 +84,6 @@ function readVocabularies() {
   return read;
 }
 
-function stripComments(text) {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-    .replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
-}
-
 /**
  * Every `status-tuple: differs` comment, whole, with the line it ends on. The
  * whole text is kept because the marker has to NAME the answer it differs from:
@@ -116,21 +106,6 @@ const namesPeer = (excuse, peer) =>
   new RegExp(`\\b${peer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(excuse);
 
 const lineOf = (text, index) => text.slice(0, index).split('\n').length;
-
-function walk(rel, cfg, acc) {
-  const abs = join(ROOT, rel);
-  if (!existsSync(abs)) return acc;
-  for (const entry of readdirSync(abs, { withFileTypes: true })) {
-    const path = `${rel}/${entry.name}`;
-    if (entry.isDirectory()) {
-      if (!cfg.skipDirs.includes(entry.name)) walk(path, cfg, acc);
-      continue;
-    }
-    if (!cfg.scanExts.some((ext) => entry.name.endsWith(ext))) continue;
-    acc.push(path);
-  }
-  return acc;
-}
 
 /** The vocabulary a tuple is drawn from, or null where the text does not say. */
 export function attributeVocabulary(members, context, vocabularies) {
@@ -270,7 +245,12 @@ function main() {
 
   const cfg = config();
   const vocabularies = readVocabularies();
-  const files = cfg.scanRoots.reduce((acc, rel) => walk(rel, cfg, acc), []);
+  const files = cfg.scanRoots.flatMap((rel) =>
+    walkFiles(rel, {
+      skipDirs: cfg.skipDirs,
+      keep: (_, name) => cfg.scanExts.some((ext) => name.endsWith(ext)),
+    }),
+  );
   if (files.length === 0) die(`no source files found under ${cfg.scanRoots.join(', ')}`);
 
   const unattributed = [];

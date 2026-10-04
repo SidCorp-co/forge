@@ -18,8 +18,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, relative } from 'node:path';
 import {
   loadBaseline,
   parseMode,
@@ -28,9 +27,9 @@ import {
   stagedFiles,
   writeBaseline,
 } from './lib/debt-ratchet.mjs';
+import { ROOT } from './lib/gate.mjs';
 import { absentPrerequisites, remedyLines } from './lib/prerequisite.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE_PATH = join(ROOT, '.forge', 'size-baseline.json');
 
 const FILE_RULE = 'lint/style/noExcessiveLinesPerFile';

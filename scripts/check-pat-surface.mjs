@@ -19,22 +19,18 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { join } from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
+import { dieAs, ROOT } from './lib/gate.mjs';
 import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequisite.mjs';
 import { routeFences } from './lib/route-fences.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const die = dieAs('pat-surface');
+
 const CORE = join(ROOT, 'packages', 'core');
 const TSX = join(ROOT, 'node_modules', '.bin', 'tsx');
 const ROUTE_TABLE = join(CORE, 'src', 'api-contract', 'route-table.ts');
 const FENCE = { file: 'credentials/pat-scope.ts', name: 'fencedProjectIds' };
-
-function die(msg) {
-  console.error(`pat-surface: ${msg}`);
-  process.exit(2);
-}
 
 const EXEMPT = [
   {

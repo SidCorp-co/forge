@@ -19,8 +19,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, join, relative } from 'node:path';
 import { baseRef } from './lib/base-branch.mjs';
 import {
   freezeFaults,
@@ -32,6 +31,7 @@ import {
   total,
   writeBaseline,
 } from './lib/debt-ratchet.mjs';
+import { gitOut, ROOT } from './lib/gate.mjs';
 import {
   drainedLine,
   drainFaults,
@@ -43,7 +43,6 @@ import {
 } from './lib/lint-budget.mjs';
 import { absentPrerequisites, remedyLines } from './lib/prerequisite.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE_PATH = join(ROOT, '.forge', 'lint-baseline.json');
 
 function effectiveLinterEnabled(file, stack = []) {
@@ -157,17 +156,7 @@ function collect(scopes) {
   return { measured, said, scopeOf };
 }
 
-function git(args) {
-  try {
-    return execFileSync('git', args, {
-      cwd: ROOT,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-  } catch {
-    return null;
-  }
-}
+const git = (args) => gitOut(args)?.trim() ?? null;
 
 function branchDelta() {
   const head = git(['rev-parse', 'HEAD']);

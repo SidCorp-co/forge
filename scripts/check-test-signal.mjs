@@ -17,8 +17,7 @@
 // Exit: 0 clean, 1 violations, 2 invalid invocation.
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, relative } from 'node:path';
 import {
   freezeFaults,
   loadBaseline,
@@ -28,9 +27,9 @@ import {
   tunedConfig,
   writeBaseline,
 } from './lib/debt-ratchet.mjs';
+import { ROOT } from './lib/gate.mjs';
 import { suspendedWithoutTests } from './lib/suspended-without-tests.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE_PATH = join(ROOT, '.forge', 'test-signal-baseline.json');
 
 const DEFAULTS = {

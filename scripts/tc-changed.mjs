@@ -10,16 +10,12 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
+import { dieAs, ROOT } from './lib/gate.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const die = dieAs('tc-changed');
+
 const args = process.argv.slice(2);
-
-function die(msg) {
-  console.error(`tc-changed: ${msg}`);
-  process.exit(2);
-}
 
 const known = new Set(['--base', '--all', '--tsc']);
 for (const [i, arg] of args.entries()) {

@@ -2,11 +2,9 @@
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
-
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+import { ROOT } from './lib/gate.mjs';
 
 // Latin-1 Supplement letters (À–ÿ) excluding the math/punctuation glyphs
 // × (U+00D7) and ÷ (U+00F7), Latin Extended-A (Ā–ſ), and Vietnamese

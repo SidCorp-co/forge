@@ -25,9 +25,9 @@
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, relative, sep } from 'node:path';
 import { baseRev } from './lib/baseline-ratchet.mjs';
+import { dieAs, ROOT } from './lib/gate.mjs';
 import {
   kindFindings,
   markers,
@@ -45,7 +45,8 @@ import {
   traceFindings,
 } from './lib/module-trace.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const die = dieAs('module-shape');
+
 const SRC = join(ROOT, 'packages/core/src');
 const DECLARATION = 'packages/core/src/modules.json';
 const SUPPRESSIONS = '.forge/module-shape-suppressions.json';
@@ -55,11 +56,6 @@ const PREFIX = 'module-shape/';
 const LINT_RULES = RULES.filter((r) => r !== 'kind');
 const DESIGN_INDEX = '.forge/design-index.json';
 const TRACE_BASELINE = '.forge/module-trace-baseline.json';
-
-function die(message) {
-  console.error(`module-shape: ${message}`);
-  process.exit(2);
-}
 
 const args = process.argv.slice(2);
 const known = new Set(['--markers', '--prune', '--update-trace-baseline']);

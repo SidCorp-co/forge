@@ -2,11 +2,12 @@
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, posix, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, posix } from 'node:path';
+import { dieAs, ROOT } from './lib/gate.mjs';
 import { TEST_FILE_RE } from './lib/test-reachability.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const die = dieAs('check-doc-citations');
+
 const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
 const MANIFESTS = ['package.json', 'Cargo.toml'];
 const MARKER = /<!--\s*doc-citation:\s*unchecked\s+(.*?)\s*\u2014\s*(\S.*?)\s*-->/;
@@ -34,11 +35,6 @@ const DEFAULTS = {
   sourceExts: ['ts', 'tsx', 'mjs', 'cjs', 'js', 'jsx', 'rs', 'sql'],
   skipPrefixes: ['dist/', 'node_modules/', '.next/', 'coverage/', 'target/', '.turbo/'],
 };
-
-function die(message) {
-  console.error(`check-doc-citations: ${message}`);
-  process.exit(2);
-}
 
 function config() {
   if (!existsSync(CONFIG_PATH)) return DEFAULTS;

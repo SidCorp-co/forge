@@ -12,6 +12,7 @@
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { dieAs } from './lib/gate.mjs';
 import { admitMembers } from './lib/verify-window/admit.mjs';
 import { assemble, prepareWindow } from './lib/verify-window/assemble.mjs';
 import { classifyReplay, ownerOfPath, replay } from './lib/verify-window/attribute.mjs';
@@ -28,6 +29,8 @@ import {
   treeDrift,
   windowEnv,
 } from './lib/verify-window/validate.mjs';
+
+const die = dieAs('verify-window');
 
 const USAGE = `Usage: node scripts/verify-window.mjs <verb> --window <manifest.json> [flags]
   admit                       judge each member's admission and build nothing
@@ -46,11 +49,6 @@ where that run recorded it. A member opens no pull request, so admit reads no ch
 Exit: 0 as asked. 1 where admit refuses a member, where assemble or isolate refused or isolated
 one in this build (a member left out by a recorded isolate is what was asked, so isolate exits 0
 once its rebuild worked), where fire did not fire, or where land may not land. 2 could not run.`;
-
-function die(msg) {
-  console.error(`verify-window: ${msg}`);
-  process.exit(2);
-}
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
