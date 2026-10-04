@@ -3,11 +3,9 @@
 
 import { runAlertSweep } from './admin/index.js';
 import {
-  drainRoomCommentMirror,
   drainRoomQuestions,
   drainRoomWindows,
   drainWebConversationWindows,
-  runAssistantWeeklyOnce,
   runTranscriptIndexSweepOnce,
 } from './assistant/index.js';
 import { runHeartbeatTick } from './conversations/index.js';
@@ -34,7 +32,6 @@ import { logger } from './observability/logger.js';
 import { pruneOutbox } from './outbox/index.js';
 import { backfillPhaseJournal, runReconcilerOnce, runRetentionSweep } from './pipeline/index.js';
 import { runPipelineSweep } from './pipeline-sweep.js';
-import { runPmEscalationSweep, runPmQueuePressureSweepOnce } from './pm/index.js';
 import { recoverUnstartedReleaseBatches, resumeStrandedFinishes } from './release-batch/index.js';
 import { reapGhostRunners, runRunnerStaleSweep } from './runners/index.js';
 import type { Timer } from './schedules/index.js';
@@ -158,21 +155,6 @@ export function coreTimers(): Timer[] {
     },
     {
       kind: 'cluster',
-      name: 'pm.escalation-sweeper',
-      cron: '*/5 * * * *',
-      run: logged('pm-escalation-sweeper: actioned', runPmEscalationSweep, (r) => {
-        const { executed, errors } = r as { executed: number; errors: number };
-        return executed > 0 || errors > 0;
-      }),
-    },
-    {
-      kind: 'cluster',
-      name: 'pm.queue-pressure',
-      cron: '* * * * *',
-      run: () => runPmQueuePressureSweepOnce(),
-    },
-    {
-      kind: 'cluster',
       name: 'memory-consolidation',
       cron: '0 3 * * *',
       run: logged('memory.consolidation: sweep complete', runConsolidationSweep),
@@ -213,19 +195,6 @@ export function coreTimers(): Timer[] {
     },
     {
       kind: 'cluster',
-      name: 'assistant-weekly-report',
-      cron: '0 4 * * *',
-      run: async () => {
-        const outcomes = await runAssistantWeeklyOnce();
-        const count = (o: string) => outcomes.filter((x) => x.outcome === o).length;
-        logger.info(
-          { posted: count('posted'), skipped: count('skipped'), failed: count('failed') },
-          'assistant.weekly: tick complete',
-        );
-      },
-    },
-    {
-      kind: 'cluster',
       name: 'integrations-health-sweep',
       cron: '17 * * * *',
       run: logged('integrations-health-sweep: complete', runIntegrationsHealthSweep),
@@ -258,13 +227,6 @@ export function coreTimers(): Timer[] {
       everyMs: 30_000,
       runAtStart: true,
       run: drainRoomQuestions,
-    },
-    {
-      kind: 'process',
-      name: 'rocketchat.comment-mirror',
-      everyMs: 30_000,
-      runAtStart: true,
-      run: drainRoomCommentMirror,
     },
     ...(servesRunnerReleases()
       ? [

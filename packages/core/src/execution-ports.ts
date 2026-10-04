@@ -21,7 +21,7 @@ import {
   renderContractContext,
 } from './ecosystem/index.js';
 import { reportLinksOf } from './feedback/index.js';
-import { isHttpsGitUrl, projectsWithHostCredential, provisionGitCredential } from './git/index.js';
+import { isHttpsGitUrl, projectsWithHostCredential } from './git/index.js';
 import { getPublishedRunnerBuild } from './install/index.js';
 import { applyGrantedMcpServers, decryptSecret, isVaultConfigured } from './integrations/index.js';
 import { callFastModel } from './integrations/llm/index.js';
@@ -33,11 +33,7 @@ import {
   resolveSessionMcpServers,
 } from './jobs/index.js';
 import { foreignScriptChars } from './memory/index.js';
-import {
-  emitNotification,
-  projectAdminUserIds,
-  resolveNotifications,
-} from './notifications/index.js';
+import { emitNotification } from './notifications/index.js';
 import {
   dispatchStateOf,
   policyRefusal,
@@ -67,15 +63,7 @@ import {
   settleSessionFires,
   writeBackScheduleSession,
 } from './schedules/index.js';
-import {
-  buildVerifierPrompt,
-  failReconcileRunForFailedJob,
-  failReconcileRunIfNoVerdictRecorded,
-  provideSkillsPorts,
-  recordSkillActivityEvent,
-  resolvePacketIdForHash,
-  resolveRegisteredEffectiveSkills,
-} from './skills/index.js';
+import { recordSkillActivityEvent, resolveRegisteredEffectiveSkills } from './skills/index.js';
 import { getStorage } from './storage/index.js';
 import {
   issueMockupsOf,
@@ -88,7 +76,7 @@ import {
   renderPinnedContracts,
 } from './workflows/index.js';
 
-const skillActivity = { recordSkillActivityEvent, resolvePacketIdForHash };
+const skillActivity = { recordSkillActivityEvent };
 
 export function provideExecutionPorts(): void {
   provideJobsPorts({
@@ -110,11 +98,6 @@ export function provideExecutionPorts(): void {
       renderContractContext,
       recordArtifactContext,
       recordContractContext,
-    },
-    reconcileRuns: {
-      failReconcileRunForFailedJob,
-      failReconcileRunIfNoVerdictRecorded,
-      buildVerifierPrompt,
     },
     vault: { isVaultConfigured, decryptSecret },
     mcpServers: { applyGrantedMcpServers },
@@ -149,7 +132,6 @@ export function provideExecutionPorts(): void {
     withDeclaredSource,
     projectsWithHostCredential,
     isHttpsGitUrl,
-    provisionGitCredential,
     decryptSecret,
     publishedRunnerBuild: getPublishedRunnerBuild,
     mainRunnerHead,
@@ -177,8 +159,6 @@ export function provideExecutionPorts(): void {
     heldBackByProviders,
     createReleaseBatch,
   });
-
-  provideSkillsPorts({ emitNotification, resolveNotifications, projectAdminUserIds });
 
   provideAgentReportsPorts({ reportLinksOf });
 

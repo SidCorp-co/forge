@@ -14,7 +14,6 @@ import { jobs } from '../db/schema.js';
 import { transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
 import { CLASSIFIER_VERSION } from '../pipeline/index.js';
-import { jobsPorts } from './ports.js';
 
 export { noPromptMessage, POOL_JOB_NO_PROMPT } from '@forge/contracts/jobs';
 
@@ -63,6 +62,5 @@ export async function settleNoPromptJob(job: { id: string; type: string }): Prom
     { jobId: job.id, jobType: job.type, code: POOL_JOB_NO_PROMPT },
     'pool: a job with no prompt was refused at the claim and settled failed',
   );
-  await jobsPorts().reconcileRuns.failReconcileRunForFailedJob(settled);
   return true;
 }

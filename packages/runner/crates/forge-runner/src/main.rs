@@ -35,8 +35,6 @@ enum Command {
     Start(cmd::start::Args),
     /// Show connection + runner status.
     Status(cmd::status::Args),
-    /// A live, read-only view of this box: projects, runs, panes, what waits on a person, health.
-    Top(cmd::top::Args),
     /// Say where this box's runner log is read.
     Logs(cmd::logs::Args),
     /// Inspect or edit local config.
@@ -101,7 +99,6 @@ async fn main() -> anyhow::Result<()> {
         Command::Bind(a) => cmd::bind::run(ctx, a).await,
         Command::Start(a) => cmd::start::run(ctx, a).await,
         Command::Status(a) => cmd::status::run(ctx, a).await,
-        Command::Top(a) => cmd::top::run(ctx, a).await,
         Command::Logs(a) => cmd::logs::run(ctx, a).await,
         Command::Config(a) => cmd::config::run(ctx, a).await,
         Command::Doctor(a) => cmd::doctor::run(ctx, a).await,

@@ -22,7 +22,7 @@ function truncate(value: string | null, max: number): string | null {
   return value.length > max ? `${value.slice(0, max)}…` : value;
 }
 
-/** The digest the PM agent primes a decision turn with. */
+/** A project's planning digest: issue counts, live jobs and runner load. */
 export async function readPmSnapshot(projectId: string) {
   const countsRows = await db
     .select({ status: issues.status, n: count() })

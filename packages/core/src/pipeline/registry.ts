@@ -4,7 +4,7 @@ import type { JobType, RunnerType } from '../db/schema.js';
 export const PIPELINE_REGISTRY_VERSION = 8;
 
 export const RUNNER_CAPABILITIES: Record<RunnerType, readonly JobType[]> = {
-  'claude-code': ['drive', 'smoke', 'release_batch', 'reconcile', 'verify_skill', 'onboarding'],
+  'claude-code': ['drive', 'smoke', 'release_batch', 'onboarding'],
 };
 
 export interface PipelineRegistryPayload {

@@ -5,7 +5,6 @@ export default defineConfig({
   schema: [
     './src/db/schema.ts',
     './src/db/schema-activity.ts',
-    './src/db/schema-admin-thresholds.ts',
     './src/db/schema-journal.ts',
     './src/db/schema-master-charter.ts',
     './src/db/schema-master-passes.ts',
@@ -42,9 +41,7 @@ export default defineConfig({
     './src/db/schema-conversations.ts',
     './src/db/schema-transcript-index.ts',
     './src/db/schema-agent-selves.ts',
-    './src/db/schema-project-facts-backup.ts',
     './src/db/schema-repo-projection.ts',
-    './src/db/schema-runner-release.ts',
     './src/db/schema-pat-fence-changes.ts',
   ],
   out: './drizzle/migrations',

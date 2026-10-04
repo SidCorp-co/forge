@@ -27,7 +27,7 @@ import { type ChatToolset, toolError, toolResultText } from './tools/mcp-adapter
 
 export const MAX_TOOL_ITERATIONS = 16;
 
-/** What `chat_logs.tool_calls` keeps of a result: enough to see what the model was shown, never the full 24k body. */
+/** What a tool call record keeps of a result: enough to see what the model was shown, never the full 24k body. */
 const RESULT_PREVIEW_CHARS = 500;
 /** Not preceded by `<word>-`, so the tail of a channel number (UQ-CR-3) is not an issue CR-3. */
 const RESULT_ISSUE_REF_RE = /(?<![A-Za-z0-9]-)\b[A-Za-z][A-Za-z0-9]{1,5}-\d{1,6}\b/g;
@@ -73,7 +73,7 @@ export type PreCall = (
   ctx: PreCallContext,
 ) => Promise<CallToolResult | null>;
 
-/** One tool call as audited in `chat_logs.tool_calls`; `name`/`arguments` are what the model emitted, the rest is what happened to it. */
+/** One tool call as the turn records it; `name`/`arguments` are what the model emitted, the rest is what happened to it. */
 export interface ToolCallRecord {
   name: string;
   arguments: string;
@@ -101,14 +101,6 @@ export interface TurnCoreResult {
   elided: ElisionReport;
   terminal: 'done' | 'error';
   errorMessage: string | null;
-}
-
-/** The `chat_logs.usage` jsonb: token counts plus, only when something was elided, the report — a row with no `elided` key means nothing was. */
-export function usageForLog(result: TurnCoreResult): Record<string, unknown> | null {
-  const { historyMessages, truncatedToolResults, overBudget } = result.elided;
-  const elided = historyMessages > 0 || truncatedToolResults > 0 || overBudget;
-  const out = { ...result.usage, ...(elided ? { elided: result.elided } : {}) };
-  return Object.keys(out).length > 0 ? out : null;
 }
 
 interface CollectedToolCall {

@@ -16,7 +16,6 @@ import { scheduleRuns } from './schema-schedule-runs.js';
 export const notificationTypes = [
   'issue_status_changed',
   'mention',
-  'pm_escalation',
   // ISS-452 (ISS-442 C6 / I7) — a loop-monitor hop miss / non-progressing
   // pipeline state surfaced to the project owner (see pipeline/wedge.ts).
   'pipeline_wedge',
@@ -27,7 +26,6 @@ export const notificationTypes = [
   // ISS-618 — a script-kind schedule's ctx.notify() payload delivered to the
   // owner (report/API-check results with no LLM involved).
   'schedule_report',
-  'reconcile_gate_pending',
   'issue_stranded',
   'retry_rescue_threshold',
   'ops_alert',
@@ -156,30 +154,6 @@ export const notificationDeliveryMembers = pgTable(
   (t) => ({
     pk: primaryKey({ columns: [t.deliveryId, t.notificationId] }),
     notificationIdx: index('notification_delivery_members_notification_idx').on(t.notificationId),
-  }),
-);
-
-/**
- * ISS-1063 — Alertmanager's silences: a matcher and a deadline, so an operator already
- * working on something can stop being told about it without turning a type off for
- * everybody and without anything having to remember to turn it back on.
- */
-export const notificationSilences = pgTable(
-  'notification_silences',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    createdBy: uuid('created_by')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    type: text('type', { enum: notificationTypes }),
-    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
-    resolutionKey: text('resolution_key'),
-    reason: text('reason').notNull(),
-    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    activeIdx: index('notification_silences_active_idx').on(t.expiresAt, t.type),
   }),
 );
 

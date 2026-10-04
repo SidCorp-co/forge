@@ -102,7 +102,7 @@ fn release(run_id: &str) -> anyhow::Result<()> {
 fn retract(led: &mut Ledger, run_id: &str) -> anyhow::Result<String> {
     let Some(run) = led.run(run_id)? else {
         anyhow::bail!(
-            "no run {run_id} on this box — `forge-runner status --watch` shows the runs holding an issue, and `forge-runner status` the runs no master answers for"
+            "no run {run_id} on this box — `forge-runner status` shows the runs no master answers for"
         );
     };
     let Some(why) = run.release_refusal.clone() else {

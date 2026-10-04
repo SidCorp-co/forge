@@ -1,7 +1,7 @@
 
 import type { NeedsYouProjectItem } from "@/features/needs-you/types";
 
-export type AttentionKind = "mention" | "failed_job" | "pending_skill_update" | "runner_offline" | "channel_gate";
+export type AttentionKind = "mention" | "failed_job" | "runner_offline" | "channel_gate";
 
 export interface AttentionItem {
   kind: AttentionKind;
@@ -23,7 +23,6 @@ export interface AttentionResponse {
   needsYou: NeedsYouProjectItem[];
   mentions: AttentionItem[];
   failedJobs: AttentionItem[];
-  pendingSkillUpdates: AttentionItem[];
   channelGates: AttentionItem[];
   total: number;
 }

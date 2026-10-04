@@ -1,5 +1,4 @@
 export { resolveNotifications } from './auto-resolve.js';
-export { closeEscalationTasks } from './close-escalation.js';
 export { deliverExisting } from './deliver.js';
 export { emitNotification, insertTypedNotificationRecord } from './emit.js';
 export { registerNotifyMentionsSubscriber } from './notify-mentions.js';

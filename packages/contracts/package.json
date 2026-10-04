@@ -262,10 +262,6 @@
       "types": "./dist/schedule-run-machine.d.ts",
       "default": "./dist/schedule-run-machine.js"
     },
-    "./reconcile-run-machine": {
-      "types": "./dist/reconcile-run-machine.d.ts",
-      "default": "./dist/reconcile-run-machine.js"
-    },
     "./runner-machine": {
       "types": "./dist/runner-machine.d.ts",
       "default": "./dist/runner-machine.js"
@@ -350,10 +346,6 @@
       "types": "./dist/projects.d.ts",
       "default": "./dist/projects.js"
     },
-    "./prompt": {
-      "types": "./dist/prompt.d.ts",
-      "default": "./dist/prompt.js"
-    },
     "./questions": {
       "types": "./dist/questions.d.ts",
       "default": "./dist/questions.js"
@@ -381,10 +373,6 @@
     "./repo-path": {
       "types": "./dist/repo-path.d.ts",
       "default": "./dist/repo-path.js"
-    },
-    "./pm": {
-      "types": "./dist/pm.d.ts",
-      "default": "./dist/pm.js"
     },
     "./refusal-statuses": {
       "types": "./dist/refusal-statuses.d.ts",

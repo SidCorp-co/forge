@@ -11,13 +11,7 @@ import {
 } from '../middleware/auth.js';
 import { onAdminList, requireAdmin } from '../middleware/require-admin.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import {
-  listAdminAudit,
-  listAdminDevices,
-  listAdminProjects,
-  listAdminUsers,
-  readRetrievalBreakdown,
-} from './read.js';
+import { listAdminAudit, listAdminDevices, listAdminProjects, listAdminUsers } from './read.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -30,11 +24,6 @@ const devicesQuerySchema = paginationSchema.extend({
   status: z.enum(deviceStatuses).optional(),
 });
 
-const retrievalBreakdownQuerySchema = z.object({
-  projectId: z.uuid(),
-  since: z.iso.datetime().optional(),
-});
-
 const auditQuerySchema = paginationSchema.extend({
   action: z.string().trim().min(1).max(100).optional(),
   actorId: z.uuid().optional(),
@@ -45,23 +34,6 @@ export const adminRoutes = new Hono<{ Variables: AuthVars }>();
 
 const adminProtected = new Hono<{ Variables: AuthVars }>();
 adminProtected.use('*', requireAuth(), assertEmailVerified(), requireAdmin());
-
-const RETRIEVAL_BREAKDOWN_DEFAULT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-
-adminProtected.get(
-  '/retrieval/breakdown',
-  zValidator('query', retrievalBreakdownQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { projectId, since } = c.req.valid('query');
-    const sinceDate = since
-      ? new Date(since)
-      : new Date(Date.now() - RETRIEVAL_BREAKDOWN_DEFAULT_WINDOW_MS);
-    const rows = await readRetrievalBreakdown(projectId, sinceDate);
-    return c.json({ projectId, since: sinceDate.toISOString(), strategies: rows });
-  },
-);
 
 adminProtected.get(
   '/users',
@@ -132,6 +104,3 @@ adminRoutes.route('/', adminProtected);
 
 export { adminAggregateRoutes } from './aggregate-routes.js';
 export { adminAlertRoutes } from './alert-routes.js';
-export { adminMcpAuditRoutes } from './mcp-audit-routes.js';
-export { adminMetricSeriesRoutes } from './metric-series-routes.js';
-export { pipelineHealthAdminRoutes } from './pipeline-health-routes.js';

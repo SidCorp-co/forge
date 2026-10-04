@@ -23,7 +23,7 @@ call sits now.
 | embeddings/client.ts, embeddings/index.ts | `packages/core/src/integrations/embeddings/` | the embeddings endpoint |
 | the transports in auth/email.ts and projects/invitation-email.ts | `packages/core/src/integrations/mail/smtp.ts` | two `nodemailer` transports, built twice from the same `SMTP_*` |
 | auth/oauth/github.ts, oidc-discovery.ts, oidc-provider.ts | `packages/core/src/integrations/identity/` | GitHub OAuth, Google and generic OIDC |
-| webhooks/outbound.ts | `packages/core/src/integrations/outbound-webhooks/delivery.ts` | a customer's webhook URL |
+| webhooks/outbound.ts | deleted in ISS-220, with no subscriber left | a customer's webhook URL |
 | install/fetch-release.ts, install/main-runner-head.ts | `packages/core/src/integrations/published-releases/fetch-release.ts`, `packages/core/src/integrations/published-releases/main-runner-head.ts`, over `packages/core/src/integrations/published-releases/public-releases.ts` | `api.github.com` releases and commits |
 | the download in ecosystem/contract/oasdiff.ts | `packages/core/src/integrations/published-releases/public-releases.ts` | a pinned binary download from `github.com` — not a remote spec |
 | lib/runtime-probe.ts, and the global `fetch` project-config/environment-state-read.ts handed it | `packages/core/src/integrations/deploy/runtime-probe.ts` | a project's deployed app, through its declared runtime probe — found by the rule below, not by the hand list |
@@ -50,14 +50,11 @@ a vendor SDK, a `fetch` to a vendor host, or a vendor's types.
 | storefront | `epodsystem`, `autoflow` | ePodSystem, Autoflow | a project's binding |
 | documents | `google` | Google Sheets | a project's binding |
 | chat | `rocketchat` | Rocket.Chat | a project's binding |
-| contract testing | `postman` | Postman | a project's binding |
 | LLM | `llm` | any OpenAI-compatible endpoint (LiteLLM), Anthropic Messages | the deployment |
 | embeddings | `embeddings` | any OpenAI-compatible endpoint | the deployment |
 | mail | `mail` | SMTP | the deployment |
 | identity | `identity` | GitHub OAuth, Google, generic OIDC | the deployment |
-| outbound webhooks | `outbound-webhooks` | a customer's URL | a project's webhook row |
 | paired runner box | `published-releases`, for the published build; the box itself dials in | GitHub releases | the deployment |
-| runner release publishing | `github` | GitHub (tags, releases and the release workflow) | a project's binding |
 
 The same vendor may serve two roles — GitHub hosts source and signs people in — and is then two
 adapters, one per port. `packages/core/src/integrations/README.md` holds this table with each port's callers, and is
@@ -90,7 +87,6 @@ sentence that justifies it, and an exception with no reason is refused.
   system for a port to name, and the sandbox is the boundary.
 - **`packages/core/src/observability/sentry.ts`** — Forge's own crash reporting, initialised at boot before any domain
   loads. It is the one module importing `@sentry/node`.
-- **`packages/core/src/assistant/bench-assistant.ts`** — a command-line harness driving Forge's own API as a client.
 - **The runner protocol** (the `ws`, `devices` and `runners` modules of core) is not under `integrations`: the paired box
   dials in to Forge over Forge's own contract in `packages/contracts`, so nothing there reaches out.
 - **The git binary** (`packages/core/src/git/remote-divergence.ts`) speaks the git protocol to the source host with a

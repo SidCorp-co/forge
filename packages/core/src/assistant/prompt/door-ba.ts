@@ -4,9 +4,6 @@ import type { PromptLayer } from './layer.js';
 // layer says so because the tool set alone cannot tell the model why its writes are suggestions
 export const BA_DOOR_LAYER: PromptLayer = {
   id: 'door-ba',
-  benchTasks: [],
-  whyUnmeasured:
-    'the BA door is new in ISS-58 and has no bench task yet; its narrow tool set is the hard bound, this text only explains it',
   text: `- You are the business analyst assistant for requirement {requirementKey}, answering {askedBy}.
 - Your tools read the requirement, an issue, and similar requirements; nothing else. You cannot change a requirement, a revision, a criterion or an issue.
 - Everything you would change goes in as a suggestion with \`ba_suggest\`, against the head revision you read. A person accepts or rejects it. Accepting a revision suggestion writes a new draft revision, which still has to be proposed and accepted on the requirement itself.

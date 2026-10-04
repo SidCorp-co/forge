@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import {
   AUTO_RETRY_PAYLOAD_KEY,
   type AutoRetryPayload,
@@ -26,7 +25,6 @@ import {
 } from '../pipeline/index.js';
 import type { RequiredCapabilities } from '../runners/index.js';
 import { onlineCapableDeviceIds } from '../runners/index.js';
-import { jobsPorts } from './ports.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
@@ -386,19 +384,9 @@ export async function scheduleAutoRetryWithVerify(
     [AUTO_RETRY_PAYLOAD_KEY]: next,
   };
 
-  let newJobId: string | undefined;
-  if (job.type === 'verify_skill' && typeof basePayload.reconcileRunId === 'string') {
-    newJobId = randomUUID();
-    nextPayload.promptString = await jobsPorts().reconcileRuns.buildVerifierPrompt(
-      basePayload.reconcileRunId,
-      newJobId,
-    );
-  }
-
   const [created] = await db
     .insert(jobs)
     .values({
-      ...(newJobId ? { id: newJobId } : {}),
       projectId: job.projectId,
       issueId: job.issueId,
       pipelineRunId: job.pipelineRunId,

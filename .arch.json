@@ -8,9 +8,6 @@
     "core-agent-sessions": [
       "packages/core/src/agent-sessions/**"
     ],
-    "core-agents": [
-      "packages/core/src/agents/**"
-    ],
     "core-app-config": [
       "packages/core/src/app-config/**"
     ],
@@ -25,12 +22,6 @@
     ],
     "core-branches": [
       "packages/core/src/branches/**"
-    ],
-    "core-chat-logs": [
-      "packages/core/src/chat-logs/**"
-    ],
-    "core-cli": [
-      "packages/core/src/cli/**"
     ],
     "core-comments": [
       "packages/core/src/comments/**"
@@ -55,9 +46,6 @@
     ],
     "core-runs": [
       "packages/core/src/runs/**"
-    ],
-    "core-domain-templates": [
-      "packages/core/src/domain-templates/**"
     ],
     "core-embeddings": [
       "packages/core/src/embeddings/**"
@@ -175,9 +163,6 @@
     ],
     "core-tasks": [
       "packages/core/src/tasks/**"
-    ],
-    "core-update-packets": [
-      "packages/core/src/update-packets/**"
     ],
     "core-uploads": [
       "packages/core/src/uploads/**"

@@ -125,11 +125,7 @@ export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
     auth: 'installation',
     permission: 'metadata',
     level: 'read',
-    callSites: [
-      'adapter.ts:healthcheck',
-      'runner-release-repo.ts:readDefaultBranch',
-      'runner-release-repo.ts:readDefaultBranch',
-    ],
+    callSites: ['adapter.ts:healthcheck'],
     docs: `${REST}/repos/repos#get-a-repository`,
   },
   {
@@ -169,15 +165,6 @@ export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
     docs: `${REST}/checks/runs#get-a-check-run`,
   },
   {
-    path: '/repos/:p/:p/commits/:p',
-    method: 'GET',
-    auth: 'installation',
-    permission: 'contents',
-    level: 'read',
-    callSites: ['runner-release-repo.ts:readCommitSha'],
-    docs: `${REST}/commits/commits#get-a-commit`,
-  },
-  {
     path: '/repos/:p/:p/commits/:p/check-runs',
     method: 'GET',
     auth: 'installation',
@@ -201,7 +188,7 @@ export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
     auth: 'installation',
     permission: 'contents',
     level: 'read',
-    callSites: ['runner-release-repo.ts:readFileAtRef', 'source-host.ts:readFileAt'],
+    callSites: ['source-host.ts:readFileAt'],
     docs: `${REST}/repos/contents#get-repository-content`,
   },
   {
@@ -212,42 +199,6 @@ export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
     level: 'read',
     callSites: ['source-host.ts:readFileAt'],
     docs: `${REST}/git/blobs#get-a-blob`,
-  },
-  {
-    path: '/repos/:p/:p/git/ref/tags/:p',
-    method: 'GET',
-    auth: 'installation',
-    permission: 'contents',
-    level: 'read',
-    callSites: ['runner-release-repo.ts:readTagRef'],
-    docs: `${REST}/git/refs#get-a-reference`,
-  },
-  {
-    path: '/repos/:p/:p/git/refs',
-    method: 'POST',
-    auth: 'installation',
-    permission: 'contents',
-    level: 'write',
-    callSites: ['runner-release-repo.ts:createTagRef'],
-    docs: `${REST}/git/refs#create-a-reference`,
-  },
-  {
-    path: '/repos/:p/:p/git/tags',
-    method: 'POST',
-    auth: 'installation',
-    permission: 'contents',
-    level: 'write',
-    callSites: ['runner-release-repo.ts:createTagRef'],
-    docs: `${REST}/git/tags#create-a-tag-object`,
-  },
-  {
-    path: '/repos/:p/:p/git/tags/:p',
-    method: 'GET',
-    auth: 'installation',
-    permission: 'contents',
-    level: 'read',
-    callSites: ['runner-release-repo.ts:readTagRef'],
-    docs: `${REST}/git/tags#get-a-tag`,
   },
   {
     path: '/repos/:p/:p/issues/:p/comments',
@@ -308,15 +259,6 @@ export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
     callSites: ['agent-ops.ts:submitReview'],
     docs: `${REST}/pulls/reviews#create-a-review-for-a-pull-request`,
   },
-  {
-    path: '/repos/:p/:p/releases/tags/:p',
-    method: 'GET',
-    auth: 'installation',
-    permission: 'contents',
-    level: 'read',
-    callSites: ['runner-release-repo.ts:readReleaseForTag'],
-    docs: `${REST}/releases/releases#get-a-release-by-tag-name`,
-  },
 ] as const;
 
 export interface GitHubEventSubscription {
@@ -360,13 +302,6 @@ export const GITHUB_EVENT_SUBSCRIPTIONS: readonly GitHubEventSubscription[] = [
     level: 'read',
     handler: 'projection-events.ts:applyProjectedEvent',
     docs: `${EVENT_DOCS}#push`,
-  },
-  {
-    event: 'workflow_run',
-    permission: 'actions',
-    level: 'read',
-    handler: 'projection-events.ts:applyProjectedEvent',
-    docs: `${EVENT_DOCS}#workflow_run`,
   },
 ] as const;
 

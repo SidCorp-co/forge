@@ -7,7 +7,6 @@ import type {
   ScheduleRunStatus,
   ScheduleRunTrigger,
 } from '@forge/contracts/schedules';
-import type { AdminThresholds } from '../db/schema-admin-thresholds.js';
 
 export interface LastFire {
   id: string;
@@ -34,7 +33,8 @@ export interface AutomationPorts {
     triaged: number;
   }) => Promise<AgentReportView[]>;
   reportRow: (projectId: string, reportId: string) => Promise<AgentReportView[]>;
-  readThresholds: () => Promise<AdminThresholds>;
+  /** The admin thresholds; the read model uses only the schedule fail streak. */
+  readThresholds: () => Promise<{ scheduleFailStreak: number }>;
   lastFires: (projectId: string, scheduleIds?: readonly string[]) => Promise<Map<string, LastFire>>;
   readScheduleStreaks: (scope?: {
     projectId?: string;

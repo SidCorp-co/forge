@@ -24,7 +24,6 @@ export const OUTBOX_EVENT_TYPES = [
 	"notification.read",
 	"user.preferencesChanged",
 	"skill.syncRequested",
-	"skill.registered",
 	"skill.globalUpdated",
 	"runner.provisionRequested",
 	"runner.provisionStatus",
@@ -229,8 +228,6 @@ export interface OutboxEventPayloads {
 		/** The actionable blocker or child of a dependency-stall wedge, beside the wedged `issueId`. */
 		secondaryIssueId?: string | null;
 		agentSessionId: string | null;
-		/** Set on a `pm_escalation`. */
-		decisionId?: string | null;
 	};
 	"notification.read": { notificationId: string; userId: string };
 	"user.preferencesChanged": {
@@ -245,12 +242,6 @@ export interface OutboxEventPayloads {
 		deviceIds: string[];
 		skillNames: string[] | null;
 		actorUserId: string;
-	};
-	"skill.registered": {
-		projectId: string;
-		skillId: string;
-		actorUserId: string;
-		stage: string | null;
 	};
 	"skill.globalUpdated": {
 		name: string;

@@ -19,7 +19,6 @@ import {
 } from '../source-host/index.js';
 import { buildRepoClient, GitHubClientError, type GitHubRepoClient } from './client.js';
 import { refreshStoredPullRequest } from './projection-refresh.js';
-import { applyWorkflowRunEvent, type WorkflowRunPayload } from './runner-release-events.js';
 import type { GitHubConfig, GitHubSecrets } from './types.js';
 
 /** The events this projection is built from. Anything else falls through. */
@@ -28,7 +27,6 @@ export const PROJECTED_EVENTS = [
   'check_run',
   'pull_request_review',
   'push',
-  'workflow_run',
 ] as const;
 
 export type ProjectedEvent = (typeof PROJECTED_EVENTS)[number];
@@ -184,8 +182,6 @@ export async function applyProjectedEvent(
       return onReview(ctx, payload as ReviewPayload);
     case 'push':
       return onPush(ctx, payload as PushPayload);
-    case 'workflow_run':
-      return applyWorkflowRunEvent(ctx, payload as WorkflowRunPayload);
   }
 }
 

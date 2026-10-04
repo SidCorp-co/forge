@@ -160,8 +160,6 @@ projectRoutes.patch(
     }
 
     const agentConfigPatch: AgentConfigKeyPatch = {};
-    if (patch.assistantWeekly !== undefined)
-      agentConfigPatch.assistantWeekly = patch.assistantWeekly;
 
     const updated = await updateProjectSettings(id, userId, {
       orgId,

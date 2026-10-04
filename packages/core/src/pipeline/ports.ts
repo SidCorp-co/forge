@@ -98,7 +98,6 @@ export interface PipelinePorts {
   killGraceMs: () => number;
   parkedOnAHuman: (sessionId: SQL) => SQL;
   requestJobKill: (job: KillableJob, reason: string) => Promise<string>;
-  failReconcileRunForFailedJob: (job: { type: string; payload: unknown }) => Promise<void>;
   gateReasonsForQueuedJobsIn: (
     projectIds: readonly string[],
   ) => Promise<ReadonlyMap<string, string>>;
@@ -184,8 +183,6 @@ export const parkedOnAHuman: PipelinePorts['parkedOnAHuman'] = (sessionId) =>
   pipelinePorts().parkedOnAHuman(sessionId);
 export const requestJobKill: PipelinePorts['requestJobKill'] = (job, reason) =>
   pipelinePorts().requestJobKill(job, reason);
-export const failReconcileRunForFailedJob: PipelinePorts['failReconcileRunForFailedJob'] = (job) =>
-  pipelinePorts().failReconcileRunForFailedJob(job);
 export const gateReasonsForQueuedJobsIn: PipelinePorts['gateReasonsForQueuedJobsIn'] = (ids) =>
   pipelinePorts().gateReasonsForQueuedJobsIn(ids);
 export const readRunGate: PipelinePorts['readRunGate'] = (metadata, runId) =>

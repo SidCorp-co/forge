@@ -14,6 +14,5 @@ export const DEVICE_LIST_COLUMNS = {
   pairedAt: devices.pairedAt,
   capabilities: devices.capabilities,
   gateReport: devices.gateReport,
-  gitCredentialRef: devices.gitCredentialRef,
   createdAt: devices.createdAt,
 };

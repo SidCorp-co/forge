@@ -1,6 +1,5 @@
-// A retry's prompt is the PARENT's prompt string, copied verbatim by `retry.ts` — only
-// `verify_skill` rebuilds it. So the "what did the last attempt do" block cannot be produced at
-// enqueue time by `buildJobPromptString`; it is spliced in at dispatch time, the same way
+// A retry's prompt is the PARENT's prompt string, copied verbatim by `retry.ts`. So the "what did
+// the last attempt do" block cannot be produced at enqueue time; it is spliced in at dispatch time, the same way
 // `injectTurnLevelRules` is.
 
 import { scrubLogText } from '@forge/observability';
@@ -134,9 +133,8 @@ function salvageLine(s: SalvageRecord): string | null {
 /**
  * Render the `## Previous attempt failed` block.
  *
- * A POINTER, never an inlining: `prompt/user.ts` truncates `description` at
- * `DEFAULT_FIELD_CAPS.description` before an agent reads it, so pasting a transcript in here
- * would evict the requirements rather than merely bloat them. Returns `''` when there is nothing
+ * A POINTER, never an inlining: pasting a transcript in here would evict the requirements
+ * rather than merely bloat them. Returns `''` when there is nothing
  * to say, so the caller can splice unconditionally.
  */
 export function renderPriorAttemptsBlock(attempts: PriorAttempt[], currentAttempt: number): string {

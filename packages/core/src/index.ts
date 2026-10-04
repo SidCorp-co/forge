@@ -18,8 +18,6 @@ import { runOnceBackfills } from './boot-backfills.js';
 import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
-import { stampGitCredentialRef } from './devices/index.js';
-import { seedDomainTemplates } from './domain-templates/index.js';
 import {
   contractProviderShortfalls,
   interfaceContractsOf,
@@ -29,12 +27,10 @@ import {
 import { provideAdmissionThresholds } from './error-intake/index.js';
 import { provideExecutionPorts } from './execution-ports.js';
 import { provideFeedbackDependents, requirementFeedbackAs } from './feedback/index.js';
-import { provideGitCredentialStamp } from './git/index.js';
 import { provideAssistantMethod } from './guides/index.js';
 import { registerAllIntegrations } from './integration-registry.js';
 import { assertVaultBootSafety, provideForgeReads } from './integrations/index.js';
 import { bootstrapChatProviders } from './integrations/llm/index.js';
-import { registerOutboundDeliveryWorker } from './integrations/outbound-webhooks/index.js';
 import {
   refreshMainRunnerHead,
   servesRunnerReleases,
@@ -145,7 +141,6 @@ provideIssueFactReads({
 provideOutboxGate(async (userId, permission, projectId, act) => {
   await requireCan(actorFor(userId), permission, projectResource(projectId), act);
 });
-provideGitCredentialStamp(stampGitCredentialRef);
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,
   issueForHeadRef: (projectId, headRef) => resolveIssueForHeadRef({ projectId, headRef }),
@@ -270,7 +265,6 @@ if (isMain) {
   );
   await runOnceBackfills();
   await sweepPolicyLanded();
-  await seedDomainTemplates(db);
   bootstrapChatProviders();
   registerWebConversationAdapter();
   registerRoomChat();
@@ -280,7 +274,6 @@ if (isMain) {
   await registerMemoryReconcileWorker();
   await registerContractMeasureWorker();
   await registerReleaseBatchFinish();
-  await registerOutboundDeliveryWorker();
   registerOutboxConsumers();
   await startOutboxWorker();
 

@@ -9,7 +9,6 @@ import { epodsystem } from "./epodsystem";
 import { github } from "./github";
 import { gitlab } from "./gitlab";
 import { google } from "./google";
-import { postman } from "./postman";
 import { rocketchat } from "./rocketchat";
 import { sentry } from "./sentry";
 
@@ -47,7 +46,6 @@ export interface ProviderModule {
 /** Every provider this build knows, in the order a list renders them. */
 export const PROVIDER_MODULES: readonly ProviderModule[] = [
   coolify,
-  postman,
   epodsystem,
   sentry,
   rocketchat,

@@ -5,7 +5,7 @@ import type { Db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
 import { transition } from '../lifecycle/index.js';
 import { logger } from '../observability/logger.js';
-import { failReconcileRunForFailedJob, requestJobKill, transitionSessions } from './ports.js';
+import { requestJobKill, transitionSessions } from './ports.js';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 export type JobRow = typeof jobs.$inferSelect;
@@ -62,24 +62,6 @@ export async function cascadeCancelChildJobs(
   const deviceBySession = new Map<string, string>();
   for (const j of cancelledJobs) {
     if (j.agentSessionId && j.deviceId) deviceBySession.set(j.agentSessionId, j.deviceId);
-  }
-
-  if (!completedSuccess) {
-    const reconcileJobs = cancelledJobs.filter(
-      (j) => j.type === 'reconcile' || j.type === 'verify_skill',
-    );
-    if (reconcileJobs.length > 0) {
-      await Promise.all(
-        reconcileJobs.map((j) =>
-          failReconcileRunForFailedJob(j).catch((err) =>
-            logger.error(
-              { err, jobId: j.id, type: j.type },
-              'cascadeCancelChildJobs: failReconcileRunForFailedJob failed',
-            ),
-          ),
-        ),
-      );
-    }
   }
 
   if (abortedSessionIds.length > 0) {

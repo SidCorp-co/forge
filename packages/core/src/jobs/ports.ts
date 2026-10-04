@@ -33,12 +33,6 @@ export interface RecordSkillActivityEventInput {
 
 /** The skills domain's audit trail, written inside the caller's transaction. */
 export interface SkillActivityPort {
-  resolvePacketIdForHash(
-    executor: SkillActivityExecutor,
-    projectId: string,
-    skillId: string,
-    hash: string,
-  ): Promise<string | undefined>;
   recordSkillActivityEvent(
     executor: SkillActivityExecutor,
     input: RecordSkillActivityEventInput,
@@ -96,17 +90,6 @@ export interface JobContextPort {
   ): Promise<void>;
 }
 
-/** The skills domain's reconcile runs, which a reconcile or verify job carries out. */
-export interface ReconcileRunPort {
-  failReconcileRunForFailedJob(job: { type: string; payload: unknown }): Promise<void>;
-  failReconcileRunIfNoVerdictRecorded(job: {
-    id: string;
-    type: string;
-    payload: unknown;
-  }): Promise<void>;
-  buildVerifierPrompt(runId: string, jobId: string): Promise<string>;
-}
-
 /** One MCP server a granted integration binding produced. */
 export interface ProducedMcpServer {
   name: string;
@@ -117,7 +100,6 @@ export interface JobsPorts {
   skillActivity: SkillActivityPort;
   dispatchPolicy: DispatchPolicyPort;
   jobContext: JobContextPort;
-  reconcileRuns: ReconcileRunPort;
   vault: { isVaultConfigured(): boolean; decryptSecret(enc: Buffer): string };
   mcpServers: {
     applyGrantedMcpServers(

@@ -1,10 +1,9 @@
-import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { NotificationType } from '../db/schema.js';
 import {
   notificationDeliveries,
   notificationDeliveryMembers,
-  notificationSilences,
   notifications,
   userPreferences,
 } from '../db/schema.js';
@@ -40,37 +39,12 @@ export interface DeliverInput {
   /** The condition's identity. Two emissions sharing it are one condition. */
   resolutionKey?: string | null;
   dedupeKey?: string | null;
-  decisionId?: string | null;
   /** Records raised by one evaluation share this and reach a reader as one delivery. */
   groupKey?: string | null;
   /** What that one delivery is called. Ignored when `groupKey` is absent. */
   groupTitle?: string | null;
 }
 
-/** A silence THIS reader set that covers this record. */
-async function silencedFor(userId: string, input: DeliverInput, now: Date): Promise<boolean> {
-  const rows = await db
-    .select({ id: notificationSilences.id })
-    .from(notificationSilences)
-    .where(
-      and(
-        eq(notificationSilences.createdBy, userId),
-        gt(notificationSilences.expiresAt, now),
-        sql`(${notificationSilences.type} IS NULL OR ${notificationSilences.type} = ${input.type})`,
-        sql`(${notificationSilences.projectId} IS NULL OR ${notificationSilences.projectId} = ${input.projectId ?? null})`,
-        sql`(${notificationSilences.resolutionKey} IS NULL OR ${notificationSilences.resolutionKey} = ${input.resolutionKey ?? null})`,
-      ),
-    )
-    .limit(1);
-  return rows.length > 0;
-}
-
-/**
- * The firing record that suppresses this one, if any.
- *
- * Scope is the project: a wedge naming a project's pipeline is the cause of that
- * project's stranded parks, and reporting both is reporting one thing twice.
- */
 async function inhibitor(input: DeliverInput): Promise<string | null> {
   const sources = inhibitorsOf(input.type);
   if (sources.length === 0 || !input.projectId) return null;
@@ -120,13 +94,6 @@ async function activeRecord(input: DeliverInput) {
 async function deliverTo(recordId: string, input: DeliverInput, now: Date): Promise<number> {
   let told = 0;
   for (const userId of input.recipients) {
-    if (await silencedFor(userId, input, now)) {
-      logger.info(
-        { type: input.type, projectId: input.projectId, userId },
-        'notifications: silenced for this reader, nobody told',
-      );
-      continue;
-    }
     if (!(await wantsDelivery(userId, input.type))) continue;
     const [already] = await db
       .select({ id: notificationDeliveries.id })
@@ -195,7 +162,6 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
         issueId: input.issueId ?? null,
         secondaryIssueId: input.secondaryIssueId ?? null,
         agentSessionId: input.agentSessionId ?? null,
-        decisionId: input.decisionId ?? null,
       });
       return true;
     });
@@ -222,12 +188,8 @@ async function wantsDelivery(userId: string, type: NotificationType): Promise<bo
 }
 
 /**
- * Deliver a record that already exists, to a recipient list.
- *
- * The one producer that needs this is `pm/auto-disable.ts`, whose record must land inside
- * the transaction that disables the cadence while the delivery must not: a delivery that
- * fails should not roll back the disable it was announcing. Everything else goes through
- * {@link recordAndDeliver}, which writes both.
+ * Deliver a record that already exists, to a recipient list. Everything that writes the record
+ * and its delivery together goes through {@link recordAndDeliver}.
  */
 export async function deliverExisting(
   recordId: string,

@@ -134,7 +134,6 @@
       ],
       "providers": [
         "coolify",
-        "postman",
         "epodsystem",
         "sentry",
         "rocketchat",
@@ -153,10 +152,6 @@
         {
           "glob": "packages/core/src/integrations/coolify/**",
           "why": "The provider's own directory \u2014 the one place ISS-1071 puts a provider's name. Everything here is ABOUT coolify and no generic path reads it."
-        },
-        {
-          "glob": "packages/core/src/integrations/postman/**",
-          "why": "The provider's own directory \u2014 the one place ISS-1071 puts a provider's name. Everything here is ABOUT postman and no generic path reads it."
         },
         {
           "glob": "packages/core/src/integrations/epodsystem/**",
@@ -244,7 +239,7 @@
         },
         {
           "glob": "packages/core/src/integration-door/*-routes.ts",
-          "why": "The integration door's per-provider route modules (ISS-167): `coolify-routes.ts`, `github-connect-routes.ts` and `postman-target-routes.ts` are each ABOUT the provider they are named for, mounted by the route registry and read by no generic path. They left the provider directories because an adapter holds no HTTP door; the name came with them."
+          "why": "The integration door's per-provider route modules (ISS-167): `coolify-routes.ts` and `github-connect-routes.ts` are each ABOUT the provider they are named for, mounted by the route registry and read by no generic path. They left the provider directories because an adapter holds no HTTP door; the name came with them."
         },
         {
           "glob": "packages/core/src/release-batch/coolify-*.ts",

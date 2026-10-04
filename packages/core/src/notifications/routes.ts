@@ -8,13 +8,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { zValidator } from '../middleware/zod-validator.js';
 import { listDeliveries } from './deliveries-read.js';
 import { deliveryMembers, openNotificationCount } from './read.js';
-import {
-  closeDeliveryTasks,
-  deleteDelivery,
-  markAllDeliveriesRead,
-  setDeliveryRead,
-} from './service.js';
-import { silenceRoutes } from './silences-routes.js';
+import { deleteDelivery, markAllDeliveriesRead, setDeliveryRead } from './service.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -42,7 +36,6 @@ const refuse = refuser<NotificationRefusalCode>('NOTIFICATION_REFUSED');
 
 export const notificationRoutes = new Hono<{ Variables: AuthVars }>();
 notificationRoutes.use('*', requireAuth(), assertEmailVerified());
-notificationRoutes.route('/silences', silenceRoutes);
 
 /**
  * How many things are still true for the caller.
@@ -140,26 +133,6 @@ notificationRoutes.get(
   },
 );
 
-/** Close the tasks this delivery carries. A condition is not reachable from here. */
-async function closeTasks(deliveryId: string, userId: string, to: 'done' | 'dismissed') {
-  const closed = await closeDeliveryTasks(deliveryId, userId, to);
-  if (!closed) throw notFound('notification not found');
-  return closed;
-}
-
-for (const [path, state] of [
-  ['/:id/done', 'done'],
-  ['/:id/dismiss', 'dismissed'],
-] as const) {
-  notificationRoutes.post(
-    path,
-    zValidator('param', idParamSchema, (r) => {
-      if (!r.success) throw badRequest(r.error);
-    }),
-    async (c) => c.json(await closeTasks(c.req.valid('param').id, c.get('userId'), state)),
-  );
-}
-
 notificationRoutes.delete(
   '/:id',
   zValidator('param', idParamSchema, (r) => {
@@ -176,8 +149,7 @@ notificationRoutes.delete(
         'CONDITION_STILL_TRUE',
         `This notification carries a condition that is still true — '${live.title}' ` +
           `(${live.type}) — and deleting it would only mean being told again on the next ` +
-          'sweep. A condition ends when the system sees it end. To stop hearing about it ' +
-          'meanwhile, POST /api/notifications/silences with a matcher and an expiry.',
+          'sweep. A condition ends when the system sees it end.',
       );
     }
     return c.body(null, 204);

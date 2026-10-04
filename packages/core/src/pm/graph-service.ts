@@ -1,5 +1,5 @@
 /**
- * The dependency / parent-child graph the PM agent inspects when reasoning
+ * The dependency / parent-child graph a planner inspects when reasoning
  * about blockers, parallelism and epic structure. Every edge comes from
  * `issue_dependencies` (kind = blocks / relates / duplicates / parent).
  *

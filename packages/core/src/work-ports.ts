@@ -72,11 +72,8 @@ import { provideLabelPorts, refreshModuleKnowledgeForIssue } from './labels/inde
 import { deleteMemory, retrievalAnalyticsRetention, runMemorySearch } from './memory/index.js';
 import { buildInterventionsReport, retryRescuesSince } from './metrics/index.js';
 import {
-  closeEscalationTasks,
   createNotification,
-  deliverExisting,
   emitNotification,
-  insertTypedNotificationRecord,
   projectAdminUserIds,
   projectAdminUserIdsFor,
   resolveNotifications,
@@ -100,7 +97,6 @@ import {
   liveReachForIssue,
   subjectOf,
 } from './projects/index.js';
-import { buildJobPromptString } from './prompt/index.js';
 import { provideQuestionnairePorts } from './questionnaires/index.js';
 import {
   askParkQuestion,
@@ -118,7 +114,6 @@ import {
 } from './requirements/index.js';
 import { runnerEventsRetention } from './runners/index.js';
 import { lastFires, readScheduleStreaks, streakFails } from './schedules/index.js';
-import { failReconcileRunForFailedJob } from './skills/index.js';
 import { getStorage, isEnoent } from './storage/index.js';
 import { provideUploadPorts } from './uploads/index.js';
 import {
@@ -150,7 +145,6 @@ export function provideWorkPorts(): void {
     killGraceMs,
     parkedOnAHuman,
     requestJobKill,
-    failReconcileRunForFailedJob,
     gateReasonsForQueuedJobsIn,
     readRunGate,
     admittedRunner: ADMITTED_RUNNER,
@@ -259,15 +253,7 @@ export function provideWorkPorts(): void {
 
   provideLabelPorts({ listFeedbackAs: (viewer, projectId) => listFeedbackAs(viewer, projectId) });
 
-  providePmPorts({
-    insertTypedNotificationRecord,
-    deliverExisting,
-    emitNotification,
-    closeEscalationTasks,
-    insertJobRow,
-    buildJobPromptString,
-    countInFlightByRunner,
-  });
+  providePmPorts({ countInFlightByRunner });
 
   provideQuestionnairePorts({
     appendMessagesIn,

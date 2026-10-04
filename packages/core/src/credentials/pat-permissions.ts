@@ -44,7 +44,6 @@ export const PAT_PERMISSION_RESOURCES = {
       '/api/issue-step-contexts': 1,
       '/api/agent-sessions': 2,
       '/api/pipeline': 2,
-      '/api/usage-records': 2,
     },
   },
   knowledge: {
@@ -56,20 +55,19 @@ export const PAT_PERMISSION_RESOURCES = {
     prefixes: {
       '/api/skills': 1,
       '/api/skill-facts': 1,
-      '/api/prompts': 1,
       '/api/skill-activity': 2,
     },
   },
   schedules: { reach: 'project', prefixes: { '/api/schedules': 1 } },
   projects: {
     reach: 'project',
-    prefixes: { '/api/projects': 1, '/api/app-config': 2, '/api/domain-templates': 2 },
+    prefixes: { '/api/projects': 1, '/api/app-config': 2 },
   },
   questions: { reach: 'project', prefixes: { '/api/questions': 1 } },
   runners: { reach: 'project', prefixes: { '/api/runners': 2 } },
   assistant: {
     reach: 'project',
-    prefixes: { '/api/agents': 2, '/api/conversations': 2, '/api/chat-logs': 2 },
+    prefixes: { '/api/conversations': 2 },
   },
   // `feedback:read`/`feedback:write` keep meaning agent reports (ISS-59 decided): product feedback
   // FB-n mounts under `/api/projects/:id/feedback`, so `projects:*` grants it as it grants
@@ -100,7 +98,6 @@ export const PAT_PERMISSION_RESOURCES = {
   orgs: { reach: 'account', prefixes: { '/api/orgs': 2, '/api/integration-connections': 2 } },
   ecosystems: { reach: 'account', prefixes: { '/api/ecosystems': 3, '/api/memberships': 3 } },
   devices: { reach: 'account', prefixes: { '/api/devices': 2 } },
-  'update-packets': { reach: 'account', prefixes: { '/api/update-packets': 2 } },
   admin: { reach: 'account', prefixes: { '/api/admin': 2 } },
 } as const satisfies Record<string, PatResourceDeclaration>;
 
@@ -115,12 +112,12 @@ export const PAT_NESTED_SURFACES = Object.freeze({
   '/api/projects/:id/metrics/retry-rescues': '/api/pipeline',
   '/api/projects/:id/metrics/interventions': '/api/pipeline',
   '/api/projects/:id/analytics': '/api/pipeline',
-  '/api/projects/:id/metrics/timeseries': '/api/usage-records',
+  '/api/projects/:id/metrics/timeseries': '/api/pipeline',
   '/api/projects/:id/runners': '/api/runners',
   '/api/projects/:id/masters/standing': '/api/agent-sessions',
   '/api/projects/:id/masters/passes': '/api/agent-sessions',
   '/api/projects/:id/automation': '/api/agent-reports',
-  '/api/issues/:id/cost-summary': '/api/usage-records',
+  '/api/issues/:id/cost-summary': '/api/pipeline',
 } as const satisfies Record<string, PatPrefix>);
 
 // cm:hack ISS-105 until:forge-plugin reads runner load at a route under /api/runners — GET

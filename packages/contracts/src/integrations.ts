@@ -34,7 +34,7 @@ export interface ConnectionSummary {
   ownerId: string;
   provider: IntegrationProvider;
   displayName: string | null;
-  /** Connection-scoped non-secret config (e.g. coolify baseUrl, postman region). */
+  /** Connection-scoped non-secret config (e.g. coolify baseUrl). */
   config: Record<string, unknown>;
   active: boolean;
   lastHealthStatus: string | null;
@@ -189,21 +189,6 @@ export type CoolifyConfigInput = {
 };
 export type CoolifySecretsInput = {
   apiToken: string;
-};
-
-export type PostmanRegion = 'us' | 'eu';
-export type PostmanMode = 'minimal' | 'full';
-
-/** Postman non-secret write-target (`connection.config`). */
-export type PostmanConfigInput = {
-  workspaceId?: string;
-  workspaceName: string;
-  collectionId?: string;
-  region: PostmanRegion;
-  mode: PostmanMode;
-};
-export type PostmanSecretsInput = {
-  apiKey: string;
 };
 
 /**
@@ -451,14 +436,6 @@ export const COOLIFY_REFUSAL_CODES = [
 export type CoolifyRefusalCode = (typeof COOLIFY_REFUSAL_CODES)[number];
 
 // Refusal codes a runner release answers in the one envelope.
-export const RUNNER_RELEASE_REFUSAL_CODES = [
-  'RUNNER_RELEASE_REFUSED',
-  'RUNNER_RELEASE_NO_REPOSITORY',
-  'RUNNER_RELEASE_ALREADY_ATTEMPTED',
-  'RUNNER_RELEASE_STOPPED',
-] as const;
-export type RunnerReleaseRefusalCode = (typeof RUNNER_RELEASE_REFUSAL_CODES)[number];
-
 /** The issue statuses an agent may filter a Sentry read by. */
 export const SENTRY_AGENT_STATUSES = ['unresolved', 'resolved', 'ignored', 'any'] as const;
 export type SentryAgentStatus = (typeof SENTRY_AGENT_STATUSES)[number];

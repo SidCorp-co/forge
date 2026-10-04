@@ -52,13 +52,13 @@ business contexts and two are technical layers.
 | 3 | `access` | Identity & access | Sign-in and users (`auth`), orgs, the permission kernel, install |
 | 4 | `project-config` | Projects & config | Projects, the project document and its revisions, assistant settings, preferences |
 | 5 | `knowledge` | Knowledge | Knowledge entries and edges, memory, item embeddings, guides, onboarding |
-| 6 | `work` | Work & delivery | Issues, the transition engine, the pipeline, comments, tasks, questions, PM, labels, uploads, error intake |
-| 7 | `execution` | Execution | Agents, sessions, jobs, runs, masters, runners, devices, prompts, skills, schedules, usage records |
+| 6 | `work` | Work & delivery | Issues, the transition engine, the pipeline, comments, tasks, questions, PM reads, labels, uploads, error intake |
+| 7 | `execution` | Execution | Sessions, jobs, runs, masters, runners, devices, prompts, skills, schedules, usage records |
 | 8 | `design` | Product design | Requirements, workflow designs, mockups, suggestions, feedback |
 | 9 | `release` | Release & deploy | Release batches |
 | 10 | `ecosystem` | Ecosystem | Ecosystems, contracts, channels, inbound webhooks |
-| 11 | `conversations` | Conversations | The assistant, conversations, chat logs, notifications |
-| 12 | `operations` | Operations | Metrics, health, the admin views and their thresholds |
+| 11 | `conversations` | Conversations | The assistant, conversations, notifications |
+| 12 | `operations` | Operations | Metrics, health, the admin views |
 
 - **Direction between contexts comes first.** A module imports modules of its own context or of a
   context listed above it in this table, never one listed below it. The order is the reading of

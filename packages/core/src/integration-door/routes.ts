@@ -62,7 +62,11 @@ async function projectBinding(
   userId: string,
   need?: 'admin',
 ): Promise<BindingWithConnection> {
-  await requireCan(actorFor(userId), need === 'admin' ? 'project.admin' : 'project.read', projectResource(projectId));
+  await requireCan(
+    actorFor(userId),
+    need === 'admin' ? 'project.admin' : 'project.read',
+    projectResource(projectId),
+  );
   const existing = await findBindingWithConnectionById(id);
   if (!existing || existing.binding.projectId !== projectId) throw notFound();
   return existing;
@@ -321,5 +325,3 @@ integrationsRoutes.get('/:projectId/integrations/mcp-preview', async (c) => {
 
 export { githubCallbackRoutes, githubConnectRoutes } from './github-connect-routes.js';
 export { issueMergePullRequestRoutes } from './issue-merge-routes.js';
-export { integrationTargetRoutes } from './postman-target-routes.js';
-export { runnerReleaseRoutes } from './runner-release-routes.js';

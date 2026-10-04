@@ -11,7 +11,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import pkg from '../../package.json' with { type: 'json' };
-import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { sourceCommit } from '../observability/source-commit.js';
@@ -73,24 +73,6 @@ opsHealthProjectRoutes.get(
 
     return c.json(
       await readOpsHealth([projectId], staleJobThresholdSeconds ?? DEFAULT_STALE_JOB_SECONDS),
-    );
-  },
-);
-
-export const opsHealthMeRoutes = new Hono<{ Variables: AuthVars }>();
-opsHealthMeRoutes.use('/ops-health', requireAuth(), assertEmailVerified());
-
-opsHealthMeRoutes.get(
-  '/ops-health',
-  zValidator('query', staleQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { staleJobThresholdSeconds } = c.req.valid('query');
-    const visibleIds = await loadVisibleProjectIds(c.get('userId'));
-
-    return c.json(
-      await readOpsHealth(visibleIds, staleJobThresholdSeconds ?? DEFAULT_STALE_JOB_SECONDS),
     );
   },
 );

@@ -21,7 +21,6 @@ export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
  *  Overview. They are NOT rendered as rail rows. */
 export const SECONDARY_DESTINATIONS: Array<NavItem & { href: string }> = [
   { key: "attention", label: "Attention", icon: "inbox", href: "/attention" },
-  { key: "usage", label: "Usage", icon: "dollar", href: "/usage" },
   { key: "settings", label: "Settings", icon: "settings", href: "/settings" },
   { key: "pipeline-ops", label: "Pipeline ops", icon: "pipeline", href: "/ops" },
 ];

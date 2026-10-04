@@ -1,4 +1,3 @@
-import { registerCommentMirror } from './assistant/index.js';
 import { registerReviewNotes } from './comments/index.js';
 import { registerSourcePushReactions } from './ecosystem/index.js';
 import { registerErrorSightings } from './error-intake/index.js';
@@ -19,10 +18,8 @@ import {
   registerPhaseJournalClose,
   registerPipelineOrchestrator,
 } from './pipeline/index.js';
-import { registerPmSubscribers } from './pm/index.js';
 import { registerLiveReadingInvalidation } from './projects/index.js';
 import { registerReleaseBatchClaimSubscriber } from './release-batch/index.js';
-import { registerWebhookSubscribers } from './webhooks/index.js';
 import { registerMasterWakeSubscribers, registerWsBroadcastSubscribers } from './ws/index.js';
 
 /**
@@ -38,12 +35,9 @@ export function registerOutboxConsumers(): void {
   registerMasterWakeSubscribers();
   registerTransitionNotifications();
   registerNotifyMentionsSubscriber();
-  registerWebhookSubscribers();
-  registerPmSubscribers();
   registerPhaseJournalClose();
   registerPausedRunWedgeResolve();
   registerReleaseBatchClaimSubscriber();
-  registerCommentMirror();
   registerMemoryIndexer();
   registerMemoryReconcileTrigger();
   registerMemoryExtraction();

@@ -286,13 +286,6 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "dependency.unblocked": {
 			return;
 		}
-		case "pm.escalation": {
-			// Web `usePmEscalations` is derived off `useNotifications`, so the
-			// notifications invalidation is the only key that matters here.
-			scheduleInvalidation(qc, ["notifications"]);
-			scheduleInvalidation(qc, ["notifications-open"]);
-			return;
-		}
 		case "integration.changed": {
 			// ISS-401/C — a binding mutation (create/update/delete/rotate-secret/
 			// confirm-prod-deploy) broadcasts this to the project room. Refresh the
@@ -342,7 +335,6 @@ const REPLAY_PREFIXES: readonly (readonly unknown[])[] = [
 	["pulse"],
 	["devices", "me"],
 	["devices", "org"],
-	["chat-logs"],
 	["integrations"],
 	["integration-connections"],
 	["questions"],

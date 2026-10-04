@@ -7,12 +7,10 @@ import { createNotification } from './service.js';
 const DEFAULT_SEVERITY_BY_TYPE: Record<NotificationType, string> = {
   issue_status_changed: 'info',
   mention: 'info',
-  pm_escalation: 'warning',
   pipeline_wedge: 'error',
   invitation_received: 'warning',
   intake_pending: 'info',
   schedule_report: 'info',
-  reconcile_gate_pending: 'warning',
   issue_stranded: 'warning',
   retry_rescue_threshold: 'warning',
   ops_alert: 'warning',
@@ -42,8 +40,6 @@ export interface EmitNotificationInput {
   resolutionKey?: string | null;
   /** ISS-849 — redelivery-dedup key, e.g. `transition:<outboxId>`. */
   dedupeKey?: string | null;
-  /** Set for `pm_escalation` — forwarded to the project-room WS bridge. */
-  decisionId?: string | null;
   /** ISS-1063 — records raised by one evaluation reach a reader as one delivery. */
   groupKey?: string | null;
   /** What that one delivery is called. */

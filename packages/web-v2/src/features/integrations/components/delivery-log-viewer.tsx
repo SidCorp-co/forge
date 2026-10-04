@@ -20,7 +20,7 @@ import type { IntegrationDelivery } from "../types";
 
 /** Read-only audit of recent webhook/dispatch deliveries for one binding
  *  (ISS-402). Render ONLY when the provider's `capabilities.hasDeliveryLog` is
- *  true — MCP-injection providers (postman/epodsystem) must not show an empty
+ *  true — MCP-injection providers (epodsystem) must not show an empty
  *  box, so the caller gates this component. ISS-408/F3 adds an inline Retry
  *  affordance on failed OUTBOUND rows (mirrors the server gate
  *  `direction==='outbound' && status==='failed'`). */

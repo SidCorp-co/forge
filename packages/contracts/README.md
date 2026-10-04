@@ -41,7 +41,6 @@ const registry = pipelineRegistryResponseSchema.parse(await api.get("/pipeline/r
 | [`src/rows.ts`](./src/rows.ts) | Row types inferred from Drizzle table schemas in `@forge/core` |
 | [`src/requests.ts`](./src/requests.ts) | Request input types (`z.infer` of core's validators, re-exported as types — no runtime Zod) |
 | [`src/responses.ts`](./src/responses.ts) | Response envelope shapes |
-| [`src/domain-templates.ts`](./src/domain-templates.ts) | Reusable domain literal templates (status enums, etc.) |
 | [`src/integrations.ts`](./src/integrations.ts) | Cross-app integration types |
 | [`src/notifications.ts`](./src/notifications.ts) | Notification types |
 | [`src/skill-facts.ts`](./src/skill-facts.ts) | Skill-facts types |
@@ -49,9 +48,6 @@ const registry = pipelineRegistryResponseSchema.parse(await api.get("/pipeline/r
 | [`src/workflow-templates.ts`](./src/workflow-templates.ts) | workflow-template-v1: the diagram-template meta-schema, the built-in registry (`BUILTIN_WORKFLOW_TEMPLATES`) and project-template resolution — runtime, read by core to check designs and by the web to draw them |
 | [`src/issues.ts`](./src/issues.ts) | Release-notes types (`ReleaseNotes`, `ReleaseNotesSection`) re-exported from `src/release-notes.ts` |
 | [`src/ssh-keys.ts`](./src/ssh-keys.ts) | Org Private Keys pool + per-project git-credential types |
-| [`src/divergence-charters.ts`](./src/divergence-charters.ts) | Divergence Charter — a project's recorded, intentional deviations from the template (ISS-800) |
-| [`src/reconcile.ts`](./src/reconcile.ts) | Reconcile run / verdict / verifier-vote types (ISS-795 update pipeline) |
-| [`src/update-packets.ts`](./src/update-packets.ts) | Update Packet artifact + its mandatory `story` field (ISS-799) |
 | [`src/skill-activity.ts`](./src/skill-activity.ts) | Skill-update activity-log event types (ISS-797) |
 | [`src/index.ts`](./src/index.ts) | Aggregated barrel |
 

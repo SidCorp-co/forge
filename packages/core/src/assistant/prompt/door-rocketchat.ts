@@ -21,8 +21,5 @@ const LINES: readonly string[] = [
 
 export const ROCKETCHAT_DOOR_LAYER: PromptLayer = {
   id: 'door-rocketchat',
-  benchTasks: [],
-  whyUnmeasured:
-    'the benchmark walks the browser door only, so no shipped task sends a turn through this one',
   text: LINES.join('\n'),
 };

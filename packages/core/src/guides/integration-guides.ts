@@ -182,12 +182,3 @@ export async function upsertIntegrationGuide(
   if (!row) throw new Error('integration_guides: upsert returned no row');
   return row;
 }
-
-/** Drop the org override so the provider falls back to the code default. */
-export async function deleteIntegrationGuide(orgId: string, provider: string): Promise<boolean> {
-  const deleted = await db
-    .delete(integrationGuides)
-    .where(and(eq(integrationGuides.orgId, orgId), eq(integrationGuides.provider, provider)))
-    .returning({ provider: integrationGuides.provider });
-  return deleted.length > 0;
-}

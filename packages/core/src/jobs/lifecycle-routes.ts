@@ -20,7 +20,6 @@ import { cancelJob } from './cancel-job.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { isResumeFailedError, reclassifyAbortedResume } from './handle-resume-failed.js';
 import { readJobGate } from './job-queries.js';
-import { jobsPorts } from './ports.js';
 import { salvageSchema, salvageSet } from './prior-attempts.js';
 import { refuseJob } from './refusals.js';
 import { resumeHeldJob } from './resume-job.js';
@@ -247,15 +246,6 @@ jobLifecycleDeviceRoutes.post(
     // done / cancelled — mirror lifecycle to the linked agent_session row so
     // /pipeline + issue detail tab reflect completion. Best-effort.
     await syncAgentSessionLifecycle(updated, status);
-
-    await jobsPorts()
-      .reconcileRuns.failReconcileRunIfNoVerdictRecorded(updated)
-      .catch((err) =>
-        logger.warn(
-          { err, jobId: updated.id, type: updated.type },
-          'lifecycle: failReconcileRunIfNoVerdictRecorded failed',
-        ),
-      );
 
     roomManager.publish(projectRoom(updated.projectId), {
       event: status === 'done' ? 'job.completed' : 'job.cancelled',

@@ -10,13 +10,11 @@ import {
   isRegistered,
   registerIntegration,
 } from './integrations/index.js';
-import { postmanIntegration } from './integrations/postman/index.js';
 import { rocketchatIntegration } from './integrations/rocketchat/index.js';
 import { sentryIntegration } from './integrations/sentry/index.js';
 
 const ALL: readonly IntegrationDeclaration[] = [
   coolifyIntegration as IntegrationDeclaration,
-  postmanIntegration as IntegrationDeclaration,
   epodsystemIntegration as IntegrationDeclaration,
   sentryIntegration as IntegrationDeclaration,
   googleIntegration as IntegrationDeclaration,

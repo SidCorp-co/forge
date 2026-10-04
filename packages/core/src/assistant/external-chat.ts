@@ -5,14 +5,12 @@
  * completion.
  *
  * A turn either belongs to a conversation — named by its id, or by the venue it
- * happens in — or belongs to none, which is what a one-shot relay is. The audit
- * row is written either way.
+ * happens in — or belongs to none, which is what a one-shot relay is.
  */
 
 import { contentLanguageBlock } from '@forge/contracts/content-language';
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import { eq } from 'drizzle-orm';
-import { insertChatLog } from '../chat-logs/index.js';
 import { env } from '../config/env.js';
 import { readContentLanguage } from '../content-language/index.js';
 import { db as defaultDb } from '../db/client.js';
@@ -44,7 +42,7 @@ import {
   persistMessages,
   toProviderMessages,
 } from './conversation-turn.js';
-import { runTurnEvents, usageForLog } from './run-turn-core.js';
+import { runTurnEvents } from './run-turn-core.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
 import { memoryNoteGateFor } from './tools/memory-note-gate-deps.js';
@@ -71,7 +69,7 @@ export interface ExternalChatTurnArgs {
   shape?: ConversationShape | undefined;
   /** Read-only toolset (caller builds it with the right principal); omit for tool-less. */
   tools?: ChatToolset | undefined;
-  /** `chat_logs.user_key` audit key (e.g. the external user id). */
+  /** The external speaker's key (e.g. the external user id), the author label when no speaker label is given. */
   userKey?: string | null;
   /**
    * The Forge user the newest person message is LINKED to — whose preferences
@@ -108,18 +106,6 @@ export interface ExternalChatTurnArgs {
    */
   questionInHistory?: boolean;
   db?: typeof defaultDb;
-}
-
-const AUDIT_ISSUE_REFS_CAP = 60;
-
-function cappedForAudit<T extends { resultIssueRefs?: readonly string[] }>(call: T): T {
-  const refs = call.resultIssueRefs ?? [];
-  if (refs.length <= AUDIT_ISSUE_REFS_CAP) return call;
-  return {
-    ...call,
-    resultIssueRefs: refs.slice(0, AUDIT_ISSUE_REFS_CAP),
-    resultIssueRefsTruncated: refs.length,
-  };
 }
 
 export interface ExternalChatTurnResult {
@@ -324,28 +310,6 @@ export async function runExternalChatTurn(
     const written = await persistMessages(turn, { db: dbi });
     assistantMessageId =
       written.find((m) => m.role === 'assistant' && !m.silenceReason)?.id ?? null;
-  }
-
-  try {
-    await insertChatLog(
-      {
-        sessionId: turn?.conversationId ?? null,
-        projectSlug: project.slug,
-        userKey: args.userKey ?? args.userId ?? null,
-        query: args.message,
-        reply: result.finalText.length > 0 ? result.finalText : null,
-        model: resolved.model,
-        toolCalls: result.toolCalls.map(cappedForAudit) as never,
-        usage: usageForLog(result) as never,
-        iterations: result.iterations,
-        durationMs,
-        error: result.errorMessage,
-        source: args.adapter,
-      },
-      dbi,
-    );
-  } catch (err) {
-    logger.error({ err, conversationId: turn?.conversationId ?? null }, 'chat_logs insert failed');
   }
 
   return {

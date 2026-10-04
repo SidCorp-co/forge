@@ -3,25 +3,15 @@
 // later router mounted under the same prefix, so the area functions below run in sequence.
 
 import type { Hono } from 'hono';
-import {
-  adminAggregateRoutes,
-  adminAlertRoutes,
-  adminMcpAuditRoutes,
-  adminMetricSeriesRoutes,
-  adminRoutes,
-  pipelineHealthAdminRoutes,
-} from './admin/routes.js';
-import { adminThresholdRoutes } from './admin-thresholds/routes.js';
+import { adminAggregateRoutes, adminAlertRoutes, adminRoutes } from './admin/routes.js';
 import { agentReportRoutes, feedbackReportsAliasRoutes } from './agent-reports/routes.js';
 import {
   agentSessionAttachmentRoutes,
   agentSessionProjectReadRoutes,
   agentSessionRoutes,
 } from './agent-sessions/routes.js';
-import { agentRoutes } from './agents/routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
 import {
-  assistantWeeklyRoutes,
   baDoorRoutes,
   conversationRoutes,
   speakerLinkMeRoutes,
@@ -29,7 +19,6 @@ import {
 } from './assistant/routes.js';
 import {
   authRoutes,
-  devForceVerifyRoutes,
   loginRoutes,
   logoutRoutes,
   meRoutes,
@@ -39,7 +28,6 @@ import {
   verifyRoutes,
 } from './auth/routes.js';
 import { automationRoutes } from './automation/routes.js';
-import { chatLogRoutes } from './chat-logs/routes.js';
 import {
   commentRoutes,
   entityCommentRoutes,
@@ -58,7 +46,6 @@ import {
   deviceUserRoutes,
   runLedgerRoutes,
 } from './devices/routes.js';
-import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { ecosystemJsonSchemas } from './ecosystem/index.js';
 import {
   busRoutes,
@@ -77,7 +64,6 @@ import { feedbackRoutes } from './feedback/routes.js';
 import { deviceGitCredentialRoutes } from './git/routes.js';
 import { guideRoutes } from './guides/routes.js';
 import {
-  opsHealthMeRoutes,
   opsHealthProjectRoutes,
   projectHealthRoutes,
   publicHealthRoutes,
@@ -89,9 +75,7 @@ import {
   githubConnectRoutes,
   integrationConnectionsRoutes,
   integrationsRoutes,
-  integrationTargetRoutes,
   issueMergePullRequestRoutes,
-  runnerReleaseRoutes,
 } from './integration-door/routes.js';
 import {
   attachmentRoutes,
@@ -123,7 +107,6 @@ import {
 import { knowledgeIngestRoutes, knowledgeRoutes } from './knowledge/routes.js';
 import { knowledgeEdgeRoutes } from './knowledge-edges/routes.js';
 import { labelProjectRoutes, labelRoutes, moduleDiagramRoutes } from './labels/routes.js';
-import { isEnabled } from './lib/feature-flags.js';
 import { deviceMasterRoutes, masterStandingRoutes } from './masters/routes.js';
 import { mcpHandler, mcpRequestClass } from './mcp/index.js';
 import { meAttentionRoutes, mePulseRoutes, meRecentChangesRoutes } from './me/routes.js';
@@ -153,7 +136,7 @@ import {
   projectCostAnalyticsRoutes,
   stepHandoffRoutes,
 } from './pipeline/routes.js';
-import { pmReadRoutes, pmRoutes } from './pm/routes.js';
+import { pmReadRoutes } from './pm/routes.js';
 import { orgMemberPreferenceRoutes, preferenceRoutes } from './preferences/routes.js';
 import {
   environmentStateRoutes,
@@ -169,7 +152,6 @@ import {
   memberRoutes,
   projectRoutes,
 } from './projects/routes.js';
-import { promptRoutes } from './prompt/routes.js';
 import { questionnaireRoutes } from './questionnaires/routes.js';
 import { questionRoutes } from './questions/routes.js';
 import { releaseBatchRoutes } from './release-batch/routes.js';
@@ -181,23 +163,15 @@ import { scheduleRoutes } from './schedules/routes.js';
 import { skillFactsRoutes } from './skill-facts/routes.js';
 import {
   deviceSkillRoutes,
-  deviceSkillStatusRoutes,
-  divergenceCharterRoutes,
   projectOnboardRoutes,
-  reconcileRoutes,
   skillActivityRoutes,
   skillCrudRoutes,
   skillPinRoutes,
-  skillRegisterRoutes,
-  skillSmokeVerifyRoutes,
   skillStudioRoutes,
-  skillSyncRoutes,
 } from './skills/routes.js';
 import { suggestionRoutes } from './suggestions/routes.js';
 import { taskIssueRoutes, taskRoutes } from './tasks/routes.js';
-import { updatePacketRoutes } from './update-packets/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
-import { usageRecordRoutes } from './usage-records/routes.js';
 import { webhookInboundRoutes } from './webhooks/routes.js';
 import { workflowJsonSchemas } from './workflows/index.js';
 import { workflowRoutes, workflowTemplateCatalogueRoutes } from './workflows/routes.js';
@@ -238,7 +212,6 @@ function mountAccountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/auth', loginRoutes);
   app.route('/api/auth', refreshRoutes);
   app.route('/api/auth', verifyRoutes);
-  app.route('/api/auth', devForceVerifyRoutes);
   app.route('/api/auth', meRoutes);
   app.route('/api/auth', preferenceRoutes);
   app.route('/api/auth', logoutRoutes);
@@ -247,7 +220,6 @@ function mountAccountRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/auth', oauthRoutes);
   app.route('/api/projects', projectHealthRoutes);
   app.route('/api/projects', opsHealthProjectRoutes);
-  app.route('/api/me', opsHealthMeRoutes);
   app.route('/api/me', collaboratorsMeRoutes);
   app.route('/api/projects', projectMetricsRoutes);
   app.route('/api/projects', gitCredentialRoutes);
@@ -294,7 +266,6 @@ function mountProjectAndOrgRoutes(app: Hono<{ Variables: RequestIdVars }>): void
   // No auth of their own: they answer under projectRoutes' gate, mounted just above on the same prefix.
   app.route('/api/projects', projectRunnerRoutes);
   app.route('/api/projects', projectOnboardRoutes);
-  app.route('/api/projects', assistantWeeklyRoutes);
   app.route('/api/orgs', orgRoutes);
   // No auth of their own: they answer under orgRoutes' gate, mounted just above on the same prefix.
   app.route('/api/orgs', deviceOrgRoutes);
@@ -303,18 +274,11 @@ function mountProjectAndOrgRoutes(app: Hono<{ Variables: RequestIdVars }>): void
   app.route('/api/org-invitations', orgInvitationRoutes);
   app.route('/api/projects', integrationsRoutes);
   app.route('/api/projects', githubConnectRoutes);
-  app.route('/api/projects', runnerReleaseRoutes);
   app.route('/api', githubCallbackRoutes);
-  app.route('/api/projects', integrationTargetRoutes);
   app.route('/api/integration-connections', integrationConnectionsRoutes);
   app.route('/api/projects', memberRoutes);
-  app.route('/api/projects', divergenceCharterRoutes);
-  app.route('/api/projects', skillSyncRoutes);
-  app.route('/api/projects', skillRegisterRoutes);
   app.route('/api/projects', skillStudioRoutes);
   app.route('/api/projects', skillPinRoutes);
-  app.route('/api/projects', skillSmokeVerifyRoutes);
-  app.route('/api/projects', reconcileRoutes);
   app.route('/api/invitations', invitationRoutes);
 }
 
@@ -371,10 +335,8 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
 /** Prompts, skills, notifications, questions, agents, conversations, sessions and pipeline runs. */
 function mountAgentRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issue-step-contexts', stepHandoffRoutes);
-  app.route('/api/prompts', promptRoutes);
   app.route('/api/skill-facts', skillFactsRoutes);
   app.route('/api/skill-activity', skillActivityRoutes);
-  app.route('/api/update-packets', updatePacketRoutes);
   app.route('/api/notifications', notificationRoutes);
   app.route('/api/me', meAttentionRoutes);
   app.route('/api/me', mePulseRoutes);
@@ -382,7 +344,6 @@ function mountAgentRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api', speakerLinkProjectRoutes);
   app.route('/api', speakerLinkMeRoutes);
   app.route('/api/me', meRecentChangesRoutes);
-  app.route('/api/agents', agentRoutes);
   app.route('/api/conversations', conversationRoutes);
   app.route('/api/agent-sessions', agentSessionAttachmentRoutes);
   app.route('/api/agent-sessions', agentSessionRoutes);
@@ -397,11 +358,7 @@ function mountAdminAndDeviceRoutes(app: Hono<{ Variables: RequestIdVars }>): voi
   app.route('/api/admin', adminRoutes);
   app.route('/api/admin', adminAggregateRoutes);
   app.route('/api/admin', adminAlertRoutes);
-  app.route('/api/admin', adminMcpAuditRoutes);
-  app.route('/api/admin', adminMetricSeriesRoutes);
-  app.route('/api/admin', adminThresholdRoutes);
   app.route('/api/admin', outboxAdminRoutes);
-  app.route('/api/admin/pipeline', pipelineHealthAdminRoutes);
   app.route('/api/devices', devicePublicRoutes);
   app.route('/api/devices', deviceLoginRoutes);
   app.route('/api/devices', deviceGitCredentialRoutes);
@@ -413,7 +370,6 @@ function mountAdminAndDeviceRoutes(app: Hono<{ Variables: RequestIdVars }>): voi
   app.route('/api/devices', deviceMasterRoutes);
   app.route('/api', deviceOwnerRoutes);
   app.route('/api/projects', deviceUserRoutes);
-  app.route('/api/projects', deviceSkillStatusRoutes);
 }
 
 /** Pipeline analytics, release batches, schedules, knowledge and the remaining resources. */
@@ -430,14 +386,10 @@ function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', knowledgeRoutes);
   app.route('/api/knowledge-edges', knowledgeEdgeRoutes);
   app.route('/api/skills', skillCrudRoutes);
-  app.route('/api/usage-records', usageRecordRoutes);
-  app.route('/api/chat-logs', chatLogRoutes);
   app.route('/api/app-config', memoryModelRoutes);
   app.route('/api/app-config', appConfigRoutes);
-  app.route('/api/domain-templates', domainTemplateRoutes);
   app.route('/api/runners', runnerRoutes);
 
-  if (isEnabled('pmAgent')) app.route('/api/projects', pmRoutes);
   app.route('/api/projects', pmReadRoutes);
   app.route('/api/projects', agentSessionProjectReadRoutes);
 }

@@ -35,8 +35,7 @@ src/
 ├─ styles/tokens.css        # source of truth (raw + semantic tokens)
 ├─ app/
 │  ├─ globals.css           # @import tokens + @theme inline + base + keyframes
-│  ├─ layout.tsx            # fonts (next/font) + providers
-│  └─ kit/page.tsx          # ← component gallery (preview everything)
+│  └─ layout.tsx            # fonts (next/font) + providers
 ├─ design/                  # presentational, data-agnostic
 │  ├─ icons/icon.tsx        # semantic name → lucide-react
 │  ├─ stages.ts · status.ts # job-type hues + status/health/avatar meta
@@ -54,8 +53,7 @@ src/
 ```
 
 The `primitives/` and `patterns/` lists above are illustrative, not exhaustive —
-`/kit` renders the real, current set. Prefer opening the gallery over trusting
-this tree.
+`ls src/design/primitives src/design/patterns` is the current set.
 
 ## Run
 
@@ -63,4 +61,4 @@ this tree.
 pnpm --filter web-v2 dev      # http://localhost:3100  → Overview dashboard
 ```
 
-`/` renders the Overview dashboard. Open **`/kit`** for the component gallery (every primitive and pattern).
+`/` renders the Overview dashboard.

@@ -34,12 +34,10 @@ export interface NotificationKindEntry {
 export const NOTIFICATION_KIND_TABLE: Record<NotificationType, NotificationKindEntry> = {
   issue_status_changed: { kind: 'signal', tier: 'log' },
   mention: { kind: 'signal', tier: 'ticket' },
-  pm_escalation: { kind: 'task', tier: 'page' },
   pipeline_wedge: { kind: 'condition', tier: 'page' },
   invitation_received: { kind: 'task', tier: 'ticket' },
   intake_pending: { kind: 'task', tier: 'ticket' },
   schedule_report: { kind: 'signal', tier: 'log' },
-  reconcile_gate_pending: { kind: 'task', tier: 'ticket' },
   issue_stranded: { kind: 'condition', tier: 'ticket', pendingEvaluations: 2 },
   retry_rescue_threshold: { kind: 'condition', tier: 'ticket', pendingEvaluations: 2 },
   ops_alert: { kind: 'condition', tier: 'ticket' },

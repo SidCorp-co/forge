@@ -1,12 +1,10 @@
 export const NOTIFICATION_TYPES = [
 	"issue_status_changed",
 	"mention",
-	"pm_escalation",
 	"pipeline_wedge",
 	"invitation_received",
 	"intake_pending",
 	"schedule_report",
-	"reconcile_gate_pending",
 	"issue_stranded",
 	"retry_rescue_threshold",
 	"ops_alert",
@@ -21,12 +19,10 @@ export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
 	issue_status_changed: "Status change",
 	mention: "Mention",
-	pm_escalation: "Escalation",
 	pipeline_wedge: "Pipeline stuck",
 	invitation_received: "Invitation",
 	intake_pending: "Intake",
 	schedule_report: "Schedule report",
-	reconcile_gate_pending: "Skill update",
 	issue_stranded: "Stranded",
 	retry_rescue_threshold: "Retries",
 	ops_alert: "Ops alert",
@@ -92,12 +88,6 @@ export const NOTIFICATION_CONTRACT: Record<
 		kind: "signal",
 		tier: "ticket",
 	},
-	pm_escalation: {
-		severity: "warning",
-		channels: ["bell", "toast", "browser"],
-		kind: "task",
-		tier: "page",
-	},
 	pipeline_wedge: {
 		severity: "error",
 		channels: ["bell", "toast", "browser"],
@@ -121,12 +111,6 @@ export const NOTIFICATION_CONTRACT: Record<
 		channels: ["bell", "toast"],
 		kind: "signal",
 		tier: "log",
-	},
-	reconcile_gate_pending: {
-		severity: "warning",
-		channels: ["bell", "toast"],
-		kind: "task",
-		tier: "ticket",
 	},
 	issue_stranded: {
 		severity: "warning",

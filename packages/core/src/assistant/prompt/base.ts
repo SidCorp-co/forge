@@ -9,15 +9,6 @@ import type { PromptLayer } from './layer.js';
 
 export const BASE_LAYER: PromptLayer = {
   id: 'base',
-  benchTasks: [
-    'memory-question',
-    'memory-followup',
-    'out-of-reach-tests',
-    'vietnamese-count',
-    'summary-in-style',
-    'long-context-needle',
-    'long-context-thread',
-  ],
   text: `## Answering as the assistant
 
 You are answering for one project, with tools that read it and a few that write to it. This is how a

@@ -42,28 +42,15 @@ protocol and nothing else:
 | storefront | `epodsystem/`, `autoflow/` | ePodSystem, Autoflow | project | the registry only |
 | documents | `google/` | Google Sheets | project | `integration-door/google-tool.ts` |
 | chat | `rocketchat/` (the REST and DDP clients, the connection owner, room routing, the thread registry) | Rocket.Chat | project | `assistant/chat-room/*`, `assistant/identity/directory.ts`, `integration-door/routes.ts`, `index.ts` |
-| contract testing | `postman/` | Postman | project | `integration-door/postman-target-routes.ts` |
 | LLM | `llm/`, over the AI SDK (`ai`, `@ai-sdk/openai-compatible`, `@ai-sdk/anthropic`) behind `ChatProvider` | OpenAI-compatible endpoints (LiteLLM), Anthropic Messages | deployment | `assistant/*` (the chat turn and its runner, BA tools, bench judge, catalog cost), `memory/extraction.ts`, `memory/consolidation.ts`, `memory/rerank.ts`, `agent-sessions/auto-title.ts`, `app-config/routes.ts` |
 | embeddings | `embeddings/`, over the AI SDK's `embedMany` | OpenAI-compatible endpoints | deployment | `memory/*`, `knowledge/*`, `requirements/embeddings.ts`, `embeddings/item-writer.ts`, `work-ports.ts`, `memory/tool.ts`, `knowledge/tool.ts` |
 | mail | `mail/` | SMTP | deployment | `auth/email.ts`, `projects/invitation-email.ts` |
 | identity | `identity/` | GitHub OAuth, Google, generic OIDC | deployment | `auth/oauth/*` |
-| outbound webhooks | `outbound-webhooks/` | a customer's URL | project webhook row | `webhooks/subscribers.ts`, `index.ts` |
 | paired runner box, pinned downloads | `published-releases/` | GitHub releases | deployment | `devices/build-state.ts`, `runners/build-comparison.ts`, `ecosystem/contract/oasdiff.ts`, `timer-registry.ts`, `index.ts` |
-| runner release publishing | `github/` (`runner-release*.ts`) | GitHub | project | `pipeline-sweep.ts`, `integration-door/runner-release-routes.ts` |
 
 The LLM and embedding ports gate every text through `lib/data-egress.ts:egressScoped` inside the
 adapter: their functions take an `EgressScope`, so no caller can send content without naming the
 surface it belongs to.
-
-**Outbound webhooks are signed per [Standard Webhooks](https://www.standardwebhooks.com/)**
-(`outbound-webhooks/delivery.ts:handleDelivery`, ISS-190). Each POST carries `webhook-id` (the
-delivery job's id, the same on every retry so a receiver can drop a duplicate), `webhook-timestamp`
-(epoch seconds) and `webhook-signature` (`v1,<base64 HMAC-SHA256 of id.timestamp.body>`), plus
-`x-forge-event`. The key is the UTF-8 bytes of the hook's `secret`: a Standard Webhooks library
-verifies with `new Webhook(secret, { format: 'raw' })`. The old body-only
-`x-forge-signature-256: sha256=<hex>` header is no longer sent. Any non-2xx response fails the
-delivery: pg-boss retries it five times with backoff, then moves it to the
-`webhook-delivery-dead` queue.
 
 **Adding a system:** name the port by its role, not the vendor; put the vendor under it (or beside
 an existing port that already serves the role); add a row here. A project-bound vendor also

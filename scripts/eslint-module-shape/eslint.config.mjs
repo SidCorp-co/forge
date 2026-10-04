@@ -37,10 +37,6 @@ export default [
               file: 'packages/core/src/schedules/script/worker-entry.ts',
               why: "The sandboxed schedule script's ctx.http.fetch: user code in a worker calling a URL the user wrote, held to https: and a timeout by the sandbox, not Forge reaching a system. There is no port to put between a user's script and the URL that script names; the sandbox is the boundary.",
             },
-            {
-              file: 'packages/core/src/assistant/bench-assistant.ts',
-              why: "The assistant bench is a command-line harness that drives Forge's own API as a client and hands the global fetch to that client; the host it calls is the Forge under test, never a third-party system.",
-            },
           ],
         },
       ],

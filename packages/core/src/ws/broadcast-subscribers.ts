@@ -138,19 +138,6 @@ export function registerWsBroadcastSubscribers(): void {
         },
       });
     }
-
-    if (p.type === 'pm_escalation' && p.projectId) {
-      roomManager.publish(projectRoom(p.projectId), {
-        event: 'pm.escalation',
-        data: {
-          notificationId: p.notificationId,
-          projectId: p.projectId,
-          decisionId: p.decisionId ?? null,
-          title: p.title,
-          userId: p.userId,
-        },
-      });
-    }
   });
 
   on('notification.read', (p) => {
@@ -207,24 +194,6 @@ export function registerWsBroadcastSubscribers(): void {
         projectId: p.projectId,
         status: p.status,
         detail: p.detail,
-      },
-    });
-  });
-
-  // ISS-118 — skill_registrations changes affect the per-project skill
-  // bindings that downstream clients (web Skills tab, dev runner) derive
-  // from the pipeline registry. Broadcast `pipeline.registry_changed` so
-  // subscribers refetch /api/pipeline/registry and pick up the new bindings
-  // without a manual refresh.
-  on('skill.registered', (p) => {
-    roomManager.publish(projectRoom(p.projectId), {
-      event: 'pipeline.registry_changed',
-      data: {
-        projectId: p.projectId,
-        reason: 'skill_registration_changed',
-        skillId: p.skillId,
-        stage: p.stage,
-        actorId: p.actorUserId,
       },
     });
   });

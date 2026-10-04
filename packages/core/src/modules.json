@@ -67,12 +67,10 @@
         "issues",
         "jobs",
         "labels",
-        "mcpAuditLog",
         "organizations",
         "pipelineRuns",
         "projectMembers",
         "projects",
-        "retrievalAnalytics",
         "runners",
         "schedules",
         "usageRecords",
@@ -81,10 +79,7 @@
     },
     "admin-thresholds": {
       "kind": "domain",
-      "context": "operations",
-      "owns": [
-        "adminThresholds"
-      ]
+      "context": "operations"
     },
     "agent-reports": {
       "kind": "domain",
@@ -104,13 +99,6 @@
         "sessionInbox"
       ]
     },
-    "agents": {
-      "kind": "domain",
-      "context": "execution",
-      "owns": [
-        "agents"
-      ]
-    },
     "api-contract": {
       "kind": "door",
       "context": "platform"
@@ -128,10 +116,7 @@
       "owns": [
         "assistantSpeakerLinks",
         "conversationPins",
-        "rocketchatCommentMirrorState",
-        "rocketchatCommentMirrors",
-        "rocketchatQuestionDeliveries",
-        "rocketchatThreadOpenings"
+        "rocketchatQuestionDeliveries"
       ]
     },
     "auth": {
@@ -165,13 +150,6 @@
     "branches": {
       "kind": "platform",
       "context": "platform"
-    },
-    "chat-logs": {
-      "kind": "domain",
-      "context": "conversations",
-      "owns": [
-        "chatLogs"
-      ]
     },
     "comments": {
       "kind": "domain",
@@ -216,8 +194,7 @@
       "kind": "platform",
       "context": "platform",
       "owns": [
-        "backfillMarkers",
-        "projectFactsMigrationBackup"
+        "backfillMarkers"
       ]
     },
     "development": {
@@ -246,16 +223,8 @@
       "owns": [
         "deviceLoginCodes",
         "deviceRunLedger",
-        "deviceSkills",
         "devices",
         "pairingCodes"
-      ]
-    },
-    "domain-templates": {
-      "kind": "domain",
-      "context": "design",
-      "owns": [
-        "domainTemplates"
       ]
     },
     "ecosystem": {
@@ -371,10 +340,7 @@
     },
     "integrations/github": {
       "kind": "adapter",
-      "context": "adapters",
-      "owns": [
-        "runnerReleases"
-      ]
+      "context": "adapters"
     },
     "integrations/gitlab": {
       "kind": "adapter",
@@ -393,17 +359,6 @@
       "context": "adapters"
     },
     "integrations/mail": {
-      "kind": "adapter",
-      "context": "adapters"
-    },
-    "integrations/outbound-webhooks": {
-      "kind": "adapter",
-      "context": "adapters",
-      "owns": [
-        "projectWebhooks"
-      ]
-    },
-    "integrations/postman": {
       "kind": "adapter",
       "context": "adapters"
     },
@@ -518,7 +473,6 @@
         "notifications",
         "pipelineRuns",
         "projects",
-        "reconcileRuns",
         "runners"
       ]
     },
@@ -567,7 +521,6 @@
       "owns": [
         "notificationDeliveries",
         "notificationDeliveryMembers",
-        "notificationSilences",
         "notifications"
       ]
     },
@@ -631,12 +584,7 @@
     },
     "pm": {
       "kind": "domain",
-      "context": "work",
-      "owns": [
-        "pmConfig",
-        "pmDecisions",
-        "pmPolicies"
-      ]
+      "context": "work"
     },
     "preferences": {
       "kind": "domain",
@@ -766,12 +714,8 @@
       "kind": "domain",
       "context": "execution",
       "owns": [
-        "divergenceCharters",
-        "reconcileRuns",
         "skillActivityEvents",
-        "skillRegistrations",
-        "skills",
-        "updatePackets"
+        "skills"
       ]
     },
     "storage": {
@@ -791,10 +735,6 @@
       "owns": [
         "tasks"
       ]
-    },
-    "update-packets": {
-      "kind": "door",
-      "context": "execution"
     },
     "uploads": {
       "kind": "domain",

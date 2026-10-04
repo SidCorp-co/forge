@@ -75,7 +75,7 @@ interface ProviderRow {
 }
 
 /**
- * Shared builder for the coolify/postman/epodsystem status cards (ISS-431) —
+ * Shared builder for the coolify/epodsystem status cards (ISS-431) —
  * the three blocks were ~95% identical; they differ only in env-keying, the
  * never-checked wording, and provider-specific meta fields.
  */
@@ -185,14 +185,13 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
     breakerOpenedAt: pair.connection.breakerOpenedAt,
   }));
 
-  // Runners bound to this project + each device's git push-cred status.
+  // Runners bound to this project.
   const runnerRows = await db
     .select({
       runnerId: runners.id,
       status: runners.status,
       deviceId: runners.deviceId,
       deviceName: devices.name,
-      gitCredentialRef: devices.gitCredentialRef,
       lastSeenAt: runners.lastSeenAt,
     })
     .from(runners)
@@ -201,17 +200,10 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
 
   const cards: StatusCard[] = [];
 
-  // --- The repository (+ per-device push-cred), keyed and labelled by the provider its host is ---
+  // --- The repository, keyed and labelled by the provider its host is ---
   const { repository } = source;
   const host = repositoryProvider(pairs, repository);
   const remoteUrl = repository ? webUrlOf(repository) : null;
-  const deviceCreds = runnerRows
-    .filter((r) => r.deviceId)
-    .map((r) => ({
-      deviceId: r.deviceId,
-      deviceName: r.deviceName,
-      pushCredProvisioned: r.gitCredentialRef !== null,
-    }));
   cards.push({
     key: host ? `${host.provider}:repository` : 'repository',
     label: host ? `${host.label} repository` : 'Repository',
@@ -228,7 +220,6 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
       remoteUrl,
       baseBranch: source.defaultBranch,
       provider: host?.provider ?? null,
-      deviceCreds,
     },
   });
 

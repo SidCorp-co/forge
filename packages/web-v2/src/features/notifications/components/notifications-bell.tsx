@@ -153,10 +153,6 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
       if (!row?.projectId) return; // mark-read only, no dead-end
       const target = projects?.find((p) => p.id === row.projectId);
       if (!target) return;
-      if (row.type === "reconcile_gate_pending") {
-        router.push(`/projects/${target.slug}/skill-updates`);
-        return;
-      }
       if (!row.issueId) return;
       router.push(`/projects/${target.slug}/issues/${row.issueId}`);
     },
@@ -204,10 +200,6 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
       if (!n.projectId) return;
       const target = projects?.find((p) => p.id === n.projectId);
       if (!target) return;
-      if (n.type === "reconcile_gate_pending") {
-        router.push(`/projects/${target.slug}/skill-updates`);
-        return;
-      }
       if (!n.issueId) return;
       router.push(`/projects/${target.slug}/issues/${n.issueId}`);
     },

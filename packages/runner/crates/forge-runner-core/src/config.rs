@@ -399,7 +399,7 @@ mod tests {
             assert_eq!(crate::daemon::control::config_dir(), None);
             assert!(crate::daemon::control::socket_path().is_none());
             assert!(crate::daemon::pool_jobs::FileRecords::default_dir().is_none());
-            assert!(crate::auth::git_cred::git_credentials_path().is_err());
+            assert!(crate::auth::git_cred::ssh_keys_dir().is_err());
             assert!(Config::default().save().is_err());
         }
         #[cfg(target_os = "linux")]
@@ -524,11 +524,6 @@ mod tests {
                 "~/.claude, Claude Code's own home, which is not the config dir",
             ),
             (
-                "forge-runner-core/src/workspace/skill_sync.rs",
-                1,
-                "detect_user_shadow, which reads ~/.claude/skills",
-            ),
-            (
                 "forge-runner-core/src/workspace/trust.rs",
                 1,
                 "~/.claude.json, Claude Code's trust file, which is not the config dir",
@@ -557,16 +552,6 @@ mod tests {
                 3,
                 "the systemd unit, and the launchd plist and log, written by `service install`, \
                  which no test runs",
-            ),
-            (
-                "forge-runner/src/cmd/top/cli_slug.rs",
-                3,
-                "cli_config_dir, the forge CLI's own dir by its own rule, a read; and its test",
-            ),
-            (
-                "forge-runner/src/cmd/top/gather.rs",
-                2,
-                "prints the path, and hands home to cli_config_dir",
             ),
             (
                 "forge-runner/tests/dispatch_gate_door.rs",

@@ -2,8 +2,8 @@
 //!
 //! Core has carried this surface since ISS-919 split the one-shot claim into a
 //! preparation and a stamp, and until ISS-1080 nothing on any box called it.
-//! The four kinds that have no issue to rank — `smoke`, `release_batch`,
-//! `reconcile`, `verify_skill` — were minted, woken for, and then waited on a
+//! The kinds that have no issue to rank — `smoke` and `release_batch` — were
+//! minted, woken for, and then waited on a
 //! reader that did not exist.
 //!
 //! This is the reader. It is deliberately NOT `admissible`: an admissible issue

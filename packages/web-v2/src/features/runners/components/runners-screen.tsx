@@ -319,7 +319,6 @@ export function RunnersScreen() {
                   <TH>Device</TH>
                   <TH>Status</TH>
                   <TH>Platform</TH>
-                  <TH>Git push</TH>
                   <TH>Last seen</TH>
                   <TH className="text-right">Actions</TH>
                 </TR>
@@ -349,19 +348,6 @@ export function RunnersScreen() {
                       </TD>
                       <TD>
                         <EnumBadge family="platform" value={d.platform} />
-                      </TD>
-                      <TD>
-                        {d.gitCredentialRef ? (
-                          <span className="inline-flex items-center gap-1.5 text-13 text-fg">
-                            <Icon name="check" size={14} className="text-[color:var(--green-600)]" />
-                            provisioned
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 text-13 text-subtle">
-                            <Icon name="dot" size={14} />
-                            none
-                          </span>
-                        )}
                       </TD>
                       <TD>
                         <span className="text-muted">{formatRelativeTime(d.lastSeenAt, { emptyLabel: "never" })}</span>

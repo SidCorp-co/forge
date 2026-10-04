@@ -1,29 +1,33 @@
-import { eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import {
-  ADMIN_THRESHOLD_DEFAULTS,
-  ADMIN_THRESHOLDS_ID,
-  type AdminThresholds,
-  adminThresholds,
-} from '../db/schema-admin-thresholds.js';
+/**
+ * ISS-654 — the Tier 1 thresholds and the spend ceiling. `spendCeilingUsdDay` is null when no
+ * ceiling is set; every other field is always present, so a reader never branches on absence.
+ */
+export interface AdminThresholds {
+  stuckJobSeconds: number;
+  runnerStarvedSeconds: number;
+  spendCeilingUsdDay: number | null;
+  spendSpikeMultiple: number;
+  scheduleFailStreak: number;
+  deliveryFailRatePct: number;
+  interventionLabels: string[];
+  ghostRunnerOfflineDays: number;
+  sentryMinEventCount: number;
+  sentryMinUserCount: number;
+}
+
+export const ADMIN_THRESHOLD_DEFAULTS: AdminThresholds = {
+  stuckJobSeconds: 600,
+  runnerStarvedSeconds: 300,
+  spendCeilingUsdDay: null,
+  spendSpikeMultiple: 2.5,
+  scheduleFailStreak: 2,
+  deliveryFailRatePct: 20,
+  interventionLabels: ['kernel-hardening', 'onboarding'],
+  ghostRunnerOfflineDays: 14,
+  sentryMinEventCount: 10,
+  sentryMinUserCount: 2,
+};
 
 export async function readThresholds(): Promise<AdminThresholds> {
-  const [row] = await db
-    .select()
-    .from(adminThresholds)
-    .where(eq(adminThresholds.id, ADMIN_THRESHOLDS_ID))
-    .limit(1);
-  if (!row) return ADMIN_THRESHOLD_DEFAULTS;
-  return {
-    stuckJobSeconds: row.stuckJobSeconds,
-    runnerStarvedSeconds: row.runnerStarvedSeconds,
-    spendCeilingUsdDay: row.spendCeilingUsdDay,
-    spendSpikeMultiple: row.spendSpikeMultiple,
-    scheduleFailStreak: row.scheduleFailStreak,
-    deliveryFailRatePct: row.deliveryFailRatePct,
-    interventionLabels: row.interventionLabels,
-    ghostRunnerOfflineDays: row.ghostRunnerOfflineDays,
-    sentryMinEventCount: row.sentryMinEventCount,
-    sentryMinUserCount: row.sentryMinUserCount,
-  };
+  return ADMIN_THRESHOLD_DEFAULTS;
 }

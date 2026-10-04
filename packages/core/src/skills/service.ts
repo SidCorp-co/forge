@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, eq, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects, runners, type SkillTarget, skills } from '../db/schema.js';
 import { RefusalError } from '../lib/refusal.js';
@@ -9,7 +9,6 @@ import { scanSkillContent } from '../security/skill-content-scanner.js';
 import { hashSkillBody } from './hash.js';
 import { isMetaSkillName, metaSkillReserved } from './meta-skills.js';
 import { refuse } from './refuse.js';
-import { computeSkillDiff, type SkillDiff, type SyncManifestInput, type SyncMode } from './sync.js';
 
 /** Each blocking finding of the content scan, as one refusal of the write. */
 function contentBlocked(blockers: Finding[]): RefusalError {
@@ -105,26 +104,6 @@ export const skillProjection = {
   pinnedAt: skills.pinnedAt,
 } as const;
 
-/**
- * Fetch a skill by id, but only return it if it is either global or scoped
- * to the caller's project. Returns null for cross-project skills so the
- * caller sees the same "not found" response either way (no information
- * leak on id existence).
- */
-export async function getSkillForProject(
-  skillId: string,
-  projectId: string,
-): Promise<SkillRow | null> {
-  const [row] = (await db
-    .select(skillProjection)
-    .from(skills)
-    .where(eq(skills.id, skillId))
-    .limit(1)) as SkillRow[];
-  if (!row) return null;
-  if (row.scope === 'project' && row.projectId !== projectId) return null;
-  return row;
-}
-
 export interface CreateProjectSkillInput {
   projectId: string;
   name: string;
@@ -136,17 +115,10 @@ export interface CreateProjectSkillInput {
   /** ISS-605 template lineage — set when the skill is adopted from a global. */
   basedOnGlobalSkillId?: string | undefined;
   basedOnGlobalVersion?: number | undefined;
-  /**
-   * ISS-741 — bypass the reserved meta-skill-name guard. Only the SYSTEM
-   * provisioning bridge (`resolveOrAdoptProjectSkill`, used by the
-   * `install_only` bootstrap fan-out + domain-template apply) may set this;
-   * a user-facing create/adopt path must never pass true.
-   */
-  allowReservedMetaName?: boolean | undefined;
 }
 
 export async function createProjectSkill(input: CreateProjectSkillInput): Promise<SkillRow> {
-  if (!input.allowReservedMetaName && isMetaSkillName(input.name)) {
+  if (isMetaSkillName(input.name)) {
     throw metaSkillReserved(input.name);
   }
 
@@ -320,61 +292,6 @@ export async function applyGlobalSkillDefault(input: {
 }
 
 /**
- * Single-path bridge for provisioning flows (project bootstrap, domain-template
- * apply): return the id of the project skill named `skillName`, cloning the
- * same-name global TEMPLATE into the project when the project does not own one
- * yet. Returns null when neither a project skill nor a global template of that
- * name exists (the caller decides whether to skip or error). Idempotent — a
- * re-run returns the existing project skill instead of cloning again.
- *
- * This is how a global enters a project under the single-path model: choosing a
- * skill for a stage materialises a project-owned copy; the global itself is
- * never registered or dispatched.
- */
-export async function resolveOrAdoptProjectSkill(
-  projectId: string,
-  skillName: string,
-): Promise<string | null> {
-  const [proj] = await db
-    .select({ id: skills.id })
-    .from(skills)
-    .where(
-      and(eq(skills.scope, 'project'), eq(skills.projectId, projectId), eq(skills.name, skillName)),
-    )
-    .limit(1);
-  if (proj) return proj.id;
-
-  const [global] = await db
-    .select({
-      id: skills.id,
-      version: skills.version,
-      name: skills.name,
-      description: skills.description,
-      skillMd: skills.skillMd,
-      prompt: skills.prompt,
-      target: skills.target,
-      files: skills.files,
-    })
-    .from(skills)
-    .where(and(eq(skills.scope, 'global'), eq(skills.name, skillName)))
-    .limit(1);
-  if (!global) return null;
-
-  const created = await createProjectSkill({
-    projectId,
-    name: global.name,
-    description: global.description,
-    skillMd: global.skillMd ?? global.prompt ?? '',
-    target: global.target,
-    files: (Array.isArray(global.files) ? global.files : []) as SkillFileInput[],
-    basedOnGlobalSkillId: global.id,
-    basedOnGlobalVersion: global.version,
-    allowReservedMetaName: true,
-  });
-  return created.id;
-}
-
-/**
  * Resolve a project's runners to a distinct set of device ids, optionally
  * narrowed to one device.
  */
@@ -435,74 +352,4 @@ export async function requestSkillSync(
     });
   }
   return { projectId: input.projectId, deviceIds };
-}
-
-/**
- * A device's manifest push, applied in one transaction: read the project's skills, categorise
- * against the payload, upsert what changed and, in full mode, delete what the payload left out.
- */
-export async function syncProjectSkillManifests(
-  projectId: string,
-  mode: SyncMode,
-  manifests: SyncManifestInput[],
-): Promise<{ diff: SkillDiff; added: string[]; updated: string[] }> {
-  return db.transaction(async (tx) => {
-    const existing = await tx
-      .select({ name: skills.name, contentHash: skills.contentHash })
-      .from(skills)
-      .where(and(eq(skills.projectId, projectId), eq(skills.scope, 'project')));
-
-    const d = computeSkillDiff(existing, manifests, mode);
-
-    const writes = [...d.toInsert, ...d.toUpdate];
-    if (writes.length > 0) {
-      await tx
-        .insert(skills)
-        .values(
-          writes.map((m) => ({
-            name: m.name,
-            description: m.description ?? '',
-            scope: 'project' as const,
-            projectId,
-            prompt: m.prompt,
-            tools: m.tools,
-            manifest: {},
-            source: 'user' as const,
-            contentHash: m.hash,
-          })),
-        )
-        .onConflictDoUpdate({
-          target: [skills.projectId, skills.name],
-          targetWhere: sql`scope = 'project'`,
-          // Only change fields the caller supplied; keep the prior description when the
-          // incoming manifest omits it.
-          set: {
-            prompt: sql`excluded.prompt`,
-            tools: sql`excluded.tools`,
-            contentHash: sql`excluded.content_hash`,
-            description: sql`CASE WHEN excluded.description = '' THEN ${skills.description} ELSE excluded.description END`,
-            version: sql`${skills.version} + 1`,
-            updatedAt: sql`now()`,
-          },
-        });
-    }
-
-    if (d.toRemove.length > 0) {
-      await tx
-        .delete(skills)
-        .where(
-          and(
-            eq(skills.projectId, projectId),
-            eq(skills.scope, 'project'),
-            inArray(skills.name, d.toRemove),
-          ),
-        );
-    }
-
-    return {
-      diff: d,
-      added: d.toInsert.map((m) => m.name),
-      updated: d.toUpdate.map((m) => m.name),
-    };
-  });
 }

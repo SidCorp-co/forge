@@ -179,8 +179,6 @@ export type ActivityLog = typeof schema.activityLog.$inferSelect;
 
 export type SkillActivityEventRow = typeof schema.skillActivityEvents.$inferSelect;
 
-export type UpdatePacketRow = typeof schema.updatePackets.$inferSelect;
-
 export type KnowledgeEntry = typeof schema.knowledgeEntries.$inferSelect;
 
 // ISS-546/ISS-556 — improvement-message registry type (cross-app parity).
@@ -222,4 +220,3 @@ export interface ImprovementMessageEntry extends ImprovementMessage {
   } | null;
 }
 
-export type DivergenceCharterRow = typeof schema.divergenceCharters.$inferSelect;

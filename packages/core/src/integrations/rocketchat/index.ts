@@ -1,7 +1,5 @@
 export { rocketchatIntegration } from './adapter.js';
 export { activeRocketChatBinding, rocketChatBindingOfProject } from './binding.js';
-export { screenCarriedComment } from './comment-carry.js';
-export { threadRootText } from './comment-render.js';
 export {
   type ActiveConnection,
   rocketChatManager,
@@ -37,12 +35,5 @@ export { type RoomPostAuth, resolveRoomPostAuth, roomStillBoundTo } from './room
 export { provideRoomHandlers, type RoomHandlers } from './room-handlers.js';
 export type { Route } from './room-routing.js';
 export { type RoomShape, resolveRoomShape } from './room-shape.js';
-export {
-  type IssueThread,
-  liveThreadForIssue,
-  questionThread,
-  registerThread,
-  releaseQuestionThread,
-  retireIssueThread,
-} from './thread-registry.js';
+export { questionThread, registerThread, releaseQuestionThread } from './thread-registry.js';
 export type { RocketChatBindingConfig, RocketChatConfig, RocketChatSecrets } from './types.js';

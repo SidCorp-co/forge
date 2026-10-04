@@ -7,7 +7,6 @@ import type { SourceHostFactory } from './source-host/index.js';
 
 export type IntegrationProvider =
   | 'coolify'
-  | 'postman'
   | 'epodsystem'
   | 'sentry'
   | 'rocketchat'
@@ -19,7 +18,6 @@ export type IntegrationProvider =
 
 export const INTEGRATION_PROVIDERS = [
   'coolify',
-  'postman',
   'epodsystem',
   'sentry',
   'rocketchat',

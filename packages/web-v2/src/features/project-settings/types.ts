@@ -7,8 +7,6 @@ export interface ProjectUpdateInput {
 	/** NOT where work lands, its environments or promotions: those are the project document,
 	 *  edited on the Configuration tab, and this patch refuses them by name. */
 	orgId?: string;
-	/** `agentConfig.assistantWeekly`, replaced whole; null clears it. */
-	assistantWeekly?: AssistantWeekly | null;
 }
 
 /** One row of `GET /api/projects/:id/members` — includes the member email. */
@@ -146,18 +144,7 @@ export interface ReleaseReadiness {
 	)[];
 }
 
-/** The assistant's weekly reading of this project — `agentConfig.assistantWeekly`, written
- *  through `PATCH /api/projects/:id`. */
-export interface AssistantWeekly {
-	enabled: boolean;
-	pinnedIssue: string;
-	judgeProviderId: string;
-	judgeModel: string;
-	source?: string;
-}
-
 export interface ProjectAgentConfig {
-	assistantWeekly?: AssistantWeekly;
 	plugins?: PluginDesignation[];
 }
 

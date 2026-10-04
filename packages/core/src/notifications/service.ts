@@ -1,12 +1,6 @@
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import {
-  type NotificationType,
-  notificationDeliveries,
-  notificationDeliveryMembers,
-  notificationSilences,
-  notifications,
-} from '../db/schema.js';
+import { type NotificationType, notificationDeliveries } from '../db/schema.js';
 import { emitEvent } from '../outbox/index.js';
 import { recordAndDeliver } from './deliver.js';
 import { liveConditionOf, ownsDelivery } from './read.js';
@@ -38,37 +32,6 @@ export async function setDeliveryRead(deliveryId: string, userId: string, read: 
   });
 }
 
-/** Close the tasks this delivery carries; a condition is not reachable from here. Null when not the caller's. */
-export async function closeDeliveryTasks(
-  deliveryId: string,
-  userId: string,
-  to: 'done' | 'dismissed',
-): Promise<{ closed: number } | null> {
-  if (!(await ownsDelivery(deliveryId, userId))) return null;
-
-  const memberIds = await db
-    .select({ id: notificationDeliveryMembers.notificationId })
-    .from(notificationDeliveryMembers)
-    .where(eq(notificationDeliveryMembers.deliveryId, deliveryId));
-  if (memberIds.length === 0) return { closed: 0 };
-
-  const closed = await db
-    .update(notifications)
-    .set({ state: to, resolvedAt: new Date() })
-    .where(
-      and(
-        inArray(
-          notifications.id,
-          memberIds.map((m) => m.id),
-        ),
-        eq(notifications.kind, 'task'),
-        isNull(notifications.resolvedAt),
-      ),
-    )
-    .returning({ id: notifications.id });
-  return { closed: closed.length };
-}
-
 export type DeleteDeliveryOutcome =
   | { ok: true }
   | { ok: false; code: 'NOT_FOUND' }
@@ -86,29 +49,6 @@ export async function deleteDelivery(
   return { ok: true };
 }
 
-/** A silence the caller states, until `expiresAt`. */
-export async function createSilence(input: {
-  createdBy: string;
-  type: NotificationType | null;
-  projectId: string | null;
-  resolutionKey: string | null;
-  reason: string;
-  expiresAt: Date;
-}) {
-  const [row] = await db.insert(notificationSilences).values(input).returning();
-  return row;
-}
-
-/** One of the caller's silences, ended now; false when it is not theirs. */
-export async function endSilence(silenceId: string, userId: string): Promise<boolean> {
-  const updated = await db
-    .update(notificationSilences)
-    .set({ expiresAt: new Date() })
-    .where(and(eq(notificationSilences.id, silenceId), eq(notificationSilences.createdBy, userId)))
-    .returning({ id: notificationSilences.id });
-  return updated.length > 0;
-}
-
 export async function createNotification(input: {
   userId?: string;
   recipients?: string[];
@@ -123,7 +63,6 @@ export async function createNotification(input: {
   severity?: string | null;
   resolutionKey?: string | null;
   dedupeKey?: string | null;
-  decisionId?: string | null;
   groupKey?: string | null;
   groupTitle?: string | null;
 }): Promise<{ id: string; delivered: number } | null> {

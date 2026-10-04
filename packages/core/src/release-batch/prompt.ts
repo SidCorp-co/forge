@@ -1,5 +1,4 @@
 // ISS-764 — prompt assembly for the release_batch job.
-// Pattern: skills/smoke-verify.ts:buildSmokeCanaryPrompt.
 // Untrusted issue text is wrapped via markUntrusted (same as every state prompt).
 
 import { markUntrusted } from '../lib/untrusted-text.js';

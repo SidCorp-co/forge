@@ -1,16 +1,13 @@
 import { randomBytes } from 'node:crypto';
 import { DEVICE_MACHINE, RUNNER_PROVISION_MACHINE } from '@forge/contracts/runner-machine';
-import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm';
+import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   deviceLoginCodes,
-  deviceSkills,
   devices,
   pairingCodes,
   type RunnerProvisionStatus,
   runners,
-  skillActivityEvents,
-  skills,
 } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
@@ -24,7 +21,6 @@ import {
 import { revokeDeviceCredentials } from './credential.js';
 import type { DevicePatch } from './heartbeat-patch.js';
 import { heartbeatPool } from './pool-read-report.js';
-import { devicesPorts } from './ports.js';
 
 /** A device's name or disabled switch; null when the device is gone. */
 export async function updateDevice(id: string, patch: { name?: string; disabledAt?: Date | null }) {
@@ -155,229 +151,6 @@ export async function reportProvisionStatus(input: {
     return row;
   });
   return runner ?? null;
-}
-
-export type ReportedSkill = {
-  skillId: string;
-  installedHash: string;
-  installedVersion?: number | undefined;
-  observedSha?: string | undefined;
-  shadowedBy?: string | undefined;
-};
-
-/** A device's skill sync report: each installed hash is upserted and each pruned name removed. */
-export async function applySkillReport(input: {
-  projectId: string;
-  deviceId: string;
-  reported: readonly ReportedSkill[];
-  pruned: readonly string[];
-}): Promise<void> {
-  const syncedAt = new Date();
-  for (const entry of input.reported) {
-    await applyReportedSkill({
-      projectId: input.projectId,
-      deviceId: input.deviceId,
-      syncedAt,
-      entry,
-    });
-  }
-  for (const name of input.pruned) {
-    await recordPrunedSkill({ projectId: input.projectId, deviceId: input.deviceId, name });
-  }
-}
-
-/** A device's failed skill sync is recorded, unless its last failure said the same. */
-export async function recordSkillSyncFailure(input: {
-  projectId: string;
-  deviceId: string;
-  error: string;
-}): Promise<void> {
-  const { projectId, deviceId, error } = input;
-  await db.transaction(async (tx) => {
-    const [last] = await tx
-      .select({ reason: skillActivityEvents.reason })
-      .from(skillActivityEvents)
-      .where(
-        and(
-          eq(skillActivityEvents.eventType, 'device.sync.failed'),
-          eq(skillActivityEvents.projectId, projectId),
-          eq(skillActivityEvents.deviceId, deviceId),
-        ),
-      )
-      .orderBy(desc(skillActivityEvents.occurredAt))
-      .limit(1);
-    if (last?.reason === error) return;
-
-    await devicesPorts().skillActivity.recordSkillActivityEvent(tx, {
-      eventType: 'device.sync.failed',
-      actor: `runner:${deviceId}`,
-      trigger: 'poll',
-      projectId,
-      deviceId,
-      reason: error,
-      outcome: 'failed',
-    });
-  });
-}
-
-async function applyReportedSkill(input: {
-  projectId: string;
-  deviceId: string;
-  syncedAt: Date;
-  entry: ReportedSkill;
-}): Promise<void> {
-  const { projectId, deviceId, syncedAt, entry } = input;
-  const nextObservedSha = entry.observedSha ?? null;
-  const nextShadowedBy = entry.shadowedBy ?? null;
-
-  await db.transaction(async (tx) => {
-    const [existing] = await tx
-      .select({
-        installedHash: deviceSkills.installedHash,
-        observedSha: deviceSkills.observedSha,
-        shadowedBy: deviceSkills.shadowedBy,
-      })
-      .from(deviceSkills)
-      .where(
-        and(
-          eq(deviceSkills.deviceId, deviceId),
-          eq(deviceSkills.projectId, projectId),
-          eq(deviceSkills.skillId, entry.skillId),
-        ),
-      )
-      .for('update')
-      .limit(1);
-
-    const hashChanged = !existing || existing.installedHash !== entry.installedHash;
-    const observedChanged = existing
-      ? existing.observedSha !== nextObservedSha
-      : nextObservedSha !== null;
-    const shadowChanged = existing
-      ? existing.shadowedBy !== nextShadowedBy
-      : nextShadowedBy !== null;
-
-    await tx
-      .insert(deviceSkills)
-      .values({
-        deviceId,
-        projectId,
-        skillId: entry.skillId,
-        installedHash: entry.installedHash,
-        installedVersion: entry.installedVersion ?? null,
-        syncedAt,
-        observedSha: nextObservedSha,
-        shadowedBy: nextShadowedBy,
-      })
-      .onConflictDoUpdate({
-        target: [deviceSkills.deviceId, deviceSkills.projectId, deviceSkills.skillId],
-        set: {
-          installedHash: entry.installedHash,
-          installedVersion: entry.installedVersion ?? null,
-          syncedAt,
-          observedSha: nextObservedSha,
-          shadowedBy: nextShadowedBy,
-        },
-      });
-
-    const appliedPacketId = await devicesPorts().skillActivity.resolvePacketIdForHash(
-      tx,
-      projectId,
-      entry.skillId,
-      entry.installedHash,
-    );
-
-    if (hashChanged) {
-      await devicesPorts().skillActivity.recordSkillActivityEvent(tx, {
-        eventType: 'device.skill.applied',
-        actor: `runner:${deviceId}`,
-        trigger: 'poll',
-        projectId,
-        skillId: entry.skillId,
-        deviceId,
-        ...(appliedPacketId ? { packetId: appliedPacketId } : {}),
-        ...(existing?.installedHash !== undefined ? { beforeHash: existing.installedHash } : {}),
-        afterHash: entry.installedHash,
-        outcome: 'ok',
-      });
-    }
-
-    if (nextShadowedBy !== null) {
-      if (shadowChanged || observedChanged) {
-        await devicesPorts().skillActivity.recordSkillActivityEvent(tx, {
-          eventType: 'device.skill.shadowed',
-          actor: `runner:${deviceId}`,
-          trigger: 'poll',
-          projectId,
-          skillId: entry.skillId,
-          deviceId,
-          ...(existing?.observedSha ? { beforeHash: existing.observedSha } : {}),
-          ...(nextObservedSha !== null ? { afterHash: nextObservedSha } : {}),
-          deltaSummary: nextShadowedBy,
-          outcome: 'ok',
-        });
-      }
-    } else if (observedChanged || shadowChanged) {
-      await devicesPorts().skillActivity.recordSkillActivityEvent(tx, {
-        eventType: 'device.skill.observed',
-        actor: `runner:${deviceId}`,
-        trigger: 'poll',
-        projectId,
-        skillId: entry.skillId,
-        deviceId,
-        ...(appliedPacketId ? { packetId: appliedPacketId } : {}),
-        ...(existing?.observedSha ? { beforeHash: existing.observedSha } : {}),
-        ...(nextObservedSha !== null ? { afterHash: nextObservedSha } : {}),
-        outcome: 'ok',
-      });
-    }
-  });
-}
-
-/**
- * A pruned skill is reported by NAME (the runner has no id for a manifest entry that no longer
- * exists), so it is resolved to the project's skill row first. The device_skills row and the event
- * go in one transaction; an unresolvable name still gets an event with a null skillId.
- */
-async function recordPrunedSkill(input: {
-  projectId: string;
-  deviceId: string;
-  name: string;
-}): Promise<void> {
-  const [skill] = await db
-    .select({ id: skills.id })
-    .from(skills)
-    .where(
-      and(
-        eq(skills.scope, 'project'),
-        eq(skills.projectId, input.projectId),
-        eq(skills.name, input.name),
-      ),
-    )
-    .limit(1);
-
-  await db.transaction(async (tx) => {
-    if (skill) {
-      await tx
-        .delete(deviceSkills)
-        .where(
-          and(
-            eq(deviceSkills.deviceId, input.deviceId),
-            eq(deviceSkills.projectId, input.projectId),
-            eq(deviceSkills.skillId, skill.id),
-          ),
-        );
-    }
-    await devicesPorts().skillActivity.recordSkillActivityEvent(tx, {
-      eventType: 'device.skill.pruned',
-      actor: `runner:${input.deviceId}`,
-      trigger: 'poll',
-      projectId: input.projectId,
-      ...(skill ? { skillId: skill.id } : {}),
-      deviceId: input.deviceId,
-      deltaSummary: input.name,
-      outcome: 'ok',
-    });
-  });
 }
 
 /** A login code is stored under its hash; null when the hash collided with a live one. */

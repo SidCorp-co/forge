@@ -57,7 +57,7 @@ projectOnboardRoutes.post(
     if (!effective.some((s) => s.name === ONBOARD_SKILL_NAME && s.installOnly)) {
       throw new HTTPException(503, {
         message:
-          'forge-onboard is not installed for this project — apply a domain template to adopt it',
+          'forge-onboard is not installed for this project. It is a reserved meta skill that no project route adopts, so onboarding cannot start until it is installed.',
         cause: { code: 'ONBOARD_SKILL_MISSING' },
       });
     }

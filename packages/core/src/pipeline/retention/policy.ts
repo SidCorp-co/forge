@@ -53,7 +53,7 @@ export const RETENTION_RULES: readonly RetentionRule[] = [
     days: 90,
     env: 'RETENTION_RETRIEVAL_ANALYTICS_DAYS',
     floorDays: 7,
-    why: 'One row per memory search, read by `GET /api/admin/retrieval/breakdown`, which defaults to a 7-day window and takes an arbitrary `since`.',
+    why: 'One row per memory search, written for analysis and read by no route.',
   },
   {
     table: 'mcp_audit_log',

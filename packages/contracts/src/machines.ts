@@ -6,12 +6,8 @@ import { JOB_MACHINE } from "./job-machine.js";
 import { MOCKUP_MACHINE } from "./mockup-machine.js";
 import { QUESTIONNAIRE_MACHINE } from "./onboarding-machine.js";
 import { QUESTION_MACHINE } from "./question-machine.js";
-import { RECONCILE_RUN_MACHINE } from "./reconcile-run-machine.js";
 import { REQUIREMENT_MACHINE } from "./requirement-machine.js";
-import {
-	COMMENT_MIRROR_MACHINE,
-	QUESTION_DELIVERY_MACHINE,
-} from "./room-delivery-machine.js";
+import { QUESTION_DELIVERY_MACHINE } from "./room-delivery-machine.js";
 import { RUN_MACHINE } from "./run-machine.js";
 import {
 	DEVICE_MACHINE,
@@ -35,11 +31,9 @@ export const MACHINE_ENTITIES = [
 	"questionnaire",
 	"question",
 	"schedule_run",
-	"reconcile_run",
 	"runner",
 	"runner_provision",
 	"device",
-	"comment_mirror",
 	"question_delivery",
 ] as const;
 export type MachineEntity = (typeof MACHINE_ENTITIES)[number];
@@ -56,11 +50,9 @@ export const MACHINES = {
 	questionnaire: QUESTIONNAIRE_MACHINE,
 	question: QUESTION_MACHINE,
 	schedule_run: SCHEDULE_RUN_MACHINE,
-	reconcile_run: RECONCILE_RUN_MACHINE,
 	runner: RUNNER_MACHINE,
 	runner_provision: RUNNER_PROVISION_MACHINE,
 	device: DEVICE_MACHINE,
-	comment_mirror: COMMENT_MIRROR_MACHINE,
 	question_delivery: QUESTION_DELIVERY_MACHINE,
 } as const satisfies { readonly [E in MachineEntity]: StatusMachine<E> };
 

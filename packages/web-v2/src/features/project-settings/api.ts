@@ -16,7 +16,7 @@ import type {
 } from "./types";
 
 export const projectSettingsApi = {
-	/** `PATCH /api/projects/:id` — org, issue prefix and the weekly assistant (org admin). Returns the row. */
+	/** `PATCH /api/projects/:id` — org and issue prefix (org admin). Returns the row. */
 	update: (id: string, patch: ProjectUpdateInput) =>
 		apiClient<ProjectDetail>(`/projects/${id}`, {
 			method: "PATCH",
@@ -29,13 +29,6 @@ export const projectSettingsApi = {
 	/** `POST /api/projects/:id/unarchive` — clear `archivedAt` (owner only). */
 	unarchive: (id: string) =>
 		apiClient<ProjectDetail>(`/projects/${id}/unarchive`, { method: "POST" }),
-
-	runAssistantWeekly: (id: string) =>
-		apiClient<
-			| { outcome: "posted"; windowId: string }
-			| { outcome: "skipped"; windowId: string; reason: string }
-			| { outcome: "failed"; windowId: string; error: string }
-		>(`/projects/${id}/assistant-weekly/run`, { method: "POST" }),
 
 	/** `PATCH /api/projects/:id/plugins` — replaces `agentConfig.plugins` whole. */
 	updatePlugins: (id: string, plugins: PluginDesignation[]) =>

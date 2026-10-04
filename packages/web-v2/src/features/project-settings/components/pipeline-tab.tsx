@@ -1,7 +1,6 @@
 "use client";
 
 import { Card, CardContent, SectionTitle } from "@/design";
-import { AssistantWeeklySection } from "./assistant-weekly-section";
 import { PluginsSection } from "./plugins-section";
 import { ReleaseSection } from "./release-section";
 
@@ -30,8 +29,6 @@ export function PipelineTab({
         <ReleaseSection projectId={projectId} slug={slug} />
 
         <PluginsSection projectId={projectId} canEdit={canEdit} />
-
-        <AssistantWeeklySection projectId={projectId} canEdit={canEdit} />
       </CardContent>
     </Card>
   );

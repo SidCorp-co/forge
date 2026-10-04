@@ -102,8 +102,8 @@ type ThresholdSource = () => Promise<SentryAdmissionThresholds>;
 let thresholdSource: ThresholdSource | null = null;
 
 /**
- * Where the admission policy is read from (`admin_thresholds`, the admin module's). The process entry
- * provides it at boot, so this domain reads no module above it.
+ * Where the admission policy is read from (the fixed defaults of `admin-thresholds`). The process
+ * entry provides it at boot, so this domain reads no module above it.
  */
 export function provideAdmissionThresholds(source: ThresholdSource): void {
   thresholdSource = source;

@@ -26,8 +26,6 @@ export const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<JobType, readonly IssueStatus
   // smoke canaries (ISS-455) are issue-less; there is no status to advance.
   smoke: [],
   release_batch: [],
-  reconcile: [],
-  verify_skill: [],
   // the onboarding analysis (ISS-63) is issue-less too.
   onboarding: [],
 };

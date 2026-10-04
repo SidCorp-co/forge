@@ -57,7 +57,6 @@ import {
   scopeIsFixed,
 } from './conversation-scope.js';
 import { sendWebConversationMessage } from './conversation-send.js';
-import { conversationToolCallRoutes } from './conversation-tool-calls.js';
 import { pinnedBy, speakerLabelOf } from './read.js';
 import { openWebConversation } from './service.js';
 import { threadMarks } from './thread-marks.js';
@@ -163,7 +162,6 @@ conversationRoutes.use('*', requireAuth(), assertEmailVerified());
 
 conversationRoutes.route('/', conversationMemberRoutes);
 conversationRoutes.route('/', conversationAttachmentRoutes);
-conversationRoutes.route('/', conversationToolCallRoutes);
 conversationRoutes.route('/', conversationPinRoutes);
 
 /**

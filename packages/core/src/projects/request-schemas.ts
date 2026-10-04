@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { assistantWeeklySchema } from './agent-config-schema.js';
 import {
   refuseRetiredProjectFields,
   refuseRetiredProjectKeys,
@@ -30,7 +29,6 @@ export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 
 const updateProjectFields = {
   issuePrefix: z.string().trim().max(16).nullable().optional(),
-  assistantWeekly: assistantWeeklySchema.nullable().optional(),
   // Move the project to another org. Requires org owner/admin on BOTH the
   // current org (route gate) and the target org (checked in the handler).
   orgId: z.uuid().optional(),

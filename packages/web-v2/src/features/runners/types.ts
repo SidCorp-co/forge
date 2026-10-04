@@ -47,7 +47,6 @@ export interface DeviceRow {
 	 */
 	gate: DeviceGate | null;
 	/** Non-secret label set when a git push credential was provisioned (ISS-305). */
-	gitCredentialRef: string | null;
 	createdAt: string;
 }
 

@@ -8,16 +8,9 @@ use forge_runner_core::runner::ledger::{short_id, Ledger, Unanswered, WhatEndsIt
 use super::Ctx;
 
 #[derive(ClapArgs)]
-pub struct Args {
-    /// The live view of this box: the same as `forge-runner top`.
-    #[arg(long)]
-    pub watch: bool,
-}
+pub struct Args {}
 
-pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
-    if args.watch {
-        return super::top::run(ctx, super::top::Args::default()).await;
-    }
+pub async fn run(ctx: Ctx, _args: Args) -> anyhow::Result<()> {
     let cfg = Config::load()?;
     println!(
         "binary     {} ({}) — the file this command ran",

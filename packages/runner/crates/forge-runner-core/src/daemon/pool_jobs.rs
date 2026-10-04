@@ -1,6 +1,6 @@
 //! Bringing a pool job to life on this box, and staying with it.
 //!
-//! Core has minted `smoke`, `release_batch`, `reconcile` and `verify_skill`
+//! Core has minted `smoke` and `release_batch`
 //! into a JOBS pool since ISS-933 and published a `master.wake` on every one.
 //! Three annotations in core say the box reads that pool for itself —
 //! `pool-routes.ts` on `GET /me/pool`, `ws/master-wake.ts` on the wake, and
@@ -1643,7 +1643,7 @@ mod tests {
     /// is handed what the project declares.
     #[tokio::test]
     async fn every_pool_kind_opens_its_pane_with_the_servers_the_project_declares() {
-        for kind in ["smoke", "release_batch", "reconcile", "verify_skill"] {
+        for kind in ["smoke", "release_batch"] {
             let mut prep = prepared("j1", Some("go"));
             if let Prepared::Took(p) = &mut prep {
                 p.job_type = kind.into();
