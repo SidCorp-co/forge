@@ -3,4 +3,5 @@ export type { ApiRefusal } from './documents.js';
 export { announceIntegrationChanged } from './integration-changed.js';
 export type { ProjectDocument, STOREFRONT_PROVIDERS } from './schema.js';
 export { uuid } from './schema.js';
+export { readProjectConfig } from './service.js';
 export { readDeclaredSource } from './source.js';
