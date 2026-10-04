@@ -73,9 +73,15 @@ async function plannedStepsAt(
 function documentOf(row: Row): ObservationDocument {
   const parsed = observationDocumentSchema.safeParse(row.document);
   if (!parsed.success) {
-    throw new Error(
-      `workflows: observation ${row.id} no longer parses as an observation document; it is not guessed at.`,
-    );
+    const [first] = parsed.error.issues;
+    const field = `/${(first?.path ?? []).map(String).join('/')}`;
+    throw new HTTPException(422, {
+      message: `OBSERVATION_UNPARSEABLE: observation ${row.id} holds ${field}, which no longer parses as an observation document (${first?.message ?? 'unknown'}); the stored row is repaired, never guessed at.`,
+      cause: {
+        code: 'OBSERVATION_UNPARSEABLE',
+        details: { observationId: row.id, field, issue: first?.message ?? null },
+      },
+    });
   }
   return parsed.data;
 }
