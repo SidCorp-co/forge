@@ -108,7 +108,7 @@ và CLI hơn thì không cần MCP".
 - **A tool that stays is one tool per resource with an `action` enum** whose verbs match the
   routes, lives in its module (**tool.ts**), and calls the same service and read functions as the
   route. Its input is one `z.strictObject`; it declares `grant`, `reach` and `route`, and both doors
-  refuse a call through `packages/core/src/mcp/tool-call-guard.ts:toolCallRefusal`.
+  refuse a call through `packages/core/src/lib/tool-call-guard.ts:toolCallRefusal`.
 - **One route-mount registry** in the HTTP door mounts every module's exported `routes`
   (`packages/core/src/route-registry.ts:mountRoutes`), and one MCP registry registers the remaining
   tools (`packages/core/src/mcp/registry.ts:MCP_TOOLS`, keyed by

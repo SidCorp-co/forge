@@ -17,7 +17,7 @@ import type {
   ToolReach,
   ToolReachEntry,
   ToolRoute,
-} from '../lib/tool.js';
+} from './tool.js';
 
 export interface GrantedTool {
   readonly name: string;

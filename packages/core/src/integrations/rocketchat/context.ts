@@ -5,7 +5,7 @@
  */
 
 import { type ChatToolset, toolError } from '../../assistant/tools/mcp-adapter.js';
-import type { CallToolResult } from '../../mcp/tool-result.js';
+import type { CallToolResult } from '../../lib/tool-result.js';
 import type { ChatTool } from '../llm/types.js';
 import {
   buildMessagePermalink,

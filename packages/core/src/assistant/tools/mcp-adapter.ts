@@ -15,9 +15,9 @@ import {
   patEffectiveProjectIds,
   refusedAnswer,
 } from '../../lib/tool.js';
-import { toolCallRefusal } from '../../mcp/tool-call-guard.js';
-import { assertToolDeclaresAccess } from '../../mcp/tool-grant.js';
-import { type CallToolResult, toToolCallContent } from '../../mcp/tool-result.js';
+import { toolCallRefusal } from '../../lib/tool-call-guard.js';
+import { assertToolDeclaresAccess } from '../../lib/tool-grant.js';
+import { type CallToolResult, toToolCallContent } from '../../lib/tool-result.js';
 
 /** One entry in the chat tool allowlist. */
 export interface ChatToolSpec {

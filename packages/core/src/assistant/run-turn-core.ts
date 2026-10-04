@@ -14,7 +14,7 @@ import type {
   ChatStreamEvent,
   ChatStreamUsage,
 } from '../integrations/llm/types.js';
-import type { CallToolResult } from '../mcp/tool-result.js';
+import type { CallToolResult } from '../lib/tool-result.js';
 import {
   addElision,
   applyContextBudget,
