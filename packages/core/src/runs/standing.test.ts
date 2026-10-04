@@ -85,6 +85,26 @@ describe('runStandingOf: the waiting states name who or what moves next', () => 
     expect(r.needsViewer).toBe(false);
   });
 
+  it('waiting_person: a parked issue waits since the transition that parked it, and says when none is recorded', () => {
+    const parked = runStandingOf(
+      facts({
+        issue: { id: 'i-7', key: 'ISS-7', title: 'Seven', status: 'on_hold', statusSince: at(-6) },
+      }),
+      ctx(),
+    );
+    expect(parked.state).toBe('waiting_person');
+    expect(parked.since).toBe(at(-6).toISOString());
+    expect(parked.waitingOn).toMatchObject({ act: 'resume it', since: at(-6).toISOString() });
+    const unknown = runStandingOf(
+      facts({
+        issue: { id: 'i-7', key: 'ISS-7', title: 'Seven', status: 'needs_info', statusSince: null },
+      }),
+      ctx(),
+    );
+    expect(unknown.since).toBeNull();
+    expect(unknown.rule).toMatch(/no kernel transition records when it moved there/);
+  });
+
   it('waiting_person: a pending release approval waits on a project admin', () => {
     const r = runStandingOf(
       facts(

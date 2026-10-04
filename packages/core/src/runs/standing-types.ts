@@ -37,7 +37,7 @@ export interface RunFacts {
     pauseReason: string | null;
     releaseVersion: string | null;
   };
-  issue: (RunIssueRef & { id: string }) | null;
+  issue: (RunIssueRef & { id: string; statusSince: Date | null }) | null;
   issues: string[];
   openingStatuses: Record<string, string>;
   endStatuses: Record<string, KernelIssueStatus>;

@@ -202,6 +202,7 @@ function factsOf(
           key: formatIssueRef(prefix, Number(primary.iss_seq)),
           title: String(primary.title),
           status: primary.status as KernelIssueStatus,
+          statusSince: date(primary.status_since),
         }
       : null,
     issues: keys.map(display),

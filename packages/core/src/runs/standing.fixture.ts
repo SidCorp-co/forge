@@ -86,7 +86,7 @@ export function facts(over: Partial<RunFacts> = {}, run: Partial<RunFacts['run']
       releaseVersion: null,
       ...run,
     },
-    issue: { id: 'i-7', key: 'ISS-7', title: 'Seven', status: 'in_progress' },
+    issue: { id: 'i-7', key: 'ISS-7', title: 'Seven', status: 'in_progress', statusSince: at(-40) },
     issues: ['ISS-7'],
     openingStatuses: { 'ISS-7': 'open' },
     endStatuses: { 'ISS-7': 'in_progress' },

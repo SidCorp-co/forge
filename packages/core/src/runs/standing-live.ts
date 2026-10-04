@@ -118,8 +118,10 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
       admin: false,
       act: f.issue.status === 'needs_info' ? 'answer a question' : 'resume it',
       ref: `${key} at ${f.issue.status}`,
-      since: null,
-      rule: `the issue is parked at ${f.issue.status} while its run is live; a person moves it next`,
+      since: f.issue.statusSince,
+      rule: `the issue is parked at ${f.issue.status} while its run is live; a person moves it next${
+        f.issue.statusSince ? '' : ' (no kernel transition records when it moved there)'
+      }`,
     });
   }
   return null;

@@ -206,7 +206,10 @@ function runRows(projectId: string, ids: string[]) {
 function issueRowsOf(projectId: string, seqs: number[]) {
   return when(seqs.length > 0, () =>
     q(sql`
-      SELECT i.id, i.iss_seq, i.title, i.status, w.step, w.step_started_at, w.lease
+      SELECT i.id, i.iss_seq, i.title, i.status, w.step, w.step_started_at, w.lease,
+             (SELECT max(kt.created_at) FROM kernel_transitions kt
+               WHERE kt.entity = 'issue' AND kt.entity_id = i.id AND kt.to_status = i.status)
+               AS status_since
         FROM issues i LEFT JOIN issue_work_state w ON w.issue_id = i.id
        WHERE i.project_id = ${projectId} AND i.iss_seq IN (${sql.join(
          seqs.map((n) => sql`${n}`),
