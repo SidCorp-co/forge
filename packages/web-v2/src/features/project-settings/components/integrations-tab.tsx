@@ -65,7 +65,7 @@ function applicationsOf(targets: CoolifyTargetInput[]): CoolifyTargetInput[] {
   }));
 }
 
-export function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   const connectionsQ = useConnections();
   const bind = useBindConnection(projectId);
   const [connectionId, setConnectionId] = useState<string>("");

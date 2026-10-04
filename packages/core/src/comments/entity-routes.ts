@@ -31,21 +31,19 @@ entityCommentRoutes.use('/:id/decisions', requireAuth(), assertEmailVerified());
 const badRequest = (message: string) =>
   new HTTPException(400, { message, cause: { code: 'BAD_REQUEST' } });
 
-const TARGETS: { scope: EntityCommentScope; segment: string; param: string; names: string }[] = [
-  {
-    scope: 'requirement',
-    segment: 'requirements',
-    param: 'req',
-    names: 'a requirement uuid or key (REQ-n)',
-  },
-  {
-    scope: 'workflow',
-    segment: 'workflows',
-    param: 'workflow',
-    names: 'a workflow uuid or its flow name',
-  },
-  { scope: 'feedback', segment: 'feedback', param: 'fb', names: 'a feedback uuid or key (FB-n)' },
-];
+type Target = { scope: EntityCommentScope; param: string; names: string };
+
+const REQUIREMENT: Target = {
+  scope: 'requirement',
+  param: 'req',
+  names: 'a requirement uuid or key (REQ-n)',
+};
+const WORKFLOW: Target = {
+  scope: 'workflow',
+  param: 'workflow',
+  names: 'a workflow uuid or its flow name',
+};
+const FEEDBACK: Target = { scope: 'feedback', param: 'fb', names: 'a feedback uuid or key (FB-n)' };
 
 function actorOf(c: Context<{ Variables: AuthVars }>): EntityCommentActor {
   const agency = c.get('agency');
@@ -67,71 +65,116 @@ const intentQuery = zValidator(
   },
 );
 
-for (const t of TARGETS) {
-  const ref = z.string().trim().min(1).max(200);
-  const targetParam = zValidator('param', z.object({ id: z.uuid(), [t.param]: ref }), (r) => {
+const ref = z.string().trim().min(1).max(200);
+
+function targetParam(t: Target) {
+  return zValidator('param', z.object({ id: z.uuid(), [t.param]: ref }), (r) => {
     if (!r.success) throw badRequest(`invalid path: a project uuid and ${t.names}`);
   });
-  const commentParam = zValidator(
-    'param',
-    z.object({ id: z.uuid(), [t.param]: ref, comment: z.uuid() }),
-    (r) => {
-      if (!r.success)
-        throw badRequest(`invalid path: a project uuid, ${t.names} and a comment uuid`);
-    },
-  );
-  const refOf = (params: Record<string, string>) => params[t.param] as string;
-  const path = `/:id/${t.segment}/:${t.param}/comments`;
+}
 
-  entityCommentRoutes.get(path, targetParam, intentQuery, async (c) => {
-    const params = c.req.valid('param') as Record<string, string>;
-    const { intent } = c.req.valid('query');
-    return c.json(
-      await listEntityCommentsAs(actorOf(c), params.id as string, t.scope, refOf(params), {
-        intent,
-      }),
-    );
+function commentParam(t: Target) {
+  return zValidator('param', z.object({ id: z.uuid(), [t.param]: ref, comment: z.uuid() }), (r) => {
+    if (!r.success) throw badRequest(`invalid path: a project uuid, ${t.names} and a comment uuid`);
   });
+}
 
-  entityCommentRoutes.post(
-    path,
-    targetParam,
-    strictBody(createEntityCommentRequestSchema, CREATE_ENTITY_COMMENT_SHAPE),
-    async (c) => {
-      const params = c.req.valid('param') as Record<string, string>;
-      return answer(
-        c,
-        await postEntityComment({
-          projectId: params.id as string,
-          scope: t.scope,
-          ref: refOf(params),
-          author: { ...actorOf(c), deviceId: c.get('patDeviceId') ?? null },
-          request: c.req.valid('json'),
-        }),
-      );
-    },
-  );
+type Params = Record<string, string>;
 
-  entityCommentRoutes.patch(
-    `${path}/:comment`,
-    commentParam,
-    strictBody(editEntityCommentRequestSchema, EDIT_ENTITY_COMMENT_SHAPE),
-    async (c) => {
-      const params = c.req.valid('param') as Record<string, string>;
-      return answer(
-        c,
-        await editEntityComment({
-          projectId: params.id as string,
-          scope: t.scope,
-          ref: refOf(params),
-          commentId: params.comment as string,
-          actor: actorOf(c),
-          request: c.req.valid('json'),
-        }),
-      );
-    },
+async function listFor(
+  c: Context<{ Variables: AuthVars }>,
+  t: Target,
+  params: Params,
+  intent: (typeof COMMENT_INTENTS)[number] | undefined,
+) {
+  return c.json(
+    await listEntityCommentsAs(actorOf(c), params.id as string, t.scope, params[t.param] as string, {
+      intent,
+    }),
   );
 }
+
+async function postFor(
+  c: Context<{ Variables: AuthVars }>,
+  t: Target,
+  params: Params,
+  request: Parameters<typeof postEntityComment>[0]['request'],
+) {
+  return answer(
+    c,
+    await postEntityComment({
+      projectId: params.id as string,
+      scope: t.scope,
+      ref: params[t.param] as string,
+      author: { ...actorOf(c), deviceId: c.get('patDeviceId') ?? null },
+      request,
+    }),
+  );
+}
+
+async function editFor(
+  c: Context<{ Variables: AuthVars }>,
+  t: Target,
+  params: Params,
+  request: Parameters<typeof editEntityComment>[0]['request'],
+) {
+  return answer(
+    c,
+    await editEntityComment({
+      projectId: params.id as string,
+      scope: t.scope,
+      ref: params[t.param] as string,
+      commentId: params.comment as string,
+      actor: actorOf(c),
+      request,
+    }),
+  );
+}
+
+const createBody = strictBody(createEntityCommentRequestSchema, CREATE_ENTITY_COMMENT_SHAPE);
+const editBody = strictBody(editEntityCommentRequestSchema, EDIT_ENTITY_COMMENT_SHAPE);
+
+entityCommentRoutes.get(
+  '/:id/requirements/:req/comments',
+  targetParam(REQUIREMENT),
+  intentQuery,
+  (c) => listFor(c, REQUIREMENT, c.req.valid('param') as Params, c.req.valid('query').intent),
+);
+entityCommentRoutes.post('/:id/requirements/:req/comments', targetParam(REQUIREMENT), createBody, (c) =>
+  postFor(c, REQUIREMENT, c.req.valid('param') as Params, c.req.valid('json')),
+);
+entityCommentRoutes.patch(
+  '/:id/requirements/:req/comments/:comment',
+  commentParam(REQUIREMENT),
+  editBody,
+  (c) => editFor(c, REQUIREMENT, c.req.valid('param') as Params, c.req.valid('json')),
+);
+
+entityCommentRoutes.get('/:id/workflows/:workflow/comments', targetParam(WORKFLOW), intentQuery, (c) =>
+  listFor(c, WORKFLOW, c.req.valid('param') as Params, c.req.valid('query').intent),
+);
+entityCommentRoutes.post('/:id/workflows/:workflow/comments', targetParam(WORKFLOW), createBody, (c) =>
+  postFor(c, WORKFLOW, c.req.valid('param') as Params, c.req.valid('json')),
+);
+entityCommentRoutes.patch(
+  '/:id/workflows/:workflow/comments/:comment',
+  commentParam(WORKFLOW),
+  editBody,
+  (c) => editFor(c, WORKFLOW, c.req.valid('param') as Params, c.req.valid('json')),
+);
+
+entityCommentRoutes.get('/:id/feedback/:fb/comments', targetParam(FEEDBACK), intentQuery, (c) =>
+  listFor(c, FEEDBACK, c.req.valid('param') as Params, c.req.valid('query').intent),
+);
+entityCommentRoutes.post('/:id/feedback/:fb/comments', targetParam(FEEDBACK), createBody, (c) =>
+  postFor(c, FEEDBACK, c.req.valid('param') as Params, c.req.valid('json')),
+);
+entityCommentRoutes.patch(
+  '/:id/feedback/:fb/comments/:comment',
+  commentParam(FEEDBACK),
+  editBody,
+  (c) => editFor(c, FEEDBACK, c.req.valid('param') as Params, c.req.valid('json')),
+);
 
 entityCommentRoutes.get(
   '/:id/decisions',

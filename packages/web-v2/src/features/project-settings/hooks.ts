@@ -105,20 +105,6 @@ export function useReleaseReadiness(id: string | undefined) {
 		enabled: Boolean(id),
 	});
 }
-
-/** GET one knowledge entry by slug. A 404 is "no such entry" and not a failure, so
- *  this does not retry. It is NOT normalized to a success here: the query still
- *  reports `isError`, and the caller decides, because a 500 and a 404 must not
- *  render the same. */
-export function useKnowledgeEntry(id: string | undefined, slug: string) {
-	return useQuery({
-		queryKey: ["project", id, "knowledge", slug],
-		queryFn: () => projectSettingsApi.getKnowledgeEntry(id as string, slug),
-		enabled: !!id,
-		retry: false,
-	});
-}
-
 export function useMembers(id: string | undefined) {
 	return useQuery({
 		queryKey: ["project", id, "members"],

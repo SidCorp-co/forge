@@ -15,9 +15,8 @@ import { SLUG_RE, slugify } from '@/lib/slug';
 import { useCreateProject, useOnboardProject } from '../hooks';
 import type { CreatedProject } from '../types';
 
-export { slugify };
 
-export interface NewProjectDialogProps {
+interface NewProjectDialogProps {
   open: boolean;
   onClose: () => void;
 }

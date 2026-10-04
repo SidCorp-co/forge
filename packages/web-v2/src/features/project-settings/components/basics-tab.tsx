@@ -22,7 +22,7 @@ import { useProjectDocument, useWriteProjectDocument } from "../config-hooks";
 import { projectDescriptionOf } from "../project-document";
 
 /** The document Basics writes: the one read, with `project.name` and `project.description` as edited; an empty description is removed. */
-export function renamedDocument(document: Record<string, unknown>, name: string, description?: string) {
+function renamedDocument(document: Record<string, unknown>, name: string, description?: string) {
   const { description: _old, ...project } = (document.project ?? {}) as Record<string, unknown>;
   const kept = description === undefined ? _old : description.trim() || undefined;
   return { ...document, project: { ...project, name, ...(kept === undefined ? {} : { description: kept }) } };

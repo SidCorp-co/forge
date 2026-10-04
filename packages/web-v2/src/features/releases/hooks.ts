@@ -4,8 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { releasesApi } from "./api";
 import type { ReleaseDecisionBody } from "./types";
 
-export const releasesKey = (projectId: string) => ["releases", projectId] as const;
-export const releaseKey = (projectId: string, version: string) => ["release", projectId, version] as const;
+const releasesKey = (projectId: string) => ["releases", projectId] as const;
+const releaseKey = (projectId: string, version: string) => ["release", projectId, version] as const;
 
 export function useReleases(projectId: string | undefined) {
   return useQuery({

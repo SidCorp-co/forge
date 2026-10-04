@@ -180,8 +180,6 @@ export interface ScheduleStanding
 	kind: string;
 	cron: string;
 	enabled: boolean;
-	templateKey: string | null;
-	mode: string | null;
 	targetProjectSlug: string | null;
 	state: ScheduleState;
 	/** Why the schedule stands where it does, for the tooltip. */

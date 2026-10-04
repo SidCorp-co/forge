@@ -16,7 +16,7 @@ function readPins(): string[] {
   }
 }
 
-export interface PinnedProjects {
+interface PinnedProjects {
   /** Set of pinned project ids (stable identity per render). */
   pinnedIds: Set<string>;
   isPinned: (id: string) => boolean;

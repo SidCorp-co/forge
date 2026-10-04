@@ -10,7 +10,6 @@ import { afterCommit, db } from '../db/client.js';
 import type { Refusal } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import { affectedBy, BOSS_SCHEMA, boss } from '../queue/boss.js';
-import { requireOutboxAccess } from './access.js';
 import { consumerOfDeliveryId, DEAD_QUEUE, type DeliveryJob, queueOf } from './queues.js';
 import { wakeConsumers } from './worker.js';
 
@@ -71,21 +70,6 @@ async function replay(deliveryId: string, projectId: string | null): Promise<Rep
     };
   });
 }
-
-export async function replayDelivery(input: {
-  userId: string | null | undefined;
-  projectId: string;
-  deliveryId: string;
-}): Promise<ReplayOutcome> {
-  await requireOutboxAccess(
-    input.userId,
-    'outbox.replay',
-    input.projectId,
-    'Replaying an outbox delivery',
-  );
-  return replay(input.deliveryId, input.projectId);
-}
-
 /** The platform admin door's replay, the one route to a project-less event's delivery. */
 export function replayAnyDelivery(deliveryId: string): Promise<ReplayOutcome> {
   return replay(deliveryId, null);

@@ -44,7 +44,7 @@ const matches = (text: string, ...parts: Array<string | null | undefined>) =>
 
 function tabRows(d: AutomationStandingResponse, tab: AutomationTab, text: string) {
   if (tab === "schedules") {
-    const rows = d.schedules.filter((s) => matches(text, s.name, s.templateKey, s.targetProjectSlug, s.owner?.name));
+    const rows = d.schedules.filter((s) => matches(text, s.name, s.targetProjectSlug, s.owner?.name));
     return standingGroups(rows, SCHEDULE_GROUPS, SCHEDULE_GROUP_LABELS) as ListGroup<ScheduleStanding | FireStanding | ReportStanding>[];
   }
   if (tab === "fires") {

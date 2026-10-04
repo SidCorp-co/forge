@@ -95,28 +95,33 @@ mockupRoutes.get('/:id/mockups/:mk/content', mockupParam, async (c) => {
   return c.body(new Uint8Array(file.bytes), 200);
 });
 
-for (const [verb, act] of [
-  ['accept', acceptMockup],
-  ['return', returnMockup],
-] as const) {
-  mockupRoutes.post(
-    `/:id/mockups/:mk/${verb}`,
-    mockupParam,
-    strictBody(decideMockupRequestSchema, DECIDE_MOCKUP_SHAPE),
-    async (c) => {
-      const { id, mk } = c.req.valid('param');
-      return answer(
-        c,
-        await act({
-          projectId: id,
-          ref: mk,
-          actor: actorOf(c),
-          reason: c.req.valid('json').reason,
-        }),
-      );
-    },
+const decideBody = strictBody(decideMockupRequestSchema, DECIDE_MOCKUP_SHAPE);
+
+mockupRoutes.post('/:id/mockups/:mk/accept', mockupParam, decideBody, async (c) => {
+  const { id, mk } = c.req.valid('param');
+  return answer(
+    c,
+    await acceptMockup({
+      projectId: id,
+      ref: mk,
+      actor: actorOf(c),
+      reason: c.req.valid('json').reason,
+    }),
   );
-}
+});
+
+mockupRoutes.post('/:id/mockups/:mk/return', mockupParam, decideBody, async (c) => {
+  const { id, mk } = c.req.valid('param');
+  return answer(
+    c,
+    await returnMockup({
+      projectId: id,
+      ref: mk,
+      actor: actorOf(c),
+      reason: c.req.valid('json').reason,
+    }),
+  );
+});
 
 mockupRoutes.post(
   '/:id/mockups/:mk/withdraw',

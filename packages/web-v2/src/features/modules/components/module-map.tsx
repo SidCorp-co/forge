@@ -2,14 +2,12 @@
 
 // One level of the module tree as a map on the workflow canvas's React Flow and ELK layout: a card per
 // module in rollup order, wrapped into rows the width allows, and the couplings core rolled up to this
-// level between them. Line width is the coupling's weight; a coupling declared in both directions is
-// drawn in the error tone. The map is a fitted picture: nothing on it moves, pans or zooms.
+// level between them. Line width is the coupling's weight. The map is a fitted picture: nothing on it moves, pans or zooms.
 
 import "@xyflow/react/dist/base.css";
 import "@/features/workflows/canvas/canvas.css";
 import { BaseEdge, type Edge, type EdgeProps, EdgeLabelRenderer, Handle, type Node, type NodeProps, Position, ReactFlow } from "@xyflow/react";
 import { type KeyboardEvent, memo, useEffect, useMemo, useRef, useState } from "react";
-import { LEGEND } from "@/design";
 import { layoutGraph, type Placed, rounded } from "@/features/workflows/canvas/layout";
 import type { ModuleLevelCoupling, ModuleRollupRow } from "../types";
 
@@ -32,7 +30,6 @@ interface ModuleNodeData extends Record<string, unknown> {
 interface CouplingEdgeData extends Record<string, unknown> {
   d: string;
   width: number;
-  twoWay: boolean;
   label: string;
   labelAt: { x: number; y: number } | null;
   title: string;
@@ -78,16 +75,14 @@ function ModuleCard({ data }: NodeProps & { data: ModuleNodeData }) {
 }
 
 function CouplingEdge({ id, data }: EdgeProps & { data: CouplingEdgeData }) {
-  const tone = data.twoWay ? LEGEND.err.fg : "var(--wf-edge)";
   return (
     <>
       <BaseEdge
         id={id}
         path={data.d}
         interactionWidth={0}
-        style={{ stroke: tone, strokeWidth: data.width, strokeLinecap: "round", opacity: data.dim ? 0.1 : 0.75 }}
+        style={{ stroke: "var(--wf-edge)", strokeWidth: data.width, strokeLinecap: "round", opacity: data.dim ? 0.1 : 0.75 }}
         data-testid="module-map-edge"
-        data-two-way={data.twoWay || undefined}
       />
       {data.labelAt ? (
         <EdgeLabelRenderer>
@@ -95,7 +90,7 @@ function CouplingEdge({ id, data }: EdgeProps & { data: CouplingEdgeData }) {
             className="wfc-label nodrag nopan font-mono tabular-nums"
             data-rel={!data.dim}
             title={data.title}
-            style={{ color: data.twoWay ? tone : undefined, transform: `translate(-50%, -50%) translate(${data.labelAt.x}px, ${data.labelAt.y}px)` }}
+            style={{ transform: `translate(-50%, -50%) translate(${data.labelAt.x}px, ${data.labelAt.y}px)` }}
           >
             {data.label}
           </div>
@@ -111,14 +106,10 @@ const EDGE_TYPES = { coupling: memo(CouplingEdge) };
 function edgeTitle(c: ModuleLevelCoupling, name: (id: string) => string): string {
   const a = name(c.aId);
   const b = name(c.bId);
-  const lines = [];
-  if (c.declaredAToB) lines.push(`${a} → ${b}: ${c.declaredAToB} declared`);
-  if (c.declaredBToA) lines.push(`${b} → ${a}: ${c.declaredBToA} declared`);
-  if (c.sharedIssues) lines.push(`Issues carrying both sides: ${c.sharedIssues}`);
-  return lines.join("\n");
+  return `${a} and ${b}: ${c.sharedIssues} issues carry both sides`;
 }
 
-const edgeLabel = (c: ModuleLevelCoupling) => (c.twoWay ? `${c.declaredAToB}⇄${c.declaredBToA}` : String(c.weight));
+const edgeLabel = (c: ModuleLevelCoupling) => String(c.weight);
 
 /** The map's width as it changes, measured from the element itself. */
 function useWidth() {
@@ -203,7 +194,6 @@ export function ModuleMap({
       const data: CouplingEdgeData = {
         d: rounded(routed.points),
         width: 1 + 5 * Math.sqrt(c.weight / max),
-        twoWay: c.twoWay,
         label: edgeLabel(c),
         labelAt: routed.label,
         title: edgeTitle(c, name),

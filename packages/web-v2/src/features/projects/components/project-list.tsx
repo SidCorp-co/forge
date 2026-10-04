@@ -10,7 +10,7 @@ import type { ProjectConsoleItem } from '../types';
 import { LiveCount } from './live-count';
 import { MemberStack } from './member-stack';
 
-export interface ProjectListProps {
+interface ProjectListProps {
   items: ProjectConsoleItem[];
   now: number;
   onTogglePin: (id: string) => void;

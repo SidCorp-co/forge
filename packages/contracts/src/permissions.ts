@@ -68,19 +68,12 @@ const ADMIN = [
  */
 const DEPLOY = ["deploys.run"] as const;
 
-/**
- * Send a dead outbox delivery of the project back to its consumer. Admin's by default; a member or an
- * agent's membership holds it only where the project's grant names it.
- */
-const OPERATE = ["outbox.replay"] as const;
-
 export const PROJECT_PERMISSIONS = [
 	...READ,
 	...WRITE,
 	...PERSONAL,
 	...APPROVE,
 	...DEPLOY,
-	...OPERATE,
 	...ADMIN,
 ] as const;
 export type ProjectPermission = (typeof PROJECT_PERMISSIONS)[number];
@@ -105,7 +98,7 @@ type ProjectRole = (typeof PROJECT_ROLES)[number];
 export const ROLE_PERMISSIONS: Readonly<Record<ProjectRole, readonly ProjectPermission[]>> = {
 	viewer: [...READ],
 	member: [...READ, ...WRITE, ...PERSONAL],
-	admin: [...READ, ...WRITE, ...PERSONAL, ...APPROVE, ...DEPLOY, ...OPERATE, ...ADMIN],
+	admin: [...READ, ...WRITE, ...PERSONAL, ...APPROVE, ...DEPLOY, ...ADMIN],
 };
 
 const ORG_ROLES = ["member", "admin", "owner"] as const;

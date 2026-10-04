@@ -38,8 +38,6 @@ export async function scheduleFacts(
       kind: schedules.kind,
       cron: schedules.cron,
       enabled: schedules.enabled,
-      templateKey: schedules.templateKey,
-      mode: schedules.mode,
       targetProjectSlug: schedules.targetProjectSlug,
       nextRunAt: schedules.nextRunAt,
       createdAt: schedules.createdAt,

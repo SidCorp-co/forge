@@ -133,19 +133,15 @@ export interface ModuleIssuesRead {
 
 /**
  * A coupling between two sibling modules (children of `parentId`, or roots when it is null), rolled
- * up from every pair of modules beneath them. `declaredAToB`/`declaredBToA` count knowledge-graph
- * edges in each direction; `sharedIssues` counts distinct unarchived issues carrying a module
- * from each side. `twoWay` is a declared edge in both directions.
+ * up from every pair of modules beneath them. `sharedIssues` counts distinct unarchived issues
+ * carrying a module from each side.
  */
 export interface ModuleLevelCoupling {
 	parentId: string | null;
 	aId: string;
 	bId: string;
-	declaredAToB: number;
-	declaredBToA: number;
 	sharedIssues: number;
 	weight: number;
-	twoWay: boolean;
 }
 
 export interface ModuleRollupResponse {
@@ -171,15 +167,10 @@ export interface ModulePurpose {
 	updatedAt: string;
 }
 
-const MODULE_COUPLING_SOURCES = ["declared", "issue_stream"] as const;
-export type ModuleCouplingSource = (typeof MODULE_COUPLING_SOURCES)[number];
-
+/** A module attributed to the same issues as this one. */
 export interface ModuleCoupling {
 	module: ModuleRef;
-	source: ModuleCouplingSource;
-	predicate: string | null;
-	direction: "out" | "in" | null;
-	issueCount: number | null;
+	issueCount: number;
 	recentIssueKeys: string[];
 }
 
@@ -215,7 +206,7 @@ export interface ModuleDetail {
 	standing: ModuleStanding;
 	purpose: ModuleFact<ModulePurpose>;
 	keyPaths: ModuleFact<string[]>;
-	couplings: { declared: ModuleCoupling[]; observed: ModuleCoupling[] };
+	couplings: ModuleCoupling[];
 	landings: { total: number; recent: ModuleLanding[] };
 	activity: { days: ModuleActivityDay[]; total: number };
 	issues: ModuleActiveIssue[];

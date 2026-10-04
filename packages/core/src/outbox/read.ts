@@ -6,7 +6,6 @@ import { sql } from 'drizzle-orm';
 import type { JobWithMetadata } from 'pg-boss';
 import { db } from '../db/client.js';
 import { BOSS_SCHEMA, boss } from '../queue/boss.js';
-import { requireOutboxAccess } from './access.js';
 import { DEAD_QUEUE, type DeliveryJob } from './queues.js';
 
 function errorOf(output: object | null): string | null {
@@ -52,17 +51,6 @@ async function readDead(
   const all = await readAllDead(projectId);
   return { deliveries: all.slice(offset, offset + limit), total: all.length };
 }
-
-export async function listDeadDeliveries(input: {
-  userId: string | null | undefined;
-  projectId: string;
-  limit: number;
-  offset: number;
-}): Promise<DeadOutboxDeliveriesResponse> {
-  await requireOutboxAccess(input.userId, 'project.read', input.projectId);
-  return readDead(input.projectId, input.limit, input.offset);
-}
-
 /** Every dead delivery, for the platform admin door. */
 export function listAllDeadDeliveries(limit: number, offset: number) {
   return readDead(null, limit, offset);

@@ -38,8 +38,6 @@ export interface ScheduleFacts {
   kind: string;
   cron: string;
   enabled: boolean;
-  templateKey: string | null;
-  mode: string | null;
   targetProjectSlug: string | null;
   nextRunAt: Date | null;
   createdAt: Date;
@@ -205,8 +203,6 @@ export function scheduleStandingOf(
     kind: s.kind,
     cron: s.cron,
     enabled: s.enabled,
-    templateKey: s.templateKey,
-    mode: s.mode,
     targetProjectSlug: s.targetProjectSlug,
     state,
     rule,

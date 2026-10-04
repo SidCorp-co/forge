@@ -4,7 +4,7 @@ import { Stat } from '@/design';
 import { formatSpend } from '../derive';
 import type { WorkspaceTotals } from '../types';
 
-export interface StatsBandProps {
+interface StatsBandProps {
   totals: WorkspaceTotals;
 }
 

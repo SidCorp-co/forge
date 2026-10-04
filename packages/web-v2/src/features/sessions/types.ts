@@ -134,13 +134,12 @@ export interface SessionCost {
  *  stalled + cancelled_stale (unchanged; job failures, not reply-waiting). */
 export type SessionFilter = "all" | "waiting" | "running" | "queued" | "attention";
 
-export type AgentSessionKind = "master" | "run_session" | "pipeline" | "pm" | "chat";
+export type AgentSessionKind = "master" | "run_session" | "pipeline" | "chat";
 
 export const AGENT_SESSION_KINDS: AgentSessionKind[] = [
   "master",
   "run_session",
   "pipeline",
-  "pm",
   "chat",
 ];
 
@@ -148,7 +147,6 @@ export const SESSION_KIND_LABEL: Record<AgentSessionKind, string> = {
   master: "Master",
   run_session: "Run",
   pipeline: "Step",
-  pm: "PM",
   chat: "Chat",
 };
 
@@ -162,7 +160,7 @@ export function sessionKind(
 ): AgentSessionKind {
   if (session.kind && AGENT_SESSION_KINDS.includes(session.kind)) return session.kind;
   const type = session.metadata?.type;
-  if (type === "pipeline" || type === "pm" || type === "master" || type === "run_session") {
+  if (type === "pipeline" || type === "master" || type === "run_session") {
     return type;
   }
   return "chat";
@@ -172,7 +170,7 @@ export function isJobDriven(
   session: Pick<SessionRow, "metadata"> & { kind?: AgentSessionKind | null },
 ): boolean {
   const k = sessionKind(session);
-  return k === "pipeline" || k === "pm";
+  return k === "pipeline";
 }
 
 /** Whether a session is an interactive chat (not driven by a pipeline job). */

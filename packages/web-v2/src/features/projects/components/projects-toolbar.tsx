@@ -18,7 +18,7 @@ const VIEW_OPTIONS: SegmentOption<ProjectView>[] = [
   { value: 'list', icon: 'rows', label: 'List' },
 ];
 
-export interface ProjectsToolbarProps {
+interface ProjectsToolbarProps {
   query: string;
   onQuery: (q: string) => void;
   sort: ProjectSort;

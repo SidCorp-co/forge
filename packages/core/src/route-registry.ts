@@ -120,7 +120,7 @@ import { mockupRoutes } from './mockups/routes.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { onboardingRoutes } from './onboarding/routes.js';
 import { orgInvitationRoutes, orgRoutes } from './orgs/routes.js';
-import { outboxAdminRoutes, outboxRoutes } from './outbox/routes.js';
+import { outboxAdminRoutes } from './outbox/routes.js';
 import { patRoutes } from './pat/routes.js';
 import {
   phaseRoutes,
@@ -226,7 +226,6 @@ function mountProjectDocumentRoutes(app: Hono<{ Variables: RequestIdVars }>): vo
   app.route('/api/projects', suggestionRoutes);
   app.route('/api/projects', feedbackRoutes);
   app.route('/api/projects', mockupRoutes);
-  app.route('/api/projects', outboxRoutes);
   app.route('/api/projects', baDoorRoutes);
   app.route('/api/projects', onboardingRoutes);
   app.route('/api/projects', questionnaireRoutes);
@@ -284,7 +283,7 @@ function mountProjectWorkRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', jobProjectRoutes);
 }
 
-/** Issues, tasks, comments, attachments, labels, jobs, inbound webhooks and memory. */
+/** Issues, comments, attachments, labels, jobs, inbound webhooks and memory. */
 function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issues', issueAttachmentRoutes);
   app.route('/api/issues', issueExtrasRoutes);

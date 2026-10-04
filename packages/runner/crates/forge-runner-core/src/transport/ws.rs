@@ -1,8 +1,8 @@
 //! WebSocket client to core `/ws`.
 //!
 //! Connects with `Authorization: Bearer <deviceToken>`, subscribes to the
-//! `device:<id>` room, optionally sends `runner:register` per project, then
-//! forwards every text frame (parsed to [`Frame`]) on `frame_tx`.
+//! `device:<id>` room, then forwards every text frame (parsed to [`Frame`])
+//! on `frame_tx`.
 //! Outbound, it carries whatever the latest value of `outbound` holds — one
 //! snapshot at a time, latest wins.
 //! Auto-reconnects with 1s→30s jittered backoff and a 25s ping / 15s pong

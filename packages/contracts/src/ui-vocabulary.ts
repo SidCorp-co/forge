@@ -274,7 +274,6 @@ export const ENUM_LABELS = {
 		release: "Release",
 		fix: "Fix",
 		custom: "Custom",
-		pm: "PM",
 		smoke: "Smoke",
 		release_batch: "Release batch",
 		drive: "Drive",
@@ -315,7 +314,6 @@ export const ENUM_LABELS = {
 		master: "Master",
 		run_session: "Run session",
 		pipeline: "Pipeline",
-		pm: "PM",
 		chat: "Chat",
 	},
 	blockerKind: {
@@ -330,7 +328,6 @@ export const ENUM_LABELS = {
 		parent: "Parent of",
 		decomposes: "Decomposes",
 	},
-	mode: { propose: "Propose", auto: "Automatic" },
 	direction: { outbound: "Outbound", inbound: "Inbound" },
 	gate: { auto: "Automatic", human: "Person" },
 	pauseKind: { stage_stalled: "a stalled stage" },
@@ -500,15 +497,13 @@ export const ENUM_LABELS = {
 		runner: "Runner",
 		sweeper: "Sweeper",
 	} satisfies Record<RunActorType, string>,
-	/** What a schedule runs (contracts `schedules.ts:SCHEDULE_KINDS`, plus the PM and improve rows). */
+	/** What a schedule runs (contracts `schedules.ts:SCHEDULE_KINDS`). */
 	scheduleKind: {
 		prompt: "Prompt",
 		script: "Script",
 		release_batch: "Release batch",
 		sentry_pull: "Sentry pull",
-		pm: "PM",
-		improve: "Improve",
-	} satisfies Record<ScheduleKind | "pm" | "improve", string>,
+	} satisfies Record<ScheduleKind, string>,
 	/** How a fire started (contracts `schedules.ts:SCHEDULE_RUN_TRIGGERS`). */
 	fireTrigger: {
 		manual: "Manual",
