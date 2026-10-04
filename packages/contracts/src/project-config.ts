@@ -4,7 +4,7 @@ import { CONTENT_LANGUAGE_REFUSAL_CODES } from "./content-language.js";
 import { TEMPLATE_REFUSAL_CODES } from "./workflow-template-schema.js";
 import type { RefusalStatuses } from "./refusal.js";
 
-export const PURE_REFUSAL_CODES = [
+const PURE_REFUSAL_CODES = [
 	"DEFAULT_BRANCH_UNDECLARED",
 	"PROMOTIONS_NEED_GIT",
 	"PROMOTION_REF_UNDECLARED",
@@ -28,13 +28,13 @@ export const PURE_REFUSAL_CODES = [
 ] as const;
 
 /** A project's own diagram templates are refused in the template resolver's vocabulary, plus one. */
-export const WORKFLOW_TEMPLATE_CONFIG_REFUSAL_CODES = [
+const WORKFLOW_TEMPLATE_CONFIG_REFUSAL_CODES = [
 	...TEMPLATE_REFUSAL_CODES,
 	"WORKFLOW_TEMPLATE_IN_USE",
 ] as const;
 
 /** Refusals that need storage, a registry or the request. UNKNOWN_KEY is the strict schema's own. */
-export const STORED_REFUSAL_CODES = [
+const STORED_REFUSAL_CODES = [
 	"UNKNOWN_KEY",
 	"VERSION_UNSUPPORTED",
 	"STALE_BASE",
@@ -55,7 +55,7 @@ export const CONFIG_REFUSAL_CODES = [
 export type ConfigRefusalCode = (typeof CONFIG_REFUSAL_CODES)[number];
 
 /** What a deploy provider answers when it checks a binding's target. */
-export const BINDING_TARGET_REFUSAL_CODES = [
+const BINDING_TARGET_REFUSAL_CODES = [
 	"COOLIFY_APPLICATION_UNKNOWN",
 	"COOLIFY_UNREACHABLE",
 	"SOURCE_HOST_MISMATCH",
@@ -134,9 +134,9 @@ export function parseSecretRef(
 export const secretRefOf = (scope: string, name: string) =>
 	`secret://${scope}/${name}`;
 
-export const POLICY_QA_MODES = ["self", "independent"] as const;
+const POLICY_QA_MODES = ["self", "independent"] as const;
 export type PolicyQaMode = (typeof POLICY_QA_MODES)[number];
-export const POLICY_MODELS = ["opus", "sonnet", "haiku", "fable"] as const;
+const POLICY_MODELS = ["opus", "sonnet", "haiku", "fable"] as const;
 export type PolicyModel = (typeof POLICY_MODELS)[number];
 
 /** How the state a job runs under was chosen. */

@@ -5,8 +5,6 @@
 import { defineMachine } from "./state-machine.js";
 
 export const QUESTION_STATUSES = ["open", "answered", "void", "expired", "needs_info"] as const;
-export type QuestionStatus = (typeof QUESTION_STATUSES)[number];
-
 export const QUESTION_MACHINE = defineMachine({
 	entity: "question",
 	shapes: ["016076ad"],

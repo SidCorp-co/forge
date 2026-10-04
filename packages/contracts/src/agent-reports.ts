@@ -47,11 +47,6 @@ export const AGENT_REPORT_TRIAGE_ACTS = [
 	"reopen",
 ] as const;
 export type AgentReportTriageAct = (typeof AGENT_REPORT_TRIAGE_ACTS)[number];
-
-/** The reason every report reviewed before triage was recorded, with no link, carries (migration 0368). */
-export const AGENT_REPORT_BACKFILL_DISMISS_REASON =
-	"reviewed before triage was recorded";
-
 export const AGENT_REPORT_LIMITS = {
 	reason: 2000,
 	title: 200,

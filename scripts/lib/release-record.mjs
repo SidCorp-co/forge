@@ -240,17 +240,6 @@ function augmentOnce({ adjacency, weightOf, matchedTo, matchedFrom, leftCount, r
   return best === -1 ? null : { right: best, cameFromLeft, cameFromRight };
 }
 
-/**
- * cm:guard two entries are THE SAME ENTRY when more than half the words of the longer one survive
- * into the other in order AND the change moved at most CORRECTION_SPAN words each way; each removed
- * entry pairs with at most one added entry. Nothing type-checks that, and it is the whole hole this
- * pairing could become, so it is bounded three times — the share, the span, and the ceiling a
- * paired entry answers to, which is the larger of the budget and what it replaced.
- */
-export function pairEdits(removed, added) {
-  return matchEdges(correctionEdges(removed, added), removed, added);
-}
-
 function matchEdges(edges, removed, added) {
   const matchedFrom = bestMatching(edges, removed.length, added.length);
   const paired = new Map();

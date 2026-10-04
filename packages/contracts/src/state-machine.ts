@@ -40,13 +40,13 @@ export interface StatusMachine<
 }
 
 /** What a machine file declares; `defineMachine` derives its `version` from `shapes`. */
-export type MachineDeclaration<E extends string, S extends string> = Omit<
+type MachineDeclaration<E extends string, S extends string> = Omit<
 	StatusMachine<E, S>,
 	"version"
 >;
 
 /** FNV-1a over the machine's states and edges, as 8 hex digits: what its `shapes` record. */
-export function machineShape(machine: MachineDeclaration<string, string>): string {
+function machineShape(machine: MachineDeclaration<string, string>): string {
 	const canonical = JSON.stringify([
 		machine.states,
 		machine.initial,
@@ -100,13 +100,6 @@ export function fromEach<S extends string>(
 	return from.filter((f) => f !== to).map((f) => ({ ...edge, from: f, to }));
 }
 
-export function isStateOf<S extends string>(
-	machine: StatusMachine<string, S>,
-	value: string,
-): value is S {
-	return (machine.states as readonly string[]).includes(value);
-}
-
 /** The edge `from → to`; a recovery edge only when `recovery` is asked for, a lifecycle edge otherwise. */
 export function edgeBetween<S extends string>(
 	machine: StatusMachine<string, S>,
@@ -147,28 +140,12 @@ export function entriesOf<S extends string>(
 	return out;
 }
 
-/** The exits of `from` that one guard decides. */
-export function exitsGuardedBy<S extends string>(
-	machine: StatusMachine<string, S>,
-	from: S,
-	guard: string,
-): S[] {
-	return machine.edges
-		.filter((e) => e.from === from && e.guards.includes(guard))
-		.map((e) => e.to);
-}
-
-/** Every guard name the machine's edges carry, each once. */
-export function guardNamesOf(machine: StatusMachine): string[] {
-	return [...new Set(machine.edges.flatMap((e) => e.guards))];
-}
-
-export const STATE_MACHINE_REFUSAL_CODES = [
+const STATE_MACHINE_REFUSAL_CODES = [
 	"TRANSITION_NOT_AN_EDGE",
 	"TRANSITION_REASON_REQUIRED",
 	"STALE_TRANSITION",
 ] as const;
-export type StateMachineRefusalCode = (typeof STATE_MACHINE_REFUSAL_CODES)[number];
+type StateMachineRefusalCode = (typeof STATE_MACHINE_REFUSAL_CODES)[number];
 export const STATE_MACHINE_REFUSAL_STATUSES = {
 	STALE_TRANSITION: 409,
 } as const satisfies RefusalStatuses<StateMachineRefusalCode>;

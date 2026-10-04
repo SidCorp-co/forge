@@ -24,9 +24,6 @@ export const ENTITY_COMMENT_SCOPES = [
 export type EntityCommentScope = (typeof ENTITY_COMMENT_SCOPES)[number];
 
 export const COMMENT_EVENT_KINDS = ["posted", "edited"] as const;
-
-export type CommentEventKind = (typeof COMMENT_EVENT_KINDS)[number];
-
 export const COMMENT_REFUSAL_CODES = [
 	"COMMENT_REFUSED",
 	"COMMENT_INTENT_UNKNOWN",
@@ -52,11 +49,11 @@ export interface CommentRefusal {
 	detail: string;
 }
 
-export const COMMENT_BODY_MAX = 64_000;
+const COMMENT_BODY_MAX = 64_000;
 
-export const DECISION_TEXT_MAX = 4_000;
+const DECISION_TEXT_MAX = 4_000;
 
-export const DECISIONS_LIST_MAX = 200;
+const DECISIONS_LIST_MAX = 200;
 
 const text = (max: number) => z.string().trim().min(1).max(max);
 
@@ -72,7 +69,7 @@ export const decisionFieldsSchema = z.strictObject({
 
 export type DecisionFields = z.infer<typeof decisionFieldsSchema>;
 
-export const DECISION_FIELDS_SHAPE = `{ decision, reason, options?: string[], authority?, reversedWhen?, node?: ${NODE_DECISION_SHAPE} (workflow decisions only) }`;
+const DECISION_FIELDS_SHAPE = `{ decision, reason, options?: string[], authority?, reversedWhen?, node?: ${NODE_DECISION_SHAPE} (workflow decisions only) }`;
 
 export const createEntityCommentRequestSchema = z.strictObject({
 	intent: z.enum(COMMENT_INTENTS),

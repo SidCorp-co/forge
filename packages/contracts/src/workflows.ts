@@ -19,18 +19,6 @@ export interface WorkflowSummaryView {
 	updatedAt: string;
 }
 
-export type WorkflowWriteAnswer = Pick<
-	WorkflowSummaryView,
-	| "workflowId"
-	| "flow"
-	| "revision"
-	| "status"
-	| "approvedRevision"
-	| "stepCount"
-	| "edgeCount"
-	| "updatedAt"
-> & { created: boolean };
-
 export const DESIGN_VIEWS = ["summary", "steps", "full"] as const;
 
 export const DESIGN_HEAD_FIELDS = [
@@ -121,16 +109,6 @@ export interface DesignStepsView extends DesignSummaryView {
 		steps: unknown[];
 		edges: unknown[];
 	};
-}
-
-export const DESIGN_ACTS = ["propose", "decide", "link", "unlink"] as const;
-export type DesignAct = (typeof DESIGN_ACTS)[number];
-
-export interface DesignActAnswer extends DesignHead {
-	act: DesignAct;
-	acted?: DesignRevisionSummary;
-	builds?: DesignBuild[];
-	designIssue?: unknown;
 }
 
 export const WORKFLOW_REFUSAL_CODES = [

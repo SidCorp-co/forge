@@ -6,16 +6,7 @@
  * patch writes and nowhere else, so writers naming no common path both land from one read.
  */
 
-export type DocumentPatch = Record<string, unknown>;
-
-export interface PatchConflict {
-	/** Dotted path, from the document root. */
-	path: string;
-	/** What the caller read there. */
-	base: unknown;
-	/** What is there now. */
-	stored: unknown;
-}
+type DocumentPatch = Record<string, unknown>;
 
 export function isPlainObject(
 	value: unknown,
@@ -38,7 +29,7 @@ export function canonicalJson(value: unknown): string {
 	return JSON.stringify(value) ?? "null";
 }
 
-export function deepEqual(a: unknown, b: unknown): boolean {
+function deepEqual(a: unknown, b: unknown): boolean {
 	return canonicalJson(a) === canonicalJson(b);
 }
 
@@ -46,13 +37,13 @@ export function deepEqual(a: unknown, b: unknown): boolean {
  * Equality as the store sees it: absent and `null` are one value here, because `null` is what
  * a patch sends to delete and every reader of these documents answers the same for both.
  */
-export function sameStoredValue(a: unknown, b: unknown): boolean {
+function sameStoredValue(a: unknown, b: unknown): boolean {
 	if ((a === null || a === undefined) && (b === null || b === undefined))
 		return true;
 	return deepEqual(a, b);
 }
 
-export function applyDocumentPatch(
+function applyDocumentPatch(
 	current: unknown,
 	patch: DocumentPatch,
 ): Record<string, unknown> {
@@ -110,30 +101,6 @@ export function formatPath(path: readonly string[]): string {
 	return path.map((s) => (s.includes(".") ? JSON.stringify(s) : s)).join(".");
 }
 
-/**
- * Where the store disagrees with what the caller read, at the paths this patch writes.
- * An empty list is the write's licence to proceed.
- */
-export function comparePatchBase(
-	stored: unknown,
-	base: unknown,
-	patch: DocumentPatch,
-): PatchConflict[] {
-	const conflicts: PatchConflict[] = [];
-	for (const path of patchLeafPaths(patch)) {
-		const expected = readPath(base, path);
-		const actual = readPath(stored, path);
-		if (!sameStoredValue(expected, actual)) {
-			conflicts.push({
-				path: formatPath(path),
-				base: expected,
-				stored: actual,
-			});
-		}
-	}
-	return conflicts;
-}
-
 /** The patch taking `before` to `after`, beside the base it is compared against. */
 export function buildDocumentPatch(
 	before: unknown,
@@ -165,16 +132,6 @@ function diff(
 		patch[key] = value === null ? null : value;
 	}
 	return patch;
-}
-
-/** One line per conflict, for a refusal that has to say what moved. */
-export function describeConflicts(conflicts: PatchConflict[]): string {
-	return conflicts
-		.map(
-			(c) =>
-				`${c.path}: you read ${canonicalJson(c.base)}, it now holds ${canonicalJson(c.stored)}`,
-		)
-		.join("; ");
 }
 
 /** One segment path back out of what {@link formatPath} wrote — the encoding's only reader. */
@@ -222,7 +179,7 @@ export interface ReplacedEdit {
 	stored: unknown;
 }
 
-export interface DraftRebase {
+interface DraftRebase {
 	/** The document as it was when this draft was seeded, what is held over it now, and what
 	 *  is stored now; plus the paths to take the stored value at regardless of what is held. */
 	read: unknown;

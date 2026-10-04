@@ -5,7 +5,7 @@
 import { z } from "zod";
 import type { CriterionStanding } from "./issue-vocabulary.js";
 
-export const STOREFRONT_DRAFT_KIND = "storefront_draft" as const;
+const STOREFRONT_DRAFT_KIND = "storefront_draft" as const;
 
 export const VERDICT_CORROBORATIONS = [
 	"corroborated",
@@ -30,18 +30,12 @@ export const STOREFRONT_DRAFT_REFUSAL_CODES = [
 	"VERDICT_STOREFRONT_DRAFT_SHAPE",
 	"VERDICT_ENVIRONMENT_UNKNOWN",
 ] as const;
-export type StorefrontDraftRefusalCode =
-	(typeof STOREFRONT_DRAFT_REFUSAL_CODES)[number];
-
 export const storefrontDraftIdentitySchema = z.strictObject({
 	kind: z.literal(STOREFRONT_DRAFT_KIND),
 	workflowId: z.string().trim().min(1).max(200),
 	draftVersion: z.string().trim().min(1).max(200),
 	environment: z.string().trim().min(1).max(100),
 });
-export type StorefrontDraftIdentity = z.infer<
-	typeof storefrontDraftIdentitySchema
->;
 
 export interface StorefrontDraftVerdictView {
 	storefrontWorkflowId: string | null;
@@ -52,7 +46,7 @@ export interface StorefrontDraftVerdictView {
 }
 
 export const VERDICT_VALUES = ["pass", "short", "fail", "skipped"] as const;
-export type VerdictValueName = (typeof VERDICT_VALUES)[number];
+type VerdictValueName = (typeof VERDICT_VALUES)[number];
 
 export const VERDICT_IDENTITY_KINDS = [
 	"commit",
@@ -62,9 +56,9 @@ export const VERDICT_IDENTITY_KINDS = [
 	"storefront_draft",
 	"commit_unresolved",
 ] as const;
-export type VerdictIdentityKindName = (typeof VERDICT_IDENTITY_KINDS)[number];
+type VerdictIdentityKindName = (typeof VERDICT_IDENTITY_KINDS)[number];
 
-export interface VerdictReading extends StorefrontDraftVerdictView {
+interface VerdictReading extends StorefrontDraftVerdictView {
 	verdict: VerdictValueName;
 	identityKind: VerdictIdentityKindName | null;
 	commitSha: string | null;

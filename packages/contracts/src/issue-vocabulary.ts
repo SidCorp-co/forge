@@ -116,7 +116,7 @@ export const NEEDS_INFO_KIND_LABELS: Record<NeedsInfoKind, string> = {
 	needs_resource: "Something to supply",
 };
 
-export type IssuePriorityValue = (typeof REGISTRY_ISSUE_PRIORITIES)[number];
+type IssuePriorityValue = (typeof REGISTRY_ISSUE_PRIORITIES)[number];
 
 /** Priority as a person reads it. Priority carries no colour: its badge is neutral with 1–4 bars. */
 export const ISSUE_PRIORITY_LABELS: Record<IssuePriorityValue, string> = {

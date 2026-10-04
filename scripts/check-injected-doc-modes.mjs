@@ -11,6 +11,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SOURCES = {
   constant: 'packages/core/src/pipeline/autonomous-mode.ts',
   schema: 'packages/core/src/db/schema.ts',
+  issueMachine: 'packages/contracts/src/issue-machine.ts',
   steps: 'packages/core/src/pipeline/registry.ts',
 };
 
@@ -46,7 +47,7 @@ function read(rel) {
 function arrayLiterals(src, declRe, rel, what) {
   const m = declRe.exec(src);
   if (m === null) throw new CannotRun(`${rel}: ${what} not found`);
-  const out = [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]);
+  const out = [...m[1].matchAll(/['"]([a-z_]+)['"]/g)].map((x) => x[1]);
   if (out.length === 0) throw new CannotRun(`${rel}: ${what} is empty`);
   return out;
 }
@@ -86,15 +87,15 @@ function main() {
   let stepNames;
   try {
     const allStatuses = arrayLiterals(
-      read(SOURCES.schema),
-      /export const issueStatuses = \[([^\]]*)\]/,
-      SOURCES.schema,
-      'issueStatuses',
+      read(SOURCES.issueMachine),
+      /export const ISSUE_STATUSES = \[([^\]]*)\]/,
+      SOURCES.issueMachine,
+      'ISSUE_STATUSES',
     );
     driverStatuses = arrayLiterals(
-      read(SOURCES.constant),
+      read(SOURCES.issueMachine),
       /export const AUTONOMOUS_DRIVER_STATUSES[^=]*=\s*\[([^\]]*)\]/,
-      SOURCES.constant,
+      SOURCES.issueMachine,
       'AUTONOMOUS_DRIVER_STATUSES',
     );
 
