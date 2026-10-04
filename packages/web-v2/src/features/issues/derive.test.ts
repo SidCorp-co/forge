@@ -94,6 +94,10 @@ describe("runStatusChip — the run's state, never the issue's", () => {
 		expect(runStatusChip({ agentStatus: "completed" })).toBe("done");
 		expect(runStatusChip({ agentStatus: "failed" })).toBe("failed");
 	});
+	it("draws a cancelled run as cancelled, never as a completed one (ISS-100)", () => {
+		expect(runStatusChip({ agentStatus: "cancelled" })).toBe("archived");
+		expect(runStatusChip({ agentStatus: "cancelled" })).not.toBe("done");
+	});
 	it("reads a job queued before any session exists as a queued run (ISS-1277)", () => {
 		expect(runStatusChip({ agentStatus: null, pipelineHealth: queuedJob })).toBe("queued");
 	});
@@ -841,6 +845,7 @@ function incomingBlocks(
 		fromDisplayId: over.fromDisplayId ?? "ISS-9",
 		fromTitle: over.fromTitle ?? "Blocker",
 		fromStatus: over.fromStatus ?? "in_progress",
+		fromMergedAt: over.fromMergedAt ?? null,
 	};
 	return { incoming: [edge], outgoing: [] };
 }
@@ -1173,6 +1178,24 @@ describe("deriveBlockerState", () => {
 		);
 		expect(b?.cta.kind).toBe("open-blocker");
 		expect(b?.blockingRefs?.[0]?.displayId).toBe("ISS-9");
+	});
+
+	it("names a landed blocker's judge rather than asking for it to be finished (ISS-80)", () => {
+		const b = deriveBlockerState(
+			blockerIssue({ status: "open" }),
+			undefined,
+			incomingBlocks({ fromMergedAt: "2026-10-03T15:43:13.577Z" }),
+		);
+		expect(b?.reason).toBe("Blocked by ISS-9, which has landed and waits on a judge.");
+		expect(b?.whoMustAct).toContain("A judge records a verdict on each criterion of ISS-9");
+		expect(b?.whoMustAct).not.toContain("Finish");
+		expect(b?.blockingRefs?.[0]?.landed).toBe(true);
+	});
+
+	it("keeps asking for an unlanded blocker to be finished", () => {
+		const b = deriveBlockerState(blockerIssue({ status: "open" }), undefined, incomingBlocks());
+		expect(b?.reason).toBe("Blocked by 1 open issue.");
+		expect(b?.blockingRefs?.[0]?.landed).toBe(false);
 	});
 
 	it("ignores a blocks edge whose blocker is already released", () => {

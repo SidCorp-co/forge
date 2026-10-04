@@ -117,6 +117,7 @@ export function runStatusChip({ agentStatus, pipelineHealth }: RunReadingSource)
 	if (agentStatus === "queued" || pipelineHealth?.queuedStep) return "queued";
 	if (agentStatus === "completed") return "done";
 	if (agentStatus === "failed") return "failed";
+	if (agentStatus === "cancelled") return "archived";
 	return null;
 }
 
@@ -510,6 +511,7 @@ export interface BlockingRef {
 	displayId: string;
 	title: string | null;
 	status: IssueStatus | null;
+	landed: boolean;
 }
 
 /** Single server-derived "why is it stuck" verdict for the blocker banner
@@ -664,7 +666,31 @@ export function openBlockingRefs(
 			displayId: e.fromDisplayId ?? `#${e.fromIssueId.slice(0, 6)}`,
 			title: e.fromTitle ?? null,
 			status: e.fromStatus ?? null,
+			landed: Boolean(e.fromMergedAt),
 		}));
+}
+
+// cm:why a blocker whose change has landed holds its dependents until its criteria pass (ISS-54), so
+// what holds this issue is that blocker's judge, never "finish the blocking issue" (ISS-80).
+function blocksBlocker(blockingRefs: BlockingRef[]): BlockerState {
+	const keys = blockingRefs.map((r) => r.displayId).join(", ");
+	const one = blockingRefs.length === 1;
+	if (blockingRefs.every((r) => r.landed)) {
+		return {
+			tone: "info",
+			reason: `Blocked by ${keys}, which ${one ? "has" : "have"} landed and ${one ? "waits" : "wait"} on a judge.`,
+			whoMustAct: `A judge records a verdict on each criterion of ${keys}; this issue is released once ${one ? "it passes" : "they pass"}.`,
+			cta: { label: "Open blocking issue", kind: "open-blocker" },
+			blockingRefs,
+		};
+	}
+	return {
+		tone: "info",
+		reason: `Blocked by ${blockingRefs.length} open issue${one ? "" : "s"}.`,
+		whoMustAct: "Finish the blocking issue(s) first.",
+		cta: { label: "Open blocking issue", kind: "open-blocker" },
+		blockingRefs,
+	};
 }
 
 function onHoldBlocker(
@@ -756,15 +782,7 @@ export function deriveBlockerState(
 		};
 	}
 
-	if (blockingRefs.length) {
-		return {
-			tone: "info",
-			reason: `Blocked by ${blockingRefs.length} open issue${blockingRefs.length > 1 ? "s" : ""}.`,
-			whoMustAct: "Finish the blocking issue(s) first.",
-			cta: { label: "Open blocking issue", kind: "open-blocker" },
-			blockingRefs,
-		};
-	}
+	if (blockingRefs.length) return blocksBlocker(blockingRefs);
 
 	return null;
 }

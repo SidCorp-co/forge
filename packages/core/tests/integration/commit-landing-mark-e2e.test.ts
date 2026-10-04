@@ -255,7 +255,7 @@ async function comments(id: string): Promise<string[]> {
 }
 
 describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres)', () => {
-  it('accepts the commit, stores it observed, and lets an agent name developed then testing (criteria 1-3)', async () => {
+  it('accepts the commit, stores it observed, lands the issue at developed, and lets an agent name testing (criteria 1-3, ISS-80)', async () => {
     const issue = await seed();
 
     const res = await mark(issue, OWN);
@@ -267,7 +267,8 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
     expect((await row(issue.id)).merged_commit_sha).toBe(OWN);
     expect((await comments(issue.id)).at(-1)).toContain(`read from ${repo.fullName} itself`);
 
-    await advance(issue.id, 'developed');
+    expect(res.lifecycle).toMatchObject({ outcome: 'judge_owed', step: 'test' });
+    expect(await heldRung(issue.id)).toBe('developed');
     await advance(issue.id, 'testing');
     expect((await row(issue.id)).status).toBe('in_progress');
     expect(await heldRung(issue.id)).toBe('testing');

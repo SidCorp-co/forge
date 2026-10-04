@@ -11,6 +11,7 @@ import { hooks } from '../pipeline/hooks.js';
 import { collectWorkEvidence, findMissingWorkEvidence } from '../pipeline/work-evidence.js';
 import type { ActorAgency } from './actor-agency.js';
 import { type CommitLanding, readCommitLanding } from './commit-landing.js';
+import { advanceLandedIssue, type LandingAdvance } from './landing-advance.js';
 import {
   landingMarkRefusal,
   markTargetRequired,
@@ -133,6 +134,7 @@ export async function applyMergeMarker(args: {
    */
   mark: MergeMarkKind;
   markDetail: string;
+  lifecycle: LandingAdvance | null;
 }> {
   const before = args.issue;
   const prior = await findIssueById(before.id);
@@ -144,6 +146,7 @@ export async function applyMergeMarker(args: {
   let fromRepository: Extract<CommitLanding, { ok: true }> | null = null;
   /** Set only where the repository's commit is the one stamped, never beside a pull request's. */
   let readFrom: Extract<CommitLanding, { ok: true }> | null = null;
+  let lifecycle: LandingAdvance | null = null;
   if (args.op === 'mark') {
     const shape = await readLandingShape(db, before.projectId);
     if (shape === null) throw new MergeMarkerError('PROJECT_DOCUMENT_NOT_FOUND', SOURCE_UNDECLARED);
@@ -220,6 +223,15 @@ export async function applyMergeMarker(args: {
     });
     if (standing) throw new MergeMarkerError(standing.code, standing.detail, standing.details);
     if (args.target) await recordMergeTarget(db, before.id, args.target);
+    lifecycle = await advanceLandedIssue({
+      issue: {
+        id: before.id,
+        projectId: before.projectId,
+        status: prior.status,
+        reopenCount: prior.reopenCount,
+      },
+      actor: { type: 'user', id: args.actor.commentAuthorId, agency: args.actor.agency },
+    });
   } else {
     // The `closed` guard is the UPDATE's own WHERE, so nothing can close the row between the
     // decision and the write. A zero-row answer is read back rather than guessed at: the row is
@@ -269,10 +281,11 @@ export async function applyMergeMarker(args: {
     ...(readFrom && stampResult.wrote ? { readFrom } : {}),
   });
   const marked = args.op === 'mark' ? `\n${markDetail}` : '';
+  const moved = lifecycle ? `\n${lifecycle.detail}` : '';
   const auditComment = await writeAuditComment(
     before.id,
     args.actor.commentAuthorId,
-    `${label}${args.note ? ` — ${args.note}` : ''}${unchanged}${marked}`,
+    `${label}${args.note ? ` — ${args.note}` : ''}${unchanged}${marked}${moved}`,
   );
   if (auditComment) {
     await hooks.emit('commentCreated', {
@@ -305,11 +318,12 @@ export async function applyMergeMarker(args: {
     },
   });
 
-  if (args.op !== 'mark') return { issue, action: 'unmarked', mark, markDetail };
+  if (args.op !== 'mark') return { issue, action: 'unmarked', mark, markDetail, lifecycle };
   return {
     issue,
     action: stampResult.wrote ? 'merged' : 'already_merged',
     mark,
     markDetail,
+    lifecycle,
   };
 }

@@ -5,6 +5,7 @@
  */
 
 import type { IssueStatus } from '../db/schema.js';
+import type { WorkStep } from '../db/schema-issue-work-state.js';
 import type { ReleaseHold } from './release-hold.js';
 import type { LeaseReading } from './session-claim.js';
 
@@ -103,6 +104,7 @@ export interface StrandEvidence {
   lease: LeaseReading;
   /** What the automatic release wrote on the row about why it is not taking it (ISS-1215). */
   releaseHold?: ReleaseHold | null;
+  step?: WorkStep | null;
 }
 
 /** Who a held `awaiting_release` row waits on: the automatic release's hold outranks the rule. */
@@ -116,6 +118,33 @@ export function heldReleaseWait(
     owes: hold.owes,
     reason: `the automatic release is holding it (${hold.code}): ${hold.reason}`,
   };
+}
+
+// cm:why a landed row nothing holds waits on whoever judges what landed (ISS-80): at `in_progress`
+// step `test` a judge recording verdicts, at `open` the run that claims it, and the expired claim of
+// the run that landed it is not what it waits for.
+export function landedWait(
+  status: string,
+  evidence: Pick<StrandEvidence, 'merged' | 'step'>,
+): { waitingFor: string; owes: StrandOwner; reason: string } | null {
+  if (!evidence.merged) return null;
+  if (status === 'in_progress' && evidence.step === 'test') {
+    return {
+      waitingFor: 'a judge to record a verdict on each criterion',
+      owes: 'agent',
+      reason:
+        'the change landed and no run holds it: it waits at step `test` for a judge, and moves to `awaiting_release` once every criterion passes',
+    };
+  }
+  if (status === 'open') {
+    return {
+      waitingFor: 'a run to claim it and judge what landed',
+      owes: 'agent',
+      reason:
+        'the change landed while the issue sat at `open`: the run that claims it next judges what landed rather than building it',
+    };
+  }
+  return null;
 }
 
 /**
@@ -137,6 +166,8 @@ export function strandReason(args: {
 
   const held = heldReleaseWait(status, evidence.releaseHold);
   if (held) return { reason: held.reason, owes: held.owes };
+  const landed = landedWait(status, evidence);
+  if (landed) return { reason: landed.reason, owes: landed.owes };
 
   // Ahead of the status-keyed answers below, alone among the readings: it measures the holder.
   if (lease.verdict === 'abandoned') {

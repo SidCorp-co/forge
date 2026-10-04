@@ -593,7 +593,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for get');
         const loaded = await loadIssue(await refs.issue('documentId', input.documentId));
         await assertPrincipalIsMember(principal, loaded.projectId);
-        const issue = await issueEgress(loaded.projectId, loaded, input.documentId);
+        const issue = await issueEgress(loaded.projectId, loaded, loaded.id);
         if (input.fields && input.fields.length > 0) {
           const full = serialize(issue, await activeIssuePrefix(issue.projectId));
           // ISS-1126 — `fields` narrows the heavy BODIES; the mark rides with the identity, so a
@@ -623,7 +623,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           ...(await issueEgress(
             issue.projectId,
             { relations, attributes, ...gates, proposesWorkflow, requirement },
-            input.documentId,
+            issue.id,
           )),
         };
       }
@@ -835,6 +835,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             action,
             mark,
             markDetail: detail,
+            lifecycle,
           } = await applyMergeMarker({
             issue,
             op: marking ? 'mark' : 'unmark',
@@ -853,7 +854,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             },
           });
           const shown = await issueEgress(issue.projectId, fresh, issue.id);
-          return { ...(await serializeWithAttachments(shown)), action, mark, detail };
+          return { ...(await serializeWithAttachments(shown)), action, mark, detail, lifecycle };
         } catch (err) {
           if (err instanceof MergeMarkerError) {
             // Owed on a git-shape project only (`landing-evidence.ts`), in this door's own words.
