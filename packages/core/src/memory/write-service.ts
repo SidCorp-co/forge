@@ -21,8 +21,6 @@ export const writeMemoryInputSchema = z.object({
 
 type WriteMemoryInput = z.infer<typeof writeMemoryInputSchema>;
 
-type WriteMemoryResult = IndexResult;
-
 /**
  * Sources where agents author free-form content, so a near-duplicate is worth
  * reporting back to the caller. Lifecycle mirrors (issue/decision/policy)
@@ -80,7 +78,7 @@ function assertAgentMemoryQuality(input: WriteMemoryInput): void {
   }
 }
 
-export async function runMemoryWrite(input: WriteMemoryInput): Promise<WriteMemoryResult> {
+export async function runMemoryWrite(input: WriteMemoryInput): Promise<IndexResult> {
   assertAgentMemoryQuality(input);
   return indexMemory(
     {

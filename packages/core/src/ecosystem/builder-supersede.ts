@@ -5,6 +5,7 @@ import { db } from '../db/client.js';
 import { permissionFactsOf } from '../permissions/index.js';
 import { notFound, stewardRole } from './access.js';
 import { owedTrigger } from './builder-head.js';
+import { openedRun } from './builder-run-rules.js';
 import {
   notOpenRefusal,
   supersededRun,
@@ -12,13 +13,13 @@ import {
   supersederRefusal,
 } from './builder-supersede-rules.js';
 import { loadEcosystem } from './ecosystem-service.js';
-import { openedRun } from './link-rules.js';
 import type { BuilderRunWrite } from './link-schema.js';
 import { type Held, sourceOf, storedBuilderRun } from './link-service.js';
 import { insertBuilderRun, readBuilderRun, replaceBuilderRun } from './link-store.js';
+import { activeEcosystemIdsOf } from './membership-store.js';
 import { ecosystemSignals } from './ports.js';
 import type { EcosystemRefusal } from './refusals.js';
-import { activeEcosystemIdsOf, lockKeys } from './store.js';
+import { lockKeys } from './store.js';
 
 type SupersedeOutcome =
   | { ok: true; superseded: Held<BuilderRunWrite>; opened: Held<BuilderRunWrite> }

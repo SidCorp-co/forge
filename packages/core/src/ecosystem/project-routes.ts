@@ -15,10 +15,12 @@ import {
   loadInterface,
   writeInterface,
 } from './interface-service.js';
+import { listInterfaceRevisions } from './interface-store.js';
 import { membershipDocument } from './membership-rules.js';
+import { membershipsWhere } from './membership-store.js';
 import type { CommitmentsSetter } from './provider-writer-rules.js';
 import { serialiseRevisions } from './routes.js';
-import { listInterfaceRevisions, membershipsWhere, readEcosystems } from './store.js';
+import { readEcosystems } from './store.js';
 
 export const ecosystemProjectRoutes = new Hono<{ Variables: AuthVars }>();
 

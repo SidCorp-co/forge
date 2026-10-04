@@ -5,16 +5,11 @@ import { forbidden, notFound, readerProjects } from './access.js';
 import { heldEcosystem } from './ecosystem-service.js';
 import { loadGraph } from './graph.js';
 import { commitmentsSetter, loadInterface } from './interface-service.js';
+import type { EdgeRow } from './interface-store.js';
+import { activeEcosystemIdsOf } from './membership-store.js';
 import { edgeVisible, liveEdges, type Sight, sightOf } from './party.js';
 import type { InterfaceDocument, Publication } from './schema.js';
-import {
-  activeEcosystemIdsOf,
-  type EdgeRow,
-  type ProjectRow,
-  projectsWhere,
-  readEcosystems,
-  recordedVersions,
-} from './store.js';
+import { type ProjectRow, projectsWhere, readEcosystems, recordedVersions } from './store.js';
 
 const artifactKind = (p: Publication) => (p.artifact === null ? 'none' : 'upload');
 

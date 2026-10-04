@@ -9,7 +9,7 @@ import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { ecosystemRoutes } from "../routes";
 
-export type Section = "channel" | "api";
+type Section = "channel" | "api";
 
 // cm:why Threads is the workspace inbox, so its tab leaves the project; Project API is this project's own page, and its contracts live under Development
 const SECTIONS: { value: Section; label: string; href: (slug: string) => string }[] = [

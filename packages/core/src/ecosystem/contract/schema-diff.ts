@@ -170,75 +170,82 @@ function boundRule(
   else out.push('info', 'changed', at, `${k} is now ${b}, was ${a}`, `${k}-widened`);
 }
 
-function objectRules(o: Record<string, unknown>, n: Record<string, unknown>, at: string, out: Out) {
-  const op = isObject(o.properties) ? o.properties : {};
-  const np = isObject(n.properties) ? n.properties : {};
-  const oreq = new Set(Array.isArray(o.required) ? o.required.map(String) : []);
-  const nreq = new Set(Array.isArray(n.required) ? n.required.map(String) : []);
-  const [oClosed, nClosed] = [o.additionalProperties === false, n.additionalProperties === false];
-  for (const k of new Set([...Object.keys(op), ...Object.keys(np)])) {
-    const p = `${at}/properties/${esc(k)}`;
-    if (!(k in np)) {
-      if (nClosed)
-        out.push(
-          'breaking',
-          'removed',
-          p,
-          `property ${k} was removed from a closed object, which now refuses it`,
-          'property-removed',
-        );
-      else
-        out.push(
-          'warning',
-          'removed',
-          p,
-          `property ${k} was removed; the open object still accepts it, and what it now means is not measured`,
-          'property-removed-open',
-        );
-    } else if (!(k in op)) {
-      if (nreq.has(k))
-        out.push(
-          'breaking',
-          'added',
-          p,
-          `required property ${k} was added`,
-          'required-property-added',
-        );
-      else if (oClosed)
-        out.push('info', 'added', p, `optional property ${k} was added`, 'optional-property-added');
-      else
-        out.push(
-          'warning',
-          'added',
-          p,
-          `optional property ${k} was added to an open object, which may have carried it as anything`,
-          'optional-property-added-open',
-        );
-    } else {
-      compareSchemas(op[k] as Schema, np[k] as Schema, p, out);
-      if (!oreq.has(k) && nreq.has(k))
-        out.push(
-          'breaking',
-          'changed',
-          p,
-          `property ${k} is now required`,
-          'property-became-required',
-        );
-      if (oreq.has(k) && !nreq.has(k))
-        out.push(
-          'info',
-          'changed',
-          p,
-          `property ${k} is no longer required`,
-          'property-became-optional',
-        );
-    }
+interface Shape {
+  props: Record<string, unknown>;
+  req: Set<string>;
+  closed: boolean;
+}
+
+function shapeOf(s: Record<string, unknown>): Shape {
+  return {
+    props: isObject(s.properties) ? s.properties : {},
+    req: new Set(Array.isArray(s.required) ? s.required.map(String) : []),
+    closed: s.additionalProperties === false,
+  };
+}
+
+function propertyRule(k: string, o: Shape, n: Shape, at: string, out: Out) {
+  const p = `${at}/properties/${esc(k)}`;
+  if (!(k in n.props)) {
+    if (n.closed)
+      out.push(
+        'breaking',
+        'removed',
+        p,
+        `property ${k} was removed from a closed object, which now refuses it`,
+        'property-removed',
+      );
+    else
+      out.push(
+        'warning',
+        'removed',
+        p,
+        `property ${k} was removed; the open object still accepts it, and what it now means is not measured`,
+        'property-removed-open',
+      );
+  } else if (!(k in o.props)) {
+    if (n.req.has(k))
+      out.push(
+        'breaking',
+        'added',
+        p,
+        `required property ${k} was added`,
+        'required-property-added',
+      );
+    else if (o.closed)
+      out.push('info', 'added', p, `optional property ${k} was added`, 'optional-property-added');
+    else
+      out.push(
+        'warning',
+        'added',
+        p,
+        `optional property ${k} was added to an open object, which may have carried it as anything`,
+        'optional-property-added-open',
+      );
+  } else {
+    compareSchemas(o.props[k] as Schema, n.props[k] as Schema, p, out);
+    if (!o.req.has(k) && n.req.has(k))
+      out.push(
+        'breaking',
+        'changed',
+        p,
+        `property ${k} is now required`,
+        'property-became-required',
+      );
+    if (o.req.has(k) && !n.req.has(k))
+      out.push(
+        'info',
+        'changed',
+        p,
+        `property ${k} is no longer required`,
+        'property-became-optional',
+      );
   }
-  for (const k of nreq) {
-    if (!(k in np) && !oreq.has(k))
-      out.push('breaking', 'changed', at, `${k} is now required`, 'property-became-required');
-  }
+}
+
+function closureRule(o: Record<string, unknown>, n: Record<string, unknown>, at: string, out: Out) {
   const [oa, na] = [o.additionalProperties, n.additionalProperties];
+  const [oClosed, nClosed] = [oa === false, na === false];
   if (!oClosed && nClosed)
     out.push(
       'breaking',
@@ -263,6 +270,18 @@ function objectRules(o: Record<string, unknown>, n: Record<string, unknown>, at:
       `${at}/additionalProperties`,
       out,
     );
+}
+
+function objectRules(o: Record<string, unknown>, n: Record<string, unknown>, at: string, out: Out) {
+  const [os, ns] = [shapeOf(o), shapeOf(n)];
+  for (const k of new Set([...Object.keys(os.props), ...Object.keys(ns.props)])) {
+    propertyRule(k, os, ns, at, out);
+  }
+  for (const k of ns.req) {
+    if (!(k in ns.props) && !os.req.has(k))
+      out.push('breaking', 'changed', at, `${k} is now required`, 'property-became-required');
+  }
+  closureRule(o, n, at, out);
 }
 
 function compareSchemas(o: Schema, n: Schema, at: string, out: Out): void {
@@ -308,62 +327,6 @@ export function diffSchema(element: string, o: unknown, n: unknown): MeasuredCha
   const into: MeasuredChange[] = [];
   compareSchemas(o as Schema, n as Schema, '', sink(element, into));
   return into;
-}
-
-interface ListedTool {
-  name: string;
-  description?: string;
-  inputSchema: unknown;
-}
-
-export function toolsOf(doc: unknown): Map<string, ListedTool> | null {
-  if (!isObject(doc) || !Array.isArray(doc.tools)) return null;
-  const tools = new Map<string, ListedTool>();
-  for (const t of doc.tools) {
-    if (!isObject(t) || typeof t.name !== 'string' || !isObject(t.inputSchema)) return null;
-    tools.set(t.name, t as unknown as ListedTool);
-  }
-  return tools;
-}
-
-export function diffMcpTools(
-  o: Map<string, ListedTool>,
-  n: Map<string, ListedTool>,
-): MeasuredChange[] {
-  const out: MeasuredChange[] = [];
-  for (const [name, tool] of o) {
-    const next = n.get(name);
-    if (!next) {
-      out.push({
-        element: name,
-        kind: 'removed',
-        level: 'breaking',
-        text: `tool ${name} was removed`,
-        check: 'tool-removed',
-      });
-      continue;
-    }
-    if (tool.description !== next.description)
-      out.push({
-        element: name,
-        kind: 'changed',
-        level: 'info',
-        text: 'the description changed',
-        check: 'tool-description-changed',
-      });
-    out.push(...diffSchema(name, tool.inputSchema, next.inputSchema));
-  }
-  for (const name of n.keys()) {
-    if (!o.has(name))
-      out.push({
-        element: name,
-        kind: 'added',
-        level: 'info',
-        text: `tool ${name} was added`,
-        check: 'tool-added',
-      });
-  }
-  return out;
 }
 
 export function jsonSchemaElements(doc: unknown): string[] {

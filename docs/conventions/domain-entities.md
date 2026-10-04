@@ -586,7 +586,7 @@ means `off`).
   `no_egress` (`CONTENT_EGRESS_FORBIDDEN`).
 - **On write.** At `redact` and `no_egress`, stored free text is scrubbed first
   (`packages/core/src/lib/data-egress.ts:storedText`).
-- **Embeddings.** `packages/core/src/embeddings/item-writer.ts:writeItemEmbedding` is the one
+- **Embeddings.** `packages/core/src/knowledge/item-embeddings.ts:writeItemEmbedding` is the one
   writer; a withheld item is recorded as `withheld_by_policy`.
 - **LLM and embedding ports gate inside the adapter**, taking a
   `packages/core/src/lib/data-egress.ts:EgressScope`.

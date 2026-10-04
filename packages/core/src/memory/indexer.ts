@@ -6,6 +6,7 @@ import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/ind
 import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
 import { searchMemories } from './search.js';
+import { NEAR_DUPLICATE_THRESHOLD } from './thresholds.js';
 
 type Executor = Pick<typeof db, 'insert'>;
 
@@ -114,15 +115,6 @@ export interface IndexResult {
 interface IndexOptions {
   nearDuplicateProbe?: boolean;
 }
-
-/**
- * 0.85 mirrors forge-agents. NOTE (proposal open question): tuned on the
- * predecessor's embedding model — re-validate against the configured model
- * before reading a hit as anything stronger than "look at this too".
- */
-import { NEAR_DUPLICATE_THRESHOLD } from './thresholds.js';
-
-export { NEAR_DUPLICATE_THRESHOLD };
 
 /** The stored row's own text and whether it holds a vector — the only two facts the skip reads. */
 async function readExisting(

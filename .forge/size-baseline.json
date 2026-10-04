@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-10-04T22:54:16.297Z",
+  "generatedAt": "2026-10-04T23:29:40.238Z",
   "files": {
     "packages/core/src/agent-sessions/routes.ts": {
       "fileLines": 598,
       "maxFunctionLines": 0
     },
     "packages/core/src/db/schema.ts": {
-      "fileLines": 2298,
+      "fileLines": 2290,
       "maxFunctionLines": 0
     },
     "packages/core/src/feedback/read.ts": {
@@ -19,10 +19,6 @@
     },
     "packages/core/src/issues/standing.ts": {
       "fileLines": 639,
-      "maxFunctionLines": 0
-    },
-    "packages/core/src/memory/consolidation.ts": {
-      "fileLines": 669,
       "maxFunctionLines": 0
     }
   }
