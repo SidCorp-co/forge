@@ -6,8 +6,10 @@ import { labelKinds } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
+import { moduleDetailOf } from './module-detail-read.js';
 import { moduleDrift } from './module-drift.js';
 import { DEFAULT_ACTIVE_WITHIN_DAYS } from './module-rollup.js';
 import {
@@ -18,7 +20,7 @@ import {
   assertParentIsLegal,
   deriveModuleSlug,
 } from './module-service.js';
-import { moduleDetailOf, moduleRollupWithStanding } from './module-standing-read.js';
+import { moduleRollupWithStanding } from './module-standing-read.js';
 import { labelAttachmentCount, labelHead, listProjectLabels } from './read.js';
 import { createLabel, deleteLabel, updateLabel } from './service.js';
 import { labelUniqueConflict } from './unique-conflicts.js';
@@ -52,12 +54,9 @@ const labelPatchSchema = z
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
 
-const projectIdParamSchema = z.object({ id: z.uuid() });
-
 const rollupQuerySchema = z.object({
   activeWithinDays: z.coerce.number().int().min(1).max(3650).optional(),
 });
-const labelIdParamSchema = z.object({ id: z.uuid() });
 const moduleDetailParamSchema = z.object({
   id: z.uuid(),
   module: z.string().trim().min(1).max(128),
@@ -68,9 +67,6 @@ function viewerOf(c: Context<{ Variables: AuthVars }>) {
   if (!agency) throw new Error('modules: a request reached its handler without an auth gate');
   return { userId: c.get('userId'), agency };
 }
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
@@ -87,7 +83,7 @@ labelProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 
 labelProjectRoutes.post(
   '/:id/labels',
-  zValidator('param', projectIdParamSchema, (r) => {
+  zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', labelCreateSchema, (r) => {
@@ -129,7 +125,7 @@ labelProjectRoutes.post(
 
 labelProjectRoutes.get(
   '/:id/labels',
-  zValidator('param', projectIdParamSchema, (r) => {
+  zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {
@@ -145,7 +141,7 @@ labelProjectRoutes.get(
 
 labelProjectRoutes.get(
   '/:id/modules/rollup',
-  zValidator('param', projectIdParamSchema, (r) => {
+  zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', rollupQuerySchema, (r) => {
@@ -188,7 +184,7 @@ const driftQuerySchema = z
 
 labelProjectRoutes.get(
   '/:id/modules/drift',
-  zValidator('param', projectIdParamSchema, (r) => {
+  zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', driftQuerySchema, (r) => {
@@ -217,7 +213,7 @@ async function loadLabel(labelId: string) {
 
 labelRoutes.patch(
   '/:id',
-  zValidator('param', labelIdParamSchema, (r) => {
+  zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(r.error);
   }),
   zValidator('json', labelPatchSchema, (r) => {
@@ -270,7 +266,7 @@ labelRoutes.patch(
 
 labelRoutes.delete(
   '/:id',
-  zValidator('param', labelIdParamSchema, (r) => {
+  zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(r.error);
   }),
   async (c) => {

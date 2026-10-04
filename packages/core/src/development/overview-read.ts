@@ -12,6 +12,7 @@ import type { WorkStep } from '@forge/contracts/issue-vocabulary';
 import { slotsNoteOf } from '@forge/contracts/master-standing';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { idList, rowsOf } from '../db/raw-sql.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { listIssueStanding, STANDING_LIMIT, type StandingViewer } from '../issues/standing-read.js';
 import { readMasterStanding } from '../masters/read.js';
@@ -27,12 +28,6 @@ import {
   stuckOf,
 } from './overview.js';
 
-const rowsOf = <T>(r: unknown) => [...(r as Iterable<T>)];
-const idList = (ids: readonly string[]) =>
-  sql.join(
-    ids.map((id) => sql`${id}`),
-    sql`, `,
-  );
 const terminalSessions = sql.join(
   terminalAgentSessionStatuses.map((s) => sql`${s}`),
   sql`, `,

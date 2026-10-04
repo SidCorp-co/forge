@@ -4,9 +4,7 @@
 // runner on a box that compiles against none of these types, so a shape held
 // only by TypeScript is a shape held nowhere (ISS-964 criteria 14, 16, 21).
 
-import type { PersonVia } from '@forge/contracts/ecosystem';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
-import type { ActorAgency } from '@forge/contracts/permissions';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import type { QuestionRefusalCode } from '@forge/contracts/questions';
 import { eq, sql } from 'drizzle-orm';
@@ -25,10 +23,8 @@ import type { IssueDependencyExecutor } from '../issues/index.js';
 import { refuser } from '../lib/refusal.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
-import { emitEvent } from '../outbox/index.js';
-import { holds, type PermissionFacts, requireHeld } from '../permissions/index.js';
+import { holds, type PermissionFacts } from '../permissions/index.js';
 import { resolveAskOrigin } from './origin.js';
-import { decideChannelGate, wakeMastersForAnswer } from './ports.js';
 import { screenRound } from './screen.js';
 
 /** The pool, or a caller's open transaction — a park writes its question inside the transition's. */
@@ -62,7 +58,7 @@ export type AskInput = {
 export const refuseQuestion = refuser<QuestionRefusalCode>('QUESTION_REFUSED');
 
 /** An option's authority is the permission choosing it takes. */
-const optionPermission = (option: QuestionOption) =>
+export const optionPermission = (option: QuestionOption) =>
   option.authority === 'admin' ? 'project.admin' : 'project.write';
 
 export function mayChoose(option: QuestionOption, facts: PermissionFacts | null): boolean {
@@ -239,155 +235,6 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput) {
   return view(row);
 }
 
-export type GivenAnswer = { kind: 'option'; optionId: string } | { kind: 'text'; text: string };
-
-export type AnswerInput = {
-  questionId: string;
-  answer: GivenAnswer;
-  /** The round the answerer was looking at. Never defaulted to the current one. */
-  round: number;
-  by: string;
-  /** Recorded on the move; who may answer is `facts`'s. */
-  agency: ActorAgency;
-  facts: PermissionFacts;
-  note?: string;
-  /** The door the answerer came through, which a channel gate records as the decider's via. */
-  via: PersonVia;
-};
-
-export function mayAnswerFreeText(facts: PermissionFacts | null): boolean {
-  return facts !== null && holds(facts, 'project.write');
-}
-
-/**
- * Record one answer, or refuse and leave the row exactly as it was.
- */
-export async function answerQuestion(args: AnswerInput) {
-  const { committed, effect } = await db.transaction(async (tx) => {
-    const [row] = await tx
-      .select()
-      .from(agentQuestions)
-      .where(eq(agentQuestions.id, args.questionId))
-      .limit(1)
-      .for('update');
-    if (!row) throw notFound(`no question ${args.questionId}`);
-    if (row.batchId) {
-      throw refuseQuestion(
-        'QUESTION_IN_QUESTIONNAIRE',
-        `question ${row.id} is an item of questionnaire ${row.batchId}; answer it with its batch (POST …/questionnaires/${row.batchId}/answers)`,
-      );
-    }
-    const now = new Date();
-    if (row.status !== 'open') {
-      throw refuseQuestion(
-        'QUESTION_NOT_OPEN',
-        `this question is ${row.status} — only an open question takes an answer`,
-      );
-    }
-    if (row.parkDeadlineAt && row.parkDeadlineAt.getTime() <= now.getTime()) {
-      throw refuseQuestion(
-        'QUESTION_EXPIRED',
-        `this question's park deadline passed at ${row.parkDeadlineAt.toISOString()}`,
-      );
-    }
-    const current = row.steps[row.steps.length - 1];
-    if (!current) throw new Error(`question ${row.id} has no round to answer`);
-    const note = args.note?.trim() || undefined;
-    if (args.note !== undefined && row.origin?.kind !== 'channel_gate') {
-      throw refuseQuestion(
-        'QUESTION_NOTE_NOT_TAKEN',
-        'a note travels only with an answer that carries it somewhere, and this question carries none — a channel gate takes one; here, answer with the option alone',
-      );
-    }
-    if (current.round !== args.round) {
-      throw refuseQuestion(
-        'QUESTION_ROUND_STALE',
-        `this answer names round ${args.round} and the question is on round ${current.round} — the round you were shown has been superseded`,
-      );
-    }
-    const choice = isChoiceStep(current);
-    if (choice !== (args.answer.kind === 'option')) {
-      throw refuseQuestion(
-        'QUESTION_ANSWER_WRONG_SHAPE',
-        choice
-          ? `round ${current.round} offers options and this answer carries text — reply with the number of the option you mean`
-          : `round ${current.round} asks for text and this answer names an option — it has none to name`,
-      );
-    }
-    let answered: QuestionStep;
-    let effect: (() => Promise<void>) | null = null;
-    if (isChoiceStep(current) && args.answer.kind === 'option') {
-      const optionId = args.answer.optionId;
-      const option = current.options.find((o) => o.id === optionId);
-      if (!option) {
-        throw refuseQuestion(
-          'QUESTION_OPTION_UNKNOWN',
-          `option ${optionId} is not on round ${current.round} of this question`,
-        );
-      }
-      requireHeld(args.facts, optionPermission(option), `choosing option ${option.id}`);
-      answered = {
-        ...current,
-        answeredAt: now.toISOString(),
-        chosenOptionId: option.id,
-        answeredBy: args.by,
-        ...(note ? { note } : {}),
-      };
-      if (row.origin?.kind === 'channel_gate') {
-        effect = await decideChannelGate(tx, {
-          documentId: row.origin.documentId,
-          projectId: row.projectId,
-          optionId: option.id,
-          note,
-          by: args.by,
-          via: args.via,
-        });
-      }
-    } else if (!isChoiceStep(current) && args.answer.kind === 'text') {
-      const text = args.answer.text.trim();
-      if (!text) {
-        throw refuseQuestion(
-          'QUESTION_ANSWER_WRONG_SHAPE',
-          `round ${current.round} asks for text and this answer carries none`,
-        );
-      }
-      requireHeld(args.facts, 'project.write', 'answering a free-text round');
-      answered = {
-        ...current,
-        answeredAt: now.toISOString(),
-        answerText: text,
-        answeredBy: args.by,
-      };
-    } else {
-      throw refuseQuestion(
-        'QUESTION_ANSWER_WRONG_SHAPE',
-        `round ${current.round} and this answer do not name the same shape`,
-      );
-    }
-    const steps = row.steps.map((s, i) => (i === row.steps.length - 1 ? answered : s));
-    await transition(tx, QUESTION_MACHINE, {
-      to: 'answered',
-      from: 'open',
-      set: { steps, updatedAt: now },
-      where: eq(agentQuestions.id, args.questionId),
-      actor: { type: 'user', id: args.by, agency: args.agency },
-      source: 'questions',
-      returning: ['id'],
-    });
-    await emitEvent(tx, 'question.answered', {
-      questionId: args.questionId,
-      projectId: row.projectId,
-      issueId: row.issueId ?? null,
-      answeredBy: args.by,
-      body: answeredBody(answered),
-    });
-    return { committed: { ...row, steps, status: 'answered' as const }, effect };
-  });
-  void wakeMastersForAnswer({ projectId: committed.projectId, questionId: args.questionId });
-  if (effect) await effect();
-  return view(committed);
-}
-
 export async function voidQuestion(args: {
   questionId: string;
   reason: string;
@@ -423,13 +270,13 @@ async function load(id: string) {
   return row;
 }
 
-function answeredBody(step: QuestionStep | undefined): string {
+export function answeredBody(step: QuestionStep | undefined): string {
   if (!step) return '';
   if (!isChoiceStep(step)) return step.answerText ?? '';
   return step.options.find((o) => o.id === step.chosenOptionId)?.label ?? '';
 }
 
-function view<T extends { steps: QuestionStep[] }>(row: T) {
+export function view<T extends { steps: QuestionStep[] }>(row: T) {
   const current = row.steps[row.steps.length - 1];
   return {
     ...row,

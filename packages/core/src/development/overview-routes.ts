@@ -3,12 +3,11 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest } from '../middleware/route-errors.js';
+import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { readDevelopmentOverview } from './overview-read.js';
 
-const projectParam = z.object({ id: z.uuid() });
 const noQuery = z.strictObject({});
 
 export const developmentOverviewRoutes = new Hono<{ Variables: AuthVars }>();
@@ -16,7 +15,7 @@ developmentOverviewRoutes.use('*', requireAuth(), assertEmailVerified());
 
 developmentOverviewRoutes.get(
   '/:id/development/overview',
-  zValidator('param', projectParam, (r) => {
+  zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', noQuery, (r) => {

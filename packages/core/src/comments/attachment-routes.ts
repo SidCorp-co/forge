@@ -15,7 +15,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { requireAnyAuth } from '../middleware/require-any-auth.js';
-import { forbidden } from '../middleware/route-errors.js';
+import { forbidden, idParamSchema } from '../middleware/route-errors.js';
 import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { getStorage, isEnoent } from '../storage/index.js';
@@ -29,7 +29,6 @@ const attachmentBadRequest = (message: string, code = 'BAD_REQUEST', details?: u
   new HTTPException(400, { message, cause: { code, details } });
 
 const commentIdParamSchema = z.object({ commentId: z.uuid() });
-const idParamSchema = z.object({ id: z.uuid() });
 
 export const commentAttachmentRoutes = new Hono<{ Variables: AuthVars }>();
 

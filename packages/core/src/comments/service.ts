@@ -4,25 +4,24 @@ import {
   type CommentIntent,
   isCommentIntent,
 } from '@forge/contracts/record-events';
-import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
 import { db, type Tx } from '../db/client.js';
 import { commentMentions, comments, issues, users } from '../db/schema.js';
 import type { Actor } from '../issues/index.js';
 import { dropCommentMirror, mirrorCommentRecord, remirrorCommentRecord } from '../issues/index.js';
-import { lockXact } from '../lib/advisory-lock.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 import { parseForgeRecord } from '../messaging/forge-record.js';
 import { logger } from '../observability/logger.js';
 import { emitEvent } from '../outbox/index.js';
-import { type CommentCursor, encodeCommentCursor } from './cursor.js';
 import { parseMentions, resolveMentions } from './mentions.js';
 import { screenAgentComment, screenRecordFence } from './screen.js';
+import { onIssue } from './thread-read.js';
 
 const refuse = refuser<CommentRefusalCode>('COMMENT_REFUSED');
 
-type CommentThreadRow = {
+export type CommentThreadRow = {
   id: string;
   issueId: string;
   authorId: string;
@@ -51,91 +50,7 @@ export const commentThreadColumns = {
   updatedAt: comments.updatedAt,
 } as const;
 
-// cm:guard the issue thread reads issue comments only: a row on another target reaching it is an
-// invariant break named here, never a thread entry with no issue
-export function onIssue<T extends { id: string; issueId: string | null }>(
-  row: T,
-): T & { issueId: string } {
-  if (row.issueId === null) {
-    throw new Error(`comment ${row.id} sits on no issue, so the issue thread cannot carry it`);
-  }
-  return row as T & { issueId: string };
-}
-
-/**
- * Comment depth the DB trigger allows. A root plus this many rounds of
- * `parent_id IN (…)` reaches every descendant of the roots on a page.
- */
-const COMMENT_MAX_DEPTH = 3;
-
-type CommentPage = {
-  /** Roots and every descendant of them, ascending by `(createdAt, id)`. */
-  rows: CommentThreadRow[];
-  /** The roots this page carries, in the order the cursor walks them. */
-  roots: CommentThreadRow[];
-  /** Where the next page resumes, or null when this page ended the thread. */
-  nextCursor: string | null;
-  /** Each root's exact `created_at` key, for a caller that mints its own token. */
-  cursorKeyById: Map<string, string>;
-};
-
-/**
- * `created_at` as the DB's own microsecond text, which is what a cursor
- * carries. Selected only on the root query, never projected to a caller.
- */
-const cursorKeyExpr = sql<string>`to_char(${comments.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
-
-export async function listIssueCommentPage(
-  issueId: string,
-  opts: { after?: CommentCursor | undefined; limit: number; intent?: CommentIntent | undefined },
-): Promise<CommentPage> {
-  const { after, limit } = opts;
-  const rootFilters = [eq(comments.issueId, issueId), isNull(comments.parentId)];
-  if (opts.intent) rootFilters.push(eq(comments.intent, opts.intent));
-  if (after) {
-    const at = sql`${after.createdAtKey}::timestamptz`;
-    rootFilters.push(
-      or(
-        sql`${comments.createdAt} > ${at}`,
-        and(sql`${comments.createdAt} = ${at}`, gt(comments.id, after.id)),
-      ) as NonNullable<ReturnType<typeof gt>>,
-    );
-  }
-
-  const probed = await db
-    .select({ ...commentThreadColumns, cursorKey: cursorKeyExpr })
-    .from(comments)
-    .where(and(...rootFilters))
-    .orderBy(asc(comments.createdAt), asc(comments.id))
-    .limit(limit + 1);
-
-  const keyed = probed.slice(0, limit);
-  const last = keyed.at(-1);
-  const nextCursor =
-    probed.length > limit && last
-      ? encodeCommentCursor({ createdAtKey: last.cursorKey, id: last.id })
-      : null;
-
-  const cursorKeyById = new Map(keyed.map((r) => [r.id, r.cursorKey]));
-  const roots = keyed.map(({ cursorKey: _key, ...row }) => onIssue(row));
-
-  const rows = [...roots];
-  let frontier = roots.map((r) => r.id);
-  for (let depth = 1; depth < COMMENT_MAX_DEPTH && frontier.length > 0; depth += 1) {
-    const replies = await db
-      .select(commentThreadColumns)
-      .from(comments)
-      .where(inArray(comments.parentId, frontier))
-      .orderBy(asc(comments.createdAt), asc(comments.id));
-    rows.push(...replies.map(onIssue));
-    frontier = replies.map((r) => r.id);
-  }
-
-  rows.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
-  return { rows, roots, nextCursor, cursorKeyById };
-}
-
-type NewComment = {
+export type NewComment = {
   issueId: string;
   authorId: string;
   authorDeviceId: string | null;
@@ -323,81 +238,6 @@ async function recordMentions(row: CommentThreadRow, projectId: string, t: Tx): 
     logger.error({ err, commentId: row.id }, 'comment mentions could not be recorded');
     return [];
   }
-}
-
-/** A comment Forge itself posts on an issue: a note unless it says otherwise. */
-type IssueNotice = {
-  issueId: string;
-  authorId: string;
-  authorDeviceId?: string | null | undefined;
-  body: string;
-  intent?: CommentIntent | undefined;
-  parentId?: string | null | undefined;
-  announce?: NewComment['announce'];
-};
-
-/**
- * Post a notice through the one writer, so it is screened, mirrored and its mentions recorded the
- * way a comment through either door is.
- */
-export async function postIssueNotice(notice: IssueNotice, tx: Tx = db): Promise<CommentThreadRow> {
-  const { row } = await insertComment(
-    {
-      issueId: notice.issueId,
-      authorId: notice.authorId,
-      authorDeviceId: notice.authorDeviceId ?? null,
-      body: notice.body,
-      parentId: notice.parentId ?? null,
-      intent: notice.intent ?? 'note',
-      announce: notice.announce,
-    },
-    tx,
-  );
-  return row;
-}
-
-/**
- * Post a notice unless the issue's thread already carries `marker`, under a lock on the pair, so
- * any number of racing callers post it once. Null when it was already there.
- */
-export async function postIssueNoticeOnce(
-  notice: IssueNotice & { marker: string },
-  tx: Tx = db,
-): Promise<CommentThreadRow | null> {
-  const { marker, ...rest } = notice;
-  return tx.transaction(async (t) => {
-    await lockXact(t, 'commentOnce', `${notice.issueId}:${marker}`);
-    const [existing] = await t
-      .select({ id: comments.id })
-      .from(comments)
-      .where(
-        and(eq(comments.issueId, notice.issueId), sql`strpos(${comments.body}, ${marker}) > 0`),
-      )
-      .limit(1);
-    if (existing) return null;
-    return postIssueNotice(rest, t);
-  });
-}
-
-/** The body of the latest comment on an issue carrying any of `markers`, or null. */
-export async function latestIssueCommentWith(
-  issueId: string,
-  markers: readonly string[],
-  tx: Tx = db,
-): Promise<string | null> {
-  if (markers.length === 0) return null;
-  const [latest] = await tx
-    .select({ body: comments.body })
-    .from(comments)
-    .where(
-      and(
-        eq(comments.issueId, issueId),
-        or(...markers.map((m) => sql`strpos(${comments.body}, ${m}) > 0`)),
-      ),
-    )
-    .orderBy(desc(comments.createdAt), desc(comments.id))
-    .limit(1);
-  return latest?.body ?? null;
 }
 
 /**

@@ -8,23 +8,21 @@ import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { badRequest } from '../middleware/route-errors.js';
+import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { type ArchiveDirection, issueArchiveRequestSchema, runIssueArchive } from './archive.js';
-
-const projectIdParamSchema = z.object({ id: z.uuid() });
 
 export const issueArchiveRoutes = new Hono<{ Variables: AuthVars }>();
 issueArchiveRoutes.use('*', requireAuth(), assertEmailVerified());
 
 type ArchiveInput = {
   in: {
-    param: z.input<typeof projectIdParamSchema>;
+    param: z.input<typeof idParamSchema>;
     json: z.input<typeof issueArchiveRequestSchema>;
   };
   out: {
-    param: z.output<typeof projectIdParamSchema>;
+    param: z.output<typeof idParamSchema>;
     json: z.output<typeof issueArchiveRequestSchema>;
   };
 };
@@ -46,7 +44,7 @@ function archiveHandler(direction: ArchiveDirection) {
   };
 }
 
-const validProjectId = zValidator('param', projectIdParamSchema, (r) => {
+const validProjectId = zValidator('param', idParamSchema, (r) => {
   if (!r.success) throw badRequest(r.error);
 });
 

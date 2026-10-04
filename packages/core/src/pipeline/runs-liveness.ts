@@ -8,6 +8,7 @@ import { MASTER_SESSION_METADATA_TYPE } from '@forge/contracts/agent-sessions';
 import { UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { idList } from '../db/raw-sql.js';
 import { agentSessions, jobs, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
 import type { PipelineRunLane, ResidentMaster } from './runs-lane.js';
 
@@ -15,12 +16,6 @@ function toIso(value: Date | string | null): string | null {
   if (value === null) return null;
   return value instanceof Date ? value.toISOString() : value;
 }
-
-const sqlList = (values: readonly string[]) =>
-  sql.join(
-    values.map((v) => sql`${v}`),
-    sql`, `,
-  );
 
 export interface RunLiveness {
   liveJobs: number;
@@ -52,10 +47,10 @@ export async function loadRunLivenessByRunIds(runIds: string[]): Promise<Map<str
       r.id AS run_id,
       (SELECT count(*) FROM ${jobs} j
         WHERE j.pipeline_run_id = r.id
-          AND j.status IN (${sqlList(UNHELD_LIVE_JOB_STATUSES)})) AS live_jobs,
+          AND j.status IN (${idList(UNHELD_LIVE_JOB_STATUSES)})) AS live_jobs,
       (SELECT max(s.last_heartbeat_at) FROM ${agentSessions} s
         WHERE s.pipeline_run_id = r.id
-          AND s.status NOT IN (${sqlList(terminalAgentSessionStatuses)})) AS last_beat,
+          AND s.status NOT IN (${idList(terminalAgentSessionStatuses)})) AS last_beat,
       m.id AS master_session_id,
       m.name AS master_name,
       m.last_heartbeat_at AS master_beat
@@ -65,11 +60,11 @@ export async function loadRunLivenessByRunIds(runIds: string[]): Promise<Map<str
         FROM ${agentSessions} s
        WHERE s.pipeline_run_id = r.id
          AND s.kind = ${MASTER_SESSION_METADATA_TYPE}
-         AND s.status NOT IN (${sqlList(terminalAgentSessionStatuses)})
+         AND s.status NOT IN (${idList(terminalAgentSessionStatuses)})
        ORDER BY s.started_at DESC NULLS LAST
        LIMIT 1
     ) m ON true
-    WHERE r.id IN (${sqlList(runIds)})
+    WHERE r.id IN (${idList(runIds)})
   `);
   for (const r of rows) {
     if (!r.run_id) continue;

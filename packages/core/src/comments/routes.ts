@@ -29,7 +29,7 @@ import {
   declares,
   RECORD_ROUTE_CAPABILITY,
 } from '../middleware/client-capabilities.js';
-import { forbidden } from '../middleware/route-errors.js';
+import { badRequest, forbidden, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { commentAttachmentRoutes } from './attachment-routes.js';
@@ -49,28 +49,19 @@ import {
   parentCommentOf,
 } from './read.js';
 import { messageRefusalHttp } from './screen.js';
-import {
-  deleteComment,
-  insertComment,
-  intentRefusal,
-  listIssueCommentPage,
-  updateCommentBody,
-} from './service.js';
+import { deleteComment, insertComment, intentRefusal, updateCommentBody } from './service.js';
+import { listIssueCommentPage } from './thread-read.js';
 import { attachAuthors, buildCommentTree } from './tree.js';
 
 const refuse = refuser<CommentRefusalCode>('COMMENT_REFUSED');
 
 /** The comment projection every REST response here shares. */
-const idParamSchema = z.object({ id: z.uuid() });
 
 const threadQuerySchema = paginationSchema.extend({
   cursor: z.string().min(1).optional(),
   projectId: projectScopeQuerySchema.shape.projectId,
   intent: z.string().max(64).optional(),
 });
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });

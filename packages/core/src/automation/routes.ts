@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { egressForRequest } from '../lib/data-egress.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { badRequest, forbidden, notFound } from '../middleware/route-errors.js';
+import { badRequest, forbidden, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import {
   automationViewerOf,
@@ -17,7 +17,6 @@ import {
   readScheduleDetail,
 } from './read.js';
 
-const projectParam = z.object({ id: z.uuid() });
 const scheduleParam = z.object({ id: z.uuid(), scheduleId: z.uuid() });
 const fireParam = z.object({ id: z.uuid(), fireId: z.uuid() });
 const reportParam = z.object({ id: z.uuid(), reportId: z.uuid() });
@@ -42,7 +41,7 @@ async function viewerOf(projectId: string, userId: string) {
 
 automationRoutes.get(
   '/:id/automation/standing',
-  zValidator('param', projectParam, (r) => {
+  zValidator('param', idParamSchema, (r) => {
     if (!r.success)
       throw badRequest('invalid path: /api/projects/<project uuid>/automation/standing');
   }),

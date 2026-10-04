@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { jobTypes } from '../db/schema.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest } from '../middleware/route-errors.js';
+import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { readCostSummary, readStepDurations } from './read.js';
@@ -14,11 +14,7 @@ const querySchema = z.object({
   projectId: z.uuid().optional(),
 });
 
-const stepDurationsQuerySchema = z.object({
-  days: z.coerce.number().int().min(1).max(90).optional().default(30),
-  projectId: z.uuid().optional(),
-  step: z.enum(jobTypes).optional(),
-});
+const stepDurationsQuerySchema = querySchema.extend({ step: z.enum(jobTypes).optional() });
 
 async function loadVisibleProjectIdsScoped(userId: string, scopedTo?: string): Promise<string[]> {
   const ids = await loadVisibleProjectIds(userId);
@@ -68,8 +64,6 @@ pipelineAnalyticsRoutes.get(
 export const projectCostAnalyticsRoutes = new Hono<{ Variables: AuthVars }>();
 projectCostAnalyticsRoutes.use('*', requireAuth(), assertEmailVerified());
 
-const projectIdParamSchema = z.object({ id: z.uuid() });
-
 const costSummaryQuerySchema = z.object({
   days: z.coerce.number().int().min(1).max(90).optional().default(30),
 });
@@ -81,7 +75,7 @@ const costSummaryQuerySchema = z.object({
  */
 projectCostAnalyticsRoutes.get(
   '/:id/analytics/cost-summary',
-  zValidator('param', projectIdParamSchema, (r) => {
+  zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(r.error);
   }),
   zValidator('query', costSummaryQuerySchema, (r) => {

@@ -61,12 +61,14 @@ export { registerHostMergeStamp } from './host-merge.js';
 export {
   type IssueLeaseRelease,
   issueWorkInFlightSql,
-  type ResolvedLeaseKey,
-  readDeviceIssueLease,
   releaseIssueLeaseRow,
-  resolveLeaseKey,
   takeIssueLeases,
 } from './issue-lease.js';
+export {
+  type ResolvedLeaseKey,
+  readDeviceIssueLease,
+  resolveLeaseKey,
+} from './issue-lease-read.js';
 export {
   activeIssuePrefix,
   canonicalIssueKey,

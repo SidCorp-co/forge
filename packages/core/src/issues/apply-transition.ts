@@ -24,13 +24,8 @@ import {
   settleOpenQuestions,
 } from './ports.js';
 import { moveOf, recordMove } from './record-events/kernel-records.js';
-import {
-  edgeFault,
-  type GuardCode,
-  issueGuards,
-  readIssueMoveFacts,
-  reasonFault,
-} from './transition-guards.js';
+import { edgeFault, reasonFault } from './transition-faults.js';
+import { type GuardCode, issueGuards, readIssueMoveFacts } from './transition-guards.js';
 import {
   postLeaveComment,
   postTransitionReasonComment,

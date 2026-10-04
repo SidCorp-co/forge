@@ -1,8 +1,8 @@
 import { BASE_MERGE_STATE } from '@forge/contracts/issue-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { idList } from '../db/raw-sql.js';
 import { foldLanes, foldSessionFailures } from './pulse-folds.js';
-import { idList } from './pulse-sql.js';
 import { PULSE_QUALITY_WINDOW_DAYS, type PulseQuality } from './pulse-types.js';
 
 const windowExpr = sql`now() - (${PULSE_QUALITY_WINDOW_DAYS}::int * interval '1 day')`;

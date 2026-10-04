@@ -48,6 +48,7 @@ export {
   detectOrphanedRunAssertions,
   type IssueRunInvariantResult,
 } from './issue-run-invariant.js';
+export { type OneShotRunReapResult, reapOrphanedOneShotRuns } from './one-shot-reap.js';
 export {
   reEnqueueForIssue,
   registerPipelineOrchestrator,
@@ -113,10 +114,8 @@ export {
   closeIdleChatSessions,
   type IdleChatCloseResult,
   type IssueRunReapResult,
-  type OneShotRunReapResult,
   type OrphanReconcileResult,
   reapOrphanedIssueRuns,
-  reapOrphanedOneShotRuns,
   recordQueueSnapshots,
   type ZombieSweepResult,
 } from './sweeper.js';

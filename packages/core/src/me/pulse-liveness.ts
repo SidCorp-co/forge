@@ -1,11 +1,11 @@
 import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { idList } from '../db/raw-sql.js';
 import { issues, jobs, projects, runners } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { utcDayText } from '../lib/time-buckets.js';
 import { ageSeconds, fillHeartbeat } from './pulse-folds.js';
-import { idList } from './pulse-sql.js';
 import {
   PULSE_HEARTBEAT_DAYS,
   type PulseJobIdentity,
