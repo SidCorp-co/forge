@@ -2,7 +2,7 @@
 
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import Link from "next/link";
-import { Button, EmptyState, ErrorState, PageTitle, ProjectLoader, Tooltip } from "@/design";
+import { Button, EmptyState, ErrorState, PageTitle, ProjectLoader, rememberListOrigin, Tooltip } from "@/design";
 import { useProjectDocument } from "@/features/project-settings/config-hooks";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
@@ -10,7 +10,7 @@ import { formatRelativeTime } from "@/lib/utils/format";
 import { useQueryParam } from "@/lib/utils/use-query-param";
 import { catalogue, systemContextOf, templateIdOf, templateTitle } from "../catalogue";
 import { useWorkflowTemplates, useWorkflows } from "../hooks";
-import { workflowHref } from "../routes";
+import { WORKFLOWS_LIST, workflowHref } from "../routes";
 import type { WorkflowRecord } from "../types";
 import { SystemOverviewRegion } from "./system-overview";
 import { DesignPill, ProposedMarker } from "./workflow-parts";
@@ -30,6 +30,7 @@ function Row({ r, slug, templates }: { r: WorkflowRecord; slug: string; template
   return (
     <Link
       href={workflowHref(slug, w.flow)}
+      onClick={() => rememberListOrigin(WORKFLOWS_LIST)}
       className={cn(
         COLS,
         "min-h-[50px] items-center border-b border-line-subtle py-2 text-left hover:bg-hover",
@@ -63,6 +64,7 @@ function NarrowRow({ r, slug, templates }: { r: WorkflowRecord; slug: string; te
   return (
     <Link
       href={workflowHref(slug, w.flow)}
+      onClick={() => rememberListOrigin(WORKFLOWS_LIST)}
       className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-b border-line-subtle px-5 py-2.5 text-left hover:bg-hover max-md:px-4"
       data-testid="workflow-row"
       data-flow={w.flow}
@@ -196,7 +198,7 @@ export function WorkflowsScreen({ projectId, slug, projectName, canEdit = false 
     return (
       <div className="flex min-h-0 flex-1 flex-col bg-app" data-testid="workflows-screen">
         <PageTitle hint="What the system is, beside every design the project draws">Workflows</PageTitle>
-        <div className="flex min-h-0 flex-1 max-lg:flex-col" data-testid="workflows-split">
+        <div className="flex min-h-0 flex-1 max-lg:flex-col lg:[contain:size]" data-testid="workflows-split">
           {overview}
           <aside className="w-[400px] flex-none overflow-y-auto border-l border-line-subtle bg-surface max-lg:w-full max-lg:overflow-visible max-lg:border-l-0 max-lg:border-t" data-testid="workflows-list-pane">
             <Designs all={all} slug={slug} templates={templates} narrow />
