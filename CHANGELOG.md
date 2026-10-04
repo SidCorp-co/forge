@@ -3296,6 +3296,16 @@
 
 ### Fixed
 
+- **A client on the ten statuses is refused a retired status by name.** Naming `tested`,
+  `developed` or another retired status, as a move or a filter, answers which ten statuses exist
+  instead of mapping it. Only forge-plugin 3.36.542 still may.
+- **Module counts call an issue closed only when it shipped.** Awaiting release and draft count as
+  open, as on Issues, and dropped issues are counted apart. Project health and the dashboard no
+  longer count dropped issues as active work.
+- **A failed verdict has somewhere to send the issue.** A judge that is not the builder lets go and
+  hands an In progress issue back to Reopened with the failed criteria as its reason.
+- **An image `forge_uploads` fetch no longer claims its structured answer holds the image.** It
+  names the image block instead, and `inlined: true` always means the body is there.
 - **An issue can no longer close from In progress without passing verdicts.** Every criterion
   needs one, as for Awaiting release, whether or not the issue was reopened. An issue that is not
   work is dropped instead.
