@@ -1,3 +1,4 @@
+import { SESSION_SILENCE_REAP_MS } from '@forge/contracts/run-standing';
 import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { type AlertSweepResult, runAlertSweep } from '../admin/alert-sweeper.js';
 import { db } from '../db/client.js';
@@ -12,7 +13,13 @@ import {
 } from '../jobs/loop-monitor.js';
 import { parkedOnAHuman } from '../jobs/park-deadline.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
-import { CLIENT_SESSION_KINDS, kindTuple, PIPELINE_SESSION_KINDS } from '../jobs/session-kinds.js';
+import {
+  CLIENT_SESSION_KINDS,
+  kindTuple,
+  MASTER_SESSION_KIND,
+  PIPELINE_SESSION_KINDS,
+  RUN_SESSION_KIND,
+} from '../jobs/session-kinds.js';
 import { LIVE_SESSION_STATUSES, oneShotRunOutcome } from '../lifecycle/status-sets.js';
 import { applyKernelTransition, SWEEP_SESSION_COLUMNS } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
@@ -442,6 +449,9 @@ export async function reapOrphanedOneShotRuns(
 ): Promise<OneShotRunReapResult> {
   const { heartbeatMs } = getLoopThresholds();
   const cutoffIso = new Date(now.getTime() - heartbeatMs).toISOString();
+  // cm:guard a run session or a master is failed for silence by its own reaper at the session reap, so this
+  // sweep may not close its run sooner, or a silent run could never read stuck first (ISS-109)
+  const boxSilenceIso = new Date(now.getTime() - SESSION_SILENCE_REAP_MS).toISOString();
   const deviceGraceMs = Math.max(heartbeatMs, 20 * 60_000);
   const graceCutoffIso = new Date(now.getTime() - deviceGraceMs).toISOString();
   const projectClause = scope.projectId ? sql`AND r.project_id = ${scope.projectId}` : sql``;
@@ -461,6 +471,10 @@ export async function reapOrphanedOneShotRuns(
           AND s.status IN ('queued', 'running', 'idle')
           AND (
             COALESCE(s.last_heartbeat_at, s.started_at, s.updated_at, s.created_at) >= ${cutoffIso}
+            OR (
+              s.kind IN ${kindTuple([RUN_SESSION_KIND, MASTER_SESSION_KIND])}
+              AND COALESCE(s.last_heartbeat_at, s.started_at, s.updated_at, s.created_at) >= ${boxSilenceIso}
+            )
             OR (
               COALESCE(s.last_heartbeat_at, s.started_at, s.updated_at, s.created_at) >= ${graceCutoffIso}
               AND EXISTS (
