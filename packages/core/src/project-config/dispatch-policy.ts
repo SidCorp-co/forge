@@ -7,7 +7,7 @@ import {
 } from '@forge/contracts/project-config';
 import { isRefusal, type RefusalError, refuser } from '../lib/refusal.js';
 import { readEffectivePolicy } from './effective.js';
-import { POLICY_STATE_STATUSES, type PolicyDocument } from './schema.js';
+import { POLICY_STATE_STATUSES, type PolicyDocument } from './policy-schema.js';
 import type { Held } from './service.js';
 
 const refuse = refuser<PolicyRefusalCode>('POLICY_UNDECLARED');

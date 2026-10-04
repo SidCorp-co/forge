@@ -10,6 +10,7 @@ export { readEffectivePolicy } from './effective.js';
 export { readEnvironmentState } from './environment-state-read.js';
 export { announceIntegrationChanged } from './integration-changed.js';
 export { emitJsonSchema } from './json-schema.js';
+export type { TestingProfile } from './policy-schema.js';
 export { provideProjectConfigPorts } from './ports.js';
 export {
   approvalRequired,
@@ -35,7 +36,6 @@ export {
   STOREFRONT_PROVIDERS,
   sized,
   slug,
-  type TestingProfile,
   unique,
   uuid,
 } from './schema.js';

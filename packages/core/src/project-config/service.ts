@@ -13,15 +13,14 @@ import {
   pointer,
   staleBase,
 } from './documents.js';
-import { checkPolicy, checkProjectConfig, type ProjectConfigContext } from './rules.js';
 import {
   type PolicyDocument,
-  type ProjectDocument,
   policyDocumentSchema,
-  projectDocumentSchema,
   type TestingProfile,
   testingProfileSchema,
-} from './schema.js';
+} from './policy-schema.js';
+import { checkPolicy, checkProjectConfig, type ProjectConfigContext } from './rules.js';
+import { type ProjectDocument, projectDocumentSchema } from './schema.js';
 import {
   type CasResult,
   drizzleConfigStore,

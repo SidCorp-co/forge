@@ -1,8 +1,8 @@
 import type { ProjectConfigRefusalCode } from '@forge/contracts/project-config';
 import type { z } from 'zod';
 import { jsonPointer as pointer } from '../lib/refusal.js';
+import { TOOL_PATTERN } from './policy-schema.js';
 import type { ConfigRefusal } from './rules.js';
-import { TOOL_PATTERN } from './schema.js';
 
 const BINDING_ROLLBACK_MOVED =
   "rollback is not a binding's: how a release is undone is the project document's `rollback.strategy` (`PUT /api/projects/:id/config`).";

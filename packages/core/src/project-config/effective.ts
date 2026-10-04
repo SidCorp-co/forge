@@ -1,5 +1,6 @@
 import { pointer } from './documents.js';
-import type { PolicyDocument, ProjectDocument } from './schema.js';
+import type { PolicyDocument } from './policy-schema.js';
+import type { ProjectDocument } from './schema.js';
 import {
   type Held,
   listActiveBindings,
