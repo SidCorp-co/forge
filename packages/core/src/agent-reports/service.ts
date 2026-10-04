@@ -29,15 +29,14 @@ import { feedback } from '../db/schema-feedback.js';
 import { reportLinksOf } from '../feedback/about.js';
 import { feedbackKey } from '../feedback/read.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { announceIssueCreated } from '../issues/create-service.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { writeRecordEvent } from '../issues/record-events/store.js';
 import { type PipelineCaller, resolvePipelineContext } from '../jobs/active-job-context.js';
 import { maxProjectRole, orgDerivedProjectRole } from '../lib/authz.js';
-import { holds } from '../permissions/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import type { Refusal } from '../lib/refusal.js';
+import { holds } from '../permissions/index.js';
 import { fileIssueIn, type IssueChannel } from './file.js';
 import { bulkMoves, filedIntoIssueRefusal, type TriageFacts, triageRefusals } from './rules.js';
 
@@ -263,7 +262,7 @@ const TO: Record<TriageAgentReportRequest['act'], AgentReportTriage> = {
 };
 
 export type TriageOutcome =
-  | { ok: true; effect: AgentReportTriageEffect; createdIssueId: string | null }
+  | { ok: true; effect: AgentReportTriageEffect }
   | { ok: false; refusals: Refusal[] };
 
 // cm:why design automation rev 1 (steps triage, file, dismiss; REQ-16 BC-3): every triage act, from
@@ -300,7 +299,6 @@ export async function triageReports(input: {
       return {
         ok: true,
         effect: { act: act.act, triage: to, reports: [], issue: null, untouched },
-        createdIssueId: null,
       };
     }
     let issue: AgentReportTriageEffect['issue'] = null;
@@ -329,17 +327,8 @@ export async function triageReports(input: {
     return {
       ok: true,
       effect: { act: act.act, triage: to, reports: ids, issue, untouched },
-      createdIssueId: issue?.created ? issue.id : null,
     };
   });
-}
-
-/** After the triage committed: a created draft issue gets the hook every issue create emits. */
-export async function announceFiled(out: TriageOutcome, actor: ReportActor): Promise<void> {
-  if (!out.ok || !out.createdIssueId) return;
-  const [issue] = await db.select().from(issues).where(eq(issues.id, out.createdIssueId));
-  if (issue)
-    await announceIssueCreated(issue, { type: 'user', id: actor.userId, agency: actor.agency });
 }
 
 async function recordFiled(

@@ -1,10 +1,10 @@
 import crypto from 'node:crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, issues, type JobType, knowledgeEdges, memories } from '../db/schema.js';
+import { comments, issues, type JobType, jobs, knowledgeEdges, memories } from '../db/schema.js';
 import { callFastModel, fastModelConfigured } from '../integrations/llm/fast-model.js';
 import { logger } from '../logger.js';
-import type { HooksBus } from '../pipeline/hooks.js';
+import { consume } from '../outbox/index.js';
 import { indexMemory } from './indexer.js';
 import { foreignScriptChars } from './script-guard.js';
 
@@ -300,32 +300,28 @@ export async function runExtractionForIssue(
   return { facts: factsWritten, edges: edgesWritten, refused: refused.length };
 }
 
-let alreadyRegistered = false;
-
-export function registerMemoryExtraction(bus: HooksBus): () => void {
-  if (alreadyRegistered) return () => undefined;
-  alreadyRegistered = true;
-
-  const unsub = bus.on('jobCompleted', (p) => {
-    if (!p.issueId || !EXTRACTION_JOB_TYPES.has(p.type)) return;
-    const { projectId, issueId, jobId } = p;
-    queueMicrotask(() => {
-      runExtractionForIssue(projectId, issueId as string).catch((err) => {
-        logger.warn(
-          { err: (err as Error).message, jobId, issueId },
-          'memory.extraction: run failed',
-        );
+/** After a review, test or fix job on an issue completes, extract its facts, handed off so the
+ *  outbox worker is not held behind the model call. */
+export function registerMemoryExtraction(): void {
+  consume('job.transitioned', {
+    name: 'memory-extraction',
+    handle: async (p) => {
+      if (p.to !== 'done' || !p.issueId) return;
+      const [job] = await db
+        .select({ type: jobs.type })
+        .from(jobs)
+        .where(eq(jobs.id, p.id))
+        .limit(1);
+      if (!job || !EXTRACTION_JOB_TYPES.has(job.type)) return;
+      const { projectId, issueId, id: jobId } = p;
+      queueMicrotask(() => {
+        runExtractionForIssue(projectId, issueId).catch((err) => {
+          logger.warn(
+            { err: (err as Error).message, jobId, issueId },
+            'memory.extraction: run failed',
+          );
+        });
       });
-    });
+    },
   });
-
-  return () => {
-    unsub();
-    alreadyRegistered = false;
-  };
-}
-
-/** Test-only. */
-export function resetMemoryExtractionRegistration(): void {
-  alreadyRegistered = false;
 }

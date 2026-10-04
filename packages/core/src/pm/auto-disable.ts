@@ -5,7 +5,6 @@ import { logger } from '../logger.js';
 import { deliverExisting } from '../notifications/deliver.js';
 import { emissionAllowed, noteSuppressed } from '../notifications/emission-switch.js';
 import { INITIAL_STATE, kindOf, tierOf } from '../notifications/kinds.js';
-import type { HookPayloads } from '../pipeline/hooks.js';
 
 const WINDOW_MS = 60 * 60 * 1000;
 const FAILURE_LIMIT = 3;
@@ -20,9 +19,10 @@ const FAILURE_LIMIT = 3;
  * session that crashed before writing a decision row still counts toward
  * the limit — the job-status path is the runner-of-record.
  */
-export async function handlePmJobFailedAutoDisable(
-  payload: HookPayloads['jobFailed'],
-): Promise<void> {
+export async function handlePmJobFailedAutoDisable(payload: {
+  type: string;
+  projectId: string;
+}): Promise<void> {
   if (payload.type !== 'pm') return;
 
   const since = new Date(Date.now() - WINDOW_MS);

@@ -33,6 +33,7 @@ import { reauthRoutes } from './auth/reauth.js';
 import { refreshRoutes } from './auth/refresh.js';
 import { authRoutes } from './auth/register.js';
 import { verifyRoutes } from './auth/verify.js';
+import { runOnceBackfills } from './boot-backfills.js';
 import { chatLogRoutes } from './chat-logs/routes.js';
 import { commentRoutes } from './comments/routes.js';
 import { env } from './config/env.js';
@@ -51,7 +52,6 @@ import { runLedgerRoutes } from './devices/run-ledger-routes.js';
 import { deviceSkillRoutes, deviceSkillStatusRoutes } from './devices/skills-routes.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
-import { registerEagerSubscribers } from './eager-subscribers.js';
 import { registerContractMeasureWorker } from './ecosystem/contract/land.js';
 import { ecosystemApiRoutes } from './ecosystem/mount.js';
 import { guideRoutes } from './guides/routes.js';
@@ -67,7 +67,6 @@ import { registerOutboundDeliveryWorker } from './integrations/outbound-webhooks
 import { integrationTargetRoutes } from './integrations/postman/target-routes.js';
 import { registerIntegrationsWorker } from './integrations/queue.js';
 import { registerAllIntegrations } from './integrations/register-all.js';
-import { registerCommentMirror } from './integrations/rocketchat/comment-mirror.js';
 import {
   startRocketChatManager,
   stopRocketChatManager,
@@ -113,17 +112,13 @@ import { notificationRoutes } from './notifications/routes.js';
 import { orgInvitationRoutes } from './orgs/invitations-routes.js';
 import { orgRoutes } from './orgs/routes.js';
 import { sshKeyRoutes } from './orgs/ssh-keys-routes.js';
+import { emitEvents, startOutboxWorker, stopOutboxWorker } from './outbox/index.js';
+import { registerOutboxConsumers } from './outbox-consumers.js';
 import { patRoutes } from './pat/routes.js';
 import {
   pipelineAnalyticsRoutes,
   projectCostAnalyticsRoutes,
 } from './pipeline/analytics-routes.js';
-import { registerAnswerResume } from './pipeline/answer-resume.js';
-import { hooks } from './pipeline/hooks.js';
-import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
-import { registerOutboxWorker, stopOutboxWorker } from './pipeline/outbox-worker.js';
-import { registerPausedRunWedgeResolve } from './pipeline/paused-run-wedge-resolve.js';
-import { registerPhaseJournalClose } from './pipeline/phase-journal-close.js';
 import { phaseRoutes } from './pipeline/phase-routes.js';
 import { pipelineRegistryRoutes } from './pipeline/registry-routes.js';
 import { pipelineRunProjectRoutes, pipelineRunReadRoutes } from './pipeline/runs-read-routes.js';
@@ -142,8 +137,8 @@ import { projectRoutes } from './projects/routes.js';
 import { promptRoutes } from './prompt/routes.js';
 import { questionRoutes } from './questions/routes.js';
 import { startBoss, stopBoss } from './queue/boss.js';
-import { releaseBatchRoutes } from './release-batch/routes.js';
 import { registerReleaseBatchFinish } from './release-batch/finish-job.js';
+import { releaseBatchRoutes } from './release-batch/routes.js';
 import { mcpMessageBody, mcpNoBody, rootRoutes } from './root-routes.js';
 import { bootstrapRunnerAdapters } from './runners/bootstrap.js';
 import { runnerRoutes } from './runners/routes.js';
@@ -156,7 +151,6 @@ import { skillCrudRoutes } from './skills/crud-routes.js';
 import { divergenceCharterRoutes } from './skills/divergence-charter-routes.js';
 import { skillPinRoutes } from './skills/pin-routes.js';
 import { sweepPolicyLanded } from './skills/policy-landed.js';
-import { runOnceBackfills } from './boot-backfills.js';
 import { reconcileRoutes } from './skills/reconcile-routes.js';
 import { skillRegisterRoutes, skillSyncRoutes } from './skills/routes.js';
 import { skillSmokeVerifyRoutes } from './skills/smoke-verify-routes.js';
@@ -167,7 +161,6 @@ import { updatePacketRoutes } from './update-packets/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
 import { usageRecordRoutes } from './usage-records/routes.js';
 import { webhookInboundRoutes } from './webhooks/inbound-routes.js';
-import { registerWebhookSubscribers } from './webhooks/subscribers.js';
 import { attachWs, closeWs } from './ws/server.js';
 
 export const app = new Hono<{ Variables: RequestIdVars }>();
@@ -240,8 +233,6 @@ export async function runShutdown(
   }
   return 0;
 }
-
-registerEagerSubscribers(hooks);
 
 app.use('/mcp', mcpRequestClass(), requirePat());
 app.post('/mcp', mcpMessageBody, mcpHandler);
@@ -397,14 +388,18 @@ if (isMain) {
   registerAllIntegrations();
   await registerIntegrationsWorker();
   const skillSeed = await seedBuiltinSkills(db);
-  for (const change of skillSeed.changes) {
-    await hooks.emit('globalSkillUpdated', {
-      name: change.name,
-      oldVersion: change.oldVersion,
-      newVersion: change.newVersion,
-      contentHash: change.contentHash,
-    });
-  }
+  await emitEvents(
+    db,
+    skillSeed.changes.map((change) => ({
+      type: 'skill.globalUpdated' as const,
+      payload: {
+        name: change.name,
+        oldVersion: change.oldVersion,
+        newVersion: change.newVersion,
+        contentHash: change.contentHash,
+      },
+    })),
+  );
   await runOnceBackfills();
   await sweepPolicyLanded();
   await seedDomainTemplates(db);
@@ -416,13 +411,8 @@ if (isMain) {
   await registerContractMeasureWorker();
   await registerReleaseBatchFinish();
   await registerOutboundDeliveryWorker();
-  registerWebhookSubscribers(hooks);
-  registerPipelineOrchestrator(hooks);
-  registerAnswerResume(hooks);
-  registerCommentMirror(hooks);
-  registerPhaseJournalClose(hooks);
-  registerPausedRunWedgeResolve(hooks);
-  registerOutboxWorker();
+  registerOutboxConsumers();
+  await startOutboxWorker();
 
   const server = serve({ fetch: app.fetch, port }, (info) => {
     logger.info({ port: info.port }, '@forge/core listening');

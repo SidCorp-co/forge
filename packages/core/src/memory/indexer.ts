@@ -4,7 +4,7 @@ import { db } from '../db/client.js';
 import { type MemorySource, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/index.js';
 import { logger } from '../logger.js';
-import type { HooksBus } from '../pipeline/hooks.js';
+import { consume } from '../outbox/index.js';
 import {
   chunkAndPublish,
   chunkContextPrefix,
@@ -390,30 +390,20 @@ export async function deleteMemory(
 }
 
 /**
- * Attach indexer subscribers to the hook bus. Returns an unsubscribe function
- * for tests; production code should let the subscriptions live for the
- * process lifetime.
+ * The memory index's consumers. Indexing calls the embedding provider, so it is handed off rather
+ * than awaited, and the outbox worker is not held behind it.
  */
-let alreadyRegistered = false;
-
-export function registerMemoryIndexer(bus: HooksBus): () => void {
-  if (alreadyRegistered) {
-    // Prevent duplicate subscriptions when src/index.ts is imported by tests
-    // that also spin up their own subscribers. The boot wiring calls this
-    // once per process; the second caller gets a no-op unsubscribe.
-    return () => undefined;
-  }
-  alreadyRegistered = true;
+export function registerMemoryIndexer(): void {
   const detach = (fn: () => Promise<void>) =>
     queueMicrotask(() => {
       fn().catch((err) => {
         logger.error({ err: (err as Error).message }, 'memory.indexer: detached task failed');
       });
     });
-  const unsubs: Array<() => void> = [];
 
-  unsubs.push(
-    bus.on('issueCreated', (p) => {
+  consume('issue.created', {
+    name: 'memory-indexer',
+    handle: (p) => {
       const text = [p.snapshot.title, describe(p.snapshot)].filter(Boolean).join('\n\n');
       if (!text) return;
       detach(() =>
@@ -425,11 +415,12 @@ export function registerMemoryIndexer(bus: HooksBus): () => void {
           metadata: { priority: p.snapshot.priority, category: p.snapshot.category ?? undefined },
         }),
       );
-    }),
-  );
+    },
+  });
 
-  unsubs.push(
-    bus.on('issueUpdated', (p) => {
+  consume('issue.updated', {
+    name: 'memory-indexer',
+    handle: (p) => {
       if (!p.fields.includes('title') && !p.fields.includes('description')) return;
       const title = (p.after.title ?? '') as string;
       const text = [title, describe(p.after)].filter(Boolean).join('\n\n');
@@ -446,16 +437,6 @@ export function registerMemoryIndexer(bus: HooksBus): () => void {
           },
         }),
       );
-    }),
-  );
-
-  return () => {
-    for (const u of unsubs) u();
-    alreadyRegistered = false;
-  };
-}
-
-/** Test-only. Resets the single-registration guard. */
-export function resetMemoryIndexerRegistration(): void {
-  alreadyRegistered = false;
+    },
+  });
 }

@@ -4,10 +4,9 @@ import type { WebSocket } from 'ws';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { type RunnerStatus, runners, runnerTypes } from '../db/schema.js';
-import { transition } from '../lifecycle/transition.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
+import { transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
-import { hooks } from '../pipeline/hooks.js';
 import { roomManager } from '../ws/room-manager.js';
 import { projectRoom, runnerRoom } from '../ws/rooms.js';
 import { defaultRunnerCapabilities } from './select.js';
@@ -164,9 +163,6 @@ export async function handleRunnerRegister(ws: RunnerWs, msg: unknown): Promise<
     event: 'runner.status',
     data: { runnerId, status },
   });
-  if (cameOnline) {
-    void hooks.emit('runnerOnline', { projectId: input.projectId, runnerId });
-  }
   try {
     ws.send(
       JSON.stringify({

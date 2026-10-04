@@ -14,7 +14,6 @@ import { jobs, type PipelineRunKind, type PipelineRunStatus, pipelineRuns } from
 import { transition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { markCloseDeferred, readDeployHolds, resolveDeployGate } from './deploy-confirmations.js';
-import { hooks } from './hooks.js';
 import {
   cascadeCancelChildJobs,
   reasonForOutcome,
@@ -50,18 +49,7 @@ export async function openIssueRun(args: {
     })
     .returning({ id: pipelineRuns.id, startedAt: pipelineRuns.startedAt });
 
-  if (inserted[0]) {
-    await hooks.emit('pipelineRunStatusChanged', {
-      runId: inserted[0].id,
-      projectId: args.projectId,
-      issueId: args.issueId,
-      kind: 'issue',
-      fromStatus: null,
-      toStatus: 'running',
-      currentStep: null,
-    });
-    return inserted[0];
-  }
+  if (inserted[0]) return inserted[0];
 
   const winner = await selectOpenIssueRun(args.issueId);
   if (!winner) throw new Error('openIssueRun: no row after ON CONFLICT DO NOTHING');
@@ -109,23 +97,8 @@ export async function insertOneShotRun(
   return row;
 }
 
-/** The announcement half: the run exists, tell the subscribers. */
-export async function announceOneShotRun(runId: string, args: OneShotRunSpec): Promise<void> {
-  await hooks.emit('pipelineRunStatusChanged', {
-    runId,
-    projectId: args.projectId,
-    issueId: null,
-    kind: args.kind,
-    fromStatus: null,
-    toStatus: 'running',
-    currentStep: null,
-  });
-}
-
 export async function openOneShotRun(args: OneShotRunSpec): Promise<{ id: string }> {
-  const row = await insertOneShotRun(db, args);
-  await announceOneShotRun(row.id, args);
-  return row;
+  return insertOneShotRun(db, args);
 }
 
 /** Stamp the current step on a run; the WHERE clause skips terminal runs, so none reopens. */
@@ -196,7 +169,7 @@ export async function closeRun(
 ): Promise<CloseResult> {
   const resolved = await gatedOutcome(runId, outcome);
   if (resolved === null) return 'deferred';
-  const { rows, cascade } = await db.transaction(async (tx) => {
+  const { cascade } = await db.transaction(async (tx) => {
     const updated = (
       await transition(tx, RUN_MACHINE, {
         to: resolved,
@@ -214,7 +187,6 @@ export async function closeRun(
     return { rows: updated, cascade: c };
   });
   if (cascade) await requestKillsForCascade(cascade.killableJobs, reasonForOutcome(resolved));
-  await emitCloseHook(rows, resolved, cascade?.cancelledJobIds ?? []);
   return 'settled';
 }
 
@@ -251,7 +223,7 @@ export async function closeRunIfOneShot(
   runId: string,
   outcome: 'completed' | 'failed' | 'cancelled',
 ): Promise<void> {
-  const { rows, cascade } = await db.transaction(async (tx) => {
+  const { cascade } = await db.transaction(async (tx) => {
     const updated = (
       await transition(tx, RUN_MACHINE, {
         to: outcome,
@@ -273,7 +245,6 @@ export async function closeRunIfOneShot(
     return { rows: updated, cascade: c };
   });
   if (cascade) await requestKillsForCascade(cascade.killableJobs, reasonForOutcome(outcome));
-  await emitCloseHook(rows, outcome, cascade?.cancelledJobIds ?? []);
 }
 
 export interface CancelConcludedResult {
@@ -319,7 +290,6 @@ export async function cancelConcludedRun(runId: string): Promise<CancelConcluded
     return { rows: updated, cascade: c };
   });
   if (cascade) await requestKillsForCascade(cascade.killableJobs, reasonForOutcome('cancelled'));
-  await emitCloseHook(rows, 'cancelled', cascade?.cancelledJobIds ?? []);
   return { cancelled: rows.length > 0, was: before.status };
 }
 
@@ -337,7 +307,7 @@ export async function closeOpenRunForIssue(
   if (!open) return 'settled';
   const resolved = await gatedOutcome(open.id, outcome);
   if (resolved === null) return 'deferred';
-  const { rows, cascades } = await db.transaction(async (tx) => {
+  const { cascades } = await db.transaction(async (tx) => {
     const updatedRows = (
       await transition(tx, RUN_MACHINE, {
         to: resolved,
@@ -363,66 +333,7 @@ export async function closeOpenRunForIssue(
   for (const c of cascades) {
     await requestKillsForCascade(c.result.killableJobs, reasonForOutcome(resolved));
   }
-  const cascadedByRun = new Map(cascades.map((c) => [c.runId, c.result.cancelledJobIds]));
-  await emitCloseHookPerRow(rows, resolved, cascadedByRun);
   return 'settled';
-}
-
-type CloseReturning = {
-  id: string;
-  projectId: string;
-  issueId: string | null;
-  kind: PipelineRunKind;
-  currentStep: string | null;
-};
-
-// Emit `pipelineRunStatusChanged` per row the close actually updated.
-// `fromStatus` is recorded as 'running' — the close UPDATE is gated on
-// status IN ('running','paused') and the paused→terminal case is rare
-// enough that recording the precise prior status would require an extra
-// round-trip; the breadcrumb data carries `currentStep` for context.
-//
-// ISS-258 — the optional `cascadedJobIds` rides along on the same hook so
-// the Sentry breadcrumb subscriber surfaces orphan cleanup without emitting
-// a duplicate status_changed event.
-async function emitCloseHook(
-  rows: CloseReturning[] | undefined,
-  toStatus: PipelineRunStatus,
-  cascadedJobIds: string[] = [],
-): Promise<void> {
-  if (!rows || rows.length === 0) return;
-  for (const r of rows) {
-    await hooks.emit('pipelineRunStatusChanged', {
-      runId: r.id,
-      projectId: r.projectId,
-      issueId: r.issueId,
-      kind: r.kind,
-      fromStatus: 'running',
-      toStatus,
-      currentStep: r.currentStep,
-      cascadedJobIds,
-    });
-  }
-}
-
-async function emitCloseHookPerRow(
-  rows: CloseReturning[] | undefined,
-  toStatus: PipelineRunStatus,
-  cascadedByRun: Map<string, string[]>,
-): Promise<void> {
-  if (!rows || rows.length === 0) return;
-  for (const r of rows) {
-    await hooks.emit('pipelineRunStatusChanged', {
-      runId: r.id,
-      projectId: r.projectId,
-      issueId: r.issueId,
-      kind: r.kind,
-      fromStatus: 'running',
-      toStatus,
-      currentStep: r.currentStep,
-      cascadedJobIds: cascadedByRun.get(r.id) ?? [],
-    });
-  }
 }
 
 /** One run, whole. Authorisation belongs to the caller, which knows the credential. */

@@ -2,8 +2,8 @@ import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
 import { postIssueNotice } from '../comments/index.js';
+import { db } from '../db/client.js';
 import { issues, pmConfig, pmDecisions, pmPolicies } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
@@ -18,9 +18,8 @@ import {
 } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { closeEscalationTasks } from '../notifications/close-escalation.js';
-import { hooks } from '../pipeline/hooks.js';
-import { PM_NO_PROMPT_MESSAGE, type SpawnPmSessionResult, spawnPmSession } from './spawner.js';
 import { requireHeld } from '../permissions/index.js';
+import { PM_NO_PROMPT_MESSAGE, type SpawnPmSessionResult, spawnPmSession } from './spawner.js';
 
 const projectIdParam = z.object({ projectId: z.uuid() });
 
@@ -182,20 +181,12 @@ pmRoutes.post(
         .limit(1);
       if (!issue || issue.projectId !== projectId) continue;
 
-      const inserted = await postIssueNotice({
+      await postIssueNotice({
         issueId,
         authorId: userId,
         body,
         intent: 'decision',
-      });
-      await hooks.emit('commentCreated', {
-        issueId,
-        projectId,
-        actor: restActor(c),
-        authored: restAuthored(c),
-        commentId: inserted.id,
-        body: inserted.body,
-        parentId: inserted.parentId,
+        announce: { actor: restActor(c), authored: restAuthored(c) },
       });
     }
 

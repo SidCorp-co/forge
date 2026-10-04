@@ -1,4 +1,5 @@
 import type { NotificationSeverity } from '@forge/contracts';
+import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
@@ -6,7 +7,7 @@ import { issues, notifications } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
-import type { HooksBus } from '../pipeline/hooks.js';
+import { consume } from '../outbox/index.js';
 import { isTerminalPlacement } from '../pipeline/status-assertions.js';
 import { owedCloseResolutionKey, strandedResolutionKey } from '../pipeline/stranded-issues.js';
 import { resolveNotifications } from './auto-resolve.js';
@@ -36,12 +37,12 @@ function severityForStatus(to: IssueStatus): NotificationSeverity {
 }
 
 /**
- * ISS-849 — redelivery-dedup key for a single outbox row's `transition`
- * delivery. Distinct from {@link statusResolutionKey}: this collapses
- * redeliveries of the SAME outbox row, not per-issue problem state.
+ * ISS-849 — redelivery-dedup key for one outbox event's delivery. Distinct from
+ * {@link statusResolutionKey}: this collapses redeliveries of the SAME event, not per-issue
+ * problem state.
  */
-function transitionDedupeKey(outboxId: string): string {
-  return `transition:${outboxId}`;
+function transitionDedupeKey(eventId: string): string {
+  return `transition:${eventId}`;
 }
 
 async function alreadyNotifiedTransition(dedupeKey: string): Promise<boolean> {
@@ -59,7 +60,7 @@ async function alreadyNotifiedTransition(dedupeKey: string): Promise<boolean> {
 }
 
 /** Per-status one-line body explaining why the recipient is being pinged. */
-function bodyForStatus(to: IssueStatus, reason?: string): string {
+function bodyForStatus(to: IssueStatus, reason: string | null): string {
   if (reason && reason.trim().length > 0) return reason.trim();
   switch (to) {
     case 'awaiting_release':
@@ -76,70 +77,75 @@ function bodyForStatus(to: IssueStatus, reason?: string): string {
 }
 
 /**
- * Wire issue status-transition fan-out: when `transition` fires with a `to`
+ * Wire issue status-transition fan-out: when an `issue.transitioned` event has a `to`
  * status in {@link NOTIFY_ON_STATUS}, insert one `issue_status_changed`
  * notification for the issue's assignee (falling back to its creator). The
- * insert emits `notificationCreated`, so the WS broadcaster delivers
+ * insert emits `notification.created`, so the WS broadcaster delivers
  * `notification.created` to the recipient's user room with no reload.
  *
  * Self-notify is skipped — a user who drives their own issue forward is not
  * pinged about their own action.
  *
- * Best-effort by contract: failures are logged, never thrown — the originating
- * transition must succeed even if the notification insert blows up.
+ * A failed notification insert is logged, never thrown, so it is not redelivered; the dedupe key
+ * keeps a redelivery of the event from pinging twice.
  */
-export function registerTransitionNotifications(bus: HooksBus): void {
-  bus.on('transition', async (p) => {
-    if (p.to !== 'needs_info') {
-      await resolveNotifications(strandedResolutionKey(p.issueId));
-    }
-
-    if (isTerminalPlacement(p.to)) {
-      await resolveNotifications(owedCloseResolutionKey(p.issueId));
-    }
-
-    if (!NOTIFY_ON_STATUS.has(p.to)) return;
-
-    const dedupeKey = p.outboxId ? transitionDedupeKey(p.outboxId) : null;
-    if (dedupeKey && (await alreadyNotifiedTransition(dedupeKey))) return;
-
-    try {
-      const [row] = await db
-        .select({
-          assigneeId: issues.assigneeId,
-          createdById: issues.createdById,
-          issSeq: issues.issSeq,
-          title: issues.title,
-        })
-        .from(issues)
-        .where(eq(issues.id, p.issueId))
-        .limit(1);
-      if (!row) return;
-
-      const recipient = row.assigneeId ?? row.createdById;
-      if (!recipient) return;
-
-      if (p.actor.type === 'user' && p.actor.id === recipient) return;
-
-      const displayId = formatIssueRef(await activeIssuePrefix(p.projectId), row.issSeq);
-      const label = row.title ? `${displayId} — ${row.title}` : displayId;
-
-      await emitNotification({
-        userId: recipient,
-        projectId: p.projectId,
-        type: 'issue_status_changed',
-        title: `${label} moved to ${statusWords(p.to)}`,
-        body: bodyForStatus(p.to, p.reason),
-        issueId: p.issueId,
-        severity: severityForStatus(p.to),
-        resolutionKey: null,
-        dedupeKey,
-      });
-    } catch (err) {
-      logger.error(
-        { err, issueId: p.issueId, to: p.to },
-        'notify-transitions: emitNotification failed',
-      );
-    }
+export function registerTransitionNotifications(): void {
+  consume('issue.transitioned', {
+    name: 'notify-transitions',
+    handle: (p, d) => notifyTransition(p, d.eventId),
   });
+}
+
+async function notifyTransition(
+  p: OutboxEventPayload<'issue.transitioned'>,
+  eventId: string,
+): Promise<void> {
+  if (p.to !== 'needs_info') {
+    await resolveNotifications(strandedResolutionKey(p.id));
+  }
+
+  if (isTerminalPlacement(p.to)) {
+    await resolveNotifications(owedCloseResolutionKey(p.id));
+  }
+
+  if (!NOTIFY_ON_STATUS.has(p.to)) return;
+
+  const dedupeKey = transitionDedupeKey(eventId);
+  if (await alreadyNotifiedTransition(dedupeKey)) return;
+
+  try {
+    const [row] = await db
+      .select({
+        assigneeId: issues.assigneeId,
+        createdById: issues.createdById,
+        issSeq: issues.issSeq,
+        title: issues.title,
+      })
+      .from(issues)
+      .where(eq(issues.id, p.id))
+      .limit(1);
+    if (!row) return;
+
+    const recipient = row.assigneeId ?? row.createdById;
+    if (!recipient) return;
+
+    if (p.actor.type === 'user' && p.actor.id === recipient) return;
+
+    const displayId = formatIssueRef(await activeIssuePrefix(p.projectId), row.issSeq);
+    const label = row.title ? `${displayId} — ${row.title}` : displayId;
+
+    await emitNotification({
+      userId: recipient,
+      projectId: p.projectId,
+      type: 'issue_status_changed',
+      title: `${label} moved to ${statusWords(p.to)}`,
+      body: bodyForStatus(p.to, p.reason),
+      issueId: p.id,
+      severity: severityForStatus(p.to),
+      resolutionKey: null,
+      dedupeKey,
+    });
+  } catch (err) {
+    logger.error({ err, issueId: p.id, to: p.to }, 'notify-transitions: emitNotification failed');
+  }
 }

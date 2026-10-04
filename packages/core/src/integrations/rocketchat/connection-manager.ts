@@ -21,7 +21,6 @@ import { db } from '../../db/client.js';
 import { integrationConnections } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { Sentry } from '../../observability/sentry.js';
-import { hooks } from '../../pipeline/hooks.js';
 import { decryptConnectionSecrets } from '../store.js';
 import { consumeIssueThreadReply } from './comment-inbound.js';
 import { runCommentMirrorDrain } from './comment-mirror.js';
@@ -126,7 +125,7 @@ class RocketChatConnectionManager {
   }
 
   async drainCommentMirror(): Promise<void> {
-    if (this.started) await runCommentMirrorDrain(hooks);
+    if (this.started) await runCommentMirrorDrain();
   }
 
   private async acquire(connectionId: string): Promise<void> {
@@ -316,7 +315,6 @@ class RocketChatConnectionManager {
           connectionId,
           ac,
           m,
-          hooks,
         });
       }
       return;

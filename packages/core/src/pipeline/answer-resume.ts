@@ -15,9 +15,9 @@ import { TransitionError, transitionIssueStatus } from '../issues/apply-transiti
 import { readWorkState } from '../issues/work-state.js';
 import type { LoopScope } from '../jobs/loop-monitor.js';
 import { logger } from '../logger.js';
+import { consume } from '../outbox/index.js';
 import { AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
 import { isAutonomousProject } from './autonomous-project.js';
-import type { HooksBus } from './hooks.js';
 
 async function resumableIssue(issueId: string) {
   const [issue] = await db
@@ -127,10 +127,10 @@ export async function aBoxWillReadThisAnswer(questionId: string): Promise<boolea
  * `src/index.ts`, and only meaningful for projects running the autonomous
  * driver — a staged project takes the early return and pays one issue read.
  */
-export function registerAnswerResume(bus: HooksBus): void {
-  bus.on(
-    'questionAnswered',
-    async (p) => {
+export function registerAnswerResume(): void {
+  consume('question.answered', {
+    name: 'answer-resume',
+    handle: async (p) => {
       if (!p.issueId) return;
       const issueId = p.issueId;
       try {
@@ -160,8 +160,7 @@ export function registerAnswerResume(bus: HooksBus): void {
         throw err;
       }
     },
-    { name: 'answer-resume-question' },
-  );
+  });
 }
 
 /**

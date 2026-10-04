@@ -116,6 +116,16 @@ export const db: Db = new Proxy({} as Db, {
 
 export type Tx = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
 
+/** LISTEN on a channel over the client's own dedicated connection, which reconnects by itself. */
+export async function listen(
+  channel: string,
+  onNotify: (payload: string) => void,
+): Promise<{ unlisten: () => Promise<void> }> {
+  currentDb();
+  if (queryClient === undefined) throw new Error('db: no client to listen on');
+  return queryClient.listen(channel, onNotify);
+}
+
 export async function closeDb(): Promise<void> {
   if (queryClient === undefined) return;
   await queryClient.end({ timeout: 5 });

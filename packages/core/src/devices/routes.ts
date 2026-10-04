@@ -23,7 +23,8 @@ import { rateLimit } from '../middleware/rate-limit.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { badRequest, forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { hooks } from '../pipeline/hooks.js';
+import { emitEvent } from '../outbox/index.js';
+import { requireHeld, requireOrgCan } from '../permissions/index.js';
 import { readPluginDesignations, unionPluginDesignations } from '../plugins/designation.js';
 import { withDeclaredSource } from '../project-config/source.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
@@ -37,7 +38,6 @@ import { deviceProvisionRoutes } from './me-provisions.js';
 import { listDeviceAssignments } from './me-runners.js';
 import { redeemPairingCode } from './pair.js';
 import { heartbeatPool } from './pool-read-report.js';
-import { requireHeld, requireOrgCan } from '../permissions/index.js';
 
 const unauth = () =>
   new HTTPException(401, { message: 'unauthenticated', cause: { code: 'UNAUTHENTICATED' } });
@@ -551,6 +551,15 @@ deviceAuthRoutes.post(
           deviceId: runners.deviceId,
           provisionStatus: runners.provisionStatus,
         });
+      if (row) {
+        await emitEvent(tx, 'runner.provisionStatus', {
+          projectId: row.projectId,
+          runnerId: row.id,
+          deviceId: device.id,
+          status,
+          detail: detail ?? null,
+        });
+      }
       return row;
     });
 
@@ -560,14 +569,6 @@ deviceAuthRoutes.post(
         cause: { code: 'RUNNER_NOT_FOUND' },
       });
     }
-
-    await hooks.emit('runnerProvisionStatus', {
-      projectId: runner.projectId,
-      runnerId: runner.id,
-      deviceId: device.id,
-      status,
-      detail: detail ?? null,
-    });
 
     return c.json(runner);
   },

@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { consume, MAX_REDELIVERIES } from '../outbox/index.js';
 import { PolicyRefusedError } from '../project-config/dispatch-policy.js';
 import { readEffectivePolicy } from '../project-config/effective.js';
 import type { PolicyDocument } from '../project-config/schema.js';
@@ -12,7 +13,7 @@ import {
   dispatchDriveManual,
   isEntryGateClosed,
 } from './autonomous-dispatch.js';
-import type { HooksBus } from './hooks.js';
+import { emitPipelineWedge } from './wedge.js';
 
 export type StartRefusalCode = 'INTAKE_NOT_MANUAL' | 'PROJECT_ARCHIVED';
 
@@ -86,56 +87,71 @@ export async function reEnqueueForIssue(args: {
   await dispatchAutonomous({ ...args, policy, projectCreatedBy });
 }
 
-/**
- * Subscribe the pipeline orchestrator to `transition` and `issueCreated`
- * hooks. Issue creation lands the issue in `open` without emitting a
- * `transition`, so covering the manual-creation path needs both.
- *
- * Register only in the main process boot block — it touches the DB and pg-boss.
- */
-export function registerPipelineOrchestrator(bus: HooksBus): void {
-  bus.on(
-    'transition',
-    async (payload) => {
-      try {
-        if (payload.to !== AUTONOMOUS_ENTRY_STATUS) return;
-        await reEnqueueForIssue({
-          projectId: payload.projectId,
-          issueId: payload.issueId,
-          status: payload.to,
-          actor: payload.actor,
-          reason: { transition: { from: payload.from, to: payload.to } },
-        });
-      } catch (err) {
-        logger.error(
-          { err, issueId: payload.issueId, to: payload.to },
-          'orchestrator: transition handler failed',
-        );
-        throw err;
-      }
-    },
-    { name: 'pipeline-orchestrator' },
-  );
+/** An issue the pipeline could not be handed after every redelivery is a wedge a person sees. */
+async function wedgeUndispatched(
+  p: { projectId: string; issueId: string; to: string; from?: string },
+  error: string,
+  eventId: string,
+): Promise<void> {
+  const move = p.from ? `transition ${p.from} → ${p.to}` : `creation at ${p.to}`;
+  await emitPipelineWedge({
+    projectId: p.projectId,
+    issueId: p.issueId,
+    hop: 'dispatch',
+    entity: 'outbox',
+    entityId: eventId,
+    reason: `${move} failed after ${MAX_REDELIVERIES} redeliveries: ${error}`,
+    action:
+      'Inspect the pipeline_outbox row + orchestrator logs; the issue may be sitting at its trigger status with no job.',
+    title: 'Status change not processed',
+    summary: `An issue's move to "${p.to}" could not be handed to the pipeline after ${MAX_REDELIVERIES} retries, so no next step was started.`,
+    nextStep:
+      'Open the issue and re-apply the status change, or check the server logs for the failing consumer.',
+  });
+}
 
-  bus.on(
-    'issueCreated',
-    async (payload) => {
-      try {
-        await reEnqueueForIssue({
-          projectId: payload.projectId,
-          issueId: payload.issueId,
-          status: payload.status,
-          actor: payload.actor,
-          reason: { created: true },
-        });
-      } catch (err) {
-        logger.error(
-          { err, issueId: payload.issueId },
-          'orchestrator: issueCreated handler failed',
-        );
-        throw err;
-      }
+/**
+ * The pipeline orchestrator, a consumer of issue moves and creations: creation lands an issue at
+ * its birth status without a move, so covering it needs both. A failure is redelivered, and the
+ * last one wedges the issue.
+ */
+export function registerPipelineOrchestrator(): void {
+  consume('issue.transitioned', {
+    name: 'pipeline-orchestrator',
+    handle: async (p) => {
+      if (p.to !== AUTONOMOUS_ENTRY_STATUS) return;
+      await reEnqueueForIssue({
+        projectId: p.projectId,
+        issueId: p.id,
+        status: p.to,
+        actor: p.actor,
+        reason: { transition: { from: p.from, to: p.to } },
+      });
     },
-    { name: 'pipeline-orchestrator' },
-  );
+    onDeadLetter: (p, error, d) =>
+      wedgeUndispatched(
+        { projectId: p.projectId, issueId: p.id, from: p.from, to: p.to },
+        error,
+        d.eventId,
+      ),
+  });
+
+  consume('issue.created', {
+    name: 'pipeline-orchestrator',
+    handle: async (p) => {
+      await reEnqueueForIssue({
+        projectId: p.projectId,
+        issueId: p.issueId,
+        status: p.status,
+        actor: p.actor,
+        reason: { created: true },
+      });
+    },
+    onDeadLetter: (p, error, d) =>
+      wedgeUndispatched(
+        { projectId: p.projectId, issueId: p.issueId, to: p.status },
+        error,
+        d.eventId,
+      ),
+  });
 }

@@ -7,7 +7,7 @@
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, skillRegistrations, skills } from '../db/schema.js';
-import { hooks } from '../pipeline/hooks.js';
+import { emitEvent } from '../outbox/index.js';
 import { recordSkillActivityEvent } from './activity.js';
 
 export interface RegisterSkillInput {
@@ -68,8 +68,8 @@ export async function registerSkillForProject(
           deltaSummary: `unregistered from ${reg.stage}`,
         });
       }
+      await emitEvent(tx, 'skill.registered', { projectId, skillId, actorUserId, stage: null });
     });
-    await hooks.emit('skillRegistered', { projectId, skillId, actorUserId, stage: null });
     return { projectId, skillId, stage: null };
   }
 
@@ -107,8 +107,8 @@ export async function registerSkillForProject(
       skillId,
       deltaSummary: `registered at stage ${stage}`,
     });
+    await emitEvent(tx, 'skill.registered', { projectId, skillId, actorUserId, stage });
   });
 
-  await hooks.emit('skillRegistered', { projectId, skillId, actorUserId, stage });
   return { projectId, skillId, stage };
 }

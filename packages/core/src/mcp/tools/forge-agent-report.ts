@@ -9,7 +9,6 @@ import {
 import { eq, inArray, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import {
-  announceFiled,
   countReportsForJob,
   fireOfSession,
   insertReport,
@@ -28,6 +27,7 @@ import {
   agentReportTargets,
 } from '../../db/schema.js';
 import { resolvePipelineContext } from '../../jobs/active-job-context.js';
+import { requireCan } from '../../permissions/index.js';
 import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../../prompt/sanitize.js';
 import {
   type ContextScopedMcpToolFactory,
@@ -40,7 +40,6 @@ import {
   zodToMcpSchema,
 } from './lib.js';
 import { buildListEnvelope, overfetch } from './list-envelope.js';
-import { requireCan } from '../../permissions/index.js';
 
 const inputSchema = z
   .object({
@@ -341,7 +340,6 @@ async function triage(ctx: McpContext, input: z.infer<typeof inputSchema>) {
     linkIssue,
   });
   if (!out.ok) return refusedAnswer(out.refusals, 'AGENT_REPORT_REFUSED');
-  await announceFiled(out, actor);
   return { effect: out.effect };
 }
 

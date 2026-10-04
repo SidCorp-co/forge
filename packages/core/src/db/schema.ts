@@ -62,11 +62,12 @@ export { MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 import type { DecisionFields } from '@forge/contracts/comments';
 import { MACHINE_ENTITIES } from '@forge/contracts/machines';
 import { MASTER_JOB_PANES_MAX } from '@forge/contracts/master-standing';
+import { OUTBOX_EVENT_TYPES } from '@forge/contracts/outbox-events';
+import { COMMENT_INTENTS } from '@forge/contracts/record-events';
+import type { ReleaseNotes } from '@forge/contracts/release-notes';
 import { SCHEDULE_KINDS } from '@forge/contracts/schedules';
 import { BODY_FORMATS } from '../body/formats.js';
 import type { IssueBranchOverride } from '../branches/resolve.js';
-import { COMMENT_INTENTS } from '@forge/contracts/record-events';
-import type { ReleaseNotes } from '@forge/contracts/release-notes';
 import { activityLog, actorAgencies } from './schema-activity.js';
 import { feedback } from './schema-feedback.js';
 import { requirementRevisions, requirements } from './schema-requirements.js';
@@ -2342,33 +2343,32 @@ export const pmPoliciesRelations = relations(pmPolicies, ({ one }) => ({
   project: one(projects, { fields: [pmPolicies.projectId], references: [projects.id] }),
 }));
 
-// ISS-196 — transactional outbox. Rows are produced by the AFTER UPDATE
-// trigger on `issues.status` (see migration 0070) and consumed by the
-// outbox worker which re-emits the `transition` hook for the orchestrator.
-// Schema mirror; the partial index `idx_outbox_unprocessed` is enforced at
-// the DB level only.
-export const pipelineOutbox = pgTable('pipeline_outbox', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  issueId: uuid('issue_id')
-    .notNull()
-    .references(() => issues.id, { onDelete: 'cascade' }),
-  projectId: uuid('project_id')
-    .notNull()
-    .references(() => projects.id, { onDelete: 'cascade' }),
-  fromStatus: text('from_status').notNull(),
-  toStatus: text('to_status').notNull(),
-  actorId: text('actor_id'),
-  actorType: text('actor_type'),
-  /** Who acted, carried from `pipeline.actor_agency`; a `user` row always holds one. */
-  actorAgency: text('actor_agency', { enum: actorAgencies }),
-  reason: text('reason'),
-  payload: jsonb('payload').notNull().default({}),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  processedAt: timestamp('processed_at', { withTimezone: true }),
-  claimedAt: timestamp('claimed_at', { withTimezone: true }),
-  attempts: integer('attempts').notNull().default(0),
-  lastError: text('last_error'),
-});
+// The one durable outbox (pattern v2 BC-18): each row is one event, written in the transaction of
+// the act it reports (`outbox/emit.ts:emitEvent`) and delivered by `outbox/worker.ts`. `delivered`
+// names the consumers already through, so a redelivery runs only the ones that failed. The partial
+// index `idx_outbox_unprocessed` is enforced at the DB level only.
+export const pipelineOutbox = pgTable(
+  'pipeline_outbox',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    type: text('type', { enum: OUTBOX_EVENT_TYPES }).notNull(),
+    issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    payload: jsonb('payload').notNull(),
+    delivered: text('delivered').array().notNull().default(sql`'{}'::text[]`),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    processedAt: timestamp('processed_at', { withTimezone: true }),
+    claimedAt: timestamp('claimed_at', { withTimezone: true }),
+    attempts: integer('attempts').notNull().default(0),
+    lastError: text('last_error'),
+  },
+  (t) => ({
+    typeChk: check(
+      'pipeline_outbox_type_chk',
+      sql`${t.type} IN (${sql.raw(OUTBOX_EVENT_TYPES.map((v) => `'${v}'`).join(', '))})`,
+    ),
+  }),
+);
 
 // ISS-234 — Integration Framework foundation. secrets_enc columns hold the
 // AES-256-GCM ciphertext produced by src/integrations/vault.ts; the legacy

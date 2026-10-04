@@ -1,6 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, issues } from '../db/schema.js';
+import { emitEvent } from '../outbox/index.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';
 import { leaseWriteTakes } from '../pipeline/session-claim.js';
 import { plannedRevisionFor } from '../requirements/issue-links.js';
@@ -34,6 +35,8 @@ export type IssueUpdateInput = {
   /** ISS-54 — the step, branch and head of the work, written to `issue_work_state`. */
   workState?: WorkStateWrite | undefined;
   actor: Actor;
+  /** The fields the write moves, before and after; non-empty, they are its `issue.updated` event. */
+  changes?: { fields: string[]; before: Record<string, unknown>; after: Record<string, unknown> };
 };
 
 export async function updateIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
@@ -54,7 +57,7 @@ type UpdateTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
  * forge-plugin moves to the 10-status model (plugin-followups.md).
  */
 async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
-  const { issueId, updates, labelIds, expect, workState, actor } = input;
+  const { issueId, updates, labelIds, expect, workState, actor, changes } = input;
 
   return db.transaction(async (tx) => {
     const current = await lockComposedSessionContext(tx, issueId);
@@ -135,6 +138,14 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
       .where(eq(issues.id, issueId))
       .limit(1);
     if (!written) throw new IssueUpdateNotFound(issueId);
+    if (changes && changes.fields.length > 0) {
+      await emitEvent(tx, 'issue.updated', {
+        issueId,
+        projectId: written.projectId,
+        actor,
+        ...changes,
+      });
+    }
     return written;
   });
 }

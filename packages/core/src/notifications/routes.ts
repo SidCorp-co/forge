@@ -14,7 +14,7 @@ import { issueDisplayIds } from '../issues/display-ids.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { hooks } from '../pipeline/hooks.js';
+import { emitEvent } from '../outbox/index.js';
 import { recordAndDeliver } from './deliver.js';
 import { silenceRoutes } from './silences-routes.js';
 import { deliveryLine, deliverySubject } from './subject.js';
@@ -220,15 +220,18 @@ notificationRoutes.patch(
     const { read } = c.req.valid('json');
     const userId = c.get('userId');
 
-    const updated = await db
-      .update(notificationDeliveries)
-      .set({ readAt: read ? new Date() : null })
-      .where(and(eq(notificationDeliveries.id, id), eq(notificationDeliveries.userId, userId)))
-      .returning();
-    const row = updated[0];
+    const row = await db.transaction(async (tx) => {
+      const [marked] = await tx
+        .update(notificationDeliveries)
+        .set({ readAt: read ? new Date() : null })
+        .where(and(eq(notificationDeliveries.id, id), eq(notificationDeliveries.userId, userId)))
+        .returning();
+      if (marked && read) {
+        await emitEvent(tx, 'notification.read', { notificationId: marked.id, userId });
+      }
+      return marked;
+    });
     if (!row) throw notFound('notification not found');
-
-    if (read) await hooks.emit('notificationRead', { notificationId: row.id, userId });
     return c.json(row);
   },
 );
