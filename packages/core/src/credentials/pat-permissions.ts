@@ -35,7 +35,6 @@ export const PAT_PERMISSION_RESOURCES = {
       '/api/body': 2,
     },
   },
-  tasks: { reach: 'project', prefixes: { '/api/tasks': 1 } },
   pipeline: {
     reach: 'project',
     prefixes: {

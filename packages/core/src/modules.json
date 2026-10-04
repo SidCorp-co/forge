@@ -722,13 +722,6 @@
         "suggestions"
       ]
     },
-    "tasks": {
-      "kind": "domain",
-      "context": "work",
-      "owns": [
-        "tasks"
-      ]
-    },
     "uploads": {
       "kind": "domain",
       "context": "work",

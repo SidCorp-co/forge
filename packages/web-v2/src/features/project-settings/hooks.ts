@@ -4,7 +4,6 @@
 // SHARED keys `['project', id]` and `['projects']` rather than a key of its own: those are what
 // the dashboard, the console and the WS reconnect-replay read, and a private key updates none.
 
-import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";

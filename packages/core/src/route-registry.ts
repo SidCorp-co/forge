@@ -168,7 +168,6 @@ import {
   skillStudioRoutes,
 } from './skills/routes.js';
 import { suggestionRoutes } from './suggestions/routes.js';
-import { taskIssueRoutes, taskRoutes } from './tasks/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
 import { webhookInboundRoutes } from './webhooks/routes.js';
 import { workflowJsonSchemas } from './workflows/index.js';
@@ -311,8 +310,6 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issues', issueSteerRoutes);
   app.route('/api/issues', issueCriteriaRoutes);
   app.route('/api/issues', contractWaitRoutes);
-  app.route('/api/issues', taskIssueRoutes);
-  app.route('/api/tasks', taskRoutes);
   app.route('/api/body', bodyRoutes);
   app.route('/api/comments', commentRoutes);
   app.route('/api/attachments', attachmentRoutes);
