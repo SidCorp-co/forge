@@ -40,7 +40,7 @@ export interface PhaseFacts {
   routedIssueStatus: string | null;
   suggestion: { status: SuggestionStatus; revisionLive: boolean; delivered: boolean } | null;
   routedRequirementStatus: string | null;
-  /** The routed requirement reads delivered (requirement_delivery) or was accepted. */
+  /** The routed requirement reads delivered (`requirements/standing.ts:deliveryOf`) or was accepted. */
   routedRequirementDelivered: boolean;
   rootPhase: FeedbackPhase | null;
 }

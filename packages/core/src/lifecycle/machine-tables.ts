@@ -10,7 +10,7 @@ import {
 } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { mockups } from '../db/schema-mockups.js';
-import { onboardings, questionnaireBatches } from '../db/schema-onboarding.js';
+import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { requirements } from '../db/schema-requirements.js';
 import { scheduleRuns } from '../db/schema-schedule-runs.js';
@@ -26,7 +26,6 @@ export interface MachineTables {
   feedback: typeof feedback;
   requirement: typeof requirements;
   mockup: typeof mockups;
-  onboarding: typeof onboardings;
   questionnaire: typeof questionnaireBatches;
   question: typeof agentQuestions;
   schedule_run: typeof scheduleRuns;
@@ -67,8 +66,6 @@ export function machineTable<E extends MachineEntity>(entity: E): MachineTable<E
       return at(requirements);
     case 'mockup':
       return at(mockups);
-    case 'onboarding':
-      return at(onboardings);
     case 'questionnaire':
       return at(questionnaireBatches);
     case 'question':

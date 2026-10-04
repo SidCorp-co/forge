@@ -15,7 +15,6 @@ import type {
   PostUpdateRequest,
   QuestionnaireView,
 } from '@forge/contracts/onboarding';
-import { ONBOARDING_MACHINE } from '@forge/contracts/onboarding-machine';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { TxOnly } from '../conversations/db-executor.js';
 import { settleShape } from '../conversations/membership.js';
@@ -28,7 +27,6 @@ import { onboardings } from '../db/schema-onboarding.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { finalizeJobDone } from '../jobs/finalize-done.js';
-import { type KernelActor, notAnEdgeError, transition } from '../lifecycle/transition.js';
 import type { EgressReader } from '../lib/data-egress.js';
 import { insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import { openOneShotRun } from '../pipeline/runs.js';
@@ -65,10 +63,6 @@ import {
   startRefusal,
 } from './rules.js';
 import { permissionFactsOf, requireCan } from '../permissions/index.js';
-
-function onboardingKernelActor(actor: OnboardingActor): KernelActor {
-  return { type: 'user', id: actor.userId, agency: actor.agency };
-}
 
 export interface OnboardingActor {
   userId: string;
@@ -258,15 +252,6 @@ export async function reanalyzeOnboarding(input: {
         updatedAt: new Date(),
       })
       .where(eq(onboardings.id, row.id));
-    await transition(tx, ONBOARDING_MACHINE, {
-      to: 'in_progress',
-      from: ['done', 'waiting_on_you'],
-      where: eq(onboardings.id, row.id),
-      reason: input.reason ?? null,
-      actor: onboardingKernelActor(actor),
-      source: 'onboarding-reanalyze',
-      returning: ['id'],
-    });
     await systemLine(
       tx,
       row.conversationId,
@@ -328,7 +313,7 @@ export async function postOnboardingQuestionnaire(input: {
     await lockOnboarding(tx, projectId);
     const row = await onboardingOf(tx, projectId, true);
     if (!row) return [notStarted()];
-    const blocked = doneRefusal(row.status) ?? roundsRefusal(row.roundsSent);
+    const blocked = doneRefusal(row) ?? roundsRefusal(row.roundsSent);
     if (blocked) return [blocked];
     conversationId = row.conversationId;
     jobId = row.lastJobId;
@@ -352,14 +337,6 @@ export async function postOnboardingQuestionnaire(input: {
       .update(onboardings)
       .set({ roundsSent: row.roundsSent + 1, updatedAt: new Date() })
       .where(eq(onboardings.id, row.id));
-    await transition(tx, ONBOARDING_MACHINE, {
-      to: 'waiting_on_you',
-      from: 'in_progress',
-      where: eq(onboardings.id, row.id),
-      actor: onboardingKernelActor(actor),
-      source: 'onboarding-round',
-      returning: ['id'],
-    });
     return null;
   });
   if (refused) return { ok: false, refusals: refused };
@@ -385,7 +362,7 @@ export async function postOnboardingUpdate(input: {
     await lockOnboarding(tx, projectId);
     const row = await onboardingOf(tx, projectId, true);
     if (!row) return [notStarted()];
-    const done = doneRefusal(row.status);
+    const done = doneRefusal(row);
     if (done) return [done];
     conversationId = row.conversationId;
     const ids = body.designs?.workflowIds ?? [];
@@ -443,7 +420,7 @@ export async function markOnboardingDone(input: {
     await lockOnboarding(tx, projectId);
     const row = await onboardingOf(tx, projectId, true);
     if (!row) return [notStarted()];
-    const done = doneRefusal(row.status);
+    const done = doneRefusal(row);
     if (done) return [done];
     conversationId = row.conversationId;
     jobId = row.lastJobId;
@@ -453,20 +430,15 @@ export async function markOnboardingDone(input: {
       designs.map((d) => d.template),
     );
     if (flow) return [flow];
-    const closed = await transition(tx, ONBOARDING_MACHINE, {
-      to: 'done',
-      set: {
+    await tx
+      .update(onboardings)
+      .set({
         doneBy: actor.userId,
         doneAgency: actor.agency,
         doneAt: new Date(),
         updatedAt: new Date(),
-      },
-      where: eq(onboardings.id, row.id),
-      actor: onboardingKernelActor(actor),
-      source: 'onboarding-close',
-      returning: ['id'],
-    });
-    if (closed.rows.length === 0) throw notAnEdgeError(ONBOARDING_MACHINE, row.status, 'done');
+      })
+      .where(eq(onboardings.id, row.id));
     if (input.text) {
       await appendMessagesIn(tx, {
         conversationId: row.conversationId,
@@ -488,20 +460,13 @@ export async function markOnboardingDone(input: {
   return settled(projectId);
 }
 
-/** Written in the submit's transaction: the thread goes back to the agent, or waits after a skip. */
-export async function onboardingSubmittedIn(tx: TxOnly, batch: BatchRow, skipped: boolean) {
+/** Written in the submit's transaction; the batch's own status says whose turn the thread is. */
+export async function onboardingSubmittedIn(tx: TxOnly, batch: BatchRow) {
   if (!batch.onboardingId) return;
   await tx
     .update(onboardings)
     .set({ updatedAt: new Date() })
     .where(eq(onboardings.id, batch.onboardingId));
-  await transition(tx, ONBOARDING_MACHINE, {
-    to: skipped ? 'waiting_on_you' : 'in_progress',
-    where: eq(onboardings.id, batch.onboardingId),
-    actor: { type: 'system' },
-    source: 'questionnaire-submit',
-    returning: ['id'],
-  });
 }
 
 /** After a submit commits: one revise job reads the answers, unless an onboarding job already runs. */

@@ -287,6 +287,19 @@ export interface ReleaseApprovalView {
 	reason: string | null;
 }
 
+/** Who owes the act that clears a release hold. */
+export const RELEASE_HOLD_OWERS = ["agent", "human"] as const;
+export type ReleaseHoldOwer = (typeof RELEASE_HOLD_OWERS)[number];
+
+/** Why the automatic release is not taking an issue at its gate, as the sweep last decided it. */
+export interface ReleaseHoldView {
+	code: string;
+	reason: string;
+	owes: ReleaseHoldOwer;
+	waitingFor: string;
+	heldAt: string;
+}
+
 export const RELEASE_ATTEMPT_STAGES = [
 	"promote",
 	"deploy",

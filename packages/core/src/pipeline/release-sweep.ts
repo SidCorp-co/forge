@@ -3,8 +3,8 @@
 // release gate) and whose waiting issue has every numbered acceptance criterion earned
 // (`criteria-verdicts.ts`). Precedent: `runs-concluded.ts`'s own-tick noticing. The manual
 // doors (`collectReleaseBlockers`, `forge advance`) are untouched; this only filters the
-// unattended path. ISS-1215: every way it declines a waiting row is written on that row
-// (`release-hold.ts`), never on the log alone.
+// unattended path. ISS-1215: every way it declines a waiting row is a hold record on that row
+// (`release-batch/hold.ts`), never on the log alone.
 
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -42,7 +42,7 @@ import {
   runtimeUnroutedHold,
   targetUndeclaredHold,
   writeReleaseHolds,
-} from './release-hold.js';
+} from '../release-batch/index.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
 
 const CANDIDATE_CURSOR_KEY = 'release-sweep';
@@ -207,10 +207,8 @@ interface HoldWrite {
   projectId: string;
   issueIds: string[];
   holdFor: (issueId: string) => ReleaseHold;
-  authorId: string | null;
   now: Date;
   result: AutomaticReleaseSweepResult;
-  commentOn?: ReadonlySet<string>;
 }
 
 async function hold(write: HoldWrite): Promise<void> {
@@ -219,34 +217,22 @@ async function hold(write: HoldWrite): Promise<void> {
   if (tally.written > 0) {
     logger.info(
       { projectId: write.projectId, written: tally.written, unchanged: tally.unchanged },
-      'release-sweep: the reason these issues are held is written on each of them',
+      'release-sweep: the reason these issues are held is recorded on each of them',
     );
   }
 }
 
-/**
- * One reason written alike onto several rows is one debt, so it is commented on the oldest of them
- * alone — by merge order, as `waitingIssueIds` reads them — and the rest carry it under
- * `releaseHold` only (ISS-1346): fifty comments telling a person the same thing about the project
- * is fifty debts where there is one. Once the oldest leaves, the next oldest is commented.
- */
-async function holdAlike(
-  write: Omit<HoldWrite, 'holdFor' | 'commentOn'>,
-  waiting: readonly string[],
-  reason: ReleaseHold,
-): Promise<void> {
-  const covered = new Set(write.issueIds);
-  const oldest = waiting.find((id) => covered.has(id));
-  await hold({ ...write, holdFor: () => reason, commentOn: new Set(oldest ? [oldest] : []) });
+/** One reason recorded alike on every row named. */
+async function holdAlike(write: Omit<HoldWrite, 'holdFor'>, reason: ReleaseHold): Promise<void> {
+  await hold({ ...write, holdFor: () => reason });
 }
 
 /**
- * Each held row's criteria hold, commented on its own row — or, where nothing can read what the
- * project serves, the one project-level reason, said alike (ISS-1346).
+ * Each held row's criteria hold — or, where nothing can read what the project serves, the one
+ * project-level reason, recorded alike (ISS-1346).
  */
 async function holdOnCriteria(
   write: Omit<HoldWrite, 'holdFor'>,
-  waiting: readonly string[],
   heldById: ReadonlyMap<string, IssueCriteriaReport>,
 ): Promise<void> {
   const serving = heldById.values().next().value?.serving;
@@ -257,7 +243,7 @@ async function holdOnCriteria(
     });
     return;
   }
-  await holdAlike(write, waiting, runtimeUnroutedHold(serving.missing, serving.route));
+  await holdAlike(write, runtimeUnroutedHold(serving.missing, serving.route));
 }
 
 /** The gate, or the hold every waiting row gets because there is none to read. */
@@ -319,17 +305,17 @@ async function sweepProject(
   const waiting = await waitingIssueIds(projectId);
   if (waiting.length === 0) return;
   const owner = (await loadCreatedBy(projectId)) ?? null;
-  const base = { projectId, authorId: owner, now, result };
+  const base = { projectId, now, result };
 
   const gate = await readGate(projectId);
   if (!gate.ok) {
-    await holdAlike({ ...base, issueIds: waiting }, waiting, gate.hold);
+    await holdAlike({ ...base, issueIds: waiting }, gate.hold);
     return;
   }
 
   const reports = await readCriteria(projectId, waiting);
   if (!reports.ok) {
-    await holdAlike({ ...base, issueIds: waiting }, waiting, reports.hold);
+    await holdAlike({ ...base, issueIds: waiting }, reports.hold);
     return;
   }
   reportUncorroborated(projectId, reports.value);
@@ -339,7 +325,7 @@ async function sweepProject(
   result.issuesExcluded += held.length;
   if (held.length > 0) {
     reportHeldBack(projectId, held);
-    await holdOnCriteria({ ...base, issueIds: held.map((r) => r.issueId) }, waiting, heldById);
+    await holdOnCriteria({ ...base, issueIds: held.map((r) => r.issueId) }, heldById);
   }
 
   if (eligible.length === 0) {
@@ -356,7 +342,7 @@ async function sweepProject(
       { projectId },
       'release-sweep: no project owner to act as this tick — skipping, will try again next tick',
     );
-    await holdAlike({ ...base, issueIds: eligible }, waiting, NO_ACTOR_HOLD);
+    await holdAlike({ ...base, issueIds: eligible }, NO_ACTOR_HOLD);
     return;
   }
 
@@ -364,7 +350,7 @@ async function sweepProject(
   // One release carries at most the oldest RELEASE_ROSTER_LIMIT; the rest were never sent.
   const named = new Set(outcome.named);
   const behind = eligible.filter((id) => !named.has(id));
-  await holdAlike({ ...base, issueIds: behind }, waiting, queuedBehindHold(outcome.named.length));
+  await holdAlike({ ...base, issueIds: behind }, queuedBehindHold(outcome.named.length));
   if (outcome.status === 'success') {
     result.projectsCut += 1;
     result.issuesCut += outcome.named.length;
@@ -381,12 +367,12 @@ async function sweepProject(
     const message = outcome.error ?? outcome.output;
     const claimed = await reportClaimedFailure(outcome.named, owner, message);
     const untouched = outcome.named.filter((id) => !claimed.includes(id));
-    await holdAlike({ ...base, issueIds: untouched }, waiting, cutFailedHold(reasons));
+    await holdAlike({ ...base, issueIds: untouched }, cutFailedHold(reasons));
     return;
   }
   logger.info({ projectId }, `release-sweep: ${outcome.output}`);
   const refused = refusalHold(outcome.code ?? 'RELEASE_CUT_REFUSED', reasons);
-  await holdAlike({ ...base, issueIds: outcome.named }, waiting, refused);
+  await holdAlike({ ...base, issueIds: outcome.named }, refused);
 }
 
 export async function sweepAutomaticReleases(
