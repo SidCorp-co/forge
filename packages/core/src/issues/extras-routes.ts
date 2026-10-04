@@ -1,17 +1,7 @@
-import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import {
-  activityLog,
-  type IssueStatus,
-  issuePriorities,
-  issueStatuses,
-  issues,
-  jobs,
-  usageRecords,
-} from '../db/schema.js';
+import { type IssueStatus, issuePriorities, issueStatuses } from '../db/schema.js';
 import { noPromptMessage, POOL_JOB_NO_PROMPT } from '../jobs/pool-served.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -19,22 +9,19 @@ import { RefusalError } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { emitEvent } from '../outbox/index.js';
 import { holds, requireHeld } from '../permissions/index.js';
 import { triggerPipelineStepManual } from '../pipeline/orchestrator.js';
-import {
-  EMPTY_USAGE_TOTALS,
-  usageSessionMatch,
-  usageTotalsSelection,
-} from '../usage-records/rollup.js';
+import { statusChangeRows } from './activity-read.js';
 import { TransitionError, transitionIssueStatus } from './apply-transition.js';
 import { BATCH_SKIP_BY_CODE, type BatchSkipReason } from './batch-skip-reason.js';
+import { applyBatchFieldEdit, type IssueTriage } from './field-writes.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import {
   issueRouteIdParamSchema,
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
+import { batchIssueRows, issueScopeOf, issueUsageTotals } from './read-service.js';
 import { triggerTerminalDispatch } from './transition.js';
 
 const runPipelineStepBodySchema = z.object({}).strict();
@@ -87,19 +74,7 @@ issueExtrasRoutes.patch(
 
     const result: BatchResult = { updated: [], skipped: [], failed: [] };
 
-    const rows = await db
-      .select({
-        id: issues.id,
-        issSeq: issues.issSeq,
-        projectId: issues.projectId,
-        status: issues.status,
-        priority: issues.priority,
-        category: issues.category,
-        complexity: issues.complexity,
-        reopenCount: issues.reopenCount,
-      })
-      .from(issues)
-      .where(inArray(issues.id, ids));
+    const rows = await batchIssueRows(ids);
 
     const foundIds = new Set(rows.map((r) => r.id));
     for (const id of ids) {
@@ -207,19 +182,11 @@ issueExtrasRoutes.patch(
           }
         }
         if (changedFields.length > 0) {
-          await db.transaction(async (tx) => {
-            await tx
-              .update(issues)
-              .set({ ...plainUpdates, updatedAt: sql`now()` })
-              .where(eq(issues.id, row.id));
-            await emitEvent(tx, 'issue.updated', {
-              issueId: row.id,
-              projectId: row.projectId,
-              actor,
-              fields: changedFields,
-              before,
-              after,
-            });
+          await applyBatchFieldEdit(row, plainUpdates as IssueTriage, {
+            actor,
+            fields: changedFields,
+            before,
+            after,
           });
           touched = true;
         }
@@ -266,11 +233,7 @@ issueExtrasRoutes.post(
     const { id: issueId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const [issue] = await db
-      .select({ id: issues.id, projectId: issues.projectId })
-      .from(issues)
-      .where(eq(issues.id, issueId))
-      .limit(1);
+    const issue = await issueScopeOf(issueId);
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
@@ -297,11 +260,7 @@ issueExtrasRoutes.post(
     const { id: issueId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const [issue] = await db
-      .select({ id: issues.id, projectId: issues.projectId, status: issues.status })
-      .from(issues)
-      .where(eq(issues.id, issueId))
-      .limit(1);
+    const issue = await issueScopeOf(issueId);
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
@@ -334,24 +293,7 @@ issueExtrasRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    const conditions = [
-      eq(issues.projectId, projectId),
-      eq(activityLog.action, 'issue.statusChanged'),
-    ];
-    if (from) conditions.push(gte(activityLog.createdAt, from));
-    if (to) conditions.push(lte(activityLog.createdAt, to));
-
-    const rows = await db
-      .select({
-        issueId: activityLog.issueId,
-        payload: activityLog.payload,
-        createdAt: activityLog.createdAt,
-      })
-      .from(activityLog)
-      .innerJoin(issues, eq(issues.id, activityLog.issueId))
-      .where(and(...conditions))
-      .orderBy(asc(activityLog.issueId), asc(activityLog.createdAt))
-      .limit(limit);
+    const rows = await statusChangeRows(projectId, from, to, limit);
 
     type Row = (typeof rows)[number];
     const perStatus = new Map<string, number[]>();
@@ -423,21 +365,10 @@ issueExtrasRoutes.get(
     const issue = await resolveIssueRouteRef(rawId, projectIdQuery, userId);
     const issueId = issue.id;
 
-    const sessionIdSubquery = sql`(
-      SELECT DISTINCT ${jobs.agentSessionId}::text
-      FROM ${jobs}
-      WHERE ${jobs.issueId} = ${issueId}
-        AND ${jobs.agentSessionId} IS NOT NULL
-    )`;
-    const [totals] = await db
-      .select(usageTotalsSelection())
-      .from(usageRecords)
-      .where(usageSessionMatch(sql`IN ${sessionIdSubquery}`));
-
     return c.json({
       issueId,
       projectId: issue.projectId,
-      ...(totals ?? EMPTY_USAGE_TOTALS),
+      ...(await issueUsageTotals(issueId)),
     });
   },
 );

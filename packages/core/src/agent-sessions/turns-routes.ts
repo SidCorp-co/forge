@@ -1,12 +1,9 @@
-import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { agentSessions, agentSessionTurns, projects } from '../db/schema.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 import { openOneShotRun } from '../pipeline/runs.js';
-import { refuseSession } from './refusals.js';
 import {
   broadcastSession,
   broadcastTurnAppended,
@@ -19,6 +16,9 @@ import {
   dispatchInteractiveTurn,
   resolveInteractiveClient,
 } from './interactive-credential.js';
+import { projectHandle } from './read.js';
+import { refuseSession } from './refusals.js';
+import { editUserTurn, insertForkedSession, requeueForRegeneration } from './service.js';
 import {
   assertAgentChatOwner,
   assertSessionOwnerOrAdmin,
@@ -29,18 +29,13 @@ import {
   notFound,
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
-import { recordReportedTranscript } from './session-events.js';
-import { transitionSessions } from './session-transition.js';
 import {
   extractPromptString,
   findTurnInSession,
   loadTurns,
   replaceMessageAt,
   sliceMessagesThrough,
-  syncTurnsWithMessages,
-  truncateTurnsAfter,
 } from './turns-helpers.js';
-import { requireHeld } from '../permissions/index.js';
 
 function isUserEntry(m: unknown): boolean {
   return !!m && typeof m === 'object' && (m as { type?: string }).type === 'user';
@@ -152,28 +147,18 @@ agentSessionTurnsRoutes.patch(
       },
     };
 
-    const [updatedTurn, updatedSession] = await db.transaction(async (tx) => {
-      const [turnRow] = await tx
-        .update(agentSessionTurns)
-        .set({ content: newContent as never, editedAt: editNow })
-        .where(eq(agentSessionTurns.id, turnId))
-        .returning();
-      if (!turnRow) throw notFound('turn not found');
-
-      // Mirror into the legacy jsonb blob so resumable-session reads stay
-      // consistent until the deprecation lands.
-      const newMessages = replaceMessageAt(session.messages, turn.turnIndex, (entry) => {
-        if (!entry || typeof entry !== 'object') return { content };
-        return { ...(entry as Record<string, unknown>), content };
-      });
-      const [sessionRow] = await tx
-        .update(agentSessions)
-        .set({ messages: newMessages as never, updatedAt: editNow })
-        .where(eq(agentSessions.id, id))
-        .returning();
-      if (!sessionRow) throw notFound('agent session not found');
-      await recordReportedTranscript(tx, id, newMessages as Record<string, unknown>[], editNow);
-      return [turnRow, sessionRow] as const;
+    // Mirror into the legacy jsonb blob so resumable-session reads stay
+    // consistent until the deprecation lands.
+    const newMessages = replaceMessageAt(session.messages, turn.turnIndex, (entry) => {
+      if (!entry || typeof entry !== 'object') return { content };
+      return { ...(entry as Record<string, unknown>), content };
+    });
+    const [updatedTurn, updatedSession] = await editUserTurn({
+      sessionId: id,
+      turnId,
+      content: newContent,
+      messages: newMessages,
+      at: editNow,
     });
 
     broadcastTurnEdited(updatedSession, turnId);
@@ -208,7 +193,10 @@ agentSessionTurnsRoutes.post(
       | undefined;
     const targetMessage = extractPromptString(lastUserEntry?.content);
     if (!targetMessage) {
-      throw refuseSession('NO_DISPATCHABLE_PROMPT', 'no dispatchable prompt found before this turn');
+      throw refuseSession(
+        'NO_DISPATCHABLE_PROMPT',
+        'no dispatchable prompt found before this turn',
+      );
     }
 
     const client = await resolveInteractiveClient(session, { scope: 'session' });
@@ -218,43 +206,16 @@ agentSessionTurnsRoutes.post(
       asker: { userId, viaTokenId: c.get('patTokenId') ?? null },
     });
 
-    const [project] = await db
-      .select({ id: projects.id, slug: projects.slug })
-      .from(projects)
-      .where(eq(projects.id, session.projectId))
-      .limit(1);
+    const project = await projectHandle(session.projectId);
     if (!project) throw notFound('project not found');
 
     const priorMessages = replayMessages.slice(0, -1);
     const truncatedFromIndex = priorMessages.length;
-    const regenNow = new Date();
-    const [locked] = (
-      await transitionSessions(db, {
-        to: 'queued',
-        set: {
-          messages: priorMessages as never,
-          failureReason: null,
-          dispatchedAt: regenNow,
-          updatedAt: regenNow,
-        },
-        where: and(
-          eq(agentSessions.id, id),
-          eq(agentSessions.status, session.status),
-          eq(agentSessions.updatedAt, session.updatedAt),
-        ),
-        actor: restActor(c),
-        source: 'session-regenerate',
-        afterWrite: async (tx) => {
-          await truncateTurnsAfter(id, priorMessages.length - 1, tx);
-          await recordReportedTranscript(
-            tx,
-            id,
-            priorMessages as Record<string, unknown>[],
-            regenNow,
-          );
-        },
-      })
-    ).rows;
+    const locked = await requeueForRegeneration({
+      session,
+      messages: priorMessages,
+      actor: restActor(c),
+    });
     if (!locked) {
       throw refuseSession('SESSION_STALE', 'session changed before regeneration could start');
     }
@@ -307,28 +268,20 @@ agentSessionTurnsRoutes.post(
       projectId: session.projectId,
       kind: 'interactive',
     });
-    const { inserted, seedSync } = await db.transaction(async (tx) => {
-      const [row] = await tx
-        .insert(agentSessions)
-        .values({
-          projectId: session.projectId,
-          userId: session.userId,
-          deviceId: session.deviceId,
-          pipelineRunId: forkRun.id,
-          title: title ?? (session.title ? `${session.title} (fork)` : null),
-          kind: 'chat',
-          parentSessionId: session.id,
-          status: 'idle',
-          repoPath: session.repoPath,
-          messages: slicedMessages as never,
-          metadata: newMetadata as never,
-        })
-        .returning();
-      if (!row) throw new Error('agent_sessions: insert returned no row');
-      // Materialize matching turn rows in the new session. We don't reuse the
-      // parent ids — fresh ids isolate edits/regenerations per fork.
-      const sync = await syncTurnsWithMessages(row.id, [], slicedMessages, tx);
-      return { inserted: row, seedSync: sync };
+    // Turn rows are materialized fresh; reusing the parent ids would tie a
+    // fork's edits and regenerations to its parent.
+    const { inserted, seedSync } = await insertForkedSession({
+      projectId: session.projectId,
+      userId: session.userId,
+      deviceId: session.deviceId,
+      pipelineRunId: forkRun.id,
+      title: title ?? (session.title ? `${session.title} (fork)` : null),
+      kind: 'chat',
+      parentSessionId: session.id,
+      status: 'idle',
+      repoPath: session.repoPath,
+      messages: slicedMessages,
+      metadata: newMetadata as never,
     });
     for (const t of seedSync.appended) {
       broadcastTurnAppended(inserted, t);
@@ -370,11 +323,7 @@ agentSessionTurnsRoutes.post(
       asker: { userId, viaTokenId: c.get('patTokenId') ?? null },
     });
 
-    const [project] = await db
-      .select({ id: projects.id, slug: projects.slug })
-      .from(projects)
-      .where(eq(projects.id, session.projectId))
-      .limit(1);
+    const project = await projectHandle(session.projectId);
     if (!project) throw notFound('project not found');
 
     const inserted = await createChatSessionRow({

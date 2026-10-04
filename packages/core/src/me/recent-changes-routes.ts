@@ -1,13 +1,10 @@
-import { and, desc, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { issues, projects } from '../db/schema.js';
-import { issueArchiveSide } from '../issues/archive.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { readRecentChanges } from './read.js';
 
 interface RecentChangeItem {
   id: string;
@@ -54,34 +51,7 @@ meRecentChangesRoutes.get(
       return c.json(empty);
     }
 
-    const rows = await db
-      .select({
-        id: issues.id,
-        issSeq: issues.issSeq,
-        title: issues.title,
-        status: issues.status,
-        updatedAt: issues.updatedAt,
-        projectSlug: projects.slug,
-        projectName: projects.name,
-      })
-      .from(issues)
-      .innerJoin(projects, eq(projects.id, issues.projectId))
-      .where(and(inArray(issues.projectId, visibleIds), ...issueArchiveSide(false)))
-      .orderBy(desc(issues.updatedAt))
-      .limit(limit);
-
-    const response: RecentChangesResponse = {
-      items: rows.map((r) => ({
-        id: r.id,
-        issSeq: r.issSeq,
-        title: r.title,
-        status: r.status,
-        updatedAt: r.updatedAt.toISOString(),
-        projectSlug: r.projectSlug,
-        projectName: r.projectName,
-      })),
-    };
-
+    const response: RecentChangesResponse = { items: await readRecentChanges(visibleIds, limit) };
     return c.json(response);
   },
 );

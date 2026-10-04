@@ -1,6 +1,5 @@
 import type { PatRefusalCode } from '@forge/contracts/pat';
 import { SET_PAT_FENCE_SHAPE, setPatFenceRequestSchema } from '@forge/contracts/pat-fence';
-import { and, desc, eq, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -16,8 +15,7 @@ import {
   patGrantIsLegacy,
   patGrantIsStatedFull,
 } from '../credentials/pat-permissions.js';
-import { db } from '../db/client.js';
-import { mcpAuditLog, personalAccessTokens } from '../db/schema.js';
+import type { personalAccessTokens } from '../db/schema.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { RefusalError, refused, refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -28,6 +26,7 @@ import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { fenceEditorRefusal, fenceOf } from './fence-rules.js';
 import { listPatFenceChanges, setPatFence } from './fence-service.js';
+import { hasLivePatNamed, listPatsOf, ownsPat, patAuditOf } from './read.js';
 
 const refuse = refuser<PatRefusalCode>('PAT_REFUSED');
 
@@ -98,11 +97,7 @@ patRoutes.use('/pat/*', requireAuth(), assertEmailVerified());
 
 patRoutes.get('/pat', async (c) => {
   const userId = c.get('userId');
-  const rows = await db
-    .select()
-    .from(personalAccessTokens)
-    .where(eq(personalAccessTokens.userId, userId))
-    .orderBy(desc(personalAccessTokens.createdAt));
+  const rows = await listPatsOf(userId);
   return c.json({
     tokens: rows.map(publicShape),
     menu: {
@@ -177,18 +172,7 @@ patRoutes.post(
       );
     }
 
-    const [existing] = await db
-      .select({ id: personalAccessTokens.id })
-      .from(personalAccessTokens)
-      .where(
-        and(
-          eq(personalAccessTokens.userId, userId),
-          eq(personalAccessTokens.name, body.name),
-          isNull(personalAccessTokens.revokedAt),
-        ),
-      )
-      .limit(1);
-    if (existing) {
+    if (await hasLivePatNamed(userId, body.name)) {
       throw refuse(
         'PAT_NAME_CONFLICT',
         'a live personal access token with this name already exists',
@@ -286,28 +270,8 @@ patRoutes.get(
     const userId = c.get('userId');
     const { id } = c.req.valid('param');
     const { limit } = c.req.valid('query');
-    const [owned] = await db
-      .select({ id: personalAccessTokens.id })
-      .from(personalAccessTokens)
-      .where(and(eq(personalAccessTokens.id, id), eq(personalAccessTokens.userId, userId)))
-      .limit(1);
-    if (!owned) throw notFound();
-    const rows = await db
-      .select({
-        id: mcpAuditLog.id,
-        tool: mcpAuditLog.tool,
-        action: mcpAuditLog.action,
-        projectId: mcpAuditLog.projectId,
-        resultCode: mcpAuditLog.resultCode,
-        requestId: mcpAuditLog.requestId,
-        ip: mcpAuditLog.ip,
-        userAgent: mcpAuditLog.userAgent,
-        createdAt: mcpAuditLog.createdAt,
-      })
-      .from(mcpAuditLog)
-      .where(eq(mcpAuditLog.tokenId, id))
-      .orderBy(desc(mcpAuditLog.createdAt))
-      .limit(limit);
+    if (!(await ownsPat(id, userId))) throw notFound();
+    const rows = await patAuditOf(id, limit);
     return c.json({ entries: rows });
   },
 );

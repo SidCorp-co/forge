@@ -1,10 +1,8 @@
 import { type IssueMove, type IssueStatus, issueMovesFrom } from '@forge/contracts/issue-machine';
-import { type SQL, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { sql } from 'drizzle-orm';
 import { issues } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type MergeMarkColumns, type MergeMarkKind, mergeMarkKindOf } from './merge-record.js';
-import type { IssueSearchField } from './search-predicate.js';
 import { type WorkStateListView, workStateListSql } from './work-state.js';
 
 /**
@@ -83,24 +81,4 @@ export function serializeRestListRow<
     mergeMark: mergeMarkKindOf(row),
     moves: issueMovesFrom(row.status, row.workState?.leftStatus ?? null),
   };
-}
-
-/** One page of either REST issue list, ordered and limited. */
-export function issueListPageQuery(opts: {
-  where: SQL | undefined;
-  orderBy: SQL;
-  limit: number;
-  offset: number;
-  matchedFields?: SQL<IssueSearchField[]> | null;
-}) {
-  const columns = opts.matchedFields
-    ? { ...REST_ISSUE_LIST_COLUMNS, matchedFields: opts.matchedFields }
-    : REST_ISSUE_LIST_COLUMNS;
-  return db
-    .select(columns)
-    .from(issues)
-    .where(opts.where)
-    .orderBy(opts.orderBy)
-    .limit(opts.limit)
-    .offset(opts.offset);
 }

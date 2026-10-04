@@ -1,4 +1,4 @@
-import { and, eq, isNotNull } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects, runners, type SkillTarget, skills } from '../db/schema.js';
 import { RefusalError } from '../lib/refusal.js';
@@ -9,6 +9,7 @@ import { scanSkillContent } from '../security/skill-content-scanner.js';
 import { hashSkillBody } from './hash.js';
 import { isMetaSkillName, metaSkillReserved } from './meta-skills.js';
 import { refuse } from './refuse.js';
+import { computeSkillDiff, type SkillDiff, type SyncManifestInput, type SyncMode } from './sync.js';
 
 /** Each blocking finding of the content scan, as one refusal of the write. */
 function contentBlocked(blockers: Finding[]): RefusalError {
@@ -434,4 +435,74 @@ export async function requestSkillSync(
     });
   }
   return { projectId: input.projectId, deviceIds };
+}
+
+/**
+ * A device's manifest push, applied in one transaction: read the project's skills, categorise
+ * against the payload, upsert what changed and, in full mode, delete what the payload left out.
+ */
+export async function syncProjectSkillManifests(
+  projectId: string,
+  mode: SyncMode,
+  manifests: SyncManifestInput[],
+): Promise<{ diff: SkillDiff; added: string[]; updated: string[] }> {
+  return db.transaction(async (tx) => {
+    const existing = await tx
+      .select({ name: skills.name, contentHash: skills.contentHash })
+      .from(skills)
+      .where(and(eq(skills.projectId, projectId), eq(skills.scope, 'project')));
+
+    const d = computeSkillDiff(existing, manifests, mode);
+
+    const writes = [...d.toInsert, ...d.toUpdate];
+    if (writes.length > 0) {
+      await tx
+        .insert(skills)
+        .values(
+          writes.map((m) => ({
+            name: m.name,
+            description: m.description ?? '',
+            scope: 'project' as const,
+            projectId,
+            prompt: m.prompt,
+            tools: m.tools,
+            manifest: {},
+            source: 'user' as const,
+            contentHash: m.hash,
+          })),
+        )
+        .onConflictDoUpdate({
+          target: [skills.projectId, skills.name],
+          targetWhere: sql`scope = 'project'`,
+          // Only change fields the caller supplied; keep the prior description when the
+          // incoming manifest omits it.
+          set: {
+            prompt: sql`excluded.prompt`,
+            tools: sql`excluded.tools`,
+            contentHash: sql`excluded.content_hash`,
+            description: sql`CASE WHEN excluded.description = '' THEN ${skills.description} ELSE excluded.description END`,
+            version: sql`${skills.version} + 1`,
+            updatedAt: sql`now()`,
+          },
+        });
+    }
+
+    if (d.toRemove.length > 0) {
+      await tx
+        .delete(skills)
+        .where(
+          and(
+            eq(skills.projectId, projectId),
+            eq(skills.scope, 'project'),
+            inArray(skills.name, d.toRemove),
+          ),
+        );
+    }
+
+    return {
+      diff: d,
+      added: d.toInsert.map((m) => m.name),
+      updated: d.toUpdate.map((m) => m.name),
+    };
+  });
 }

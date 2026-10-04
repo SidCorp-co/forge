@@ -1,14 +1,13 @@
-import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
-import { db } from '../db/client.js';
-import { users } from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { getDummyPasswordHash, verifyPassword } from './password.js';
+import { passwordHashOf } from './read.js';
+import { markFreshAuth } from './service.js';
 
 export const reauthRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -44,11 +43,7 @@ reauthRoutes.post(
         cause: { code: 'INVALID_CREDENTIALS' },
       });
 
-    const [user] = await db
-      .select({ id: users.id, passwordHash: users.passwordHash })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
+    const user = await passwordHashOf(userId);
 
     // OAuth-only users have no local password (passwordHash is NULL since
     // 0037). Equalize timing with the wrong-password path before refusing.
@@ -61,7 +56,7 @@ reauthRoutes.post(
     if (!ok) throw invalid();
 
     const freshAuthAt = new Date();
-    await db.update(users).set({ lastFreshAuthAt: freshAuthAt }).where(eq(users.id, userId));
+    await markFreshAuth(userId, freshAuthAt);
 
     return c.json({ freshAuthAt: freshAuthAt.toISOString() });
   },

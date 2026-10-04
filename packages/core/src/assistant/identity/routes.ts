@@ -9,13 +9,10 @@
  */
 
 import type { SpeakerRefusalCode } from '@forge/contracts/assistant';
-import { and, desc, eq } from 'drizzle-orm';
 import { Hono, type MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
 import type { ConversationAdapter } from '../../db/schema-conversations.js';
-import { assistantSpeakerLinks } from '../../db/schema-speaker-links.js';
 import { type RefusalError, refuser } from '../../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
@@ -27,6 +24,8 @@ import {
   sourceUnknownRefusal,
 } from './speaker-link.js';
 import { requireCan } from '../../permissions/index.js';
+import { listSpeakerLinks } from '../read.js';
+import { confirmSpeakerLink, unlinkSpeaker } from '../service.js';
 
 const speakerBodySchema = z.object({
   source: z.string().optional(),
@@ -166,38 +165,16 @@ speakerLinkProjectRoutes.post(
       );
     }
 
-    const [row] = await db
-      .insert(assistantSpeakerLinks)
-      .values({
-        source: profile.source,
-        externalNamespace: profile.namespace,
-        externalId: profile.externalId,
-        externalLabel: profile.username,
-        userId,
-        confirmedVia: 'channel_email_match',
-      })
-      .onConflictDoNothing()
-      .returning();
-    if (!row) {
-      const [held] = await db
-        .select({ userId: assistantSpeakerLinks.userId })
-        .from(assistantSpeakerLinks)
-        .where(
-          and(
-            eq(assistantSpeakerLinks.source, profile.source),
-            eq(assistantSpeakerLinks.externalNamespace, profile.namespace),
-            eq(assistantSpeakerLinks.externalId, profile.externalId),
-          ),
-        )
-        .limit(1);
+    const confirmed = await confirmSpeakerLink(profile, userId);
+    if (!confirmed.ok) {
       throw refuseSpeaker(
         'SPEAKER_ALREADY_LINKED',
-        held?.userId === userId
+        confirmed.heldBy === userId
           ? 'that speaker is already linked to you. Unlink it first if you mean to re-make the link.'
           : 'that speaker is already linked to another Forge user. Whoever holds the link unlinks it before it can be re-made.',
       );
     }
-    return c.json({ link: row }, 201);
+    return c.json({ link: confirmed.link }, 201);
   },
 );
 
@@ -206,11 +183,7 @@ speakerLinkMeRoutes.use('/me/speaker-links', requireAuth(), assertEmailVerified(
 speakerLinkMeRoutes.use('/me/speaker-links/*', requireAuth(), assertEmailVerified());
 
 speakerLinkMeRoutes.get('/me/speaker-links', async (c) => {
-  const links = await db
-    .select()
-    .from(assistantSpeakerLinks)
-    .where(eq(assistantSpeakerLinks.userId, c.get('userId')))
-    .orderBy(desc(assistantSpeakerLinks.confirmedAt));
+  const links = await listSpeakerLinks(c.get('userId'));
   return c.json({ links });
 });
 
@@ -219,22 +192,17 @@ speakerLinkMeRoutes.delete('/me/speaker-links/:source/:namespace/:externalId', a
   if (!isConversationAdapter(source)) {
     throw refused(sourceUnknownRefusal(source), '/source');
   }
-  const deleted = await db
-    .delete(assistantSpeakerLinks)
-    .where(
-      and(
-        eq(assistantSpeakerLinks.userId, c.get('userId')),
-        eq(assistantSpeakerLinks.source, source),
-        eq(assistantSpeakerLinks.externalNamespace, c.req.param('namespace')),
-        eq(assistantSpeakerLinks.externalId, c.req.param('externalId')),
-      ),
-    )
-    .returning({ id: assistantSpeakerLinks.id });
-  if (deleted.length === 0) {
+  const unlinked = await unlinkSpeaker(
+    c.get('userId'),
+    source,
+    c.req.param('namespace'),
+    c.req.param('externalId'),
+  );
+  if (unlinked === 0) {
     throw new HTTPException(404, {
       message: 'you hold no link for that speaker, so there is nothing to unlink.',
       cause: { code: 'SPEAKER_UNLINKED' },
     });
   }
-  return c.json({ unlinked: deleted.length });
+  return c.json({ unlinked });
 });

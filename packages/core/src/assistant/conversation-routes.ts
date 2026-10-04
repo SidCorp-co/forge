@@ -12,9 +12,7 @@
 // is the gate that keeps the store clean, and this file is what it would have
 // had to carve an exception for.
 
-import { randomUUID } from 'node:crypto';
 import { uiSnapshotSchema } from '@forge/contracts/ui-actions';
-import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -23,13 +21,8 @@ import {
   readConversationAgentTurns,
 } from '../agent-sessions/conversation-agent.js';
 import { listConversationAttachmentsByIds } from '../conversations/attachment-service.js';
-import { resolveProjectHandle } from '../conversations/handles.js';
-import {
-  assertPersonReachesScope,
-  projectsNamed,
-  settleShape,
-} from '../conversations/membership.js';
-import { addHandle, addPerson, listParticipants } from '../conversations/participants.js';
+import { projectsNamed } from '../conversations/membership.js';
+import { listParticipants } from '../conversations/participants.js';
 import { refuseConversation } from '../conversations/refusals.js';
 import { validateRoomPresence } from '../conversations/presence.js';
 import { derivedScope } from '../conversations/scope.js';
@@ -37,17 +30,13 @@ import {
   type ConversationRow,
   deleteConversation,
   effectiveConversationMode,
-  getConversation,
   listConversationsInProject,
-  openConversationIn,
   readMessages,
   renameConversation,
   setConversationArchived,
   setConversationPresence,
 } from '../conversations/store.js';
 import { listWindowsForConversation } from '../conversations/windows.js';
-import { db } from '../db/client.js';
-import { users } from '../db/schema.js';
 import { conversationModes } from '../db/schema-conversations.js';
 import { effectiveProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
@@ -68,12 +57,13 @@ import {
   conversationPinRoutes,
   conversationScopeSchema,
   ecosystemOfScope,
-  pinnedBy,
   scopeIsFixed,
 } from './conversation-scope.js';
 import { sendWebConversationMessage } from './conversation-send.js';
 import { conversationToolCallRoutes } from './conversation-tool-calls.js';
 import { threadMarks } from './thread-marks.js';
+import { pinnedBy, speakerLabelOf } from './read.js';
+import { openWebConversation } from './service.js';
 import { rememberUiSnapshot } from './ui-snapshot.js';
 import { requireHeld } from '../permissions/index.js';
 
@@ -282,34 +272,13 @@ conversationRoutes.post(
     const people = input.people ?? [];
     const ecosystemId = await ecosystemOfScope(input.projectId, input.scope);
 
-    const conversation = await db.transaction(async (handle) => {
-      const tx = handle as unknown as typeof db;
-      const room = await openConversationIn(tx, {
-        adapter: 'web',
-        externalId: randomUUID(),
-        shape: 'direct',
-        projectId: input.projectId,
-        title: input.title ?? null,
-        ecosystemId,
-      });
-      await addPerson({ conversationId: room.id, userId, actorUserId: userId, tx });
-      for (const named of handles) {
-        await addHandle({
-          conversationId: room.id,
-          handleUserId: named.userId ?? (await resolveProjectHandle(tx, named.projectId)).userId,
-          projectId: named.projectId,
-          actorUserId: userId,
-          tx,
-        });
-      }
-      const scope = await derivedScope(room.id, tx);
-      for (const person of people) {
-        await assertPersonReachesScope(person, scope, tx);
-        await addPerson({ conversationId: room.id, userId: person, actorUserId: userId, tx });
-      }
-      await settleShape(tx, room.id);
-      const settled = await getConversation(room.id, tx);
-      return settled ?? room;
+    const conversation = await openWebConversation({
+      projectId: input.projectId,
+      title: input.title ?? null,
+      ecosystemId,
+      userId,
+      handles,
+      people,
     });
 
     return c.json(conversation, 201);
@@ -456,11 +425,7 @@ conversationRoutes.post(
       );
     }
 
-    const [me] = await db
-      .select({ displayName: users.displayName, email: users.email })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
+    const userLabel = await speakerLabelOf(userId);
 
     if (uiSnapshot) rememberUiSnapshot(conversation.id, uiSnapshot);
     const sent = await sendWebConversationMessage({
@@ -472,7 +437,7 @@ conversationRoutes.post(
       projectId,
       userId,
       viaTokenId: c.get('patTokenId') ?? null,
-      userLabel: me?.displayName ?? me?.email ?? null,
+      userLabel,
       content,
       mode: asking,
       namedMode: mode !== undefined,

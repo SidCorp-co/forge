@@ -39,12 +39,11 @@ This is not aspirational. The tree did it once, and says so in the source:
 `pipeline/step-handoff-routes.ts` is the REST surface for step-handoff persistence "over the one
 service in `./issue-context-store.ts`".
 
-And the tree broke it, in the busiest capability there is. Listing one project's issues, the MCP
-`forge_issues` list ran `issues/list-service.ts:listIssueRows` with **11** filters while REST
-`GET /:id/issues` builds **6** inline in `issues/routes.ts`; the CLI `forge issue` goes to REST and
-inherits the 6. With the MCP tool gone REST is the one surface, and `listIssueRows` has no caller:
-`label`, `module`, `statusNot`, `complexity` and the three date filters reach no surface until
-REST takes them.
+The busiest capability now keeps it, all but two names. Listing one project's issues,
+`GET /:id/issues` and `GET /:id/issues/search` both read `issues/list-service.ts:listIssues` and
+take one filter set (`issues/request-schemas.ts:issueListFilterFields`); the CLI `forge issue` goes
+to REST and inherits it. The two names still differ: the text filter is `search` on the list and
+`q` on search, the assignee `assigneeId` on the list and `assignee` on search.
 
 ## The mechanism: make the keep-list data, not a decision
 

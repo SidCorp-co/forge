@@ -1,17 +1,15 @@
-import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
-import { db } from '../db/client.js';
-import { users } from '../db/schema.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { assertNotAgent } from '../credentials/agent-account.js';
 import { setAuthCookie, setRefreshCookie } from '../credentials/cookie.js';
 import { signUserToken } from '../credentials/jwt.js';
 import { getDummyPasswordHash, verifyPassword } from './password.js';
-import { issueRefreshToken } from './refresh.js';
+import { userByEmail } from './read.js';
+import { openRefreshToken } from './service.js';
 
 export const loginSchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email().max(254)),
@@ -46,7 +44,7 @@ loginRoutes.post(
         cause: { code: 'INVALID_CREDENTIALS' },
       });
 
-    const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    const user = await userByEmail(email);
     if (!user) {
       // Equalize timing with the wrong-password path by running a verify
       // against a dummy hash before throwing.
@@ -67,7 +65,7 @@ loginRoutes.post(
     assertNotAgent(user.kind, user.id);
 
     const token = await signUserToken(user.id);
-    const { raw: refreshToken } = await db.transaction((tx) => issueRefreshToken(tx, user.id));
+    const { raw: refreshToken } = await openRefreshToken(user.id);
     // JWT cookie for browser cookie auth; refresh token rides its own
     // narrow-scoped httpOnly cookie (/api/auth) so JS never sees it.
     setAuthCookie(c, token);

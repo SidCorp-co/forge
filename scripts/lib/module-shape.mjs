@@ -255,16 +255,20 @@ export function tableWriterFindings(writes, owners) {
   return { findings, multiWriter };
 }
 
-export function isRouteFile(file) {
-  return /(^|\/)routes\.ts$|-routes\.ts$|\.routes\.ts$|\/routes\/[^/]+\.ts$/.test(file);
+/** A route file by its name, or by the Hono router it builds under any name. */
+export function isRouteFile(file, text = '') {
+  return (
+    /(^|\/)routes\.ts$|-routes\.ts$|\.routes\.ts$|\/routes\/[^/]+\.ts$/.test(file) ||
+    /\bnew Hono\b/.test(text)
+  );
 }
 
 const QUERY =
-  /\b(?:db|tx|trx)\s*\.\s*(?:select|selectDistinct|insert|update|delete|execute|transaction|query)\b/g;
+  /\b(?:db|tx|trx)\s*\.\s*(?:select|selectDistinct|selectDistinctOn|insert|update|delete|execute|transaction|query)\b/g;
 
 /** A route file holding database calls of its own. */
 export function routeQueryFindings(file, text, mod) {
-  if (!isRouteFile(file)) return [];
+  if (!isRouteFile(file, text)) return [];
   const n = [...text.matchAll(QUERY)].length;
   if (n === 0) return [];
   return [

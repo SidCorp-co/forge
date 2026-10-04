@@ -9,7 +9,7 @@
 
 import { eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import type { Db } from '../db/client.js';
+import { type Db, db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { projectConfigDocuments } from '../db/schema-project-config.js';
 import type { ProjectDocument } from '../project-config/schema.js';
@@ -210,8 +210,8 @@ export async function readLandingEvidence(
 }
 
 export async function readLandingShape(
-  executor: ShapeExecutor,
   projectId: string,
+  executor: ShapeExecutor = db,
 ): Promise<LandingShape | null> {
   const [row] = await executor
     .select({ sourceType: sourceTypeOf })

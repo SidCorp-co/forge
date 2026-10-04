@@ -1,15 +1,13 @@
 import type { IssueParkResponse } from '@forge/contracts';
-import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { issues } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { loadIssuePark } from './park-view.js';
+import { issueScopeOf } from './read-service.js';
 import { requireHeld } from '../permissions/index.js';
 
 export const issueParkRoutes = new Hono<{ Variables: AuthVars }>();
@@ -29,11 +27,7 @@ issueParkRoutes.get(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const [issue] = await db
-      .select({ projectId: issues.projectId })
-      .from(issues)
-      .where(eq(issues.id, id))
-      .limit(1);
+    const issue = await issueScopeOf(id);
     if (!issue) {
       throw new HTTPException(404, { message: 'issue not found', cause: { code: 'NOT_FOUND' } });
     }

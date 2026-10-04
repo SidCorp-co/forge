@@ -1,18 +1,16 @@
-import { eq } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { agentSessions } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { rawBody, zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import { loadSessionAttachment, persistSessionAttachment } from './attachment-service.js';
-import { requireHeld } from '../permissions/index.js';
+import { sessionPlacement } from './read.js';
 
 const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
   new HTTPException(400, { message, cause: { code, details } });
@@ -38,15 +36,7 @@ async function authorizeSession(
   c: Context<{ Variables: AuthVars }>,
   sessionId: string,
 ): Promise<{ id: string; projectId: string; deviceId: string | null }> {
-  const [session] = await db
-    .select({
-      id: agentSessions.id,
-      projectId: agentSessions.projectId,
-      deviceId: agentSessions.deviceId,
-    })
-    .from(agentSessions)
-    .where(eq(agentSessions.id, sessionId))
-    .limit(1);
+  const session = await sessionPlacement(sessionId);
   if (!session) throw notFound('agent session not found');
 
   if (c.get('principal') === 'device') {

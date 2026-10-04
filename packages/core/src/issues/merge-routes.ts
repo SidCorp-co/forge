@@ -19,19 +19,15 @@
  */
 
 import type { MergeRefusalCode } from '@forge/contracts/issues';
-import { and, eq } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { issues } from '../db/schema.js';
-import { repoPullRequests } from '../db/schema-repo-projection.js';
 import { LANDED_CONTRACT } from '../ecosystem/contract/drift.js';
 import {
   describeEmptyProjection,
   projectionPipeReport,
 } from '../integrations/github/projection-health.js';
-import { openPullRequestsForIssue } from '../integrations/repo-projection.js';
+import { openPullRequestsForIssue, pullRequestNumbered } from '../integrations/repo-projection.js';
 import { SourceHostUnavailable } from '../integrations/source-host/errors.js';
 import {
   CHANGE_REQUEST_MERGE_METHODS,
@@ -46,6 +42,7 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { mergedLandingSchema } from './landing-evidence.js';
 import { applyMergeMarker, mergedCommitShaSchema } from './merge-marker.js';
+import { issueScopeOf } from './read-service.js';
 
 const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
 
@@ -77,12 +74,9 @@ async function runMergeMarker(
   const body = c.req.valid('json' as never) as z.infer<typeof mergeMarkerBodySchema>;
   const userId = c.get('userId');
 
-  const [issue] = await db
-    .select({ id: issues.id, projectId: issues.projectId, mergedAt: issues.mergedAt })
-    .from(issues)
-    .where(eq(issues.id, issueId))
-    .limit(1);
-  if (!issue) throw notFound('issue not found');
+  const scope = await issueScopeOf(issueId);
+  if (!scope) throw notFound('issue not found');
+  const issue = { id: scope.id, projectId: scope.projectId, mergedAt: scope.mergedAt };
 
   const access = await loadProjectAccess(issue.projectId, userId);
   requireHeld(access, 'project.write');
@@ -158,13 +152,9 @@ async function resolveStoredPullRequest(
   number: number | undefined,
 ): Promise<{ id: string } | { refusal: string; code: 'NO_PULL_REQUEST' | 'PROJECTION_EMPTY' }> {
   if (number !== undefined) {
-    const [row] = await db
-      .select({ id: repoPullRequests.id })
-      .from(repoPullRequests)
-      .where(and(eq(repoPullRequests.issueId, issueId), eq(repoPullRequests.number, number)))
-      .limit(1);
-    return row
-      ? { id: row.id }
+    const id = await pullRequestNumbered(issueId, number);
+    return id
+      ? { id }
       : noRowRefusal(
           projectId,
           `this issue has no pull request #${number} on Forge's projection of the repository`,
@@ -199,11 +189,7 @@ issueMergeRoutes.post(
     const body = c.req.valid('json' as never) as z.infer<typeof kernelMergeBodySchema>;
     const userId = c.get('userId');
 
-    const [issue] = await db
-      .select({ id: issues.id, projectId: issues.projectId })
-      .from(issues)
-      .where(eq(issues.id, issueId))
-      .limit(1);
+    const issue = await issueScopeOf(issueId);
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);

@@ -1,33 +1,38 @@
 import { PROJECT_PERMISSIONS, type ProjectPermission } from '@forge/contracts/permissions';
-import { and, eq, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { env } from '../config/env.js';
-import { db } from '../db/client.js';
-import {
-  projectInvitations,
-  projectMemberRoles,
-  projectMembers,
-  projects,
-  users,
-} from '../db/schema.js';
+import { projectMemberRoles } from '../db/schema.js';
 import { loadOrgRole, loadProjectAccess } from '../lib/authz.js';
 import { RefusalError } from '../lib/refusal.js';
 import { logger } from '../logger.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import {
+  type AuthVars,
+  assertEmailVerified,
+  readAuthUser,
+  requireAuth,
+} from '../middleware/auth.js';
 import { badRequest, forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { emitNotification } from '../notifications/emit.js';
-import {
-  addProjectMembers,
-  removeProjectMember,
-  requireHeld,
-  updateProjectMember,
-} from '../permissions/index.js';
+import { requireHeld } from '../permissions/index.js';
 import { sendInvitationEmail } from './invitation-email.js';
 import { issueInvitationToken } from './invitation-token.js';
+import {
+  accountIdByEmail,
+  listPendingProjectInvitations,
+  listProjectMembers,
+  projectMemberRole,
+  projectName,
+} from './read.js';
 import { refuse } from './refuse.js';
+import {
+  addProjectMemberIfAbsent,
+  changeProjectMember,
+  dropProjectMember,
+  revokeProjectInvitation,
+} from './service.js';
 
 // Every project role is assignable (admin|member|viewer) — there is no
 // project 'owner' anymore; the org tier carries ownership.
@@ -100,21 +105,7 @@ memberRoutes.get(
     // member (ISS-932) and a reader that is only told its synthesized address
     // cannot name it (ISS-1137) — which is why the issue list's creator filter
     // offered every agent as a fake person for as long as it did.
-    const rows = await db
-      .select({
-        userId: projectMembers.userId,
-        email: users.email,
-        displayName: users.displayName,
-        kind: users.kind,
-        role: projectMembers.role,
-        grants: projectMembers.grants,
-        createdAt: projectMembers.createdAt,
-      })
-      .from(projectMembers)
-      .innerJoin(users, eq(users.id, projectMembers.userId))
-      .where(eq(projectMembers.projectId, projectId));
-
-    return c.json(rows);
+    return c.json(await listProjectMembers(projectId));
   },
 );
 
@@ -130,19 +121,7 @@ memberRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'members.admin');
 
-    const rows = await db
-      .select({
-        email: projectInvitations.email,
-        role: projectInvitations.role,
-        expiresAt: projectInvitations.expiresAt,
-        createdAt: projectInvitations.createdAt,
-        inviterEmail: users.email,
-      })
-      .from(projectInvitations)
-      .innerJoin(users, eq(users.id, projectInvitations.inviterId))
-      .where(
-        and(eq(projectInvitations.projectId, projectId), isNull(projectInvitations.acceptedAt)),
-      );
+    const rows = await listPendingProjectInvitations(projectId);
 
     // Never leak `token` (the accept secret / PK). Surface an `expired` flag so
     // the UI can hint at stale invites that are still cancellable.
@@ -178,24 +157,18 @@ memberRoutes.post(
       );
     }
 
-    const [inserted] = await addProjectMembers(db, [{ userId: targetUserId, projectId, role }], {
-      ifAbsent: true,
-    });
+    const inserted = await addProjectMemberIfAbsent(projectId, targetUserId, role);
     if (!inserted)
       throw refuse('ALREADY_MEMBER', 'this user is already a member of the project', '/userId');
 
-    const [email] = await db
-      .select({ email: users.email })
-      .from(users)
-      .where(eq(users.id, targetUserId))
-      .limit(1);
+    const target = await readAuthUser(targetUserId);
     return c.json(
       {
         userId: inserted.userId,
         projectId: inserted.projectId,
         role: inserted.role,
         createdAt: inserted.createdAt,
-        email: email?.email ?? null,
+        email: target?.email ?? null,
       },
       201,
     );
@@ -220,35 +193,17 @@ memberRoutes.post(
 
     const access = await loadProjectAccess(projectId, inviterId);
     requireHeld(access, 'members.admin');
-    const [project] = await db
-      .select({ name: projects.name })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-    if (!project) throw notFound('NOT_FOUND', 'project not found');
+    const name = await projectName(projectId);
+    if (name === null) throw notFound('NOT_FOUND', 'project not found');
+    const project = { name };
 
-    const [inviter] = await db
-      .select({ email: users.email })
-      .from(users)
-      .where(eq(users.id, inviterId))
-      .limit(1);
+    const inviter = await readAuthUser(inviterId);
     if (!inviter) throw forbidden('inviter not found');
 
-    const [existingUser] = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.email, email))
-      .limit(1);
+    const existingUserId = await accountIdByEmail(email);
 
-    if (existingUser) {
-      const [existingMember] = await db
-        .select({ userId: projectMembers.userId })
-        .from(projectMembers)
-        .where(
-          and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, existingUser.id)),
-        )
-        .limit(1);
-      if (existingMember) {
+    if (existingUserId) {
+      if ((await projectMemberRole(projectId, existingUserId)) !== null) {
         throw refuse(
           'ALREADY_MEMBER',
           'a user with this email is already a member of the project',
@@ -277,10 +232,10 @@ memberRoutes.post(
     // ISS-597: notify registered invitees in-app so they see the invite
     // in the bell without needing the email. Unregistered users (no userId
     // FK) get email only — the pending list surfaces the invite once they sign up.
-    if (existingUser) {
+    if (existingUserId) {
       try {
         await emitNotification({
-          userId: existingUser.id,
+          userId: existingUserId,
           projectId,
           type: 'invitation_received',
           title: `${inviter.email} invited you to ${project.name} as ${role}`,
@@ -316,14 +271,10 @@ memberRoutes.patch(
     const refused = grantRefusals(grants ?? []);
     if (refused.length > 0) throw new RefusalError(refused, 'MEMBER_GRANT_UNKNOWN_PERMISSION');
 
-    const [target] = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, targetUserId)))
-      .limit(1);
-    if (!target) throw notFound('NOT_FOUND', 'membership not found');
+    if ((await projectMemberRole(projectId, targetUserId)) === null)
+      throw notFound('NOT_FOUND', 'membership not found');
 
-    const updated = await updateProjectMember(db, projectId, targetUserId, {
+    const updated = await changeProjectMember(projectId, targetUserId, {
       role,
       grants: grants as ProjectPermission[] | undefined,
     });
@@ -349,17 +300,7 @@ memberRoutes.delete(
     const access = await loadProjectAccess(projectId, callerId);
     requireHeld(access, 'members.admin');
 
-    const deleted = await db
-      .delete(projectInvitations)
-      .where(
-        and(
-          eq(projectInvitations.projectId, projectId),
-          eq(projectInvitations.email, email),
-          isNull(projectInvitations.acceptedAt),
-        ),
-      )
-      .returning({ token: projectInvitations.token });
-    if (deleted.length === 0)
+    if (!(await revokeProjectInvitation(projectId, email)))
       throw notFound('INVITATION_NOT_FOUND', 'pending invitation not found');
 
     return c.body(null, 204);
@@ -381,14 +322,10 @@ memberRoutes.delete(
       requireHeld(access, 'members.admin');
     }
 
-    const [target] = await db
-      .select({ role: projectMembers.role })
-      .from(projectMembers)
-      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, targetUserId)))
-      .limit(1);
-    if (!target) throw notFound('NOT_FOUND', 'membership not found');
+    if ((await projectMemberRole(projectId, targetUserId)) === null)
+      throw notFound('NOT_FOUND', 'membership not found');
 
-    await removeProjectMember(db, projectId, targetUserId);
+    await dropProjectMember(projectId, targetUserId);
 
     return c.body(null, 204);
   },

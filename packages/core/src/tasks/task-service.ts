@@ -1,7 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { tasks } from '../db/schema.js';
-import { emitEvent } from '../outbox/index.js';
+import { emitEvent, emitEvents } from '../outbox/index.js';
 import type { Actor } from '../pipeline/activity.js';
 
 export type TaskRow = typeof tasks.$inferSelect;
@@ -117,5 +117,36 @@ export async function deleteTask(task: TaskRow, actor: Actor): Promise<void> {
       projectId: task.projectId,
       actor,
     });
+  });
+}
+
+/** An issue's tasks take the given order; each task whose position moved emits `task.updated`. */
+export async function reorderTasks(
+  issue: { id: string; projectId: string },
+  taskIds: readonly string[],
+  previous: ReadonlyMap<string, number>,
+  actor: Actor,
+): Promise<void> {
+  const changed: string[] = [];
+  await db.transaction(async (tx) => {
+    for (let i = 0; i < taskIds.length; i++) {
+      const id = taskIds[i] as string;
+      if (previous.get(id) === i) continue;
+      await tx.update(tasks).set({ sortOrder: i, updatedAt: new Date() }).where(eq(tasks.id, id));
+      changed.push(id);
+    }
+    await emitEvents(
+      tx,
+      changed.map((id) => ({
+        type: 'task.updated' as const,
+        payload: {
+          taskId: id,
+          issueId: issue.id,
+          projectId: issue.projectId,
+          actor,
+          fields: ['sortOrder'],
+        },
+      })),
+    );
   });
 }

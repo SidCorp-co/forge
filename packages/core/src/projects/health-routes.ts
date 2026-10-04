@@ -1,9 +1,6 @@
 import { NON_OPEN_STATUSES } from '@forge/contracts/issue-machine';
-import { inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
-import { projects } from '../db/schema.js';
 import {
   countClaimHeldIssuesByProject,
   type LoopMonitorCoverage,
@@ -13,6 +10,7 @@ import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type BlockerRow, readHealthAggregates } from './health-aggregates.js';
+import { listProjectHeads } from './read.js';
 
 interface ProjectHealthRow {
   /** Project UUID — needed by web-v2 to join the `GET /api/projects` list rows
@@ -78,14 +76,7 @@ projectHealthRoutes.get('/health', async (c) => {
   const visibleIds = await loadVisibleProjectIds(userId);
   if (visibleIds.length === 0) return c.json([]);
 
-  const visibleProjects = await db
-    .select({
-      id: projects.id,
-      slug: projects.slug,
-      name: projects.name,
-    })
-    .from(projects)
-    .where(inArray(projects.id, visibleIds));
+  const visibleProjects = await listProjectHeads(visibleIds);
 
   if (visibleProjects.length === 0) return c.json([]);
 

@@ -1,19 +1,11 @@
-import { and, eq, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { HTTPException } from 'hono/http-exception';
-import { db } from '../db/client.js';
-import { refreshTokens } from '../db/schema.js';
 import { assertNotAgentUser } from './agent-login-gate.js';
 import { REFRESH_COOKIE_NAME, setAuthCookie, setRefreshCookie } from '../credentials/cookie.js';
 import { signUserToken } from '../credentials/jwt.js';
-import {
-  generateRefreshToken,
-  hashRefreshToken,
-  refreshTokenExpiresAt,
-  refreshTokenPrefix,
-  verifyRefreshToken,
-} from '../credentials/refresh-token.js';
+import { refreshTokenPrefix } from '../credentials/refresh-token.js';
+import { invalidateRefreshTokens, rotateRefreshToken } from './service.js';
 
 export const refreshRoutes = new Hono();
 
@@ -35,34 +27,6 @@ const reused = () =>
     cause: { code: 'REFRESH_TOKEN_REUSED' },
   });
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-type InvalidateRunner = Pick<Tx, 'update'>;
-
-async function invalidateAllForUser(runner: InvalidateRunner, userId: string): Promise<void> {
-  await runner
-    .update(refreshTokens)
-    .set({ usedAt: sql`now()` })
-    .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.usedAt)));
-}
-
-export async function issueRefreshToken(tx: Tx, userId: string): Promise<{ raw: string }> {
-  const { raw, prefix } = generateRefreshToken();
-  const tokenHash = await hashRefreshToken(raw);
-  await tx.insert(refreshTokens).values({
-    userId,
-    tokenPrefix: prefix,
-    tokenHash,
-    expiresAt: refreshTokenExpiresAt(),
-  });
-  return { raw };
-}
-
-type RefreshOutcome =
-  | { kind: 'ok'; userId: string; refreshToken: string }
-  | { kind: 'invalid' }
-  | { kind: 'expired' }
-  | { kind: 'replay'; userId: string };
-
 refreshRoutes.post('/refresh', async (c) => {
   // Refresh token lives ONLY in the httpOnly cookie at this point — the
   // body fallback was removed in ISS-315 cleanup once every client had
@@ -73,50 +37,14 @@ refreshRoutes.post('/refresh', async (c) => {
   if (!raw) throw invalid();
   const prefix = refreshTokenPrefix(raw);
 
-  const outcome: RefreshOutcome = await db.transaction(async (tx) => {
-    const candidates = await tx
-      .select()
-      .from(refreshTokens)
-      .where(eq(refreshTokens.tokenPrefix, prefix))
-      .for('update');
-
-    let matched: (typeof candidates)[number] | null = null;
-    for (const row of candidates) {
-      if (await verifyRefreshToken(row.tokenHash, raw)) {
-        matched = row;
-        break;
-      }
-    }
-    if (!matched) return { kind: 'invalid' };
-
-    if (matched.usedAt !== null) {
-      return { kind: 'replay', userId: matched.userId };
-    }
-
-    if (matched.expiresAt.getTime() <= Date.now()) {
-      return { kind: 'expired' };
-    }
-
-    const claimed = await tx
-      .update(refreshTokens)
-      .set({ usedAt: sql`now()` })
-      .where(and(eq(refreshTokens.id, matched.id), isNull(refreshTokens.usedAt)))
-      .returning({ id: refreshTokens.id });
-
-    if (claimed.length === 0) {
-      return { kind: 'replay', userId: matched.userId };
-    }
-
-    const { raw: newRaw } = await issueRefreshToken(tx, matched.userId);
-    return { kind: 'ok', userId: matched.userId, refreshToken: newRaw };
-  });
+  const outcome = await rotateRefreshToken(raw, prefix);
 
   if (outcome.kind === 'invalid') throw invalid();
   if (outcome.kind === 'expired') throw expired();
   if (outcome.kind === 'replay') {
     // Runs as its own auto-committed statement on the pool so the
     // invalidation persists independently of the rotation transaction.
-    await invalidateAllForUser(db, outcome.userId);
+    await invalidateRefreshTokens(outcome.userId);
     throw reused();
   }
 

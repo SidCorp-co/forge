@@ -6,16 +6,14 @@
  * What a door still owns is its own shape — the body schema, the issue, the caller's role.
  */
 
-import { eq } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import { z } from 'zod';
-import { db } from '../../db/client.js';
-import { issues } from '../../db/schema.js';
 import { loadProjectAccess } from '../../lib/authz.js';
 import type { AuthVars } from '../../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { requireHeld } from '../../permissions/index.js';
+import { issueScopeOf } from '../read-service.js';
 import { loadIssueAttributes } from './read.js';
 import { setIssueAttributes } from './service.js';
 
@@ -74,11 +72,7 @@ export function registerIssueAttributeRoutes(router: Hono<{ Variables: AuthVars 
 }
 
 async function loadIssueRow(issueId: string): Promise<{ id: string; projectId: string }> {
-  const [row] = await db
-    .select({ id: issues.id, projectId: issues.projectId })
-    .from(issues)
-    .where(eq(issues.id, issueId))
-    .limit(1);
+  const row = await issueScopeOf(issueId);
   if (!row) throw notFound('issue not found');
-  return row;
+  return { id: row.id, projectId: row.projectId };
 }

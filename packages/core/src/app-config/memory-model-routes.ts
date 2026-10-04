@@ -3,12 +3,10 @@
 // effect of PUT /api/app-config — an hours-long paid job is not a boolean.
 
 import type { AppConfigRefusalCode } from '@forge/contracts/app-config';
-import { eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { appConfig, memoryModels } from '../db/schema.js';
+import { memoryModels } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';
 import {
@@ -23,6 +21,8 @@ import {
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
+import { memoryModelOf } from './read.js';
+import { setMemoryModel } from './service.js';
 
 const refuse = refuser<AppConfigRefusalCode>('APP_CONFIG_REFUSED');
 
@@ -50,12 +50,8 @@ memoryModelRoutes.get('/:projectId/memory-model/reindex', validParam, async (c) 
   const { projectId } = c.req.valid('param');
   const access = await loadProjectAccess(projectId, c.get('userId'));
   requireHeld(access, 'project.read');
-  const [cfg] = await db
-    .select({ model: appConfig.memoryModel })
-    .from(appConfig)
-    .where(eq(appConfig.projectId, projectId))
-    .limit(1);
-  return c.json({ model: cfg?.model ?? 'flat', reindex: await readReindex(projectId) });
+  const model = await memoryModelOf(projectId);
+  return c.json({ model, reindex: await readReindex(projectId) });
 });
 
 memoryModelRoutes.post(
@@ -86,24 +82,12 @@ memoryModelRoutes.post(
         remaining: counts.pending,
         requestedAt: new Date().toISOString(),
       };
-      await db
-        .insert(appConfig)
-        .values({ projectId, memoryModel: 'chunked', memoryReindex: reindex })
-        .onConflictDoUpdate({
-          target: appConfig.projectId,
-          set: { memoryModel: 'chunked', memoryReindex: reindex, updatedAt: sql`now()` },
-        });
+      await setMemoryModel(projectId, { memoryModel: 'chunked', memoryReindex: reindex });
       await enqueueChunkReindex(projectId);
       return c.json({ model: 'chunked', reindex }, 202);
     }
 
-    await db
-      .insert(appConfig)
-      .values({ projectId, memoryModel: 'flat' })
-      .onConflictDoUpdate({
-        target: appConfig.projectId,
-        set: { memoryModel: 'flat', updatedAt: sql`now()` },
-      });
+    await setMemoryModel(projectId, { memoryModel: 'flat' });
     if (isLive(current)) {
       await writeReindex(projectId, { state: 'cancelled', finishedAt: new Date().toISOString() });
     }

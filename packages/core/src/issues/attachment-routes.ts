@@ -1,9 +1,6 @@
-import { asc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { issueAttachments, issues } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
@@ -14,7 +11,8 @@ import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { getStorage, isEnoent } from '../storage/index.js';
-import { persistIssueAttachment } from './attachment-service.js';
+import { deleteIssueAttachment, persistIssueAttachment } from './attachment-service.js';
+import { attachmentWithProject, issueScopeOf, listIssueAttachments } from './read-service.js';
 import {
   issueRouteIdParamSchema,
   projectScopeQuerySchema,
@@ -58,11 +56,7 @@ issueAttachmentRoutes.post(
     const { id: issueId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const [issue] = await db
-      .select({ id: issues.id, projectId: issues.projectId })
-      .from(issues)
-      .where(eq(issues.id, issueId))
-      .limit(1);
+    const issue = await issueScopeOf(issueId);
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
@@ -99,19 +93,7 @@ issueAttachmentRoutes.get(
 
     const issue = await resolveIssueRouteRef(rawId, projectIdQuery, userId);
 
-    const rows = await db
-      .select({
-        id: issueAttachments.id,
-        issueId: issueAttachments.issueId,
-        uploaderId: issueAttachments.uploaderId,
-        name: issueAttachments.name,
-        mime: issueAttachments.mime,
-        size: issueAttachments.size,
-        createdAt: issueAttachments.createdAt,
-      })
-      .from(issueAttachments)
-      .where(eq(issueAttachments.issueId, issue.id))
-      .orderBy(asc(issueAttachments.createdAt));
+    const rows = await listIssueAttachments(issue.id);
 
     return c.json(rows.map((r) => ({ ...r, url: `/api/attachments/${r.id}/download` })));
   },
@@ -135,18 +117,7 @@ attachmentRoutes.get(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const [row] = await db
-      .select({
-        id: issueAttachments.id,
-        path: issueAttachments.path,
-        mime: issueAttachments.mime,
-        name: issueAttachments.name,
-        projectId: issues.projectId,
-      })
-      .from(issueAttachments)
-      .innerJoin(issues, eq(issues.id, issueAttachments.issueId))
-      .where(eq(issueAttachments.id, id))
-      .limit(1);
+    const row = await attachmentWithProject(id);
     if (!row) throw notFound('attachment not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
@@ -178,19 +149,7 @@ attachmentRoutes.delete(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const [row] = await db
-      .select({
-        id: issueAttachments.id,
-        issueId: issueAttachments.issueId,
-        uploaderId: issueAttachments.uploaderId,
-        name: issueAttachments.name,
-        path: issueAttachments.path,
-        projectId: issues.projectId,
-      })
-      .from(issueAttachments)
-      .innerJoin(issues, eq(issues.id, issueAttachments.issueId))
-      .where(eq(issueAttachments.id, id))
-      .limit(1);
+    const row = await attachmentWithProject(id);
     if (!row) throw notFound('attachment not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
@@ -201,7 +160,7 @@ attachmentRoutes.delete(
     if (!isUploader && !isAdmin) throw forbidden('only the uploader or a project admin may delete');
 
     await getStorage().delete(row.path);
-    await db.delete(issueAttachments).where(eq(issueAttachments.id, id));
+    await deleteIssueAttachment(id);
 
     void safeRecordActivity({
       issueId: row.issueId,

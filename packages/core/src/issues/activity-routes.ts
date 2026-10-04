@@ -3,21 +3,23 @@ import {
   type RecordEventRefusalCode,
   recordAction,
 } from '@forge/contracts/record-events';
-import { and, desc, eq, like, lt } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { activityLog, issues } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import type { ActorAgency } from './actor-agency.js';
+import { deleteActivity, setActivityPayload } from './activity-log.js';
+import {
+  type ActivityRow,
+  listIssueActivity,
+  listProjectActivity,
+  loadActivity,
+} from './activity-read.js';
 import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './actor-identity.js';
 import { resolveActors } from './actor-resolution.js';
-import { issueArchiveSide } from './archive.js';
 import {
   issueRouteIdParamSchema,
   projectScopeQuerySchema,
@@ -37,28 +39,6 @@ const activityQuerySchema = z
 const perIssueQuerySchema = activityQuerySchema.omit({ type: true }).extend({
   projectId: projectScopeQuerySchema.shape.projectId,
 });
-
-const ACTIVITY_ROW_COLUMNS = {
-  id: activityLog.id,
-  issueId: activityLog.issueId,
-  action: activityLog.action,
-  actorType: activityLog.actorType,
-  actorAgency: activityLog.actorAgency,
-  actorId: activityLog.actorId,
-  payload: activityLog.payload,
-  createdAt: activityLog.createdAt,
-} as const;
-
-type ActivityRow = {
-  id: string;
-  issueId: string;
-  action: string;
-  actorType: string;
-  actorAgency: ActorAgency;
-  actorId: string;
-  payload: unknown;
-  createdAt: Date;
-};
 
 type ActivityRowWithActor = ActivityRow & { actor: ResolvedActor | null };
 
@@ -110,20 +90,8 @@ issueActivityRoutes.get(
     const issue = await resolveIssueRouteRef(rawId, projectIdQuery, userId);
     const issueId = issue.id;
 
-    const conditions = [eq(activityLog.issueId, issueId)];
-    if (before) conditions.push(lt(activityLog.createdAt, before));
-    const where = conditions.length === 1 ? conditions[0] : and(...conditions);
-
-    const rows = await db
-      .select({
-        ...ACTIVITY_ROW_COLUMNS,
-      })
-      .from(activityLog)
-      .where(where)
-      .orderBy(desc(activityLog.createdAt))
-      .limit(limit);
-
-    const withActors = await attachActors(rows as ActivityRow[]);
+    const rows = await listIssueActivity(issueId, limit, before);
+    const withActors = await attachActors(rows);
     return c.json(envelope(withActors, limit));
   },
 );
@@ -137,22 +105,6 @@ const evaluateBodySchema = z
   .strict();
 
 const activityIdParamSchema = z.object({ id: z.uuid(), activityId: z.uuid() });
-
-async function loadActivity(activityId: string) {
-  const [row] = await db
-    .select({
-      id: activityLog.id,
-      issueId: activityLog.issueId,
-      action: activityLog.action,
-      payload: activityLog.payload,
-      projectId: issues.projectId,
-    })
-    .from(activityLog)
-    .innerJoin(issues, eq(issues.id, activityLog.issueId))
-    .where(eq(activityLog.id, activityId))
-    .limit(1);
-  return row ?? null;
-}
 
 const refuseRecord = refuser<RecordEventRefusalCode>('EVENT_REFUSED');
 
@@ -199,15 +151,9 @@ issueActivityRoutes.patch(
       },
     };
 
-    const [updated] = await db
-      .update(activityLog)
-      .set({ payload: nextPayload })
-      .where(eq(activityLog.id, activityId))
-      .returning({
-        ...ACTIVITY_ROW_COLUMNS,
-      });
+    const updated = await setActivityPayload(activityId, nextPayload);
     if (!updated) throw notFound('activity not found');
-    const [withActor] = await attachActors([updated as ActivityRow]);
+    const [withActor] = await attachActors([updated]);
     return c.json(withActor);
   },
 );
@@ -228,7 +174,7 @@ issueActivityRoutes.delete(
     requireHeld(access, 'project.admin');
     assertActivityMutable(activity.action);
 
-    await db.delete(activityLog).where(eq(activityLog.id, activityId));
+    await deleteActivity(activityId);
     return c.body(null, 204);
   },
 );
@@ -252,21 +198,8 @@ projectActivityRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    const conditions = [eq(issues.projectId, projectId), ...issueArchiveSide(false)];
-    if (before) conditions.push(lt(activityLog.createdAt, before));
-    if (type) conditions.push(like(activityLog.action, `${type}.%`));
-
-    const rows = await db
-      .select({
-        ...ACTIVITY_ROW_COLUMNS,
-      })
-      .from(activityLog)
-      .innerJoin(issues, eq(issues.id, activityLog.issueId))
-      .where(and(...conditions))
-      .orderBy(desc(activityLog.createdAt))
-      .limit(limit);
-
-    const withActors = await attachActors(rows as ActivityRow[]);
+    const rows = await listProjectActivity(projectId, limit, before, type);
+    const withActors = await attachActors(rows);
     return c.json(envelope(withActors, limit));
   },
 );

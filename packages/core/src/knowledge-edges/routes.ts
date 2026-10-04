@@ -1,13 +1,12 @@
-import { and, desc, eq, type SQL, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { knowledgeEdges } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
+import { knowledgeEdgeProject, listKnowledgeEdges } from './read.js';
+import { createKnowledgeEdge, deleteKnowledgeEdge } from './service.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -56,19 +55,7 @@ knowledgeEdgeRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    const conditions: SQL[] = [eq(knowledgeEdges.projectId, projectId)];
-    if (subject) conditions.push(eq(knowledgeEdges.subject, subject));
-    if (predicate) conditions.push(eq(knowledgeEdges.predicate, predicate));
-    if (object) conditions.push(eq(knowledgeEdges.object, object));
-
-    const rows = await db
-      .select()
-      .from(knowledgeEdges)
-      .where(and(...conditions))
-      .orderBy(desc(knowledgeEdges.createdAt))
-      .limit(limit);
-
-    return c.json(rows);
+    return c.json(await listKnowledgeEdges({ projectId, subject, predicate, object, limit }));
   },
 );
 
@@ -84,46 +71,8 @@ knowledgeEdgeRoutes.post(
     const access = await loadProjectAccess(input.projectId, userId);
     requireHeld(access, 'project.admin');
 
-    // Application-layer dedup on (project_id, subject, predicate, object, value).
-    // Without this an extraction pipeline that re-runs on the same source memory
-    // accumulates duplicate triples and skews graph queries. A unique index
-    // would be stricter but requires a follow-up migration; this guard keeps
-    // the contract idempotent today.
-    const valueCond = input.value
-      ? eq(knowledgeEdges.value, input.value)
-      : sql`${knowledgeEdges.value} IS NULL`;
-    const [existing] = await db
-      .select()
-      .from(knowledgeEdges)
-      .where(
-        and(
-          eq(knowledgeEdges.projectId, input.projectId),
-          eq(knowledgeEdges.subject, input.subject),
-          eq(knowledgeEdges.predicate, input.predicate),
-          eq(knowledgeEdges.object, input.object),
-          valueCond,
-        ),
-      )
-      .limit(1);
-    if (existing) return c.json(existing, 200);
-
-    const [inserted] = await db
-      .insert(knowledgeEdges)
-      .values({
-        projectId: input.projectId,
-        subject: input.subject,
-        predicate: input.predicate,
-        object: input.object,
-        value: input.value ?? null,
-        sourceMemoryId: input.sourceMemoryId ?? null,
-        confidence: input.confidence ?? 1.0,
-        validFrom: input.validFrom ?? null,
-        validUntil: input.validUntil ?? null,
-      })
-      .returning();
-    if (!inserted) throw new Error('knowledge_edges: insert returned no row');
-
-    return c.json(inserted, 201);
+    const { row, created } = await createKnowledgeEdge(input);
+    return c.json(row, created ? 201 : 200);
   },
 );
 
@@ -136,17 +85,13 @@ knowledgeEdgeRoutes.delete(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const [row] = await db
-      .select({ id: knowledgeEdges.id, projectId: knowledgeEdges.projectId })
-      .from(knowledgeEdges)
-      .where(eq(knowledgeEdges.id, id))
-      .limit(1);
-    if (!row) throw notFound('knowledge edge not found');
+    const projectId = await knowledgeEdgeProject(id);
+    if (!projectId) throw notFound('knowledge edge not found');
 
-    const access = await loadProjectAccess(row.projectId, userId);
+    const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.admin');
 
-    await db.delete(knowledgeEdges).where(eq(knowledgeEdges.id, id));
+    await deleteKnowledgeEdge(id);
     return c.body(null, 204);
   },
 );

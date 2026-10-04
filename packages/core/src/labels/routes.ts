@@ -1,10 +1,8 @@
-import { count, eq } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { LabelRefusalCode } from '@forge/contracts/labels';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { issueLabels, labelKinds, labels } from '../db/schema.js';
+import { labelKinds } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -17,10 +15,11 @@ import {
   assertKnowledgeNodeIsLegal,
   assertParentIsForModule,
   assertParentIsLegal,
-  autoModuleColor,
   deriveModuleSlug,
 } from './module-service.js';
 import { moduleDetailOf, moduleRollupWithStanding } from './module-standing-read.js';
+import { labelAttachmentCount, labelHead, listProjectLabels } from './read.js';
+import { createLabel, deleteLabel, updateLabel } from './service.js';
 import { labelUniqueConflict } from './unique-conflicts.js';
 import { requireHeld } from '../permissions/index.js';
 
@@ -83,19 +82,6 @@ const uniqueConflict = (err: unknown): RefusalError | undefined => {
   return named && refuse(named.code, named.message);
 };
 
-const labelColumns = {
-  id: labels.id,
-  projectId: labels.projectId,
-  name: labels.name,
-  color: labels.color,
-  kind: labels.kind,
-  parentId: labels.parentId,
-  slug: labels.slug,
-  knowledgeEntryId: labels.knowledgeEntryId,
-  description: labels.description,
-  createdAt: labels.createdAt,
-};
-
 export const labelProjectRoutes = new Hono<{ Variables: AuthVars }>();
 labelProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -126,20 +112,14 @@ labelProjectRoutes.post(
     }
 
     try {
-      const [inserted] = await db
-        .insert(labels)
-        .values({
-          projectId,
-          name,
-          color: color ?? autoModuleColor(name),
-          kind: kind ?? 'label',
-          parentId: parentId ?? null,
-          slug: isModule ? await deriveModuleSlug(projectId, name) : null,
-          knowledgeEntryId: knowledgeEntryId ?? null,
-          description: description ?? null,
-        })
-        .returning(labelColumns);
-      if (!inserted) throw new Error('labels: insert returned no row');
+      const inserted = await createLabel(projectId, {
+        name,
+        color,
+        kind,
+        parentId,
+        knowledgeEntryId,
+        description,
+      });
       return c.json(inserted, 201);
     } catch (err) {
       throw uniqueConflict(err) ?? err;
@@ -159,9 +139,7 @@ labelProjectRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    const rows = await db.select(labelColumns).from(labels).where(eq(labels.projectId, projectId));
-
-    return c.json(rows);
+    return c.json(await listProjectLabels(projectId));
   },
 );
 
@@ -232,17 +210,7 @@ export const labelRoutes = new Hono<{ Variables: AuthVars }>();
 labelRoutes.use('*', requireAuth(), assertEmailVerified());
 
 async function loadLabel(labelId: string) {
-  const [row] = await db
-    .select({
-      id: labels.id,
-      projectId: labels.projectId,
-      name: labels.name,
-      kind: labels.kind,
-      parentId: labels.parentId,
-    })
-    .from(labels)
-    .where(eq(labels.id, labelId))
-    .limit(1);
+  const row = await labelHead(labelId);
   if (!row) throw notFound('label not found');
   return row;
 }
@@ -291,11 +259,7 @@ labelRoutes.patch(
     }
 
     try {
-      const [updated] = await db
-        .update(labels)
-        .set(updates)
-        .where(eq(labels.id, id))
-        .returning(labelColumns);
+      const updated = await updateLabel(id, updates);
       if (!updated) throw notFound('label not found');
       return c.json(updated);
     } catch (err) {
@@ -317,18 +281,14 @@ labelRoutes.delete(
     const access = await loadProjectAccess(label.projectId, userId);
     requireHeld(access, 'project.admin');
 
-    const [attached] = await db
-      .select({ n: count() })
-      .from(issueLabels)
-      .where(eq(issueLabels.labelId, id));
-    if ((attached?.n ?? 0) > 0) {
+    if ((await labelAttachmentCount(id)) > 0) {
       throw refuse(
         'LABEL_IN_USE',
         'this label is attached to issues; detach it from every issue before deleting it',
       );
     }
 
-    await db.delete(labels).where(eq(labels.id, id));
+    await deleteLabel(id);
     return c.body(null, 204);
   },
 );

@@ -6,13 +6,11 @@
  * only because the parent had reached its size budget.
  */
 
-import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { writeAssistantPreferences } from '../preferences/index.js';
-import { db } from '../db/client.js';
-import { answerStyles, organizationMembers, projectMemberRoles } from '../db/schema.js';
+import { answerStyles, projectMemberRoles } from '../db/schema.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -26,6 +24,7 @@ import {
   setAgentProjects,
 } from './agent-accounts.js';
 import { agentSelfPatchSchema, readAgentSelf, writeAgentSelf } from './agent-selves.js';
+import { orgMemberRole } from './read.js';
 import { requireOrgCan } from '../permissions/index.js';
 
 export const agentAccountRoutes = new Hono<{ Variables: AuthVars }>();
@@ -233,12 +232,7 @@ agentAccountRoutes.patch(
     const { orgId, userId } = c.req.valid('param');
     const actor = c.get('userId');
     await requireOrgCan({ userId: actor }, 'org.admin', orgId);
-    const [member] = await db
-      .select({ userId: organizationMembers.userId })
-      .from(organizationMembers)
-      .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.userId, userId)))
-      .limit(1);
-    if (!member) throw notFound('membership not found');
+    if ((await orgMemberRole(orgId, userId)) === null) throw notFound('membership not found');
     const prefs = await writeAssistantPreferences({
       userId,
       patch: c.req.valid('json'),

@@ -22378,19 +22378,83 @@
             "name": "status",
             "required": false,
             "schema": {
-              "enum": [
-                "draft",
-                "open",
-                "reopen",
-                "in_progress",
-                "approved",
-                "needs_info",
-                "on_hold",
-                "awaiting_release",
-                "closed",
-                "dropped"
-              ],
-              "type": "string"
+              "anyOf": [
+                {
+                  "enum": [
+                    "draft",
+                    "open",
+                    "reopen",
+                    "in_progress",
+                    "approved",
+                    "needs_info",
+                    "on_hold",
+                    "awaiting_release",
+                    "closed",
+                    "dropped"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "enum": [
+                      "draft",
+                      "open",
+                      "reopen",
+                      "in_progress",
+                      "approved",
+                      "needs_info",
+                      "on_hold",
+                      "awaiting_release",
+                      "closed",
+                      "dropped"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "statusNot",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "draft",
+                    "open",
+                    "reopen",
+                    "in_progress",
+                    "approved",
+                    "needs_info",
+                    "on_hold",
+                    "awaiting_release",
+                    "closed",
+                    "dropped"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "enum": [
+                      "draft",
+                      "open",
+                      "reopen",
+                      "in_progress",
+                      "approved",
+                      "needs_info",
+                      "on_hold",
+                      "awaiting_release",
+                      "closed",
+                      "dropped"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
             }
           },
           {
@@ -22398,24 +22462,31 @@
             "name": "priority",
             "required": false,
             "schema": {
-              "enum": [
-                "critical",
-                "high",
-                "medium",
-                "low",
-                "none"
-              ],
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "assigneeId",
-            "required": false,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
+              "anyOf": [
+                {
+                  "enum": [
+                    "critical",
+                    "high",
+                    "medium",
+                    "low",
+                    "none"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "enum": [
+                      "critical",
+                      "high",
+                      "medium",
+                      "low",
+                      "none"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
             }
           },
           {
@@ -22430,11 +22501,161 @@
           },
           {
             "in": "query",
+            "name": "complexity",
+            "required": false,
+            "schema": {
+              "enum": [
+                "xs",
+                "s",
+                "m",
+                "l",
+                "xl"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "createdAfter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                  "type": "string"
+                },
+                {
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "createdBefore",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                  "type": "string"
+                },
+                {
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "updatedAfter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                  "type": "string"
+                },
+                {
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "createdBy",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
+                },
+                {
+                  "const": "agent",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "origin",
+            "required": false,
+            "schema": {
+              "enum": [
+                "detector",
+                "human"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "orWaitingOnPerson",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "key",
             "required": false,
             "schema": {
               "pattern": "^(?:[A-Za-z][A-Za-z0-9]{1,5}-)?\\d{1,10}$",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "label",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "module",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
             }
           },
           {
@@ -22468,6 +22689,26 @@
             "name": "includeArchived",
             "required": false,
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "assigneeId",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -22878,16 +23119,6 @@
           },
           {
             "in": "query",
-            "name": "q",
-            "required": false,
-            "schema": {
-              "maxLength": 200,
-              "minLength": 1,
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
             "name": "status",
             "required": false,
             "schema": {
@@ -23004,54 +23235,84 @@
           },
           {
             "in": "query",
-            "name": "label",
+            "name": "category",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "format": "uuid",
-                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-                  "type": "string"
-                },
-                {
-                  "items": {
-                    "format": "uuid",
-                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-                    "type": "string"
-                  },
-                  "type": "array"
-                }
-              ]
-            }
-          },
-          {
-            "in": "query",
-            "name": "module",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "minLength": 1,
-                  "type": "string"
-                },
-                {
-                  "items": {
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "type": "array"
-                }
-              ]
-            }
-          },
-          {
-            "in": "query",
-            "name": "assignee",
-            "required": false,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "maxLength": 100,
+              "minLength": 1,
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "complexity",
+            "required": false,
+            "schema": {
+              "enum": [
+                "xs",
+                "s",
+                "m",
+                "l",
+                "xl"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "createdAfter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                  "type": "string"
+                },
+                {
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "createdBefore",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                  "type": "string"
+                },
+                {
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "updatedAfter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                  "type": "string"
+                },
+                {
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+                  "type": "string"
+                }
+              ]
             }
           },
           {
@@ -23094,12 +23355,51 @@
           },
           {
             "in": "query",
-            "name": "category",
+            "name": "key",
             "required": false,
             "schema": {
-              "maxLength": 100,
-              "minLength": 1,
+              "pattern": "^(?:[A-Za-z][A-Za-z0-9]{1,5}-)?\\d{1,10}$",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "label",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "module",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
             }
           },
           {
@@ -23116,6 +23416,43 @@
                 "priority:asc",
                 "priority:desc"
               ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "withAgentSessions",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeArchived",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "assignee",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
               "type": "string"
             }
           },
@@ -23139,15 +23476,6 @@
               "maximum": 9007199254740991,
               "minimum": 0,
               "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "withAgentSessions",
-            "required": false,
-            "schema": {
-              "default": false,
-              "type": "boolean"
             }
           },
           {
@@ -23202,14 +23530,6 @@
             "schema": {
               "default": false,
               "type": "boolean"
-            }
-          },
-          {
-            "in": "query",
-            "name": "includeArchived",
-            "required": false,
-            "schema": {
-              "type": "string"
             }
           }
         ],

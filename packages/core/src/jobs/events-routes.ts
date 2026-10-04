@@ -1,14 +1,9 @@
-import { and, asc, eq, gt, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
 import type { JobStatus } from '../db/schema.js';
 import {
-  agentSessions,
   DEVICE_POSTED_JOB_EVENT_KINDS,
-  jobEvents,
-  jobs,
   type SessionRuntimeState,
   sessionRuntimeStates,
 } from '../db/schema.js';
@@ -20,16 +15,13 @@ import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
-import { transitionSessions } from '../agent-sessions/session-transition.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { readJobGate } from './job-queries.js';
+import { listJobEvents } from './read.js';
+import { appendJobEvents, beatLinkedSession, stampJobAckFromEvents } from './service.js';
 import { refuseJob } from './refusals.js';
 import { scrubJobOutput } from './job-secret-scrub.js';
-import {
-  beatSession,
-  maybeDeriveIncremental,
-  setSessionRuntimeState,
-} from '../agent-sessions/index.js';
+import { maybeDeriveIncremental, setSessionRuntimeState } from '../agent-sessions/index.js';
 import { TERMINAL_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { requireHeld } from '../permissions/index.js';
 
@@ -86,16 +78,7 @@ jobEventsListRoutes.get(
     const access = await loadProjectAccess(job.projectId, userId);
     requireHeld(access, 'project.read');
 
-    const whereClauses = [eq(jobEvents.jobId, jobId)];
-    if (sinceSeq !== undefined) whereClauses.push(gt(jobEvents.seq, sinceSeq));
-    const where = whereClauses.length === 1 ? whereClauses[0] : and(...whereClauses);
-
-    const items = await db
-      .select()
-      .from(jobEvents)
-      .where(where)
-      .orderBy(asc(jobEvents.seq))
-      .limit(limit);
+    const items = await listJobEvents(jobId, sinceSeq, limit);
 
     const lastSeq = items.length > 0 ? Number(items[items.length - 1]?.seq ?? 0) : (sinceSeq ?? 0);
     return c.json({ items, lastSeq });
@@ -175,29 +158,7 @@ jobEventsRoutes.post(
       events.filter((e) => !isPartialStreamEvent(e)),
     );
 
-    const inserted =
-      persisted.length === 0
-        ? []
-        : await db.transaction(async (tx) => {
-            await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${jobId}))`);
-            const maxRows = await tx.execute<{ max_seq: number | null }>(sql`
-        SELECT COALESCE(MAX(seq), 0) AS max_seq
-        FROM job_events
-        WHERE job_id = ${jobId}
-      `);
-            const first = maxRows[0] as { max_seq: number | string | null } | undefined;
-            const baseSeq = Number(first?.max_seq ?? 0);
-
-            const values = persisted.map((e, i) => ({
-              jobId,
-              kind: e.kind,
-              data: e.data,
-              seq: baseSeq + i + 1,
-              ...(e.ts ? { ts: new Date(e.ts) } : {}),
-            }));
-
-            return tx.insert(jobEvents).values(values).returning();
-          });
+    const inserted = await appendJobEvents(jobId, persisted);
 
     // Post-commit broadcast. Iterate and publish; failures bubble (fail-fast).
     for (const row of inserted) {
@@ -215,15 +176,7 @@ jobEventsRoutes.post(
 
     if (job.ackedAt === null) {
       try {
-        await db
-          .update(jobs)
-          .set({
-            ackedAt: new Date(),
-            killRequestedAt: null,
-            killConfirmedAt: null,
-            killOutcome: null,
-          })
-          .where(and(eq(jobs.id, jobId), isNull(jobs.ackedAt)));
+        await stampJobAckFromEvents(jobId);
       } catch (err) {
         logger.warn({ err, jobId }, 'job-events: ack fallback stamp failed (continuing)');
       }
@@ -234,26 +187,7 @@ jobEventsRoutes.post(
       try {
         const heartbeatNow = new Date();
         const sawTurn = events.some(isTurnEvidence);
-        const started = await db.transaction(async (tx) => {
-          const beat = await beatSession(
-            linkedSessionId,
-            { at: heartbeatNow, liveOnly: true },
-            tx,
-          );
-          if (!sawTurn || !beat) return null;
-          const [row] = (
-            await transitionSessions(tx, {
-              to: 'running',
-              from: 'queued',
-              set: { startedAt: heartbeatNow },
-              where: eq(agentSessions.id, linkedSessionId),
-              actor: { type: 'runner', id: device.id },
-              source: 'job-events',
-              returning: ['id', 'projectId', 'deviceId'],
-            })
-          ).rows;
-          return row ?? null;
-        });
+        const started = await beatLinkedSession(linkedSessionId, heartbeatNow, sawTurn, device.id);
         if (started) {
           broadcastSessionEvent(
             started.id,
