@@ -205,8 +205,8 @@ export async function writeRevision(input: {
           eq(requirementRevisions.revision, target.revision),
         ),
       );
-    await resetDraftCriteria(tx, row.id, target.revision);
-    return writeCriteria(tx, row.id, target.revision, write.criteria);
+    const own = await resetDraftCriteria(tx, row.id, target.revision);
+    return writeCriteria(tx, row.id, target.revision, write.criteria, own);
   });
   return answer(projectId, row.id, actor, refusals);
 }

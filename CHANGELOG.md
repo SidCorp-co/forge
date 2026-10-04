@@ -156,6 +156,17 @@
   each release is `0.4.0-dev.1`, `0.4.0-dev.2` and so on. Dev releases carry such a version in
   `/api/version` and the sidebar, tagged `dev-v…`.
 
+- **A reviewer can revise a proposed suggestion instead of rejecting it whole (ISS-117).**
+  `POST /api/projects/:id/suggestions/:sid/revise { payload, reason }` (and `forge_suggestions`
+  `revise`) rejects the original with the reason and proposes the edited payload as the reviewer's
+  own suggestion, naming the one it revises; the reviewer cannot then accept it, somebody else does.
+
+- **A breakdown files its issues sized and held by their design (ISS-117).** Each item carries a
+  complexity, and may carry a priority, a category and the pinned design it builds; accepting it
+  writes them and links each issue as that design's build, so the build gate holds it. A missing
+  complexity, a design the baseline does not pin, or none named when several are pinned is refused
+  by name; priority and category default, and the answer says which did.
+
 - **Guides for requirements, suggestions and feedback triage (ISS-90).** The tools for them cite
   these public guides instead of designs only Forge's own project could read, as do the issue
   status refusals.
@@ -3372,6 +3383,9 @@
   set is now 59.
 
 ### Fixed
+
+- **Rewriting a draft requirement revision keeps the BC codes the draft already holds (ISS-117).**
+  Sending back the criteria read from the draft used to be refused `CRITERION_CODE_UNKNOWN`.
 
 - **A prompt schedule naming a message that no longer exists now fails, and says so (ISS-112).** It
   used to read as already applied. A release batch skipped for want of a release gate now names

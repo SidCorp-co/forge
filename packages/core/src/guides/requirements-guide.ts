@@ -39,7 +39,9 @@ routes under \`/api/projects/:id/requirements\` are the same services.
    trace to BC-3 mean the same thing next month. Naming a code the base does not hold is
    \`CRITERION_CODE_UNKNOWN\`; naming one twice \`CRITERION_CODE_DUPLICATE\`. A \`scenario\` criterion
    must read Given / When / Then, each starting a line (\`CRITERION_SCENARIO_UNPARSEABLE\`).
-   **edit** rewrites a draft in place; anything past draft is \`REQUIREMENT_REVISION_NOT_DRAFT\`.
+   **edit** rewrites a draft in place, whole: send the criteria list you read back, codes included,
+   and a code the draft itself gave keeps that code, as a live code of its base does. Anything past
+   draft is \`REQUIREMENT_REVISION_NOT_DRAFT\`.
 3. **propose** puts the draft in front of a person. Proposing also checks the base is still the head.
 4. A person **accepts** it (it becomes current, the previous current is superseded) or **returns** it
    with a reason (it goes back to draft, and each return is kept as its own record).

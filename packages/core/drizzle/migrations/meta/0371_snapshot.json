@@ -1,5 +1,5 @@
 {
-  "id": "b4c9de16-4c5c-4331-91f7-abc6e66d7e26",
+  "id": "10a7f07c-28df-4a69-97fb-68802f681458",
   "prevId": "d495f493-372a-450a-a787-c06f961b2dc9",
   "version": "7",
   "dialect": "postgresql",
@@ -8154,7 +8154,7 @@
       "checkConstraints": {
         "pipeline_runs_release_version_chk": {
           "name": "pipeline_runs_release_version_chk",
-          "value": "\"pipeline_runs\".\"release_version\" IS NULL OR \"pipeline_runs\".\"release_version\" ~ '^[0-9]{1,9}[.][0-9]{1,9}[.][0-9]{1,9}(-[a-z][a-z0-9]{0,15}[.][0-9]{1,9})?$'"
+          "value": "\"pipeline_runs\".\"release_version\" IS NULL OR \"pipeline_runs\".\"release_version\" ~ '^[0-9]{1,9}[.][0-9]{1,9}[.][0-9]{1,9}$'"
         }
       },
       "isRLSEnabled": false
@@ -18512,6 +18512,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "revises_id": {
+          "name": "revises_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "text",
@@ -18690,6 +18696,22 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "suggestions_revises_uq": {
+          "name": "suggestions_revises_uq",
+          "columns": [
+            {
+              "expression": "revises_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "revises_id IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -18743,6 +18765,19 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "suggestions_revises_id_suggestions_id_fk": {
+          "name": "suggestions_revises_id_suggestions_id_fk",
+          "tableFrom": "suggestions",
+          "tableTo": "suggestions",
+          "columnsFrom": [
+            "revises_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "suggestions_producer_id_users_id_fk": {
