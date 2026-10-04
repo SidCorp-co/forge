@@ -1,4 +1,4 @@
-import type { Finding } from './findings.js';
+import type { Finding } from './security-findings.js';
 
 interface SecretRule {
   rule: string;

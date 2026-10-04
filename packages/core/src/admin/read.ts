@@ -1,7 +1,6 @@
 import { NON_OPEN_STATUSES } from '@forge/contracts/issue-machine';
 import { UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { and, count, desc, eq, ilike, inArray, isNull, sql } from 'drizzle-orm';
-import { readThresholds } from '../admin-thresholds/index.js';
 import { db } from '../db/client.js';
 import {
   activityLog,
@@ -18,6 +17,7 @@ import {
 } from '../db/schema.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { buildIlikePattern } from '../issues/index.js';
+import { ADMIN_THRESHOLDS } from '../lib/admin-thresholds.js';
 import { utcDateTrunc } from '../lib/time-buckets.js';
 import { computeAlerts } from './alert-queries.js';
 import {
@@ -50,7 +50,7 @@ type AdminPage<T> = { rows: T[]; total: number };
 export async function readAdminOverview(window: GlanceWindow): Promise<AdminOverview> {
   const spec = WINDOW_SPECS[window];
   const now = new Date();
-  const thresholds = await readThresholds();
+  const thresholds = ADMIN_THRESHOLDS;
   const openAlerts = (await computeAlerts({ now, thresholds })).filter(
     (a) => a.status !== 'ok',
   ).length;

@@ -19,7 +19,6 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { BODY_FORMATS } from '../body/formats.js';
-import { type IssueBranchOverride } from '../branches/resolve.js';
 import { activityLog } from './schema-activity.js';
 import { users } from './schema-auth.js';
 import { comments } from './schema-comments.js';
@@ -31,6 +30,11 @@ import { requirementRevisions, requirements } from './schema-requirements.js';
 import { scheduleRuns } from './schema-schedule-runs.js';
 import { suggestions } from './schema-suggestions.js';
 import { identSearchColumn } from './schema-types.js';
+
+export interface IssueBranchOverride {
+  baseBranch?: string | null;
+  targetBranch?: string | null;
+}
 
 export const issuePrefixAliases = pgTable(
   'issue_prefix_aliases',
@@ -142,8 +146,7 @@ export const issues = pgTable(
     releaseNotes: jsonb('release_notes').$type<ReleaseNotes | null>(),
     // ISS-137 — Layer 2 branch config (per-issue override) lives here under
     // `branchConfig`. Free-form jsonb so other per-issue settings can land
-    // here later without further migrations. NULL = no override; see
-    // packages/core/src/branches/resolve.ts for the resolution order.
+    // here later without further migrations. NULL = no override.
     metadata: jsonb('metadata').$type<
       | ({
           branchConfig?: IssueBranchOverride | null;

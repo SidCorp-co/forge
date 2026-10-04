@@ -3,17 +3,6 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { env } from '../config/env.js';
-import { countActivePatsForUser, mintPat, revokePat } from '../credentials/pat.js';
-import { coreTokenNamePrefixOf } from '../credentials/pat-format.js';
-import {
-  PAT_ACCOUNT_ONLY_PERMISSIONS,
-  PAT_EXPLICIT_PERMISSIONS,
-  PAT_GRANT_EPOCH,
-  PAT_PERMISSION_ALL,
-  PAT_PERMISSION_NAMES,
-  patGrantIsLegacy,
-  patGrantIsStatedFull,
-} from '../credentials/pat-permissions.js';
 import type { personalAccessTokens } from '../db/schema.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';
@@ -22,7 +11,18 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { requireFreshAuth } from '../middleware/require-fresh-auth.js';
 import { forgetPatThrottle } from '../middleware/require-pat.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { hasLivePatNamed, listPatsOf } from './read.js';
+import { countActivePatsForUser, mintPat, revokePat } from './pat.js';
+import { coreTokenNamePrefixOf } from './pat-format.js';
+import {
+  PAT_ACCOUNT_ONLY_PERMISSIONS,
+  PAT_EXPLICIT_PERMISSIONS,
+  PAT_GRANT_EPOCH,
+  PAT_PERMISSION_ALL,
+  PAT_PERMISSION_NAMES,
+  patGrantIsLegacy,
+  patGrantIsStatedFull,
+} from './pat-permissions.js';
+import { hasLivePatNamed, listPatsOf } from './pat-read.js';
 
 const refuse = refuser<PatRefusalCode>('PAT_REFUSED');
 

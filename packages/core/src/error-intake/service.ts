@@ -9,6 +9,7 @@ import {
   TransitionError,
   transitionIssueStatus,
 } from '../issues/index.js';
+import { ADMIN_THRESHOLDS } from '../lib/admin-thresholds.js';
 import { logger } from '../observability/logger.js';
 import { judgeSentryIssue, type SentryAdmissionThresholds } from './rules.js';
 
@@ -98,25 +99,12 @@ export async function projectCreatedById(projectId: string): Promise<string | nu
   return row?.createdBy ?? null;
 }
 
-type ThresholdSource = () => Promise<SentryAdmissionThresholds>;
-let thresholdSource: ThresholdSource | null = null;
-
-/**
- * Where the admission policy is read from (the fixed defaults of `admin-thresholds`). The process
- * entry provides it at boot, so this domain reads no module above it.
- */
-export function provideAdmissionThresholds(source: ThresholdSource): void {
-  thresholdSource = source;
-}
-
 /** The admission policy — the SAME read for the webhook's sightings and the scheduled pull. */
-export async function readSentryThresholds(): Promise<SentryAdmissionThresholds> {
-  if (!thresholdSource) {
-    throw new Error(
-      'error intake: no admission threshold source was provided; the process entry calls provideAdmissionThresholds before it serves',
-    );
-  }
-  return thresholdSource();
+export function readSentryThresholds(): SentryAdmissionThresholds {
+  return {
+    minEventCount: ADMIN_THRESHOLDS.sentryMinEventCount,
+    minUserCount: ADMIN_THRESHOLDS.sentryMinUserCount,
+  };
 }
 
 /** Bound a TITLE, which is a column a person scans. Never used for the run's own record. */

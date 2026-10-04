@@ -84,5 +84,3 @@ export interface AdminAlert {
   since: string | null;
   entities: AdminAlertEntity[];
 }
-
-export { ADMIN_THRESHOLD_DEFAULTS, type AdminThresholds } from '../admin-thresholds/index.js';

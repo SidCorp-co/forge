@@ -2,8 +2,6 @@
 // (ADR 0008: a kernel imports only kernel and platform modules). Read only inside a call.
 
 interface RunnersPorts {
-  /** The operator's thresholds; the reaper reads how long a runner may stay offline. */
-  readThresholds(): Promise<{ ghostRunnerOfflineDays: number }>;
   /** The live jobs occupying each runner, from the job ledger. */
   countInFlightByRunner(runnerIds: string[]): Promise<Map<string, number>>;
 }
@@ -17,7 +15,7 @@ export function provideRunnersPorts(ports: RunnersPorts): void {
 export function runnersPorts(): RunnersPorts {
   if (!provided) {
     throw new Error(
-      'runners: no ports were provided, so a runner cannot read the thresholds; the process entry calls provideRunnersPorts before it serves',
+      'runners: no ports were provided, so a runner cannot count its in-flight jobs; the process entry calls provideRunnersPorts before it serves',
     );
   }
   return provided;

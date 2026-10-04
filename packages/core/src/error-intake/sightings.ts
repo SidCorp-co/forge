@@ -22,7 +22,7 @@ export function registerErrorSightings(): void {
       const outcome = await intakeSentryIssue(p.issue, {
         projectId: p.projectId,
         createdById,
-        thresholds: await readSentryThresholds(),
+        thresholds: readSentryThresholds(),
         target: p.target,
         scheduleRunId: null,
       });

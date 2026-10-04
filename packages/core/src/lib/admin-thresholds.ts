@@ -1,5 +1,5 @@
 /**
- * ISS-654 — the Tier 1 thresholds and the spend ceiling. `spendCeilingUsdDay` is null when no
+ * The operator thresholds, fixed in code: the Tier 1 alert limits and the spend ceiling. `spendCeilingUsdDay` is null when no
  * ceiling is set; every other field is always present, so a reader never branches on absence.
  */
 export interface AdminThresholds {
@@ -15,7 +15,7 @@ export interface AdminThresholds {
   sentryMinUserCount: number;
 }
 
-export const ADMIN_THRESHOLD_DEFAULTS: AdminThresholds = {
+export const ADMIN_THRESHOLDS: AdminThresholds = {
   stuckJobSeconds: 600,
   runnerStarvedSeconds: 300,
   spendCeilingUsdDay: null,
@@ -27,7 +27,3 @@ export const ADMIN_THRESHOLD_DEFAULTS: AdminThresholds = {
   sentryMinEventCount: 10,
   sentryMinUserCount: 2,
 };
-
-export async function readThresholds(): Promise<AdminThresholds> {
-  return ADMIN_THRESHOLD_DEFAULTS;
-}

@@ -7,6 +7,7 @@ import {
   maxProjectRole,
   orgDerivedProjectRole,
 } from '../lib/authz.js';
+import { pluginDesignationsPatchSchema } from '../lib/plugin-designation.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -18,7 +19,6 @@ import {
   requireOrgCan,
   requireOrgHeld,
 } from '../permissions/index.js';
-import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
 import { readDeclaredSource } from '../project-config/index.js';
 import { type AgentConfigKeyPatch, patchAgentConfigKeys, readAgentConfig } from './agent-config.js';
 import { listVisibleProjectRows, projectDetail } from './read.js';

@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { pluginDesignationSchema } from '../plugins/designation.js';
+import { pluginDesignationSchema } from '../lib/plugin-designation.js';
 
 const agentConfigSchema = z
   .object({
-    /** Read by `plugins/designation.ts:readPluginDesignations`, unioned per device by `GET /api/devices/me/plugins`. */
+    /** Read by `lib/plugin-designation.ts:readPluginDesignations`, unioned per device by `GET /api/devices/me/plugins`. */
     plugins: z.array(pluginDesignationSchema).optional(),
   })
   .strict();

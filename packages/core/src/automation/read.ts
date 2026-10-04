@@ -11,6 +11,7 @@ import {
   type ScheduleDetailResponse,
   type ScheduleStanding,
 } from '@forge/contracts/automation-standing';
+import { ADMIN_THRESHOLDS } from '../lib/admin-thresholds.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { holds } from '../permissions/index.js';
 import {
@@ -22,7 +23,7 @@ import {
   scheduleFacts,
   stewardActions,
 } from './facts.js';
-import { lastFires, readScheduleStreaks, readThresholds, reportRow, reportRows } from './ports.js';
+import { lastFires, readScheduleStreaks, reportRow, reportRows } from './ports.js';
 import {
   type AutomationViewer,
   fireProposals,
@@ -56,12 +57,12 @@ async function schedulesOf(
   now: Date,
   scheduleId?: string,
 ): Promise<{ standings: Standings; failStreak: number }> {
-  const [facts, streaks, last, thresholds] = await Promise.all([
+  const [facts, streaks, last] = await Promise.all([
     scheduleFacts(projectId, scheduleId),
     readScheduleStreaks({ projectId, ...(scheduleId ? { scheduleId } : {}) }),
     lastFires(projectId, scheduleId ? [scheduleId] : undefined),
-    readThresholds(),
   ]);
+  const thresholds = ADMIN_THRESHOLDS;
   const streakOf = new Map(streaks.map((s) => [s.scheduleId, s]));
   const ctx = { viewer, failStreak: thresholds.scheduleFailStreak, now };
   const standings: Standings = new Map(
