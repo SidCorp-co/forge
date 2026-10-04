@@ -55,7 +55,7 @@
   },
   "devDependencies": {
     "typescript": "^5.7.2",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.3"
   },
   "scripts": {
     "build": "tsc -p tsconfig.emit.json && tsc --noEmit -p tsconfig.build.json",
