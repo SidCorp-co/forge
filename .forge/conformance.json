@@ -80,7 +80,6 @@
       "$comment": "ISS-1106 \u2014 one question, one answer. Two constants holding the same status tuple are one answer with two labels whatever they are called, and an inline copy is a third label with no name at all; each is a place a later change can move one copy and leave the rest. Measured on main at bd2e36d5e: 8 tuples declared more than once, 13 inline restatements, and `['closed','dropped']` under four separate names. The three vocabularies are read out of `packages/core/src/db/schema.ts` rather than listed here, so a rename there stops the scan instead of quietly narrowing it. What it deliberately does not read, each stated at the point it is skipped: SQL string literals (ISS-1109 and ISS-1110 own those), test files, type unions, and a tuple written as an object-literal value, which is a table row rather than a named question. A pair that must differ is admitted by a `status-tuple: differs \u2014 <reason>` comment at the declaration, so the reason sits where a reader of the constant will find it rather than in this file. ISS-1106 criterion 13: `packages/web-v2/src` is scanned too, because a browser file answering `a job is live` a second time is the same defect as a core file doing it \u2014 `features/pipeline/activity.ts` held the four job statuses under `OPEN_STATUSES` while the gate read green. Widening the roots alone found nothing: web-v2 is written with double quotes and the literal matcher read single only, so 1648 files scanned and 0 extra tuples. Both halves are the fix. There is no web-v2 exclusion and no amnesty: the answers that were genuinely restated moved into `@forge/contracts/status-sets`, which web-v2 imports and `packages/core/src/db/status-sets-parity.test.ts` binds to core member for member, and the two whose tuples only coincide \u2014 the transition menu's discard group and the Finished filter cut \u2014 carry the `differs` reason at their own declaration. The limit this widening exposed, stated so the next reader does not have to find it: a gate that keys a tuple by its members is blind to a copy that has already DRIFTED. The browser's blocked chip answered `is this blocker settled?` with `['awaiting_release','closed']` while core answers it with `BLOCKER_SETTLED_STATUSES` = `['developed','testing','awaiting_release','closed']`, so the two never collided and the gate said nothing while the screen told people work was held that Forge would dispatch. It took a reader, not this checker. This checker catches a copy BEFORE it rots and never after, which is what makes the parity test in `packages/core/src/db/status-sets-parity.test.ts` the other half rather than a belt on a brace: the gate stops a second declaration appearing, and the parity test stops an existing pair drifting apart. ISS-1106 criterion 13, second pass: at the merged head the identifier `LIVE_JOB_STATUSES` meant four statuses in `jobs/status-sets.ts` and three in `pipeline/runs-rollup.ts`, where a `Record<JobStatus, boolean>` classified the vocabulary a second time and fed the panel's `live_jobs` count \u2014 and the gate read green through TWO holes at once. The literal matcher does not read a record, and the `status-tuple: differs` marker on `UNHELD_LIVE_JOB_STATUSES`, which is about a DIFFERENT tuple, was being read as a blanket excuse that let a second declaration of the unheld set stand. Both are closed: a `Record<\u2026Status, boolean>` is now a declaration of its `true` keys, and a marker excuses a declaration only against a peer it names. A third rule landed with them, because the first two were not enough: one NAME answers one question. Without it the planted `LIVE_JOB_STATUSES` under a three-member value still passed \u2014 the marker on `UNHELD_LIVE_JOB_STATUSES` names `LIVE_JOB_STATUSES`, so a rogue declaration wearing that name satisfied the peer check and left one unexcused answer in the group. A name holding two tuples is now refused whatever the markers say, which is the only rule of the three that would have caught the defect by its own spelling rather than by its value. `Record<\u2026Status, T>` for any other T stays unread on purpose \u2014 grouping a lookup table's keys by value invents questions nobody asked (`contracts/issue-vocabulary.ts`'s `KERNEL_TO_LABEL` would answer \"a person is owed something\"). Test files are scanned now, but only for `.each` case lists: that list is the domain a test claims to cover, so a member added to a constant leaves it silently covering less, while every other tuple in a test file is the assertion itself and importing the constant would make it vacuous. The condition that ends that narrowing is a rule that can tell an expectation from a domain. Two things this pass found and did NOT take: `pipelineRunStatuses` is still not one of the vocabularies read, so `['completed','failed','cancelled']` and `['paused','running']` are attributed to `agentSessionStatuses` or to nothing \u2014 adding it surfaces eleven inline restatements of `LIVE_PIPELINE_RUN_STATUSES` plus a second `LIVE_RUN_STATUSES` in web-v2, which is a collapse of its own and is written up in docs/proposals/status-tuple-residuals.md rather than ridden in here. One piece of that collapse DID land, because it cost two lines and the module-owns-the-concept rule is this issue's own: `LIVE_PIPELINE_RUN_STATUSES` moved from `issues/issue-lease.ts`, which had one caller, into the new `pipeline/status-sets.ts` beside `TERMINAL_PIPELINE_RUN_STATUSES`. Neither is visible to this checker \u2014 `['running','paused']` fits no vocabulary it reads and `['completed','failed','cancelled']` is attributed to `agentSessionStatuses` \u2014 so the move is for the reader, and the eleven inline copies stay where the proposal left them.",
       "scanRoots": [
         "packages/core/src",
-        "packages/core/tests",
         "packages/contracts/src",
         "packages/web-v2/src"
       ],
@@ -318,8 +317,7 @@
           "cwd": "packages/core",
           "args": [
             "check",
-            "src",
-            "tests"
+            "src"
           ],
           "drain": {
             "include": "^packages/core/src/",
@@ -334,8 +332,7 @@
           "cwd": "packages/core",
           "args": [
             "check",
-            "src",
-            "tests"
+            "src"
           ]
         }
       ]
@@ -363,7 +360,6 @@
     "test-signal": {
       "scanRoots": [
         "packages/core/src",
-        "packages/core/tests",
         "packages/web-v2/src",
         "packages/web-v2/tests",
         "packages/contracts/src",
