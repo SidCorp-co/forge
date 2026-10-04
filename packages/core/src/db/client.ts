@@ -25,7 +25,6 @@ import * as rateLimitsSchema from './schema-rate-limits.js';
 import * as repoProjectionSchema from './schema-repo-projection.js';
 import * as rocketchatSchema from './schema-rocketchat.js';
 import * as runLedgerSchema from './schema-run-ledger.js';
-import * as runnerReleaseSchema from './schema-runner-release.js';
 import * as sessionInboxSchema from './schema-session-inbox.js';
 import * as speakerLinksSchema from './schema-speaker-links.js';
 import * as transcriptIndexSchema from './schema-transcript-index.js';
@@ -59,7 +58,6 @@ const schema = {
   ...speakerLinksSchema,
   ...unauditedTransitionsSchema,
   ...repoProjectionSchema,
-  ...runnerReleaseSchema,
 };
 
 let queryCount = 0;

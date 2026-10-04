@@ -54,9 +54,7 @@ a vendor SDK, a `fetch` to a vendor host, or a vendor's types.
 | embeddings | `embeddings` | any OpenAI-compatible endpoint | the deployment |
 | mail | `mail` | SMTP | the deployment |
 | identity | `identity` | GitHub OAuth, Google, generic OIDC | the deployment |
-| outbound webhooks | `outbound-webhooks` | a customer's URL | a project's webhook row |
 | paired runner box | `published-releases`, for the published build; the box itself dials in | GitHub releases | the deployment |
-| runner release publishing | `github` | GitHub (tags, releases and the release workflow) | a project's binding |
 
 The same vendor may serve two roles — GitHub hosts source and signs people in — and is then two
 adapters, one per port. `packages/core/src/integrations/README.md` holds this table with each port's callers, and is

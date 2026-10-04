@@ -44,7 +44,6 @@ export default defineConfig({
     './src/db/schema-agent-selves.ts',
     './src/db/schema-project-facts-backup.ts',
     './src/db/schema-repo-projection.ts',
-    './src/db/schema-runner-release.ts',
     './src/db/schema-pat-fence-changes.ts',
   ],
   out: './drizzle/migrations',

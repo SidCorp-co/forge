@@ -46,23 +46,11 @@ protocol and nothing else:
 | embeddings | `embeddings/`, over the AI SDK's `embedMany` | OpenAI-compatible endpoints | deployment | `memory/*`, `knowledge/*`, `requirements/embeddings.ts`, `embeddings/item-writer.ts`, `issues/backlog/alike-source.ts`, `memory/tool.ts`, `knowledge/tool.ts` |
 | mail | `mail/` | SMTP | deployment | `auth/email.ts`, `projects/invitation-email.ts` |
 | identity | `identity/` | GitHub OAuth, Google, generic OIDC | deployment | `auth/oauth/*` |
-| outbound webhooks | `outbound-webhooks/` | a customer's URL | project webhook row | `webhooks/subscribers.ts`, `index.ts` |
 | paired runner box, pinned downloads | `published-releases/` | GitHub releases | deployment | `devices/build-state.ts`, `runners/build-comparison.ts`, `ecosystem/contract/oasdiff.ts`, `timer-registry.ts`, `index.ts` |
-| runner release publishing | `github/` (`runner-release*.ts`) | GitHub | project | `pipeline/runner-release-deadline.ts`, `integration-door/runner-release-routes.ts` |
 
 The LLM and embedding ports gate every text through `lib/data-egress.ts:egressScoped` inside the
 adapter: their functions take an `EgressScope`, so no caller can send content without naming the
 surface it belongs to.
-
-**Outbound webhooks are signed per [Standard Webhooks](https://www.standardwebhooks.com/)**
-(`outbound-webhooks/delivery.ts:handleDelivery`, ISS-190). Each POST carries `webhook-id` (the
-delivery job's id, the same on every retry so a receiver can drop a duplicate), `webhook-timestamp`
-(epoch seconds) and `webhook-signature` (`v1,<base64 HMAC-SHA256 of id.timestamp.body>`), plus
-`x-forge-event`. The key is the UTF-8 bytes of the hook's `secret`: a Standard Webhooks library
-verifies with `new Webhook(secret, { format: 'raw' })`. The old body-only
-`x-forge-signature-256: sha256=<hex>` header is no longer sent. Any non-2xx response fails the
-delivery: pg-boss retries it five times with backoff, then moves it to the
-`webhook-delivery-dead` queue.
 
 **Adding a system:** name the port by its role, not the vendor; put the vendor under it (or beside
 an existing port that already serves the role); add a row here. A project-bound vendor also

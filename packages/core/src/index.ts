@@ -29,7 +29,6 @@ import { provideGitCredentialStamp } from './git/index.js';
 import { registerAllIntegrations } from './integration-registry.js';
 import { assertVaultBootSafety, provideForgeReads } from './integrations/index.js';
 import { bootstrapChatProviders } from './integrations/llm/index.js';
-import { registerOutboundDeliveryWorker } from './integrations/outbound-webhooks/index.js';
 import {
   refreshMainRunnerHead,
   servesRunnerReleases,
@@ -246,7 +245,6 @@ if (isMain) {
   await registerMemoryReconcileWorker();
   await registerContractMeasureWorker();
   await registerReleaseBatchFinish();
-  await registerOutboundDeliveryWorker();
   registerOutboxConsumers();
   await startOutboxWorker();
 

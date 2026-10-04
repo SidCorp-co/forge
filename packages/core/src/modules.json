@@ -346,10 +346,7 @@
     },
     "integrations/github": {
       "kind": "adapter",
-      "context": "adapters",
-      "owns": [
-        "runnerReleases"
-      ]
+      "context": "adapters"
     },
     "integrations/gitlab": {
       "kind": "adapter",
@@ -370,13 +367,6 @@
     "integrations/mail": {
       "kind": "adapter",
       "context": "adapters"
-    },
-    "integrations/outbound-webhooks": {
-      "kind": "adapter",
-      "context": "adapters",
-      "owns": [
-        "projectWebhooks"
-      ]
     },
     "integrations/published-releases": {
       "kind": "adapter",

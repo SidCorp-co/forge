@@ -1120,28 +1120,6 @@ export const issues = pgTable(
   }),
 );
 
-export const projectWebhooks = pgTable(
-  'project_webhooks',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    url: text('url').notNull(),
-    secret: text('secret').notNull(),
-    events: text('events').array().notNull().default(sql`ARRAY['issue.statusChanged']::text[]`),
-    active: boolean('active').notNull().default(true),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    projectIdIdx: index('project_webhooks_project_id_idx').on(t.projectId),
-  }),
-);
-
-export const projectWebhooksRelations = relations(projectWebhooks, ({ one }) => ({
-  project: one(projects, { fields: [projectWebhooks.projectId], references: [projects.id] }),
-}));
-
 // cm:guard a comment sits on exactly one target (ISS-83): an exclusive arc of real foreign keys,
 // each cascading with its target, held by comments_scope_chk so no door can write an orphan or a twin
 export const comments = pgTable(

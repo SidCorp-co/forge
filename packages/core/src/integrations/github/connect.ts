@@ -85,7 +85,7 @@ export function buildAppManifest(args: {
       metadata: 'read',
       pull_requests: 'write',
     },
-    default_events: ['pull_request', 'pull_request_review', 'check_run', 'push', 'workflow_run'],
+    default_events: ['pull_request', 'pull_request_review', 'check_run', 'push'],
   };
 }
 

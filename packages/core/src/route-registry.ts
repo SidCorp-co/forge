@@ -81,7 +81,6 @@ import {
   githubConnectRoutes,
   integrationConnectionsRoutes,
   integrationsRoutes,
-  runnerReleaseRoutes,
 } from './integration-door/routes.js';
 import {
   attachmentRoutes,
@@ -280,7 +279,6 @@ function mountProjectAndOrgRoutes(app: Hono<{ Variables: RequestIdVars }>): void
   app.route('/api/org-invitations', orgInvitationRoutes);
   app.route('/api/projects', integrationsRoutes);
   app.route('/api/projects', githubConnectRoutes);
-  app.route('/api/projects', runnerReleaseRoutes);
   app.route('/api', githubCallbackRoutes);
   app.route('/api/integration-connections', integrationConnectionsRoutes);
   app.route('/api/projects', memberRoutes);

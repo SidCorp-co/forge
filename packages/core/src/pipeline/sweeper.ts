@@ -38,10 +38,6 @@ import {
 import { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';
 import { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
 import { type OrphanedPauseResult, resumeOrphanedPauses } from './run-pause.js';
-import {
-  nameOverdueRunnerReleases,
-  type RunnerReleaseDeadlineResult,
-} from './runner-release-deadline.js';
 import { closeOpenRunForIssue, closeRunIfOneShot } from './runs.js';
 import {
   type ConcludedRunReapResult,
@@ -117,8 +113,6 @@ export interface SweepResult {
   owedCloses: StrandedIssuesResult;
   orphanedPauses: OrphanedPauseResult;
   retryRescueThresholds: RetryRescueAlertResult;
-  /** ISS-1075 — runner releases past their own deadline, named with what is true on the repository. */
-  overdueRunnerReleases: RunnerReleaseDeadlineResult;
   /** ISS-1063 — conditions re-derived: resolved, inhibited children released, stale pending dropped. */
   reevaluated: ReevaluateResult;
   queueSnapshots: number;
@@ -174,9 +168,6 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const orphanedRunAssertions = await runPass('detectOrphanedRunAssertions', () =>
     detectOrphanedRunAssertions(now),
   );
-  const overdueRunnerReleases = await runPass('nameOverdueRunnerReleases', () =>
-    nameOverdueRunnerReleases(now),
-  );
   const idleIssues = await runPass('reconcileIdleIssues', () => reconcileIdleIssues(now));
   const strandedIssues = await runPass('detectStrandedIssues', () => detectStrandedIssues(now));
   const owedCloses = await runPass('detectOwedCloses', () => detectOwedCloses(now));
@@ -221,7 +212,6 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     owedCloses: owedCloses as StrandedIssuesResult,
     orphanedPauses: orphanedPauses as OrphanedPauseResult,
     retryRescueThresholds: retryRescueThresholds as RetryRescueAlertResult,
-    overdueRunnerReleases: overdueRunnerReleases as RunnerReleaseDeadlineResult,
     reevaluated: reevaluated as ReevaluateResult,
     queueSnapshots: queueSnapshots as number,
   };

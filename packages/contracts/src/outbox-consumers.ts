@@ -20,7 +20,6 @@ export const OUTBOX_CONSUMERS = {
 		"pipeline-orchestrator",
 		"master-wake",
 		"notify-transitions",
-		"outbound-webhooks",
 		"memory-reconcile",
 	],
 	"job.transitioned": ["phase-journal-close", "memory-extraction"],
