@@ -19,6 +19,7 @@ import {
   readDesignAs,
   unlinkBuildAs,
 } from './design-service.js';
+import { type IgnoredField, readBackOf } from './read-back.js';
 import { WRITE_OBSERVATION_SHAPE, writeObservationSchema } from './observation-schema.js';
 import { listObservations, observationAs, writeObservation } from './observations.js';
 import { designStepsOf, designSummaryOf, workflowSummaryOf } from './projection.js';
@@ -89,10 +90,14 @@ function writerOf(c: Context<{ Variables: AuthVars }>): WorkflowWriter {
   return { userId: c.get('userId'), agency };
 }
 
-function answer(c: Context, outcome: WorkflowOutcome) {
+function answer(c: Context, outcome: WorkflowOutcome, ignored?: readonly IgnoredField[]) {
   if (!outcome.ok) return refused(c, outcome.refusals, 'WORKFLOW_REFUSED');
   return c.json(
-    { ...workflowView(outcome.row, outcome.document), created: outcome.created },
+    {
+      ...workflowView(outcome.row, outcome.document),
+      created: outcome.created,
+      ...(ignored ? { ignored } : {}),
+    },
     outcome.created ? 201 : 200,
   );
 }
@@ -134,17 +139,19 @@ workflowRoutes.get('/:id/workflows/:workflow', workflowParam, async (c) => {
 });
 
 workflowRoutes.put('/:id/workflows/:workflow', workflowParam, envelope, async (c) => {
-  const { baseRevision, document } = envelopeOf(c.req.valid('json'));
   const { id, workflow } = c.req.valid('param');
+  const body = readBackOf(c.req.valid('json'), workflow);
+  if (!body.ok) return refused(c, body.refusals, 'WORKFLOW_REFUSED');
   return answer(
     c,
     await updateWorkflow({
       projectId: id,
       id: workflow,
       writer: writerOf(c),
-      baseRevision,
-      raw: document,
+      baseRevision: body.baseRevision,
+      raw: body.document,
     }),
+    body.ignored,
   );
 });
 
