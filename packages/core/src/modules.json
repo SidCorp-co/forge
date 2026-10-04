@@ -536,6 +536,7 @@
       "kind": "domain",
       "owns": [
         "projectWorkflowDesigns",
+        "projectWorkflowObservations",
         "projectWorkflows",
         "workflowBuilds"
       ]
