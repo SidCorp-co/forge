@@ -154,47 +154,35 @@ async function deployTarget(
     });
   } catch (err) {
     if (accepted) throw err;
-    outcomes.push(
-      await recordTargetFailure(ctx.connectionId, deliveryId, target, err, Date.now() - started),
-    );
-  }
-}
-
-/** A refused target is recorded on its delivery row and, where it says so, on the connection's health. */
-async function recordTargetFailure(
-  connectionId: string,
-  deliveryId: string,
-  target: { id: string; label: string },
-  err: unknown,
-  durationMs: number,
-): Promise<TargetOutcome> {
-  const status = err instanceof CoolifyApiError ? err.status : null;
-  const message = describeCoolifyFailure(err);
-  await updateDelivery(deliveryId, {
-    status: 'failed',
-    errorMessage: message,
-    response:
-      status !== null ? { httpStatus: status, targetId: target.id } : { targetId: target.id },
-    durationMs,
-    completedAt: new Date(),
-  });
-  const verdict = classifyCoolifyFailure(err);
-  if (verdict.health !== 'error') {
-    await updateConnection(connectionId, {
-      lastHealthStatus: verdict.health,
-      lastHealthAt: new Date(),
+    const durationMs = Date.now() - started;
+    const status = err instanceof CoolifyApiError ? err.status : null;
+    const message = describeCoolifyFailure(err);
+    await updateDelivery(deliveryId, {
+      status: 'failed',
+      errorMessage: message,
+      response:
+        status !== null ? { httpStatus: status, targetId: target.id } : { targetId: target.id },
+      durationMs,
+      completedAt: new Date(),
+    });
+    const verdict = classifyCoolifyFailure(err);
+    if (verdict.health !== 'error') {
+      await updateConnection(ctx.connectionId, {
+        lastHealthStatus: verdict.health,
+        lastHealthAt: new Date(),
+      });
+    }
+    outcomes.push({
+      confirmation: {
+        deliveryId,
+        targetLabel: target.label,
+        deploymentUuid: null,
+        status: 'failed',
+        detail: message,
+      },
+      durationMs,
     });
   }
-  return {
-    confirmation: {
-      deliveryId,
-      targetLabel: target.label,
-      deploymentUuid: null,
-      status: 'failed',
-      detail: message,
-    },
-    durationMs,
-  };
 }
 
 const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySecrets> = {
