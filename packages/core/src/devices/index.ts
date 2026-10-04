@@ -11,7 +11,6 @@ export { runDevicePrune } from './prune.js';
 export { returnIssuesForRun } from './run-issue-return.js';
 export { handleRunnerSessions } from './run-ledger-ws.js';
 export { reapDeadRunSessions } from './run-session-reaper.js';
-export { applySkillReport, recordSkillSyncFailure } from './service.js';
 export { SESSION_SILENCE_TIMEOUT_MS, SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 export { runDeviceStaleSweep } from './stale-detector.js';
 export { deviceHolderUserId } from './workspace-credential.js';

@@ -24,7 +24,6 @@ export const OUTBOX_EVENT_TYPES = [
 	"notification.read",
 	"user.preferencesChanged",
 	"skill.syncRequested",
-	"skill.registered",
 	"skill.globalUpdated",
 	"runner.provisionRequested",
 	"runner.provisionStatus",
@@ -245,12 +244,6 @@ export interface OutboxEventPayloads {
 		deviceIds: string[];
 		skillNames: string[] | null;
 		actorUserId: string;
-	};
-	"skill.registered": {
-		projectId: string;
-		skillId: string;
-		actorUserId: string;
-		stage: string | null;
 	};
 	"skill.globalUpdated": {
 		name: string;

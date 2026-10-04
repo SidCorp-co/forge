@@ -22,7 +22,7 @@ use base64::Engine;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::transport::skills::{self, SkillContent, SkillReportEntry};
+use crate::transport::skills::{self, SkillContent};
 use crate::transport::CoreClient;
 
 /// `~/.config/forge-runner/skills-cache/<project_id>/<skill_id>/`.
@@ -260,28 +260,6 @@ fn sync_one_skill_locked(
     })
 }
 
-/// Detect whether a user-level skill shadow exists at
-/// `~/.claude/skills/<name>/` (the path Claude Code checks before the
-/// project-level `.claude/skills/<name>/`). Returns the shadow dir path and
-/// its `.hash` marker (if present) so the caller can populate `observed_sha`
-/// and `shadowed_by` in the report without re-hashing the skill body in Rust.
-///
-/// ISS-798 (stage ④): the shadow detection is best-effort — if the home dir
-/// is unavailable, we fall back to `None` (unknown status) rather than
-/// claiming `synced` falsely.
-fn detect_user_shadow(name: &str) -> Option<(PathBuf, Option<String>)> {
-    let shadow = dirs_next::home_dir()?
-        .join(".claude")
-        .join("skills")
-        .join(name);
-    if shadow.join("SKILL.md").exists() {
-        let marker = read_hash_marker(&shadow);
-        Some((shadow, marker))
-    } else {
-        None
-    }
-}
-
 /// Directory names under `skills_root` that Forge manages (carry the internal
 /// `.hash` marker written by [`write_skill_tree`]/[`seed_dest`]) but are no
 /// longer in `keep` — the converge-on-delete set (ISS-802 stage ③ prune). A
@@ -345,29 +323,20 @@ pub async fn sync_skills(client: &CoreClient, project_id: &str, worktree: &Path)
     let skills_root = worktree.join(".claude").join("skills");
 
     let keep: std::collections::HashSet<&str> = manifest.iter().map(|e| e.name.as_str()).collect();
-    let mut pruned: Vec<String> = Vec::new();
     for dir in find_prunable(&skills_root, &keep) {
         if let Some(name) = dir.file_name().and_then(|n| n.to_str()) {
             match std::fs::remove_dir_all(&dir) {
-                Ok(()) => {
-                    tracing::info!("[skills] pruned {name} (not in manifest)");
-                    pruned.push(name.to_string());
-                }
+                Ok(()) => tracing::info!("[skills] pruned {name} (not in manifest)"),
                 Err(e) => tracing::warn!("[skills] failed to prune {}: {e}", dir.display()),
             }
         }
     }
 
     if manifest.is_empty() {
-        if !pruned.is_empty() {
-            skills::report_installed(client, project_id, &[], &pruned).await?;
-        }
         return Ok(0);
     }
 
     ignore_skills(worktree, manifest.iter().map(|e| e.name.as_str()))?;
-
-    let mut report: Vec<SkillReportEntry> = Vec::with_capacity(manifest.len());
 
     for entry in &manifest {
         let dir = cache_dir(project_id, &entry.skill_id)?;
@@ -400,44 +369,9 @@ pub async fn sync_skills(client: &CoreClient, project_id: &str, worktree: &Path)
             .await
             .map_err(|e| Error::Other(format!("skill sync task join error: {e}")))??;
         }
-
-        // ISS-798 (stage ④): detect user-level shadow and populate observation
-        // fields so the server can set the correct status (`shadowed`, `synced`,
-        // or `unknown`). When a shadow exists, `observed_sha` is the hash of
-        // the shadow's content (from its `.hash` marker), not the project hash.
-        let (observed_sha, shadowed_by) = match detect_user_shadow(&entry.name) {
-            Some((shadow_path, shadow_hash)) => {
-                // A shadow exists. Use the shadow's hash marker (if present)
-                // as observed_sha so the server knows exactly what body runs.
-                let shadow_str = shadow_path.to_string_lossy().into_owned();
-                (shadow_hash, Some(shadow_str))
-            }
-            None => {
-                // No shadow: what's in dest IS what runs. The `.hash` marker
-                // written by sync_one_skill_locked equals effective_hash.
-                (Some(entry.effective_hash.clone()), None)
-            }
-        };
-
-        report.push(SkillReportEntry {
-            skill_id: entry.skill_id.clone(),
-            installed_hash: entry.effective_hash.clone(),
-            installed_version: entry.version,
-            observed_sha,
-            shadowed_by,
-        });
     }
 
-    skills::report_installed(client, project_id, &report, &pruned).await?;
-    Ok(report.len())
-}
-
-/// Notify the server that a sync attempt for this project failed entirely, so
-/// the skill-activity log records `device.sync.failed` instead of going quiet
-/// (ISS-798 fix review). Call from the `Err` arm at each `sync_skills` call
-/// site; never blocks on or surfaces its own outcome.
-pub async fn report_sync_failure(client: &CoreClient, project_id: &str, error: &Error) {
-    skills::report_sync_failed(client, project_id, &error.to_string()).await;
+    Ok(manifest.len())
 }
 
 #[cfg(test)]

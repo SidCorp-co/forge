@@ -154,17 +154,6 @@ export const STATE_READINGS = {
 		expired: ["Expired", "done", "–"],
 		needs_info: ["Needs info", "you", "?"],
 	},
-	/** A skill-update run and its verdict (contracts `reconcile.ts`). */
-	reconcileVerdict: {
-		"no-op": ["No change", "done", "–"],
-		apply: ["Apply", "ready", "✓"],
-		"apply-with-adaptation": ["Apply with changes", "ready", "✓"],
-		escalate: ["Escalate", "you", "!"],
-	},
-	vote: {
-		pass: ["Pass", "ready", "✓"],
-		fail: ["Fail", "err", "×"],
-	},
 	/** A runner device (web `runners/types.ts`) and a runner (core `db/schema.ts`). */
 	device: {
 		online: ["Online", "ready", "●"],
@@ -207,16 +196,6 @@ export const STATE_READINGS = {
 		proposed: ["Proposed", "you", "●"],
 		feedback: ["Feedback", "neutral", "○"],
 		skipped: ["Skipped", "done", "–"],
-	},
-	/** A skill-update run (contracts `reconcile.ts:RECONCILE_RUN_STATUSES`). */
-	reconcileRun: {
-		pending: ["Pending", "neutral", "○"],
-		running: ["Running", "run", "●"],
-		verifying: ["Verifying", "run", "◐"],
-		decided: ["Decided", "ready", "✓"],
-		applied: ["Applied", "done", "✓"],
-		escalated: ["Escalated", "you", "!"],
-		failed: ["Failed", "err", "×"],
 	},
 	/** A fire's status (contracts `schedules.ts:SCHEDULE_RUN_STATUSES`). */
 	scheduleRun: {
@@ -320,8 +299,6 @@ export const ENUM_LABELS = {
 		pm: "PM",
 		smoke: "Smoke",
 		release_batch: "Release batch",
-		reconcile: "Reconcile",
-		verify_skill: "Verify skill",
 		drive: "Drive",
 		onboarding: "Onboarding",
 	},

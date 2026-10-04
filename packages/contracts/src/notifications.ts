@@ -6,7 +6,6 @@ export const NOTIFICATION_TYPES = [
 	"invitation_received",
 	"intake_pending",
 	"schedule_report",
-	"reconcile_gate_pending",
 	"issue_stranded",
 	"retry_rescue_threshold",
 	"ops_alert",
@@ -26,7 +25,6 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
 	invitation_received: "Invitation",
 	intake_pending: "Intake",
 	schedule_report: "Schedule report",
-	reconcile_gate_pending: "Skill update",
 	issue_stranded: "Stranded",
 	retry_rescue_threshold: "Retries",
 	ops_alert: "Ops alert",
@@ -121,12 +119,6 @@ export const NOTIFICATION_CONTRACT: Record<
 		channels: ["bell", "toast"],
 		kind: "signal",
 		tier: "log",
-	},
-	reconcile_gate_pending: {
-		severity: "warning",
-		channels: ["bell", "toast"],
-		kind: "task",
-		tier: "ticket",
 	},
 	issue_stranded: {
 		severity: "warning",

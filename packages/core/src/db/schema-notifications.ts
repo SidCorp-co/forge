@@ -27,7 +27,6 @@ export const notificationTypes = [
   // ISS-618 — a script-kind schedule's ctx.notify() payload delivered to the
   // owner (report/API-check results with no LLM involved).
   'schedule_report',
-  'reconcile_gate_pending',
   'issue_stranded',
   'retry_rescue_threshold',
   'ops_alert',

@@ -6,7 +6,6 @@ import { JOB_MACHINE } from "./job-machine.js";
 import { MOCKUP_MACHINE } from "./mockup-machine.js";
 import { QUESTIONNAIRE_MACHINE } from "./onboarding-machine.js";
 import { QUESTION_MACHINE } from "./question-machine.js";
-import { RECONCILE_RUN_MACHINE } from "./reconcile-run-machine.js";
 import { REQUIREMENT_MACHINE } from "./requirement-machine.js";
 import { QUESTION_DELIVERY_MACHINE } from "./room-delivery-machine.js";
 import { RUN_MACHINE } from "./run-machine.js";
@@ -32,7 +31,6 @@ export const MACHINE_ENTITIES = [
 	"questionnaire",
 	"question",
 	"schedule_run",
-	"reconcile_run",
 	"runner",
 	"runner_provision",
 	"device",
@@ -52,7 +50,6 @@ export const MACHINES = {
 	questionnaire: QUESTIONNAIRE_MACHINE,
 	question: QUESTION_MACHINE,
 	schedule_run: SCHEDULE_RUN_MACHINE,
-	reconcile_run: RECONCILE_RUN_MACHINE,
 	runner: RUNNER_MACHINE,
 	runner_provision: RUNNER_PROVISION_MACHINE,
 	device: DEVICE_MACHINE,

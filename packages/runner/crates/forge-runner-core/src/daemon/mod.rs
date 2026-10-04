@@ -7,8 +7,8 @@
 //! chat (`agent:start` / `agent:send` / `agent:abort`) is handled out-of-band
 //! by `chat`, under its own concurrency budget (ISS-321).
 //!
-//! The four job kinds with no issue to rank — `release_batch`, `smoke`,
-//! `reconcile`, `verify_skill` — do NOT go to a master. They sit in the JOBS
+//! The job kinds with no issue to rank — `release_batch` and `smoke` — do NOT
+//! go to a master. They sit in the JOBS
 //! pool and reach this box through `pool_jobs`, which opens a pane per job and
 //! supervises it here (ISS-1080).
 

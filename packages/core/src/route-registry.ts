@@ -172,21 +172,14 @@ import { scheduleRoutes } from './schedules/routes.js';
 import { skillFactsRoutes } from './skill-facts/routes.js';
 import {
   deviceSkillRoutes,
-  deviceSkillStatusRoutes,
-  divergenceCharterRoutes,
   projectOnboardRoutes,
-  reconcileRoutes,
   skillActivityRoutes,
   skillCrudRoutes,
   skillPinRoutes,
-  skillRegisterRoutes,
-  skillSmokeVerifyRoutes,
   skillStudioRoutes,
-  skillSyncRoutes,
 } from './skills/routes.js';
 import { suggestionRoutes } from './suggestions/routes.js';
 import { taskIssueRoutes, taskRoutes } from './tasks/routes.js';
-import { updatePacketRoutes } from './update-packets/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
 import { usageRecordRoutes } from './usage-records/routes.js';
 import { webhookInboundRoutes } from './webhooks/routes.js';
@@ -295,13 +288,8 @@ function mountProjectAndOrgRoutes(app: Hono<{ Variables: RequestIdVars }>): void
   app.route('/api/projects', integrationTargetRoutes);
   app.route('/api/integration-connections', integrationConnectionsRoutes);
   app.route('/api/projects', memberRoutes);
-  app.route('/api/projects', divergenceCharterRoutes);
-  app.route('/api/projects', skillSyncRoutes);
-  app.route('/api/projects', skillRegisterRoutes);
   app.route('/api/projects', skillStudioRoutes);
   app.route('/api/projects', skillPinRoutes);
-  app.route('/api/projects', skillSmokeVerifyRoutes);
-  app.route('/api/projects', reconcileRoutes);
   app.route('/api/invitations', invitationRoutes);
 }
 
@@ -360,7 +348,6 @@ function mountAgentRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/prompts', promptRoutes);
   app.route('/api/skill-facts', skillFactsRoutes);
   app.route('/api/skill-activity', skillActivityRoutes);
-  app.route('/api/update-packets', updatePacketRoutes);
   app.route('/api/notifications', notificationRoutes);
   app.route('/api/me', meAttentionRoutes);
   app.route('/api/me', mePulseRoutes);
@@ -398,7 +385,6 @@ function mountAdminAndDeviceRoutes(app: Hono<{ Variables: RequestIdVars }>): voi
   app.route('/api/devices', deviceMasterRoutes);
   app.route('/api', deviceOwnerRoutes);
   app.route('/api/projects', deviceUserRoutes);
-  app.route('/api/projects', deviceSkillStatusRoutes);
 }
 
 /** Pipeline analytics, release batches, schedules, knowledge and the remaining resources. */

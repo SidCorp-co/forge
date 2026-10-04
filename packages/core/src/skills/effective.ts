@@ -1,6 +1,6 @@
 import { and, eq, inArray, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { deviceSkills, devices, runners, skillRegistrations, skills } from '../db/schema.js';
+import { skills } from '../db/schema.js';
 import { hashSkillBody } from './hash.js';
 
 export interface SkillFile {
@@ -125,30 +125,15 @@ const skillBodyProjection = {
 export async function resolveRegisteredEffectiveSkills(
   projectId: string,
 ): Promise<EffectiveSkill[]> {
-  const regs = await db
-    .select({ skillId: skillRegistrations.skillId })
-    .from(skillRegistrations)
-    .where(eq(skillRegistrations.projectId, projectId));
-
-  const registeredIds = [...new Set(regs.map((r) => r.skillId))];
-  let registeredNames = new Set<string>();
-  if (registeredIds.length > 0) {
-    const nameRows = await db
-      .select({ name: skills.name })
-      .from(skills)
-      .where(inArray(skills.id, registeredIds));
-    registeredNames = new Set(nameRows.map((n) => n.name));
-  }
-
-  const nameCondition =
-    registeredNames.size > 0
-      ? or(inArray(skills.name, [...registeredNames]), eq(skills.installOnly, true))
-      : eq(skills.installOnly, true);
   const rows = (await db
     .select(skillBodyProjection)
     .from(skills)
     .where(
-      and(eq(skills.scope, 'project'), eq(skills.projectId, projectId), nameCondition),
+      and(
+        eq(skills.scope, 'project'),
+        eq(skills.projectId, projectId),
+        eq(skills.installOnly, true),
+      ),
     )) as SkillBodyRow[];
   return rows.map(computeEffectiveSkill);
 }
@@ -200,232 +185,4 @@ export async function resolveManagedMetaPrompts(
     description: r.description ?? '',
     body: globalEffectiveMd(r),
   }));
-}
-
-export type DeviceSkillStatusValue =
-  | 'synced'
-  | 'outdated'
-  | 'missing'
-  | 'unknown'
-  | 'shadowed'
-  | 'stale';
-
-export interface DeviceSkillStatusEntry {
-  skillId: string;
-  name: string;
-  effectiveHash: string;
-  installedHash: string | null;
-  installedVersion: number | null;
-  syncedAt: string | null;
-  observedSha: string | null;
-  shadowedBy: string | null;
-  status: DeviceSkillStatusValue;
-}
-
-interface InstalledRow {
-  skillId: string;
-  installedHash: string;
-  installedVersion: number | null;
-  syncedAt: Date | string | null;
-  observedSha: string | null;
-  shadowedBy: string | null;
-}
-
-/**
- * Per-skill freshness for one device. Observation-aware (ISS-798): when the
- * runner sends `observed_sha`, that field (not just the echoed installed_hash)
- * determines the status — so a shadow copy can be surfaced as `shadowed`
- * instead of silently appearing `synced`. Pure so the status logic is
- * unit-testable without a DB.
- */
-export function computeDeviceSkillStatus(
-  effective: EffectiveSkill[],
-  installed: InstalledRow[],
-): DeviceSkillStatusEntry[] {
-  const byId = new Map(installed.map((i) => [i.skillId, i]));
-  return effective.map((e) => {
-    const row = byId.get(e.skillId);
-    let status: DeviceSkillStatusValue;
-    if (!row) {
-      status = 'missing';
-    } else if (row.installedHash !== e.effectiveHash) {
-      status = 'outdated';
-    } else if (row.shadowedBy !== null) {
-      status = 'shadowed';
-    } else if (row.observedSha === null) {
-      status = 'unknown';
-    } else if (row.observedSha !== row.installedHash) {
-      status = 'stale';
-    } else {
-      status = 'synced';
-    }
-
-    const syncedAt = row?.syncedAt ?? null;
-    return {
-      skillId: e.skillId,
-      name: e.name,
-      effectiveHash: e.effectiveHash,
-      installedHash: row?.installedHash ?? null,
-      installedVersion: row?.installedVersion ?? null,
-      syncedAt: syncedAt instanceof Date ? syncedAt.toISOString() : syncedAt,
-      observedSha: row?.observedSha ?? null,
-      shadowedBy: row?.shadowedBy ?? null,
-      status,
-    };
-  });
-}
-
-/** Load the registered effective skills + this device's install rows and diff. */
-export async function loadDeviceSkillStatus(
-  projectId: string,
-  deviceId: string,
-): Promise<DeviceSkillStatusEntry[]> {
-  const effective = await resolveRegisteredEffectiveSkills(projectId);
-  const installed = (await db
-    .select({
-      skillId: deviceSkills.skillId,
-      installedHash: deviceSkills.installedHash,
-      installedVersion: deviceSkills.installedVersion,
-      syncedAt: deviceSkills.syncedAt,
-      observedSha: deviceSkills.observedSha,
-      shadowedBy: deviceSkills.shadowedBy,
-    })
-    .from(deviceSkills)
-    .where(
-      and(eq(deviceSkills.deviceId, deviceId), eq(deviceSkills.projectId, projectId)),
-    )) as InstalledRow[];
-
-  return computeDeviceSkillStatus(effective, installed);
-}
-
-// ── Skill Studio 5 (ISS-279) — aggregated, skill-major sync status ──────────
-// Studio is a by-skill surface: it needs every project-bound device × every
-// registered skill in one read. The per-device endpoint above stays for the
-// device-centric page; this one pivots into a skill-major shape so the panel
-// renders directly.
-
-/** A project-bound device (a `claude-code` runner's device) for the sync UI. */
-export interface SkillSyncDevice {
-  deviceId: string;
-  name: string;
-  status: string;
-  lastSeenAt: string | null;
-}
-
-/** One device's freshness for a single skill (skill-major nesting). */
-export interface SkillDeviceSyncEntry {
-  deviceId: string;
-  status: DeviceSkillStatusValue;
-  installedVersion: number | null;
-  installedHash: string | null;
-  syncedAt: string | null;
-}
-
-/** A registered skill with its per-device install status. */
-export interface SkillSyncSkillEntry {
-  skillId: string;
-  name: string;
-  currentVersion: number;
-  effectiveHash: string;
-  devices: SkillDeviceSyncEntry[];
-}
-
-export interface ProjectSkillSyncStatus {
-  devices: SkillSyncDevice[];
-  skills: SkillSyncSkillEntry[];
-}
-
-/**
- * Pivot per-device freshness into the skill-major shape Studio renders. Pure
- * (no DB) so the pivot is unit-testable. `installedByDevice` maps a deviceId to
- * that device's install rows; missing devices/skills fall through
- * `computeDeviceSkillStatus` to `missing`.
- */
-export function pivotProjectSkillSyncStatus(
-  deviceList: SkillSyncDevice[],
-  effective: EffectiveSkill[],
-  installedByDevice: Map<string, InstalledRow[]>,
-): ProjectSkillSyncStatus {
-  const statusByDevice = new Map<string, Map<string, DeviceSkillStatusEntry>>();
-  for (const d of deviceList) {
-    const entries = computeDeviceSkillStatus(effective, installedByDevice.get(d.deviceId) ?? []);
-    statusByDevice.set(d.deviceId, new Map(entries.map((e) => [e.skillId, e])));
-  }
-
-  const skillEntries: SkillSyncSkillEntry[] = effective.map((e) => ({
-    skillId: e.skillId,
-    name: e.name,
-    currentVersion: e.version,
-    effectiveHash: e.effectiveHash,
-    devices: deviceList.map((d) => {
-      const entry = statusByDevice.get(d.deviceId)?.get(e.skillId);
-      return {
-        deviceId: d.deviceId,
-        status: entry?.status ?? 'missing',
-        installedVersion: entry?.installedVersion ?? null,
-        installedHash: entry?.installedHash ?? null,
-        syncedAt: entry?.syncedAt ?? null,
-      };
-    }),
-  }));
-
-  return { devices: deviceList, skills: skillEntries };
-}
-
-export async function loadProjectSkillSyncStatus(
-  projectId: string,
-): Promise<ProjectSkillSyncStatus> {
-  // Bound devices = this project's claude-code runners joined to their device.
-  // A device may back multiple runners — dedupe by deviceId, keeping the most
-  // recently seen row's metadata.
-  const runnerRows = await db
-    .select({
-      deviceId: devices.id,
-      name: devices.name,
-      status: devices.status,
-      lastSeenAt: devices.lastSeenAt,
-    })
-    .from(runners)
-    .innerJoin(devices, eq(runners.deviceId, devices.id))
-    .where(and(eq(runners.projectId, projectId), eq(runners.type, 'claude-code')));
-
-  const deviceById = new Map<string, SkillSyncDevice>();
-  for (const r of runnerRows) {
-    const lastSeenAt =
-      r.lastSeenAt instanceof Date ? r.lastSeenAt.toISOString() : (r.lastSeenAt ?? null);
-    const existing = deviceById.get(r.deviceId);
-    if (!existing || (lastSeenAt && (!existing.lastSeenAt || lastSeenAt > existing.lastSeenAt))) {
-      deviceById.set(r.deviceId, {
-        deviceId: r.deviceId,
-        name: r.name,
-        status: r.status,
-        lastSeenAt,
-      });
-    }
-  }
-  const deviceList = [...deviceById.values()];
-
-  const effective = await resolveRegisteredEffectiveSkills(projectId);
-
-  const installedRows = (await db
-    .select({
-      deviceId: deviceSkills.deviceId,
-      skillId: deviceSkills.skillId,
-      installedHash: deviceSkills.installedHash,
-      installedVersion: deviceSkills.installedVersion,
-      syncedAt: deviceSkills.syncedAt,
-      observedSha: deviceSkills.observedSha,
-      shadowedBy: deviceSkills.shadowedBy,
-    })
-    .from(deviceSkills)
-    .where(eq(deviceSkills.projectId, projectId))) as Array<InstalledRow & { deviceId: string }>;
-
-  const installedByDevice = new Map<string, InstalledRow[]>();
-  for (const row of installedRows) {
-    const arr = installedByDevice.get(row.deviceId) ?? [];
-    arr.push(row);
-    installedByDevice.set(row.deviceId, arr);
-  }
-
-  return pivotProjectSkillSyncStatus(deviceList, effective, installedByDevice);
 }

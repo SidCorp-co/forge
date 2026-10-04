@@ -22,7 +22,6 @@ import {
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { finalizeJobDone, hasTerminalHandoffForAttempt } from './finalize-done.js';
 import { holdAutoReleases, holdJobForReason } from './hold.js';
-import { jobsPorts } from './ports.js';
 import type { RetryOutcome } from './retry.js';
 import { scheduleAutoRetryWithVerify } from './retry.js';
 
@@ -206,17 +205,6 @@ export async function finalizeFailedJob(
   // ISS-393 — never no-op a failed job with an issueId: revert to entry-status
   // (retry path) or hold the job + reap the run (no-retry path).
   await reconcileIssueStatusAfterFailure(updated, retry, recoveredViaVerify);
-
-  if (!retry.scheduled) {
-    await jobsPorts()
-      .reconcileRuns.failReconcileRunForFailedJob(updated)
-      .catch((err) =>
-        logger.warn(
-          { err, jobId: updated.id, type: updated.type },
-          'finalize-failure: failReconcileRunForFailedJob failed',
-        ),
-      );
-  }
 
   // Mirror lifecycle to the linked agent_session row. ISS-101 — pass
   // retryPending so we leave the parent pipeline_run open when a retry has

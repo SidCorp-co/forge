@@ -71,7 +71,6 @@ dispatched by a status.
 |---|---|---|
 | issue-flow | plugin (the project's `plugins`) | the whole walk from `open` to `closed` |
 | forge-onboard · forge-product-map | project copy, `installOnly` | survey the repo, seed knowledge / the product map |
-| forge-reconcile · forge-verify-skill | Forge-owned, name-reserved | police skill updates; verify a skill installed |
 | forge-skills | this one | author and ship project skills |
 
 ## 7. Non-standard project patterns

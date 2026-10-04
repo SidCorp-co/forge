@@ -11,7 +11,6 @@ export const GUIDE_SLUGS = [
   'pipeline-and-issue-lifecycle',
   'attachments-and-uploads',
   'agent-setup',
-  'update-pipeline-reconcile',
   'module-taxonomy-migration',
   'conformance-and-verify',
   'answering-as-the-assistant',

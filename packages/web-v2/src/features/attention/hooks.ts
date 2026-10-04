@@ -38,20 +38,17 @@ export function useAttention() {
     const needsYou = base?.needsYou ?? [];
     const mentions = base?.mentions ?? [];
     const failedJobs = base?.failedJobs ?? [];
-    const pendingSkillUpdates = base?.pendingSkillUpdates ?? [];
     const channelGates = base?.channelGates ?? [];
     return {
       needsYou,
       mentions,
       failedJobs,
-      pendingSkillUpdates,
       channelGates,
       offlineRunners,
       total:
         needsYou.length +
         mentions.length +
         failedJobs.length +
-        pendingSkillUpdates.length +
         channelGates.length +
         offlineRunners.length,
     };

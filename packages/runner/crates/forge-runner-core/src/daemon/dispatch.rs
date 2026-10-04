@@ -98,10 +98,7 @@ pub async fn handle_skill_sync(client: &CoreClient, cfg: &Config, data: Value) -
             "[skill.sync] project={project_id} synced {n} skill(s) into {}",
             resolved.repo_path.join(".claude/skills").display()
         ),
-        Err(e) => {
-            tracing::warn!("[skill.sync] project={project_id} sync failed: {e}");
-            skill_sync::report_sync_failure(client, &project_id, &e).await;
-        }
+        Err(e) => tracing::warn!("[skill.sync] project={project_id} sync failed: {e}"),
     }
     Ok(())
 }

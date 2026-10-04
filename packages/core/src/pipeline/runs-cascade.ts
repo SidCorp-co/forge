@@ -64,25 +64,6 @@ export async function cascadeCancelChildJobs(
     if (j.agentSessionId && j.deviceId) deviceBySession.set(j.agentSessionId, j.deviceId);
   }
 
-  if (!completedSuccess) {
-    const reconcileJobs = cancelledJobs.filter(
-      (j) => j.type === 'reconcile' || j.type === 'verify_skill',
-    );
-    if (reconcileJobs.length > 0) {
-      const { failReconcileRunForFailedJob } = await import('../skills/reconcile-service.js');
-      await Promise.all(
-        reconcileJobs.map((j) =>
-          failReconcileRunForFailedJob(j).catch((err) =>
-            logger.error(
-              { err, jobId: j.id, type: j.type },
-              'cascadeCancelChildJobs: failReconcileRunForFailedJob failed',
-            ),
-          ),
-        ),
-      );
-    }
-  }
-
   if (abortedSessionIds.length > 0) {
     // ISS-352 — a run that closed as `pipeline_completed` did NOT fail. The
     // terminal pipeline step (forge-test → released, forge-release → closed)

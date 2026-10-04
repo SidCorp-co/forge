@@ -229,7 +229,6 @@
       "owns": [
         "deviceLoginCodes",
         "deviceRunLedger",
-        "deviceSkills",
         "devices",
         "pairingCodes"
       ]
@@ -494,7 +493,6 @@
         "notifications",
         "pipelineRuns",
         "projects",
-        "reconcileRuns",
         "runners"
       ]
     },
@@ -742,12 +740,8 @@
       "kind": "domain",
       "context": "execution",
       "owns": [
-        "divergenceCharters",
-        "reconcileRuns",
         "skillActivityEvents",
-        "skillRegistrations",
-        "skills",
-        "updatePackets"
+        "skills"
       ]
     },
     "storage": {
@@ -767,10 +761,6 @@
       "owns": [
         "tasks"
       ]
-    },
-    "update-packets": {
-      "kind": "door",
-      "context": "execution"
     },
     "uploads": {
       "kind": "domain",

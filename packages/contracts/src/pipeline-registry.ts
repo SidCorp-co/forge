@@ -21,8 +21,6 @@ export const REGISTRY_JOB_TYPES = [
   'pm',
   'smoke',
   'release_batch',
-  'reconcile',
-  'verify_skill',
   'drive',
   'onboarding',
 ] as const;

@@ -1,10 +1,6 @@
 import { refuse } from './refuse.js';
 
-export const META_SKILL_NAMES: ReadonlyArray<string> = [
-  'forge-onboard',
-  'forge-reconcile',
-  'forge-verify-skill',
-];
+export const META_SKILL_NAMES: ReadonlyArray<string> = ['forge-onboard'];
 
 export function isMetaSkillName(name: string): boolean {
   return META_SKILL_NAMES.includes(name);

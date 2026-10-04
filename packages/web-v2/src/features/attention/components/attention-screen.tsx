@@ -36,7 +36,6 @@ import { PageTitle, SectionTitle } from "@/design/primitives/heading";
 const KIND_TONE: Record<AttentionKind, SemanticTone> = {
   mention: "neutral",
   failed_job: "failure",
-  pending_skill_update: "attention",
   runner_offline: "infra",
   channel_gate: "attention",
 };
@@ -44,7 +43,6 @@ const KIND_TONE: Record<AttentionKind, SemanticTone> = {
 const KIND_META: Record<AttentionKind, { label: string; icon: IconName; fg: string; bg: string }> = {
   mention: { label: "Mention", icon: "mail", ...tone("mention") },
   failed_job: { label: "Failed", icon: "alert", ...tone("failed_job") },
-  pending_skill_update: { label: "Skill update", icon: "clock", ...tone("pending_skill_update") },
   runner_offline: { label: "Runner offline", icon: "server", ...tone("runner_offline") },
   channel_gate: { label: "Approve gate", icon: "check", ...tone("channel_gate") },
 };
@@ -185,7 +183,6 @@ export function AttentionScreen() {
   const scoped = {
     mentions: view.mentions.filter(keep),
     failedJobs: view.failedJobs.filter(keep),
-    pendingSkillUpdates: view.pendingSkillUpdates.filter(keep),
     channelGates: view.channelGates.filter(keep),
     offlineRunners: view.offlineRunners.filter(keep),
   };
@@ -195,7 +192,6 @@ export function AttentionScreen() {
     needsYou.length +
     scoped.mentions.length +
     scoped.failedJobs.length +
-    scoped.pendingSkillUpdates.length +
     scoped.channelGates.length +
     scoped.offlineRunners.length;
 
@@ -249,7 +245,6 @@ export function AttentionScreen() {
           <Group title="Channel gates" items={scoped.channelGates} onOpen={open} />
           <Group title="Mentions" items={scoped.mentions} onOpen={open} />
           <Group title="Failed jobs" items={scoped.failedJobs} onOpen={open} />
-          <Group title="Skill updates" items={scoped.pendingSkillUpdates} onOpen={open} />
           <Group title="Offline runners" items={scoped.offlineRunners} onOpen={open} />
         </div>
       )}

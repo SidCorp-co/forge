@@ -1,6 +1,5 @@
 import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
 import { JOB_STATUSES } from '@forge/contracts/job-machine';
-import { RECONCILE_RUN_STATUSES } from '@forge/contracts/reconcile-run-machine';
 import { PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { RUNNER_PROVISION_STATUSES, RUNNER_STATUSES } from '@forge/contracts/runner-machine';
 import { type InferSelectModel, isNull, relations, type SQL, sql } from 'drizzle-orm';
@@ -596,8 +595,6 @@ export const jobTypes = [
   'pm',
   'smoke',
   'release_batch',
-  'reconcile',
-  'verify_skill',
   'drive',
   // cm:why the project-onboarding analysis (ISS-63): an issue-less job whose prompt carries the whole
   // method, so the runner, which never branches on the type, needs no change
@@ -742,8 +739,7 @@ export const jobs = pgTable(
     finishedArchiveIdx: index('jobs_finished_archive_idx')
       .on(t.finishedAt)
       .where(sql`archive_path IS NULL AND finished_at IS NOT NULL`),
-    // ISS-455 — the smoke-verify report reads "latest canary per stage" for a
-    // project; the partial index keeps that read off the hot jobs rows.
+    // ISS-455 — a project's smoke canaries, kept off the hot jobs rows.
     smokeProjectQueuedIdx: index('jobs_smoke_project_queued_idx')
       .on(t.projectId, t.queuedAt)
       .where(sql`type = 'smoke'`),
@@ -1441,10 +1437,8 @@ export const skills = pgTable(
     pinnedBy: text('pinned_by'),
     pinnedAt: timestamp('pinned_at', { withTimezone: true }),
     // When true, a project-scoped skill is synced to device runners (enters the
-    // device manifest) even though it is NOT registered to any pipeline stage.
-    // Lets a manual / user-invocable utility skill (e.g. forge-product-map) live
-    // on the runner without the dispatcher ever auto-running it — stage dispatch
-    // keys off skill_registrations, which this flag does not touch.
+    // device manifest): a manual / user-invocable utility skill (e.g.
+    // forge-product-map) lives on the runner without the dispatcher running it.
     installOnly: boolean('install_only').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1457,56 +1451,6 @@ export const skills = pgTable(
     projectNameUq: uniqueIndex('skills_project_name_uq')
       .on(t.projectId, t.name)
       .where(sql`scope = 'project'`),
-  }),
-);
-
-export const skillRegistrations = pgTable(
-  'skill_registrations',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    skillId: uuid('skill_id')
-      .notNull()
-      .references(() => skills.id, { onDelete: 'cascade' }),
-    stage: text('stage').notNull(),
-    registeredBy: uuid('registered_by').references(() => users.id, { onDelete: 'set null' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    projectStageUq: uniqueIndex('skill_registrations_project_stage_uq').on(t.projectId, t.stage),
-    skillIdx: index('skill_registrations_skill_id_idx').on(t.skillId),
-  }),
-);
-
-export const deviceSkills = pgTable(
-  'device_skills',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    deviceId: uuid('device_id')
-      .notNull()
-      .references(() => devices.id, { onDelete: 'cascade' }),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    skillId: uuid('skill_id')
-      .notNull()
-      .references(() => skills.id, { onDelete: 'cascade' }),
-    installedHash: text('installed_hash').notNull(),
-    installedVersion: integer('installed_version'),
-    syncedAt: timestamp('synced_at', { withTimezone: true }).notNull(),
-    observedSha: text('observed_sha'),
-    shadowedBy: text('shadowed_by'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    deviceProjectSkillUq: uniqueIndex('device_skills_device_project_skill_uq').on(
-      t.deviceId,
-      t.projectId,
-      t.skillId,
-    ),
-    deviceProjectIdx: index('device_skills_device_project_idx').on(t.deviceId, t.projectId),
   }),
 );
 
@@ -1535,32 +1479,6 @@ export const skillActivityEvents = pgTable(
     packetIdx: index('skill_activity_events_packet_idx').on(t.packetId, t.occurredAt),
     skillIdx: index('skill_activity_events_skill_idx').on(t.projectId, t.skillId, t.occurredAt),
     deviceIdx: index('skill_activity_events_device_idx').on(t.deviceId, t.occurredAt),
-  }),
-);
-
-export const updatePacketIntentClasses = ['invariant', 'procedure', 'enhancement'] as const;
-export type UpdatePacketIntentClass = (typeof updatePacketIntentClasses)[number];
-
-export interface UpdatePacketProvenance {
-  commit?: string | undefined;
-  version?: string | undefined;
-  author?: string | undefined;
-}
-
-export const updatePackets = pgTable(
-  'update_packets',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    change: text('change').notNull(),
-    story: text('story').notNull(),
-    intentClass: text('intent_class', { enum: updatePacketIntentClasses }).notNull(),
-    appliesTo: text('applies_to').notNull(),
-    provenance: jsonb('provenance').notNull().default({}).$type<UpdatePacketProvenance>(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    storyNotEmpty: check('update_packets_story_not_empty', sql`length(trim(${t.story})) > 0`),
-    createdAtIdx: index('update_packets_created_at_idx').on(t.createdAt),
   }),
 );
 
@@ -1633,18 +1551,8 @@ export const memories = pgTable(
   }),
 );
 
-export const skillsRelations = relations(skills, ({ one, many }) => ({
+export const skillsRelations = relations(skills, ({ one }) => ({
   project: one(projects, { fields: [skills.projectId], references: [projects.id] }),
-  registrations: many(skillRegistrations),
-}));
-
-export const skillRegistrationsRelations = relations(skillRegistrations, ({ one }) => ({
-  project: one(projects, { fields: [skillRegistrations.projectId], references: [projects.id] }),
-  skill: one(skills, { fields: [skillRegistrations.skillId], references: [skills.id] }),
-  registeredByUser: one(users, {
-    fields: [skillRegistrations.registeredBy],
-    references: [users.id],
-  }),
 }));
 
 export const memoriesRelations = relations(memories, ({ one }) => ({
@@ -2708,110 +2616,6 @@ export const downloadTickets = pgTable(
     expiresIdx: index('download_tickets_expires_at_idx').on(t.expiresAt),
   }),
 );
-
-export const divergenceCharters = pgTable(
-  'divergence_charters',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    projectId: uuid('project_id')
-      .notNull()
-      .unique()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    entries: jsonb('entries').notNull().default([]),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    projectUq: uniqueIndex('divergence_charters_project_uq').on(t.projectId),
-  }),
-);
-
-export const divergenceChartersRelations = relations(divergenceCharters, ({ one }) => ({
-  project: one(projects, { fields: [divergenceCharters.projectId], references: [projects.id] }),
-}));
-
-export const reconcileVerdicts = ['no-op', 'apply', 'apply-with-adaptation', 'escalate'] as const;
-export type ReconcileVerdict = (typeof reconcileVerdicts)[number];
-
-export const reconcileRunStatuses = RECONCILE_RUN_STATUSES;
-export type ReconcileRunStatus = (typeof reconcileRunStatuses)[number];
-
-export const reconcileGates = ['auto', 'human'] as const;
-export type ReconcileGate = (typeof reconcileGates)[number];
-
-export interface ReconcileBundleSnapshot {
-  readAt: string;
-  change: string;
-  story: string;
-  intentClass: string;
-  appliesTo: string;
-  provenance: Record<string, unknown>;
-  runningBody: string;
-  runningHash: string;
-  charter: unknown | null;
-  /** Slug → body of this project's knowledge entries, each cut at `SNAPSHOT_BODY_MAX_CHARS`. Was `projectFacts` until ISS-1048 moved project prose out of `agentConfig`. */
-  projectKnowledge: Record<string, unknown>;
-  /** The project's policy-v1 document at assembly, or null where it has none. */
-  projectPolicy: Record<string, unknown> | null;
-  recentRunEvidence: unknown[];
-  priorReconcileHistory: unknown[];
-  invariantSet: Record<string, unknown>;
-  mustNotBreak: string[];
-  sources: Record<string, 'human' | 'from-code' | 'observed-from-run' | 'agent-assertion'>;
-}
-
-export interface ReconcileVerifierVote {
-  jobId: string;
-  vote: 'pass' | 'fail';
-  reason: string;
-  decidedAt: string;
-}
-
-export const reconcileRuns = pgTable(
-  'reconcile_runs',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    packetId: uuid('packet_id').references(() => updatePackets.id, { onDelete: 'set null' }),
-    skillId: uuid('skill_id').references(() => skills.id, { onDelete: 'set null' }),
-    status: text('status', { enum: reconcileRunStatuses }).notNull().default('pending'),
-    verdict: text('verdict', { enum: reconcileVerdicts }),
-    gate: text('gate', { enum: reconcileGates }),
-    bundle: jsonb('bundle').notNull().default({}).$type<ReconcileBundleSnapshot>(),
-    candidateBody: text('candidate_body'),
-    candidateHash: text('candidate_hash'),
-    lastGoodBody: text('last_good_body'),
-    lastGoodHash: text('last_good_hash'),
-    verifierVotes: jsonb('verifier_votes').notNull().default([]).$type<ReconcileVerifierVote[]>(),
-    rationale: text('rationale'),
-    refusalReason: text('refusal_reason'),
-    error: text('error'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-    decidedAt: timestamp('decided_at', { withTimezone: true }),
-    acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
-    acknowledgedBy: uuid('acknowledged_by').references(() => users.id, { onDelete: 'set null' }),
-  },
-  (t) => ({
-    activeProjectUq: uniqueIndex('reconcile_runs_active_project_uq')
-      .on(t.projectId)
-      .where(sql`status IN ('pending','running','verifying','decided')`),
-    projectCreatedIdx: index('reconcile_runs_project_created_idx').on(t.projectId, t.createdAt),
-    packetIdx: index('reconcile_runs_packet_idx').on(t.packetId),
-    pendingGateIdx: index('reconcile_runs_pending_gate_idx')
-      .on(t.projectId)
-      .where(
-        sql`(status = 'decided' AND gate = 'human') OR (status = 'escalated' AND verdict = 'escalate' AND acknowledged_at IS NULL)`,
-      ),
-  }),
-);
-
-export const reconcileRunsRelations = relations(reconcileRuns, ({ one }) => ({
-  project: one(projects, { fields: [reconcileRuns.projectId], references: [projects.id] }),
-  skill: one(skills, { fields: [reconcileRuns.skillId], references: [skills.id] }),
-}));
 
 export const attributeValueTypes = [
   'text',

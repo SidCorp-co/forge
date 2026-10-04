@@ -17,14 +17,6 @@ export interface SkillHashMismatch {
   currentHash: string;
 }
 
-export interface DeviceHashMismatch {
-  deviceId: string;
-  projectId: string;
-  skillId: string;
-  loggedHash: string | null;
-  installedHash: string;
-}
-
 const HASH_CHAIN_EVENT_TYPES = sql`('skill.body.changed')`;
 
 /**
@@ -109,69 +101,21 @@ export async function findSkillHashMismatches(): Promise<SkillHashMismatch[]> {
   }));
 }
 
-/**
- * §7 self-check, part 3: for each device, the last-applied hash logged must
- * match `device_skills.installed_hash` — the runner's own observed state.
- */
-export async function findDeviceHashMismatches(): Promise<DeviceHashMismatch[]> {
-  const rows = await db.execute<{
-    device_id: string;
-    project_id: string;
-    skill_id: string;
-    logged_hash: string | null;
-    installed_hash: string;
-  }>(sql`
-    WITH last_applied AS (
-      SELECT DISTINCT ON (device_id, project_id, skill_id)
-        device_id, project_id, skill_id, after_hash
-      FROM skill_activity_events
-      WHERE event_type = 'device.skill.applied'
-        AND device_id IS NOT NULL
-        AND project_id IS NOT NULL
-        AND skill_id IS NOT NULL
-      ORDER BY device_id, project_id, skill_id, occurred_at DESC, id DESC
-    )
-    SELECT
-      la.device_id, la.project_id, la.skill_id,
-      la.after_hash AS logged_hash, ds.installed_hash AS installed_hash
-    FROM last_applied la
-    JOIN device_skills ds
-      ON ds.device_id = la.device_id
-     AND ds.project_id = la.project_id
-     AND ds.skill_id = la.skill_id
-    WHERE la.after_hash IS DISTINCT FROM ds.installed_hash
-  `);
-
-  return rows.map((r) => ({
-    deviceId: r.device_id,
-    projectId: r.project_id,
-    skillId: r.skill_id,
-    loggedHash: r.logged_hash,
-    installedHash: r.installed_hash,
-  }));
-}
-
 export interface SkillActivityChainIntegrityReport {
   ok: boolean;
   brokenChains: BrokenActivityChainLink[];
   skillHashMismatches: SkillHashMismatch[];
-  deviceHashMismatches: DeviceHashMismatch[];
 }
 
-/** Runs all three §7 self-checks and reports whether the log is trustworthy. */
+/** Runs both §7 self-checks and reports whether the log is trustworthy. */
 export async function checkSkillActivityChainIntegrity(): Promise<SkillActivityChainIntegrityReport> {
-  const [brokenChains, skillHashMismatches, deviceHashMismatches] = await Promise.all([
+  const [brokenChains, skillHashMismatches] = await Promise.all([
     findBrokenActivityChains(),
     findSkillHashMismatches(),
-    findDeviceHashMismatches(),
   ]);
   return {
-    ok:
-      brokenChains.length === 0 &&
-      skillHashMismatches.length === 0 &&
-      deviceHashMismatches.length === 0,
+    ok: brokenChains.length === 0 && skillHashMismatches.length === 0,
     brokenChains,
     skillHashMismatches,
-    deviceHashMismatches,
   };
 }

@@ -164,9 +164,6 @@
     "core-tasks": [
       "packages/core/src/tasks/**"
     ],
-    "core-update-packets": [
-      "packages/core/src/update-packets/**"
-    ],
     "core-uploads": [
       "packages/core/src/uploads/**"
     ],

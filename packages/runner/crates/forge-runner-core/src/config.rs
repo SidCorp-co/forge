@@ -524,11 +524,6 @@ mod tests {
                 "~/.claude, Claude Code's own home, which is not the config dir",
             ),
             (
-                "forge-runner-core/src/workspace/skill_sync.rs",
-                1,
-                "detect_user_shadow, which reads ~/.claude/skills",
-            ),
-            (
                 "forge-runner-core/src/workspace/trust.rs",
                 1,
                 "~/.claude.json, Claude Code's trust file, which is not the config dir",

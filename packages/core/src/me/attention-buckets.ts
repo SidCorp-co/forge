@@ -1,15 +1,5 @@
 import { ISSUE_RESOLVED_STATUSES } from '@forge/contracts/issue-machine';
-import {
-  and,
-  desc,
-  eq,
-  inArray,
-  isNull,
-  notExists,
-  notInArray,
-  or,
-  sql,
-} from 'drizzle-orm';
+import { and, desc, eq, isNull, notExists, notInArray, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
 import {
@@ -21,13 +11,10 @@ import {
   notificationDeliveryMembers,
   notifications,
   projects,
-  reconcileRuns,
 } from '../db/schema.js';
 import { issueArchiveSide } from '../issues/archive.js';
-import { actorFor, visibleFilter } from '../permissions/index.js';
 
 const PER_BUCKET = 5;
-const PENDING_SKILL_UPDATES_CAP = 20;
 
 const retryJobs = alias(jobs, 'retry_jobs');
 
@@ -51,18 +38,6 @@ export interface AttentionFailedJobRow {
   issuePrefix: string | null;
   projectSlug: string;
   projectName: string;
-}
-
-export interface AttentionReconcileRow {
-  status: string;
-  createdAt: Date;
-  decidedAt: Date | null;
-  projectSlug: string;
-  projectName: string;
-}
-
-function adminsProject(userId: string) {
-  return visibleFilter(actorFor(userId), 'project.admin', { type: 'project', projectId: projects.id });
 }
 
 export function selectMentions(userId: string): Promise<AttentionMentionRow[]> {
@@ -140,32 +115,4 @@ export function selectFailedJobs(userId: string): Promise<AttentionFailedJobRow[
     )
     .orderBy(desc(sql`coalesce(${jobs.finishedAt}, ${jobs.createdAt})`))
     .limit(PER_BUCKET) as Promise<AttentionFailedJobRow[]>;
-}
-
-export function selectPendingSkillUpdates(userId: string): Promise<AttentionReconcileRow[]> {
-  return db
-    .select({
-      status: reconcileRuns.status,
-      createdAt: reconcileRuns.createdAt,
-      decidedAt: reconcileRuns.decidedAt,
-      projectSlug: projects.slug,
-      projectName: projects.name,
-    })
-    .from(reconcileRuns)
-    .innerJoin(projects, eq(projects.id, reconcileRuns.projectId))
-    .where(
-      and(
-        adminsProject(userId),
-        or(
-          and(eq(reconcileRuns.status, 'decided'), eq(reconcileRuns.gate, 'human')),
-          and(
-            eq(reconcileRuns.status, 'escalated'),
-            eq(reconcileRuns.verdict, 'escalate'),
-            isNull(reconcileRuns.acknowledgedAt),
-          ),
-        ),
-      ),
-    )
-    .orderBy(desc(sql`coalesce(${reconcileRuns.decidedAt}, ${reconcileRuns.createdAt})`))
-    .limit(PENDING_SKILL_UPDATES_CAP) as Promise<AttentionReconcileRow[]>;
 }

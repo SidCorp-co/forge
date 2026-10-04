@@ -40,7 +40,6 @@ export const OUTBOX_CONSUMERS = {
 	"notification.read": ["ws-broadcast"],
 	"user.preferencesChanged": ["ws-broadcast"],
 	"skill.syncRequested": ["ws-broadcast"],
-	"skill.registered": ["ws-broadcast"],
 	"skill.globalUpdated": ["ws-broadcast"],
 	"runner.provisionRequested": ["ws-broadcast"],
 	"runner.provisionStatus": ["ws-broadcast"],

@@ -8,7 +8,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { MANAGED_META_SKILLS, resolveRegisteredEffectiveSkills } from './effective.js';
-import { listSkills, skillById, skillScopeById, skillSyncStatusOf } from './read.js';
+import { listSkills, skillById, skillScopeById } from './read.js';
 import { refuse } from './refuse.js';
 import {
   createProjectSkill,
@@ -62,12 +62,6 @@ const listQuerySchema = z
   .strict();
 
 const invokableQuerySchema = z.object({ projectId: z.uuid() }).strict();
-
-const syncStatusSchema = z
-  .object({
-    projectId: z.uuid(),
-  })
-  .strict();
 
 const bulkPushSchema = z
   .object({
@@ -272,23 +266,6 @@ skillCrudRoutes.delete(
 
     await deleteProjectSkill(id);
     return c.body(null, 204);
-  },
-);
-
-skillCrudRoutes.post(
-  '/sync-status',
-  zValidator('json', syncStatusSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { projectId } = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
-
-    const result = await skillSyncStatusOf(projectId);
-    return c.json(result);
   },
 );
 

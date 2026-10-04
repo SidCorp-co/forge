@@ -1,5 +1,4 @@
-// A retry's prompt is the PARENT's prompt string, copied verbatim by `retry.ts` — only
-// `verify_skill` rebuilds it. So the "what did the last attempt do" block cannot be produced at
+// A retry's prompt is the PARENT's prompt string, copied verbatim by `retry.ts`. So the "what did the last attempt do" block cannot be produced at
 // enqueue time by `buildJobPromptString`; it is spliced in at dispatch time, the same way
 // `injectTurnLevelRules` is.
 

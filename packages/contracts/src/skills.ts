@@ -1,4 +1,4 @@
-// The refusal vocabulary of project skills, their registrations, smoke verification and reconcile runs.
+// The refusal vocabulary of project skills.
 
 export const SKILL_REFUSAL_CODES = [
 	"SKILL_REFUSED",
@@ -8,15 +8,6 @@ export const SKILL_REFUSAL_CODES = [
 	"SKILL_CONTENT_BLOCKED",
 	"SKILL_GLOBAL_READ_ONLY",
 	"NO_RUNNER_ONLINE",
-	"C1_C5_REFUSED",
-	"RECONCILE_RUN_ACTIVE",
-	"RECONCILE_RUN_NOT_OPEN",
-	"RECONCILE_RUN_NOT_VERIFYING",
-	"RECONCILE_RUN_NOT_DECIDED",
-	"RECONCILE_RUN_NO_SKILL",
-	"RECONCILE_RUN_TERMINAL",
-	"RECONCILE_RUN_NOT_ESCALATED",
-	"RECONCILE_VOTE_JOB_UNKNOWN",
 ] as const;
 
 export type SkillRefusalCode = (typeof SKILL_REFUSAL_CODES)[number];

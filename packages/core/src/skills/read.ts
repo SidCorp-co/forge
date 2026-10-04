@@ -1,6 +1,6 @@
-import { and, asc, eq, inArray, or, type SQL } from 'drizzle-orm';
+import { and, asc, eq, or, type SQL } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, skillRegistrations, skills } from '../db/schema.js';
+import { skills } from '../db/schema.js';
 
 export type SkillFullRow = typeof skills.$inferSelect;
 
@@ -42,85 +42,6 @@ export async function skillScopeById(
   return row ?? null;
 }
 
-/** Each skill a project sees (its own and the globals) with the stages it is registered on. */
-export async function skillSyncStatusOf(projectId: string) {
-  const projectSkills = await db
-    .select({
-      id: skills.id,
-      name: skills.name,
-      target: skills.target,
-      scope: skills.scope,
-      contentHash: skills.contentHash,
-      version: skills.version,
-      updatedAt: skills.updatedAt,
-    })
-    .from(skills)
-    .where(or(eq(skills.scope, 'global'), eq(skills.projectId, projectId)) as SQL);
-
-  if (projectSkills.length === 0) return [];
-
-  const registrations = await db
-    .select({ skillId: skillRegistrations.skillId, stage: skillRegistrations.stage })
-    .from(skillRegistrations)
-    .where(
-      and(
-        eq(skillRegistrations.projectId, projectId),
-        inArray(
-          skillRegistrations.skillId,
-          projectSkills.map((s) => s.id),
-        ),
-      ),
-    );
-
-  const stagesBySkill = new Map<string, string[]>();
-  for (const reg of registrations) {
-    const arr = stagesBySkill.get(reg.skillId) ?? [];
-    arr.push(reg.stage);
-    stagesBySkill.set(reg.skillId, arr);
-  }
-
-  return projectSkills.map((s) => ({
-    skillId: s.id,
-    skillName: s.name,
-    target: s.target,
-    scope: s.scope,
-    currentHash: s.contentHash,
-    currentVersion: s.version,
-    updatedAt: s.updatedAt,
-    registeredStages: stagesBySkill.get(s.id) ?? [],
-  }));
-}
-
-/** A project's per-stage skill bindings. */
-export async function listSkillRegistrations(projectId: string) {
-  return db
-    .select({
-      stage: skillRegistrations.stage,
-      skillId: skillRegistrations.skillId,
-      skillName: skills.name,
-      skillScope: skills.scope,
-      registeredBy: skillRegistrations.registeredBy,
-      createdAt: skillRegistrations.createdAt,
-    })
-    .from(skillRegistrations)
-    .innerJoin(skills, eq(skills.id, skillRegistrations.skillId))
-    .where(eq(skillRegistrations.projectId, projectId));
-}
-
-/** The skill registered on one stage of a project, or null. */
-export async function registeredSkillIdAt(
-  projectId: string,
-  stage: IssueStatus,
-): Promise<string | null> {
-  const [row] = await db
-    .select({ skillId: skillRegistrations.skillId })
-    .from(skillRegistrations)
-    .where(and(eq(skillRegistrations.projectId, projectId), eq(skillRegistrations.stage, stage)))
-    .limit(1);
-  return row?.skillId ?? null;
-}
-
-/** The global skills and a project's own skills, each by name, not deduplicated. */
 export async function studioSkillsOf(
   projectId: string,
 ): Promise<{ globals: SkillFullRow[]; projectSkills: SkillFullRow[] }> {

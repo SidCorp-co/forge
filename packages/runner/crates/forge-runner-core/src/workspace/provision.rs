@@ -206,10 +206,7 @@ async fn finish_workspace(client: &CoreClient, _cfg: &Config, p: &Provision, rep
     report(client, &p.runner_id, "syncing_skills", None).await;
     match skill_sync::sync_skills(client, &p.project_id, repo_path).await {
         Ok(n) => tracing::info!("[provision] project={} synced {n} skill(s)", p.slug),
-        Err(e) => {
-            tracing::warn!("[provision] skill sync failed: {e}");
-            skill_sync::report_sync_failure(client, &p.project_id, &e).await;
-        }
+        Err(e) => tracing::warn!("[provision] skill sync failed: {e}"),
     }
 
     report(client, &p.runner_id, "writing_mcp", None).await;

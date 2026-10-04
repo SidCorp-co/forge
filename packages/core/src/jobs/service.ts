@@ -55,15 +55,7 @@ export async function ackJob(
                 ),
               )
               .limit(1);
-            const packetId = skill
-              ? await jobsPorts().skillActivity.resolvePacketIdForHash(
-                  db,
-                  job.projectId,
-                  skill.id,
-                  hash,
-                )
-              : undefined;
-            return { name, hash, skillId: skill?.id, packetId };
+            return { name, hash, skillId: skill?.id };
           }),
         )
       : [];
@@ -94,7 +86,6 @@ export async function ackJob(
           projectId: job.projectId,
           deviceId,
           ...(lookup.skillId ? { skillId: lookup.skillId } : {}),
-          ...(lookup.packetId ? { packetId: lookup.packetId } : {}),
           afterHash: lookup.hash,
           reason: `jobId=${job.id}`,
           deltaSummary: lookup.name,

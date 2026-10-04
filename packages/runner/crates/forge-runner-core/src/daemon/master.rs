@@ -4502,11 +4502,11 @@ mod tests {
         );
     }
 
-    /// The four issue-less kinds are claimed on every sweep, not only when the
+    /// The issue-less kinds are claimed on every sweep, not only when the
     /// admissible set has something in it.
     ///
     /// The two sets do not overlap: `devices/pool.ts:readPool` serves
-    /// `release_batch`, `smoke`, `reconcile` and `verify_skill`, and
+    /// `release_batch` and `smoke`, and
     /// `admissible` serves issues. A claim gated on a non-empty admissible set
     /// would leave a project whose only work is a release with its pool unread
     /// for ever — which is the whole of ISS-1080, arriving through the call site

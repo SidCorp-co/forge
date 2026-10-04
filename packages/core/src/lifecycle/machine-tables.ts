@@ -1,13 +1,5 @@
 import type { MachineEntity } from '@forge/contracts/machines';
-import {
-  agentSessions,
-  devices,
-  issues,
-  jobs,
-  pipelineRuns,
-  reconcileRuns,
-  runners,
-} from '../db/schema.js';
+import { agentSessions, devices, issues, jobs, pipelineRuns, runners } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { mockups } from '../db/schema-mockups.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
@@ -30,7 +22,6 @@ export interface MachineTables {
   questionnaire: typeof questionnaireBatches;
   question: typeof agentQuestions;
   schedule_run: typeof scheduleRuns;
-  reconcile_run: typeof reconcileRuns;
   runner: typeof runners;
   runner_provision: typeof runners;
   device: typeof devices;
@@ -74,8 +65,6 @@ export function machineTable<E extends MachineEntity>(entity: E): MachineTable<E
       return at(agentQuestions);
     case 'schedule_run':
       return at(scheduleRuns);
-    case 'reconcile_run':
-      return at(reconcileRuns);
     case 'runner':
       return at(runners);
     case 'runner_provision':
