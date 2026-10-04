@@ -78,6 +78,94 @@ const inputSchema = z
 
 type Input = z.infer<typeof inputSchema>;
 
+const DESCRIPTION =
+  'Coolify deploy controls for the pipeline skills. Actions: list | deploy | status | logs | ' +
+  'runtime-logs | cancel | rollback-images | rollback | applications | targets. ' +
+  'MODEL: one integration = one project+ROLE binding. A `deploy` binding serves the ONE ' +
+  'environment of the project document whose `deployment.binding` names it, and only such a ' +
+  'binding is dispatched; an environment whose trigger is `provider` deploys itself and is ' +
+  'skipped. Two environments on one Coolify application is a configuration, not a rule: read ' +
+  'each binding `environment`. Each integration deploys ONE OR MORE targets[] — each target is its own Coolify ' +
+  'application (e.g. a split backend + frontend, or a worker), deployed TOGETHER. A single deploy ' +
+  'FANS OUT to every target of the integration (one Coolify build per target); the pipeline run is ' +
+  'marked done only when EVERY target webhook reports success, and FAILS on the first target ' +
+  'failure. So if an app (e.g. the backend) is not deploying, check it is CONFIGURED as a target on ' +
+  'that integration (project settings → Integrations) — Forge only deploys the targets the ' +
+  'integration holds. ' +
+  'list: active Coolify integrations for the project (id, environment, targets[]={id,label,' +
+  'resourceUuid}, lastHealthStatus, breakerOpen); empty array => project is local-only (no Coolify). ' +
+  'Inspect targets[] to confirm every app you expect (BE+FE) is present. ' +
+  'deploy: issueId is OPTIONAL; dispatches ALL targets of the resolved integration. With issueId — ' +
+  "run-tracked deploy: resolves the issue's latest pipeline run and enqueues via the SAME path as " +
+  'every release deploy (each target webhook then advances that run; run completes when all ' +
+  'targets succeed). When issueId is combined with integrationId, integrationId is a HARD scope ' +
+  'filter — ONLY that binding dispatches, even if other bindings (e.g. prod) exist on the run. ' +
+  'When issueId is given WITHOUT integrationId, bindings reaching production (its binding, or one ' +
+  'deploying to an application it also deploys to) are dispatched ONLY when ' +
+  'the issue has reached the release stage (status awaiting_release/closed) — every pre-release call ' +
+  '(code/fix/testing) reaches every environment but production and NEVER touches a production ' +
+  'binding, whatever its trigger (`on-land` waives the human-confirm gate at the release stage, ' +
+  'never the pre-release filter). With pipelineRunId (no issueId) — ISS-764 ' +
+  'batch release path: the run is already open (kind=system); dispatches ALL targets live-allowed ' +
+  '(allowLive=true) via the shared release path. The live human-confirm gate still applies — ' +
+  'pendingHumanConfirm:true means abort the batch. Mutually exclusive with issueId. ' +
+  'Without issueId or pipelineRunId — run-less resource redeploy: ' +
+  'resolves the target integration like the logs action (explicit integrationId, else the single ' +
+  'active Coolify integration, else BAD_REQUEST when multiple exist) and dispatches with no run ' +
+  'attached (webhooks record deliveries but advance no pipeline). Each call is its own dispatch ' +
+  '(per-attempt requestId, suffixed per target) and Coolify force-rebuilds, so re-deploying after a ' +
+  'branch fix fires fresh builds. At the release stage, prod integrations still honor the ' +
+  "human-confirm gate (unless the project document's production environment deploys `on-land`): returns " +
+  'pendingHumanConfirm:true and does NOT dispatch until confirmed via the confirm-prod-deploy ' +
+  'endpoint. ' +
+  'status: latest outbound delivery PER TARGET for the integration(s) (or a specific integrationId): ' +
+  'deploymentUuid, status, breakerOpen, createdAt — expect one row per target. ' +
+  'logs: fetch the Coolify build/deploy log for a deployment and return it scrubbed + tailed. ' +
+  'Resolves deploymentUuid from the explicit deploymentUuid param, else the most recent outbound ' +
+  'delivery (across the integration targets) — pass deploymentUuid to target a specific app/target. ' +
+  'Requires integrationId when multiple active Coolify integrations exist. ' +
+  'Secrets (Authorization/Cookie/X-Api-Key headers, token/apiKey/password/jwt fields, tokenized ' +
+  "URLs, and the integration's own apiToken) are redacted line-by-line; build-stage stderr is " +
+  'preserved. Returns { integrationId, deploymentUuid, status, commit, logs, truncated, fetchedAt, logsDigest }. `commit` is the git SHA this deployment built, read from the deployment record — the log line `SOURCE_COMMIT=` is redacted with the rest of the env dump, so compare THIS field against your merge SHA to prove the change is live. On a Coolify API ' +
+  'error returns { error, httpStatus } with no raw body. Tailed to the last `lines` ' +
+  '(default 100) / ~16KB, truncated:true when cut. `lines` outside 1..1000 is REJECTED, not ' +
+  'clamped — a value of 5000 is a validation error, not a 1000-line tail. ' +
+  'A build log that has not moved is INDISTINGUISHABLE from a stale snapshot by eye, so compare ' +
+  '`logsDigest` across calls: identical digest + advancing `fetchedAt` means Coolify really is ' +
+  'returning the same bytes, not that this tool cached them. Neither proves the build is hung — ' +
+  'read `status` for that. ' +
+  'runtime-logs: tail the LIVE application container log (NOT the build log) via Coolify ' +
+  'applications/{uuid}/logs. Resolves the target from resourceUuid (else the integration sole ' +
+  'target; multiple targets => pass resourceUuid, see list); optional `lines` (default 100, ' +
+  'rejected outside 1..1000). ' +
+  'Same scrubbing/tailing, `fetchedAt` and `logsDigest` as logs. CAVEAT: for a docker-compose application Coolify returns only ONE ' +
+  "container's logs and its public API has NO working per-service selector — reliable for " +
+  'single-container apps; a compose deploy cannot be narrowed to a specific service here. Returns ' +
+  '{ integrationId, resourceUuid, logs, truncated, fetchedAt, logsDigest } or { error, httpStatus }. ' +
+  'cancel: stop a deployment that is still queued or building — POST deployments/{uuid}/cancel. ' +
+  "Resolves deploymentUuid from the explicit param, else the integration's most recent outbound " +
+  'delivery. Coolify answers 400 for a deployment that has already finished and that message is ' +
+  'returned as-is; nothing is reported cancelled that was not. The cancel is recorded as an ' +
+  'outbound delivery and the in-flight confirmation poll settles the run on cancelled-by-user. ' +
+  'rollback-images: what this target can actually be rolled back to — { current, images[]={tag,' +
+  'createdAt,isCurrent} }. READ THIS FIRST; an empty images[] also means Coolify could not reach ' +
+  "the application's server, so it is a refusal, not an empty shelf. " +
+  'rollback: queue a rollback of one target to `commit` (the IMAGE TAG from rollback-images, not ' +
+  'a git SHA). A tag Coolify does not list is REFUSED BY NAME and is never resolved to the ' +
+  'nearest image. Returns { performed, deploymentUuid }; the rollback build is polled and audited ' +
+  'exactly like a deploy. ' +
+  'cancel and rollback answer to the SAME production gate a deploy does: against a prod binding ' +
+  "both return pendingHumanConfirm:true and do nothing unless the project document's production " +
+  'environment deploys `on-land`. ' +
+  'applications: every Coolify application this credential can see — { uuid, name, fqdn, ' +
+  'gitRepository, gitBranch, gitCommitSha, status }. The pick-list that replaces transcribing a ' +
+  'resourceUuid. ' +
+  'targets: the bound targets of one integration resolved against that list, each with its ' +
+  'Coolify identity and `found:false` when Coolify does not list the bound uuid — which is how a ' +
+  'wrong binding is visible without opening Coolify. ' +
+  'Project scope comes from the X-Forge-Project-Slug header (or an explicit projectId). ' +
+  'Authorization: project membership; deploy, cancel and rollback need deploys.run.';
+
 export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_coolify_deploy',
   reach: 'project',
@@ -96,93 +184,7 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
       targets: 'projects:read',
     },
   },
-  description:
-    'Coolify deploy controls for the pipeline skills. Actions: list | deploy | status | logs | ' +
-    'runtime-logs | cancel | rollback-images | rollback | applications | targets. ' +
-    'MODEL: one integration = one project+ROLE binding. A `deploy` binding serves the ONE ' +
-    'environment of the project document whose `deployment.binding` names it, and only such a ' +
-    'binding is dispatched; an environment whose trigger is `provider` deploys itself and is ' +
-    'skipped. Two environments on one Coolify application is a configuration, not a rule: read ' +
-    'each binding `environment`. Each integration deploys ONE OR MORE targets[] — each target is its own Coolify ' +
-    'application (e.g. a split backend + frontend, or a worker), deployed TOGETHER. A single deploy ' +
-    'FANS OUT to every target of the integration (one Coolify build per target); the pipeline run is ' +
-    'marked done only when EVERY target webhook reports success, and FAILS on the first target ' +
-    'failure. So if an app (e.g. the backend) is not deploying, check it is CONFIGURED as a target on ' +
-    'that integration (project settings → Integrations) — Forge only deploys the targets the ' +
-    'integration holds. ' +
-    'list: active Coolify integrations for the project (id, environment, targets[]={id,label,' +
-    'resourceUuid}, lastHealthStatus, breakerOpen); empty array => project is local-only (no Coolify). ' +
-    'Inspect targets[] to confirm every app you expect (BE+FE) is present. ' +
-    'deploy: issueId is OPTIONAL; dispatches ALL targets of the resolved integration. With issueId — ' +
-    "run-tracked deploy: resolves the issue's latest pipeline run and enqueues via the SAME path as " +
-    'every release deploy (each target webhook then advances that run; run completes when all ' +
-    'targets succeed). When issueId is combined with integrationId, integrationId is a HARD scope ' +
-    'filter — ONLY that binding dispatches, even if other bindings (e.g. prod) exist on the run. ' +
-    'When issueId is given WITHOUT integrationId, bindings reaching production (its binding, or one ' +
-    'deploying to an application it also deploys to) are dispatched ONLY when ' +
-    'the issue has reached the release stage (status awaiting_release/closed) — every pre-release call ' +
-    '(code/fix/testing) reaches every environment but production and NEVER touches a production ' +
-    'binding, whatever its trigger (`on-land` waives the human-confirm gate at the release stage, ' +
-    'never the pre-release filter). With pipelineRunId (no issueId) — ISS-764 ' +
-    'batch release path: the run is already open (kind=system); dispatches ALL targets live-allowed ' +
-    '(allowLive=true) via the shared release path. The live human-confirm gate still applies — ' +
-    'pendingHumanConfirm:true means abort the batch. Mutually exclusive with issueId. ' +
-    'Without issueId or pipelineRunId — run-less resource redeploy: ' +
-    'resolves the target integration like the logs action (explicit integrationId, else the single ' +
-    'active Coolify integration, else BAD_REQUEST when multiple exist) and dispatches with no run ' +
-    'attached (webhooks record deliveries but advance no pipeline). Each call is its own dispatch ' +
-    '(per-attempt requestId, suffixed per target) and Coolify force-rebuilds, so re-deploying after a ' +
-    'branch fix fires fresh builds. At the release stage, prod integrations still honor the ' +
-    "human-confirm gate (unless the project document's production environment deploys `on-land`): returns " +
-    'pendingHumanConfirm:true and does NOT dispatch until confirmed via the confirm-prod-deploy ' +
-    'endpoint. ' +
-    'status: latest outbound delivery PER TARGET for the integration(s) (or a specific integrationId): ' +
-    'deploymentUuid, status, breakerOpen, createdAt — expect one row per target. ' +
-    'logs: fetch the Coolify build/deploy log for a deployment and return it scrubbed + tailed. ' +
-    'Resolves deploymentUuid from the explicit deploymentUuid param, else the most recent outbound ' +
-    'delivery (across the integration targets) — pass deploymentUuid to target a specific app/target. ' +
-    'Requires integrationId when multiple active Coolify integrations exist. ' +
-    'Secrets (Authorization/Cookie/X-Api-Key headers, token/apiKey/password/jwt fields, tokenized ' +
-    "URLs, and the integration's own apiToken) are redacted line-by-line; build-stage stderr is " +
-    'preserved. Returns { integrationId, deploymentUuid, status, commit, logs, truncated, fetchedAt, logsDigest }. `commit` is the git SHA this deployment built, read from the deployment record — the log line `SOURCE_COMMIT=` is redacted with the rest of the env dump, so compare THIS field against your merge SHA to prove the change is live. On a Coolify API ' +
-    'error returns { error, httpStatus } with no raw body. Tailed to the last `lines` ' +
-    '(default 100) / ~16KB, truncated:true when cut. `lines` outside 1..1000 is REJECTED, not ' +
-    'clamped — a value of 5000 is a validation error, not a 1000-line tail. ' +
-    'A build log that has not moved is INDISTINGUISHABLE from a stale snapshot by eye, so compare ' +
-    '`logsDigest` across calls: identical digest + advancing `fetchedAt` means Coolify really is ' +
-    'returning the same bytes, not that this tool cached them. Neither proves the build is hung — ' +
-    'read `status` for that. ' +
-    'runtime-logs: tail the LIVE application container log (NOT the build log) via Coolify ' +
-    'applications/{uuid}/logs. Resolves the target from resourceUuid (else the integration sole ' +
-    'target; multiple targets => pass resourceUuid, see list); optional `lines` (default 100, ' +
-    'rejected outside 1..1000). ' +
-    'Same scrubbing/tailing, `fetchedAt` and `logsDigest` as logs. CAVEAT: for a docker-compose application Coolify returns only ONE ' +
-    "container's logs and its public API has NO working per-service selector — reliable for " +
-    'single-container apps; a compose deploy cannot be narrowed to a specific service here. Returns ' +
-    '{ integrationId, resourceUuid, logs, truncated, fetchedAt, logsDigest } or { error, httpStatus }. ' +
-    'cancel: stop a deployment that is still queued or building — POST deployments/{uuid}/cancel. ' +
-    "Resolves deploymentUuid from the explicit param, else the integration's most recent outbound " +
-    'delivery. Coolify answers 400 for a deployment that has already finished and that message is ' +
-    'returned as-is; nothing is reported cancelled that was not. The cancel is recorded as an ' +
-    'outbound delivery and the in-flight confirmation poll settles the run on cancelled-by-user. ' +
-    'rollback-images: what this target can actually be rolled back to — { current, images[]={tag,' +
-    'createdAt,isCurrent} }. READ THIS FIRST; an empty images[] also means Coolify could not reach ' +
-    "the application's server, so it is a refusal, not an empty shelf. " +
-    'rollback: queue a rollback of one target to `commit` (the IMAGE TAG from rollback-images, not ' +
-    'a git SHA). A tag Coolify does not list is REFUSED BY NAME and is never resolved to the ' +
-    'nearest image. Returns { performed, deploymentUuid }; the rollback build is polled and audited ' +
-    'exactly like a deploy. ' +
-    'cancel and rollback answer to the SAME production gate a deploy does: against a prod binding ' +
-    "both return pendingHumanConfirm:true and do nothing unless the project document's production " +
-    'environment deploys `on-land`. ' +
-    'applications: every Coolify application this credential can see — { uuid, name, fqdn, ' +
-    'gitRepository, gitBranch, gitCommitSha, status }. The pick-list that replaces transcribing a ' +
-    'resourceUuid. ' +
-    'targets: the bound targets of one integration resolved against that list, each with its ' +
-    'Coolify identity and `found:false` when Coolify does not list the bound uuid — which is how a ' +
-    'wrong binding is visible without opening Coolify. ' +
-    'Project scope comes from the X-Forge-Project-Slug header (or an explicit projectId). ' +
-    'Authorization: project membership; deploy, cancel and rollback need deploys.run.',
+  description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),
   handler: (args) => dispatchAction(inputSchema.parse(args), ctx),
 });
