@@ -52,9 +52,8 @@ the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
 - At most ${SUGGESTION_MAX_OPEN_PER_TARGET} proposed suggestions wait on one target; another is
   \`SUGGESTION_QUEUE_FULL\` until a person decides one.
 - A \`breakdown\` is the project master's to propose (workflow requirement-to-delivery step
-  \`breakdown\`): only the project's own agent writes one, and a person, the BA assistant or another
-  project's agent is \`SUGGESTION_BREAKDOWN_PROPOSE_FORBIDDEN\`, a reviewer's revise included (reject it
-  with a reason and the master proposes again). A requirement revision holds one open breakdown; a
+  \`breakdown\`): proposing or revising one takes \`suggestions.write\` (project member), and
+  without it the call is \`PERMISSION_FORBIDDEN\`. A requirement revision holds one open breakdown; a
   second is \`SUGGESTION_BREAKDOWN_OPEN\`. Every issue carries at least one criterion and every
   criterion names the BC it traces to (\`tracesTo\`). The master owes it within
   ${BREAKDOWN_SLA_WORKING_DAYS} working days of the agree; the requirement's standing serves the task
@@ -75,14 +74,14 @@ the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
 ### Deciding
 - **accept** \`{ suggestionId, reason? }\` and **reject** \`{ suggestionId, reason }\` take
   \`suggestions.approve\` on the project (project admin, or an org owner or admin), person or agent alike,
-  its producer included; without it the call is refused \`APPROVE_PERMISSION_REQUIRED\`. An accept's reason is kept on the suggestion and is where the authority
+  its producer included; without it the call is refused \`PERMISSION_FORBIDDEN\`. An accept's reason is kept on the suggestion and is where the authority
   behind it is named. A rejection must say why (\`SUGGESTION_REJECT_REASON_REQUIRED\`), and that reason
   is what keeps the next suggestion on the target from repeating it.
 - **revise** \`{ suggestionId, payload, reason }\` is a reviewer's edit. The original is rejected with
   the reason, and a new suggestion carrying the whole new payload is proposed by the reviewer in the
   same write, naming the original in \`revises\`; every check a new suggestion takes applies to it.
   Revising rejects the original, so it takes \`suggestions.approve\` like any decision
-  (\`APPROVE_PERMISSION_REQUIRED\`), and a payload that changes nothing is
+  (\`PERMISSION_FORBIDDEN\`), and a payload that changes nothing is
   \`SUGGESTION_REVISION_UNCHANGED\`.
 - **withdraw** is the producer retracting its own (\`SUGGESTION_WITHDRAW_FORBIDDEN\` for anybody else,
   who rejects or revises it instead).

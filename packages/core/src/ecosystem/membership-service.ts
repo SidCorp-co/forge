@@ -1,5 +1,4 @@
 import { db } from '../db/client.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { pointer } from '../project-config/documents.js';
 import { wakeMastersForBuild } from '../ws/master-wake.js';
 import { assertStewardAdmin, forbidden, notFound, readerProjects, stewardRole } from './access.js';
@@ -22,6 +21,7 @@ import {
   readInterface,
   readMembership,
 } from './store.js';
+import { requireCan } from '../permissions/index.js';
 
 export type MembershipOutcome =
   | { ok: true; membership: MembershipRow }
@@ -34,7 +34,7 @@ export async function invite(input: {
 }): Promise<MembershipOutcome> {
   const { ecosystemId, projectId, userId } = input;
   const eco = await loadEcosystem(ecosystemId);
-  await assertStewardAdmin(eco.stewardOrgId, userId, 'inviting a project');
+  await assertStewardAdmin(eco.stewardOrgId, userId);
   const [project] = await projectsWhere(db, { ids: [projectId] });
   if (!project) {
     return {
@@ -85,10 +85,10 @@ async function assertSide(
   userId: string,
 ) {
   if (TRANSITIONS[verb].side === 'steward') {
-    await assertStewardAdmin(eco.stewardOrgId, userId, `the ${verb} transition`);
+    await assertStewardAdmin(eco.stewardOrgId, userId);
     return;
   }
-  await assertProjectAccess(row.projectId, userId, 'admin');
+  await requireCan({ userId }, 'project.admin', row.projectId);
 }
 
 export async function transition(input: {

@@ -49,7 +49,7 @@ function kindRefusals(kind: string | undefined, published: string | undefined, r
 // cm:why the REST upload and forge_ecosystem contract_version_publish are one service, so the writer rule, the kind check and the version rules are the same at both doors
 export async function publishContractVersion(input: PublishInput): Promise<PublishOutcome> {
   const { projectId, writer, contract, kind, sourceRef, ...body } = input;
-  const denied = await providerWriterMiss(writer, projectId, 'CONTRACT_WRITER_NOT_PROVIDER');
+  const denied = await providerWriterMiss(writer, projectId, 'publishing a contract version');
   if (denied) return refused([denied]);
   const [project] = await projectsWhere(db, { ids: [projectId] });
   if (!project)

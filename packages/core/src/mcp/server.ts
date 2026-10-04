@@ -5,10 +5,12 @@ import {
   ListPromptsRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import { HTTPException } from 'hono/http-exception';
 import pkg from '../../package.json' with { type: 'json' };
 import { forgeChannelTool } from '../assistant/tools/forge-channel-tool.js';
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../auth/mcp-audit.js';
 import { runWithPatScope } from '../auth/pat-scope.js';
+import { RefusalError } from '../lib/refusal.js';
 import { resolveManagedMetaPrompts } from '../skills/effective.js';
 import { forgeMcpInstructions } from './instructions.js';
 import { toolCallRefusal } from './tool-call-guard.js';
@@ -22,11 +24,13 @@ import { forgeSentryTool } from './tools/forge-sentry.js';
 import { forgeSourceTool } from './tools/forge-source.js';
 import { forgeStorefrontTargetTool } from './tools/forge-storefront-target.js';
 import { forgeUploadsTool } from './tools/forge-uploads.js';
-import type { McpContext, McpTool } from './tools/lib.js';
+import { type McpContext, type McpTool, refusedAnswer } from './tools/lib.js';
 import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/project-scope.js';
 
 function classifyError(err: unknown): { code: AuditResultCode; message: string } {
   const message = err instanceof Error ? err.message : String(err);
+  if (err instanceof HTTPException && err.status === 404) return { code: 'not_found', message };
+  if (err instanceof HTTPException && err.status === 403) return { code: 'forbidden', message };
   if (message.startsWith('NOT_FOUND')) return { code: 'not_found', message };
   if (message.startsWith('FORBIDDEN')) return { code: 'forbidden', message };
   return { code: 'error', message };
@@ -148,7 +152,13 @@ export function createMcpServer(ctx: McpContext): Server {
       };
     }
 
-    return runWithPatScope({ projectIds: allow, tokenId: principal.tokenId }, async () => {
+    const patScope = {
+      projectIds: allow,
+      tokenId: principal.tokenId,
+      grant: principal.permissions ?? null,
+      scopes: principal.scopes,
+    };
+    return runWithPatScope(patScope, async () => {
       const refusal = toolCallRefusal(tool, args, {
         grant: principal.permissions,
         fence: allow,
@@ -165,6 +175,10 @@ export function createMcpServer(ctx: McpContext): Server {
         writeMcpAudit({ ...auditBase, resultCode: 'ok' });
         return toToolCallContent(result);
       } catch (err) {
+        if (err instanceof RefusalError) {
+          writeMcpAudit({ ...auditBase, resultCode: 'forbidden' });
+          return toToolCallContent(refusedAnswer(err.refusals, err.fallbackCode));
+        }
         const { code, message } = classifyError(err);
         writeMcpAudit({ ...auditBase, resultCode: code });
         const text = message.replace(/^(?:FORBIDDEN|NOT_FOUND|BAD_REQUEST):\s*/, '');

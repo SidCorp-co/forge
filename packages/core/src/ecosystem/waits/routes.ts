@@ -12,7 +12,6 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
-import { assertProjectAccess } from '../../lib/authz.js';
 import {
   type AuthVars,
   assertEmailVerified,
@@ -23,6 +22,7 @@ import { strictBody, zValidator } from '../../middleware/zod-validator.js';
 import { refused } from '../../project-config/respond.js';
 import { issueContractWaitsOf } from './read.js';
 import { addContractWait, retractContractWait, type WaitOutcome } from './service.js';
+import { requireCan } from '../../permissions/index.js';
 
 export const contractWaitRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -56,7 +56,7 @@ async function issueFor(id: string, userId: string) {
     .where(eq(issues.id, id))
     .limit(1);
   if (!issue) throw new HTTPException(404, { message: `issue ${id} not found` });
-  await assertProjectAccess(issue.projectId, userId, 'viewer');
+  await requireCan({ userId }, 'project.read', issue.projectId);
   return issue;
 }
 

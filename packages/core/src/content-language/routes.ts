@@ -13,12 +13,12 @@ import {
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { refused } from '../project-config/respond.js';
 import { readContentLanguage } from './read.js';
 import { writeContentLanguage } from './service.js';
+import { requireCan } from '../permissions/index.js';
 
 export const contentLanguageRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -35,7 +35,7 @@ const projectParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
 
 contentLanguageRoutes.get('/:id/content-language', projectParam, async (c) => {
   const { id } = c.req.valid('param');
-  await assertProjectAccess(id, c.get('userId'), 'viewer');
+  await requireCan({ userId: c.get('userId') }, 'project.read', id);
   return c.json(await readContentLanguage(id));
 });
 
@@ -46,7 +46,7 @@ contentLanguageRoutes.put(
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    await assertProjectAccess(id, userId, 'admin');
+    await requireCan({ userId }, 'project.admin', id);
     const outcome = await writeContentLanguage({
       projectId: id,
       userId,

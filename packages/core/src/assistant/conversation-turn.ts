@@ -19,7 +19,8 @@ import type {
 import { conversations } from '../db/schema-conversations.js';
 import type { ChatContentPart, ChatMessage } from '../integrations/llm/types.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
-import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
+import { holds } from '../permissions/index.js';
 
 export type { ConversationImage };
 export { toCanonicalEntry };
@@ -143,7 +144,7 @@ export async function openTurn(opts: OpenTurnOptions): Promise<ConversationTurn>
     );
   }
   const access = await effectiveProjectRole(opts.readerUserId, opts.projectId);
-  if (!projectRoleAtLeast(access?.role ?? null, 'member')) {
+  if (!(access ? holds(access, 'project.write') : false)) {
     throw forbidden(
       `a turn in ${opts.adapter} venue ${opts.externalId} arrives under project ${opts.projectId} and you hold no member role on it; a turn writes to the room it runs in, so it takes the role that writing takes`,
       'CONVERSATION_OUT_OF_SCOPE',

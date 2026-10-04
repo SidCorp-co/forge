@@ -4,10 +4,11 @@ import { refusalError } from '../agent-sessions/interactive-credential.js';
 import type { SessionAsker } from '../agent-sessions/session-credential.js';
 import { db } from '../db/client.js';
 import { projects, type ScheduleKind, schedules } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { nextRunFor, validateCron } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';
 import { getImprovementMessage } from './messages/registry.js';
+import { requireHeld } from '../permissions/index.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -35,13 +36,13 @@ export async function assertTargetProjectAccess(
     });
   }
   const access = await loadProjectAccess(target.id, userId);
-  assertProjectRole(access, 'member', 'not a member of target project');
+  requireHeld(access, 'project.write');
   return target;
 }
 
 export async function listSchedules(projectId: string, actorUserId: string, enabled?: boolean) {
   const access = await loadProjectAccess(projectId, actorUserId);
-  assertProjectRole(access, 'viewer', 'not a project member');
+  requireHeld(access, 'project.read');
 
   const conditions = [eq(schedules.projectId, projectId)];
   if (enabled !== undefined) conditions.push(eq(schedules.enabled, enabled));
@@ -58,7 +59,7 @@ export async function getSchedule(id: string, actorUserId: string) {
   if (!row) throw notFound('schedule not found');
 
   const access = await loadProjectAccess(row.projectId, actorUserId);
-  assertProjectRole(access, 'viewer', 'not a project member');
+  requireHeld(access, 'project.read');
 
   return row;
 }
@@ -81,7 +82,7 @@ export interface CreateScheduleInput {
 
 export async function createSchedule(input: CreateScheduleInput, actorUserId: string) {
   const access = await loadProjectAccess(input.projectId, actorUserId);
-  assertProjectRole(access, 'admin', 'not a project admin');
+  requireHeld(access, 'project.admin');
 
   const validation = validateCron(input.cron);
   if (!validation.ok) {
@@ -167,7 +168,7 @@ export async function updateSchedule(id: string, patch: UpdateSchedulePatch, act
   if (!row) throw notFound('schedule not found');
 
   const access = await loadProjectAccess(row.projectId, actorUserId);
-  assertProjectRole(access, 'admin', 'not a project admin');
+  requireHeld(access, 'project.admin');
 
   if (patch.targetProjectSlug !== undefined && patch.targetProjectSlug !== null) {
     await assertTargetProjectAccess(patch.targetProjectSlug, actorUserId);
@@ -239,7 +240,7 @@ export async function deleteSchedule(id: string, actorUserId: string): Promise<v
   if (!row) throw notFound('schedule not found');
 
   const access = await loadProjectAccess(row.projectId, actorUserId);
-  assertProjectRole(access, 'admin', 'not a project admin');
+  requireHeld(access, 'project.admin');
 
   await db.delete(schedules).where(eq(schedules.id, id));
 }
@@ -254,7 +255,7 @@ export async function runScheduleNow(
   if (!schedule) throw notFound('schedule not found');
 
   const access = await loadProjectAccess(schedule.projectId, actorUserId);
-  assertProjectRole(access, 'member', 'not a project member');
+  requireHeld(access, 'project.write');
 
   // Defensive re-check: rows persisted before the create/update gate landed
   // could carry a `targetProjectSlug` the actor has no business triggering.

@@ -1,6 +1,6 @@
 {
   "name": "@forge/contracts",
-  "version": "0.4.0-dev.3",
+  "version": "0.4.0-dev.4",
   "private": true,
   "license": "Apache-2.0",
   "description": "Shared TypeScript types + request schemas derived from @forge/core (Drizzle rows + Zod schemas). Type-only surface — no runtime coupling.",
@@ -90,9 +90,9 @@
       "types": "./dist/mockups.d.ts",
       "default": "./dist/mockups.js"
     },
-    "./approval": {
-      "types": "./dist/approval.d.ts",
-      "default": "./dist/approval.js"
+    "./permissions": {
+      "types": "./dist/permissions.d.ts",
+      "default": "./dist/permissions.js"
     },
     "./field-changes": {
       "types": "./dist/field-changes.d.ts",
@@ -181,6 +181,66 @@
     "./projection": {
       "types": "./dist/projection.d.ts",
       "default": "./dist/projection.js"
+    },
+    "./state-machine": {
+      "types": "./dist/state-machine.d.ts",
+      "default": "./dist/state-machine.js"
+    },
+    "./issue-machine": {
+      "types": "./dist/issue-machine.d.ts",
+      "default": "./dist/issue-machine.js"
+    },
+    "./job-machine": {
+      "types": "./dist/job-machine.d.ts",
+      "default": "./dist/job-machine.js"
+    },
+    "./session-machine": {
+      "types": "./dist/session-machine.d.ts",
+      "default": "./dist/session-machine.js"
+    },
+    "./run-machine": {
+      "types": "./dist/run-machine.d.ts",
+      "default": "./dist/run-machine.js"
+    },
+    "./suggestion-machine": {
+      "types": "./dist/suggestion-machine.d.ts",
+      "default": "./dist/suggestion-machine.js"
+    },
+    "./feedback-machine": {
+      "types": "./dist/feedback-machine.d.ts",
+      "default": "./dist/feedback-machine.js"
+    },
+    "./requirement-machine": {
+      "types": "./dist/requirement-machine.d.ts",
+      "default": "./dist/requirement-machine.js"
+    },
+    "./mockup-machine": {
+      "types": "./dist/mockup-machine.d.ts",
+      "default": "./dist/mockup-machine.js"
+    },
+    "./onboarding-machine": {
+      "types": "./dist/onboarding-machine.d.ts",
+      "default": "./dist/onboarding-machine.js"
+    },
+    "./question-machine": {
+      "types": "./dist/question-machine.d.ts",
+      "default": "./dist/question-machine.js"
+    },
+    "./schedule-run-machine": {
+      "types": "./dist/schedule-run-machine.d.ts",
+      "default": "./dist/schedule-run-machine.js"
+    },
+    "./reconcile-run-machine": {
+      "types": "./dist/reconcile-run-machine.d.ts",
+      "default": "./dist/reconcile-run-machine.js"
+    },
+    "./runner-machine": {
+      "types": "./dist/runner-machine.d.ts",
+      "default": "./dist/runner-machine.js"
+    },
+    "./machines": {
+      "types": "./dist/machines.d.ts",
+      "default": "./dist/machines.js"
     }
   },
   "types": "./src/index.ts",

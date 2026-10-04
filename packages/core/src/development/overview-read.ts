@@ -14,12 +14,12 @@ import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { listIssueStanding, STANDING_LIMIT, type StandingViewer } from '../issues/standing-read.js';
-import { mayApprove } from '../lib/approval.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { readMasterStanding } from '../masters/read.js';
 import { slotsNoteOf } from '../masters/rules.js';
+import { holds } from '../permissions/index.js';
 import {
   type ContractChangeFact,
   type ContractWaitFact,
@@ -213,11 +213,10 @@ interface Viewer {
 async function viewerFacts(projectId: string, userId: string | null): Promise<Viewer | null> {
   if (!userId) return null;
   const access = await effectiveProjectRole(userId, projectId);
-  const role = access?.role ?? null;
   return {
     userId,
-    isAdmin: role === 'admin',
-    isMember: role === 'admin' || role === 'member',
+    isAdmin: access !== null && holds(access, 'project.admin'),
+    isMember: access !== null && holds(access, 'project.write'),
     access,
   };
 }
@@ -248,7 +247,7 @@ async function releaseAsks(projectId: string, viewer: Viewer | null): Promise<Re
     environment: f.evidence_environment,
     decidable:
       viewer !== null &&
-      mayApprove({ userId: viewer.userId, role: viewer.access?.role ?? null }, 'releases'),
+      viewer.access !== null && holds(viewer.access, 'releases.approve'),
   }));
 }
 
@@ -279,7 +278,7 @@ async function proposedVersions(
       recordedAt: new Date(v.recorded_at).toISOString(),
       decidable:
         viewer !== null &&
-        mayApprove({ userId: viewer.userId, role: viewer.access?.role ?? null }, 'contracts'),
+        viewer.access !== null && holds(viewer.access, 'contracts.approve'),
     };
   });
 }
@@ -305,7 +304,7 @@ async function contractChanges(
   );
   const actable =
     viewer !== null &&
-    mayApprove({ userId: viewer.userId, role: viewer.access?.role ?? null }, 'feedback');
+    viewer.access !== null && holds(viewer.access, 'feedback.approve');
   return found.map((f) => ({
     feedback: `FB-${f.fb_seq}`,
     contract: `${f.slug}/${f.contract_slug}`,

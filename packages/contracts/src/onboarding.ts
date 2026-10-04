@@ -9,6 +9,7 @@ import type {
 	SensitiveDataLevel,
 } from "./data-policy.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
+import type { PermissionRefusalCode } from "./permissions.js";
 
 /** The onboarding thread's status, as the conversation list and the dashboard hint show it. */
 export const ONBOARDING_STATUSES = [
@@ -111,8 +112,6 @@ export const ONBOARDING_REFUSAL_CODES = [
 	"ONBOARDING_ALREADY_STARTED",
 	"ONBOARDING_NOT_STARTED",
 	"ONBOARDING_DONE",
-	"ONBOARDING_ACT_FORBIDDEN",
-	"ONBOARDING_WRITE_FORBIDDEN",
 	"ONBOARDING_DESIGN_UNKNOWN",
 	"ONBOARDING_DATA_FLOW_MISSING",
 ] as const;
@@ -129,8 +128,6 @@ export const QUESTIONNAIRE_REFUSAL_CODES = [
 	"QUESTIONNAIRE_ITEM_UNKNOWN",
 	"QUESTIONNAIRE_ANSWER_INVALID",
 	"QUESTIONNAIRE_NOTHING_ANSWERED",
-	"QUESTIONNAIRE_SUBMIT_FORBIDDEN",
-	"QUESTIONNAIRE_POST_FORBIDDEN",
 	"CLARIFICATION_ALREADY_OPEN",
 ] as const;
 export type QuestionnaireRefusalCode =
@@ -141,7 +138,8 @@ export interface OnboardingRefusal {
 	code:
 		| OnboardingRefusalCode
 		| QuestionnaireRefusalCode
-		| DataEgressRefusalCode;
+		| DataEgressRefusalCode
+		| PermissionRefusalCode;
 	path: string;
 	detail: string;
 }

@@ -66,12 +66,7 @@ agentSessionPipelineControlRoutes.post(
 
     // Pause/resume is a privileged operation — effective admin only.
     // Plain members can read state but cannot mutate it.
-    const { session: existing } = await ensureSessionRole(
-      id,
-      userId,
-      'admin',
-      'owner or admin role required',
-    );
+    const { session: existing } = await ensureSessionRole(id, userId, 'project.admin');
 
     const prev = existing.pipelineControl as PipelineControl | null;
     const merged = buildPipelineControl(prev, input, userId);
@@ -141,7 +136,7 @@ agentSessionPipelineControlRoutes.post(
     const input = c.req.valid('json');
     const userId = c.get('userId');
 
-    const { session: existing } = await ensureSessionRole(id, userId, 'member');
+    const { session: existing } = await ensureSessionRole(id, userId, 'project.write');
 
     const merged = buildPipelineHealth(existing.pipelineHealth as PipelineHealth | null, input);
 
@@ -185,7 +180,7 @@ agentSessionPipelineControlRoutes.post(
     const { telemetry } = c.req.valid('json');
     const userId = c.get('userId');
 
-    await ensureSessionRole(id, userId, 'member');
+    await ensureSessionRole(id, userId, 'project.write');
 
     const [updated] = await db
       .update(agentSessions)

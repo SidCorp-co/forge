@@ -8,7 +8,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import {
@@ -21,14 +21,13 @@ import {
   rejectReconcileRun,
   spawnReconcileRun,
 } from './reconcile-service.js';
+import { requireHeld } from '../permissions/index.js';
 
 const projectParamSchema = z.object({ projectId: z.string().uuid() });
 const runParamSchema = z.object({ projectId: z.string().uuid(), runId: z.string().uuid() });
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-const forbidden = (msg: string) =>
-  new HTTPException(403, { message: msg, cause: { code: 'FORBIDDEN' } });
 const notFound = (msg: string) =>
   new HTTPException(404, { message: msg, cause: { code: 'NOT_FOUND' } });
 const conflict = (msg: string) =>
@@ -60,7 +59,7 @@ reconcileRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'only a project admin can trigger a reconcile run');
+    requireHeld(access, 'project.admin');
 
     const result = await spawnReconcileRun({ projectId, packetId, skillId, actorUserId: userId });
 
@@ -86,7 +85,7 @@ reconcileRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const runs = await listReconcileRunsForProject(projectId);
     return c.json({ runs });
@@ -103,7 +102,7 @@ reconcileRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const run = await getReconcileRun(runId);
     if (!run || run.projectId !== projectId) throw notFound(`reconcile run ${runId} not found`);
@@ -140,7 +139,7 @@ reconcileRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'only a project admin can record a reconcile verdict');
+    requireHeld(access, 'project.admin');
 
     const run = await getReconcileRun(runId);
     if (!run || run.projectId !== projectId) throw notFound(`reconcile run ${runId} not found`);
@@ -185,7 +184,7 @@ reconcileRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const run = await getReconcileRun(runId);
     if (!run || run.projectId !== projectId) throw notFound(`reconcile run ${runId} not found`);
@@ -208,7 +207,7 @@ reconcileRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'only a project admin can apply a reconcile run');
+    requireHeld(access, 'project.admin');
 
     const run = await getReconcileRun(runId);
     if (!run || run.projectId !== projectId) throw notFound(`reconcile run ${runId} not found`);
@@ -240,7 +239,7 @@ reconcileRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'only a project admin can reject a reconcile run');
+    requireHeld(access, 'project.admin');
 
     const run = await getReconcileRun(runId);
     if (!run || run.projectId !== projectId) throw notFound(`reconcile run ${runId} not found`);
@@ -272,7 +271,7 @@ reconcileRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'only a project admin can acknowledge a reconcile run');
+    requireHeld(access, 'project.admin');
 
     const run = await getReconcileRun(runId);
     if (!run || run.projectId !== projectId) throw notFound(`reconcile run ${runId} not found`);

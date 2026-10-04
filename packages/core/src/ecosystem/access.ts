@@ -1,9 +1,10 @@
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import type { OrgMemberRole } from '../db/schema.js';
-import { loadOrgRole, loadVisibleProjectIds, orgRoleAtLeast } from '../lib/authz.js';
+import { loadOrgRole, loadVisibleProjectIds } from '../lib/authz.js';
 import { RefusalError } from '../lib/refusal.js';
 import type { EcosystemRefusal } from './refusals.js';
+import { requireOrgHeld } from '../permissions/index.js';
 import { activeMembersOf } from './store.js';
 
 export const notFound = (message: string) =>
@@ -31,12 +32,8 @@ export async function stewardRole(
 export async function assertStewardAdmin(
   stewardOrgId: string,
   userId: string | undefined,
-  act: string,
 ): Promise<void> {
-  const role = await stewardRole(stewardOrgId, userId);
-  if (!orgRoleAtLeast(role, 'admin')) {
-    throw forbidden(`${act} is the steward's: it needs owner or admin of org ${stewardOrgId}`);
-  }
+  requireOrgHeld(stewardOrgId, await stewardRole(stewardOrgId, userId), 'org.admin');
 }
 
 // cm:why a fence names the projects a credential acts for, so the reader is only those of the person's projects inside it

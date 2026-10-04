@@ -7,13 +7,13 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { actorOf, refusedOnboarding } from '../onboarding/routes.js';
 import { afterOnboardingSubmit, onboardingSubmittedIn } from '../onboarding/service.js';
 import { batchIn, batchView, questionnairesAs } from './read.js';
 import { submitAnswers } from './service.js';
+import { requireCan } from '../permissions/index.js';
 
 export const questionnaireRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -29,7 +29,7 @@ const batchParam = zValidator('param', z.object({ id: z.uuid(), bid: z.uuid() })
 
 questionnaireRoutes.get('/:id/questionnaires/:bid', batchParam, async (c) => {
   const { id, bid } = c.req.valid('param');
-  await assertProjectAccess(id, c.get('userId'), 'viewer');
+  await requireCan({ userId: c.get('userId') }, 'project.read', id);
   const out = await questionnairesAs(actorOf(c), id, [await batchView(db, id, bid)]);
   if (!out.ok) return refusedOnboarding(c, [out.refusal]);
   const [questionnaire] = out.value;

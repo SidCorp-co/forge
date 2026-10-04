@@ -5,7 +5,7 @@ import {
   LEGACY_V2_TEMPLATE,
   type WorkflowTemplate,
 } from '@forge/contracts/workflow-templates';
-import { type ApproverFacts, approvalRefusal } from '../lib/approval.js';
+import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 import { impliedKind } from './edges.js';
 import { stepsOf, type WorkflowWrite } from './schema.js';
 
@@ -17,7 +17,7 @@ export type DesignDecision = (typeof DESIGN_DECISIONS)[number];
 export const DESIGN_REASON_MAX = 2000;
 
 export type DesignRefusalCode =
-  | 'APPROVE_PERMISSION_REQUIRED'
+  | 'PERMISSION_FORBIDDEN'
   | 'WORKFLOW_DESIGN_NOT_PROPOSED'
   | 'WORKFLOW_DESIGN_REVISION_STALE'
   | 'WORKFLOW_DESIGN_REASON_MISSING'
@@ -131,11 +131,8 @@ export function proposeRefusal(
 
 // Deciding a design is an approval (ADR 0007): whoever holds workflow-designs.approve decides,
 // the project's master included when its role grants it.
-export function designApproverRefusal(
-  facts: ApproverFacts,
-  projectId: string,
-): DesignRefusal | null {
-  return approvalRefusal(facts, 'workflow-designs', projectId, 'deciding a workflow design');
+export function designApproverRefusal(facts: PermissionFacts): DesignRefusal | null {
+  return permissionRefusal(facts, 'workflow-designs.approve', 'deciding a workflow design');
 }
 
 export function decisionRefusals(input: {

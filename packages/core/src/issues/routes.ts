@@ -17,7 +17,7 @@ import {
   jobTypes,
   projectMembers,
 } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { listResponse } from '../lib/pagination.js';
@@ -55,14 +55,6 @@ import {
   resolveLabelIdsForWrite,
 } from './label-service.js';
 import { readLandingShape } from './landing-evidence.js';
-import {
-  issueForReader,
-  legacyFilterWarnings,
-  readerOnSeventeen,
-  refuseRetiredFromTenStatusClient,
-  STATUS_COMPAT_HEADER,
-  statusFilterSql,
-} from './legacy-status.js';
 import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
 import { liveReachForIssue } from './live-reach-read.js';
 import { isSelfReferentialBranch } from './metadata.js';
@@ -73,6 +65,7 @@ import { issueRelationInputSchema } from './relations-service.js';
 import { issueFiltersSchema, issuePatchSchema } from './request-schemas.js';
 import { jobHistoryForStep } from './search.js';
 import { buildIssueOrderBy } from './sort.js';
+import { refuseLegacyStatusFields } from './status-input.js';
 import { heldTakeHttp, toHttpUpdateError } from './update-errors-http.js';
 import { updateIssueFields } from './update-service.js';
 
@@ -84,7 +77,8 @@ export {
 } from './metadata.js';
 
 import { withKernelMarker } from '../db/kernel-marker.js';
-import { badRequest, forbidden, notFound } from '../middleware/route-errors.js';
+import { badRequest, notFound } from '../middleware/route-errors.js';
+import { requireHeld } from '../permissions/index.js';
 
 export const issueCreateSchema = z
   .object({
@@ -149,7 +143,7 @@ issueProjectRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
 
     if (input.assigneeId) await assertAssigneeIsMember(projectId, input.assigneeId);
 
@@ -226,7 +220,7 @@ issueProjectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const parsed = parseIssueRef(
       displayId,
@@ -239,13 +233,10 @@ issueProjectRoutes.get(
 
     const labelRows = await listIssueLabels(issue.id);
 
-    const serialized = issueForReader(
-      serializeIssue(
-        issue,
-        await activeIssuePrefix(projectId),
-        await readLandingShape(db, projectId),
-      ),
-      readerOnSeventeen(c),
+    const serialized = serializeIssue(
+      issue,
+      await activeIssuePrefix(projectId),
+      await readLandingShape(db, projectId),
     );
     const healthMap = await safeHydratePipelineHealthForIssues(projectId, [issue.id]);
     const creatorMap = await hydrateCreatorsForIssues([issue]);
@@ -270,7 +261,10 @@ issueProjectRoutes.get(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   zValidator('query', issueFiltersSchema, (r) => {
-    if (!r.success) throw queryBadRequest(issueFiltersSchema, r.error);
+    if (!r.success) {
+      refuseLegacyStatusFields(r.data, 'query', ['status']);
+      throw queryBadRequest(issueFiltersSchema, r.error);
+    }
   }),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
@@ -278,16 +272,10 @@ issueProjectRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const conditions = [eq(issues.projectId, projectId)];
-    const client17 = readerOnSeventeen(c);
-    if (q.status) {
-      refuseRetiredFromTenStatusClient([q.status], client17);
-      conditions.push(statusFilterSql(q.status, client17));
-      const retired = legacyFilterWarnings([q.status]);
-      if (retired.length > 0) c.header(STATUS_COMPAT_HEADER, retired.join(' '));
-    }
+    if (q.status) conditions.push(eq(issues.status, q.status));
     if (q.priority) conditions.push(eq(issues.priority, q.priority));
     if (q.assigneeId) conditions.push(eq(issues.assigneeId, q.assigneeId));
     if (q.category) conditions.push(eq(issues.category, q.category));
@@ -320,9 +308,7 @@ issueProjectRoutes.get(
     const total = Number(n);
 
     const listPrefix = await activeIssuePrefix(projectId);
-    const serialized = rows.map((r) =>
-      issueForReader(serializeRestListRow(r, listPrefix), client17),
-    );
+    const serialized = rows.map((r) => serializeRestListRow(r, listPrefix));
     if (serialized.length === 0) {
       return c.json(listResponse(c, serialized, total, q));
     }
@@ -405,13 +391,10 @@ issueRoutes.get(
     const labelRows = await listIssueLabels(id);
 
     const healthMap = await safeHydratePipelineHealthForIssues(issue.projectId, [issue.id]);
-    const serialized = issueForReader(
-      serializeIssue(
-        issue,
-        await activeIssuePrefix(issue.projectId),
-        await readLandingShape(db, issue.projectId),
-      ),
-      readerOnSeventeen(c),
+    const serialized = serializeIssue(
+      issue,
+      await activeIssuePrefix(issue.projectId),
+      await readLandingShape(db, issue.projectId),
     );
     const agentMap = await hydrateAgentSessionsForIssues(issue.projectId, [issue.id]);
     const agentBucket = agentMap.get(issue.id);
@@ -452,7 +435,7 @@ issueRoutes.get(
 
     const issue = await loadIssue(id);
     const access = await loadProjectAccess(issue.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     return c.json(await jobHistoryForStep(id, step));
   },
@@ -473,7 +456,7 @@ issueRoutes.patch(
 
     const issue = await loadIssue(id);
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
 
     if (patch.assigneeId) await assertAssigneeIsMember(issue.projectId, patch.assigneeId);
     let resolvedLabelIds: ResolvedLabelAttach[] | undefined;
@@ -547,13 +530,10 @@ issueRoutes.patch(
       });
     }
 
-    const patched = issueForReader(
-      serializeIssue(
-        updated,
-        await activeIssuePrefix(issue.projectId),
-        await readLandingShape(db, issue.projectId),
-      ),
-      readerOnSeventeen(c),
+    const patched = serializeIssue(
+      updated,
+      await activeIssuePrefix(issue.projectId),
+      await readLandingShape(db, issue.projectId),
     );
     return c.json(
       collected.warnings.length > 0 ? { ...patched, warnings: collected.warnings } : patched,
@@ -572,7 +552,7 @@ issueRoutes.delete(
 
     const issue = await loadIssue(id);
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'admin', 'not a project admin');
+    requireHeld(access, 'project.admin');
 
     const carried = await issueDeleteRefusal(issue);
     if (carried) return c.json(refusalEnvelope([carried], carried.code), 422);

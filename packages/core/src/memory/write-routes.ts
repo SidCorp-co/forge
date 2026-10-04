@@ -6,7 +6,6 @@ import {
   EMBEDDING_UNAVAILABLE,
   EmbeddingUnavailableError,
 } from '../integrations/embeddings/index.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -20,6 +19,7 @@ import {
   runMemoryWrite,
   writeMemoryInputSchema,
 } from './write-service.js';
+import { requireCan } from '../permissions/index.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -41,7 +41,7 @@ memoryWriteRoutes.post(
   async (c) => {
     const body = c.req.valid('json');
     const userId = c.get('userId');
-    await assertProjectAccess(body.projectId, userId);
+    await requireCan({ userId }, 'project.write', body.projectId);
 
     try {
       const result = await runMemoryWrite(body);
@@ -72,7 +72,7 @@ memoryWriteRoutes.post(
   async (c) => {
     const body = c.req.valid('json');
     const userId = c.get('userId');
-    await assertProjectAccess(body.projectId, userId);
+    await requireCan({ userId }, 'project.write', body.projectId);
 
     try {
       const result = await runMemoryFeedback(body);

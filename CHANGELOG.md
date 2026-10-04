@@ -8,6 +8,21 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.4] - 2026-10-04
+
+One adapter per external system, and a system graph read from the server
+
+
+### Changed
+
+- **Mail, sign-in, LLM, embeddings, outbound webhooks, GitHub releases and a deployed app's runtime
+  probe each go through one adapter (ISS-158).** Memory and knowledge embeddings now pass the
+  data-egress guard before leaving.
+
+- **The System overview's diagram and counts are read from the server, so every screen and agent sees
+  the same graph (ISS-153).** Folded workflow lines name the relationship instead of "N links", and
+  joined outside boundaries stack in one column.
+
 ## [0.4.0-dev.3] - 2026-10-04
 
 Agents / Runs pages, and requirements that pin the contracts they build on

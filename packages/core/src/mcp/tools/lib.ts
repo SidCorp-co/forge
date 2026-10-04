@@ -1,3 +1,4 @@
+import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type ActorAgency, actorAgency, type TransitionActor } from '../../issues/actor-agency.js';
 import { loadVisibleProjectIds } from '../../lib/authz.js';
@@ -9,7 +10,6 @@ import {
   type VisibleProjectWithRole,
 } from '../../projects/service.js';
 import type { ToolGrant, ToolReach, ToolRoute } from '../tool-grant.js';
-import { loadUserProjectRoleFlags } from './project-authz.js';
 import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './project-scope.js';
 
 /** The shape every registered MCP tool has, whatever produced it. */
@@ -79,62 +79,16 @@ export function zodToMcpSchema(schema: z.ZodTypeAny): Record<string, unknown> {
   return z.toJSONSchema(schema) as Record<string, unknown>;
 }
 
-export async function assertPrincipalIsMember(
-  principal: McpPrincipal,
-  projectId: string,
-): Promise<void> {
-  const allow = patEffectiveProjectIds(principal);
-  if (allow !== null && !allow.includes(projectId)) {
-    throw new Error('NOT_FOUND: project not found or not accessible');
-  }
-  const role = await loadUserProjectRoleFlags(principal.userId, projectId);
-  if (!role?.isMember) {
-    throw new Error('NOT_FOUND: project not found or not accessible');
-  }
-}
-
-export async function assertPrincipalIsWriter(
-  principal: McpPrincipal,
-  projectId: string,
-): Promise<void> {
-  const allow = patEffectiveProjectIds(principal);
-  if (allow !== null && !allow.includes(projectId)) {
-    throw new Error('NOT_FOUND: project not found or not accessible');
-  }
-  const role = await loadUserProjectRoleFlags(principal.userId, projectId);
-  if (!role?.isMember) {
-    throw new Error('NOT_FOUND: project not found or not accessible');
-  }
-  if (!role.isWriter) {
-    throw new Error('FORBIDDEN: requires project member access (viewer is read-only)');
-  }
-  if (!principal.scopes.includes('write')) {
-    throw new Error(
-      "FORBIDDEN: this token lacks the 'write' scope, which a write takes on /mcp as it does on REST",
-    );
-  }
-}
-
 /**
- * Admin gate. Also requires the `admin` scope on the token — the single
- * enforcement point for the scope (it was declared since ISS-150 but never
- * checked; pre-0106 tokens are grandfathered by migration).
+ * The token's own scope for an admin act on /mcp: a token minted without `admin` reaches no admin
+ * tool, whatever its holder's permissions. It is a scope of the token, not a permission.
  */
-export async function assertPrincipalIsAdmin(
-  principal: McpPrincipal,
-  projectId: string,
-): Promise<void> {
-  const allow = patEffectiveProjectIds(principal);
-  if (allow !== null && !allow.includes(projectId)) {
-    throw new Error('NOT_FOUND: project not found or not accessible');
-  }
-  if (!principal.scopes.includes('admin')) {
-    throw new Error('FORBIDDEN: this token lacks the admin scope');
-  }
-  const role = await loadUserProjectRoleFlags(principal.userId, projectId);
-  if (!role) throw new Error('NOT_FOUND: project not found or not accessible');
-  if (!role.isAdmin) {
-    throw new Error('FORBIDDEN: requires project admin access');
+export function assertTokenHasScope(principal: McpPrincipal, scope: 'admin'): void {
+  if (!principal.scopes.includes(scope)) {
+    throw new HTTPException(403, {
+      message: `this token lacks the ${scope} scope`,
+      cause: { code: 'INSUFFICIENT_SCOPE' },
+    });
   }
 }
 

@@ -33,16 +33,5 @@ export const NON_OPEN_STATUSES: readonly IssueStatus[] = [
   'dropped',
 ];
 
-/** Each status in a person's words: contracts' map, which core cannot import at runtime; held equal by a parity test. */
-export const ISSUE_STATUS_LABELS: Readonly<Record<IssueStatus, string>> = {
-  draft: 'Draft',
-  open: 'Open',
-  reopen: 'Reopened',
-  in_progress: 'In progress',
-  approved: 'Approved',
-  needs_info: 'Needs info',
-  on_hold: 'On hold',
-  awaiting_release: 'Awaiting release',
-  closed: 'Closed',
-  dropped: 'Dropped',
-};
+/** Each status in a person's words, declared once in contracts. */
+export { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';

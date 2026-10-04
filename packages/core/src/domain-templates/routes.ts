@@ -4,10 +4,11 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { domainTemplates } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { applyTemplate, TemplateInvalidManifestError, TemplateNotFoundError } from './apply.js';
+import { requireHeld } from '../permissions/index.js';
 
 const keyParamSchema = z.object({ key: z.string().trim().min(1).max(200) });
 
@@ -59,7 +60,7 @@ domainTemplateRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'admin', 'insufficient permission');
+    requireHeld(access, 'project.admin');
 
     try {
       const result = await applyTemplate({ projectId, templateKey, actorUserId: userId });

@@ -12,7 +12,6 @@ import { db, type Tx } from '../db/client.js';
 import { comments } from '../db/schema.js';
 import { commentEvents } from '../db/schema-comments.js';
 import type { ReadDoor } from '../feedback/egress.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { peopleOf } from '../lib/people.js';
 import { designNodesIn, nodeRefRefusal } from '../workflows/node-refs.js';
@@ -42,6 +41,7 @@ import {
   scopeRefusal,
   sitsOn,
 } from './entity-rules.js';
+import { requireCan } from '../permissions/index.js';
 
 export type EntityCommentOutcome =
   | { ok: true; comment: EntityCommentView; created: boolean }
@@ -130,10 +130,8 @@ async function viewIn(
   return entityCommentView(row, target, authors, egress);
 }
 
-async function factsOf(actor: EntityCommentActor, projectId: string) {
-  const access = await assertProjectAccess(projectId, actor.userId, 'viewer');
-  return { userId: actor.userId, agency: actor.agency, role: access.role };
-}
+const factsOf = (actor: EntityCommentActor, projectId: string) =>
+  requireCan({ userId: actor.userId }, 'project.read', projectId);
 
 export async function postEntityComment(input: {
   projectId: string;
@@ -215,7 +213,7 @@ export async function editEntityComment(input: {
       throw notFound(`${target.key} holds no comment ${commentId}`);
     }
     const refusals = [
-      editorRefusal(facts, row.authorId, target.key),
+      editorRefusal(facts, row.authorId === actor.userId, target.key),
       ...editRefusals(row.intent, request),
       ...(await nodeDecisionRefusals(tx, target, request.decision)),
     ].filter(present);

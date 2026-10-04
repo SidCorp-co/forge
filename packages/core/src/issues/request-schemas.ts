@@ -5,10 +5,9 @@
 
 import { z } from 'zod';
 import { BODY_FORMATS } from '../body/formats.js';
-import { issueComplexities, issuePriorities } from '../db/schema.js';
+import { issueComplexities, issuePriorities, issueStatuses } from '../db/schema.js';
 import { paginationSchema } from '../lib/pagination.js';
 import { labelAttachItemSchema, workStatePatchSchema } from './input-schemas.js';
-import { ACCEPTED_STATUS_NAMES } from './legacy-status.js';
 import { issueMetadataSchema } from './metadata.js';
 import { ReleaseNotesSchema } from './release-notes.js';
 import { sessionContextExpectSchema, sessionContextSchema } from './session-context.js';
@@ -51,9 +50,7 @@ const issueKeyFilterSchema = z
 
 export const issueFiltersSchema = paginationSchema
   .extend({
-    // cm:hack a retired name filters as `legacy-status.ts:statusFilterSql` reads it. Exit: until
-    // forge-plugin moves to the 10-status model (plugin-followups.md).
-    status: z.enum(ACCEPTED_STATUS_NAMES).optional(),
+    status: z.enum(issueStatuses).optional(),
     priority: z.enum(issuePriorities).optional(),
     assigneeId: z.uuid().optional(),
     category: z.string().trim().min(1).max(100).optional(),

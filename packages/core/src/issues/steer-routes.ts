@@ -14,10 +14,11 @@ import { z } from 'zod';
 import { SteerError, steerIssue } from '../agent-sessions/steer-session.js';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 
 const steerBodySchema = z
   .object({
@@ -65,7 +66,7 @@ issueSteerRoutes.post(
     if (!issue) throw new HTTPException(404, { message: 'issue not found' });
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
 
     try {
       return c.json(

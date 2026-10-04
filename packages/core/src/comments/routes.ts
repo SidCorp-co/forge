@@ -13,7 +13,7 @@ import {
 } from '../issues/issue-route-ref.js';
 import { isCommentIntent } from '../issues/record-events/kinds.js';
 import { mirroredEventsFor } from '../issues/record-events/store.js';
-import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
 import { logger } from '../logger.js';
@@ -53,6 +53,7 @@ import {
   updateCommentBody,
 } from './service.js';
 import { attachAuthors, buildCommentTree, type CommentAttachmentLite } from './tree.js';
+import { holds, requireHeld } from '../permissions/index.js';
 
 /** The comment projection every REST response here shares. */
 const idParamSchema = z.object({ id: z.uuid() });
@@ -136,7 +137,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
 
       const issue = await loadIssue(issueId);
       const access = await loadProjectAccess(issue.projectId, userId);
-      assertProjectRole(access, 'member');
+      requireHeld(access, 'project.write');
 
       if (parentId) {
         const [parent] = await db
@@ -377,7 +378,7 @@ commentRoutes.patch(
     const comment = await loadComment(id);
     if (comment.authorId !== userId) {
       const access = await loadProjectAccess(comment.projectId, userId);
-      if (!projectRoleAtLeast(access.role, 'admin')) {
+      if (!holds(access, 'project.admin')) {
         throw forbidden('not comment author or project admin');
       }
     }
@@ -423,7 +424,7 @@ commentRoutes.delete(
     const comment = await loadComment(id);
     if (comment.authorId !== userId) {
       const access = await loadProjectAccess(comment.projectId, userId);
-      if (!projectRoleAtLeast(access.role, 'admin')) {
+      if (!holds(access, 'project.admin')) {
         throw forbidden('not comment author or project admin');
       }
     }

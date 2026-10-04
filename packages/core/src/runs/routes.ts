@@ -9,9 +9,10 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { badRequest, forbidden, notFound } from '../middleware/route-errors.js';
+import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { listRunStanding, readRunStanding } from './read.js';
+import { requireHeld } from '../permissions/index.js';
 
 const projectParam = z.object({ id: z.uuid() });
 const runParam = z.object({ id: z.uuid(), runId: z.uuid() });
@@ -33,7 +34,7 @@ runStandingRoutes.use('/:id/runs/standing/*', requireAuth(), assertEmailVerified
 
 async function member(projectId: string, userId: string | undefined) {
   const access = await loadProjectAccess(projectId, userId);
-  if (!access.role) throw forbidden('not a project member');
+  requireHeld(access, 'project.read');
 }
 
 runStandingRoutes.get(

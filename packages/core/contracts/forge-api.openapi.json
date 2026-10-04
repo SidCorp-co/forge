@@ -12748,14 +12748,7 @@
                       "on_hold",
                       "awaiting_release",
                       "closed",
-                      "dropped",
-                      "confirmed",
-                      "clarified",
-                      "waiting",
-                      "developed",
-                      "testing",
-                      "tested",
-                      "releasing"
+                      "dropped"
                     ],
                     "type": "string"
                   },
@@ -16959,6 +16952,12 @@
                             "tasks:write",
                             "update-packets:read",
                             "update-packets:write",
+                            "questionnaires.answer",
+                            "onboarding.request",
+                            "charter.write",
+                            "commitments.write",
+                            "feedback.redact",
+                            "comments.moderate",
                             "*"
                           ],
                           "type": "string"
@@ -22407,14 +22406,7 @@
                 "on_hold",
                 "awaiting_release",
                 "closed",
-                "dropped",
-                "confirmed",
-                "clarified",
-                "waiting",
-                "developed",
-                "testing",
-                "tested",
-                "releasing"
+                "dropped"
               ],
               "type": "string"
             }
@@ -22930,14 +22922,7 @@
                     "on_hold",
                     "awaiting_release",
                     "closed",
-                    "dropped",
-                    "confirmed",
-                    "clarified",
-                    "waiting",
-                    "developed",
-                    "testing",
-                    "tested",
-                    "releasing"
+                    "dropped"
                   ],
                   "type": "string"
                 },
@@ -22953,14 +22938,7 @@
                       "on_hold",
                       "awaiting_release",
                       "closed",
-                      "dropped",
-                      "confirmed",
-                      "clarified",
-                      "waiting",
-                      "developed",
-                      "testing",
-                      "tested",
-                      "releasing"
+                      "dropped"
                     ],
                     "type": "string"
                   },
@@ -22986,14 +22964,7 @@
                     "on_hold",
                     "awaiting_release",
                     "closed",
-                    "dropped",
-                    "confirmed",
-                    "clarified",
-                    "waiting",
-                    "developed",
-                    "testing",
-                    "tested",
-                    "releasing"
+                    "dropped"
                   ],
                   "type": "string"
                 },
@@ -23009,14 +22980,7 @@
                       "on_hold",
                       "awaiting_release",
                       "closed",
-                      "dropped",
-                      "confirmed",
-                      "clarified",
-                      "waiting",
-                      "developed",
-                      "testing",
-                      "tested",
-                      "releasing"
+                      "dropped"
                     ],
                     "type": "string"
                   },
@@ -32652,6 +32616,12 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "grants": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "role": {
                     "enum": [
                       "admin",
@@ -32661,10 +32631,10 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "role"
-                ],
-                "type": "object"
+                "type": "object",
+                "x-forge-refinements": [
+                  "send role, grants or both"
+                ]
               }
             }
           },

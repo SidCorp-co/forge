@@ -23,6 +23,7 @@ import { peopleOf } from '../lib/people.js';
 import { classifyLease } from '../pipeline/session-claim.js';
 import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
 import { approvalRequired } from '../release-batch/approvals.js';
+import { changedSincePlan } from '../requirements/rules.js';
 import { readCurrentDrafts } from './criteria/storefront-draft.js';
 import { designHoldPhrase, designHoldsOf } from './design-delivery.js';
 import { issueWorkMovingSql } from './issue-lease.js';
@@ -33,6 +34,7 @@ import {
   type StandingEdge,
   wavesOf,
 } from './standing.js';
+import { holds } from '../permissions/index.js';
 
 /** The most rows one read answers; the list says so when a scope holds more. */
 export const STANDING_LIMIT = 500;
@@ -53,6 +55,8 @@ interface IssueRowRaw {
   created_by_id: string | null;
   requirement_id: string | null;
   planned_revision: number | null;
+  planned_baseline_seq: number | null;
+  plan: string | null;
   created_at: string;
   updated_at: string;
   step: WorkStep | null;
@@ -86,6 +90,8 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
     await db.execute(sql`
       SELECT i.id, i.iss_seq, i.title, i.status, i.waiting_kind, i.merged_at, i.priority, i.category, i.complexity,
              i.assignee_id, i.created_by_id, i.requirement_id, i.planned_revision,
+             i.planned_baseline_seq,
+             CASE WHEN btrim(coalesce(i.plan, '')) <> '' THEN 'written' END AS plan,
              i.created_at, i.updated_at,
              w.step, w.step_started_at, w.steps, w.lease, w.branch, w.head_sha, w.updated_at AS ws_updated_at,
              (SELECT max(a.created_at) FROM activity_log a WHERE a.issue_id = i.id) AS last_activity,
@@ -193,13 +199,17 @@ interface RequirementRaw {
   req_seq: number;
   title: string;
   current_revision: number | null;
+  latest_baseline_seq: number | null;
 }
 
 async function requirementsOf(ids: readonly string[]): Promise<Map<string, RequirementRaw>> {
   if (ids.length === 0) return new Map();
   const rows = rowsOf<RequirementRaw>(
     await db.execute(
-      sql`SELECT id, req_seq, title, current_revision FROM requirements WHERE id IN (${idList(ids)})`,
+      sql`SELECT r.id, r.req_seq, r.title, r.current_revision,
+                 (SELECT max(b.seq) FROM requirement_baselines b
+                   WHERE b.requirement_id = r.id AND b.revision = r.current_revision) AS latest_baseline_seq
+            FROM requirements r WHERE r.id IN (${idList(ids)})`,
     ),
   );
   return new Map(rows.map((r) => [r.id, r]));
@@ -286,9 +296,12 @@ async function viewerOf(viewer: StandingViewer | null, projectId: string) {
     effectiveProjectRole(viewer.userId, projectId),
     peopleOf([viewer.userId]),
   ]);
-  const role = access?.role ?? null;
+  // A person's wait addresses its viewer as "You" only when the viewer is a person.
   const person = people.get(viewer.userId)?.kind !== 'agent';
-  return { userId: viewer.userId, canWrite: person && (role === 'admin' || role === 'member') };
+  return {
+    userId: viewer.userId,
+    canWrite: person && access !== null && holds(access, 'project.write'),
+  };
 }
 
 async function standingRows(
@@ -376,10 +389,13 @@ async function standingRows(
               ].sort((a, b) => Number(a.slice(3)) - Number(b.slice(3))),
               plannedRevision: r.planned_revision,
               currentRevision: req.current_revision,
-              changedSincePlan:
-                r.planned_revision !== null &&
-                req.current_revision !== null &&
-                r.planned_revision < req.current_revision,
+              changedSincePlan: changedSincePlan({
+                plan: r.plan,
+                plannedRevision: r.planned_revision,
+                currentRevision: req.current_revision,
+                plannedBaselineSeq: r.planned_baseline_seq,
+                latestBaselineSeq: req.latest_baseline_seq,
+              }),
             }
           : null,
         module: modules.get(r.id) ?? null,

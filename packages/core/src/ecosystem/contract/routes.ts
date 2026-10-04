@@ -2,7 +2,6 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
-import { assertProjectAccess } from '../../lib/authz.js';
 import {
   type AuthVars,
   assertEmailVerified,
@@ -19,6 +18,7 @@ import { consumedContract, consumedMeasurements, consumedVersions } from './part
 import { publishContractVersion } from './publish.js';
 import { approvalView, currentOf, measurementsOf, readArtifact, versionsOf } from './store.js';
 import { SOURCE_REF } from './version-schema.js';
+import { requireCan } from '../../permissions/index.js';
 
 export const contractRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -95,7 +95,7 @@ const uploadBody = zValidator('json', uploadSchema, (r, c) => {
 
 contractRoutes.get('/:id/contracts/:contract/versions', contractParam, async (c) => {
   const { id, contract } = c.req.valid('param');
-  await assertProjectAccess(id, c.get('userId'), 'viewer');
+  await requireCan({ userId: c.get('userId') }, 'project.read', id);
   const versions = await versionsOf(db, [id], contract);
   return c.json({
     versions: versions.map((v) => v.document),
@@ -106,7 +106,7 @@ contractRoutes.get('/:id/contracts/:contract/versions', contractParam, async (c)
 
 contractRoutes.get('/:id/contracts/:contract/versions/:version', versionParam, async (c) => {
   const { id, contract, version } = c.req.valid('param');
-  await assertProjectAccess(id, c.get('userId'), 'viewer');
+  await requireCan({ userId: c.get('userId') }, 'project.read', id);
   const versions = await versionsOf(db, [id], contract);
   const hit = versions.find((v) => v.version === version);
   if (!hit) throw notFound(`${contract} of project ${id} has no recorded version "${version}"`);
@@ -131,7 +131,7 @@ contractRoutes.get(
   versionParam,
   async (c) => {
     const { id, contract, version } = c.req.valid('param');
-    await assertProjectAccess(id, c.get('userId'), 'viewer');
+    await requireCan({ userId: c.get('userId') }, 'project.read', id);
     const hit = (await versionsOf(db, [id], contract)).find((v) => v.version === version);
     if (!hit) throw notFound(`${contract} of project ${id} has no recorded version "${version}"`);
     const text = hit.artifactSha256 ? await readArtifact(db, hit.artifactSha256) : null;
@@ -200,7 +200,7 @@ contractRoutes.post(
 
 contractRoutes.get('/:id/contracts/:contract/measurements', contractParam, async (c) => {
   const { id, contract } = c.req.valid('param');
-  await assertProjectAccess(id, c.get('userId'), 'viewer');
+  await requireCan({ userId: c.get('userId') }, 'project.read', id);
   const rows = await measurementsOf(id, contract, 100);
   return c.json({
     measurements: rows.map((r) => ({

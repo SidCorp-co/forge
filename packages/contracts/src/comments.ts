@@ -2,6 +2,7 @@
 // CHECKs, REST, MCP and the web read these values, so no surface can name a scope another does not know
 
 import { z } from "zod";
+import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import { COMMENT_INTENTS, type CommentIntent } from "./record-events.js";
 import { NODE_DECISION_SHAPE, nodeDecisionSchema } from "./workflow-health.js";
 
@@ -34,8 +35,7 @@ export const COMMENT_REFUSAL_CODES = [
 	"COMMENT_BODY_INVALID",
 	"COMMENT_PARENT_MISMATCH",
 	"COMMENT_DEPTH_EXCEEDED",
-	"COMMENT_POST_FORBIDDEN",
-	"COMMENT_EDIT_FORBIDDEN",
+	...PERMISSION_REFUSAL_CODES,
 	"COMMENT_RECORD_KEPT",
 	"COMMENT_DECISION_NODE_SCOPE",
 	"WORKFLOW_NODE_UNKNOWN",

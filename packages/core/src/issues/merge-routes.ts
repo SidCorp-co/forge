@@ -37,12 +37,13 @@ import {
   MergeInputError,
   mergeStoredChangeRequest,
 } from '../integrations/source-host/merge.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { mergedLandingSchema } from './landing-evidence.js';
 import { applyMergeMarker, MergeMarkerError, mergedCommitShaSchema } from './merge-marker.js';
+import { requireHeld } from '../permissions/index.js';
 
 export const issueMergeRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -80,7 +81,7 @@ async function runMergeMarker(
   if (!issue) throw notFound('issue not found');
 
   const access = await loadProjectAccess(issue.projectId, userId);
-  assertProjectRole(access, 'member');
+  requireHeld(access, 'project.write');
 
   const actor = restActor(c);
   try {
@@ -218,7 +219,7 @@ issueMergeRoutes.post(
     if (!issue) throw notFound('issue not found');
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
 
     const stored = await resolveStoredPullRequest(issue.projectId, issueId, body.pullRequest);
     if ('refusal' in stored) {

@@ -16,11 +16,10 @@ import {
 import { laneOf } from '../../pipeline/runs-lane.js';
 import { loadRunLivenessByRunIds, residentMasterOn } from '../../pipeline/runs-liveness.js';
 import {
-  assertPrincipalIsMember,
-  assertPrincipalIsWriter,
   principalAgency,
   principalUserId,
 } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 import { buildListEnvelope, overfetch } from './list-envelope.js';
 
 export const pipelineRunsListInputSchema = z
@@ -41,7 +40,7 @@ export const pipelineRunsCancelInputSchema = z
 async function loadRunForPrincipal(principal: McpPrincipal, runId: string) {
   const row = await readPipelineRun(runId);
   if (!row) throw new Error('NOT_FOUND: pipeline run not found');
-  await assertPrincipalIsMember(principal, row.projectId);
+  await requireCan({ userId: principal.userId }, 'project.read', row.projectId);
   return row;
 }
 
@@ -49,7 +48,7 @@ export async function pipelineRunsListHandler(
   principal: McpPrincipal,
   input: z.infer<typeof pipelineRunsListInputSchema>,
 ) {
-  await assertPrincipalIsMember(principal, input.projectId);
+  await requireCan({ userId: principal.userId }, 'project.read', input.projectId);
 
   const runsLimit = input.limit ?? 50;
   const rows = await listPipelineRuns({
@@ -95,7 +94,7 @@ export async function pipelineRunsPauseHandler(
   input: z.infer<typeof pipelineRunsRunIdInputSchema>,
 ) {
   const loaded = await loadRunForPrincipal(principal, input.runId);
-  await assertPrincipalIsWriter(principal, loaded.projectId);
+  await requireCan({ userId: principal.userId }, 'project.write', loaded.projectId);
   const run = await pausePipelineRun(input.runId);
   return { run };
 }
@@ -105,7 +104,7 @@ export async function pipelineRunsResumeHandler(
   input: z.infer<typeof pipelineRunsRunIdInputSchema>,
 ) {
   const loaded = await loadRunForPrincipal(principal, input.runId);
-  await assertPrincipalIsWriter(principal, loaded.projectId);
+  await requireCan({ userId: principal.userId }, 'project.write', loaded.projectId);
   const run = await resumePipelineRun(input.runId);
   return { run };
 }
@@ -115,7 +114,7 @@ export async function pipelineRunsCancelHandler(
   input: z.infer<typeof pipelineRunsCancelInputSchema>,
 ) {
   const loaded = await loadRunForPrincipal(principal, input.runId);
-  await assertPrincipalIsWriter(principal, loaded.projectId);
+  await requireCan({ userId: principal.userId }, 'project.write', loaded.projectId);
   return cancelPipelineRun(input.runId, {
     actorUserId: principalUserId(principal),
     actorAgency: principalAgency(principal),

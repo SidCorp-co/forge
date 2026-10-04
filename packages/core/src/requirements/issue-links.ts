@@ -14,11 +14,12 @@ import {
 } from '../db/schema-requirements.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import { resolveIssueRouteRef } from '../issues/issue-route-ref.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { plannedBaselineSeqIn } from './baselines.js';
+import { planDriftOf } from './plan-drift.js';
 import { notFound, type RequirementActor, requirementKey, rowIn, signerRefusal } from './read.js';
-import { changedSincePlan, linkIssueRefusal } from './rules.js';
+import { linkIssueRefusal } from './rules.js';
 import { answer, inTx, lockRequirements, type RequirementOutcome } from './service.js';
+import { requireCan } from '../permissions/index.js';
 
 async function issueIn(projectId: string, ref: string, userId: string) {
   const issue = await resolveIssueRouteRef(ref, projectId, userId);
@@ -37,7 +38,7 @@ export async function linkIssue(input: {
   adoptPlan?: boolean | undefined;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const row = await rowIn(db, projectId, input.ref);
   const issue = await issueIn(projectId, input.issue, actor.userId);
   if (input.adoptPlan) {
@@ -106,7 +107,7 @@ export async function unlinkIssue(input: {
   issue: string;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const row = await rowIn(db, projectId, input.ref);
   const issue = await issueIn(projectId, input.issue, actor.userId);
   await db
@@ -129,7 +130,7 @@ export async function linkWorkflow(input: {
   workflowId: string;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const row = await rowIn(db, projectId, input.ref);
   const [wf] = await db
     .select({ projectId: projectWorkflows.projectId })
@@ -152,7 +153,7 @@ export async function unlinkWorkflow(input: {
   workflowId: string;
 }): Promise<RequirementOutcome> {
   const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const row = await rowIn(db, projectId, input.ref);
   await db
     .delete(requirementWorkflows)
@@ -174,32 +175,22 @@ export async function requirementOfIssue(issueId: string) {
       status: requirements.status,
       currentRevision: requirements.currentRevision,
       plannedRevision: issues.plannedRevision,
-      plannedBaselineSeq: issues.plannedBaselineSeq,
-      plan: issues.plan,
     })
     .from(issues)
     .innerJoin(requirements, eq(requirements.id, issues.requirementId))
     .where(eq(issues.id, issueId));
   if (!r) return null;
-  const latestBaselineSeq = await plannedBaselineSeqIn(db, r.id, r.currentRevision);
-  const changed = changedSincePlan({ ...r, latestBaselineSeq });
-  const repinned = changed && r.plannedRevision === r.currentRevision;
-  const key = requirementKey(r.reqSeq);
+  const drift = await planDriftOf(db, issueId);
   return {
     requirementId: r.id,
-    key,
+    key: requirementKey(r.reqSeq),
     title: r.title,
     status: r.status as RequirementStatus,
     currentRevision: r.currentRevision,
     plannedRevision: r.plannedRevision,
-    changedSincePlan: changed,
-    refusal: changed
-      ? {
-          code: 'REQUIREMENT_CHANGED_SINCE_PLAN' as const,
-          detail: repinned
-            ? `${key} revision ${r.currentRevision} was re-pinned onto newly approved designs after this issue's plan was written; re-plan against the latest baseline.`
-            : `${key} stands at revision ${r.currentRevision ?? 'none'}, but this issue's plan was written against ${r.plannedRevision === null ? 'no revision' : `revision ${r.plannedRevision}`}; re-plan against the current revision.`,
-        }
+    changedSincePlan: drift?.changed ?? false,
+    refusal: drift?.changed
+      ? { code: 'REQUIREMENT_CHANGED_SINCE_PLAN' as const, detail: drift.detail }
       : null,
   };
 }

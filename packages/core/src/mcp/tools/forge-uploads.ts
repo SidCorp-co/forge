@@ -5,7 +5,8 @@ import { markUntrusted } from '../../prompt/sanitize.js';
 import { getStorage } from '../../storage/index.js';
 import { loadAttachmentForFetch } from '../../uploads/attachment-lookup.js';
 import { createDownloadTicket } from '../../uploads/download-ticket-service.js';
-import { assertPrincipalIsWriter, type ContextScopedMcpToolFactory, zodToMcpSchema } from './lib.js';
+import { type ContextScopedMcpToolFactory, zodToMcpSchema } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const inputSchema = z
   .object({
@@ -68,7 +69,7 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
 
     const { target, attachmentId } = input.data;
     const att = await loadAttachmentForFetch(target, attachmentId);
-    await assertPrincipalIsWriter(principal, att.projectId);
+    await requireCan({ userId: principal.userId }, 'project.write', att.projectId);
 
     const download = await mintDownloadTicket(target, attachmentId, att.projectId, principal);
     const meta = {

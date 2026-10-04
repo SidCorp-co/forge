@@ -11,7 +11,8 @@
  *   awaiting_release   every criterion's latest verdict passes, with an          NO_WORK_EVIDENCE,
  *                      admissible identity, recorded after the latest reopen     VERDICT_IDENTITY_REQUIRED, VERDICT_PREDATES_REOPEN, VERDICT_IDENTITY_NOT_ADMISSIBLE, VERDICT_DRAFT_SUPERSEDED, VERDICT_UNCORROBORATED
  *                      (a project document with `delivery.verdictsRequired: false` passes the move
- *                      and the move's record says `verdicts-waived`)
+ *                      and the move's record says `verdicts-waived`), and its     REQUIREMENT_CHANGED_SINCE_PLAN
+ *                      requirement has not changed since its plan
  *   closed             shipped; from in_progress, as awaiting_release           CLOSE_REQUIRES_SHIPPED + the codes above
  *
  *   needs_info         a question (the reason) and its kind                      TRANSITION_REASON_REQUIRED,
@@ -24,7 +25,7 @@ import { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
-import { approvalRefusalFor } from '../lib/approval.js';
+import { permissionRefusalFor } from '../permissions/index.js';
 import {
   canTransition,
   PARK_STATUSES,
@@ -32,6 +33,7 @@ import {
   transitions,
 } from '../pipeline/state-machine.js';
 import { readProjectDocument } from '../project-config/service.js';
+import { planDriftOf } from '../requirements/plan-drift.js';
 import type { ActorAgency } from './actor-agency.js';
 import { IssueBlockedError, refuseHeldTake } from './blocked-by.js';
 import type { DraftReader } from './criteria/storefront-draft.js';
@@ -47,13 +49,14 @@ export type GuardCode =
   | 'WORKFLOW_DESIGN_NOT_APPROVED'
   | 'CONTRACT_WAIT_UNSETTLED'
   | 'PLAN_REQUIRED'
-  | 'APPROVE_PERMISSION_REQUIRED'
+  | 'PERMISSION_FORBIDDEN'
   | 'NO_WORK_EVIDENCE'
   | 'VERDICT_IDENTITY_REQUIRED'
   | 'VERDICT_PREDATES_REOPEN'
   | 'VERDICT_IDENTITY_NOT_ADMISSIBLE'
   | 'VERDICT_UNCORROBORATED'
   | 'VERDICT_DRAFT_SUPERSEDED'
+  | 'REQUIREMENT_CHANGED_SINCE_PLAN'
   | 'TRANSITION_REASON_REQUIRED'
   | 'WAITING_KIND_REQUIRED'
   | 'VOID_REASON_REQUIRED';
@@ -225,10 +228,10 @@ async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
     };
   }
   if (await planApprovalRequired(ctx.issue.projectId)) {
-    const denied = await approvalRefusalFor(
+    const denied = await permissionRefusalFor(
       { userId: ctx.actorUserId },
       ctx.issue.projectId,
-      'plans',
+      'plans.approve',
       'moving an issue to `approved` (project document `plan.approval.required`)',
     );
     if (denied) {
@@ -239,13 +242,32 @@ async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
           from: ctx.from,
           to: ctx.to,
           permission: denied.permission,
-          resource: denied.resource,
+          scope: denied.scope,
           rule: 'plan.approval.required',
         },
       };
     }
   }
   return null;
+}
+
+// A flagged issue cannot reach awaiting_release until it is re-planned against the current head
+// (requirement-to-delivery, step `impact`).
+async function planDriftGuard(ctx: GuardContext): Promise<GuardFault | null> {
+  const drift = await planDriftOf(ctx.executor, ctx.issue.id);
+  if (!drift?.changed) return null;
+  return {
+    code: 'REQUIREMENT_CHANGED_SINCE_PLAN',
+    detail: `${quote(ctx.to)} is reached only by work planned against its requirement as it stands: ${drift.detail} Rewrite the plan (it records the current revision and baseline), then move it.`,
+    details: {
+      from: ctx.from,
+      to: ctx.to,
+      requirement: drift.key,
+      plannedRevision: drift.plannedRevision,
+      currentRevision: drift.currentRevision,
+      repinned: drift.repinned,
+    },
+  };
 }
 
 /**
@@ -355,11 +377,11 @@ export async function guardFault(ctx: GuardContext): Promise<GuardFault | null> 
     case 'approved':
       return planGuard(ctx);
     case 'awaiting_release':
-      return verdictGuard(ctx);
+      return (await planDriftGuard(ctx)) ?? verdictGuard(ctx);
     // cm:guard ISS-96 — a close from in_progress claims the proof awaiting_release asks for, on every
     // issue whether or not it was ever reopened; an issue that is not work is dropped, never closed
     case 'closed':
-      return ctx.from === 'in_progress' ? verdictGuard(ctx) : null;
+      return ctx.from === 'in_progress' ? ((await planDriftGuard(ctx)) ?? verdictGuard(ctx)) : null;
     default:
       return null;
   }

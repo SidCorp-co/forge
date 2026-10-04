@@ -16,7 +16,7 @@ export interface ViewerFacts {
   userId: string;
   agency: 'human' | 'agent';
   isAdmin: boolean;
-  /** Holds releases.approve (`lib/approval.ts:mayApprove`). */
+  /** Holds releases.approve (`permissions/can.ts:holds`). */
   mayApprove: boolean;
 }
 

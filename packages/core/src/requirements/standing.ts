@@ -253,7 +253,7 @@ function turnOf(
   }
   const check = checkTaskOf(input, live);
   if (check) {
-    const act = `check ${coverage.map((c) => c.code).join(', ')} against the traceability matrix`;
+    const act = `check ${coverage.map((c) => c.code).join(', ')} against the traceability matrix, ${check.overdue ? 'overdue since' : 'due'} ${check.dueAt.slice(0, 10)}`;
     const rule = `delivered at r${check.revision}; the BA checks the business criteria by ${check.dueAt.slice(0, 10)}, ${CHECK_SLA_WORKING_DAYS} working days after delivery${check.overdue ? ', and it is overdue' : ''}`;
     return viewer?.canSignOff
       ? { group: 'needs_you', waitingOn: { ...wait('you', 'You', act, rule), dueAt: check.dueAt } }
@@ -294,7 +294,9 @@ function turnOf(
         ...wait(
           'agent',
           'Master',
-          'break down',
+          task
+            ? `break down, ${task.overdue ? 'overdue since' : 'due'} ${task.dueAt.slice(0, 10)}`
+            : 'break down',
           task
             ? `agreed with no linked issue; the breakdown is due ${task.dueAt.slice(0, 10)}, ${BREAKDOWN_SLA_WORKING_DAYS} working days after the agree`
             : 'agreed with no linked issue',

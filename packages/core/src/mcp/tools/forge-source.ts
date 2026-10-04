@@ -28,13 +28,12 @@ import { resolveSourceHost } from '../../integrations/source-host/resolve.js';
 import type { ReviewEvent, SourceHost } from '../../integrations/source-host/types.js';
 import { logger } from '../../logger.js';
 import {
-  assertPrincipalIsMember,
-  assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   type McpContext,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 /**
  * The verbs this face refuses BY NAME rather than by schema. Nothing an agent does through it can
@@ -210,13 +209,13 @@ async function dispatchAction(input: Input, ctx: McpContext): Promise<unknown> {
   const { principal } = ctx;
 
   if (input.action === 'list') {
-    await assertPrincipalIsMember(principal, projectId);
+    await requireCan({ userId: principal.userId }, 'project.read', projectId);
     return listSourceBindings(projectId);
   }
 
   const reading = input.action === 'diff' || input.action === 'check-log';
-  if (reading) await assertPrincipalIsMember(principal, projectId);
-  else await assertPrincipalIsWriter(principal, projectId);
+  if (reading) await requireCan({ userId: principal.userId }, 'project.read', projectId);
+  else await requireCan({ userId: principal.userId }, 'project.write', projectId);
 
   const host = await resolveSourceHost(projectId, 'agent');
 

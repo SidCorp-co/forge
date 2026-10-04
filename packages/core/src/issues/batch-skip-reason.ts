@@ -20,12 +20,13 @@ export const BATCH_SKIP_BY_CODE = {
   WORKFLOW_DESIGN_NOT_APPROVED: 'workflow_design_not_approved',
   CONTRACT_WAIT_UNSETTLED: 'contract_wait_unsettled',
   PLAN_REQUIRED: 'plan_required',
-  APPROVE_PERMISSION_REQUIRED: 'approve_permission_required',
+  PERMISSION_FORBIDDEN: 'permission_forbidden',
   VERDICT_IDENTITY_REQUIRED: 'verdict_identity_required',
   VERDICT_PREDATES_REOPEN: 'verdict_predates_reopen',
   VERDICT_IDENTITY_NOT_ADMISSIBLE: 'verdict_identity_not_admissible',
   VERDICT_UNCORROBORATED: 'verdict_uncorroborated',
   VERDICT_DRAFT_SUPERSEDED: 'verdict_draft_superseded',
+  REQUIREMENT_CHANGED_SINCE_PLAN: 'requirement_changed_since_plan',
 } as const satisfies Record<TransitionErrorCode, string>;
 
 export type BatchSkipReason =

@@ -1,10 +1,51 @@
-import type {
-	REGISTRY_ISSUE_PRIORITIES,
+import {
+	type REGISTRY_ISSUE_PRIORITIES,
 	REGISTRY_ISSUE_STATUSES,
 } from "./pipeline-registry.js";
+import type { Refusal } from "./refusal.js";
 
 /** The ten statuses of workflow `issue-lifecycle` (ISS-54), named the same on every surface. */
+export const ISSUE_STATUSES = REGISTRY_ISSUE_STATUSES;
 export type KernelIssueStatus = (typeof REGISTRY_ISSUE_STATUSES)[number];
+
+/** The seventeen-status model's names the ten do not hold. Kernel input naming one is refused
+ *  `ISSUE_STATUS_LEGACY`; none is mapped onto a status. */
+export const LEGACY_ISSUE_STATUSES = [
+	"confirmed",
+	"clarified",
+	"waiting",
+	"developed",
+	"testing",
+	"tested",
+	"releasing",
+] as const;
+export type LegacyIssueStatus = (typeof LEGACY_ISSUE_STATUSES)[number];
+
+export const ISSUE_STATUS_REFUSAL_CODES = ["ISSUE_STATUS_LEGACY"] as const;
+export type IssueStatusRefusalCode = (typeof ISSUE_STATUS_REFUSAL_CODES)[number];
+
+export type IssueStatusLegacyRefusal = Refusal & {
+	code: "ISSUE_STATUS_LEGACY";
+	received: LegacyIssueStatus;
+	validStatuses: readonly KernelIssueStatus[];
+};
+
+export function isLegacyIssueStatus(value: string): value is LegacyIssueStatus {
+	return (LEGACY_ISSUE_STATUSES as readonly string[]).includes(value);
+}
+
+export function issueStatusLegacyRefusal(
+	received: LegacyIssueStatus,
+	path: string,
+): IssueStatusLegacyRefusal {
+	return {
+		code: "ISSUE_STATUS_LEGACY",
+		path,
+		detail: `\`${received}\` is a legacy status and is not accepted; name one of ${ISSUE_STATUSES.join(", ")}. A run's progress inside a status is \`workState.step\`.`,
+		received,
+		validStatuses: ISSUE_STATUSES,
+	};
+}
 
 /** A run's steps, in order: core's `workSteps`, held equal by core's `pipeline/registry.test.ts`. */
 export const WORK_STEPS = [

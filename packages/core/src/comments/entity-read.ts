@@ -19,12 +19,12 @@ import { feedbackKey, rowIn as feedbackRowIn } from '../feedback/read.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { isUuid } from '../issues/issue-route-ref.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { dataPolicyOf, type EgressSurface, egressReading } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { requirementKey, rowIn as requirementRowIn } from '../requirements/read.js';
 import { type CommentArc, scopeOfArc } from './entity-rules.js';
+import { requireCan } from '../permissions/index.js';
 
 export interface EntityCommentActor {
   userId: string;
@@ -194,7 +194,7 @@ export async function listEntityCommentsAs(
   query: { intent?: CommentIntent | undefined } = {},
   door: ReadDoor = {},
 ): Promise<EntityCommentListResponse> {
-  await assertProjectAccess(projectId, actor.userId, 'viewer');
+  await requireCan({ userId: actor.userId }, 'project.read', projectId);
   const target = await targetIn(db, projectId, scope, ref);
   const rows = await db
     .select(entityCommentColumns)
@@ -233,7 +233,7 @@ export async function listDecisionsAs(
   query: { scope?: CommentScope | undefined; limit?: number | undefined } = {},
   door: ReadDoor = {},
 ): Promise<DecisionListResponse> {
-  await assertProjectAccess(projectId, actor.userId, 'viewer');
+  await requireCan({ userId: actor.userId }, 'project.read', projectId);
   const limit = query.limit ?? DECISIONS_DEFAULT_LIMIT;
   const inProject = or(
     eq(issues.projectId, projectId),

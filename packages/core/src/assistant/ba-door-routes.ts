@@ -15,10 +15,10 @@ import { addPerson } from '../conversations/participants.js';
 import { getConversation, openConversationIn } from '../conversations/store.js';
 import { db } from '../db/client.js';
 import { conversationParticipants, conversations } from '../db/schema-conversations.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requirementKey, rowIn } from '../requirements/read.js';
+import { requireCan } from '../permissions/index.js';
 
 export const baDoorRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -64,7 +64,7 @@ async function roomOf(requirementId: string, userId: string): Promise<string | n
 baDoorRoutes.post('/:id/requirements/:req/assistant', param, async (c) => {
   const { id: projectId, req } = c.req.valid('param');
   const userId = c.get('userId');
-  await assertProjectAccess(projectId, userId, 'member');
+  await requireCan({ userId }, 'project.write', projectId);
   const requirement = await rowIn(db, projectId, req);
   const existing = await roomOf(requirement.id, userId);
   if (existing) {

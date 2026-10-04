@@ -15,11 +15,12 @@ import {
   type TurnAuthorityRefusal,
 } from '../auth/turn-credential.js';
 import { db } from '../db/client.js';
-import { type ProjectMemberRole, personalAccessTokens } from '../db/schema.js';
+import { personalAccessTokens } from '../db/schema.js';
 import { deviceHolderUserId } from '../devices/workspace-credential.js';
-import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
 import { findAvailableDeviceForProject } from '../lib/device-pool.js';
 import { logger } from '../logger.js';
+import { heldPermissions, holds, type PermissionFacts } from '../permissions/index.js';
 
 /** The capability a runner declares on its heartbeat when it runs a session under the token it is handed. */
 export const TURN_CREDENTIAL_CAPABILITY = 'turnCredential';
@@ -45,12 +46,15 @@ export interface SessionAuthority {
 }
 
 /**
- * The highest role a token on a box held at `holderRole` may carry: a viewer's box gets read-only
- * tokens, and a member's cut to read reaches what a viewer reads. Nothing cuts an admin's token
- * lower, and a box's holder can read what it is handed, so an asker above this is refused.
+ * Whether a token carrying the asker's permissions may sit on a box whose holder holds `holder`: the
+ * holder can read what it is handed, so every permission the token carries must be the holder's
+ * too. A read-only token carries only the asker's reads.
  */
-function holderCeiling(holderRole: ProjectMemberRole): ProjectMemberRole {
-  return holderRole === 'viewer' ? 'member' : holderRole;
+function holderCovers(holder: PermissionFacts, asker: PermissionFacts, readOnly: boolean): boolean {
+  const theirs = new Set(heldPermissions(holder));
+  return heldPermissions(asker)
+    .filter((p) => !readOnly || p.endsWith('.read'))
+    .every((p) => theirs.has(p));
 }
 
 /**
@@ -71,10 +75,9 @@ export async function resolveSessionAuthority(args: {
   });
   if (!resolved.ok) return resolved;
   const holder = await deviceHolderUserId(args.deviceId);
-  const holderRole = holder
-    ? ((await effectiveProjectRole(holder, args.projectId))?.role ?? null)
-    : null;
-  if (!projectRoleAtLeast(holderRole, 'viewer')) {
+  const none = { projectId: args.projectId, role: null, grants: [] };
+  const holderFacts = (holder ? await effectiveProjectRole(holder, args.projectId) : null) ?? none;
+  if (!holds(holderFacts, 'project.read')) {
     return {
       ok: false,
       refusal: {
@@ -84,8 +87,9 @@ export async function resolveSessionAuthority(args: {
       },
     };
   }
-  const askerRole = (await effectiveProjectRole(args.asker.userId, args.projectId))?.role ?? null;
-  if (holderRole && !projectRoleAtLeast(holderCeiling(holderRole), askerRole ?? 'viewer')) {
+  const askerFacts = (await effectiveProjectRole(args.asker.userId, args.projectId)) ?? none;
+  const readOnly = !holds(holderFacts, 'project.write');
+  if (!holderCovers(holderFacts, askerFacts, readOnly)) {
     return {
       ok: false,
       refusal: {
@@ -95,7 +99,6 @@ export async function resolveSessionAuthority(args: {
       },
     };
   }
-  const readOnly = !projectRoleAtLeast(holderRole, 'member');
   const authority: TurnAuthority = readOnly
     ? { ...resolved.authority, scopes: resolved.authority.scopes.filter((s) => s === 'read') }
     : resolved.authority;

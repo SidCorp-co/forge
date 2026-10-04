@@ -11,10 +11,10 @@ import {
   type RequirementReadinessGate,
 } from '@forge/contracts/requirements';
 import type { CriterionForm, RequirementStatus, RevisionState } from '../db/schema-requirements.js';
-import { type ApproverFacts, approvalRefusal } from '../lib/approval.js';
+import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
 export type RequirementRefusalCode =
-  | 'APPROVE_PERMISSION_REQUIRED'
+  | 'PERMISSION_FORBIDDEN'
   | 'REQUIREMENT_REVISION_STALE'
   | 'REQUIREMENT_REVISION_NOT_CURRENT'
   | 'REQUIREMENT_REVISION_NOT_DRAFT'
@@ -50,11 +50,10 @@ export interface RequirementRefusal {
 // Accept, return, agree, defer, link and repin are approvals (ADR 0007): whoever holds
 // requirements.approve signs off, an agent or the revision's author included.
 export function signoffRefusal(
-  facts: ApproverFacts,
-  projectId: string,
+  facts: PermissionFacts,
   act: string,
 ): RequirementRefusal | null {
-  return approvalRefusal(facts, 'requirements', projectId, act);
+  return permissionRefusal(facts, 'requirements.approve', act);
 }
 
 export function reasonRefusal(reason: string | null | undefined): RequirementRefusal | null {

@@ -66,9 +66,7 @@ export async function authorizeScheduledRun(args: {
   const { asker, projectId } = args;
   const exclude = args.excludeDeviceIds ?? [];
   if (!asker) return { kind: 'refused', refusal: SCHEDULE_OWNER_GONE_REFUSAL };
-  const roleRefusal = sessionRoleRefusal(
-    (await effectiveProjectRole(asker.userId, projectId))?.role,
-  );
+  const roleRefusal = sessionRoleRefusal(await effectiveProjectRole(asker.userId, projectId));
   if (roleRefusal) return { kind: 'refused', refusal: roleRefusal };
   const deviceId = await pickTurnCredentialDevice(projectId, exclude);
   if (!deviceId) {

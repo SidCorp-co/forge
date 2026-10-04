@@ -8,7 +8,6 @@ import {
   EMBEDDING_UNAVAILABLE,
   EmbeddingUnavailableError,
 } from '../integrations/embeddings/index.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -26,6 +25,7 @@ import {
   upsertKnowledgeInputSchema,
 } from './service.js';
 import { runUnifiedSearch } from './unified-search.js';
+import { requireCan } from '../permissions/index.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 /**
@@ -95,7 +95,7 @@ knowledgeRoutes.get(
     const verb = parseVerbQuery(verbRaw);
     const status = parseStatusQuery(statusRaw);
     const userId = c.get('userId');
-    await assertProjectAccess(id, userId);
+    await requireCan({ userId }, 'project.write', id);
 
     const result = await listKnowledgeEntries({ projectId: id, kind, injection, verb, status });
     return c.json({
@@ -126,7 +126,7 @@ knowledgeRoutes.post(
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
     const userId = c.get('userId');
-    await assertProjectAccess(id, userId);
+    await requireCan({ userId }, 'project.write', id);
 
     try {
       const result = await runUnifiedSearch({ projectId: id, ...body });
@@ -151,7 +151,7 @@ knowledgeRoutes.get(
   async (c) => {
     const { id, slug } = c.req.valid('param');
     const userId = c.get('userId');
-    await assertProjectAccess(id, userId);
+    await requireCan({ userId }, 'project.write', id);
 
     const entry = await getKnowledgeEntry(id, slug);
     if (!entry) throw notFound();
@@ -173,7 +173,7 @@ knowledgeRoutes.put(
     const { id, slug } = c.req.valid('param');
     const body = c.req.valid('json');
     const userId = c.get('userId');
-    await assertProjectAccess(id, userId);
+    await requireCan({ userId }, 'project.write', id);
 
     try {
       const result = await upsertKnowledgeEntry({ projectId: id, slug, ...body });
@@ -204,7 +204,7 @@ knowledgeRoutes.delete(
   async (c) => {
     const { id, slug } = c.req.valid('param');
     const userId = c.get('userId');
-    await assertProjectAccess(id, userId);
+    await requireCan({ userId }, 'project.write', id);
 
     const removed = await deleteKnowledgeEntry(id, slug);
     return c.json({ deleted: removed > 0 });

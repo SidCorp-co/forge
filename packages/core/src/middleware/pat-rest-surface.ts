@@ -109,7 +109,12 @@ export async function beginPatRequest(
   const resolution: PatRequestResolution = {
     token,
     principal,
-    scope: { projectIds: effectiveProjectIds, tokenId: principal.tokenId },
+    scope: {
+      projectIds: effectiveProjectIds,
+      tokenId: principal.tokenId,
+      grant: principal.permissions ?? null,
+      scopes: principal.scopes,
+    },
   };
   c.set(PAT_REQUEST_VAR, resolution);
   return { principal: resolution.principal, scope: resolution.scope };

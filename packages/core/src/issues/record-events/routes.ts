@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { messageRefusalHttp } from '../../comments/screen.js';
 import { db } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../../lib/authz.js';
+import { loadProjectAccess } from '../../lib/authz.js';
 import {
   type AuthVars,
   assertEmailVerified,
@@ -20,6 +20,7 @@ import type { Actor } from '../../pipeline/activity.js';
 import { isRecordEventKind, RECORD_DIGEST_KIND, RECORD_EVENT_KINDS } from './kinds.js';
 import { listRecordEvents, type RecordEvent, RecordEventRefused } from './store.js';
 import { writeScreenedRecordEvent } from './write.js';
+import { requireHeld } from '../../permissions/index.js';
 
 /** Shape only: the kind, contract and fields are judged by `assertRecordEventDraft`, by name. */
 const eventBodySchema = z
@@ -49,7 +50,11 @@ function refusalHttp(err: unknown): HTTPException | null {
   return messageRefusalHttp(err);
 }
 
-async function loadIssueForEvents(issueId: string, userId: string, role: 'viewer' | 'member') {
+async function loadIssueForEvents(
+  issueId: string,
+  userId: string,
+  permission: 'project.read' | 'project.write',
+) {
   const [issue] = await db
     .select({ id: issues.id, projectId: issues.projectId })
     .from(issues)
@@ -57,7 +62,7 @@ async function loadIssueForEvents(issueId: string, userId: string, role: 'viewer
     .limit(1);
   if (!issue) throw notFound('issue not found');
   const access = await loadProjectAccess(issue.projectId, userId);
-  assertProjectRole(access, role);
+  requireHeld(access, permission);
   return issue;
 }
 
@@ -75,7 +80,7 @@ recordEventRoutes.post(
   async (c) => {
     const { id } = c.req.valid('param');
     const draft = c.req.valid('json');
-    const issue = await loadIssueForEvents(id, c.get('userId'), 'member');
+    const issue = await loadIssueForEvents(id, c.get('userId'), 'project.write');
     const deviceId = c.get('patDeviceId') ?? null;
     const actor: Actor = deviceId
       ? { type: 'device', id: deviceId, agency: 'agent' }
@@ -113,7 +118,7 @@ recordEventRoutes.get(
         cause: { code: 'EVENT_KIND_UNKNOWN' },
       });
     }
-    const issue = await loadIssueForEvents(id, c.get('userId'), 'viewer');
+    const issue = await loadIssueForEvents(id, c.get('userId'), 'project.read');
     const events = await listRecordEvents(issue.id, {
       ...(kind ? { kinds: [kind as RecordEvent['kind']] } : {}),
       ...(limit ? { limit } : {}),

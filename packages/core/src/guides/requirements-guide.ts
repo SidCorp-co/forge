@@ -67,8 +67,10 @@ it lives in numbered revisions, and each revision carries business criteria unde
 - An issue's plan records the revision and the baseline it was written against. A plan written while
   the requirement has no current revision is refused \`REQUIREMENT_REVISION_NOT_CURRENT\`.
 - \`GET /api/issues/:id\` then shows \`requirement.changedSincePlan\`: true when the head is now another
-  revision, or when the head was re-pinned onto newly approved designs after the plan. Re-plan
-  against the current head; do not build against a plan that reads changed.
+  revision, or when the head was re-pinned onto newly approved designs or contracts after the plan.
+  Re-plan against the current head; do not build against a plan that reads changed. An issue that
+  reads changed is refused \`awaiting_release\` (and a close from \`in_progress\`) as
+  \`REQUIREMENT_CHANGED_SINCE_PLAN\` until its plan is rewritten.
 - A plan written before the link reads changed-since-plan, unless a **person** passes
   \`adoptPlan: true\`, attesting the plan already satisfies the current revision
   (\`REQUIREMENT_NO_PLAN_TO_ADOPT\` when the issue has no plan).
@@ -91,7 +93,7 @@ from.
 Anyone on the project creates, revises, edits and proposes revisions, and links designs. Accept,
 return, agree, repin, defer, undefer, linking an issue and \`adoptPlan\` take \`requirements.approve\`
 on the project (project admin, or an org owner or admin), person or agent alike, the revision's author
-included; without it the call is refused \`APPROVE_PERMISSION_REQUIRED\` naming the permission. Whoever
+included; without it the call is refused \`PERMISSION_FORBIDDEN\` naming the permission. Whoever
 lacks it proposes and stops; the requirement's \`waitingOn\` names whose turn it is. A change an agent
 proposes without writing the revision itself is a \`revision_diff\` suggestion (${guideRef('suggestions')}),
 and accepting one writes a new **draft** revision, never a current one.`,

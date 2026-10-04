@@ -10,11 +10,12 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
-import { assertOrgRoleOnProject, loadProjectAccess } from '../../lib/authz.js';
+import { loadProjectAccess } from '../../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { readAssistantWeekly } from './config.js';
 import { realDeps, runAssistantWeeklyForProject } from './run.js';
+import { requireOrgHeld } from '../../permissions/index.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -33,7 +34,7 @@ assistantWeeklyRoutes.post(
   async (c) => {
     const { id } = c.req.valid('param');
     const access = await loadProjectAccess(id, c.get('userId'));
-    assertOrgRoleOnProject(access, 'admin', 'org admin required');
+    requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
     const [row] = await db
       .select({
         id: projects.id,

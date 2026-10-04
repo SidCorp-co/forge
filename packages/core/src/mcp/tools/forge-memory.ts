@@ -15,11 +15,10 @@ import {
   writeMemoryInputSchema,
 } from '../../memory/write-service.js';
 import {
-  assertPrincipalIsMember,
-  assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   zodToMcpSchema,
 } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const ACTIONS = ['search', 'write', 'get', 'delete', 'feedback'] as const;
 
@@ -87,7 +86,7 @@ export const forgeMemoryTool: ContextScopedMcpToolFactory = ({ principal }) => (
 
     if (action === 'search') {
       const input = searchInputSchema.parse(rest);
-      await assertPrincipalIsMember(principal, input.projectId);
+      await requireCan({ userId: principal.userId }, 'project.read', input.projectId);
       try {
         return await runMemorySearch({ ...input, surface: 'agent' });
       } catch (err) {
@@ -98,20 +97,20 @@ export const forgeMemoryTool: ContextScopedMcpToolFactory = ({ principal }) => (
 
     if (action === 'get') {
       const input = getMemoryInputSchema.parse(rest);
-      await assertPrincipalIsMember(principal, input.projectId);
+      await requireCan({ userId: principal.userId }, 'project.read', input.projectId);
       return runMemoryGet(input);
     }
 
     if (action === 'delete') {
       const input = deleteInputSchema.parse(rest);
-      await assertPrincipalIsWriter(principal, input.projectId);
+      await requireCan({ userId: principal.userId }, 'project.write', input.projectId);
       const removed = await deleteMemory(input.projectId, input.source, input.sourceRef);
       return { deleted: removed > 0 };
     }
 
     if (action === 'feedback') {
       const input = memoryFeedbackInputSchema.parse(rest);
-      await assertPrincipalIsWriter(principal, input.projectId);
+      await requireCan({ userId: principal.userId }, 'project.write', input.projectId);
       try {
         return await runMemoryFeedback(input);
       } catch (err) {
@@ -121,7 +120,7 @@ export const forgeMemoryTool: ContextScopedMcpToolFactory = ({ principal }) => (
     }
 
     const input = writeMemoryInputSchema.parse(rest);
-    await assertPrincipalIsWriter(principal, input.projectId);
+    await requireCan({ userId: principal.userId }, 'project.write', input.projectId);
     try {
       return await runMemoryWrite(input);
     } catch (err) {

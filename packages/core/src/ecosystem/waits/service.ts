@@ -6,7 +6,7 @@ import type {
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db, type Tx } from '../../db/client.js';
 import { issueContractWaits } from '../../db/schema-contract-waits.js';
-import { effectiveProjectRole } from '../../lib/authz.js';
+import { permissionFactsOf } from '../../permissions/index.js';
 import { compareVersions, type Versioning } from '../contract/naming.js';
 import { lockKeys } from '../store.js';
 import {
@@ -26,8 +26,7 @@ export type WaitOutcome =
 const contractLock = (providerId: string, slug: string) => `contract:${providerId}/${slug}`;
 
 async function writerOf(actor: WaitActor, projectId: string, act: string) {
-  const role = (await effectiveProjectRole(actor.userId, projectId))?.role ?? null;
-  return writerRefusal({ ...actor, role }, projectId, act);
+  return writerRefusal(await permissionFactsOf(actor.userId, projectId), act);
 }
 
 export async function addContractWait(input: {

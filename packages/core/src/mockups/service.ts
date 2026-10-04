@@ -14,8 +14,7 @@ import { mockups } from '../db/schema-mockups.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
 import { rowIn as feedbackRowIn } from '../feedback/read.js';
 import { issueRefIn, requirementRefIn } from '../feedback/refs.js';
-import { approverFactsOf } from '../lib/approval.js';
-import { assertProjectAccess } from '../lib/authz.js';
+import { permissionFactsOf, requireCan } from '../permissions/index.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { logger } from '../logger.js';
 import { getStorage } from '../storage/index.js';
@@ -139,7 +138,7 @@ export async function proposeMockup(input: {
   body: ProposeMockupRequest;
 }): Promise<MockupOutcome> {
   const { projectId, actor, body } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const target = await resolveMockupTarget(projectId, body.target, actor.userId);
   if ('code' in target) return { ok: false, refusals: [target] };
   const got = await mockupContent(projectId, await dataPolicyOf(projectId), body);
@@ -203,7 +202,7 @@ async function decide(
   check: (row: MockupRow, key: string) => Promise<MockupRefusal | null>,
   set: { status: 'accepted' | 'returned' | 'withdrawn'; reason: string | null },
 ): Promise<MockupOutcome> {
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const first = await rowIn(db, projectId, ref);
   const refusals = await db.transaction(async (tx) => {
     await lockMockups(tx, projectId);
@@ -232,7 +231,7 @@ async function deciderFor(
   key: string,
   act: 'accept' | 'return',
 ) {
-  return deciderRefusal(await approverFactsOf(actor.userId, projectId), projectId, key, act);
+  return deciderRefusal(await permissionFactsOf(actor.userId, projectId), key, act);
 }
 
 /** A holder of mockups.approve accepts a proposed mockup, its author included. */

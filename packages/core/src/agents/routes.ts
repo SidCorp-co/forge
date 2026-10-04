@@ -4,10 +4,11 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentApprovalModes, agentSchedules, agents } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { wholeList } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -65,9 +66,6 @@ const patchSchema = z
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
@@ -84,7 +82,7 @@ agentRoutes.get(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     const conditions = [eq(agents.projectId, projectId)];
     if (type) conditions.push(eq(agents.type, type));
@@ -108,7 +106,7 @@ agentRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(input.projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
 
     const [inserted] = await db
       .insert(agents)
@@ -151,7 +149,7 @@ agentRoutes.get(
     if (!row) throw notFound('agent not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     return c.json(row);
   },
@@ -174,7 +172,7 @@ agentRoutes.patch(
     if (!existing) throw notFound('agent not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (patch.name !== undefined) updates.name = patch.name;
@@ -218,7 +216,7 @@ agentRoutes.delete(
     if (!existing) throw notFound('agent not found');
 
     const access = await loadProjectAccess(existing.projectId, userId);
-    assertProjectRole(access, 'admin', 'insufficient permission');
+    requireHeld(access, 'project.admin');
 
     await db.delete(agents).where(eq(agents.id, id));
     return c.body(null, 204);

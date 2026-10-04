@@ -9,10 +9,11 @@ import { egressForRequest } from '../lib/data-egress.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { badRequest, forbidden, notFound } from '../middleware/route-errors.js';
+import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { heldIssuePrefixes } from './issue-prefix-read.js';
 import { listIssueStanding, readIssueStanding } from './standing-read.js';
+import { requireHeld } from '../permissions/index.js';
 
 const projectParam = z.object({ id: z.uuid() });
 const keyParam = z.object({
@@ -37,7 +38,7 @@ issueStandingRoutes.get(
     const { scope } = c.req.valid('query');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
     const listed = await listIssueStanding(projectId, scope, userId ? { userId } : null);
     return c.json(
       await egressForRequest(restActor(c).agency, projectId, 'issue', listed, 'the issue list'),
@@ -54,7 +55,7 @@ issueStandingRoutes.get(
     const { id: projectId, key } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
     const parsed = parseIssueRef(
       key,
       issueRefNeedsHeldPrefixes(key) ? await heldIssuePrefixes(projectId) : [],

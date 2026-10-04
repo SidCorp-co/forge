@@ -13,7 +13,7 @@ import {
   runnerProvisionStatuses,
   runners,
 } from '../db/schema.js';
-import { assertOrgAccess, assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { mintEpochFor } from '../middleware/pat-rest-surface.js';
@@ -35,6 +35,7 @@ import { deviceProvisionRoutes } from './me-provisions.js';
 import { listDeviceAssignments } from './me-runners.js';
 import { redeemPairingCode } from './pair.js';
 import { heartbeatPool } from './pool-read-report.js';
+import { requireHeld, requireOrgCan } from '../permissions/index.js';
 
 const unauth = () =>
   new HTTPException(401, { message: 'unauthenticated', cause: { code: 'UNAUTHENTICATED' } });
@@ -143,7 +144,7 @@ deviceOwnerRoutes.get(
     // org scope at all. The organisation's devices are a different population,
     // served by `/api/orgs/:orgId/devices` in `devices/org-routes.ts` (ISS-1162).
     const { orgId } = c.req.valid('query');
-    if (orgId !== undefined) await assertOrgAccess(orgId, userId, 'member');
+    if (orgId !== undefined) await requireOrgCan({ userId }, 'org.read', orgId);
 
     const rows = orgId
       ? await db
@@ -323,7 +324,7 @@ deviceUserRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
 
     // 5-minute TTL, server-minted. Retry on unique-violation (collision).
     const expiresAt = new Date(Date.now() + PAIR_CODE_TTL_MS);

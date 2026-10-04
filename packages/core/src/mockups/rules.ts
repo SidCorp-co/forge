@@ -14,7 +14,7 @@ import {
   type ProposeMockupRequest,
 } from '@forge/contracts/mockups';
 import type { RevisionState } from '@forge/contracts/requirements';
-import { type ApproverFacts, approvalRefusal } from '../lib/approval.js';
+import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
 export interface MockupRefusal {
   code: MockupRefusalCode;
@@ -140,15 +140,13 @@ export function decidedRefusal(key: string, status: MockupStatus): MockupRefusal
 
 // Accept and return are approvals (ADR 0007): whoever holds mockups.approve decides, its author included.
 export function deciderRefusal(
-  facts: ApproverFacts,
-  projectId: string,
+  facts: PermissionFacts,
   key: string,
   act: 'accept' | 'return',
 ): MockupRefusal | null {
-  return approvalRefusal(
+  return permissionRefusal(
     facts,
-    'mockups',
-    projectId,
+    'mockups.approve',
     `${act === 'accept' ? 'accepting' : 'returning'} ${key}`,
   );
 }

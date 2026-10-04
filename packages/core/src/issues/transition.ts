@@ -10,7 +10,7 @@ import {
   issues,
   waitingKinds,
 } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
@@ -24,26 +24,16 @@ import {
 } from './apply-transition.js';
 import type { UnblockedDependent } from './drop-cascade.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
-import {
-  LEGACY_STATUSES,
-  LIFECYCLE_HEADER,
-  legacyWarning,
-  readsLegacyStatuses,
-  refuseRetiredFromTenStatusClient,
-  resolveStatusInput,
-  STATUS_COMPAT_HEADER,
-} from './legacy-status.js';
 import { parkQuestionNotMinted } from './park-question.js';
 import { issueParkRoutes } from './park-routes.js';
 import { recordEventRoutes } from './record-events/routes.js';
 import { refuseOffRecoveryEdge, withRecoveryHint } from './recovery-move.js';
+import { refuseLegacyStatusFields } from './status-input.js';
+import { requireHeld } from '../permissions/index.js';
 
 const transitionBodySchema = z
   .object({
-    // cm:hack the seven retired names are accepted from forge-plugin 3.36.542 alone and mapped
-    // (`legacy-status.ts`); a ten-status client is refused them. Exit: until forge-plugin moves to
-    // the 10-status model (plugin-followups.md).
-    toStatus: z.enum([...issueStatuses, ...LEGACY_STATUSES]),
+    toStatus: z.enum(issueStatuses),
     reason: z.string().trim().min(1).max(2000).optional(),
     waitingKind: z.enum(waitingKinds).optional(),
     needs: z.string().trim().min(1).max(2000).optional(),
@@ -72,7 +62,7 @@ function transitionErrorToHttp(err: TransitionError): HTTPException {
     case 'CLOSE_REQUIRES_SHIPPED':
     case 'VOID_REASON_REQUIRED':
     case 'PLAN_REQUIRED':
-    case 'APPROVE_PERMISSION_REQUIRED':
+    case 'PERMISSION_FORBIDDEN':
     case 'VERDICT_IDENTITY_REQUIRED':
     case 'VERDICT_IDENTITY_NOT_ADMISSIBLE':
       return new HTTPException(422, { message: err.detail, cause });
@@ -238,25 +228,14 @@ transitionRoutes.post(
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
   zValidator('json', transitionBodySchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) {
+      refuseLegacyStatusFields(result.data, 'json', ['toStatus']);
+      throw badRequest(z.flattenError(result.error));
+    }
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const {
-      toStatus: named,
-      reason,
-      waitingKind,
-      needs,
-      voidQuestions,
-      recovery,
-    } = c.req.valid('json');
-    const client17 = readsLegacyStatuses({
-      principal: c.get('principal'),
-      lifecycleHeader: c.req.header(LIFECYCLE_HEADER),
-    });
-    refuseRetiredFromTenStatusClient([named], client17);
-    const resolved = resolveStatusInput(named);
-    const toStatus = resolved.status;
+    const { toStatus, reason, waitingKind, needs, voidQuestions, recovery } = c.req.valid('json');
     const userId = c.get('userId');
 
     const [issue] = await db
@@ -275,7 +254,7 @@ transitionRoutes.post(
     const fromStatus = issue.status as IssueStatus;
 
     const access = await loadProjectAccess(issue.projectId, userId);
-    assertProjectRole(access, 'member');
+    requireHeld(access, 'project.write');
     let result: StatusTransitionResult;
     try {
       if (recovery) refuseOffRecoveryEdge(fromStatus, toStatus);
@@ -294,7 +273,6 @@ transitionRoutes.post(
           waitingKind,
           needs,
           voidQuestions,
-          legacy: { named, target: resolved.legacy, client17 },
           ...(recovery ? { recovery } : {}),
         },
       );
@@ -323,19 +301,13 @@ transitionRoutes.post(
       actor: restActor(c),
       options: { needs },
     });
-    const warnings = [
-      ...(resolved.legacy ? [legacyWarning(resolved.legacy.named)] : []),
-      ...(unasked ? [unasked] : []),
-    ];
-    if (resolved.legacy) c.header(STATUS_COMPAT_HEADER, legacyWarning(resolved.legacy.named));
     return c.json({
       id: result.id,
-      // cm:hack a 17-status reader is answered in the rung it wrote (`legacyReadStatus`).
-      status: client17 && result.legacyRung ? result.legacyRung : result.status,
+      status: result.status,
       step: result.step,
       reopenCount: result.reopenCount,
       transitionedAt: result.updatedAt,
-      ...(warnings.length > 0 ? { warnings } : {}),
+      ...(unasked ? { warnings: [unasked] } : {}),
     });
   },
 );

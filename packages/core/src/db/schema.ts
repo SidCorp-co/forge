@@ -1,3 +1,4 @@
+import { ISSUE_STATUSES } from '@forge/contracts/issue-vocabulary';
 import { type InferSelectModel, isNull, relations, type SQL, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
@@ -390,6 +391,8 @@ export const projectMembers = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     role: text('role', { enum: projectMemberRoles }).notNull().default('member'),
+    /** Permissions held on this project beyond the role's (`@forge/contracts/permissions`). */
+    grants: text('grants').array().notNull().default(sql`ARRAY[]::text[]`),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -963,21 +966,10 @@ export const waitingKinds = ['needs_answer', 'needs_decision', 'needs_resource']
 export type WaitingKind = (typeof waitingKinds)[number];
 
 /**
- * The ten statuses of workflow `issue-lifecycle` (approved revision 2). A status answers only
+ * The ten statuses of workflow `issue-lifecycle`, declared once in contracts. A status answers only
  * "who is it waiting on"; a run's step is progress inside `in_progress`, in `issue_work_state`.
  */
-export const issueStatuses = [
-  'draft',
-  'open',
-  'reopen',
-  'in_progress',
-  'approved',
-  'needs_info',
-  'on_hold',
-  'awaiting_release',
-  'closed',
-  'dropped',
-] as const;
+export const issueStatuses = ISSUE_STATUSES;
 export type IssueStatus = (typeof issueStatuses)[number];
 
 export const issuePriorities = ['critical', 'high', 'medium', 'low', 'none'] as const;

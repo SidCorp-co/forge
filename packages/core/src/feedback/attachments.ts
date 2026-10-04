@@ -11,7 +11,6 @@ import { feedbackAttachments } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { allowedSetForTarget, resolveAttachmentMime, safeName } from '../lib/attachment-mime.js';
-import { assertProjectAccess } from '../lib/authz.js';
 import { dataPolicyOf, egressAs } from '../lib/data-egress.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
@@ -20,6 +19,7 @@ import { getStorage } from '../storage/index.js';
 import { type FeedbackActor, feedbackKey, phaseOfRow, rowIn } from './read.js';
 import { clarificationRefusal, redactedRefusal } from './rules.js';
 import { answer, type FeedbackOutcome, inTx, lockFeedback } from './service.js';
+import { requireCan } from '../permissions/index.js';
 
 /** The BA assistant asks the reporter one clarification (Q5); the answer becomes a suggestion, never an edit. */
 export async function askClarification(input: {
@@ -30,7 +30,7 @@ export async function askClarification(input: {
   needed: string;
 }): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const row = await rowIn(db, projectId, input.ref);
   const [open] = await db
     .select({ id: agentQuestions.id })
@@ -65,7 +65,7 @@ export async function addAttachment(input: {
   contentBase64: string;
 }): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
-  await assertProjectAccess(projectId, actor.userId, 'member');
+  await requireCan({ userId: actor.userId }, 'project.write', projectId);
   const row = await rowIn(db, projectId, input.ref);
   const invalid = (detail: string): FeedbackOutcome => ({
     ok: false,
@@ -149,7 +149,7 @@ export async function attachmentBytes(input: {
   userId: string;
   agency: ActorAgency;
 }) {
-  await assertProjectAccess(input.projectId, input.userId, 'viewer');
+  await requireCan({ userId: input.userId }, 'project.read', input.projectId);
   const row = await rowIn(db, input.projectId, input.ref);
   const [a] = await db
     .select()

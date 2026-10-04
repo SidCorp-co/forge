@@ -25,8 +25,8 @@ import { conversations } from '../db/schema-conversations.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions, type QuestionOrigin, type QuestionStep } from '../db/schema-questions.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
-import { effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf, storedAnswers } from '../lib/data-egress.js';
+import { permissionFactsOf } from '../permissions/index.js';
 import type { NamedRefusal } from '../project-config/respond.js';
 import {
   type BatchRow,
@@ -337,8 +337,7 @@ export interface SubmitInput {
 // cm:why one submit for the whole batch (BC-7): every answer, the user's answers message and the
 // batch's state land in one write or none does, and an unanswered item stays open
 export async function submitAnswers(input: SubmitInput): Promise<QuestionnaireOutcome> {
-  const access = await effectiveProjectRole(input.actor.userId, input.projectId);
-  const who = submitterRefusal({ ...input.actor, role: access?.role ?? null }, input.projectId);
+  const who = submitterRefusal(await permissionFactsOf(input.actor.userId, input.projectId));
   if (who) return { ok: false, refusals: [who] };
   const skip = input.skip === true;
   const answers = storedAnswers(await dataPolicyOf(input.projectId), input.answers);

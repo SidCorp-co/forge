@@ -27,7 +27,8 @@ import { PAT_GRANT_ALL } from '../auth/pat-permissions.js';
 import { resolveProjectHandle } from '../conversations/handles.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens, users } from '../db/schema.js';
-import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { effectiveProjectRole } from '../lib/authz.js';
+import { holds } from '../permissions/index.js';
 
 /**
  * Who the box acts as: the holder of its live device credential, which is the
@@ -115,7 +116,7 @@ export class WorkspaceHolderRefused extends Error {
   readonly code = 'WORKSPACE_HOLDER_REFUSED';
 }
 
-// cm:why a master pane is its project's agent: a person-held checkout token is refused every agent-only write (BUILDER_RUN_WRITER_NOT_PROJECT), so the checkout carries an agent, and a person hands the project's agent only from member up
+// A master pane is its project's agent, so the checkout carries the agent's identity; a person hands it only holding project.write.
 /**
  * Who a checkout's credential is held by: the device's holder where that is an
  * agent, and the project's own agent where it is a person entitled to hand it.
@@ -135,10 +136,10 @@ export async function workspaceHolderFor(args: {
     );
   }
   if (holder.kind === 'agent') return args.deviceHolderUserId;
-  const role = (await effectiveProjectRole(args.deviceHolderUserId, args.projectId))?.role ?? null;
-  if (!projectRoleAtLeast(role, 'member')) {
+  const access = await effectiveProjectRole(args.deviceHolderUserId, args.projectId);
+  if (!access || !holds(access, 'project.write')) {
     throw new WorkspaceHolderRefused(
-      `person ${args.deviceHolderUserId} paired this box and holds ${role ?? 'no role'} on project ${args.projectId}; its checkout's credential acts as the project's own agent, which only a member or above hands a box. A project admin raises their role, or the box is paired as an agent of the project`,
+      `person ${args.deviceHolderUserId} paired this box and holds ${access?.role ?? 'no role'} on project ${args.projectId}; its checkout's credential acts as the project's own agent, which only a holder of project.write hands a box. A project admin raises their role, or the box is paired as an agent of the project`,
     );
   }
   return db.transaction(async (tx) => (await resolveProjectHandle(tx, args.projectId)).userId);

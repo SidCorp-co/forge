@@ -3,7 +3,7 @@
 // response shapes from here, so no surface can name a kind, status or code another does not know.
 
 import { z } from "zod";
-import { APPROVAL_REFUSAL_CODES } from "./approval.js";
+import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import {
 	type FeedbackTriageEffect,
 	feedbackDedupSchema,
@@ -108,7 +108,7 @@ export const SUGGESTION_REFUSAL_CODES = [
 	"SUGGESTION_BASE_STALE",
 	"SUGGESTION_DUPLICATE",
 	"SUGGESTION_QUEUE_FULL",
-	...APPROVAL_REFUSAL_CODES,
+	...PERMISSION_REFUSAL_CODES,
 	"SUGGESTION_REJECT_REASON_REQUIRED",
 	"SUGGESTION_DECIDED",
 	"SUGGESTION_WITHDRAW_FORBIDDEN",
@@ -118,7 +118,6 @@ export const SUGGESTION_REFUSAL_CODES = [
 	"SUGGESTION_BUILD_UNNAMED",
 	"SUGGESTION_BUILD_UNPINNED",
 	"SUGGESTION_REVISION_UNCHANGED",
-	"SUGGESTION_BREAKDOWN_PROPOSE_FORBIDDEN",
 	"SUGGESTION_BREAKDOWN_OPEN",
 	"CLARIFICATION_ALREADY_OPEN",
 	"WORKFLOW_NODE_UNKNOWN",

@@ -95,7 +95,7 @@ or node id. A repository project cites \`{ kind: "repo", file, symbol }\`. The o
 ### Who approves
 Whoever holds \`workflow-designs.approve\` on the project (project admin, or an org owner or admin),
 person or agent alike, a design onboarding drafted included; without it the call is refused
-\`APPROVE_PERMISSION_REQUIRED\` naming the permission. Unlinking an issue lifts its gate, so it takes the
+\`PERMISSION_FORBIDDEN\` naming the permission. Unlinking an issue lifts its gate, so it takes the
 same permission. The project document's old \`workflows.designApprover\` is retired, and a write naming
 it is refused \`APPROVER_POLICY_RETIRED\`.`,
 };

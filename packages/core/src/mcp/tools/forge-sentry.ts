@@ -24,12 +24,12 @@ import {
 import { SENTRY_LIST_MAX_LIMIT } from '../../integrations/sentry/listing.js';
 import { isSentryRefusal, SentryRefusal } from '../../integrations/sentry/refusals.js';
 import {
-  assertPrincipalIsMember,
   type ContextScopedMcpToolFactory,
   type McpContext,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
+import { requireCan } from '../../permissions/index.js';
 
 const inputSchema = z
   .object({
@@ -140,7 +140,7 @@ async function dispatchAction(input: Input, ctx: McpContext): Promise<Record<str
     );
   }
   const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-  await assertPrincipalIsMember(ctx.principal, projectId);
+  await requireCan({ userId: ctx.principal.userId }, 'project.read', projectId);
 
   if (input.action === 'get') {
     const issue = await readProjectSentryIssue({

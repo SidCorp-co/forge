@@ -12,8 +12,9 @@ import {
 } from '../db/schema.js';
 
 /**
- * THE authz module. Every project/org permission decision in core — REST,
- * MCP, WS — resolves through here. There is exactly ONE rule:
+ * Who the caller is on a project or org: the effective role, the membership's grant and the
+ * visibility predicates. Whether that holds a permission is decided only by
+ * `permissions/can.ts` (pattern v2 BC-20). The role rule:
  *
  *   effective project role = max( explicit project_members.role,
  *                                 org-derived role )
@@ -29,11 +30,7 @@ import {
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
-const forbidden = (message: string) =>
-  new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
-
 const PROJECT_ROLE_RANK: Record<ProjectMemberRole, number> = { viewer: 1, member: 2, admin: 3 };
-const ORG_ROLE_RANK: Record<OrgMemberRole, number> = { member: 1, admin: 2, owner: 3 };
 
 export type ProjectAccess = {
   projectId: string;
@@ -42,22 +39,13 @@ export type ProjectAccess = {
   role: ProjectMemberRole | null;
   /** Caller's role in the project's org. null = not in the org. */
   orgRole: OrgMemberRole | null;
+  /** Permissions the membership holds beyond its role. */
+  grants: readonly string[];
 };
-
-export function projectRoleAtLeast(
-  role: ProjectMemberRole | null,
-  min: ProjectMemberRole,
-): boolean {
-  return role !== null && PROJECT_ROLE_RANK[role] >= PROJECT_ROLE_RANK[min];
-}
-
-export function orgRoleAtLeast(role: OrgMemberRole | null, min: OrgMemberRole): boolean {
-  return role !== null && ORG_ROLE_RANK[role] >= ORG_ROLE_RANK[min];
-}
 
 /** Org owner/admin ⇒ implicit project admin; org member ⇒ nothing. */
 export function orgDerivedProjectRole(orgRole: OrgMemberRole | null): ProjectMemberRole | null {
-  return orgRoleAtLeast(orgRole, 'admin') ? 'admin' : null;
+  return orgRole === 'owner' || orgRole === 'admin' ? 'admin' : null;
 }
 
 export function maxProjectRole(
@@ -90,12 +78,13 @@ export async function effectiveProjectRole(
       .where(eq(projects.id, projectId))
       .limit(1);
     if (!row) return null;
-    return { projectId, orgId: row.orgId, role: null, orgRole: null };
+    return { projectId, orgId: row.orgId, role: null, orgRole: null, grants: [] };
   }
   const [row] = await db
     .select({
       orgId: projects.orgId,
       memberRole: projectMembers.role,
+      grants: projectMembers.grants,
       orgRole: organizationMembers.role,
     })
     .from(projects)
@@ -115,6 +104,7 @@ export async function effectiveProjectRole(
     orgId: row.orgId,
     role: maxProjectRole(row.memberRole ?? null, orgDerivedProjectRole(row.orgRole ?? null)),
     orgRole: row.orgRole ?? null,
+    grants: row.grants ?? [],
   };
 }
 
@@ -129,39 +119,6 @@ export async function loadProjectAccess(
   return access;
 }
 
-/** 403 unless the effective role is at least `min`. */
-export function assertProjectRole(
-  access: ProjectAccess,
-  min: ProjectMemberRole,
-  message?: string,
-): void {
-  if (!projectRoleAtLeast(access.role, min)) {
-    throw forbidden(message ?? `requires project ${min} access`);
-  }
-}
-
-export async function assertProjectAccess(
-  projectId: string,
-  userId: string | null | undefined,
-  min: ProjectMemberRole = 'member',
-): Promise<ProjectAccess> {
-  const access = await effectiveProjectRole(userId, projectId);
-  if (!access || !projectRoleAtLeast(access.role, min)) {
-    throw forbidden('not a project member');
-  }
-  return access;
-}
-
-export function assertOrgRoleOnProject(
-  access: ProjectAccess,
-  min: OrgMemberRole,
-  message?: string,
-): void {
-  if (!orgRoleAtLeast(access.orgRole, min)) {
-    throw forbidden(message ?? `requires org ${min} access`);
-  }
-}
-
 export async function loadOrgRole(
   orgId: string,
   userId: string | null | undefined,
@@ -173,25 +130,6 @@ export async function loadOrgRole(
     .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.userId, userId)))
     .limit(1);
   return row?.role ?? null;
-}
-
-/** Throwing org gate: 404 when the org is missing, 403 below `min`. */
-export async function assertOrgAccess(
-  orgId: string,
-  userId: string | null | undefined,
-  min: OrgMemberRole,
-): Promise<{ orgId: string; role: OrgMemberRole; isPersonal: boolean }> {
-  const [org] = await db
-    .select({ id: organizations.id, isPersonal: organizations.isPersonal })
-    .from(organizations)
-    .where(eq(organizations.id, orgId))
-    .limit(1);
-  if (!org) throw notFound('organization not found');
-  const role = await loadOrgRole(orgId, userId);
-  if (!orgRoleAtLeast(role, min)) {
-    throw forbidden(`requires org ${min} access`);
-  }
-  return { orgId, role: role as OrgMemberRole, isPersonal: org.isPersonal };
 }
 
 /**
