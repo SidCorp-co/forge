@@ -243,7 +243,11 @@ issueProjectRoutes.get(
     requireHeld(access, 'project.read');
 
     const listed = await listIssues(projectId, q, q);
-    if (!listed.ok) throw badRequest({ formErrors: [listed.message], fieldErrors: {} });
+    if (!listed.ok) {
+      throw listed.field === 'key'
+        ? badRequest({ formErrors: [listed.message], fieldErrors: {} })
+        : badRequest({ [listed.field]: listed.message });
+    }
     const rows = await egressForRequest(
       restActor(c).agency,
       projectId,

@@ -92,7 +92,7 @@ export type IssueListRow = Awaited<ReturnType<typeof pageQuery>>[number];
 
 export type IssueListAnswer =
   | { ok: true; rows: IssueListRow[]; total: number; buckets: IssueBuckets | null }
-  | { ok: false; field: 'key'; message: string };
+  | { ok: false; field: 'key' | 'orWaitingOnPerson'; message: string };
 
 const labelledWith = (labelIds: string[]) =>
   exists(
@@ -145,6 +145,14 @@ export async function listIssues(
     axisFree.push(cond);
   };
   const empty: IssueListAnswer = { ok: true, rows: [], total: 0, buckets: null };
+  if (filters.orWaitingOnPerson && !filters.status?.length) {
+    return {
+      ok: false,
+      field: 'orWaitingOnPerson',
+      message:
+        'widens a `status` filter to also match an issue a person owes an answer, and this request names no `status`. Send it with `status`, or send neither',
+    };
+  }
 
   for (const side of issueArchiveSide(filters.includeArchived === true || filters.key !== undefined))
     both(side);

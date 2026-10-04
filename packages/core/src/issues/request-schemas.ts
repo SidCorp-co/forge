@@ -68,6 +68,11 @@ export const issueListFilterFields = {
   createdAfter: instantSchema.optional(),
   createdBefore: instantSchema.optional(),
   updatedAfter: instantSchema.optional(),
+  createdBy: z.union([z.uuid(), z.literal('agent')]).optional(),
+  origin: z.enum(['detector', 'human']).optional(),
+  /** ISS-1257 — widen `status` to also match an issue a person owes an answer, whatever its status. */
+  orWaitingOnPerson: z.stringbool().optional(),
+  key: issueKeyFilterSchema.optional(),
   label: oneOrMany(z.string().trim().min(1)),
   module: oneOrMany(z.string().trim().min(1)),
   sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
@@ -80,7 +85,6 @@ export const issueFiltersSchema = paginationSchema
   .extend({
     ...issueListFilterFields,
     assigneeId: z.uuid().optional(),
-    key: issueKeyFilterSchema.optional(),
     search: z.string().trim().min(1).max(200).optional(),
   })
   .strict();

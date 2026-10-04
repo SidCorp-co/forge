@@ -29,10 +29,6 @@ const searchQuerySchema = z
     ...issueListFilterFields,
     q: z.string().trim().min(1).max(200).optional(),
     assignee: z.uuid().optional(),
-    createdBy: z.union([z.uuid(), z.literal('agent')]).optional(),
-    origin: z.enum(['detector', 'human']).optional(),
-    /** ISS-1257 — widen `status` to also match an issue a person owes an answer, whatever its status. */
-    orWaitingOnPerson: z.stringbool().optional(),
     limit: z.coerce.number().int().min(1).max(200).default(50),
     offset: z.coerce.number().int().min(0).default(0),
     withCost: z.coerce.boolean().optional().default(false),
@@ -66,14 +62,8 @@ searchRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
 
-    if (q.orWaitingOnPerson && !q.status?.length) {
-      throw badRequest({
-        orWaitingOnPerson:
-          'widens a `status` filter to also match an issue a person owes an answer, and this request names no `status`. Send it with `status`, or send neither',
-      });
-    }
     const listed = await listIssues(projectId, { ...q, search: q.q, assigneeId: q.assignee }, q);
-    if (!listed.ok) throw badRequest({ formErrors: [listed.message], fieldErrors: {} });
+    if (!listed.ok) throw badRequest({ [listed.field]: listed.message });
     const { rows, total, buckets } = listed;
 
     const searchPrefix = await activeIssuePrefix(projectId);
