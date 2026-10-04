@@ -25,9 +25,7 @@ const ISSUES_PER_PASS = 500;
  * The actions a collapse may delete, checked once more at run time: a kernel kind reaching this
  * list is a defect the type should already have refused, and it must stop the sweep, not delete.
  */
-export function collapsibleActions(
-  narration: readonly string[] = NARRATION_RECORD_KINDS,
-): string[] {
+function collapsibleActions(narration: readonly string[] = NARRATION_RECORD_KINDS): string[] {
   const kernel = new Set<string>(KERNEL_RECORD_KINDS);
   const named = narration.filter((kind) => kernel.has(kind));
   if (named.length > 0) {

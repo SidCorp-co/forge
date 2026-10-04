@@ -7,22 +7,15 @@
 // cm:edge contract -> github.com/SidCorp-co/forge-plugin:plugin/src/flow/lease.mjs — that file owns
 //   the blob: `holder`, `renewedAt`, `minutes`, optional `stopped` and `heartbeat: { at,
 //   everySeconds }`; expiry `renewedAt + minutes`, any other shape `malformed`, report-only.
-export const LEASE_VERDICTS = [
-  'none',
-  'live',
-  'shared',
-  'expired',
-  'abandoned',
-  'malformed',
-] as const;
+const LEASE_VERDICTS = ['none', 'live', 'shared', 'expired', 'abandoned', 'malformed'] as const;
 export type LeaseVerdict = (typeof LEASE_VERDICTS)[number];
 
 /** Periods a holder may miss; the floor under that against jitter; how far ahead a beat may be. */
-export const MISSED_BEATS = 3;
-export const MIN_SILENCE_MS = 60_000;
-export const FUTURE_BEAT_TOLERANCE_MS = 60_000;
+const MISSED_BEATS = 3;
+const MIN_SILENCE_MS = 60_000;
+const FUTURE_BEAT_TOLERANCE_MS = 60_000;
 
-export function leaseSilenceToleranceMs(everySeconds: number): number {
+function leaseSilenceToleranceMs(everySeconds: number): number {
   return Math.max(everySeconds * 1000 * MISSED_BEATS, MIN_SILENCE_MS);
 }
 

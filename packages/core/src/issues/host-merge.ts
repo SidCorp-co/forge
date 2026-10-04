@@ -10,7 +10,7 @@ import { type MergeRecordExecutor, recordIssueMerge } from './merge-record.js';
  * `merged_commit_sha IS NULL`. It records the merge and moves no status. Answers whether this call
  * wrote the stamp.
  */
-export async function stampHostMerge(
+async function stampHostMerge(
   args: {
     projectId: string;
     headRef: string;

@@ -9,13 +9,12 @@ import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import type { QuestionRefusalCode } from '@forge/contracts/questions';
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
 import {
   type AnswerShape,
   agentQuestions,
-  type ChoiceStep,
   isChoiceStep,
   type QuestionBlockerKind,
   type QuestionOption,
@@ -99,7 +98,7 @@ function checkOptions(options: QuestionOption[], recommendedOptionId: string) {
   }
 }
 
-export function checkAnswer(answer: AskAnswer): void {
+function checkAnswer(answer: AskAnswer): void {
   if (answer.shape === 'choice') {
     checkOptions(answer.options, answer.recommendedOptionId);
     return;
@@ -238,19 +237,6 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput) {
     .returning();
   if (!row) throw new Error('the question was not written');
   return view(row);
-}
-
-export async function getQuestion(id: string) {
-  const [row] = await db.select().from(agentQuestions).where(eq(agentQuestions.id, id)).limit(1);
-  return row ? view(row) : null;
-}
-
-export async function openQuestionCount(projectId: string) {
-  const [row] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(agentQuestions)
-    .where(and(eq(agentQuestions.projectId, projectId), eq(agentQuestions.status, 'open')));
-  return row?.n ?? 0;
 }
 
 export type GivenAnswer = { kind: 'option'; optionId: string } | { kind: 'text'; text: string };
@@ -429,26 +415,6 @@ export async function voidQuestion(args: {
     'QUESTION_NOT_OPEN',
     `this question is ${row.status} — only an open question can be voided, and voiding an answered one would erase the answer`,
   );
-}
-
-/**
- * Does the answer on this question cover the call about to be made?
- */
-export async function checkPermission(args: { questionId: string; fingerprint: string }) {
-  const row = await load(args.questionId);
-  const answered = row.steps.filter((s) => isChoiceStep(s) && s.chosenOptionId).at(-1) as
-    | ChoiceStep
-    | undefined;
-  const chosen = answered?.options.find((o) => o.id === answered.chosenOptionId);
-  if (!chosen) throw refuseQuestion('QUESTION_REFUSED', 'this question carries no answer to check');
-  if (chosen.bindsTo !== 'this_call') return true;
-  if (chosen.fingerprint !== args.fingerprint) {
-    throw refuseQuestion(
-      'QUESTION_REFUSED',
-      `fingerprint mismatch: this permission was given for \`${chosen.fingerprint}\` and is being presented for \`${args.fingerprint}\``,
-    );
-  }
-  return true;
 }
 
 async function load(id: string) {

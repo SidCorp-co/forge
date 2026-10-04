@@ -58,7 +58,7 @@ export function requireLandingShape(shape: LandingShape | null): LandingShape {
 
 /** Which marks count as landed, by shape. `git` keeps the amnesty accepting a claim (its price:
  *  docs/modules/issues/merge-mark.md); on `outside_git` a bare timestamp names nothing landed. */
-export const LANDINGS_ACCEPTED: Readonly<Record<LandingShape, readonly MergeMarkKind[]>> = {
+const LANDINGS_ACCEPTED: Readonly<Record<LandingShape, readonly MergeMarkKind[]>> = {
   git: ['asserted', 'observed'],
   outside_git: ['landed', 'observed'],
 };

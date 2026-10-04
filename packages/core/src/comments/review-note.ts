@@ -7,7 +7,7 @@ import { consume } from '../outbox/index.js';
 import { insertComment } from './service.js';
 
 /** One review, in the shape both doors already hold it in. */
-export interface ReviewToNote {
+interface ReviewToNote {
   /** GitHub's own review id, as a string. Digits, and refused by name when it is not. */
   id: string;
   reviewer: string;
@@ -19,7 +19,7 @@ export interface ReviewToNote {
   body: string | null;
 }
 
-export type ReviewNoteOutcome =
+type ReviewNoteOutcome =
   /** The comment was written by this call. */
   | 'written'
   /** A comment for this review id is already on the issue — the other door got there first. */
@@ -29,13 +29,13 @@ export type ReviewNoteOutcome =
   /** The issue's project has no creator to attribute a system comment to. */
   | 'no-author';
 
-export interface ReviewNoteResult {
+interface ReviewNoteResult {
   outcome: ReviewNoteOutcome;
   issueId: string | null;
   commentId: string | null;
 }
 
-export function reviewMarker(reviewId: string): string {
+function reviewMarker(reviewId: string): string {
   return `[github-review:${reviewId}]`;
 }
 
@@ -56,7 +56,7 @@ const VERDICT_WORD: Record<string, string> = {
   dismissed: 'had a review dismissed on',
 };
 
-export function reviewNoteBody(args: {
+function reviewNoteBody(args: {
   review: ReviewToNote;
   repository: string;
   number: number;

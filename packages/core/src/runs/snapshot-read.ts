@@ -1,8 +1,7 @@
 /**
- * The compact project-state digest `GET /api/projects/:id/pm/snapshot` primes
- * a PM decision turn with. Six independent reads keyed on `project_id`, trimmed to a small
- * predictable payload (target < 2 KB JSON for a typical project) so the digest
- * fits in the agent's priming context without crowding out memory excerpts.
+ * The compact project-state digest `GET /api/projects/:id/pm/snapshot` answers the forge CLI's
+ * `forge_project_pm` with. Six independent reads keyed on `project_id`, trimmed to a small
+ * predictable payload (target < 2 KB JSON for a typical project).
  */
 
 import { UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
@@ -11,7 +10,7 @@ import { db } from '../db/client.js';
 import { issues, jobs } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { readRunnerLoad } from './runner-load-service.js';
+import { readRunnerLoad } from '../runners/index.js';
 
 const ACTIVE_PIPELINE_STATUSES = ['approved', 'in_progress'] as const;
 

@@ -10,7 +10,7 @@ import { scheduleRuns } from '../db/schema-schedule-runs.js';
 import { suggestions } from '../db/schema-suggestions.js';
 
 /** The table each machine's status lives on. */
-export interface MachineTables {
+interface MachineTables {
   issue: typeof issues;
   job: typeof jobs;
   session: typeof agentSessions;
@@ -30,7 +30,7 @@ export interface MachineTables {
 
 export type MachineRow<E extends MachineEntity> = MachineTables[E]['$inferSelect'];
 
-export interface MachineTable<E extends MachineEntity> {
+interface MachineTable<E extends MachineEntity> {
   table: MachineTables[E];
   /** The row's id property and the property its status is held in. */
   idKey: string;

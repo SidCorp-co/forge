@@ -13,7 +13,7 @@ import { db } from '../../db/client.js';
 import { type IssueStatus, issues } from '../../db/schema.js';
 import { issueArchiveSide } from '../archive.js';
 
-export const CURSOR_AT = sql<
+const CURSOR_AT = sql<
   string | null
 >`to_char(${issues.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z" BC')`;
 
@@ -23,7 +23,7 @@ export interface PageCursor {
 }
 
 /** ISS-1237 — neither stream reads an archived issue: not as a row to rank, not as an alike seed. */
-export function matchingIssues(projectId: string, statuses: IssueStatus[]) {
+function matchingIssues(projectId: string, statuses: IssueStatus[]) {
   return and(
     eq(issues.projectId, projectId),
     inArray(issues.status, statuses),

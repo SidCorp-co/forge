@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 
-export type PlannedAgainst = {
+type PlannedAgainst = {
   plannedRevision: number | null;
   plannedBaselineSeq: number | null;
 };

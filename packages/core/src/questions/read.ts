@@ -72,7 +72,7 @@ function seenBy<T extends { steps: QuestionStep[] }>(row: T, access: PermissionF
  * keeps its status, and an open `human` question is the marker that a person owes
  * it an answer (ISS-1257).
  */
-export type AskAsInput = {
+type AskAsInput = {
   userId: string;
   issueId: string;
   prompt: string;
@@ -118,7 +118,7 @@ async function readAskedIssue(issueId: string) {
  * One page of a project's questions, newest first, or null when the caller
  * cannot reach the project.
  */
-export type ProjectQuestionPage = {
+type ProjectQuestionPage = {
   questions: Array<ReturnType<typeof shapeOf> & Record<string, unknown>>;
   total: number;
   hasMore: boolean;
@@ -127,12 +127,12 @@ export type ProjectQuestionPage = {
 };
 
 /** One page's starting point: base64url over `<created_at microseconds>|<id>` — the order key itself, not a count. */
-export type QuestionCursor = string;
+type QuestionCursor = string;
 
 const CURSOR_KEY =
   /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,6})?[+-]\d{2}(?::\d{2})?)\|([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 
-export function encodeCursor(key: string): QuestionCursor {
+function encodeCursor(key: string): QuestionCursor {
   return Buffer.from(key, 'utf8').toString('base64url');
 }
 
@@ -342,10 +342,6 @@ export async function registerWaiter(args: {
   runId: string;
 }) {
   await db.insert(questionWaiters).values(args).onConflictDoNothing();
-}
-
-export async function waitersOf(questionId: string) {
-  return db.select().from(questionWaiters).where(eq(questionWaiters.questionId, questionId));
 }
 
 export async function waiterFor(args: { questionId: string; deviceId: string; runId: string }) {

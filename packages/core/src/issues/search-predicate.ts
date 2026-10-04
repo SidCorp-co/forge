@@ -3,9 +3,9 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { issues } from '../db/schema.js';
 import { identifierTsQuery } from '../db/schema-types.js';
 
-export const ISSUE_SEARCH_FIELDS = ['title', 'description', 'plan', 'acceptanceCriteria'] as const;
+const ISSUE_SEARCH_FIELDS = ['title', 'description', 'plan', 'acceptanceCriteria'] as const;
 
-export type IssueSearchField = (typeof ISSUE_SEARCH_FIELDS)[number];
+type IssueSearchField = (typeof ISSUE_SEARCH_FIELDS)[number];
 
 const columnOf: Record<IssueSearchField, AnyPgColumn> = {
   title: issues.title,

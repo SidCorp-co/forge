@@ -49,17 +49,6 @@ export const REST_ISSUE_LIST_COLUMNS = {
   workState: workStateListSql.as('work_state'),
 } as const;
 
-/** The names this projection deliberately does not select, so a test asserts on the set. */
-export const REST_ISSUE_LIST_OMITTED = [
-  'description',
-  'descriptionFormat',
-  'plan',
-  'acceptanceCriteria',
-  'sessionContext',
-  'releaseNotes',
-  'identSearch',
-] as const;
-
 /**
  * ISS-1126 — the sha has been in this projection since ISS-959; `mergeMark` is what makes it
  * legible. The reading is `merge-record.ts`'s, so a list row and the issue detail cannot disagree

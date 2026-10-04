@@ -72,7 +72,7 @@ export const RETENTION_RULES: readonly RetentionRule[] = [
 ];
 
 /** A rule with its environment override applied, and what that override cost. */
-export interface ResolvedRetention {
+interface ResolvedRetention {
   table: string;
   /** The window to sweep at, or null where this table is never swept. */
   days: number | null;
@@ -80,7 +80,7 @@ export interface ResolvedRetention {
   rejected: string | null;
 }
 
-export const FINALIZE_REPAIR_ENV = 'RETENTION_FINALIZE_REPAIR_MAX';
+const FINALIZE_REPAIR_ENV = 'RETENTION_FINALIZE_REPAIR_MAX';
 const FINALIZE_REPAIR_DEFAULT = 200;
 
 type Env = Record<string, string | undefined>;

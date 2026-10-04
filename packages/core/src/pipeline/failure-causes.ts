@@ -12,7 +12,7 @@ export {
   resolveFailureCause,
 } from '@forge/contracts/failure-causes';
 
-export type FailureOrigin =
+type FailureOrigin =
   | 'provider'
   | 'agent'
   | 'workspace'

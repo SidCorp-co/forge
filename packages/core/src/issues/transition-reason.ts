@@ -32,7 +32,7 @@ export function announcesAMove(body: string): boolean {
   return ANNOUNCES_A_MOVE.test(body.split('\n')[0]?.trim() ?? '');
 }
 
-export function buildTransitionReasonBody(
+function buildTransitionReasonBody(
   toStatus: IssueStatus,
   fromStatus: IssueStatus,
   reason: string,
@@ -46,7 +46,7 @@ export function buildTransitionReasonBody(
  * Whether this move out of a park — a status a person is stopped at — carries a person's reason the thread has not already got: the
  * next run reads the thread, and a park undone with no word there is one it puts back.
  */
-export function announcesLeave(
+function announcesLeave(
   from: IssueStatus,
   to: IssueStatus,
   reason: string | undefined,
@@ -56,7 +56,7 @@ export function announcesLeave(
   return !requiresAuthoredReason(from, to) && Boolean(reason?.trim());
 }
 
-export function buildLeaveBody(from: IssueStatus, to: IssueStatus, reason: string): string {
+function buildLeaveBody(from: IssueStatus, to: IssueStatus, reason: string): string {
   return [`↩ **Left \`${from}\` for \`${to}\`**`, '', reason.trim()].join('\n');
 }
 

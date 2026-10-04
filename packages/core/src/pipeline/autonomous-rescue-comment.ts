@@ -2,7 +2,7 @@ import type { IssueStatus } from '../db/schema.js';
 import { logger } from '../observability/logger.js';
 import { postIssueNoticeOnce } from './ports.js';
 
-export function buildCapReachedCommentBody(args: {
+function buildCapReachedCommentBody(args: {
   fromStatus: IssueStatus;
   cap: number;
   driveSessions: number;

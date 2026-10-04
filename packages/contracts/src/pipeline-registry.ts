@@ -1,8 +1,6 @@
-// Response schema for `GET /api/pipeline/registry`. The runtime literal +
-// derived constants live in `@forge/core/src/pipeline/registry.ts`; this
-// file is the client-facing Zod contract.
-//
-// The issue statuses are the issue machine's (`issue-machine.ts`).
+// The job, priority, complexity and run-kind vocabularies the contracts' Zod schemas
+// enumerate.
+
 export const REGISTRY_JOB_TYPES = [
   'triage',
   'clarify',
@@ -14,14 +12,14 @@ export const REGISTRY_JOB_TYPES = [
   'release',
   'fix',
   'custom',
-  'pm',
   'smoke',
   'release_batch',
   'drive',
   'onboarding',
 ] as const;
+
 export const REGISTRY_ISSUE_PRIORITIES = ['critical', 'high', 'medium', 'low', 'none'] as const;
 
 export const REGISTRY_ISSUE_COMPLEXITIES = ['xs', 's', 'm', 'l', 'xl'] as const;
 
-export const REGISTRY_PIPELINE_RUN_KINDS = ['issue', 'pm', 'interactive', 'system'] as const;
+export const REGISTRY_PIPELINE_RUN_KINDS = ['issue', 'interactive', 'system'] as const;

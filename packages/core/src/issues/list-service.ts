@@ -33,7 +33,7 @@ import { buildIssueSearchCondition, matchedSearchFieldsSql } from './search-pred
 import { buildIssueOrderBy, type IssueSort } from './sort.js';
 
 /** Every filter the issue list takes; both REST list routes read the same set. */
-export type IssueListFilters = {
+type IssueListFilters = {
   status?: readonly IssueStatus[] | undefined;
   statusNot?: readonly IssueStatus[] | undefined;
   /** Widens `status` to also match an issue a person owes an answer. */
@@ -56,7 +56,7 @@ export type IssueListFilters = {
   includeArchived?: boolean | undefined;
 };
 
-export type IssueListPage = {
+type IssueListPage = {
   sort: IssueSort;
   limit: number;
   offset: number;
@@ -89,7 +89,7 @@ function pageQuery(where: SQL | undefined, page: IssueListPage, search: string |
 
 export type IssueListRow = Awaited<ReturnType<typeof pageQuery>>[number];
 
-export type IssueListAnswer =
+type IssueListAnswer =
   | { ok: true; rows: IssueListRow[]; total: number; buckets: IssueBuckets | null }
   | { ok: false; field: 'key' | 'orWaitingOnPerson'; message: string };
 

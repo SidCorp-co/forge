@@ -8,7 +8,7 @@
  * `{...}`. Everything else is refused by name.
  */
 
-export interface FlowStep {
+interface FlowStep {
   id: string;
   label: string;
 }
@@ -25,7 +25,7 @@ export interface ModuleFlow {
 }
 
 /** A stored flow outside the subset, named by the line that could not be read. */
-export interface UnreadableFlow {
+interface UnreadableFlow {
   unreadable: string;
 }
 
@@ -34,7 +34,7 @@ const HEADER = /^(flowchart|graph)\b/i;
 const ARROW = /^(.+?)\s*-->\s*(?:\|([^|]*)\|)?\s*(.+)$/;
 const NODE = /^([A-Za-z0-9_-]+)(?:\[(.*)\]|\((.*)\)|\{(.*)\})?$/;
 
-export function extractMermaidBlock(body: string): string | null {
+function extractMermaidBlock(body: string): string | null {
   const lines = body.split('\n');
   const open = lines.findIndex((l) => FENCE.test(l.trim()));
   if (open === -1) return null;

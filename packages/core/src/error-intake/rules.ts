@@ -7,21 +7,21 @@ import { isValidDetectorKey } from '../issues/index.js';
  * Sentry orders `debug < info < warning < error < fatal`. The issue's contract says `level:error`
  * or above, which is these two. A level Sentry did not report is refused rather than guessed at.
  */
-export const SENTRY_ADMITTED_LEVELS = ['error', 'fatal'] as const;
+const SENTRY_ADMITTED_LEVELS = ['error', 'fatal'] as const;
 
 /** The Sentry status an issue must be in to become work. A resolved error is not work. */
-export const SENTRY_ADMITTED_STATUS = 'unresolved';
+const SENTRY_ADMITTED_STATUS = 'unresolved';
 
 export interface SentryAdmissionThresholds {
   minEventCount: number;
   minUserCount: number;
 }
 
-export type SentryAdmissionVerdict =
+type SentryAdmissionVerdict =
   | { admit: true; externalId: string; detectorKey: string }
   | { admit: false; reason: string };
 
-export function sentryDetectorKey(shortId: string): string | null {
+function sentryDetectorKey(shortId: string): string | null {
   const folded = shortId
     .trim()
     .toLowerCase()

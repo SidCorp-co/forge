@@ -5,10 +5,10 @@ import { actorAgency, type TransitionActor } from './actor-agency.js';
 import type { DrizzleTx } from './dependency-executor.js';
 import { askParkQuestion, personOwesAnAnswer } from './ports.js';
 
-export const NEED_NOT_STATED =
+const NEED_NOT_STATED =
   'the run did not say what would settle this — answer with whatever it needs to carry on';
 
-export interface MintParkQuestionInput {
+interface MintParkQuestionInput {
   issue: { id: string; projectId: string };
   toStatus: IssueStatus;
   actor: TransitionActor;

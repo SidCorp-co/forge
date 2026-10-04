@@ -16,7 +16,7 @@ import { cancelPipelineRun, pausePipelineRun, resumePipelineRun } from './runs-c
 import { laneOf } from './runs-lane.js';
 import { loadRunLivenessByRunIds, residentMasterOn } from './runs-liveness.js';
 
-export const pipelineRunsListInputSchema = z
+const pipelineRunsListInputSchema = z
   .object({
     projectId: z.uuid(),
     issueId: z.uuid().optional(),
@@ -25,9 +25,9 @@ export const pipelineRunsListInputSchema = z
   })
   .strict();
 
-export const pipelineRunsRunIdInputSchema = z.object({ runId: z.uuid() }).strict();
+const pipelineRunsRunIdInputSchema = z.object({ runId: z.uuid() }).strict();
 
-export const pipelineRunsCancelInputSchema = z
+const pipelineRunsCancelInputSchema = z
   .object({ runId: z.uuid(), parkIssue: z.boolean().optional() })
   .strict();
 

@@ -10,15 +10,11 @@ export const OUTBOX_EVENT_TYPES = [
 	"issue.transitioned",
 	"job.transitioned",
 	"run.transitioned",
-	"dependency.changed",
 	"comment.created",
 	"comment.updated",
 	"comment.deleted",
 	"comment.mentioned",
 	"question.answered",
-	"task.created",
-	"task.updated",
-	"task.deleted",
 	"schedule.fired",
 	"notification.created",
 	"notification.read",
@@ -144,13 +140,6 @@ export interface OutboxEventPayloads {
 	"issue.transitioned": TransitionEvent<"issue">;
 	"job.transitioned": TransitionEvent<"job">;
 	"run.transitioned": TransitionEvent<"run">;
-	"dependency.changed": {
-		projectId: string;
-		edgeId: string;
-		fromIssueId: string;
-		toIssueId: string;
-		kind: string;
-	};
 	"comment.created": {
 		issueId: string;
 		projectId: string;
@@ -187,25 +176,6 @@ export interface OutboxEventPayloads {
 		issueId: string | null;
 		answeredBy: string;
 		body: string;
-	};
-	"task.created": {
-		taskId: string;
-		issueId: string;
-		projectId: string;
-		actor: OutboxActor;
-	};
-	"task.updated": {
-		taskId: string;
-		issueId: string;
-		projectId: string;
-		actor: OutboxActor;
-		fields: string[];
-	};
-	"task.deleted": {
-		taskId: string;
-		issueId: string;
-		projectId: string;
-		actor: OutboxActor;
 	};
 	"schedule.fired": {
 		scheduleId: string;

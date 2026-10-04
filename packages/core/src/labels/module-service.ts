@@ -139,7 +139,7 @@ export async function assertDemotionIsLegal(labelId: string): Promise<void> {
  * punctuation derives nothing, so it falls back to `module` rather than to the empty string the
  * CHECK would then have to call a valid slug.
  */
-export function moduleSlugBase(name: string): string {
+function moduleSlugBase(name: string): string {
   const base = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')

@@ -39,7 +39,7 @@ for (const s of PULSE_AWAITING_RELEASE_STATUSES) BUCKET_OF.set(s, 'awaitingRelea
 for (const s of PARK_STATUSES) BUCKET_OF.set(s, 'humanBlocked');
 
 /** Which of the four buckets a status belongs to, or null where it is finished. */
-export const bucketOfStatus = (status: string): keyof PulseWorkBuckets | null =>
+const bucketOfStatus = (status: string): keyof PulseWorkBuckets | null =>
   BUCKET_OF.get(status) ?? null;
 
 export const emptyBuckets = (): PulseWorkBuckets => ({
@@ -98,7 +98,7 @@ export function weekStartsEnding(now: Date, weeks = PULSE_FLOW_WEEKS): string[] 
   return out;
 }
 
-export interface FlowEventCounts {
+interface FlowEventCounts {
   created: Map<string, number>;
   closed: Map<string, number>;
   reopened: Map<string, number>;

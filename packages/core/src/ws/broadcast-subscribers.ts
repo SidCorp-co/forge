@@ -53,43 +53,6 @@ export function registerWsBroadcastSubscribers(): void {
     });
   });
 
-  on('task.created', (p) => {
-    roomManager.publish(projectRoom(p.projectId), {
-      event: 'task.created',
-      data: {
-        taskId: p.taskId,
-        issueId: p.issueId,
-        projectId: p.projectId,
-        actorId: p.actor.id,
-      },
-    });
-  });
-
-  on('task.updated', (p) => {
-    roomManager.publish(projectRoom(p.projectId), {
-      event: 'task.updated',
-      data: {
-        taskId: p.taskId,
-        issueId: p.issueId,
-        projectId: p.projectId,
-        fields: p.fields,
-        actorId: p.actor.id,
-      },
-    });
-  });
-
-  on('task.deleted', (p) => {
-    roomManager.publish(projectRoom(p.projectId), {
-      event: 'task.deleted',
-      data: {
-        taskId: p.taskId,
-        issueId: p.issueId,
-        projectId: p.projectId,
-        actorId: p.actor.id,
-      },
-    });
-  });
-
   on('schedule.fired', (p) => {
     roomManager.publish(projectRoom(p.projectId), {
       event: 'schedule.run',

@@ -22,7 +22,7 @@ import { screenAgentComment, screenRecordFence } from './screen.js';
 
 const refuse = refuser<CommentRefusalCode>('COMMENT_REFUSED');
 
-export type CommentThreadRow = {
+type CommentThreadRow = {
   id: string;
   issueId: string;
   authorId: string;
@@ -68,7 +68,7 @@ export function onIssue<T extends { id: string; issueId: string | null }>(
  */
 const COMMENT_MAX_DEPTH = 3;
 
-export type CommentPage = {
+type CommentPage = {
   /** Roots and every descendant of them, ascending by `(createdAt, id)`. */
   rows: CommentThreadRow[];
   /** The roots this page carries, in the order the cursor walks them. */
@@ -135,7 +135,7 @@ export async function listIssueCommentPage(
   return { rows, roots, nextCursor, cursorKeyById };
 }
 
-export type NewComment = {
+type NewComment = {
   issueId: string;
   authorId: string;
   authorDeviceId: string | null;
@@ -180,7 +180,7 @@ export function intentRefusal(intent: unknown, path = '/intent'): RefusalError {
  * no intent. Ends when the pinned plugin sends `intent` on every comment
  * (forge-local-docs/plugin-followups.md); then an absent intent is refused COMMENT_INTENT_REQUIRED.
  */
-export function defaultIntent(byAnAgent: boolean, body: string): CommentIntent {
+function defaultIntent(byAnAgent: boolean, body: string): CommentIntent {
   if (byAnAgent || parseForgeRecord(body)) return 'note';
   return 'question';
 }
@@ -326,7 +326,7 @@ async function recordMentions(row: CommentThreadRow, projectId: string, t: Tx): 
 }
 
 /** A comment Forge itself posts on an issue: a note unless it says otherwise. */
-export type IssueNotice = {
+type IssueNotice = {
   issueId: string;
   authorId: string;
   authorDeviceId?: string | null | undefined;

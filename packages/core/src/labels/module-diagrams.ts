@@ -14,9 +14,9 @@ import { type FlowArrow, type ModuleFlow, parseModuleFlow } from './module-diagr
 const refuse = refuser<LabelRefusalCode>('LABEL_REFUSED');
 
 export const moduleDiagramKinds = ['mindmap', 'context', 'user-flow', 'swimlane'] as const;
-export type ModuleDiagramKind = (typeof moduleDiagramKinds)[number];
+type ModuleDiagramKind = (typeof moduleDiagramKinds)[number];
 
-export interface ModuleNodeSnapshot {
+interface ModuleNodeSnapshot {
   body: string;
   relatedIssueCount: number;
   actor: string | null;
@@ -37,18 +37,10 @@ export interface CoOccurrence {
   issueCount: number;
 }
 
-/** A `knowledge_edges` triple both of whose ends resolved to a module of this project. */
-export interface DeclaredModuleEdge {
-  fromId: string;
-  toId: string;
-  predicate: string;
-}
-
 export interface ModuleDiagramSnapshot {
   projectName: string;
   modules: ModuleSnapshot[];
   coOccurrences: CoOccurrence[];
-  declaredEdges: DeclaredModuleEdge[];
 }
 
 /** Mermaid node ids are generated, never taken from user text — a slug may hold characters mermaid reads as syntax. */
@@ -93,9 +85,8 @@ function mindmap(snapshot: ModuleDiagramSnapshot): string {
 }
 
 /**
- * The context diagram: modules as nodes, and the two kinds of edge kept visibly apart — a dotted
- * arrow carrying a count is what the issue stream shows, a solid arrow carrying a predicate is
- * what somebody declared.
+ * The context diagram: modules as nodes, and a dotted arrow carrying a count for each pair of
+ * modules the issue stream links.
  */
 function context(snapshot: ModuleDiagramSnapshot): string {
   const ids = new Map(snapshot.modules.map((m, i) => [m.id, nodeId('m', i)]));
@@ -108,12 +99,6 @@ function context(snapshot: ModuleDiagramSnapshot): string {
     const b = ids.get(pair.bId);
     if (!a || !b) continue;
     lines.push(`  ${a} -.->|${quote(`${pair.issueCount} shared`)}| ${b}`);
-  }
-  for (const edge of snapshot.declaredEdges) {
-    const from = ids.get(edge.fromId);
-    const to = ids.get(edge.toId);
-    if (!from || !to) continue;
-    lines.push(`  ${from} -->|${quote(edge.predicate)}| ${to}`);
   }
   return lines.join('\n');
 }

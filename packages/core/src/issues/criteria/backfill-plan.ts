@@ -19,7 +19,7 @@ import { draftFromBlock, verdictDraftFault } from './verdict-input.js';
 
 const SHORT_COMMIT = /^[0-9a-f]{7,39}$/iu;
 
-export interface BackfillIssue {
+interface BackfillIssue {
   readonly id: string;
   readonly status: string;
   readonly acceptanceCriteria: string | null;
@@ -56,7 +56,7 @@ export interface BackfillVerdict {
   readonly createdAt: Date;
 }
 
-export interface BackfillPlan {
+interface BackfillPlan {
   readonly criteria: readonly ParsedCriterion[];
   readonly verdicts: readonly BackfillVerdict[];
   readonly refusals: readonly string[];

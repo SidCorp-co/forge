@@ -28,6 +28,7 @@ import { callFastModel } from './integrations/llm/index.js';
 import { cmpVersion, mainRunnerHead } from './integrations/published-releases/index.js';
 import { readPullRequestsForIssues } from './integrations/source-host/index.js';
 import {
+  countInFlightByRunner,
   insertInterventionEvent,
   provideJobsPorts,
   resolveSessionMcpServers,
@@ -148,7 +149,7 @@ export function provideExecutionPorts(): void {
       (await resolveProjectHandle(tx, projectId)).userId,
   });
 
-  provideRunnersPorts({ readThresholds });
+  provideRunnersPorts({ readThresholds, countInFlightByRunner });
 
   provideSchedulesPorts({
     emitNotification,

@@ -1,10 +1,10 @@
-import { eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projectMembers, users } from '../db/schema.js';
 
 export { parseMentions } from './parse-mentions.js';
 
-export interface ResolvedMention {
+interface ResolvedMention {
   userId: string;
   email: string;
   handle: string;
@@ -37,18 +37,4 @@ export async function resolveMentions(
     }
   }
   return resolved;
-}
-
-/**
- * Test-only: bulk-resolve a set of user IDs by id. Kept here so the test
- * suite doesn't need to reach into schema internals.
- */
-export async function loadUsersByIds(
-  userIds: string[],
-): Promise<Array<{ id: string; email: string }>> {
-  if (userIds.length === 0) return [];
-  return db
-    .select({ id: users.id, email: users.email })
-    .from(users)
-    .where(inArray(users.id, userIds));
 }

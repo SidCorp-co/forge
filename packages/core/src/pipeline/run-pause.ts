@@ -69,7 +69,7 @@ export async function pauseRun(args: {
   return row;
 }
 
-export async function resumeRunsWhere(
+async function resumeRunsWhere(
   where: SQL | undefined,
   opts: { actor?: KernelActor | undefined } = {},
 ): Promise<PipelineRunRow[]> {

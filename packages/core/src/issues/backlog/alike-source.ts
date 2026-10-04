@@ -18,12 +18,12 @@ import type { BacklogSource, SourceDone } from './emitter.js';
 import { cursorFrom, issuePage, type PageCursor } from './page-read.js';
 
 /** Seeds embedded per provider round trip. `embedBatch` sends whatever it is given in one request. */
-export const EMBED_BATCH_SIZE = 64;
+const EMBED_BATCH_SIZE = 64;
 
 /** The CLI truncates a seed to this before searching; the same bound keeps the query text identical. */
-export const SEED_QUERY_MAX = 4_000;
+const SEED_QUERY_MAX = 4_000;
 
-export interface AlikeInput {
+interface AlikeInput {
   projectId: string;
   statuses: IssueStatus[];
   topK: number;

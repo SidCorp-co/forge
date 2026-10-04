@@ -8,12 +8,12 @@ export interface ParsedCriterion {
   readonly statement: string;
 }
 
-export interface CriteriaTextFault {
+interface CriteriaTextFault {
   readonly n: number | null;
   readonly why: string;
 }
 
-export interface ParsedCriteriaText {
+interface ParsedCriteriaText {
   readonly criteria: readonly ParsedCriterion[];
   /** Why the text cannot be read as criteria; non-empty means `criteria` must not be written. */
   readonly faults: readonly CriteriaTextFault[];

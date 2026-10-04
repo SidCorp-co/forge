@@ -54,7 +54,7 @@ const VERDICT_PATHS: Partial<Record<VerdictRefusal['code'], string>> = {
 };
 
 /** A verdict refused by name, in the envelope both doors answer. */
-export function verdictRefused(refusal: VerdictRefusal): RefusalError {
+function verdictRefused(refusal: VerdictRefusal): RefusalError {
   return new RefusalError(
     [
       {
@@ -128,7 +128,7 @@ function unchanged(live: readonly LiveRow[], desired: readonly CriterionInput[])
  * Make the issue's live criteria exactly `desired`, in its order. Refused CRITERIA_LOCKED where the
  * set would change at a status whose verdicts were earned on it.
  */
-export async function applyCriteria(
+async function applyCriteria(
   tx: Tx,
   issue: { id: string; status: string },
   desired: readonly CriterionInput[],

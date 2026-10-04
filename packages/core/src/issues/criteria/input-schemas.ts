@@ -6,7 +6,7 @@ import { storefrontDraftIdentitySchema } from '@forge/contracts/verdict-identity
 import { z } from 'zod';
 import type { CriterionInput } from './store.js';
 
-export const criterionItem = z
+const criterionItem = z
   .object({
     n: z.number().int().min(1).optional(),
     statement: z.string().trim().min(1).max(10_000),
@@ -15,9 +15,7 @@ export const criterionItem = z
   .strict();
 
 /** Give every criterion sent without a number the next one after the highest sent. */
-export function numberCriteria(
-  items: ReadonlyArray<z.infer<typeof criterionItem>>,
-): CriterionInput[] {
+function numberCriteria(items: ReadonlyArray<z.infer<typeof criterionItem>>): CriterionInput[] {
   let next = Math.max(0, ...items.map((c) => c.n ?? 0)) + 1;
   return items.map((c) => ({
     n: c.n ?? next++,
@@ -31,7 +29,7 @@ export const criteriaPutSchema = z
   .strict()
   .transform(({ criteria }) => ({ criteria: numberCriteria(criteria) }));
 
-export const verdictIdentitySchema = z.discriminatedUnion('kind', [
+const verdictIdentitySchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('commit'), sha: z.string().trim().min(1).max(64) }).strict(),
   z.object({ kind: z.literal('runtime'), ref: z.string().trim().min(1).max(64) }).strict(),
   z

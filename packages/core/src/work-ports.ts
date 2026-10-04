@@ -52,7 +52,6 @@ import { resolveSourceHost, SourceHostUnavailable } from './integrations/source-
 import { provideIssuePorts } from './issues/index.js';
 import {
   broadcastSessionEvent,
-  countInFlightByRunner,
   extractStageStatus,
   freshRunnerAvailability,
   gateReasonsForQueuedJobsIn,
@@ -65,7 +64,7 @@ import {
 } from './jobs/index.js';
 import { provideLabelPorts, refreshModuleKnowledgeForIssue } from './labels/index.js';
 import { deleteMemory, retrievalAnalyticsRetention, runMemorySearch } from './memory/index.js';
-import { buildInterventionsReport, retryRescuesSince } from './metrics/index.js';
+import { retryRescuesSince } from './metrics/index.js';
 import {
   createNotification,
   emitNotification,
@@ -80,7 +79,6 @@ import {
   providePipelinePorts,
   setCurrentStepForOpenIssueRun,
 } from './pipeline/index.js';
-import { providePmPorts } from './pm/index.js';
 import {
   policyRefusal,
   readEffectivePolicy,
@@ -104,6 +102,7 @@ import {
 } from './questions/index.js';
 import { approvalRequired } from './release-batch/index.js';
 import {
+  planDriftOf,
   plannedRevisionFor,
   requirementOfIssue,
   rowIn as requirementRowIn,
@@ -161,7 +160,6 @@ export function provideWorkPorts(): void {
     existingProjectHandle,
     resolveProjectHandle,
     retryRescuesSince,
-    buildInterventionsReport,
     postIssueNotice,
     postIssueNoticeOnce,
     holdsOpenHumanQuestion,
@@ -169,7 +167,6 @@ export function provideWorkPorts(): void {
     refreshModuleKnowledgeForIssue,
     readEffectivePolicy,
     policyRefusal,
-    readLandingBranches,
   });
 
   provideIssuePorts({
@@ -181,6 +178,7 @@ export function provideWorkPorts(): void {
     postIssueNotice,
     messageRefusalHttp,
     readProjectDocument,
+    planDriftOf,
     readLandingBranches,
     issueRefPattern,
     declaredIssueSeqs,
@@ -242,8 +240,6 @@ export function provideWorkPorts(): void {
   });
 
   provideLabelPorts({ listFeedbackAs: (viewer, projectId) => listFeedbackAs(viewer, projectId) });
-
-  providePmPorts({ countInFlightByRunner });
 
   provideQuestionnairePorts({
     appendMessagesIn,

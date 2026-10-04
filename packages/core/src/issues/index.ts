@@ -2,7 +2,6 @@ export { accountActor } from './account-actor.js';
 export {
   type Actor,
   type RecordActivityInput,
-  recordActivity,
   recordActivityTx,
   resolveActor,
   safeRecordActivity,
@@ -37,7 +36,6 @@ export { runCriteriaBackfillOnce } from './criteria/backfill.js';
 export { type CriterionWithVerdict, listCriteriaOf, putCriteria } from './criteria/store.js';
 export { type IssueCriteriaReport, unearnedCriteriaReports } from './criteria-verdicts.js';
 export type { IssueDependencyExecutor } from './dependency-executor.js';
-export type { IssueRelations } from './dependency-read.js';
 export {
   allRelationDigests,
   emptyIssueRelations,
@@ -58,8 +56,8 @@ export {
   setIssueTriage,
   stampRunStarted,
 } from './field-writes.js';
-export { referenceInHeadRef, resolveIssueForHeadRef } from './head-ref-link.js';
-export { registerHostMergeStamp, stampHostMerge } from './host-merge.js';
+export { resolveIssueForHeadRef } from './head-ref-link.js';
+export { registerHostMergeStamp } from './host-merge.js';
 export {
   type IssueLeaseRelease,
   issueWorkInFlightSql,
@@ -119,7 +117,6 @@ export {
 export {
   adoptIssuePlan,
   linkIssueToRequirement,
-  type PlannedAgainst,
   unlinkIssueFromRequirement,
 } from './requirement-link.js';
 export { buildIlikePattern } from './search-predicate.js';

@@ -12,7 +12,7 @@ import { postCapReachedComment } from './autonomous-rescue-comment.js';
  * `STAGE_STALL_CAP` deliberately — same question, same tolerance — but counts a
  * different thing, so it is declared separately rather than imported.
  */
-export const AUTONOMOUS_RESCUE_CAP = 3;
+const AUTONOMOUS_RESCUE_CAP = 3;
 
 const METADATA_KEY = 'autonomousRescue';
 

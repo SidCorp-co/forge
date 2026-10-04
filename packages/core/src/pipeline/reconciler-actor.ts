@@ -3,7 +3,7 @@ import type { Tx } from '../db/client.js';
 import { db } from '../db/client.js';
 import { existingProjectHandle, resolveProjectHandle } from './ports.js';
 
-export type ReconcilerActor = { type: 'user'; id: string; agency: 'agent' };
+type ReconcilerActor = { type: 'user'; id: string; agency: 'agent' };
 
 /** The project's agent account, never its creator's (ISS-1317); read, minting nothing, so a reset
  *  called off leaves no account behind. Where there is none, it names the id the mint will take. */

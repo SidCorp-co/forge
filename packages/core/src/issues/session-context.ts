@@ -44,7 +44,7 @@ interface VerifiedClaimViolation {
  * `{ evidence: string|string[], checkedAt: ISO timestamp }`. Exported so
  * tests can exercise it directly with a pathological payload.
  */
-export function findVerifiedClaimViolation(value: unknown): VerifiedClaimViolation | null {
+function findVerifiedClaimViolation(value: unknown): VerifiedClaimViolation | null {
   let nodeCount = 0;
   let boundExceeded = false;
 

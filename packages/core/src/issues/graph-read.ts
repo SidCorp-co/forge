@@ -12,9 +12,9 @@
 import { and, count, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueDependencyKind, issueDependencies, issues } from '../db/schema.js';
-import { issueArchiveSide } from '../issues/index.js';
+import { issueArchiveSide } from './archive.js';
 
-export const PM_GRAPH_MAX_NODES = 200;
+const PM_GRAPH_MAX_NODES = 200;
 export const PM_GRAPH_MAX_DEPTH = 5;
 export const PM_GRAPH_DEFAULT_DEPTH = 2;
 
@@ -31,7 +31,7 @@ type GraphNode = {
   assigneeId: string | null;
 };
 
-export type PmGraphQuery = {
+type PmGraphQuery = {
   projectId: string;
   rootIssueId?: string | undefined;
   depth: number;

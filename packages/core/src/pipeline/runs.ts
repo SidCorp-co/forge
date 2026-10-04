@@ -20,7 +20,7 @@ import {
   requestKillsForCascade,
 } from './runs-cascade.js';
 
-export type OpenIssueRun = { id: string; startedAt: Date };
+type OpenIssueRun = { id: string; startedAt: Date };
 
 /**
  * Open (or look up) the open `kind='issue'` run for an issue. Idempotent
@@ -74,7 +74,7 @@ async function selectOpenIssueRun(issueId: string): Promise<OpenIssueRun | null>
 /** What a one-shot run is opened as, shared by the two halves below. */
 export interface OneShotRunSpec {
   projectId: string;
-  kind: Extract<PipelineRunKind, 'pm' | 'interactive' | 'system'>;
+  kind: Extract<PipelineRunKind, 'interactive' | 'system'>;
   metadata?: Record<string, unknown>;
 }
 
@@ -115,10 +115,10 @@ export async function setCurrentStep(runId: string, step: string): Promise<void>
  * the one that has to write them at the moment it refuses to close.
  */
 export const RELEASE_DEPLOY_IN_FLIGHT_STEP = 'release.deploy.in_flight';
-export const RELEASE_DEPLOY_FAILED_STEP = 'release.deploy.failed';
+const RELEASE_DEPLOY_FAILED_STEP = 'release.deploy.failed';
 export const RELEASE_DEPLOY_DONE_STEP = 'release.deploy.done';
 
-export type CloseResult = 'settled' | 'deferred';
+type CloseResult = 'settled' | 'deferred';
 
 /**
  * What a caller asking for `completed` is actually allowed to write, given the
@@ -210,14 +210,10 @@ export async function setCurrentStepForOpenIssueRun(issueId: string, step: strin
 }
 
 /**
- * Close a one-shot (pm | interactive) run that's reached terminal state.
+ * Close a one-shot (interactive | system) run that's reached terminal state.
  * No-ops on `kind='issue'` runs — those are closed by the issue
  * state-machine via `closeOpenRunForIssue`, never per-session/per-job, so
  * sibling jobs on the same issue don't trip over each other.
- *
- * For pm runs the caller is expected to skip the close when a retry is
- * scheduled (the retry shares the same run); see `jobs/lifecycle-routes.ts`
- * for the retry-aware call sites.
  */
 export async function closeRunIfOneShot(
   runId: string,
@@ -230,7 +226,7 @@ export async function closeRunIfOneShot(
         set: { finishedAt: new Date(), updatedAt: new Date() },
         where: and(
           eq(pipelineRuns.id, runId),
-          inArray(pipelineRuns.kind, ['pm', 'interactive', 'system']),
+          inArray(pipelineRuns.kind, ['interactive', 'system']),
           inArray(pipelineRuns.status, ['running', 'paused']),
         ),
         reason: reasonForOutcome(outcome),
@@ -247,7 +243,7 @@ export async function closeRunIfOneShot(
   if (cascade) await requestKillsForCascade(cascade.killableJobs, reasonForOutcome(outcome));
 }
 
-export interface CancelConcludedResult {
+interface CancelConcludedResult {
   /** True when this call flipped the run. */
   cancelled: boolean;
   /** What the run said before the flip, whether or not it moved. */
@@ -275,7 +271,7 @@ export async function cancelConcludedRun(runId: string): Promise<CancelConcluded
         },
         where: and(
           eq(pipelineRuns.id, runId),
-          inArray(pipelineRuns.kind, ['pm', 'interactive', 'system']),
+          inArray(pipelineRuns.kind, ['interactive', 'system']),
           inArray(pipelineRuns.status, ['completed', 'failed']),
         ),
         reason: reasonForOutcome('cancelled'),
@@ -342,7 +338,7 @@ export async function readPipelineRun(runId: string) {
   return row ?? null;
 }
 
-export type PipelineRunQuery = {
+type PipelineRunQuery = {
   projectId: string;
   issueId?: string | undefined;
   status?: PipelineRunStatus | undefined;

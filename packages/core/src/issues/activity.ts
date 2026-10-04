@@ -44,7 +44,7 @@ function buildValues(input: RecordActivityInput) {
   };
 }
 
-export async function recordActivity(input: RecordActivityInput): Promise<void> {
+async function recordActivity(input: RecordActivityInput): Promise<void> {
   await insertActivityRow(buildValues(input));
 }
 

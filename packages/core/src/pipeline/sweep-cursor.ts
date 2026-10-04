@@ -13,7 +13,7 @@ interface Traversal {
 }
 
 /** One traversal's two bounds: where to resume, and the far edge not to read past. */
-export interface SweepWindow {
+interface SweepWindow {
   after: SweepPosition | null;
   until: string;
 }
@@ -32,9 +32,4 @@ export function advanceSweep(
 ): void {
   if (filled && last) positions.set(cursorKey, { after: last, until: window.until });
   else positions.delete(cursorKey);
-}
-
-/** Test helper — a cursor surviving between cases makes one case's page another's starting point. */
-export function resetSweepCursorsForTest(): void {
-  positions.clear();
 }

@@ -17,7 +17,7 @@ import { type StepHandoffPayload, stepHandoffSchema } from './step-handoff-schem
  * handoffs carry `result` (pass/fail). Every other step has no verdict (null),
  * which on a re-run upsert intentionally clears any prior value.
  */
-export function extractVerdict(payload: StepHandoffPayload): StepVerdict | null {
+function extractVerdict(payload: StepHandoffPayload): StepVerdict | null {
   if (payload.step === 'review') return payload.verdict;
   if (payload.step === 'test') return payload.result;
   return null;
@@ -60,13 +60,13 @@ const writeIssueContextActorSchema = z.object({
   agency: z.enum(actorAgencies),
 });
 
-export const writeIssueContextInputSchema = writeInputBaseSchema.extend({
+const writeIssueContextInputSchema = writeInputBaseSchema.extend({
   payload: stepHandoffSchema,
   actor: writeIssueContextActorSchema,
 });
-export type WriteIssueContextInput = z.infer<typeof writeIssueContextInputSchema>;
+type WriteIssueContextInput = z.infer<typeof writeIssueContextInputSchema>;
 
-export interface WriteIssueContextResult {
+interface WriteIssueContextResult {
   id: string;
   createdAt: Date;
   updatedAt: Date;
@@ -137,7 +137,7 @@ export async function writeIssueContext(
   throw new Error(`writeIssueContext: kind '${validated.kind}' not implemented`);
 }
 
-export const getIssueContextsInputSchema = z.object({
+const getIssueContextsInputSchema = z.object({
   projectId: z.uuid(),
   issueId: z.uuid(),
   /** Optional kind filter — when omitted, all kinds are returned. */
@@ -156,9 +156,9 @@ export const getIssueContextsInputSchema = z.object({
   limit: z.number().int().min(1).max(200).default(50),
   orderDir: z.enum(['asc', 'desc']).default('desc'),
 });
-export type GetIssueContextsInput = z.infer<typeof getIssueContextsInputSchema>;
+type GetIssueContextsInput = z.infer<typeof getIssueContextsInputSchema>;
 
-export interface IssueContextRow {
+interface IssueContextRow {
   id: string;
   projectId: string;
   issueId: string;
@@ -201,14 +201,14 @@ export async function getIssueContexts(input: GetIssueContextsInput): Promise<Is
   }));
 }
 
-export const deleteIssueContextInputSchema = z.object({
+const deleteIssueContextInputSchema = z.object({
   projectId: z.uuid(),
   issueId: z.uuid(),
   kind: z.enum(issueStepContextKinds),
   step: z.string().min(1).max(64),
   attempt: z.number().int().positive(),
 });
-export type DeleteIssueContextInput = z.infer<typeof deleteIssueContextInputSchema>;
+type DeleteIssueContextInput = z.infer<typeof deleteIssueContextInputSchema>;
 
 /**
  * Idempotent delete by natural key (kind='handoff' only; other kinds use id

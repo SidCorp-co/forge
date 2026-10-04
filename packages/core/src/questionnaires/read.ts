@@ -30,7 +30,7 @@ export { questionnaireSurface };
 
 export type Executor = typeof db | Tx;
 export type BatchRow = typeof questionnaireBatches.$inferSelect;
-export type ItemRow = typeof agentQuestions.$inferSelect;
+type ItemRow = typeof agentQuestions.$inferSelect;
 
 /** The item as stored on its row: the posted item and where it sat in the batch. */
 export type StoredItem = QuestionnaireItem & { position: number };
@@ -56,11 +56,11 @@ export function answerOf(item: QuestionnaireItem, step: QuestionStep | undefined
   return { answer, answeredBy: step.answeredBy ?? null, answeredAt: step.answeredAt };
 }
 
-export function itemState(row: Pick<ItemRow, 'status'>): QuestionnaireItemState {
+function itemState(row: Pick<ItemRow, 'status'>): QuestionnaireItemState {
   return row.status === 'open' ? 'open' : row.status === 'answered' ? 'answered' : 'void';
 }
 
-export function itemViewOf(row: ItemRow): QuestionnaireItemView {
+function itemViewOf(row: ItemRow): QuestionnaireItemView {
   const { position: _position, ...item } = row.item as StoredItem;
   const got = answerOf(item, row.steps.at(-1));
   return {
@@ -73,7 +73,7 @@ export function itemViewOf(row: ItemRow): QuestionnaireItemView {
   };
 }
 
-export function batchViewOf(
+function batchViewOf(
   batch: BatchRow,
   rows: readonly ItemRow[],
   sensitiveData: SensitiveDataLevel,

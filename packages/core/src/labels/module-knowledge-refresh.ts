@@ -26,13 +26,13 @@ import { logger } from '../observability/logger.js';
  * `bodyHash`, the stored flow is behind the work of `staleByIssueId`, and has been since
  * `staleSince`.*
  */
-export interface ModuleFlowRecord {
+interface ModuleFlowRecord {
   staleSince: string;
   staleByIssueId: string;
   bodyHash: string;
 }
 
-export interface ModuleKnowledgeRefreshInput {
+interface ModuleKnowledgeRefreshInput {
   issueId: string;
   projectId: string;
   actor: Actor;
@@ -44,7 +44,7 @@ interface AttributedModule {
   isPrimary: boolean;
 }
 
-export function moduleNodeBodyHash(body: string): string {
+function moduleNodeBodyHash(body: string): string {
   return createHash('sha256').update(body, 'utf8').digest('hex');
 }
 
@@ -55,7 +55,7 @@ export function moduleNodeBodyHash(body: string): string {
  * landing again, or a second issue landing against a flow already known to be behind, and
  * `staleByIssueId` keeps naming the landing that first got there.
  */
-export function nextModuleFlowRecord(
+function nextModuleFlowRecord(
   prev: ModuleFlowRecord | null,
   bodyHash: string,
   issueId: string,

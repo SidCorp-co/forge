@@ -22,7 +22,6 @@ export const PIPELINE_JOB_TYPES = [
   "release",
   "fix",
   "custom",
-  "pm",
   "smoke",
   "release_batch",
 ] as const satisfies readonly (typeof REGISTRY_JOB_TYPES)[number][];

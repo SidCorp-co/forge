@@ -6,14 +6,14 @@
 
 import { citationForm } from '../messaging/evidence-citation.js';
 
-export type CitationStanding = 'held' | 'dangling' | 'unreachable' | 'elsewhere';
+type CitationStanding = 'held' | 'dangling' | 'unreachable' | 'elsewhere';
 
 export interface CitationReport {
   readonly cited: string;
   readonly standing: CitationStanding;
 }
 
-export function citationStanding(cited: string, held: ReadonlySet<string>): CitationStanding {
+function citationStanding(cited: string, held: ReadonlySet<string>): CitationStanding {
   const form = citationForm(cited);
   if (form === 'machine-path') return 'unreachable';
   if (form !== 'attachment') return 'elsewhere';

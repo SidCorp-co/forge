@@ -179,7 +179,6 @@
         "issues",
         "notifications",
         "pipelineRuns",
-        "projects",
         "scheduleRuns",
         "schedules"
       ],
@@ -1025,11 +1024,6 @@
       "serves": [
         "REQ-26"
       ]
-    },
-    "pm": {
-      "kind": "domain",
-      "context": "work",
-      "serves": []
     },
     "preferences": {
       "kind": "domain",

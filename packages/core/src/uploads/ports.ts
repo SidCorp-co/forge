@@ -1,7 +1,7 @@
 // What an upload needs from the contexts below work: the session and conversation attachment
 // stores a ticket may target. The composition root provides them at boot.
 
-export interface UploadPorts {
+interface UploadPorts {
   persistConversationAttachment: (input: {
     conversationId: string;
     name: string;

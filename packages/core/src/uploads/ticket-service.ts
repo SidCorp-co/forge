@@ -17,7 +17,7 @@ import { refuser } from '../lib/refusal.js';
 /** How long a minted upload ticket stays valid. Short by design (replay window). */
 export const UPLOAD_TICKET_TTL_MS = 5 * 60 * 1000;
 
-export type UploadTargetType = 'issue' | 'comment' | 'session' | 'conversation';
+type UploadTargetType = 'issue' | 'comment' | 'session' | 'conversation';
 
 const refuse = refuser<AttachmentRefusalCode>('ATTACHMENT_REFUSED');
 
@@ -35,7 +35,7 @@ export interface UploadTicket {
   createdAt: Date;
 }
 
-export interface CreateUploadTicketInput {
+interface CreateUploadTicketInput {
   targetType: UploadTargetType;
   targetId: string;
   uploaderId: string;

@@ -189,7 +189,7 @@ export interface ModuleFact {
   lastLandingAt: string | null;
 }
 
-export interface UnassignedFact {
+interface UnassignedFact {
   shipped: number;
   lastLandingAt: string | null;
 }

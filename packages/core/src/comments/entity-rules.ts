@@ -52,7 +52,7 @@ export function scopeRefusal(arc: CommentArc, path = ''): CommentRefusal | null 
   };
 }
 
-export interface CommentContent {
+interface CommentContent {
   intent: CommentIntent;
   body?: string | undefined;
   decision?: DecisionFields | undefined;

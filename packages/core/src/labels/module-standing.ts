@@ -1,4 +1,4 @@
-import type { IssueStandingRow } from '@forge/contracts/issue-standing';
+import type { IssueStandingRow, IssueWaitingKind } from '@forge/contracts/issue-standing';
 import {
   MODULE_ACTIVITY_DAYS,
   MODULE_KEY_PATHS_SHOWN,
@@ -12,7 +12,6 @@ import {
   type ModuleRequirementTrace,
   type ModuleStanding,
 } from '@forge/contracts/modules';
-import type { IssueWaitingKind } from '@forge/contracts/issue-standing';
 import type { WaitingOn } from '@forge/contracts/standing';
 
 export interface ModuleNode {
@@ -131,7 +130,7 @@ function waitingOf(
   };
 }
 
-export function attentionOf(byKind: Record<ModuleOpenKind, number>): ModuleAttentionGroup {
+function attentionOf(byKind: Record<ModuleOpenKind, number>): ModuleAttentionGroup {
   if (byKind.needs_you > 0) return 'needs_you';
   if (byKind.stuck > 0) return 'stuck';
   if (byKind.moving > 0) return 'moving';
@@ -294,13 +293,7 @@ export function activityDays(
   return out;
 }
 
-export interface DeclaredEdge {
-  fromId: string;
-  toId: string;
-  predicate: string;
-}
-
-export interface ObservedCoupling {
+interface ObservedCoupling {
   aId: string;
   bId: string;
   issueCount: number;
@@ -310,25 +303,10 @@ export interface ObservedCoupling {
 export function couplingsOf(
   id: string,
   refs: ReadonlyMap<string, ModuleRef>,
-  declared: readonly DeclaredEdge[],
   observed: readonly ObservedCoupling[],
 ): { declared: ModuleCoupling[]; observed: ModuleCoupling[] } {
   const byName = (a: ModuleCoupling, b: ModuleCoupling) =>
     a.module.path.localeCompare(b.module.path);
-  const declaredOut: ModuleCoupling[] = [];
-  for (const e of declared) {
-    if (e.fromId !== id && e.toId !== id) continue;
-    const other = refs.get(e.fromId === id ? e.toId : e.fromId);
-    if (!other) continue;
-    declaredOut.push({
-      module: other,
-      source: 'declared',
-      predicate: e.predicate,
-      direction: e.fromId === id ? 'out' : 'in',
-      issueCount: null,
-      recentIssueKeys: [],
-    });
-  }
   const observedOut: ModuleCoupling[] = [];
   for (const e of observed) {
     if (e.aId !== id && e.bId !== id) continue;
@@ -344,12 +322,12 @@ export function couplingsOf(
     });
   }
   return {
-    declared: declaredOut.sort(byName),
+    declared: [],
     observed: observedOut.sort((a, b) => (b.issueCount ?? 0) - (a.issueCount ?? 0) || byName(a, b)),
   };
 }
 
-export const OPEN_RAIL_ORDER: readonly ModuleOpenKind[] = [
+const OPEN_RAIL_ORDER: readonly ModuleOpenKind[] = [
   'needs_you',
   'stuck',
   'moving',

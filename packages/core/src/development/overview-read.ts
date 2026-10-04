@@ -38,9 +38,9 @@ const terminalSessions = sql.join(
   sql`, `,
 );
 
-export const CI_UNAVAILABLE =
+const CI_UNAVAILABLE =
   'Core stores check runs for pull requests only, never for a branch head, so it holds no reading of dev itself.';
-export const POST_MERGE_UNAVAILABLE =
+const POST_MERGE_UNAVAILABLE =
   'A push to a gated branch carries its post-merge jobs on GitHub; core receives no event for them and stores none.';
 
 async function laneFacts(
