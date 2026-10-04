@@ -19,7 +19,7 @@ ISS-1157's plan). Migration 0192 chose not to backfill: a legacy value reads as 
 
 Three readers resolve that way today: `metrics/session-failures-report.ts`,
 `me/pulse-folds.ts:foldSessionFailures` (since ISS-1157) and `runs/standing-final.ts`. Every other reader of the column still gets the raw value:
-`pipeline/runs-rollup.ts`, `runners/routes.ts`,
+`pipeline/runs-rollup.ts`, `runners/read.ts`,
 `devices/run-ledger.ts` and the agent-session list. Each of those is scoped to one project, so the
 prose stays inside the project that wrote it. A new reader that forgets to resolve would get the
 prose too.

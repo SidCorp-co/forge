@@ -90,7 +90,9 @@ One file per responsibility, under `packages/core/src/<module>/`. The references
 | **index.ts** | The public face (BC-13) | Mount anything |
 
 - **Routes hold no queries (BC-15).** A route file validates, calls one service or read function,
-  and answers. A `db` or `tx` call in a route file is a finding.
+  and answers. A `db` or `tx` call in a route file is a finding. A route file is one named
+  `routes.ts`, `*-routes.ts` or under `routes/`, and any other file that builds a Hono router
+  (`scripts/lib/module-shape.mjs:isRouteFile`).
 - A route's prefix is in `packages/core/src/credentials/pat-permissions.ts:PAT_PERMISSION_RESOURCES`, so a
   token can be granted it.
 
