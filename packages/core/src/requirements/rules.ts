@@ -373,6 +373,7 @@ export function repinRefusals(input: {
   headState: RevisionState | null;
   designs: readonly LinkedDesign[];
   pins: readonly BaselinePin[] | null;
+  mockupsMoved?: boolean;
 }): RequirementRefusal[] {
   const deferred = deferredRefusal(input.status, 're-pinning it', '/revision');
   if (deferred) return [deferred];
@@ -401,12 +402,12 @@ export function repinRefusals(input: {
     const pin = pins.find((p) => p.workflowId === d.workflowId);
     return pin ? [{ flow: d.flow, pinned: pin.designRevision, approved: d.approvedRevision }] : [];
   });
-  if (stalePinsOf(positions).length === 0) {
+  if (stalePinsOf(positions).length === 0 && !input.mockupsMoved) {
     return [
       {
         code: 'REQUIREMENT_PINS_CURRENT',
         path: '/revision',
-        detail: `the latest baseline of revision ${input.named} already pins every linked design at its approved revision; there is nothing to re-pin.`,
+        detail: `the latest baseline of revision ${input.named} already pins every linked design at its approved revision and every accepted mockup; there is nothing to re-pin.`,
       },
     ];
   }

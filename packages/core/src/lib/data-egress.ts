@@ -41,6 +41,14 @@ export const EGRESS_SURFACES = {
       'feedback items: title, body, where seen, answer, decision reasons, clarification, triage suggestions',
   },
   'feedback.attachments': { class: 'operational', holds: 'files attached to a feedback item' },
+  // cm:why a mockup's bytes (an image, a sketch, an HTML page, a captured request) cannot be scrubbed
+  // on write, and a screenshot of the running product is where patient data shows, so they are
+  // operational on every target: withheld from every agent at no_egress, while the manifest (key,
+  // kind, scrubbed name and caption, status) rides the target's own surface (decision on ISS-78)
+  'mockup.content': {
+    class: 'operational',
+    holds: 'the bytes of a mockup on a requirement revision, a feedback item or an issue',
+  },
   'feedback.comments': { class: 'operational', holds: 'comments on a feedback item' },
   conversation: {
     class: 'operational',

@@ -23,18 +23,25 @@ import {
 } from '../ecosystem/contract/run-context.js';
 import { loadContractContext } from '../ecosystem/contract/run-context-service.js';
 import { buildPipelinePreambleStructured, type PreambleBlock } from '../lib/chat-preamble.js';
-import { dataPolicyOf, type EgressSurface, egressText } from '../lib/data-egress.js';
+import { dataPolicyOf, type EgressSurface, egressText, withheldAt } from '../lib/data-egress.js';
 import { estimateTokens } from '../lib/token-estimator.js';
 import { logger } from '../logger.js';
 import type { DispatchState } from '../project-config/dispatch-policy.js';
 import {
-  ArtifactContextError,
-  type LoadedArtifact,
   type LoadedRequirement,
   RequirementContextError,
+  renderIssueMockups,
+} from '../workflows/requirement-context.js';
+import {
+  ArtifactContextError,
+  type LoadedArtifact,
   renderArtifactContext,
 } from '../workflows/run-context.js';
-import { loadArtifactContext, loadRequirementContext } from '../workflows/run-context-service.js';
+import {
+  issueMockupsOf,
+  loadArtifactContext,
+  loadRequirementContext,
+} from '../workflows/run-context-service.js';
 import { SKILL_MAINTENANCE_LABEL, withSkillMaintenanceCarveout } from './job-policy.js';
 
 /** A context the job's issue reaches that cannot be given; the job is refused, never built blind. */
@@ -171,10 +178,11 @@ async function designsBuiltBy(issueId: string | null, subject: string): Promise<
 async function requirementServedBy(
   issueId: string | null,
   subject: string,
+  mockupsWithheld: boolean,
 ): Promise<LoadedRequirement | null> {
   if (!issueId) return null;
   try {
-    return await loadRequirementContext(issueId);
+    return await loadRequirementContext(issueId, mockupsWithheld);
   } catch (err) {
     // cm:guard a requirement that cannot be given at its current revision stops the job by name: a run given a superseded or unagreed revision would build the wrong intent
     const code = err instanceof RequirementContextError ? err.code : 'ARTIFACT_CONTEXT_UNLOADABLE';
@@ -249,13 +257,16 @@ export async function buildJobSystemPrompt(input: {
         .limit(1)
     : [];
   const designs = await designsBuiltBy(issueId, subject);
-  const requirement = await requirementServedBy(issueId, subject);
+  const withheld = withheldAt(await dataPolicyOf(projectId), 'mockup.content');
+  const requirement = await requirementServedBy(issueId, subject, withheld);
+  const issueMockups = issueId ? renderIssueMockups(await issueMockupsOf(issueId), withheld) : null;
   const contracts = await contractsNamedBy(projectId, issueRow, subject);
   const namedContracts = await contractVersionsNamedBy(projectId, issueRow, subject);
   const artifactBlock =
     [
       await givenToAgent(projectId, 'requirement', requirement?.text ?? null, subject),
       await givenToAgent(projectId, 'design', renderArtifactContext(designs) || null, subject),
+      await givenToAgent(projectId, 'issue', issueMockups, subject),
     ]
       .filter(Boolean)
       .join('\n\n') || null;
