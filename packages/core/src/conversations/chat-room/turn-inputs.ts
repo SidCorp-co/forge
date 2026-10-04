@@ -13,23 +13,26 @@
  * or it hands the model back the rest of its own question.
  */
 
-import { agentRefusalText } from '../../agent-sessions/session-credential.js';
-import { ESCALATE_TOOL_NAME } from '../../assistant/tools/escalate.js';
-import { type ConversationVenue, codeAuthored } from '../../conversations/ports.js';
-import type { WindowCut, WindowTurnInputs } from '../../conversations/route-window.js';
-import type { TurnInputs, TurnReply } from '../../conversations/turn-runner.js';
-import { buildConversationContext } from './context.js';
+import { agentRefusalText } from '../../agent-sessions/index.js';
 import {
+  buildConversationContext,
+  ESCALATE_TOOL_NAME,
   ESCALATION_ACK,
   ESCALATION_DEDUP_REPLY,
   ESCALATION_NO_DEVICE_REPLY,
+  rocketChatPersona,
   startEscalation,
-} from './escalation.js';
+} from '../../assistant/index.js';
+import type {
+  RocketChatImageRef,
+  RocketChatRestAuth,
+  RoomShape,
+  Route,
+} from '../../integrations/rocketchat/index.js';
+import { type ConversationVenue, codeAuthored } from '../ports.js';
+import type { WindowCut, WindowTurnInputs } from '../route-window.js';
+import type { TurnInputs, TurnReply } from '../turn-runner.js';
 import { prepareFastTurn } from './images.js';
-import { rocketChatPersona } from './persona.js';
-import type { RocketChatImageRef, RocketChatRestAuth } from './rest-client.js';
-import type { RoomShape } from './room-shape.js';
-import type { Route } from './routes.js';
 
 /** What the turn needs of the connection it arrived on. */
 export interface TurnBot {

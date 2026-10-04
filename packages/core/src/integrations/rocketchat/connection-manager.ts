@@ -4,49 +4,31 @@
  * core never double-answers.
  *
  * Since ISS-1004 a message is COLLECTED rather than answered: the socket's job
- * ends when the message is in its conversation's log and in its window, and the
- * answer is taken later by `drainWindows`, over everything that arrived
- * together. Nothing here decides whether a message is worth a turn — that is the
- * proactivity guards' judgement, and it is why this file no longer reads an
- * @-mention.
+ * ends when the message is handed to the chat application's `collect` handler
+ * (`room-handlers.ts`), and the answer is taken later over everything that
+ * arrived together. Nothing here decides whether a message is worth a turn, or
+ * what a reply in a Forge thread means — those are the assistant's and the
+ * conversations' work.
  */
 
 import { and, eq, sql } from 'drizzle-orm';
 import pg from 'pg';
-import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
 import { env } from '../../config/env.js';
-import { collectInboundMessage } from '../../conversations/collect-inbound.js';
-import { registerConversationTransport } from '../../conversations/ports.js';
 import { db } from '../../db/client.js';
 import { integrationConnections } from '../../db/schema.js';
 import { logger } from '../../observability/logger.js';
 import { reportFailure } from '../../observability/sentry.js';
 import { decryptConnectionSecrets } from '../store.js';
-import { consumeIssueThreadReply } from './comment-inbound.js';
-import { runCommentMirrorDrain } from './comment-mirror.js';
-import { type RocketChatFrame, rocketChatConversationPorts } from './conversation-port.js';
 import { RocketChatDdpClient, type RocketChatIncomingMessage } from './ddp-client.js';
 import { createSeenTracker, decideSkip, type SeenTracker } from './inbound-gate.js';
 import { registerLiveConnection, unregisterLiveConnection } from './live-connections.js';
-import { FIXED_REPLY_CONSTANT, sendFixedReply } from './outbound.js';
-import { drainQuestionDeliveries } from './question-delivery.js';
-import { consumeQuestionThreadReply } from './question-inbound.js';
+import { namespaceFromServerUrl } from './namespace.js';
 import { fetchOwnIdentity } from './rest-client.js';
-import { type RoomShape, resolveRoomShape } from './room-shape.js';
-import { buildRoutes, type Route } from './routes.js';
+import { roomHandlers } from './room-handlers.js';
+import { buildRoutes, type Route } from './room-routing.js';
+import { resolveRoomShape } from './room-shape.js';
 import { subjectForThread } from './thread-registry.js';
 import type { RocketChatConfig, RocketChatSecrets } from './types.js';
-import { drainConversationWindows } from './window-drain.js';
-
-let cachedWebBaseUrl: string | undefined;
-let webBaseUrlRead = false;
-export function webBaseUrl(): string | undefined {
-  if (!webBaseUrlRead) {
-    cachedWebBaseUrl = env.CORS_ORIGINS.split(',')[0]?.trim().replace(/\/+$/, '') || undefined;
-    webBaseUrlRead = true;
-  }
-  return cachedWebBaseUrl;
-}
 
 const LOCK_NAMESPACE = 'forge:rocketchat';
 const MAX_BACKOFF_MS = 30_000;
@@ -89,7 +71,6 @@ class RocketChatConnectionManager {
     if (this.started) return;
     this.started = true;
     this.startReloadListener();
-    registerConversationTransport(rocketChatConversationPorts);
     const rows = await db
       .select()
       .from(integrationConnections)
@@ -110,22 +91,14 @@ class RocketChatConnectionManager {
     }
   }
 
-  // The drains below are process timers (`timer-registry.ts`): each does nothing until this
-  // process's manager has started, and stops with it.
-
-  /** Settle and route every window this core's connections owe an answer. */
-  async drainWindows(): Promise<void> {
-    if (this.started) await drainConversationWindows(this.conns, webBaseUrl());
+  /** Whether this process's manager runs; the chat application's drains do nothing until it does. */
+  isStarted(): boolean {
+    return this.started;
   }
 
-  async drainQuestions(): Promise<void> {
-    if (!this.started) return;
-    const r = await drainQuestionDeliveries();
-    if (r.owed > 0) logger.info({ ...r }, 'rocketchat: question delivery drain');
-  }
-
-  async drainCommentMirror(): Promise<void> {
-    if (this.started) await runCommentMirrorDrain();
+  /** The connections this process owns, for the drains that answer through them. */
+  connections(): ReadonlyMap<string, ActiveConnection> {
+    return this.conns;
   }
 
   private async acquire(connectionId: string): Promise<void> {
@@ -306,17 +279,7 @@ class RocketChatConnectionManager {
       : null;
     if (ac.seenMessage(m.id)) return;
     if (owned) {
-      if (owned.kind === 'question') {
-        consumeQuestionThreadReply({ questionId: owned.questionId, connectionId, ac, m });
-      } else {
-        consumeIssueThreadReply({
-          issueId: owned.issueId,
-          retired: owned.retired,
-          connectionId,
-          ac,
-          m,
-        });
-      }
+      roomHandlers().threadReply({ subject: owned, connectionId, ac, m });
       return;
     }
     const logCtx = { connectionId, rid: m.rid, msgId: m.id, projectId: route.projectId };
@@ -324,72 +287,16 @@ class RocketChatConnectionManager {
       { ...logCtx, user: m.username, shape, threaded: Boolean(m.tmid) },
       'rocketchat: collecting message',
     );
-    await this.collect(ac, route, m, connectionId, shape).catch((err) => {
-      ac.seenMessage.forget(m.id);
-      logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: message collection failed');
-      reportFailure(err, {
-        tags: { area: 'rocketchat', phase: 'collect' },
-        extra: { connectionId, rid: m.rid, projectId: route.projectId },
+    await roomHandlers()
+      .collect({ connectionId, ac, route, m, shape })
+      .catch((err) => {
+        ac.seenMessage.forget(m.id);
+        logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: message collection failed');
+        reportFailure(err, {
+          tags: { area: 'rocketchat', phase: 'collect' },
+          extra: { connectionId, rid: m.rid, projectId: route.projectId },
+        });
       });
-    });
-  }
-
-  /**
-   * Take one message in. Nothing is answered here.
-   */
-  private async collect(
-    ac: ActiveConnection,
-    route: Route,
-    m: RocketChatIncomingMessage,
-    connectionId: string,
-    shape: RoomShape,
-  ): Promise<void> {
-    const logCtx = { connectionId, rid: m.rid, msgId: m.id, projectId: route.projectId };
-    const frame: RocketChatFrame = {
-      m,
-      auth: { serverUrl: ac.serverUrl, authToken: ac.authToken, userId: ac.botUserId },
-      projectId: route.projectId,
-      shape,
-    };
-    const outcome = await collectInboundMessage({
-      ports: rocketChatConversationPorts,
-      frame,
-      message: m.text,
-      speakerKey: m.userId,
-      speakerLabel: m.username ?? null,
-      externalMessageId: m.id,
-      replyToExternalId: m.replyToId ?? null,
-      images: m.images,
-    });
-
-    if (outcome.kind === 'venue-unresolved') {
-      logger.error(logCtx, 'rocketchat: venue unresolved; refusing the message, not inventing one');
-      await this.sayWhyUnplaceable(ac, m, shape, frame);
-      return;
-    }
-    logger.debug(
-      { ...logCtx, windowId: outcome.windowId, seq: outcome.seq },
-      'rocketchat: collected',
-    );
-  }
-
-  /**
-   * The one reply this adapter still sends itself, and the reason it must.
-   */
-  private async sayWhyUnplaceable(
-    ac: ActiveConnection,
-    m: RocketChatIncomingMessage,
-    shape: RoomShape,
-    frame: RocketChatFrame,
-  ): Promise<void> {
-    if (shape !== 'direct' || !ac.client) return;
-    const speaker = await rocketChatConversationPorts.resolveSpeaker(frame);
-    if (speaker.linked) return;
-    await sendFixedReply(
-      { kind: 'ddp', client: ac.client, rid: m.rid, tmid: m.tmid, authToken: ac.authToken },
-      speaker.refusal.message,
-      FIXED_REPLY_CONSTANT,
-    );
   }
 
   private async teardown(connectionId: string): Promise<void> {

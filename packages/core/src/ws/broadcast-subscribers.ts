@@ -227,14 +227,7 @@ export function registerWsBroadcastSubscribers(): void {
   });
 
   on('integration.changed', (p) => {
-    roomManager.publish(projectRoom(p.projectId), {
-      event: 'integration.changed',
-      data: {
-        projectId: p.projectId,
-        ...(p.bindingId ? { bindingId: p.bindingId } : {}),
-        ...(p.connectionId ? { connectionId: p.connectionId } : {}),
-      },
-    });
+    roomManager.publish(projectRoom(p.projectId), { event: 'integration.changed', data: p });
   });
 
   on('skill.globalUpdated', (p) => {

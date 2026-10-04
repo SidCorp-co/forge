@@ -133,7 +133,7 @@ may run beside.
 | 3 | ISS-163 one owner per table, comments first; the release hold a typed record | BC-14 | ISS-162, ISS-164 |
 | 3 | ISS-164 one Standing contract, needs-you in core, web derives nothing | BC-19 | ISS-162, ISS-163 |
 | 4 | ISS-166 one durable outbox, dead topics deleted | BC-18 | — |
-| 5 | ISS-167 adapters import no domain; ADR 0006 amnesties closed | BC-22 | — |
+| 5 | ISS-167 adapters import no domain; ADR 0006 amnesties closed (landed on dev) | BC-22 | — |
 | 5 | ISS-168 one route-mount registry, tools in their modules | BC-21 | — |
 | 5 | ISS-169 routes hold no queries; REST issue list on the list service | BC-15 | — |
 | — | ISS-170 one cron (agents into schedules) (landed on dev) | BC-14 | any |

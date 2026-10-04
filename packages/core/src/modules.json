@@ -45,7 +45,11 @@
       "kind": "domain",
       "owns": [
         "assistantSpeakerLinks",
-        "conversationPins"
+        "conversationPins",
+        "rocketchatCommentMirrorState",
+        "rocketchatCommentMirrors",
+        "rocketchatQuestionDeliveries",
+        "rocketchatThreadOpenings"
       ]
     },
     "auth": {
@@ -252,10 +256,6 @@
     "integrations/rocketchat": {
       "kind": "adapter",
       "owns": [
-        "rocketchatCommentMirrorState",
-        "rocketchatCommentMirrors",
-        "rocketchatQuestionDeliveries",
-        "rocketchatThreadOpenings",
         "rocketchatThreads"
       ]
     },

@@ -6,7 +6,7 @@
  */
 
 import { logger } from '../../observability/logger.js';
-import { listBindingsForConnection } from '../store.js';
+import { listBindingsForConnection } from '../index.js';
 import { projectNamesOf } from './read.js';
 import type { RocketChatBindingConfig } from './types.js';
 

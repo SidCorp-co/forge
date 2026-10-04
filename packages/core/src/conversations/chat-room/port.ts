@@ -7,11 +7,36 @@
 // history the seed already reads.
 
 import { and, eq } from 'drizzle-orm';
-import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
 import {
   resolveSpeaker as resolveForgeSpeaker,
   type SpeakerResolution,
-} from '../../assistant/identity/speaker-link.js';
+} from '../../assistant/index.js';
+import { db } from '../../db/client.js';
+import { integrationBindings, integrationConnections } from '../../db/schema.js';
+import { decryptConnectionSecrets } from '../../integrations/index.js';
+import type {
+  RocketChatBindingConfig,
+  RocketChatConfig,
+  RocketChatIncomingMessage,
+  RocketChatSecrets,
+} from '../../integrations/rocketchat/index.js';
+import {
+  FIXED_REPLY_CONSTANT,
+  fetchRoomHistory,
+  fetchThreadMessages,
+  type LiveConnection,
+  liveConnectionFor,
+  namespaceFromServerUrl,
+  type ReplySendProof,
+  type RocketChatRestAuth,
+  type RocketChatRestMessage,
+  type RoomShape,
+  reactToMessage,
+  resolveRoomShape,
+  sendFixedReply,
+} from '../../integrations/rocketchat/index.js';
+import { reframed } from '../../messaging/proven.js';
+import { logger } from '../../observability/logger.js';
 import type {
   ConversationAdapterPorts,
   ConversationHistoryMessage,
@@ -20,24 +45,7 @@ import type {
   DeliveryReceipt,
   RequestAck,
   ScreenedMessage,
-} from '../../conversations/ports.js';
-import { db } from '../../db/client.js';
-import { integrationBindings, integrationConnections } from '../../db/schema.js';
-import { logger } from '../../observability/logger.js';
-import { reframed } from '../../messaging/proven.js';
-import { decryptConnectionSecrets } from '../store.js';
-import type { RocketChatIncomingMessage } from './ddp-client.js';
-import { type LiveConnection, liveConnectionFor } from './live-connections.js';
-import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
-import {
-  fetchRoomHistory,
-  fetchThreadMessages,
-  type RocketChatRestAuth,
-  type RocketChatRestMessage,
-  reactToMessage,
-} from './rest-client.js';
-import { type RoomShape, resolveRoomShape } from './room-shape.js';
-import type { RocketChatBindingConfig, RocketChatConfig, RocketChatSecrets } from './types.js';
+} from '../ports.js';
 
 /** What Rocket.Chat hands the ports: the message, the credential it arrived on, and the room's binding. */
 export interface RocketChatFrame {

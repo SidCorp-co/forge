@@ -6,24 +6,30 @@
 // a core that dies between the kernel commit and any emit leaves the work to be
 // found on the next drain rather than lost.
 
+import { QUESTION_DELIVERY_MACHINE } from '@forge/contracts/room-delivery-machine';
 import { and, eq, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { issues, organizations, projects } from '../../db/schema.js';
 import { agentQuestions, type QuestionOrigin } from '../../db/schema-questions.js';
 import { rocketchatQuestionDeliveries } from '../../db/schema-rocketchat.js';
-import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
+import {
+  registerThread,
+  releaseQuestionThread,
+  resolveRoomPostAuth,
+  sendFixedReply,
+} from '../../integrations/rocketchat/index.js';
+import { activeIssuePrefix } from '../../issues/index.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
-import { logger } from '../../observability/logger.js';
+import { type KernelActor, transition } from '../../lifecycle/transition.js';
 import { problemsOf } from '../../messaging/contract.js';
 import { screenForDoor } from '../../messaging/proven.js';
-import { resolveNotifications } from '../../notifications/auto-resolve.js';
-import { emitNotification } from '../../notifications/emit.js';
-import { sendFixedReply } from './outbound.js';
+import { emitNotification, resolveNotifications } from '../../notifications/index.js';
+import { logger } from '../../observability/logger.js';
 import { isUnreachableRoom, resolveQuestionDestination } from './question-destination.js';
 import { renderRound } from './question-render.js';
-import { resolveRoomPostAuth } from './room-delivery.js';
-import { registerThread, releaseQuestionThread } from './thread-registry.js';
 
+const DELIVERY_ACTOR: KernelActor = { type: 'system' };
+const DELIVERY_SOURCE = 'chat-room.question-delivery';
 const RETRY_BACKOFF_MS = 60_000;
 const MAX_ATTEMPTS = 8;
 const UNBOUND_RETRY_MS = 300_000;
@@ -130,11 +136,11 @@ async function reportUndeliverable(
 }
 
 /**
- * Take this round, so no other core instance posts it too. Null when somebody else holds it.
+ * Take this round, so no other core instance posts it too. Null when somebody else holds it. A
+ * first claim writes the row; a retry, once its backoff has run out, re-claims it through the kernel.
  */
 async function claimRound(owed: OwedRound, now: Date): Promise<number | null> {
-  const attempts = sql<number>`coalesce(${rocketchatQuestionDeliveries.attempts}, 0) + 1`;
-  const claimed = await db
+  const created = await db
     .insert(rocketchatQuestionDeliveries)
     .values({
       questionId: owed.questionId,
@@ -144,18 +150,35 @@ async function claimRound(owed: OwedRound, now: Date): Promise<number | null> {
       nextAttemptAt: new Date(now.getTime() + RETRY_BACKOFF_MS),
       updatedAt: now,
     })
-    .onConflictDoUpdate({
+    .onConflictDoNothing({
       target: [rocketchatQuestionDeliveries.questionId, rocketchatQuestionDeliveries.round],
-      set: {
-        status: 'claimed',
-        attempts,
-        nextAttemptAt: sql`${now.toISOString()}::timestamptz + (${RETRY_BACKOFF_MS} * (${attempts})) * interval '1 millisecond'`,
-        updatedAt: now,
-      },
-      setWhere: sql`${rocketchatQuestionDeliveries.status} <> 'delivered' and (${rocketchatQuestionDeliveries.nextAttemptAt} is null or ${rocketchatQuestionDeliveries.nextAttemptAt} <= ${now.toISOString()}::timestamptz)`,
     })
     .returning({ attempts: rocketchatQuestionDeliveries.attempts });
-  const row = claimed[0];
+  const attempts = sql<number>`coalesce(${rocketchatQuestionDeliveries.attempts}, 0) + 1`;
+  const reclaimed = created[0]
+    ? created
+    : (
+        await transition(db, QUESTION_DELIVERY_MACHINE, {
+          to: 'claimed',
+          from: ['claimed', 'undeliverable'],
+          where: and(
+            roundOf(owed),
+            or(
+              isNull(rocketchatQuestionDeliveries.nextAttemptAt),
+              lte(rocketchatQuestionDeliveries.nextAttemptAt, now),
+            ),
+          ),
+          set: {
+            attempts,
+            nextAttemptAt: sql`${now.toISOString()}::timestamptz + (${RETRY_BACKOFF_MS} * (${attempts})) * interval '1 millisecond'`,
+            updatedAt: now,
+          },
+          actor: DELIVERY_ACTOR,
+          source: DELIVERY_SOURCE,
+          returning: ['attempts'],
+        })
+      ).rows;
+  const row = reclaimed[0];
   if (!row) return null;
   if (typeof row.attempts !== 'number') {
     throw new Error(
@@ -165,26 +188,33 @@ async function claimRound(owed: OwedRound, now: Date): Promise<number | null> {
   return row.attempts;
 }
 
+function roundOf(owed: OwedRound) {
+  return and(
+    eq(rocketchatQuestionDeliveries.questionId, owed.questionId),
+    eq(rocketchatQuestionDeliveries.round, owed.round),
+  );
+}
+
 async function settle(
   owed: OwedRound,
   patch: { status: 'delivered' | 'undeliverable'; lastError?: string | null },
   now: Date,
 ): Promise<void> {
-  await db
-    .update(rocketchatQuestionDeliveries)
-    .set({
-      status: patch.status,
+  await transition(db, QUESTION_DELIVERY_MACHINE, {
+    to: patch.status,
+    from: 'claimed',
+    where: roundOf(owed),
+    set: {
       lastError: patch.lastError ?? null,
       nextAttemptAt:
         patch.status === 'delivered' ? null : new Date(now.getTime() + UNBOUND_RETRY_MS),
       updatedAt: now,
-    })
-    .where(
-      and(
-        eq(rocketchatQuestionDeliveries.questionId, owed.questionId),
-        eq(rocketchatQuestionDeliveries.round, owed.round),
-      ),
-    );
+    },
+    reason: patch.lastError ?? null,
+    actor: DELIVERY_ACTOR,
+    source: DELIVERY_SOURCE,
+    returning: ['id'],
+  });
 }
 
 async function noteFailure(

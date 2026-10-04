@@ -5,19 +5,20 @@
  */
 
 import { eq } from 'drizzle-orm';
-import { createChatSessionRow, dispatchChatTurn } from '../../agent-sessions/chat-turn.js';
-import type { SessionAsker } from '../../agent-sessions/session-credential.js';
+import type { SessionAsker } from '../../agent-sessions/index.js';
 import {
+  createChatSessionRow,
+  dispatchChatTurn,
   mintSessionCredential,
   noTurnCredentialDeviceReason,
   pickTurnCredentialDevice,
   resolveSessionAuthority,
-} from '../../agent-sessions/session-credential.js';
+  transitionSessions,
+} from '../../agent-sessions/index.js';
 import { db } from '../../db/client.js';
 import { agentSessions } from '../../db/schema.js';
-import { transitionSessions } from '../../agent-sessions/session-transition.js';
 import { logger } from '../../observability/logger.js';
-import { hasInFlightRoomSession } from './room-delivery.js';
+import { hasInFlightRoomSession } from './room-replies.js';
 
 const ESCALATION_TITLE_MAX = 80;
 

@@ -226,7 +226,7 @@ function main() {
       '\n' +
       'Move the read to the moment the value is needed. The three shapes already in the tree:\n' +
       '  a request callback   packages/core/src/index.ts, the cors `origin` callback\n' +
-      '  a memoised function  packages/core/src/integrations/rocketchat/connection-manager.ts\n' +
+      '  a memoised function  packages/core/src/config/web-base-url.ts:webBaseUrl\n' +
       '  a lazy middleware    packages/core/src/lib/upload-body-limit.ts\n',
   );
   process.exit(1);

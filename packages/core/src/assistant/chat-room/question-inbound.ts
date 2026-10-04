@@ -6,17 +6,24 @@
 // admins only" into an LLM turn about the weather.
 
 import { and, eq } from 'drizzle-orm';
-import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
-import { resolveSpeaker } from '../../assistant/identity/speaker-link.js';
 import { db } from '../../db/client.js';
 import { agentQuestions, isChoiceStep } from '../../db/schema-questions.js';
 import { rocketchatQuestionDeliveries } from '../../db/schema-rocketchat.js';
-import { logger } from '../../observability/logger.js';
-import { screenForDoor } from '../../messaging/proven.js';
-import { answerAs } from '../../questions/read.js';
+import type {
+  RocketChatDdpClient,
+  RocketChatIncomingMessage,
+} from '../../integrations/rocketchat/index.js';
+import {
+  FIXED_REPLY_CONSTANT,
+  namespaceFromServerUrl,
+  type ReplyTransport,
+  sendFixedReply,
+} from '../../integrations/rocketchat/index.js';
 import { isRefusal } from '../../lib/refusal.js';
-import type { RocketChatDdpClient, RocketChatIncomingMessage } from './ddp-client.js';
-import { FIXED_REPLY_CONSTANT, type ReplyTransport, sendFixedReply } from './outbound.js';
+import { screenForDoor } from '../../messaging/proven.js';
+import { logger } from '../../observability/logger.js';
+import { answerAs } from '../../questions/index.js';
+import { resolveSpeaker } from '../identity/speaker-link.js';
 import {
   AMBIGUOUS_ROUND_REPLY,
   ANSWER_FAILED,

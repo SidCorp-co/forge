@@ -242,6 +242,10 @@
       "types": "./dist/question-machine.d.ts",
       "default": "./dist/question-machine.js"
     },
+    "./room-delivery-machine": {
+      "types": "./dist/room-delivery-machine.d.ts",
+      "default": "./dist/room-delivery-machine.js"
+    },
     "./schedule-run-machine": {
       "types": "./dist/schedule-run-machine.d.ts",
       "default": "./dist/schedule-run-machine.js"

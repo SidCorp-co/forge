@@ -1,9 +1,9 @@
+import type { ConversationWindowCutReason } from '../../db/schema-conversations.js';
 import {
   MID_CONVERSATION_INSTRUCTION,
   rocketChatDoorLines,
   rocketChatDoorPersona,
-} from '../../assistant/door-persona.js';
-import type { ConversationWindowCutReason } from '../../db/schema-conversations.js';
+} from '../door-persona.js';
 
 /**
  * The room line a cut reason earns: the instruction for a window cut before quiet, nothing for one that settled.

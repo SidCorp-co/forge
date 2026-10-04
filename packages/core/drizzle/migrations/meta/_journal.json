@@ -2493,6 +2493,13 @@
       "when": 1816387200000,
       "tag": "0387_integration_change_rides_the_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 388,
+      "version": "7",
+      "when": 1816473600000,
+      "tag": "0388_room_deliveries_move_through_the_kernel",
+      "breakpoints": true
     }
   ]
 }

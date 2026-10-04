@@ -12,20 +12,24 @@
  */
 
 import type { agentSessions as agentSessionsTable } from '../../db/schema.js';
-import { logger } from '../../observability/logger.js';
+import {
+  FIXED_REPLY_CONSTANT,
+  type ReplySendProof,
+  resolveRoomPostAuth,
+  roomStillBoundTo,
+  sendFixedReply,
+} from '../../integrations/rocketchat/index.js';
 import { problemsOf } from '../../messaging/contract.js';
 import type { ProgressFacts } from '../../messaging/facts.js';
 import { proven, wholeAgentText } from '../../messaging/proven.js';
 import { withRepairs } from '../../messaging/repairs.js';
 import { screenReplyAtDoor } from '../../messaging/reply-screen.js';
-import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
+import { logger } from '../../observability/logger.js';
 import {
   claimRoomReplyDelivery,
   extractFinalAssistantText,
   readRoomReplyMeta,
-  resolveRoomPostAuth,
-  roomStillBoundTo,
-} from './room-delivery.js';
+} from './room-replies.js';
 
 type SessionRow = typeof agentSessionsTable.$inferSelect;
 

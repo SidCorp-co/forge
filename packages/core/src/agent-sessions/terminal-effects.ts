@@ -3,44 +3,36 @@ import { logger } from '../logger.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
 
-/**
- * One completion bridge: the metadata key that selects it, and how to reach it.
- */
-export interface TerminalSessionBridge {
-  /** The `metadata` key a session carries when this bridge owes it a delivery. */
-  readonly marker: string;
-  readonly deliver: (row: SessionRow) => Promise<void>;
-}
+/** How one completion bridge delivers a terminal session's reply. */
+export type TerminalSessionDelivery = (row: SessionRow) => Promise<void>;
 
 /**
- * Every bridge fired when a session goes terminal.
+ * The metadata key each completion bridge is selected by, in firing order. A terminal writer gates
+ * on these before it hydrates a row; the delivery behind each is handed in by the module that owns
+ * it, so the kernel imports no chat application.
  */
-export const TERMINAL_SESSION_BRIDGES: readonly TerminalSessionBridge[] = [
-  {
-    marker: 'escalation',
-    deliver: async (row) =>
-      (await import('../integrations/rocketchat/escalation-bridge.js')).deliverEscalationReplyOnce(
-        row,
-      ),
-  },
-  {
-    marker: 'conversationAgent',
-    deliver: async (row) =>
+export const TERMINAL_SESSION_BRIDGE_MARKERS = [
+  'escalation',
+  'conversationAgent',
+  'agentChat',
+] as const;
+export type TerminalSessionBridgeMarker = (typeof TERMINAL_SESSION_BRIDGE_MARKERS)[number];
+
+const deliveries = new Map<TerminalSessionBridgeMarker, TerminalSessionDelivery>([
+  [
+    'conversationAgent',
+    async (row) =>
       (await import('./conversation-agent-bridge.js')).deliverConversationAgentReplyOnce(row),
-  },
-  {
-    marker: 'agentChat',
-    deliver: async (row) =>
-      (
-        await import('../integrations/rocketchat/legacy-agent-chat-bridge.js')
-      ).deliverLegacyAgentChatReplyOnce(row),
-  },
-];
+  ],
+]);
 
-/** The markers a terminal writer gates on before it hydrates a row for the bridges. */
-export const TERMINAL_SESSION_BRIDGE_MARKERS: readonly string[] = TERMINAL_SESSION_BRIDGES.map(
-  (b) => b.marker,
-);
+/** Registers the delivery behind one marker. Called once at boot by the module that owns it. */
+export function provideTerminalSessionBridge(
+  marker: TerminalSessionBridgeMarker,
+  deliver: TerminalSessionDelivery,
+): void {
+  deliveries.set(marker, deliver);
+}
 
 export function sessionCarriesBridgeMarker(metadata: unknown): boolean {
   const m = metadata as Record<string, unknown> | null;
@@ -54,13 +46,21 @@ export function sessionCarriesBridgeMarker(metadata: unknown): boolean {
  */
 export async function fireTerminalSessionBridges(row: SessionRow): Promise<void> {
   const metadata = (row.metadata as Record<string, unknown> | null) ?? {};
-  for (const bridge of TERMINAL_SESSION_BRIDGES) {
-    if (!metadata[bridge.marker]) continue;
+  for (const marker of TERMINAL_SESSION_BRIDGE_MARKERS) {
+    if (!metadata[marker]) continue;
+    const deliver = deliveries.get(marker);
+    if (!deliver) {
+      logger.error(
+        { sessionId: row.id, marker },
+        'agent-sessions: a session carries a bridge marker no module registered a delivery for; its reply is not delivered',
+      );
+      continue;
+    }
     try {
-      await bridge.deliver(row);
+      await deliver(row);
     } catch (err) {
       logger.error(
-        { err, sessionId: row.id, marker: bridge.marker },
+        { err, sessionId: row.id, marker },
         'agent-sessions: a terminal-session bridge failed',
       );
     }

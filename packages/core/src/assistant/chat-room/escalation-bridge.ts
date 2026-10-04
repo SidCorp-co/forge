@@ -6,39 +6,42 @@
  */
 
 import { eq } from 'drizzle-orm';
-import { correctFalseClaims } from '../../assistant/confab.js';
-import { runExternalChatTurn } from '../../assistant/external-chat.js';
-import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
-import type { ChatToolset } from '../../assistant/tools/mcp-adapter.js';
-import { buildChatToolContext } from '../../assistant/tools/principal.js';
-import { buildProjectToolset } from '../../assistant/tools/registry.js';
+import { webBaseUrl } from '../../config/web-base-url.js';
+import { recordDeliveredReplyToVenue, rocketChatVenueId } from '../../conversations/index.js';
 import {
   CHAT_TURN_MENU,
   mintTurnCredential,
   type TurnCredential,
 } from '../../credentials/turn-credential.js';
-import { recordDeliveredReplyToVenue } from '../../conversations/transcript.js';
 import { db } from '../../db/client.js';
 import { type agentSessions as agentSessionsTable, projects } from '../../db/schema.js';
-import { logger } from '../../observability/logger.js';
+import {
+  FIXED_REPLY_CONSTANT,
+  namespaceFromServerUrl,
+  type ReplySendProof,
+  resolveRoomPostAuth,
+  roomStillBoundTo,
+  sendFixedReply,
+} from '../../integrations/rocketchat/index.js';
 import { type MessageVerdict, problemsOf } from '../../messaging/contract.js';
 import { proven, wholeAgentText } from '../../messaging/proven.js';
 import { withRepairs } from '../../messaging/repairs.js';
 import { screenReplyAtDoor } from '../../messaging/reply-screen.js';
+import { logger } from '../../observability/logger.js';
 import { resolveTurnAuthority } from '../../permissions/index.js';
-import { webBaseUrl } from './connection-manager.js';
-import { rocketChatVenueId } from './conversation-port.js';
+import { correctFalseClaims } from '../confab.js';
+import { runExternalChatTurn } from '../external-chat.js';
+import type { ChatToolset } from '../tools/mcp-adapter.js';
+import { buildChatToolContext } from '../tools/principal.js';
+import { buildProjectToolset } from '../tools/registry.js';
 import { ESCALATION_FALLBACK_REPLY } from './escalation.js';
-import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
 import { rocketChatPersona } from './persona.js';
 import {
   claimRoomReplyDelivery,
   extractFinalAssistantText,
   type RoomReplyMeta,
   readRoomReplyMeta,
-  resolveRoomPostAuth,
-  roomStillBoundTo,
-} from './room-delivery.js';
+} from './room-replies.js';
 
 type SessionRow = typeof agentSessionsTable.$inferSelect;
 
