@@ -49,7 +49,7 @@
       ]
     },
     "auth": {
-      "kind": "platform",
+      "kind": "door",
       "owns": [
         "emailVerificationTokens",
         "mcpAuditLog",
@@ -370,7 +370,6 @@
       "owns": [
         "agentSelves",
         "orgInvitations",
-        "organizationMembers",
         "organizations",
         "workspaceSshKeys"
       ]
@@ -382,7 +381,11 @@
       ]
     },
     "permissions": {
-      "kind": "kernel"
+      "kind": "kernel",
+      "owns": [
+        "organizationMembers",
+        "projectMembers"
+      ]
     },
     "pipeline": {
       "kind": "kernel",
@@ -424,7 +427,6 @@
         "projectGitCredentials",
         "projectInvitations",
         "projectMasterCharters",
-        "projectMembers",
         "projects"
       ]
     },

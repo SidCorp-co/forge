@@ -1,5 +1,5 @@
 import { env } from '../../config/env.js';
-import type { ProviderConfig, ProviderId } from '../../integrations/identity/types.js';
+import type { ProviderConfig, ProviderId } from '../../integrations/identity/index.js';
 
 /** Resolve `OAUTH_REDIRECT_BASE` once; fall back to `APP_BASE_URL`. */
 export function getRedirectBase(): string {

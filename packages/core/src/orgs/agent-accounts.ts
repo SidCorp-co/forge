@@ -27,6 +27,12 @@ import {
 } from '../db/schema.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
 import {
+  addOrgMember,
+  addProjectMembers,
+  removeOrgMember,
+  removeProjectMembershipsOf,
+} from '../permissions/index.js';
+import {
   type AgentCredentialFence,
   agentCredentialFence,
   badRequest,
@@ -134,15 +140,16 @@ export async function createAgentAccount(
         .returning({ id: users.id, createdAt: users.createdAt });
       if (!row) throw new Error('createAgentAccount: user insert returned no row');
 
-      await tx.insert(organizationMembers).values({
+      await addOrgMember(tx, {
         orgId: input.orgId,
         userId: row.id,
         role: 'member',
         handle: input.handle,
       });
-      await tx
-        .insert(projectMembers)
-        .values(wanted.map((projectId) => ({ userId: row.id, projectId, role: projectRole })));
+      await addProjectMembers(
+        tx,
+        wanted.map((projectId) => ({ userId: row.id, projectId, role: projectRole })),
+      );
       return row;
     }),
   );
@@ -389,8 +396,9 @@ export async function setAgentProjects(
           .where(eq(projectMembers.userId, agentUserId))
       ).map((r) => [r.projectId, r.role]),
     );
-    await tx.delete(projectMembers).where(eq(projectMembers.userId, agentUserId));
-    await tx.insert(projectMembers).values(
+    await removeProjectMembershipsOf(tx, agentUserId);
+    await addProjectMembers(
+      tx,
       wanted.map((projectId) => ({
         userId: agentUserId,
         projectId,
@@ -455,12 +463,8 @@ export async function revokeAgentAccount(orgId: string, agentUserId: string): Pr
       .where(
         and(eq(personalAccessTokens.userId, agentUserId), isNull(personalAccessTokens.revokedAt)),
       );
-    await tx.delete(projectMembers).where(eq(projectMembers.userId, agentUserId));
-    await tx
-      .delete(organizationMembers)
-      .where(
-        and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.userId, agentUserId)),
-      );
+    await removeProjectMembershipsOf(tx, agentUserId);
+    await removeOrgMember(tx, orgId, agentUserId);
   });
   return true;
 }

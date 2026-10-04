@@ -32,24 +32,24 @@ a door.
 
 | Kind | Holds | Must not |
 |---|---|---|
-| **kernel** | The job, session, run and issue machines, the transition engine, leases, evidence and records, retry, escalation, the outbox | Hold a product rule; call an adapter |
+| **kernel** | The job, session, run and issue machines, the transition engine, leases, evidence and records, retry, escalation, the outbox, and memberships with their roles and grants (the permission kernel's own data) | Hold a product rule; call an adapter |
 | **domain** | One product entity family: requirements, feedback, release, chat, and so on | Compute a fact another module also computes |
 | **read-model** | Derived facts only: standing, waiting-on, needs-you, coverage, counts, the system graph | Write any table |
 | **adapter** | One external system behind a role-named port ([ADR 0006](../adr/0006-every-external-system-is-reached-through-one-adapter-port.md)) | Import a domain, a kernel module or a read model |
-| **door** | The route-mount registry, the MCP registry, WebSocket, inbound webhooks, the CLI shapes | Hold a rule or a query |
+| **door** | The route-mount registry, the MCP registry, WebSocket, inbound webhooks, the CLI shapes, and the auth door (sign-in, which reaches the identity adapter through its port) | Hold a rule or a query |
 | **platform** | The db client and schema, `lib`, middleware, queue, config, observability | Import any other kind |
 
 ## Dependency direction (BC-12)
 
 ```text
 door ──▶ read-model ──▶ domain ──▶ kernel ──▶ platform
-                          │
-                          └──▶ adapter (port index only) ──▶ platform
+  │                       │
+  └───────────────────────┴──▶ adapter (port index only) ──▶ platform
 ```
 
 | Kind | May import |
 |---|---|
-| door | door, read-model, domain, kernel, platform |
+| door | door, read-model, domain, kernel, adapter (port index only), platform |
 | read-model | read-model, domain, kernel, platform |
 | domain | domain, kernel, adapter, platform |
 | kernel | kernel, platform |
@@ -260,6 +260,10 @@ A write a rule refuses answers **422** with one body, and nothing is written:
   in the 422 envelope, naming `permission` and `scope`; a caller with no role on the project is a
   403 (transport).
 - **A slice never compares `agency`.** Agency is recorded on the row and read by no rule.
+- **Memberships are the kernel's data** (orchestrator under dev delegation, 2026-10-04; ADR 0008
+  Amendment). `permissions` owns `project_members` and `organization_members`, so `can()` reads
+  only its own tables. A domain that adds, changes or drops a membership (projects, orgs,
+  conversations) calls the kernel's writer, `packages/core/src/permissions/memberships.ts`.
 
 ## External systems (BC-22)
 

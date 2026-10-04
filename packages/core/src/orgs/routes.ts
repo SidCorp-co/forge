@@ -22,7 +22,13 @@ import { sendOrgInvitationEmail } from '../projects/invitation-email.js';
 import { agentAccountRoutes } from './agent-accounts-routes.js';
 import { issueOrgInvitationToken } from './invitations.js';
 import { listOrgMembers, listOrgsForUser } from './service.js';
-import { requireOrgCan, requireOrgHeld } from '../permissions/index.js';
+import {
+  addOrgMember,
+  removeOrgMember,
+  requireOrgCan,
+  requireOrgHeld,
+  updateOrgMember,
+} from '../permissions/index.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -102,7 +108,7 @@ orgRoutes.post(
             createdAt: organizations.createdAt,
           });
         if (!org) throw new Error('organizations: insert returned no row');
-        await tx.insert(organizationMembers).values({ orgId: org.id, userId, role: 'owner' });
+        await addOrgMember(tx, { orgId: org.id, userId, role: 'owner' });
         return org;
       });
       return c.json({ ...created, role: 'owner' as const }, 201);
@@ -284,17 +290,12 @@ orgRoutes.post(
       return c.json(body, 202);
     }
 
-    const [inserted] = await db
-      .insert(organizationMembers)
-      .values({ orgId, userId: target.id, role })
-      .onConflictDoNothing()
-      .returning({
-        userId: organizationMembers.userId,
-        role: organizationMembers.role,
-        createdAt: organizationMembers.createdAt,
-      });
+    const inserted = await addOrgMember(db, { orgId, userId: target.id, role }, { ifAbsent: true });
     if (!inserted) throw conflict('user is already an org member', 'ALREADY_MEMBER');
-    return c.json({ ...inserted, email }, 201);
+    return c.json(
+      { userId: inserted.userId, role: inserted.role, createdAt: inserted.createdAt, email },
+      201,
+    );
   },
 );
 
@@ -401,24 +402,14 @@ orgRoutes.patch(
       }
     }
 
-    const [updated] = await db
-      .update(organizationMembers)
-      .set({
-        ...(role !== undefined ? { role } : {}),
-        // Dedupe so a member never carries a lens twice.
-        ...(lenses !== undefined ? { lenses: Array.from(new Set(lenses)) } : {}),
-      })
-      .where(
-        and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.userId, targetUserId)),
-      )
-      .returning({
-        userId: organizationMembers.userId,
-        role: organizationMembers.role,
-        lenses: organizationMembers.lenses,
-        createdAt: organizationMembers.createdAt,
-      });
+    const updated = await updateOrgMember(db, orgId, targetUserId, { role, lenses });
     if (!updated) throw notFound('membership not found');
-    return c.json(updated);
+    return c.json({
+      userId: updated.userId,
+      role: updated.role,
+      lenses: updated.lenses,
+      createdAt: updated.createdAt,
+    });
   },
 );
 
@@ -458,11 +449,7 @@ orgRoutes.delete(
       }
     }
 
-    await db
-      .delete(organizationMembers)
-      .where(
-        and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.userId, targetUserId)),
-      );
+    await removeOrgMember(db, orgId, targetUserId);
     return c.body(null, 204);
   },
 );

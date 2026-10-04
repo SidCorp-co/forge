@@ -19,7 +19,12 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { badRequest, forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { emitNotification } from '../notifications/emit.js';
-import { requireHeld } from '../permissions/index.js';
+import {
+  addProjectMembers,
+  removeProjectMember,
+  requireHeld,
+  updateProjectMember,
+} from '../permissions/index.js';
 import { sendInvitationEmail } from './invitation-email.js';
 import { issueInvitationToken } from './invitation-token.js';
 
@@ -171,16 +176,9 @@ memberRoutes.post(
       });
     }
 
-    const [inserted] = await db
-      .insert(projectMembers)
-      .values({ userId: targetUserId, projectId, role })
-      .onConflictDoNothing()
-      .returning({
-        userId: projectMembers.userId,
-        projectId: projectMembers.projectId,
-        role: projectMembers.role,
-        createdAt: projectMembers.createdAt,
-      });
+    const [inserted] = await addProjectMembers(db, [{ userId: targetUserId, projectId, role }], {
+      ifAbsent: true,
+    });
     if (!inserted) {
       throw new HTTPException(409, {
         message: 'user is already a member',
@@ -193,7 +191,16 @@ memberRoutes.post(
       .from(users)
       .where(eq(users.id, targetUserId))
       .limit(1);
-    return c.json({ ...inserted, email: email?.email ?? null }, 201);
+    return c.json(
+      {
+        userId: inserted.userId,
+        projectId: inserted.projectId,
+        role: inserted.role,
+        createdAt: inserted.createdAt,
+        email: email?.email ?? null,
+      },
+      201,
+    );
   },
 );
 
@@ -317,20 +324,10 @@ memberRoutes.patch(
       .limit(1);
     if (!target) throw notFound('NOT_FOUND', 'membership not found');
 
-    const [updated] = await db
-      .update(projectMembers)
-      .set({
-        ...(role !== undefined ? { role } : {}),
-        ...(grants !== undefined ? { grants: [...new Set(grants as ProjectPermission[])] } : {}),
-      })
-      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, targetUserId)))
-      .returning({
-        userId: projectMembers.userId,
-        projectId: projectMembers.projectId,
-        role: projectMembers.role,
-        grants: projectMembers.grants,
-        createdAt: projectMembers.createdAt,
-      });
+    const updated = await updateProjectMember(db, projectId, targetUserId, {
+      role,
+      grants: grants as ProjectPermission[] | undefined,
+    });
     if (!updated) throw notFound('NOT_FOUND', 'membership not found');
 
     return c.json(updated);
@@ -392,9 +389,7 @@ memberRoutes.delete(
       .limit(1);
     if (!target) throw notFound('NOT_FOUND', 'membership not found');
 
-    await db
-      .delete(projectMembers)
-      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, targetUserId)));
+    await removeProjectMember(db, projectId, targetUserId);
 
     return c.body(null, 204);
   },

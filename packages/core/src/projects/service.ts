@@ -21,6 +21,7 @@ import {
 import { projectPolicies } from '../db/schema-project-config.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
+import { addProjectMembers } from '../permissions/index.js';
 import { DEFAULT_POLICY } from '../project-config/default-policy.js';
 import { readDeclaredSource } from '../project-config/source.js';
 
@@ -96,11 +97,9 @@ export async function createProject(input: NewProject) {
         });
       if (!project) throw new Error('projects: insert returned no row');
 
-      await tx.insert(projectMembers).values({
-        userId: input.createdBy,
-        projectId: project.id,
-        role: 'admin',
-      });
+      await addProjectMembers(tx, [
+        { userId: input.createdBy, projectId: project.id, role: 'admin' },
+      ]);
       await tx.insert(projectPolicies).values({
         projectId: project.id,
         revision: 1,

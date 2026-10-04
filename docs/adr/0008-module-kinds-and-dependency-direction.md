@@ -110,3 +110,21 @@ reconciliation decision on each module until a check exists.
   imports the port's `index.ts` either way.
 - **The cost** is in pattern v2's Honest costs: most of core fails on day one, and because the
   checker runs on demand, a change can break a rule and land until someone next runs it.
+
+## Amendment (2026-10-04)
+
+The core component design exposed two tensions in the kinds above; the orchestrator ruled on both
+under the owner's dev delegation.
+
+- **Memberships and roles are kernel-owned data.** Project and org membership rows, their roles
+  and their grants belong to the permission kernel, not to the `projects` and `orgs` domains that
+  used to write them. `packages/core/src/modules.json` lists `projectMembers` and
+  `organizationMembers` under `permissions`, so the one check reads only its own tables, and every
+  module that adds, changes or drops a membership calls the kernel's writer
+  (`packages/core/src/permissions/memberships.ts`).
+- **Sign-in belongs to the auth door.** Signing a person in through the identity adapter is a door's
+  work, not a platform leaf's: `auth` is declared a door, and a door may reach an adapter through
+  its port's `index.ts` (`packages/core/src/integrations/identity/index.ts`), as a domain may.
+  The credential helpers other modules import from `auth` (`pat-scope`, `pat-format`,
+  `pat-permissions`, `pat`, `jwt`, `cookie`, the device and turn credentials) now read as imports
+  of a door from below until they move to a platform module; the checker reports them.

@@ -13,14 +13,15 @@ import { z } from 'zod';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { oauthAccounts, users } from '../../db/schema.js';
-import { githubProvider } from '../../integrations/identity/github.js';
-import { googleProvider, oidcProvider } from '../../integrations/identity/oidc-provider.js';
-import type {
-  OAuthIdentity,
-  OAuthProvider,
-  ProviderConfig,
-  ProviderId,
-} from '../../integrations/identity/types.js';
+import {
+  githubProvider,
+  googleProvider,
+  type OAuthIdentity,
+  type OAuthProvider,
+  oidcProvider,
+  type ProviderConfig,
+  type ProviderId,
+} from '../../integrations/identity/index.js';
 import { logger } from '../../logger.js';
 import { ensurePersonalOrg } from '../../orgs/service.js';
 import { assertNotAgentUser } from '../agent-login-gate.js';
