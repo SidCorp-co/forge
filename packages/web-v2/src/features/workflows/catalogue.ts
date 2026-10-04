@@ -3,7 +3,7 @@ import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { LEGACY_V2_TEMPLATE } from "@forge/contracts/workflow-templates";
 import { projectDescriptionOf } from "@/features/project-settings/project-document";
 import { templateFor } from "./canvas/model";
-import { integrationOf, readC4, SYSTEM_CONTEXT_TEMPLATE, type C4Model } from "./c4/model";
+import { readSystemGraph, SYSTEM_CONTEXT_TEMPLATE, type FactRow, type SystemGraph } from "./c4/graph";
 import type { WorkflowRecord } from "./types";
 
 export type Purpose = "system" | "journeys" | "lifecycles" | "integrations" | "data" | "decisions" | "service" | "other";
@@ -79,14 +79,6 @@ export function mainJourneyOf(records: readonly WorkflowRecord[]): WorkflowRecor
   return [...journeys].sort((a, b) => rank(b) - rank(a))[0] ?? null;
 }
 
-/** One row of a fact's detail: a role, or a boundary with how many systems it holds. */
-export interface FactRow {
-  name: string;
-  count?: number;
-  /** How many of those systems the design marks unconfirmed. */
-  unconfirmed?: number;
-}
-
 export interface OverviewFact {
   label: string;
   value: string;
@@ -96,7 +88,7 @@ export interface OverviewFact {
 
 export interface SystemOverview {
   record: WorkflowRecord;
-  model: C4Model;
+  graph: SystemGraph;
   facts: OverviewFact[];
   journey: WorkflowRecord | null;
 }
@@ -106,31 +98,13 @@ export function systemOverview(records: readonly WorkflowRecord[], templates: re
   const record = systemContextOf(records);
   if (!record) return null;
   const doc = record.document;
-  const model = readC4(doc, templateFor(doc, templates));
-  const lanes = new Map(model.lanes.map((l) => [l.id, l.label]));
-  const byLane = new Map<string | null, C4Model["externals"]>();
-  for (const x of model.externals) byLane.set(x.lane, [...(byLane.get(x.lane) ?? []), x]);
-  // In the design's lane order, as the diagram stacks them; systems in no boundary last.
-  const laneIndex = (l: string | null) => (l === null ? Number.MAX_SAFE_INTEGER : model.lanes.findIndex((x) => x.id === l));
-  const boundaries: FactRow[] = [...byLane.entries()].sort((p, q) => laneIndex(p[0]) - laneIndex(q[0])).map(([lane, xs]) => ({
-    name: lane === null ? "No boundary" : (lanes.get(lane) ?? lane),
-    count: xs.length,
-    unconfirmed: xs.filter((x) => integrationOf(x.title).state === "unconfirmed").length,
-  }));
-  const named = [...byLane.keys()].filter((l) => l !== null).length;
+  const graph = readSystemGraph(doc, templateFor(doc, templates));
+  const f = graph.facts;
   const facts: OverviewFact[] = [
-    {
-      label: "Users",
-      value: `${model.people.length} ${model.people.length === 1 ? "role" : "roles"}`,
-      rows: model.people.map((p) => ({ name: p.title })),
-    },
-    {
-      label: "External systems",
-      value: `${model.externals.length}${named > 1 ? ` in ${named} boundaries` : ""}`,
-      rows: boundaries,
-    },
+    { label: "Users", value: `${f.people.length} ${f.people.length === 1 ? "role" : "roles"}`, rows: f.people },
+    { label: "External systems", value: `${f.externals}${f.namedBoundaries > 1 ? ` in ${f.namedBoundaries} boundaries` : ""}`, rows: f.boundaries },
   ];
-  return { record, model, facts, journey: mainJourneyOf(records) };
+  return { record, graph, facts, journey: mainJourneyOf(records) };
 }
 
 /** Where the overview's one line about the system came from. */
@@ -156,7 +130,7 @@ export function firstSentence(text: string): string {
 export function describeSystem(projectDocument: unknown, o: SystemOverview): SystemDescription | null {
   const project = projectDescriptionOf(projectDocument);
   if (project) return { text: project, source: "project" };
-  const purpose = o.model.focal?.purpose;
+  const purpose = o.graph.focal?.purpose;
   if (purpose) return { text: purpose, source: "purpose" };
   const first = firstSentence(o.record.document.summary);
   return first ? { text: first, source: "summary" } : null;

@@ -2,6 +2,7 @@
 // import the kinds, statuses, limits, refusal codes, request schemas and views from here
 
 import { z } from "zod";
+import type { IssueStatusTone } from "./issue-vocabulary.js";
 
 export const MOCKUP_KINDS = [
 	"wireframe",
@@ -47,6 +48,28 @@ export const MOCKUP_STATUS_LABELS: Record<MockupStatus, string> = {
 	accepted: "Accepted",
 	returned: "Returned",
 	withdrawn: "Withdrawn",
+};
+
+export const MOCKUP_STATUS_TONES: Record<MockupStatus, IssueStatusTone> = {
+	proposed: "you",
+	accepted: "ready",
+	returned: "done",
+	withdrawn: "done",
+};
+
+export const MOCKUP_STATUS_GLYPHS: Record<MockupStatus, string> = {
+	proposed: "!",
+	accepted: "✓",
+	returned: "↺",
+	withdrawn: "–",
+};
+
+export const MOCKUP_STATUS_HINTS: Record<MockupStatus, string> = {
+	proposed: "proposed: waits on a person to accept or return it",
+	accepted:
+		"accepted: pinned beside the designs at the next agree or re-pin of its requirement",
+	returned: "returned: a person sent it back with a reason",
+	withdrawn: "withdrawn: its author took it back",
 };
 
 export const MOCKUP_TARGET_TYPES = [

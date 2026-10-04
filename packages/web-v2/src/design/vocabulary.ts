@@ -28,6 +28,13 @@ import {
   FEEDBACK_SEVERITY_TONES,
   FEEDBACK_TARGET_LABELS,
 } from "@forge/contracts/feedback";
+import {
+  MOCKUP_KIND_LABELS,
+  MOCKUP_STATUS_GLYPHS,
+  MOCKUP_STATUS_HINTS,
+  MOCKUP_STATUS_LABELS,
+  MOCKUP_STATUS_TONES,
+} from "@forge/contracts/mockups";
 import { ISSUE_ATTENTION_LABELS, ISSUE_LEASE_VERDICT_LABELS, ISSUE_LEASE_VERDICT_TONES } from "@forge/contracts/issue-standing";
 import {
   CRITERION_STANDING_GLYPHS,
@@ -137,6 +144,7 @@ const CONTRACT_FAMILIES = {
   releaseState: { labels: RELEASE_STATE_LABELS, tones: RELEASE_STATE_TONES, glyphs: RELEASE_STATE_GLYPHS, hints: RELEASE_STATE_HINTS },
   feedbackPhase: { labels: FEEDBACK_PHASE_LABELS, tones: FEEDBACK_PHASE_TONES, glyphs: FEEDBACK_PHASE_GLYPHS, hints: FEEDBACK_PHASE_HINTS },
   severity: { labels: FEEDBACK_SEVERITY_LABELS, tones: FEEDBACK_SEVERITY_TONES },
+  mockup: { labels: MOCKUP_STATUS_LABELS, tones: MOCKUP_STATUS_TONES, glyphs: MOCKUP_STATUS_GLYPHS, hints: MOCKUP_STATUS_HINTS },
   lease: { labels: ISSUE_LEASE_VERDICT_LABELS, tones: ISSUE_LEASE_VERDICT_TONES },
   attention: {
     labels: Object.fromEntries(Object.entries(ISSUE_ATTENTION_LABELS).map(([k, v]) => [k, v.label])),
@@ -195,6 +203,7 @@ export const ENUM_FAMILIES = {
   feedbackRoute: FEEDBACK_ROUTE_LABELS,
   feedbackDecision: FEEDBACK_DECISION_LABELS,
   feedbackTarget: FEEDBACK_TARGET_LABELS,
+  mockupKind: MOCKUP_KIND_LABELS,
   contractDirection: CONTRACT_DIRECTION_LABELS,
   step: WORK_STEP_LABELS,
   notificationType: NOTIFICATION_TYPE_LABELS,
