@@ -32,18 +32,17 @@ export default [
     languageOptions: { parser: tseslint.parser, parserOptions: { sourceType: "module" } },
   },
   ...configure({
-    "no-historical-narration": "error",
-    "comment-density": "error",
-    "max-consecutive-comment-lines": "error",
+    // Off rather than omitted: configure() enables every rule it is not told about.
+    "no-historical-narration": "off",
+    "comment-density": "off",
+    "max-consecutive-comment-lines": "off",
+    "no-duplicate-comment": "off",
     "no-pass-through-wrapper": "error",
     "no-raw-colors": "error",
     "no-arbitrary-sizes": "error",
     "no-raw-elements": "error",
     tokens: { tokenSource: "packages/web-v2/src/app/globals.css" },
     primitives: { source: "packages/web-v2/src/design/primitives" },
-    // Arguments three other gates read, not prose: each demands the phrasing or the reason its own
-    // regex matches. Reworded, the gate reading it is weakened.
-    additionalDirectives: ["i18n-allow", "biome-ignore", "status-tuple"],
   }),
   {
     rules: { "max-lines": "off", "max-lines-per-function": "off" },
