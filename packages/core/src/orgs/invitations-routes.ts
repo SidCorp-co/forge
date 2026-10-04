@@ -1,11 +1,10 @@
-import { and, eq, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { db } from '../db/client.js';
-import { organizations, orgInvitations, users } from '../db/schema.js';
-import { type AuthVars, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, readAuthUser, requireAuth } from '../middleware/auth.js';
 import { consumeOrgInvitationToken } from './invitations.js';
+import { orgInvitationByToken } from './read.js';
 import { refuse } from './refuse.js';
+import { declineOrgInvitation } from './service.js';
 
 // Mirror of projects/invitations-routes.ts for the org tier. Mounted at
 // /api/org-invitations; the shared /invite/accept web page picks this
@@ -28,20 +27,7 @@ orgInvitationRoutes.get('/:token', async (c) => {
     throw badRequest('INVALID_TOKEN', 'invalid invitation token');
   }
 
-  const [row] = await db
-    .select({
-      email: orgInvitations.email,
-      role: orgInvitations.role,
-      expiresAt: orgInvitations.expiresAt,
-      acceptedAt: orgInvitations.acceptedAt,
-      orgName: organizations.name,
-      inviterEmail: users.email,
-    })
-    .from(orgInvitations)
-    .innerJoin(organizations, eq(organizations.id, orgInvitations.orgId))
-    .innerJoin(users, eq(users.id, orgInvitations.inviterId))
-    .where(eq(orgInvitations.token, token))
-    .limit(1);
+  const row = await orgInvitationByToken(token);
 
   if (!row) throw notFound('INVALID_TOKEN', 'invitation not found');
   if (row.acceptedAt !== null) throw gone('ALREADY_ACCEPTED', 'invitation already accepted');
@@ -65,16 +51,12 @@ orgInvitationRoutes.post('/:token/accept', requireAuth(), async (c) => {
   }
 
   const userId = c.get('userId');
-  const [user] = await db
-    .select({ id: users.id, email: users.email })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  if (!user) {
+  const email = (await readAuthUser(userId))?.email ?? null;
+  if (email === null) {
     throw new HTTPException(401, { message: 'user not found', cause: { code: 'UNAUTHENTICATED' } });
   }
 
-  const result = await consumeOrgInvitationToken(token, { userId: user.id, email: user.email });
+  const result = await consumeOrgInvitationToken(token, { userId, email });
 
   switch (result.status) {
     case 'invalid':
@@ -102,27 +84,13 @@ orgInvitationRoutes.post('/:token/decline', requireAuth(), async (c) => {
   }
 
   const userId = c.get('userId');
-  const [user] = await db
-    .select({ email: users.email })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  if (!user) {
+  const email = (await readAuthUser(userId))?.email ?? null;
+  if (email === null) {
     throw new HTTPException(401, { message: 'user not found', cause: { code: 'UNAUTHENTICATED' } });
   }
 
-  const [updated] = await db
-    .update(orgInvitations)
-    .set({ dismissedAt: new Date() })
-    .where(
-      and(
-        eq(orgInvitations.token, token),
-        sql`lower(${orgInvitations.email}) = lower(${user.email})`,
-        isNull(orgInvitations.acceptedAt),
-      ),
-    )
-    .returning({ token: orgInvitations.token });
-
-  if (!updated) throw notFound('NOT_FOUND', 'invitation not found or email mismatch');
+  if (!(await declineOrgInvitation(token, email))) {
+    throw notFound('NOT_FOUND', 'invitation not found or email mismatch');
+  }
   return c.json({ dismissed: true });
 });

@@ -1,23 +1,17 @@
-import { RUNNER_MACHINE, RUNNER_PROVISION_MACHINE } from '@forge/contracts/runner-machine';
-import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { db } from '../db/client.js';
-import { devices, runners } from '../db/schema.js';
-import { residentMasterSql } from '../devices/master-session.js';
 import { readRunnerPoolRead } from '../devices/pool-read-report.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { transition } from '../lifecycle/transition.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { clearRunnerFaultFlags } from '../runners/clear-fault-flags.js';
-import { deleteProjectRunner, patchProjectRunner, upsertDeviceRunner } from '../runners/index.js';
-import { insertRunnerEvent } from '../runners/runner-events.js';
-import { defaultRunnerCapabilities } from '../runners/select.js';
+import { deleteProjectRunner, patchProjectRunner } from '../runners/index.js';
 import { requireHeld } from '../permissions/index.js';
+import { deviceForBind, listProjectRunners, projectHasRunner } from './read.js';
+import { bindDeviceRunner } from './service.js';
 
 // ISS-172 Slice A — runner-shaped binding endpoints. `POST /:id/runners`
 // upserts a (project, device, 'claude-code') runner row; `DELETE
@@ -54,46 +48,7 @@ projectRunnerRoutes.get(
     const access = await loadProjectAccess(id, userId);
     requireHeld(access, 'project.read');
 
-    const rows = await db
-      .select({
-        runnerId: runners.id,
-        deviceId: runners.deviceId,
-        deviceName: devices.name,
-        platform: devices.platform,
-        deviceStatus: devices.status,
-        // The runner's own version. A runner is one (device x project) binding of
-        // the agent binary that device runs, so the version that binary reported
-        // on pair/heartbeat IS this runner's — read from the joined device rather
-        // than mirrored onto `runners`, where a missed heartbeat would leave two
-        // copies disagreeing. NULL where the device has never reported one, which
-        // the screen says in words rather than leaving blank (ISS-1119).
-        agentVersion: devices.agentVersion,
-        // Operator "turn off" timestamp. A disabled device's runner can still
-        // heartbeat (status stays 'online'), so the UI needs this to explain
-        // why an "online"-looking runner receives no jobs (mirrors the
-        // dispatch gate that excludes disabled devices).
-        deviceDisabledAt: devices.disabledAt,
-        runnerStatus: runners.status,
-        lastError: runners.lastError,
-        limitReason: runners.limitReason,
-        rateLimitedUntil: runners.rateLimitedUntil,
-        limitDetail: runners.limitDetail,
-        repoPath: runners.repoPath,
-        branch: runners.branch,
-        labels: runners.labels,
-        lastSeenAt: runners.lastSeenAt,
-        provisionStatus: runners.provisionStatus,
-        provisionDetail: runners.provisionDetail,
-        provisionedAt: runners.provisionedAt,
-        poolRead: runners.poolRead,
-        // ISS-1118 — the most expensive thing a bound box runs is a resident
-        // master for this project, and no screen said whether one existed.
-        residentMaster: residentMasterSql(runners.deviceId, runners.projectId),
-      })
-      .from(runners)
-      .leftJoin(devices, eq(devices.id, runners.deviceId))
-      .where(and(eq(runners.projectId, id), eq(runners.type, 'claude-code')))
-      .orderBy(runners.createdAt);
+    const rows = await listProjectRunners(id);
 
     return c.json(rows.map((r) => ({ ...r, poolRead: readRunnerPoolRead(r.poolRead) })));
   },
@@ -115,16 +70,7 @@ projectRunnerRoutes.post(
     const access = await loadProjectAccess(id, userId);
     requireHeld(access, 'project.admin');
 
-    const [device] = await db
-      .select({
-        id: devices.id,
-        name: devices.name,
-        status: devices.status,
-        lastSeenAt: devices.lastSeenAt,
-      })
-      .from(devices)
-      .where(eq(devices.id, deviceId))
-      .limit(1);
+    const device = await deviceForBind(deviceId);
     if (!device) {
       throw new HTTPException(404, {
         message: 'device not found',
@@ -132,44 +78,13 @@ projectRunnerRoutes.post(
       });
     }
 
-    const status: 'online' | 'offline' =
-      device.status === 'online' && device.lastSeenAt ? 'online' : 'offline';
-
-    const now = new Date();
-    const bound = await db.transaction(async (tx) => {
-      const row = await upsertDeviceRunner(tx, {
-        projectId: id,
-        deviceId,
-        name: device.name,
-        capabilities: defaultRunnerCapabilities('claude-code', capabilities),
-        capabilitiesSent: capabilities,
-        checkout: { repoPath, branch },
-        status,
-        now,
-      });
-      if (!row) return null;
-      // Re-bind re-queues provisioning (path/url may have changed), and the runner takes its device's
-      // liveness; an operator's drain or disable is left standing.
-      await transition(tx, RUNNER_PROVISION_MACHINE, {
-        to: 'queued',
-        where: eq(runners.id, row.id),
-        reason: 'bind',
-        actor: restActor(c),
-        source: 'runner-bind',
-        returning: ['id'],
-      });
-      const live = await transition(tx, RUNNER_MACHINE, {
-        to: status,
-        from: status === 'online' ? 'offline' : 'online',
-        where: eq(runners.id, row.id),
-        reason: 'bind',
-        actor: restActor(c),
-        source: 'runner-bind',
-        returning: ['id'],
-      });
-      return live.rows.length > 0 ? { ...row, status } : row;
+    const runner = await bindDeviceRunner({
+      projectId: id,
+      device,
+      capabilities,
+      checkout: { repoPath, branch },
+      actor: restActor(c),
     });
-    const runner = bound;
 
     if (!runner) {
       throw new HTTPException(500, {
@@ -177,17 +92,6 @@ projectRunnerRoutes.post(
         cause: { code: 'RUNNER_UPSERT_FAILED' },
       });
     }
-
-    // ISS-381 (2.3) — audit the bind as the runner's initial status event
-    // (old_status null). Bind is an infrequent operator action, so an event per
-    // bind is informative, not noisy (unlike the per-tick heartbeat site).
-    await insertRunnerEvent(db, {
-      runnerId: runner.id,
-      projectId: runner.projectId,
-      oldStatus: null,
-      newStatus: runner.status,
-      reason: 'bind',
-    });
 
     // Wake the device room so an online device pulls its queued provision now;
     // an offline device picks it up from the `queued` row on reconnect.
@@ -263,12 +167,7 @@ projectRunnerRoutes.post(
     const access = await loadProjectAccess(id, userId);
     requireHeld(access, 'project.admin');
 
-    const [target] = await db
-      .select({ id: runners.id })
-      .from(runners)
-      .where(and(eq(runners.id, runnerId), eq(runners.projectId, id)))
-      .limit(1);
-    if (!target) {
+    if (!(await projectHasRunner(id, runnerId))) {
       throw new HTTPException(404, {
         message: 'runner not found',
         cause: { code: 'RUNNER_NOT_FOUND' },
