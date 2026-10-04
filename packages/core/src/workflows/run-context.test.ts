@@ -1,12 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  type RequirementContextRow,
+  renderIssueMockups,
+  requirementContext,
+} from './requirement-context.js';
+import {
   ARTIFACT_CONTEXT_CAP_CHARS,
   artifactContext,
   artifactContextRecord,
-  type RequirementContextRow,
   renderArtifactContext,
-  requirementContext,
   type TracedDesignRow,
 } from './run-context.js';
 
@@ -220,6 +223,7 @@ describe('requirementContext (ISS-57)', () => {
           providerProjectId: null,
         },
       ],
+      mockups: [],
     },
     plannedRevision: 4,
     plannedBaselineSeq: 1,
@@ -262,7 +266,15 @@ describe('requirementContext (ISS-57)', () => {
   it('refuses a latest baseline that pins another revision than the current one', () => {
     expect(() =>
       requirementContext(
-        row({ baseline: { revision: 3, seq: 1, agreedAt: '2026-10-01T00:00:00.000Z', pins: [] } }),
+        row({
+          baseline: {
+            revision: 3,
+            seq: 1,
+            agreedAt: '2026-10-01T00:00:00.000Z',
+            pins: [],
+            mockups: [],
+          },
+        }),
       ),
     ).toThrow(
       /REQUIREMENT_REVISION_NOT_CURRENT: requirement REQ-12: its latest baseline pins revision 3/,
@@ -285,6 +297,29 @@ describe('requirementContext (ISS-57)', () => {
       requirementContext(row({ plannedBaselineSeq: 2, baseline: repinned.baseline }))
         ?.changedSincePlan,
     ).toBe(false);
+  });
+
+  it('names each pinned mockup with its fetch, and withholds the fetch on a no_egress project (ISS-78)', () => {
+    const base = row();
+    const mk = {
+      key: 'MK-2',
+      kind: 'wireframe',
+      name: 'list.wireframe.json',
+      caption: 'ward filter',
+    };
+    const pinned = row({
+      baseline: { ...(base.baseline as NonNullable<typeof base.baseline>), mockups: [mk] },
+    });
+    const loaded = requirementContext(pinned);
+    expect(loaded?.mockups).toEqual(['MK-2']);
+    expect(loaded?.text).toContain(
+      '- MK-2 wireframe `list.wireframe.json` — ward filter — `forge_mockups action=content ref=MK-2`',
+    );
+    expect(requirementContext(pinned, true)?.text).toContain(
+      'bytes withheld: this project is no_egress',
+    );
+    expect(renderIssueMockups([], false)).toBeNull();
+    expect(renderIssueMockups([mk], false)).toContain('## Mockups accepted on this issue');
   });
 
   it('tells the run when the requirement changed since its plan', () => {

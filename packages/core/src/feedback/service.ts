@@ -15,6 +15,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-feedback.js';
 import { itemEmbeddings } from '../db/schema-item-embeddings.js';
+import { mockups } from '../db/schema-mockups.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { assertProjectAccess, effectiveProjectRole } from '../lib/authz.js';
@@ -291,9 +292,9 @@ export const reopenFeedback = (input: {
 }) => personalAct({ ...input, note: input.reason }, 'reopened');
 
 /**
- * UC15: a project admin person deletes what the reporter gave — the text, the attachments with
- * their bytes, the embedding, the clarification answers and the suggestion payloads quoting it —
- * and keeps the keyed row as a tombstone so every link to it still resolves.
+ * UC15: a project admin person deletes what the reporter gave — the text, the attachments and
+ * mockups with their bytes, the embedding, the clarification answers and the suggestion payloads
+ * quoting it — and keeps the keyed row as a tombstone so every link to it still resolves.
  */
 export async function redactReporterData(input: {
   projectId: string;
@@ -347,6 +348,11 @@ export async function redactReporterData(input: {
         updatedAt: now,
       })
       .where(eq(feedback.id, row.id));
+    const sketches = await tx
+      .delete(mockups)
+      .where(eq(mockups.feedbackId, row.id))
+      .returning({ path: mockups.storagePath });
+    paths.push(...sketches.map((g) => g.path));
     await decide(tx, row, actor, { decision: 'redacted' });
     return null;
   });

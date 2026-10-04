@@ -4,6 +4,7 @@ import { entityCommentRoutes } from '../comments/entity-routes.js';
 import { contentLanguageRoutes } from '../content-language/routes.js';
 import { feedbackRoutes } from '../feedback/routes.js';
 import type { RequestIdVars } from '../middleware/request-id.js';
+import { mockupRoutes } from '../mockups/routes.js';
 import { onboardingRoutes } from '../onboarding/routes.js';
 import { questionnaireRoutes } from '../questionnaires/routes.js';
 import { requirementRoutes } from '../requirements/routes.js';
@@ -23,6 +24,7 @@ export function mountProjectConfig(app: Hono<{ Variables: RequestIdVars }>): voi
   app.route('/api/projects', requirementRoutes);
   app.route('/api/projects', suggestionRoutes);
   app.route('/api/projects', feedbackRoutes);
+  app.route('/api/projects', mockupRoutes);
   app.route('/api/projects', baDoorRoutes);
   app.route('/api/projects', onboardingRoutes);
   app.route('/api/projects', questionnaireRoutes);
