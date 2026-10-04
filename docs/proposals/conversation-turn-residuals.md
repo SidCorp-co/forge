@@ -14,7 +14,7 @@ to be filed as a new issue, so they are written here, each with the reason the r
 them disappeared. The thread kept only "You stopped this answer, so the agent never finished it",
 and reading the room back showed no stored agent message for that window.
 
-**Mechanism:** the streamed text is progress, not a message. `conversations/turn-runner.ts` returns
+**Mechanism:** the streamed text is progress, not a message. `assistant/turn-runner.ts` returns
 `{ kind: 'stopped' }`, and `assistant/external-chat.ts` writes neither an answer nor a silence row
 for a turn a person stopped. So once the stream ends, nothing the person read remains.
 

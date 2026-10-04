@@ -1,15 +1,14 @@
 import type { NotificationSeverity } from '@forge/contracts';
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import { owedCloseResolutionKey, strandedResolutionKey } from '@forge/contracts/notifications';
 import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { issues, notifications } from '../db/schema.js';
-import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
-import { isTerminalPlacement } from '../pipeline/status-assertions.js';
-import { owedCloseResolutionKey, strandedResolutionKey } from '../pipeline/stranded-issues.js';
 import { resolveNotifications } from './auto-resolve.js';
 import { emitNotification } from './emit.js';
 import { statusWords } from './subject.js';
@@ -104,7 +103,7 @@ async function notifyTransition(
     await resolveNotifications(strandedResolutionKey(p.id));
   }
 
-  if (isTerminalPlacement(p.to)) {
+  if (ISSUE_TERMINAL_STATUSES.includes(p.to)) {
     await resolveNotifications(owedCloseResolutionKey(p.id));
   }
 
@@ -131,6 +130,8 @@ async function notifyTransition(
 
     if (p.actor.type === 'user' && p.actor.id === recipient) return;
 
+    // Loaded on call: issues reaches this face at load through emitNotification.
+    const { activeIssuePrefix } = await import('../issues/index.js');
     const displayId = formatIssueRef(await activeIssuePrefix(p.projectId), row.issSeq);
     const label = row.title ? `${displayId} — ${row.title}` : displayId;
 

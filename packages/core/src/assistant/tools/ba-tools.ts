@@ -21,8 +21,8 @@ import { itemEmbeddings } from '../../db/schema-item-embeddings.js';
 import { questionnaireBatches } from '../../db/schema-onboarding.js';
 import { agentQuestions } from '../../db/schema-questions.js';
 import { defaultChatProviderId, resolveForProject } from '../../integrations/llm/index.js';
-import { principalAgency } from '../../issues/index.js';
-import { resolveIssueRouteRef } from '../../issues/issue-route-ref.js';
+import { principalAgency, resolveIssueRouteRef } from '../../issues/index.js';
+import { lockXact } from '../../lib/advisory-lock.js';
 import { dataPolicyOf, egressAt, egressDeep, egressOr, MCP_DOOR } from '../../lib/data-egress.js';
 import { isUniqueViolation } from '../../lib/db-errors.js';
 import { refuser } from '../../lib/refusal.js';
@@ -31,17 +31,18 @@ import {
   type McpContext,
   refusedAnswer,
 } from '../../lib/tool.js';
-import { roundsInConversation } from '../../questionnaires/read.js';
-import { roundsRefusal } from '../../questionnaires/rules.js';
-import { announce, inTx, postQuestionnaireIn } from '../../questionnaires/service.js';
-import { askQuestion } from '../../questions/write.js';
-import { similarRequirements } from '../../requirements/embeddings.js';
-import { readRequirementAs } from '../../requirements/read.js';
-import { listSuggestions } from '../../suggestions/read.js';
-import { createSuggestion } from '../../suggestions/service.js';
+import {
+  announce,
+  inTx,
+  postQuestionnaireIn,
+  roundsInConversation,
+  roundsRefusal,
+} from '../../questionnaires/index.js';
+import { askQuestion } from '../../questions/index.js';
+import { readRequirementAs, similarRequirements } from '../../requirements/index.js';
+import { createSuggestion, listSuggestions } from '../../suggestions/index.js';
 import { drawMockup } from './ba-mockup-tool.js';
 import { buildToolset, type ChatToolset } from './mcp-adapter.js';
-import { lockXact } from '../../lib/advisory-lock.js';
 
 export interface BaRoom {
   projectId: string;

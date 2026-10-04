@@ -3,7 +3,7 @@
  * toolset, the images, and the point after it at which this transport hands a
  * turn to a slower path instead of answering it here.
  *
- * The turn itself belongs to `conversations/turn-runner.ts`. Everything in this
+ * The turn itself belongs to `assistant/turn-runner.ts`. Everything in this
  * file is an input to it or a diversion from it — which is the whole of what an
  * adapter owes a turn (ISS-1002).
  *
@@ -15,24 +15,24 @@
 
 import { ESCALATE_TOOL_NAME } from '@forge/contracts/assistant';
 import { agentRefusalText } from '../../agent-sessions/index.js';
-import {
-  buildConversationContext,
-  ESCALATION_ACK,
-  ESCALATION_DEDUP_REPLY,
-  ESCALATION_NO_DEVICE_REPLY,
-  rocketChatPersona,
-  startEscalation,
-} from '../../assistant/index.js';
+import { type ConversationVenue, codeAuthored } from '../../conversations/index.js';
 import type {
   RocketChatImageRef,
   RocketChatRestAuth,
   RoomShape,
   Route,
 } from '../../integrations/rocketchat/index.js';
-import { type ConversationVenue, codeAuthored } from '../ports.js';
 import type { WindowCut, WindowTurnInputs } from '../route-window.js';
 import type { TurnInputs, TurnReply } from '../turn-runner.js';
+import { buildConversationContext } from './context.js';
+import {
+  ESCALATION_ACK,
+  ESCALATION_DEDUP_REPLY,
+  ESCALATION_NO_DEVICE_REPLY,
+  startEscalation,
+} from './escalation.js';
 import { prepareFastTurn } from './images.js';
+import { rocketChatPersona } from './persona.js';
 
 /** What the turn needs of the connection it arrived on. */
 export interface TurnBot {

@@ -1,15 +1,22 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
-import { resolveProjectHandle } from '../conversations/handles.js';
-import { assertPersonReachesScope, personLabel, settleShape } from '../conversations/membership.js';
-import { addHandle, addPerson, removeParticipant } from '../conversations/participants.js';
-import { derivedScope } from '../conversations/scope.js';
-import { getConversation, openConversationIn } from '../conversations/store.js';
+import {
+  addHandle,
+  addPerson,
+  assertPersonReachesScope,
+  derivedScope,
+  getConversation,
+  openConversationIn,
+  personLabel,
+  removeParticipant,
+  resolveProjectHandle,
+  settleShape,
+  withMembershipLock,
+} from '../conversations/index.js';
 import { db } from '../db/client.js';
 import { conversationParticipants, conversationPins } from '../db/schema-conversations.js';
 import { assistantSpeakerLinks } from '../db/schema-speaker-links.js';
-import { requirementKey, rowIn } from '../requirements/read.js';
-import { withMembershipLock } from './conversation-access.js';
+import { requirementKey, rowIn } from '../requirements/index.js';
 import type { SpeakerProfile } from './identity/directory.js';
 import { requirementRoomOf } from './read.js';
 

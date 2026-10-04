@@ -4,12 +4,12 @@
  * that carries them are `vision.ts`'s; the web venue lacked only the resolver.
  */
 
+import type { ConversationImage } from '../conversations/index.js';
 import {
   attachmentIdFromRef,
   type ConversationAttachmentRef,
   loadConversationAttachment,
-} from '../conversations/attachment-service.js';
-import type { ConversationImage } from '../conversations/store.js';
+} from '../conversations/index.js';
 import { logger } from '../observability/logger.js';
 import { getStorage } from '../storage/index.js';
 import type { ImageResolver } from './vision.js';

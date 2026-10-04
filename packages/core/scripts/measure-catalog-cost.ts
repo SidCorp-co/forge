@@ -12,7 +12,10 @@ if (filled.length > 0) {
   );
 }
 
-const { main } = await import('./tool-catalog-cost.js');
+const { provideChatTools } = await import('../src/assistant/index.js');
+const { CHAT_READ_MODEL_TOOLS } = await import('../src/mcp/index.js');
+provideChatTools(CHAT_READ_MODEL_TOOLS);
+const { main } = await import('../src/assistant/tool-catalog-cost.js');
 await main();
 
 export {};

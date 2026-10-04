@@ -11,6 +11,39 @@
  * is the piece between them that decides whether to take one at all.
  */
 
+import {
+  acknowledgeRequest,
+  applyRoomPresence,
+  assistantSentExternalIds,
+  type ConversationVenue,
+  type ConversationWindowRow,
+  claimOf,
+  closeWindow,
+  conversationTransport,
+  decideProactivity,
+  deliveredDecisionUnderKey,
+  effectiveConversationMode,
+  explicitAnchor,
+  foldPresence,
+  getConversation,
+  handleForProject,
+  linkedSpeakerOf,
+  messageAuthorTokenId,
+  newRequestTrack,
+  personCount,
+  type RequestTrack,
+  readMessagesInRange,
+  replyTargetsOf,
+  reserveDelivery,
+  roomHandles,
+  type StoredConversationMessage,
+  splitWindowTail,
+  statusAfterThrow,
+  type WindowClaim,
+  windowAddressesAHandle,
+  windowDeliveryKey,
+  withTerminalStatus,
+} from '../conversations/index.js';
 import type { TurnAuthority } from '../credentials/turn-credential.js';
 import type {
   ConversationMode,
@@ -18,50 +51,14 @@ import type {
   ConversationWindowDecision,
 } from '../db/schema-conversations.js';
 import { logger } from '../observability/logger.js';
-import { readSelvesFor } from '../orgs/agent-selves.js';
+import { readSelvesFor } from '../orgs/index.js';
 import { resolveTurnAuthority } from '../permissions/index.js';
-import { acknowledgeRequest } from './acknowledgement.js';
 import { refuseAuthority } from './authority-refusal.js';
-import { handleForProject, personCount, roomHandles } from './participants.js';
-import { type ConversationVenue, conversationTransport } from './ports.js';
-import {
-  applyRoomPresence,
-  foldPresence,
-  replyTargetsOf,
-  windowAddressesAHandle,
-} from './presence.js';
-import { decideProactivity } from './proactivity.js';
-import {
-  explicitAnchor,
-  newRequestTrack,
-  type RequestTrack,
-  statusAfterThrow,
-  withTerminalStatus,
-} from './request-status.js';
-import { linkedSpeakerOf } from './speaker.js';
-import {
-  assistantSentExternalIds,
-  deliveredDecisionUnderKey,
-  effectiveConversationMode,
-  getConversation,
-  messageAuthorTokenId,
-  readMessagesInRange,
-  type StoredConversationMessage,
-} from './store.js';
 import {
   type ConversationTurnRequest,
   runConversationTurn,
   type TurnOutcome,
 } from './turn-runner.js';
-import {
-  type ConversationWindowRow,
-  claimOf,
-  closeWindow,
-  reserveDelivery,
-  splitWindowTail,
-  type WindowClaim,
-  windowDeliveryKey,
-} from './windows.js';
 
 /** Everything the neutral runner takes bar what the window itself settles. */
 export type WindowTurnInputs = Omit<

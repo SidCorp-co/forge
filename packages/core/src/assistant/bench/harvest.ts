@@ -7,7 +7,7 @@
  * first — the query, and the judge's intent and reason, which repeat what the person wrote.
  */
 
-import { CORRECTIVE_PREFIX } from '../../conversations/fallback-replies.js';
+import { CORRECTIVE_PREFIX } from '../../conversations/index.js';
 import type { HistoryResult, JudgedRow } from './history/result.js';
 import { isVerdict } from './judge.js';
 import type { Task } from './task.js';
@@ -191,8 +191,7 @@ export function harvest(
   file = 'history',
 ): { candidates: Candidate[]; skipped: Skipped[] } {
   const judge = result.judge;
-  if (!judge)
-    throw new Error(`${file} carries no judge; run history --judge on the window first`);
+  if (!judge) throw new Error(`${file} carries no judge; run history --judge on the window first`);
   const candidates: Candidate[] = [];
   const skipped: Skipped[] = [];
   for (const row of judge.rows) {

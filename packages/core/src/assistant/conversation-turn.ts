@@ -1,16 +1,17 @@
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { handleForProject } from '../conversations/participants.js';
-import { refuseConversation } from '../conversations/refusals.js';
-import { assertConversationReadable, assertConversationWritable } from '../conversations/scope.js';
 import {
   appendMessages,
+  assertConversationReadable,
+  assertConversationWritable,
   type ConversationImage,
+  handleForProject,
   openConversation,
   readMessages,
+  refuseConversation,
   type StoredConversationMessage,
   toCanonicalEntry,
-} from '../conversations/store.js';
+} from '../conversations/index.js';
 import { db as defaultDb } from '../db/client.js';
 import type {
   ConversationAdapter,

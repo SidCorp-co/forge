@@ -8,7 +8,7 @@ import {
   emptyFallbackReply,
   errorFallbackReply,
   unverifiedFallbackReply,
-} from '../../conversations/fallback-replies.js';
+} from '../../conversations/index.js';
 import { issueStatuses } from '../../db/schema.js';
 import { ISSUE_NAV_RE } from '../../messaging/text-rules.js';
 import { type Check, type ExpectedRow, fill, type Pattern, type Turn } from './task.js';

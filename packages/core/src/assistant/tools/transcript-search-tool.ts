@@ -8,9 +8,9 @@
  * fence's own sentence rather than as an empty page.
  */
 
-import { type ChatToolset, toolError } from '../assistant/tools/mcp-adapter.js';
-import type { CallToolResult } from '../lib/tool-result.js';
-import { RETRIEVAL_MAX_RESULTS, searchConversationTranscript } from './transcript-search.js';
+import { RETRIEVAL_MAX_RESULTS, searchConversationTranscript } from '../../conversations/index.js';
+import type { CallToolResult } from '../../lib/tool-result.js';
+import { type ChatToolset, toolError } from './mcp-adapter.js';
 
 export const TRANSCRIPT_SEARCH_TOOL_NAME = 'conversation_transcript_search';
 /** Calls one turn may spend on it. */

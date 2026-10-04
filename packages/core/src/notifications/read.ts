@@ -5,10 +5,7 @@ import {
   notificationDeliveryMembers,
   notificationSilences,
   notifications,
-  projects,
 } from '../db/schema.js';
-import { issueDisplayIds } from '../issues/display-ids.js';
-import { deliveryLine, deliverySubject } from './subject.js';
 
 /**
  * ISS-1063 — what "still true for me" means, in one place.
@@ -18,7 +15,7 @@ import { deliveryLine, deliverySubject } from './subject.js';
  * is what made the owner's bell read 5663 while 3914 of those rows were status changes.
  * A `pending` or `inhibited` condition is not here either — nobody was told about it.
  */
-const stillTrue = sql`(
+export const stillTrue = sql`(
   (${notifications.kind} = 'condition' AND ${notifications.state} = 'firing')
   OR (${notifications.kind} = 'task' AND ${notifications.state} IN ('open', 'acknowledged'))
 )`;
@@ -49,83 +46,6 @@ export async function openNotificationCount(
     .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
     .where(and(...conditions));
   return row?.n ?? 0;
-}
-
-/** One page of the caller's deliveries, newest first, each with its subject and line. */
-export async function listDeliveries(
-  userId: string,
-  q: { projectId?: string | undefined; openOnly: boolean; page: number; pageSize: number },
-) {
-  const conditions = [eq(notificationDeliveries.userId, userId)];
-  if (q.projectId) conditions.push(eq(notifications.projectId, q.projectId));
-  if (q.openOnly) {
-    conditions.push(isNull(notifications.resolvedAt));
-    conditions.push(stillTrue);
-  }
-  const where = and(...conditions);
-
-  const [totalRow] = await db
-    .select({ n: countDistinct(notificationDeliveries.id) })
-    .from(notificationDeliveries)
-    .innerJoin(
-      notificationDeliveryMembers,
-      eq(notificationDeliveryMembers.deliveryId, notificationDeliveries.id),
-    )
-    .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
-    .where(where);
-
-  const rows = await db
-    .select({
-      id: notificationDeliveries.id,
-      readAt: notificationDeliveries.readAt,
-      groupKey: notificationDeliveries.groupKey,
-      resolvedNotice: notificationDeliveries.resolvedNotice,
-      createdAt: notificationDeliveries.createdAt,
-      members: sql<number>`count(${notificationDeliveryMembers.notificationId})::int`,
-      openMembers: sql<number>`(count(*) FILTER (WHERE ${notifications.resolvedAt} IS NULL AND ${stillTrue}))::int`,
-      type: sql<string>`min(${notifications.type})`,
-      kind: sql<string>`min(${notifications.kind})`,
-      tier: sql<string>`min(${notifications.tier})`,
-      title: sql<string>`coalesce(${notificationDeliveries.title}, min(${notifications.title}))`,
-      body: sql<string | null>`min(${notifications.body})`,
-      severity: sql<string | null>`min(${notifications.severity})`,
-      projectId: sql<string | null>`min(${notifications.projectId}::text)`,
-      issueId: sql<string | null>`min(${notifications.issueId}::text)`,
-      secondaryIssueId: sql<string | null>`min(${notifications.secondaryIssueId}::text)`,
-      agentSessionId: sql<string | null>`min(${notifications.agentSessionId}::text)`,
-      notificationId: sql<string>`min(${notifications.id}::text)`,
-    })
-    .from(notificationDeliveries)
-    .innerJoin(
-      notificationDeliveryMembers,
-      eq(notificationDeliveryMembers.deliveryId, notificationDeliveries.id),
-    )
-    .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
-    .where(where)
-    .groupBy(notificationDeliveries.id, notificationDeliveries.title)
-    .orderBy(desc(notificationDeliveries.createdAt))
-    .limit(q.pageSize)
-    .offset((q.page - 1) * q.pageSize);
-
-  const distinct = (ids: (string | null)[]) => [
-    ...new Set(ids.filter((i): i is string => i !== null)),
-  ];
-  const projectIds = distinct(rows.map((r) => r.projectId));
-  const [issueKeys, slugRows] = await Promise.all([
-    issueDisplayIds(distinct(rows.map((r) => (r.members === 1 ? r.issueId : null)))),
-    projectIds.length
-      ? db
-          .select({ id: projects.id, slug: projects.slug })
-          .from(projects)
-          .where(inArray(projects.id, projectIds))
-      : Promise.resolve([]),
-  ]);
-  const slugs = new Map(slugRows.map((p) => [p.id, p.slug]));
-  const items = rows.map((r) => {
-    const subject = deliverySubject(r, issueKeys, slugs);
-    return { ...r, subject, line: deliveryLine(r.title, r.type, subject?.key ?? null) };
-  });
-  return { items, total: totalRow?.n ?? 0 };
 }
 
 /** Whether `deliveryId` is one of the caller's deliveries. */
@@ -194,7 +114,10 @@ export async function listActiveSilences(userId: string) {
     .select()
     .from(notificationSilences)
     .where(
-      and(eq(notificationSilences.createdBy, userId), gt(notificationSilences.expiresAt, new Date())),
+      and(
+        eq(notificationSilences.createdBy, userId),
+        gt(notificationSilences.expiresAt, new Date()),
+      ),
     )
     .orderBy(desc(notificationSilences.createdAt));
 }
