@@ -1,6 +1,10 @@
 import type { DesignRevisionState } from '@forge/contracts/design-status';
 import type { WaitingOn } from '@forge/contracts/standing';
-import type { DesignBuildGate, DesignWaitingKind } from '@forge/contracts/workflows';
+import type {
+  DesignBuildGate,
+  DesignListReading,
+  DesignWaitingKind,
+} from '@forge/contracts/workflows';
 import type { DesignDecision, DesignStatus } from './design.js';
 
 type DesignWaitingOn = WaitingOn<DesignWaitingKind>;
@@ -69,6 +73,21 @@ export function designWaitingOn(input: DesignStandingInput): DesignWaitingOn {
     default:
       return wait('none', 'Nobody', '', 'this workflow is not under design approval');
   }
+}
+
+// cm:why an approved design with a newer revision proposed still reads as approved on the list; the
+// newer revision is named as pending until its approver decides it
+export function designListReadingOf(
+  input: DesignStandingInput,
+  revision: number,
+): DesignListReading {
+  const approved = input.approvedRevision;
+  const pending = input.status === 'proposed' && approved !== null && revision > approved;
+  return {
+    shown: input.status === 'proposed' && approved !== null ? 'approved' : input.status,
+    pendingRevision: pending ? revision : null,
+    waitingOn: designWaitingOn(input),
+  };
 }
 
 // cm:why the gate is `build-gate.ts:designUnapprovedSql` read for one design: an issue that builds it

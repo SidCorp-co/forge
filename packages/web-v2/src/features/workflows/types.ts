@@ -1,5 +1,6 @@
 import type { ApprovalPermission } from "@forge/contracts/permissions";
 import type { DesignRevisionState } from "@forge/contracts/design-status";
+import type { DesignListReading } from "@forge/contracts/workflows";
 import type {
   Boundary,
   FactRow,
@@ -125,7 +126,7 @@ export interface WorkflowRecord {
   writer: string;
   writerName: string;
   /** `returnReason` is the approver's word on a returned design; the list only carries it then. */
-  design: { status: DesignStatus | null; approvedRevision: number | null; returnReason?: string | null };
+  design: DesignListReading & { status: DesignStatus | null; approvedRevision: number | null; returnReason?: string | null };
   document: WorkflowDocument;
 }
 
