@@ -55,32 +55,43 @@ pub(crate) const RELEASE_SAID: &str = "release-said";
 /// The `kept_notice` [`say_issue_status_unreadable`] latches on.
 pub(crate) const ISSUE_STATUS_UNREADABLE: &str = "issue-status-unreadable";
 
+/// Latch [`RELEASE_SAID`] for `run` and, on the sweep that first owes the
+/// release line, the issue keys it holds joined for that line. `None` when it
+/// was already said, or the latch could not be written (said here instead).
+fn release_owed(ledger: &Ledger, run: &Run) -> Option<String> {
+    match ledger.note_standing(&run.run_id, RELEASE_SAID) {
+        Ok(true) => {}
+        Ok(false) => return None,
+        Err(e) => {
+            tracing::warn!(
+                "[recovery] run {}: cannot record why it is being released: {e}",
+                run.run_id
+            );
+            return None;
+        }
+    }
+    Some(
+        ledger
+            .issues(&run.run_id)
+            .map(|m| {
+                m.iter()
+                    .map(|i| i.issue_key.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .unwrap_or_default(),
+    )
+}
+
 /// Say, on the sweep that first owes it, why a run nobody here answers for is
 /// being released and what it holds. Said once, on the row as well as in the
 /// journal: a release that cannot even start — a project with no repo path on
 /// this box — is owed again every sweep, and the reason it is owed is not news
 /// the second time.
 pub(crate) fn say_why_released(ledger: &Ledger, run: &Run, over_ms: i64) {
-    match ledger.note_standing(&run.run_id, RELEASE_SAID) {
-        Ok(true) => {}
-        Ok(false) => return,
-        Err(e) => {
-            tracing::warn!(
-                "[recovery] run {}: cannot record why it is being released: {e}",
-                run.run_id
-            );
-            return;
-        }
-    }
-    let issues = ledger
-        .issues(&run.run_id)
-        .map(|m| {
-            m.iter()
-                .map(|i| i.issue_key.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        })
-        .unwrap_or_default();
+    let Some(issues) = release_owed(ledger, run) else {
+        return;
+    };
     // What the silence rests on, said as it is: a transcript nobody could read
     // decided nothing, and the line must not read as if it had.
     let silence = silence_evidence(run);
@@ -102,26 +113,9 @@ pub(crate) fn say_why_released(ledger: &Ledger, run: &Run, over_ms: i64) {
 /// seen. Latched on the same word as [`say_why_released`], since the two never
 /// both speak for one release.
 pub(crate) fn say_why_released_host(ledger: &Ledger, run: &Run, how: HostEnd) {
-    match ledger.note_standing(&run.run_id, RELEASE_SAID) {
-        Ok(true) => {}
-        Ok(false) => return,
-        Err(e) => {
-            tracing::warn!(
-                "[recovery] run {}: cannot record why it is being released: {e}",
-                run.run_id
-            );
-            return;
-        }
-    }
-    let issues = ledger
-        .issues(&run.run_id)
-        .map(|m| {
-            m.iter()
-                .map(|i| i.issue_key.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        })
-        .unwrap_or_default();
+    let Some(issues) = release_owed(ledger, run) else {
+        return;
+    };
     tracing::warn!("{}", host_release_line(run, &issues, how, now_ms()));
 }
 
