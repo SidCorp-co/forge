@@ -274,7 +274,7 @@ function reportedCommit(raw: string): string | null {
  * Whether what the deployment reports confirms the commit a caller claimed.
  * One direction only: the reading may abbreviate the claim, never the reverse.
  */
-function deploymentConfirms(claimed: string, reported: string): boolean {
+export function deploymentConfirms(claimed: string, reported: string): boolean {
   const claim = claimedCommit(claimed);
   const reading = reportedCommit(reported);
   if (claim === null || reading === null) return false;

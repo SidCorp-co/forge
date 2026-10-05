@@ -88,7 +88,7 @@ export {
   RELEASE_DEPLOY_IN_FLIGHT_STEP,
   setCurrentStep,
 } from './runs.js';
-export { lockRunForClose } from './runs-cascade.js';
+export { lockRunForClose, type RunFailureCause } from './runs-cascade.js';
 export {
   type ConcludedRunReapResult,
   type JoblessRunReapResult,

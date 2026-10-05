@@ -121,7 +121,11 @@ export async function reapConcludedRuns(
         },
         'pipeline-sweeper: closing concluded run (every child job terminal)',
       );
-      if ((await closeRun(row.id, outcome)) === 'settled') reaped++;
+      const cause = {
+        code: 'job_failed',
+        detail: `every child job is terminal, and the last one, ${row.last_job_id}, ended \`${row.last_job_status}\``,
+      };
+      if ((await closeRun(row.id, outcome, cause)) === 'settled') reaped++;
     } catch (err) {
       logger.error(
         { err, runId: row.id, projectId: row.project_id },
@@ -197,7 +201,10 @@ export async function reapJoblessRuns(
         { runId: row.id, projectId: row.project_id, issueId: row.issue_id, outcome },
         'pipeline-sweeper: closing job-less issue run (no job ever enqueued)',
       );
-      await closeRun(row.id, outcome);
+      await closeRun(row.id, outcome, {
+        code: 'session_failed',
+        detail: 'it never grew a job, and a session under it failed with none completing',
+      });
       reaped++;
     } catch (err) {
       logger.error(

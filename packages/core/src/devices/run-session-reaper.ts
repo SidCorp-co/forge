@@ -60,7 +60,12 @@ export async function reapDeadRunSessions(): Promise<ReapedRunSession[]> {
           source: 'run-session-reaper',
         })
       ).rows;
-      if (rows.length > 0) await closeRunIfOneShotInTx(tx, runId, 'failed');
+      if (rows.length > 0) {
+        await closeRunIfOneShotInTx(tx, runId, 'failed', {
+          code: 'runner_unreachable',
+          detail: `its run session ${sessionId} stopped heartbeating for over ${staleSeconds}s, so the box running it is taken to be gone`,
+        });
+      }
       return rows.length > 0;
     });
     if (!flipped) continue;
