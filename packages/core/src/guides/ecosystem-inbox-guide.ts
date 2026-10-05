@@ -149,13 +149,17 @@ publishes and the versions of its contracts, and a person is not handed that wor
    project publishes (written first, inside it) or consumes. Until an approved version at or above it
    exists the issue is left out of the admissible read, and a run session, a pool job or a move to
    \`in_progress\` over it is refused \`CONTRACT_WAIT_UNSETTLED\`; the approval settles the wait in its
-   own transaction and wakes the issue's master. A contract-change feedback's upgrade issue is filed
-   waiting on the version that broke. Refused by name: \`CONTRACT_WAIT_CONTRACT_UNKNOWN\`,
+   own transaction and wakes the issue's master. A contract-change feedback routed to an issue, filed
+   or existing, writes the wait on the version that broke, with the end of the provider's commitment
+   window as its \`dueAt\`; an existing issue that is finished or already waits on that contract is
+   refused \`CONTRACT_WAIT_ISSUE_FINISHED\` / \`CONTRACT_WAIT_DUPLICATE\`. Refused by name: \`CONTRACT_WAIT_CONTRACT_UNKNOWN\`,
    \`CONTRACT_WAIT_VERSION_NOT_IN_SCHEME\`, \`CONTRACT_WAIT_DUPLICATE\`, \`CONTRACT_WAIT_ISSUE_FINISHED\`;
    \`POST …/contract-waits/:waitId/retract { reason }\` ends one (\`CONTRACT_WAIT_RETRACTED\` twice).
-   A production release of an issue waiting on another project's contract is refused
-   \`CONTRACT_PROVIDER_NOT_LIVE\` until the provider's production serves the version, unless every
-   ecosystem it is shared through sets \`releases.providerLive: "off"\`.
+   A production release of an issue waiting on another project's contract, a release batch or a
+   release recorded from evidence alike, is refused \`CONTRACT_PROVIDER_NOT_LIVE\` until the
+   provider's production serves the version, unless every ecosystem it is shared through sets
+   \`releases.providerLive: "off"\`; the release then records each wait it passed under
+   \`providerLiveGateOff\`.
 
 Writing either takes \`contracts.write\` on this project (member or above); without it the write is
 \`PERMISSION_FORBIDDEN\`.

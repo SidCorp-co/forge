@@ -214,8 +214,7 @@ export const FEEDBACK_PHASE_GLYPHS: Record<FeedbackPhase, string> = {
 
 export const FEEDBACK_PHASE_HINTS: Record<FeedbackPhase, string> = {
 	new: "new: not triaged; a person picks a route",
-	triaged:
-		"triaged: the route's carrier died, and a person routes it again",
+	triaged: "triaged: the route's carrier died, and a person routes it again",
 	planned: "planned: an issue, revision or requirement carries it",
 	resolved:
 		"resolved: the linked work shipped; waiting on the reporter to verify",
@@ -272,6 +271,9 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_NODE_NEEDS_WORKFLOW",
 	"WORKFLOW_NODE_UNKNOWN",
 	"WORKFLOW_NODE_AMBIGUOUS",
+	// a contract change routed to an issue writes its contract wait there (requirement-to-delivery triage)
+	"CONTRACT_WAIT_DUPLICATE",
+	"CONTRACT_WAIT_ISSUE_FINISHED",
 ] as const;
 export type FeedbackRefusalCode = (typeof FEEDBACK_REFUSAL_CODES)[number];
 

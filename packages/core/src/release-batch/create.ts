@@ -1,11 +1,6 @@
 // create: opens a system run, atomically claims N gate-status issues, marks each at its `release`
 // step, enqueues one release_batch job. Finish and abort end the run (finish.ts, abort.ts).
 
-import {
-  CONTRACT_PROVIDER_NOT_LIVE,
-  type LiveShortfall,
-  notLiveSentence,
-} from '@forge/contracts/contract-waits';
 import { RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -13,7 +8,7 @@ import { type IssueStatus, issues } from '../db/schema.js';
 import { activeIssuePrefix, setWorkStep } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../lib/logger.js';
-import { isRefusal, RefusalError } from '../lib/refusal.js';
+import { isRefusal } from '../lib/refusal.js';
 import type { OneShotRunSpec } from '../pipeline/index.js';
 import { closeRunIfOneShot, insertAndEnqueueJob, insertOneShotRun } from '../pipeline/index.js';
 import { admitRoster } from './blockers.js';
@@ -22,7 +17,7 @@ import { claimRoster } from './claim-conflicts.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
-import { contractProviderShortfalls } from './provider-live.js';
+import { askProviderLiveGate } from './provider-live.js';
 import { blockerRefusal, refuseRelease } from './refuse.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 import { RELEASE_UNSTARTED_DEADLINE_MS } from './unstarted-recovery.js';
@@ -67,28 +62,6 @@ async function admitBatch(projectId: string, named: string[]) {
     );
   }
   return admitted;
-}
-
-/**
- * A consumer's production release waits for its provider to serve the contract version each of its
- * issues waits on (E4), refused once per held issue, pointed at it in the call's `issueIds`.
- */
-async function refuseProvidersNotLive(issueIds: string[]): Promise<void> {
-  const short = await contractProviderShortfalls(issueIds);
-  if (short.length === 0) return;
-  const byIssue = new Map<string, LiveShortfall[]>();
-  for (const s of short) byIssue.set(s.issueId, [...(byIssue.get(s.issueId) ?? []), s]);
-  throw new RefusalError(
-    [...byIssue].map(([issueId, own]) => {
-      const at = issueIds.indexOf(issueId);
-      return {
-        code: CONTRACT_PROVIDER_NOT_LIVE,
-        path: at >= 0 ? `/issueIds/${at}` : '/issueIds',
-        detail: notLiveSentence(own),
-      };
-    }),
-    'RELEASE_REFUSED',
-  );
 }
 
 /** ISS-54: a release run holding the issue is a step inside `awaiting_release`, not a status. */
@@ -188,7 +161,7 @@ export async function createReleaseBatch(
   const { projectId, userId } = args;
 
   const { report, issueIds } = await admitBatch(projectId, args.issueIds);
-  await refuseProvidersNotLive(issueIds);
+  const providerLiveGateOff = await askProviderLiveGate(issueIds);
 
   const gateStatus = RELEASE_GATE_STATUS;
   const plan = await resolveReleasePlan(projectId);
@@ -229,6 +202,7 @@ export async function createReleaseBatch(
       openedAfterRelease,
       verification: verification.kind,
       releaseRunner: { label: plan.releaseRunnerLabel, preferenceMet },
+      ...(providerLiveGateOff.length ? { providerLiveGateOff } : {}),
     },
   });
 

@@ -29,7 +29,7 @@ export function provideInterfaceContracts(source: InterfaceContracts): void {
   interfaceContracts = source;
 }
 
-async function contractsOfProject(projectId: string) {
+export async function contractsOfProject(projectId: string) {
   if (!interfaceContracts) {
     throw new Error(
       'requirement contract links: no interface source was provided, so what a project publishes and consumes cannot be read; the process entry calls provideInterfaceContracts(interfaceContractsOf) from ecosystem/index.ts before it serves',

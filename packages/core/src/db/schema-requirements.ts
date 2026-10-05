@@ -54,6 +54,12 @@ export const requirements = pgTable(
     currentRevision: integer('current_revision'),
     ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
     acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    // A contract request from another project (E2, 0411): that project and the contract it asks for;
+    // only this project agrees it
+    requestedByProjectId: uuid('requested_by_project_id').references(() => projects.id, {
+      onDelete: 'set null',
+    }),
+    requestedContractSlug: text('requested_contract_slug'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -65,6 +71,14 @@ export const requirements = pgTable(
       sql`${t.status} IN (${inList(REQUIREMENT_STATUSES)})`,
     ),
     seqChk: check('requirements_seq_chk', sql`${t.reqSeq} >= 1`),
+    requestChk: check(
+      'requirements_request_chk',
+      sql`${t.requestedContractSlug} IS NULL OR (${t.requestedByProjectId} IS NOT NULL AND length(${t.requestedContractSlug}) BETWEEN 1 AND 120)`,
+    ),
+    requestSelfChk: check(
+      'requirements_request_self_chk',
+      sql`${t.requestedByProjectId} IS DISTINCT FROM ${t.projectId}`,
+    ),
     headFk: foreignKey({
       name: 'requirements_head_fk',
       columns: [t.id, t.currentRevision],

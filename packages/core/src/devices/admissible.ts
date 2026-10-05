@@ -139,7 +139,7 @@ export async function readAdmissibleIssues(args: {
         ${a.entryOnRelease ? sql`AND (i.status <> ${AUTONOMOUS_ENTRY_STATUS} OR i.session_context ? 'runRelease')` : sql``}
         AND NOT ${blockedByUnsettledSql({ issueId: sql`i.id`, projectId: a.projectId })}
         -- an issue that builds a workflow whose design is not approved waits; the issue read names
-        -- which (workflows/build-gate.ts). No contract-version wait is checked here.
+        -- which (workflows/build-gate.ts); so does one with a contract wait no approved version settles
         AND NOT ${designUnapprovedSql(sql`i.id`)}
         AND NOT ${contractWaitUnsettledSql(sql`i.id`)}
         -- one predicate for "is this issue being worked", shared with the orphan sweep that

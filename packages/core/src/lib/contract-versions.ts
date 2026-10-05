@@ -10,6 +10,8 @@ export interface ContractVersionFact {
   contractType: string;
   elements: string[] | null;
   artifactSha256: string | null;
+  /** The elements this version's measured diff names a breaking change to (removed or changed). */
+  breakingElements: string[];
 }
 
 /**

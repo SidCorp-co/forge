@@ -20,7 +20,7 @@ import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import {
   contractHolding,
-  contractProviderShortfalls,
+  contractProviderGate,
   contractVersionReads,
   interfaceContractsOf,
 } from './ecosystem/index.js';
@@ -170,7 +170,7 @@ provideForgeReads({
 });
 provideInterfaceContracts(interfaceContractsOf);
 provideContractVersionReads(contractVersionReads);
-provideReleaseBatchPorts({ contractProviderShortfalls });
+provideReleaseBatchPorts({ contractProviderGate });
 provideRequirementDependents({ feedbackOf: requirementFeedbackAs, revised: staleOnTargetRevised });
 provideFeedbackDependents({
   redactSuggestions: redactFeedbackSuggestions,

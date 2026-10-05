@@ -13,10 +13,12 @@ import {
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { egressForRequest } from '../lib/data-egress.js';
+import { refused } from '../lib/refusal.js';
 import { assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody } from '../middleware/zod-validator.js';
 import { acceptDelivery, dropRequirement } from './acceptance.js';
 import { agreeRequirement } from './agree.js';
+import { requestContract } from './contract-request.js';
 import { deferRequirement, undeferRequirement } from './deferral.js';
 import { requirementLinkRoutes } from './link-routes.js';
 import { requirementSummaryOf } from './projection.js';
@@ -36,7 +38,7 @@ import { createRequirement } from './service.js';
 
 export const requirementRoutes = new Hono<RequirementEnv>();
 
-for (const path of ['/:id/requirements', '/:id/requirements/*']) {
+for (const path of ['/:id/requirements', '/:id/requirements/*', '/:id/contract-requests']) {
   requirementRoutes.use(path, requireAuth(), assertEmailVerified());
 }
 
@@ -72,6 +74,36 @@ requirementRoutes.post(
         write,
       }),
     );
+  },
+);
+
+// E2: another project's contract request lands as a draft requirement in its provider; `:id` is
+// the requesting project, and the answer names the provider's draft by key
+requirementRoutes.post(
+  '/:id/contract-requests',
+  projectParam,
+  strictBody(
+    z.strictObject({
+      contract: z
+        .string()
+        .trim()
+        .regex(/^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/),
+      title: z.string().trim().min(1).max(500),
+      ...revisionFields,
+    }),
+    '{ contract: "<provider>/<contract>", title, reason, spec?, tldr?, changeSummary?, criteria: [{ body, form? }] } lands a draft requirement in the provider',
+  ),
+  async (c) => {
+    const { contract, title, ...write } = c.req.valid('json');
+    const outcome = await requestContract({
+      projectId: c.req.valid('param').id,
+      actor: actorOf(c),
+      contract,
+      title,
+      write,
+    });
+    if (!outcome.ok) return refused(c, outcome.refusals, 'REQUIREMENT_REFUSED');
+    return c.json(outcome.request, 201);
   },
 );
 

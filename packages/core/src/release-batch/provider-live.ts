@@ -5,9 +5,15 @@
  * reading that cannot be taken answers why, and the gate refuses rather than assume the provider live.
  */
 
-import type { LiveShortfall } from '@forge/contracts/contract-waits';
+import {
+  CONTRACT_PROVIDER_NOT_LIVE,
+  type LiveShortfall,
+  notLiveSentence,
+  type ProviderLiveGate,
+} from '@forge/contracts/contract-waits';
 import { resolveSourceHost, SourceHostUnavailable } from '../integrations/source-host/index.js';
 import { portSlot } from '../lib/port-slot.js';
+import { RefusalError } from '../lib/refusal.js';
 import { carriageOf } from './carriage.js';
 import { closeVerification, resolveReleasePlan } from './channel.js';
 import { deploymentConfirms, readLiveCommit } from './verify.js';
@@ -56,10 +62,50 @@ export async function servedCarries(
 }
 
 interface ReleaseBatchPorts {
-  /** The roster's issues whose wait the provider's production does not serve (ecosystem, after release). */
-  contractProviderShortfalls(issueIds: readonly string[]): Promise<LiveShortfall[]>;
+  /** The roster's waits the provider's production does not serve, and those the gate let through (ecosystem, after release). */
+  contractProviderGate(issueIds: readonly string[]): Promise<ProviderLiveGate>;
 }
 
 const slot = portSlot<ReleaseBatchPorts>('release-batch', 'provideReleaseBatchPorts');
 export const provideReleaseBatchPorts = slot.provide;
-export const contractProviderShortfalls = slot.port('contractProviderShortfalls');
+const contractProviderGate = slot.port('contractProviderGate');
+
+/** What a release records of a gate it passed because the ecosystem turned it off. */
+export type GateOffRecord = Pick<LiveShortfall, 'issue' | 'contract' | 'needed' | 'live'>[];
+
+/** The refusal, once per held issue, pointed at it in the call's `issueIds`. */
+export function providerNotLiveRefusal(
+  issueIds: readonly string[],
+  short: readonly LiveShortfall[],
+): RefusalError {
+  const byIssue = new Map<string, LiveShortfall[]>();
+  for (const s of short) byIssue.set(s.issueId, [...(byIssue.get(s.issueId) ?? []), s]);
+  return new RefusalError(
+    [...byIssue].map(([issueId, own]) => {
+      const at = issueIds.indexOf(issueId);
+      return {
+        code: CONTRACT_PROVIDER_NOT_LIVE,
+        path: at >= 0 ? `/issueIds/${at}` : '/issueIds',
+        detail: notLiveSentence(own),
+      };
+    }),
+    'RELEASE_REFUSED',
+  );
+}
+
+/**
+ * The release gate every production release asks, a batch and a release recorded from evidence
+ * alike (E4): a consumer's release waits for its provider to serve the contract version each of its
+ * issues waits on. Where the ecosystem turned the gate off the release proceeds, and what it let
+ * through is answered for the release to record as gate off.
+ */
+export async function askProviderLiveGate(issueIds: readonly string[]): Promise<GateOffRecord> {
+  const gate = await contractProviderGate(issueIds);
+  if (gate.shortfalls.length > 0) throw providerNotLiveRefusal(issueIds, gate.shortfalls);
+  return gate.gateOff.map(({ issue, contract, needed, live }) => ({
+    issue,
+    contract,
+    needed,
+    live,
+  }));
+}

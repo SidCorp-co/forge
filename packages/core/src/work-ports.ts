@@ -102,6 +102,7 @@ import {
 } from './questions/index.js';
 import { approvalRequired } from './release-batch/index.js';
 import {
+  changedTracedOf,
   planDriftOf,
   plannedRevisionFor,
   requirementOfIssue,
@@ -182,6 +183,7 @@ export function provideWorkPorts(): void {
     messageRefusalHttp,
     readProjectDocument,
     planDriftOf,
+    changedTracedOf,
     readLandingBranches,
     issueRefPattern,
     declaredIssueSeqs,
@@ -238,6 +240,7 @@ export function provideWorkPorts(): void {
   });
 
   provideWorkflowPorts({
+    changedTracedOf,
     repositoryOf: async (projectId) => {
       const { defaultBranch } = await readLandingBranches(projectId);
       if (!defaultBranch) {

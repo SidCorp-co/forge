@@ -156,7 +156,9 @@ export const ECOSYSTEM_REFUSAL_STATUSES = {
 	CHANNEL_WRITE_NOT_AUTHORISED: 403,
 	ECOSYSTEM_WRITE_NOT_AUTHORISED: 403,
 	ECOSYSTEM_NOT_AUTHORISED: 403,
-} as const satisfies RefusalStatuses<EcosystemRefusalCode | ChannelRefusalCode | EcosystemToolRefusalCode>;
+} as const satisfies RefusalStatuses<
+	EcosystemRefusalCode | ChannelRefusalCode | EcosystemToolRefusalCode
+>;
 
 // The channel tool's actions: reads answer, writes change a channel document.
 const CHANNEL_READS = [
@@ -183,8 +185,28 @@ export const CHANNEL_ACTIONS = [...CHANNEL_READS, ...CHANNEL_WRITES] as const;
 export type ChannelAction = (typeof CHANNEL_ACTIONS)[number];
 
 /** `<project slug>/<contract slug>@<version>`, the form a landing names an implemented version in. */
-export const LANDED_CONTRACT = /^([a-z][a-z0-9-]{0,62})\/([a-z][a-z0-9-]{0,62})@([A-Za-z0-9][A-Za-z0-9._+-]{0,39})$/;
+export const LANDED_CONTRACT =
+	/^([a-z][a-z0-9-]{0,62})\/([a-z][a-z0-9-]{0,62})@([A-Za-z0-9][A-Za-z0-9._+-]{0,39})$/;
 
 /** The doors a person writes through: the assistant, the web, or the CLI with a token. */
 export const PERSON_VIAS = ["assistant", "web", "cli"] as const;
 export type PersonVia = (typeof PERSON_VIAS)[number];
+
+/**
+ * The contract types whose artifact is read as named elements (an operation, a field, a tool), so a
+ * consumer link or a screen binding can name what it uses and an impact can name what a change
+ * touched. Any other type (asyncapi, protobuf, opaque) is not element-indexed: binding to it is
+ * refused by name, never read as "no impact".
+ */
+export const ELEMENT_INDEXED_CONTRACT_TYPES = [
+	"openapi",
+	"mcp-tools",
+	"json-schema",
+	"graphql",
+] as const;
+export type ElementIndexedContractType =
+	(typeof ELEMENT_INDEXED_CONTRACT_TYPES)[number];
+export const isElementIndexed = (
+	type: string,
+): type is ElementIndexedContractType =>
+	(ELEMENT_INDEXED_CONTRACT_TYPES as readonly string[]).includes(type);

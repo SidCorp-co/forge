@@ -63,16 +63,13 @@ export interface RequirementRaw {
   req_seq: number;
   title: string;
   current_revision: number | null;
-  latest_baseline_seq: number | null;
 }
 
 export async function requirementsOf(ids: readonly string[]): Promise<Map<string, RequirementRaw>> {
   if (ids.length === 0) return new Map();
   const rows = rowsOf<RequirementRaw>(
     await db.execute(
-      sql`SELECT r.id, r.req_seq, r.title, r.current_revision,
-                 (SELECT max(b.seq) FROM requirement_baselines b
-                   WHERE b.requirement_id = r.id AND b.revision = r.current_revision) AS latest_baseline_seq
+      sql`SELECT r.id, r.req_seq, r.title, r.current_revision
             FROM requirements r WHERE r.id IN (${idList(ids)})`,
     ),
   );

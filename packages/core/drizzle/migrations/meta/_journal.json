@@ -2633,6 +2633,13 @@
       "when": 1818115200000,
       "tag": "0407_an_issue_waits_on_a_contract_version_not_on_another_issue",
       "breakpoints": true
+    },
+    {
+      "idx": 411,
+      "version": "7",
+      "when": 1818460800000,
+      "tag": "0411_a_contract_wait_carries_its_deadline_and_a_contract_request_names_its_project",
+      "breakpoints": true
     }
   ]
 }

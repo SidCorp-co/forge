@@ -5,7 +5,7 @@ export { pathsNamedIn, renderContractContext } from './contract/run-context.js';
 export { loadContractContext, recordContractContext } from './contract/run-context-service.js';
 export { contractVersionReads } from './contract/version-read.js';
 export { settlingContractVersion } from './contract/waits.js';
-export { contractProviderShortfalls } from './contract/waits-live.js';
+export { contractProviderGate } from './contract/waits-live.js';
 export { contractHolding } from './contract-holding.js';
 export { interfaceContractsOf } from './interface-contracts.js';
 export { ecosystemJsonSchemas } from './json-schema.js';

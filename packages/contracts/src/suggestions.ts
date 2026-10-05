@@ -16,7 +16,10 @@ import {
 } from "./pipeline-registry.js";
 import { ANSWER_VIEWS, pickFields } from "./projection.js";
 import type { RefusalStatuses } from "./refusal.js";
-import { designChangePayloadSchema, WORKFLOW_STEP_ID } from "./workflow-health.js";
+import {
+	designChangePayloadSchema,
+	WORKFLOW_STEP_ID,
+} from "./workflow-health.js";
 
 /** The six kinds rev 2 names, feedback_triage (workflow feedback-triage, ISS-59) and design_change (workflow step-health, REQ-17 BC-12); cluster, stale_requirement, conflict, verify and ask_reporter are deferred. */
 export const SUGGESTION_KINDS = [
@@ -113,7 +116,6 @@ const SUGGESTION_REFUSAL_CODES = [
 	"SUGGESTION_REJECT_REASON_REQUIRED",
 	"SUGGESTION_DECIDED",
 	"SUGGESTION_WITHDRAW_FORBIDDEN",
-	"SUGGESTION_EFFECT_UNDECIDED",
 	"SUGGESTION_BLOCKER_UNKNOWN",
 	"SUGGESTION_BLOCKER_TERMINAL",
 	"SUGGESTION_BUILD_UNNAMED",
@@ -233,7 +235,11 @@ export const SUGGESTION_PAYLOADS = {
 						category: z.string().trim().min(1).max(100).optional(),
 						builds: z.string().trim().min(1).max(200).nullable().optional(),
 						/** The steps of the design it builds that the issue builds, named on its build link. */
-						steps: z.array(z.string().regex(WORKFLOW_STEP_ID)).min(1).max(40).optional(),
+						steps: z
+							.array(z.string().regex(WORKFLOW_STEP_ID))
+							.min(1)
+							.max(40)
+							.optional(),
 					}),
 				)
 				.min(1)
@@ -403,13 +409,22 @@ export interface SuggestionDuplicateEffect {
 	status: "dropped";
 }
 
+/** A duplicate accept on a requirement: dropped as a duplicate of the requirement it repeats. */
+export interface SuggestionRequirementDuplicateEffect {
+	requirementId: string;
+	requirement: string;
+	duplicateOf: string;
+	status: "dropped";
+}
+
 /** What an accept wrote, read back for the caller; never stored on the row. */
 export type SuggestionEffect =
 	| SuggestionRevisionEffect
 	| SuggestionBreakdownEffect
 	| SuggestionReadinessEffect
 	| SuggestionIssueTriageEffect
-	| SuggestionDuplicateEffect;
+	| SuggestionDuplicateEffect
+	| SuggestionRequirementDuplicateEffect;
 
 /** The answer to create, accept, reject, revise and withdraw. */
 export interface SuggestionResponse {

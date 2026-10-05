@@ -2,8 +2,7 @@
  * What accepting a suggestion writes, kind by kind, inside the accept's transaction (workflow
  * `suggestion-lifecycle` rev 2: "its effect — a revision, issues, a triage — was written in the same
  * transaction and points back at it"). Each writer returns refusals that roll the accept back, or
- * the effect the caller reads back. A kind whose effect the approved designs leave undecided is
- * refused SUGGESTION_EFFECT_UNDECIDED rather than accepted with nothing written.
+ * the effect the caller reads back.
  */
 
 import type { FeedbackTriageEffect } from '@forge/contracts/feedback';
@@ -19,6 +18,7 @@ import type { Refusal } from '../lib/refusal.js';
 import { transition } from '../lifecycle/index.js';
 import {
   createRequirementIn,
+  dropAsDuplicateIn,
   newDraftRevisionIn,
   type RevisionWrite,
   rowIn,
@@ -34,12 +34,6 @@ export interface EffectWritten {
   refusals: Refusal[] | null;
   effect?: Effect;
 }
-
-const undecided = (kind: string, path: string, what: string): Refusal => ({
-  code: 'SUGGESTION_EFFECT_UNDECIDED',
-  path,
-  detail: `the approved designs name no effect for ${what}, so accepting this ${kind} suggestion would write nothing; reject it with a reason, or have its producer propose it without that part.`,
-});
 
 // Workflow requirement-to-delivery step `ready`: readiness is a suggestion kind with no table
 // of its own, so the accepted row at its base revision IS the readiness result an agree reads
@@ -146,9 +140,27 @@ export async function writeEffect(
   // an accepted design_change writes nothing into the design: the acceptance is the record that the
   // design owes a revision touching those nodes (REQ-17 BC-12)
   if (row.kind === 'design_change' && target.type === 'workflow') return { refusals: null };
+  // requirement-to-delivery `ready`: a near-duplicate is merged before agreeing, so accepting the
+  // duplicate drops this requirement naming the one it repeats, through the requirements kernel
   if (row.kind === 'duplicate' && target.type === 'requirement') {
+    const p = SUGGESTION_PAYLOADS.duplicate.schema.parse(row.payload);
+    const dropped = await dropAsDuplicateIn(tx, {
+      projectId,
+      requirementId: target.id,
+      duplicateOf: p.duplicateOf,
+      note: p.note,
+      suggestionId: row.id,
+      actor,
+    });
+    if (dropped.refusals) return { refusals: dropped.refusals };
     return {
-      refusals: [undecided('duplicate', '/target', 'marking a requirement a duplicate of another')],
+      refusals: null,
+      effect: {
+        requirementId: target.id,
+        requirement: dropped.requirement,
+        duplicateOf: dropped.duplicateOf,
+        status: 'dropped',
+      },
     };
   }
   throw new Error(`suggestions: no effect writer for a ${row.kind} suggestion on ${target.type}`);

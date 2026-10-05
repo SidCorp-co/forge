@@ -1,4 +1,4 @@
-import { and, desc, inArray } from 'drizzle-orm';
+import { and, desc, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../../db/client.js';
 import { contractArtifacts, contractVersions } from '../../db/schema-ecosystem.js';
 import type { ContractVersionFact, ContractVersionReads } from '../../lib/contract-versions.js';
@@ -19,6 +19,9 @@ async function versionsOf(
       contractType: contractVersions.contractType,
       elements: contractVersions.elements,
       artifactSha256: contractVersions.artifactSha256,
+      breakingElements: sql<string[]>`coalesce((
+        SELECT array_agg(c->>'element') FROM jsonb_array_elements(${contractVersions.document}->'diff'->'changes') c
+         WHERE c->>'level' = 'breaking'), '{}')`,
     })
     .from(contractVersions)
     .where(

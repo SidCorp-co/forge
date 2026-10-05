@@ -218,6 +218,7 @@ export async function contractWaitViews(
       createdAt: r.createdAt.toISOString(),
       retractedAt: r.retractedAt?.toISOString() ?? null,
       retractReason: r.retractReason,
+      dueAt: r.dueAt?.toISOString() ?? null,
       providerLive: opts.live && !inProject && !r.retractedAt ? await providerLiveOf(r) : null,
     });
   }

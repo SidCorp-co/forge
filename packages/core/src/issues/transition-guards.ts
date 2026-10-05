@@ -300,7 +300,7 @@ async function planDriftGuard(ctx: GuardContext): Promise<GuardFault | null> {
       requirement: drift.key,
       plannedRevision: drift.plannedRevision,
       currentRevision: drift.currentRevision,
-      repinned: drift.repinned,
+      changedCriteria: drift.changedCriteria,
     },
   };
 }

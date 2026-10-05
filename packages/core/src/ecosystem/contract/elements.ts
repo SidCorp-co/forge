@@ -1,3 +1,4 @@
+import { type ElementIndexedContractType, isElementIndexed } from '@forge/contracts/ecosystem';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { type SdlSchema, sdlElements } from './graphql-sdl.js';
 import { toolsOf } from './mcp-tools-diff.js';
@@ -5,11 +6,9 @@ import { openApiElements } from './openapi-diff.js';
 import { boundedFormats, linearRegExp, unsafePatterns } from './safe-regex.js';
 import { jsonSchemaElements } from './schema-diff.js';
 
-export const INDEXED_TYPES = ['openapi', 'mcp-tools', 'json-schema', 'graphql'] as const;
-type IndexedType = (typeof INDEXED_TYPES)[number];
+type IndexedType = ElementIndexedContractType;
 
-export const isIndexed = (type: string): type is IndexedType =>
-  (INDEXED_TYPES as readonly string[]).includes(type);
+export const isIndexed = isElementIndexed;
 
 export interface ContractExample {
   element: string;

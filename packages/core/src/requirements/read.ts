@@ -2,6 +2,7 @@ import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import {
+  type ChangedTrace,
   changedSincePlan,
   type RequirementDetail,
   type RequirementSpec,
@@ -12,7 +13,7 @@ import {
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
-import { issues } from '../db/schema.js';
+import { issues, projects } from '../db/schema.js';
 import {
   type CriterionForm,
   type RequirementStatus,
@@ -32,11 +33,19 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { linkedContracts } from './baselines.js';
+import { screenBindingsOf } from './bindings.js';
 import { tracesOf } from './criterion-traces.js';
 import { deferralOf } from './deferral-read.js';
 import { requirementDependents } from './dependents.js';
 import { historyOf } from './history-read.js';
-import { type LinkedDesign, liveAt, type ReadinessAtHead, signoffRefusal } from './rules.js';
+import { changedTracedOf } from './plan-drift.js';
+import {
+  type LinkedDesign,
+  liveAt,
+  type ReadinessAtHead,
+  requestSignoffRefusal,
+  signoffRefusal,
+} from './rules.js';
 import { approvalRequiredIn, standingsOf } from './standing-read.js';
 
 export interface RequirementActor {
@@ -69,8 +78,35 @@ export async function rowIn(tx: Tx, projectId: string, ref: string): Promise<Row
   return row;
 }
 
-export async function signerRefusal(actor: RequirementActor, projectId: string, act: string) {
-  return signoffRefusal(await permissionFactsOf(actor.userId, projectId), act);
+/** The project a contract request came from (E2), or null for a requirement written here. */
+export async function requestedByOf(
+  row: Pick<Row, 'requestedByProjectId'>,
+): Promise<{ id: string; slug: string } | null> {
+  if (!row.requestedByProjectId) return null;
+  const [p] = await db
+    .select({ id: projects.id, slug: projects.slug })
+    .from(projects)
+    .where(eq(projects.id, row.requestedByProjectId));
+  return p ?? null;
+}
+
+/** `row` is the requirement being signed, when there is one: a contract request is signed only here. */
+export async function signerRefusal(
+  actor: RequirementActor,
+  projectId: string,
+  act: string,
+  row?: Pick<Row, 'requestedByProjectId' | 'reqSeq'>,
+) {
+  const refusal = signoffRefusal(await permissionFactsOf(actor.userId, projectId), act);
+  if (!refusal || !row?.requestedByProjectId) return refusal;
+  const requestedBy = await requestedByOf(row);
+  return requestSignoffRefusal({
+    refusal,
+    key: requirementKey(row.reqSeq),
+    requestedBy,
+    signerInRequestingProject:
+      !!requestedBy && (await permissionFactsOf(actor.userId, requestedBy.id)).role !== null,
+  });
 }
 
 export const criterionView = (c: CriterionRow) => ({
@@ -241,7 +277,6 @@ function detailRowsOf(requirementId: string) {
         requirementId: issues.requirementId,
         plan: issues.plan,
         plannedRevision: issues.plannedRevision,
-        plannedBaselineSeq: issues.plannedBaselineSeq,
       })
       .from(issues)
       .where(eq(issues.requirementId, requirementId))
@@ -287,7 +322,7 @@ function baselineViews(
 function issueViews(
   row: Row,
   linked: DetailRows[5],
-  baselines: DetailRows[3],
+  changedTraced: Map<string, ChangedTrace[]>,
   prefix: string | null,
   releaseApproval: boolean,
 ) {
@@ -302,7 +337,7 @@ function issueViews(
     changedSincePlan: changedSincePlan({
       ...i,
       currentRevision: row.currentRevision,
-      latestBaselineSeq: baselines.find((b) => b.revision === row.currentRevision)?.seq ?? null,
+      changedTraced: changedTraced.get(i.id) ?? [],
     }),
   }));
 }
@@ -335,7 +370,45 @@ export async function detailOf(
     tracesOf(db, row.id),
     linkedContracts(db, row.id),
   ]);
-  const [people, standings] = await Promise.all([
+  const latestBaseline = [...baselines].sort((a, b) => b.revision - a.revision || b.seq - a.seq)[0];
+  const [bindings, request] = await Promise.all([
+    screenBindingsOf(
+      db,
+      pins.flatMap((p) =>
+        latestBaseline &&
+        p.revision === latestBaseline.revision &&
+        p.baselineSeq === latestBaseline.seq &&
+        p.workflowId &&
+        p.designRevision !== null
+          ? [
+              {
+                workflowId: p.workflowId,
+                flow: p.flow ?? p.workflowId,
+                designRevision: p.designRevision,
+              },
+            ]
+          : [],
+      ),
+      pins.flatMap((p) =>
+        latestBaseline &&
+        p.revision === latestBaseline.revision &&
+        p.baselineSeq === latestBaseline.seq &&
+        p.providerProjectId &&
+        p.contractSlug &&
+        p.contractVersion
+          ? [
+              {
+                providerProjectId: p.providerProjectId,
+                contractSlug: p.contractSlug,
+                contractVersion: p.contractVersion,
+              },
+            ]
+          : [],
+      ),
+    ),
+    requestedByOf(row),
+  ]);
+  const [people, standings, changedTraced] = await Promise.all([
     peopleOf([
       ...revisions.flatMap((r) => [r.authorId, r.decidedBy]),
       ...baselines.map((b) => b.agreedBy),
@@ -348,6 +421,10 @@ export async function detailOf(
       prefix,
       releaseApproval,
     }),
+    changedTracedOf(
+      db,
+      linked.map((i) => i.id),
+    ),
   ]);
   const standing = standings.get(row.id) as RequirementStanding;
   const name = (id: string | null) => (id === null ? null : (people.get(id)?.name ?? null));
@@ -365,14 +442,31 @@ export async function detailOf(
     contracts,
     traces,
     baselines: baselineViews(baselines, pins, name),
-    issues: issueViews(row, linked, baselines, prefix, releaseApproval),
+    issues: issueViews(row, linked, changedTraced, prefix, releaseApproval),
     canSignOff: viewerFacts?.canSignOff ?? false,
     standing,
     history,
     readiness,
     deferral,
     feedback,
+    request:
+      request && row.requestedContractSlug
+        ? {
+            projectId: request.id,
+            project: request.slug,
+            contract: `${(await providerSlugOf(row.projectId)) ?? row.projectId}/${row.requestedContractSlug}`,
+          }
+        : null,
+    bindings,
   };
+}
+
+async function providerSlugOf(projectId: string): Promise<string | null> {
+  const [p] = await db
+    .select({ slug: projects.slug })
+    .from(projects)
+    .where(eq(projects.id, projectId));
+  return p?.slug ?? null;
 }
 
 function revisionView(

@@ -8,6 +8,7 @@ import {
   requirementContracts,
 } from '../db/schema-requirements.js';
 import { contractVersionReads } from '../lib/contract-versions.js';
+import { refuseUnindexedBindings } from './bindings.js';
 import type { LinkedContract, LinkedDesign } from './rules.js';
 
 // An agree writes seq 1 and each re-pin a further seq of the same revision, so the latest
@@ -71,7 +72,8 @@ export async function acceptedMockupIds(
 /**
  * The one pin writer: an agree, an accept that re-baselines and a re-pin all pin each linked
  * design's approved revision, each linked contract's current version (none while no version is
- * approved) and each accepted mockup, into the baseline `(revision, seq)` already written.
+ * approved) and each accepted mockup, into the baseline `(revision, seq)` already written. A pinned
+ * design that binds a contract no element index reads is refused REQUIREMENT_BINDING_NOT_INDEXED.
  */
 export async function writePinsIn(
   tx: Tx,
@@ -79,6 +81,14 @@ export async function writePinsIn(
   designs: readonly LinkedDesign[],
   contracts: readonly LinkedContract[],
 ): Promise<number> {
+  await refuseUnindexedBindings(
+    tx,
+    designs.flatMap((d) =>
+      d.approvedRevision === null
+        ? []
+        : [{ workflowId: d.workflowId, flow: d.flow, designRevision: d.approvedRevision }],
+    ),
+  );
   const base = { requirementId: at.requirementId, revision: at.revision, baselineSeq: at.seq };
   const pins = [
     ...designs.flatMap((d) =>

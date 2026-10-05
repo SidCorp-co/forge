@@ -1,5 +1,5 @@
 /**
- * The guards of workflow `requirement-lifecycle` rev 4, as pure functions over what the service
+ * The guards of workflow `requirement-lifecycle` rev 5, as pure functions over what the service
  * read: whether the actor holds requirements.approve, which revision may move where, what an agree pins, and the
  * BC codes a criteria list keeps or takes. Every refusal is named; the service answers it with
  * nothing written.
@@ -27,6 +27,26 @@ export interface RequirementRefusal {
 // requirements.approve signs off, an agent or the revision's author included.
 export function signoffRefusal(facts: PermissionFacts, act: string): RequirementRefusal | null {
   return permissionRefusal(facts, 'requirements.approve', act);
+}
+
+/**
+ * A contract request is signed only by this project (E2): a signer refused requirements.approve
+ * here who is a member of the requesting project is that project trying to agree its own request,
+ * and is refused as such rather than as a stranger.
+ */
+export function requestSignoffRefusal(input: {
+  refusal: RequirementRefusal | null;
+  key: string;
+  requestedBy: { id: string; slug: string } | null;
+  signerInRequestingProject: boolean;
+}): RequirementRefusal | null {
+  const { refusal, requestedBy } = input;
+  if (!refusal || !requestedBy || !input.signerInRequestingProject) return refusal;
+  return {
+    code: 'REQUIREMENT_SIGNOFF_FORBIDDEN',
+    path: '',
+    detail: `${input.key} is a contract request from project ${requestedBy.slug}; only a holder of requirements.approve on this project signs it off, and the requesting project never does. ${refusal.detail}`,
+  };
 }
 
 export function reasonRefusal(reason: string | null | undefined): RequirementRefusal | null {

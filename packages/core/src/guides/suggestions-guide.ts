@@ -31,7 +31,7 @@ effect is written in the accept's own transaction and points back at it. The doo
 | \`readiness\` | a requirement | the readiness result at its base revision, which an agree reads when the project gates on readiness |
 | \`breakdown\` | a requirement | every proposed issue, filed at **draft** with its complexity, priority and category, linked to the requirement, traced to its BCs, edged by \`blockedBy\` and linked as the build of the pinned design it builds, in one transaction; nothing dispatches until they are promoted, and the build gate holds each until its design is approved |
 | \`triage\` | an issue | the issue's priority, category and complexity; a free-text \`route\` is kept as a note comment on the issue |
-| \`duplicate\` | an issue or a requirement | on an issue, drops it naming the root, with a relates edge to it; on a requirement it is refused \`SUGGESTION_EFFECT_UNDECIDED\`, because no effect is defined for it |
+| \`duplicate\` | an issue or a requirement | on an issue, drops it naming the root, with a relates edge to it; on a requirement, drops it naming the requirement it repeats (\`REQUIREMENT_DUPLICATE_TARGET_INVALID\` for itself, an unknown or a dropped one; \`REQUIREMENT_HAS_LIVE_ISSUES\` while live issues link to it) |
 | \`feedback_triage\` | a feedback item | the route on the item (${guideRef('feedback-triage')}) |
 
 A payload that does not parse for its kind is \`SUGGESTION_PAYLOAD_INVALID\`, naming the path; a target

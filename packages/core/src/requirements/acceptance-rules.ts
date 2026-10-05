@@ -108,3 +108,33 @@ export function dropRefusals(input: {
   }
   return out;
 }
+
+/** A requirement is dropped as a duplicate only of another live requirement, never of itself or of one already dropped. */
+export function duplicateTargetRefusal(
+  duplicateId: string,
+  original: { id: string; reqSeq: number; status: string } | null,
+  named: string,
+): RequirementRefusal | null {
+  if (!original) {
+    return {
+      code: 'REQUIREMENT_DUPLICATE_TARGET_INVALID',
+      path: '/payload/duplicateOf',
+      detail: `${named} is not a requirement of this project, so nothing can be named as the one this repeats.`,
+    };
+  }
+  if (original.id === duplicateId) {
+    return {
+      code: 'REQUIREMENT_DUPLICATE_TARGET_INVALID',
+      path: '/payload/duplicateOf',
+      detail: `REQ-${original.reqSeq} cannot be a duplicate of itself; name the requirement it repeats.`,
+    };
+  }
+  if (original.status === 'dropped') {
+    return {
+      code: 'REQUIREMENT_DUPLICATE_TARGET_INVALID',
+      path: '/payload/duplicateOf',
+      detail: `REQ-${original.reqSeq} is dropped, so nothing would carry the work; name a live requirement it repeats, or drop this one on its own.`,
+    };
+  }
+  return null;
+}

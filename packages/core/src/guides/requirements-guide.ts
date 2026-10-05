@@ -66,8 +66,9 @@ it lives in numbered revisions, and each revision carries business criteria unde
 - An issue's plan records the revision and the baseline it was written against. A plan written while
   the requirement has no current revision is refused \`REQUIREMENT_REVISION_NOT_CURRENT\`.
 - \`GET /api/issues/:id\` then shows \`requirement.changedSincePlan\`: true when the head is now another
-  revision, or when the head was re-pinned onto newly approved designs or contracts after the plan.
-  Re-plan against the current head; do not build against a plan that reads changed. An issue that
+  revision whose BCs differ from the plan's in a BC one of its criteria traces (reworded or removed),
+  or when its plan names no revision. A re-pin, or a revision that changed only BCs it does not
+  trace, leaves it unflagged. Re-plan against the current head; do not build against a plan that reads changed. An issue that
   reads changed is refused \`awaiting_release\` as
   \`REQUIREMENT_CHANGED_SINCE_PLAN\` until its plan is rewritten.
 - A plan written before the link reads changed-since-plan, unless a holder of \`requirements.approve\`
@@ -106,5 +107,20 @@ on the project (project admin, or an org owner or admin), person or agent alike,
 included; without it the call is refused \`PERMISSION_FORBIDDEN\` naming the permission. Whoever
 lacks it proposes and stops; the requirement's \`waitingOn\` names whose turn it is. A change an agent
 proposes without writing the revision itself is a \`revision_diff\` suggestion (${guideRef('suggestions')}),
-and accepting one writes a new **draft** revision, never a current one.`,
+and accepting one writes a new **draft** revision, never a current one.
+
+### Contract requests from another project
+\`POST /api/projects/:id/contract-requests { contract: "<provider>/<contract>", title, reason, criteria }\`,
+from the requesting project \`:id\`, lands a draft requirement in the provider project that names the
+requester and links the contract (the requester consumes it or the provider publishes it, else
+\`REQUIREMENT_CONTRACT_UNKNOWN\`; never its own project, \`REQUIREMENT_REQUEST_OWN_PROJECT\`). Only the
+provider signs it: a member of the requesting project without \`requirements.approve\` there is
+refused \`REQUIREMENT_SIGNOFF_FORBIDDEN\`.
+
+### Screen bindings
+A design step's \`node.binds: [{ provider, slug, element }]\` names the contract elements a screen
+uses. A baseline pinning that design pins them with it, and the detail's \`bindings\` lists each with
+\`brokenBy\`, the version past the pin that removed or broke it. Binding a contract that is not
+element-indexed (asyncapi, protobuf, opaque) is refused \`REQUIREMENT_BINDING_NOT_INDEXED\` when the
+baseline is written.`,
 };

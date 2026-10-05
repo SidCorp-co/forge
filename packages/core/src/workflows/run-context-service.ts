@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm';
 import { mergeSessionMetadata } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import type { LoadedPinnedContract } from './pinned-contracts.js';
+import { changedTracedOf } from './ports.js';
 import {
   type LoadedRequirement,
   type MockupContextRow,
@@ -122,8 +123,7 @@ export async function issueMockupsOf(issueId: string): Promise<MockupContextRow[
 /** The requirement `issueId` delivers, at its head, with the criteria of that revision and its latest baseline. */
 async function requirementRowOf(issueId: string): Promise<RequirementContextRow | null> {
   const [r] = (await db.execute(sql`
-    SELECT r.id, r.req_seq, r.title, r.status, r.current_revision, i.planned_revision,
-           i.planned_baseline_seq, i.plan,
+    SELECT r.id, r.req_seq, r.title, r.status, r.current_revision, i.planned_revision, i.plan,
            rv.state AS head_state, rv.tldr, rv.spec->>'goal' AS goal
     FROM issues i
     JOIN requirements r ON r.id = i.requirement_id
@@ -134,7 +134,7 @@ async function requirementRowOf(issueId: string): Promise<RequirementContextRow 
   if (!r) return null;
   const id = String(r.id);
   const current = r.current_revision == null ? null : Number(r.current_revision);
-  const [criteria, baselines] = await Promise.all([
+  const [criteria, baselines, changed] = await Promise.all([
     current === null
       ? Promise.resolve([] as Array<Record<string, unknown>>)
       : (db.execute(sql`
@@ -158,6 +158,7 @@ async function requirementRowOf(issueId: string): Promise<RequirementContextRow 
            ORDER BY revision DESC, seq DESC LIMIT 1)
       ORDER BY w.flow NULLS LAST, p.contract_slug, m.mockup_seq
     `) as unknown as Promise<Array<Record<string, unknown>>>,
+    changedTracedOf(db, [issueId]),
   ]);
   const first = baselines[0];
   const str = (v: unknown) => (v == null ? null : String(v));
@@ -195,7 +196,7 @@ async function requirementRowOf(issueId: string): Promise<RequirementContextRow 
         }
       : null,
     plannedRevision: r.planned_revision == null ? null : Number(r.planned_revision),
-    plannedBaselineSeq: r.planned_baseline_seq == null ? null : Number(r.planned_baseline_seq),
+    changedTraced: changed.get(issueId) ?? [],
     plan: str(r.plan),
   };
 }
