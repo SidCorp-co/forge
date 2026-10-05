@@ -1,6 +1,6 @@
 # The removed test suites are rewritten, not restored
 
-**Removed when:** the QA phase brings the TypeScript suites back on dev and the cm:hack ISS-172
+**Removed when:** ISS-172's QA phase brings the TypeScript suites back on dev and the cm:hack ISS-172
 markers in `scripts/lib/suspended-without-tests.mjs` and `packages/core/vitest.integration.config.ts`
 go with it. The change that lands it deletes this file.
 
@@ -49,3 +49,10 @@ Run these first when the integration suite is rewritten:
 
 Main's nightly CI (run 37238894756) was green over the same files, so these are dev drift, not a
 shared defect.
+
+## Honest costs
+
+- Every drifted test is read against the code it now covers and rewritten, which costs more than a
+  restore would have.
+- The 21 web popover reds and the 75 integration reds stay unjudged until the rewrite lands.
+- A restore would be cheaper and would fail for the wrong reason, on symbols dev no longer has.
