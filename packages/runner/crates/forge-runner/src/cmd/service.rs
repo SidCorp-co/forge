@@ -38,7 +38,7 @@ pub struct InstallArgs {
 /// `hook_install::install` already makes (ISS-1200).
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn own_exe_text() -> anyhow::Result<String> {
-    let exe = forge_runner_core::exe::own()?.path;
+    let exe = runner_platform::exe::own()?.path;
     exe.to_str().map(str::to_string).ok_or_else(|| {
         anyhow::anyhow!(
             "the runner's own path is not valid UTF-8 ({}), so a service naming it would name a different file — install no service rather than one that cannot start",

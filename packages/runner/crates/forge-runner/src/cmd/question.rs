@@ -21,11 +21,11 @@
 //! authority on it and its wording reaches the caller unaltered.
 
 use clap::{Args as ClapArgs, Subcommand};
-use forge_runner_core::auth::cred_store;
-use forge_runner_core::config::Config;
-use forge_runner_core::error::Error;
-use forge_runner_core::transport::questions::{self, Answer, Ask};
-use forge_runner_core::transport::CoreClient;
+use runner_platform::config::Config;
+use runner_platform::cred_store;
+use runner_platform::error::Error;
+use runner_transport::questions::{self, Answer, Ask};
+use runner_transport::CoreClient;
 
 use super::Ctx;
 
@@ -214,7 +214,7 @@ async fn send_ask(
     project_id: &str,
     id: &str,
     run_id: &str,
-) -> forge_runner_core::Result<String> {
+) -> runner_platform::Result<String> {
     let shape = match shape_of(a) {
         Ok(s) => s,
         Err(e) => return Err(Error::Other(e.to_string())),

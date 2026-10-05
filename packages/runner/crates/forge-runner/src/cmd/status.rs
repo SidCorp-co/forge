@@ -1,9 +1,10 @@
 use clap::Args as ClapArgs;
-use forge_runner_core::auth::cred_store;
-use forge_runner_core::config::Config;
-use forge_runner_core::daemon::degraded::{Condition, Last, Verdict, RECENT_WITHIN_MS};
-use forge_runner_core::daemon::pool_reads;
-use forge_runner_core::runner::ledger::{short_id, Ledger, Unanswered, WhatEndsIt};
+use runner_core::degraded::RECENT_WITHIN_MS;
+use runner_core::ledger::{short_id, Ledger, Unanswered, WhatEndsIt};
+use runner_daemon::pool_reads;
+use runner_platform::config::Config;
+use runner_platform::cred_store;
+use runner_proto::gate::{Condition, Last, Verdict};
 
 use super::Ctx;
 
@@ -14,8 +15,8 @@ pub async fn run(ctx: Ctx, _args: Args) -> anyhow::Result<()> {
     let cfg = Config::load()?;
     println!(
         "binary     {} ({}) — the file this command ran",
-        forge_runner_core::update::VERSION_LINE,
-        forge_runner_core::update::BUILD_TARGET
+        runner_update::VERSION_LINE,
+        runner_update::BUILD_TARGET
     );
     for line in daemon_lines() {
         println!("{line}");
@@ -33,12 +34,8 @@ pub async fn run(ctx: Ctx, _args: Args) -> anyhow::Result<()> {
     println!("token      {}", cred_store::active_backend());
     print_gate(&cfg);
     print_pool(&cfg);
-    let now = forge_runner_core::daemon::agent_activity::now_ms();
-    for line in skill_lines(
-        forge_runner_core::daemon::control::config_dir().as_deref(),
-        &cfg,
-        now,
-    ) {
+    let now = runner_core::agent_activity::now_ms();
+    for line in skill_lines(runner_platform::config::config_dir().as_deref(), &cfg, now) {
         println!("{line}");
     }
     match Ledger::default_path() {
@@ -67,8 +64,8 @@ pub async fn run(ctx: Ctx, _args: Args) -> anyhow::Result<()> {
 /// What the running daemon serves, which is not what this binary is once a
 /// self-update has replaced the file under it (ISS-1223).
 fn daemon_lines() -> Vec<String> {
-    use forge_runner_core::daemon::serving;
-    let Some(dir) = forge_runner_core::daemon::control::config_dir() else {
+    use runner_daemon::serving;
+    let Some(dir) = runner_platform::config::config_dir() else {
         return vec![
             "daemon     no config directory resolves on this box, so no daemon record can be read"
                 .to_string(),
@@ -77,31 +74,31 @@ fn daemon_lines() -> Vec<String> {
     serving::lines(
         &serving::read(&dir),
         &serving::Probe::this_box(),
-        forge_runner_core::update::CURRENT_VERSION,
-        forge_runner_core::update::BUILD_COMMIT,
-        forge_runner_core::daemon::agent_activity::now_ms(),
+        runner_update::CURRENT_VERSION,
+        runner_update::BUILD_COMMIT,
+        runner_core::agent_activity::now_ms(),
     )
 }
 
 /// The sentence `--version` adds on stderr where a live daemon serves another
 /// build than this binary's.
 pub fn version_note() -> Option<String> {
-    use forge_runner_core::daemon::serving;
-    let dir = forge_runner_core::daemon::control::config_dir()?;
+    use runner_daemon::serving;
+    let dir = runner_platform::config::config_dir()?;
     serving::version_note(
         &serving::read(&dir),
         &serving::Probe::this_box(),
-        forge_runner_core::update::CURRENT_VERSION,
-        forge_runner_core::update::BUILD_COMMIT,
+        runner_update::CURRENT_VERSION,
+        runner_update::BUILD_COMMIT,
     )
 }
 
 fn print_gate(cfg: &Config) {
     let _ = cfg;
-    let Some(dir) = forge_runner_core::daemon::control::config_dir() else {
+    let Some(dir) = runner_platform::config::config_dir() else {
         return;
     };
-    let now = forge_runner_core::daemon::agent_activity::now_ms();
+    let now = runner_core::agent_activity::now_ms();
     for line in gate_reading(&dir, now) {
         println!("{line}");
     }
@@ -112,7 +109,7 @@ fn print_gate(cfg: &Config) {
 /// and a box with no marks prints nothing — so an unreadable record would read
 /// as a gate that never failed open. That is said here instead (ISS-1341).
 pub(crate) fn gate_reading(dir: &std::path::Path, now: i64) -> Vec<String> {
-    let path = forge_runner_core::daemon::degraded::marks_path(dir);
+    let path = runner_core::degraded::marks_path(dir);
     let unparsed = match std::fs::read_to_string(&path) {
         Ok(body) => body
             .lines()
@@ -126,7 +123,7 @@ pub(crate) fn gate_reading(dir: &std::path::Path, now: i64) -> Vec<String> {
             )]
         }
     };
-    let report = forge_runner_core::daemon::degraded::report(dir, now);
+    let report = runner_core::degraded::report(dir, now);
     let mut out = gate_lines(&report.degraded, &report.undeclared);
     if unparsed > 0 {
         out.push(format!(
@@ -138,10 +135,10 @@ pub(crate) fn gate_reading(dir: &std::path::Path, now: i64) -> Vec<String> {
 }
 
 fn print_pool(cfg: &Config) {
-    let Some(dir) = forge_runner_core::daemon::control::config_dir() else {
+    let Some(dir) = runner_platform::config::config_dir() else {
         return;
     };
-    let now = forge_runner_core::daemon::agent_activity::now_ms();
+    let now = runner_core::agent_activity::now_ms();
     for line in pool_lines(&pool_reads::report(&dir, now), cfg, now) {
         println!("{line}");
     }
@@ -240,7 +237,7 @@ fn what_ends(u: &Unanswered) -> String {
 /// read a pool has no failures either (ISS-1234). An unreadable one says so,
 /// and what it costs while it stands.
 pub fn pool_lines(
-    record: &Result<Vec<pool_reads::Condition>, pool_reads::Unreadable>,
+    record: &Result<Vec<runner_proto::pool_read::Condition>, pool_reads::Unreadable>,
     cfg: &Config,
     now: i64,
 ) -> Vec<String> {
@@ -274,13 +271,13 @@ pub fn pool_lines(
             c.failures.to_string()
         };
         out.push(match c.verdict {
-            pool_reads::Verdict::Blind => format!(
+            runner_proto::pool_read::Verdict::Blind => format!(
                 "  {who}  BLIND — cannot read the pool for {} ({} consecutive failed read(s), {count} in the last {}); {newest}",
                 span((now - c.unread_since.unwrap_or(c.last_failure.at)).max(0)),
                 c.consecutive,
                 span(c.window_ms)
             ),
-            pool_reads::Verdict::Intermittent => format!(
+            runner_proto::pool_read::Verdict::Intermittent => format!(
                 "  {who}  intermittent — {count} failed read(s) in the last {}; {newest}; reading again for {}",
                 span(c.window_ms),
                 c.recovered_at
@@ -403,7 +400,7 @@ fn admitted(l: &Last) -> Option<String> {
 /// source that knows the server's assignments without asking core, so where it
 /// is absent the bindings `config.toml` names are all this can list.
 pub(crate) fn skill_lines(dir: Option<&std::path::Path>, cfg: &Config, now: i64) -> Vec<String> {
-    use forge_runner_core::daemon::master_skill::{self, path_in, Read};
+    use runner_workspace::master_skill::{self, path_in, Read};
     let Some(dir) = dir else {
         return vec![
             "skill      no config directory resolves on this box, so no install record can be read"

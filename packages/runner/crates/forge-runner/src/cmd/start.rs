@@ -1,6 +1,7 @@
 use clap::Args as ClapArgs;
-use forge_runner_core::auth::cred_store;
-use forge_runner_core::{config::Config, daemon};
+use runner_daemon as daemon;
+use runner_platform::config::Config;
+use runner_platform::cred_store;
 
 use super::Ctx;
 

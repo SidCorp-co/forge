@@ -1,0 +1,29 @@
+[package]
+name = "runner-platform"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+thiserror = { workspace = true }
+dirs-next = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }
+which = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31", features = ["signal", "process", "fs"] }
+
+# Keychain only on macOS/Windows — Linux uses the file store to avoid pulling
+# libdbus-sys (system dbus-1) via secret-service, keeping the binary portable.
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { workspace = true }
+
+[lints]
+workspace = true

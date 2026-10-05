@@ -1,0 +1,92 @@
+//! Device skill sync transport (Skill Studio 4, ISS-278).
+//!
+//! - `pull_manifest`   — `GET /api/devices/me/skills?projectId=`: lightweight
+//!   manifest (hashes only) so the runner can diff against its local cache.
+//! - `pull_content`    — `GET /api/devices/me/skills/:skillId/content?projectId=`:
+//!   full body for one skill whose hash changed.
+//!
+//! Field casing mirrors the core JSON (camelCase) — keep in lockstep with the
+//! `DeviceSkill*` contract DTOs in `packages/contracts`.
+
+use crate::{status, CoreClient};
+use runner_platform::error::{Error, Result};
+use serde::Deserialize;
+
+/// One file under a skill folder. `SKILL.md` is carried separately in
+/// `skill_md`; everything else (`references/`, `scripts/`, …) lives here.
+fn default_encoding() -> String {
+    "utf8".to_string()
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillFile {
+    pub path: String,
+    pub content: String,
+    /// `"utf8"` or `"base64"`. Defaults to `"utf8"` when the server omits it —
+    /// a missing `encoding` must not fail-decode the whole project's sync
+    /// (the write path treats anything but `"base64"` as plain text anyway).
+    #[serde(default = "default_encoding")]
+    pub encoding: String,
+}
+
+/// One manifest entry (hashes only — no bodies).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillManifestEntry {
+    pub skill_id: String,
+    pub name: String,
+    pub effective_hash: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SkillManifestResponse {
+    skills: Vec<SkillManifestEntry>,
+}
+
+/// Full body for one skill.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillContent {
+    pub skill_md: String,
+    pub files: Vec<SkillFile>,
+}
+
+fn map_status(label: &str, status: reqwest::StatusCode) -> Error {
+    if status.as_u16() == 401 {
+        Error::Other("UNAUTHORIZED".into())
+    } else {
+        Error::Other(format!(
+            "{label} failed: {}",
+            status::named(status.as_u16())
+        ))
+    }
+}
+
+/// Fetch the project's effective skill manifest (hashes only).
+pub async fn pull_manifest(
+    client: &CoreClient,
+    project_id: &str,
+) -> Result<Vec<SkillManifestEntry>> {
+    let path = format!("/api/devices/me/skills?projectId={project_id}");
+    let resp = status::sent(client.get(&path), "skills manifest request").await?;
+    if !resp.status().is_success() {
+        return Err(map_status("skills manifest", resp.status()));
+    }
+    let body: SkillManifestResponse = status::decode(resp, "skills manifest").await?;
+    Ok(body.skills)
+}
+
+/// Fetch the full body for one skill.
+pub async fn pull_content(
+    client: &CoreClient,
+    project_id: &str,
+    skill_id: &str,
+) -> Result<SkillContent> {
+    let path = format!("/api/devices/me/skills/{skill_id}/content?projectId={project_id}");
+    let resp = status::sent(client.get(&path), "skill content request").await?;
+    if !resp.status().is_success() {
+        return Err(map_status("skill content", resp.status()));
+    }
+    status::decode(resp, "skill content").await
+}

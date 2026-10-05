@@ -19,7 +19,7 @@ name: runner-release
 # `scripts/next-runner-version.mjs` reads off the tags, because `main` carries a
 # required status check and no CI push of a version-bump commit can reach it. The
 # build therefore stamps the version in through FORGE_RUNNER_VERSION, which
-# `crates/forge-runner-core/build.rs` reads.
+# `crates/runner-update/build.rs` reads.
 on:
   push:
     tags:

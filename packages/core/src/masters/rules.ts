@@ -21,7 +21,7 @@ export function slotsUndeclaredRefusal(args: {
 const passName = (p: Pick<MasterOpenPass, 'verb' | 'startedAt' | 'issueKey'>) =>
   `the ${p.verb} pass started ${p.startedAt}${p.issueKey ? ` on ${p.issueKey}` : ''}`;
 
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/master_pass.rs:named_pass_id — the runner reads the
+// cm:edge contract -> packages/runner/crates/runner-daemon/src/master_pass.rs:named_pass_id — the runner reads the
 // open pass's id from `id <uuid>` in this detail to close a pass whose open answer it never received
 export function passAlreadyOpenRefusal(open: MasterOpenPass | null): MasterRefusal | null {
   if (!open) return null;

@@ -1,0 +1,17 @@
+[package]
+name = "runner-update"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[dependencies]
+runner-platform = { path = "../runner-platform" }
+serde = { workspace = true }
+tracing = { workspace = true }
+reqwest = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+
+[lints]
+workspace = true

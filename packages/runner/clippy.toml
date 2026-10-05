@@ -1,0 +1,2 @@
+# ADR 0009's size rule for functions; files are held to 800 lines by scripts/check-runner-gates.mjs.
+too-many-lines-threshold = 100

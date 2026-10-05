@@ -1,0 +1,51 @@
+//! Ask core for a git credential — `POST /api/devices/me/git-credential`.
+//!
+//! One ask per git invocation. Nothing is cached here on purpose: a GitHub App
+//! installation token lives an hour and a job can outlive it, so the only
+//! stable place to hold one is core's own mint cache, behind the device token.
+//!
+//! Core's refusals are the useful half of this call (no binding, App not
+//! installed, connection gone), so a non-2xx carries its message through to the
+//! caller verbatim rather than being flattened into a status code.
+
+use crate::{status, CoreClient};
+use runner_platform::error::{Error, Result};
+use serde::Deserialize;
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCredentialGrant {
+    pub username: String,
+    pub password: String,
+    /// RFC3339 instant the token stops working.
+    pub expires_at: Option<String>,
+}
+
+pub async fn ask(client: &CoreClient, host: &str, path: &str) -> Result<GitCredentialGrant> {
+    let req = client
+        .post("/api/devices/me/git-credential")
+        .json(&serde_json::json!({ "protocol": "https", "host": host, "path": path }));
+    let resp = status::sent(req, "git-credential request").await?;
+    if resp.status().as_u16() == 401 {
+        return Err(Error::Unauthorized);
+    }
+    if !resp.status().is_success() {
+        let code = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        let message = serde_json::from_str::<serde_json::Value>(&text)
+            .ok()
+            .and_then(|v| {
+                v.get("message")
+                    .or_else(|| v.get("error"))
+                    .and_then(|m| m.as_str())
+                    .map(str::to_string)
+            })
+            .unwrap_or(text);
+        return Err(Error::Other(status::refused(
+            "core refused git-credential",
+            code,
+            &message,
+        )));
+    }
+    status::decode(resp, "git-credential").await
+}

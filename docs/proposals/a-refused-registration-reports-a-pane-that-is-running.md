@@ -5,7 +5,7 @@ registration under a live pane says it runs unregistered, which dev ISS-128 carr
 lands it deletes this file.
 
 Found while working ISS-1233, which owns the master-session route. Left here rather than fixed,
-because the change is in `packages/runner/crates/forge-runner-core/src/daemon/master.rs` and that
+because the change is in `packages/runner/crates/runner-daemon/src/master/` and that
 file was declared held by another run's tree when this one was dispatched.
 
 ## What the daemon says, and what is true

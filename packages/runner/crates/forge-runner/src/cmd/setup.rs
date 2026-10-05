@@ -10,9 +10,10 @@ use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 
 use clap::Args as ClapArgs;
-use forge_runner_core::auth::{cred_store, pairing};
-use forge_runner_core::config::Config;
-use forge_runner_core::transport::runners::MeRunner;
+use runner_platform::config::Config;
+use runner_platform::cred_store;
+use runner_transport::runners::MeRunner;
+use runner_workspace::pairing;
 
 use super::Ctx;
 
@@ -182,11 +183,11 @@ fn ensure_pat(core_url: &str, args: &Args, interactive: bool) -> anyhow::Result<
 /// are none the operator has to make one in the web UI, so setup says where and
 /// waits for it rather than binding nothing and reporting success.
 async fn wait_for_assignments(
-    client: &forge_runner_core::transport::CoreClient,
+    client: &runner_transport::CoreClient,
     core_url: &str,
     interactive: bool,
 ) -> anyhow::Result<Vec<MeRunner>> {
-    let fetch = || forge_runner_core::transport::runners::list_me(client);
+    let fetch = || runner_transport::runners::list_me(client);
     let mut assignments = fetch()
         .await
         .map_err(|e| anyhow::anyhow!("could not read this device's assignments: {e}"))?;
@@ -313,7 +314,7 @@ fn ensure_projects_root(args: &Args, chosen: &[String], interactive: bool) -> an
 }
 
 async fn bind_one(
-    client: &forge_runner_core::transport::CoreClient,
+    client: &runner_transport::CoreClient,
     slug: &str,
     path: Option<PathBuf>,
 ) -> anyhow::Result<()> {

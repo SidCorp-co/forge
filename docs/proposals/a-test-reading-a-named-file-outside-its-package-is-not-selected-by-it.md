@@ -14,13 +14,9 @@ reach there, since they allowed only whole-tree tests to change selection.
 
 Measured on the tree ISS-1314 was cut from, seven TypeScript tests in `packages/core` and
 `packages/web-v2` read a named file outside their job's filter — among them the core tests that read
-the runner's wire fixtures under `packages/runner/crates/forge-runner-core/assets/`. Those tests
-were deleted on dev with every TypeScript test, so the reads are re-measured when ISS-172 restores
-them. One read stands on dev today:
-
-| Test | Reads | Its job | Missing from that job's filter |
-|---|---|---|---|
-| `packages/runner/crates/forge-runner-core/src/workspace/orientation.rs` | `.forge/orientation.md` | `runner` | `.forge/**` |
+the runner's wire fixtures. Those tests were deleted on dev with every TypeScript test, and the
+runner's own tests with its fixtures (ISS-216), so none stands on dev today; the reads are
+re-measured when ISS-172 restores them.
 
 ## What would close it
 
@@ -34,7 +30,7 @@ someone to remember to add a line when a test starts reading a new file.
 | Cost | What it takes |
 |---|---|
 | A second declaration shape | `@gate-input` would carry paths as well as `whole-tree`, and the checker has to parse `ci.yml`'s filters, which today only `dorny/paths-filter` reads. |
-| The Rust side | `orientation.rs` is not a vitest file, so its declaration needs a reader of its own, or the runner filter takes `.forge/orientation.md` by hand. |
+| The Rust side | a Rust test is not a vitest file, so its declaration needs a reader of its own, or the runner filter takes the path by hand. |
 
 ## Three more a declaration does not reach
 

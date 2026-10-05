@@ -13,11 +13,12 @@
 use std::io::{BufRead, Write};
 
 use clap::Args as ClapArgs;
-use forge_runner_core::auth::cred_store;
-use forge_runner_core::config::Config;
-use forge_runner_core::transport::{git_credential, CoreClient};
+use runner_platform::config::Config;
+use runner_platform::cred_store;
+use runner_transport::{git_credential, CoreClient};
 
 use super::Ctx;
+use runner_platform::git::days_from_civil;
 
 #[derive(ClapArgs)]
 pub struct Args {
@@ -111,15 +112,4 @@ fn parse_rfc3339_unix(s: &str) -> Option<i64> {
     let mi: i64 = t.next()?.parse().ok()?;
     let se: i64 = t.next()?.split('.').next()?.parse().ok()?;
     Some(days_from_civil(y, mo, da) * 86_400 + h * 3600 + mi * 60 + se)
-}
-
-/// Howard Hinnant's `days_from_civil` — days between 1970-01-01 and y-m-d.
-fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = if y >= 0 { y } else { y - 399 } / 400;
-    let yoe = y - era * 400;
-    let mp = (m + 9) % 12;
-    let doy = (153 * mp + 2) / 5 + d - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146_097 + doe - 719_468
 }

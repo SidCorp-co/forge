@@ -87,7 +87,7 @@ and writing the record, memory, knowledge and project settings are REST.
 `agent-surface.md` (the shrinking-MCP target, and a fleet arrow describing plugin `3.35.140`),
 `data-plane-surface.md` (which REST route replaces which MCP tool), and `system-overview.md`
 (a second copy of the README figure whose core⇄runner arrow pointed the wrong way — the runner
-dials out, `crates/forge-runner-core/src/transport/ws.rs`). Its `README.md` indexed the three.
+dials out, `crates/runner-transport/src/ws.rs`). Its `README.md` indexed the three.
 
 ISS-894 and ISS-889 stay in the tracker. They record a decision that was genuinely made, and
 deleting them would rewrite history rather than correct it; this document is the correction.

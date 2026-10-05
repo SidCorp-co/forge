@@ -9,7 +9,7 @@ import { logger } from '../observability/logger.js';
 import type { LoopScope } from './loop-monitor.js';
 import { kindTuple, NEVER_PARKED_SESSION_KINDS } from './session-kinds.js';
 
-// cm:edge value -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs:SESSION_IDLE_TIMEOUT
+// cm:edge value -> packages/runner/crates/runner-agent/src/claude_code/mod.rs:SESSION_IDLE_TIMEOUT
 // — the runner closes a parked session after this long, so a row parked past it plus the grace has
 // no process behind it.
 const RESIDENCY_SECONDS = 10 * 60;

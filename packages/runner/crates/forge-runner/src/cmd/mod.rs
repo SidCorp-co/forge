@@ -18,7 +18,7 @@ pub mod status;
 pub mod sync;
 pub mod update;
 
-use forge_runner_core::config::Config;
+use runner_platform::config::Config;
 
 /// Shared context handed to every subcommand.
 pub struct Ctx {

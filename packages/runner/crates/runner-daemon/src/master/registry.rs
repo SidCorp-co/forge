@@ -1,0 +1,427 @@
+use super::*;
+
+#[derive(Default)]
+pub struct Masters(pub(crate) Arc<Mutex<Registry>>);
+
+/// The live masters, and what this box has seen the dead ones do.
+#[derive(Default)]
+pub(crate) struct Registry {
+    pub(crate) live: HashMap<String, MasterState>,
+    /// What the last sweep read as this box's projects.
+    pub(crate) served: Served,
+    /// Why each project's master pane was not placed on the last sweep.
+    pub(crate) unplaced: HashMap<String, Unplaced>,
+    /// The last thing this box said about each project's pane, so a project
+    /// stuck in one state is reported on the sweep that finds it and not on all
+    /// forty-five after it.
+    ///
+    /// Keyed by project rather than held on `MasterState`, because every one of
+    /// its callers can run for a project this daemon holds no live master for —
+    /// which is every project on a daemon that has just started, since `live`
+    /// is filled by `remember` and `remember` runs after the sweep's first two
+    /// reports. Held on the state, the latch answered "already said" about a
+    /// project nothing had said anything about, and the report was lost
+    /// (ISS-1099; it is why ISS-1118's contradiction error fired only on the
+    /// daemon that placed the pane).
+    pub(crate) said: HashMap<String, &'static str>,
+    /// The last box-level account of deaf masters this daemon gave, as the
+    /// digest of the whole set and what was done about each.
+    ///
+    /// A digest of the set rather than a count, because four projects deaf and
+    /// four others deaf in their place is not the same condition and reads
+    /// identically by number. `None` once a sweep finds none, so a fleet that
+    /// goes deaf a second time is news again.
+    pub(crate) deaf_said: Option<String>,
+    /// Per project, a session whose capability this box minted for a pane it
+    /// then failed to place AND failed to withdraw.
+    ///
+    /// The map on disk is the detector, and a mint that could not be taken back
+    /// out of it says `current` about a pane that was never replaced. Nothing
+    /// on disk can correct that — the correction IS the write that failed — so
+    /// the box holds what it knows here and refuses to read that entry as
+    /// evidence until the withdrawal takes. The retry is the ordinary sweep:
+    /// the verdict stays `stale`, the pane is ended again, and a placement that
+    /// works clears this (ISS-1208, criterion 7).
+    ///
+    /// In this process only. A daemon restarted with an entry still unwithdrawn
+    /// reads the map at face value again: a priced residual, not a closed one.
+    pub(crate) unwithdrawn: HashMap<String, String>,
+    /// The projects whose master pane tmux could not be asked about on the last
+    /// sweep, so the account is given when the read first goes unanswered and
+    /// not on every sweep it stays that way.
+    pub(crate) unanswered: std::collections::HashSet<String>,
+    /// When this box last placed each project's pane, and where its output is
+    /// kept from, so what the pane printed is read without what earlier panes
+    /// printed before it.
+    pub(crate) placed: HashMap<String, PlacedPane>,
+    /// The conversation a pane this box placed exited over, saying Claude Code
+    /// runs it as a background session, with the short id that refusal
+    /// printed. No pane resuming it is placed while a process on this box
+    /// names it (ISS-1312, F1).
+    pub(crate) elsewhere: HashMap<String, (String, Option<String>)>,
+    /// Consecutive early exits of each project's pane for one reason, which
+    /// decide only what the journal says (ISS-1343).
+    pub(crate) exits: HashMap<String, pane_exit::Tally>,
+    /// Why each project's channel inbox could not be read on the last sweep,
+    /// so a core that does not answer it is said once and not every pass.
+    pub(crate) inbox_unread: HashMap<String, String>,
+}
+
+/// One pane this box placed: when, and where its output begins.
+pub(crate) struct PlacedPane {
+    pub(crate) at: Instant,
+    /// The transcript and its length when the pane started; `None` where the
+    /// pane was placed with no transcript.
+    pub(crate) output: Option<(std::path::PathBuf, u64)>,
+}
+
+pub(crate) struct MasterState {
+    pub(crate) session_id: String,
+    pub(crate) name: String,
+    /// When this project's pool last held anything at all.
+    pub(crate) last_work: Instant,
+    /// The work this master was last nudged about, when, and what its own hooks
+    /// had reported by then.
+    pub(crate) last_nudge: Option<Nudge>,
+    pub(crate) mcp_stale_reported: bool,
+}
+
+impl Masters {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn live_for_project(&self, project_id: &str) -> Option<(String, String)> {
+        self.get(project_id)
+    }
+
+    pub(crate) fn get(&self, project_id: &str) -> Option<(String, String)> {
+        let reg = self.0.lock().expect("masters poisoned");
+        reg.live
+            .get(project_id)
+            .map(|m| (m.session_id.clone(), m.name.clone()))
+    }
+
+    pub(crate) fn remember(&self, project_id: &str, state: MasterState) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.live.insert(project_id.to_string(), state);
+    }
+
+    /// `f` over the session this box serves `pane` under as `project_id`'s
+    /// master, with the registry held so no adoption moves it meanwhile, or
+    /// `None` where `pane` is not that master.
+    pub fn while_live<R>(
+        &self,
+        project_id: &str,
+        pane: &str,
+        f: impl FnOnce(&str) -> R,
+    ) -> Option<R> {
+        let reg = self.0.lock().expect("masters poisoned");
+        let m = reg.live.get(project_id).filter(|m| m.name == pane)?;
+        Some(f(&m.session_id))
+    }
+
+    /// Serve the live pane for this project under `session_id`, keeping
+    /// everything else this box knows about it, and answer the session it
+    /// was served under before where that differs.
+    pub(crate) fn readopt(&self, project_id: &str, session_id: &str) -> Option<String> {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let m = reg.live.get_mut(project_id)?;
+        if m.session_id == session_id {
+            return None;
+        }
+        Some(std::mem::replace(&mut m.session_id, session_id.to_string()))
+    }
+
+    /// This project's pool held something; the idle clock restarts.
+    pub(crate) fn note_work(&self, project_id: &str) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        if let Some(m) = reg.live.get_mut(project_id) {
+            m.last_work = Instant::now();
+        }
+    }
+
+    /// True the first time a project's live pane is found behind its config,
+    /// and false every sweep after, until the pane matches again.
+    pub(crate) fn claim_mcp_stale(&self, project_id: &str) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let Some(m) = reg.live.get_mut(project_id) else {
+            // Not in this process's registry — a pane it did not start, and one
+            // it has therefore never reported. Say it.
+            return true;
+        };
+        if m.mcp_stale_reported {
+            return false;
+        }
+        m.mcp_stale_reported = true;
+        true
+    }
+
+    /// The pane matches again; the next mismatch is worth saying.
+    pub(crate) fn clear_mcp_stale(&self, project_id: &str) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        if let Some(m) = reg.live.get_mut(project_id) {
+            m.mcp_stale_reported = false;
+        }
+    }
+
+    /// Record what this box now says about a pane's capability, and answer
+    /// whether that is a change from what it last said.
+    ///
+    /// Answers `true` for a project it has said nothing about yet, whether or
+    /// not this daemon holds a live master for it: a project absent from the
+    /// registry is one nothing here has ever reported, so the first thing said
+    /// about it is a change.
+    ///
+    /// The latch used to live on the `reg.live` entry, which `remember` fills
+    /// and which is empty for every project on a daemon that has just started.
+    /// A caller reached before `ensure_master` therefore asked a latch that
+    /// answered "already said" about a project nothing had said anything about,
+    /// and the report was lost. ISS-1118's two reports route through
+    /// `note_unplaced` for a reason of their own — they are about a project
+    /// that reaches no pane at all — and that stands whichever way this answers.
+    /// Hold, or release, the knowledge that this project's capability map
+    /// names a session for a pane that was never placed.
+    pub(crate) fn note_unwithdrawn(&self, project_id: &str, session_id: Option<&str>) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        match session_id {
+            Some(id) => reg
+                .unwithdrawn
+                .insert(project_id.to_string(), id.to_string()),
+            None => reg.unwithdrawn.remove(project_id),
+        };
+    }
+
+    pub(crate) fn unwithdrawn_for(&self, project_id: &str) -> Option<String> {
+        self.0
+            .lock()
+            .expect("masters poisoned")
+            .unwithdrawn
+            .get(project_id)
+            .cloned()
+    }
+
+    /// Record whether this sweep's read of the project's pane went unanswered,
+    /// and answer whether that is a change from the last sweep's.
+    pub(crate) fn note_unanswered(&self, project_id: &str, unanswered: bool) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        if unanswered {
+            reg.unanswered.insert(project_id.to_string())
+        } else {
+            reg.unanswered.remove(project_id)
+        }
+    }
+
+    /// Remember why the inbox read failed (`None`: it succeeded), answering
+    /// whether that is news since the last sweep.
+    pub(crate) fn note_inbox_read(&self, project_id: &str, failed: Option<String>) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        match failed {
+            Some(why) => reg.inbox_unread.insert(project_id.to_string(), why.clone()) != Some(why),
+            None => reg.inbox_unread.remove(project_id).is_some(),
+        }
+    }
+
+    pub(crate) fn note_capability(&self, project_id: &str, said: &'static str) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let changed = reg.said.get(project_id) != Some(&said);
+        reg.said.insert(project_id.to_string(), said);
+        changed
+    }
+
+    /// Whether the box-level account of deaf masters this sweep reached is
+    /// news, and remember it either way.
+    ///
+    /// `None` is a sweep that found none: it clears the latch and answers
+    /// `false`, because a fleet that is well is not a thing to announce. The
+    /// latch is the same rule `note_capability` holds for one project, moved up
+    /// to the box — a condition that persists is stated on the sweep that
+    /// reaches it and not on all forty-five after it.
+    pub(crate) fn claim_deaf_report(&self, digest: Option<String>) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let news = digest.is_some() && reg.deaf_said != digest;
+        reg.deaf_said = digest;
+        news
+    }
+
+    pub(crate) fn claim_nudge(
+        &self,
+        project_id: &str,
+        digest: u64,
+        seen: Option<&agent_activity::Activity>,
+        held: bool,
+    ) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let Some(m) = reg.live.get_mut(project_id) else {
+            return false;
+        };
+        let now = Instant::now();
+        let since = since_nudge(seen, m.last_nudge.and_then(|n| n.prompts));
+        if !nudge_due(m.last_nudge, digest, now, since, held) {
+            return false;
+        }
+        m.last_nudge = Some(Nudge {
+            digest,
+            at: now,
+            prompts: seen.map(|a| a.prompts),
+        });
+        true
+    }
+
+    /// How long this project has had nothing, or `None` if it has no master.
+    pub(crate) fn idle_for(&self, project_id: &str) -> Option<Duration> {
+        let reg = self.0.lock().expect("masters poisoned");
+        reg.live.get(project_id).map(|m| m.last_work.elapsed())
+    }
+
+    pub(crate) fn forget(&self, project_id: &str) -> Option<String> {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        // The unwithdrawn marker goes with it. It says one thing — this
+        // project's capability map names a session no pane holds — and a
+        // project this box is no longer tracking has no pane for it to be
+        // about. Left behind, it is a session id waiting to be matched by
+        // whatever core hands out next (ISS-1208).
+        reg.unwithdrawn.remove(project_id);
+        reg.live.remove(project_id).map(|m| m.session_id)
+    }
+
+    pub fn project_for_session(&self, session_id: &str) -> Option<String> {
+        let reg = self.0.lock().expect("masters poisoned");
+        reg.live
+            .iter()
+            .find(|(_, m)| m.session_id == session_id)
+            .map(|(project_id, _)| project_id.clone())
+    }
+
+    /// Record what core just answered for this device, or why it could not be
+    /// read.
+    pub(crate) fn note_served(&self, served: Served) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.served = served;
+    }
+
+    pub(crate) fn note_unplaced(&self, project_id: &str, why: Unplaced) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let changed = reg.unplaced.get(project_id) != Some(&why);
+        reg.unplaced.insert(project_id.to_string(), why);
+        changed
+    }
+
+    pub(crate) fn note_placed(&self, project_id: &str, output: Option<(std::path::PathBuf, u64)>) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.placed.insert(
+            project_id.to_string(),
+            PlacedPane {
+                at: Instant::now(),
+                output,
+            },
+        );
+    }
+
+    pub(crate) fn take_placed(&self, project_id: &str) -> Option<PlacedPane> {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.placed.remove(project_id)
+    }
+
+    /// Count an exit into this project's run of early exits, answering its
+    /// place in it (0 where it was not early).
+    pub(crate) fn count_exit(
+        &self,
+        project_id: &str,
+        lived: Option<Duration>,
+        exit: &pane_exit::Exit,
+    ) -> u32 {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.exits
+            .entry(project_id.to_string())
+            .or_default()
+            .count(lived, exit)
+    }
+
+    /// This project's pane was read up past the early window after its
+    /// placement: ends its run of early exits, answering the run's length
+    /// where it had been named as a condition.
+    pub(crate) fn outlived(&self, project_id: &str) -> Option<u32> {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let past = reg
+            .placed
+            .get(project_id)
+            .is_some_and(|p| p.at.elapsed() >= pane_exit::EARLY_EXIT);
+        if !past {
+            return None;
+        }
+        reg.exits
+            .get_mut(project_id)
+            .and_then(pane_exit::Tally::outlived)
+    }
+
+    pub(crate) fn note_elsewhere(
+        &self,
+        project_id: &str,
+        conversation: String,
+        short: Option<String>,
+    ) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.elsewhere
+            .insert(project_id.to_string(), (conversation, short));
+    }
+
+    pub(crate) fn elsewhere(&self, project_id: &str) -> Option<String> {
+        let reg = self.0.lock().expect("masters poisoned");
+        reg.elsewhere.get(project_id).map(|(c, _)| c.clone())
+    }
+
+    pub(crate) fn elsewhere_short(&self, project_id: &str) -> Option<String> {
+        let reg = self.0.lock().expect("masters poisoned");
+        reg.elsewhere.get(project_id).and_then(|(_, s)| s.clone())
+    }
+
+    pub(crate) fn clear_elsewhere(&self, project_id: &str) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.elsewhere.remove(project_id);
+    }
+
+    /// This project's pane was placed; nothing stands against it any more.
+    pub(crate) fn clear_unplaced(&self, project_id: &str) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.unplaced.remove(project_id);
+    }
+
+    pub fn why_unplaced(&self, project_id: &str) -> String {
+        let reg = self.0.lock().expect("masters poisoned");
+        if let Some(m) = reg.live.get(project_id) {
+            return format!(
+                "this box's master for {project_id} is session {} in pane {}, and your capability names a different session — it was minted for a session core has since replaced, so this pane's capability is stale and nothing this daemon does will place it. A pane cannot be handed a new capability: end this one, and a fresh master starts for {project_id} in its place",
+                m.session_id, m.name
+            );
+        }
+        match &reg.served {
+            Served::Unread => format!(
+                "this box has not yet read which projects it serves, so it cannot say whether it serves {project_id} at all — nothing here has an answer for you yet"
+            ),
+            Served::Unreadable(why) => format!(
+                "this box could not read which projects it serves ({why}), so it cannot say whether it serves {project_id} at all — nothing here has an answer for you yet"
+            ),
+            Served::Read(ids) if !ids.iter().any(|id| id == project_id) => format!(
+                "this box does not serve {project_id} — core's last answer for this device named {} project(s) and that was not one of them, so no sweep here will place a master for it",
+                ids.len()
+            ),
+            Served::Read(_) => match reg.unplaced.get(project_id) {
+                Some(why) => format!(
+                    "this daemon has placed no master for {project_id}: {why}. That is the state its last sweep found, and the next sweep finds the same until it changes"
+                ),
+                None => format!(
+                    "this daemon does not yet hold a master session for {project_id}; its next sweep places one, and a declaration made after that is served"
+                ),
+            },
+        }
+    }
+
+    pub fn pane_for_session(&self, session_id: &str) -> Option<String> {
+        let reg = self.0.lock().expect("masters poisoned");
+        reg.live
+            .values()
+            .find(|m| m.session_id == session_id)
+            .map(|m| m.name.clone())
+    }
+}

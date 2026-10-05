@@ -16,7 +16,7 @@ Two readings of the remaining production code disagreed about what it was:
   a master protocol and its own verdicts, so it seemed to duplicate core across the board.
 - **The value census** (2026-10-05, `~/forge-local-docs/value-census.html`) corrected that. Most of
   what looked duplicated is split on purpose:
-  - **The box ledger is the authority by design** (`packages/runner/crates/forge-runner-core/src/runner/ledger.rs`, ISS-933), and core keeps
+  - **The box ledger is the authority by design** (`packages/runner/crates/runner-core/src/ledger/`, ISS-933), and core keeps
     a mirror of it (ISS-934). Only the box can say which processes and checkouts it holds.
   - **The reapers are split on purpose.** Core reaps leases and state; the runner reaps processes
     and worktrees, which only the machine can see.
@@ -55,14 +55,22 @@ A Cargo workspace whose crate boundaries are the dependency rule, enforced by th
 
 | Crate | Holds |
 |---|---|
-| `forge-runner` (bin) | wiring only: config, starting the actors |
-| `runner-proto` | wire types shared with core (from `@forge/contracts` where possible) |
-| `runner-core` | job and pane lifecycles as enum state machines, no IO |
-| `transport` | the core connection actor (WebSocket/HTTP) |
-| `agent` | `trait AgentBackend`, with the Claude Code implementation |
-| `workspace` | git worktrees, tmux panes, process reaping |
-| `platform` | Linux, macOS and Windows differences |
-| `update` | self-update |
+| `forge-runner` (bin) | the `clap` CLI; `start` hands config to the daemon |
+| `runner-platform` | Linux, macOS and Windows differences: config dir, credential store, processes, git |
+| `runner-proto` | the frames core sends and the heartbeat conditions the box reports |
+| `runner-update` | self-update |
+| `runner-transport` | the core connection: `CoreClient` (HTTP) and the WebSocket |
+| `runner-core` | the box ledger and the run, job and pane verdicts read off it |
+| `runner-workspace` | git worktrees, tmux panes, MCP config, process reaping |
+| `runner-agent` | `trait Runner`, with the Claude Code implementation |
+| `runner-daemon` | the actors, one tokio task per long-lived component, and the master protocol |
+
+As built (ISS-218), three cells differ from the plan, and the code is the record:
+`runner-daemon` exists because the actors and the master protocol are a library the CLI's own
+commands (`master`, `status`) read, not wiring; `runner-core` holds the SQLite ledger, so it is not
+IO-free, because the ledger is the box's authority (ISS-933) and every verdict reads it; and the
+wire structs stay beside the transport calls that send them, `runner-proto` holding only what more
+than one crate reads.
 
 The choices inside that, and why:
 
@@ -110,6 +118,6 @@ The choices inside that, and why:
 - **The ledger keeps columns nothing writes any more** (claims, revivals, questions). Dropping them
   is an on-disk migration on every box, so it waits for the same condition as any other promotion
   carry-over.
-- **The cost.** Until the simplify phase lands, the runner is still one library crate with 40
-  `Arc<Mutex>` sites. This ADR states where it is going; it does not hold the code to that shape.
-  Only the crate split does.
+- **The cost.** The crate split holds the dependency rule; the 23 `Mutex` sites left after ISS-216
+  are per-component memos (a registry, a latch, a sink), kept because an actor per memo would add
+  a message type and a handle each, and grow the code the simplify phase exists to shrink.

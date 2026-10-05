@@ -34,7 +34,7 @@ It is a decision about credential authority, so it is a person's and not a diff'
 
 ## An unreadable session file and an absent one are one answer
 
-`session_matches` in `packages/runner/crates/forge-runner-core/src/mcp/config.rs` reads the session
+`session_matches` in `packages/runner/crates/runner-workspace/src/mcp/config/session.rs` reads the session
 config with `read_to_string(&path).ok()`, so a file it cannot read — a permission fault, bytes that
 are not UTF-8 — arrives as `None`, the same value an absent file produces. Over an empty
 declaration that pair maps to `true`: the box reports agreement with a file it never established
@@ -46,7 +46,7 @@ the conflation is still there for its other caller, the daemon's master sweep, w
 decide whether a live pane's config still says what core says now.
 
 It was not fixed at the source because the sweep's behaviour on that answer lives in
-`packages/runner/crates/forge-runner-core/src/daemon/master.rs`, which another run held uncommitted
+`packages/runner/crates/runner-daemon/src/master/`, which another run held uncommitted
 while ISS-1191 was being worked. What a sweep should do with a file it cannot read is also a real
 question — rewrite it, refuse the pane, or report and leave it — and it is not one a change about
 reporting should settle on the way past.

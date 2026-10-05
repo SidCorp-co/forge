@@ -16,9 +16,9 @@
 //! recorded when nothing is, which is the exact silence this issue exists to end.
 
 use clap::{Args as ClapArgs, Subcommand};
-use forge_runner_core::config::Config;
-use forge_runner_core::daemon::{control, session_tokens};
-use forge_runner_core::runner::ledger::Ledger;
+use runner_core::ledger::Ledger;
+use runner_daemon::{control, session_tokens};
+use runner_platform::config::Config;
 
 #[derive(ClapArgs)]
 pub struct Args {

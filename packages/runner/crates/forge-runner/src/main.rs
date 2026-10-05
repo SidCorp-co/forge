@@ -11,7 +11,7 @@ use clap::{Parser, Subcommand};
 // comparing one against `main`, are looking at the same two values.
 #[command(
     name = "forge-runner",
-    version = forge_runner_core::update::VERSION_LINE,
+    version = runner_update::VERSION_LINE,
     about = "Lightweight broker between Forge core and local runners (Claude Code CLI)."
 )]
 struct Cli {
