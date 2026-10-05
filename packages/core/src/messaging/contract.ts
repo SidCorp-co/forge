@@ -107,7 +107,7 @@ export function renderRefusals(refusals: readonly MessageRefusal[]): string {
     .join('\n');
 }
 
-/** The refusal reasons alone: a log line, a corrective prompt, a `problems` field. */
-export function problemsOf(verdict: MessageVerdict): string[] {
-  return verdict.ok ? [] : verdict.refusals.map((r) => r.why);
+/** What a verdict refused; none for a verdict that passed. */
+export function refusalsOf(verdict: MessageVerdict): readonly MessageRefusal[] {
+  return verdict.ok ? [] : verdict.refusals;
 }

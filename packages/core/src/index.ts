@@ -31,7 +31,6 @@ import {
   allRelationDigests,
   claimIssuePrefix,
   closeBacklogStreams,
-  computeProjectProgress,
   heldIssuePrefixes,
   issueDisplayIds,
   loadIssueRelationsForIssues,
@@ -106,11 +105,7 @@ provideChatTools(CHAT_READ_MODEL_TOOLS);
 provideDataPolicy(
   async (projectId) => (await readProjectDocument(projectId))?.document.sensitiveData,
 );
-provideIssueFactReads({
-  activeIssuePrefix,
-  heldIssuePrefixes,
-  projectProgress: computeProjectProgress,
-});
+provideIssueFactReads({ activeIssuePrefix, heldIssuePrefixes });
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,
   issueForHeadRef: (projectId, headRef) => resolveIssueForHeadRef({ projectId, headRef }),

@@ -1,7 +1,6 @@
 import type { SpeakerRefusalCode } from '@forge/contracts/assistant';
 import type { ConversationAdapter, ConversationShape } from '../db/schema-conversations.js';
 import type { DoorId, MessageVerdict } from '../messaging/contract.js';
-import { problemsOf } from '../messaging/contract.js';
 import { type ProvenMessage, proven, wholeAgentText } from '../messaging/proven.js';
 
 export interface SpeakerRefusal {
@@ -57,14 +56,13 @@ export interface ConversationHistoryMessage {
 
 export interface ScreenedMessage {
   readonly text: string;
-  readonly problems: readonly string[];
   /** The door's proof for `text`, or null where this codebase wrote it. */
   readonly proof: ProvenMessage | null;
 }
 
 /** Text this codebase wrote — an ack, a fallback, a refusal. It screens nothing because there is nothing to screen. */
 export function codeAuthored(text: string): ScreenedMessage {
-  return { text, problems: [], proof: null };
+  return { text, proof: null };
 }
 
 /** Model-written text, admitted only on an `ok` verdict over that exact string. */
@@ -74,7 +72,7 @@ export function screened(
   verdict: MessageVerdict,
 ): ScreenedMessage | null {
   const admitted = proven(door, wholeAgentText(text), verdict);
-  return admitted ? { text, problems: problemsOf(verdict), proof: admitted } : null;
+  return admitted ? { text, proof: admitted } : null;
 }
 
 /** The neutral half: reachable with a venue alone, which is what the registry holds. */

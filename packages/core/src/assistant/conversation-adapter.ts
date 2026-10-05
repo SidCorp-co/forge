@@ -106,7 +106,6 @@ export const webConversationPorts: ConversationAdapterPorts<WebConversationFrame
         messageId,
         role: 'assistant',
         content: message.text,
-        problems: message.problems,
       },
     });
     return { messageId, sockets } as DeliveryReceipt & { sockets: number };

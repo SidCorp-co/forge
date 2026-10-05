@@ -17,7 +17,7 @@ import {
   stampSessionMarker,
 } from '../agent-sessions/index.js';
 import type { agentSessions } from '../db/schema.js';
-import { type MessageVerdict, problemsOf } from '../messaging/contract.js';
+import { type MessageVerdict, refusalsOf } from '../messaging/contract.js';
 import type { ProgressFacts } from '../messaging/facts.js';
 import { withRepairs } from '../messaging/repairs.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
@@ -39,7 +39,6 @@ type SessionRow = typeof agentSessions.$inferSelect;
  */
 type Outcome = {
   text: string;
-  problems: readonly string[];
   failure: string | null;
   passed: MessageVerdict | null;
 };
@@ -112,7 +111,6 @@ async function composeOutcome(session: SessionRow, meta: ConversationAgentMeta):
   if (!text) {
     return {
       text: meta.replies.failed,
-      problems: [],
       passed: null,
       failure:
         session.status === 'completed'
@@ -132,19 +130,17 @@ async function composeOutcome(session: SessionRow, meta: ConversationAgentMeta):
       throw new Error(`${meta.door} declares no repair; nothing can ask that session again`);
     },
   });
-  if (verdict.kind === 'passed')
-    return { text, problems: [], failure: null, passed: verdict.verdict };
+  if (verdict.kind === 'passed') return { text, failure: null, passed: verdict.verdict };
   logger.warn(
     {
       sessionId: session.id,
       conversationId: meta.conversationId,
-      problems: problemsOf(verdict.verdict),
+      refusals: refusalsOf(verdict.verdict),
     },
     'conversation-agent-bridge: the session reply failed the screen; honest fallback',
   );
   return {
     text: meta.replies.failed,
-    problems: [],
     passed: null,
     failure: 'the reply this session wrote could not be shown here',
   };

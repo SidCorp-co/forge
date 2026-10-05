@@ -12,7 +12,7 @@ import {
   sendFixedReply,
 } from '../../integrations/rocketchat/index.js';
 import { issueDisplayIds } from '../../issues/index.js';
-import { problemsOf } from '../../messaging/contract.js';
+import { refusalsOf } from '../../messaging/contract.js';
 import { type ProvenMessage, screenForDoor } from '../../messaging/proven.js';
 import { logger } from '../../observability/logger.js';
 import {
@@ -106,12 +106,17 @@ async function prepareRound(owed: OwedRound, now: Date): Promise<Prepared | Outc
     }),
   );
   if (screening.ok) return { attempt, destination, proven: screening.proven };
-  const problems = problemsOf(screening.verdict);
+  const refusals = refusalsOf(screening.verdict);
   logger.error(
-    { questionId: owed.questionId, round: owed.round, problems },
+    { questionId: owed.questionId, round: owed.round, refusals },
     'rocketchat.question-delivery: the round was refused by the operator screen; not posted',
   );
-  return noteFailure(owed, attempt, `screen refused the round: ${problems.join('; ')}`, now);
+  return noteFailure(
+    owed,
+    attempt,
+    `screen refused the round: ${refusals.map((r) => r.why).join('; ')}`,
+    now,
+  );
 }
 
 /** Post the screened round into its room and record the thread it now lives in. */

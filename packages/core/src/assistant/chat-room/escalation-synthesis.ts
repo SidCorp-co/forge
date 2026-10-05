@@ -14,7 +14,7 @@ import {
 import { db } from '../../db/client.js';
 import { type agentSessions as agentSessionsTable, projects } from '../../db/schema.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof } from '../../integrations/rocketchat/index.js';
-import { type MessageVerdict, problemsOf } from '../../messaging/contract.js';
+import { type MessageRefusal, type MessageVerdict, refusalsOf } from '../../messaging/contract.js';
 import { proven, wholeAgentText } from '../../messaging/proven.js';
 import { withRepairs } from '../../messaging/repairs.js';
 import { screenReplyAtDoor } from '../../messaging/reply-screen.js';
@@ -119,8 +119,8 @@ const EMPTY_SYNTHESIS = {
   example: 'The team has the answer and will reply here shortly.',
 } as const;
 
-const correctiveSynthesis = (problems: string[]): string =>
-  `[SYSTEM CHECK — not from the user] Your previous answer cannot be sent as-is: ${problems.join('; ')}. Rewrite it now, keep only verified facts, and reply in the user's language.`;
+const correctiveSynthesis = (refusals: readonly MessageRefusal[]): string =>
+  `[SYSTEM CHECK — not from the user] Your previous answer cannot be sent as-is: ${refusals.map((r) => r.why).join('; ')}. Rewrite it now, keep only verified facts, and reply in the user's language.`;
 
 export async function synthesizeViaBao(
   session: SessionRow,
@@ -200,10 +200,10 @@ async function synthesizeWith(
     },
     rewrite: async (verdict) => {
       logger.warn(
-        { sessionId: session.id, rid: meta.rid, problems: problemsOf(verdict) },
+        { sessionId: session.id, rid: meta.rid, refusals: refusalsOf(verdict) },
         'rocketchat.escalation: synthesis failed the screen; one corrective retry',
       );
-      const retried = await synthesise(correctiveSynthesis(problemsOf(verdict)));
+      const retried = await synthesise(correctiveSynthesis(refusalsOf(verdict)));
       calls.push(...retried.toolCalls);
       result = { ...retried, reply: correctFalseClaims(retried.reply, calls).text };
       return [result.reply];
@@ -212,7 +212,7 @@ async function synthesizeWith(
 
   if (outcome.kind === 'exhausted') {
     logger.error(
-      { sessionId: session.id, rid: meta.rid, problems: problemsOf(outcome.verdict) },
+      { sessionId: session.id, rid: meta.rid, refusals: refusalsOf(outcome.verdict) },
       'rocketchat.escalation: synthesis still failing after its repair; honest fallback',
     );
     return { text: ESCALATION_FALLBACK_REPLY(meta.botName), proof: FIXED_REPLY_CONSTANT };

@@ -8,8 +8,6 @@ import { isChoiceStep, type QuestionOption, type QuestionStep } from '../../db/s
 import type { RoomMessage } from '../../messaging/proven.js';
 import { agentAuthoredSegments } from '../../questions/index.js';
 
-export { OPTION_LINE_RE } from '../../messaging/option-line.js';
-
 export function optionToken(round: number, index: number, rounds: number): string {
   return rounds > 1 ? `${round}-${index + 1}` : String(index + 1);
 }
