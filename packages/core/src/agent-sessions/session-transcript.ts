@@ -391,7 +391,7 @@ export function maybeDeriveIncrementalFor(
  * Final, authoritative derive on job terminal (complete/fail). Awaits any
  * racing incremental flush, then writes the complete transcript. Best-effort
  * and intended to be called fire-and-forget (`void deriveSessionFinal(...)`)
- * so it can never block or hang job `/complete`.
+ * so it can never block or hang a job's terminal write.
  */
 export async function deriveSessionFinal(jobId: string, agentSessionId: string): Promise<void> {
   const st = getState(agentSessionId);

@@ -182,7 +182,6 @@ export const PAT_UNGRANTABLE: Readonly<Record<string, string>> = Object.freeze({
   'GET /api/jobs/:id/testing-profiles': JOB,
   'POST /api/jobs/:id/events': DEVICE,
   'POST /api/jobs/:id/ack': DEVICE,
-  'POST /api/jobs/:id/complete': DEVICE,
   'POST /api/jobs/:id/fail': DEVICE,
   'POST /api/jobs/:id/kill-ack': DEVICE,
   'POST /api/agent-sessions/:id/ack': DEVICE,

@@ -98,31 +98,6 @@ export async function ackJob(
   return updated ?? null;
 }
 
-/**
- * A late successful completion of a job a sweep reaped to `failed` with a synthetic error:
- * flipped back to `done` unless a retry attempt is queued, dispatched or done. Answers the
- * reclaimed row, or null when a retry owns the outcome or the row moved.
- */
-export async function reclaimReapedJob(job: JobGateRow & { error: string }, deviceId: string) {
-  const activeRetry = await db
-    .select({ id: jobs.id })
-    .from(jobs)
-    .where(and(eq(jobs.retryOf, job.id), inArray(jobs.status, ['queued', 'dispatched', 'done'])))
-    .limit(1);
-  if (activeRetry.length > 0) return null;
-  const [reclaimed] = (
-    await transition(db, JOB_MACHINE, {
-      to: 'done',
-      set: { exitCode: 0, error: null, finishedAt: new Date() },
-      where: and(eq(jobs.id, job.id), eq(jobs.status, 'failed'), eq(jobs.error, job.error)),
-      reason: 'reconciled_late_complete',
-      actor: { type: 'runner', id: deviceId },
-      source: 'lifecycle',
-    })
-  ).rows;
-  return reclaimed ?? null;
-}
-
 /** A runner's terminal report applied to the job it holds, guarded on the status it read. */
 export async function finishJobFromRunner(args: {
   jobId: string;

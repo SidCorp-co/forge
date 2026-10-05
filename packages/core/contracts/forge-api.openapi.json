@@ -6559,26 +6559,6 @@
         ]
       }
     },
-    "/api/devices/me/protections": {
-      "get": {
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireDevice"
-        ],
-        "x-forge-input": "none",
-        "x-forge-validated": []
-      }
-    },
     "/api/devices/me/provisions": {
       "get": {
         "responses": {
@@ -11808,76 +11788,6 @@
         "x-forge-auth": [
           "requireAuth",
           "assertEmailVerified"
-        ],
-        "x-forge-validated": [
-          "json",
-          "param"
-        ]
-      }
-    },
-    "/api/jobs/{id}/complete": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "error": {
-                    "anyOf": [
-                      {
-                        "maxLength": 10000,
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "exitCode": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "summary": {
-                    "maxLength": 10000,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "exitCode"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireDevice"
         ],
         "x-forge-validated": [
           "json",
