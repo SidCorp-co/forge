@@ -6,7 +6,7 @@ import { boundedFormats, linearRegExp, unsafePatterns } from './safe-regex.js';
 import { jsonSchemaElements } from './schema-diff.js';
 
 export const INDEXED_TYPES = ['openapi', 'mcp-tools', 'json-schema', 'graphql'] as const;
-export type IndexedType = (typeof INDEXED_TYPES)[number];
+type IndexedType = (typeof INDEXED_TYPES)[number];
 
 export const isIndexed = (type: string): type is IndexedType =>
   (INDEXED_TYPES as readonly string[]).includes(type);

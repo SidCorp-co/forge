@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { BODY_FORMATS } from '../body/formats.js';
-import { bodyRefusalHttp, prepareBodyOrThrow, rethrowBodyInvalid } from '../body/http-error.js';
+import { bodyRefusalHttp, rethrowBodyInvalid } from '../body/http-error.js';
 
 export const COMMENT_BODY_MAX_CHARS = 64_000;
 
@@ -32,4 +32,4 @@ export const commentCreateSchema = z
 
 export const commentBodySchema = z.object({ body: commentBodyField, format: formatField }).strict();
 
-export { bodyRefusalHttp, prepareBodyOrThrow as prepareCommentBody, rethrowBodyInvalid };
+export { bodyRefusalHttp, rethrowBodyInvalid };

@@ -6,7 +6,7 @@
 import type { ContractApprovalRefusalCode } from '@forge/contracts/ecosystem';
 import { type PermissionFacts, permissionRefusal } from '../../permissions/index.js';
 
-export const CONTRACT_APPROVALS = ['proposed', 'approved', 'returned'] as const;
+const CONTRACT_APPROVALS = ['proposed', 'approved', 'returned'] as const;
 export type ContractApproval = (typeof CONTRACT_APPROVALS)[number];
 
 export const CONTRACT_DECISIONS = ['approve', 'return'] as const;

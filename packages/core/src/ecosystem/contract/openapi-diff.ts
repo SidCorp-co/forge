@@ -22,7 +22,7 @@ export function elementOf(e: Pick<OasdiffEntry, 'operation' | 'path' | 'section'
 }
 
 // cm:why an unknown level is not guessed into info: oasdiff printing a level this pin does not know is a differ that could not be read, which is unknown
-export function fromChangelog(entries: readonly OasdiffEntry[]): MeasuredChange[] {
+function fromChangelog(entries: readonly OasdiffEntry[]): MeasuredChange[] {
   return entries.map((e) => ({
     element: elementOf(e),
     kind: kindOf(e.id),
@@ -59,7 +59,7 @@ function extensionChanges(element: string, d: ExtensionDiff): MeasuredChange[] {
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
-export function fromStructural(diff: unknown): MeasuredChange[] {
+function fromStructural(diff: unknown): MeasuredChange[] {
   const out: MeasuredChange[] = [];
   const walk = (node: unknown, path: string | null, op: string | null, parents: string[]) => {
     if (!isObject(node)) return;

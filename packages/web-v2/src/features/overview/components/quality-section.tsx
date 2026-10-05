@@ -18,7 +18,6 @@ import type { PulseQuality } from "../types";
 
 const LANE_LABEL: Record<string, string> = {
   pipeline: "Pipeline runs",
-  scheduler: "Scheduler runs",
   other: "Everything else",
 };
 
@@ -86,7 +85,7 @@ export function QualitySection({ quality }: QualitySectionProps) {
                 : `${rework.fix} fix · ${rework.code} code`
             }
           />
-          {(["pipeline", "scheduler", "other"] as const).map((lane) => (
+          {(["pipeline", "other"] as const).map((lane) => (
             <BulletBar
               key={lane}
               label={`${LANE_LABEL[lane]} failed`}

@@ -70,7 +70,7 @@ function nameTakenError(existing: ExistingAttachmentRef, scope: string): Refusal
  * Scoped to the one comment, not the issue: a comment is written once with its
  * files, and two comments in a thread may each carry their own `output.txt`.
  */
-export async function findCommentAttachmentByName(
+async function findCommentAttachmentByName(
   commentId: string,
   name: string,
   executor: NameCheckExecutor = db,

@@ -2612,6 +2612,13 @@
       "when": 1817856000000,
       "tag": "0404_short_lived_tokens_rest_as_digests_and_inbound_webhook_secrets_as_ciphertext",
       "breakpoints": true
+    },
+    {
+      "idx": 405,
+      "version": "7",
+      "when": 1817942400000,
+      "tag": "0405_the_write_only_and_unused_schema_and_the_feedback_case_are_dropped",
+      "breakpoints": true
     }
   ]
 }

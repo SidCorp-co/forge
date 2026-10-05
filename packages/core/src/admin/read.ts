@@ -1,9 +1,8 @@
 import { NON_OPEN_STATUSES } from '@forge/contracts/issue-machine';
 import { UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
-import { and, count, desc, eq, ilike, inArray, isNull, sql } from 'drizzle-orm';
+import { count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
-  activityLog,
   type DeviceStatus,
   devices,
   issues,
@@ -15,7 +14,6 @@ import {
   usageRecords,
   users,
 } from '../db/schema.js';
-import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { buildIlikePattern } from '../issues/index.js';
 import { ADMIN_THRESHOLDS } from '../lib/admin-thresholds.js';
 import { type BucketUnit, bucketBoundaries, utcDateTrunc } from '../lib/time-buckets.js';
@@ -253,26 +251,6 @@ export async function readAdminWorkspaces(
 }
 
 type PageQuery = { limit: number; offset: number };
-
-/** Users, newest first, optionally narrowed by an email search. */
-export async function listAdminUsers({ limit, offset, q }: PageQuery & { q?: string | undefined }) {
-  const where = q ? ilike(users.email, buildIlikePattern(q)) : undefined;
-  const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(users).where(where);
-  const rows = await db
-    .select({
-      id: users.id,
-      email: users.email,
-      emailVerifiedAt: users.emailVerifiedAt,
-      createdAt: users.createdAt,
-    })
-    .from(users)
-    .where(where)
-    .orderBy(desc(users.createdAt))
-    .limit(limit)
-    .offset(offset);
-  return { rows, total: Number(n) };
-}
-
 /** Projects, newest first, with creator email and member count, optionally narrowed by slug or name. */
 export async function listAdminProjects({
   limit,
@@ -331,35 +309,6 @@ export async function listAdminDevices({
     .from(devices)
     .where(where)
     .orderBy(desc(devices.createdAt))
-    .limit(limit)
-    .offset(offset);
-  return { rows, total: Number(n) };
-}
-
-/** Activity log entries, newest first, narrowed by action, actor and start time. */
-export async function listAdminAudit({
-  limit,
-  offset,
-  action,
-  actorId,
-  since,
-}: PageQuery & {
-  action?: string | undefined;
-  actorId?: string | undefined;
-  since?: Date | undefined;
-}) {
-  const where: ReturnType<typeof and>[] = [];
-  if (action) where.push(eq(activityLog.action, action));
-  if (actorId) where.push(eq(activityLog.actorId, actorId));
-  if (since) where.push(sql`${activityLog.createdAt} >= ${sqlTimestamp(since)}`);
-  const whereExpr = where.length === 0 ? undefined : where.length === 1 ? where[0] : and(...where);
-
-  const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(activityLog).where(whereExpr);
-  const rows = await db
-    .select()
-    .from(activityLog)
-    .where(whereExpr)
-    .orderBy(desc(activityLog.createdAt))
     .limit(limit)
     .offset(offset);
   return { rows, total: Number(n) };

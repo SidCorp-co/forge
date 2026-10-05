@@ -1,36 +1,21 @@
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { globalEffectiveMd } from './effective.js';
-import { skillById, studioSkillsOf } from './read.js';
-import { applyGlobalSkillDefault } from './service.js';
+import { studioSkillsOf } from './read.js';
 
 /**
- * Skill Studio listing + apply-default (ISS-388). Global skills are immutable
- * read-only templates; the only per-project customization is a same-name
- * project skill that SHADOWS the global. This surface lists BOTH (non-deduped)
- * so the UI can show default(read-only) vs project(editable) + the shadow
- * relation, and exposes apply-default which copies a global template into a new
- * project skill. There is NO route that mutates a global skill.
+ * Skill Studio listing (ISS-388). Global skills are immutable read-only templates; the only
+ * per-project customization is a same-name project skill that SHADOWS the global. This surface
+ * lists BOTH (non-deduped) so the UI can show default vs project and the shadow relation.
  */
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
-
-const applyDefaultBodySchema = z.object({ globalSkillId: z.uuid() }).strict();
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
 export const skillStudioRoutes = new Hono<{ Variables: AuthVars }>();
 skillStudioRoutes.use('/:projectId/skills/effective', requireAuth(), assertEmailVerified());
-skillStudioRoutes.use('/:projectId/skills/apply-default', requireAuth(), assertEmailVerified());
 
 skillStudioRoutes.get(
   '/:projectId/skills/effective',
@@ -68,28 +53,5 @@ skillStudioRoutes.get(
     });
 
     return c.json([...globalRows, ...projectRows]);
-  },
-);
-
-skillStudioRoutes.post(
-  '/:projectId/skills/apply-default',
-  zValidator('param', projectParamSchema),
-  zValidator('json', applyDefaultBodySchema),
-  async (c) => {
-    const { projectId } = c.req.valid('param');
-    const { globalSkillId } = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.admin');
-
-    const global = await skillById(globalSkillId);
-    if (!global) throw notFound('skill not found');
-    if (global.scope !== 'global') {
-      throw badRequest({ globalSkillId: 'apply-default source must be a global skill' });
-    }
-
-    const created = await applyGlobalSkillDefault({ projectId, global });
-    return c.json(created, 201);
   },
 );

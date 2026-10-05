@@ -34,7 +34,7 @@ async function draftPart(projectId: string): Promise<Part | null> {
     collectReleaseBlockers(projectId, { issueIds: ids, door: 'batch' }),
   ]);
   return {
-    version: formatReleaseVersion(nextReleaseVersion(highest?.version ?? null, null, line)),
+    version: formatReleaseVersion(nextReleaseVersion(highest?.version ?? null, line)),
     runId: null,
     state: 'draft',
     issueIds: ids,

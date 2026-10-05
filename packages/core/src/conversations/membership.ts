@@ -78,7 +78,7 @@ function shapeForHandleCount(liveHandles: number): 'direct' | 'group' {
 }
 
 /** What just changed in the room, for the line the room is told. */
-export interface MembershipChange {
+interface MembershipChange {
   kind: 'person' | 'handle';
   /** How the room names them: a handle as `@name`, a person by their address. */
   label: string;

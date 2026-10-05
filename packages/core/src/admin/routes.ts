@@ -12,7 +12,7 @@ import {
 import { onAdminList, requireAdmin } from '../middleware/require-admin.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { computeAlerts } from './alert-queries.js';
-import { listAdminAudit, listAdminDevices, listAdminProjects, listAdminUsers } from './read.js';
+import { listAdminDevices, listAdminProjects } from './read.js';
 
 const searchQuerySchema = paginationSchema.extend({
   q: z.string().trim().min(1).max(200).optional(),
@@ -21,23 +21,10 @@ const searchQuerySchema = paginationSchema.extend({
 const devicesQuerySchema = paginationSchema.extend({
   status: z.enum(deviceStatuses).optional(),
 });
-
-const auditQuerySchema = paginationSchema.extend({
-  action: z.string().trim().min(1).max(100).optional(),
-  actorId: z.uuid().optional(),
-  since: z.iso.datetime().optional(),
-});
-
 export const adminRoutes = new Hono<{ Variables: AuthVars }>();
 
 const adminProtected = new Hono<{ Variables: AuthVars }>();
 adminProtected.use('*', requireAuth(), assertEmailVerified(), requireAdmin());
-
-adminProtected.get('/users', zValidator('query', searchQuerySchema), async (c) => {
-  const { limit, offset, q } = c.req.valid('query');
-  const { rows, total } = await listAdminUsers({ limit, offset, q });
-  return c.json(listResponse(c, rows, total, { limit, offset }));
-});
 
 adminProtected.get('/projects', zValidator('query', searchQuerySchema), async (c) => {
   const { limit, offset, q } = c.req.valid('query');
@@ -48,18 +35,6 @@ adminProtected.get('/projects', zValidator('query', searchQuerySchema), async (c
 adminProtected.get('/devices', zValidator('query', devicesQuerySchema), async (c) => {
   const { limit, offset, status } = c.req.valid('query');
   const { rows, total } = await listAdminDevices({ limit, offset, status });
-  return c.json(listResponse(c, rows, total, { limit, offset }));
-});
-
-adminProtected.get('/audit', zValidator('query', auditQuerySchema), async (c) => {
-  const { limit, offset, action, actorId, since } = c.req.valid('query');
-  const { rows, total } = await listAdminAudit({
-    limit,
-    offset,
-    action,
-    actorId,
-    since: since ? new Date(since) : undefined,
-  });
   return c.json(listResponse(c, rows, total, { limit, offset }));
 });
 

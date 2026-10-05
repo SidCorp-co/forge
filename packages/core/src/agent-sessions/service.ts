@@ -1,4 +1,3 @@
-import type { PipelineControl, PipelineHealth } from '@forge/contracts/pipeline-control';
 import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -133,26 +132,6 @@ export async function cancelSession(sessionId: string, actor: KernelActor) {
   ).rows;
   return row ?? null;
 }
-
-/** Repin a session to another runner (or none), clearing its claude session; null when it is gone. */
-export async function rebindSessionRunner(
-  sessionId: string,
-  next: { deviceId: string | null; metadata: Record<string, unknown>; repoPath: string | null },
-) {
-  const [row] = await db
-    .update(agentSessions)
-    .set({
-      deviceId: next.deviceId,
-      metadata: next.metadata as never,
-      claudeSessionId: null,
-      repoPath: next.repoPath,
-      updatedAt: new Date(),
-    })
-    .where(eq(agentSessions.id, sessionId))
-    .returning();
-  return row ?? null;
-}
-
 type ChatLine = {
   seq: number;
   kind: 'stdout';
@@ -276,34 +255,4 @@ export async function insertForkedSession(
     const seedSync = await syncTurnsWithMessages(row.id, [], values.messages, tx);
     return { inserted: row, seedSync };
   });
-}
-
-/** Write a session's pipeline control; null when the session is gone. */
-export async function setPipelineControl(sessionId: string, control: PipelineControl) {
-  const [row] = await db
-    .update(agentSessions)
-    .set({ pipelineControl: control, updatedAt: new Date() })
-    .where(eq(agentSessions.id, sessionId))
-    .returning();
-  return row ?? null;
-}
-
-/** Write a session's pipeline health; null when the session is gone. */
-export async function setPipelineHealth(sessionId: string, health: PipelineHealth) {
-  const [row] = await db
-    .update(agentSessions)
-    .set({ pipelineHealth: health, updatedAt: new Date() })
-    .where(eq(agentSessions.id, sessionId))
-    .returning();
-  return row ?? null;
-}
-
-/** Write a session's pipeline telemetry; null when the session is gone. */
-export async function setPipelineTelemetry(sessionId: string, telemetry: unknown) {
-  const [row] = await db
-    .update(agentSessions)
-    .set({ pipelineTelemetry: telemetry as never, updatedAt: new Date() })
-    .where(eq(agentSessions.id, sessionId))
-    .returning();
-  return row ?? null;
 }

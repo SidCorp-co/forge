@@ -17,7 +17,7 @@ ISS-1157's plan). Migration 0192 chose not to backfill: a legacy value reads as 
 `resolveFailureCause` (`packages/contracts/src/failure-causes.ts`, re-exported by
 `pipeline/failure-causes.ts`).
 
-Three readers resolve that way today: `metrics/session-failures-report.ts`,
+Two readers resolve that way today:
 `me/pulse-folds.ts:foldSessionFailures` (since ISS-1157) and `runs/standing-final.ts`. Every other reader of the column still gets the raw value:
 `pipeline/runs-rollup.ts`, `runners/read.ts`,
 `devices/run-ledger.ts` and the agent-session list. Each of those is scoped to one project, so the

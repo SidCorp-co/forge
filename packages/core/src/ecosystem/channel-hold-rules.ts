@@ -3,7 +3,7 @@ import { heldThreads } from './channel-rules.js';
 import { type ChannelDocument, holdSchema, type ThreadHold } from './channel-schema.js';
 import { type Checked, type EcosystemRefusal, renameHoldParseRefusals } from './refusals.js';
 
-export interface HoldWorld {
+interface HoldWorld {
   documents: ReadonlyMap<string, ChannelDocument>;
   mayActFor: (personId: string, projectId: string) => boolean;
   holds: readonly ThreadHold[];

@@ -116,34 +116,6 @@ export async function listConversationsInProject(
   if (opts.limit === undefined) return bounded;
   return bounded.limit(opts.limit).offset(opts.offset ?? 0);
 }
-
-export async function countConversationsInProject(
-  projectId: string,
-  opts: ConversationListFilter = {},
-  tx: Executor = defaultDb,
-): Promise<number> {
-  const rows = await tx
-    .selectDistinct({ id: conversations.id })
-    .from(conversations)
-    .innerJoin(
-      conversationParticipants,
-      and(
-        eq(conversationParticipants.conversationId, conversations.id),
-        eq(conversationParticipants.kind, 'handle'),
-        isNull(conversationParticipants.removedAt),
-      ),
-    )
-    .innerJoin(
-      projectMembers,
-      and(
-        eq(projectMembers.userId, conversationParticipants.userId),
-        eq(projectMembers.projectId, projectId),
-      ),
-    )
-    .where(archiveSide(opts.archived));
-  return rows.length;
-}
-
 export async function renameConversation(
   conversationId: string,
   title: string | null,

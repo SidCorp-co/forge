@@ -25,7 +25,7 @@ export interface ConsumerFact {
   builtAgainst: string;
 }
 
-export interface ChangeFact {
+interface ChangeFact {
   feedback: string;
   version: string;
   dueAt: Date;
@@ -95,7 +95,7 @@ function windowOf(f: ContractFacts, current: VersionFact | null, now: Date): Con
   return { version: current.version, dueAt: due.toISOString(), open: now < due };
 }
 
-export function adoptionOf(
+function adoptionOf(
   builtAgainst: string,
   current: VersionFact | null,
   window: ContractWindow | null,

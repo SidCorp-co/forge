@@ -42,10 +42,8 @@ export interface IssueAgentSession {
   updatedAt: string;
   title: string | null;
   deviceId?: string | null;
-  /** ISS-411 — friendly runner name (`devices.name`) so the live-run UI shows
-   *  WHERE a run executes by name, not a raw deviceId UUID. Optional for
-   *  back-compat with a pre-411 server. */
-  deviceName?: string | null;
+  /** The runner's name (`devices.name`), so the live-run UI shows where a run executes. */
+  deviceName: string | null;
   startedAt?: string | null;
   lastHeartbeatAt?: string | null;
   pipelineRunId?: string | null;

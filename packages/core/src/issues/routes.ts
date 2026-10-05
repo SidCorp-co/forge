@@ -7,7 +7,6 @@ import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
-import { registerIssueAttributeRoutes } from './attributes/routes.js';
 import { heldTakeRefusal } from './blocked-by.js';
 import { serializeIssue } from './detail-projection.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
@@ -42,8 +41,6 @@ export { bodyRoutes } from '../body/routes.js';
 
 export const issueRoutes = new Hono<{ Variables: AuthVars }>();
 issueRoutes.use('*', requireAuth(), assertEmailVerified());
-
-registerIssueAttributeRoutes(issueRoutes);
 
 async function loadIssue(issueId: string): Promise<IssueRow> {
   const row = await findIssueById(issueId);
@@ -192,9 +189,7 @@ issueRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => {
 });
 
 export { issueActivityRoutes, projectActivityRoutes } from './activity-routes.js';
-export { issueArchiveRoutes } from './archive-routes.js';
 export { attachmentRoutes, issueAttachmentRoutes } from './attachment-routes.js';
-export { backlogStreamRoutes } from './backlog/routes.js';
 export { issueCriteriaRoutes } from './criteria/routes.js';
 export { issueDependencyRoutes } from './dependency-routes.js';
 export { issueExtrasRoutes } from './extras-routes.js';

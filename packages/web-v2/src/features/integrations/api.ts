@@ -9,7 +9,6 @@ import type {
   ConnectionUpdateInput,
   CoolifyApplication,
   CoolifyTargetIdentity,
-  DeliveryRetryResponse,
   IntegrationDelivery,
   IntegrationSummary,
   IntegrationTestResult,
@@ -82,13 +81,6 @@ export const integrationsApi = {
     ),
 
 
-  /** `POST .../deliveries/:deliveryId/retry` — re-enqueue with a fresh requestId
-   *  (202). Server gates on `direction==='outbound' && status==='failed'`. */
-  retryDelivery: (projectId: string, bindingId: string, deliveryId: string) =>
-    apiClient<DeliveryRetryResponse>(
-      `/projects/${projectId}/integrations/${bindingId}/deliveries/${deliveryId}/retry`,
-      { method: "POST" },
-    ),
 
   githubConnect: (
     projectId: string,

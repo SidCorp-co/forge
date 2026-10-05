@@ -4,7 +4,7 @@ import { join } from 'node:path';
 export const RELEASE_DIR = process.env.RUNNER_RELEASE_DIR ?? '';
 
 /** What a published runner release is: a version and the commit it was built from. */
-export interface PublishedRunnerBuild {
+interface PublishedRunnerBuild {
   version: string;
   /** null for a release published before runner-release.yml wrote COMMIT. */
   commit: string | null;

@@ -24,14 +24,6 @@ export function ageSeconds(then: Date | string | null | undefined, now: Date): n
   const ms = now.getTime() - new Date(then).getTime();
   return Math.max(0, Math.floor(ms / 1000));
 }
-
-/** The middle value by nearest rank, or null over an empty series. */
-export function medianSeconds(values: readonly number[]): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor((sorted.length - 1) / 2)] ?? null;
-}
-
 const BUCKET_OF = new Map<string, keyof PulseWorkBuckets>();
 for (const s of PULSE_OPEN_STATUSES) BUCKET_OF.set(s, 'open');
 for (const s of PULSE_IN_PROGRESS_STATUSES) BUCKET_OF.set(s, 'inProgress');
@@ -122,7 +114,6 @@ export function walkFlow(
 
 const LANE_OF: Record<string, keyof PulseQuality['runFailure']> = {
   issue: 'pipeline',
-  system: 'scheduler',
 };
 
 const emptyLane = (): PulseLane => ({ failed: 0, total: 0 });
@@ -131,7 +122,7 @@ const emptyLane = (): PulseLane => ({ failed: 0, total: 0 });
 export function foldLanes(
   rows: Array<{ kind: string; failed: number; total: number }>,
 ): PulseQuality['runFailure'] {
-  const out = { pipeline: emptyLane(), scheduler: emptyLane(), other: emptyLane() };
+  const out = { pipeline: emptyLane(), other: emptyLane() };
   for (const r of rows) {
     const lane = LANE_OF[r.kind] ?? 'other';
     out[lane].failed += r.failed;

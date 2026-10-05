@@ -37,7 +37,6 @@ import {
   archivedIssueIdsSql,
   citedIssues,
   claimIssuePrefix,
-  closeBacklogStreams,
   heldIssuePrefixes,
   issueDisplayIds,
   issueHead,
@@ -71,12 +70,7 @@ import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.j
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import { deleteFeedbackMockups } from './mockups/index.js';
 import { emitNotification } from './notifications/index.js';
-import {
-  declareOutboxQueues,
-  emitEvents,
-  startOutboxWorker,
-  stopOutboxWorker,
-} from './outbox/index.js';
+import { declareOutboxQueues, startOutboxWorker, stopOutboxWorker } from './outbox/index.js';
 import { registerOutboxConsumers } from './outbox-consumers.js';
 import { readsTechnical } from './permissions/index.js';
 import { pipelineRunProjectId } from './pipeline/index.js';
@@ -220,7 +214,6 @@ export async function runShutdown(
 
   const sequence = (async () => {
     await closeWs();
-    await closeBacklogStreams();
     await stopRocketChatManager();
     await stopTimers();
     await stopOutboxWorker();
@@ -265,19 +258,7 @@ if (isMain) {
   await logUnprovenPatPeppers();
   registerAllIntegrations();
   await registerDeployWorker();
-  const skillSeed = await seedBuiltinSkills(db);
-  await emitEvents(
-    db,
-    skillSeed.changes.map((change) => ({
-      type: 'skill.globalUpdated' as const,
-      payload: {
-        name: change.name,
-        oldVersion: change.oldVersion,
-        newVersion: change.newVersion,
-        contentHash: change.contentHash,
-      },
-    })),
-  );
+  await seedBuiltinSkills(db);
   await runOnceBackfills();
   await sweepPolicyLanded();
   bootstrapChatProviders();

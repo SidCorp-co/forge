@@ -8,22 +8,9 @@
  */
 
 import { Hono } from 'hono';
-import { z } from 'zod';
 import pkg from '../../package.json' with { type: 'json' };
-import { loadProjectAccess } from '../lib/authz.js';
 import { sourceCommit } from '../lib/source-commit.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
-import { readLiveness, readOpsHealth } from './service.js';
-
-const projectIdParamSchema = z.object({ id: z.uuid() });
-const staleQuerySchema = z.object({
-  staleJobThresholdSeconds: z.coerce.number().int().min(60).max(86_400).optional(),
-});
-
-const DEFAULT_STALE_JOB_SECONDS = 600;
-
+import { readLiveness } from './service.js';
 export const publicHealthRoutes = new Hono();
 
 publicHealthRoutes.get('/health', async (c) => {
@@ -48,25 +35,6 @@ publicHealthRoutes.get('/version', (c) =>
     sourceCommit,
     uptimeSeconds: Math.floor(process.uptime()),
   }),
-);
-
-export const opsHealthProjectRoutes = new Hono<{ Variables: AuthVars }>();
-opsHealthProjectRoutes.use('*', requireAuth(), assertEmailVerified());
-
-opsHealthProjectRoutes.get(
-  '/:id/ops-health',
-  zValidator('param', projectIdParamSchema),
-  zValidator('query', staleQuerySchema),
-  async (c) => {
-    const { id: projectId } = c.req.valid('param');
-    const { staleJobThresholdSeconds } = c.req.valid('query');
-    const access = await loadProjectAccess(projectId, c.get('userId'));
-    requireHeld(access, 'project.write');
-
-    return c.json(
-      await readOpsHealth([projectId], staleJobThresholdSeconds ?? DEFAULT_STALE_JOB_SECONDS),
-    );
-  },
 );
 
 export { projectHealthRoutes } from './project-health-routes.js';

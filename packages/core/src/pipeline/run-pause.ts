@@ -10,14 +10,8 @@ import { consume } from '../outbox/index.js';
 
 export {
   describePause,
-  HUMAN_RESUMED_PAUSE_KINDS,
   isLivePauseReason,
-  LIVE_PAUSE_REASON_KINDS,
-  MACHINE_RESUMED_PAUSE_KINDS,
-  type PauseDescription,
-  type PauseReasonKind,
   type PauseResumer,
-  pauseReasonFor,
   pauseResumesItself,
 } from '@forge/contracts/run-standing';
 

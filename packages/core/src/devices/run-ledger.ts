@@ -8,9 +8,9 @@
  */
 
 import { MASTER_SESSION_KIND } from '@forge/contracts/agent-sessions';
-import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions, devices, runners } from '../db/schema.js';
+import { agentSessions, runners } from '../db/schema.js';
 import { deviceRunLedger } from '../db/schema-run-ledger.js';
 import { logger } from '../lib/logger.js';
 
@@ -141,69 +141,4 @@ export async function applyRunLedgerSnapshot(args: {
     }
   });
   logger.debug({ deviceId: args.deviceId, runs: entries.length }, 'run-ledger: snapshot applied');
-}
-
-interface ProjectRunSessionRow
-  extends Omit<RunLedgerEntry, 'sessionTerminalAtEpochS' | 'worktreeGoneAtEpochS'> {
-  /** ISO, because this half is read by a browser rather than written by a box. */
-  sessionTerminalAt: string | null;
-  worktreeGoneAt: string | null;
-  deviceId: string;
-  deviceName: string | null;
-  observedAt: string;
-  /** Core's own reading of the session, never the box's claim. */
-  sessionStatus: string | null;
-  /** Why core failed the session, where it did. `null` both on a clean end and on a session that
-   *  has not ended — `sessionStatus` is what separates those two, never this field's absence. */
-  sessionFailureReason: string | null;
-  lastActivityAt: string | null;
-  masterTitle: string | null;
-}
-
-/** Every run the fleet has reported for one project, newest report first. */
-export async function readProjectRunSessions(projectId: string): Promise<ProjectRunSessionRow[]> {
-  const rows = await db
-    .select({
-      deviceId: deviceRunLedger.deviceId,
-      runId: deviceRunLedger.runId,
-      projectId: deviceRunLedger.projectId,
-      sessionId: deviceRunLedger.sessionId,
-      masterSessionId: deviceRunLedger.masterSessionId,
-      pid: deviceRunLedger.pid,
-      worktreePath: deviceRunLedger.worktreePath,
-      bootId: deviceRunLedger.bootId,
-      incarnation: deviceRunLedger.incarnation,
-      work: deviceRunLedger.work,
-      blockerKind: deviceRunLedger.blockerKind,
-      waitingOn: deviceRunLedger.waitingOn,
-      sessionTerminalAt: deviceRunLedger.sessionTerminalAt,
-      worktreeGoneAt: deviceRunLedger.worktreeGoneAt,
-      issues: deviceRunLedger.issues,
-      observedAt: deviceRunLedger.observedAt,
-      deviceName: devices.name,
-      sessionStatus: sql<
-        string | null
-      >`(SELECT s.status FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
-      sessionFailureReason: sql<
-        string | null
-      >`(SELECT s.failure_reason FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
-      lastActivityAt: sql<
-        string | null
-      >`(SELECT s.last_heartbeat_at FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
-      masterTitle: sql<
-        string | null
-      >`(SELECT s.title FROM agent_sessions s WHERE s.id = ${deviceRunLedger.masterSessionId})`,
-    })
-    .from(deviceRunLedger)
-    .leftJoin(devices, eq(devices.id, deviceRunLedger.deviceId))
-    .where(eq(deviceRunLedger.projectId, projectId))
-    .orderBy(sql`${deviceRunLedger.observedAt} DESC`);
-  return rows.map((r) => ({
-    ...r,
-    issues: (r.issues ?? []) as RunLedgerIssue[],
-    observedAt: new Date(r.observedAt).toISOString(),
-    lastActivityAt: r.lastActivityAt ? new Date(r.lastActivityAt).toISOString() : null,
-    sessionTerminalAt: r.sessionTerminalAt ? new Date(r.sessionTerminalAt).toISOString() : null,
-    worktreeGoneAt: r.worktreeGoneAt ? new Date(r.worktreeGoneAt).toISOString() : null,
-  }));
 }

@@ -1,5 +1,5 @@
 /** The period a box beats at: runner-transport `heartbeat.rs:INTERVAL_SECS`. */
-export const BOX_HEARTBEAT_MS = 30_000;
+const BOX_HEARTBEAT_MS = 30_000;
 
 /**
  * A box is stale once it has missed three beats running. Every liveness reading of a box (the device

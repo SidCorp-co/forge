@@ -47,7 +47,7 @@ const snapshotSchema = z
   })
   .strict();
 
-export const RUNNER_SESSIONS_REFUSED_EVENT = 'runner:sessions.refused';
+const RUNNER_SESSIONS_REFUSED_EVENT = 'runner:sessions.refused';
 
 type RunRefusal = { runId: string | null; path: string; detail: string };
 

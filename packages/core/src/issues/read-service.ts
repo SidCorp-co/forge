@@ -6,7 +6,7 @@ import { type WorkStateView, workStateViewSql } from './work-state.js';
 
 /**
  * An issue as every reader is handed it: the row, `sessionContext` composed with the work state's
- * lease (cm:hack, `work-state.ts:composedSessionContextSql`), and the work state — one statement,
+ * lease, and the work state — one statement,
  * so a reply cannot pair a status with another moment's step.
  */
 export type IssueRow = typeof issues.$inferSelect & { workState: WorkStateView | null };

@@ -120,7 +120,6 @@ export const agentSessionTurns = pgTable(
     turnIndex: integer('turn_index').notNull(),
     role: text('role', { enum: agentSessionTurnRoles }).notNull(),
     content: jsonb('content').notNull(),
-    parentTurnId: uuid('parent_turn_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     editedAt: timestamp('edited_at', { withTimezone: true }),
   },
@@ -129,7 +128,6 @@ export const agentSessionTurns = pgTable(
       t.agentSessionId,
       t.turnIndex,
     ),
-    parentIdx: index('agent_session_turns_parent_idx').on(t.parentTurnId),
   }),
 );
 
@@ -137,11 +135,6 @@ export const agentSessionTurnsRelations = relations(agentSessionTurns, ({ one })
   session: one(agentSessions, {
     fields: [agentSessionTurns.agentSessionId],
     references: [agentSessions.id],
-  }),
-  parent: one(agentSessionTurns, {
-    fields: [agentSessionTurns.parentTurnId],
-    references: [agentSessionTurns.id],
-    relationName: 'agent_session_turns_parent',
   }),
 }));
 

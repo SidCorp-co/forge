@@ -36,7 +36,7 @@ export interface ImpactBreak {
   outsideContract: string[];
 }
 
-export type LinkReason = 'no-breaking-change-touches' | 'built-against' | 'touched' | 'unmeasured';
+type LinkReason = 'no-breaking-change-touches' | 'built-against' | 'touched' | 'unmeasured';
 
 export interface LinkImpact {
   link: string;

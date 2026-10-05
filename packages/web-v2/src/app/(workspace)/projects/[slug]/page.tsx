@@ -20,7 +20,6 @@ import { DeliveryRow } from "@/features/project-dashboard/components/delivery-ro
 import { KpiBand } from "@/features/project-dashboard/components/kpi-band";
 import { LiveRunsCard } from "@/features/project-dashboard/components/live-runs-card";
 import { RunnersCard } from "@/features/project-dashboard/components/runners-card";
-import { SchedulesCard } from "@/features/project-dashboard/components/schedules-card";
 import { SpendCard } from "@/features/project-dashboard/components/spend-card";
 import { StatusDonut } from "@/features/project-dashboard/components/status-donut";
 import {
@@ -31,7 +30,6 @@ import {
   runnersSummary,
   spendByStage,
   statusDonut,
-  upcomingSchedules,
 } from "@/features/project-dashboard/derive";
 import { useNeedsYou } from "@/features/needs-you/hooks";
 import { OnboardingHint } from "@/features/onboarding/components/onboarding-hint";
@@ -42,7 +40,6 @@ import { useActiveRunners, useProjectRunners } from "@/features/runners/hooks";
 import { useProjectDocument } from "@/features/project-settings/config-hooks";
 import { SystemOverviewRegion } from "@/features/workflows/components/system-overview";
 import { useWorkflowTemplates, useWorkflows } from "@/features/workflows/hooks";
-import { useSchedules } from "@/features/schedules/hooks";
 import { useQueueStats } from "@/features/sessions/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -70,7 +67,6 @@ export default function ProjectOverviewPage() {
   const queueQ = useQueueStats(projectId);
   const projectRunnersQ = useProjectRunners(projectId ?? null);
   const activeRunnersQ = useActiveRunners(projectId ?? null);
-  const schedulesQ = useSchedules(projectId);
   const workflowsQ = useWorkflows(projectId);
   const templatesQ = useWorkflowTemplates(projectId);
   const projectDocumentQ = useProjectDocument(projectId);
@@ -137,7 +133,6 @@ export default function ProjectOverviewPage() {
   );
   const donut = statusDonut(health?.statusDistribution);
   const spend = spendByStage(durationsQ.data);
-  const schedules = upcomingSchedules(schedulesQ.data);
 
   return (
     <>
@@ -217,7 +212,6 @@ export default function ProjectOverviewPage() {
           <StatusDonut data={donut} />
           <SpendCard data={spend} inFlightUsd={inFlight} />
           <RunnersCard summary={runners} slug={project.slug} />
-          <SchedulesCard rows={schedules} now={now} slug={project.slug} />
         </div>
       </div>
     </PageContainer>

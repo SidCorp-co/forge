@@ -10,7 +10,6 @@ import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { moduleDetailOf } from './module-detail-read.js';
-import { moduleDrift } from './module-drift.js';
 import { DEFAULT_ACTIVE_WITHIN_DAYS } from './module-rollup.js';
 import {
   assertDemotionIsLegal,
@@ -161,27 +160,6 @@ labelProjectRoutes.get(
     return c.json(await moduleDetailOf(projectId, module, viewerOf(c)));
   },
 );
-
-const driftQuerySchema = z
-  .object({ minCoOccurrence: z.coerce.number().int().min(1).max(1000).default(2) })
-  .strict();
-
-labelProjectRoutes.get(
-  '/:id/modules/drift',
-  zValidator('param', idParamSchema),
-  zValidator('query', driftQuerySchema),
-  async (c) => {
-    const { id: projectId } = c.req.valid('param');
-    const { minCoOccurrence } = c.req.valid('query');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.read');
-
-    return c.json(await moduleDrift(projectId, { minCoOccurrence }));
-  },
-);
-
 export const labelRoutes = new Hono<{ Variables: AuthVars }>();
 labelRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -258,5 +236,3 @@ labelRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => {
   await deleteLabel(id);
   return c.body(null, 204);
 });
-
-export { moduleDiagramRoutes } from './module-diagram-routes.js';

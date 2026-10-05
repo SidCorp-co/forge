@@ -24,7 +24,7 @@ import { reserveDelivery } from './window-claim.js';
 import type { WindowClaim } from './windows.js';
 
 /** The message an explicit request is anchored on: what is marked received, and what the status threads under. */
-export interface ExplicitAnchor {
+interface ExplicitAnchor {
   /** The transport's id for the message, or null where it carried none — then nothing can be marked on it. */
   messageId: string | null;
   receivedAt: Date;
@@ -56,7 +56,7 @@ export function explicitAnchor(
   return { messageId: pick.externalId, receivedAt: pick.createdAt, authorLabel: pick.authorLabel };
 }
 
-export type TerminalStatus = 'nothing-posted' | 'uncertain';
+type TerminalStatus = 'nothing-posted' | 'uncertain';
 
 /**
  * The silences a turn CHOSE, which owe the asker nothing.
@@ -90,14 +90,14 @@ function terminalStatusFor(routed: {
 }
 
 /** What the window's close records about the status it posted, or failed to. */
-export interface PostedStatus {
+interface PostedStatus {
   status: TerminalStatus;
   anchor: string | null;
   delivered: boolean;
   reason?: string;
 }
 
-export interface PostStatusArgs {
+interface PostStatusArgs {
   status: TerminalStatus;
   anchor: ExplicitAnchor;
   venue: ConversationVenue;

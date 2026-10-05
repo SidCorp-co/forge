@@ -5,7 +5,6 @@ import { logger } from '../lib/logger.js';
 import { RefusalError } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
 import { hashSkillBody } from './hash.js';
-import { refuse } from './refuse.js';
 import type { Finding } from './security-findings.js';
 import { scanSkillContent } from './skill-content-scanner.js';
 
@@ -49,7 +48,7 @@ function normalizeSkillFiles(files: SkillFileInput[]): SkillFileInput[] {
  * before invoking.
  */
 
-export type SkillRow = {
+type SkillRow = {
   id: string;
   name: string;
   description: string;
@@ -70,14 +69,14 @@ export type SkillRow = {
   /** ISS-605 template lineage (null = not adopted from a template / pre-tracking). */
   basedOnGlobalSkillId?: string | null;
   basedOnGlobalVersion?: number | null;
-  /** ISS-802 — intentional, permanent divergence; see `PUT /api/projects/:projectId/skills/:skillId/pin`. */
+  /** ISS-802 — intentional, permanent divergence from the global template. */
   pinned?: boolean;
   pinnedReason?: string | null;
   pinnedBy?: string | null;
   pinnedAt?: Date | string | null;
 };
 
-export const skillProjection = {
+const skillProjection = {
   id: skills.id,
   name: skills.name,
   description: skills.description,
@@ -234,54 +233,6 @@ export async function updateProjectSkill(
 export async function deleteProjectSkill(skillId: string): Promise<void> {
   await db.delete(skills).where(eq(skills.id, skillId));
 }
-
-/**
- * Copy a global skill template into a new project-scoped skill of the same name
- * (Skill Studio "apply default", ISS-388). The project skill then SHADOWS the
- * global for this project. Caller validates that `global` is a global skill and
- * authorizes owner/admin; this enforces the one-shadow-per-name rule.
- */
-export async function applyGlobalSkillDefault(input: {
-  projectId: string;
-  global: {
-    id: string;
-    version: number;
-    name: string;
-    description: string;
-    skillMd: string | null;
-    prompt: string;
-    target: SkillTarget | null;
-    files: unknown;
-  };
-}): Promise<SkillRow> {
-  const { projectId, global } = input;
-  const [existing] = await db
-    .select({ id: skills.id })
-    .from(skills)
-    .where(
-      and(
-        eq(skills.scope, 'project'),
-        eq(skills.projectId, projectId),
-        eq(skills.name, global.name),
-      ),
-    )
-    .limit(1);
-  if (existing) {
-    throw refuse('ALREADY_SHADOWED', `a project skill named '${global.name}' already exists`);
-  }
-  const files = (Array.isArray(global.files) ? global.files : []) as SkillFileInput[];
-  return createProjectSkill({
-    projectId,
-    name: global.name,
-    description: global.description,
-    skillMd: global.skillMd ?? global.prompt ?? '',
-    target: global.target,
-    files,
-    basedOnGlobalSkillId: global.id,
-    basedOnGlobalVersion: global.version,
-  });
-}
-
 /**
  * Resolve a project's runners to a distinct set of device ids, optionally
  * narrowed to one device.

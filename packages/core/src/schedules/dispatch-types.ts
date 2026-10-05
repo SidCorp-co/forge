@@ -2,7 +2,7 @@ import type { SessionAsker, SessionRefusal } from '../agent-sessions/index.js';
 import type { ScheduleKind } from '../db/schema.js';
 import type { FireSettlement } from './fires.js';
 
-export interface ScheduleRowForDispatch {
+interface ScheduleRowForDispatch {
   id: string;
   name?: string | null;
   projectId: string;

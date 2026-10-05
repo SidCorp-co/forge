@@ -12,8 +12,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { integrationGuides } from '../db/schema.js';
-import type { IntegrationProvider } from '../integrations/index.js';
-import { getGuide as getCodeGuide, listGuides } from './registry.js';
+import { getGuide as getCodeGuide } from './registry.js';
 import type { ForgeGuide } from './types.js';
 
 const INTEGRATION_GUIDE_SLUG_PREFIX = 'integration-';
@@ -79,46 +78,6 @@ export async function resolveGuide(
   }
   return getCodeGuide(slug);
 }
-
-/**
- * Body-free index for a caller: the code tier plus every integration guide the
- * org has authored. An org row for a provider that also has a code default
- * replaces that entry rather than appearing twice.
- */
-export async function resolveGuideIndex(orgId: string): Promise<Array<Omit<ForgeGuide, 'body'>>> {
-  const code = listGuides();
-
-  const rows = await db
-    .select({
-      provider: integrationGuides.provider,
-      title: integrationGuides.title,
-      summary: integrationGuides.summary,
-      version: integrationGuides.version,
-    })
-    .from(integrationGuides)
-    .where(eq(integrationGuides.orgId, orgId));
-  if (rows.length === 0) return code;
-
-  const overrides = new Map(
-    rows.map((r) => [
-      integrationGuideSlug(r.provider),
-      {
-        slug: integrationGuideSlug(r.provider),
-        audience: 'agent' as const,
-        title: r.title,
-        summary: r.summary,
-        version: r.version,
-      },
-    ]),
-  );
-  const merged = code.map((g) => overrides.get(g.slug) ?? g);
-  const seen = new Set(merged.map((g) => g.slug));
-  for (const [slug, entry] of overrides) {
-    if (!seen.has(slug)) merged.push(entry);
-  }
-  return merged;
-}
-
 /** Providers this org has a guide for — drives the "Full guide:" pointer. */
 export async function loadOrgGuideProviders(orgId: string): Promise<Set<string>> {
   const rows = await db
@@ -126,55 +85,4 @@ export async function loadOrgGuideProviders(orgId: string): Promise<Set<string>>
     .from(integrationGuides)
     .where(eq(integrationGuides.orgId, orgId));
   return new Set(rows.map((r) => r.provider));
-}
-
-interface UpsertIntegrationGuideArgs {
-  orgId: string;
-  provider: IntegrationProvider;
-  title: string;
-  summary: string;
-  body: string;
-  updatedBy: string | null;
-}
-
-export async function upsertIntegrationGuide(
-  args: UpsertIntegrationGuideArgs,
-): Promise<IntegrationGuideRow> {
-  const existing = await loadOrgGuide(args.orgId, args.provider);
-  const version = existing ? existing.version + 1 : 1;
-  const now = new Date();
-
-  const [row] = await db
-    .insert(integrationGuides)
-    .values({
-      orgId: args.orgId,
-      provider: args.provider,
-      title: args.title,
-      summary: args.summary,
-      body: args.body,
-      version,
-      updatedBy: args.updatedBy,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: [integrationGuides.orgId, integrationGuides.provider],
-      set: {
-        title: args.title,
-        summary: args.summary,
-        body: args.body,
-        version,
-        updatedBy: args.updatedBy,
-        updatedAt: now,
-      },
-    })
-    .returning({
-      provider: integrationGuides.provider,
-      title: integrationGuides.title,
-      summary: integrationGuides.summary,
-      body: integrationGuides.body,
-      version: integrationGuides.version,
-      updatedAt: integrationGuides.updatedAt,
-    });
-  if (!row) throw new Error('integration_guides: upsert returned no row');
-  return row;
 }

@@ -28,7 +28,6 @@ export { asBlocks, toCanonicalEntry } from './canonical-entry.js';
 
 export {
   type ConversationListFilter,
-  countConversationsInProject,
   deleteConversation,
   effectiveConversationMode,
   getConversation,
@@ -147,7 +146,7 @@ export async function openConversationIn(
   }
 }
 
-export interface AppendMessageArgs {
+interface AppendMessageArgs {
   conversationId: string;
   /**
    * The row's id, where the caller must know it BEFORE the insert; the column
@@ -181,7 +180,7 @@ export async function appendMessage(args: AppendMessageArgs): Promise<StoredConv
   return only;
 }
 
-export interface AppendMessagesArgs {
+interface AppendMessagesArgs {
   conversationId: string;
   messages: ReadonlyArray<Omit<AppendMessageArgs, 'conversationId' | 'db'>>;
   db?: typeof defaultDb;

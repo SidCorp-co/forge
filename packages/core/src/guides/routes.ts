@@ -1,19 +1,11 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { z } from 'zod';
-import { INTEGRATION_PROVIDERS } from '../integrations/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { env } from '../lib/env.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
-import { actorFor, orgResource, requireHeld, requireOrgCan } from '../permissions/index.js';
+import { requireHeld } from '../permissions/index.js';
 import { findProjectOrgId } from '../projects/index.js';
-import {
-  integrationGuideSlug,
-  resolveGuide,
-  resolveGuideIndex,
-  upsertIntegrationGuide,
-} from './integration-guides.js';
+import { resolveGuide } from './integration-guides.js';
 import { getGuide, listGuides } from './registry.js';
 
 /**
@@ -31,60 +23,6 @@ import { getGuide, listGuides } from './registry.js';
  * separately authenticated.
  */
 export const guideRoutes = new Hono();
-
-const upsertSchema = z.object({
-  title: z.string().trim().min(1).max(200),
-  summary: z.string().trim().min(1).max(500),
-  body: z.string().min(1).max(200000),
-});
-
-const orgGuideRoutes = new Hono<{ Variables: AuthVars }>();
-orgGuideRoutes.use('*', requireAuth());
-
-function assertKnownProvider(provider: string): void {
-  if (!INTEGRATION_PROVIDERS.includes(provider as (typeof INTEGRATION_PROVIDERS)[number])) {
-    throw new HTTPException(400, {
-      message: `unknown integration provider '${provider}'. Known: ${INTEGRATION_PROVIDERS.join(', ')}`,
-      cause: { code: 'BAD_REQUEST' },
-    });
-  }
-}
-
-orgGuideRoutes.get('/:orgId/guides', async (c) => {
-  const orgId = c.req.param('orgId');
-  await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
-  return c.json({ guides: await resolveGuideIndex(orgId) });
-});
-
-orgGuideRoutes.put(
-  '/:orgId/integration-guides/:provider',
-  zValidator('json', upsertSchema),
-  async (c) => {
-    const orgId = c.req.param('orgId');
-    const provider = c.req.param('provider');
-    assertKnownProvider(provider);
-    const userId = c.get('userId');
-    await requireOrgCan(actorFor(userId), 'org.admin', orgResource(orgId));
-    const row = await upsertIntegrationGuide({
-      orgId,
-      provider: provider as (typeof INTEGRATION_PROVIDERS)[number],
-      ...c.req.valid('json'),
-      updatedBy: userId,
-    });
-    return c.json({
-      guide: {
-        slug: integrationGuideSlug(row.provider),
-        title: row.title,
-        summary: row.summary,
-        version: row.version,
-        updatedAt: row.updatedAt,
-      },
-    });
-  },
-);
-
-guideRoutes.route('/orgs', orgGuideRoutes);
-
 /** A project member reads a guide as its org shadows it: an org's integration guide over the code default. */
 const projectGuideRoutes = new Hono<{ Variables: AuthVars }>();
 projectGuideRoutes.use('*', requireAuth());

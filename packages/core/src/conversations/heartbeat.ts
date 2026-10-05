@@ -25,7 +25,7 @@ import { GUARD_WINDOW } from './proactivity.js';
 import { readMessages, type StoredConversationMessage } from './store.js';
 import { openOrExtendWindow } from './windows.js';
 
-export type HeartbeatSkip =
+type HeartbeatSkip =
   | 'window-open'
   | 'last-window-not-quiet'
   | 'no-messages'
@@ -34,7 +34,7 @@ export type HeartbeatSkip =
   | 'heartbeat-recent'
   | 'nothing-unanswered';
 
-export interface HeartbeatFacts {
+interface HeartbeatFacts {
   /** The decision of the newest closed window, or null where none has closed. */
   lastSettledDecision: ConversationWindowDecision | null;
   /** Whether a window is collecting or claimed right now. */
@@ -49,7 +49,7 @@ export interface HeartbeatFacts {
   now: Date;
 }
 
-export type HeartbeatVerdict =
+type HeartbeatVerdict =
   | { due: true; firstSeq: number; lastSeq: number }
   | { due: false; reason: HeartbeatSkip };
 
@@ -85,7 +85,7 @@ function heartbeatDue(facts: HeartbeatFacts): HeartbeatVerdict {
   return { due: true, firstSeq: firstUnanswered.seq, lastSeq: newest.seq };
 }
 
-export interface HeartbeatTickResult {
+interface HeartbeatTickResult {
   /** Rooms with at least one handle whose heartbeat is enabled. */
   rooms: number;
   opened: number;

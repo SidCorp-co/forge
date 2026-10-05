@@ -3,7 +3,6 @@
 import {
   FEEDBACK_ATTENTION_GROUPS,
   type FeedbackAttentionGroup,
-  type FeedbackCaseView,
   type FeedbackListResponse,
   type FeedbackPhase,
   type FeedbackRouteView,
@@ -15,7 +14,7 @@ import type { SuggestionStatus } from '@forge/contracts/suggestions';
 import { and, desc, eq, ilike, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns, projects } from '../db/schema.js';
-import { feedback, feedbackCases } from '../db/schema-feedback.js';
+import { feedback } from '../db/schema-feedback.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
@@ -26,31 +25,11 @@ import { userNames } from '../lib/people.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { deliveredAmong } from '../requirements/index.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
-import type { CaseRow, FeedbackActor, Row } from './read.js';
+import type { FeedbackActor, Row } from './read.js';
 import { feedbackIdsOfRequirement, NO_FEEDBACK } from './relations.js';
 import { type FeedbackRefusal, searchWithheldRefusal } from './rules.js';
 import { feedbackStandingOf, type PhaseFacts, phaseOf } from './standing.js';
 import { targetView } from './target-view.js';
-
-async function casesOf(feedbackIds: readonly string[]): Promise<Map<string, CaseRow>> {
-  if (feedbackIds.length === 0) return new Map();
-  const rows = await db
-    .select()
-    .from(feedbackCases)
-    .where(inArray(feedbackCases.feedbackId, [...feedbackIds]));
-  return new Map(rows.map((r) => [r.feedbackId, r]));
-}
-
-function caseView(c: CaseRow, now: Date = new Date()): FeedbackCaseView {
-  return {
-    route: c.route,
-    owner: c.owner,
-    openedAt: c.openedAt.toISOString(),
-    dueAt: c.dueAt.toISOString(),
-    routedAt: c.routedAt?.toISOString() ?? null,
-    overdue: c.routedAt === null && now.getTime() > c.dueAt.getTime(),
-  };
-}
 
 /** Everything the rows point at, loaded once for a page of rows. */
 export interface Linked {
@@ -63,7 +42,6 @@ export interface Linked {
   suggestions: Map<string, { status: string; revisionLive: boolean; delivered: boolean }>;
   roots: Map<string, Row>;
   names: Map<string, string>;
-  cases: Map<string, CaseRow>;
 }
 
 const ids = (values: (string | null)[]) => [...new Set(values.filter((v): v is string => !!v))];
@@ -76,7 +54,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
   const suggestionIds = ids(rows.map((r) => r.routedSuggestionId));
   const known = new Set(rows.map((r) => r.id));
   const rootIds = ids(rows.map((r) => r.duplicateOf)).filter((id) => !known.has(id));
-  const [prefix, issueRows, reqRows, releaseRows, workflowRows, suggestionRows, rootRows, cases] =
+  const [prefix, issueRows, reqRows, releaseRows, workflowRows, suggestionRows, rootRows] =
     await Promise.all([
       activeIssuePrefix(projectId),
       issueIds.length
@@ -133,7 +111,6 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
             .where(inArray(suggestions.id, suggestionIds))
         : [],
       rootIds.length ? db.select().from(feedback).where(inArray(feedback.id, rootIds)) : [],
-      casesOf(rows.map((r) => r.id)),
     ]);
   const allRows = [...rows, ...rootRows];
   const providerIds = ids(rows.map((r) => r.contractProviderProjectId));
@@ -189,7 +166,6 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     ),
     roots: new Map(allRows.map((r) => [r.id, r])),
     names: await userNames(allRows.map((r) => r.reportedBy)),
-    cases,
   };
 }
 
@@ -260,15 +236,12 @@ export function summaryOf(
   const phase = phaseIn(r, l);
   const route = routeView(r, l);
   const reporterName = l.names.get(r.reportedBy) ?? null;
-  const stored = l.cases.get(r.id);
-  const kase = stored ? caseView(stored) : null;
   const reporter = reporterName ?? 'The reporter';
   const standing = feedbackStandingOf(
     phase,
     r.route,
     route?.key ?? null,
     reporter,
-    kase,
     viewer.userId === r.reportedBy,
   );
   return {
@@ -282,7 +255,6 @@ export function summaryOf(
     ...standing,
     target: targetView(r, l),
     route: withhold && route?.answer ? { ...route, answer: null } : route,
-    case: kase,
     reporter: { id: r.reportedBy, name: reporterName, agency: r.reporterAgency },
     dueAt: r.dueAt?.toISOString() ?? null,
     redacted: r.redactedAt !== null,

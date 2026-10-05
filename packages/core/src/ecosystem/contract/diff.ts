@@ -6,7 +6,7 @@ export const DIFF_TOOLS = [
   'graphql-sdl-diff',
   'none',
 ] as const;
-export type DiffTool = (typeof DIFF_TOOLS)[number];
+type DiffTool = (typeof DIFF_TOOLS)[number];
 
 export const MEASURED_CLASSIFICATIONS = ['breaking', 'non-breaking', 'unknown', 'initial'] as const;
 export type MeasuredClassification = (typeof MEASURED_CLASSIFICATIONS)[number];

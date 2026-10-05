@@ -3,15 +3,8 @@
 import type { LoginInput, RegisterInput } from '@forge/contracts/requests';
 import type { MeResponse } from '@forge/contracts/responses';
 
-/**
- * The legacy `chatLogAccess` flag remains exposed as an optional field for the
- * readers carried over from v1. There is no system-admin / CEO flag anymore —
- * access is purely owner/member per project. Based on `MeResponse` so settings
- * surfaces can branch on `hasPassword` / `oauthProviders` (SSO reauth).
- */
-export type User = MeResponse & {
-  chatLogAccess?: boolean;
-};
+/** The signed-in user; settings surfaces branch on `hasPassword` / `oauthProviders` (SSO reauth). */
+export type User = MeResponse;
 import { useRouter } from 'next/navigation';
 import {
   createContext,

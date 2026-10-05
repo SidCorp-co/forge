@@ -360,5 +360,3 @@ export async function listItemsFromRows(rows: RunRow[]): Promise<PipelineRunList
     };
   });
 }
-
-export { EMPTY_COST as PIPELINE_RUN_EMPTY_COST };

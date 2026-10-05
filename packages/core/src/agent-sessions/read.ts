@@ -22,7 +22,7 @@ import {
  * transcript, often multi-MB, and selecting it into a LIST makes every page carry every word
  * ever said (ISS-428).
  */
-export const agentSessionListColumns = {
+const agentSessionListColumns = {
   id: agentSessions.id,
   projectId: agentSessions.projectId,
   userId: agentSessions.userId,
@@ -145,17 +145,6 @@ export async function sessionPlacement(
     .limit(1);
   return row ?? null;
 }
-
-/** The project a slug names, as `{ id, slug }`. */
-export async function loadProjectBySlug(slug: string) {
-  const [row] = await db
-    .select({ id: projects.id, slug: projects.slug })
-    .from(projects)
-    .where(eq(projects.slug, slug))
-    .limit(1);
-  return row ?? null;
-}
-
 /** A project's `{ id, slug }` by id. */
 export async function projectHandle(projectId: string) {
   const [row] = await db
@@ -175,16 +164,6 @@ export async function linkedIssueOf(issueId: string) {
     .limit(1);
   return row ?? null;
 }
-
-/** The display refs and titles of the issues a chat is started on. */
-export async function issueRefsOf(issueIds: string[]) {
-  return db
-    .select({ seq: issues.issSeq, prefix: projects.issuePrefix, title: issues.title })
-    .from(issues)
-    .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(inArray(issues.id, issueIds));
-}
-
 /** A session's usage totals and its per-model breakdown, ordered by spend. */
 export async function sessionCost(sessionId: string) {
   const sessionMatch = usageSessionMatch(sql`= ${canonicalSessionId(sessionId)}`);

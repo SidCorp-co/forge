@@ -5,17 +5,23 @@
     "core-admin": [
       "packages/core/src/admin/**"
     ],
+    "core-agent-reports": [
+      "packages/core/src/agent-reports/**"
+    ],
     "core-agent-sessions": [
       "packages/core/src/agent-sessions/**"
     ],
-    "core-app-config": [
-      "packages/core/src/app-config/**"
+    "core-api-contract": [
+      "packages/core/src/api-contract/**"
     ],
     "core-assistant": [
       "packages/core/src/assistant/**"
     ],
     "core-auth": [
       "packages/core/src/auth/**"
+    ],
+    "core-automation": [
+      "packages/core/src/automation/**"
     ],
     "core-body": [
       "packages/core/src/body/**"
@@ -40,14 +46,14 @@
     "core-db": [
       "packages/core/src/db/**"
     ],
+    "core-development": [
+      "packages/core/src/development/**"
+    ],
     "core-devices": [
       "packages/core/src/devices/**"
     ],
-    "core-masters": [
-      "packages/core/src/masters/**"
-    ],
-    "core-runs": [
-      "packages/core/src/runs/**"
+    "core-error-intake": [
+      "packages/core/src/error-intake/**"
     ],
     "core-feedback": [
       "packages/core/src/feedback/**"
@@ -55,12 +61,15 @@
     "core-guides": [
       "packages/core/src/guides/**"
     ],
-    "core-improvement-messages": [
-      "packages/core/src/improvement-messages/**"
+    "core-health": [
+      "packages/core/src/health/**"
     ],
     "core-install": [
       "packages/core/src/devices/install-routes.ts",
       "packages/core/src/devices/published-build.ts"
+    ],
+    "core-integration-door": [
+      "packages/core/src/integration-door/**"
     ],
     "core-integrations": [
       "packages/core/src/integrations/**"
@@ -74,9 +83,6 @@
     "core-knowledge": [
       "packages/core/src/knowledge/**"
     ],
-    "core-knowledge-edges": [
-      "packages/core/src/knowledge-edges/**"
-    ],
     "core-labels": [
       "packages/core/src/labels/**"
     ],
@@ -85,6 +91,9 @@
     ],
     "core-lifecycle": [
       "packages/core/src/lifecycle/**"
+    ],
+    "core-masters": [
+      "packages/core/src/masters/**"
     ],
     "core-mcp": [
       "packages/core/src/mcp/**"
@@ -104,23 +113,23 @@
     "core-middleware": [
       "packages/core/src/middleware/**"
     ],
+    "core-mockups": [
+      "packages/core/src/mockups/**"
+    ],
     "core-notifications": [
       "packages/core/src/notifications/**"
     ],
+    "core-onboarding": [
+      "packages/core/src/onboarding/**"
+    ],
     "core-orgs": [
       "packages/core/src/orgs/**"
-    ],
-    "core-pat": [
-      "packages/core/src/pat/**"
     ],
     "core-pipeline": [
       "packages/core/src/pipeline/**"
     ],
     "core-plugins": [
       "packages/core/src/plugins/**"
-    ],
-    "core-pm": [
-      "packages/core/src/pm/**"
     ],
     "core-preferences": [
       "packages/core/src/preferences/**"
@@ -131,6 +140,12 @@
     "core-prompt": [
       "packages/core/src/prompt/**"
     ],
+    "core-questionnaires": [
+      "packages/core/src/questionnaires/**"
+    ],
+    "core-questions": [
+      "packages/core/src/questions/**"
+    ],
     "core-queue": [
       "packages/core/src/queue/**"
     ],
@@ -140,20 +155,14 @@
     "core-runners": [
       "packages/core/src/runners/**"
     ],
+    "core-runs": [
+      "packages/core/src/runs/**"
+    ],
     "core-schedules": [
       "packages/core/src/schedules/**"
     ],
-    "core-security": [
-      "packages/core/src/security/**"
-    ],
-    "core-skill-facts": [
-      "packages/core/src/skill-facts/**"
-    ],
     "core-skills": [
       "packages/core/src/skills/**"
-    ],
-    "core-tasks": [
-      "packages/core/src/tasks/**"
     ],
     "core-uploads": [
       "packages/core/src/uploads/**"

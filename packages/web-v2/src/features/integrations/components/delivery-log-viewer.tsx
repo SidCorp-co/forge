@@ -1,46 +1,23 @@
 "use client";
 
-import {
-  Banner,
-  Button,
-  Collapsible,
-  EmptyState,
-  ErrorState,
-  enumLabel,
-  Icon,
-  type IconName,
-  Skeleton,
-  StatusBadge,
-} from "@/design";
+import { Banner, Collapsible, EmptyState, ErrorState, enumLabel, Icon, type IconName, Skeleton, StatusBadge } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
-import { useIntegrationDeliveries, useRetryDelivery } from "../hooks";
+import { useIntegrationDeliveries } from "../hooks";
 import { redactSensitive } from "../derive";
 import type { IntegrationDelivery } from "../types";
 
 /** Read-only audit of recent webhook/dispatch deliveries for one binding
  *  (ISS-402). Render ONLY when the provider's `capabilities.hasDeliveryLog` is
  *  true — MCP-injection providers (epodsystem) must not show an empty
- *  box, so the caller gates this component. ISS-408/F3 adds an inline Retry
- *  affordance on failed OUTBOUND rows (mirrors the server gate
- *  `direction==='outbound' && status==='failed'`). */
+ *  box, so the caller gates this component. */
 
 // ISS-1140: a call turned away AT the door — bad or missing signature — which never became a
 // delivery reads `refused` (contracts `ui-vocabulary.ts` `delivery`), never as work still in flight.
 
-function DeliveryRow({
-  row,
-  projectId,
-  bindingId,
-}: {
-  row: IntegrationDelivery;
-  projectId: string;
-  bindingId: string;
-}) {
-  const retry = useRetryDelivery(projectId, bindingId);
+function DeliveryRow({ row }: { row: IntegrationDelivery }) {
   const dirIcon: IconName = row.direction === "inbound" ? "inbox" : "arrowRight";
   const duration = typeof row.durationMs === "number" ? `${row.durationMs}ms` : "—";
-  const canRetry = row.direction === "outbound" && row.status === "failed";
 
   return (
     <Collapsible
@@ -73,20 +50,6 @@ function DeliveryRow({
             <pre className="mt-1 overflow-x-auto rounded bg-sunken p-2 font-mono text-11 leading-relaxed">
               {JSON.stringify(redactSensitive(row.response), null, 2)}
             </pre>
-          </div>
-        )}
-        {canRetry && (
-          <div className="flex justify-end">
-            <Button
-              size="sm"
-              variant="secondary"
-              icon="rerun"
-              loading={retry.isPending}
-              disabled={retry.isPending}
-              onClick={() => retry.mutate(row.id)}
-            >
-              Retry
-            </Button>
           </div>
         )}
       </div>
@@ -133,7 +96,7 @@ export function DeliveryLogViewer({
   return (
     <div className="flex flex-col gap-2">
       {items.map((row) => (
-        <DeliveryRow key={row.id} row={row} projectId={projectId} bindingId={bindingId} />
+        <DeliveryRow key={row.id} row={row} />
       ))}
     </div>
   );

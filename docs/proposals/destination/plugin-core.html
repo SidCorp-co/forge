@@ -87,7 +87,6 @@ directly.</p>
 <table>
 <thead><tr><th style="width:30%">The contract</th><th style="width:34%">Where core states it</th><th>How it is versioned</th></tr></thead>
 <tbody>
-<tr><td>the driver skill's name</td><td><code>AUTONOMOUS_SKILL_NAME = 'issue-flow'</code></td><td class="bad">a string literal naming a directory in another repo. Core cannot check it exists</td></tr>
 <tr><td>the five driver statuses</td><td><code>AUTONOMOUS_DRIVER_STATUSES</code> — open · in_progress · needs_info · closed · dropped</td><td class="bad">nothing</td></tr>
 <tr><td>the phase endpoints</td><td><code>POST /:id/phases</code> · <code>/phases/end</code> · <code>/resume-point</code></td><td class="bad">nothing</td></tr>
 <tr><td>which plugins a box installs</td><td><code>GET /api/devices/me/plugins</code></td><td class="ok"><code>pinnedRef</code>, a commit SHA — the only version in the list</td></tr>
@@ -96,7 +95,7 @@ directly.</p>
 </table>
 
 <div class="rule">
-<b>One of five carries a version, and §3 is where that one is dropped.</b>
+<b>One of four carries a version, and §3 is where that one is dropped.</b>
 </div>
 
 <h2>3 · The pin, and the case that removes it</h2>
@@ -146,7 +145,7 @@ handshake.</p>
 <table>
 <thead><tr><th style="width:24%">Today</th><th style="width:38%">Destination</th><th>Why</th></tr></thead>
 <tbody>
-<tr><td>five contract items, one versioned</td><td><b>one declared contract version</b> the plugin sends and core admits or refuses by name</td><td>the three-clock rule needs somewhere to stand; this is it</td></tr>
+<tr><td>four contract items, one versioned</td><td><b>one declared contract version</b> the plugin sends and core admits or refuses by name</td><td>the three-clock rule needs somewhere to stand; this is it</td></tr>
 <tr><td>a pin dropped on conflict</td><td><b>a conflict refuses the install and names both SHAs</b></td><td>a loud break beats a silent substitution — the repo's own rule, not applied here</td></tr>
 <tr><td>phase names are shared vocabulary</td><td><b>phases are opaque strings to core</b>; meaning belongs to the pinned policy</td><td>removes the largest class of two-repo change</td></tr>
 <tr><td>an unguarded invariant</td><td><b>a contract in <code>.arch.json</code></b> fencing <code>core-mcp</code> off <code>core-db</code></td><td>one tool, <code>forge-ecosystem.ts</code>, reaches the database today; a contract makes the fence hold for free</td></tr>

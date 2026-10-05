@@ -7,7 +7,6 @@ import { zValidator } from '../middleware/zod-validator.js';
 import {
   createSchedule,
   deleteSchedule,
-  getSchedule,
   listSchedules,
   runScheduleNow,
   updateSchedule,
@@ -118,12 +117,6 @@ scheduleRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
     enabled === 'true' ? true : enabled === 'false' ? false : undefined,
   );
   return c.json(rows);
-});
-
-scheduleRoutes.get('/:id', zValidator('param', idParamSchema), async (c) => {
-  const { id } = c.req.valid('param');
-  const row = await getSchedule(id, c.get('userId'));
-  return c.json(row);
 });
 
 scheduleRoutes.post('/', zValidator('json', createSchema), async (c) => {

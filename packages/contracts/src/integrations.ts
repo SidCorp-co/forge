@@ -343,17 +343,6 @@ export interface McpPreviewResponse {
   servers: McpServerPreviewEntry[];
 }
 
-/**
- * Result of `POST .../deliveries/:deliveryId/retry`. The retry is asynchronous —
- * the route re-enqueues the outbound dispatch with a fresh `requestId` and the
- * worker/adapter records the new delivery row, so this returns the queued
- * request id (202) rather than a synchronous delivery summary.
- */
-export interface DeliveryRetryResponse {
-  requestId: string;
-  queued: true;
-}
-
 /** The codes an integration route refuses under. */
 export const INTEGRATION_REFUSAL_CODES = [
   'INTEGRATION_REFUSED',

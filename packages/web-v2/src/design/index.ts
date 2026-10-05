@@ -33,7 +33,6 @@ export { StreamBand, type StreamBandProps, type StreamWeek } from "./primitives/
 export { SankeyFlow, type SankeyFlowProps, type SankeyNode } from "./primitives/sankey-flow";
 export { EmptyState, type EmptyStateProps } from "./primitives/empty-state";
 export { EmptyPanelLine, type EmptyPanelLineProps } from "./primitives/empty-panel-line";
-export { ComingSoon, type ComingSoonProps } from "./primitives/coming-soon";
 export { ErrorState, type ErrorStateProps } from "./primitives/error-state";
 export { LiveDot, type LiveDotProps } from "./primitives/live-dot";
 export { Toaster, showToast, type ToastView, type ToastTone, type ToastInput } from "./primitives/toast";
@@ -64,9 +63,9 @@ export { PageContainer, type PageContainerProps } from "./patterns/page-containe
 export { Pagination, type PaginationProps } from "./primitives/pagination";
 export { Collapsible, type CollapsibleProps } from "./primitives/collapsible";
 export {
-  Table, THead, TBody, TR, TH, TD, SortableTH, DataTable,
+  Table, THead, TBody, TR, TH, TD, SortableTH,
   useReactTable, getCoreRowModel, getSortedRowModel, flexRender,
-  type TableProps, type SortableTHProps, type DataTableProps, type ColumnDef, type SortingState, type OnChangeFn,
+  type TableProps, type SortableTHProps, type ColumnDef, type SortingState, type OnChangeFn,
 } from "./primitives/table";
 export {
   HelpButton, type HelpButtonProps, type HelpContent, type HelpShortcut,
@@ -83,7 +82,6 @@ export {
   NotificationsMenu, type NotificationsMenuProps, type NotificationItem, type NotificationAction, type NotificationGroupMember,
 } from "./patterns/notifications-menu";
 export { StreamingText, type StreamingTextProps } from "./patterns/streaming-text";
-export { Highlight, type HighlightProps } from "./patterns/highlight";
 export { SlideOver, type SlideOverProps } from "./patterns/slide-over";
 export { Menu, type MenuProps, type MenuItem } from "./patterns/menu";
 export { HoverCard, type HoverCardProps, useHoverCard } from "./patterns/hover-card";
@@ -95,7 +93,7 @@ export { PreviewPane, type PreviewPaneProps } from "./patterns/preview-pane";
 export { HtmlArtifact, type HtmlArtifactProps } from "./patterns/html-artifact";
 export { MermaidDiagram } from "./patterns/mermaid";
 export { ForgeMascot, type ForgeMascotProps, STAGE_RING } from "./patterns/forge-mascot";
-export { ProjectLoader, ColdBoot, AgentWorking, ReconnectingBanner } from "./patterns/mascot-loaders";
+export { ProjectLoader, ColdBoot } from "./patterns/mascot-loaders";
 
 export {
   BoardRowSkeleton, KanbanCardSkeleton, KanbanColumnSkeleton,
@@ -131,6 +129,5 @@ export { useUrlParams, useUrlChoice, writeUrlParams, type UrlPatch } from "./hoo
 export { useDebounced } from "./hooks/use-debounced";
 export { useElapsed } from "./hooks/use-elapsed";
 export { useNow } from "./hooks/use-now";
-export { useAnimatedNumber } from "./hooks/use-animated-number";
 export { useMediaQuery } from "./hooks/use-media-query";
 export { useScrollLock } from "./hooks/use-scroll-lock";

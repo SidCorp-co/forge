@@ -1,11 +1,9 @@
 import {
   TRIAGE_AGENT_REPORT_SHAPE,
-  TRIAGE_AGENT_REPORTS_BY_SIGNAL_SHAPE,
   type TriageAgentReportRequest,
   triageAgentReportRequestSchema,
-  triageAgentReportsBySignalRequestSchema,
 } from '@forge/contracts/agent-reports';
-import { eq, inArray, type SQL } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -16,7 +14,6 @@ import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { listVisibleProjectsWithRole } from '../projects/index.js';
 import {
   fileReport,
   readOneReport,
@@ -24,7 +21,7 @@ import {
   reportFiltersSchema,
   submitReportSchema,
 } from './reports.js';
-import { readReport, visibleIssue, writableProjectIds } from './service.js';
+import { readReport, visibleIssue } from './service.js';
 import { type ReportActor, type TriageOutcome, triageReports } from './triage.js';
 
 const badRequest = (details: unknown) =>
@@ -112,40 +109,6 @@ agentReportRoutes.get('/:id', async (c) => {
   if (!report) throw notFound(`agent report ${reportId} not found`);
   return c.json({ report });
 });
-
-agentReportRoutes.post(
-  '/triage',
-  strictBody(triageAgentReportsBySignalRequestSchema, TRIAGE_AGENT_REPORTS_BY_SIGNAL_SHAPE),
-  async (c) => {
-    const body = c.req.valid('json');
-    const userId = c.get('userId');
-    let scoped: SQL;
-    if (body.scope === 'all') {
-      if (body.triage.act === 'file' && body.triage.createIssue) {
-        throw badRequest(
-          'createIssue files into one project, so a scope=all triage names an existing issue instead',
-        );
-      }
-      const writable = writableProjectIds(await listVisibleProjectsWithRole(userId));
-      if (writable.length === 0) throw notFound('no project you can write to holds agent reports');
-      scoped = inArray(agentReports.projectId, writable);
-    } else {
-      if (!body.projectId) throw badRequest('projectId is required unless scope=all');
-      const access = await loadProjectAccess(body.projectId, userId);
-      requireHeld(access, 'project.write');
-      scoped = eq(agentReports.projectId, body.projectId);
-    }
-    const out = await triageReports({
-      scope: [scoped, eq(agentReports.signalKey, body.signalKey)],
-      bulk: true,
-      act: body.triage,
-      actor: actorOf(c),
-      channel: 'web',
-      linkIssue: await linkOf(c, body.triage),
-    });
-    return answer(c, out);
-  },
-);
 
 agentReportRoutes.post(
   '/:id/triage',

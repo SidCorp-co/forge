@@ -8,12 +8,7 @@ import { requirementKey } from '@forge/contracts/requirements';
 import { and, asc, count, desc, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
-import {
-  feedback,
-  feedbackAttachments,
-  feedbackCases,
-  feedbackDecisions,
-} from '../db/schema-feedback.js';
+import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { findIssueById, isUuid } from '../issues/index.js';
@@ -53,16 +48,6 @@ export async function rowIn(tx: Tx, projectId: string, ref: string, lock = false
   const [row] = lock ? await query.for('update') : await query;
   if (!row) throw notFound(`project ${projectId} holds no feedback ${ref}`);
   return row;
-}
-
-export type CaseRow = typeof feedbackCases.$inferSelect;
-
-export async function caseIn(tx: Tx, feedbackId: string): Promise<CaseRow | null> {
-  const [row] = await tx
-    .select()
-    .from(feedbackCases)
-    .where(eq(feedbackCases.feedbackId, feedbackId));
-  return row ?? null;
 }
 
 /** The keys of the items marked duplicates of `feedbackId`, oldest first. */
@@ -185,11 +170,6 @@ export async function detailAs(
         triage:
           holds(facts, 'feedback.approve') &&
           ['new', 'triaged', 'reopened'].includes(summary.phase),
-        route:
-          summary.phase === 'triaged' &&
-          summary.case !== null &&
-          summary.case.routedAt === null &&
-          holds(facts, 'feedback.approve'),
         verify: holds(facts, 'feedback.approve') && summary.phase === 'resolved',
         redact: holds(facts, 'feedback.redact') && row.redactedAt === null,
       },

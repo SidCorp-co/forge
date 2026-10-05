@@ -1,6 +1,6 @@
 import type { ConsumedBy, OutboxConsumerOf } from '@forge/contracts/outbox-consumers';
 import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
-import { deviceRoom, globalRoom, projectRoom, roomManager, userRoom } from '../lib/rooms.js';
+import { deviceRoom, projectRoom, roomManager, userRoom } from '../lib/rooms.js';
 import { consume } from '../outbox/index.js';
 
 const pub = (room: string, event: string, data: unknown) =>
@@ -52,15 +52,6 @@ export function registerWsBroadcastSubscribers(): void {
       projectId: p.projectId,
       fields: p.fields,
       actorId: p.actor.id,
-    });
-  });
-
-  on('schedule.fired', (p) => {
-    pub(projectRoom(p.projectId), 'schedule.run', {
-      scheduleId: p.scheduleId,
-      projectId: p.projectId,
-      sessionId: p.sessionId,
-      actorId: p.actorUserId,
     });
   });
 
@@ -144,15 +135,5 @@ export function registerWsBroadcastSubscribers(): void {
 
   on('integration.changed', (p) => {
     pub(projectRoom(p.projectId), 'integration.changed', p);
-  });
-
-  on('skill.globalUpdated', (p) => {
-    pub(globalRoom(), 'skill.updated', {
-      scope: 'global',
-      name: p.name,
-      oldVersion: p.oldVersion,
-      newVersion: p.newVersion,
-      contentHash: p.contentHash,
-    });
   });
 }

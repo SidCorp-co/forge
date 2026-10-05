@@ -1,17 +1,8 @@
-import { randomBytes } from 'node:crypto';
 import { DEVICE_MACHINE, RUNNER_PROVISION_MACHINE } from '@forge/contracts/runner-machine';
 import { and, eq, gt, isNull, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import {
-  deviceLoginCodes,
-  devices,
-  pairingCodes,
-  type RunnerProvisionStatus,
-  runners,
-} from '../db/schema.js';
-import { isUniqueViolation } from '../lib/db-errors.js';
+import { deviceLoginCodes, devices, type RunnerProvisionStatus, runners } from '../db/schema.js';
 import { deviceRoom, roomManager, userRoom } from '../lib/rooms.js';
-import { digestToken } from '../lib/token-digest.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
 import {
@@ -81,38 +72,6 @@ export async function revokeDevice(id: string, actor: KernelActor): Promise<void
     source: 'device-revoke',
     credentialsOf: [id],
   });
-}
-
-const CROCKFORD_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
-const PAIR_CODE_TTL_MS = 5 * 60 * 1000;
-
-function generatePairingCode(): string {
-  const bytes = randomBytes(10);
-  let chars = '';
-  for (let i = 0; i < 10; i++) {
-    // biome-ignore lint/style/noNonNullAssertion: randomBytes guarantees byte access
-    chars += CROCKFORD_ALPHABET[bytes[i]! & 0x1f];
-  }
-  return `${chars.slice(0, 2)}-${chars.slice(2, 6)}-${chars.slice(6, 10)}`;
-}
-
-/** A 5-minute pairing code for the project, retried on collision; null when every try collided. */
-export async function mintPairingCode(input: {
-  projectId: string;
-  userId: string;
-  grantEpoch: number;
-}): Promise<{ code: string; expiresAt: Date } | null> {
-  const expiresAt = new Date(Date.now() + PAIR_CODE_TTL_MS);
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const code = generatePairingCode();
-    try {
-      await db.insert(pairingCodes).values({ codeHash: digestToken(code), ...input, expiresAt });
-      return { code, expiresAt };
-    } catch (err: unknown) {
-      if (!isUniqueViolation(err)) throw err;
-    }
-  }
-  return null;
 }
 
 /**

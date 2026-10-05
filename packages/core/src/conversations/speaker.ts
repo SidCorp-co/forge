@@ -1,6 +1,6 @@
 import type { StoredConversationMessage } from './store.js';
 
-export interface LinkedSpeaker {
+interface LinkedSpeaker {
   userId: string | null;
   label: string | null;
 }

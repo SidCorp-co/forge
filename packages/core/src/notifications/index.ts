@@ -1,6 +1,6 @@
 export { resolveNotifications } from './auto-resolve.js';
 export { deliverExisting } from './deliver.js';
-export { emitNotification, insertTypedNotificationRecord } from './emit.js';
+export { emitNotification } from './emit.js';
 export { registerEcosystemNotifications } from './notify-ecosystem.js';
 export { registerNotifyMentionsSubscriber } from './notify-mentions.js';
 export { registerTransitionNotifications } from './notify-transitions.js';

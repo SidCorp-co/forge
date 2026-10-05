@@ -7,13 +7,7 @@ import type { ServingReading } from '@forge/contracts/releases';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issueAttachments, issues } from '../db/schema.js';
-import { type ForgeRecord, parseForgeRecord } from '../messaging/forge-record.js';
-import {
-  criterionBlocksIn,
-  longestSpelling,
-  parseStorefrontDraftRuntime,
-  recognisableIdentity,
-} from '../messaging/verdict-identity.js';
+import { longestSpelling, recognisableIdentity } from '../messaging/verdict-identity.js';
 import { type CriterionWithVerdict, type LatestVerdict, listCriteria } from './criteria/store.js';
 import { withCurrentDrafts } from './criteria/storefront-draft.js';
 import { currentContracts, designRevisions, pinnedAnchorsOf } from './criteria-anchors.js';
@@ -46,38 +40,6 @@ export interface CriterionVerdict {
   /** What this verdict cites as what it was taken from, in the order written. */
   readonly cited: readonly string[];
 }
-
-/** The (criterion, verdict, identity) triples one `verdict`-kind `forge-record` fence names. */
-export function verdictPairsIn(body: string): CriterionVerdict[] {
-  return verdictPairsOf(parseForgeRecord(body));
-}
-
-/** The same triples, read off a record whichever store it came from. */
-function verdictPairsOf(record: ForgeRecord | null): CriterionVerdict[] {
-  const out: CriterionVerdict[] = [];
-  for (const block of criterionBlocksIn(record)) {
-    if (block.verdict === null) continue;
-    const draft = parseStorefrontDraftRuntime(block.runtime);
-    const at: VerdictIdentity | null = draft
-      ? {
-          kind: 'storefront_draft',
-          value: `${draft.workflowId}@draft:${draft.draftVersion} on \`${block.environment}\``,
-          corroborationNote: 'read from a comment, which records no reading',
-        }
-      : block.runtime !== null
-        ? { kind: 'runtime', value: block.runtime }
-        : block.source !== null
-          ? { kind: 'source', value: block.source }
-          : block.design !== null
-            ? { kind: 'design', value: block.design }
-            : block.contract !== null
-              ? { kind: 'contract', value: block.contract }
-              : null;
-    out.push({ criterion: block.criterion, verdict: block.verdict, at, cited: block.cited });
-  }
-  return out;
-}
-
 /**
  * The identity a stored verdict is weighed on. A backfilled `commit_unresolved` abbreviation is
  * weighed as naming none: its amnesty covers the closed issue it was read from, not a release.

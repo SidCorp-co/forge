@@ -1,7 +1,7 @@
 
 import type { IntegrationHealthResult } from "@forge/contracts/integrations";
 
-export type { IntegrationCardStatus as CardStatus, IntegrationStatusCard as StatusCard, IntegrationsStatus, IntegrationDeliveryRow as IntegrationDelivery, ConfirmProdDeployResult, BindingRole, CoolifyConfigInput, CoolifyTargetInput, CoolifySecretsInput, EpodsystemConfigInput, EpodsystemSecretsInput, SentryConfigInput, SentrySecretsInput, RocketchatConfigInput, RocketchatSecretsInput, BindingSummary, ConnectionSummary, ConnectionCreateInput, ConnectionUpdateInput, ConnectionResponse, ConnectionListResponse, BindingListResponse, ConnectionBindingsResponse, DeliveryRetryResponse, McpServerPreviewEntry, McpPreviewResponse } from "@forge/contracts/integrations";
+export type { IntegrationCardStatus as CardStatus, IntegrationStatusCard as StatusCard, IntegrationsStatus, IntegrationDeliveryRow as IntegrationDelivery, ConfirmProdDeployResult, BindingRole, CoolifyConfigInput, CoolifyTargetInput, CoolifySecretsInput, EpodsystemConfigInput, EpodsystemSecretsInput, SentryConfigInput, SentrySecretsInput, RocketchatConfigInput, RocketchatSecretsInput, BindingSummary, ConnectionSummary, ConnectionCreateInput, ConnectionUpdateInput, ConnectionResponse, ConnectionListResponse, BindingListResponse, ConnectionBindingsResponse, McpServerPreviewEntry, McpPreviewResponse } from "@forge/contracts/integrations";
 
 // === ISS-524 / ISS-526 — Sentry integration config shape ===
 

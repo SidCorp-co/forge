@@ -215,7 +215,7 @@ type IssueRelations = Record<IssueDependencyKind, IssueRelationDirections> & {
   blockedBy: IssueRelationDigest[];
 };
 
-export function emptyIssueRelations(): IssueRelations {
+function emptyIssueRelations(): IssueRelations {
   const byKind = Object.fromEntries(
     issueDependencyKinds.map((kind) => [kind, { outgoing: [], incoming: [] }]),
   ) as unknown as Record<IssueDependencyKind, IssueRelationDirections>;
@@ -252,15 +252,6 @@ export async function loadIssueRelationsForIssues(
   }
   return out;
 }
-
-/** The id and project of each named issue that exists. */
-export async function issueProjectsOf(issueIds: string[]) {
-  return db
-    .select({ id: issues.id, projectId: issues.projectId })
-    .from(issues)
-    .where(inArray(issues.id, issueIds));
-}
-
 /** One dependency edge by id, or null. */
 export async function dependencyEdgeById(edgeId: string) {
   const [edge] = await db

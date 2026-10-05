@@ -5,7 +5,6 @@ import {
   type AnyPgColumn,
   boolean,
   check,
-  doublePrecision,
   foreignKey,
   index,
   integer,
@@ -355,71 +354,5 @@ export const issueDependenciesRelations = relations(issueDependencies, ({ one })
   createdBy: one(users, {
     fields: [issueDependencies.createdById],
     references: [users.id],
-  }),
-}));
-
-export const attributeValueTypes = [
-  'text',
-  'number',
-  'bool',
-  'timestamp',
-  'ref_issue',
-  'ref_user',
-  'ref_comment',
-] as const;
-
-export type AttributeValueType = (typeof attributeValueTypes)[number];
-
-export const attributeWriters = ['agent', 'human'] as const;
-
-export type AttributeWriter = (typeof attributeWriters)[number];
-
-export const attributeCardinalities = ['one', 'many'] as const;
-
-export const issueAttributeDefs = pgTable('issue_attribute_defs', {
-  key: text('key').primaryKey(),
-  label: text('label').notNull(),
-  valueType: text('value_type').notNull(),
-  cardinality: text('cardinality').notNull().default('one'),
-  writtenBy: text('written_by').notNull(),
-  surfaces: jsonb('surfaces').notNull().default([]),
-  required: boolean('required').notNull().default(false),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
-
-export const issueAttributes = pgTable(
-  'issue_attributes',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    issueId: uuid('issue_id')
-      .notNull()
-      .references(() => issues.id, { onDelete: 'cascade' }),
-    key: text('key')
-      .notNull()
-      .references(() => issueAttributeDefs.key, { onDelete: 'cascade' }),
-    valueText: text('value_text'),
-    valueNum: doublePrecision('value_num'),
-    valueBool: boolean('value_bool'),
-    valueTs: timestamp('value_ts', { withTimezone: true }),
-    valueRef: uuid('value_ref'),
-    sourceCommentId: uuid('source_comment_id').references(() => comments.id, {
-      onDelete: 'set null',
-    }),
-    assertedByUserId: uuid('asserted_by_user_id').references(() => users.id, {
-      onDelete: 'set null',
-    }),
-    assertedAt: timestamp('asserted_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    issueKeyIdx: index('issue_attributes_issue_key_idx').on(t.issueId, t.key),
-    refIdx: index('issue_attributes_ref_idx').on(t.valueRef),
-  }),
-);
-
-export const issueAttributesRelations = relations(issueAttributes, ({ one }) => ({
-  issue: one(issues, { fields: [issueAttributes.issueId], references: [issues.id] }),
-  def: one(issueAttributeDefs, {
-    fields: [issueAttributes.key],
-    references: [issueAttributeDefs.key],
   }),
 }));

@@ -4,16 +4,6 @@
 import { Icon, type IconName } from "@/design";
 import { DIRECTORY_STATUS_META, type DirectoryStatus, deriveDirectoryStatus } from "../derive";
 import type { BindingRole, StatusCard } from "../types";
-
-export const ROLE_OPTIONS: { value: BindingRole; label: string; hint: string }[] = [
-  { value: "deploy", label: "Deploy target", hint: "somewhere Forge deploys this project to" },
-  {
-    value: "service",
-    label: "Service",
-    hint: "a project-wide facility — an error tracker, a chat room, a repo host",
-  },
-];
-
 /** A deploy binding reads as the project-document environment that names it, where one does. */
 export function scopeLabel(role: BindingRole, environment?: string | null): string {
   if (role === "service") return "Service";

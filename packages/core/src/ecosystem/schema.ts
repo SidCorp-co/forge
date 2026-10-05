@@ -21,10 +21,10 @@ const CONTRACT_TYPES = [
   'opaque',
 ] as const;
 
-export const MEMBERSHIP_STATES = ['invited', 'active', 'declined', 'left', 'removed'] as const;
+const MEMBERSHIP_STATES = ['invited', 'active', 'declined', 'left', 'removed'] as const;
 export type MembershipState = (typeof MEMBERSHIP_STATES)[number];
 
-export const VISIBILITY_MODES = ['counterparties', 'all'] as const;
+const VISIBILITY_MODES = ['counterparties', 'all'] as const;
 export type VisibilityMode = (typeof VISIBILITY_MODES)[number];
 
 const replyDays = () => z.number().int().min(1).max(90);

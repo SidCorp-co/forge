@@ -61,7 +61,6 @@ function emptyPulse(now: Date): PulseResponse {
       rework: { fix: 0, code: 0 },
       runFailure: {
         pipeline: { failed: 0, total: 0 },
-        scheduler: { failed: 0, total: 0 },
         other: { failed: 0, total: 0 },
       },
       sessionFailures: [],

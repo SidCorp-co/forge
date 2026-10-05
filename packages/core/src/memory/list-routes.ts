@@ -6,9 +6,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { runMemoryGet } from './get-service.js';
-import { deleteMemory } from './indexer.js';
 import { memoryRevisionsInputSchema, runMemoryRevisions } from './revisions-service.js';
-import { deleteMemoryInputSchema } from './service.js';
 
 const listQuerySchema = paginationSchema.extend({
   projectId: z.uuid(),
@@ -61,12 +59,4 @@ memoryListRoutes.get('/revisions', zValidator('query', revisionsQuerySchema), as
   });
 
   return c.json(listResponse(c, rows, total, { limit, offset }));
-});
-
-memoryListRoutes.delete('/by-source', zValidator('query', deleteMemoryInputSchema), async (c) => {
-  const { projectId, source, sourceRef } = c.req.valid('query');
-  const userId = c.get('userId');
-  await requireCan(actorFor(userId), 'project.write', projectResource(projectId));
-
-  return c.json({ deleted: await deleteMemory(projectId, source, sourceRef) });
 });

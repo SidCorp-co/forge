@@ -49,7 +49,7 @@ export async function conversationAgentTurnForWindow(
 }
 
 /** What a person is told about a runner-hosted turn while it is not yet an answer. */
-export type ConversationAgentTurnState = 'dispatched' | 'running' | 'delivered' | 'failed';
+type ConversationAgentTurnState = 'dispatched' | 'running' | 'delivered' | 'failed';
 
 export interface ConversationAgentTurnRow {
   windowId: string;

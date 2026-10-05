@@ -29,7 +29,7 @@ const refuse = refuser<IssueAttachmentRefusalCode>('ATTACHMENT_REFUSED');
  * before this rule existed has several, and the first one is the document its
  * records were citing when they were written.
  */
-export async function findIssueAttachmentByName(
+async function findIssueAttachmentByName(
   issueId: string,
   name: string,
   executor: NameCheckExecutor = db,

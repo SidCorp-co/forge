@@ -1,6 +1,5 @@
 import { relations, sql } from 'drizzle-orm';
 import {
-  type AnyPgColumn,
   boolean,
   index,
   integer,
@@ -12,7 +11,6 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { users } from './schema-auth.js';
 import { devices } from './schema-devices.js';
 import { projects } from './schema-projects.js';
 import { skillActivityEventTypes, skillActivityTriggers } from './skill-activity-vocabulary.js';
@@ -37,12 +35,6 @@ export const skills = pgTable(
     description: text('description').notNull(),
     scope: text('scope', { enum: skillScopes }).notNull(),
     projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
-    // ISS-2A: forward-compat for Phase 2 user-scope skills. Nullable today;
-    // a CHECK constraint at the DB level pins each row to one scope (the app
-    // enum stays at ['global','project'] until Phase 2 adds 'user').
-    userId: uuid('user_id').references((): AnyPgColumn => users.id, {
-      onDelete: 'cascade',
-    }),
     prompt: text('prompt').notNull(),
     tools: jsonb('tools').notNull().default([]),
     manifest: jsonb('manifest').notNull().default({}),
@@ -71,7 +63,6 @@ export const skills = pgTable(
   (t) => ({
     projectIdx: index('skills_project_id_idx').on(t.projectId),
     scopeIdx: index('skills_scope_idx').on(t.scope),
-    userIdx: index('skills_user_id_idx').on(t.userId),
     globalNameUq: uniqueIndex('skills_name_global_uq').on(t.name).where(sql`scope = 'global'`),
     projectNameUq: uniqueIndex('skills_project_name_uq')
       .on(t.projectId, t.name)

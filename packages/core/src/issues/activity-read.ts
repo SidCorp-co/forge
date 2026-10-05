@@ -4,7 +4,7 @@ import { db } from '../db/client.js';
 import { activityLog, issues } from '../db/schema.js';
 import { issueArchiveSide } from './archive.js';
 
-export const ACTIVITY_ROW_COLUMNS = {
+const ACTIVITY_ROW_COLUMNS = {
   id: activityLog.id,
   issueId: activityLog.issueId,
   action: activityLog.action,

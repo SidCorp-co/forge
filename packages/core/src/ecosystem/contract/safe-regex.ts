@@ -63,7 +63,7 @@ export function unsafePatterns(schema: unknown, at = ''): UnsafePattern[] {
   return out;
 }
 
-export const FORMAT_MAX_LENGTH = 4096;
+const FORMAT_MAX_LENGTH = 4096;
 
 type FormatCheck = (s: string) => boolean;
 type Format = FormatCheck | true | (Record<string, unknown> & { validate: FormatCheck });

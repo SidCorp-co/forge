@@ -49,5 +49,3 @@ export const abortBodySchema = z
     sessionId: z.uuid(),
   })
   .strict();
-
-export const setRunnerBodySchema = z.object({ deviceId: z.uuid().nullable() }).strict();
