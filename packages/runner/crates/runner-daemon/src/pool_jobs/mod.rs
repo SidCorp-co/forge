@@ -54,6 +54,10 @@ pub enum Took {
     /// The stamp neither succeeded nor was refused — the pane stays and the next
     /// supervision tick asks core whose job it is.
     Unresolved(String),
+    /// This job waits and the project has no master session core issued this
+    /// box, which is the only session core holds a pool job under; nothing was
+    /// asked of core beyond the read.
+    NoMasterSession(String),
 }
 
 /// The four boundaries a claim crosses: the pool it reads, the terminal a
@@ -85,7 +89,7 @@ pub async fn take_one(
     ports: &JobPorts<'_>,
     registry: &JobPanes,
     project: ServedProject<'_>,
-    session_id: &str,
+    master_session: Option<&str>,
     bound: usize,
     tokens: Option<&session_tokens::SessionTokens>,
 ) -> Took {
@@ -110,6 +114,9 @@ pub async fn take_one(
     };
     let Some(entry) = entries.into_iter().next() else {
         return Took::NothingClaimable;
+    };
+    let Some(session_id) = master_session else {
+        return Took::NoMasterSession(entry.job_id);
     };
 
     let prepared = match pool_ports.prepare(&entry.job_id, session_id).await {
@@ -507,3 +514,6 @@ async fn conclude(
     tracing::error!("[pool] job {}: {reason}", live.job_id);
     true
 }
+
+#[cfg(test)]
+mod tests;

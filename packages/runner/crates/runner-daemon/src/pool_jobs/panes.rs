@@ -67,13 +67,15 @@ pub struct Holding {
 
 pub struct JobPanes {
     pub(crate) inner: Mutex<HashMap<String, Holding>>,
-    pub(crate) session_id: String,
     pub(crate) swept_at: Mutex<Option<i64>>,
     /// Which set of jobs this box has already said is holding every slot, so
     /// the condition is stated on its edges rather than on every pass. It
     /// lives here because it is a fact about this registry and nothing else
     /// reads it.
     pub(crate) said_at_bound: Mutex<Option<String>>,
+    /// The projects this box has said it holds no master session for, so the
+    /// condition is stated on its edges rather than on every pass.
+    pub(crate) unsessioned: Mutex<std::collections::HashSet<String>>,
 }
 
 impl Default for JobPanes {
@@ -86,14 +88,23 @@ impl JobPanes {
     pub fn new() -> Self {
         Self {
             inner: Mutex::new(HashMap::new()),
-            session_id: uuid::Uuid::new_v4().to_string(),
             swept_at: Mutex::new(None),
             said_at_bound: Mutex::new(None),
+            unsessioned: Mutex::new(std::collections::HashSet::new()),
         }
     }
 
-    pub fn session_id(&self) -> &str {
-        &self.session_id
+    /// Whether `project_id` has a master session to take pool jobs under,
+    /// answering `true` where that differs from what this box last said.
+    pub fn note_master_session(&self, project_id: &str, held: bool) -> bool {
+        let Ok(mut unsessioned) = self.unsessioned.lock() else {
+            return false;
+        };
+        if held {
+            unsessioned.remove(project_id)
+        } else {
+            unsessioned.insert(project_id.to_string())
+        }
     }
 
     /// The same, carrying what a previous daemon's sweep read of this agent,

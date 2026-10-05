@@ -268,6 +268,8 @@ devicePoolRoutes.post(
   zValidator('json', masterCloseBodySchema),
   async (c) => {
     const { sessionId, reason } = c.req.valid('json');
+    // An id that was never a master on this box is refused; one already ended answers closed: false.
+    await assertMasterSessionHeld({ deviceId: c.get('device').id, sessionId, live: false });
     const closed = await closeMasterSession({ deviceId: c.get('device').id, sessionId, reason });
     return c.json({ closed });
   },
