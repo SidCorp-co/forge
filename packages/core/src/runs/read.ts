@@ -179,6 +179,30 @@ async function eventsOf(run: RunStanding): Promise<{ events: RunEvent[]; hasMore
   return { events, hasMore: rows.length > RUN_EVENTS_MAX };
 }
 
+/** The latest run of each issue, read as `GET runs/standing` reads it (workflow-step-health `in-runs`). */
+export async function latestRunsOfIssues(
+  projectId: string,
+  issueIds: readonly string[],
+  viewer: RunViewer | null,
+): Promise<{ issueId: string; run: RunStanding }[]> {
+  if (issueIds.length === 0) return [];
+  const base = await baseRuns(
+    projectId,
+    sql`r.issue_id::text IN (${inList(issueIds)}) AND r.id = (
+      SELECT r2.id FROM pipeline_runs r2 WHERE r2.issue_id = r.issue_id
+       ORDER BY r2.started_at DESC, r2.id LIMIT 1)`,
+    issueIds.length,
+    0,
+  );
+  const { ctx } = await contextFor(projectId, viewer);
+  const runs = await standingsOf(projectId, base, ctx);
+  const issueOf = new Map(base.map((b) => [b.id, b.issue_id]));
+  return runs.flatMap((run) => {
+    const issueId = issueOf.get(run.id);
+    return issueId ? [{ issueId, run }] : [];
+  });
+}
+
 export async function readRunStanding(
   projectId: string,
   runId: string,

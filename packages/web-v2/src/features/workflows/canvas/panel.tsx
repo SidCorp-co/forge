@@ -1,10 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { Button, IconButton, Kicker, SectionTitle } from "@/design";
 import type { WorkflowStep } from "../types";
 import { type Canvas, type CanvasEdge, edgeText, purposeOf, titleOf } from "./model";
+import { HealthMark } from "../components/health-parts";
 import { TypeChip } from "./nodes";
+import type { CanvasHealth } from "./workflow-canvas";
 import { WireframeThumb } from "./wireframe-thumb";
 
 export type Selection = { step: string } | { edge: string } | null;
@@ -19,6 +22,39 @@ interface PanelProps {
   onWalk: (at: number) => void;
   onStep: (id: string) => void;
   onEdge: (id: string) => void;
+  /** The health overlay; the selected step's markers are listed while it is on. */
+  health?: CanvasHealth | null | undefined;
+}
+
+/** The selected step's markers, each with its reason, opening its source record. */
+function StepHealth({ health, id }: { health: CanvasHealth; id: string }) {
+  const h = health.nodes.get(id);
+  if (!h || (h.markers.length === 0 && !h.rewrite)) return null;
+  return (
+    <Sec title="Health">
+      {h.rewrite ? <p className="mb-1.5 text-13 font-semibold">{h.rewrite}</p> : null}
+      <ul className="m-0 grid list-none p-0" data-testid="panel-health">
+        {h.markers.map((m) => {
+          const href = health.hrefOf(m);
+          return (
+            <li key={`${m.kind}:${m.source.type}:${m.source.key}`} className="grid gap-1 border-t border-line-subtle py-2 first:border-t-0">
+              <span className="flex items-center gap-2">
+                <HealthMark kind={m.kind} title={`${m.kind} · ${m.rule}`} />
+                {href ? (
+                  <Link href={href} className="font-mono text-12 font-semibold text-link hover:underline">
+                    {m.source.key}
+                  </Link>
+                ) : (
+                  <span className="font-mono text-12 text-subtle">{m.source.key}</span>
+                )}
+              </span>
+              <span className="text-13 text-muted">{m.reason}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </Sec>
+  );
 }
 
 function Sec({ title, children }: { title: string; children: ReactNode }) {
@@ -326,6 +362,7 @@ export function DetailPanel(p: PanelProps) {
           {close(p.onClose)}
         </div>
         <StepPanel c={c} step={step} onEdge={p.onEdge} />
+        {p.health?.on ? <StepHealth health={p.health} id={step.id} /> : null}
       </>
     );
   } else if (selection && "edge" in selection) {

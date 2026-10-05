@@ -4,6 +4,7 @@ import { feedbackHref } from "@/features/feedback/routes";
 import { issueHref, issuesHref } from "@/features/issues/routes";
 import { releaseHref } from "@/features/releases/routes";
 import { requirementHref } from "@/features/requirements/routes";
+import { workflowHref } from "@/features/workflows/routes";
 import type { NeedsYouItem } from "./types";
 
 /** The page a needs-you row opens, by what it is. */
@@ -23,6 +24,8 @@ export function needsYouHref(slug: string, n: Pick<NeedsYouItem, "entity" | "key
       return scheduleHref(slug, n.key);
     case "report":
       return reportHref(slug, n.key);
+    case "workflow":
+      return workflowHref(slug, n.key);
   }
 }
 

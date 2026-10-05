@@ -3,7 +3,9 @@
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { ChevronDown, ChevronUp, CircleHelp, Maximize, Map as MapIcon, Play } from "lucide-react";
 import { useState } from "react";
-import { Button, Input, SegmentedControl, TemplateIcon } from "@/design";
+import { Button, Input, SegmentedControl, TemplateIcon, Toggle } from "@/design";
+import type { HealthLayer } from "../health";
+import type { CanvasHealth } from "./workflow-canvas";
 import type { Canvas } from "./model";
 import { titleOf } from "./model";
 import { DASH, edgeHue, hue } from "./style";
@@ -20,6 +22,7 @@ export function ViewBar(p: {
   onLod: (l: Lod) => void;
   onToggleAll: () => void;
   onWalk: () => void;
+  health?: CanvasHealth | null | undefined;
 }) {
   return (
     <div className="wfc-float wfc-tl" role="toolbar" aria-label="View">
@@ -56,7 +59,33 @@ export function ViewBar(p: {
         <Play size={16} />
         <span className="wfc-t">Walk through</span>
       </Button>
+      {p.health ? <HealthBar health={p.health} /> : null}
     </div>
+  );
+}
+
+const LAYERS: { value: HealthLayer; label: string; title: string }[] = [
+  { value: "planned", label: "Planned", title: "The design revision shown: the target" },
+  { value: "observed", label: "Observed", title: "What the code holds, as the latest observation drew it" },
+  { value: "both", label: "Both", title: "Matched solid, upcoming dashed, code the design does not hold beside it" },
+];
+
+/** The Health overlay toggle and the Planned / Observed / Both layer switch; both kept in the page address (REQ-17 BC-15, BC-28). */
+export function HealthBar({ health }: { health: CanvasHealth }) {
+  return (
+    <>
+      <span className="wfc-sep" />
+      <span className="inline-flex items-center gap-1.5 px-1 text-12-5 font-semibold" title="Draw each step's health markers on the canvas" data-testid="health-toggle">
+        <Toggle checked={health.on} onChange={health.onToggle} aria-label="Health overlay" />
+        Health
+      </span>
+      {health.observed ? (
+        <>
+          <span className="wfc-sep" />
+          <SegmentedControl<HealthLayer> value={health.layer} onChange={health.onLayer} options={LAYERS} />
+        </>
+      ) : null}
+    </>
   );
 }
 

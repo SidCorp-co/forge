@@ -78,7 +78,7 @@ export type ObservationDocument = z.infer<typeof observationDocumentSchema>;
 /** `POST /api/projects/:id/workflows/:workflow/observations`. */
 export const writeObservationSchema = z.strictObject({
   atSha: z.string().regex(SHA, 'a whole 40-character commit sha'),
-  /** The design revision read against; absent, the approved revision, else the latest. */
+  /** The design revision read against; only the approved revision is, so absent means it. */
   revision: z.number().int().min(1).optional(),
   summary: z.string().min(1).max(WORKFLOW_LIMITS.summary).optional(),
   steps: z.array(observedStepSchema).max(OBSERVATION_LIMITS.steps),
@@ -88,4 +88,4 @@ export const writeObservationSchema = z.strictObject({
 export type WriteObservation = z.infer<typeof writeObservationSchema>;
 
 export const WRITE_OBSERVATION_SHAPE =
-  '{ atSha, revision?, summary?, steps: [{ id, matches: <planned step id> | null, title?, does, after, node?, evidence: { kind: "repo", file, symbol, coverage? } | { kind: "storefront", provider, ref, id } }], edges?: [{ from, to, kind?, label?, …, evidence }], drift?: { steps, reason } | null }';
+  '{ atSha, revision?: <the approved revision>, summary?, steps: [{ id, matches: <planned step id> | null, title?, does, after, node?, evidence: { kind: "repo", file, symbol, coverage? } | { kind: "storefront", provider, ref, id } }], edges?: [{ from, to, kind?, label?, …, evidence }], drift?: { steps, reason } | null }';

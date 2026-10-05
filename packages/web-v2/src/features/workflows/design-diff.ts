@@ -1,60 +1,26 @@
-import { lineKindOf, type WorkflowTemplate } from "@forge/contracts/workflow-templates";
-import type { WorkflowBody, WorkflowEdgeContract, WorkflowStep } from "./types";
+import type { DesignDiffView, DiffMark } from "@forge/contracts/workflow-health";
+import type { WorkflowBody, WorkflowStep } from "./types";
 
-export type StepMark = "added" | "changed" | "removed";
+export type StepMark = DiffMark;
 
+/** Core's diff of the proposed revision against the approved one (workflow-step-health `bkm-diff`), as the canvas draws it. */
 export interface DesignDiff {
   steps: Map<string, StepMark>;
   edges: Map<string, StepMark>;
+  /** The approved steps the proposal removes, kept so they are drawn in place. */
   removed: WorkflowStep[];
 }
 
 export const edgeKey = (from: string, to: string) => `${from}>${to}`;
 
-const designOf = (s: WorkflowStep) =>
-  JSON.stringify({ title: s.title ?? null, does: s.does, after: [...s.after].sort(), node: s.node ?? null });
-
-/** The kind a line naming none takes in this design: the one its endpoint types imply. */
-function impliedKind(w: WorkflowBody, e: WorkflowEdgeContract, template: WorkflowTemplate | null): string | null {
-  if (!template) return null;
-  const typeOf = (id: string) => w.steps.find((s) => s.id === id)?.node?.type ?? template.defaultNodeType ?? null;
-  const k = lineKindOf(template, typeOf(e.from), typeOf(e.to));
-  return "kind" in k ? k.kind : null;
-}
-
-const contractOf = (w: WorkflowBody, e: WorkflowEdgeContract | undefined, template: WorkflowTemplate | null) => {
-  if (!e) return "null";
-  const { kind, ...rest } = e;
-  return JSON.stringify(kind === undefined || kind === impliedKind(w, e, template) ? rest : e);
-};
-
-/**
- * What the proposed revision changes against the approved one, in the terms its approver decides on;
- * an edge of the kind its endpoints imply compares equal whether or not it spells the kind out.
- */
-export function designDiff(approved: WorkflowBody, proposed: WorkflowBody, template: WorkflowTemplate | null = null): DesignDiff {
-  const before = new Map(approved.steps.map((s) => [s.id, s]));
-  const after = new Map(proposed.steps.map((s) => [s.id, s]));
-  const steps = new Map<string, StepMark>();
-  for (const s of proposed.steps) {
-    const was = before.get(s.id);
-    if (!was) steps.set(s.id, "added");
-    else if (designOf(was) !== designOf(s)) steps.set(s.id, "changed");
-  }
-  const removed = approved.steps.filter((s) => !after.has(s.id));
-  for (const s of removed) steps.set(s.id, "removed");
-  const contracts = (w: WorkflowBody) => new Map((w.edges ?? []).map((e) => [edgeKey(e.from, e.to), e]));
-  const oldEdges = contracts(approved);
-  const newEdges = contracts(proposed);
-  const edges = new Map<string, StepMark>();
-  for (const key of new Set([...oldEdges.keys(), ...newEdges.keys()])) {
-    const was = oldEdges.get(key);
-    const now = newEdges.get(key);
-    if (!was) edges.set(key, "added");
-    else if (!now) edges.set(key, "removed");
-    else if (contractOf(approved, was, template) !== contractOf(proposed, now, template)) edges.set(key, "changed");
-  }
-  return { steps, edges, removed };
+/** The diff core served, with the removed steps taken from the approved document it was read against. */
+export function diffOf(view: DesignDiffView, approved: WorkflowBody): DesignDiff {
+  const steps = new Map(Object.entries(view.steps));
+  return {
+    steps,
+    edges: new Map(Object.entries(view.edges)),
+    removed: approved.steps.filter((s) => steps.get(s.id) === "removed"),
+  };
 }
 
 /** The steps drawn with the diff on: the proposed ones, and the approved ones it removes, kept in place. */

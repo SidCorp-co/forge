@@ -16,7 +16,7 @@ import type { WorkflowCanvasProps } from "./workflow-canvas";
 
 /** A design laid out by ELK from its template: bands, stages and steps, levels of detail by zoom. */
 export function FlowCanvas(props: WorkflowCanvasProps) {
-  const { doc, template, diff = null } = props;
+  const { doc, template, diff = null, health = null } = props;
   const rf = useReactFlow();
   const c = useMemo(() => readCanvas(doc, template), [doc, template]);
   const banded = c.bands.length > 0;
@@ -55,8 +55,9 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
       visited: walk === null ? new Set<string>() : new Set(visited),
       contract: language === "contract",
       diff,
+      health,
     }),
-    [selectedStep, selectedEdge, focus, hits, walk, visited, language, diff],
+    [selectedStep, selectedEdge, focus, hits, walk, visited, language, diff, health],
   );
 
   const layout = useCanvasLayout({
@@ -258,7 +259,7 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
       }}
       nodeColor={nodeColor}
       nodeStroke={nodeStroke}
-      toolbar={<ViewBar language={language} lod={lod} banded={banded} allOpen={allOpen} onLanguage={setLanguage} onLod={setLevel} onToggleAll={toggleAll} onWalk={() => walkTo(0)} />}
+      toolbar={<ViewBar language={language} lod={lod} banded={banded} allOpen={allOpen} onLanguage={setLanguage} onLod={setLevel} onToggleAll={toggleAll} onWalk={() => walkTo(0)} health={health} />}
       search={<SearchBox c={c} hits={[...hits]} query={query} onQuery={setQuery} onPick={reveal} />}
       walkBar={walk !== null && walk < order.length ? <WalkBar at={walk} total={order.length} onWalk={walkTo} onStop={walkStop} /> : null}
       panel={
@@ -271,6 +272,7 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
           onWalk={walkTo}
           onStep={reveal}
           onEdge={(id) => setSelection({ edge: id })}
+          health={health}
         />
       }
     />

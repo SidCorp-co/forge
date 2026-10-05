@@ -7,9 +7,17 @@ export {
 export { WorkflowDesignNotApprovedError } from './design.js';
 export { proposesWorkflowOf } from './design-issue.js';
 export { workflowDesign } from './design-lookup.js';
+export { provideWorkflowHealthPorts } from './health-ports.js';
+export { projectHealthAs } from './health-read.js';
 export { workflowJsonSchemas } from './json-schema.js';
-export { designNodesIn, nodeRefRefusal, nodeSetRefusals } from './node-refs.js';
+export {
+  decisionNodeRefusal,
+  designNodesIn,
+  nodeRefRefusal,
+  nodeSetRefusals,
+} from './node-refs.js';
 export { loadPinnedContracts, renderPinnedContracts } from './pinned-contracts.js';
+export { provideWorkflowPorts } from './ports.js';
 export { renderIssueMockups } from './requirement-context.js';
 export { renderArtifactContext } from './run-context.js';
 export {

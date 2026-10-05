@@ -11,7 +11,8 @@ import { type DBox, type Diagram, fitZoom, layoutView, MIN_READABLE_ZOOM } from 
 import { type Detail, FOCAL, foldable, type Level, relationshipText, viewOf } from "../c4/view";
 import { useSystemGraph } from "../hooks";
 import { C4_EDGE_TYPES, C4_NODE_TYPES, type C4BoxData, type C4FrameData, type C4LineData } from "./c4-nodes";
-import { SearchBox, WalkBar } from "./controls";
+import { HEALTH_MARKER_KINDS } from "@forge/contracts/workflow-health";
+import { HealthBar, SearchBox, WalkBar } from "./controls";
 import { Frame } from "./frame";
 import { pathOf, readCanvas, searchSteps, walkOrder } from "./model";
 import { DetailPanel, type Selection } from "./panel";
@@ -41,7 +42,7 @@ const KIND_HUE: Record<DBox["node"]["kind"], string> = { person: "orange", group
  * edges here. It opens on Every system when that reads at 12px in the view, else on Boundaries.
  */
 export function C4Canvas(props: WorkflowCanvasProps) {
-  const { doc, template, diff = null, compact = false } = props;
+  const { doc, template, diff = null, compact = false, health = null } = props;
   const rf = useReactFlow();
   const wrap = useRef<HTMLDivElement>(null);
   const read = useSystemGraph(props.graph ?? null);
@@ -219,12 +220,13 @@ export function C4Canvas(props: WorkflowCanvasProps) {
         rel: !focus || ids.some((s) => focus.nodes.has(s)),
         hit: ids.some((s) => hits.has(s)),
         mark: x.node.node ? (diff?.steps.get(x.node.id) ?? null) : null,
+        health: health?.on ? HEALTH_MARKER_KINDS.filter((k) => ids.some((id) => health.nodes.get(id)?.kinds.includes(k))) : [],
         canOpen: !compact,
       };
       out.push({ id: x.node.id, type: "c4box", position: { x: x.x, y: x.y }, width: x.w, height: x.h, data, draggable: false, selectable: false });
     }
     return out;
-  }, [diagram, step, focus, hits, diff, compact, foldGroup]);
+  }, [diagram, step, focus, hits, diff, compact, foldGroup, health]);
 
   const edges = useMemo((): Edge[] => {
     if (!diagram) return [];
@@ -270,6 +272,7 @@ export function C4Canvas(props: WorkflowCanvasProps) {
           </Button>
         </>
       )}
+      {health ? <HealthBar health={health} /> : null}
     </div>
   );
 

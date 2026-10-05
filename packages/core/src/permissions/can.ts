@@ -24,6 +24,7 @@ import {
   permissionVerb,
   ROLE_PERMISSIONS,
   TOKEN_EXPLICIT_PERMISSIONS,
+  TOKEN_GRANT_EXCLUSIONS,
 } from '@forge/contracts/permissions';
 import { and, exists, inArray, or, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import { currentPatScope, fencedProjectIds } from '../credentials/pat-scope.js';
@@ -55,9 +56,20 @@ export const orgResource = (orgId: string): OrgResource => ({ type: 'org', id: o
 
 const isExplicit = (permission: Permission) => TOKEN_EXPLICIT_PERMISSIONS.includes(permission);
 
+/** Whether a grant names a permission that excludes `permission` (`TOKEN_GRANT_EXCLUSIONS`). */
+export function grantExcludes(
+  grant: readonly string[] | null | undefined,
+  permission: Permission,
+): boolean {
+  return (grant ?? []).some((g) =>
+    (TOKEN_GRANT_EXCLUSIONS[g as Permission] ?? []).includes(permission),
+  );
+}
+
 function tokenAdmits(permission: Permission): boolean {
   const token = currentPatScope();
   if (!token) return true;
+  if (grantExcludes(token.grant, permission)) return false;
   if (permissionVerb(permission) !== 'read' && token.scopes && !token.scopes.includes('write')) {
     return false;
   }
@@ -98,8 +110,11 @@ export function permissionRefusal(
   const grant = facts.grants.length > 0 ? ` and a grant of ${facts.grants.join(', ')}` : '';
   const holders = rolesHolding(permission);
   const by = holders.length > 0 ? `the ${holders.join(' or ')} role or ` : '';
-  const token =
-    currentPatScope() && isExplicit(permission)
+  const scope = currentPatScope();
+  const excluded = scope && grantExcludes(scope.grant, permission);
+  const token = excluded
+    ? ` This token's grant names ${scope.grant?.filter((g) => (TOKEN_GRANT_EXCLUSIONS[g as Permission] ?? []).includes(permission)).join(', ')}, and a token naming that never holds ${permission}: an observer credential cannot write or decide the design it reads.`
+    : scope && isExplicit(permission)
       ? ` A token holds ${permission} only where its own grant names it.`
       : '';
   return {

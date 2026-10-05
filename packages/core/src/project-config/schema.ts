@@ -6,6 +6,7 @@ import { SENSITIVE_DATA_LEVELS } from '@forge/contracts/data-policy';
 import { deliveryPolicySchema } from '@forge/contracts/delivery-policy';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { REQUIREMENT_READINESS_GATES } from '@forge/contracts/requirements';
+import { rewriteThresholdSchema } from '@forge/contracts/workflow-health';
 import {
   projectWorkflowTemplateSchema,
   TEMPLATE_LIMITS,
@@ -181,6 +182,9 @@ export const projectDocumentSchema = z.strictObject({
     .strictObject({
       designApprover: z.enum(DESIGN_APPROVERS).optional(),
       templates: z.array(projectWorkflowTemplateSchema).max(TEMPLATE_LIMITS.templates).optional(),
+      // When a marked node is due a rewrite rather than a patch (REQ-17 BC-25, policy): absent values
+      // read as `REWRITE_THRESHOLD_DEFAULTS` and are reported as defaults on the health read.
+      rewriteThreshold: rewriteThresholdSchema.optional(),
     })
     .optional(),
   // `contracts.approver` is retired the same way and under the same amnesty as

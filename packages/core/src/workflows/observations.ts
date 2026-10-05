@@ -1,6 +1,7 @@
 /**
- * Writing and reading the observed layer of a design. A write is held to the citation rule and to the
- * revision it was read against; it touches neither project_workflows nor project_workflow_designs.
+ * Writing and reading the observed layer of a design. A write is held to the root, the approved
+ * revision, the landed commit and the citation rule; it touches neither project_workflows nor
+ * project_workflow_designs, and its permission (workflow-observations.write) writes nothing else.
  */
 
 import type {
@@ -14,12 +15,22 @@ import { projectWorkflowObservations, projectWorkflows } from '../db/schema-work
 import { peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
 import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
-import { type ObservationRefusal, observationRefusals } from './observation-rules.js';
+import {
+  citedFiles,
+  commitOffBranchRefusal,
+  missingCitationRefusals,
+  type ObservationRefusal,
+  observationRefusals,
+  revisionRefusal,
+  sourceUnreadableRefusal,
+} from './observation-rules.js';
 import {
   type ObservationDocument,
   observationDocumentSchema,
   type WriteObservation,
 } from './observation-schema.js';
+import { type ObservedRepository, repositoryOf } from './ports.js';
+import { rootedOf, unrootedRefusal } from './rooted.js';
 import { readStoredWorkflow } from './schema.js';
 import { projectFactsOf, type WorkflowWriter } from './service.js';
 import { designsOf, lockWorkflows } from './store.js';
@@ -106,6 +117,50 @@ async function viewOf(row: Row, flow: string): Promise<ObservationView> {
   return { ...summaryOf(row, flow, names), document: documentOf(row) };
 }
 
+/** Each cited file at the commit, read once; a read the host fails is the whole check's refusal. */
+async function citedTexts(
+  repo: ObservedRepository,
+  sha: string,
+  files: readonly string[],
+): Promise<Map<string, string | { missing: string }> | ObservationRefusal> {
+  const texts = new Map<string, string | { missing: string }>();
+  try {
+    for (const file of files) texts.set(file, await repo.readFile(file, sha));
+  } catch (err) {
+    return sourceUnreadableRefusal(
+      `reading the cited files at ${sha.slice(0, 12)} failed (${err instanceof Error ? err.message : String(err)})`,
+    );
+  }
+  return texts;
+}
+
+/** Whether the commit landed and every repo citation names a file and symbol it holds. */
+async function commitRefusals(
+  projectId: string,
+  write: WriteObservation,
+): Promise<ObservationRefusal[]> {
+  const repo = await repositoryOf(projectId);
+  if ('unreadable' in repo) return [sourceUnreadableRefusal(repo.unreadable)];
+  let landed: boolean;
+  try {
+    landed = await repo.contains(write.atSha);
+  } catch (err) {
+    return [
+      sourceUnreadableRefusal(
+        `asking whether ${repo.branch} holds ${write.atSha.slice(0, 12)} failed (${err instanceof Error ? err.message : String(err)})`,
+      ),
+    ];
+  }
+  if (!landed) return [commitOffBranchRefusal(write.atSha, repo.branch)];
+  const texts = await citedTexts(repo, write.atSha, citedFiles(write));
+  if (!(texts instanceof Map)) return [texts];
+  return missingCitationRefusals(write, texts);
+}
+
+/**
+ * Store an observation of the approved revision of a rooted design (design-reconciliation `cited`,
+ * `observation`). Every refusal is answered by name and nothing of a refused observation is kept.
+ */
 export async function writeObservation(input: {
   projectId: string;
   workflow: string;
@@ -116,38 +171,68 @@ export async function writeObservation(input: {
   const { projectId, writer, write } = input;
   const who = await permissionRefusalFor(
     actorFor(writer.userId, writer.agency),
-    'workflow-designs.write',
+    'workflow-observations.write',
     projectResource(projectId),
     'writing an observation',
   );
   if (who) return { ok: false, refusals: [who] };
   const facts = await projectFactsOf(projectId);
+  const read = await db.transaction(async (tx) => {
+    const wf = await workflowRowIn(tx, projectId, input.workflow);
+    const rooted = await rootedOf(tx, wf);
+    const unrooted = unrootedRefusal(wf.flow, rooted);
+    if (unrooted || wf.approvedRevision === null) {
+      return { wf, refusals: unrooted ? [unrooted] : [] };
+    }
+    const revision = wf.approvedRevision;
+    const notApproved = revisionRefusal(wf.flow, write.revision, revision);
+    if (notApproved) return { wf, refusals: [notApproved] };
+    const planned = await plannedStepsAt(tx, wf, revision);
+    if (!planned) {
+      return {
+        wf,
+        refusals: [
+          {
+            code: 'WORKFLOW_OBSERVATION_REVISION_UNKNOWN' as const,
+            path: '/revision',
+            detail: `${wf.flow} holds no stored document for its approved revision ${revision}; the stored design is repaired, never guessed at.`,
+          },
+        ],
+      };
+    }
+    return {
+      wf,
+      revision,
+      refusals: observationRefusals({
+        write,
+        planned,
+        revision,
+        flow: wf.flow,
+        source: facts.source,
+      }),
+    };
+  });
+  if (read.refusals.length) return { ok: false, refusals: read.refusals };
+  const revision = read.revision as number;
+  if (facts.source.kind === 'repo') {
+    const remote = await commitRefusals(projectId, write);
+    if (remote.length) return { ok: false, refusals: remote };
+  }
   let written: Row | null = null;
   let created = true;
-  let flow = '';
+  const flow = read.wf.flow;
   const refusals = await db.transaction(async (tx): Promise<ObservationRefusal[]> => {
     await lockWorkflows(tx, projectId);
     const wf = await workflowRowIn(tx, projectId, input.workflow);
-    flow = wf.flow;
-    const revision = write.revision ?? wf.approvedRevision ?? wf.revision;
-    const planned = await plannedStepsAt(tx, wf, revision);
-    if (!planned) {
+    if (wf.approvedRevision !== revision) {
       return [
         {
-          code: 'WORKFLOW_OBSERVATION_REVISION_UNKNOWN',
+          code: 'WORKFLOW_OBSERVATION_REVISION_NOT_APPROVED',
           path: '/revision',
-          detail: `${wf.flow} holds no revision ${revision}; an observation is read against a revision the design holds (its approved one is ${wf.approvedRevision ?? 'none'}, its latest ${wf.revision}).`,
+          detail: `${flow} r${revision} was approved when the observation was checked and r${wf.approvedRevision ?? 'none'} is approved now; observe the approved revision again.`,
         },
       ];
     }
-    const wrong = observationRefusals({
-      write,
-      planned,
-      revision,
-      flow: wf.flow,
-      source: facts.source,
-    });
-    if (wrong.length) return wrong;
     const document: ObservationDocument = {
       ...(write.summary ? { summary: write.summary } : {}),
       steps: write.steps,

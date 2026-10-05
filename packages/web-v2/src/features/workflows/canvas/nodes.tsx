@@ -1,11 +1,15 @@
 "use client";
 
+import type { NodeProvenance } from "@forge/contracts/workflow-health";
 import type { TemplateNodeType } from "@forge/contracts/workflow-templates";
 import { Handle, type NodeProps, Position } from "@xyflow/react";
 import { ChevronRight, Clock, User } from "lucide-react";
+import Link from "next/link";
 import { memo } from "react";
 import { Button, CardTitle, TemplateIcon } from "@/design";
+import { HealthMark } from "../components/health-parts";
 import type { StepMark } from "../design-diff";
+import type { NodeHealthView } from "../health";
 import type { WorkflowStep } from "../types";
 import type { BandSummary } from "./model";
 import { titleOf, purposeOf } from "./model";
@@ -23,6 +27,11 @@ export interface StepNodeData extends Record<string, unknown> {
   hit: boolean;
   visited: boolean;
   mark: StepMark | null;
+  /** The node's markers while the Health overlay is on; null draws none. */
+  health: NodeHealthView | null;
+  hrefOf: ((m: NodeHealthView["markers"][number]) => string | null) | null;
+  /** Its provenance once the code has been observed: matched solid, planned (upcoming) dashed, observed-only in the observed style. */
+  provenance: NodeProvenance | null;
 }
 
 export interface BandNodeData extends Record<string, unknown> {
@@ -57,6 +66,32 @@ export function TypeChip({ type }: { type: TemplateNodeType }) {
   );
 }
 
+/** A node's markers: one dot per kind zoomed out, a chip per kind on a full card, each opening its source; then its rewrite reading. */
+function NodeHealth({ h, full, hrefOf }: { h: NodeHealthView; full: boolean; hrefOf: StepNodeData["hrefOf"] }) {
+  if (h.kinds.length === 0 && !h.rewrite) return null;
+  return (
+    <div className="wfc-health" data-testid="node-health">
+      {h.kinds.map((k) => {
+        const first = h.markers.find((m) => m.kind === k);
+        const href = first && hrefOf ? hrefOf(first) : null;
+        const tip = first ? `${k} · ${first.reason}` : k;
+        return href ? (
+          <Link key={k} href={href} className="nodrag nopan" onClick={(e) => e.stopPropagation()} data-testid="node-health-link">
+            <HealthMark kind={k} dot={!full} title={tip} />
+          </Link>
+        ) : (
+          <HealthMark key={k} kind={k} dot={!full} title={tip} />
+        );
+      })}
+      {h.rewrite ? (
+        <span className="wfc-rewrite" data-due={h.rewrite === "Rewrite due" || undefined} data-testid="node-rewrite">
+          {h.rewrite}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function StepCard({ data }: NodeProps & { data: StepNodeData }) {
   const { step, type, full, contract } = data;
   const n = step.node;
@@ -70,6 +105,7 @@ function StepCard({ data }: NodeProps & { data: StepNodeData }) {
       data-hit={data.hit}
       data-visited={data.visited}
       data-mark={data.mark ?? undefined}
+      data-provenance={data.provenance ?? undefined}
       data-testid="workflow-node"
       data-step={step.id}
       title={full ? undefined : purposeOf(step)}
@@ -83,6 +119,7 @@ function StepCard({ data }: NodeProps & { data: StepNodeData }) {
         </span>
       ) : null}
       <CardTitle className="fg-h4">{titleOf(step)}</CardTitle>
+      {data.health ? <NodeHealth h={data.health} full={full} hrefOf={data.hrefOf} /> : null}
       {full ? (
         <>
           <p>{purposeOf(step)}</p>

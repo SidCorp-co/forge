@@ -7,6 +7,8 @@ import { Button, Popover, useHoverCard } from "@/design";
 import { type DBox, type DFrame, type DLine, FONT } from "../c4/layout";
 import { FOCAL } from "../c4/view";
 import { IntegrationBadge } from "../components/workflow-parts";
+import type { HealthMarkerKind } from "@forge/contracts/workflow-health";
+import { HealthMark } from "../components/health-parts";
 import type { StepMark } from "../design-diff";
 import { MARK_HUE } from "./style";
 
@@ -19,6 +21,8 @@ export interface C4BoxData extends Record<string, unknown> {
   rel: boolean;
   hit: boolean;
   mark: StepMark | null;
+  /** The marker kinds on the steps this box draws, while the Health overlay is on. */
+  health: HealthMarkerKind[];
   /** A folded boundary opens in place on a click; absent, a click pins its card instead. */
   canOpen: boolean;
 }
@@ -113,6 +117,13 @@ function C4Box({ data }: NodeProps & { data: C4BoxData }) {
             {l}
           </span>
         ))}
+        {data.health.length ? (
+          <span className="wfc-health" data-testid="node-health">
+            {data.health.map((k) => (
+              <HealthMark key={k} kind={k} dot />
+            ))}
+          </span>
+        ) : null}
       </div>
       {group ? (
         <Popover

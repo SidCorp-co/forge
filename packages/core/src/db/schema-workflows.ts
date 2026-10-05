@@ -119,9 +119,9 @@ export const workflowBuilds = pgTable(
   }),
 );
 
-// What the code holds, read by an agent at one commit against one design revision (REQ-17 BC-21):
-// its own layer, never written into project_workflows or project_workflow_designs; a reading at a
-// commit already read replaces the earlier one
+// What the code holds, read by an agent at one commit against the approved design revision (REQ-17
+// BC-21): its own layer, never written into project_workflows or project_workflow_designs; a reading
+// at a commit already read replaces the earlier one
 export const projectWorkflowObservations = pgTable(
   'project_workflow_observations',
   {

@@ -14,7 +14,12 @@ import { commentEvents } from '../db/schema-comments.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { peopleOf } from '../lib/people.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import {
+  actorFor,
+  type PermissionFacts,
+  projectResource,
+  requireCan,
+} from '../permissions/index.js';
 import {
   type CommentTarget,
   commentEgress,
@@ -35,6 +40,7 @@ import {
   depthRefusal,
   editorRefusal,
   editRefusals,
+  nodeDeciderRefusal,
   nodeDecisionScopeRefusal,
   parentRefusal,
   posterRefusal,
@@ -70,9 +76,11 @@ function scrubbedDecision(level: SensitiveDataLevel, d: DecisionFields): Decisio
   };
 }
 
-// cm:guard a node decision sits on a workflow and names a node of its latest revision (REQ-17 BC-26)
+// cm:guard a node decision sits on a workflow, is posted by a holder of workflow-designs.approve and
+// names a node of its approved revision or its latest observation (REQ-17 BC-26, design-reconciliation decide)
 async function nodeDecisionRefusals(
   tx: Tx,
+  facts: PermissionFacts,
   target: CommentTarget,
   decision: DecisionFields | undefined,
 ): Promise<CommentRefusal[]> {
@@ -80,6 +88,8 @@ async function nodeDecisionRefusals(
   if (!node) return [];
   const scoped = nodeDecisionScopeRefusal(target.scope, target.key, decision);
   if (scoped) return [scoped];
+  const decider = nodeDeciderRefusal(facts, decision, target.key);
+  if (decider) return [decider];
   const wrong = await designNodeRefusal(tx, target.projectId, target.id, node, '/decision/node');
   return wrong ? [wrong as CommentRefusal] : [];
 }
@@ -150,7 +160,7 @@ export async function postEntityComment(input: {
       scopeRefusal(arc),
       ...contentRefusals(request),
       ...(await parentRefusals(tx, request.parentId, target)),
-      ...(await nodeDecisionRefusals(tx, target, request.decision)),
+      ...(await nodeDecisionRefusals(tx, facts, target, request.decision)),
     ].filter(present);
     if (refusals.length > 0) return { ok: false, refusals };
 
@@ -213,7 +223,7 @@ export async function editEntityComment(input: {
     const refusals = [
       editorRefusal(facts, row.authorId === actor.userId, target.key),
       ...editRefusals(row.intent, request),
-      ...(await nodeDecisionRefusals(tx, target, request.decision)),
+      ...(await nodeDecisionRefusals(tx, facts, target, request.decision)),
     ].filter(present);
     if (refusals.length > 0) return { ok: false, refusals };
 

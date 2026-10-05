@@ -1,12 +1,87 @@
 "use client";
 
+import { HEALTH_MARKER_KINDS, HEALTH_MARKER_LABELS, type WorkflowHealth } from "@forge/contracts/workflow-health";
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import Link from "next/link";
 import { Fact, FactsEmpty, FactsGroup, StatusBadge } from "@/design";
 import { issueHref } from "@/features/issues/routes";
 import { requirementHref } from "@/features/requirements/routes";
 import { formatRelativeTime, formatStamp } from "@/lib/utils/format";
+import { markersByKind, sourceHref, targetWords } from "../health";
 import type { WorkflowBody, WorkflowDesign, WorkflowRecord } from "../types";
+import { HealthMark } from "./health-parts";
+
+/**
+ * The rail's Health group (REQ-17 BC-17): a count per marker kind, then the markers grouped by kind,
+ * each opening its source record. Counts show whether or not the canvas overlay is on.
+ */
+function HealthGroup({ health, slug }: { health: WorkflowHealth; slug: string }) {
+  const total = health.markers.length;
+  const groups = markersByKind(health.markers);
+  return (
+    <FactsGroup title="Health" count={total ? `Markers ${total}` : undefined} testId="facts-health">
+      {!health.rooted.rooted ? (
+        <p className="mb-2 text-12-5 text-muted" data-testid="health-unrooted">
+          Unrooted: {health.rooted.missing.map((m) => (m === "approved_revision" ? "no approved revision" : "no requirement links it")).join(" and ")}, so the code is not observed against it.
+        </p>
+      ) : health.observation === null ? (
+        <p className="mb-2 text-12-5 text-muted" data-testid="health-not-observed">
+          The code has not been observed yet; every step reads planned.
+        </p>
+      ) : (
+        <p className="mb-2 text-12-5 text-muted" title={formatStamp(health.observation.createdAt)} data-testid="health-observed">
+          Code observed at <span className="font-mono">{health.observation.atSha.slice(0, 8)}</span> against r{health.observation.revision} · {formatRelativeTime(health.observation.createdAt)}
+        </p>
+      )}
+      <ul className="grid grid-cols-2 gap-x-3 gap-y-1" data-testid="health-counts">
+        {HEALTH_MARKER_KINDS.map((k) => (
+          <li key={k} className="flex min-w-0 items-center justify-between gap-2 text-12-5" data-kind={k} title={k}>
+            <span className={health.counts[k] ? "text-fg" : "text-subtle"}>{HEALTH_MARKER_LABELS[k]}</span>
+            <span className={`font-mono tabular-nums ${health.counts[k] ? "font-semibold" : "text-subtle"}`}>{health.counts[k]}</span>
+          </li>
+        ))}
+      </ul>
+      {health.needsYou > 0 ? (
+        <p className="mt-2 text-12-5 font-semibold text-accent-text" data-testid="health-needs-you" title="Sources waiting on a person, and Rewrite-due or Not in design nodes with no decision">
+          Needs a person: {health.needsYou}
+        </p>
+      ) : null}
+      {groups.length ? (
+        <div className="mt-2.5 border-t border-line-subtle" data-testid="health-markers">
+          {groups.map((g) => (
+            <details key={g.kind} className="border-b border-line-subtle py-1.5" data-kind={g.kind}>
+              <summary className="flex cursor-pointer select-none items-center gap-2 text-12-5">
+                <HealthMark kind={g.kind} />
+              </summary>
+              <ul className="mt-1 grid">
+                {g.markers.map((m) => {
+                  const href = sourceHref(slug, health.flow, m.source);
+                  return (
+                    <li key={`${m.rule}:${m.source.type}:${m.source.key}:${targetWords(m.target)}`} className="grid gap-0.5 border-t border-line-subtle py-1.5 text-12-5 first:border-t-0" data-testid="health-marker">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        {href ? (
+                          <Link href={href} className="flex-none font-mono text-12 font-semibold text-link hover:underline" title={`${m.source.type} · ${m.rule}`}>
+                            {m.source.key}
+                          </Link>
+                        ) : (
+                          <span className="flex-none font-mono text-12 text-subtle" title={`${m.source.type} · ${m.rule}`}>
+                            {m.source.key}
+                          </span>
+                        )}
+                        <span className="min-w-0 truncate text-subtle">{targetWords(m.target)}</span>
+                      </span>
+                      <span className="text-muted">{m.reason}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </details>
+          ))}
+        </div>
+      ) : null}
+    </FactsGroup>
+  );
+}
 
 function Requirements({ d, slug }: { d: WorkflowDesign; slug: string }) {
   return (
@@ -74,9 +149,10 @@ interface DesignFactsProps {
   shownRevision: number;
   template: WorkflowTemplate | null;
   slug: string;
+  health: WorkflowHealth | undefined;
 }
 
-export function WorkflowDesignFacts({ d, record, shown, shownRevision, template, slug }: DesignFactsProps) {
+export function WorkflowDesignFacts({ d, record, shown, shownRevision, template, slug, health }: DesignFactsProps) {
   const latest = d.revisions[0] ?? null;
   const approved = d.revisions.find((r) => r.revision === d.approvedRevision) ?? null;
   const shownState = d.revisions.find((r) => r.revision === shownRevision)?.state ?? null;
@@ -92,6 +168,7 @@ export function WorkflowDesignFacts({ d, record, shown, shownRevision, template,
           </p>
         </FactsGroup>
       ) : null}
+      {health ? <HealthGroup health={health} slug={slug} /> : null}
       <Requirements d={d} slug={slug} />
       <BuildGate d={d} slug={slug} />
       <FactsGroup title="Properties" testId="facts-properties">

@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- **A design shows its health (REQ-17, REQ-18).** Markers such as Upcoming, Not in design, Wrong and
+  Outdated are derived on every read and shown on the canvas, the rail and the list. Only rooted
+  designs are observed, and observer tokens cannot write designs.
+
 ### Fixed
 
 - **A pool job's brief is its agent's first turn, not a paste.** The runner starts the job's agent

@@ -19,6 +19,12 @@ import {
   readDesignAs,
   unlinkBuildAs,
 } from './design-service.js';
+import {
+  noHealthSummary,
+  projectHealthAs,
+  readWorkflowHealthAs,
+  summaryOfHealth,
+} from './health-read.js';
 import { WRITE_OBSERVATION_SHAPE, writeObservationSchema } from './observation-schema.js';
 import { listObservations, observationAs, writeObservation } from './observations.js';
 import { designStepsOf, designSummaryOf, workflowSummaryOf } from './projection.js';
@@ -111,11 +117,19 @@ workflowRoutes.post('/:id/workflows', idParam, envelope, async (c) => {
 
 workflowRoutes.get('/:id/workflows', idParam, listView, async (c) => {
   const { id } = c.req.valid('param');
+  const viewer = { userId: c.get('userId'), agency: c.get('agency') ?? 'human' };
+  const [views, health] = await Promise.all([
+    listWorkflowsAs(viewer.userId, id),
+    projectHealthAs(viewer, id),
+  ]);
   const listed = await egressForRequest(
     c.get('agency'),
     id,
     'design',
-    await listWorkflowsAs(c.get('userId'), id),
+    views.map((v) => {
+      const h = health.get(v.document.id);
+      return { ...v, health: h ? summaryOfHealth(h) : noHealthSummary() };
+    }),
     'the workflows',
   );
   const workflows =
@@ -378,5 +392,19 @@ workflowRoutes.get(
     });
   },
 );
+
+workflowRoutes.get('/:id/workflows/:workflow/health', workflowRefParam, async (c) => {
+  const { id, workflow } = c.req.valid('param');
+  const viewer = { userId: c.get('userId'), agency: c.get('agency') ?? 'human' };
+  return c.json({
+    health: await egressForRequest(
+      c.get('agency'),
+      id,
+      'design',
+      await readWorkflowHealthAs(viewer, id, workflow),
+      `workflow ${workflow} health`,
+    ),
+  });
+});
 
 export { workflowTemplateCatalogueRoutes } from './template-routes.js';
