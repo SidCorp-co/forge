@@ -1,4 +1,3 @@
-import { sql } from 'drizzle-orm';
 import {
   index,
   integer,
@@ -69,9 +68,6 @@ export const phaseJournal = pgTable(
     ),
     runStartedIdx: index('phase_journal_run_started_idx').on(t.runId, t.startedAt),
     issueStartedIdx: index('phase_journal_issue_started_idx').on(t.issueId, t.startedAt),
-    runnerVerdictsIdx: index('phase_journal_runner_verdicts_idx')
-      .on(t.runId, t.startedAt)
-      .where(sql`source = 'runner' AND artifact ->> 'kind' = 'verdict'`),
   }),
 );
 

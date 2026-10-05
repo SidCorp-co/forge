@@ -65,7 +65,11 @@ export const pipelineApi = {
   resume: (id: string) => apiClient<unknown>(`/pipeline-runs/${id}/resume`, { method: "POST" }),
 
   /** `POST /api/pipeline-runs/:id/cancel`. */
-  cancel: (id: string) => apiClient<unknown>(`/pipeline-runs/${id}/cancel`, { method: "POST" }),
+  cancel: (id: string) =>
+    apiClient<{ issueParked: boolean; parkRefused: { code: string; detail: string } | null }>(
+      `/pipeline-runs/${id}/cancel`,
+      { method: "POST" },
+    ),
 
   stepDurations: (opts: AnalyticsOpts = {}) =>
     apiClient<StepDurationRow[]>(`/pipeline/step-durations?${analyticsParams(opts)}`),

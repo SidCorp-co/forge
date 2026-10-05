@@ -1,11 +1,11 @@
 import { z } from 'zod';
-import { getStorage } from '../integrations/index.js';
 import { env } from '../lib/env.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
+import { notFound } from '../middleware/route-errors.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { loadAttachment } from './attachment-lookup.js';
+import { loadAttachment, readAttachmentBytes } from './attachment-lookup.js';
 import { createDownloadTicket } from './download-ticket-service.js';
 
 const inputSchema = z
@@ -27,22 +27,18 @@ async function mintDownloadTicket(
   attachmentId: string,
   projectId: string,
   principal: McpPrincipal,
-): Promise<{ url: string; expiresAt: string } | null> {
-  try {
-    const ticket = await createDownloadTicket({
-      targetType: target,
-      attachmentId,
-      projectId,
-      issuedToUserId: principal.userId,
-      issuedToDeviceId: null,
-    });
-    return {
-      url: `/api/uploads/download/${ticket.id}`,
-      expiresAt: ticket.expiresAt.toISOString(),
-    };
-  } catch {
-    return null;
-  }
+): Promise<{ url: string; expiresAt: string }> {
+  const ticket = await createDownloadTicket({
+    targetType: target,
+    attachmentId,
+    projectId,
+    issuedToUserId: principal.userId,
+    issuedToDeviceId: null,
+  });
+  return {
+    url: `/api/uploads/download/${ticket.id}`,
+    expiresAt: ticket.expiresAt.toISOString(),
+  };
 }
 
 export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
@@ -69,8 +65,8 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
 
     const { target, attachmentId } = input.data;
     const att = await loadAttachment(target, attachmentId);
-    if (!att) throw new Error('NOT_FOUND: attachment not found');
-    await requireCan(actorFor(principal.userId), 'project.write', projectResource(att.projectId));
+    if (!att) throw notFound(`attachment ${attachmentId} not found on that ${target}`);
+    await requireCan(actorFor(principal.userId), 'project.read', projectResource(att.projectId));
 
     const download = await mintDownloadTicket(target, attachmentId, att.projectId, principal);
     const meta = {
@@ -79,8 +75,8 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
       mime: att.mime,
       size: att.size,
       url: att.url,
-      downloadUrl: download?.url ?? null,
-      downloadExpiresAt: download?.expiresAt ?? null,
+      downloadUrl: download.url,
+      downloadExpiresAt: download.expiresAt,
     };
 
     const isImage = att.mime.startsWith('image/');
@@ -102,11 +98,11 @@ export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
         ...meta,
         inlined: false,
         reason: 'too_large',
-        note: `Attachment is ${att.size} bytes (> inline cap ${env.UPLOADS_INLINE_MAX_BYTES}). Download it via \`url\` instead of inlining.`,
+        note: `Attachment is ${att.size} bytes (> inline cap ${env.UPLOADS_INLINE_MAX_BYTES}). Download it via \`downloadUrl\` instead of inlining.`,
       };
     }
 
-    const bytes = await getStorage().get(att.path);
+    const bytes = await readAttachmentBytes(att);
 
     if (isImage) {
       // ISS-532: the filename + mime are uploaded (untrusted) content. The

@@ -31,14 +31,6 @@ async function loadRunWithAccess(runId: string, userId: string): Promise<Pipelin
   return row;
 }
 
-function rethrowControlError(err: unknown): never {
-  const message = err instanceof Error ? err.message : String(err);
-  if (message.startsWith('NOT_FOUND:')) {
-    throw notFound(message.slice('NOT_FOUND: '.length) || 'pipeline run not found');
-  }
-  throw err;
-}
-
 export const pipelineRunRoutes = new Hono<{ Variables: AuthVars }>();
 pipelineRunRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -46,24 +38,14 @@ pipelineRunRoutes.post('/:id/pause', zValidator('param', idParamSchema), async (
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
   await loadRunWithAccess(id, userId);
-  try {
-    const run = await pausePipelineRun(id, restActor(c));
-    return c.json(run);
-  } catch (err) {
-    rethrowControlError(err);
-  }
+  return c.json(await pausePipelineRun(id, restActor(c)));
 });
 
 pipelineRunRoutes.post('/:id/resume', zValidator('param', idParamSchema), async (c) => {
   const { id } = c.req.valid('param');
   const userId = c.get('userId');
   await loadRunWithAccess(id, userId);
-  try {
-    const run = await resumePipelineRun(id, restActor(c));
-    return c.json(run);
-  } catch (err) {
-    rethrowControlError(err);
-  }
+  return c.json(await resumePipelineRun(id, restActor(c)));
 });
 
 pipelineRunRoutes.post(
@@ -75,15 +57,11 @@ pipelineRunRoutes.post(
     const userId = c.get('userId');
     await loadRunWithAccess(id, userId);
     const body = c.req.valid('json');
-    try {
-      const result = await cancelPipelineRun(id, {
-        actorUserId: userId,
-        actorAgency: restActor(c).agency,
-        ...(body.parkIssue !== undefined ? { parkIssue: body.parkIssue } : {}),
-      });
-      return c.json(result);
-    } catch (err) {
-      rethrowControlError(err);
-    }
+    const result = await cancelPipelineRun(id, {
+      actorUserId: userId,
+      actorAgency: restActor(c).agency,
+      ...(body.parkIssue !== undefined ? { parkIssue: body.parkIssue } : {}),
+    });
+    return c.json(result);
   },
 );

@@ -1,6 +1,6 @@
 // The shapes a pipeline run summary and list item answer.
 
-import type { PipelineRunKind, PipelineRunStatus } from '../db/schema.js';
+import type { IssueStatus, PipelineRunKind, PipelineRunStatus } from '../db/schema.js';
 import type { RunGateReading } from './ports.js';
 import type {
   PipelineRunGroup,
@@ -40,7 +40,7 @@ export interface PipelineRunCostSummary {
  * ISS-411 — one job row of a run's per-attempt timeline. Unlike `steps`
  * (one row per `jobType`, derived from `agent_sessions`), this is sourced from
  * the `jobs` table so the `retry_of` chain, the device each attempt landed on,
- * and the ISS-407 round-robin state (`payload._autoRetry`) are all visible.
+ * and the auto-retry round (`payload._autoRetry`) are all visible.
  */
 export interface PipelineRunAttempt {
   jobId: string;
@@ -67,22 +67,18 @@ export interface PipelineRunAttempt {
   queuedAt: string | null;
   startedAt: string | null;
   finishedAt: string | null;
-  /** ISS-407 round-robin rotation state at the time this row was (re)queued. */
-  autoRetry: { round: number; target: string | null; tries: number; done: string[] } | null;
+  /** The auto-retry round and try count at the time this row was (re)queued. */
+  autoRetry: { round: number; tries: number } | null;
 }
 
 /**
- * ISS-411 — derived round-robin headline for the run, taken from the most
- * recent attempt's `_autoRetry`. `round N / maxRounds` + the device the next
- * attempt targets (resolved to a name) make "retried 3x on dev1, now round 2
- * targeting ubuntu5" legible at a glance.
+ * The run's retry headline, from the most recent attempt's `_autoRetry`: `round N / maxRounds`.
+ * No device is named, because a retry is taken by whichever box claims it.
  */
 export interface PipelineRunRetrySummary {
   totalAttempts: number;
   round: number;
   maxRounds: number;
-  targetDeviceId: string | null;
-  targetDeviceName: string | null;
 }
 
 export interface PipelineRunSummary {
@@ -100,6 +96,8 @@ export interface PipelineRunSummary {
   issueRef: string | null;
   /** ISS-460 — title of the run's issue; null when the run has no issue. */
   issueTitle: string | null;
+  /** The status of the run's issue now; null when the run has no issue. */
+  issueStatus: IssueStatus | null;
   kind: PipelineRunKind;
   status: PipelineRunStatus;
   currentStep: string | null;

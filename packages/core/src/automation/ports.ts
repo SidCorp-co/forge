@@ -1,5 +1,5 @@
-// What the automation read model needs from the contexts below work: the agent reports, the
-// admin thresholds and the schedule fires. The composition root provides them at boot.
+// What the automation read model needs from the contexts below work: the agent reports and the
+// schedule fires. The composition root provides them at boot.
 
 import type { AgentReportView } from '@forge/contracts/agent-reports';
 import type {

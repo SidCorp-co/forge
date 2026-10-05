@@ -1,6 +1,10 @@
 import { registerReviewNotes } from './comments/index.js';
 import { registerSourcePushReactions } from './ecosystem/index.js';
-import { registerHostMergeStamp, registerIssueMoveReactions } from './issues/index.js';
+import {
+  registerActivitySubscribers,
+  registerHostMergeStamp,
+  registerIssueMoveReactions,
+} from './issues/index.js';
 import {
   registerMemoryExtraction,
   registerMemoryIndexer,
@@ -11,11 +15,10 @@ import {
   registerTransitionNotifications,
 } from './notifications/index.js';
 import {
-  registerActivitySubscribers,
   registerAnswerResume,
   registerPausedRunWedgeResolve,
   registerPhaseJournalClose,
-  registerPipelineOrchestrator,
+  registerRunStatusBroadcast,
 } from './pipeline/index.js';
 import { registerLiveReadingInvalidation } from './projects/index.js';
 import { registerReleaseBatchClaimSubscriber } from './release-batch/index.js';
@@ -29,13 +32,13 @@ import { registerMasterWakeSubscribers, registerWsBroadcastSubscribers } from '.
 export function registerOutboxConsumers(): void {
   registerWsBroadcastSubscribers();
   registerActivitySubscribers();
-  registerPipelineOrchestrator();
   registerAnswerResume();
   registerMasterWakeSubscribers();
   registerTransitionNotifications();
   registerNotifyMentionsSubscriber();
   registerPhaseJournalClose();
   registerPausedRunWedgeResolve();
+  registerRunStatusBroadcast();
   registerReleaseBatchClaimSubscriber();
   registerMemoryIndexer();
   registerMemoryReconcileTrigger();

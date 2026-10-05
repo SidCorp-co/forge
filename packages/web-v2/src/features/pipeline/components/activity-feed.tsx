@@ -119,7 +119,6 @@ export function ActivityTab({ run, loading, error, onRetry }: ActivityTabProps) 
 }
 
 function RetryHeadline({ summary }: { summary: PipelineRunRetrySummary }) {
-  const target = summary.targetDeviceName ?? summary.targetDeviceId?.slice(0, 8) ?? null;
   return (
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-md border border-line-subtle bg-sunken px-3.5 py-2.5">
       <span
@@ -128,12 +127,6 @@ function RetryHeadline({ summary }: { summary: PipelineRunRetrySummary }) {
       >
         round {summary.round}/{summary.maxRounds}
       </span>
-      {target && (
-        <span className="fg-caption inline-flex min-w-0 items-center gap-1 text-muted">
-          <Icon name="server" size={11} className="flex-none align-[-1px]" />
-          <span className="truncate">targeting {target}</span>
-        </span>
-      )}
       <span className="fg-caption ml-auto text-subtle">{summary.totalAttempts} attempts</span>
     </div>
   );

@@ -42,7 +42,10 @@ export { materializeJobUsage } from './usage-materialize.js';
 export {
   canonicalSessionId,
   EMPTY_USAGE_TOTALS,
+  type UsageTotals,
   usageSessionMatch,
+  usageTotalsByRun,
+  usageTotalsForRun,
   usageTotalsSelection,
 } from './usage-rollup.js';
 export {

@@ -1,5 +1,6 @@
-import { type SQL, sql } from 'drizzle-orm';
-import { usageRecords } from '../db/schema.js';
+import { inArray, type SQL, sql } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import { agentSessions, usageRecords } from '../db/schema.js';
 
 export function canonicalSessionId(value: unknown): SQL {
   return sql`${value}::uuid::text`;
@@ -35,3 +36,29 @@ export const EMPTY_USAGE_TOTALS = {
   requests: 0,
   sampleCount: 0,
 } as const;
+
+export type UsageTotals = { -readonly [K in keyof typeof EMPTY_USAGE_TOTALS]: number };
+
+/**
+ * Usage totals per pipeline run, read through the sessions that ran under it. A run with no usage
+ * row is absent from the map.
+ */
+export async function usageTotalsByRun(
+  runIds: readonly string[],
+): Promise<Map<string, UsageTotals>> {
+  const out = new Map<string, UsageTotals>();
+  if (runIds.length === 0) return out;
+  const rows = await db
+    .select({ runId: agentSessions.pipelineRunId, ...usageTotalsSelection() })
+    .from(usageRecords)
+    .innerJoin(agentSessions, usageSessionMatch(sql`= ${agentSessions.id}::text`))
+    .where(inArray(agentSessions.pipelineRunId, [...runIds]))
+    .groupBy(agentSessions.pipelineRunId);
+  for (const { runId, ...totals } of rows) if (runId) out.set(runId, totals);
+  return out;
+}
+
+/** One run's usage totals, zero where it has none. */
+export async function usageTotalsForRun(runId: string): Promise<UsageTotals> {
+  return (await usageTotalsByRun([runId])).get(runId) ?? { ...EMPTY_USAGE_TOTALS };
+}

@@ -51,7 +51,7 @@ export interface PipelineRunStepSummary {
 }
 
 /** ISS-411 — one job row of a run's per-attempt timeline (jobs-sourced, so the
- *  `retry_of` chain + device + ISS-407 `_autoRetry` rotation are visible). */
+ *  `retry_of` chain, the device and the `_autoRetry` round are visible). */
 export interface PipelineRunAttempt {
   jobId: string;
   jobType: string;
@@ -73,16 +73,14 @@ export interface PipelineRunAttempt {
   queuedAt: string | null;
   startedAt: string | null;
   finishedAt: string | null;
-  autoRetry: { round: number; target: string | null; tries: number; done: string[] } | null;
+  autoRetry: { round: number; tries: number } | null;
 }
 
-/** ISS-411 — round-robin headline derived from the latest attempt. */
+/** The run's retry headline, from the latest attempt: `round N / maxRounds`. */
 export interface PipelineRunRetrySummary {
   totalAttempts: number;
   round: number;
   maxRounds: number;
-  targetDeviceId: string | null;
-  targetDeviceName: string | null;
 }
 
 /** `GET /api/pipeline-runs/:id` — the full run rollup (steps + cost + attempts). */
@@ -90,10 +88,12 @@ export interface PipelineRunSummary {
   id: string;
   projectId: string;
   issueId: string | null;
-  /** ISS-460 — human ref (`ISS-<seq>`) of the run's issue; null for pm/system runs. */
+  /** ISS-460 — human ref (`ISS-<seq>`) of the run's issue; null for system and interactive runs. */
   issueRef: string | null;
   /** ISS-460 — title of the run's issue; null when the run has no issue. */
   issueTitle: string | null;
+  /** The status of the run's issue now; null when the run has no issue. */
+  issueStatus: string | null;
   kind: PipelineRunKind;
   status: PipelineRunStatus;
   currentStep: string | null;

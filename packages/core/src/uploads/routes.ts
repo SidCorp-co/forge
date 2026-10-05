@@ -2,12 +2,11 @@ import type { AttachmentRefusalCode } from '@forge/contracts/attachments';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { getStorage } from '../integrations/index.js';
 import { contentDisposition } from '../lib/attachment-headers.js';
 import { refuser } from '../lib/refusal.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { invalid, rawBody, zValidator } from '../middleware/zod-validator.js';
-import { loadAttachment } from './attachment-lookup.js';
+import { loadAttachment, readAttachmentBytes } from './attachment-lookup.js';
 import { resolveDownloadTicket } from './download-ticket-service.js';
 import { persistUpload } from './persist-upload.js';
 import { claimUploadTicket, releaseUploadTicket } from './ticket-service.js';
@@ -85,11 +84,11 @@ uploadRoutes.get(
     if (!att) {
       throw new HTTPException(404, {
         message: 'attachment not found',
-        cause: { code: 'NOT_FOUND' },
+        cause: { code: 'ATTACHMENT_NOT_FOUND' },
       });
     }
 
-    const bytes = await getStorage().get(att.path);
+    const bytes = await readAttachmentBytes(att);
     return c.body(new Uint8Array(bytes), 200, {
       'content-type': att.mime,
       'content-length': String(bytes.byteLength),

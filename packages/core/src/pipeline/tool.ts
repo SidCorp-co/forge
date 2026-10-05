@@ -13,6 +13,7 @@
 import { z } from 'zod';
 import { pipelineRunStatuses } from '../db/schema.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
+import { refusePipeline } from './refuse.js';
 import {
   pipelineRunsCancelHandler,
   pipelineRunsGetHandler,
@@ -20,6 +21,9 @@ import {
   pipelineRunsPauseHandler,
   pipelineRunsResumeHandler,
 } from './tool-runs.js';
+
+const argumentRequired = (field: 'runId' | 'projectId', action: string) =>
+  refusePipeline('ARGUMENT_REQUIRED', `\`${field}\` is required for ${action}`, `/${field}`);
 
 const inputSchema = z
   .object({
@@ -53,16 +57,15 @@ export const forgeProjectPipelineRunsTool: ContextScopedMcpToolFactory = ({ prin
     'list: requires projectId; optional issueId/status/limit filters; newest-first by started_at. ' +
     'EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. ' +
     'get/pause/resume/cancel: require runId. ' +
-    'cancel parks the linked issue at `on_hold` by default, because every other status it could be left at is actionable and the orchestrator would open a replacement run within seconds. Pass `parkIssue: false` for the other intent — "kill this run so a clean one starts" — and that re-dispatch becomes the point. Cancelling returns `issueParked` so you can tell which happened. ' +
+    'cancel parks the linked issue at `on_hold` by default, because every other status it could be left at is actionable and a master would take the issue up again on its next pass. Pass `parkIssue: false` for the other intent — "kill this run so a clean one starts" — and that pickup becomes the point. Cancelling returns `issueParked`, and `parkRefused` naming the refusal when the park was refused, so you can tell which happened. ' +
+    'list answers the REST list (`GET /projects/:id/pipeline-runs`) rows plus `total`; get answers the REST run summary (`GET /pipeline-runs/:id`). ' +
     'Authorization: list scopes to project membership; get/pause/resume/cancel resolve the run first then enforce project membership; both additionally pass the token projectIds allowlist.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
     switch (input.action) {
       case 'list': {
-        if (!input.projectId) {
-          throw new Error('BAD_REQUEST: projectId is required for list');
-        }
+        if (!input.projectId) throw argumentRequired('projectId', 'list');
         return pipelineRunsListHandler(principal, {
           projectId: input.projectId,
           issueId: input.issueId,
@@ -71,19 +74,19 @@ export const forgeProjectPipelineRunsTool: ContextScopedMcpToolFactory = ({ prin
         });
       }
       case 'get': {
-        if (!input.runId) throw new Error('BAD_REQUEST: runId is required for get');
+        if (!input.runId) throw argumentRequired('runId', 'get');
         return pipelineRunsGetHandler(principal, { runId: input.runId });
       }
       case 'pause': {
-        if (!input.runId) throw new Error('BAD_REQUEST: runId is required for pause');
+        if (!input.runId) throw argumentRequired('runId', 'pause');
         return pipelineRunsPauseHandler(principal, { runId: input.runId });
       }
       case 'resume': {
-        if (!input.runId) throw new Error('BAD_REQUEST: runId is required for resume');
+        if (!input.runId) throw argumentRequired('runId', 'resume');
         return pipelineRunsResumeHandler(principal, { runId: input.runId });
       }
       case 'cancel': {
-        if (!input.runId) throw new Error('BAD_REQUEST: runId is required for cancel');
+        if (!input.runId) throw argumentRequired('runId', 'cancel');
         return pipelineRunsCancelHandler(principal, {
           runId: input.runId,
           ...(input.parkIssue !== undefined ? { parkIssue: input.parkIssue } : {}),

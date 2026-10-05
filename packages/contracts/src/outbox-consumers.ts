@@ -9,7 +9,6 @@ export const OUTBOX_CONSUMERS = {
 	"issue.created": [
 		"ws-broadcast",
 		"activity-feed",
-		"pipeline-orchestrator",
 		"master-wake",
 		"memory-indexer",
 	],
@@ -17,14 +16,13 @@ export const OUTBOX_CONSUMERS = {
 	"issue.transitioned": [
 		"ws-broadcast",
 		"activity-feed",
-		"pipeline-orchestrator",
 		"master-wake",
 		"notify-transitions",
 		"memory-reconcile",
 		"issue-move-reactions",
 	],
 	"job.transitioned": ["phase-journal-close", "memory-extraction"],
-	"run.transitioned": ["paused-run-wedge-resolve", "release-batch-claims"],
+	"run.transitioned": ["paused-run-wedge-resolve", "release-batch-claims", "run-status-broadcast"],
 	"comment.created": ["activity-feed", "master-wake"],
 	"comment.updated": ["activity-feed"],
 	"comment.deleted": ["activity-feed"],

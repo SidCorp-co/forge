@@ -3,7 +3,7 @@
  *
  * `pipeline_runs` stores only `currentStep` as a single text column; the full
  * step timeline + cost rollup are computed on the fly by joining
- * `agent_sessions` (steps) and `usage_records → jobs` (cost) on the run id.
+ * `agent_sessions` (steps) and agent-sessions' usage totals (cost) on the run id.
  *
  * The web panel + project pipeline runs route consume the shapes exported
  * here so the front-end stays a thin renderer.
@@ -15,11 +15,11 @@ import { db } from '../db/client.js';
 import {
   agentSessions,
   devices,
+  type IssueStatus,
   issues,
   jobs,
   pipelineRuns,
   projects,
-  usageRecords,
 } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import {
@@ -40,7 +40,7 @@ export type {
   ResidentMaster,
 } from './runs-lane.js';
 
-import { readRunGate, usageSessionMatch } from './ports.js';
+import { readRunGate, usageTotalsByRun, usageTotalsForRun } from './ports.js';
 import type {
   PipelineRunAttempt,
   PipelineRunCostSummary,
@@ -124,33 +124,12 @@ async function loadStepsForRun(runId: string): Promise<PipelineRunStepSummary[]>
   });
 }
 
-async function loadCostForRun(runId: string): Promise<PipelineRunCostSummary> {
-  const [row] = await db
-    .select({
-      estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
-      inputTokens: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
-      outputTokens: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)`.mapWith(Number),
-      cacheReadTokens: sql<number>`coalesce(sum(${usageRecords.cacheReadTokens}), 0)`.mapWith(
-        Number,
-      ),
-      cacheCreationTokens:
-        sql<number>`coalesce(sum(${usageRecords.cacheCreationTokens}), 0)`.mapWith(Number),
-      requests: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
-      sampleCount: sql<number>`count(${usageRecords.id})`.mapWith(Number),
-    })
-    .from(usageRecords)
-    .innerJoin(agentSessions, usageSessionMatch(sql`= ${agentSessions.id}::text`))
-    .where(eq(agentSessions.pipelineRunId, runId));
-
-  return row ?? EMPTY_COST;
-}
-
 /**
  * ISS-411 — per-attempt timeline for one run, sourced from `jobs` (NOT
  * `agent_sessions`), ordered oldest-first. Left-joins `devices` so each
- * attempt carries the runner-friendly device name, and reads the ISS-407
- * `payload._autoRetry` rotation state defensively (absent on pre-407 rows →
- * null). Also returns a derived `retrySummary` headline from the latest row.
+ * attempt carries the runner-friendly device name, and reads each row's
+ * `payload._autoRetry` round (absent on a first dispatch → null). Also returns
+ * a derived `retrySummary` headline from the latest row.
  */
 async function loadAttemptsForRun(runId: string): Promise<{
   attempts: PipelineRunAttempt[];
@@ -181,17 +160,13 @@ async function loadAttemptsForRun(runId: string): Promise<{
     .where(eq(jobs.pipelineRunId, runId))
     .orderBy(asc(jobs.queuedAt));
 
-  const nameById = new Map<string, string>();
-  for (const r of rows) {
-    if (r.deviceId && r.deviceName) nameById.set(r.deviceId, r.deviceName);
-  }
-
   const attempts: PipelineRunAttempt[] = rows.map((r) => {
     const hasAutoRetry =
       !!r.payload &&
       typeof r.payload === 'object' &&
       '_autoRetry' in (r.payload as Record<string, unknown>);
-    const ar = hasAutoRetry ? readAutoRetryPayload(r.payload) : null;
+    const held = hasAutoRetry ? readAutoRetryPayload(r.payload) : null;
+    const ar = held ? { round: held.round, tries: held.tries } : null;
     return {
       jobId: r.jobId,
       jobType: r.jobType,
@@ -220,8 +195,6 @@ async function loadAttemptsForRun(runId: string): Promise<{
         totalAttempts: attempts.length,
         round: ar.round,
         maxRounds: RETRY_MAX_ROUNDS,
-        targetDeviceId: ar.target,
-        targetDeviceName: ar.target ? (nameById.get(ar.target) ?? null) : null,
       };
       break;
     }
@@ -243,6 +216,7 @@ function rowToListItem(row: RunRow): PipelineRunListItem {
     // ISS-460 — resolved by callers that join `issues`; default null here.
     issueRef: null,
     issueTitle: null,
+    issueStatus: null,
     kind: row.kind,
     status: row.status,
     startedAt: toIsoRequired(row.startedAt),
@@ -291,11 +265,15 @@ async function loadOpenPhaseByRunIds(runIds: string[]): Promise<Map<string, stri
   return out;
 }
 
-/** ISS-460 — batch-resolve `{ issueRef, issueTitle }` for the given issue ids. */
-async function loadIssueRefs(
-  issueIds: string[],
-): Promise<Map<string, { issueRef: string | null; issueTitle: string | null }>> {
-  const out = new Map<string, { issueRef: string | null; issueTitle: string | null }>();
+type IssueRefView = {
+  issueRef: string | null;
+  issueTitle: string | null;
+  issueStatus: IssueStatus;
+};
+
+/** Batch-resolve each issue's ref, title and status for the given issue ids. */
+async function loadIssueRefs(issueIds: string[]): Promise<Map<string, IssueRefView>> {
+  const out = new Map<string, IssueRefView>();
   if (issueIds.length === 0) return out;
   const rows = await db
     .select({
@@ -303,6 +281,7 @@ async function loadIssueRefs(
       issSeq: issues.issSeq,
       issuePrefix: projects.issuePrefix,
       title: issues.title,
+      status: issues.status,
     })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
@@ -311,6 +290,7 @@ async function loadIssueRefs(
     out.set(r.id, {
       issueRef: r.issSeq != null ? formatIssueRef(r.issuePrefix, r.issSeq) : null,
       issueTitle: r.title ?? null,
+      issueStatus: r.status,
     });
   }
   return out;
@@ -324,7 +304,7 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
   const listItem = rowToListItem(row);
   const [steps, cost, attemptRollup, issueRefs, liveMap, openPhase] = await Promise.all([
     loadStepsForRun(runId),
-    loadCostForRun(runId),
+    usageTotalsForRun(runId),
     loadAttemptsForRun(runId),
     loadIssueRefs(row.issueId ? [row.issueId] : []),
     loadRunLivenessByRunIds([runId]),
@@ -344,6 +324,7 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
     ),
     issueRef: ref?.issueRef ?? null,
     issueTitle: ref?.issueTitle ?? null,
+    issueStatus: ref?.issueStatus ?? null,
     liveJobs: liveMap.get(runId)?.liveJobs ?? 0,
     lastSessionBeatAt: liveMap.get(runId)?.beat ?? null,
     residentMaster,
@@ -355,50 +336,6 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
   };
 }
 
-/**
- * Cost rollup for many runs in one round-trip. Returns a map keyed by run id.
- * Runs with no usage rows are absent from the map; callers should fall back
- * to {@link EMPTY_COST}.
- */
-async function loadCostByRunIds(runIds: string[]): Promise<Map<string, PipelineRunCostSummary>> {
-  const out = new Map<string, PipelineRunCostSummary>();
-  if (runIds.length === 0) return out;
-  const rows = await db
-    .select({
-      runId: agentSessions.pipelineRunId,
-      estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
-      inputTokens: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
-      outputTokens: sql<number>`coalesce(sum(${usageRecords.outputTokens}), 0)`.mapWith(Number),
-      cacheReadTokens: sql<number>`coalesce(sum(${usageRecords.cacheReadTokens}), 0)`.mapWith(
-        Number,
-      ),
-      cacheCreationTokens:
-        sql<number>`coalesce(sum(${usageRecords.cacheCreationTokens}), 0)`.mapWith(Number),
-      requests: sql<number>`coalesce(sum(${usageRecords.requestCount}), 0)`.mapWith(Number),
-      sampleCount: sql<number>`count(${usageRecords.id})`.mapWith(Number),
-    })
-    // ISS-460 — join through agent_sessions (usage_records.session_id is an
-    // agent_sessions.id, not a job id; verified beta ISS-308). ISS-1015: the
-    // cast belongs on the uuid side so the text index serves the join.
-    .from(usageRecords)
-    .innerJoin(agentSessions, usageSessionMatch(sql`= ${agentSessions.id}::text`))
-    .where(inArray(agentSessions.pipelineRunId, runIds))
-    .groupBy(agentSessions.pipelineRunId);
-  for (const r of rows) {
-    if (!r.runId) continue;
-    out.set(r.runId, {
-      estimatedCost: r.estimatedCost,
-      inputTokens: r.inputTokens,
-      outputTokens: r.outputTokens,
-      cacheReadTokens: r.cacheReadTokens,
-      cacheCreationTokens: r.cacheCreationTokens,
-      requests: r.requests,
-      sampleCount: r.sampleCount,
-    });
-  }
-  return out;
-}
-
 /** Bulk list-item rollup. Preserves the input order. */
 export async function listItemsFromRows(rows: RunRow[]): Promise<PipelineRunListItem[]> {
   if (rows.length === 0) return [];
@@ -406,7 +343,7 @@ export async function listItemsFromRows(rows: RunRow[]): Promise<PipelineRunList
   const items = rows.map(rowToListItem);
   const issueIds = [...new Set(rows.map((r) => r.issueId).filter((v): v is string => v != null))];
   const [costMap, issueRefs, liveMap, openPhases] = await Promise.all([
-    loadCostByRunIds(ids),
+    usageTotalsByRun(ids),
     loadIssueRefs(issueIds),
     loadRunLivenessByRunIds(ids),
     loadOpenPhaseByRunIds(items.filter((i) => i.lane === 'run_session').map((i) => i.id)),
@@ -420,6 +357,7 @@ export async function listItemsFromRows(rows: RunRow[]): Promise<PipelineRunList
       ...withStep(item.lane, r.currentStep, openPhases.get(r.id), item.group, residentMaster),
       issueRef: ref?.issueRef ?? null,
       issueTitle: ref?.issueTitle ?? null,
+      issueStatus: ref?.issueStatus ?? null,
       cost: costMap.get(r.id) ?? EMPTY_COST,
       liveJobs: liveMap.get(r.id)?.liveJobs ?? 0,
       lastSessionBeatAt: liveMap.get(r.id)?.beat ?? null,

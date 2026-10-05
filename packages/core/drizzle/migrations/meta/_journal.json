@@ -2577,6 +2577,13 @@
       "when": 1817424000000,
       "tag": "0399_app_config_is_dropped_and_logout_ends_session_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 400,
+      "version": "7",
+      "when": 1817510400000,
+      "tag": "0400_the_runner_verdict_index_no_row_ever_filled_is_dropped",
+      "breakpoints": true
     }
   ]
 }

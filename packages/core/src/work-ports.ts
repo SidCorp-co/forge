@@ -11,12 +11,13 @@ import {
   agentSessionEventsRetention,
   deriveSessionFinal,
   EMPTY_USAGE_TOTALS,
-  persistSessionAttachment,
   requestSessionSend,
   resolveSessionSend,
   stampFinalizeAttempt,
   transitionSessions,
   usageSessionMatch,
+  usageTotalsByRun,
+  usageTotalsForRun,
   usageTotalsSelection,
 } from './agent-sessions/index.js';
 import { publishToConversationReaders, WEB_CONVERSATION_EVENT } from './assistant/index.js';
@@ -133,7 +134,8 @@ export function provideWorkPorts(): void {
     gateReasonsForQueuedJobsIn,
     readRunGate,
     admittedRunner: ADMITTED_RUNNER,
-    usageSessionMatch,
+    usageTotalsByRun,
+    usageTotalsForRun,
     deriveSessionFinal,
     stampFinalizeAttempt,
     retentionStatements: {
@@ -250,5 +252,5 @@ export function provideWorkPorts(): void {
     wakeMastersForAnswer,
   });
 
-  provideUploadPorts({ persistConversationAttachment, persistSessionAttachment });
+  provideUploadPorts({ persistConversationAttachment });
 }

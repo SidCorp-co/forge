@@ -7,6 +7,7 @@ import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { endPhase, listPhases, resumePoint, startPhase } from './phase-journal.js';
+import { refusePipeline } from './refuse.js';
 import { readPipelineRun } from './runs.js';
 
 const startBodySchema = z
@@ -50,6 +51,13 @@ phaseRoutes.post(
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
     const run = await runProjectFor(id, c.get('userId'), 'project.write');
+    if (body.issueId && body.issueId !== run.issueId) {
+      throw refusePipeline(
+        'PHASE_REF_NOT_IN_RUN',
+        `issue ${body.issueId} is not the issue of run ${id}`,
+        '/issueId',
+      );
+    }
     const row = await startPhase({
       projectId: run.projectId,
       runId: id,

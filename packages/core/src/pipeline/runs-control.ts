@@ -8,6 +8,7 @@ import { RUN_MACHINE } from '@forge/contracts/run-machine';
  * transition semantics live in one place.
  */
 
+import type { Refusal } from '@forge/contracts';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -15,9 +16,10 @@ import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.j
 import type { TransitionActor } from '../issues/index.js';
 import { transitionIssueStatus } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
+import { RefusalError } from '../lib/refusal.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
 import { refusePipeline } from './refuse.js';
-import { broadcastRunStatus, pauseRun, resumeRun } from './run-pause.js';
+import { pauseRun, resumeRun } from './run-pause.js';
 import { cascadeCancelChildJobs, type JobRow, requestKillsForCascade } from './runs-cascade.js';
 
 /**
@@ -46,6 +48,8 @@ type CancelPipelineRunResult = {
   deviceIdsNotified: string[];
   /** Whether the linked issue was parked at `on_hold` by this cancel. */
   issueParked: boolean;
+  /** Why the park was refused, when it was: the run is cancelled and the issue kept its status. */
+  parkRefused: Refusal | null;
 };
 
 interface CancelPipelineRunOptions {
@@ -57,16 +61,15 @@ interface CancelPipelineRunOptions {
    * this" is the common intent and the historical behaviour.
    *
    * Pass `false` for "cancel this run so a clean one can start": the issue
-   * keeps its status and the orchestrator opens a replacement run within
-   * seconds, which for that intent is the point rather than a bug.
+   * keeps its status, so a master takes it up again on its next pass.
    */
   parkIssue?: boolean;
 }
 
 const FAILURE_REASON_PIPELINE_CANCELLED = 'pipeline_cancelled';
 
-function notFound(): Error {
-  return new Error('NOT_FOUND: pipeline run not found');
+function notFound(runId: string): Error {
+  return refusePipeline('PIPELINE_RUN_NOT_FOUND', `pipeline run ${runId} was not found`);
 }
 
 function runTerminal(current: PipelineRunRow['status']): Error {
@@ -91,7 +94,7 @@ export async function pausePipelineRun(runId: string, actor: KernelActor): Promi
   const updated = await pauseRun({ runId, actor });
   if (updated) return updated;
   const current = await selectRun(runId);
-  if (!current) throw notFound();
+  if (!current) throw notFound(runId);
   if (current.status === 'paused') return current;
   throw runTerminal(current.status);
 }
@@ -103,23 +106,27 @@ export async function resumePipelineRun(
   const updated = await resumeRun({ runId, actor });
   if (updated) return updated;
   const current = await selectRun(runId);
-  if (!current) throw notFound();
+  if (!current) throw notFound(runId);
   if (current.status === 'running') return current;
   throw runTerminal(current.status);
 }
 
+type ParkOutcome = { issueParked: boolean; parkRefused: Refusal | null };
+
 /**
- * Park the cancelled run's issue at `on_hold`. Returns whether it parked.
+ * Park the cancelled run's issue at `on_hold`.
  *
- * Runs AFTER the cancel commits (the transition opens its own transaction) and
- * is best-effort: a failure here must not fail the cancel.
+ * Runs AFTER the cancel commits (the transition opens its own transaction), so
+ * a refused or failed park does not undo the cancel: it is returned by name for
+ * the caller to see that the issue kept an actionable status.
  */
 async function parkIssueOnCancel(
   run: PipelineRunRow,
   agency: ActorAgency,
   actorUserId?: string,
-): Promise<boolean> {
-  if (run.kind !== 'issue' || !run.issueId) return false;
+): Promise<ParkOutcome> {
+  const notParked: ParkOutcome = { issueParked: false, parkRefused: null };
+  if (run.kind !== 'issue' || !run.issueId) return notParked;
   try {
     const [row] = await db
       .select({
@@ -133,8 +140,8 @@ async function parkIssueOnCancel(
       .innerJoin(projects, eq(projects.id, issues.projectId))
       .where(eq(issues.id, run.issueId))
       .limit(1);
-    if (!row) return false;
-    if (CANCEL_PARK_SKIP_STATUSES.has(row.status)) return false;
+    if (!row) return notParked;
+    if (CANCEL_PARK_SKIP_STATUSES.has(row.status)) return notParked;
 
     const fallbackId = row.createdBy ?? run.projectId;
     const actor: TransitionActor = actorUserId
@@ -146,13 +153,21 @@ async function parkIssueOnCancel(
       actor,
       { transitionReason: CANCEL_PARK_REASON, reason: 'run_cancelled' },
     );
-    return true;
+    return { issueParked: true, parkRefused: null };
   } catch (err) {
     logger.warn(
       { err, runId: run.id, issueId: run.issueId },
-      'cancel: park-issue-on_hold failed (run already cancelled)',
+      'cancel: park-issue-on_hold refused (run already cancelled)',
     );
-    return false;
+    const parkRefused: Refusal =
+      err instanceof RefusalError && err.refusals[0]
+        ? err.refusals[0]
+        : {
+            code: 'ISSUE_PARK_FAILED',
+            path: '',
+            detail: err instanceof Error ? err.message : String(err),
+          };
+    return { issueParked: false, parkRefused };
   }
 }
 
@@ -184,14 +199,14 @@ export async function cancelPipelineRun(
         .from(pipelineRuns)
         .where(eq(pipelineRuns.id, runId))
         .limit(1);
-      if (!current) throw notFound();
+      if (!current) throw notFound(runId);
       if (current.status === 'cancelled') {
         return {
           run: current,
           cancelledJobIds: [] as string[],
           abortedSessionIds: [] as string[],
           deviceIdsNotified: [] as string[],
-          broadcast: false,
+          flipped: false,
           killableJobs: [] as JobRow[],
         };
       }
@@ -205,17 +220,16 @@ export async function cancelPipelineRun(
       cancelledJobIds: cascade.cancelledJobIds,
       abortedSessionIds: cascade.abortedSessionIds,
       deviceIdsNotified: Array.from(new Set([...cascade.deviceBySession.values()])),
-      broadcast: true,
+      flipped: true,
       killableJobs: cascade.killableJobs,
     };
   });
 
-  let issueParked = false;
-  if (result.broadcast) {
-    broadcastRunStatus(result.run);
+  let park: ParkOutcome = { issueParked: false, parkRefused: null };
+  if (result.flipped) {
     await requestKillsForCascade(result.killableJobs, FAILURE_REASON_PIPELINE_CANCELLED);
     if (opts.parkIssue ?? true) {
-      issueParked = await parkIssueOnCancel(result.run, opts.actorAgency, opts.actorUserId);
+      park = await parkIssueOnCancel(result.run, opts.actorAgency, opts.actorUserId);
     }
   }
 
@@ -224,6 +238,6 @@ export async function cancelPipelineRun(
     cancelledJobIds: result.cancelledJobIds,
     abortedSessionIds: result.abortedSessionIds,
     deviceIdsNotified: result.deviceIdsNotified,
-    issueParked,
+    ...park,
   };
 }

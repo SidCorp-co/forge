@@ -6,6 +6,7 @@ import { logger } from '../lib/logger.js';
 import { traceStep } from '../lib/sentry.js';
 import { AUTONOMOUS_JOB_TYPE, AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
 import { postCapReachedComment } from './autonomous-rescue-comment.js';
+import { emitPipelineWedge, rescueCapWedgeEntityId } from './wedge.js';
 
 /**
  * Rescues of one run before the issue is handed to a human. Matches
@@ -46,7 +47,8 @@ async function countDoneDriveJobs(runId: string): Promise<number> {
 /**
  * Has this run spent its rescues? Parks the issue at
  * `AUTONOMOUS_QUESTION_STATUS` and comments when it has, so the caller only has
- * to skip.
+ * to skip. A failed check or a refused park throws, so the caller skips the row
+ * rather than rescuing past the cap; a refused park is also raised as a wedge.
  */
 export async function checkAutonomousRescueCap(args: {
   projectId: string;
@@ -54,36 +56,45 @@ export async function checkAutonomousRescueCap(args: {
   status: IssueStatus;
   reopenCount: number;
 }): Promise<{ capped: boolean; runId: string | null }> {
+  const [run] = await db
+    .select({ id: pipelineRuns.id, metadata: pipelineRuns.metadata })
+    .from(pipelineRuns)
+    .where(
+      and(
+        eq(pipelineRuns.issueId, args.issueId),
+        eq(pipelineRuns.kind, 'issue'),
+        eq(pipelineRuns.status, 'running'),
+      ),
+    )
+    .limit(1);
+  if (!run) return { capped: false, runId: null };
+
+  const state = readState(run.metadata);
+  if (!state) return { capped: false, runId: run.id };
+
+  const doneDriveJobs = await countDoneDriveJobs(run.id);
+  if (doneDriveJobs - state.doneDriveJobs > 1) return { capped: false, runId: run.id };
+  if (state.count < AUTONOMOUS_RESCUE_CAP) return { capped: false, runId: run.id };
+
   try {
-    const [run] = await db
-      .select({ id: pipelineRuns.id, metadata: pipelineRuns.metadata })
-      .from(pipelineRuns)
-      .where(
-        and(
-          eq(pipelineRuns.issueId, args.issueId),
-          eq(pipelineRuns.kind, 'issue'),
-          eq(pipelineRuns.status, 'running'),
-        ),
-      )
-      .limit(1);
-    if (!run) return { capped: false, runId: null };
-
-    const state = readState(run.metadata);
-    if (!state) return { capped: false, runId: run.id };
-
-    const doneDriveJobs = await countDoneDriveJobs(run.id);
-    if (doneDriveJobs - state.doneDriveJobs > 1) return { capped: false, runId: run.id };
-    if (state.count < AUTONOMOUS_RESCUE_CAP) return { capped: false, runId: run.id };
-
     await parkForHuman({ ...args, runId: run.id, doneDriveJobs });
-    return { capped: true, runId: run.id };
   } catch (err) {
-    logger.error(
-      { err, issueId: args.issueId },
-      'autonomous-rescue-cap: check failed, failing open (allowing rescue)',
-    );
-    return { capped: false, runId: null };
+    const why = err instanceof Error ? err.message : String(err);
+    await emitPipelineWedge({
+      projectId: args.projectId,
+      issueId: args.issueId,
+      hop: 'result',
+      entity: 'run',
+      entityId: rescueCapWedgeEntityId(run.id),
+      reason: `rescue_cap_park_refused:${why}`,
+      title: 'An issue used its rescues and could not be handed to a person',
+      summary: `The driver was rescued ${AUTONOMOUS_RESCUE_CAP} times on this run without progress, and moving the issue to \`${AUTONOMOUS_QUESTION_STATUS}\` was refused: ${why}. It is no longer rescued; it waits here.`,
+      nextStep: 'Read the refusal, settle what it names, then move the issue on by hand.',
+      action: 'Settle the refused move; the issue is not being rescued.',
+    });
+    throw err;
   }
+  return { capped: true, runId: run.id };
 }
 
 async function parkForHuman(args: {
@@ -101,13 +112,7 @@ async function parkForHuman(args: {
     .where(eq(issues.id, args.issueId))
     .limit(1);
   const actorId = row?.createdBy;
-  if (!actorId) {
-    logger.warn(
-      { issueId: args.issueId },
-      'autonomous-rescue-cap: no project owner to act as, leaving the issue where it is',
-    );
-    return;
-  }
+  if (!actorId) throw new Error(`the project of issue ${args.issueId} has no owner to act as`);
 
   await applyStatusTransition(
     {
@@ -148,25 +153,21 @@ async function parkForHuman(args: {
 
 /** Charge one rescue to the run. Called only once a rescue actually happened. */
 export async function recordAutonomousRescue(runId: string): Promise<void> {
-  try {
-    const [run] = await db
-      .select({ metadata: pipelineRuns.metadata })
-      .from(pipelineRuns)
-      .where(eq(pipelineRuns.id, runId))
-      .limit(1);
+  const [run] = await db
+    .select({ metadata: pipelineRuns.metadata })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
 
-    const state = readState(run?.metadata);
-    const doneDriveJobs = await countDoneDriveJobs(runId);
-    const progressed = state !== null && doneDriveJobs - state.doneDriveJobs > 1;
-    const count = state === null || progressed ? 1 : state.count + 1;
+  const state = readState(run?.metadata);
+  const doneDriveJobs = await countDoneDriveJobs(runId);
+  const progressed = state !== null && doneDriveJobs - state.doneDriveJobs > 1;
+  const count = state === null || progressed ? 1 : state.count + 1;
 
-    await db
-      .update(pipelineRuns)
-      .set({
-        metadata: sql`COALESCE(${pipelineRuns.metadata}, '{}'::jsonb) || jsonb_build_object(${METADATA_KEY}::text, jsonb_build_object('count', ${count}::int, 'doneDriveJobs', ${doneDriveJobs}::int))`,
-      })
-      .where(eq(pipelineRuns.id, runId));
-  } catch (err) {
-    logger.error({ err, runId }, 'autonomous-rescue-cap: could not record the rescue');
-  }
+  await db
+    .update(pipelineRuns)
+    .set({
+      metadata: sql`COALESCE(${pipelineRuns.metadata}, '{}'::jsonb) || jsonb_build_object(${METADATA_KEY}::text, jsonb_build_object('count', ${count}::int, 'doneDriveJobs', ${doneDriveJobs}::int))`,
+    })
+    .where(eq(pipelineRuns.id, runId));
 }

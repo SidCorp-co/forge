@@ -6,6 +6,7 @@ import { pipelineRuns } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
+import { consume } from '../outbox/index.js';
 
 export {
   describePause,
@@ -22,7 +23,7 @@ export {
 
 export type PipelineRunRow = typeof pipelineRuns.$inferSelect;
 
-export function broadcastRunStatus(run: PipelineRunRow): void {
+function broadcastRunStatus(run: PipelineRunRow): void {
   roomManager.publish(projectRoom(run.projectId), {
     event: 'pipeline_run.status_changed',
     data: {
@@ -34,6 +35,20 @@ export function broadcastRunStatus(run: PipelineRunRow): void {
       currentStep: run.currentStep,
       startedAt: run.startedAt,
       finishedAt: run.finishedAt,
+    },
+  });
+}
+
+/**
+ * The browser's run-status push, from the one record every run move writes: a pause, a resume, a
+ * cancel and a close all reach the project room through here.
+ */
+export function registerRunStatusBroadcast(): void {
+  consume('run.transitioned', {
+    name: 'run-status-broadcast',
+    handle: async (p) => {
+      const [run] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, p.id)).limit(1);
+      if (run) broadcastRunStatus(run);
     },
   });
 }
@@ -64,9 +79,7 @@ export async function pauseRun(args: {
       source: 'run-pause',
     })
   ).rows;
-  if (!row) return null;
-  broadcastRunStatus(row);
-  return row;
+  return row ?? null;
 }
 
 async function resumeRunsWhere(
@@ -84,9 +97,6 @@ async function resumeRunsWhere(
     actor: opts.actor ?? { type: 'system' },
     source: 'run-resume',
   });
-  for (const row of rows) {
-    broadcastRunStatus(row);
-  }
   return rows;
 }
 

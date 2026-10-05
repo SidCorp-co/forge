@@ -54,19 +54,22 @@ export function useThroughput(opts: AnalyticsOpts = {}) {
 
 /** Shared run-control mutation factory: invalidate the run list + the run
  *  detail on success, toast on success/error. */
-function useRunControl(
-  fn: (id: string) => Promise<unknown>,
+function useRunControl<T>(
+  fn: (id: string) => Promise<T>,
   successMessage: string,
+  followUp?: (data: T) => { title: string; description: string } | null,
 ) {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
     mutationFn: (id: string) => fn(id),
-    onSuccess: (_data, id) => {
+    onSuccess: (data, id) => {
       qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
       qc.invalidateQueries({ queryKey: ["pipeline-run", id] });
       qc.invalidateQueries({ queryKey: ["projects", "health"] });
       toast({ title: successMessage, tone: "success" });
+      const extra = followUp?.(data);
+      if (extra) toast({ ...extra, tone: "error" });
     },
     onError: (err) => {
       toast({ title: "Run control failed", description: formatApiError(err), tone: "error" });
@@ -81,5 +84,9 @@ export function useResumeRun() {
   return useRunControl((id) => pipelineApi.resume(id), "Run resumed");
 }
 export function useCancelRun() {
-  return useRunControl((id) => pipelineApi.cancel(id), "Run cancelled");
+  return useRunControl((id) => pipelineApi.cancel(id), "Run cancelled", (r) =>
+    r.parkRefused
+      ? { title: "The issue was not put on hold", description: r.parkRefused.detail }
+      : null,
+  );
 }
