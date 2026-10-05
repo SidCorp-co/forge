@@ -11,6 +11,7 @@ import type {
   RunStuckRule,
 } from '@forge/contracts/run-standing';
 import { classifyLease } from '../issues/index.js';
+import { lockAheadOf } from './standing-live.js';
 import {
   after,
   type Derived,
@@ -209,11 +210,27 @@ function lockOverdueOf(f: RunFacts, ctx: StandingContext): StuckReading | null {
 
 function gateOverdueOf(f: RunFacts, ctx: StandingContext, derived: Derived): StuckReading | null {
   const w = derived.waitingOn;
-  if (w.kind !== 'gate' || !w.dueAt || !w.ref) return null;
-  const gate = w.ref;
-  const resumesAt = new Date(w.dueAt);
+  if (w.kind !== 'gate' || !w.resumesAt) return null;
+  const gate = w.gate;
+  const resumesAt = new Date(w.resumesAt);
   const since = after(resumesAt, ctx.stuckAfterMs);
   if (since.getTime() >= ctx.now.getTime()) return null;
+  const lock = gate === 'deploy_locked' ? lockAheadOf(f) : null;
+  if (lock) {
+    return {
+      rule: 'overdue',
+      disagreement: null,
+      since,
+      evidence: evidence(
+        'deploy_locks',
+        lock.environment,
+        'expires_at',
+        lock.runId,
+        lock.expiresAt,
+      ),
+      detail: `the deploy lock pipeline run ${lock.runId} holds on ${lock.environment} expired at ${lock.expiresAt.toISOString()} and nobody reclaimed it in ${mins(ctx.stuckAfterMs)}`,
+    };
+  }
   const j = f.job;
   return {
     rule: 'overdue',

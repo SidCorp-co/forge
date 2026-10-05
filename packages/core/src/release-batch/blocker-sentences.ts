@@ -336,7 +336,7 @@ function unroutedSentence(
 
 /** A probe identifying the artifact cannot prove a commit, so removing it is a repair and not silence. */
 const REFUSED_DECLARATION_SENTENCE =
-  'declares runtime probes that all identify the artifact, and a release proves the commit it shipped, so no release can be proved there and none closes past it. Add a probe with `"identifies": "source"` to its `verification.runtime`, or remove the probes and the release is recorded unverified.';
+  'declares runtime probes that all identify the artifact, and a release proves the commit it shipped, so no release can be proved there and none closes past it. Add a probe with `"identifies": "source"` to its `verification.runtime`, or remove the probes and the release is proved by the commit production\'s deployment record names.';
 
 function unreadableSentence(remedy: string, details?: Record<string, unknown>): string {
   const bindings = Array.isArray(details?.bindings) ? (details.bindings as string[]) : [];

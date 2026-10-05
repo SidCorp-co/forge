@@ -20,6 +20,10 @@
   own items and can be asked to; declined items lose attachments after 180 days. GitLab refuses
   foreign projects by name.
 
+- **A release never closes unverified.** With no source probe, the deploy record must name the
+  commit or the finish is refused. Issues › Stuck names why a row is withheld; a run behind
+  another's deploy lock waits on a gate.
+
 ## [0.4.0-dev.30] - 2026-10-05
 
 Workflow design health, requirement accept/drop, and job briefs as launch prompts

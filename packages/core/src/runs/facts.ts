@@ -257,6 +257,15 @@ function factsOf(
         reclaimedFromRunId: str(l.reclaimed_from_run_id),
         held: true,
       })),
+    foreignLocks: t.projectLocks
+      .filter((l) => String(l.run_id) !== b.id)
+      .map((l) => ({
+        environment: String(l.environment),
+        runId: String(l.run_id),
+        subject: String(l.subject),
+        acquiredAt: must(l.acquired_at),
+        expiresAt: must(l.expires_at),
+      })),
     question: questionFacts(
       t,
       [s ? String(s.id) : null, j ? str(j.agent_session_id) : null],

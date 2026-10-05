@@ -17,6 +17,7 @@ import type {
 	StandingGroupLabel,
 	StandingGroupLabels,
 	WaitingKind,
+	WaitingOn,
 } from "./standing.js";
 
 export const RUN_STATES = [
@@ -80,7 +81,7 @@ export type RunDisagreement = (typeof RUN_DISAGREEMENTS)[number];
 export const RUN_LANES = ["issue", "release", "deploy", "job"] as const;
 export type RunLane = (typeof RUN_LANES)[number];
 
-const RUN_HOLDER_KINDS = ["run", "master", "person"] as const;
+const RUN_HOLDER_KINDS = ["run", "master"] as const;
 type RunHolderKind = (typeof RUN_HOLDER_KINDS)[number];
 
 export const RUN_EXPIRY_SOURCES = [
@@ -91,8 +92,8 @@ export const RUN_EXPIRY_SOURCES = [
 export type RunExpirySource = (typeof RUN_EXPIRY_SOURCES)[number];
 
 /** Whom a run waits on: the viewer or another person to answer or approve, its holder at work
- *  (`dueAt` the lease's end), a gate that resumes by itself (`ref` the gate, `dueAt` its deadline),
- *  the master, a free machine slot, or nobody. */
+ *  (`dueAt` the lease's end), a gate that resumes by itself (`RunGateWait`), the master, a free
+ *  machine slot, or nobody. */
 export const RUN_WAITING_KINDS = [
 	"you",
 	"person",
@@ -103,6 +104,35 @@ export const RUN_WAITING_KINDS = [
 	"none",
 ] as const satisfies readonly WaitingKind[];
 export type RunWaitingKind = (typeof RUN_WAITING_KINDS)[number];
+
+/** The gate words a run waits behind that are not open-ended: a self-resuming job hold, a retry
+ *  cooldown, a deploy lock another run holds, and the dispatch barriers pipeline health names. A
+ *  box-reported blocker reads `blocked_on_<kind>`, and an automatic pause its pause kind. */
+export const RUN_GATES = [
+	"all_devices_exhausted",
+	"verify_unavailable",
+	"retry_cooldown",
+	"deploy_locked",
+	"issue_busy",
+	"contract_wait_unsettled",
+	"runner_stale",
+	"runner_too_old",
+] as const;
+export type RunGate = (typeof RUN_GATES)[number];
+
+/** A gate that clears without a person: which gate, when it resumes by its own deadline (null when
+ *  it has none, never a guess), and the rule that put the run behind it. */
+export interface RunGateWait {
+	kind: "gate";
+	/** A `RunGate`, `blocked_on_<kind>`, or a pause kind. */
+	gate: string;
+	resumesAt: string | null;
+	rule: string;
+}
+
+export type RunWaitingOn =
+	| WaitingOn<Exclude<RunWaitingKind, "gate">>
+	| RunGateWait;
 
 export const RUN_HANDBACK_CLOSES = ["ended", "killed_idle", "died"] as const;
 export type RunHandbackClose = (typeof RUN_HANDBACK_CLOSES)[number];
@@ -345,7 +375,9 @@ export interface RunJob {
 	status: string;
 }
 
-export interface RunStanding extends Standing<RunGroup, RunWaitingKind> {
+export interface RunStanding
+	extends Omit<Standing<RunGroup, RunWaitingKind>, "waitingOn"> {
+	waitingOn: RunWaitingOn;
 	id: string;
 	projectId: string;
 	lane: RunLane;

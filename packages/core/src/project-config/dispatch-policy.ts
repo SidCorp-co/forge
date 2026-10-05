@@ -42,6 +42,37 @@ const isPolicyStatus = (status: string): status is PolicyStatus =>
 
 export type { DispatchState, PolicyStateSource };
 
+/** Why the policy cannot run work at one status, or null when it can. */
+export type PolicyGap = { code: PolicyRefusalCode; detail: string };
+
+/**
+ * The refusal a dispatch at `status` would meet, asked without dispatching: no policy, or a governed
+ * status the policy declares no state for. The same rule `dispatchStateOf` refuses by.
+ */
+export function policyGapOf(
+  projectId: string,
+  held: Held<PolicyDocument> | null,
+  status: string,
+): PolicyGap | null {
+  try {
+    if (!held) throw policyRefusal('POLICY_UNDECLARED', projectId, null);
+    dispatchStateOf(projectId, held, { status, from: 'issue' });
+    return null;
+  } catch (err) {
+    const gap = policyRefusalOf(err);
+    if (gap) return gap;
+    throw err;
+  }
+}
+
+/** The project's policy read once, answering `policyGapOf` for any status. */
+export async function policyGapsOf(
+  projectId: string,
+): Promise<(status: string) => PolicyGap | null> {
+  const held = await readPolicy(projectId);
+  return (status) => policyGapOf(projectId, held, status);
+}
+
 export async function requirePolicy(projectId: string): Promise<Held<PolicyDocument>> {
   const held = await readPolicy(projectId);
   if (!held) throw policyRefusal('POLICY_UNDECLARED', projectId, null);

@@ -50,7 +50,7 @@ export interface CreateReleaseBatchResult {
    * identity rather than by a transition. Said here and not at the fifth finish (ISS-1199).
    */
   openedAfterRelease: boolean;
-  /** `unverified` where production declares no source probe, which every issue it closes says. */
+  /** `deployment` where production declares no source probe: its deployment record must name the commit. */
   verification: ReleaseVerification;
 }
 

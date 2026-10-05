@@ -356,10 +356,10 @@ export function useBatchRelease(projectId: string, { showsRefusal }: { showsRefu
       qc.invalidateQueries({ queryKey: ["release-roster"] });
       toast({
         title: `Batch release started — ${result.issueIds.length} issue${result.issueIds.length === 1 ? "" : "s"}`,
-        ...(result.verification === "unverified"
+        ...(result.verification === "deployment"
           ? {
               description:
-                "This project declares no verify probe, so nothing will read the deployment: the release will close unverified, and each issue it closes will say so.",
+                "This project declares no source probe, so the release is proved by the commit production's deployment record names; if nothing shows that commit, it is refused and closes nothing.",
             }
           : {}),
         tone: "success",

@@ -59,11 +59,22 @@ export interface ReleaseChannel {
 }
 
 /** How a release is proved: by one live channel's probes, or — where no live channel declares
- *  any — not at all, which every door records by that name rather than refusing (ISS-1321). */
-export type CloseVerification = { kind: 'probed'; cfg: VerifyConfig } | { kind: 'unverified' };
+ *  any — by the commit production's own deployment record names (`serving-reading.ts`). A release
+ *  neither can prove is refused `RELEASE_NOT_VERIFIED`; nothing closes unverified. */
+export type CloseVerification = { kind: 'probed'; cfg: VerifyConfig } | { kind: 'deployment' };
 
 /** What a release stamps on its run, its finish and its answers: the kind, by itself. */
 export type ReleaseVerification = CloseVerification['kind'];
+
+/** What a run may carry on its record: a close before the deployment check could be `unverified`,
+ *  and its record keeps saying so. Nothing writes it now. */
+export type RecordedVerification = ReleaseVerification | 'unverified';
+
+export const RECORDED_VERIFICATIONS: readonly RecordedVerification[] = [
+  'probed',
+  'deployment',
+  'unverified',
+];
 
 export interface ReleasePlan {
   /** The production environment's deploy binding, or empty where Forge reaches no production. */

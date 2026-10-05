@@ -6,7 +6,7 @@ import { isRefusal } from '../lib/refusal.js';
 import { closeVerification, type ReleaseChannel, resolveReleaseChannels } from './channel.js';
 import { type ReleaseFinishRecord, readFinishRecord } from './finish-job.js';
 import { type ReleaseMethod, readMethod } from './method.js';
-import type { ReleaseVerification } from './plan.js';
+import { RECORDED_VERIFICATIONS, type RecordedVerification } from './plan.js';
 import { loadReleaseRoster, type ReleaseRoster } from './queries.js';
 import { type LiveState, readLiveState, type VerifyConfig } from './verify.js';
 import { attemptsOf } from './versions.js';
@@ -25,7 +25,7 @@ interface ReleaseRunState {
    * How the close is proved, as the run recorded it: at the open, then again by the close itself,
    * so an open run's value is its opening forecast. `null` on a run that recorded none.
    */
-  verification: ReleaseVerification | null;
+  verification: RecordedVerification | null;
   /** `null` when the run never announced one. */
   method: ReleaseMethod | null;
   /** True when the agent announced that it could not load its method. */
@@ -49,12 +49,14 @@ function liveProbes(channels: ReleaseChannel[]): VerifyConfig | null {
 function recordedVerification(
   meta: Record<string, unknown>,
   runId: string,
-): ReleaseVerification | null {
+): RecordedVerification | null {
   const value = meta.verification;
   if (value === undefined || value === null) return null;
-  if (value === 'probed' || value === 'unverified') return value;
+  if ((RECORDED_VERIFICATIONS as readonly unknown[]).includes(value)) {
+    return value as RecordedVerification;
+  }
   throw new Error(
-    `release run ${runId} records verification ${JSON.stringify(value)}, which is neither "probed" nor "unverified"`,
+    `release run ${runId} records verification ${JSON.stringify(value)}, which is none of ${RECORDED_VERIFICATIONS.join(', ')}`,
   );
 }
 

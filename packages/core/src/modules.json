@@ -1226,7 +1226,7 @@
       ]
     },
     "crates/runner-core": {
-      "serves": ["REQ-15", "agent-run-standing#handed_back"]
+      "serves": ["REQ-15"]
     },
     "crates/runner-workspace": {
       "serves": ["project-onboarding#checkout", "personal-data-flow#ds-box-creds"]

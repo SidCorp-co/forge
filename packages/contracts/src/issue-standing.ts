@@ -18,44 +18,45 @@ export const ISSUE_ATTENTION_GROUPS = [
 ] as const satisfies readonly StandingGroup[];
 export type IssueAttentionGroup = (typeof ISSUE_ATTENTION_GROUPS)[number];
 
-export const ISSUE_ATTENTION_LABELS: StandingGroupLabels<IssueAttentionGroup> = {
-	needs_you: {
-		label: "Needs you",
-		hint: "Answer, decide or approve",
-		tone: "you",
-		collapsed: false,
-	},
-	moving: {
-		label: "Moving",
-		hint: "A run holds a live lease",
-		tone: "run",
-		collapsed: false,
-	},
-	stuck: {
-		label: "Stuck",
-		hint: "Waits on another issue, has no live holder, or came back",
-		tone: "blocked",
-		collapsed: false,
-	},
-	queued: {
-		label: "Queued",
-		hint: "Nothing blocks it; waits for a master slot, a judge or a release",
-		tone: "ready",
-		collapsed: false,
-	},
-	paused: {
-		label: "Paused",
-		hint: "Deliberately on hold",
-		tone: "neutral",
-		collapsed: true,
-	},
-	done: {
-		label: "Done",
-		hint: "Shipped or dropped",
-		tone: "done",
-		collapsed: true,
-	},
-};
+export const ISSUE_ATTENTION_LABELS: StandingGroupLabels<IssueAttentionGroup> =
+	{
+		needs_you: {
+			label: "Needs you",
+			hint: "Answer, decide or approve",
+			tone: "you",
+			collapsed: false,
+		},
+		moving: {
+			label: "Moving",
+			hint: "A run holds a live lease",
+			tone: "run",
+			collapsed: false,
+		},
+		stuck: {
+			label: "Stuck",
+			hint: "Waits on another issue, has no live holder, or came back",
+			tone: "blocked",
+			collapsed: false,
+		},
+		queued: {
+			label: "Queued",
+			hint: "Nothing blocks it; waits for a master slot, a judge or a release",
+			tone: "ready",
+			collapsed: false,
+		},
+		paused: {
+			label: "Paused",
+			hint: "Deliberately on hold",
+			tone: "neutral",
+			collapsed: true,
+		},
+		done: {
+			label: "Done",
+			hint: "Shipped or dropped",
+			tone: "done",
+			collapsed: true,
+		},
+	};
 
 /** Whom an issue waits on: the viewer, another person, a run that holds it, the master that takes
  *  it next, the judge of a change that landed, another issue that blocks it, the release, or nobody. */
@@ -152,6 +153,20 @@ export interface IssueStepEntry {
 	endedAt: string | null;
 }
 
+/** Why the admissible list withholds a takeable issue from every master, as the dispatch door names it. */
+export const ISSUE_WITHHELD_CODES = [
+	"POLICY_UNDECLARED",
+	"POLICY_STATE_UNDECLARED",
+	"WORKFLOW_DESIGN_NOT_APPROVED",
+	"CONTRACT_WAIT_UNSETTLED",
+] as const;
+export type IssueWithheldCode = (typeof ISSUE_WITHHELD_CODES)[number];
+
+export interface IssueWithheld {
+	code: IssueWithheldCode;
+	detail: string;
+}
+
 export interface IssueStanding
 	extends Standing<IssueAttentionGroup, IssueWaitingKind> {
 	state: IssueStatus;
@@ -180,6 +195,8 @@ export interface IssueStanding
 	wave: number | null;
 	/** The newest write to the issue, its work state or its activity. */
 	touchedAt: string;
+	/** Set while the issue sits at a takeable status the admissible list withholds; it reads stuck. */
+	withheld: IssueWithheld | null;
 }
 
 /** One issue as the list reads it; the derived facts are the server's, never the client's. */

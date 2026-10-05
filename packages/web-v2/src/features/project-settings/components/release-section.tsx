@@ -20,7 +20,7 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
   "rollback-prose":
     "The production Coolify connection declares its rollback as free text, which Forge no longer executes — convert it to the Coolify rollback action, or a failed release aborts and comments.",
   "verify-probes":
-    "The production environment declares no runtime probe that identifies its source — a release still runs, but nothing reads the deployment, so it closes unverified and each issue it closes says so. Declare one in `environments.<name>.verification.runtime` of the project document.",
+    "The production environment declares no runtime probe that identifies its source — a release is proved only by the commit its deployment record names, and one whose platform records none is refused RELEASE_NOT_VERIFIED and closes nothing. Declare one in `environments.<name>.verification.runtime` of the project document.",
 };
 
 const DOCUMENT_GAPS = new Set(["release-target", "verify-probes"]);

@@ -14,7 +14,12 @@ import {
 import { blockerRefusal } from './refuse.js';
 import type { VerifyConfig } from './verify.js';
 
-export type { CloseVerification, ReleaseChannel, ReleaseVerification } from './plan.js';
+export type {
+  CloseVerification,
+  RecordedVerification,
+  ReleaseChannel,
+  ReleaseVerification,
+} from './plan.js';
 
 /**
  * Read the production connection's stored `rollback` into what a release agent may act on.
@@ -97,15 +102,15 @@ export function refusedVerifyBindings(channels: readonly ReleaseChannel[]): stri
 
 /**
  * How this release is proved, the one reading every door takes. THROWS where a binding's `verify`
- * was refused: that is a declaration to correct, and reading it as `unverified` would release past
+ * was refused: that is a declaration to correct, and reading past it to the deployment record would release past
  * the probes somebody meant to declare. Otherwise the first channel with probes proves it, whichever
- * binding sorts first; with none, the release is `unverified` and recorded as such.
+ * binding sorts first; with none, production's deployment record has to name the commit.
  */
 export function closeVerification(channels: readonly ReleaseChannel[]): CloseVerification {
   const refused = refusedVerifyBindings(channels);
   if (refused.length > 0) throw blockerRefusal('RELEASE_PROBES_UNREADABLE', { bindings: refused });
   const cfg = channels.find((c) => c.verify !== null)?.verify ?? null;
-  return cfg ? { kind: 'probed', cfg } : { kind: 'unverified' };
+  return cfg ? { kind: 'probed', cfg } : { kind: 'deployment' };
 }
 
 /** The production binding's release runner label, or `null` where none is declared. */

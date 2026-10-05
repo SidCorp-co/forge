@@ -10,6 +10,7 @@ import {
   ISSUE_RESOLVED_STATUSES,
   ISSUE_TERMINAL_STATUSES,
   issueMovesFrom,
+  TAKEABLE_STATUSES,
 } from '@forge/contracts/issue-machine';
 import type {
   IssueAttentionGroup,
@@ -20,6 +21,8 @@ import type {
   IssueRequirementRef,
   IssueStanding,
   IssueWaitingKind,
+  IssueWithheld,
+  IssueWithheldCode,
 } from '@forge/contracts/issue-standing';
 import { issueStatusToneOn, type WorkStep } from '@forge/contracts/issue-vocabulary';
 import type { WaitingOn } from '@forge/contracts/standing';
@@ -87,6 +90,8 @@ export interface IssueStandingInput {
   releaseApproval: boolean;
   /** Null for a reader with no person behind it; nothing then reads as theirs. */
   viewer: { userId: string; canWrite: boolean } | null;
+  /** The refusal the admissible list withholds it by (`devices/admissible.ts`), first that holds. */
+  withheld: IssueWithheld | null;
   now: Date;
 }
 
@@ -122,8 +127,9 @@ const held = (lease: IssueLeaseView | null) =>
 // where the project requires it, else queued for the release; a live lease or a job in flight →
 // moving; a live unsettled blocker → stuck on the first, worded as waiting on its judge where its
 // change landed; a landed row nothing holds → queued for its judge
-// (`strand-rules.ts:landedWait`); in_progress with no holder or reopen → stuck; open or
-// approved → queued for a master slot.
+// (`strand-rules.ts:landedWait`); a takeable row the admissible list withholds → stuck, its
+// refusal named; in_progress with no holder or reopen → stuck; open or approved → queued for a
+// master slot.
 type Turn = { group: IssueAttentionGroup; waitingOn: IssueWaitingOn };
 
 /** A status only a person moves on from: done, paused, a question owed, a draft. */
@@ -234,6 +240,28 @@ function blockerTurn(blocker: StandingEdge): Turn {
   };
 }
 
+const WITHHELD_ACT: Record<IssueWithheldCode, { who: string; act: string }> = {
+  POLICY_UNDECLARED: { who: 'A project writer', act: 'declare the policy' },
+  POLICY_STATE_UNDECLARED: { who: 'A project writer', act: 'declare its policy state' },
+  WORKFLOW_DESIGN_NOT_APPROVED: { who: 'A design approver', act: 'approve the design' },
+  CONTRACT_WAIT_UNSETTLED: { who: 'The contract provider', act: 'approve a contract version' },
+};
+
+/** A takeable issue no master is handed: stuck, the dispatch door's refusal named as its rule. */
+function withheldTurn(withheld: IssueWithheld): Turn {
+  const { who, act } = WITHHELD_ACT[withheld.code];
+  return {
+    group: 'stuck',
+    waitingOn: wait(
+      'person',
+      who,
+      act,
+      `${withheld.code}: ${withheld.detail} No master is handed it until then.`,
+      withheld.code,
+    ),
+  };
+}
+
 /** Nothing holds it and no person owes a move: stuck in progress or after a reopen, else queued. */
 function idleTurn(status: IssueStatus): Turn {
   if (status === 'in_progress') {
@@ -283,10 +311,15 @@ function turnOf(input: IssueStandingInput): Turn {
   if (landed) {
     return { group: 'queued', waitingOn: wait('judge', landed.who, landed.act, landed.reason) };
   }
+  const withheld = withheldOf(input);
+  if (withheld) return withheldTurn(withheld);
   return idleTurn(input.status);
 }
 
 const LANDED_BLOCKER = 'landed, waits on a judge';
+
+const withheldOf = (input: IssueStandingInput): IssueWithheld | null =>
+  TAKEABLE_STATUSES.includes(input.status) ? input.withheld : null;
 
 const awaitsJudge = (e: StandingEdge) => landedWait(e.status, e) !== null;
 
@@ -335,6 +368,7 @@ export function deriveIssueStanding(
     owner: input.owner,
     wave: DONE.includes(input.status) ? null : wave,
     touchedAt: input.touchedAt.toISOString(),
+    withheld: withheldOf(input),
   };
 }
 

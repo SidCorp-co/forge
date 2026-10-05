@@ -3,17 +3,13 @@ import { describePause } from '../pipeline/index.js';
 import {
   type Derived,
   iso,
+  isReleaseRun,
   NO_WAIT,
   type RunFacts,
   runWait,
   type StandingContext,
   TERMINAL_SESSION,
 } from './standing-types.js';
-
-const gateLabel = (gate: string) => {
-  const words = gate.replace(/_/g, ' ');
-  return words.charAt(0).toUpperCase() + words.slice(1);
-};
 
 type Need = 'write' | 'admin' | 'approve';
 
@@ -69,14 +65,20 @@ function gate(w: {
     since: w.since,
     rule: w.rule,
     outcome: null,
-    waitingOn: runWait(
-      'gate',
-      gateLabel(w.gate),
-      w.resumesAt ? 'resumes at its deadline' : 'resumes itself',
-      `${w.gate}: ${w.rule}`,
-      { ref: w.gate, dueAt: iso(w.resumesAt) },
-    ),
+    waitingOn: { kind: 'gate', gate: w.gate, resumesAt: iso(w.resumesAt), rule: w.rule },
   };
+}
+
+/** The deploy lock another run holds that this release's deploy waits behind: one per environment
+ *  the project locks, and the release reaches them all, so it resumes once the last one ends. Read
+ *  only while the release holds no lock of its own and has not reached its verify stage. */
+export function lockAheadOf(f: RunFacts): RunFacts['foreignLocks'][number] | null {
+  if (!isReleaseRun(f) || f.deployLocks.some((l) => l.held)) return null;
+  if (f.releaseAttempt?.stage === 'verify') return null;
+  return f.foreignLocks.reduce<RunFacts['foreignLocks'][number] | null>(
+    (last, l) => (last === null || l.expiresAt.getTime() > last.expiresAt.getTime() ? l : last),
+    null,
+  );
 }
 
 function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
@@ -204,6 +206,15 @@ function gateWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
       resumesAt: null,
       since: job.queuedAt,
       rule: `pipeline health reads ${barrier}: ${DISPATCH_GATES[barrier]}, which has no deadline`,
+    });
+  }
+  const lock = lockAheadOf(f);
+  if (lock) {
+    return gate({
+      gate: 'deploy_locked',
+      resumesAt: lock.expiresAt,
+      since: lock.acquiredAt,
+      rule: `DEPLOY_ENVIRONMENT_LOCKED: pipeline run ${lock.runId} holds the ${lock.environment} environment, deploying ${lock.subject} since ${lock.acquiredAt.toISOString()}; this release's deploy is refused until that deploy ends or its hold expires at ${lock.expiresAt.toISOString()}, when the next deploy reclaims it`,
     });
   }
   if (f.ledger?.work === 'blocked' && f.ledger.blockerKind && f.ledger.blockerKind !== 'human') {

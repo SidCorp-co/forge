@@ -9,7 +9,12 @@ import type { TransitionActor } from '../issues/index.js';
 import { TransitionError, transitionIssueStatus } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
-import { cancelConcludedRun, closeRunIfOneShot, stampReleaseShipped } from '../pipeline/index.js';
+import {
+  cancelConcludedRun,
+  closeRunIfOneShot,
+  stampReleaseShipped,
+  writeRunMetadata,
+} from '../pipeline/index.js';
 import {
   abortedError,
   batchAborted,
@@ -24,12 +29,12 @@ import {
   resolveReleaseChannels,
 } from './channel.js';
 import { refuseLostReleaseClaim } from './claim-conflicts.js';
+import { verifyByDeploymentRecord } from './deployment-verify.js';
 import { FENCE_LOST, notVerifiedRefusal, reasonOf, refuseRelease } from './refuse.js';
 import {
   type RecoverStrandedReleasingResult,
   recoverStrandedReleasing,
 } from './releasing-recovery.js';
-import { noteUnverifiedCloses, stampRunVerification } from './unverified-close.js';
 import { verifyDeployed } from './verify.js';
 
 interface FinishReleaseBatchResult {
@@ -43,8 +48,8 @@ interface FinishReleaseBatchOptions {
   /** An earlier worker on this same attempt already saw the probes go green, so they are not read again. */
   alreadyVerified?: boolean | undefined;
   whileVerifying?: (() => Promise<void>) | undefined;
-  /** Called once verification is green — or, with no probe declared, once it is known there is
-   *  none to read — before the first issue closes. */
+  /** Called once verification is green, by the probes or by the deployment record, before the
+   *  first issue closes. */
   onVerified?: ((verification: ReleaseVerification) => Promise<void>) | undefined;
   /** Called with the roster's outcome before the claims are released, so it outlives them. */
   onRosterClosed?: ((result: FinishReleaseBatchResult) => Promise<void>) | undefined;
@@ -111,41 +116,45 @@ interface ClaimedRow {
   projectId: string;
 }
 
-/** The probes agree the release is live — or there are none to read — and the run says which. */
-async function verifyBeforeClose(
+/** The run carries how its close was proved, which may differ from how it opened. */
+async function stampRunVerification(runId: string, kind: ReleaseVerification): Promise<void> {
+  await writeRunMetadata(runId, { merge: { verification: kind }, touch: false });
+}
+
+/**
+ * The deploy is checked against the commit before any issue closes: by the probes where production
+ * declares a source probe, else by the commit its deployment record names. Neither showing it is
+ * `RELEASE_NOT_VERIFIED`, and nothing closes.
+ */
+export async function verifyBeforeClose(
   runId: string,
   run: ReleaseRunRow,
-  claimedIds: string[],
-  actor: TransitionActor,
   options: FinishReleaseBatchOptions,
 ): Promise<void> {
   const verification = await assertFinishable(runId, run);
-  if (verification.kind === 'probed' && !options.alreadyVerified) {
-    const meta = (run.metadata ?? {}) as Record<string, unknown>;
-    const outcome = await verifyDeployed({
-      cfg: verification.cfg,
-      commitBefore: typeof meta.commitBefore === 'string' ? meta.commitBefore : null,
-      expected: options.commit ?? null,
-      checkpoint: options.whileVerifying,
-    });
-    if (!outcome.ok) throw notVerifiedRefusal(outcome.reason, outcome.live);
-    if (!outcome.moved) {
-      logger.warn(
-        { runId, identity: outcome.identity },
-        'release-batch: the deployment was already serving this commit when the batch opened, so this is a release recorded after the fact rather than one this batch watched arrive',
-      );
+  if (!options.alreadyVerified) {
+    if (verification.kind === 'probed') {
+      const meta = (run.metadata ?? {}) as Record<string, unknown>;
+      const outcome = await verifyDeployed({
+        cfg: verification.cfg,
+        commitBefore: typeof meta.commitBefore === 'string' ? meta.commitBefore : null,
+        expected: options.commit ?? null,
+        checkpoint: options.whileVerifying,
+      });
+      if (!outcome.ok) throw notVerifiedRefusal(outcome.reason, outcome.live);
+      if (!outcome.moved) {
+        logger.warn(
+          { runId, identity: outcome.identity },
+          'release-batch: the deployment was already serving this commit when the batch opened, so this is a release recorded after the fact rather than one this batch watched arrive',
+        );
+      }
+    } else {
+      const outcome = await verifyByDeploymentRecord(run.projectId, options.commit ?? null);
+      if (!outcome.ok) throw notVerifiedRefusal(outcome.reason, outcome.live);
     }
   }
   await options.onVerified?.(verification.kind);
   await stampRunVerification(runId, verification.kind);
-  if (verification.kind === 'unverified') {
-    await noteUnverifiedCloses({
-      runId,
-      issueIds: claimedIds,
-      actor,
-      commit: options.commit ?? null,
-    });
-  }
 }
 
 /** Each claimed issue closed under the fence; one that will not close is named with its reason. */
@@ -213,14 +222,7 @@ export async function finishReleaseBatch(
     return done;
   }
 
-  if (run)
-    await verifyBeforeClose(
-      runId,
-      run,
-      claimed.map((c) => c.id),
-      actor,
-      options,
-    );
+  if (run) await verifyBeforeClose(runId, run, options);
 
   const { fence } = options;
   const { closed, failed } = await closeRoster(claimed, runId, actor, fence);
