@@ -35,9 +35,6 @@ import {
   updateOrg,
 } from './service.js';
 
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
 const notFound = (message = 'not found', code = 'NOT_FOUND') =>
   new HTTPException(404, { message, cause: { code } });
 
@@ -232,9 +229,6 @@ orgRoutes.delete(
   zValidator(
     'query',
     z.object({ email: z.string().trim().toLowerCase().pipe(z.email().max(254)) }),
-    (result) => {
-      if (!result.success) throw badRequest(result.error);
-    },
   ),
   async (c) => {
     const { orgId } = c.req.valid('param');

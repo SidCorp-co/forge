@@ -6,7 +6,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { type AuthVars, requireAuth, restActor } from '../middleware/auth.js';
 import { forbidden, idParamSchema, notFound } from '../middleware/route-errors.js';
-import { rawBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, rawBody, zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
 import { safeRecordActivity } from './activity.js';
 import { deleteIssueAttachment, persistIssueAttachment } from './attachment-service.js';
@@ -43,9 +43,7 @@ issueAttachmentRoutes.post(
   uploadBodyLimit(() => {
     throw badRequest('file too large', 'FILE_TOO_LARGE');
   }),
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', r.error);
-  }),
+  zValidator('param', idParamSchema, invalid('invalid id')),
   rawBody(
     'multipart/form-data',
     'One file in the `file` field, attached to the issue; its name and media type come from the part.',
@@ -78,12 +76,8 @@ issueAttachmentRoutes.post(
 
 issueAttachmentRoutes.get(
   '/:id/attachments',
-  zValidator('param', issueRouteIdParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', r.error);
-  }),
-  zValidator('query', projectScopeQuerySchema, (r) => {
-    if (!r.success) throw badRequest('invalid query', 'BAD_REQUEST', r.error);
-  }),
+  zValidator('param', issueRouteIdParamSchema, invalid('invalid id')),
+  zValidator('query', projectScopeQuerySchema, invalid('invalid query')),
   async (c) => {
     const { id: rawId } = c.req.valid('param');
     const { projectId: projectIdQuery } = c.req.valid('query');
@@ -108,9 +102,7 @@ attachmentRoutes.use('*', requireAuth());
 
 attachmentRoutes.get(
   '/:id/download',
-  zValidator('param', attachmentIdParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', r.error);
-  }),
+  zValidator('param', attachmentIdParamSchema, invalid('invalid id')),
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
@@ -140,9 +132,7 @@ attachmentRoutes.get(
 
 attachmentRoutes.delete(
   '/:id',
-  zValidator('param', attachmentIdParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', r.error);
-  }),
+  zValidator('param', attachmentIdParamSchema, invalid('invalid id')),
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');

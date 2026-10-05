@@ -1,10 +1,9 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../../lib/authz.js';
-import { queryBadRequest } from '../../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
-import { badRequest, forbidden } from '../../middleware/route-errors.js';
-import { zValidator } from '../../middleware/zod-validator.js';
+import { forbidden } from '../../middleware/route-errors.js';
+import { invalid, zValidator } from '../../middleware/zod-validator.js';
 import { slug } from '../../project-config/index.js';
 import { readContractDetail, readContractStanding } from './read.js';
 
@@ -16,9 +15,7 @@ export const contractStandingRoutes = new Hono<{ Variables: AuthVars }>();
 contractStandingRoutes.use('/:id/contract-standing', requireAuth(), assertEmailVerified());
 contractStandingRoutes.use('/:id/contract-standing/*', requireAuth(), assertEmailVerified());
 
-const query = zValidator('query', noQuery, (r) => {
-  if (!r.success) throw queryBadRequest(noQuery, r.error);
-});
+const query = zValidator('query', noQuery);
 
 async function member(projectId: string, userId: string | null): Promise<void> {
   const access = await loadProjectAccess(projectId, userId);
@@ -27,10 +24,11 @@ async function member(projectId: string, userId: string | null): Promise<void> {
 
 contractStandingRoutes.get(
   '/:id/contract-standing',
-  zValidator('param', projectParam, (r) => {
-    if (!r.success)
-      throw badRequest('invalid path: /api/projects/<project uuid>/contract-standing');
-  }),
+  zValidator(
+    'param',
+    projectParam,
+    invalid('invalid path: /api/projects/<project uuid>/contract-standing'),
+  ),
   query,
   async (c) => {
     const { id } = c.req.valid('param');
@@ -42,13 +40,13 @@ contractStandingRoutes.get(
 
 contractStandingRoutes.get(
   '/:id/contract-standing/:provider/:contract',
-  zValidator('param', contractParam, (r) => {
-    if (!r.success) {
-      throw badRequest(
-        'invalid path: /api/projects/<project uuid>/contract-standing/<provider slug>/<publication slug>',
-      );
-    }
-  }),
+  zValidator(
+    'param',
+    contractParam,
+    invalid(
+      'invalid path: /api/projects/<project uuid>/contract-standing/<provider slug>/<publication slug>',
+    ),
+  ),
   query,
   async (c) => {
     const { id, provider, contract } = c.req.valid('param');

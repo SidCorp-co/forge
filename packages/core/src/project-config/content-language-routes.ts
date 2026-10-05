@@ -11,11 +11,10 @@ import {
   contentLanguageWriteSchema,
 } from '@forge/contracts/content-language';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { strictBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { readContentLanguage, writeContentLanguage } from './content-language.js';
 
@@ -23,14 +22,11 @@ export const contentLanguageRoutes = new Hono<{ Variables: AuthVars }>();
 
 contentLanguageRoutes.use('/:id/content-language', requireAuth(), assertEmailVerified());
 
-const projectParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
-  if (!r.success) {
-    throw new HTTPException(400, {
-      message: 'invalid path: the project id is a uuid',
-      cause: { code: 'BAD_REQUEST' },
-    });
-  }
-});
+const projectParam = zValidator(
+  'param',
+  z.object({ id: z.uuid() }),
+  invalid('invalid path: the project id is a uuid'),
+);
 
 contentLanguageRoutes.get('/:id/content-language', projectParam, async (c) => {
   const { id } = c.req.valid('param');

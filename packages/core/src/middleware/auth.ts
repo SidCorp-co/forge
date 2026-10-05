@@ -69,8 +69,8 @@ function restAgency(c: Context<{ Variables: RestActorVars }>): ActorAgency {
   const agency = c.get('agency');
   if (!agency) {
     throw new Error(
-      'restActor: no agency on this request — the route was reached without requireAuth(), ' +
-        'requireUserOrDevice() or requireAnyAuth(), and who is writing cannot be answered from ' +
+      'restActor: no agency on this request — the route was reached without requireAuth() or ' +
+        'requireUserOrDevice(), and who is writing cannot be answered from ' +
         'the request alone. Mount one of those gates on it.',
     );
   }
@@ -87,7 +87,7 @@ export function restAuthored(c: Context<{ Variables: RestActorVars }>): 'human' 
  *
  * A PAT resolves to its owner's `userId`, which on its own would widen a
  * project-scoped token into an account-scoped one. {@link beginPatRequest} is
- * what stops that, and `requireAnyAuth` calls the same function.
+ * what stops that.
  */
 async function admitPat(
   c: Context<{ Variables: AuthVars }>,

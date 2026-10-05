@@ -3075,7 +3075,7 @@
           }
         },
         "x-forge-auth": [
-          "requireAnyAuth"
+          "requireAuth"
         ],
         "x-forge-validated": [
           "param"
@@ -3108,7 +3108,7 @@
           }
         },
         "x-forge-auth": [
-          "requireAnyAuth"
+          "requireAuth"
         ],
         "x-forge-validated": [
           "param"
@@ -3884,7 +3884,7 @@
           }
         },
         "x-forge-auth": [
-          "requireAnyAuth"
+          "requireAuth"
         ],
         "x-forge-validated": [
           "param"
@@ -3926,7 +3926,7 @@
           }
         },
         "x-forge-auth": [
-          "requireAnyAuth"
+          "requireAuth"
         ],
         "x-forge-validated": [
           "param"
@@ -10350,7 +10350,7 @@
           }
         },
         "x-forge-auth": [
-          "requireAnyAuth"
+          "requireAuth"
         ],
         "x-forge-validated": [
           "param",
@@ -10391,7 +10391,7 @@
           }
         },
         "x-forge-auth": [
-          "requireAnyAuth"
+          "requireAuth"
         ],
         "x-forge-validated": [
           "param"
@@ -15245,8 +15245,7 @@
                     "items": {
                       "enum": [
                         "read",
-                        "write",
-                        "admin"
+                        "write"
                       ],
                       "type": "string"
                     },
@@ -34646,7 +34645,6 @@
   "x-forge-auth-gates": {
     "assertEmailVerified": "a person whose email address is verified (a device passes)",
     "requireAdmin": "a platform administrator",
-    "requireAnyAuth": "a session JWT, or a personal or agent access token held to its grant",
     "requireAuth": "a session JWT, or a personal or agent access token held to its grant",
     "requireDevice": "a paired device credential only",
     "requireFreshAuth": "a caller who re-authenticated within the window the route sets",

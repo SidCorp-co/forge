@@ -25,6 +25,7 @@ import {
 } from '../../integrations/identity/index.js';
 import { env } from '../../lib/env.js';
 import { logger } from '../../lib/logger.js';
+import { invalid } from '../../middleware/zod-validator.js';
 import { ensurePersonalOrg } from '../../orgs/index.js';
 import { assertNotAgentUser } from '../agent-login-gate.js';
 import { getCallbackUrl, getProvider } from './providers.js';
@@ -63,14 +64,7 @@ export const startQuery = z.object({ redirect: z.string().optional() });
 
 type StartQuery = z.infer<typeof startQuery>;
 
-export const refuseStartQuery = (result: { success: boolean }) => {
-  if (!result.success) {
-    throw new HTTPException(400, {
-      message: 'redirect takes one same-origin path',
-      cause: { code: 'BAD_REQUEST' },
-    });
-  }
-};
+export const refuseStartQuery = invalid('redirect takes one same-origin path');
 
 export const callbackQuery = z.object({
   code: z.string().optional(),

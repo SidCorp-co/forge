@@ -88,8 +88,6 @@ const listQuery = z.object({
   cursor: pageSchema.shape.cursor,
 });
 
-const PAGE_FIELDS = new Set<PropertyKey>(['limit', 'cursor']);
-
 const answerBody = z.object({
   optionId: z.string({ error: 'optionId must be a string' }).optional(),
   text: z.string({ error: 'text must be a string' }).optional(),
@@ -101,24 +99,6 @@ const answerBody = z.object({
     .max(1000, { error: 'note is at most 1000 characters' })
     .optional(),
 });
-
-type Parsed = { success: true } | { success: false; error: z.core.$ZodError };
-
-const refuseQuery = (result: Parsed) => {
-  if (result.success) return;
-  const first = result.error.issues[0];
-  throw badRequest(
-    first && !PAGE_FIELDS.has(first.path[0] ?? '') ? first.message : z.prettifyError(result.error),
-  );
-};
-
-const refuseBody = (result: Parsed) => {
-  if (!result.success) throw badRequest(z.prettifyError(result.error));
-};
-
-const refuseFirst = (result: Parsed) => {
-  if (!result.success) throw badRequest(result.error.issues[0]?.message ?? 'invalid body');
-};
 
 const notFound = (what: 'question' | 'issue' = 'question') =>
   new HTTPException(404, { message: `${what} not found`, cause: { code: 'NOT_FOUND' } });
@@ -183,7 +163,7 @@ export const questionRoutes = new Hono<{ Variables: AuthVars }>();
 questionRoutes.use('/', requireAuth(), assertEmailVerified());
 questionRoutes.use('*', requireAuth(), assertEmailVerified());
 
-questionRoutes.get('/', zValidator('query', listQuery, refuseQuery), async (c) => {
+questionRoutes.get('/', zValidator('query', listQuery), async (c) => {
   const { issueId, projectId, issue: issueScope, status, limit, cursor } = c.req.valid('query');
   if (!issueId && !projectId) throw badRequest('issueId or projectId is required');
   if (issueId && projectId) {
@@ -212,7 +192,7 @@ questionRoutes.get('/', zValidator('query', listQuery, refuseQuery), async (c) =
   return c.json({ questions: await Promise.all(seen.map((q) => shown(agency, q))) });
 });
 
-questionRoutes.post('/', zValidator('json', askSchema, refuseBody), async (c) => {
+questionRoutes.post('/', zValidator('json', askSchema), async (c) => {
   const { parkDeadlineAt, blockerKind, options, recommendedOptionId, ...rest } =
     c.req.valid('json');
   const asked = await askAs({
@@ -248,7 +228,7 @@ questionRoutes.post(
     }
     await next();
   },
-  zValidator('json', answerBody, refuseFirst),
+  zValidator('json', answerBody),
   async (c) => {
     const body = c.req.valid('json');
     const hasOption = typeof body.optionId === 'string' && body.optionId.length > 0;

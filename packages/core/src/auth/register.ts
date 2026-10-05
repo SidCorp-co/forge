@@ -11,7 +11,7 @@ import { logger } from '../lib/logger.js';
 import { RULES } from '../lib/rate-limits.js';
 import { refuser } from '../lib/refusal.js';
 import { rateLimit } from '../middleware/rate-limit.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { hashPassword } from './password.js';
 import { registerSchema } from './request-schemas.js';
 import { registerUser } from './service.js';
@@ -28,14 +28,7 @@ authRoutes.use(
 
 authRoutes.post(
   '/register',
-  zValidator('json', registerSchema, (result) => {
-    if (!result.success) {
-      throw new HTTPException(400, {
-        message: 'Invalid registration input',
-        cause: { code: 'BAD_REQUEST', details: result.error },
-      });
-    }
-  }),
+  zValidator('json', registerSchema, invalid('Invalid registration input')),
   async (c) => {
     const { email, password } = c.req.valid('json');
 

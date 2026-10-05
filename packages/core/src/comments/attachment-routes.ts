@@ -16,7 +16,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { forbidden, idParamSchema } from '../middleware/route-errors.js';
-import { rawBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, rawBody, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { persistCommentAttachment } from './attachment-service.js';
 import { commentAttachmentFile, issueCommentForAttachment } from './read.js';
@@ -45,9 +45,7 @@ commentAttachmentRoutes.post(
   uploadBodyLimit(() => {
     throw attachmentBadRequest('file too large', 'FILE_TOO_LARGE');
   }),
-  zValidator('param', commentIdParamSchema, (r) => {
-    if (!r.success) throw attachmentBadRequest('invalid commentId', 'BAD_REQUEST', r.error);
-  }),
+  zValidator('param', commentIdParamSchema, invalid('invalid commentId')),
   rawBody(
     'multipart/form-data',
     'One file in the `file` field, attached to the comment; its name and media type come from the part.',
@@ -84,9 +82,7 @@ commentAttachmentRoutes.post(
 commentAttachmentRoutes.get(
   '/attachments/:id',
   requireAuth(),
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw attachmentBadRequest('invalid id', 'BAD_REQUEST', r.error);
-  }),
+  zValidator('param', idParamSchema, invalid('invalid id')),
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');

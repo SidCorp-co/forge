@@ -22,7 +22,7 @@ import { db } from '../db/client.js';
 import { rowIn as feedbackRowIn } from '../feedback/index.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { strictBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { listSuggestions, type SuggestionActor, type SuggestionTargetRef } from './read.js';
 import {
   acceptSuggestion,
@@ -46,22 +46,23 @@ for (const path of [
 const badRequest = (message: string) =>
   new HTTPException(400, { message, cause: { code: 'BAD_REQUEST' } });
 
-const projectParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
-  if (!r.success) throw badRequest('invalid path: the project id is a uuid');
-});
+const projectParam = zValidator(
+  'param',
+  z.object({ id: z.uuid() }),
+  invalid('invalid path: the project id is a uuid'),
+);
 
 const feedbackParam = zValidator(
   'param',
   z.object({ id: z.uuid(), fb: z.string().trim().min(1).max(64) }),
-  (r) => {
-    if (!r.success)
-      throw badRequest('invalid path: a project uuid and a feedback uuid or key (FB-n)');
-  },
+  invalid('invalid path: a project uuid and a feedback uuid or key (FB-n)'),
 );
 
-const suggestionParam = zValidator('param', z.object({ id: z.uuid(), sid: z.uuid() }), (r) => {
-  if (!r.success) throw badRequest('invalid path: a project uuid and a suggestion uuid');
-});
+const suggestionParam = zValidator(
+  'param',
+  z.object({ id: z.uuid(), sid: z.uuid() }),
+  invalid('invalid path: a project uuid and a suggestion uuid'),
+);
 
 function actorOf(c: Context<{ Variables: AuthVars }>): SuggestionActor {
   const agency = c.get('agency');
@@ -97,12 +98,13 @@ function targetOf(v: {
 suggestionRoutes.get(
   '/:id/suggestions',
   projectParam,
-  zValidator('query', listSuggestionsQuerySchema, (r) => {
-    if (!r.success)
-      throw badRequest(
-        `invalid query: requirement?, issue?, feedback?, workflow?, status? (comma-separated: ${SUGGESTION_STATUSES.join(', ')}), view? (summary | full, full by default)`,
-      );
-  }),
+  zValidator(
+    'query',
+    listSuggestionsQuerySchema,
+    invalid(
+      `invalid query: requirement?, issue?, feedback?, workflow?, status? (comma-separated: ${SUGGESTION_STATUSES.join(', ')}), view? (summary | full, full by default)`,
+    ),
+  ),
   async (c) => {
     const q = c.req.valid('query');
     const listed = await listSuggestions({

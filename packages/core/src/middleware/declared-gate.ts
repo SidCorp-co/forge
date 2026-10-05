@@ -2,7 +2,6 @@ export const AUTH_GATES = {
   requireAuth: 'a session JWT, or a personal or agent access token held to its grant',
   requireUserOrDevice:
     'a session JWT, a paired device credential, or a personal or agent access token held to its grant',
-  requireAnyAuth: 'a session JWT, or a personal or agent access token held to its grant',
   requireUser: 'a session JWT, in the Authorization header or the session cookie',
   requirePat: 'a personal or agent access token only',
   requireDevice: 'a paired device credential only',

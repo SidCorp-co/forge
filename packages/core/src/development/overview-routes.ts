@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
-import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -16,9 +15,7 @@ developmentOverviewRoutes.use('*', requireAuth(), assertEmailVerified());
 developmentOverviewRoutes.get(
   '/:id/development/overview',
   zValidator('param', idParamSchema),
-  zValidator('query', noQuery, (r) => {
-    if (!r.success) throw queryBadRequest(noQuery, r.error);
-  }),
+  zValidator('query', noQuery),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const userId = c.get('userId');
