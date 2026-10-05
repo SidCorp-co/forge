@@ -103,6 +103,26 @@ The choices inside that, and why:
 - **macOS and Windows** keep compiling. Their `cfg(target_os)` code is checked with
   `cargo check --target` where the box has the target, and by reading where it does not.
 
+### What core takes over
+
+Four decisions the box still takes are each one too-long function kept under a `too_many_lines`
+amnesty, whose reason names its entry here. Each is deleted, not split, once core answers it:
+
+- **Placement** — `ensure_master` (`runner-daemon/src/master/place.rs`): whether a project gets a
+  master on this box now, and whether it resumes its predecessor's conversation or starts cold.
+  Core already holds the master session (`POST /api/devices/me/master-session`) and the limit
+  (`/api/devices/me/limit`); it answers *place* or *do not place, because*, and the box opens the
+  pane and reports whether a transcript exists.
+- **Retirement** — `sweep` (`runner-daemon/src/master/sweep.rs`): when an idle, deaf, limited or
+  outdated master is nudged, retired or placed again. Core decides from the pass record
+  (`/master-session/pass`) and the pane facts the box reports; the box ends the pane it is told to.
+- **Recovery verdict** — `recovery::reconcile` (`runner-daemon/src/recovery/mod.rs`): at boot,
+  whether a run the ledger names is over. The box reports the pid, pane and transcript facts; core
+  takes the verdict on the run session (`/api/devices/me/run-sessions/:id`) and closes it.
+- **Idle verdict** — `ClaudeCodeRunner::start` (`runner-agent/src/claude_code/mod.rs`): when a
+  resident turn has been idle long enough to end. Core's job timeouts take it once the box stops
+  acking a job at pane open and posting progress every tick.
+
 ## Consequences
 
 - **What the cleanup took.** 85,445 real lines became 30,391: 53,827 lines of tests and test
@@ -110,9 +130,9 @@ The choices inside that, and why:
   shape core no longer sends. That covers the blocked-run park, the setup agent, the ledger's question,
   claim-hold and revival writers, the `runner:register` switch, and the Claude Code runner's
   issue-job arms (its only job spec is chat).
-- **Decisions core should take are listed, not moved.** Job and run idle verdicts, master
-  placement and retirement, and the retry of a refused run declaration are each made on the box
-  today. Each needs core to take the verdict first, and then the runner side is deleted. Until then,
+- **Decisions core should take are listed, not moved** — in *What core takes over* above. Job and
+  run idle verdicts, master placement and retirement, and the retry of a refused run declaration
+  are each made on the box today. Each needs core to take the verdict first, and then the runner side is deleted. Until then,
   the runner suppresses core's own job timeouts by acking a job as soon as its pane opens and
   posting progress every tick.
 - **The ledger keeps columns nothing writes any more** (claims, revivals, questions). Dropping them

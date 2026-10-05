@@ -94,7 +94,7 @@ impl AuthoritySink {
 
 #[expect(
     clippy::too_many_lines,
-    reason = "master placement, a decision core should take (ADR 0009 moveToCore); deleted rather than split once core owns it (ISS-218 amnesty)"
+    reason = "master placement, which core takes over per ADR 0009 What core takes over: Placement; deleted rather than split once core answers it (ISS-218 amnesty)"
 )]
 pub(crate) async fn ensure_master(
     client: &CoreClient,

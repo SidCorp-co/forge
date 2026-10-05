@@ -175,7 +175,7 @@ impl Recovered {
 
 #[expect(
     clippy::too_many_lines,
-    reason = "recovery verdicts core should take (ADR 0009 moveToCore); deleted rather than split once core owns them (ISS-218 amnesty)"
+    reason = "recovery verdicts, which core takes over per ADR 0009 What core takes over: Recovery verdict; deleted rather than split once core answers them (ISS-218 amnesty)"
 )]
 pub async fn reconcile(
     ledger: &mut Ledger,
