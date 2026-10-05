@@ -1,4 +1,5 @@
 import { contentLanguageProblem } from '@forge/contracts/content-language';
+import { hostOf } from '@forge/contracts/git-repository';
 import { MCP_TOOL_NAMES } from '@forge/contracts/mcp-tools';
 import type { ConfigRefusalCode } from '@forge/contracts/project-config';
 import { resolveProjectTemplates } from '@forge/contracts/workflow-templates';
@@ -77,9 +78,14 @@ function checkSourceShape(doc: ProjectDocument): ConfigRefusal[] {
     });
   }
   if (gate !== 'none' && doc.source.type === 'git') {
-    const host = doc.source.git.repository
-      .slice(0, doc.source.git.repository.indexOf('/'))
-      .toLowerCase();
+    const host = hostOf(doc.source.git.repository);
+    if (host === null) {
+      out.push({
+        code: 'GATE_UNSUPPORTED',
+        path: pointer('validation', 'gate'),
+        detail: `gate "${gate}" reads a host's checks, and this project's repository is the local path ${doc.source.git.repository}, which no host builds; declare { "type": "none" }, or declare the hosted repository.`,
+      });
+    }
     const other = GATE_ON_THE_OTHER_HOST[gate];
     if (other && host === other.host) {
       out.push({

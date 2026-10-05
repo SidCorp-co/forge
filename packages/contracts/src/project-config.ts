@@ -59,6 +59,7 @@ const BINDING_TARGET_REFUSAL_CODES = [
 	"COOLIFY_APPLICATION_UNKNOWN",
 	"COOLIFY_UNREACHABLE",
 	"SOURCE_HOST_MISMATCH",
+	"SOURCE_REPOSITORY_LOCAL",
 ] as const;
 
 /** Every code a project-config document write answers with. */

@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **A project reached only through a runner's git access can join an ecosystem.** Without a host
+  binding, a bound checkout answers the head. Documents and bind take SSH remotes and local paths;
+  provisioning never rewrites tracked files.
+
 ## [0.4.0-dev.32] - 2026-10-05
 
 Wave 2 closes: reconciled kept nodes, a proactive BA, and lighter live updates

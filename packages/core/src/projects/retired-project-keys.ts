@@ -23,7 +23,7 @@ const RETIRED_PROJECT_FIELDS: Record<string, string> = {
   apiKey:
     '`apiKey` is not a project field: no route authenticated a project API key, so there is none to set or rotate. A box authenticates with its device credential and a person or agent with an access token.',
   repoUrl:
-    "`repoUrl` is not a project field: the repository is the project document's `source.git.repository` (`host/owner/repo`, e.g. `github.com/SidCorp-co/forge`), and the clone remote is derived from it — SSH where a deploy key is attached, HTTPS otherwise. Read it with GET /api/projects/:id/config and write it with PUT /api/projects/:id/config { baseRevision, document }.",
+    "`repoUrl` is not a project field: the repository is the project document's `source.git.repository` (`host.tld/owner/repo` such as `github.com/SidCorp-co/forge`, an SSH remote `git@host.tld:owner/repo`, or an absolute local path), and the clone remote is derived from it: HTTPS for a hosted name, the SSH remote or path as declared. Read it with GET /api/projects/:id/config and write it with PUT /api/projects/:id/config { baseRevision, document }.",
   workspaceSetup:
     "`workspaceSetup` is not a project field: how a checkout is brought to a buildable state is the project document's `workspace.setup`. Read it with GET /api/projects/:id/config and write it with PUT /api/projects/:id/config { baseRevision, document }.",
   repoPath:

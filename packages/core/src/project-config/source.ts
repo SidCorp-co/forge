@@ -1,5 +1,13 @@
+import { parseRepository } from '@forge/contracts/git-repository';
 import type { ProjectDocument } from './schema.js';
 import { readProjectDocument } from './service.js';
+
+export {
+  hostOf,
+  parseRepository,
+  type RepositoryRef,
+  repositoryIdentity,
+} from '@forge/contracts/git-repository';
 
 export function repositoryOf(document: ProjectDocument | null | undefined): string | null {
   return document?.source.type === 'git' ? document.source.git.repository : null;
@@ -13,15 +21,16 @@ function setupOf(document: ProjectDocument | null | undefined): string | null {
   return document?.workspace.setup ?? null;
 }
 
+/** Where a checkout clones from: https for a hosted name, the SSH remote or local path as declared. */
 export function remoteOf(repository: string): string {
-  const slash = repository.indexOf('/');
-  const host = repository.slice(0, slash);
-  const path = repository.slice(slash + 1);
-  return `https://${host}/${path}.git`;
+  const ref = parseRepository(repository);
+  return ref.kind === 'hosted' ? `https://${ref.host}/${ref.path}.git` : repository;
 }
 
-export function webUrlOf(repository: string): string {
-  return `https://${repository}`;
+/** The repository's page on its host; null for a local path, which has none. */
+export function webUrlOf(repository: string): string | null {
+  const ref = parseRepository(repository);
+  return ref.kind === 'local' ? null : `https://${ref.host}/${ref.path}`;
 }
 
 interface DeclaredSource {

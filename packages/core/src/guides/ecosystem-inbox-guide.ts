@@ -65,8 +65,11 @@ change notice owes nothing and is not listed; read it in \`GET /api/projects/:id
 ### Working a builder run
 Joining an ecosystem opens a builder run for the joining project (trigger \`joined\`), and a push to its
 default branch opens another (trigger \`push\`, at the pushed commit) once the last one is finished.
-A git project's joined run names its default branch's head as its host reports it; where that head
-cannot be read the join is refused \`BUILDER_RUN_HEAD_UNREADABLE\` and nothing opens. A storefront
+A git project's joined run names its default branch's head as its host binding reports it, or, with
+no host binding (or a local-path repository), as a connected box reads it from its bound checkout
+with its own git access; the trigger's \`head\` says which (\`via\`), on which \`ref\`, and when
+(\`readAt\`). Where neither can read it the join is refused \`BUILDER_RUN_HEAD_UNREADABLE\`, naming
+both ways out, and nothing opens. A storefront
 project has no commit, so its trigger is \`{ sha: null, source: "storefront" }\`.
 Links go out from the project: the run maps what THIS project's own code uses, never what others use
 of it. Where that code lives is the project document's \`source.type\`, and it decides the run's steps

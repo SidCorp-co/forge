@@ -9,7 +9,7 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
-import { patchDeviceRunnerCheckout } from '../runners/index.js';
+import { answerCheckoutHead, patchDeviceRunnerCheckout } from '../runners/index.js';
 import { annotateDeviceBuilds } from './build-state.js';
 import { heartbeatGate, withDeviceGate } from './gate-report.js';
 import { heartbeatPatch } from './heartbeat-patch.js';
@@ -299,6 +299,42 @@ deviceAuthRoutes.post(
     }
 
     return c.json(runner);
+  },
+);
+
+// Device → server: the head a box read from its bound checkout, answering `checkout.head.read`.
+// Settled only for the box it was asked of; the reading is checked in `runners/checkout-head.ts`.
+const checkoutHeadAnswerSchema = z
+  .object({
+    projectId: z.uuid(),
+    sha: z.string().max(80).optional(),
+    ref: z.string().max(300).optional(),
+    readAt: z.string().max(40).optional(),
+    via: z.string().max(40).optional(),
+    origin: z.string().max(1000).optional(),
+    error: z.string().trim().min(1).max(2000).optional(),
+  })
+  .strict();
+
+deviceAuthRoutes.post(
+  '/me/checkout-heads/:requestId',
+  requireDevice(),
+  zValidator('param', z.object({ requestId: z.uuid() })),
+  zValidator('json', checkoutHeadAnswerSchema),
+  async (c) => {
+    const { requestId } = c.req.valid('param');
+    const outcome = answerCheckoutHead(c.get('device').id, requestId, c.req.valid('json'));
+    if (outcome.ok) return c.json({ settled: true });
+    if (outcome.code === 'CHECKOUT_HEAD_NOT_ASKED') {
+      throw refuseDevice(
+        outcome.code,
+        `no head read ${requestId} is waiting on this box: it was never asked, it was asked of another box or project, or the wait ended`,
+      );
+    }
+    throw refuseDevice(
+      outcome.code,
+      `the head read ${requestId} was answered with what names no head: ${outcome.detail}`,
+    );
   },
 );
 
