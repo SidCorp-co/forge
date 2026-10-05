@@ -36,6 +36,7 @@ import { OnboardingHint } from "@/features/onboarding/components/onboarding-hint
 import { useProjectRuns, useStepDurations } from "@/features/pipeline/hooks";
 import { useProjectHealth, useProjects } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
+import { canManageProject } from "@/features/projects/write-access";
 import { useActiveRunners, useProjectRunners } from "@/features/runners/hooks";
 import { useProjectDocument } from "@/features/project-settings/config-hooks";
 import { SystemOverviewRegion } from "@/features/workflows/components/system-overview";
@@ -201,7 +202,7 @@ export default function ProjectOverviewPage() {
             slug={project.slug}
             projectName={project.name}
             projectDocument={projectDocumentQ.data}
-            canEdit={project.role === "admin"}
+            canEdit={canManageProject(project.role)}
             variant="compact"
           />
         ) : null}

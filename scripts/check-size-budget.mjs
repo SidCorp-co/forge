@@ -19,7 +19,6 @@ const FN_RULE = 'lint/complexity/noExcessiveLinesPerFunction';
 
 function collect(scopes) {
   const measured = new Map();
-  let sawAnyDiagnostic = false;
   let scanned = 0;
 
   const missing = absentPrerequisites(ROOT, ['deps']);
@@ -30,7 +29,6 @@ function collect(scopes) {
     if (error) return { error };
 
     const diags = parsed.diagnostics ?? [];
-    if (diags.length > 0) sawAnyDiagnostic = true;
     scanned += (parsed.summary?.changed ?? 0) + (parsed.summary?.unchanged ?? 0);
 
     for (const d of diags) {
@@ -46,8 +44,9 @@ function collect(scopes) {
     }
   }
 
-  if (!sawAnyDiagnostic)
-    return { error: 'biome reported zero diagnostics — the scope matched nothing' };
+  // Zero diagnostics over scanned files is a clean scope; zero files scanned is a scope that
+  // matched nothing, and only that is refused.
+  if (scanned === 0) return { error: 'biome scanned zero files — the scope matched nothing' };
   return { measured, scanned };
 }
 

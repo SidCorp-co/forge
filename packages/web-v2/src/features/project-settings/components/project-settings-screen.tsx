@@ -20,6 +20,7 @@ import {
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import { useProject, useProjectsIncludingArchived } from "@/features/projects/hooks";
 import type { ProjectDetail, ProjectListItem } from "@/features/projects/types";
+import { canManageProject, isOrgAdmin } from "@/features/projects/write-access";
 import { ProjectRunnersScreen } from "@/features/runners/components/project-runners-screen";
 import { formatApiError } from "@/lib/api/error";
 import { useTabParam } from "@/lib/utils/use-tab-param";
@@ -76,8 +77,8 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 	if (!listItem || !project) return null;
 	// Settings-level edits require org owner/admin on the project's org; member
 	// and label management only needs the effective project admin role.
-	const canEdit = listItem.orgRole === "owner" || listItem.orgRole === "admin";
-	const isProjectAdmin = listItem.role === "admin";
+	const canEdit = isOrgAdmin(listItem.orgRole);
+	const isProjectAdmin = canManageProject(listItem.role);
 	const canManage = canEdit || isProjectAdmin;
 
 	return (

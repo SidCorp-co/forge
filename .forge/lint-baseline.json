@@ -1,171 +1,30 @@
 {
-  "generatedAt": "2026-08-26T21:34:35.210Z",
+  "generatedAt": "2026-10-05T14:14:49.124Z",
   "original": {
     "packages/web-v2": 226,
     "packages/core": 280
   },
   "files": {
-    "packages/core/src/auth/oauth/handler.ts": {
-      "lint/complexity/useOptionalChain": 1,
-      "lint/style/noNonNullAssertion": 2
-    },
-    "packages/core/src/auth/reauth.ts": {
-      "lint/complexity/useOptionalChain": 1
-    },
-    "packages/core/src/devices/login-routes.ts": {
-      "lint/style/noNonNullAssertion": 5
-    },
-    "packages/core/src/integrations/deploy/coolify/circuit-breaker.ts": {
-      "lint/complexity/useOptionalChain": 1
-    },
-    "packages/core/src/integrations/queue.ts": {
-      "lint/complexity/useOptionalChain": 3,
-      "lint/suspicious/noExplicitAny": 1
-    },
-    "packages/core/src/integrations/rocketchat/connection-manager.ts": {
-      "lint/complexity/useOptionalChain": 1
-    },
-    "packages/core/src/integrations/sentry/resolver.ts": {
-      "lint/complexity/useOptionalChain": 1
-    },
-    "packages/core/src/issues/extras-routes.ts": {
-      "lint/style/noNonNullAssertion": 3
-    },
-    "packages/core/src/metrics/queries.ts": {
-      "lint/complexity/useOptionalChain": 1
-    },
-    "packages/core/src/runners/limit-detect.ts": {
-      "lint/complexity/noUselessStringRaw": 1,
-      "lint/style/noNonNullAssertion": 2
-    },
-    "packages/core/src/runners/routes.ts": {
-      "lint/complexity/useOptionalChain": 1
-    },
-    "packages/core/src/runners/stale-detector.ts": {
-      "lint/suspicious/noExplicitAny": 3
-    },
-    "packages/core/src/skills/service.ts": {
-      "lint/complexity/useOptionalChain": 1
-    },
-    "packages/web-v2/src/app/(workspace)/layout.tsx": {
-      "lint/correctness/useExhaustiveDependencies": 2
-    },
-    "packages/web-v2/src/design/patterns/command-palette.tsx": {
-      "lint/a11y/noStaticElementInteractions": 1,
-      "lint/a11y/useKeyWithClickEvents": 2,
-      "lint/style/noNonNullAssertion": 2
-    },
-    "packages/web-v2/src/design/patterns/forge-mascot.tsx": {
-      "lint/a11y/noSvgWithoutTitle": 1,
-      "lint/performance/noImgElement": 3,
-      "lint/suspicious/noArrayIndexKey": 1
-    },
-    "packages/web-v2/src/design/patterns/markdown.tsx": {
-      "lint/performance/noImgElement": 1
-    },
-    "packages/web-v2/src/design/patterns/mascot-loaders.tsx": {
-      "lint/performance/noImgElement": 3
-    },
-    "packages/web-v2/src/design/patterns/menu.tsx": {
-      "lint/a11y/noStaticElementInteractions": 1,
-      "lint/a11y/useAriaPropsSupportedByRole": 1,
-      "lint/a11y/useButtonType": 1,
-      "lint/a11y/useKeyWithClickEvents": 1
-    },
-    "packages/web-v2/src/design/patterns/nav-rail.tsx": {
-      "lint/a11y/noStaticElementInteractions": 1,
-      "lint/complexity/useOptionalChain": 1,
-      "lint/performance/noImgElement": 1
-    },
-    "packages/web-v2/src/design/patterns/notifications-menu.tsx": {
-      "lint/a11y/noStaticElementInteractions": 1,
-      "lint/a11y/useSemanticElements": 1
-    },
-    "packages/web-v2/src/design/patterns/slide-over.tsx": {
-      "lint/a11y/noStaticElementInteractions": 1,
-      "lint/a11y/useKeyWithClickEvents": 2
-    },
-    "packages/web-v2/src/design/primitives/checkbox.tsx": {
-      "lint/a11y/noLabelWithoutControl": 1,
-      "lint/a11y/useSemanticElements": 1
-    },
-    "packages/web-v2/src/design/primitives/divider.tsx": {
-      "lint/a11y/useAriaPropsForRole": 1,
-      "lint/a11y/useFocusableInteractive": 1,
-      "lint/a11y/useSemanticElements": 1
-    },
-    "packages/web-v2/src/design/primitives/radio.tsx": {
-      "lint/a11y/useSemanticElements": 1
-    },
-    "packages/web-v2/src/design/primitives/select.tsx": {
-      "lint/a11y/noNoninteractiveElementToInteractiveRole": 2,
-      "lint/a11y/useFocusableInteractive": 1,
-      "lint/a11y/useKeyWithClickEvents": 1
-    },
-    "packages/web-v2/src/design/primitives/tabs.tsx": {
-      "lint/a11y/useButtonType": 1
-    },
-    "packages/web-v2/src/design/primitives/toast.tsx": {
-      "lint/a11y/noStaticElementInteractions": 1
-    },
-    "packages/web-v2/src/design/primitives/tooltip.tsx": {
-      "lint/a11y/noStaticElementInteractions": 1
-    },
-    "packages/web-v2/src/design/skeletons/index.tsx": {
-      "lint/suspicious/noArrayIndexKey": 1
-    },
-    "packages/web-v2/src/features/attention/components/attention-screen.tsx": {
-      "lint/suspicious/noArrayIndexKey": 1
-    },
     "packages/web-v2/src/features/auth/components/auth-shell.tsx": {
       "lint/performance/noImgElement": 1
     },
     "packages/web-v2/src/features/auth/components/password-meter.tsx": {
       "lint/suspicious/noArrayIndexKey": 1
     },
-    "packages/web-v2/src/features/docs/components/docs-screen.tsx": {
-      "lint/correctness/useExhaustiveDependencies": 1
-    },
-    "packages/web-v2/src/features/feedback/components/feedback-screen.tsx": {
-      "lint/suspicious/noArrayIndexKey": 1
-    },
-    "packages/web-v2/src/features/integrations/components/integrations-screen.tsx": {
-      "lint/a11y/useSemanticElements": 1
-    },
-    "packages/web-v2/src/features/integrations/hooks.ts": {
-      "lint/complexity/useOptionalChain": 1,
-      "lint/correctness/noUnusedImports": 1
-    },
     "packages/web-v2/src/features/issues/components/attachment-list.tsx": {
       "lint/performance/noImgElement": 1
-    },
-    "packages/web-v2/src/features/issues/components/comment-thread.tsx": {
-      "lint/a11y/noStaticElementInteractions": 1,
-      "lint/suspicious/noArrayIndexKey": 2
     },
     "packages/web-v2/src/features/issues/components/image-lightbox.tsx": {
       "lint/a11y/noStaticElementInteractions": 4,
       "lint/a11y/useKeyWithClickEvents": 3,
       "lint/performance/noImgElement": 2
     },
-    "packages/web-v2/src/features/issues/components/issue-row-actions.tsx": {
-      "lint/a11y/noStaticElementInteractions": 1,
-      "lint/correctness/noUnusedImports": 1
-    },
-    "packages/web-v2/src/features/issues/components/issue-table-row.tsx": {
-      "lint/correctness/noUnusedFunctionParameters": 1
-    },
     "packages/web-v2/src/features/issues/components/issues-list-view.tsx": {
       "lint/suspicious/noArrayIndexKey": 1
     },
     "packages/web-v2/src/features/issues/components/new-issue-dialog.tsx": {
-      "lint/a11y/noStaticElementInteractions": 1,
       "lint/correctness/useExhaustiveDependencies": 1,
-      "lint/suspicious/noArrayIndexKey": 2,
       "lint/suspicious/noImplicitAnyLet": 1
-    },
-    "packages/web-v2/src/features/issues/components/properties-rail.tsx": {
-      "lint/style/noNonNullAssertion": 1
     },
     "packages/web-v2/src/features/operator/components/operator-topbar.tsx": {
       "lint/a11y/noNoninteractiveTabindex": 1
@@ -173,37 +32,11 @@
     "packages/web-v2/src/features/overview/components/overview-screen.tsx": {
       "lint/suspicious/noArrayIndexKey": 1
     },
-    "packages/web-v2/src/features/pipeline/components/ops-monitor.tsx": {
-      "lint/suspicious/noArrayIndexKey": 2
-    },
-    "packages/web-v2/src/features/pipeline/components/run-detail.tsx": {
-      "lint/correctness/noUnusedVariables": 1,
-      "lint/suspicious/noArrayIndexKey": 2
-    },
-    "packages/web-v2/src/features/pipeline/types.ts": {
-      "lint/style/useImportType": 1
-    },
-    "packages/web-v2/src/features/project-settings/components/labels-tab.tsx": {
+    "packages/web-v2/src/features/session/components/context-rail.tsx": {
       "lint/style/noNonNullAssertion": 1
     },
-    "packages/web-v2/src/features/projects/components/member-stack.tsx": {
-      "lint/suspicious/noArrayIndexKey": 1
-    },
-    "packages/web-v2/src/features/projects/components/new-project-dialog.tsx": {
-      "lint/correctness/useExhaustiveDependencies": 2
-    },
-    "packages/web-v2/src/features/projects/components/projects-console.tsx": {
-      "lint/suspicious/noArrayIndexKey": 1
-    },
-    "packages/web-v2/src/features/runners/components/project-runners-screen.tsx": {
-      "lint/correctness/noUnusedImports": 1
-    },
-    "packages/web-v2/src/features/session/components/context-rail.tsx": {
-      "lint/style/noNonNullAssertion": 1,
-      "lint/suspicious/noArrayIndexKey": 1
-    },
     "packages/web-v2/src/features/session/components/conversation.tsx": {
-      "lint/suspicious/noArrayIndexKey": 3
+      "lint/suspicious/noArrayIndexKey": 1
     },
     "packages/web-v2/src/features/session/components/tool-card.tsx": {
       "lint/correctness/noUnusedFunctionParameters": 1,
@@ -213,15 +46,6 @@
       "lint/correctness/useExhaustiveDependencies": 1
     },
     "packages/web-v2/src/features/sessions/components/sessions-screen.tsx": {
-      "lint/suspicious/noArrayIndexKey": 1
-    },
-    "packages/web-v2/src/features/sessions/types.ts": {
-      "lint/complexity/noUselessSwitchCase": 2
-    },
-    "packages/web-v2/src/features/settings/components/mcp-tab.tsx": {
-      "lint/suspicious/noArrayIndexKey": 1
-    },
-    "packages/web-v2/src/features/settings/components/notifications-tab.tsx": {
       "lint/suspicious/noArrayIndexKey": 1
     },
     "packages/web-v2/src/features/shell/nav-rail-compact.tsx": {

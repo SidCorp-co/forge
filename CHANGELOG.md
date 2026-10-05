@@ -28,6 +28,11 @@
   `scripts/verify-window.mjs` and `.forge/verify-queue.json` are removed: dev merges locally and
   runs the whole gate on the merged tree.
 
+### Fixed
+
+- **The size budget refuses only a scope that scanned no files.** A clean scope, like
+  `packages/core` now that its lint debt drained to zero, passes instead of refusing every verify.
+
 ## [0.4.0-dev.33] - 2026-10-05
 
 Dead routes and unread data removed; unknown API filters are refused, not ignored
