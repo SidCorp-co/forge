@@ -183,9 +183,14 @@ Mockups on requirements, feedback and issues; automation and run states read cle
 
 ### Added
 
-- **A requirement, a feedback item or an issue can carry mockups (ISS-78).** A mockup accepted by
-  someone other than its author is pinned with the requirement and given to jobs built from it;
-  no_egress projects withhold it from agents.
+- **A requirement, a feedback item or an issue can carry mockups (ISS-78).** A wireframe board, a
+  sketch, an image, an HTML page or an API example is proposed as MK-n about exactly one target
+  (`POST /api/projects/:id/mockups`, `forge_mockups`, the BA assistant's `ba_draw_mockup`, the
+  Mockups tab and the chat board's Propose). A person other than its author accepts it, or any
+  person returns it with a reason. The next agree or re-pin of a requirement pins its accepted
+  mockups beside the designs, and every job on an issue built from it, or on the issue a mockup was
+  accepted on, is given each one with its fetch. Bytes never change once proposed, and on a
+  no_egress project they are withheld from agents (surface `mockup.content`).
 
 ## [0.4.0-dev.1] - 2026-10-04
 
@@ -199,8 +204,11 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   next request. No token can change a fence.
 
 - **An older token is refused a project's agent sessions, runners and usage reports wherever they are
-  served (ISS-105).** Project- and issue-nested routes now refuse it as their own routes do; runner
-  load stays readable for the forge CLI.
+  served (ISS-105).** A route nested under a project or issue now takes the age of the data it serves,
+  so a token made before agent sessions, pipeline reports, usage or runners could be granted is refused
+  them under `/api/projects/:id/…` and `/api/issues/:id/cost-summary` as it already was at their own
+  routes, and the project timeseries MCP tool with them. Runner load stays readable for now, because
+  the forge CLI still reads it there.
 
 - **A token's permissions now bound what it can do over MCP too.** A token granted only
   `issues:read` could call every MCP tool its owner's role allowed; a call outside its grant is
@@ -208,8 +216,9 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
 - **Over MCP, a token limited to some projects can no longer create projects or read
   organisations**, and an older token reaches only what existed when it was made, as on the API.
 - **An older token is refused the same MCP tools it is refused on the API.** Agent sessions and the
-  duration, retry and failure reports now match their API routes, and assistant chat applies the same
-  checks.
+  step-duration, retry and session-failure reports now answer a token made before they could be
+  granted as their API routes do. Assistant chat applies the same checks, so a person's token
+  limited to projects can no longer change their reply preferences from a room.
 
 - **An agent session you start from the web acts as you, not as whoever paired the box.** Each
   turn carries a short-lived token for its sender, never wider than the box owner's. Viewers and
@@ -336,13 +345,16 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   each release is `0.4.0-dev.1`, `0.4.0-dev.2` and so on. Dev releases carry such a version in
   `/api/version` and the sidebar, tagged `dev-v…`.
 
-- **A reviewer can revise a proposed suggestion instead of rejecting it whole (ISS-117).** The
-  original is rejected with a reason and the edit proposed as the reviewer's own, which somebody else
-  must accept.
+- **A reviewer can revise a proposed suggestion instead of rejecting it whole (ISS-117).**
+  `POST /api/projects/:id/suggestions/:sid/revise { payload, reason }` (and `forge_suggestions`
+  `revise`) rejects the original with the reason and proposes the edited payload as the reviewer's
+  own suggestion, naming the one it revises; the reviewer cannot then accept it, somebody else does.
 
 - **A breakdown files its issues sized and held by their design (ISS-117).** Each item carries a
-  complexity and may name its pinned design, which the build gate holds it to; a missing complexity or
-  unpinned design is refused.
+  complexity, and may carry a priority, a category and the pinned design it builds; accepting it
+  writes them and links each issue as that design's build, so the build gate holds it. A missing
+  complexity, a design the baseline does not pin, or none named when several are pinned is refused
+  by name; priority and category default, and the answer says which did.
 
 - **Guides for requirements, suggestions and feedback triage (ISS-90).** The tools for them cite
   these public guides instead of designs only Forge's own project could read, as do the issue
@@ -365,9 +377,9 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   issue, a dismissal needs a reason, and a scheduled run's report links that run. Improvements
   shows triage and offers Dismiss.
 
-- **Every schedule run is one row in its history (ISS-112).** Each records how it started, ended and
-  why, linking its session; a run skipped for want of a box counts toward the failing-automation
-  alert.
+- **Every schedule run is one row in its history (ISS-112).** A run of any kind records how it
+  started, ended and why, and links its session; older runs are rebuilt. A run skipped for want of a
+  box now counts toward the failing-automation alert.
 
 - **A run nothing moves reads Stuck, from core (ISS-109).** After 3 min of silence, a lapsed claim or
   a box and core disagreeing, a live run reads `stuck` with its rule and evidence; the Agents runs pane
@@ -380,9 +392,10 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   its state, holder and when its hold ends, what it waits on, its outcome and attempt; master pass
   history pages at `masters/passes`, both also over MCP.
 
-- **The menu counts what waits on you.** Requirements, Releases, Feedback, Issues and Contracts each
-  show how many rows wait on you, and the dashboard shows requirements in delivery and untriaged
-  feedback.
+- **The menu counts what waits on you.** Requirements, Releases, Feedback, Issues and Contracts
+  each show how many rows wait on you, with what they wait for in a tooltip, and the dashboard shows
+  requirements in delivery and untriaged feedback. All come from `GET /api/projects/:id/needs-you`,
+  which counts each list's own waiting-on-you group.
 
 - **A notification reads as its key and one line.** The bell shows the record it names, a one-line
   summary and its type as a badge; the long body opens under Details.
@@ -391,9 +404,12 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   closes when you change page unless pinned, and past conversations replace the chat, grouped Project
   and This page, each with its status.
 
-- **Development has a Modules list and a page for each module.** The list groups modules by what needs
-  you, moves or is stuck; a module's page shows its open and landed work, paths, couplings and linked
-  items.
+- **Development has a Modules list and a page for each module.** The list groups modules by what
+  needs you, what is moving and what is stuck, or as a tree, and a click opens a peek. A module's
+  page shows what is open in it, what landed, the paths and couplings its knowledge entry records
+  and the issues, requirements and feedback that touch it, from `GET /api/projects/:id/modules/rollup`
+  and `GET /api/projects/:id/modules/:module/detail`. Owner and contracts say "Not available": a
+  module records neither.
 
 - **Development has an Overview page.** It shows what is running, what is stuck and what waits on
   you, from one read, `GET /api/projects/:id/development/overview`. CI and post-merge say "Not
@@ -417,17 +433,23 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   line saying whom it waits on, Approve in its header, tabs, and a rail naming its requirements and
   build gate, read from core.
 
-- **Releases is a release train and a page of its own.** A release shows whom it waits on, its
-  requirements and criteria, with Approve and Return in its header; a refused gate reads as a
-  sentence.
+- **Releases is a release train and a page of its own.** A release shows whom it waits on, the
+  requirements it completes and each issue's criteria, with Approve release and Return with reason
+  in its header; a refused gate reads as a sentence, its code behind a tooltip. Release refusals
+  now agree with their count ("1 issue has no release note") and name at most five issues.
 
 - **A storefront project's work can be judged on an unpublished draft.** A verdict names an Autoflow
-  workflow, draft version and preview environment; only a draft Forge confirms counts toward
-  `awaiting_release`.
+  workflow, its draft version and a preview environment; Forge reads the draft back, and only a
+  confirmed draft counts toward `awaiting_release`, never on a git project.
 
-- **An issue can wait on another project's contract version.** It is not dispatched, nor released to
-  production, until the provider approves and serves that version. Approving a breaking version files
-  a contract-change feedback item per consumer.
+- **An issue can wait on another project's contract version.** `POST /api/issues/:id/contract-waits`
+  or `forge_ecosystem contract_wait_add` with `<provider>/<contract> >= version`: the issue is not
+  dispatched until the provider approves that version or a later one, and a production release that
+  carries it is refused `CONTRACT_PROVIDER_NOT_LIVE` until the provider's production serves it (an
+  ecosystem can turn that off with `releases.providerLive: "off"`). A published change request lands
+  in the provider as a draft requirement (`/api/projects/:id/contract-requests`). Approving a
+  breaking version files one contract-change feedback item per consumer, due by the provider's notice
+  window; any other version only notifies them.
 - **Workflows opens on what the system is.** On the left, a one-line description, key facts with
   detail on hover, and the system-context design on a pannable canvas; on the right, every design
   grouped by purpose. The dashboard shows it too.
@@ -438,35 +460,48 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   each is confirmed; zoom in to show them all.
 - **A system-context design is drawn on the same canvas as every other design**, with the same
   minimap, zoom, search, side panel and walk-through, for both its Context and Containers views.
-- **A new project can be onboarded in a chat thread.** The agent reads the code, drafts key designs
-  for approval and asks what it cannot tell in one questionnaire card, at most three rounds.
+- **A new project can be onboarded in a chat thread.** The agent reads the code, drafts the key
+  designs for your approval and asks what it cannot tell in one questionnaire card,
+  at most three rounds. The BA assistant asks through the same card.
 - **A project sets the language agents write its prose in.** Project settings → Basics, or
   `PUT /api/projects/:id/content-language`: requirements, comments, suggestions, plans and assistant
   replies follow it; code, commits and PR titles stay English. Each session records what it was
   told.
-- **Assistant output waits for a person as a suggestion.** A person accepts or rejects it; a moved
-  base makes it stale. A requirement room gets a read-only BA assistant, and the requirement page
-  lists waiting suggestions.
+- **Assistant output waits for a person as a suggestion.** `/api/projects/:id/suggestions` and
+  `forge_suggestions` hold six kinds of proposed change against a base revision; a person accepts or
+  rejects it, a moved base makes it stale (`SUGGESTION_BASE_STALE`), at most 5 wait per target, and
+  accepting a revision suggestion writes a draft, never a current revision. A room opened about a
+  requirement is answered by a BA assistant that can only read, suggest and ask one question. The
+  requirement page lists waiting suggestions with Accept and Reject.
 - **An issue's criteria and verdicts are rows.** `GET`/`PUT /api/issues/:id/criteria`, `POST
   /api/issues/:id/verdicts` and `forge_criteria`; a verdict names a whole commit, runtime, design or
   contract, and `skipped` needs a reason and never passes. The issue page shows each verdict.
 - **A job that builds a workflow is given the design its approver approved**, and records which
   revision it saw. An unreadable design refuses the job (`ARTIFACT_CONTEXT_UNLOADABLE`); a large
   one is trimmed, saying what was cut.
-- **A project can require release approval.** With `release.approval.required: true`, a release batch
-  cannot deploy, promote, verify or finish until an admin other than its asker approves it.
-- **A project can run on Autoflow (Sidcorp Auto) with no git repository.** Bind a site by slug and
-  OAuth token; runs reach it through the shop MCP, and `forge_storefront_target` reports its workflows
-  and routes.
-- **Joining an ecosystem gives the joining project's master its first piece of work.** A builder run
-  maps what the project's code uses, and names every declared consumption no code calls; each push
-  opens the next.
+- **A project can require release approval.** Set `release.approval.required: true` in the
+  project document and every deploy, promote, verify and finish of a release batch is refused
+  (`RELEASE_APPROVAL_REQUIRED`) until an admin other than the one who asked approves it; an
+  approval given by its own asker is refused (`RELEASE_APPROVAL_SELF`). The Releases screen shows
+  such a batch as awaiting approval from the moment it is cut.
+- **A project can run on Autoflow (Sidcorp Auto) with no git repository.** Bind a site by its
+  slug and the OAuth access token minted for it; runs reach the site and its Backend Builder flows
+  through the shop MCP, and `forge_storefront_target` reports the site with its workflows and
+  routes read live. A project document naming a storefront provider its binding is not, or a git
+  project deploying through an Autoflow binding, is refused by name.
+- **Joining an ecosystem gives the joining project's master its first piece of work.** Accepting
+  an invitation opens a builder run that maps what the project's code uses, and a push to its
+  default branch opens the next. The master is woken for it with an empty backlog, records each
+  step, finding and link it writes, and a finished run names every declared consumption no code
+  calls. A second open run, or a write from anyone but the project's own agent, is refused by name.
 - **A project's master answers its ecosystem inbox.** A document owed a reply wakes the master
   even with no open issue. Masters and runs reach the channel, interface and links over MCP,
   authored by their own token.
-- **An ecosystem's page is a map of its members and contracts.** One column per project, one line per
-  contract, a state-coloured chip per link; Impact shows which consumers a contract reaches, and
-  selecting anything opens its detail.
+- **An ecosystem's page is a map of its members and contracts.** One column per project, one line
+  per contract, and a chip per link coloured by its state, with builder progress in each column's
+  header. Impact shows which consumers a contract reaches; selecting anything opens its detail,
+  a link's call sites, fields and notes included. Threads name which master drafted each document,
+  and a conversation can be held from its row.
 - **Releases lists a project's versions.** Each version shows its changelog from release notes
   and its deploy attempts, each opening its log in place. Issues waiting at the release gate
   show as the next version, ready to cut.
@@ -3547,12 +3582,18 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
 
 ### Fixed
 
-- **An onboarding job ends done when its agent posts its last act, and an answer sent right after it
-  is read.** It no longer lingers until the runner marks it failed.
+- **An onboarding job ends done when its agent posts its last act, and an answer sent right after
+  it is read.** The questionnaire or the hand-over that ends a phase now settles the job that ran it.
+  Before, nothing did: the runner concluded the job failed a quarter hour after the agent stopped,
+  and a person who answered the questionnaire inside that window found the job still live, so no job
+  ever read the answers.
 
 - **Onboarding reads the project's code as it is on its default branch, not as a runner's checkout
-  last left it.** Drafts no longer describe a stale tree, and code-map entries get slugs the knowledge
-  store accepts.
+  last left it.** The analysis job opened in the device binding's checkout and read it as it stood,
+  which on the forge project was 519 commits behind, so the drafts described a product that no
+  longer existed. The job now fetches and reads the tree at `origin/<source.git.defaultBranch>` in
+  a worktree of its own. Its code-map entries are also named `onboarding-code-map-<section>`, a slug
+  the knowledge store accepts; the prompt asked for a slashed one it refuses.
 
 - **Rewriting a draft requirement revision keeps the BC codes the draft already holds (ISS-117).**
   Sending back the criteria read from the draft used to be refused `CRITERION_CODE_UNKNOWN`.
@@ -3561,9 +3602,12 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   used to read as already applied. A release batch skipped for want of a release gate now names
   `NO_RELEASE_GATE`.
 
-- **A blocked issue can no longer be claimed directly (ISS-104).** A claim, run session, pool job or
-  move to in progress refuses it, naming each issue it waits on. A dependency on a dropped issue holds
-  nothing.
+- **A blocked issue can no longer be claimed directly (ISS-104).** The list a master reads already held back an
+  issue waiting on another, but taking it by hand still worked: a claim, a run session, a pool job
+  and the move to in progress now each refuse it, naming every issue it waits on and why that one
+  has not finished (its status, or a design revision not yet approved). A person is refused as an
+  agent is; retract the dependency on the record if it no longer holds. A dependency on a dropped
+  issue holds nothing, in the list and at every door alike.
 
 - **A storefront-draft verdict counts only while the storefront still holds that draft (FB-56).**
   A moved draft now reads `superseded`, an unreadable one `uncorroborated`, and both are refused at
@@ -3592,9 +3636,11 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   record. A client posting one is refused by name, and none can be edited or deleted afterwards.
 - **A `forge_uploads` fetch carries the text it inlines in its structured answer.** A client reading
   the structured result no longer sees `inlined: true` with the body missing.
-- **One rule decides what an agent may read on a sensitive project.** Work records reach agents
-  scrubbed; feedback and assistant conversations are withheld on no-egress projects, whichever door; a
-  read no rule names is refused.
+- **One rule decides what an agent may read on a sensitive project.** Requirements, designs, issues,
+  criteria, comments and onboarding answers reach agents at every level, scrubbed on a redact or
+  no-egress project; feedback, its attachments and comments, and assistant conversations with people
+  are withheld on a no-egress project, whichever door the agent reads through. A read that no rule
+  names is refused rather than let through.
 - **A requirement can be held to its readiness result.** `requirements.readinessGate` in the project
   config is `off`, `warn` or `block`: `warn` records the result on the baseline, `block` refuses an
   agree without a ready result. Off by default.
@@ -3621,14 +3667,19 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
 - **A requirement reads delivered only once every criterion is proven**, names issues planned
   against an older revision and drafts nobody promoted, and keeps each return's own time and signer.
 
-- **A write made with a paired box's token is recorded as an agent's, with the person who paired it
-  kept behind it.** A person's own token stays the person; a record not saying who acted is refused.
-- **An issue's history records what each edit changed, not a copy of the fields it touched.** An edit
-  that changes nothing records nothing, existing history is converted, and MCP edits now appear.
+- **A write made with a paired box's token is recorded as an agent's, with the person who paired
+  it kept behind it.** It used to read as that person on the issue's creator, its activity, its
+  status history and its comments, so a person's box looked like the person typing and its comments
+  sat in the reply-owed inbox. A person's own token and browser session stay the person. A record
+  that does not say who acted is now refused instead of being written as a person.
+- **An issue's history records what each edit changed, not a copy of the fields it touched.** A
+  lease renewal used to copy the whole session context twice into every row; it now records the
+  one key it moved, and an edit that changes nothing records nothing. Existing history is
+  converted in place. Edits made over MCP now appear in the history too.
 
-- **`forge-runner bind --path` installs the git credential helper**, as `--clone` does, so an existing
-  checkout authenticates over HTTPS. An `origin` on a host other than the project's is refused by
-  name.
+- **`forge-runner bind --path` installs the git credential helper**, as `--clone` always did, so
+  an existing checkout authenticates over HTTPS with the credential Forge mints for its host. A
+  checkout whose `origin` is on another host than the project declares is refused by name.
 - **The Integrations page names a GitLab repository GitLab.** The repository card was keyed and
   labelled GitHub whatever host the repository lived on.
 
@@ -6658,9 +6709,12 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
 - **MCP lists and writes answer a summary, not the whole document.** Requirements, workflows and
   suggestions list summaries and answer a write with what it changed; `view: 'full'` returns the
   body, and `view: 'steps'` reads a design's steps by range.
-- **A refusal reads the same everywhere.** Refused sign-offs, design decisions and ecosystem writes
-  now answer 422 with `error.code` and its refusals, over MCP and on the web too; a fenced read stays
-  403.
+- **A refusal reads the same everywhere.** A refused requirement sign-off or design decision now
+  answers 422 with `error.code` and its refusals, like every other refusal; MCP returns that same
+  body, and the web shows its reason. Ecosystem writes refused for who is acting (a link, an
+  interface, a contract publish or decision, a channel write, a builder supersede) moved from 403 to
+  that 422 too; a read you are fenced from stays 403. A builder supersede by an agent now needs
+  member on the project.
 - **An issue has ten statuses, each saying who it waits on.** Confirmed, clarified, developed,
   testing, tested, releasing and waiting are gone; how far a run got is its step. Every move is
   checked and refused by name.
