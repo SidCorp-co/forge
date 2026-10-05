@@ -576,6 +576,16 @@ surface it reads",
             let order = std::sync::atomic::Ordering::Relaxed;
             carry.stood_down_told.store(carried, order);
         }
+        // A pane that exited before its brief reached it is reported by the
+        // sweep that reads it gone, with why, as a failed nudge is: a warning
+        // here too was the line sid-desk's journal carried once per placement
+        // beside the exit (ISS-1343 criterion 8).
+        Err(e) if recovery_ports::pane_presence(&name).await == recovery::MasterPresence::Gone => {
+            tracing::debug!(
+                "[master] {}: {name} exited before its brief reached it ({e}); the sweep that reads it gone says why",
+                resolved.slug
+            );
+        }
         Err(e) => tracing::warn!("[master] {}: could not brief {name}: {e}", resolved.slug),
     }
     match resume {

@@ -148,7 +148,7 @@ fn exclude_file(repo: &Path) -> Result<PathBuf, Refused> {
 /// Append [`LINE`] unless a line already reads it, keeping every byte the
 /// file held. Opened for append rather than replaced through a rename, so a
 /// file its owner made read-only is refused rather than swapped out, and read
-/// again under an exclusive lock through the same handle, so two installs at
+/// again under [`ExcludeLock`] through the same handle, so two installs at
 /// once — a `bind` and the daemon's start sweep — add one line between them.
 /// Whether this call added the line.
 fn append_line(exclude: &Path) -> Result<bool, Refused> {
@@ -166,15 +166,15 @@ fn append_line(exclude: &Path) -> Result<bool, Refused> {
     if let Some(dir) = exclude.parent() {
         std::fs::create_dir_all(dir).map_err(refused)?;
     }
-    let mut file = std::fs::OpenOptions::new()
+    let file = std::fs::OpenOptions::new()
         .read(true)
         .append(true)
         .create(true)
         .open(exclude)
         .map_err(refused)?;
-    file.lock().map_err(refused)?;
+    let _lock = ExcludeLock::take(&file).map_err(refused)?;
     let mut held = Vec::new();
-    file.read_to_end(&mut held).map_err(refused)?;
+    (&file).read_to_end(&mut held).map_err(refused)?;
     if holds_line(&held) {
         return Ok(false);
     }
@@ -184,12 +184,84 @@ fn append_line(exclude: &Path) -> Result<bool, Refused> {
     }
     body.push_str(LINE);
     body.push('\n');
-    file.write_all(body.as_bytes()).map_err(refused)?;
+    (&file).write_all(body.as_bytes()).map_err(refused)?;
     tracing::info!(
         "[git] added `{LINE}` to {}, so what this daemon writes under .claude/ is ignored there",
         exclude.display()
     );
     Ok(true)
+}
+
+/// The byte two installs lock to exclude each other, far past any end an
+/// exclude file reaches. A Windows lock is mandatory, and `File::lock` takes
+/// the whole file there, which fails every other reader while it is held:
+/// a peer install's read (os error 33, CI run 36822688357) and git's own,
+/// for check-ignore and status. It lies inside that whole-file range, so an
+/// older build's lock and this one still exclude each other.
+#[cfg(windows)]
+const LOCK_AT: u64 = 0x7FFF_FFFF_FFFF_FFFE;
+
+/// An exclusive lock on an open exclude file, released when dropped.
+struct ExcludeLock<'a>(&'a std::fs::File);
+
+impl<'a> ExcludeLock<'a> {
+    #[cfg(not(windows))]
+    fn take(file: &'a std::fs::File) -> std::io::Result<Self> {
+        file.lock()?;
+        Ok(Self(file))
+    }
+
+    #[cfg(windows)]
+    fn take(file: &'a std::fs::File) -> std::io::Result<Self> {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::Storage::FileSystem::{LockFileEx, LOCKFILE_EXCLUSIVE_LOCK};
+        let mut at = overlapped_at(LOCK_AT);
+        // SAFETY: the handle stays open for the life of `file`, and `at` outlives the call.
+        let ok = unsafe {
+            LockFileEx(
+                file.as_raw_handle(),
+                LOCKFILE_EXCLUSIVE_LOCK,
+                0,
+                1,
+                0,
+                &mut at,
+            )
+        };
+        if ok == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(Self(file))
+    }
+}
+
+impl Drop for ExcludeLock<'_> {
+    #[cfg(not(windows))]
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
+
+    #[cfg(windows)]
+    fn drop(&mut self) {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::Storage::FileSystem::UnlockFileEx;
+        let mut at = overlapped_at(LOCK_AT);
+        // SAFETY: as in `take`; closing the handle releases the lock should this fail.
+        unsafe { UnlockFileEx(self.0.as_raw_handle(), 0, 1, 0, &mut at) };
+    }
+}
+
+#[cfg(windows)]
+fn overlapped_at(offset: u64) -> windows_sys::Win32::System::IO::OVERLAPPED {
+    use windows_sys::Win32::System::IO::{OVERLAPPED, OVERLAPPED_0, OVERLAPPED_0_0};
+    OVERLAPPED {
+        Anonymous: OVERLAPPED_0 {
+            Anonymous: OVERLAPPED_0_0 {
+                Offset: offset as u32,
+                OffsetHigh: (offset >> 32) as u32,
+            },
+        },
+        ..Default::default()
+    }
 }
 
 fn holds_line(held: &[u8]) -> bool {

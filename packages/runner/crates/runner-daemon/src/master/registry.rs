@@ -324,13 +324,13 @@ impl Masters {
     }
 
     /// Count an exit into this project's run of early exits, answering its
-    /// place in it (0 where it was not early).
+    /// place in it and the named run it ended, if any.
     pub(crate) fn count_exit(
         &self,
         project_id: &str,
         lived: Option<Duration>,
         exit: &pane_exit::Exit,
-    ) -> u32 {
+    ) -> pane_exit::Counted {
         let mut reg = self.0.lock().expect("masters poisoned");
         reg.exits
             .entry(project_id.to_string())
