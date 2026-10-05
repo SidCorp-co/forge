@@ -4,11 +4,7 @@ import { issues, type jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
-import {
-  classifyFailure,
-  closeOpenRunForIssue,
-  emitPipelineWedge,
-} from '../pipeline/index.js';
+import { classifyFailure, closeOpenRunForIssue, emitPipelineWedge } from '../pipeline/index.js';
 import {
   attributeFailureToRunner,
   detectRunnerLimit,
