@@ -3,7 +3,6 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { maybeDeriveIncremental, setSessionRuntimeState } from '../agent-sessions/index.js';
-import { db } from '../db/client.js';
 import type { JobStatus } from '../db/schema.js';
 import {
   DEVICE_POSTED_JOB_EVENT_KINDS,
@@ -11,12 +10,12 @@ import {
   sessionRuntimeStates,
 } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { publishEphemeral } from '../lib/ephemeral.js';
 import { logger } from '../lib/logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { emitEvent } from '../outbox/index.js';
 import { requireHeld } from '../permissions/index.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { readJobGate } from './job-queries.js';
@@ -187,18 +186,15 @@ jobEventsRoutes.post(
 
     const inserted = await appendJobEvents(jobId, persisted);
 
-    // Post-commit push, one outbox event per stored batch; failures bubble (fail-fast).
-    if (inserted.length > 0) {
-      await emitEvent(db, 'job.eventsAppended', {
-        projectId: job.projectId,
-        jobId,
-        events: inserted.map((row) => ({
-          seq: row.seq,
-          kind: row.kind,
-          ts: row.ts.toISOString(),
-          data: row.data,
-        })),
-      });
+    // Live log lines are ephemeral (lib/ephemeral.ts): stored above, announced without the outbox.
+    for (const row of inserted) {
+      publishEphemeral(
+        { projectId: job.projectId },
+        {
+          event: 'job.event',
+          data: { jobId, seq: row.seq, kind: row.kind, ts: row.ts, data: row.data },
+        },
+      );
     }
 
     if (job.ackedAt === null) {

@@ -2,7 +2,7 @@ import type { ChatStreamEvent } from '../integrations/llm/index.js';
 import type { AgentMessage, ContentBlock } from '../lib/agent-stream-parser.js';
 import { logger } from '../lib/logger.js';
 import {
-  publishToConversationReaders,
+  publishEphemeralToConversationReaders,
   WEB_CONVERSATION_PROGRESS_EVENT,
 } from './conversation-adapter.js';
 import { ENTRY_FLUSH_MS, TranscriptAccumulator } from './transcript-entry.js';
@@ -101,7 +101,7 @@ export class ConversationProgress {
     };
     this.#tail = this.#tail
       .then(() =>
-        publishToConversationReaders(this.conversationId, {
+        publishEphemeralToConversationReaders(this.conversationId, {
           event: WEB_CONVERSATION_PROGRESS_EVENT,
           data,
         }),

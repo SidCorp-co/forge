@@ -80,6 +80,10 @@ interface AgentSessionsPorts {
   resolveSessionMcpServers(
     projectId: string,
   ): Promise<{ mcpServers: Record<string, unknown> | null }>;
+  /** Whether the box's socket is open now; the WebSocket door answers it. */
+  boxIsListening(deviceId: string): boolean;
+  /** A turn frame handed to the box now, never written down (it carries a live credential); how many sockets took it. */
+  sendToBoxNow(deviceId: string, envelope: { event: string; data: unknown }): number;
   /** `data` with every secret handed out to the session's jobs replaced. */
   scrubSessionOutput<T>(sessionId: string, data: T): Promise<T>;
   /** Posts the steer text as a comment on the issue the session works. */

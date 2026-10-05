@@ -66,8 +66,8 @@ export type { PauseResumer } from './run-pause.js';
 export {
   describePause,
   type OrphanedPauseResult,
-  registerRunStatusBroadcast,
   resumeOrphanedPauses,
+  runStatusView,
 } from './run-pause.js';
 export {
   stampReleaseShipped,

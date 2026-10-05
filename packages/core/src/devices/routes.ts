@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { runnerProvisionStatuses } from '../db/schema.js';
 import { readPluginDesignations, unionPluginDesignations } from '../lib/plugin-designation.js';
 import { RefusalError } from '../lib/refusal.js';
-import { deviceRoom, roomManager, userRoom } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden, notFound } from '../middleware/route-errors.js';
@@ -17,6 +16,7 @@ import { heartbeatPatch } from './heartbeat-patch.js';
 import { deviceProvisionRoutes } from './me-provisions.js';
 import { listDeviceAssignments } from './me-runners.js';
 import { devicesPorts } from './ports.js';
+import { pushDevice } from './push.js';
 import {
   deviceOwnership,
   deviceProjectAgentConfigs,
@@ -121,9 +121,12 @@ deviceOwnerRoutes.patch(
       try {
         // `device.statusChanged` is the device-state event the web event-router
         // already invalidates ['devices','me'] (+ project health / attention) on.
-        const payload = { event: 'device.statusChanged', data: { deviceId: id, disabled } };
-        roomManager.publish(userRoom(userId), payload);
-        roomManager.publish(deviceRoom(id), payload);
+        await pushDevice({
+          deviceId: id,
+          userId,
+          event: 'device.statusChanged',
+          data: { deviceId: id, disabled },
+        });
       } catch {
         // Non-fatal: the toggle already committed.
       }
@@ -189,7 +192,9 @@ deviceAuthRoutes.post(
     if (!beat) throw unauth();
 
     if (wasOffline) {
-      roomManager.publish(deviceRoom(device.id), {
+      await pushDevice({
+        deviceId: device.id,
+        userId: null,
         event: 'device.status',
         data: { deviceId: device.id, status: 'online' },
       });

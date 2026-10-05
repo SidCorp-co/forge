@@ -10,6 +10,10 @@
 
 ### Changed
 
+- **Only the WebSocket door publishes to rooms, and streaming frames skip the outbox.** State
+  changes reach sockets through outbox events; progress frames and live log lines go straight to
+  sockets; a revoke that rolls back pushes nothing.
+
 - **Wave 2's gaps close.** A kept node reconciles by an adopting revision; the BA drafts first
   requirements unprompted, with a questionnaire; design writes refuse unindexed binds; contract
   waits take deadlines; agree files duplicate suggestion; deploy-lock waits read a recorded

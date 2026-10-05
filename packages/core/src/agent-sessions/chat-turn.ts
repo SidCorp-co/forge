@@ -22,7 +22,6 @@ import {
 } from '../lib/device-pool.js';
 import { logger } from '../lib/logger.js';
 import type { RefusalError } from '../lib/refusal.js';
-import { deviceRoom, roomManager } from '../lib/rooms.js';
 import { type KernelActor, movedRow } from '../lifecycle/index.js';
 import { assertRunAcceptsWork, insertOneShotRun, openOneShotRun } from '../pipeline/index.js';
 import { listSessionAttachmentsByIds, type SessionAttachmentRef } from './attachment-service.js';
@@ -83,6 +82,11 @@ export const noClaudeClient = (scope: 'project' | 'session' | 'picked') =>
         ? 'The selected runner is offline or not chat-capable for this project. Pick another runner, choose Auto, or bring it online, then try again.'
         : 'No online Claude client for this session. Bring its runner online, then try again.',
   );
+
+/** A turn is refused by name when no socket reads its box's room: nobody would take the frame. */
+export function requireListeningBox(deviceId: string): void {
+  if (!agentSessionsPorts().boxIsListening(deviceId)) throw noClaudeClient('session');
+}
 
 export interface ChatClient {
   /** The runner device the turn goes to; null when none is online. */
@@ -371,7 +375,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     repoPath = await resolveSessionRepoPathForDevice(project.id, deviceId);
   if (!repoPath) throw checkoutUnbound(project.id, deviceId);
   // a turn no socket of the box would receive is refused before anything is written
-  if (roomManager.roomSize(deviceRoom(deviceId)) === 0) throw noClaudeClient('session');
+  requireListeningBox(deviceId);
 
   const attachments: SessionAttachmentRef[] = args.attachmentIds?.length
     ? await listSessionAttachmentsByIds(session.id, args.attachmentIds)
@@ -483,8 +487,8 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     ...(attachments.length ? { attachments } : {}),
     ...(args.credential ? { forgeToken: args.credential } : {}),
   };
-  const delivered = roomManager.publish(
-    deviceRoom(deviceId),
+  const delivered = agentSessionsPorts().sendToBoxNow(
+    deviceId,
     resumable
       ? // `--resume` keeps the original system prompt and history
         {

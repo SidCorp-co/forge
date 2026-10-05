@@ -44,8 +44,11 @@ export const OUTBOX_EVENT_TYPES = [
 	"credential.tokenChanged",
 	"runner.changed",
 	"job.changed",
-	"job.eventsAppended",
 	"session.changed",
+	"device.pushed",
+	"session.pushed",
+	"issue.pushed",
+	"conversation.pushed",
 ] as const;
 export type OutboxEventType = (typeof OUTBOX_EVENT_TYPES)[number];
 
@@ -442,12 +445,6 @@ export interface OutboxEventPayloads {
 		data: Record<string, unknown>;
 		rooms: ReadonlyArray<"project" | "device">;
 	};
-	/** One batch of a job's event lines was stored, scrubbed, in seq order. */
-	"job.eventsAppended": {
-		projectId: string;
-		jobId: string;
-		events: Array<{ seq: number; kind: string; ts: string; data: unknown }>;
-	};
 	/** An agent session was opened or changed status; told to its project's room and its box's. */
 	"session.changed": {
 		sessionId: string;
@@ -455,6 +452,33 @@ export interface OutboxEventPayloads {
 		deviceId: string | null;
 		event: string;
 		extra: Record<string, unknown>;
+	};
+	/** A device's state changed or its owner is told of a login step; told to the owner's room, then the box's. */
+	"device.pushed": {
+		deviceId: string | null;
+		userId: string | null;
+		event: string;
+		data: Record<string, unknown>;
+	};
+	/** A session moved, or its box is sent a frame; told to the project's room, then the box's. */
+	"session.pushed": {
+		projectId: string | null;
+		deviceId: string | null;
+		event: string;
+		data: Record<string, unknown>;
+	};
+	/** An issue read model a project's open views draw changed. */
+	"issue.pushed": {
+		projectId: string;
+		event: "issue.unblockCascade" | "issue.pipelineHealth.changed";
+		data: Record<string, unknown>;
+	};
+	/** A conversation frame, told to each person who could read the room when it was written. */
+	"conversation.pushed": {
+		conversationId: string;
+		userIds: string[];
+		event: string;
+		data: unknown;
 	};
 }
 

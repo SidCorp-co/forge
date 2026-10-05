@@ -4,9 +4,7 @@ import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
-import { projectRoom, roomManager } from '../lib/rooms.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
-import { consume } from '../outbox/index.js';
 
 export {
   describePause,
@@ -17,34 +15,23 @@ export {
 
 export type PipelineRunRow = typeof pipelineRuns.$inferSelect;
 
-function broadcastRunStatus(run: PipelineRunRow): void {
-  roomManager.publish(projectRoom(run.projectId), {
-    event: 'pipeline_run.status_changed',
-    data: {
-      runId: run.id,
-      projectId: run.projectId,
-      issueId: run.issueId,
-      status: run.status,
-      kind: run.kind,
-      currentStep: run.currentStep,
-      startedAt: run.startedAt,
-      finishedAt: run.finishedAt,
-    },
-  });
-}
-
 /**
- * The browser's run-status push, from the one record every run move writes: a pause, a resume, a
- * cancel and a close all reach the project room through here.
+ * What the browser's run-status push says about a run, read when its `run.transitioned` event is
+ * delivered: a pause, a resume, a cancel and a close all reach the project room through this.
  */
-export function registerRunStatusBroadcast(): void {
-  consume('run.transitioned', {
-    name: 'run-status-broadcast',
-    handle: async (p) => {
-      const [run] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, p.id)).limit(1);
-      if (run) broadcastRunStatus(run);
-    },
-  });
+export async function runStatusView(runId: string) {
+  const [run] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1);
+  if (!run) return null;
+  return {
+    runId: run.id,
+    projectId: run.projectId,
+    issueId: run.issueId,
+    status: run.status,
+    kind: run.kind,
+    currentStep: run.currentStep,
+    startedAt: run.startedAt,
+    finishedAt: run.finishedAt,
+  };
 }
 
 export async function pauseRun(args: {

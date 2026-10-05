@@ -1,5 +1,7 @@
 import type { AgentSessionTurnRole } from '../db/schema.js';
-import { deviceRoom, projectRoom, roomManager } from '../lib/rooms.js';
+import { publishEphemeral } from '../lib/ephemeral.js';
+import { logger } from '../lib/logger.js';
+import { pushSession } from './push.js';
 
 interface SessionLite {
   id: string;
@@ -18,7 +20,9 @@ export function broadcastSession(
   event: string,
   extra: Record<string, unknown> = {},
 ): void {
-  const payload = {
+  void pushSession({
+    projectId: session.projectId,
+    deviceId: session.deviceId,
     event,
     data: {
       sessionId: session.id,
@@ -27,9 +31,9 @@ export function broadcastSession(
       status: session.status,
       ...extra,
     },
-  };
-  roomManager.publish(projectRoom(session.projectId), payload);
-  if (session.deviceId) roomManager.publish(deviceRoom(session.deviceId), payload);
+  }).catch((err: unknown) =>
+    logger.warn({ err, sessionId: session.id, event }, 'session push: the event was not written'),
+  );
 }
 
 interface AppendedTurn {
@@ -46,12 +50,23 @@ export function broadcastTurnAppended(
   turn: AppendedTurn,
   options: { isStreamingTail?: boolean } = {},
 ): void {
+  // ephemeral (lib/ephemeral.ts): the turn row is stored; this ping only tells open views to refetch
   const fire = () =>
-    broadcastSession(session, 'agent-session.turn.appended', {
-      turnId: turn.turnId,
-      turnIndex: turn.turnIndex,
-      role: turn.role,
-    });
+    publishEphemeral(
+      { projectId: session.projectId, deviceId: session.deviceId },
+      {
+        event: 'agent-session.turn.appended',
+        data: {
+          sessionId: session.id,
+          projectId: session.projectId,
+          deviceId: session.deviceId,
+          status: session.status,
+          turnId: turn.turnId,
+          turnIndex: turn.turnIndex,
+          role: turn.role,
+        },
+      },
+    );
 
   if (!options.isStreamingTail) {
     // Cancel any pending tail debounce for this session — the new turn id is

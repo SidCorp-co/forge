@@ -23,7 +23,6 @@ import {
   registerAnswerResume,
   registerPausedRunWedgeResolve,
   registerPhaseJournalClose,
-  registerRunStatusBroadcast,
 } from './pipeline/index.js';
 import { registerLiveReadingInvalidation } from './projects/index.js';
 import { registerReleaseBatchClaimSubscriber } from './release-batch/index.js';
@@ -45,7 +44,6 @@ export function registerOutboxConsumers(): void {
   registerEcosystemNotifications();
   registerPhaseJournalClose();
   registerPausedRunWedgeResolve();
-  registerRunStatusBroadcast();
   registerReleaseBatchClaimSubscriber();
   registerMemoryIndexer();
   registerMemoryReconcileTrigger();

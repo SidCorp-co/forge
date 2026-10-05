@@ -11,8 +11,10 @@ import {
   findConversation,
   listParticipants,
 } from '../conversations/index.js';
+import { db } from '../db/client.js';
 import type { ConversationShape } from '../db/schema-conversations.js';
-import { roomManager, userRoom } from '../lib/rooms.js';
+import { publishEphemeral } from '../lib/ephemeral.js';
+import { emitEvent } from '../outbox/index.js';
 import type { SpeakerResolution } from './identity/speaker-link.js';
 
 /** What the Forge UI hands the ports: the room it already read, and who is typing in it. */
@@ -59,16 +61,28 @@ async function readersOf(conversationId: string): Promise<string[]> {
   return out;
 }
 
-/** Publish to every socket that may currently see this room. Returns how many took it. */
+/** An ephemeral frame (lib/ephemeral.ts) for every person who may currently see this room. */
+export async function publishEphemeralToConversationReaders(
+  conversationId: string,
+  frame: { event: string; data: unknown },
+): Promise<void> {
+  const userIds = await readersOf(conversationId);
+  if (userIds.length > 0) publishEphemeral({ userIds }, frame);
+}
+
+/** Push to every person who may currently see this room, through the outbox. */
 export async function publishToConversationReaders(
   conversationId: string,
   envelope: { event: string; data: unknown },
-): Promise<number> {
-  let sockets = 0;
-  for (const userId of await readersOf(conversationId)) {
-    sockets += roomManager.publish(userRoom(userId), envelope);
-  }
-  return sockets;
+): Promise<void> {
+  const userIds = await readersOf(conversationId);
+  if (userIds.length === 0) return;
+  await emitEvent(db, 'conversation.pushed', {
+    conversationId,
+    userIds,
+    event: envelope.event,
+    data: envelope.data,
+  });
 }
 
 /**
@@ -99,7 +113,7 @@ export const webConversationPorts: ConversationAdapterPorts<WebConversationFrame
       );
     }
     const messageId = randomUUID();
-    const sockets = await publishToConversationReaders(conversation.id, {
+    await publishToConversationReaders(conversation.id, {
       event: WEB_CONVERSATION_EVENT,
       data: {
         conversationId: conversation.id,
@@ -108,7 +122,7 @@ export const webConversationPorts: ConversationAdapterPorts<WebConversationFrame
         content: message.text,
       },
     });
-    return { messageId, sockets } as DeliveryReceipt & { sockets: number };
+    return { messageId };
   },
 
   async canDeliver(venue: ConversationVenue): Promise<boolean> {
