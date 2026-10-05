@@ -6,7 +6,7 @@ export const REQUIREMENT_LIFECYCLE_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'Requirements: revisions, agreement, baselines and delivery',
   summary:
-    'How a requirement (REQ-n) is written in immutable revisions with stable business criteria (BC-n), proposed, accepted and agreed by a holder of requirements.approve under a baseline pinning its designs, re-pinned, deferred, and read as delivered; and why an issue planned against it reads changed-since-plan.',
+    'How a requirement (REQ-n) is written in immutable revisions with stable business criteria (BC-n), proposed, accepted and agreed by a holder of requirements.approve under a baseline pinning its designs, re-pinned, deferred, read as delivered, accepted or dropped; and why an issue planned against it reads changed-since-plan.',
   version: 1,
   body: `## Requirements: revisions, agreement, baselines and delivery
 
@@ -15,13 +15,12 @@ it lives in numbered revisions, and each revision carries business criteria unde
 (BC-1, BC-2, …) that issues trace their own criteria to. The door is
 \`/api/projects/:id/requirements\`: each act below is a route under \`…/requirements/:req\`
 (\`revisions\`, \`revisions/:n/propose|accept|return\`, \`agree\`, \`repin\`, \`defer\`, \`undefer\`,
-\`issues\`, \`workflows\`, \`contracts\`).
+\`accept\`, \`drop\`, \`issues\`, \`workflows\`, \`contracts\`).
 
 ### Three things move, and they are not one field
 - **The requirement's status**: \`draft\` (being written; nothing is built against it), \`agreed\` (a
   revision was signed off under a baseline), \`deferred\` (out of the current release),
-  \`accepted\` (delivered and accepted) and \`dropped\` (no longer wanted). Nothing an agent sends moves
-  a requirement to \`accepted\` or \`dropped\`.
+  \`accepted\` (delivered and accepted) and \`dropped\` (no longer wanted).
 - **Each revision's state**: \`draft → proposed → current → superseded\`. \`current\` is the head, the
   revision that was accepted. A requirement holds **one open revision at a time** (a draft or a
   proposed one): writing a second is \`REQUIREMENT_REVISION_OPEN\`.
@@ -56,7 +55,7 @@ it lives in numbered revisions, and each revision carries business criteria unde
    readiness result without refusing.
 6. **After the agree, a change is a new revision.** Accepting it re-baselines: the requirement stays
    (or goes back to) \`agreed\`, a new baseline is written, and the accept's \`reason\` is that
-   re-baseline's sign-off. The agree's design guards apply to it.
+   re-baseline's sign-off. The agree's design and readiness guards apply to it.
 7. **repin** writes a new baseline of the same text revision once a linked design has been approved
    past what the latest baseline pins, or a linked contract has a current version it does not pin. Only an agreed requirement is re-pinned
    (\`REQUIREMENT_NOT_AGREED\`), and a re-pin with nothing moved is \`REQUIREMENT_PINS_CURRENT\`.
@@ -89,9 +88,20 @@ deferred requirement waits on nobody and is not broken down; accepting, agreeing
 linking an issue on it are \`REQUIREMENT_DEFERRED\`. **undefer** puts back the status it was deferred
 from.
 
+### Accepting the delivery, and dropping
+When the phase reads \`delivered\`, the project's holders of \`requirements.approve\` are notified, and
+**accept** \`{ revision, reason? }\` names the head whose delivery is accepted: the requirement becomes
+\`accepted\` and \`acceptedAt\` is stored. Refused by name: \`REQUIREMENT_REVISION_STALE\` (not the head),
+\`REQUIREMENT_NOT_DELIVERED\` (no live linked issue, or one not closed, naming each),
+\`REQUIREMENT_CRITERIA_UNPROVEN\` (a current BC without a passing verdict, naming each),
+\`REQUIREMENT_ALREADY_ACCEPTED\`. A correction after it comes in as feedback; a new revision accepted
+re-agrees it. **drop** \`{ reason }\` ends a draft, agreed or deferred requirement that is not going to
+be built (\`REQUIREMENT_NOT_DROPPABLE\` once accepted, \`REQUIREMENT_DROP_REASON_REQUIRED\` without a
+reason), refused while any live issue links to it (\`REQUIREMENT_HAS_LIVE_ISSUES\`, naming each).
+
 ### Who may act
 Anyone on the project creates, revises, edits and proposes revisions, and links designs. Accept,
-return, agree, repin, defer, undefer, linking an issue and \`adoptPlan\` take \`requirements.approve\`
+return, agree, repin, defer, undefer, accept, drop, linking an issue and \`adoptPlan\` take \`requirements.approve\`
 on the project (project admin, or an org owner or admin), person or agent alike, the revision's author
 included; without it the call is refused \`PERMISSION_FORBIDDEN\` naming the permission. Whoever
 lacks it proposes and stops; the requirement's \`waitingOn\` names whose turn it is. A change an agent

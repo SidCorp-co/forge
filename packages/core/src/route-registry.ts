@@ -128,7 +128,7 @@ import {
 import { questionnaireRoutes } from './questionnaires/routes.js';
 import { questionRoutes } from './questions/routes.js';
 import { releaseBatchRoutes } from './release-batch/routes.js';
-import { requirementRoutes } from './requirements/routes.js';
+import { deviceRequirementInboxRoutes, requirementRoutes } from './requirements/routes.js';
 import { mcpMessageBody, mcpNoBody, rootRoutes } from './root-routes.js';
 import { projectRunnerRoutes, runnerLoadRoutes, runnerRoutes } from './runners/routes.js';
 import { projectSnapshotRoutes, runStandingRoutes } from './runs/routes.js';
@@ -307,6 +307,7 @@ function mountAdminAndDeviceRoutes(app: Hono<{ Variables: RequestIdVars }>): voi
   app.route('/api/devices', deviceMcpServerRoutes);
   app.route('/api/devices', devicePoolRoutes);
   app.route('/api/devices', deviceChannelInboxRoutes);
+  app.route('/api/devices', deviceRequirementInboxRoutes);
   app.route('/api/devices', deviceMasterRoutes);
   app.route('/api', deviceOwnerRoutes);
 }

@@ -9,6 +9,7 @@
 
 use runner_transport::channel_inbox::{UnansweredDocument, BUILDER_RUN_TYPE};
 use runner_transport::comment_inbox::ISSUE_COMMENT_TYPE;
+use runner_transport::requirement_inbox::REQUIREMENT_BREAKDOWN_TYPE;
 
 /// What fired a `master.wake`, as core's `ws/master-wake.ts:MASTER_WAKE_SOURCES` names it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +27,8 @@ pub enum WakeSource {
     WorkflowDesign,
     /// A person commented on one of the project's issues, at whatever status it stands.
     Comment,
+    /// A requirement was agreed, or re-agreed at a new head, and the master owes its breakdown.
+    Requirement,
     /// A frame naming no source.
     ///
     /// Priced amnesty: a core that predates ISS-38 stamps none on its issue and
@@ -47,8 +50,9 @@ impl WakeSource {
                 "ecosystem_build" => Ok(WakeSource::EcosystemBuild),
                 "workflow_design" => Ok(WakeSource::WorkflowDesign),
                 "comment" => Ok(WakeSource::Comment),
+                "requirement" => Ok(WakeSource::Requirement),
                 other => Err(format!(
-                    "source {other:?} is not one this runner reads (issue, answer, channel, ecosystem_build, workflow_design, comment)"
+                    "source {other:?} is not one this runner reads (issue, answer, channel, ecosystem_build, workflow_design, comment, requirement)"
                 )),
             },
             Some(other) => Err(format!("source {other} is not a string")),
@@ -63,6 +67,7 @@ impl WakeSource {
             WakeSource::EcosystemBuild => "ecosystem_build",
             WakeSource::WorkflowDesign => "workflow_design",
             WakeSource::Comment => "comment",
+            WakeSource::Requirement => "requirement",
             WakeSource::Unstated => "source unstated",
         }
     }
@@ -89,10 +94,32 @@ pub fn inbox_line(inbox: &[UnansweredDocument]) -> String {
     let (comments, inbox): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
         .iter()
         .partition(|d| d.r#type.as_deref() == Some(ISSUE_COMMENT_TYPE));
+    let (breakdowns, inbox): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
+        .into_iter()
+        .partition(|d| d.r#type.as_deref() == Some(REQUIREMENT_BREAKDOWN_TYPE));
     let (runs, docs): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
         .into_iter()
         .partition(|d| d.r#type.as_deref() == Some(BUILDER_RUN_TYPE));
     let mut line = String::new();
+    if !breakdowns.is_empty() {
+        let keys: Vec<String> = breakdowns
+            .iter()
+            .map(|d| {
+                let key = d.number.as_deref().unwrap_or(d.id.as_str());
+                if d.overdue {
+                    format!("{key} overdue")
+                } else {
+                    key.to_string()
+                }
+            })
+            .collect();
+        line.push_str(&format!(
+            " {} agreed requirement{} no breakdown yet ({}): read each (`forge-runner api projects/<id>/requirements/<key>`) and propose its breakdown as a suggestion; an overdue one is past its breakdown SLA.",
+            breakdowns.len(),
+            if breakdowns.len() == 1 { " has" } else { "s have" },
+            keys.join(", ")
+        ));
+    }
     if !comments.is_empty() {
         // Core clears an owed question only on a reply threaded under it (`devices/comment-inbox.ts`),
         // so each is named with the comment id the reply's `parentId` takes.
@@ -132,4 +159,33 @@ pub fn inbox_line(inbox: &[UnansweredDocument]) -> String {
         ));
     }
     line
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_requirement_wake_is_read_by_its_name() {
+        let source = WakeSource::of_frame(&serde_json::json!({ "source": "requirement" })).unwrap();
+        assert_eq!(source, WakeSource::Requirement);
+        assert_eq!(source.label(), "requirement");
+    }
+
+    #[test]
+    fn an_owed_breakdown_is_named_on_the_pass_and_an_overdue_one_says_so() {
+        let doc = |key: &str, overdue: bool| UnansweredDocument {
+            id: format!("id-{key}"),
+            number: Some(key.into()),
+            r#type: Some(REQUIREMENT_BREAKDOWN_TYPE.into()),
+            from: None,
+            overdue,
+        };
+        let line = inbox_line(&[doc("REQ-3", true), doc("REQ-4", false)]);
+        assert!(
+            line.contains("2 agreed requirements have no breakdown yet (REQ-3 overdue, REQ-4)"),
+            "{line}"
+        );
+        assert!(!line.contains("ecosystem channel"), "{line}");
+    }
 }

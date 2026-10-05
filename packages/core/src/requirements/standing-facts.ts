@@ -5,7 +5,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { reopenedAtOf } from '../issues/index.js';
 import type { StandingIssueCriterion } from './standing.js';
 
@@ -19,9 +19,10 @@ type CriterionVerdictRow = {
 
 export async function issueCriteriaOf(
   issueIds: readonly string[],
+  ex: Pick<Tx, 'execute'> = db,
 ): Promise<StandingIssueCriterion[]> {
   if (issueIds.length === 0) return [];
-  const rows = (await db.execute(sql`
+  const rows = (await ex.execute(sql`
     SELECT c.issue_id, c.n, c.requirement_criterion_id, v.verdict, v.verdict_at
       FROM issue_criteria c
       LEFT JOIN LATERAL (
@@ -39,7 +40,7 @@ export async function issueCriteriaOf(
      ORDER BY c.issue_id, c.position, c.n`)) as unknown as CriterionVerdictRow[];
   // A verdict recorded at or before the issue's latest reopen is evidence about a build the
   // reopen rejected (`issues/release-evidence.ts:reopenedAtOf`), so coverage reads it as not judged
-  const reopened = await reopenedAtOf(db, issueIds);
+  const reopened = await reopenedAtOf(ex, issueIds);
   return [...rows].map((r) => {
     const at = reopened.get(r.issue_id);
     const voided = at && r.verdict_at && new Date(r.verdict_at).getTime() <= at.getTime();

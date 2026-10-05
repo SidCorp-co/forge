@@ -596,8 +596,8 @@
         "issue-lifecycle",
         "requirement-lifecycle#agreed",
         "requirement-lifecycle#deferred",
-        "requirement-lifecycle#draft",
-        "requirement-lifecycle#start",
+        "requirement-lifecycle#accepted",
+        "requirement-lifecycle#dropped",
         "issue-delivery#rule-close"
       ]
     },
@@ -719,7 +719,7 @@
       "kind": "domain",
       "context": "conversations",
       "owns": ["notificationDeliveries", "notificationDeliveryMembers", "notifications"],
-      "serves": ["REQ-11", "REQ-14"]
+      "serves": ["REQ-11", "REQ-14", "requirement-to-delivery#acceptance"]
     },
     "onboarding": {
       "kind": "domain",
@@ -883,8 +883,10 @@
         "REQ-4",
         "REQ-1",
         "requirement-lifecycle#agreed",
+        "requirement-lifecycle#accepted",
         "requirement-lifecycle#deferred",
         "requirement-lifecycle#delivered",
+        "requirement-lifecycle#dropped",
         "requirement-lifecycle#draft",
         "requirement-lifecycle#in_delivery",
         "requirement-lifecycle#rev_current",
@@ -894,7 +896,13 @@
         "requirement-lifecycle#revisions",
         "requirement-lifecycle#start",
         "requirement-to-delivery#req-head",
-        "requirement-to-delivery#agreed"
+        "requirement-to-delivery#agreed",
+        "requirement-to-delivery#delivery",
+        "requirement-to-delivery#delivered",
+        "requirement-to-delivery#acceptance",
+        "requirement-to-delivery#accept",
+        "requirement-to-delivery#accept-result",
+        "requirement-to-delivery#stalled"
       ]
     },
     "runners": {
@@ -1001,7 +1009,7 @@
     "ws": {
       "kind": "door",
       "context": "platform",
-      "serves": ["REQ-11", "issue-delivery#rule-dispatch"]
+      "serves": ["REQ-11", "issue-delivery#rule-dispatch", "requirement-to-delivery#delivery"]
     }
   },
   "web": {
@@ -1114,7 +1122,12 @@
       "serves": ["REQ-11", "REQ-14", "issue-delivery#case-release"]
     },
     "requirements": {
-      "serves": ["REQ-4", "REQ-12"]
+      "serves": [
+        "REQ-4",
+        "REQ-12",
+        "requirement-to-delivery#accept",
+        "requirement-lifecycle#dropped"
+      ]
     },
     "runners": {
       "serves": ["REQ-15"]
@@ -1176,7 +1189,12 @@
       "serves": ["issue-delivery#act-build", "design-reconciliation#build"]
     },
     "crates/runner-daemon": {
-      "serves": ["REQ-15", "agent-run-standing#master", "issue-delivery#rule-dispatch"]
+      "serves": [
+        "REQ-15",
+        "agent-run-standing#master",
+        "issue-delivery#rule-dispatch",
+        "requirement-to-delivery#stalled"
+      ]
     }
   }
 }

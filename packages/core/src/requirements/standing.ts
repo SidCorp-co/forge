@@ -48,7 +48,7 @@ interface StandingCriterion {
   retiredRevision: number | null;
 }
 
-interface StandingIssue {
+export interface StandingIssue {
   id: string;
   displayId: string;
   title: string;
@@ -92,6 +92,9 @@ interface StandingInput {
   now: Date;
 }
 
+/** What the delivery phase and coverage read, and nothing else. */
+type ProofInput = Pick<StandingInput, 'status' | 'criteria' | 'issues' | 'issueCriteria'>;
+
 /** The input with its delivery phase read (`deliveryOf`). */
 type Phased = StandingInput & { phase: DeliveryPhase | null };
 
@@ -108,7 +111,7 @@ function stateOf(status: RequirementStatus, phase: DeliveryPhase | null): Requir
 // the live links: any latest verdict `fail` → failing; every one `pass` or `short` → passing;
 // otherwise (none yet, or `skipped`) → not judged. No live link but an earlier one → stale; no link
 // at all → gap. A dropped issue proves nothing and is left out.
-function coverageOf(input: StandingInput, shownRevision: number | null): RequirementCoverage[] {
+function coverageOf(input: ProofInput, shownRevision: number | null): RequirementCoverage[] {
   if (shownRevision === null) return [];
   const live = liveAt(input.criteria, shownRevision);
   const byId = new Map(input.criteria.map((c) => [c.id, c]));
@@ -418,11 +421,16 @@ function deliveryOf(
   };
 }
 
+/** The delivery phase and BC coverage at `revision`: the one computation the standing and the accept read. */
+export function deliveryAt(input: ProofInput, revision: number | null) {
+  const live = input.issues.filter((i) => i.status !== 'dropped');
+  const coverage = coverageOf(input, revision);
+  return { live, coverage, delivery: deliveryOf(input.status, live, coverage) };
+}
+
 export function deriveStanding(raw: StandingInput): RequirementStanding {
-  const live = raw.issues.filter((i) => i.status !== 'dropped');
   const shownRevision = raw.currentRevision ?? raw.revisions[0]?.revision ?? null;
-  const coverage = coverageOf(raw, shownRevision);
-  const delivery = deliveryOf(raw.status, live, coverage);
+  const { live, coverage, delivery } = deliveryAt(raw, shownRevision);
   const input = { ...raw, phase: delivery.phase };
   const touched = touchedAt(input);
   let { group, waitingOn } = turnOf(input, live, coverage);

@@ -35,4 +35,6 @@ export type RequirementAction =
   | { kind: 'agree'; revision: number }
   | { kind: 'repin'; revision: number }
   | { kind: 'defer'; reason: string; targetPhase?: string }
-  | { kind: 'undefer' };
+  | { kind: 'undefer' }
+  | { kind: 'accept-delivery'; revision: number }
+  | { kind: 'drop'; reason: string };

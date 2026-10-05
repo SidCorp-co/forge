@@ -3,6 +3,7 @@ export { deliverExisting } from './deliver.js';
 export { emitNotification } from './emit.js';
 export { registerEcosystemNotifications } from './notify-ecosystem.js';
 export { registerNotifyMentionsSubscriber } from './notify-mentions.js';
+export { registerRequirementNotifications } from './notify-requirements.js';
 export { registerTransitionNotifications } from './notify-transitions.js';
 export { claimOpsAlert, unreadAlertDeliveries } from './ops-alerts.js';
 export { platformAdminUserIds } from './platform-admins.js';
