@@ -1,6 +1,7 @@
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Server as HttpsServer } from 'node:https';
 import { and, eq } from 'drizzle-orm';
+import { parse as parseCookies } from 'hono/utils/cookie';
 import { type WebSocket, WebSocketServer } from 'ws';
 import { AUTH_COOKIE_NAME } from '../credentials/cookie.js';
 import { verifyDeviceCredential } from '../credentials/device-credential.js';
@@ -28,18 +29,6 @@ interface AliveSocket extends WebSocket {
 }
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
-
-function parseCookie(header: string | undefined, name: string): string | undefined {
-  if (!header) return undefined;
-  for (const part of header.split(';')) {
-    const eq = part.indexOf('=');
-    if (eq === -1) continue;
-    const k = part.slice(0, eq).trim();
-    if (k !== name) continue;
-    return decodeURIComponent(part.slice(eq + 1).trim());
-  }
-  return undefined;
-}
 
 function parseBearer(header: string | string[] | undefined): string | undefined {
   if (!header) return undefined;
@@ -113,7 +102,9 @@ async function authenticate(req: IncomingMessage): Promise<AuthResult | null> {
   }
 
   // Same-origin browser path — auth via the forge_auth cookie.
-  const cookie = parseCookie(req.headers.cookie, AUTH_COOKIE_NAME);
+  const cookie = req.headers.cookie
+    ? parseCookies(req.headers.cookie, AUTH_COOKIE_NAME)[AUTH_COOKIE_NAME]
+    : undefined;
   if (cookie) {
     const user = await tryUserToken(cookie);
     return user ? { principal: user } : null;
@@ -122,6 +113,8 @@ async function authenticate(req: IncomingMessage): Promise<AuthResult | null> {
   return null;
 }
 
+const userOf = (p: Principal) => (p.type === 'user' ? p.userId : p.ownerId);
+
 async function canSubscribe(principal: Principal, room: string): Promise<boolean> {
   // Global broadcast room — server-emitted cross-tenant events (e.g. builtin
   // skill seeding). Any authenticated principal may join; the upgrade
@@ -129,7 +122,7 @@ async function canSubscribe(principal: Principal, room: string): Promise<boolean
   if (room === GLOBAL_ROOM) return true;
   if (room.startsWith('project:')) {
     const projectId = room.slice('project:'.length);
-    const userId = principal.type === 'user' ? principal.userId : principal.ownerId;
+    const userId = userOf(principal);
     const access = await effectiveProjectRole(userId, projectId);
     if (access?.role) return true;
     return await isPlatformAdmin(userId);
@@ -145,9 +138,7 @@ async function canSubscribe(principal: Principal, room: string): Promise<boolean
     return !!row;
   }
   if (room.startsWith('user:')) {
-    const userId = room.slice('user:'.length);
-    const principalUserId = principal.type === 'user' ? principal.userId : principal.ownerId;
-    return principalUserId === userId;
+    return userOf(principal) === room.slice('user:'.length);
   }
   if (room.startsWith('runner:')) {
     const runnerId = room.slice('runner:'.length);
@@ -224,12 +215,15 @@ export function attachWs(server: AnyServer): void {
       }
       if (!msg || typeof msg !== 'object') return;
       const { type, room } = msg as { type?: unknown; room?: unknown };
-
-      if (type === 'subscribe' || type === 'unsubscribe') {
-        if (typeof room !== 'string' || room.length === 0) return;
+      if (type === 'runner:sessions') {
+        if (ws.principal.type === 'device') {
+          void handleRunnerSessions(ws as unknown as import('ws').WebSocket, msg);
+        }
+        return;
       }
+      if (typeof room !== 'string' || room.length === 0) return;
 
-      if (type === 'subscribe' && typeof room === 'string') {
+      if (type === 'subscribe') {
         void (async () => {
           const allowed = await canSubscribe(ws.principal, room).catch(() => false);
           if (!allowed) {
@@ -246,11 +240,8 @@ export function attachWs(server: AnyServer): void {
           }
           roomManager.subscribe(ws, room);
         })();
-      } else if (type === 'unsubscribe' && typeof room === 'string') {
+      } else if (type === 'unsubscribe') {
         roomManager.unsubscribe(ws, room);
-      } else if (type === 'runner:sessions') {
-        if (ws.principal.type !== 'device') return;
-        void handleRunnerSessions(ws as unknown as import('ws').WebSocket, msg);
       }
     });
 

@@ -32,7 +32,7 @@ export const RETENTION_RULES: readonly RetentionRule[] = [
     days: 90,
     env: 'RETENTION_QUEUE_SNAPSHOTS_DAYS',
     floorDays: 90,
-    why: 'Per-tick queue depth, read only by the `queue_depth` metric. `metrics/queries.ts` caps its own window at 90 days, so a shorter retention loses the tail of that chart with nothing going red — which is why the floor is the cap rather than something smaller.',
+    why: 'Per-tick queue depth, read only by the `queue_depth` metric. `metrics/timeseries.ts` caps its own window at 90 days, so a shorter retention loses the tail of that chart with nothing going red — which is why the floor is the cap rather than something smaller.',
   },
   {
     table: 'runner_events',

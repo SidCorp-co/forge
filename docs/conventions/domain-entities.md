@@ -560,7 +560,7 @@ numbered 1..n.
 - **Allocation.** `max(seq)+1` inside the entity's advisory-locked transaction
   (`packages/core/src/requirements/revision-write.ts:createRequirementIn`), safe because keyed rows
   are never deleted. ISS-n keeps its counter row and trigger
-  (`packages/core/src/db/schema.ts:projectIssCounters`).
+  (`packages/core/src/db/schema-issues.ts:projectIssCounters`).
 
 ## Language of stored text
 

@@ -13,7 +13,7 @@
 
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { bucketIso, utcDateTrunc } from '../lib/time-buckets.js';
+import { type BucketUnit, bucketBoundaries, bucketIso, utcDateTrunc } from '../lib/time-buckets.js';
 import { firstShipped } from '../pipeline/index.js';
 import type {
   AdminGlanceMetric,
@@ -21,8 +21,6 @@ import type {
   AdminMetricSeriesPoint,
   AdminMetricWindow,
 } from './types.js';
-
-export type BucketUnit = 'hour' | 'day' | 'week';
 
 interface WindowSpec {
   hours: number;
@@ -38,31 +36,6 @@ export const WINDOW_SPECS: Record<AdminMetricWindow, WindowSpec> = {
 
 export function cutoffExpr(hours: number): SQL {
   return sql`now() - (${hours}::int * interval '1 hour')`;
-}
-
-function bucketStepMs(unit: BucketUnit): number {
-  if (unit === 'hour') return 3_600_000;
-  if (unit === 'day') return 86_400_000;
-  return 7 * 86_400_000;
-}
-
-/** Dense, oldest→newest UTC bucket-start boundaries for `count` buckets of
- *  `unit`, ending at the bucket containing `now`. Week buckets floor to UTC
- *  Monday to match `utcDateTrunc('week', ...)`. */
-export function bucketBoundaries(unit: BucketUnit, count: number, now: Date): string[] {
-  const end = new Date(now);
-  end.setUTCMilliseconds(0);
-  end.setUTCSeconds(0);
-  end.setUTCMinutes(0);
-  if (unit !== 'hour') end.setUTCHours(0);
-  if (unit === 'week') {
-    const isoDay = (end.getUTCDay() + 6) % 7;
-    end.setUTCDate(end.getUTCDate() - isoDay);
-  }
-  const step = bucketStepMs(unit);
-  const out: string[] = [];
-  for (let i = count - 1; i >= 0; i--) out.push(new Date(end.getTime() - i * step).toISOString());
-  return out;
 }
 
 export function toBucketMap(

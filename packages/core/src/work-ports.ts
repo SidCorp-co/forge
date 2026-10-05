@@ -1,7 +1,6 @@
 // The composition root's half of every port the work context declares: the modules work may not
 // import, handed to it at boot so work stays upstream of execution and of the contexts below it.
 
-import { readThresholds } from './admin-thresholds/index.js';
 import {
   fireOfCaller,
   issueDeleteRefusal,
@@ -221,7 +220,6 @@ export function provideWorkPorts(): void {
   provideAutomationPorts({
     reportRows: reportViewsIn,
     reportRow: reportViewById,
-    readThresholds,
     lastFires,
     readScheduleStreaks,
     streakFails,

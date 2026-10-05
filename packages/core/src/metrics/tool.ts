@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { jobTypes } from '../db/schema.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { BUCKETS, METRICS, runTimeseries, stepDurationsForProject } from './queries.js';
+import { stepDurationsForProject } from './queries.js';
+import { BUCKETS, METRICS, runTimeseries } from './timeseries.js';
 
 const stepEnum = z.enum(jobTypes);
 const projectInputSchema = z

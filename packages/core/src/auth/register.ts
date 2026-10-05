@@ -1,15 +1,18 @@
 import type { AuthRefusalCode } from '@forge/contracts/auth';
+import { ZxcvbnFactory, type ZxcvbnResult } from '@zxcvbn-ts/core';
+import * as zxcvbnCommonPackage from '@zxcvbn-ts/language-common';
+import * as zxcvbnEnPackage from '@zxcvbn-ts/language-en';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { env } from '../config/env.js';
 import { RULES } from '../config/rate-limits.js';
+import { mailDeliveryEnabled, sendMail } from '../integrations/mail/index.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { refuser } from '../lib/refusal.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { logger } from '../observability/logger.js';
-import { sendVerificationEmail } from './email.js';
 import { hashPassword } from './password.js';
-import { evaluatePasswordStrength, MIN_PASSWORD_SCORE } from './password-strength.js';
 import { registerSchema } from './request-schemas.js';
 import { registerUser } from './service.js';
 import { issueVerificationToken } from './verification-token.js';
@@ -87,3 +90,61 @@ authRoutes.post(
     }
   },
 );
+
+function buildVerificationLink(token: string): string {
+  // Link must hit the API origin (where /api/auth/verify lives), NOT the web
+  // origin. With subdomain-split deploys (web=forge-beta.example.com,
+  // api=forge-beta-api.example.com) APP_BASE_URL is the web URL, so we fall
+  // through to OAUTH_REDIRECT_BASE which already names the API origin.
+  // Single-origin deploys leave OAUTH_REDIRECT_BASE unset → APP_BASE_URL.
+  const apiBase = (env.OAUTH_REDIRECT_BASE ?? env.APP_BASE_URL).replace(/\/+$/, '');
+  return `${apiBase}/api/auth/verify?token=${encodeURIComponent(token)}`;
+}
+
+async function sendVerificationEmail(to: string, token: string): Promise<void> {
+  const link = buildVerificationLink(token);
+
+  if (!mailDeliveryEnabled()) {
+    logger.info({ to, link }, 'email verification (debug/no-SMTP — not sent)');
+    return;
+  }
+
+  await sendMail({
+    to,
+    subject: 'Verify your email',
+    text: `Verify your email by opening this link (valid for 24 hours):\n\n${link}\n`,
+    html: `<p>Verify your email by opening this link (valid for 24 hours):</p><p><a href="${link}">${link}</a></p>`,
+  });
+}
+
+let factory: ZxcvbnFactory | null = null;
+function getFactory(): ZxcvbnFactory {
+  if (factory) return factory;
+  factory = new ZxcvbnFactory({
+    translations: zxcvbnEnPackage.translations,
+    graphs: zxcvbnCommonPackage.adjacencyGraphs,
+    dictionary: {
+      ...zxcvbnCommonPackage.dictionary,
+      ...zxcvbnEnPackage.dictionary,
+    },
+  });
+  return factory;
+}
+
+const MIN_PASSWORD_SCORE = 2;
+
+interface PasswordStrength {
+  score: 0 | 1 | 2 | 3 | 4;
+  /** Best single-line piece of feedback to surface, e.g. "Add another word or two." */
+  warning: string;
+  suggestions: string[];
+}
+
+function evaluatePasswordStrength(password: string, userInputs: string[] = []): PasswordStrength {
+  const result: ZxcvbnResult = getFactory().check(password, userInputs);
+  return {
+    score: result.score,
+    warning: result.feedback.warning ?? '',
+    suggestions: result.feedback.suggestions ?? [],
+  };
+}

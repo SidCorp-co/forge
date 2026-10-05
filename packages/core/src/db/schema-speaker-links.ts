@@ -1,6 +1,6 @@
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
-import { users } from './schema.js';
-import { conversationAdapters } from './schema-conversations.js';
+import { users } from './schema-auth.js';
+import { conversationAdapters } from './schema-vocabulary.js';
 
 export const speakerLinkConfirmations = ['channel_email_match'] as const;
 export type SpeakerLinkConfirmation = (typeof speakerLinkConfirmations)[number];

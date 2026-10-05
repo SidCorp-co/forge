@@ -5,10 +5,6 @@
       "fileLines": 598,
       "maxFunctionLines": 0
     },
-    "packages/core/src/db/schema.ts": {
-      "fileLines": 2290,
-      "maxFunctionLines": 0
-    },
     "packages/core/src/issues/criteria/store.ts": {
       "fileLines": 502,
       "maxFunctionLines": 0

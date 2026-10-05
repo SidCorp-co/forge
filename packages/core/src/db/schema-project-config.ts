@@ -1,16 +1,80 @@
-import { sql } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import {
+  boolean,
   check,
   customType,
+  index,
   integer,
   jsonb,
   pgTable,
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { projects, users } from './schema.js';
+import * as axes from './release-axes.js';
+import { users } from './schema-auth.js';
+import { integrationConnections, integrationDeliveries } from './schema-integrations.js';
+import { projects } from './schema-projects.js';
+
+export const integrationBindings = pgTable(
+  'integration_bindings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    connectionId: uuid('connection_id')
+      .notNull()
+      .references(() => integrationConnections.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    // Denormalized from the connection so the inbound router + unique index work
+    // without a join. Always equals the parent connection's provider.
+    provider: text('provider').notNull(),
+    role: text('role', { enum: axes.bindingRoles }).notNull(),
+    // Per-binding overrides (e.g. coolify `targets[]` deploy apps). Overlaid on
+    // top of connection.config at dispatch time.
+    config: jsonb('config').notNull().default({}),
+    // Per-binding HMAC secret for inbound webhook signature verification — an
+    // inbound webhook is project+env scoped, so this stays on the binding.
+    integrationSecret: text('integration_secret'),
+    // ISS-558 — multi-store support for epodsystem. Empty string = the default
+    // (unlabeled) binding; a non-empty kebab slug = a named extra binding.
+    // Non-epodsystem providers always leave this as '' (the DB default), so
+    // `integration_bindings_service_uq` still keeps one service binding per
+    // (project, provider) for sentry/rocketchat/github.
+    label: text('label').notNull().default(''),
+    active: boolean('active').notNull().default(true),
+    agentAccess: text('agent_access', { enum: axes.agentAccessValues }).notNull().default('none'),
+    instructions: text('instructions'),
+    revision: integer('revision').notNull().default(1),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    connectionIdx: index('integration_bindings_connection_idx').on(t.connectionId),
+    projectProviderIdx: index('integration_bindings_project_provider_idx').on(
+      t.projectId,
+      t.provider,
+    ),
+    serviceUq: uniqueIndex('integration_bindings_service_uq')
+      .on(t.projectId, t.provider, t.label)
+      .where(axes.SERVICE_ROLE_PRED),
+    ...axes.bindingShapeChecks,
+  }),
+);
+
+export const integrationBindingsRelations = relations(integrationBindings, ({ one, many }) => ({
+  connection: one(integrationConnections, {
+    fields: [integrationBindings.connectionId],
+    references: [integrationConnections.id],
+  }),
+  project: one(projects, {
+    fields: [integrationBindings.projectId],
+    references: [projects.id],
+  }),
+  deliveries: many(integrationDeliveries),
+}));
 
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   dataType: () => 'bytea',

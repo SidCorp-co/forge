@@ -3,7 +3,8 @@
 
 import { relations, sql } from 'drizzle-orm';
 import { check, index, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { pipelineRuns, projects } from './schema.js';
+import { pipelineRuns } from './schema-pipeline.js';
+import { projects } from './schema-projects.js';
 
 const ENVIRONMENT_CHK = sql`environment ~ '^[a-z][a-z0-9-]{0,62}$'`;
 

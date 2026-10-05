@@ -4,11 +4,11 @@ import { projects, runners, type SkillTarget, skills } from '../db/schema.js';
 import { RefusalError } from '../lib/refusal.js';
 import { logger } from '../observability/logger.js';
 import { emitEvent } from '../outbox/index.js';
-import type { Finding } from '../security/findings.js';
-import { scanSkillContent } from '../security/skill-content-scanner.js';
 import { hashSkillBody } from './hash.js';
 import { isMetaSkillName, metaSkillReserved } from './meta-skills.js';
 import { refuse } from './refuse.js';
+import type { Finding } from './security-findings.js';
+import { scanSkillContent } from './skill-content-scanner.js';
 
 /** Each blocking finding of the content scan, as one refusal of the write. */
 function contentBlocked(blockers: Finding[]): RefusalError {

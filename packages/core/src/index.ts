@@ -5,7 +5,6 @@ import type { Server as HttpServer } from 'node:http';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { readThresholds } from './admin-thresholds/index.js';
 import {
   composeLayers,
   METHOD_LAYERS,
@@ -19,7 +18,6 @@ import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { interfaceContractsOf, provideEcosystemSignals } from './ecosystem/index.js';
-import { provideAdmissionThresholds } from './error-intake/index.js';
 import { provideExecutionPorts } from './execution-ports.js';
 import { provideFeedbackDependents, requirementFeedbackAs } from './feedback/index.js';
 import { provideAssistantMethod } from './guides/index.js';
@@ -129,10 +127,6 @@ provideRequirementDependents({ feedbackOf: requirementFeedbackAs, revised: stale
 provideFeedbackDependents({
   redactSuggestions: redactFeedbackSuggestions,
   deleteMockups: deleteFeedbackMockups,
-});
-provideAdmissionThresholds(async () => {
-  const policy = await readThresholds();
-  return { minEventCount: policy.sentryMinEventCount, minUserCount: policy.sentryMinUserCount };
 });
 
 export const app = new Hono<{ Variables: RequestIdVars }>();

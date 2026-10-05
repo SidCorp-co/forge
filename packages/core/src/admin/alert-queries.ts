@@ -1,6 +1,6 @@
 /**
  * ISS-652 — Tier 1 alert engine, single source of truth. `computeAlerts` is
- * called by BOTH `admin/alert-routes.ts` (pull, GET /api/admin/alerts) and
+ * called by BOTH `admin/routes.ts` (pull, GET /api/admin/alerts) and
  * `admin/alert-sweeper.ts` (push, writes `notifications`) — neither side ever
  * inlines its own alert query, so pull and push cannot drift apart.
  *
@@ -11,15 +11,15 @@
  */
 
 import { inArray, sql } from 'drizzle-orm';
-import { readThresholds } from '../admin-thresholds/index.js';
 import { db } from '../db/client.js';
 import { schedules } from '../db/schema.js';
 import { buildBarrierFragments } from '../jobs/index.js';
+import { ADMIN_THRESHOLDS, type AdminThresholds } from '../lib/admin-thresholds.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { tallyDeadDeliveries } from '../outbox/index.js';
 import { runnerMayTakeJob } from '../runners/index.js';
 import { readScheduleStreaks, type ScheduleStreak, streakFails } from '../schedules/index.js';
-import type { AdminAlert, AdminAlertId, AdminAlertStatus, AdminThresholds } from './types.js';
+import type { AdminAlert, AdminAlertId, AdminAlertStatus } from './types.js';
 
 export const ENTITY_LIMIT = 20;
 interface AlertQueryOptions {
@@ -521,7 +521,7 @@ async function alertDeadDeliveries(): Promise<AdminAlert> {
 
 /** Always returns exactly 6 items, ordered A1..A6. Shared by the pull route and the push sweeper. */
 export async function computeAlerts(opts: AlertQueryOptions = {}): Promise<AdminAlert[]> {
-  const thresholds = opts.thresholds ?? (await readThresholds());
+  const thresholds = opts.thresholds ?? ADMIN_THRESHOLDS;
   const staleSeconds = opts.staleSeconds ?? thresholds.stuckJobSeconds;
   const now = opts.now ?? new Date();
   return Promise.all([

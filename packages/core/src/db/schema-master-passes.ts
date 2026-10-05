@@ -10,7 +10,8 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { agentSessions, projects } from './schema.js';
+import { agentSessions } from './schema-agent-sessions.js';
+import { projects } from './schema-projects.js';
 
 // cm:why a pass is evidence the board reads (design agent-run-standing decision: passes are stored, one row
 // per pass), so the box is never its only witness; a closed row is final, enforced by master_pass_guard()

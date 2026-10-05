@@ -8,7 +8,6 @@
  */
 
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import pkg from '../../package.json' with { type: 'json' };
 import { loadProjectAccess } from '../lib/authz.js';
@@ -24,9 +23,6 @@ const staleQuerySchema = z.object({
 });
 
 const DEFAULT_STALE_JOB_SECONDS = 600;
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 export const publicHealthRoutes = new Hono();
 
@@ -59,12 +55,8 @@ opsHealthProjectRoutes.use('*', requireAuth(), assertEmailVerified());
 
 opsHealthProjectRoutes.get(
   '/:id/ops-health',
-  zValidator('param', projectIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', staleQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', projectIdParamSchema),
+  zValidator('query', staleQuerySchema),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const { staleJobThresholdSeconds } = c.req.valid('query');

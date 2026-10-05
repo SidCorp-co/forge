@@ -6,7 +6,7 @@ export type ListedTool = {
   inputSchema: Record<string, unknown>;
 };
 
-export type McpContract = { document: Record<string, unknown>; tools: number; refusals: string[] };
+type McpContract = { document: Record<string, unknown>; tools: number; refusals: string[] };
 
 export function buildMcpContract(
   listing: ListedTool[],

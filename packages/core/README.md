@@ -74,7 +74,7 @@ pnpm build && pnpm start
 
 ```bash
 cd packages/core
-pnpm db:generate   # reads src/db/schema.ts → drizzle/migrations/NNNN_*.sql
+pnpm db:generate   # reads src/db/schema*.ts → drizzle/migrations/NNNN_*.sql
 pnpm db:migrate    # applies pending migrations to $DATABASE_URL
 pnpm db:studio     # drizzle-kit studio — browse the DB in a UI
 ```

@@ -7,7 +7,7 @@ import { PROJECT_ITEMS, SECONDARY_DESTINATIONS, WORKSPACE_ITEMS } from "./nav-mo
 import type { PinnedView } from "./pinned-views";
 import type { RecentEntry } from "./recents";
 
-export interface WorkspaceCommandDeps {
+interface WorkspaceCommandDeps {
   router: { push: (href: string) => void };
   /** Active project slug (null outside a project). */
   slug: string | null;
@@ -24,146 +24,59 @@ export interface WorkspaceCommandDeps {
 
 export function buildWorkspaceCommands(deps: WorkspaceCommandDeps): Command[] {
   const { router, slug, activeProjectName, scopedProjects, pinnedIds, pinnedViews, recents, toast, onNewChat } = deps;
-  const out: Command[] = [];
+  const go = (label: string, icon: Command["icon"], group: Command["group"], href: string, keywords?: string): Command => ({
+    label,
+    icon,
+    group,
+    ...(keywords ? { keywords } : {}),
+    onRun: () => router.push(href),
+  });
+  const project = activeProjectName ?? slug;
+  // Where a run is dispatched or cancelled: the project's pipeline, else the ops view.
+  const pipelineHref = slug ? `/projects/${slug}/pipeline` : "/ops";
 
-  // ISS-477 — ⌘K project results are scoped to the active org (reuses the
-  // component-level `scopedProjects`) so the palette never surfaces projects
-  // from another org while one is selected (matches every other SPACE surface).
-
-  // Recent — recently-viewed entities.
-  for (const r of recents) {
-    out.push({
-      label: r.label,
-      icon: r.icon ?? "clock",
-      group: "recent",
-      keywords: r.kind,
-      onRun: () => router.push(r.href),
-    });
-  }
-
-  // Pinned — pinned projects + pinned views.
-  for (const p of scopedProjects) {
-    if (!pinnedIds.has(p.id)) continue;
-    out.push({
-      label: p.name,
-      icon: "pin",
-      group: "pinned",
-      keywords: "project",
-      onRun: () => router.push(`/projects/${p.slug}`),
-    });
-  }
-  for (const v of pinnedViews) {
-    out.push({
-      label: v.label,
-      icon: v.icon,
-      group: "pinned",
-      keywords: "view",
-      onRun: () => router.push(v.href),
-    });
-  }
-
-  // Navigate — workspace rail items + the secondary destinations dropped from
-  // the rail (so deep nav stays reachable) + project switcher + project sub-nav.
-  for (const it of WORKSPACE_ITEMS) {
-    out.push({ label: it.label, icon: it.icon, group: "navigate", onRun: () => router.push(it.href) });
-  }
-  for (const it of SECONDARY_DESTINATIONS) {
-    out.push({ label: it.label, icon: it.icon, group: "navigate", keywords: "go to", onRun: () => router.push(it.href) });
-  }
-  out.push({
-    label: "Docs",
-    icon: "book",
-    group: "navigate",
-    keywords: "help documentation guides go to",
-    onRun: () => router.push("/docs"),
-  });
-  // The project list moved off the landing route to /projects (ISS-355) — keep
-  // it reachable from ⌘K (the rail flyout/mobile drawer cover the pointer path).
-  out.push({
-    label: "All projects",
-    icon: "folder",
-    group: "navigate",
-    keywords: "projects list console go to",
-    onRun: () => router.push("/projects"),
-  });
-  for (const p of scopedProjects) {
-    out.push({
-      label: `Switch to ${p.name}`,
-      icon: "folder",
-      group: "navigate",
-      keywords: "project switch",
-      onRun: () => router.push(`/projects/${p.slug}`),
-    });
-  }
-  if (slug) {
-    for (const it of PROJECT_ITEMS) {
-      out.push({
-        label: `${activeProjectName ?? slug} · ${it.label}`,
-        icon: it.icon,
-        group: "navigate",
-        onRun: () => router.push(`/projects/${slug}${it.sub}`),
-      });
-    }
-    // Automation's two tabs, by name: the rail names only Automation (ISS-65).
-    for (const [label, tab, icon] of [
-      ["Schedules", "schedules", "clock"],
-    ] as const) {
-      out.push({
-        label: `${activeProjectName ?? slug} · ${label}`,
-        icon,
-        group: "navigate",
-        onRun: () => router.push(`/projects/${slug}/automation?tab=${tab}`),
-      });
-    }
-    // Project settings (ISS-316) — a nested route kept off the rail, reachable
-    // via the dashboard gear and here.
-    out.push({
-      label: `${activeProjectName ?? slug} · Settings`,
-      icon: "settings",
-      group: "navigate",
-      keywords: "project settings config repo branch members labels pipeline",
-      onRun: () => router.push(`/projects/${slug}/settings`),
-    });
-  }
-
-  out.push({
-    label: "New chat",
-    icon: "chat",
-    group: "actions",
-    keywords: "ask agent assistant conversation",
-    onRun: onNewChat,
-  });
-  out.push({
-    label: "Create issue",
-    icon: "plus",
-    group: "actions",
-    keywords: "new issue",
-    onRun: () =>
-      slug
-        ? router.push(`/projects/${slug}/issues?new=1`)
-        : toast({ title: "New issue", description: "Open a project to create an issue.", tone: "info" }),
-  });
-  out.push({
-    label: "Dispatch pipeline",
-    icon: "pipeline",
-    group: "actions",
-    keywords: "run dispatch",
-    onRun: () => (slug ? router.push(`/projects/${slug}/pipeline`) : router.push("/ops")),
-  });
-  out.push({
-    label: "Pair device",
-    icon: "server",
-    group: "actions",
-    keywords: "runner device",
-    onRun: () => router.push("/runners"),
-  });
-  out.push({
-    label: "Cancel a run",
-    icon: "stop",
-    group: "actions",
-    keywords: "cancel run abort",
-    onRun: () => (slug ? router.push(`/projects/${slug}/pipeline`) : router.push("/ops")),
-  });
-
-  return out;
+  // ISS-477 — project results are scoped to the active org, so the palette never surfaces projects
+  // from another org while one is selected.
+  return [
+    ...recents.map((r) => go(r.label, r.icon ?? "clock", "recent", r.href, r.kind)),
+    ...scopedProjects
+      .filter((p) => pinnedIds.has(p.id))
+      .map((p) => go(p.name, "pin", "pinned", `/projects/${p.slug}`, "project")),
+    ...pinnedViews.map((v) => go(v.label, v.icon, "pinned", v.href, "view")),
+    ...WORKSPACE_ITEMS.map((it) => go(it.label, it.icon, "navigate", it.href)),
+    // The secondary destinations dropped from the rail, so deep nav stays reachable.
+    ...SECONDARY_DESTINATIONS.map((it) => go(it.label, it.icon, "navigate", it.href, "go to")),
+    go("Docs", "book", "navigate", "/docs", "help documentation guides go to"),
+    go("All projects", "folder", "navigate", "/projects", "projects list console go to"),
+    ...scopedProjects.map((p) => go(`Switch to ${p.name}`, "folder", "navigate", `/projects/${p.slug}`, "project switch")),
+    ...(slug
+      ? [
+          ...PROJECT_ITEMS.map((it) => go(`${project} · ${it.label}`, it.icon, "navigate", `/projects/${slug}${it.sub}`)),
+          // The rail names only Automation (ISS-65); its Schedules tab is reachable by name.
+          go(`${project} · Schedules`, "clock", "navigate", `/projects/${slug}/automation?tab=schedules`),
+          // Project settings (ISS-316), a nested route kept off the rail.
+          go(
+            `${project} · Settings`,
+            "settings",
+            "navigate",
+            `/projects/${slug}/settings`,
+            "project settings config repo branch members labels pipeline",
+          ),
+        ]
+      : []),
+    { label: "New chat", icon: "chat", group: "actions", keywords: "ask agent assistant conversation", onRun: onNewChat },
+    {
+      label: "Create issue",
+      icon: "plus",
+      group: "actions",
+      keywords: "new issue",
+      onRun: () =>
+        slug
+          ? router.push(`/projects/${slug}/issues?new=1`)
+          : toast({ title: "New issue", description: "Open a project to create an issue.", tone: "info" }),
+    },
+    go("Dispatch pipeline", "pipeline", "actions", pipelineHref, "run dispatch"),
+    go("Pair device", "server", "actions", "/runners", "runner device"),
+    go("Cancel a run", "stop", "actions", pipelineHref, "cancel run abort"),
+  ];
 }

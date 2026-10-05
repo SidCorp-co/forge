@@ -72,12 +72,10 @@ function groupBlockers(rows: BlockerRow[]): Map<string, ProjectHealthRow['blocke
 projectHealthRoutes.get('/health', async (c) => {
   const userId = c.get('userId');
 
-  // Caller sees their visible projects (explicit member OR org owner/admin).
   const visibleIds = await loadVisibleProjectIds(userId);
   if (visibleIds.length === 0) return c.json([]);
 
   const visibleProjects = await listProjectHeads(visibleIds);
-
   if (visibleProjects.length === 0) return c.json([]);
 
   const projectIds = visibleProjects.map((p) => p.id);
@@ -93,22 +91,13 @@ projectHealthRoutes.get('/health', async (c) => {
 
   const blockersByProject = groupBlockers(agg.blockerRowsAll);
 
-  const throughputByProject = new Map<string, number>();
-  for (const r of agg.throughputRows) throughputByProject.set(r.projectId, Number(r.n));
-
-  const cycleByProject = new Map<string, number>();
-  for (const r of agg.cycleRows) {
-    if (r.avg_days != null) cycleByProject.set(r.project_id, Number(r.avg_days));
-  }
-
-  const liveRunsByProject = new Map<string, number>();
-  for (const r of agg.liveRunRows) liveRunsByProject.set(r.projectId, Number(r.n));
-
-  const runnersByProject = new Map<string, number>();
-  for (const r of agg.runnerRows) runnersByProject.set(r.projectId, Number(r.n));
-
-  const spendByProject = new Map<string, number>();
-  for (const r of agg.spendRows) spendByProject.set(r.project_id, Number(r.spend));
+  const throughputByProject = new Map(agg.throughputRows.map((r) => [r.projectId, Number(r.n)]));
+  const cycleByProject = new Map(
+    agg.cycleRows.filter((r) => r.avg_days != null).map((r) => [r.project_id, Number(r.avg_days)]),
+  );
+  const liveRunsByProject = new Map(agg.liveRunRows.map((r) => [r.projectId, Number(r.n)]));
+  const runnersByProject = new Map(agg.runnerRows.map((r) => [r.projectId, Number(r.n)]));
+  const spendByProject = new Map(agg.spendRows.map((r) => [r.project_id, Number(r.spend)]));
 
   // Build the capped avatar list + true count from the ordered member rows.
   const memberCountByProject = new Map<string, number>();

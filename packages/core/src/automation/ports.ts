@@ -33,8 +33,6 @@ interface AutomationPorts {
     triaged: number;
   }) => Promise<AgentReportView[]>;
   reportRow: (projectId: string, reportId: string) => Promise<AgentReportView[]>;
-  /** The admin thresholds; the read model uses only the schedule fail streak. */
-  readThresholds: () => Promise<{ scheduleFailStreak: number }>;
   lastFires: (projectId: string, scheduleIds?: readonly string[]) => Promise<Map<string, LastFire>>;
   readScheduleStreaks: (scope?: {
     projectId?: string;
@@ -68,8 +66,6 @@ export const reportRows: AutomationPorts['reportRows'] = (scope) =>
   automationPorts().reportRows(scope);
 export const reportRow: AutomationPorts['reportRow'] = (projectId, reportId) =>
   automationPorts().reportRow(projectId, reportId);
-export const readThresholds: AutomationPorts['readThresholds'] = () =>
-  automationPorts().readThresholds();
 export const lastFires: AutomationPorts['lastFires'] = (projectId, scheduleIds) =>
   automationPorts().lastFires(projectId, scheduleIds);
 export const readScheduleStreaks: AutomationPorts['readScheduleStreaks'] = (scope) =>

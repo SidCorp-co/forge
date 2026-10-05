@@ -16,7 +16,10 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { issues, pipelineRuns, projects, users } from './schema.js';
+import { users } from './schema-auth.js';
+import { issues } from './schema-issues.js';
+import { pipelineRuns } from './schema-pipeline.js';
+import { projects } from './schema-projects.js';
 
 export { RELEASE_ATTEMPT_STAGES, type ReleaseAttemptStage };
 

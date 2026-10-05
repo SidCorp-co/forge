@@ -120,7 +120,7 @@ export async function runSentryPull(args: {
     };
   }
 
-  const thresholds = await readSentryThresholds();
+  const thresholds = readSentryThresholds();
   const report: string[] = [
     `thresholds: ${thresholds.minEventCount} event(s), ${thresholds.minUserCount} user(s)`,
   ];

@@ -1,5 +1,7 @@
 import { index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { memories, memorySources, projects } from './schema.js';
+import { memories } from './schema-memory.js';
+import { projects } from './schema-projects.js';
+import { memorySources } from './schema-vocabulary.js';
 
 export const memoryRevisions = pgTable(
   'memory_revisions',

@@ -79,11 +79,6 @@
       ],
       "serves": ["REQ-22"]
     },
-    "admin-thresholds": {
-      "kind": "domain",
-      "context": "operations",
-      "serves": ["REQ-22"]
-    },
     "agent-reports": {
       "kind": "domain",
       "context": "execution",
@@ -152,11 +147,6 @@
       "context": "platform",
       "serves": ["via:comments", "via:issues", "via:memory"]
     },
-    "branches": {
-      "kind": "platform",
-      "context": "platform",
-      "serves": ["via:projects", "via:prompt"]
-    },
     "comments": {
       "kind": "domain",
       "context": "work",
@@ -186,7 +176,6 @@
         "via:knowledge",
         "via:memory",
         "via:orgs",
-        "via:pat",
         "via:projects",
         "via:uploads"
       ]
@@ -215,9 +204,12 @@
       "context": "platform",
       "owns": ["mcpAuditLog", "personalAccessTokens"],
       "serves": [
+        "REQ-27",
+        "github-merge-sequence#m-verify",
+        "personal-data-flow#ds-audit",
         "personal-data-flow#ds-vault",
         "personal-data-flow#pr-provision",
-        "github-merge-sequence#m-verify"
+        "personal-data-flow#src-mcp"
       ]
     },
     "db": {
@@ -256,7 +248,6 @@
         "via:onboarding",
         "via:orgs",
         "via:outbox",
-        "via:pat",
         "via:permissions",
         "via:pipeline",
         "via:project-config",
@@ -539,6 +530,8 @@
       "kind": "platform",
       "context": "platform",
       "serves": [
+        "REQ-22",
+        "REQ-26",
         "via:agent-reports",
         "via:agent-sessions",
         "via:assistant",
@@ -568,7 +561,6 @@
         "via:onboarding",
         "via:orgs",
         "via:outbox",
-        "via:pat",
         "via:permissions",
         "via:pipeline",
         "via:project-config",
@@ -682,7 +674,6 @@
         "via:onboarding",
         "via:orgs",
         "via:outbox",
-        "via:pat",
         "via:permissions",
         "via:pipeline",
         "via:project-config",
@@ -741,12 +732,6 @@
       "owns": ["pipelineOutbox"],
       "serves": ["issue-delivery#core", "issue-delivery#ev-transition", "automation#file"]
     },
-    "pat": {
-      "kind": "platform",
-      "context": "platform",
-      "owns": [],
-      "serves": ["personal-data-flow#src-mcp", "personal-data-flow#ds-audit", "REQ-27"]
-    },
     "permissions": {
       "kind": "kernel",
       "context": "access",
@@ -773,11 +758,6 @@
         "issue-delivery#act-build",
         "workflow-step-health#in-builds"
       ]
-    },
-    "plugins": {
-      "kind": "platform",
-      "context": "platform",
-      "serves": ["REQ-26"]
     },
     "preferences": {
       "kind": "domain",
@@ -906,11 +886,6 @@
       "context": "execution",
       "owns": ["scheduleRuns", "schedules"],
       "serves": ["REQ-16", "automation#declare", "automation#tick", "automation#route"]
-    },
-    "security": {
-      "kind": "platform",
-      "context": "platform",
-      "serves": ["via:skills"]
     },
     "skills": {
       "kind": "domain",

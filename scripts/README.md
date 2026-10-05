@@ -550,7 +550,7 @@ frozen in `.forge/size-baseline.json` may stay over budget, they may not get wor
 (its length and its longest function), so a reflow or a moved function is not a violation.
 
 **A frozen file has no headroom, and `--update-baseline` does not buy any.** One line added to a file
-already at its number — a comment, a column on `packages/core/src/db/schema.ts` — trips this,
+already at its number — a comment, a column on `packages/core/src/db/schema-issues.ts` — trips this,
 and re-freezing above it is then refused by `conformance-status`: the form axis declares
 `improves: down`, and `COMPARE.down` in `scripts/lib/baseline-ratchet.mjs` faults on ANY per-key
 rise and on any per-area total rise. There is no waiver to buy and no amnesty to price. The way

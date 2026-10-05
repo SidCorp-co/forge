@@ -10,12 +10,12 @@ import {
 } from '../middleware/zod-validator.js';
 import { type RequestRead, readsOf } from './request-reads.js';
 
-export type MountedRoute = { method: string; path: string; handler: unknown };
+type MountedRoute = { method: string; path: string; handler: unknown };
 
 type JsonSchema = Record<string, unknown>;
 type Operation = Record<string, unknown>;
 
-export type ApiContract = { document: JsonSchema; operations: number; refusals: string[] };
+type ApiContract = { document: JsonSchema; operations: number; refusals: string[] };
 
 export const UNDECLARED_RESPONSE =
   'Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers.';
@@ -162,7 +162,7 @@ const UNREPRESENTABLE = new Set([
   'void',
 ]);
 
-export const UNNAMED_REFINEMENT =
+const UNNAMED_REFINEMENT =
   'a refinement with no fixed message, whose rule this contract cannot state';
 
 type CheckDef = { check?: string; error?: unknown };

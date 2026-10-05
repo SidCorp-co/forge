@@ -1,3 +1,4 @@
+import { conversationAdapters } from './schema-vocabulary.js';
 // The durable conversation: a room that outlives every session that ever spoke
 // in it, addressed by its transport and that transport's own id for it.
 //
@@ -21,13 +22,11 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { projects, users } from './schema.js';
 import type { PresenceConfig } from './schema-agent-selves.js';
+import { users } from './schema-auth.js';
 import { ecosystems } from './schema-ecosystem.js';
+import { projects } from './schema-projects.js';
 import { requirements } from './schema-requirements.js';
-
-export const conversationAdapters = ['web', 'widget', 'rocketchat', 'telegram'] as const;
-export type ConversationAdapter = (typeof conversationAdapters)[number];
 
 export const conversationShapes = ['direct', 'group'] as const;
 export type ConversationShape = (typeof conversationShapes)[number];
@@ -391,3 +390,5 @@ export const conversationMessagesRelations = relations(conversationMessages, ({ 
   }),
   author: one(users, { fields: [conversationMessages.authorUserId], references: [users.id] }),
 }));
+
+export { type ConversationAdapter, conversationAdapters } from './schema-vocabulary.js';

@@ -1,7 +1,8 @@
 import { OUTBOX_EVENT_TYPES } from '@forge/contracts/outbox-events';
 import { sql } from 'drizzle-orm';
 import { bigint, check, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { issues, projects } from './schema.js';
+import { issues } from './schema-issues.js';
+import { projects } from './schema-projects.js';
 
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 

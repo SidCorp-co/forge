@@ -69,11 +69,11 @@ that meaning written down.
 **`base_branch` is the fourth column and it stays.** Three of the four go; this one does not, and
 the difference is what each is a fact about. `base_branch` is the project's **default work branch**:
 where an `ISS-*` branch is cut from, and where it lands unless that issue overrides the target.
-`packages/core/src/branches/resolve.ts:resolveIssueBranches` falls `targetBranch` back to it when an
-issue's `metadata.branchConfig` names none — the override moves one issue, never the project's
+An issue's target falls back to it when the issue's `metadata.branchConfig`
+(`packages/core/src/db/schema-issues.ts:IssueBranchOverride`) names none — the override moves one issue, never the project's
 default. So it is a fact about where WORK goes, while the chain is a fact about where a RELEASE
 goes. A project that ships nothing still cuts branches. Folding the column in would map
-every such project to `[]`, which names no branch, and leave `resolveIssueBranches` with nowhere to
+every such project to `[]`, which names no branch, and leave an issue branch with nowhere to
 cut from, *silently*. Measured while landing this change, 2026-09-27: of 37 fleet projects, **28
 declare no release while carrying a base branch**.
 

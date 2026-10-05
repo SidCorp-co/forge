@@ -2,7 +2,6 @@
 // imports only kernel and platform modules and each execution domain only its own context or one
 // before it (ADR 0008), so what they need from above is handed in here, from the owners' faces.
 
-import { readThresholds } from './admin-thresholds/index.js';
 import { provideAgentReportsPorts } from './agent-reports/index.js';
 import { provideAgentSessionsPorts } from './agent-sessions/index.js';
 import {
@@ -153,7 +152,7 @@ export function provideExecutionPorts(): void {
       (await resolveProjectHandle(tx, projectId)).userId,
   });
 
-  provideRunnersPorts({ readThresholds, countInFlightByRunner });
+  provideRunnersPorts({ countInFlightByRunner });
 
   provideSchedulesPorts({
     emitNotification,

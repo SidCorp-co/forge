@@ -13,7 +13,7 @@ export interface PinnedView {
   href: string;
 }
 
-export interface PinnedViewsState {
+interface PinnedViewsState {
   views: PinnedView[];
   isPinned: (id: string) => boolean;
   /** Add if absent (by id), otherwise remove — toggling the same view off. */

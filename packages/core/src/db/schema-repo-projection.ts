@@ -11,7 +11,9 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { integrationBindings, issues, projects } from './schema.js';
+import { issues } from './schema-issues.js';
+import { integrationBindings } from './schema-project-config.js';
+import { projects } from './schema-projects.js';
 
 export const pullRequestStates = ['open', 'closed', 'merged'] as const;
 export type PullRequestState = (typeof pullRequestStates)[number];

@@ -20,10 +20,14 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { issues, jobs, pipelineRuns, projects, users } from './schema.js';
-import { actorAgencies } from './schema-activity.js';
+import { users } from './schema-auth.js';
 import { feedback } from './schema-feedback.js';
+import { issues } from './schema-issues.js';
+import { jobs } from './schema-jobs.js';
+import { pipelineRuns } from './schema-pipeline.js';
+import { projects } from './schema-projects.js';
 import { scheduleRuns } from './schema-schedule-runs.js';
+import { actorAgencies } from './schema-vocabulary.js';
 
 export const agentReportKinds = AGENT_REPORT_KINDS;
 export const agentReportSeverities = AGENT_REPORT_SEVERITIES;

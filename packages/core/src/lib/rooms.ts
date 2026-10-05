@@ -1,4 +1,4 @@
-export interface Subscriber {
+interface Subscriber {
   send(data: string): void;
   readyState: number;
 }

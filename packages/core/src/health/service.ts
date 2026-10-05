@@ -59,89 +59,15 @@ const OPS_ROW_CAP = 50;
  * that the database is unreachable must not itself die trying to query it.
  */
 export async function readOpsHealth(visibleProjectIds: string[], staleJobThresholdSeconds: number) {
-  const liveness = await readLiveness();
-  const dbOk = liveness.dbOk;
-  const hasScope = visibleProjectIds.length > 0;
-
-  const runnerRows =
-    dbOk && hasScope
-      ? await db
-          .select({
-            id: runners.id,
-            name: runners.name,
-            projectId: runners.projectId,
-            status: runners.status,
-            lastSeenAt: runners.lastSeenAt,
-          })
-          .from(runners)
-          .where(inArray(runners.projectId, visibleProjectIds))
-      : [];
-
-  const inFlightByRunner = dbOk
-    ? await countInFlightByRunner(runnerRows.map((r) => r.id))
-    : new Map<string, number>();
-
-  const runnersOut: OpsRunner[] = runnerRows.map((r) => ({
-    ...r,
-    inFlightCount: inFlightByRunner.get(r.id) ?? 0,
-  }));
-
-  let projectsOut: Array<{ id: string; slug: string; activeJobCount: number }> = [];
-  if (dbOk && hasScope) {
-    const projectRows = await db
-      .select({
-        id: projects.id,
-        slug: projects.slug,
-        n: sql<number>`count(${agentSessions.id})::int`,
-      })
-      .from(projects)
-      .leftJoin(
-        agentSessions,
-        sql`${agentSessions.projectId} = ${projects.id} AND ${agentSessions.status} IN ('queued','running')`,
-      )
-      .where(inArray(projects.id, visibleProjectIds))
-      .groupBy(projects.id, projects.slug)
-      .orderBy(sql`count(${agentSessions.id}) DESC`)
-      .limit(OPS_ROW_CAP);
-    projectsOut = projectRows.map((r) => ({
-      id: r.id,
-      slug: r.slug,
-      activeJobCount: Number(r.n ?? 0),
-    }));
-  }
-
-  let stuckJobs: OpsStuckJob[] = [];
-  if (dbOk && hasScope) {
-    const projectIdList = sql.join(
-      visibleProjectIds.map((id) => sql`${id}`),
-      sql`, `,
-    );
-    const rows = await db.execute<{
-      id: string;
-      type: string;
-      runner_id: string | null;
-      dispatched_at: string | null;
-      age_seconds: string | number | null;
-    }>(sql`
-      SELECT id, type, runner_id, dispatched_at,
-             EXTRACT(EPOCH FROM (now() - dispatched_at))::int AS age_seconds
-      FROM jobs
-      WHERE status = 'dispatched'
-        AND dispatched_at IS NOT NULL
-        AND dispatched_at < now() - (${staleJobThresholdSeconds}::int * interval '1 second')
-        AND project_id IN (${projectIdList})
-      ORDER BY dispatched_at ASC
-      LIMIT ${OPS_ROW_CAP}
-    `);
-    stuckJobs = rows.map((r) => ({
-      jobId: r.id,
-      type: r.type,
-      runnerId: r.runner_id,
-      dispatchedAt: r.dispatched_at,
-      ageSeconds: Number(r.age_seconds ?? 0),
-    }));
-  }
-
+  const { dbOk } = await readLiveness();
+  const [runnersOut, projectsOut, stuckJobs] =
+    dbOk && visibleProjectIds.length > 0
+      ? await Promise.all([
+          readOpsRunners(visibleProjectIds),
+          readOpsProjects(visibleProjectIds),
+          readStuckJobs(visibleProjectIds, staleJobThresholdSeconds),
+        ])
+      : [[], [], []];
   return {
     version: pkg.version,
     uptimeSeconds: Math.floor(process.uptime()),
@@ -153,4 +79,68 @@ export async function readOpsHealth(visibleProjectIds: string[], staleJobThresho
     stuckJobs,
     staleJobThresholdSeconds,
   };
+}
+
+async function readOpsRunners(projectIds: string[]): Promise<OpsRunner[]> {
+  const rows = await db
+    .select({
+      id: runners.id,
+      name: runners.name,
+      projectId: runners.projectId,
+      status: runners.status,
+      lastSeenAt: runners.lastSeenAt,
+    })
+    .from(runners)
+    .where(inArray(runners.projectId, projectIds));
+  const inFlight = await countInFlightByRunner(rows.map((r) => r.id));
+  return rows.map((r) => ({ ...r, inFlightCount: inFlight.get(r.id) ?? 0 }));
+}
+
+async function readOpsProjects(projectIds: string[]) {
+  const rows = await db
+    .select({
+      id: projects.id,
+      slug: projects.slug,
+      n: sql<number>`count(${agentSessions.id})::int`,
+    })
+    .from(projects)
+    .leftJoin(
+      agentSessions,
+      sql`${agentSessions.projectId} = ${projects.id} AND ${agentSessions.status} IN ('queued','running')`,
+    )
+    .where(inArray(projects.id, projectIds))
+    .groupBy(projects.id, projects.slug)
+    .orderBy(sql`count(${agentSessions.id}) DESC`)
+    .limit(OPS_ROW_CAP);
+  return rows.map((r) => ({ id: r.id, slug: r.slug, activeJobCount: Number(r.n ?? 0) }));
+}
+
+async function readStuckJobs(projectIds: string[], staleSeconds: number): Promise<OpsStuckJob[]> {
+  const rows = await db.execute<{
+    id: string;
+    type: string;
+    runner_id: string | null;
+    dispatched_at: string | null;
+    age_seconds: string | number | null;
+  }>(sql`
+    SELECT id, type, runner_id, dispatched_at,
+           EXTRACT(EPOCH FROM (now() - dispatched_at))::int AS age_seconds
+    FROM jobs
+    WHERE status = 'dispatched'
+      AND dispatched_at IS NOT NULL
+      AND dispatched_at < now() - (${staleSeconds}::int * interval '1 second')
+      AND project_id IN (${sql.join(
+        projectIds.map((id) => sql`${id}`),
+        sql`, `,
+      )})
+    ORDER BY dispatched_at ASC
+    LIMIT ${OPS_ROW_CAP}
+  `);
+  return rows.map((r) => ({
+    jobId: r.id,
+    type: r.type,
+    runnerId: r.runner_id,
+    dispatchedAt: r.dispatched_at,
+    ageSeconds: Number(r.age_seconds ?? 0),
+  }));
 }

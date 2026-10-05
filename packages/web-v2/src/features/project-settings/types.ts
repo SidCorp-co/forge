@@ -61,7 +61,7 @@ export type LabelPatchInput = Partial<LabelCreateInput>;
 /**
  * A Claude Code plugin the project designates (installed at DEVICE scope —
  * a device installs the union of every project it serves). Mirrors
- * `pluginDesignationSchema` in core `plugins/designation.ts`. Stored at
+ * `pluginDesignationSchema` in core `lib/plugin-designation.ts`. Stored at
  * `agentConfig.plugins`, read via `GET /api/projects/:id`.
  */
 export interface PluginDesignation {

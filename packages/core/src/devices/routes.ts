@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { devicePlatforms, runnerProvisionStatuses } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { readPluginDesignations, unionPluginDesignations } from '../lib/plugin-designation.js';
 import { RefusalError } from '../lib/refusal.js';
 import { deviceRoom, roomManager, userRoom } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
@@ -13,7 +14,6 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { badRequest, forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, orgResource, requireHeld, requireOrgCan } from '../permissions/index.js';
-import { readPluginDesignations, unionPluginDesignations } from '../plugins/designation.js';
 import { patchDeviceRunnerCheckout } from '../runners/index.js';
 import { annotateDeviceBuilds } from './build-state.js';
 import { heartbeatGate, withDeviceGate } from './gate-report.js';

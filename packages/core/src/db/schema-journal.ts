@@ -9,7 +9,11 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { agentSessions, issues, jobs, pipelineRuns, projects } from './schema.js';
+import { agentSessions } from './schema-agent-sessions.js';
+import { issues } from './schema-issues.js';
+import { jobs } from './schema-jobs.js';
+import { pipelineRuns } from './schema-pipeline.js';
+import { projects } from './schema-projects.js';
 
 /**
  * Who wrote the row. `agent` narrates its own progress over REST; `system` is

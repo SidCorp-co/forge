@@ -33,6 +33,7 @@ import {
   entityCommentRoutes,
   registerIssueCommentRoutes,
 } from './comments/routes.js';
+import { patRoutes } from './credentials/pat-routes.js';
 import { developmentOverviewRoutes, needsYouRoutes } from './development/routes.js';
 import {
   deviceAuthRoutes,
@@ -121,7 +122,6 @@ import { notificationRoutes } from './notifications/routes.js';
 import { onboardingRoutes } from './onboarding/routes.js';
 import { orgInvitationRoutes, orgRoutes } from './orgs/routes.js';
 import { outboxAdminRoutes } from './outbox/routes.js';
-import { patRoutes } from './pat/routes.js';
 import {
   phaseRoutes,
   pipelineAnalyticsRoutes,

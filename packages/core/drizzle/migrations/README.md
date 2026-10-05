@@ -26,7 +26,7 @@ the directory — it trusts the journal exclusively.
 
 ```bash
 cd packages/core
-# After editing src/db/schema.ts:
+# After editing a src/db/schema*.ts file:
 pnpm db:generate
 ```
 
@@ -174,5 +174,5 @@ Then restart the container so the migrator reapplies cleanly.
 ## Source of truth
 
 - Runtime migrator: `packages/core/src/db/migrate.ts`
-- Schema TS: `packages/core/src/db/schema.ts`
+- Schema TS: `packages/core/src/db/schema*.ts`
 - Drizzle config: `packages/core/drizzle.config.ts`
