@@ -142,7 +142,7 @@ cargo build --release
 
 `setup` is the order the steps below go in, not a second implementation of
 them: pairing is `login`'s, the checkout is the server's provisioning path
-(`workspace/provision.rs`, the same one a web-UI assignment triggers), the
+(`crates/runner-workspace/src/provision.rs`, the same one a web-UI assignment triggers), the
 service is `service install`'s and the verdict is `doctor`'s. Every question it
 asks has a flag, and with `--yes` or no tty it asks none — `--code`,
 `--project`, `--path`, `--projects-root`, `--service` / `--no-service`. It ends
