@@ -8,7 +8,7 @@ use std::time::Duration;
 use crate::master::Masters;
 use runner_core::agent_activity::{Activities, Activity, Doing};
 use runner_core::ledger::{Ledger, MasterPass};
-use runner_platform::git::now_secs;
+use runner_platform::clock::now_secs;
 use runner_transport::master::{self as master_api, PassError};
 use runner_transport::CoreClient;
 

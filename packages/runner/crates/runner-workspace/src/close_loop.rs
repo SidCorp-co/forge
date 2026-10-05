@@ -15,8 +15,8 @@ use std::path::Path;
 
 use crate::worktree::Residence;
 use runner_core::ledger::{CheckoutReturn, Ledger};
+use runner_platform::clock::now_secs;
 use runner_platform::error::Result;
-use runner_platform::git::now_secs;
 pub use runner_transport::run_sessions::Outcome;
 
 /// Reads back the authoritative session row. Never the ack of a write.

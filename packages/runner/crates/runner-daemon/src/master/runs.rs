@@ -1,5 +1,5 @@
 use super::*;
-pub(crate) use runner_platform::git::now_secs;
+pub(crate) use runner_platform::clock::now_secs;
 
 pub(crate) struct Reclaim<'a> {
     pub(crate) served: &'a [runners::MeRunner],

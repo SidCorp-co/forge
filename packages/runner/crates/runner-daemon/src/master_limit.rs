@@ -22,7 +22,7 @@ use std::time::Duration;
 use serde_json::Value;
 
 use crate::master::{LIMITED_POLL_INTERVAL, NUDGE_REFRESH};
-pub(crate) use runner_platform::git::{days_from_civil, now_secs as now_unix};
+pub(crate) use runner_platform::clock::{days_from_civil, now_secs as now_unix};
 
 pub(crate) const FRESH_WITHIN: Duration =
     Duration::from_secs(2 * (LIMITED_POLL_INTERVAL.as_secs() + NUDGE_REFRESH.as_secs()));

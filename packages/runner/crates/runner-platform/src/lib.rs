@@ -1,3 +1,4 @@
+pub mod clock;
 pub mod config;
 pub mod cred_store;
 pub mod error;
