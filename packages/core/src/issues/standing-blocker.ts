@@ -1,9 +1,9 @@
 // The one verdict on why an issue is not moving, and what would move it.
 
-import type { IssuePark, ParkOwes } from '@forge/contracts';
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import type { IssueBlocker, IssueEdgeRef } from '@forge/contracts/issue-standing';
 import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
+import type { IssuePark, ParkOwes } from '@forge/contracts/park';
 import type { PipelineReading } from './pipeline-health-types.js';
 
 const PARK_OWES: Record<ParkOwes, { reason: string; who: string }> = {

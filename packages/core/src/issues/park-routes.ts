@@ -1,4 +1,4 @@
-import type { IssueParkResponse } from '@forge/contracts';
+import type { IssueParkResponse } from '@forge/contracts/park';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { loadProjectAccess } from '../lib/authz.js';

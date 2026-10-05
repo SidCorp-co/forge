@@ -19,22 +19,25 @@ Workspace-internal — already wired through pnpm's workspace protocol. To add i
 ## Usage
 
 ```ts
-import type { Issue, Project, IssueCreateInput } from "@forge/contracts";
-import { REGISTRY_JOB_TYPES } from "@forge/contracts";
+import type { RegisterInput } from "@forge/contracts/requests";
+import type { Project } from "@forge/contracts/rows";
+import { REGISTRY_JOB_TYPES } from "@forge/contracts/pipeline-registry";
 
 // Row types — what core returns from SELECT.
-const issue: Issue = await api.get(`/issues/${id}`);
+const project: Project = await api.get(`/projects/${id}`);
 
 // Request input types — compile-time shape of POST bodies, shared with core
 // (these are `z.infer` of core's validators, exported as types — no runtime Zod).
-const body: IssueCreateInput = { title: "add /api/foo" };
-await api.post("/issues", body);
+const body: RegisterInput = { email, password };
+await api.post("/auth/register", body);
 
 // Runtime values live in the emitted modules (pipeline-registry, ui-actions, wireframe, workflow-templates …).
 const isJobType = (t: string) => (REGISTRY_JOB_TYPES as readonly string[]).includes(t);
 ```
 
 ## Layout
+
+Every module is reached by its own subpath, `@forge/contracts/<module>`; the package has no barrel.
 
 | File | Exports |
 |---|---|
@@ -46,9 +49,8 @@ const isJobType = (t: string) => (REGISTRY_JOB_TYPES as readonly string[]).inclu
 | [`src/pipeline-registry.ts`](./src/pipeline-registry.ts) | Pipeline-registry enum tuples (job types, priorities, complexities, run kinds) |
 | [`src/workflow-templates.ts`](./src/workflow-templates.ts) | workflow-template-v1: the diagram-template meta-schema, the built-in registry (`BUILTIN_WORKFLOW_TEMPLATES`) and project-template resolution — runtime, read by core to check designs and by the web to draw them |
 | [`src/issues.ts`](./src/issues.ts) | Release-notes types (`ReleaseNotes`, `ReleaseNotesSection`) re-exported from `src/release-notes.ts` |
-| [`src/index.ts`](./src/index.ts) | Aggregated barrel |
 
-## Why "type-only"
+## Why request inputs are types only
 
 `@forge/contracts` depends on `@forge/core` to *read* its schemas, but its request inputs ship as types only (`z.infer`-derived, not runtime validators). Its runtime values are the emitted modules, which hardcode their own tuples rather than importing core. Web-v2 never bundles core code at runtime. Changing core handlers without changing schemas leaves contracts untouched — which is the desired property.
 

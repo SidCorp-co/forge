@@ -1,14 +1,5 @@
 
-export type {
-  AdminAdoptionBucket,
-  AdminAlert,
-  AdminAlertEntity,
-  AdminAlertId,
-  AdminAlertStatus,
-  AdminGlanceMetric,
-  AdminOverview,
-  AdminWorkspaceRow,
-} from "@forge/contracts";
+export type { AdminAdoptionBucket, AdminAlert, AdminAlertEntity, AdminAlertId, AdminAlertStatus, AdminGlanceMetric, AdminOverview, AdminWorkspaceRow } from "@forge/contracts/admin";
 
 export type OperatorSectionKey =
   | "overview"

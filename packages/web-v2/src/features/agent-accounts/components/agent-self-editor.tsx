@@ -4,7 +4,7 @@
 // glyph), what it always does (standing instructions), and when it speaks
 // (presence). Stored in the database, rendered into every turn the agent takes.
 import { useEffect, useState } from "react";
-import type { AgentSelf, AgentSelfPatch, AnswerInGroupMode } from "@forge/contracts";
+import type { AgentSelf, AgentSelfPatch, AnswerInGroupMode } from "@forge/contracts/assistant-self";
 import {
   Button,
   CardTitle,

@@ -1,5 +1,5 @@
 
-import type { IntegrationCapabilities } from "@forge/contracts";
+import type { IntegrationCapabilities } from "@forge/contracts/integrations";
 import type { IconName } from "@/design";
 import { isDrillableProvider } from "./providers/registry";
 import type { StatusCard } from "./types";

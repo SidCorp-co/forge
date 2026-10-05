@@ -1,6 +1,6 @@
 "use client";
 
-// Create/revoke require fresh auth (≤5 min); a 403 FRESH_AUTH_REQUIRED swaps the
+// Create requires fresh auth (≤5 min); a 403 FRESH_AUTH_REQUIRED swaps the
 // form for an inline re-auth prompt, then retries the pending create. Password
 // users confirm inline via POST /api/auth/reauth; SSO-only users
 // (passwordHash NULL) full-page-redirect through `:provider/reauth-start`.

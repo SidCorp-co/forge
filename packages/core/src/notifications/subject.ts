@@ -1,6 +1,6 @@
-import type { NotificationSubject } from '@forge/contracts';
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
+import type { NotificationSubject } from '@forge/contracts/notifications';
 
 export function statusWords(status: string): string {
   const label = ISSUE_STATUS_LABELS[status as IssueStatus];

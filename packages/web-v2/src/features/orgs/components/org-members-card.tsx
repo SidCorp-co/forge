@@ -3,6 +3,7 @@
 // Org members management card (ISS-468), used in Settings → Organizations and in the org home,
 // bound to the active org: members, invitations, the org's projects, and (owner only)
 // rename/delete the org.
+import { ORG_ROLE_PERMISSIONS } from "@forge/contracts/permissions";
 import { useState } from "react";
 import {
   Button,
@@ -33,8 +34,9 @@ const ORG_ROLE_OPTIONS: SelectOption[] = [
 ];
 
 export function OrgMembersCard({ org, onDeleted }: { org: OrgListItem; onDeleted: () => void }) {
-  const canManage = org.role === "owner" || org.role === "admin";
-  const isOwner = org.role === "owner";
+  const held = ORG_ROLE_PERMISSIONS[org.role];
+  const canManage = held.includes("org.admin");
+  const isOwner = held.includes("org.own");
   // Owner is only assignable by an owner — mirror this in BOTH the existing-
   // member dropdown and the add-member form so an admin never picks a role the
   // backend will 403 on.

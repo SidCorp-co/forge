@@ -1,7 +1,7 @@
 import type { HealthKey } from '@/design';
-import type { Project, ProjectMember } from '@forge/contracts';
+import type { Project, ProjectMember } from '@forge/contracts/rows';
 
-export type { ProjectMember } from '@forge/contracts';
+export type { ProjectMember } from '@forge/contracts/rows';
 
 export interface ProjectListItem {
   id: string;

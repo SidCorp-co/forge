@@ -1,4 +1,4 @@
-export type { AgentSelf, AgentSelfPatch, PresenceConfig } from "@forge/contracts";
+export type { AgentSelf, AgentSelfPatch, PresenceConfig } from "@forge/contracts/assistant-self";
 
 export interface AgentAccountRow {
   userId: string;

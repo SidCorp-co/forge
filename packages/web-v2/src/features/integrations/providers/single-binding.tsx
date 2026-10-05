@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/design";
-import type { AgentPathKind } from "@forge/contracts";
+import type { AgentPathKind } from "@forge/contracts/integrations";
 import { useMemo, useState } from "react";
 import {
   AGENT_ACCESS_CLOSED,

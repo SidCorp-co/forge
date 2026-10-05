@@ -1,5 +1,5 @@
 
-import type { ConnectionDirectoryItem } from "@forge/contracts";
+import type { ConnectionDirectoryItem } from "@forge/contracts/integrations";
 import { providerLabel } from "./providers/registry";
 import { type DirectoryStatus, deriveConnectionStatus } from "./derive";
 

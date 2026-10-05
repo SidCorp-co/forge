@@ -1,6 +1,6 @@
 "use client";
 
-import type { ParkThreadQuestion } from "@forge/contracts";
+import type { ParkThreadQuestion } from "@forge/contracts/park";
 import { useState } from "react";
 import {
   Button,

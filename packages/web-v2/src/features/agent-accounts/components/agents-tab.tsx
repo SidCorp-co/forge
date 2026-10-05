@@ -9,6 +9,7 @@
 // answer and there was no surface anywhere in the product that could give them
 // one — the three routes behind it had no caller (ISS-1003).
 
+import { ORG_ROLE_PERMISSIONS } from "@forge/contracts/permissions";
 import { useState } from "react";
 import {
   Badge,
@@ -60,7 +61,7 @@ export function AgentsTab() {
   const [revealed, setRevealed] = useState<{ userId: string; plaintext: string } | null>(null);
   const [renaming, setRenaming] = useState<{ userId: string; value: string } | null>(null);
 
-  if (activeOrg && activeOrg.role !== "owner" && activeOrg.role !== "admin") {
+  if (activeOrg && !ORG_ROLE_PERMISSIONS[activeOrg.role].includes("org.admin")) {
     return (
       <EmptyState
         title="Agents are managed by an org admin"
