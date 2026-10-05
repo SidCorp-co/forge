@@ -1,6 +1,6 @@
+import { refusalStatusOf } from '@forge/contracts/refusal-statuses';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { refusalStatusOf } from '@forge/contracts/refusal-statuses';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RefusalError } from '../lib/refusal.js';
 
@@ -56,7 +56,11 @@ function app(): Hono {
         ? (err.refusals[0]?.code ?? null)
         : ((err as { cause?: { code?: string } }).cause?.code ?? null);
     const status =
-      err instanceof HTTPException ? err.status : err instanceof RefusalError && code ? refusalStatusOf(code) : 500;
+      err instanceof HTTPException
+        ? err.status
+        : err instanceof RefusalError && code
+          ? refusalStatusOf(code)
+          : 500;
     return c.json({ code, error: err.message }, status);
   });
   a.route('/api/projects', projectRunnerRoutes);
