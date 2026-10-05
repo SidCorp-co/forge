@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { RULES } from '../lib/rate-limits.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { getDummyPasswordHash, verifyPassword } from './password.js';
 import { passwordHashOf } from './read.js';
 import { markFreshAuth } from './service.js';
@@ -25,14 +25,7 @@ reauthRoutes.use('/reauth', requireAuth());
 
 reauthRoutes.post(
   '/reauth',
-  zValidator('json', reauthSchema, (result) => {
-    if (!result.success) {
-      throw new HTTPException(400, {
-        message: 'Invalid reauth input',
-        cause: { code: 'BAD_REQUEST', details: result.error },
-      });
-    }
-  }),
+  zValidator('json', reauthSchema, invalid('Invalid reauth input')),
   async (c) => {
     const userId = c.get('userId');
     const { password } = c.req.valid('json');

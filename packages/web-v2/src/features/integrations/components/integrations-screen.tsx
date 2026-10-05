@@ -22,7 +22,7 @@ import {
   PageTitle,
   Skeleton,
 } from "@/design";
-import type { ConnectionDirectoryItem } from "@forge/contracts";
+import type { ConnectionDirectoryItem } from "@forge/contracts/integrations";
 import { formatApiError } from "@/lib/api/error";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { useActiveOrg } from "@/features/orgs/active-org";

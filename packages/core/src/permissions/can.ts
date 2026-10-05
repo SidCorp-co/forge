@@ -200,6 +200,46 @@ export async function can(
 }
 
 /**
+ * Who holds the permission on each project: a member whose role holds it or whose grant names it,
+ * and, for a permission the admin role holds, every owner and admin of the project's org. The
+ * people a notice or an approver list names, so no token is read. Every id asked for is a key.
+ */
+export async function holdersOf(
+  permission: ProjectPermission,
+  projectIds: readonly string[],
+): Promise<Map<string, string[]>> {
+  const ids = [...new Set(projectIds)];
+  const out = new Map<string, Set<string>>(ids.map((id) => [id, new Set<string>()]));
+  if (ids.length === 0) return new Map();
+  const memberRoles = rolesHolding(permission);
+  const [members, orgAdmins] = await Promise.all([
+    db
+      .select({ projectId: projectMembers.projectId, userId: projectMembers.userId })
+      .from(projectMembers)
+      .where(
+        and(
+          inArray(projectMembers.projectId, ids),
+          or(
+            ...(memberRoles.length > 0 ? [inArray(projectMembers.role, memberRoles)] : []),
+            sql`${permission} = ANY(${projectMembers.grants})`,
+          ),
+        ),
+      ),
+    ROLE_PERMISSIONS.admin.includes(permission)
+      ? db
+          .select({ projectId: projects.id, userId: organizationMembers.userId })
+          .from(projects)
+          .innerJoin(organizationMembers, sql`${organizationMembers.orgId} = ${projects.orgId}`)
+          .where(
+            and(inArray(projects.id, ids), inArray(organizationMembers.role, ['owner', 'admin'])),
+          )
+      : Promise.resolve([]),
+  ]);
+  for (const row of [...members, ...orgAdmins]) out.get(row.projectId)?.add(row.userId);
+  return new Map([...out].map(([id, people]) => [id, [...people]]));
+}
+
+/**
  * The same question asked of every row of a list at once: a predicate over the rows' project
  * column, true where the actor holds the permission on that project and the request's token
  * admits it. `and(...)` it into the list's WHERE in place of joining `project_members` by hand.

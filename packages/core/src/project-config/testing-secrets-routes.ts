@@ -10,7 +10,7 @@ import { RefusalError } from '../lib/refusal.js';
 import { parseBearerHeader } from '../middleware/bearer.js';
 import { authenticatePat, type PatPrincipal } from '../middleware/require-pat.js';
 import { forbidden } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { resolveTestingSecrets } from './testing-secrets.js';
 
 export const jobTestingSecretsRoutes = new Hono();
@@ -66,24 +66,21 @@ const refsQuery = z.strictObject({
 
 jobTestingSecretsRoutes.get(
   '/:id/testing-profiles/:profileId/secrets',
-  zValidator('param', paramSchema, (r) => {
-    if (!r.success) {
-      throw new HTTPException(400, {
-        message:
-          'invalid path: the job id is a uuid or `self` (the job this credential runs) and the profile id matches ^[a-z][a-z0-9-]{0,62}$',
-        cause: { code: 'BAD_REQUEST' },
-      });
-    }
-  }),
-  zValidator('query', refsQuery, (r) => {
-    if (!r.success) {
-      throw new HTTPException(400, {
-        message:
-          'the only query is ref, repeated as needed, each secret://<scope>/<name> with both parts matching ^[a-z][a-z0-9-]{0,62}$',
-        cause: { code: 'SECRET_REF_SHAPE' },
-      });
-    }
-  }),
+  zValidator(
+    'param',
+    paramSchema,
+    invalid(
+      'invalid path: the job id is a uuid or `self` (the job this credential runs) and the profile id matches ^[a-z][a-z0-9-]{0,62}$',
+    ),
+  ),
+  zValidator(
+    'query',
+    refsQuery,
+    invalid(
+      'the only query is ref, repeated as needed, each secret://<scope>/<name> with both parts matching ^[a-z][a-z0-9-]{0,62}$',
+      'SECRET_REF_SHAPE',
+    ),
+  ),
   async (c) => {
     const { id, profileId } = c.req.valid('param');
     const { ref } = c.req.valid('query');

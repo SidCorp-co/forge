@@ -1,12 +1,9 @@
 import type { IssueMove } from "@forge/contracts/issue-machine";
 
-import type {
-  BodyNode,
-  CommentIntent,
-  ForgeRecordView,
-  RecordLens,
-  ReleaseNotes,
-} from "@forge/contracts";
+import type { BodyNode } from "@forge/contracts/body-components";
+import type { CommentIntent } from "@forge/contracts/record-events";
+import type { ForgeRecordView, RecordLens } from "@forge/contracts/forge-record";
+import type { ReleaseNotes } from "@forge/contracts/issues";
 import type { NeedsInfoKind, WorkStep } from "@forge/contracts/issue-vocabulary";
 import {
   ISSUE_STATUSES as MACHINE_ISSUE_STATUSES,
@@ -77,7 +74,7 @@ export interface IssueFailureInfo {
 /** A label's taxonomy role. Modules ARE labels; `kind` is the only thing that separates them. */
 export type LabelKind = "label" | "module";
 
-export type { IssuePark, IssueParkResponse, ParkOwes, ParkResume } from "@forge/contracts";
+export type { IssuePark, IssueParkResponse, ParkOwes, ParkResume } from "@forge/contracts/park";
 
 /** One step a run entered inside its status, as core's `issue_work_state.steps` log holds it. */
 export interface WorkStepEntry {

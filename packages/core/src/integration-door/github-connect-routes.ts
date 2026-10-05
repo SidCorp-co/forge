@@ -34,20 +34,21 @@ import {
   resolveApiBaseUrl,
 } from '../integrations/index.js';
 import { SourceHostCallError } from '../integrations/source-host/index.js';
-import { loadOrgRole } from '../lib/authz.js';
 import { logger } from '../lib/logger.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { actorFor, projectResource, requireCan, requireOrgHeld } from '../permissions/index.js';
+import {
+  actorFor,
+  orgResource,
+  projectResource,
+  requireCan,
+  requireOrgCan,
+} from '../permissions/index.js';
 import { projectOrgHead } from '../projects/index.js';
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
-
-const invalidQuery = (result: { success: boolean; error?: z.core.$ZodError }) => {
-  if (!result.success && result.error) throw badRequest(result.error);
-};
 
 const connectQuerySchema = z.object({ org: z.string().optional(), orgId: z.string().optional() });
 const repositoriesQuerySchema = z.object({ connectionId: z.string().optional() });
@@ -131,14 +132,14 @@ async function ownerOrgForProjectApp(args: {
   if (!args.projectOrgId) return undefined;
   // A GitHub App created here is owned by the project's org and reachable by every admin of the
   // project, so creating one takes org.admin there.
-  requireOrgHeld(args.projectOrgId, await loadOrgRole(args.projectOrgId, args.userId), 'org.admin');
+  await requireOrgCan(actorFor(args.userId), 'org.admin', orgResource(args.projectOrgId));
   return args.projectOrgId;
 }
 
 githubConnectRoutes.post(
   '/:projectId/integrations/github/connect',
   projectAdmin,
-  zValidator('query', connectQuerySchema, invalidQuery),
+  zValidator('query', connectQuerySchema),
   async (c) => {
     const projectId = c.req.param('projectId');
     const userId = c.get('userId');
@@ -210,7 +211,7 @@ async function githubConnectionForPicker(args: {
 githubConnectRoutes.get(
   '/:projectId/integrations/github/repositories',
   projectAdmin,
-  zValidator('query', repositoriesQuerySchema, invalidQuery),
+  zValidator('query', repositoriesQuerySchema),
   async (c) => {
     const projectId = c.req.param('projectId');
     const userId = c.get('userId');
@@ -241,7 +242,7 @@ githubConnectRoutes.get(
 
 githubCallbackRoutes.get(
   '/integrations/github/manifest-callback',
-  zValidator('query', manifestCallbackQuerySchema, invalidQuery),
+  zValidator('query', manifestCallbackQuerySchema),
   async (c) => {
     const { code, state: rawState } = c.req.valid('query');
     if (!code || !rawState) throw badRequest({ query: 'code and state are required' });
@@ -284,7 +285,7 @@ githubCallbackRoutes.get(
 
 githubCallbackRoutes.get(
   '/integrations/github/installed',
-  zValidator('query', installedQuerySchema, invalidQuery),
+  zValidator('query', installedQuerySchema),
   async (c) => {
     const query = c.req.valid('query');
     const installationId = Number(query.installation_id);

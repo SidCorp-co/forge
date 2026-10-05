@@ -16,9 +16,7 @@ import {
   conversationParticipants,
   conversations,
 } from '../db/schema-conversations.js';
-import { effectiveProjectRole } from '../lib/authz.js';
-import { forbidden } from '../middleware/route-errors.js';
-import { requireHeld } from '../permissions/index.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import type { Executor, TxOnly } from './db-executor.js';
 import { refuseConversation } from './refusals.js';
 
@@ -270,13 +268,12 @@ export async function addHandle(args: AddHandleArgs): Promise<void> {
     );
   }
 
-  const access = await effectiveProjectRole(args.actorUserId, args.projectId);
-  if (!access?.role) {
-    throw forbidden(
-      `@${handle.handle} would make this room about project ${args.projectId} and you hold no role on it; a handle is added to a room by somebody who holds project.write on its project`,
-    );
-  }
-  requireHeld(access, 'project.write', `adding @${handle.handle} to a room`);
+  await requireCan(
+    actorFor(args.actorUserId),
+    'project.write',
+    projectResource(args.projectId),
+    `adding @${handle.handle} to a room`,
+  );
 
   await tx
     .insert(conversationParticipants)

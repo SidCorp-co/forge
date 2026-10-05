@@ -3,19 +3,14 @@
   "version": "0.4.0-dev.6",
   "private": true,
   "license": "Apache-2.0",
-  "description": "Shared TypeScript types + request schemas derived from @forge/core (Drizzle rows + Zod schemas). Type-only surface — no runtime coupling.",
+  "description": "Shared types and runtime tables for core and web-v2: row and request types derived from @forge/core, and the vocabularies both read at runtime (permissions, outbox consumers, pipeline registry). Each module is its own subpath, @forge/contracts/<module>.",
   "type": "module",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
     "./*": {
       "types": "./dist/*.d.ts",
       "default": "./dist/*.js"
     }
   },
-  "types": "./src/index.ts",
   "files": [
     "dist",
     "src"

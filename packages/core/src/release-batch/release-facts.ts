@@ -5,7 +5,7 @@ import { requirementKey } from '@forge/contracts/requirements';
 import { criterionStandingOf, identityPhraseOf } from '@forge/contracts/verdict-identity';
 import { and, asc, eq, inArray, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, jobs, organizationMembers, projectMembers, projects } from '../db/schema.js';
+import { issues, jobs } from '../db/schema.js';
 import { requirements } from '../db/schema-requirements.js';
 import {
   activeIssuePrefix,
@@ -15,6 +15,7 @@ import {
 } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
+import { holdersOf } from '../permissions/index.js';
 import { standingsOf } from '../requirements/index.js';
 import type { CompletionFacts } from './release-view.js';
 
@@ -176,28 +177,7 @@ export async function loadReleaseFacts(
 }
 
 export async function approversOf(projectId: string): Promise<ReleasePerson[]> {
-  const [project] = await db
-    .select({ orgId: projects.orgId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) return [];
-  const [direct, org] = await Promise.all([
-    db
-      .select({ userId: projectMembers.userId })
-      .from(projectMembers)
-      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.role, 'admin'))),
-    db
-      .select({ userId: organizationMembers.userId })
-      .from(organizationMembers)
-      .where(
-        and(
-          eq(organizationMembers.orgId, project.orgId),
-          inArray(organizationMembers.role, ['admin', 'owner']),
-        ),
-      ),
-  ]);
-  const ids = [...new Set([...direct, ...org].map((r) => r.userId))];
+  const ids = (await holdersOf('releases.approve', [projectId])).get(projectId) ?? [];
   const people = await peopleOf(ids);
   return ids.flatMap((id) => {
     const p = people.get(id);

@@ -1,5 +1,5 @@
 
-import type { AgentPathKind } from "@forge/contracts";
+import type { AgentPathKind } from "@forge/contracts/integrations";
 import type { ComponentType } from "react";
 import type { IconName } from "@/design";
 import { agent } from "./agent";

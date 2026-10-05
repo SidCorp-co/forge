@@ -6,7 +6,7 @@ import {
   type RefusalStatus,
   refusalTitle,
   refusalType,
-} from '@forge/contracts';
+} from '@forge/contracts/refusal';
 import { refusalStatusOf } from '@forge/contracts/refusal-statuses';
 import type { Context } from 'hono';
 

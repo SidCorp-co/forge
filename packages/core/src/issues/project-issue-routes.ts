@@ -7,7 +7,6 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { listResponse } from '../lib/pagination.js';
-import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -137,7 +136,6 @@ issueProjectRoutes.get(
   zValidator('query', issueFiltersSchema, (r) => {
     if (!r.success) {
       refuseLegacyStatusFields(r.data, 'query', ['status', 'statusNot']);
-      throw queryBadRequest(issueFiltersSchema, r.error);
     }
   }),
   async (c) => {

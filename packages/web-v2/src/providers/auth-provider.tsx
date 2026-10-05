@@ -1,6 +1,7 @@
 'use client';
 
-import type { LoginInput, MeResponse, RegisterInput } from '@forge/contracts';
+import type { LoginInput, RegisterInput } from '@forge/contracts/requests';
+import type { MeResponse } from '@forge/contracts/responses';
 
 /**
  * The legacy `chatLogAccess` flag remains exposed as an optional field for the

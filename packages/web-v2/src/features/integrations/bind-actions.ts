@@ -1,4 +1,4 @@
-import type { AgentAccess, BindingRole } from "@forge/contracts";
+import type { AgentAccess, BindingRole } from "@forge/contracts/integrations";
 import { formatApiError } from "@/lib/api/error";
 import { configApi } from "@/features/project-settings/config-api";
 import { documentRefusals, refusalLine } from "@/lib/api/refusals";

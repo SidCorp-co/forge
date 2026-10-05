@@ -7,7 +7,7 @@ import { masterVerbs } from '../db/schema-master-charter.js';
 import { RULES } from '../lib/rate-limits.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import {
   knowledgeInjectionEnum,
@@ -73,12 +73,8 @@ knowledgeRoutes.use('*', requireAuth(), assertEmailVerified());
 
 knowledgeRoutes.get(
   '/:id/knowledge',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid project id');
-  }),
-  zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest('invalid query params');
-  }),
+  zValidator('param', idParamSchema, invalid('invalid project id')),
+  zValidator('query', listQuerySchema, invalid('invalid query params')),
   async (c) => {
     const { id } = c.req.valid('param');
     const { kind, injection, verb: verbRaw, status: statusRaw } = c.req.valid('query');
@@ -106,12 +102,8 @@ const searchBodySchema = z.object({
 knowledgeRoutes.post(
   '/:id/knowledge/search',
   rateLimit(() => RULES.knowledgeSearch, { name: 'knowledge-search' }),
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid project id');
-  }),
-  zValidator('json', searchBodySchema, (r) => {
-    if (!r.success) throw badRequest('invalid body');
-  }),
+  zValidator('param', idParamSchema, invalid('invalid project id')),
+  zValidator('json', searchBodySchema, invalid('invalid body')),
   async (c) => {
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
@@ -145,9 +137,7 @@ knowledgeRoutes.put(
   zValidator('param', slugParamSchema, (r, c) => {
     if (!r.success) throw badSlug(c.req.param('slug') ?? '');
   }),
-  zValidator('json', upsertBodySchema, (r) => {
-    if (!r.success) throw badRequest('invalid body');
-  }),
+  zValidator('json', upsertBodySchema, invalid('invalid body')),
   async (c) => {
     const { id, slug } = c.req.valid('param');
     const body = c.req.valid('json');

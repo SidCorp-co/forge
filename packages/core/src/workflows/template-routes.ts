@@ -2,7 +2,7 @@ import { BUILTIN_WORKFLOW_TEMPLATES, findTemplate } from '@forge/contracts/workf
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { templateNotFound, templateSummary, templateView } from './template-service.js';
 
 /**
@@ -15,15 +15,7 @@ export const workflowTemplateCatalogueRoutes = new Hono();
 const catalogueQuery = zValidator(
   'query',
   z.strictObject({ projectId: z.string().optional() }),
-  (r) => {
-    if (!r.success) {
-      throw new HTTPException(400, {
-        message:
-          'invalid query: the catalogue takes no parameters (a projectId is refused by name)',
-        cause: { code: 'BAD_REQUEST' },
-      });
-    }
-  },
+  invalid('invalid query: the catalogue takes no parameters (a projectId is refused by name)'),
 );
 
 workflowTemplateCatalogueRoutes.get('/', catalogueQuery, (c) => {

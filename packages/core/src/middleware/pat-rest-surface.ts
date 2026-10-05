@@ -37,10 +37,15 @@ type PatRequestResolution = {
 };
 
 // cm:why a gate mounted at a prefix runs for every path under it, served or not, so a token's grant would otherwise answer for a route nobody serves; a `use` entry is method ALL with a (c, next) middleware, anything else is a handler that answers
+export function registrationServes(r: {
+  method: string;
+  handler: Parameters<typeof findTargetHandler>[0];
+}): boolean {
+  return r.method !== 'ALL' || !isMiddleware(findTargetHandler(r.handler));
+}
+
 function routeIsServed(c: Context): boolean {
-  return matchedRoutes(c).some(
-    (r) => r.method !== 'ALL' || !isMiddleware(findTargetHandler(r.handler)),
-  );
+  return matchedRoutes(c).some(registrationServes);
 }
 
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);

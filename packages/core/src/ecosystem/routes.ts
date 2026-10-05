@@ -1,10 +1,9 @@
 import { type Context, Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { REGISTER_STATUSES, readRegister } from './channel-register.js';
 import {
   createEcosystem,
@@ -32,14 +31,11 @@ for (const router of [ecosystemRoutes, membershipRoutes]) {
   router.use('*', requireAuth(), assertEmailVerified());
 }
 
-const idParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
-  if (!r.success) {
-    throw new HTTPException(400, {
-      message: 'invalid path: the id is a uuid',
-      cause: { code: 'BAD_REQUEST' },
-    });
-  }
-});
+const idParam = zValidator(
+  'param',
+  z.object({ id: z.uuid() }),
+  invalid('invalid path: the id is a uuid'),
+);
 
 const serialiseEcosystem = (held: HeldEcosystem) => ({
   id: held.id,
@@ -129,14 +125,11 @@ ecosystemRoutes.get('/:id/members', idParam, async (c) => {
 ecosystemRoutes.post(
   '/:id/invitations',
   idParam,
-  zValidator('json', z.strictObject({ project: z.uuid() }), (r) => {
-    if (!r.success) {
-      throw new HTTPException(400, {
-        message: 'the body is { "project": <project uuid> } and nothing else',
-        cause: { code: 'BAD_REQUEST' },
-      });
-    }
-  }),
+  zValidator(
+    'json',
+    z.strictObject({ project: z.uuid() }),
+    invalid('the body is { "project": <project uuid> } and nothing else'),
+  ),
   async (c) =>
     answerMembership(
       c,
@@ -155,22 +148,10 @@ membershipRoutes.get('/:id', idParam, async (c) =>
 const reasonBody = zValidator(
   'json',
   z.strictObject({ reason: z.string().trim().min(1).max(500) }),
-  (r, c) => {
-    if (!r.success) {
-      return refused(
-        c,
-        [
-          {
-            code: 'MEMBERSHIP_REASON_REQUIRED',
-            path: '/reason',
-            detail:
-              'leaving or removing a membership says why: the body is { "reason": 1 to 500 characters }, and the reason is kept on the membership.',
-          },
-        ],
-        'ECOSYSTEM_REFUSED',
-      );
-    }
-  },
+  invalid(
+    'leaving or removing a membership says why: the body is { "reason": 1 to 500 characters }, and the reason is kept on the membership.',
+    'MEMBERSHIP_REASON_REQUIRED',
+  ),
 );
 
 async function move(c: Context, membershipId: string, verb: MembershipVerb, reason: string | null) {
@@ -196,13 +177,6 @@ membershipRoutes.post('/:id/remove', idParam, reasonBody, (c) =>
   move(c, c.req.valid('param').id, 'remove', c.req.valid('json').reason),
 );
 
-const REGISTER_FILTER_SHAPE: Record<string, string> = {
-  status: `one of ${REGISTER_STATUSES.join(' | ')}`,
-  type: `one of ${DOCUMENT_TYPES.join(' | ')}`,
-  party: 'a project uuid',
-  limit: 'a whole number from 1 to 500',
-};
-
 const registerQuery = zValidator(
   'query',
   z.strictObject({
@@ -211,23 +185,6 @@ const registerQuery = zValidator(
     party: z.uuid().optional(),
     limit: z.coerce.number().int().min(1).max(500).default(200),
   }),
-  (r, c) => {
-    if (r.success) return;
-    const keys = r.error.issues.flatMap((i) =>
-      i.code === 'unrecognized_keys' ? i.keys : [String(i.path[0] ?? '')],
-    );
-    return refused(
-      c,
-      [...new Set(keys)].map((key) => ({
-        code: 'REGISTER_FILTER_UNKNOWN',
-        path: `/${key}`,
-        detail: REGISTER_FILTER_SHAPE[key]
-          ? `the register's \`${key}\` filter is ${REGISTER_FILTER_SHAPE[key]}`
-          : `\`${key}\` is not a register filter: the register is filtered by ${Object.keys(REGISTER_FILTER_SHAPE).join(', ')}`,
-      })),
-      'ECOSYSTEM_REFUSED',
-    );
-  },
 );
 
 ecosystemRoutes.get('/:id/register', idParam, registerQuery, async (c) => {

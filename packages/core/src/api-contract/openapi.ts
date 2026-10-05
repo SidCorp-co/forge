@@ -1,4 +1,4 @@
-import { PROBLEM_CONTENT_TYPE, REFUSAL_STATUSES } from '@forge/contracts';
+import { PROBLEM_CONTENT_TYPE, REFUSAL_STATUSES } from '@forge/contracts/refusal';
 import { COMPOSED_HANDLER } from 'hono/utils/constants';
 import { z } from 'zod';
 import { AUTH_GATES, type AuthGate, declaredGates } from '../middleware/declared-gate.js';

@@ -25,7 +25,7 @@ import { z } from 'zod';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { strictBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { addAttachment, askClarification, attachmentBytes } from './attachments.js';
 import { similarFeedbackAs } from './embeddings.js';
 import { listFeedbackAs } from './list-read.js';
@@ -46,29 +46,22 @@ for (const path of ['/:id/feedback', '/:id/feedback/*']) {
   feedbackRoutes.use(path, requireAuth(), assertEmailVerified());
 }
 
-const badRequest = (message: string) =>
-  new HTTPException(400, { message, cause: { code: 'BAD_REQUEST' } });
-
-const projectParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
-  if (!r.success) throw badRequest('invalid path: the project id is a uuid');
-});
+const projectParam = zValidator(
+  'param',
+  z.object({ id: z.uuid() }),
+  invalid('invalid path: the project id is a uuid'),
+);
 
 const itemParam = zValidator(
   'param',
   z.object({ id: z.uuid(), fb: z.string().trim().min(1).max(64) }),
-  (r) => {
-    if (!r.success)
-      throw badRequest('invalid path: a project uuid and a feedback uuid or key (FB-n)');
-  },
+  invalid('invalid path: a project uuid and a feedback uuid or key (FB-n)'),
 );
 
 const attachmentParam = zValidator(
   'param',
   z.object({ id: z.uuid(), fb: z.string().trim().min(1).max(64), aid: z.uuid() }),
-  (r) => {
-    if (!r.success)
-      throw badRequest('invalid path: a project uuid, a feedback key and an attachment uuid');
-  },
+  invalid('invalid path: a project uuid, a feedback key and an attachment uuid'),
 );
 
 function actorOf(c: Context<{ Variables: AuthVars }>): FeedbackActor {
@@ -89,12 +82,13 @@ function answer(c: Context, outcome: FeedbackOutcome) {
 feedbackRoutes.get(
   '/:id/feedback',
   projectParam,
-  zValidator('query', listFeedbackQuerySchema, (r) => {
-    if (!r.success)
-      throw badRequest(
-        `invalid query: phase? (comma-separated: ${FEEDBACK_PHASES.join(', ')}), q?, requirement? (REQ-n)`,
-      );
-  }),
+  zValidator(
+    'query',
+    listFeedbackQuerySchema,
+    invalid(
+      `invalid query: phase? (comma-separated: ${FEEDBACK_PHASES.join(', ')}), q?, requirement? (REQ-n)`,
+    ),
+  ),
   async (c) => {
     const q = c.req.valid('query');
     const out = await listFeedbackAs(actorOf(c), c.req.valid('param').id, {

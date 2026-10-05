@@ -82,15 +82,6 @@ const rollbackImagesQuerySchema = z.object({
   resourceUuid: z.string().optional(),
 });
 
-const invalidInput = (result: { success: boolean; error?: z.core.$ZodError }) => {
-  if (!result.success && result.error) {
-    throw new HTTPException(400, {
-      message: 'Invalid input',
-      cause: { code: 'BAD_REQUEST', details: result.error },
-    });
-  }
-};
-
 // Membership is refused before the input is read, so a stranger learns nothing from a 400.
 const projectMember: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
   await requireCan(
@@ -131,7 +122,7 @@ function registerCommandRoutes(routes: Routes): void {
   routes.get(
     '/:projectId/integrations/coolify/status',
     projectMember,
-    zValidator('query', integrationQuerySchema, invalidInput),
+    zValidator('query', integrationQuerySchema),
     (c) => {
       const { integrationId } = c.req.valid('query');
       const projectId = c.req.param('projectId');
@@ -141,7 +132,7 @@ function registerCommandRoutes(routes: Routes): void {
   routes.post(
     '/:projectId/integrations/coolify/deploy',
     coolifyRun('deploy'),
-    zValidator('json', deployBodySchema, invalidInput),
+    zValidator('json', deployBodySchema),
     (c) =>
       answer(c, () =>
         runCoolifyDeploy({ projectId: c.req.param('projectId'), ...c.req.valid('json') }),
@@ -150,7 +141,7 @@ function registerCommandRoutes(routes: Routes): void {
   routes.post(
     '/:projectId/integrations/coolify/cancel',
     coolifyRun('cancel'),
-    zValidator('json', cancelBodySchema, invalidInput),
+    zValidator('json', cancelBodySchema),
     (c) =>
       answer(c, () =>
         runCoolifyCancel({ projectId: c.req.param('projectId'), ...c.req.valid('json') }),
@@ -159,7 +150,7 @@ function registerCommandRoutes(routes: Routes): void {
   routes.get(
     '/:projectId/integrations/coolify/rollback-images',
     projectMember,
-    zValidator('query', rollbackImagesQuerySchema, invalidInput),
+    zValidator('query', rollbackImagesQuerySchema),
     (c) => {
       const { integrationId, resourceUuid } = c.req.valid('query');
       const projectId = c.req.param('projectId');
@@ -174,7 +165,7 @@ function registerCommandRoutes(routes: Routes): void {
   routes.post(
     '/:projectId/integrations/coolify/rollback',
     coolifyRun('rollback'),
-    zValidator('json', rollbackBodySchema, invalidInput),
+    zValidator('json', rollbackBodySchema),
     (c) =>
       answer(c, () =>
         runCoolifyRollback({ projectId: c.req.param('projectId'), ...c.req.valid('json') }),
@@ -192,7 +183,7 @@ function registerSetupRoutes(routes: Routes): void {
   routes.post(
     '/:projectId/integrations/coolify/applications',
     projectMember,
-    zValidator('json', applicationsBodySchema, invalidInput),
+    zValidator('json', applicationsBodySchema),
     async (c) => {
       const body = c.req.valid('json');
       const auth =
@@ -205,7 +196,7 @@ function registerSetupRoutes(routes: Routes): void {
   routes.get(
     '/:projectId/integrations/coolify/targets',
     projectMember,
-    zValidator('query', integrationQuerySchema, invalidInput),
+    zValidator('query', integrationQuerySchema),
     (c) => {
       const { integrationId } = c.req.valid('query');
       const projectId = c.req.param('projectId');

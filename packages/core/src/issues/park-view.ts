@@ -1,8 +1,8 @@
 // What a person owes an issue, read once for the banner, the status control and the decision panel:
 // the status, the park record in the thread and the open question rows (ISS-1310).
 
-import type { IssuePark, ParkOwes, ParkResume, ParkThreadQuestion } from '@forge/contracts';
 import { AWAITING_INPUT_STATUSES, PARK_STATUSES } from '@forge/contracts/issue-machine';
+import type { IssuePark, ParkOwes, ParkResume, ParkThreadQuestion } from '@forge/contracts/park';
 import { and, desc, eq, gt, isNull, notInArray, notLike, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {

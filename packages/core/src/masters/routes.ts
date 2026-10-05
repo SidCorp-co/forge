@@ -2,10 +2,8 @@ import { MASTER_PASS_PAGE_DEFAULT, MASTER_PASS_PAGE_MAX } from '@forge/contracts
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
-import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { listMasterPasses, readMasterStanding } from './read.js';
 
@@ -23,12 +21,12 @@ masterStandingRoutes.use('/:id/masters/passes', requireAuth(), assertEmailVerifi
 
 masterStandingRoutes.get(
   '/:id/masters/standing',
-  zValidator('param', projectParam, (r) => {
-    if (!r.success) throw badRequest('invalid path: /api/projects/<project uuid>/masters/standing');
-  }),
-  zValidator('query', noQuery, (r) => {
-    if (!r.success) throw queryBadRequest(noQuery, r.error);
-  }),
+  zValidator(
+    'param',
+    projectParam,
+    invalid('invalid path: /api/projects/<project uuid>/masters/standing'),
+  ),
+  zValidator('query', noQuery),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));
@@ -39,12 +37,12 @@ masterStandingRoutes.get(
 
 masterStandingRoutes.get(
   '/:id/masters/passes',
-  zValidator('param', projectParam, (r) => {
-    if (!r.success) throw badRequest('invalid path: /api/projects/<project uuid>/masters/passes');
-  }),
-  zValidator('query', passQuery, (r) => {
-    if (!r.success) throw queryBadRequest(passQuery, r.error);
-  }),
+  zValidator(
+    'param',
+    projectParam,
+    invalid('invalid path: /api/projects/<project uuid>/masters/passes'),
+  ),
+  zValidator('query', passQuery),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const access = await loadProjectAccess(projectId, c.get('userId'));

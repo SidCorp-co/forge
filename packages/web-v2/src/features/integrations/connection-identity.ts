@@ -1,5 +1,5 @@
 
-import type { ConnectionDirectoryItem } from "@forge/contracts";
+import type { ConnectionDirectoryItem } from "@forge/contracts/integrations";
 import { connectionTargetFor, providerLabel } from "./providers/registry";
 
 /** The name to show. Never invented: falls back to the provider, which is true. */

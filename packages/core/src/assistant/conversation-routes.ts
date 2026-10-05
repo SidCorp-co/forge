@@ -30,12 +30,12 @@ import {
   validateRoomPresence,
   writableConversation,
 } from '../conversations/index.js';
-import { effectiveProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { actorFor, can, projectResource, requireHeld } from '../permissions/index.js';
 import { batchesOfConversation } from '../questionnaires/index.js';
 import { agentModeOffer } from './conversation-agent-offer.js';
 import { conversationAttachmentRoutes } from './conversation-attachment-routes.js';
@@ -133,7 +133,7 @@ conversationRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
     for (const pid of scope) {
       let held = roleByProject.get(pid);
       if (held === undefined) {
-        held = Boolean((await effectiveProjectRole(userId, pid))?.role);
+        held = await can(actorFor(userId), 'project.read', projectResource(pid));
         roleByProject.set(pid, held);
       }
       if (!held) ok = false;

@@ -497,7 +497,7 @@ async function alertAutomationFailing(thresholds: AdminThresholds, now: Date): P
 
 /**
  * A6 — outbox deliveries that ran out of attempts. Any dead delivery is crit: a reaction that will
- * not happen until somebody replays it (`POST /api/projects/:id/outbox/deliveries/:did/replay`).
+ * not happen until somebody replays it (`POST /api/admin/outbox/deliveries/:did/replay`).
  */
 async function alertDeadDeliveries(): Promise<AdminAlert> {
   const { count, oldestDeadAt, sample } = await tallyDeadDeliveries(ENTITY_LIMIT);

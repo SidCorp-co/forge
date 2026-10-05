@@ -1,10 +1,9 @@
 import { ANSWER_VIEWS } from '@forge/contracts/projection';
 import type { Context } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import type { RequirementActor } from './read.js';
 import { criterionSchema, specSchema } from './schemas.js';
 import type { RequirementOutcome } from './write-tx.js';
@@ -13,14 +12,9 @@ export type RequirementEnv = { Variables: AuthVars };
 
 const reqRef = z.string().trim().min(1).max(64);
 
-const badRequest = (message: string) =>
-  new HTTPException(400, { message, cause: { code: 'BAD_REQUEST' } });
-
 /** A path validator whose failure is a 400 naming the path's shape. */
 function pathParams<T extends z.ZodRawShape>(shape: T, expected: string) {
-  return zValidator('param', z.object(shape), (r) => {
-    if (!r.success) throw badRequest(`invalid path: ${expected}`);
-  });
+  return zValidator('param', z.object(shape), invalid(`invalid path: ${expected}`));
 }
 
 export const projectParam = pathParams({ id: z.uuid() }, 'the project id is a uuid');
@@ -41,9 +35,7 @@ export const reqAnd = <T extends z.ZodRawShape>(shape: T, expected: string) =>
 export const viewQuery = zValidator(
   'query',
   z.strictObject({ view: z.enum(ANSWER_VIEWS).optional() }),
-  (r) => {
-    if (!r.success) throw badRequest('invalid query: view? (summary | full, full by default)');
-  },
+  invalid('invalid query: view? (summary | full, full by default)'),
 );
 
 export const revisionFields = {

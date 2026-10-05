@@ -1,10 +1,9 @@
 import { type Context, Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { supersedeBuilderRun } from './builder-supersede.js';
 import {
   listBuilderRunsAs,
@@ -33,20 +32,23 @@ for (const path of ['/:id/links', '/:id/links/*', '/:id/builder-runs', '/:id/bui
 busRoutes.use('/:id/bus', requireAuth(), assertEmailVerified());
 busRoutes.use('/:id/builder-runs/*', requireAuth(), assertEmailVerified());
 
-const badRequest = (message: string) =>
-  new HTTPException(400, { message, cause: { code: 'BAD_REQUEST' } });
+const idParam = zValidator(
+  'param',
+  z.object({ id: z.uuid() }),
+  invalid('invalid path: the id is a uuid'),
+);
 
-const idParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
-  if (!r.success) throw badRequest('invalid path: the id is a uuid');
-});
+const linkParam = zValidator(
+  'param',
+  z.object({ id: z.uuid(), link: z.uuid() }),
+  invalid('invalid path: the project and the link are uuids'),
+);
 
-const linkParam = zValidator('param', z.object({ id: z.uuid(), link: z.uuid() }), (r) => {
-  if (!r.success) throw badRequest('invalid path: the project and the link are uuids');
-});
-
-const runParam = zValidator('param', z.object({ id: z.uuid(), run: z.uuid() }), (r) => {
-  if (!r.success) throw badRequest('invalid path: the project and the builder run are uuids');
-});
+const runParam = zValidator(
+  'param',
+  z.object({ id: z.uuid(), run: z.uuid() }),
+  invalid('invalid path: the project and the builder run are uuids'),
+);
 
 const envelope = zValidator('json', z.unknown());
 
@@ -127,9 +129,11 @@ busRoutes.get('/:id/bus', idParam, async (c) =>
   c.json(await readBus(c.get('userId'), c.req.valid('param').id)),
 );
 
-const supersedeParam = zValidator('param', z.object({ id: z.uuid(), run: z.uuid() }), (r) => {
-  if (!r.success) throw badRequest('invalid path: the ecosystem and the builder run are uuids');
-});
+const supersedeParam = zValidator(
+  'param',
+  z.object({ id: z.uuid(), run: z.uuid() }),
+  invalid('invalid path: the ecosystem and the builder run are uuids'),
+);
 
 const supersedeBody = zValidator('json', z.unknown());
 

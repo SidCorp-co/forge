@@ -29,6 +29,11 @@ export const users = pgTable('users', {
    * who never re-authed, which reads as stale and forces a prompt (0065).
    */
   lastFreshAuthAt: timestamp('last_fresh_auth_at', { withTimezone: true }),
+  /**
+   * Set at logout, to the whole second (0399): a session JWT issued before it is refused, so a
+   * logout ends every session token already handed out, not only the refresh tokens.
+   */
+  tokensValidAfter: timestamp('tokens_valid_after', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

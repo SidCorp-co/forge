@@ -6,10 +6,9 @@
  */
 
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { openRequirementRoom } from './service.js';
 
@@ -20,13 +19,7 @@ baDoorRoutes.use('/:id/requirements/:req/assistant', requireAuth(), assertEmailV
 const param = zValidator(
   'param',
   z.object({ id: z.uuid(), req: z.string().trim().min(1).max(64) }),
-  (r) => {
-    if (!r.success)
-      throw new HTTPException(400, {
-        message: 'invalid path: a project uuid and a requirement uuid or key',
-        cause: { code: 'BAD_REQUEST' },
-      });
-  },
+  invalid('invalid path: a project uuid and a requirement uuid or key'),
 );
 
 baDoorRoutes.post('/:id/requirements/:req/assistant', param, async (c) => {

@@ -10,7 +10,7 @@ import {
 import { pluginDesignationsPatchSchema } from '../lib/plugin-designation.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { findPersonalOrgId } from '../orgs/index.js';
 import {
   actorFor,
@@ -66,14 +66,11 @@ projectRoutes.post('/', zValidator('json', createProjectBodySchema), async (c) =
   return c.json(created, 201);
 });
 
-const listQuery = zValidator('query', z.object({ archived: z.string().optional() }), (result) => {
-  if (!result.success) {
-    throw new HTTPException(400, {
-      message: 'archived takes one value: 1 or true lists archived projects too',
-      cause: { code: 'BAD_REQUEST' },
-    });
-  }
-});
+const listQuery = zValidator(
+  'query',
+  z.object({ archived: z.string().optional() }),
+  invalid('archived takes one value: 1 or true lists archived projects too'),
+);
 
 projectRoutes.get('/', listQuery, async (c) => {
   const userId = c.get('userId');

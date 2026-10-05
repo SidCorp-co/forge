@@ -1,8 +1,8 @@
-import type { AnswerStyle } from "@forge/contracts";
+import type { AnswerStyle } from "@forge/contracts/assistant-self";
 export type ThemePref = "system" | "light" | "dark";
 export type LanguagePref = "en" | "vi";
 
-export type { AnswerStyle, PreferenceChange } from "@forge/contracts";
+export type { AnswerStyle, PreferenceChange } from "@forge/contracts/assistant-self";
 
 export interface AssistantPreferences {
   answerStyle: AnswerStyle;
@@ -20,8 +20,8 @@ export interface Preferences {
   updatedAt: string | null;
 }
 
-export type PatScope = "read" | "write" | "admin";
-export const PAT_SCOPES: PatScope[] = ["read", "write", "admin"];
+export type PatScope = "read" | "write";
+export const PAT_SCOPES: PatScope[] = ["read", "write"];
 
 type PatGrant = "legacy" | "full" | "named";
 

@@ -6,7 +6,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';
-import { rawBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, rawBody, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { loadSessionAttachment, persistSessionAttachment } from './attachment-service.js';
 import { agentSessionsPorts } from './ports.js';
@@ -55,9 +55,7 @@ agentSessionAttachmentRoutes.post(
   uploadBodyLimit(() => {
     throw badRequest('file too large', 'FILE_TOO_LARGE');
   }),
-  zValidator('param', sessionIdParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid sessionId', 'BAD_REQUEST', r.error);
-  }),
+  zValidator('param', sessionIdParamSchema, invalid('invalid sessionId')),
   rawBody(
     'multipart/form-data',
     'One file in the `file` field, attached to the chat of the agent session; its name and media type come from the part.',
@@ -90,9 +88,7 @@ agentSessionAttachmentRoutes.post(
 
 agentSessionAttachmentRoutes.get(
   '/:sessionId/attachments/:id/download',
-  zValidator('param', downloadParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid params', 'BAD_REQUEST', r.error);
-  }),
+  zValidator('param', downloadParamSchema, invalid('invalid params')),
   async (c) => {
     const { sessionId, id } = c.req.valid('param');
     await authorizeSession(c, sessionId);

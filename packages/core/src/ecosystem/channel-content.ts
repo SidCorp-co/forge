@@ -1,10 +1,8 @@
-import { scrubLogText } from '@forge/observability';
+import { containsSecret } from '@forge/observability';
 import type { EcosystemRefusal } from './refusals.js';
 import type { InterfaceDocument } from './schema.js';
 
 const CODE = /```|^\s{4}\S|\b(function|const|let|import|return|class|def)\b[^.]*[{(=]|=>|;\s*$/m;
-const SECRET =
-  /(eyJ[A-Za-z0-9_-]{10,}\.|gh[pousr]_[A-Za-z0-9]{20,}|sk-[A-Za-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY|postgres(ql)?:\/\/[^\s]*:[^\s]*@|password\s*[:=])/i;
 const ISSUE_KEY = /\b[A-Z]{2,6}-\d+\b/g;
 const PRESCRIBE =
   /\b(in your (code|repo|file)|you (must|should) (change|edit|modify|update) (your|the) (code|file|function|module))\b/i;
@@ -72,7 +70,7 @@ function scan(p: ProseAt, ctx: ContentContext): EcosystemRefusal[] {
         'this reads as code (a code block, a statement or an arrow): a document states contract behaviour in plain language, and a payload goes in an example.',
     });
   }
-  if (SECRET.test(s) || scrubLogText(s) !== s) {
+  if (containsSecret(s)) {
     out.push({
       code: 'CONTENT_SECRET',
       path: p.path,

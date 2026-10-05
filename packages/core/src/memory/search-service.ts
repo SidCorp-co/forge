@@ -9,10 +9,10 @@ import {
 } from '../integrations/llm/index.js';
 import { env } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
+import { RETRIEVAL_FLAGS, type RetrievalFlags } from '../lib/retrieval-flags.js';
 import { clampTopK } from '../lib/search-fusion.js';
 import { expandIssueRelations } from './expand-relations.js';
 import { inRerankHoldout, rerankHits, rerankPoolSize } from './rerank.js';
-import { loadRetrievalFlags, type RetrievalFlags } from './retrieval-flags.js';
 import {
   type HybridBreakdown,
   hybridSearchMemories,
@@ -197,7 +197,7 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
   const startedAt = Date.now();
   const requested: MemorySearchStrategy = input.strategy ?? 'semantic';
   const topK = clampTopK(input.topK);
-  const flags = await loadRetrievalFlags(input.projectId);
+  const flags = RETRIEVAL_FLAGS;
   const eligible = rerankEligible(input, flags);
   const holdout = eligible && inRerankHoldout();
   const willRerank = eligible && !holdout;

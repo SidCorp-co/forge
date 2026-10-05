@@ -7,10 +7,9 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
-import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { badRequest, notFound } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { notFound } from '../middleware/route-errors.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { listRunStanding, readRunStanding } from './read.js';
 
@@ -41,12 +40,12 @@ async function member(projectId: string, userId: string | undefined) {
 
 runStandingRoutes.get(
   '/:id/runs/standing',
-  zValidator('param', projectParam, (r) => {
-    if (!r.success) throw badRequest('invalid path: /api/projects/<project uuid>/runs/standing');
-  }),
-  zValidator('query', listQuery, (r) => {
-    if (!r.success) throw queryBadRequest(listQuery, r.error);
-  }),
+  zValidator(
+    'param',
+    projectParam,
+    invalid('invalid path: /api/projects/<project uuid>/runs/standing'),
+  ),
+  zValidator('query', listQuery),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const userId = c.get('userId');
@@ -64,16 +63,12 @@ runStandingRoutes.get(
 
 runStandingRoutes.get(
   '/:id/runs/standing/:runId',
-  zValidator('param', runParam, (r) => {
-    if (!r.success) {
-      throw badRequest(
-        'invalid path: /api/projects/<project uuid>/runs/standing/<pipeline run uuid>',
-      );
-    }
-  }),
-  zValidator('query', noQuery, (r) => {
-    if (!r.success) throw queryBadRequest(noQuery, r.error);
-  }),
+  zValidator(
+    'param',
+    runParam,
+    invalid('invalid path: /api/projects/<project uuid>/runs/standing/<pipeline run uuid>'),
+  ),
+  zValidator('query', noQuery),
   async (c) => {
     const { id: projectId, runId } = c.req.valid('param');
     const userId = c.get('userId');

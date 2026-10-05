@@ -1,6 +1,6 @@
 import { ApiError } from "./client";
 
-import type { Refusal } from "@forge/contracts";
+import type { Refusal } from "@forge/contracts/refusal";
 
 export type { Refusal };
 

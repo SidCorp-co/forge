@@ -11,11 +11,10 @@ import {
   reanalyzeRequestSchema,
 } from '@forge/contracts/onboarding';
 import { type Context, Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type Refusal, refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { strictBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import type { OnboardingActor, OnboardingOutcome } from './act.js';
 import {
   markOnboardingDone,
@@ -31,13 +30,11 @@ for (const path of ['/:id/onboarding', '/:id/onboarding/*']) {
   onboardingRoutes.use(path, requireAuth(), assertEmailVerified());
 }
 
-const projectParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
-  if (!r.success)
-    throw new HTTPException(400, {
-      message: 'invalid path: the project id is a uuid',
-      cause: { code: 'BAD_REQUEST' },
-    });
-});
+const projectParam = zValidator(
+  'param',
+  z.object({ id: z.uuid() }),
+  invalid('invalid path: the project id is a uuid'),
+);
 
 function actorOf(c: Context<{ Variables: AuthVars }>): OnboardingActor {
   const agency = c.get('agency');

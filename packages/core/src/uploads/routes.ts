@@ -6,7 +6,7 @@ import { getStorage } from '../integrations/index.js';
 import { contentDisposition } from '../lib/attachment-headers.js';
 import { refuser } from '../lib/refusal.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
-import { rawBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, rawBody, zValidator } from '../middleware/zod-validator.js';
 import { loadAttachment } from './attachment-lookup.js';
 import { resolveDownloadTicket } from './download-ticket-service.js';
 import { persistUpload } from './persist-upload.js';
@@ -43,9 +43,7 @@ uploadRoutes.put(
   uploadBodyLimit(() => {
     throw badRequest('file too large', 'FILE_TOO_LARGE');
   }),
-  zValidator('param', uploadIdParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid uploadId', 'BAD_REQUEST');
-  }),
+  zValidator('param', uploadIdParamSchema, invalid('invalid uploadId')),
   rawBody(
     'application/octet-stream',
     "The file's raw bytes, not empty; its name, type and target come from the upload ticket.",
@@ -72,9 +70,7 @@ uploadRoutes.put(
 
 uploadRoutes.get(
   '/download/:ticketId',
-  zValidator('param', z.object({ ticketId: z.uuid() }), (r) => {
-    if (!r.success) throw badRequest('invalid ticketId', 'BAD_REQUEST');
-  }),
+  zValidator('param', z.object({ ticketId: z.uuid() }), invalid('invalid ticketId')),
   async (c) => {
     const { ticketId } = c.req.valid('param');
     const ticket = await resolveDownloadTicket(ticketId);
