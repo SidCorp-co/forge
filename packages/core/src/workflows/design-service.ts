@@ -4,6 +4,7 @@ import { db } from '../db/client.js';
 import { activeIssuePrefix, resolveIssueRouteRef } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
+import { emitEvent } from '../outbox/index.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import {
   type DesignDecision,
@@ -27,10 +28,10 @@ import {
   insertDesign,
   linkBuild,
   lockWorkflows,
+  moveDesign,
   readWorkflow,
   type StoredWorkflow,
   setBuildSteps,
-  setDesignState,
   unlinkBuild,
   workflowsOf,
 } from './store.js';
@@ -170,7 +171,7 @@ export async function proposeDesign(input: {
       userId: writer.userId,
       designIssueId,
     });
-    await setDesignState(tx, id, { designStatus: 'proposed' });
+    await moveDesign(tx, id, row.designStatus, 'proposed', { writer });
     return null;
   });
   if (outcome) return { ok: false, refusals: outcome };
@@ -211,19 +212,22 @@ export async function decideDesignAs(input: {
         : null;
     if (unapproved) return { refusals: [unapproved] };
     await decideDesign(tx, { workflowId: id, revision, decision, userId: decider.userId, reason });
-    await setDesignState(
-      tx,
-      id,
-      decision === 'approve'
-        ? { designStatus: 'approved', approvedRevision: revision }
-        : { designStatus: 'returned' },
-    );
+    await moveDesign(tx, id, row.designStatus, decision === 'approve' ? 'approved' : 'returned', {
+      writer: decider,
+      reason,
+      ...(decision === 'approve' ? { approvedRevision: revision } : {}),
+    });
+    await emitEvent(tx, 'workflow.designDecided', {
+      projectId,
+      workflowId: id,
+      decision,
+      issueId: latest?.designIssueId ?? null,
+    });
     return { flow: row.flow, designIssueId: latest?.designIssueId ?? null };
   });
   if ('refusals' in outcome) return { ok: false, refusals: outcome.refusals };
   const designIssue = await settleDesignIssue({
     projectId,
-    workflowId: id,
     flow: outcome.flow,
     revision,
     decision,

@@ -4,7 +4,7 @@ import { mockupKindOfFile } from "@forge/contracts/mockups";
 import { parseWireframe } from "@forge/contracts/wireframe";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActorChip, Button, EnumBadge, Input, StatusBadge, ViewHeading } from "@/design";
+import { ActorChip, Button, EnumBadge, Input, StatusBadge, ViewHeading, RefusalLine } from "@/design";
 import { SketchPad } from "@/features/chat/components/sketch/sketch-pad";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime, formatStamp } from "@/lib/utils/format";
@@ -127,7 +127,7 @@ function Row({ projectId, m }: { projectId: string; m: MockupView }) {
               Withdraw
             </Button>
           ) : null}
-          {act.isError ? <span role="alert" className="text-12-5 text-[color:var(--red-600)]">{formatApiError(act.error)}</span> : null}
+          <RefusalLine error={act.error} />
         </div>
       ) : null}
     </li>
@@ -174,7 +174,7 @@ function Propose({ projectId, target }: { projectId: string; target: MockupTarge
         Sketch
       </Button>
       {sketching ? <SketchPad open onClose={() => setSketching(false)} onAttach={(file) => void send(file, "sketch")} /> : null}
-      {propose.isError ? <span role="alert" className="basis-full text-12-5 text-[color:var(--red-600)]">{formatApiError(propose.error)}</span> : null}
+      <RefusalLine error={propose.error} />
     </div>
   );
 }

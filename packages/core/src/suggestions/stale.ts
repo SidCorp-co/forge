@@ -39,7 +39,7 @@ export async function staleOnTargetRevised(
   return rows.length;
 }
 
-export interface SuggestionSweepResult {
+interface SuggestionSweepResult {
   /** Proposed past STALE_AFTER_DAYS, marked stale this tick. */
   staled: number;
   /** Payloads cleared this tick; the row keeps kind, model, status and decided_at for the metric. */

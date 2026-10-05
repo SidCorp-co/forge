@@ -5,6 +5,7 @@
  * the transaction that marks it accepted (ISS-58).
  */
 
+import type { RequirementSpec } from '@forge/contracts/requirements';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import {
@@ -14,7 +15,7 @@ import {
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
-import type { RequirementActor, RequirementSpec } from './read.js';
+import type { RequirementActor } from './read.js';
 import {
   type CriterionInput,
   type LiveCriterion,

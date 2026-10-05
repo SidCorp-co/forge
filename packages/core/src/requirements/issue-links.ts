@@ -9,6 +9,7 @@ import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import {
   type RequirementStatus,
+  requirementCriterionSteps,
   requirements,
   requirementWorkflows,
 } from '../db/schema-requirements.js';
@@ -110,6 +111,8 @@ export async function unlinkIssue(input: {
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const row = await rowIn(db, projectId, input.ref);
   const issue = await issueIn(projectId, input.issue, actor.userId);
+  if (issue.requirementId !== row.id)
+    throw notFound(`${input.ref} is not delivered by ${input.issue}`);
   await unlinkIssueFromRequirement(issue.id, row.id);
   return answer(projectId, row.id, actor, null);
 }
@@ -147,14 +150,27 @@ export async function unlinkWorkflow(input: {
   const { projectId, actor } = input;
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const row = await rowIn(db, projectId, input.ref);
-  await db
-    .delete(requirementWorkflows)
-    .where(
-      and(
-        eq(requirementWorkflows.requirementId, row.id),
-        eq(requirementWorkflows.workflowId, input.workflowId),
-      ),
-    );
+  await db.transaction(async (tx) => {
+    await lockRequirements(tx, projectId);
+    const removed = await tx
+      .delete(requirementWorkflows)
+      .where(
+        and(
+          eq(requirementWorkflows.requirementId, row.id),
+          eq(requirementWorkflows.workflowId, input.workflowId),
+        ),
+      )
+      .returning({ workflowId: requirementWorkflows.workflowId });
+    if (removed.length === 0) throw notFound(`${input.ref} links no workflow ${input.workflowId}`);
+    await tx
+      .delete(requirementCriterionSteps)
+      .where(
+        and(
+          eq(requirementCriterionSteps.requirementId, row.id),
+          eq(requirementCriterionSteps.workflowId, input.workflowId),
+        ),
+      );
+  });
   return answer(projectId, row.id, actor, null);
 }
 

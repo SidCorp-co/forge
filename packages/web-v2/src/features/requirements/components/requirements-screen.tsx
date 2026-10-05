@@ -14,44 +14,17 @@ import {
 } from "@forge/contracts/requirements";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
-import {
-  ActorChip,
-  AGENT_TINT,
-  Button,
-  EmptyState,
-  ErrorState,
-  Field,
-  GroupedList,
-  Input,
-  ListSearch,
-  type ListGroup,
-  type ListRowView,
-  PageTitle,
-  ProjectLoader,
-  rememberListOrigin,
-  StatusBadge,
-  Textarea,
-  TopBarActions,
-  useGroupFold,
-  usePeek,
-  usePeekKeys,
-  useUrlParams,
-  useViewMode,
-  ViewModeSwitcher,
-  visibleRows,
-  WaitingOn,
-} from "@/design";
+import { ActorChip, AGENT_TINT, Button, EmptyState, ErrorState, Field, GroupedList, Input, ListSearch, type ListGroup, type ListRowView, PageTitle, ProjectLoader, rememberListOrigin, StatusBadge, Textarea, TopBarActions, useGroupFold, usePeek, usePeekKeys, useUrlParams, useViewMode, ViewModeSwitcher, visibleRows, WaitingOn, RefusalLine } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 import { PendingBadge, summaryOf } from "@/features/suggestions/components/suggestion-list";
-import { useProjectWaitingSuggestions, useSuggestionDecision } from "@/features/suggestions/hooks";
+import { requirementAffected, useProjectWaitingSuggestions, useSuggestionDecision } from "@/features/suggestions/hooks";
 import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
 import { useCreateRequirement, useRequirements } from "../hooks";
 import { REQUIREMENTS_LIST, requirementHref } from "../routes";
 import type { RequirementSummary } from "../types";
 import { RequirementPeek } from "./requirement-peek";
-import { RefusalLine } from "./refusal";
 import { revisionText } from "./standing-bits";
 
 function CreateForm({ projectId, onDone }: { projectId: string; onDone: (key: string) => void }) {
@@ -183,7 +156,7 @@ function AssistantStrip({
 }
 
 function StripRow({ s, r, projectId, onPeek }: { s: Suggestion; r: RequirementSummary; projectId: string; onPeek: (k: string) => void }) {
-  const decide = useSuggestionDecision(projectId, r.key);
+  const decide = useSuggestionDecision(projectId, requirementAffected(projectId, r.key));
   return (
     <div className="flex flex-wrap items-center gap-2 py-[3px]" data-testid="assistant-strip-row">
       <span className="font-mono text-11-5 font-semibold text-link">{r.key}</span>

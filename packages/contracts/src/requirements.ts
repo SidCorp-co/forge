@@ -20,6 +20,7 @@ import type {
 	WaitingKind,
 	WaitingOn,
 } from "./standing.js";
+import type { CriterionTraceView } from "./workflow-health.js";
 
 export const REQUIREMENT_STATUSES = [
 	"draft",
@@ -482,4 +483,135 @@ export function changedSincePlan(input: {
 	if (!input.plan?.trim()) return false;
 	if (input.plannedRevision !== input.currentRevision) return true;
 	return (input.latestBaselineSeq ?? 1) > (input.plannedBaselineSeq ?? 1);
+}
+
+// The list and detail responses of /requirements, as core builds them (`requirements/read.ts`) and
+// web-v2 reads them.
+
+export interface RequirementSpec {
+	goal?: string | undefined;
+	personas?: string[] | undefined;
+	scopeIn?: string[] | undefined;
+	scopeOut?: string[] | undefined;
+}
+
+export interface RequirementSummary {
+	id: string;
+	key: string;
+	title: string;
+	status: RequirementStatus;
+	currentRevision: number | null;
+	latestRevision: { revision: number; state: RevisionState } | null;
+	delivery: RequirementDelivery;
+	createdAt: string;
+	updatedAt: string;
+	/** Where it stands, derived in core (`requirements/standing.ts`). */
+	standing: RequirementStanding;
+}
+
+export interface RequirementCriterion {
+	id: string;
+	code: string;
+	body: string;
+	form: "statement" | "scenario";
+	sinceRevision: number;
+	retiredRevision: number | null;
+}
+
+export interface RequirementRevision {
+	revision: number;
+	state: RevisionState;
+	baseRevision: number | null;
+	spec: RequirementSpec;
+	tldr: string | null;
+	changeSummary: string | null;
+	reason: string;
+	authorId: string;
+	authorName: string | null;
+	authorKind: "human" | "agent";
+	createdAt: string;
+	proposedAt: string | null;
+	decidedBy: string | null;
+	decidedByName: string | null;
+	decidedAt: string | null;
+	returnReason: string | null;
+	acceptReason: string | null;
+	fromSuggestionId: string | null;
+	criteria: RequirementCriterion[];
+}
+
+export interface RequirementPin {
+	kind: "workflow-design" | "contract-version" | "mockup";
+	workflowId: string | null;
+	flow: string | null;
+	designRevision: number | null;
+	providerProjectId: string | null;
+	contractSlug: string | null;
+	contractVersion: string | null;
+	mockupId: string | null;
+}
+
+export interface RequirementBaseline {
+	revision: number;
+	seq: number;
+	act: (typeof BASELINE_ACTS)[number];
+	agreedBy: string;
+	agreedByName: string | null;
+	agreedAt: string;
+	reason: string | null;
+	readiness: BaselineReadiness | null;
+	pins: RequirementPin[];
+}
+
+export interface RequirementWorkflowLink {
+	workflowId: string;
+	flow: string;
+	title: string;
+	designStatus: string | null;
+	approvedRevision: number | null;
+}
+
+export interface RequirementContractLink {
+	providerProjectId: string;
+	/** `<project>/<contract>`. */
+	contract: string;
+	contractSlug: string;
+	/** The newest approved version; null while none is approved, so nothing is pinned for it yet. */
+	currentVersion: string | null;
+}
+
+export interface RequirementIssueLink {
+	issueId: string;
+	displayId: string;
+	title: string;
+	status: string;
+	/** awaiting_release is a person's turn only where the project requires a release approval. */
+	tone: IssueStatusTone;
+	plannedRevision: number | null;
+	changedSincePlan: boolean;
+}
+
+export interface RequirementDetail extends RequirementSummary {
+	/** Newest first. */
+	revisions: RequirementRevision[];
+	/** Of the current revision; empty when none is current. */
+	criteria: RequirementCriterion[];
+	workflows: RequirementWorkflowLink[];
+	contracts: RequirementContractLink[];
+	traces: (CriterionTraceView & { code: string })[];
+	/** Newest first. */
+	baselines: RequirementBaseline[];
+	issues: RequirementIssueLink[];
+	/** The viewer is a person allowed to accept, return or agree. */
+	canSignOff: boolean;
+	history: RequirementHistoryEntry[];
+	readiness: {
+		revision: number;
+		ready: boolean;
+		failed: string[];
+		suggestionId: string;
+		decidedAt: string | null;
+	} | null;
+	deferral: RequirementDeferral | null;
+	feedback: RequirementFeedbackItem[];
 }

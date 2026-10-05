@@ -10,7 +10,7 @@ import { ModuleLevel } from "./module-level";
 
 export function ModulesScreen({ projectId, slug }: { projectId: string; slug: string }) {
   const q = useModuleRollup(projectId);
-  const trace = useCodeTrace().data;
+  const trace = useCodeTrace(projectId).data;
   const title = <PageTitle>Modules</PageTitle>;
 
   if (q.isLoading) {

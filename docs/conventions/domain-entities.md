@@ -88,7 +88,8 @@ directory (`web`) and each runner crate (`runner`). `scripts/check-module-shape.
 empty `serves`, a reference `.forge/design-index.json` does not hold, and a `via:` to a unit that
 serves nothing directly, against the shrink-only `.forge/module-trace-baseline.json`; the snapshot
 is rewritten by `scripts/refresh-design-index.mjs`, so verify reads no network. `GET
-/api/code-trace` serves the build's trace (`packages/core/src/code-trace.ts:codeTrace`), and the
+/api/projects/:id/code-trace` serves the build's trace (`packages/core/src/code-trace.ts:codeTrace`)
+to the project whose declared repository is this one, and an empty trace to every other; the
 Modules screen shows it beside each module named after a core module.
 
 | Kind | Holds | Must not |

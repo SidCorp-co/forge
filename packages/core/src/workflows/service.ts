@@ -25,6 +25,7 @@ import {
   insertDesign,
   insertWorkflow,
   lockWorkflows,
+  moveDesign,
   readWorkflow,
   replaceWorkflow,
   returnReasonsOf,
@@ -198,12 +199,11 @@ export async function updateWorkflow(input: {
       revision: row.revision,
       doc,
       userId: writer.userId,
-      design: {
-        designStatus: design.status,
-        designFingerprint: fingerprint,
-        approvedRevision: row.approvedRevision,
-      },
+      design: { designFingerprint: fingerprint, approvedRevision: row.approvedRevision },
     });
+    if (design.proposes && row.designStatus !== 'proposed') {
+      await moveDesign(tx, id, row.designStatus, 'proposed', { writer });
+    }
     if (design.proposes) {
       await insertDesign(tx, {
         workflowId: id,
@@ -212,7 +212,12 @@ export async function updateWorkflow(input: {
         userId: writer.userId,
       });
     }
-    return { ok: true, row: next, document: doc, created: false };
+    return {
+      ok: true,
+      row: { ...next, designStatus: design.status },
+      document: doc,
+      created: false,
+    };
   });
 }
 
@@ -264,9 +269,8 @@ function listedView(
   return { ...view, design: { ...view.design, ...reading } };
 }
 
-export async function listWorkflowsAs(userId: string, projectId: string) {
-  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
-  const rows = await workflowsOf(db, projectId);
+/** The list and the single read answer one view: writer name, return reason and the viewer's acts. */
+async function listedViews(userId: string, projectId: string, rows: readonly StoredWorkflow[]) {
   const [names, reasons, canDecide] = await Promise.all([
     userNames(rows.map((r) => r.writtenByUser)),
     returnReasonsOf(
@@ -280,15 +284,17 @@ export async function listWorkflowsAs(userId: string, projectId: string) {
   );
 }
 
+export async function listWorkflowsAs(userId: string, projectId: string) {
+  await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
+  return listedViews(userId, projectId, await workflowsOf(db, projectId));
+}
+
 export async function readWorkflowAs(userId: string, projectId: string, id: string) {
   await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
   const row = await readWorkflow(db, id);
   if (!row || row.projectId !== projectId) {
     throw notFound(`project ${projectId} holds no workflow ${id}`);
   }
-  const [names, canDecide] = await Promise.all([
-    userNames([row.writtenByUser]),
-    mayDecideDesigns(userId, projectId),
-  ]);
-  return listedView(row, canDecide, names.get(row.writtenByUser));
+  const [view] = await listedViews(userId, projectId, [row]);
+  return view;
 }

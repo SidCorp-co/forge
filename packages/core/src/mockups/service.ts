@@ -1,12 +1,11 @@
 /**
  * The writes of mockups (MK-n, ISS-78): a person or an agent proposes one about exactly one target,
- * a person other than its author accepts it or any person returns it with a reason, and its author
+ * a holder of mockups.approve accepts it or returns it with a reason, and its author
  * may withdraw it while it waits. Each write runs in one transaction under the project's mockup
  * lock and returns its refusals; the bytes reach the one store before the row is written.
  */
 
 import { randomUUID } from 'node:crypto';
-import { feedbackKey } from '@forge/contracts/feedback';
 import { MOCKUP_MACHINE } from '@forge/contracts/mockup-machine';
 import type { MockupTargetInput, MockupView, ProposeMockupRequest } from '@forge/contracts/mockups';
 import type { RevisionState } from '@forge/contracts/requirements';
@@ -14,7 +13,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { mockups } from '../db/schema-mockups.js';
 import { requirementRevisions, requirements } from '../db/schema-requirements.js';
-import { rowIn as feedbackRowIn, issueRefIn, requirementRefIn } from '../feedback/index.js';
+import { feedbackRefIn, issueRefIn, requirementRefIn } from '../feedback/index.js';
 import { getStorage } from '../integrations/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
@@ -68,15 +67,9 @@ async function resolveMockupTarget(
     return { ...none, issueId: issue.id, label: issue.key };
   }
   if ('feedback' in target) {
-    try {
-      const row = await feedbackRowIn(db, projectId, target.feedback);
-      return { ...none, feedbackId: row.id, label: feedbackKey(row.fbSeq) };
-    } catch {
-      return invalidTarget(
-        '/target/feedback',
-        `${target.feedback} names no feedback item of this project.`,
-      );
-    }
+    const item = await feedbackRefIn(projectId, target.feedback, '/target/feedback');
+    if ('code' in item) return invalidTarget(item.path, item.detail);
+    return { ...none, feedbackId: item.id, label: item.key };
   }
   const req = await requirementRefIn(projectId, target.requirement, '/target/requirement');
   if ('code' in req) return invalidTarget(req.path, req.detail);

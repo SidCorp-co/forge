@@ -1,32 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Button, enumLabel, Input, LEGEND, Radio, RadioGroup, Textarea } from "@/design";
+import { Button, enumLabel, Input, LEGEND, Radio, RadioGroup, Textarea, RefusalLine } from "@/design";
 import type { SuggestionView } from "@/features/suggestions/types";
-import { ApiError } from "@/lib/api/client";
-import { formatApiError } from "@/lib/api/error";
-import { namedRefusals } from "@/lib/api/refusals";
-import { useDecideProposal, useFeedbackAction, useFeedbackProposals } from "../hooks";
+import { useSuggestionDecision, useWaitingSuggestions } from "@/features/suggestions/hooks";
+import { useFeedbackAction } from "../hooks";
 import type { FeedbackDedup, FeedbackRouteWrite, FeedbackTriage, FeedbackView } from "../types";
-
-/** A refusal is one tinted line: the code core named, then what was wrong. */
-export function RefusalLine({ error }: { error: unknown }) {
-  if (!error) return null;
-  const [first, ...rest] = namedRefusals(error);
-  const code = first?.code ?? (error instanceof ApiError ? (error.code ?? null) : null);
-  const detail = first ? `${first.detail}${rest.length ? ` · ${rest.length} more` : ""}` : formatApiError(error);
-  return (
-    <p
-      role="alert"
-      className="flex min-w-0 items-baseline gap-2 px-3 py-1.5 text-12"
-      style={{ color: LEGEND.err.fg, background: LEGEND.err.bg }}
-      data-testid="feedback-refusal"
-    >
-      {code ? <span className="shrink-0 font-mono font-semibold">{code}</span> : null}
-      <span className="min-w-0">{detail}</span>
-    </p>
-  );
-}
 
 type Choice = "link_issue" | "file_issue" | "master_issue" | "revision" | "new_requirement" | "answer" | "duplicate" | "decline";
 
@@ -241,8 +220,8 @@ function routeLine(s: SuggestionView): string {
 
 /** An assistant's triage suggestion is an accent bar an approver accepts or rejects, never an edit. */
 export function Proposals({ projectId, f }: { projectId: string; f: FeedbackView }) {
-  const q = useFeedbackProposals(projectId, f.id, f.openSuggestions > 0);
-  const decide = useDecideProposal(projectId);
+  const q = useWaitingSuggestions(projectId, { feedback: f.id }, f.openSuggestions > 0);
+  const decide = useSuggestionDecision(projectId, [["feedback", projectId], ["feedback-item", projectId]]);
   const [rejecting, setRejecting] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const rows = q.data?.suggestions ?? [];
@@ -272,13 +251,13 @@ export function Proposals({ projectId, f }: { projectId: string; f: FeedbackView
               rejecting === s.id ? (
                 <span className="flex gap-2">
                   <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why not" />
-                  <Button type="button" size="sm" disabled={!reason.trim()} onClick={() => decide.mutate({ id: s.id, decision: "reject", reason: reason.trim() })}>
+                  <Button type="button" size="sm" disabled={!reason.trim()} onClick={() => decide.mutate({ kind: "reject", id: s.id, reason: reason.trim() })}>
                     Reject
                   </Button>
                 </span>
               ) : (
                 <span className="flex gap-2">
-                  <Button type="button" size="sm" variant="primary" loading={decide.isPending} onClick={() => decide.mutate({ id: s.id, decision: "accept" })}>
+                  <Button type="button" size="sm" variant="primary" loading={decide.isPending} onClick={() => decide.mutate({ kind: "accept", id: s.id })}>
                     Accept
                   </Button>
                   <Button type="button" size="sm" onClick={() => setRejecting(s.id)}>

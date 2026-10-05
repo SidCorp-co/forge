@@ -3,6 +3,7 @@
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { namedRefusals } from "@/lib/api/refusals";
+import { LEGEND } from "../vocabulary";
 
 /** The first refusal core named, with how many more; a failure that named none reads as `formatApiError` words it. */
 function lineOf(err: unknown): { code: string | null; detail: string } {
@@ -13,16 +14,16 @@ function lineOf(err: unknown): { code: string | null; detail: string } {
   return { code: first.code, detail: `${first.detail}${at}${more}` };
 }
 
-/** A refusal is one tinted line: the code, then what was wrong. */
-export function RefusalLine({ error }: { error: unknown }) {
+/** A refusal is one tinted line: the code, then what was wrong and where. */
+export function RefusalLine({ error, testid = "refusal" }: { error: unknown; testid?: string }) {
   if (!error) return null;
   const r = lineOf(error);
   return (
     <p
       role="alert"
       className="flex min-w-0 items-baseline gap-2 px-3 py-1.5 text-12"
-      style={{ color: "var(--red-600)", background: "var(--red-50)" }}
-      data-testid="requirement-refusal"
+      style={{ color: LEGEND.err.fg, background: LEGEND.err.bg }}
+      data-testid={testid}
     >
       {r.code ? <span className="shrink-0 font-mono font-semibold">{r.code}</span> : null}
       <span className="min-w-0">{r.detail}</span>

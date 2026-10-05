@@ -7,14 +7,13 @@
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
-import { Button, Input, showToast, Tooltip } from "@/design";
+import { Button, Input, showToast, Tooltip, RefusalLine } from "@/design";
 import { type DockDoor, useChatDock } from "@/features/conversations/dock";
 import { formatApiError } from "@/lib/api/error";
 import { requirementsApi } from "../api";
 import { useRequirementAction } from "../hooks";
 import { requirementHref } from "../routes";
 import type { RequirementDetail } from "../types";
-import { RefusalLine } from "./refusal";
 
 /** Opens the viewer's BA assistant room about this requirement; a refusal is a toast and no room. */
 export function useAssistantDoor(projectId: string, reqKey: string): DockDoor {
@@ -129,12 +128,45 @@ export function PrimaryActions({
       </Tooltip>
     );
   }
-  if (!primary) return null;
+  const deferrable = d.canSignOff && (d.status === "draft" || d.status === "agreed");
+  if (!primary && !deferrable) return null;
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       {primary}
+      {deferrable ? <DeferAct projectId={projectId} reqKey={d.key} /> : null}
       <RefusalLine error={act.error} />
     </div>
+  );
+}
+
+/** Takes the requirement out of the current release, saying why and, optionally, where it is meant to go. */
+function DeferAct({ projectId, reqKey }: { projectId: string; reqKey: string }) {
+  const act = useRequirementAction(projectId, reqKey);
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [targetPhase, setTargetPhase] = useState("");
+  if (!open) {
+    return (
+      <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(true)}>
+        Defer
+      </Button>
+    );
+  }
+  return (
+    <form
+      className="flex flex-wrap items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        act.mutate({ kind: "defer", reason: reason.trim(), targetPhase: targetPhase.trim() || undefined }, { onSuccess: () => setOpen(false) });
+      }}
+    >
+      <Input aria-label="Why it leaves the release" placeholder="Why it leaves the current release" value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
+      <Input aria-label="Meant for" placeholder="Meant for (optional)" value={targetPhase} onChange={(e) => setTargetPhase(e.target.value)} />
+      <Button type="submit" size="sm" disabled={!reason.trim()} loading={act.isPending}>
+        Defer
+      </Button>
+      <RefusalLine error={act.error} />
+    </form>
   );
 }
 

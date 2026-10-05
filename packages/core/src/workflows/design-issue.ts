@@ -16,7 +16,6 @@ import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { transitionIssueStatus } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
-import { emitEvent } from '../outbox/index.js';
 import type { DesignDecision } from './design.js';
 import type { WorkflowWriter } from './service.js';
 
@@ -33,7 +32,6 @@ function returnedBody(args: { flow: string; revision: number; reason: string }):
 
 export async function settleDesignIssue(input: {
   projectId: string;
-  workflowId: string;
   flow: string;
   revision: number;
   decision: DesignDecision;
@@ -41,17 +39,9 @@ export async function settleDesignIssue(input: {
   designIssueId: string | null;
   decider: WorkflowWriter;
 }): Promise<DesignIssueOutcome> {
-  const outcome: DesignIssueOutcome =
-    input.decision === 'return'
-      ? await handBack(input)
-      : { issueId: input.designIssueId, action: 'none', status: null };
-  await emitEvent(db, 'workflow.designDecided', {
-    projectId: input.projectId,
-    workflowId: input.workflowId,
-    decision: input.decision,
-    issueId: input.designIssueId,
-  });
-  return outcome;
+  return input.decision === 'return'
+    ? handBack(input)
+    : { issueId: input.designIssueId, action: 'none', status: null };
 }
 
 async function handBack(input: {
