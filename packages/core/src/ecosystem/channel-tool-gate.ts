@@ -1,8 +1,5 @@
-import { and, eq, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { agentQuestions } from '../db/schema-questions.js';
 import { RefusalError } from '../lib/refusal.js';
-import { answerAs } from '../questions/index.js';
+import { answerAs, openGateQuestionsOf } from '../questions/index.js';
 import type { Writer } from './channel-author.js';
 import { readAs } from './channel-read.js';
 import { viewOf } from './channel-view.js';
@@ -34,20 +31,10 @@ export async function decideGateAs(args: {
   if (author.kind !== 'person') {
     return no('QUESTION_NEEDS_SESSION', '/decision', 'an approve gate is decided by a person');
   }
-  const [question] = await db
-    .select({ id: agentQuestions.id, steps: agentQuestions.steps })
-    .from(agentQuestions)
-    .where(
-      and(
-        eq(agentQuestions.projectId, args.side),
-        eq(agentQuestions.status, 'open'),
-        sql`${agentQuestions.origin}->>'kind' = 'channel_gate'`,
-        sql`${agentQuestions.origin}->>'documentId' = ${args.documentId}`,
-      ),
-    )
-    .limit(1);
-  const round = question?.steps.at(-1)?.round;
-  if (!question || round === undefined) {
+  const question = (
+    await openGateQuestionsOf([{ projectId: args.side, documentId: args.documentId }])
+  ).get(args.documentId);
+  if (!question) {
     return no(
       'GATE_NOT_PENDING',
       '/ref',
@@ -58,7 +45,7 @@ export async function decideGateAs(args: {
     await answerAs({
       questionId: question.id,
       answer: { kind: 'option', optionId: args.decision },
-      round,
+      round: question.round,
       userId,
       via: author.via,
       ...(args.note === undefined ? {} : { note: args.note }),

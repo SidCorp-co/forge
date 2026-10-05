@@ -1,11 +1,11 @@
 // What a verdict is pinned against: the design revisions and contract versions current now, and
 // the anchors each issue's verdicts cite.
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
-import { contractVersions } from '../db/schema-ecosystem.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
+import { contractVersionReads } from '../lib/contract-versions.js';
 
 /** Each workflow's current revision, under its flow and under its id: the anchor of an issue with no requirement. */
 export async function designRevisions(
@@ -36,29 +36,17 @@ export async function currentContracts(
 ): Promise<Map<string, Map<string, string>>> {
   const out = new Map<string, Map<string, string>>(projectIds.map((id) => [id, new Map()]));
   if (projectIds.length === 0) return out;
-  const rows = await db
-    .select({
-      projectId: contractVersions.providerProjectId,
-      slug: projects.slug,
-      contract: contractVersions.contractSlug,
-      version: contractVersions.version,
-      recordedAt: contractVersions.recordedAt,
-    })
-    .from(contractVersions)
-    .innerJoin(projects, eq(projects.id, contractVersions.providerProjectId))
-    .where(
-      and(
-        inArray(contractVersions.providerProjectId, projectIds),
-        eq(contractVersions.approval, 'approved'),
-      ),
-    );
-  const newestFirst = [...rows].sort(
-    (a, b) => (b.recordedAt?.getTime() ?? 0) - (a.recordedAt?.getTime() ?? 0),
-  );
-  for (const row of newestFirst) {
-    const held = out.get(row.projectId);
-    const key = `${row.slug}/${row.contract}`;
-    if (held && !held.has(key)) held.set(key, row.version);
+  const [current, heads] = await Promise.all([
+    contractVersionReads().currentVersionsOf(db, projectIds),
+    db
+      .select({ id: projects.id, slug: projects.slug })
+      .from(projects)
+      .where(inArray(projects.id, projectIds)),
+  ]);
+  const slugOf = new Map(heads.map((p) => [p.id, p.slug]));
+  for (const v of current) {
+    const slug = slugOf.get(v.providerProjectId);
+    if (slug) out.get(v.providerProjectId)?.set(`${slug}/${v.contractSlug}`, v.version);
   }
   return out;
 }

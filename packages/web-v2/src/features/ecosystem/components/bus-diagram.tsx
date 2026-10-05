@@ -1,6 +1,6 @@
 "use client";
 
-import { Tooltip } from "@/design";
+import { ProjectMark, Tooltip } from "@/design";
 import { cn } from "@/lib/utils/cn";
 import {
   type Bus,
@@ -11,7 +11,7 @@ import {
   builderProgress,
   impactLine,
   impactOf,
-  initials,
+  projectMarkProps,
   STATE_MEANING,
   STATE_TONE,
   slugsOf,
@@ -30,28 +30,6 @@ export type Selection =
   | { kind: "contract"; key: string };
 
 const ROW_H = 52;
-const MARKS = ["var(--cobalt-50)", "var(--green-50)", "var(--flame-50)", "var(--paper-200)"];
-const MARK_FG = ["var(--cobalt-700)", "var(--green-600)", "var(--flame-700)", "var(--fg-muted)"];
-
-function markOf(slug: string) {
-  let h = 0;
-  for (const ch of slug) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return h % MARKS.length;
-}
-
-export function ProjectMark({ slug, size = 20 }: { slug: string; size?: number }) {
-  const m = markOf(slug);
-  return (
-    <span
-      aria-hidden
-      className="grid flex-none place-items-center rounded-[5px] font-bold"
-      style={{ width: size, height: size, fontSize: size * 0.42, background: MARKS[m], color: MARK_FG[m] }}
-    >
-      {initials(slug)}
-    </span>
-  );
-}
-
 const VERDICT_LABEL: Record<Verdict, (l: BusLink) => string> = {
   breaks: () => "breaks",
   passes: () => "passes",
@@ -120,7 +98,7 @@ function Header({
           onClick={() => onSelect({ kind: "project", id: p.id })}
           className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-13 font-bold text-fg"
         >
-          <ProjectMark slug={p.slug} />
+          <ProjectMark {...projectMarkProps(p.slug)} size={20} />
           <span className="truncate">{p.slug}</span>
           {reader ? <span className="text-11" style={{ color: "var(--accent-text)" }}>●</span> : null}
         </button>

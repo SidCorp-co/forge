@@ -5,17 +5,21 @@
  */
 
 import { requirementKey } from '@forge/contracts/requirements';
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { cosineDistance } from '../db/pgvector.js';
-import { type ItemEmbeddingStatus, itemEmbeddings } from '../db/schema-item-embeddings.js';
 import {
   requirementCriteria,
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
 import { embeddingsConfigured, embedWithModel } from '../integrations/llm/index.js';
-import { EMBEDDING_PROVIDER_NOT_CONFIGURED, writeItemEmbedding } from '../knowledge/index.js';
+import {
+  EMBEDDING_PROVIDER_NOT_CONFIGURED,
+  type ItemEmbeddingStatus,
+  nearestItems,
+  unembeddedCounts,
+  writeItemEmbedding,
+} from '../knowledge/index.js';
 import { dataPolicyOf, type EgressSurface, egressAt, egressText } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
 
@@ -126,48 +130,39 @@ export async function similarRequirements(
     { surface: querySurface, level, what: 'the text to compare' },
     egress.text,
   );
-  const distance = cosineDistance(itemEmbeddings.embedding, vector);
-  const rows = await db
-    .select({
-      seq: requirements.reqSeq,
-      title: requirements.title,
-      revision: itemEmbeddings.version,
-      distance: sql<number>`${distance}`,
-    })
-    .from(itemEmbeddings)
-    .innerJoin(requirements, eq(requirements.id, itemEmbeddings.requirementId))
-    .where(
-      and(
-        eq(itemEmbeddings.projectId, projectId),
-        eq(itemEmbeddings.status, 'embedded'),
-        eq(itemEmbeddings.model, model),
-      ),
-    )
-    .orderBy(distance)
-    .limit(limit);
-  const missing = await db
-    .select({ status: itemEmbeddings.status, n: sql<number>`count(*)::int` })
-    .from(itemEmbeddings)
-    .where(
-      and(
-        eq(itemEmbeddings.projectId, projectId),
-        eq(itemEmbeddings.itemType, 'requirement'),
-        sql`(${itemEmbeddings.status} <> 'embedded' OR ${itemEmbeddings.model} <> ${model})`,
-      ),
-    )
-    .groupBy(itemEmbeddings.status);
-  const hits = rows.map((r) => ({
-    key: requirementKey(r.seq),
-    title: r.title,
-    similarity: Math.round((1 - Number(r.distance)) * 1000) / 1000,
-    revision: r.revision,
-  }));
+  const nearest = await nearestItems({ projectId, kind: 'requirement', vector, model, limit });
+  const rows =
+    nearest.length === 0
+      ? []
+      : await db
+          .select({ id: requirements.id, seq: requirements.reqSeq, title: requirements.title })
+          .from(requirements)
+          .where(
+            inArray(
+              requirements.id,
+              nearest.map((n) => n.itemId),
+            ),
+          );
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const hits = nearest.flatMap((n) => {
+    const r = byId.get(n.itemId);
+    return r
+      ? [
+          {
+            key: requirementKey(r.seq),
+            title: r.title,
+            similarity: n.similarity,
+            revision: n.version,
+          },
+        ]
+      : [];
+  });
   const shown = egressAt(level, 'requirement', hits, 'the similar requirements');
   if (!shown.ok) return { status: 'withheld_by_policy', message: shown.refusal.detail };
   return {
     status: 'ok',
     model,
     hits: shown.value,
-    notEmbedded: Object.fromEntries(missing.map((m) => [m.status, m.n])),
+    notEmbedded: await unembeddedCounts(projectId, 'requirement', model),
   };
 }

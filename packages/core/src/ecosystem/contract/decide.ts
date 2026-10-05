@@ -1,11 +1,12 @@
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { db } from '../../db/client.js';
+import { embedFeedbackLater } from '../../feedback/index.js';
 import { permissionFactsOf } from '../../permissions/index.js';
 import { notFound } from '../access.js';
 import { loadInterface } from '../interface-service.js';
 import type { EcosystemRefusal } from '../refusals.js';
 import { lockKeys, projectsWhere } from '../store.js';
-import { type Approved, announceApproved, fileBreakingIn } from './announce.js';
+import { type Approved, announceApprovedIn, fileBreakingIn } from './announce.js';
 import { approverRefusal, type ContractDecision, decisionRefusals } from './approval.js';
 import { approvalView, decideVersion, type StoredVersion, versionsOf } from './store.js';
 
@@ -37,41 +38,38 @@ export async function decideContractVersion(input: DecideInput): Promise<DecideO
   ]);
   const denied = approverRefusal(facts, { ref });
   if (denied) return { ok: false, refusals: [denied] };
-  const [outcome, approved] = await db.transaction(
-    async (tx): Promise<[DecideOutcome, Approved | null]> => {
-      await lockKeys(tx, [`contract:${projectId}/${contract}`]);
-      const now = (await versionsOf(tx, [projectId], contract)).find((v) => v.version === version);
-      if (!now) throw notFound(`${project.slug}/${contract} has no recorded version "${version}"`);
-      const refusals = decisionRefusals({ ref, approval: now.approval, decision, reason });
-      if (refusals.length > 0) return [{ ok: false, refusals }, null];
-      const wrote = await decideVersion(tx, {
-        providerProjectId: projectId,
-        contractSlug: contract,
-        version,
-        approval: decision === 'approve' ? 'approved' : 'returned',
-        decidedBy: actor.userId,
-        decidedAs: actor.agency === 'agent' ? 'agent' : 'person',
-        reason,
-      });
-      if (!wrote) throw new Error(`ecosystem: ${ref} moved under its own lock`);
-      const decided = (await versionsOf(tx, [projectId], contract)).find(
-        (v) => v.version === version,
-      );
-      if (!decided) throw new Error(`ecosystem: ${ref} vanished under its own lock`);
-      if (decision !== 'approve' || !iface) {
-        return [{ ok: true, version: decided, filed: [] }, null];
-      }
-      const approved: Approved = {
-        provider: { id: project.id, slug: project.slug },
-        version: decided,
-        noticeDays: iface.document.commitments.deprecationNoticeDays,
-        filer: actor,
-      };
-      const filed = await fileBreakingIn(tx, approved);
-      return [{ ok: true, version: decided, filed }, approved];
-    },
-  );
-  if (outcome.ok && approved) await announceApproved(db, approved, outcome.filed);
+  const outcome = await db.transaction(async (tx): Promise<DecideOutcome> => {
+    await lockKeys(tx, [`contract:${projectId}/${contract}`]);
+    const now = (await versionsOf(tx, [projectId], contract)).find((v) => v.version === version);
+    if (!now) throw notFound(`${project.slug}/${contract} has no recorded version "${version}"`);
+    const refusals = decisionRefusals({ ref, approval: now.approval, decision, reason });
+    if (refusals.length > 0) return { ok: false, refusals };
+    const wrote = await decideVersion(tx, {
+      providerProjectId: projectId,
+      contractSlug: contract,
+      version,
+      approval: decision === 'approve' ? 'approved' : 'returned',
+      decidedBy: actor.userId,
+      decidedAs: actor.agency === 'agent' ? 'agent' : 'person',
+      reason,
+    });
+    if (!wrote) throw new Error(`ecosystem: ${ref} moved under its own lock`);
+    const decided = (await versionsOf(tx, [projectId], contract)).find(
+      (v) => v.version === version,
+    );
+    if (!decided) throw new Error(`ecosystem: ${ref} vanished under its own lock`);
+    if (decision !== 'approve' || !iface) return { ok: true, version: decided, filed: [] };
+    const approved: Approved = {
+      provider: { id: project.id, slug: project.slug },
+      version: decided,
+      noticeDays: iface.document.commitments.deprecationNoticeDays,
+      filer: actor,
+    };
+    const filed = await fileBreakingIn(tx, approved);
+    await announceApprovedIn(tx, approved);
+    return { ok: true, version: decided, filed };
+  });
+  if (outcome.ok) for (const id of outcome.filed) embedFeedbackLater(id);
   return outcome;
 }
 

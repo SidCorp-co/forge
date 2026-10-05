@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { ecosystemMembershipEvents, ecosystemMemberships } from '../db/schema-ecosystem.js';
 import type { MembershipRow, MembershipVerb } from './membership-rules.js';
@@ -166,4 +166,21 @@ export async function activeMembersOf(tx: Tx, ecosystemId: string): Promise<stri
       ),
     );
   return rows.map((r) => r.projectId);
+}
+
+/** Every act on one membership, oldest first: who invited, decided, left or removed it, and why. */
+export async function membershipHistory(membershipId: string) {
+  const rows = await db
+    .select({
+      verb: ecosystemMembershipEvents.verb,
+      from: ecosystemMembershipEvents.fromState,
+      to: ecosystemMembershipEvents.toState,
+      actorId: ecosystemMembershipEvents.actorId,
+      reason: ecosystemMembershipEvents.reason,
+      at: ecosystemMembershipEvents.at,
+    })
+    .from(ecosystemMembershipEvents)
+    .where(eq(ecosystemMembershipEvents.membershipId, membershipId))
+    .orderBy(asc(ecosystemMembershipEvents.at), asc(ecosystemMembershipEvents.id));
+  return rows.map((r) => ({ ...r, at: r.at.toISOString() }));
 }

@@ -28,7 +28,7 @@ interface QuestionPorts {
       by: string;
       via: PersonVia;
     },
-  ) => Promise<() => Promise<void>>;
+  ) => Promise<void>;
   /** The door the request came through: the CLI's token, or the web. */
   doorOfRequest: (c: Context<{ Variables: AuthVars }>) => Promise<PersonVia>;
   /** Null when the session ran no conversation turn; `{ meta: null }` when its record of one is unreadable. */

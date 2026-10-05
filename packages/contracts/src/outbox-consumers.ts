@@ -36,11 +36,17 @@ export const OUTBOX_CONSUMERS = {
 	"skill.globalUpdated": ["ws-broadcast"],
 	"runner.provisionRequested": ["ws-broadcast"],
 	"runner.provisionStatus": ["ws-broadcast"],
-	"source.pushed": ["ecosystem-land", "ecosystem-builder", "live-reading"],
+	"source.pushed": ["ecosystem-builder", "live-reading"],
 	"source.merged": ["issue-merge-stamp"],
 	"source.reviewed": ["review-note"],
 	"integration.changed": ["ws-broadcast"],
 	"workflow.designDecided": ["master-wake"],
+	"channel.documentPublished": ["notify-ecosystem", "master-wake"],
+	"channel.gateAsked": ["notify-ecosystem"],
+	"channel.gateDecided": ["notify-ecosystem"],
+	"channel.threadHeld": ["notify-ecosystem", "master-wake"],
+	"contract.versionApproved": ["notify-ecosystem"],
+	"ecosystem.buildOwed": ["master-wake"],
 } as const satisfies {
 	readonly [T in OutboxEventType]: readonly string[];
 };

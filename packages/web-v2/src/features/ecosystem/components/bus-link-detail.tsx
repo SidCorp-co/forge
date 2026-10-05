@@ -1,11 +1,10 @@
 "use client";
 
-import { StatusBadge, Tooltip } from "@/design";
+import { ProjectMark, StatusBadge, Tooltip } from "@/design";
 import { readingOf } from "@/lib/api/refusals";
 import { formatRelativeTime } from "@/lib/utils/format";
-import { type Bus, callSiteAt, type LinkRecord, STATE_MEANING, shortSha, slugsOf } from "../bus";
+import { type Bus, callSiteAt, type LinkRecord, STATE_MEANING, shortSha, slugsOf, projectMarkProps } from "../bus";
 import { useLink } from "../hooks";
-import { ProjectMark } from "./bus-diagram";
 import { Caption, Group, Head } from "./bus-detail-kit";
 import { Loading, UnreadNotice } from "./notices";
 
@@ -17,7 +16,7 @@ export function LinkDetail({ bus, id }: { bus: Bus; id: string }) {
   return (
     <>
       <Head>
-        <ProjectMark slug={consumer} size={22} />
+        <ProjectMark {...projectMarkProps(consumer)} size={22} />
         <h2 className="text-15 font-semibold">
           {consumer} <span className="text-subtle">→</span> <span className="font-mono">{l.contract.slug}</span>
         </h2>

@@ -2,6 +2,7 @@
 
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { db } from '../db/client.js';
+import { emitEvent } from '../outbox/index.js';
 import { permissionFactsOf } from '../permissions/index.js';
 import { notFound, stewardRole } from './access.js';
 import { owedTrigger } from './builder-head.js';
@@ -17,7 +18,6 @@ import type { BuilderRunWrite } from './link-schema.js';
 import { type Held, sourceOf, storedBuilderRun } from './link-service.js';
 import { insertBuilderRun, readBuilderRun, replaceBuilderRun } from './link-store.js';
 import { activeEcosystemIdsOf } from './membership-store.js';
-import { ecosystemSignals } from './ports.js';
 import type { EcosystemRefusal } from './refusals.js';
 import { lockKeys } from './store.js';
 
@@ -66,7 +66,7 @@ export async function supersedeBuilderRun(input: {
   const trigger = await owedTrigger({ projectId, kind: 'manual', source });
   if (!trigger.ok) return trigger;
 
-  const outcome = await db.transaction(async (tx): Promise<SupersedeOutcome> => {
+  return db.transaction(async (tx): Promise<SupersedeOutcome> => {
     await lockKeys(tx, [`builder run:${projectId}`]);
     const now = await readBuilderRun(tx, runId);
     if (!now) throw notFound(`builder run ${runId} is gone`);
@@ -95,12 +95,11 @@ export async function supersedeBuilderRun(input: {
       doc: closedDoc,
       userId: actor.userId,
     });
+    await emitEvent(tx, 'ecosystem.buildOwed', { projectId });
     return {
       ok: true,
       superseded: { row: replaced, document: closedDoc },
       opened: { row: opened, document: fresh },
     };
   });
-  if (outcome.ok) await ecosystemSignals().wakeForBuild(projectId);
-  return outcome;
 }

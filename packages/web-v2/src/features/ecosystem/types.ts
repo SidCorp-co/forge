@@ -87,11 +87,12 @@ export interface DocumentView {
   thread: string | null;
   hold: ThreadHold | null;
   standing: Standing | null;
+  gateQuestionId: string | null;
 }
 
 export interface ThreadView {
   thread: string;
-  documents: (Omit<DocumentView, "thread" | "hold" | "standing">)[];
+  documents: (Omit<DocumentView, "thread" | "hold" | "standing" | "gateQuestionId">)[];
   holds: ThreadHold[];
 }
 
@@ -205,6 +206,7 @@ export interface WorkspaceDraft {
   state: DocumentState;
   authoredBy: Author;
   gate: Gate | null;
+  gateQuestionId: string | null;
 }
 
 export interface WorkspaceRead {

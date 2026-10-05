@@ -28,6 +28,12 @@ export const OUTBOX_EVENT_TYPES = [
 	"source.reviewed",
 	"integration.changed",
 	"workflow.designDecided",
+	"channel.documentPublished",
+	"channel.gateAsked",
+	"channel.gateDecided",
+	"channel.threadHeld",
+	"contract.versionApproved",
+	"ecosystem.buildOwed",
 ] as const;
 export type OutboxEventType = (typeof OUTBOX_EVENT_TYPES)[number];
 
@@ -274,6 +280,57 @@ export interface OutboxEventPayloads {
 		decision: "approve" | "return";
 		issueId: string | null;
 	};
+	/** A channel document was published, at submit or by its gate's approval; `projectId` is the side that sent it. */
+	"channel.documentPublished": {
+		projectId: string;
+		documentId: string;
+		number: string | null;
+		subject: string;
+		type: string;
+		to: string[];
+		/** The person who wrote it, who is not told of their own document; null when an agent wrote it. */
+		authorPersonId: string | null;
+	};
+	/** A submitted channel document waits at its sending side's approve gate. */
+	"channel.gateAsked": {
+		projectId: string;
+		documentId: string;
+		number: string | null;
+		subject: string;
+		type: string;
+	};
+	/** An admin approved or returned a channel document at its gate. */
+	"channel.gateDecided": {
+		projectId: string;
+		documentId: string;
+		number: string | null;
+		subject: string;
+		published: boolean;
+		decidedBy: string | null;
+		note: string | null;
+	};
+	/** A person on one side held or released a channel thread; `projectId` is that side, `parties` every side of the thread. */
+	"channel.threadHeld": {
+		projectId: string;
+		ecosystemId: string;
+		thread: string;
+		action: "hold" | "release";
+		byId: string;
+		reason: string | null;
+		parties: string[];
+	};
+	/** A provider approved a version of one of its contracts; `consumerIds` are the projects consuming it. */
+	"contract.versionApproved": {
+		projectId: string;
+		providerSlug: string;
+		contractSlug: string;
+		version: string;
+		classification: string;
+		consumerIds: string[];
+		filer: { userId: string; agency: "human" | "agent" };
+	};
+	/** A builder run of this project is open (a join, a push, a supersede), and its master owes it. */
+	"ecosystem.buildOwed": { projectId: string };
 }
 
 export type OutboxEventPayload<T extends OutboxEventType> =

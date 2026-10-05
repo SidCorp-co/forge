@@ -1,12 +1,13 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
+import { agentAccountsAmong } from '../auth/index.js';
 import { db, type Tx } from '../db/client.js';
-import { projects, users } from '../db/schema.js';
 import {
   ecosystemConsumptions,
   ecosystemMemberships,
   projectInterfaceRevisions,
   projectInterfaces,
 } from '../db/schema-ecosystem.js';
+import { listProjectHeads } from '../projects/index.js';
 import type { RevisionBy } from './provider-writer-rules.js';
 import type { StoredDocument, StoredRevision } from './store.js';
 
@@ -64,23 +65,6 @@ export async function putInterface(
   return row;
 }
 
-/** Each revision of a project's interface, newest first, with the agency of the account that wrote it. */
-export async function interfaceRevisionsBy(tx: Tx, projectId: string): Promise<RevisionBy[]> {
-  const rows = await tx
-    .select({
-      revision: projectInterfaceRevisions.revision,
-      document: projectInterfaceRevisions.document,
-      writtenBy: projectInterfaceRevisions.writtenBy,
-      writtenAt: projectInterfaceRevisions.writtenAt,
-      kind: users.kind,
-    })
-    .from(projectInterfaceRevisions)
-    .leftJoin(users, eq(users.id, projectInterfaceRevisions.writtenBy))
-    .where(eq(projectInterfaceRevisions.projectId, projectId))
-    .orderBy(desc(projectInterfaceRevisions.revision));
-  return rows.map(({ kind, ...r }) => ({ ...r, agency: kind === 'agent' ? 'agent' : 'human' }));
-}
-
 export async function listInterfaceRevisions(projectId: string): Promise<StoredRevision[]> {
   return db
     .select({
@@ -92,6 +76,13 @@ export async function listInterfaceRevisions(projectId: string): Promise<StoredR
     .from(projectInterfaceRevisions)
     .where(eq(projectInterfaceRevisions.projectId, projectId))
     .orderBy(desc(projectInterfaceRevisions.revision));
+}
+
+/** Each revision of a project's interface, newest first, with the agency of the account that wrote it. */
+export async function interfaceRevisionsBy(projectId: string): Promise<RevisionBy[]> {
+  const rows = await listInterfaceRevisions(projectId);
+  const agents = await agentAccountsAmong(rows.map((r) => r.writtenBy));
+  return rows.map((r) => ({ ...r, agency: agents.has(r.writtenBy) ? 'agent' : 'human' }));
 }
 
 export async function edgesIn(tx: Tx, ecosystemIds: readonly string[]): Promise<EdgeRow[]> {
@@ -108,15 +99,13 @@ export async function consumersOf(
 ): Promise<
   { consumerId: string; consumerSlug: string; contractSlug: string; ecosystemId: string }[]
 > {
-  return tx
+  const edges = await tx
     .select({
       consumerId: ecosystemConsumptions.consumerProjectId,
-      consumerSlug: projects.slug,
       contractSlug: ecosystemConsumptions.contractSlug,
       ecosystemId: ecosystemConsumptions.ecosystemId,
     })
     .from(ecosystemConsumptions)
-    .innerJoin(projects, eq(projects.id, ecosystemConsumptions.consumerProjectId))
     .innerJoin(
       ecosystemMemberships,
       and(
@@ -126,4 +115,15 @@ export async function consumersOf(
       ),
     )
     .where(eq(ecosystemConsumptions.providerProjectId, providerId));
+  if (edges.length === 0) return [];
+  const slugs = new Map(
+    (await listProjectHeads([...new Set(edges.map((e) => e.consumerId))])).map((p) => [
+      p.id,
+      p.slug,
+    ]),
+  );
+  return edges.flatMap((e) => {
+    const consumerSlug = slugs.get(e.consumerId);
+    return consumerSlug ? [{ ...e, consumerSlug }] : [];
+  });
 }

@@ -11,6 +11,7 @@ import {
   registerMemoryReconcileTrigger,
 } from './memory/index.js';
 import {
+  registerEcosystemNotifications,
   registerNotifyMentionsSubscriber,
   registerTransitionNotifications,
 } from './notifications/index.js';
@@ -36,6 +37,7 @@ export function registerOutboxConsumers(): void {
   registerMasterWakeSubscribers();
   registerTransitionNotifications();
   registerNotifyMentionsSubscriber();
+  registerEcosystemNotifications();
   registerPhaseJournalClose();
   registerPausedRunWedgeResolve();
   registerRunStatusBroadcast();
