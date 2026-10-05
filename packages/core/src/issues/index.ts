@@ -48,6 +48,7 @@ export {
 } from './dependency-read.js';
 export { isValidDetectorKey } from './detector-key.js';
 export { issueDisplayIds } from './display-ids.js';
+export { registerIssueMoveReactions } from './drop-unblock.js';
 export {
   fileDetectedIssue,
   type IssueTriage,

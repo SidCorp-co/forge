@@ -64,7 +64,12 @@ import { issueHolder } from './work-state.js';
 
 export type GuardCode = Exclude<
   IssueTransitionRefusalCode,
-  'NO_OP' | 'STALE_TRANSITION' | 'WAITING_KIND_NOT_APPLICABLE' | 'ISSUE_ARCHIVED' | 'OPEN_QUESTIONS'
+  | 'NO_OP'
+  | 'STALE_TRANSITION'
+  | 'WAITING_KIND_NOT_APPLICABLE'
+  | 'NEEDS_NOT_APPLICABLE'
+  | 'ISSUE_ARCHIVED'
+  | 'OPEN_QUESTIONS'
 >;
 
 export interface GuardFault {

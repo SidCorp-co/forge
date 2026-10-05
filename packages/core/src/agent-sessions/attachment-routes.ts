@@ -1,7 +1,7 @@
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
+import { sendStoredAttachment } from '../lib/attachment-headers.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
@@ -96,19 +96,6 @@ agentSessionAttachmentRoutes.get(
     const row = await loadSessionAttachment(id);
     if (!row || row.sessionId !== sessionId) throw notFound('attachment not found');
 
-    let buffer: Buffer;
-    try {
-      buffer = await agentSessionsPorts().attachments().get(row.path);
-    } catch (err) {
-      if ((err as { code?: string } | null)?.code === 'ENOENT') {
-        throw new HTTPException(410, {
-          message: 'attachment file missing on disk',
-          cause: { code: 'ATTACHMENT_FILE_MISSING' },
-        });
-      }
-      throw err;
-    }
-    setInertAttachmentHeaders(c, row.mime, row.name);
-    return c.body(new Uint8Array(buffer));
+    return sendStoredAttachment(c, row, (path) => agentSessionsPorts().attachments().get(path));
   },
 );

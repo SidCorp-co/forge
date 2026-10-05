@@ -22,14 +22,12 @@
 import { LANDED_CONTRACT } from '@forge/contracts/ecosystem';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
-import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { idParamSchema, notFound } from '../middleware/route-errors.js';
+import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { requireHeld } from '../permissions/index.js';
+import { heldIssue } from './issue-route-ref.js';
 import { mergedLandingSchema } from './landing-evidence.js';
 import { applyMergeMarker, mergedCommitShaSchema } from './merge-marker.js';
-import { issueScopeOf } from './read-service.js';
 
 export const issueMergeRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -59,12 +57,8 @@ async function runMergeMarker(
   const body = c.req.valid('json' as never) as z.infer<typeof mergeMarkerBodySchema>;
   const userId = c.get('userId');
 
-  const scope = await issueScopeOf(issueId);
-  if (!scope) throw notFound('issue not found');
+  const scope = await heldIssue(issueId, userId, 'project.write');
   const issue = { id: scope.id, projectId: scope.projectId, mergedAt: scope.mergedAt };
-
-  const access = await loadProjectAccess(issue.projectId, userId);
-  requireHeld(access, 'project.write');
 
   const actor = restActor(c);
   const { action, mark, markDetail } = await applyMergeMarker({

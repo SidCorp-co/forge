@@ -55,12 +55,7 @@ export const mergedCommitShaSchema = z
  * arrive without every client learning it first.
  */
 async function resolveRecordedCommit(issueId: string): Promise<string | null> {
-  try {
-    const evidence = await collectWorkEvidence(issueId);
-    return evidence.handoffCommitSha;
-  } catch {
-    return null;
-  }
+  return (await collectWorkEvidence(issueId)).handoffCommitSha;
 }
 
 async function writeAuditComment(
@@ -160,11 +155,11 @@ async function stampMark(
     stamp = {
       result: await recordIssueMerge(tx, {
         issueId,
+        actor: args.actor.hookActor,
         evidence: {
           kind: 'observed',
           commitSha: observed.commitSha,
           mergedAt: observed.mergedAt,
-          via: 'event',
           landing,
         },
       }),
@@ -176,11 +171,11 @@ async function stampMark(
     stamp = {
       result: await recordIssueMerge(tx, {
         issueId,
+        actor: args.actor.hookActor,
         evidence: {
           kind: 'observed',
           commitSha: fromRepository.sha,
           mergedAt: fromRepository.committedAt,
-          via: 'repository',
         },
       }),
       claimedCommit: null,
@@ -190,7 +185,8 @@ async function stampMark(
     stamp = {
       result: await recordIssueMerge(tx, {
         issueId,
-        evidence: { kind: 'landed', landing, at: args.mergedAt ?? null, via: 'mark' },
+        actor: args.actor.hookActor,
+        evidence: { kind: 'landed', landing, at: args.mergedAt ?? null },
       }),
       claimedCommit: args.commit ?? null,
       readFrom: null,
@@ -199,7 +195,8 @@ async function stampMark(
     stamp = {
       result: await recordIssueMerge(tx, {
         issueId,
-        evidence: { kind: 'asserted', at: args.mergedAt ?? null, via: 'mark' },
+        actor: args.actor.hookActor,
+        evidence: { kind: 'asserted', at: args.mergedAt ?? null },
       }),
       claimedCommit: args.commit ?? (await resolveRecordedCommit(issueId)),
       readFrom: null,
@@ -292,25 +289,29 @@ async function writeMarkTrail(
         parentId: audit.parentId,
       },
     },
-    {
-      type: 'issue.updated',
-      payload: {
-        issueId,
-        projectId,
-        actor,
-        fields: ['mergedAt', 'mergedCommitSha', 'mergedLanding'],
-        before: {
-          mergedAt: prior.mergedAt,
-          mergedCommitSha: prior.mergedCommitSha,
-          mergedLanding: prior.mergedLanding,
-        },
-        after: {
-          mergedAt: result.mergedAt,
-          mergedCommitSha: result.commitSha,
-          mergedLanding: result.landing,
-        },
-      },
-    },
+    ...(marking && !result.wrote
+      ? []
+      : [
+          {
+            type: 'issue.updated' as const,
+            payload: {
+              issueId,
+              projectId,
+              actor,
+              fields: ['mergedAt', 'mergedCommitSha', 'mergedLanding'],
+              before: {
+                mergedAt: prior.mergedAt,
+                mergedCommitSha: prior.mergedCommitSha,
+                mergedLanding: prior.mergedLanding,
+              },
+              after: {
+                mergedAt: result.mergedAt,
+                mergedCommitSha: result.commitSha,
+                mergedLanding: result.landing,
+              },
+            },
+          },
+        ]),
   ]);
   return { mark, markDetail };
 }

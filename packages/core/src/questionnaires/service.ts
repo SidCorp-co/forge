@@ -15,6 +15,7 @@ import { db } from '../db/client.js';
 import { conversations } from '../db/schema-conversations.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions, type QuestionOrigin, type QuestionStep } from '../db/schema-questions.js';
+import { logger } from '../lib/logger.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
 import { insertBatchQuestions } from '../questions/index.js';
@@ -64,7 +65,9 @@ export async function announce(conversationId: string, messageId: string | null,
     messageId,
     role,
     content: '',
-  }).catch(() => 0);
+  }).catch((err: unknown) => {
+    logger.warn({ err, conversationId }, 'questionnaire: the room was not told of the change');
+  });
 }
 
 function stepOf(item: QuestionnaireItem): QuestionStep {

@@ -188,10 +188,9 @@ export async function takeIssueLeases(
   const keys = [...new Set(args.issueKeys)].sort();
   if (keys.length === 0) return;
 
-  const lost: string[] = [];
-  for (const key of keys) {
-    // One key at a time, in key order, or two openers can invert and Postgres
-    // answers with a deadlock abort instead of the refusal.
+  // One key at a time, in key order, or two openers can invert and Postgres answers with a deadlock
+  // abort instead of the refusal. A lease of an ended session is cleared before the take.
+  const take = async (key: string): Promise<boolean> => {
     await executor.execute(sql`
       DELETE FROM issue_leases l
        USING agent_sessions ls
@@ -200,35 +199,31 @@ export async function takeIssueLeases(
          AND l.issue_key = ${key}
          AND ls.status IN (${terminalSessionList})
     `);
-
     const taken = (await executor.execute(sql`
       INSERT INTO issue_leases (project_id, issue_key, device_id, session_id, run_id)
       VALUES (${args.projectId}, ${key}, ${args.deviceId}, ${args.sessionId}, ${args.runId})
       ON CONFLICT (project_id, issue_key) DO NOTHING
       RETURNING issue_key
     `)) as unknown as Array<{ issue_key: string }>;
+    return taken.length > 0;
+  };
 
-    if (taken.length === 0) lost.push(key);
-  }
-
+  let lost: string[] = [];
+  for (const key of keys) if (!(await take(key))) lost.push(key);
   if (lost.length === 0) return;
 
-  const holders = await holdersOf(executor, { projectId: args.projectId, issueKeys: lost });
-  throw refuse(
-    'ISSUE_LEASE_HELD',
-    refusalText(
-      holders.length > 0
-        ? holders
-        : lost.map((issueKey) => ({
-            issueKey,
-            deviceId: 'unknown',
-            sessionId: 'unknown',
-            runId: 'unknown',
-            acquiredAt: new Date(0).toISOString(),
-          })),
-      args.deviceId,
-    ),
-  );
+  // A holder whose session ended between the insert and this read is gone: take that key again
+  // rather than refuse naming a holder that does not exist.
+  let holders = await holdersOf(executor, { projectId: args.projectId, issueKeys: lost });
+  const vacated = lost.filter((k) => !holders.some((h) => h.issueKey === k));
+  if (vacated.length > 0) {
+    const retaken = new Set<string>();
+    for (const key of vacated) if (await take(key)) retaken.add(key);
+    lost = lost.filter((k) => !retaken.has(k));
+    if (lost.length === 0) return;
+    holders = await holdersOf(executor, { projectId: args.projectId, issueKeys: lost });
+  }
+  throw refuse('ISSUE_LEASE_HELD', refusalText(holders, args.deviceId));
 }
 
 /** What a give-back did, or why it did nothing. */

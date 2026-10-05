@@ -15,7 +15,6 @@ import {
   requestSessionSend,
   resolveSessionSend,
   stampFinalizeAttempt,
-  steerIssue,
   transitionSessions,
   usageSessionMatch,
   usageTotalsSelection,
@@ -74,12 +73,7 @@ import {
   resolveNotifications,
 } from './notifications/index.js';
 import { afterOnboardingSubmit, onboardingSubmittedIn } from './onboarding/index.js';
-import {
-  closeOpenRunForIssue,
-  getIssueContexts,
-  providePipelinePorts,
-  setCurrentStepForOpenIssueRun,
-} from './pipeline/index.js';
+import { closeOpenRunForIssue, getIssueContexts, providePipelinePorts } from './pipeline/index.js';
 import {
   policyRefusal,
   readEffectivePolicy,
@@ -90,6 +84,7 @@ import {
   declaredIssueSeqs,
   issueRefPattern,
   liveReachForIssue,
+  projectCreatorOf,
   subjectOf,
 } from './projects/index.js';
 import { provideQuestionnairePorts } from './questionnaires/index.js';
@@ -164,6 +159,7 @@ export function provideWorkPorts(): void {
   });
 
   provideIssuePorts({
+    projectCreatorOf,
     settleOpenQuestions,
     holdsOpenHumanQuestion,
     personOwesAnAnswer,
@@ -186,7 +182,6 @@ export function provideWorkPorts(): void {
     emptyUsageTotals: EMPTY_USAGE_TOTALS,
     fireOfCaller,
     issueDeleteRefusal,
-    steerIssue,
     designUnapprovedSql,
     assertDesignsApprovedForSeqs,
     assertDesignApprovedForIssue,
@@ -211,7 +206,6 @@ export function provideWorkPorts(): void {
     readStorefrontDraft,
     handoffContextsOf: (projectId, issueId) =>
       getIssueContexts({ projectId, issueId, kind: 'handoff', limit: 200, orderDir: 'asc' }),
-    setCurrentStepForOpenIssueRun,
     closeOpenRunForIssue,
   });
 

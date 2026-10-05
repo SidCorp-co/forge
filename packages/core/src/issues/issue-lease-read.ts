@@ -1,6 +1,7 @@
 // Reading a device's issue lease and resolving the key a lease call names.
 
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import type { IssueTakeRefusalCode } from '@forge/contracts/issues';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -101,11 +102,7 @@ export async function readDeviceIssueLease(args: {
 
 /** A key that reaches no lease, with the status that says which way. */
 interface LeaseKeyRefusal {
-  code:
-    | 'ISSUE_LEASE_KEY_SHAPE'
-    | 'ISSUE_LEASE_KEY_UNKNOWN_PREFIX'
-    | 'ISSUE_LEASE_KEY_PROJECT_MISMATCH';
-  status: 400 | 404;
+  code: Extract<IssueTakeRefusalCode, `ISSUE_LEASE_KEY_${string}`>;
   message: string;
 }
 
@@ -131,7 +128,7 @@ export async function resolveLeaseKey(args: {
   if (!parsed.ok) {
     return {
       ok: false,
-      refusal: { code: 'ISSUE_LEASE_KEY_SHAPE', status: 400, message: parsed.message },
+      refusal: { code: 'ISSUE_LEASE_KEY_SHAPE', message: parsed.message },
     };
   }
   const issueKey = canonicalIssueKey(parsed.issSeq);
@@ -144,7 +141,6 @@ export async function resolveLeaseKey(args: {
         ok: false,
         refusal: {
           code: 'ISSUE_LEASE_KEY_UNKNOWN_PREFIX',
-          status: 404,
           message: `\`${args.rawKey}\` names the issue prefix \`${given}\`, which no project answers to, so it reaches no lease. A prefix names the project an issue belongs to; send the prefix of a project this box serves, or the canonical \`${issueKey}\` the lease store keeps.`,
         },
       };
@@ -154,7 +150,6 @@ export async function resolveLeaseKey(args: {
         ok: false,
         refusal: {
           code: 'ISSUE_LEASE_KEY_PROJECT_MISMATCH',
-          status: 400,
           message: `\`${args.rawKey}\` names project ${named} through the prefix \`${given}\`, and \`projectId\` names ${projectId}. One request names one lease, so send the canonical \`${issueKey}\` with the project you mean, or the prefixed key on its own.`,
         },
       };

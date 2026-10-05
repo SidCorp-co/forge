@@ -8,6 +8,7 @@ export const BATCH_SKIP_BY_CODE = {
   TRANSITION_REASON_REQUIRED: 'transition_reason_required',
   WAITING_KIND_REQUIRED: 'waiting_kind_required',
   WAITING_KIND_NOT_APPLICABLE: 'waiting_kind_not_applicable',
+  NEEDS_NOT_APPLICABLE: 'needs_not_applicable',
   STALE_TRANSITION: 'stale',
   NO_WORK_EVIDENCE: 'no_work_evidence',
   CLOSE_REQUIRES_SHIPPED: 'close_requires_shipped',

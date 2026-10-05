@@ -1,3 +1,4 @@
+import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import { ISSUE_ADMIT_PERMISSION, ISSUE_INITIAL_STATUSES } from '@forge/contracts/issue-machine';
 import type { IssueCreateRefusalCode } from '@forge/contracts/issues';
 import { eq } from 'drizzle-orm';
@@ -5,6 +6,7 @@ import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issueLabels, issues } from '../db/schema.js';
+import { dataPolicyOf } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
@@ -27,6 +29,7 @@ import {
   type ResolvedLabelAttach,
   resolveLabelIdsForWrite,
 } from './label-service.js';
+import { scrubIssueText } from './patch-fields.js';
 import {
   type AppliedIssueRelation,
   flushIssueRelationEffects,
@@ -212,6 +215,7 @@ type Birth = {
   labelIds: ResolvedLabelAttach[];
   prepared: ReturnType<typeof prepareBody> | null;
   detectorKey: string | null;
+  level: SensitiveDataLevel;
 };
 
 /** The row, its criteria, work state, labels and relations, in one transaction. */
@@ -223,8 +227,10 @@ async function writeBirth(tx: Tx, birth: Birth) {
     tx,
     {
       projectId: input.projectId,
-      title: input.title,
-      description: prepared ? prepared.body : (input.description ?? null),
+      ...scrubIssueText(birth.level, {
+        title: input.title,
+        description: prepared ? prepared.body : (input.description ?? null),
+      }),
       descriptionFormat: prepared?.format ?? 'markdown',
       status: birth.status as IssueStatus,
       priority: (input.priority ?? 'medium') as IssueCreateRow['priority'],
@@ -295,13 +301,14 @@ export async function createIssue(
       ? prepareBody({ raw: input.description, format: input.descriptionFormat })
       : null;
   const detectorKey = input.detectorKey ?? null;
+  const level = await dataPolicyOf(input.projectId);
   if (detectorKey) {
     const deduped = await dedupeByDetectorKey(input.projectId, detectorKey);
     if (deduped) return deduped;
   }
 
   const { created, pendingRelations } = await db.transaction((tx) =>
-    writeBirth(tx, { input, writer, status, labelIds, prepared, detectorKey }),
+    writeBirth(tx, { input, writer, status, labelIds, prepared, detectorKey, level }),
   );
 
   const persisted = decodedAttachments.length
@@ -313,11 +320,7 @@ export async function createIssue(
       )
     : { persisted: [], errors: [] };
 
-  await flushIssueRelationEffects(
-    { actor: writer.actor, createdById: writer.createdById },
-    input.projectId,
-    pendingRelations,
-  );
+  await flushIssueRelationEffects(input.projectId, pendingRelations);
 
   return {
     deduped: false,

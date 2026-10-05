@@ -8,7 +8,6 @@ import {
 } from '@forge/contracts/record-events';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { loadProjectAccess } from '../../lib/authz.js';
 import { refuser } from '../../lib/refusal.js';
 import {
   type AuthVars,
@@ -16,12 +15,11 @@ import {
   requireAuth,
   restActor,
 } from '../../middleware/auth.js';
-import { idParamSchema, notFound } from '../../middleware/route-errors.js';
+import { idParamSchema } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
-import { requireHeld } from '../../permissions/index.js';
 import type { Actor } from '../activity.js';
+import { heldIssue } from '../issue-route-ref.js';
 import { messageRefusalHttp } from '../ports.js';
-import { issueScopeOf } from '../read-service.js';
 import { listRecordEvents, type RecordEvent } from './store.js';
 import { writeScreenedRecordEvent } from './write.js';
 
@@ -46,18 +44,6 @@ function serializeRecordEvent(event: RecordEvent) {
   return { ...event, createdAt: event.createdAt.toISOString() };
 }
 
-async function loadIssueForEvents(
-  issueId: string,
-  userId: string,
-  permission: 'project.read' | 'project.write',
-) {
-  const issue = await issueScopeOf(issueId);
-  if (!issue) throw notFound('issue not found');
-  const access = await loadProjectAccess(issue.projectId, userId);
-  requireHeld(access, permission);
-  return { id: issue.id, projectId: issue.projectId };
-}
-
 const refuseEvent = refuser<RecordEventRefusalCode>('EVENT_REFUSED');
 
 export const recordEventRoutes = new Hono<{ Variables: AuthVars }>();
@@ -70,7 +56,7 @@ recordEventRoutes.post(
   async (c) => {
     const { id } = c.req.valid('param');
     const draft = c.req.valid('json');
-    const issue = await loadIssueForEvents(id, c.get('userId'), 'project.write');
+    const issue = await heldIssue(id, c.get('userId'), 'project.write');
     const deviceId = c.get('patDeviceId') ?? null;
     const actor: Actor = deviceId
       ? { type: 'device', id: deviceId, agency: 'agent' }
@@ -105,7 +91,7 @@ recordEventRoutes.get(
         '/kind',
       );
     }
-    const issue = await loadIssueForEvents(id, c.get('userId'), 'project.read');
+    const issue = await heldIssue(id, c.get('userId'), 'project.read');
     const events = await listRecordEvents(issue.id, {
       ...(kind ? { kinds: [kind as RecordEvent['kind']] } : {}),
       ...(limit ? { limit } : {}),

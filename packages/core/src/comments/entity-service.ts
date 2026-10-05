@@ -154,7 +154,7 @@ export async function postEntityComment(input: {
     ].filter(present);
     if (refusals.length > 0) return { ok: false, refusals };
 
-    const level = scope === 'feedback' ? await dataPolicyOf(projectId) : 'off';
+    const level = await dataPolicyOf(projectId);
     const decision = request.decision ? scrubbedDecision(level, request.decision) : null;
     const said = request.body?.trim() ? request.body : null;
     const raw = said ? storedText(level, said).text : decisionBody(decision as DecisionFields);
@@ -217,7 +217,7 @@ export async function editEntityComment(input: {
     ].filter(present);
     if (refusals.length > 0) return { ok: false, refusals };
 
-    const level = scope === 'feedback' ? await dataPolicyOf(projectId) : 'off';
+    const level = await dataPolicyOf(projectId);
     const decision = request.decision ? scrubbedDecision(level, request.decision) : row.decision;
     const derived = row.decision !== null && row.body === decisionBody(row.decision);
     const raw =

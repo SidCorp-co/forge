@@ -11,7 +11,7 @@ import { db, type Tx } from '../db/client.js';
 import { commentMentions, comments, issues, users } from '../db/schema.js';
 import type { Actor } from '../issues/index.js';
 import { dropCommentMirror, mirrorCommentRecord, remirrorCommentRecord } from '../issues/index.js';
-import { logger } from '../lib/logger.js';
+import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 import { parseForgeRecord } from '../messaging/forge-record.js';
 import { emitEvent } from '../outbox/index.js';
@@ -171,6 +171,7 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
   if (context && byAnAgent) {
     await screenAgentComment(context.projectId, input.body, tx);
   }
+  const level = context ? await dataPolicyOf(context.projectId) : 'off';
 
   const {
     format: _ignored,
@@ -185,7 +186,7 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
       .insert(comments)
       .values({
         ...rest,
-        body: prepared.body,
+        body: storedText(level, prepared.body).text,
         format: prepared.format,
         stage: context?.stage ?? null,
         intent,
@@ -225,19 +226,15 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
 async function recordMentions(row: CommentThreadRow, projectId: string, t: Tx): Promise<string[]> {
   const handles = parseMentions(row.body);
   if (handles.length === 0) return [];
-  try {
-    const resolved = await resolveMentions(handles, projectId);
-    const targets = resolved.filter((r) => r.userId !== row.authorId).map((r) => r.userId);
-    if (targets.length === 0) return [];
-    await t
-      .insert(commentMentions)
-      .values(targets.map((userId) => ({ commentId: row.id, userId })))
-      .onConflictDoNothing();
-    return targets;
-  } catch (err) {
-    logger.error({ err, commentId: row.id }, 'comment mentions could not be recorded');
-    return [];
-  }
+  // inside the comment's transaction: a failed mention write fails the comment, never drops silently
+  const resolved = await resolveMentions(handles, projectId);
+  const targets = resolved.filter((r) => r.userId !== row.authorId).map((r) => r.userId);
+  if (targets.length === 0) return [];
+  await t
+    .insert(commentMentions)
+    .values(targets.map((userId) => ({ commentId: row.id, userId })))
+    .onConflictDoNothing();
+  return targets;
 }
 
 /**
@@ -274,16 +271,15 @@ export async function updateCommentBody(
   if (issueId === null)
     throw new Error(`comment ${commentId} sits on no issue; edit it at its own target`);
   const byAnAgent = await writtenByAnAgent(existing, db);
-  if (byAnAgent) {
-    const context = await loadStageContext(issueId);
-    if (context) await screenAgentComment(context.projectId, input.body, db);
-  }
+  const context = await loadStageContext(issueId);
+  if (byAnAgent && context) await screenAgentComment(context.projectId, input.body, db);
+  const level = context ? await dataPolicyOf(context.projectId) : 'off';
 
   return db.transaction(async (t) => {
     const [row] = await t
       .update(comments)
       .set({
-        body: prepared.body,
+        body: storedText(level, prepared.body).text,
         format: prepared.format,
         updatedAt: new Date(),
       })

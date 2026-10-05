@@ -43,16 +43,14 @@ export async function mintParkQuestion(input: MintParkQuestionInput, tx: Drizzle
   });
 }
 
-/**
- * Why this park minted nothing, for a caller that asked it to.
- */
-export function parkQuestionNotMinted(input: MintParkQuestionInput): string | null {
+/** Why `needs` cannot be taken on this move: it mints a question only on an agent's park. */
+export function needsNotApplicable(input: MintParkQuestionInput): string | null {
   if (!input.options.needs?.trim()) return null;
   if (!mintsAt(input.toStatus)) {
-    return `\`needs\` was sent with \`${input.toStatus}\`, which mints no question — only \`${AUTONOMOUS_QUESTION_STATUS}\` does. What you sent is on no record; put it in \`reason\`, or park at \`${AUTONOMOUS_QUESTION_STATUS}\` instead.`;
+    return `\`needs\` was sent with \`${input.toStatus}\`, which mints no question — only \`${AUTONOMOUS_QUESTION_STATUS}\` does. Put what you need in \`reason\`, or park at \`${AUTONOMOUS_QUESTION_STATUS}\` instead.`;
   }
   if (actorAgency(input.actor) !== 'agent') {
-    return `\`needs\` was sent on a credential owned by a person, which mints no question — a person parking their own work owns their own resume. Nobody has been asked anything. If an agent made this call, it is running on the wrong credential: it wants an agent account or a paired device.`;
+    return `\`needs\` was sent on a credential owned by a person, which mints no question — a person parking their own work owns their own resume. If an agent made this call, it is running on the wrong credential: it wants an agent account or a paired device.`;
   }
   return null;
 }

@@ -1,5 +1,5 @@
 import type { ActorAgency } from '@forge/contracts/permissions';
-import { and, asc, desc, eq, gte, like, lt, lte } from 'drizzle-orm';
+import { and, desc, eq, like, lt } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activityLog, issues } from '../db/schema.js';
 import { issueArchiveSide } from './archive.js';
@@ -61,47 +61,4 @@ export async function listProjectActivity(
     .orderBy(desc(activityLog.createdAt))
     .limit(limit);
   return rows as ActivityRow[];
-}
-
-/** One activity row with the project of its issue, or null. */
-export async function loadActivity(activityId: string) {
-  const [row] = await db
-    .select({
-      id: activityLog.id,
-      issueId: activityLog.issueId,
-      action: activityLog.action,
-      payload: activityLog.payload,
-      projectId: issues.projectId,
-    })
-    .from(activityLog)
-    .innerJoin(issues, eq(issues.id, activityLog.issueId))
-    .where(eq(activityLog.id, activityId))
-    .limit(1);
-  return row ?? null;
-}
-
-/** A project's status-change activity in a window, grouped by issue and in time order. */
-export async function statusChangeRows(
-  projectId: string,
-  from: Date | undefined,
-  to: Date | undefined,
-  limit: number,
-) {
-  const conditions = [
-    eq(issues.projectId, projectId),
-    eq(activityLog.action, 'issue.statusChanged'),
-  ];
-  if (from) conditions.push(gte(activityLog.createdAt, from));
-  if (to) conditions.push(lte(activityLog.createdAt, to));
-  return db
-    .select({
-      issueId: activityLog.issueId,
-      payload: activityLog.payload,
-      createdAt: activityLog.createdAt,
-    })
-    .from(activityLog)
-    .innerJoin(issues, eq(issues.id, activityLog.issueId))
-    .where(and(...conditions))
-    .orderBy(asc(activityLog.issueId), asc(activityLog.createdAt))
-    .limit(limit);
 }

@@ -98,6 +98,6 @@ with the runner's tests (ISS-216), and core's TypeScript tests are deleted on de
 | Cost | What it buys, and who pays |
 |---|---|
 | A close can now be refused for a question | An automated close (a release batch, a reconciler) that meets an open question fails that issue by name instead of closing it; the release path already records the failure and recovers the stranded row. The price is that a moot question must be answered or voided before the work reads done |
-| `voidQuestions` lets whoever closes void a person's question | Voiding stays off the REST token door (`POST /api/questions/:id/void` is a session's), and an agent voids only inside a close it makes, with a sentence on the record. An actor entitled to close the issue is trusted to say the question died with it |
+| `voidQuestions` lets whoever closes void a person's question | Voiding has no REST door: a question is voided only by `voidQuestions` on an issue move, feedback `closeClarification` and a questionnaire supersede, and an agent voids only inside a close it makes, with a sentence on the record. An actor entitled to close the issue is trusted to say the question died with it |
 | Four routes to one entity | A reader asking "how did this row get here?" has four answers to check. The pinned wire file has to be edited whenever the device body changes |
 | Writing the split down does not close it | This document has to be rewritten the day `forge record question` creates the entity or the device door parks; until then it is a second place the coupling is described |

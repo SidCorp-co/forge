@@ -90,7 +90,6 @@ import {
   issueProjectRoutes,
   issueRoutes,
   issueStandingRoutes,
-  issueSteerRoutes,
   projectActivityRoutes,
   searchRoutes,
   transitionRoutes,
@@ -287,7 +286,6 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issues', transitionRoutes);
   app.route('/api/issues', issueActivityRoutes);
   app.route('/api/issues', issueDependencyRoutes);
-  app.route('/api/issues', issueSteerRoutes);
   app.route('/api/issues', issueCriteriaRoutes);
   app.route('/api/body', bodyRoutes);
   app.route('/api/comments', commentRoutes);

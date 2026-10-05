@@ -1,22 +1,22 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
+import { sendStoredAttachment } from '../lib/attachment-headers.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { type AuthVars, requireAuth, restActor } from '../middleware/auth.js';
 import { forbidden, idParamSchema, notFound } from '../middleware/route-errors.js';
-import { invalid, rawBody, zValidator } from '../middleware/zod-validator.js';
+import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
-import { safeRecordActivity } from './activity.js';
 import { deleteIssueAttachment, persistIssueAttachment } from './attachment-service.js';
 import {
+  heldIssue,
   issueRouteIdParamSchema,
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
-import { getStorage, isEnoent } from './ports.js';
-import { attachmentWithProject, issueScopeOf, listIssueAttachments } from './read-service.js';
+import { getStorage } from './ports.js';
+import { attachmentWithProject, listIssueAttachments } from './read-service.js';
 
 const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
   new HTTPException(400, { message, cause: { code, details } });
@@ -43,7 +43,7 @@ issueAttachmentRoutes.post(
   uploadBodyLimit(() => {
     throw badRequest('file too large', 'FILE_TOO_LARGE');
   }),
-  zValidator('param', idParamSchema, invalid('invalid id')),
+  zValidator('param', idParamSchema),
   rawBody(
     'multipart/form-data',
     'One file in the `file` field, attached to the issue; its name and media type come from the part.',
@@ -52,11 +52,7 @@ issueAttachmentRoutes.post(
     const { id: issueId } = c.req.valid('param');
     const userId = c.get('userId');
 
-    const issue = await issueScopeOf(issueId);
-    if (!issue) throw notFound('issue not found');
-
-    const access = await loadProjectAccess(issue.projectId, userId);
-    requireHeld(access, 'project.write');
+    const issue = await heldIssue(issueId, userId, 'project.write');
 
     const body = await c.req.parseBody();
     const file = body.file;
@@ -76,8 +72,8 @@ issueAttachmentRoutes.post(
 
 issueAttachmentRoutes.get(
   '/:id/attachments',
-  zValidator('param', issueRouteIdParamSchema, invalid('invalid id')),
-  zValidator('query', projectScopeQuerySchema, invalid('invalid query')),
+  zValidator('param', issueRouteIdParamSchema),
+  zValidator('query', projectScopeQuerySchema),
   async (c) => {
     const { id: rawId } = c.req.valid('param');
     const { projectId: projectIdQuery } = c.req.valid('query');
@@ -100,63 +96,35 @@ issueAttachmentRoutes.get(
 export const attachmentRoutes = new Hono<{ Variables: AuthVars }>();
 attachmentRoutes.use('*', requireAuth());
 
-attachmentRoutes.get(
-  '/:id/download',
-  zValidator('param', attachmentIdParamSchema, invalid('invalid id')),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
+attachmentRoutes.get('/:id/download', zValidator('param', attachmentIdParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    const row = await attachmentWithProject(id);
-    if (!row) throw notFound('attachment not found');
+  const row = await attachmentWithProject(id);
+  if (!row) throw notFound('attachment not found');
 
-    const access = await loadProjectAccess(row.projectId, userId);
-    requireHeld(access, 'project.read');
+  const access = await loadProjectAccess(row.projectId, userId);
+  requireHeld(access, 'project.read');
 
-    let buffer: Buffer;
-    try {
-      buffer = await getStorage().get(row.path);
-    } catch (err) {
-      if (isEnoent(err)) {
-        throw new HTTPException(410, {
-          message: 'attachment file missing on disk',
-          cause: { code: 'ATTACHMENT_FILE_MISSING' },
-        });
-      }
-      throw err;
-    }
-    setInertAttachmentHeaders(c, row.mime, row.name);
-    return c.body(new Uint8Array(buffer));
-  },
-);
+  return sendStoredAttachment(c, row, (path) => getStorage().get(path));
+});
 
-attachmentRoutes.delete(
-  '/:id',
-  zValidator('param', attachmentIdParamSchema, invalid('invalid id')),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
+attachmentRoutes.delete('/:id', zValidator('param', attachmentIdParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    const row = await attachmentWithProject(id);
-    if (!row) throw notFound('attachment not found');
+  const row = await attachmentWithProject(id);
+  if (!row) throw notFound('attachment not found');
 
-    const access = await loadProjectAccess(row.projectId, userId);
-    requireHeld(access, 'project.write');
+  const access = await loadProjectAccess(row.projectId, userId);
+  requireHeld(access, 'project.write');
 
-    const isUploader = row.uploaderId === userId;
-    const isAdmin = holds(access, 'project.admin');
-    if (!isUploader && !isAdmin) throw forbidden('only the uploader or a project admin may delete');
+  const isUploader = row.uploaderId === userId;
+  const isAdmin = holds(access, 'project.admin');
+  if (!isUploader && !isAdmin) throw forbidden('only the uploader or a project admin may delete');
 
-    await getStorage().delete(row.path);
-    await deleteIssueAttachment(id);
+  await getStorage().delete(row.path);
+  await deleteIssueAttachment(row, restActor(c));
 
-    void safeRecordActivity({
-      issueId: row.issueId,
-      actor: restActor(c),
-      action: 'issue.attachment.deleted',
-      payload: { attachmentId: row.id, name: row.name },
-    });
-
-    return c.body(null, 204);
-  },
-);
+  return c.body(null, 204);
+});

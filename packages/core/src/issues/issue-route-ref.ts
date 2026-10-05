@@ -8,7 +8,12 @@ import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { requireHeld } from '../permissions/index.js';
 import { heldIssuePrefixes } from './issue-prefix-read.js';
-import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
+import {
+  findIssueByDisplaySeq,
+  findIssueById,
+  type IssueRow,
+  issueScopeOf,
+} from './read-service.js';
 
 const uuidSchema = z.uuid();
 
@@ -34,6 +39,19 @@ const malformedRefMessage = (parsed: { code: string; message: string }): string 
 export const issueRouteIdParamSchema = z.object({ id: z.string().trim().min(1).max(200) });
 
 export const projectScopeQuerySchema = z.object({ projectId: z.uuid().optional() });
+
+/** The issue an id names, once the caller is shown to hold `permission` on its project. */
+export async function heldIssue(
+  issueId: string,
+  userId: string,
+  permission: Parameters<typeof requireHeld>[1],
+  act?: string,
+) {
+  const issue = await issueScopeOf(issueId);
+  if (!issue) throw notFound('issue not found');
+  requireHeld(await loadProjectAccess(issue.projectId, userId), permission, act);
+  return issue;
+}
 
 export async function resolveIssueRouteRef(
   rawId: string,

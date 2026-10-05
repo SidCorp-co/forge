@@ -1,8 +1,10 @@
+import type { OutboxActor } from '@forge/contracts/outbox-events';
 import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
-import type { Db } from '../db/client.js';
+import type { Db, Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
+import { emitEvent } from '../outbox/index.js';
 
 /** The pool or a caller's open transaction. A close stamps inside one; a mark does not. */
 export type MergeRecordExecutor = Pick<Db, 'update' | 'select'>;
@@ -12,12 +14,11 @@ type MergeEvidence =
       kind: 'observed';
       commitSha: string;
       mergedAt: Date;
-      via: 'kernel' | 'event' | 'repository';
       /** Where the work also landed outside git, on a project whose landing is named. */
       landing?: string | null;
     }
-  | { kind: 'landed'; landing: string; at?: Date | null; via: 'mark' }
-  | { kind: 'asserted'; at?: Date | null; via: 'mark' | 'close' };
+  | { kind: 'landed'; landing: string; at?: Date | null }
+  | { kind: 'asserted'; at?: Date | null };
 
 export interface MergeRecord {
   /** Whether THIS call moved the row. Every caller has to pass this on. */
@@ -108,10 +109,20 @@ async function readBack(
  * rollback drops both together.
  */
 export async function recordIssueMerge(
-  executor: MergeRecordExecutor,
-  args: { issueId: string; evidence: MergeEvidence },
+  executor: Tx,
+  args: { issueId: string; evidence: MergeEvidence; actor: OutboxActor | null },
 ): Promise<MergeRecord> {
   const { issueId, evidence } = args;
+  const [prior] = await executor
+    .select({
+      projectId: issues.projectId,
+      mergedAt: issues.mergedAt,
+      mergedCommitSha: issues.mergedCommitSha,
+      mergedLanding: issues.mergedLanding,
+    })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
   const stampExpr =
     evidence.kind === 'observed'
       ? sqlTimestamp(evidence.mergedAt)
@@ -138,6 +149,22 @@ export async function recordIssueMerge(
       mergedLanding: issues.mergedLanding,
     });
 
+  if (wrote && prior && args.actor) {
+    // every writer of the stamp tells its readers in the stamp's own transaction
+    const { projectId, ...before } = prior;
+    await emitEvent(executor, 'issue.updated', {
+      issueId,
+      projectId,
+      actor: args.actor,
+      fields: ['mergedAt', 'mergedCommitSha', 'mergedLanding'],
+      before,
+      after: {
+        mergedAt: wrote.mergedAt,
+        mergedCommitSha: wrote.mergedCommitSha,
+        mergedLanding: wrote.mergedLanding,
+      },
+    });
+  }
   if (wrote) {
     return {
       wrote: true,

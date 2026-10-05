@@ -198,6 +198,7 @@ type TakenIssue = {
   prefix: string | null;
   status: IssueStatus;
   issueKey: string;
+  issSeq: number;
 };
 
 async function blockedOf(
@@ -215,6 +216,7 @@ const takenRow = (row: Record<string, unknown>): TakenIssue => ({
   prefix: (row.issue_prefix as string | null) ?? null,
   status: row.status as IssueStatus,
   issueKey: formatIssueRef((row.issue_prefix as string | null) ?? null, Number(row.iss_seq)),
+  issSeq: Number(row.iss_seq),
 });
 
 async function readTaken(executor: Pick<Tx, 'execute'>, where: SQL) {
@@ -267,6 +269,18 @@ async function refuseBlockedTakeForSeqs(
     executor,
     sql`i.project_id = ${projectId} AND i.iss_seq IN (${list})`,
   );
+  const found = new Set(issues.map((i) => i.issSeq));
+  const missing = seqs.filter((s) => !found.has(s));
+  if (missing.length > 0) {
+    throw new RefusalError(
+      missing.map((s) => ({
+        code: 'ISSUE_NOT_FOUND',
+        path: '',
+        detail: `no issue with sequence ${s} exists in this project, so ${door} cannot take it`,
+      })),
+      'ISSUE_NOT_FOUND',
+    );
+  }
   const held: BlockedIssue[] = [];
   for (const issue of issues) {
     const blocked = await blockedOf(executor, issue);
@@ -285,7 +299,11 @@ export async function refuseHeldTakeForSeqs(
 
 /** A refused take in the envelope: a blocked issue as thrown, a dispatch gate's refusal named. */
 export function heldTakeRefusal(err: unknown): RefusalError | null {
-  if (isRefusal(err, 'ISSUE_BLOCKED') || isRefusal(err, 'WORKFLOW_DESIGN_NOT_APPROVED')) {
+  if (
+    isRefusal(err, 'ISSUE_BLOCKED') ||
+    isRefusal(err, 'ISSUE_NOT_FOUND') ||
+    isRefusal(err, 'WORKFLOW_DESIGN_NOT_APPROVED')
+  ) {
     return err;
   }
   if (isDispatchGateError(err)) {

@@ -8,8 +8,6 @@
  */
 
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
-import { loadProjectAccess } from '../../lib/authz.js';
 import { egressForRequest } from '../../lib/data-egress.js';
 import {
   type AuthVars,
@@ -19,34 +17,33 @@ import {
 } from '../../middleware/auth.js';
 import { idParamSchema } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
-import { requireHeld } from '../../permissions/index.js';
-import { issueScopeOf } from '../read-service.js';
+import { heldIssue } from '../issue-route-ref.js';
 import { criteriaPutSchema, verdictPostSchema } from './input-schemas.js';
 import { addVerdict, readCriteriaWithDrafts as readCriteria, replaceCriteria } from './service.js';
-
-async function issueFor(id: string, userId: string, permission: 'project.read' | 'project.write') {
-  const issue = await issueScopeOf(id);
-  if (!issue) throw new HTTPException(404, { message: 'issue not found' });
-  requireHeld(await loadProjectAccess(issue.projectId, userId), permission);
-  return { id: issue.id, projectId: issue.projectId };
-}
 
 export const issueCriteriaRoutes = new Hono<{ Variables: AuthVars }>();
 
 issueCriteriaRoutes.use('/:id/criteria', requireAuth(), assertEmailVerified());
 issueCriteriaRoutes.use('/:id/verdicts', requireAuth(), assertEmailVerified());
 
-issueCriteriaRoutes.get('/:id/criteria', zValidator('param', idParamSchema), async (c) => {
-  const { id } = c.req.valid('param');
-  const issue = await issueFor(id, c.get('userId'), 'project.read');
-  const criteria = await egressForRequest(
-    c.get('agency'),
+/** An issue's criteria as this caller may read them: every answer passes the same egress. */
+async function criteriaShown(
+  agency: Parameters<typeof egressForRequest>[0],
+  issue: Parameters<typeof readCriteria>[0] & { projectId: string; id: string },
+) {
+  return egressForRequest(
+    agency,
     issue.projectId,
     'issue.criteria',
     await readCriteria(issue),
     `the criteria of ${issue.id}`,
   );
-  return c.json({ criteria });
+}
+
+issueCriteriaRoutes.get('/:id/criteria', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const issue = await heldIssue(id, c.get('userId'), 'project.read');
+  return c.json({ criteria: await criteriaShown(c.get('agency'), issue) });
 });
 
 issueCriteriaRoutes.put(
@@ -56,9 +53,9 @@ issueCriteriaRoutes.put(
   async (c) => {
     const { id } = c.req.valid('param');
     const { criteria } = c.req.valid('json');
-    const issue = await issueFor(id, c.get('userId'), 'project.write');
+    const issue = await heldIssue(id, c.get('userId'), 'project.write');
     await replaceCriteria(id, criteria);
-    return c.json({ criteria: await readCriteria(issue) });
+    return c.json({ criteria: await criteriaShown(c.get('agency'), issue) });
   },
 );
 
@@ -69,7 +66,7 @@ issueCriteriaRoutes.post(
   async (c) => {
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
-    const issue = await issueFor(id, c.get('userId'), 'project.write');
+    const issue = await heldIssue(id, c.get('userId'), 'project.write');
     const written = await addVerdict({
       issue,
       draft: {

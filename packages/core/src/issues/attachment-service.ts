@@ -15,7 +15,7 @@ import { lockAttachmentName, type NameCheckExecutor } from '../lib/attachment-na
 import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
 import { env } from '../lib/env.js';
 import { isRefusal, type RefusalError, refuser } from '../lib/refusal.js';
-import { safeRecordActivity } from './activity.js';
+import { type Actor, recordActivityTx } from './activity.js';
 import { getStorage } from './ports.js';
 
 export { safeName };
@@ -140,20 +140,14 @@ export async function persistIssueAttachment(
         size: issueAttachments.size,
         createdAt: issueAttachments.createdAt,
       });
+    if (!row) throw new Error('issue_attachments: insert returned no row');
+    await recordActivityTx(tx, {
+      issueId,
+      actor: { type: 'user', id: uploaderId, agency: input.uploaderAgency },
+      action: 'issue.attachment.uploaded',
+      payload: { attachmentId: row.id, name: row.name, mime: row.mime, size: row.size },
+    });
     return row;
-  });
-  if (!inserted) throw new Error('issue_attachments: insert returned no row');
-
-  void safeRecordActivity({
-    issueId,
-    actor: { type: 'user', id: uploaderId, agency: input.uploaderAgency },
-    action: 'issue.attachment.uploaded',
-    payload: {
-      attachmentId: inserted.id,
-      name: inserted.name,
-      mime: inserted.mime,
-      size: inserted.size,
-    },
   });
 
   return { ...inserted, url: `/api/attachments/${inserted.id}/download` };
@@ -208,7 +202,8 @@ export interface DecodedAttachment {
  * or oversized payloads keeps the parent row (issue/comment) from being
  * committed when the attachments are unusable.
  *
- * Refuses INVALID_BASE64 or PAYLOAD_TOO_LARGE.
+ * Refuses INVALID_BASE64, PAYLOAD_TOO_LARGE, a name or type the attachment rules refuse, and a
+ * name the batch carries twice — so a create refuses whole before its issue is written.
  */
 export function decodeAndValidateAttachments(
   items: readonly Base64AttachmentInput[],
@@ -225,6 +220,19 @@ export function decodeAndValidateAttachments(
       );
     }
     decoded.push({ name: a.name, mime: a.mime, bytes: buf });
+  }
+  const seen = new Set<string>();
+  for (const [i, d] of decoded.entries()) {
+    const name = safeName(d.name || 'file');
+    validateIssueAttachment({ name, mime: d.mime, bytes: d.bytes });
+    if (seen.has(name)) {
+      throw refuse(
+        'ATTACHMENT_NAME_TAKEN',
+        `this batch carries "${name}" more than once — an attachment name is one document`,
+        `/attachments/${i}/name`,
+      );
+    }
+    seen.add(name);
   }
   const limit = env.UPLOADS_MAX_BYTES;
   const sizes = decoded.map((d) => d.bytes.byteLength);
@@ -276,19 +284,9 @@ export async function persistDecodedIssueAttachments(
   uploaderAgency: ActorAgency,
 ): Promise<{ persisted: PersistedIssueAttachment[]; errors: AttachmentErrorEntry[] }> {
   const errors: AttachmentErrorEntry[] = [];
-  const seen = new Set<string>();
   for (const [i, d] of decoded.entries()) {
     const name = safeName(d.name || 'file');
     try {
-      validateIssueAttachment({ name, mime: d.mime, bytes: d.bytes });
-      if (seen.has(name)) {
-        throw refuse(
-          'ATTACHMENT_NAME_TAKEN',
-          `this batch carries "${name}" more than once — an attachment name is one document`,
-          `/attachments/${i}/name`,
-        );
-      }
-      seen.add(name);
       const taken = await findIssueAttachmentByName(issueId, name);
       if (taken) throw nameTakenError(taken, 'issue');
     } catch (err) {
@@ -319,6 +317,18 @@ export async function persistDecodedIssueAttachments(
 }
 
 /** Removes one attachment's row; its stored file is the caller's to delete first. */
-export async function deleteIssueAttachment(attachmentId: string): Promise<void> {
-  await db.delete(issueAttachments).where(eq(issueAttachments.id, attachmentId));
+/** Deletes the row and writes its activity line in one transaction. */
+export async function deleteIssueAttachment(
+  row: { id: string; issueId: string; name: string },
+  actor: Actor,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.delete(issueAttachments).where(eq(issueAttachments.id, row.id));
+    await recordActivityTx(tx, {
+      issueId: row.issueId,
+      actor,
+      action: 'issue.attachment.deleted',
+      payload: { attachmentId: row.id, name: row.name },
+    });
+  });
 }

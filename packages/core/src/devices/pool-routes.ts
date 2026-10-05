@@ -68,6 +68,7 @@ const answerQuerySchema = z.object({ runId: z.string().optional() });
 
 import { type ResolvedLeaseKey, readDeviceIssueLease, resolveLeaseKey } from '../issues/index.js';
 import { releaseHoldsOf, releaseJobHold } from '../jobs/index.js';
+import { RefusalError } from '../lib/refusal.js';
 import { readAdmissibleIssues } from './admissible.js';
 import { prepareJobForMaster, startJobForMaster } from './claim.js';
 import { deviceCommentInboxRoutes } from './comment-inbox-routes.js';
@@ -128,8 +129,8 @@ const leaseQuerySchema = z.object({ projectId: z.string().uuid().optional() });
 async function leaseKeyOf(rawKey: string, projectId?: string): Promise<ResolvedLeaseKey> {
   const resolved = await resolveLeaseKey({ rawKey, projectId: projectId ?? null });
   if (resolved.ok) return resolved.key;
-  const { status, code, message } = resolved.refusal;
-  throw new HTTPException(status, { message, cause: { code } });
+  const { code, message } = resolved.refusal;
+  throw new RefusalError([{ code, path: '/issueKey', detail: message }], code);
 }
 
 devicePoolRoutes.get(

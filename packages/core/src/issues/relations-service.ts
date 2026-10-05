@@ -74,12 +74,9 @@ export async function writeIssueRelations(
 ): Promise<PendingIssueRelation[]> {
   const pending: PendingIssueRelation[] = [];
   for (const rel of relations ?? []) {
-    if ((rel.dependsOnId == null) === (rel.blocksId == null)) {
-      throw new Error('BAD_REQUEST: relation needs exactly one of dependsOnId or blocksId');
-    }
     const fromIssueId = rel.dependsOnId ?? issueId;
-    const toIssueId = rel.dependsOnId != null ? issueId : rel.blocksId;
-    if (!toIssueId) throw new Error('BAD_REQUEST: relation needs dependsOnId or blocksId');
+    // issueRelationInputSchema guarantees exactly one of the two
+    const toIssueId = rel.dependsOnId != null ? issueId : (rel.blocksId as string);
     const input: SetIssueDependencyInput = {
       projectId,
       fromIssueId,
@@ -110,13 +107,12 @@ export async function writeIssueRelations(
  * dependents' health once for the whole array.
  */
 export async function flushIssueRelationEffects(
-  writer: IssueDependencyWriter,
   projectId: string,
   pending: readonly PendingIssueRelation[],
 ): Promise<void> {
   const refreshHealthFor: string[] = [];
   for (const p of pending) {
-    await emitIssueDependencyEffects(p.input, p.written, writer, { deferHealthPublish: true });
+    await emitIssueDependencyEffects(p.input, p.written, { deferHealthPublish: true });
     if (p.applied.kind === 'blocks' && (p.applied.created || p.applied.updated)) {
       refreshHealthFor.push(p.applied.toIssueId);
     }

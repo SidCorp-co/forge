@@ -42,6 +42,16 @@ export async function projectOrgHead(projectId: string) {
 }
 
 /** The name of a project, or null. */
+/** Who created the project: the account a system-authored act is attributed to. */
+export async function projectCreatorOf(projectId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ createdBy: projects.createdBy })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  return row?.createdBy ?? null;
+}
+
 export async function projectName(projectId: string): Promise<string | null> {
   const [row] = await db
     .select({ name: projects.name })

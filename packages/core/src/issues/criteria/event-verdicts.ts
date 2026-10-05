@@ -47,12 +47,54 @@ function authorOfActor(actor: Actor): VerdictAuthor {
   };
 }
 
+/** A criterion line that is not a whole number, or a block that names no verdict: never dropped. */
+function unparsedBlocks(record: ForgeRecord): MessageRefusal[] {
+  const refusal = (rule: string, why: string, quote: string): MessageRefusal => ({
+    rule,
+    why,
+    quote,
+    shape: SHAPE,
+    example: EXAMPLE,
+  });
+  const out: MessageRefusal[] = [];
+  for (const field of record.kind === 'verdict' ? record.fields : []) {
+    if (field.key === 'criterion' && !/^\d+$/.test(field.value.trim())) {
+      out.push(
+        refusal(
+          'VERDICT_CRITERION_UNKNOWN',
+          'a criterion is named by its whole number',
+          `criterion: ${field.value}`,
+        ),
+      );
+    }
+  }
+  for (const block of criterionBlocksIn(record)) {
+    if (block.verdict === null) {
+      out.push(
+        refusal(
+          'VERDICT_VALUE_UNKNOWN',
+          'this block names no verdict, so nothing would be recorded for it',
+          `criterion: ${block.criterion}`,
+        ),
+      );
+    }
+  }
+  return out;
+}
+
 /** Write every criterion verdict a `verdict` record names, or refuse naming each block refused. */
 export async function recordEventVerdicts(
   tx: Tx,
   event: { issueId: string; record: ForgeRecord; actor: Actor; commentId: string | null },
 ): Promise<number> {
-  const blocks = criterionBlocksIn(event.record).filter((b) => b.verdict !== null);
+  const unparsed = unparsedBlocks(event.record);
+  if (unparsed.length > 0) {
+    throw new MessageRefusedError(
+      event.commentId ? 'comment-write' : 'record-event-write',
+      unparsed,
+    );
+  }
+  const blocks = criterionBlocksIn(event.record);
   if (blocks.length === 0) return 0;
   const [issue] = await tx
     .select({ id: issues.id, projectId: issues.projectId })

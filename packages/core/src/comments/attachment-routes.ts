@@ -10,12 +10,12 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { getStorage, isEnoent } from '../integrations/index.js';
-import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
+import { getStorage } from '../integrations/index.js';
+import { sendStoredAttachment } from '../lib/attachment-headers.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
-import { forbidden, idParamSchema } from '../middleware/route-errors.js';
+import { idParamSchema } from '../middleware/route-errors.js';
 import { invalid, rawBody, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { persistCommentAttachment } from './attachment-service.js';
@@ -91,21 +91,8 @@ commentAttachmentRoutes.get(
     if (!row) throw notFound('attachment not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
-    let buffer: Buffer;
-    try {
-      buffer = await getStorage().get(row.path);
-    } catch (err) {
-      if (isEnoent(err)) {
-        throw new HTTPException(410, {
-          message: 'attachment file missing on disk',
-          cause: { code: 'ATTACHMENT_FILE_MISSING' },
-        });
-      }
-      throw err;
-    }
-    setInertAttachmentHeaders(c, row.mime, row.name);
-    return c.body(new Uint8Array(buffer));
+    return sendStoredAttachment(c, row, (path) => getStorage().get(path));
   },
 );

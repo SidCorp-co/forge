@@ -13,21 +13,17 @@ import { issueDependencyKinds } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
+import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { safeRecordActivity } from './activity.js';
-import {
-  dependencyEdgeById,
-  issueProjectsOf,
-  loadIssueDependencyEdges,
-} from './dependency-read.js';
+import { dependencyEdgeById, loadIssueDependencyEdges } from './dependency-read.js';
 import {
   deleteIssueDependency,
   type SetIssueDependencyInput,
   setIssueDependency,
 } from './dependency-service.js';
 import {
+  heldIssue,
   issueRouteIdParamSchema,
   projectScopeQuerySchema,
   resolveIssueRouteRef,
@@ -86,31 +82,11 @@ issueDependencyRoutes.post(
     const { dependsOnId: fromIssueId, kind, reason, validUntil } = c.req.valid('json');
     const userId = c.get('userId');
 
-    if (fromIssueId === toIssueId) {
-      throw refuse(
-        'SELF_DEP',
-        'an issue cannot depend on itself: name two different issues',
-        '/dependsOnId',
-      );
-    }
-
-    const sides = await issueProjectsOf([fromIssueId, toIssueId]);
-    if (sides.length !== 2) throw notFound('one or both issues not found');
-    const [a, b] = sides;
-    if (!a || !b) throw notFound('one or both issues not found');
-    if (a.projectId !== b.projectId) {
-      throw refuse(
-        'CROSS_PROJECT',
-        'both issues of an edge are in one project; cross-project edges are not supported',
-        '/dependsOnId',
-      );
-    }
-
-    const access = await loadProjectAccess(a.projectId, userId);
-    requireHeld(access, 'project.write');
+    // the service refuses a self edge, a missing side and a cross-project pair under its lock
+    const target = await heldIssue(toIssueId, userId, 'project.write');
 
     const input: SetIssueDependencyInput = {
-      projectId: a.projectId,
+      projectId: target.projectId,
       fromIssueId,
       toIssueId,
       kind,
@@ -147,32 +123,10 @@ issueDependencyRoutes.delete(
     requireHeld(access, 'project.write');
 
     if (edge.fromIssueId !== issueId && edge.toIssueId !== issueId) {
-      throw badRequest({ message: 'edge does not involve this issue' }, 'EDGE_MISMATCH');
+      throw refuse('EDGE_MISMATCH', 'the edge does not involve this issue', '/edgeId');
     }
 
-    await deleteIssueDependency(edge);
-
-    const removedPayload = {
-      edgeId,
-      fromIssueId: edge.fromIssueId,
-      toIssueId: edge.toIssueId,
-      kind: edge.kind,
-    };
-    const actor = restActor(c);
-    await Promise.all([
-      safeRecordActivity({
-        issueId: edge.fromIssueId,
-        actor,
-        action: 'issue.dependency.removed',
-        payload: removedPayload,
-      }),
-      safeRecordActivity({
-        issueId: edge.toIssueId,
-        actor,
-        action: 'issue.dependency.removed',
-        payload: removedPayload,
-      }),
-    ]);
+    await deleteIssueDependency(edge, restActor(c));
 
     return c.json({ deleted: true });
   },

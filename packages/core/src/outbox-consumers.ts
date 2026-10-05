@@ -1,6 +1,6 @@
 import { registerReviewNotes } from './comments/index.js';
 import { registerSourcePushReactions } from './ecosystem/index.js';
-import { registerHostMergeStamp } from './issues/index.js';
+import { registerHostMergeStamp, registerIssueMoveReactions } from './issues/index.js';
 import {
   registerMemoryExtraction,
   registerMemoryIndexer,
@@ -41,6 +41,7 @@ export function registerOutboxConsumers(): void {
   registerMemoryReconcileTrigger();
   registerMemoryExtraction();
   registerHostMergeStamp();
+  registerIssueMoveReactions();
   registerReviewNotes();
   registerSourcePushReactions();
   registerLiveReadingInvalidation();

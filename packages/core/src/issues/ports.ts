@@ -6,7 +6,6 @@
 // pattern).
 
 import type { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
-import type { ActorAgency } from '@forge/contracts/permissions';
 import type { SQL, SQLWrapper } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
@@ -61,7 +60,7 @@ export interface RunnerAvailability {
 
 export type DispatchGateCode = 'WORKFLOW_DESIGN_NOT_APPROVED';
 
-export interface DispatchGateError extends Error {
+interface DispatchGateError extends Error {
   readonly code: DispatchGateCode;
   readonly blocked: readonly unknown[];
 }
@@ -87,6 +86,7 @@ interface StoredFiles {
 }
 
 interface IssuePorts {
+  projectCreatorOf: (projectId: string) => Promise<string | null>;
   settleOpenQuestions: (
     tx: Tx,
     args: {
@@ -148,11 +148,6 @@ interface IssuePorts {
     projectId: string;
     issSeq: number;
   }) => Promise<Refusal | null>;
-  steerIssue: (
-    issueId: string,
-    body: string,
-    opts: { actorUserId: string; actorAgency: ActorAgency; reason: string; source: 'rest' },
-  ) => Promise<object>;
 
   designUnapprovedSql: (issueId: SQL) => SQL;
   assertDesignsApprovedForSeqs: (projectId: string, seqs: readonly number[]) => Promise<void>;
@@ -220,7 +215,6 @@ interface IssuePorts {
       updatedAt: Date;
     }>
   >;
-  setCurrentStepForOpenIssueRun: (issueId: string, step: string) => Promise<void>;
   closeOpenRunForIssue: (
     issueId: string,
     outcome: 'completed' | 'failed' | 'cancelled',
@@ -231,6 +225,8 @@ const slot = portSlot<IssuePorts>('issues', 'provideIssuePorts');
 export const provideIssuePorts = slot.provide;
 const issuePorts = slot.get;
 const { port } = slot;
+
+export const projectCreatorOf = port('projectCreatorOf');
 
 export const settleOpenQuestions = port('settleOpenQuestions');
 export const holdsOpenHumanQuestion = port('holdsOpenHumanQuestion');
@@ -256,7 +252,6 @@ export const usageTotalsSelection = port('usageTotalsSelection');
 export const emptyUsageTotals = (): UsageTotals => issuePorts().emptyUsageTotals;
 export const fireOfCaller = port('fireOfCaller');
 export const issueDeleteRefusal = port('issueDeleteRefusal');
-export const steerIssue = port('steerIssue');
 
 export const designUnapprovedSql = port('designUnapprovedSql');
 export const assertDesignsApprovedForSeqs = port('assertDesignsApprovedForSeqs');
@@ -280,5 +275,4 @@ export const resolveSourceHost = port('resolveSourceHost');
 export const isSourceHostUnavailable = port('isSourceHostUnavailable');
 export const readStorefrontDraft = port('readStorefrontDraft');
 export const handoffContextsOf = port('handoffContextsOf');
-export const setCurrentStepForOpenIssueRun = port('setCurrentStepForOpenIssueRun');
 export const closeOpenRunForIssue = port('closeOpenRunForIssue');

@@ -51,12 +51,12 @@ function findVerifiedClaimViolation(value: unknown): VerifiedClaimViolation | nu
   function walk(node: unknown, path: string, depth: number): VerifiedClaimViolation | null {
     if (boundExceeded) return null;
     nodeCount++;
-    if (nodeCount > VERIFIED_CLAIM_MAX_NODES) {
+    if (nodeCount > VERIFIED_CLAIM_MAX_NODES || depth > VERIFIED_CLAIM_MAX_DEPTH) {
       boundExceeded = true;
-      return null;
-    }
-    if (depth > VERIFIED_CLAIM_MAX_DEPTH) {
-      return null;
+      return {
+        path: path || '(root)',
+        message: `sessionContext is nested deeper than ${VERIFIED_CLAIM_MAX_DEPTH} levels or holds more than ${VERIFIED_CLAIM_MAX_NODES} nodes, so its verified* claims cannot be checked; send a smaller value`,
+      };
     }
     if (Array.isArray(node)) {
       for (let i = 0; i < node.length; i++) {
@@ -87,6 +87,8 @@ function findVerifiedClaimViolation(value: unknown): VerifiedClaimViolation | nu
   return walk(value, '', 0);
 }
 
+const FULL_HEAD = /^[0-9a-f]{40}$/iu;
+
 export const sessionContextSchema = z
   .record(z.string(), z.unknown())
   .nullable()
@@ -99,6 +101,30 @@ export const sessionContextSchema = z
     const violation = findVerifiedClaimViolation(v);
     if (violation) {
       ctx.addIssue({ code: 'custom', path: [violation.path], message: violation.message });
+    }
+    const worklog = (v.worklog && typeof v.worklog === 'object' ? v.worklog : {}) as Record<
+      string,
+      unknown
+    >;
+    if (
+      typeof worklog.head === 'string' &&
+      worklog.head.trim() &&
+      !FULL_HEAD.test(worklog.head.trim())
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['worklog', 'head'],
+        message: 'a head is the full 40-hex commit sha',
+      });
+    }
+    for (const branch of [v.branch, worklog.branch]) {
+      if (typeof branch === 'string' && branch.trim().length > 255) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['branch'],
+          message: 'a branch is at most 255 characters',
+        });
+      }
     }
   });
 

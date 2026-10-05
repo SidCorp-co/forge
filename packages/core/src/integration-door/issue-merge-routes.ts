@@ -3,6 +3,7 @@
 // same write. The claim beside it (`POST /:id/merge`) is the issue kernel's own route.
 
 import type { MergeRefusalCode } from '@forge/contracts/issues';
+import type { OutboxActor } from '@forge/contracts/outbox-events';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -28,11 +29,10 @@ import { requireHeld } from '../permissions/index.js';
 const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
 
 /** The stamp Forge's own merge writes, in the transaction that marks the projection row. */
-const stampKernelMerge: IssueMergeStamp = (tx, { issueId, commitSha, mergedAt }) =>
-  recordIssueMerge(tx, {
-    issueId,
-    evidence: { kind: 'observed', commitSha, mergedAt, via: 'kernel' },
-  });
+const stampKernelMerge =
+  (actor: OutboxActor): IssueMergeStamp =>
+  (tx, { issueId, commitSha, mergedAt }) =>
+    recordIssueMerge(tx, { issueId, actor, evidence: { kind: 'observed', commitSha, mergedAt } });
 
 export const issueMergePullRequestRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -128,7 +128,7 @@ issueMergePullRequestRoutes.post(
           ...(body.headSha ? { expectedHeadSha: body.headSha } : {}),
           ...(body.method ? { method: body.method } : {}),
         },
-        stampKernelMerge,
+        stampKernelMerge(actor),
       );
       if (!outcome) throw notFound('pull request not found');
       if (outcome.kind === 'refused') {
