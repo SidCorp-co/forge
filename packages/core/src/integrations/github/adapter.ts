@@ -1,19 +1,17 @@
 import type { BindingRole } from '../../db/schema.js';
 import {
   type AdapterContext,
+  applyClaimedInbound,
   declareIntegration,
   type HealthCheckResult,
   type InboundDispatchInput,
   type InboundDispatchResult,
   type InboundFact,
   type IntegrationAdapterMethods,
-  type IntegrationConnectionRow,
-  recordDelivery,
   updateConnection,
-  updateDelivery,
 } from '../index.js';
 import { sourceHostMismatch } from '../source-host/index.js';
-import { compareBoundRepository, githubInboundSecret } from './bind-effects.js';
+import { compareBoundRepository } from './bind-effects.js';
 import { githubGitCredential } from './git-credential.js';
 import { readAppHookConfig } from './hook-config.js';
 import { checkInstallationGrant } from './installation-permissions.js';
@@ -118,7 +116,9 @@ async function grantShortfall(
 }
 
 const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecrets> = {
-  inboundSecret: (connection) => githubInboundSecret(connection as IntegrationConnectionRow),
+  inboundSecretField: 'webhookSecret',
+  inboundSecretHome:
+    "the GitHub App's settings (Developer settings → GitHub Apps → the App → Webhook), as its Webhook secret",
   verifyBindingTarget: ({ projectId, connection, config }) =>
     sourceHostMismatch({
       projectId,
@@ -204,37 +204,29 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
       throw new Error(`github webhook: delivery is for ${arrived}, this binding is ${expected}`);
     }
     const guid = input.headers['x-github-delivery'];
-    const logged = {
-      bindingId: ctx.bindingId,
-      direction: 'inbound' as const,
-      eventName: `${eventType}.${payload?.action ?? 'unknown'}`,
-      payload,
-      ...(guid ? { requestId: guid } : {}),
-    };
     const facts: InboundFact[] = [];
-    let actions: number;
-    try {
-      actions = await handleGitHubEvent(
-        {
-          projectId: ctx.projectId,
-          bindingId: ctx.bindingId,
-          config: ctx.config ?? {},
-          secrets: ctx.secrets ?? {},
-          facts,
-        },
-        eventType,
+    const { deliveryId, result } = await applyClaimedInbound(
+      {
+        bindingId: ctx.bindingId,
+        eventName: `${eventType}.${payload?.action ?? 'unknown'}`,
         payload,
-      );
-    } catch (err) {
-      const deliveryId = await recordDelivery({ ...logged, status: 'failed' });
-      await updateDelivery(deliveryId, {
-        errorMessage: err instanceof Error ? err.message : String(err),
-      });
-      throw err;
-    }
-    // Logged once the event is applied, so an `ok` row says what happened rather than what arrived.
-    const deliveryId = await recordDelivery({ ...logged, status: 'ok' });
-    return { deliveryId, actions: actions + facts.length, facts };
+        ...(guid ? { requestId: guid } : {}),
+      },
+      async () => ({
+        actions: await handleGitHubEvent(
+          {
+            projectId: ctx.projectId,
+            bindingId: ctx.bindingId,
+            config: ctx.config ?? {},
+            secrets: ctx.secrets ?? {},
+            facts,
+          },
+          eventType,
+          payload,
+        ),
+      }),
+    );
+    return { deliveryId, actions: (result?.actions ?? 0) + facts.length, facts };
   },
 };
 

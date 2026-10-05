@@ -1,3 +1,4 @@
+import type { ConnectionDirectoryStatus } from '@forge/contracts/integrations';
 import { HTTPException } from 'hono/http-exception';
 import type { BindingRole } from '../db/schema.js';
 import type { AgentAccess } from './agent-access.js';
@@ -69,6 +70,7 @@ export function summarizeBinding(pair: BindingWithConnection) {
     lastHealthDetail: connection.lastHealthDetail,
     lastHealthAt: connection.lastHealthAt,
     breakerOpenedAt: connection.breakerOpenedAt,
+    directoryStatus: connectionHealthStatus(connection),
     hasSecrets: connection.secretsEnc !== null,
     integrationSecretSet: binding.integrationSecret !== null,
     agentAccess: binding.agentAccess as AgentAccess,
@@ -80,6 +82,26 @@ export function summarizeBinding(pair: BindingWithConnection) {
 }
 
 /** Owner-facing connection summary (never echoes secret bytes). */
+/**
+ * The one rule that buckets a connection's raw health for display: the connections directory reads
+ * it off the summary, and the project status cards fold it into their coarser card status.
+ */
+export function connectionHealthStatus(h: {
+  active: boolean;
+  lastHealthStatus: string | null;
+  breakerOpenedAt: Date | null;
+}): ConnectionDirectoryStatus {
+  if (!h.active) return 'disabled';
+  const s = h.lastHealthStatus?.toLowerCase() ?? null;
+  if (s === 'needs_reauth' || s === 'needs_scope') return s;
+  if (h.breakerOpenedAt !== null) return 'degraded';
+  // Active but never health-checked: no signal is not the same as degraded.
+  if (!s) return 'unverified';
+  if (s === 'ok' || s === 'healthy' || s === 'success') return 'connected';
+  if (s === 'degraded' || s === 'pending' || s === 'unknown') return 'degraded';
+  return 'error';
+}
+
 export function summarizeConnection(connection: IntegrationConnectionRow) {
   return {
     id: connection.id,

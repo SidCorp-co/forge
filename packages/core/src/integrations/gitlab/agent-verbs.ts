@@ -51,10 +51,18 @@ export function gitlabAgentVerbs(
     me ??= client.json<UserBody>('GET', '/user');
     return me;
   };
-  const note = (iid: number, body: string) =>
-    client.json<{ id?: number; created_at?: string | null }>('POST', mrPath(iid, '/notes'), {
-      body,
-    });
+  // A note GitLab answers without an id cannot be addressed or deduped, so it is a host failure.
+  const note = async (iid: number, body: string) => {
+    const written = await client.json<{ id?: number; created_at?: string | null }>(
+      'POST',
+      mrPath(iid, '/notes'),
+      { body },
+    );
+    if (!written.id) {
+      throw new SourceHostCallError(502, `GitLab wrote a note on !${iid} and answered no note id`);
+    }
+    return { id: written.id, created_at: written.created_at ?? null };
+  };
 
   return {
     async diff({ number, maxBytes }) {
@@ -120,8 +128,8 @@ export function gitlabAgentVerbs(
       const written = await note(number, body);
       const url = mergeRequestUrl(client, number);
       return {
-        commentId: written.id ?? 0,
-        url: url && written.id ? `${url}#note_${written.id}` : url,
+        commentId: written.id,
+        url: url ? `${url}#note_${written.id}` : url,
       };
     },
 
@@ -193,10 +201,10 @@ export function gitlabAgentVerbs(
       const written = await note(number, body);
       const url = mergeRequestUrl(client, number);
       return {
-        reviewId: written.id ?? 0,
+        reviewId: written.id,
         state: event === 'APPROVE' ? 'approved' : 'commented',
-        url: url && written.id ? `${url}#note_${written.id}` : url,
-        submittedAt: written.created_at ?? null,
+        url: url ? `${url}#note_${written.id}` : url,
+        submittedAt: written.created_at,
         reviewer: (await whoAmI()).username ?? '(the GitLab token)',
         headRef: mr.source_branch ?? '',
         number,

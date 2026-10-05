@@ -17,6 +17,15 @@ export async function runnerRow(id: string): Promise<RunnerRow | null> {
   return row ?? null;
 }
 
+/** Every project a device runs a runner for, whatever the runner's type. */
+export async function deviceProjectIds(deviceId: string): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ projectId: runners.projectId })
+    .from(runners)
+    .where(eq(runners.deviceId, deviceId));
+  return rows.map((r) => r.projectId);
+}
+
 /** A project's runners, narrowed by type and status when given. */
 export async function listProjectRunners(
   projectId: string,

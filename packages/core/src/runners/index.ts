@@ -18,6 +18,7 @@ export {
 } from './liveness-sql.js';
 export { provideRunnersPorts } from './ports.js';
 export { clearRunnerQuarantine, maybeQuarantineRunner } from './quarantine.js';
+export { deviceProjectIds } from './read.js';
 export { releaseLabelAllows, runnerMayTakeJob } from './release-label.js';
 export { runnerEventsRetention } from './retention.js';
 export { insertRunnerEvent } from './runner-events.js';

@@ -60,17 +60,24 @@ import {
   stopOutboxWorker,
 } from './outbox/index.js';
 import { registerOutboxConsumers } from './outbox-consumers.js';
+import { pipelineRunProjectId } from './pipeline/index.js';
 import {
   provideProjectConfigPorts,
   readDeclaredSource,
   readProjectDocument,
 } from './project-config/index.js';
-import { findProjectOrgId, projectDocumentNames, provideProjectsPorts } from './projects/index.js';
+import {
+  findProjectOrgId,
+  listProjectHeads,
+  projectDocumentNames,
+  projectHead,
+  provideProjectsPorts,
+} from './projects/index.js';
 import { startBoss, stopBoss } from './queue/boss.js';
 import { registerDeployWorker, registerReleaseBatchFinish } from './release-batch/index.js';
 import { provideInterfaceContracts, provideRequirementDependents } from './requirements/index.js';
 import { mountRoutes } from './route-registry.js';
-import { bootstrapRunnerAdapters } from './runners/index.js';
+import { bootstrapRunnerAdapters, deviceProjectIds } from './runners/index.js';
 import { startTimers, stopTimers } from './schedules/index.js';
 import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
 import { redactFeedbackSuggestions, staleOnTargetRevised } from './suggestions/index.js';
@@ -109,6 +116,10 @@ provideIssueFactReads({ activeIssuePrefix, heldIssuePrefixes });
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,
   issueForHeadRef: (projectId, headRef) => resolveIssueForHeadRef({ projectId, headRef }),
+  projectSlug: async (projectId) => (await projectHead(projectId))?.slug ?? null,
+  projectsByIds: listProjectHeads,
+  runProjectOf: pipelineRunProjectId,
+  deviceProjects: deviceProjectIds,
 });
 provideEcosystemSignals({
   notify: emitNotification,

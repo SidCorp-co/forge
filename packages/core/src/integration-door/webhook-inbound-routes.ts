@@ -4,10 +4,12 @@ import { db } from '../db/client.js';
 import {
   type BindingWithConnection,
   buildContextFromBinding,
+  dropPreviousHeldInboundSecret,
   getAdapter,
   type IntegrationProvider,
   listActiveBindingsForProjectProvider,
   listIntegrations,
+  previousHeldInboundSecret,
   recordTurnedAwayInboundCall,
 } from '../integrations/index.js';
 import { verifyHmacSignature, verifySharedToken } from '../lib/hmac.js';
@@ -125,13 +127,17 @@ webhookInboundRoutes.post(
       throw unauthorized(code);
     }
 
-    const pair = candidatePairs.find(
-      (p) =>
-        p.binding.integrationSecret !== null &&
-        (shared
-          ? verifySharedToken(p.binding.integrationSecret, signatureHeader)
-          : verifyHmacSignature(p.binding.integrationSecret, raw, signatureHeader)),
-    );
+    const verifies = (secret: string | null) =>
+      secret !== null &&
+      (shared
+        ? verifySharedToken(secret, signatureHeader)
+        : verifyHmacSignature(secret, raw, signatureHeader));
+    // A rotated provider-held secret: the replaced one verifies until the new one first does.
+    let pair = candidatePairs.find((p) => verifies(p.binding.integrationSecret));
+    if (pair && previousHeldInboundSecret(pair.connection)) {
+      await dropPreviousHeldInboundSecret(pair.connection.id);
+    }
+    pair ??= candidatePairs.find((p) => verifies(previousHeldInboundSecret(p.connection)));
     if (!pair) {
       const code = shared ? 'WEBHOOK_TOKEN_MISMATCH' : 'INVALID_SIGNATURE';
       await noteTurnedAway(candidatePairs, code, { slug, provider: map.provider });

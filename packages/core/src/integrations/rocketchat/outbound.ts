@@ -1,5 +1,5 @@
+import type { ProvenMessage } from '@forge/contracts/messaging';
 import { scrubLogText } from '@forge/observability';
-import type { ProvenMessage } from '../../messaging/proven.js';
 import type { RocketChatDdpClient } from './ddp-client.js';
 import { postRoomMessage } from './rest-client.js';
 import type { RoomPostAuth } from './room-auth.js';

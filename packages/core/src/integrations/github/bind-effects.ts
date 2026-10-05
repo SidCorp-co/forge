@@ -1,16 +1,7 @@
 import type { BindingRole } from '../../db/schema.js';
 import { logger } from '../../lib/logger.js';
-import { decryptConnectionSecrets, forgeReads, type IntegrationConnectionRow } from '../index.js';
-import type { GitHubConfig, GitHubSecrets } from './types.js';
-
-/**
- * The inbound HMAC secret a GitHub binding must carry: the App's own, never a
- * minted one.
- */
-export function githubInboundSecret(connection: IntegrationConnectionRow): string | null {
-  const secrets = decryptConnectionSecrets<GitHubSecrets>(connection);
-  return secrets.webhookSecret ?? null;
-}
+import { forgeReads } from '../index.js';
+import type { GitHubConfig } from './types.js';
 
 type BoundRepositoryOutcome =
   | { kind: 'not-a-repository' }
