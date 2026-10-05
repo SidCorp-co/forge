@@ -7,9 +7,9 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { HTTPException } from 'hono/http-exception';
 import pkg from '../../package.json' with { type: 'json' };
-import { env } from '../config/env.js';
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../credentials/mcp-audit.js';
 import { runWithPatScope } from '../credentials/pat-scope.js';
+import { env } from '../lib/env.js';
 import { RefusalError } from '../lib/refusal.js';
 import {
   type McpContext,

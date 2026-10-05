@@ -7,7 +7,7 @@ import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import type { TransitionActor } from '../issues/index.js';
 import { issueArchiveSide } from '../issues/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { writeRunMetadata } from '../pipeline/index.js';
 import type { ReleaseVerification } from './plan.js';
 

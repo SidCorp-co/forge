@@ -17,11 +17,11 @@ import {
   stampSessionMarker,
 } from '../agent-sessions/index.js';
 import type { agentSessions } from '../db/schema.js';
+import { logger } from '../lib/logger.js';
 import { type MessageVerdict, refusalsOf } from '../messaging/contract.js';
 import type { ProgressFacts } from '../messaging/facts.js';
 import { withRepairs } from '../messaging/repairs.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
-import { logger } from '../observability/logger.js';
 import { resolveFailureCause } from '../pipeline/index.js';
 import { redispatchConversationAgentTurn } from './conversation-agent-failover.js';
 import {

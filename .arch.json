@@ -26,9 +26,6 @@
     "core-comments": [
       "packages/core/src/comments/**"
     ],
-    "core-config": [
-      "packages/core/src/config/**"
-    ],
     "core-conversations": [
       "packages/core/src/conversations/**"
     ],
@@ -103,9 +100,6 @@
     ],
     "core-notifications": [
       "packages/core/src/notifications/**"
-    ],
-    "core-observability": [
-      "packages/core/src/observability/**"
     ],
     "core-orgs": [
       "packages/core/src/orgs/**"
@@ -232,14 +226,6 @@
       "to": "*",
       "status": "locked",
       "description": "branch naming and lookup answers from its inputs alone Measured: 0 outgoing cross-module edges today."
-    },
-    {
-      "id": "config-is-pure",
-      "type": "forbidden",
-      "from": "core-config",
-      "to": "*",
-      "status": "locked",
-      "description": "app config is read by 22 modules and must not reach back into any of them Measured: 0 outgoing cross-module edges today."
     },
     {
       "id": "install-is-pure",

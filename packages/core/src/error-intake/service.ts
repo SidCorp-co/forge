@@ -10,7 +10,7 @@ import {
   transitionIssueStatus,
 } from '../issues/index.js';
 import { ADMIN_THRESHOLDS } from '../lib/admin-thresholds.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { judgeSentryIssue, type SentryAdmissionThresholds } from './rules.js';
 
 /** The status a Sentry issue is filed at, and the only one this path ever writes on a create. */

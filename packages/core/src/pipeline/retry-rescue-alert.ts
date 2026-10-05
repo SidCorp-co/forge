@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { notifications, projects } from '../db/schema.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { emitNotification, retryRescuesSince } from './ports.js';
 
 const RETRY_RESCUE_ALERT_THRESHOLD = 5;

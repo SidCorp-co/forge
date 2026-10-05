@@ -1,7 +1,6 @@
 import type { AttachmentRefusalCode } from '@forge/contracts/attachments';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { findCommentAttachmentByName } from '../comments/index.js';
-import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { uploadTickets } from '../db/schema.js';
 import { findIssueAttachmentByName } from '../issues/index.js';
@@ -12,6 +11,7 @@ import {
   safeName,
 } from '../lib/attachment-mime.js';
 import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
+import { env } from '../lib/env.js';
 import { refuser } from '../lib/refusal.js';
 
 /** How long a minted upload ticket stays valid. Short by design (replay window). */

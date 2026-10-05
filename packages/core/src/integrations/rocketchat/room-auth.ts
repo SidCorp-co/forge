@@ -4,7 +4,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { integrationBindings } from '../../db/schema.js';
-import { logger } from '../../observability/logger.js';
+import { logger } from '../../lib/logger.js';
 import { decryptConnectionSecrets, findConnectionById } from '../index.js';
 import type { RocketChatBindingConfig, RocketChatConfig, RocketChatSecrets } from './types.js';
 

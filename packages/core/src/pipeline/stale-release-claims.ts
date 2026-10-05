@@ -1,5 +1,5 @@
 import { releaseEndedRunClaims } from '../issues/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 
 export interface StaleReleaseBatchClaimsResult {
   released: number;

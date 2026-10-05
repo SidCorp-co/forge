@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { fromDrizzle, type JobInsert, type PgBoss } from 'pg-boss';
 import { db } from '../db/client.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 
 const V10_SCHEMA = 'pgboss';
 const V10_SCHEMA_VERSION = 24;

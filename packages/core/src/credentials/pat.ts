@@ -1,9 +1,9 @@
 import argon2 from 'argon2';
 import { and, desc, eq, type InferSelectModel, isNull, or, sql } from 'drizzle-orm';
-import { env } from '../config/env.js';
 import { db, type Tx } from '../db/client.js';
 import { personalAccessTokens, type UserKind, users } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
+import { env } from '../lib/env.js';
 import {
   generatePatPlaintext,
   isPatValid,

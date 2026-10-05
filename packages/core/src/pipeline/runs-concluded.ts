@@ -23,7 +23,7 @@ import { oneShotRunOutcome } from '@forge/contracts/run-machine';
 import { RESULT_QUIET_MINUTES } from '@forge/contracts/run-standing';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import type { LoopScope } from './ports.js';
 import { closeRun } from './runs.js';
 

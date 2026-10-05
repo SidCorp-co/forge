@@ -13,7 +13,7 @@ import { RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 
 export const DESCENT_SOURCE = 'session-descent';
 

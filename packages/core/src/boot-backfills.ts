@@ -1,5 +1,5 @@
 import { runCriteriaBackfillOnce } from './issues/index.js';
-import { logger } from './observability/logger.js';
+import { logger } from './lib/logger.js';
 
 /**
  * The one-time data backfills, each gated by its `backfill_markers` row. They read domain code, so

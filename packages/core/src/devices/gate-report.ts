@@ -4,8 +4,8 @@
  */
 
 import { z } from 'zod';
+import { logger } from '../lib/logger.js';
 import { utf16String } from '../lib/utf16-string.js';
-import { logger } from '../observability/logger.js';
 
 const gateVerdicts = ['clear', 'marked', 'failing_open'] as const;
 

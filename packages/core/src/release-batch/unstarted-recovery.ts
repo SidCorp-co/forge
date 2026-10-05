@@ -3,8 +3,8 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { syncAgentSessionLifecycle } from '../jobs/index.js';
+import { logger } from '../lib/logger.js';
 import { transition } from '../lifecycle/index.js';
-import { logger } from '../observability/logger.js';
 import { emitPipelineWedge } from '../pipeline/index.js';
 import { recoverStrandedReleasing, runRecordedPromotion } from './releasing-recovery.js';
 

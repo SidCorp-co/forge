@@ -1,7 +1,7 @@
 import { createOpenAICompatible, type OpenAICompatibleProvider } from '@ai-sdk/openai-compatible';
 import { APICallError, embedMany, RetryError } from 'ai';
+import { logger } from '../../lib/logger.js';
 import { openAiCompatBaseUrl } from '../../lib/openai-compat-url.js';
-import { logger } from '../../observability/logger.js';
 
 /**
  * OpenAI-compatible embeddings client (`POST {base}/v1/embeddings`) over the AI SDK, which owns the

@@ -3,9 +3,9 @@ import type { Context, ErrorHandler, NotFoundHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { withoutQueryParams } from '../lib/db-errors.js';
+import { getLogger } from '../lib/logger.js';
 import { problem, RefusalError, refusalEnvelope, requestRefusals } from '../lib/refusal.js';
-import { getLogger } from '../observability/logger.js';
-import { reportFailure } from '../observability/sentry.js';
+import { reportFailure } from '../lib/sentry.js';
 import type { RequestIdVars } from './request-id.js';
 
 type ErrorBody = { code: string; message: string; details?: unknown };

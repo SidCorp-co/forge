@@ -36,7 +36,7 @@ import {
 import type { TransitionActor } from '../issues/index.js';
 import { TransitionError, transitionIssueStatus } from '../issues/index.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 
 interface ReturnedIssue {
   issueKey: string;

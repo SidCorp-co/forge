@@ -13,12 +13,12 @@
 
 import { and, eq, sql } from 'drizzle-orm';
 import pg from 'pg';
-import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { integrationConnections } from '../../db/schema.js';
 import { tryLockSession, unlockSession } from '../../lib/advisory-lock.js';
-import { logger } from '../../observability/logger.js';
-import { reportFailure } from '../../observability/sentry.js';
+import { env } from '../../lib/env.js';
+import { logger } from '../../lib/logger.js';
+import { reportFailure } from '../../lib/sentry.js';
 import { decryptConnectionSecrets } from '../index.js';
 import { RocketChatDdpClient, type RocketChatIncomingMessage } from './ddp-client.js';
 import { createSeenTracker, decideSkip, type SeenTracker } from './inbound-gate.js';

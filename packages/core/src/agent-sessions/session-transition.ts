@@ -6,6 +6,7 @@ import {
 } from '@forge/contracts/session-machine';
 import { eq } from 'drizzle-orm';
 import { agentSessions } from '../db/schema.js';
+import { logger } from '../lib/logger.js';
 import type { MachineRow } from '../lifecycle/index.js';
 import {
   type KernelExecutor,
@@ -13,7 +14,6 @@ import {
   type TransitionResult,
   transition,
 } from '../lifecycle/index.js';
-import { logger } from '../observability/logger.js';
 import { agentSessionsPorts } from './ports.js';
 import { fireTerminalSessionBridges, sessionCarriesBridgeMarker } from './terminal-effects.js';
 

@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { env } from '../config/env.js';
 import { getStorage } from '../integrations/index.js';
+import { env } from '../lib/env.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';

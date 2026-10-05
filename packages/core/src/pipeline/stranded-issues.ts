@@ -3,7 +3,7 @@ import { and, asc, eq, inArray, isNotNull, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses, issues, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { emitNotification, projectAdminUserIdsFor } from './ports.js';
 import { isTerminalPlacement } from './status-assertions.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';

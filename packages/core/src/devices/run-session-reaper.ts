@@ -12,7 +12,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { transitionSessions } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { closeRunIfOneShot } from '../pipeline/index.js';
 import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 

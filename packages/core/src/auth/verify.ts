@@ -2,7 +2,7 @@ import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { env } from '../config/env.js';
+import { env } from '../lib/env.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { consumeVerificationToken } from './verification-token.js';
 

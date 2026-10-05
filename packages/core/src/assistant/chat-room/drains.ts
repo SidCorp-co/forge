@@ -1,6 +1,6 @@
 import { provideTerminalSessionBridge } from '../../agent-sessions/index.js';
 import { rocketChatManager } from '../../integrations/rocketchat/index.js';
-import { logger } from '../../observability/logger.js';
+import { logger } from '../../lib/logger.js';
 import { drainQuestionDeliveries } from './question-delivery.js';
 
 // Process timers (`timer-registry.ts`): each does nothing until this process's room connections

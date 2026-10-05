@@ -1,6 +1,6 @@
 import type { Context } from 'hono';
 import { type Logger, pino, stdSerializers } from 'pino';
-import { withoutQueryParams } from '../lib/db-errors.js';
+import { withoutQueryParams } from './db-errors.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 // pino-pretty is dev-only — use JSON in staging/test for parity with prod and so

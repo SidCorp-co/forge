@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from 'hono';
-import type { PatRequestClass } from '../config/rate-limits.js';
+import type { PatRequestClass } from '../lib/rate-limits.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
 
 /**

@@ -14,7 +14,7 @@ import { getStorage } from '../integrations/index.js';
 import { allowedSetForTarget, resolveAttachmentMime, safeName } from '../lib/attachment-mime.js';
 import { dataPolicyOf, egressAs } from '../lib/data-egress.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { askQuestion } from '../questions/index.js';
 import { phaseOfRow } from './list-read.js';

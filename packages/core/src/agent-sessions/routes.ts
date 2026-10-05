@@ -9,6 +9,7 @@ import {
 } from '../db/schema.js';
 import { isPipelineSessionKind } from '../jobs/index.js';
 import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
+import { logger } from '../lib/logger.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import {
   type AuthVars,
@@ -18,7 +19,6 @@ import {
 } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { logger } from '../observability/logger.js';
 import { requireHeld } from '../permissions/index.js';
 import { broadcastSession, broadcastTurnSync } from './broadcast.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';

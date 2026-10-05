@@ -5,7 +5,7 @@
  * reads on every message, rebuilt whenever a connection or a binding changes.
  */
 
-import { logger } from '../../observability/logger.js';
+import { logger } from '../../lib/logger.js';
 import { listBindingsForConnection } from '../index.js';
 import { projectNamesOf } from './read.js';
 import type { RocketChatBindingConfig } from './types.js';

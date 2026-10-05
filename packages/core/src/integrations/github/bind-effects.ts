@@ -1,5 +1,5 @@
 import type { BindingRole } from '../../db/schema.js';
-import { logger } from '../../observability/logger.js';
+import { logger } from '../../lib/logger.js';
 import { decryptConnectionSecrets, forgeReads, type IntegrationConnectionRow } from '../index.js';
 import type { GitHubConfig, GitHubSecrets } from './types.js';
 

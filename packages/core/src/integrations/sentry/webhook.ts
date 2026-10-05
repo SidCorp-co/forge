@@ -1,4 +1,4 @@
-import { logger } from '../../observability/logger.js';
+import { logger } from '../../lib/logger.js';
 import type { AdapterContext, InboundDispatchInput, InboundDispatchResult } from '../index.js';
 import { recordDelivery, updateDelivery } from '../index.js';
 import { projectIssue } from './issues.js';

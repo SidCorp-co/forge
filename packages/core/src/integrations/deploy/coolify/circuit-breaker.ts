@@ -1,5 +1,5 @@
-import { logger } from '../../../observability/logger.js';
-import { reportCondition } from '../../../observability/sentry.js';
+import { logger } from '../../../lib/logger.js';
+import { reportCondition } from '../../../lib/sentry.js';
 import {
   findBindingById,
   findConnectionById,

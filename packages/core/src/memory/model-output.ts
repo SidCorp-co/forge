@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { foreignScriptChars } from './script-guard.js';
 
 const FACT_CATEGORIES = new Set(['preference', 'correction', 'convention', 'tool_pattern']);

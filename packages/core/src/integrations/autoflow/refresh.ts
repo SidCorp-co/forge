@@ -14,7 +14,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { integrationConnections } from '../../db/schema.js';
-import { logger } from '../../observability/logger.js';
+import { logger } from '../../lib/logger.js';
 import { decryptJson, encryptJson, writeConnectionSecrets } from '../index.js';
 import { autoflowBaseUrl } from './endpoints.js';
 import type { AutoflowSecrets } from './types.js';

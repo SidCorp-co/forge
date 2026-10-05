@@ -1,8 +1,8 @@
 import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects, runners, type SkillTarget, skills } from '../db/schema.js';
+import { logger } from '../lib/logger.js';
 import { RefusalError } from '../lib/refusal.js';
-import { logger } from '../observability/logger.js';
 import { emitEvent } from '../outbox/index.js';
 import { hashSkillBody } from './hash.js';
 import { isMetaSkillName, metaSkillReserved } from './meta-skills.js';

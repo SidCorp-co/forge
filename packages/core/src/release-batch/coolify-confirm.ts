@@ -9,7 +9,7 @@ import {
   findConnectionById,
   recordDelivery,
 } from '../integrations/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import {
   closeRun,
   deployHoldsLocks,

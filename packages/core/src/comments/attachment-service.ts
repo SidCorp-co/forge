@@ -1,6 +1,5 @@
 import type { AttachmentRefusalCode } from '@forge/contracts/attachments';
 import { and, asc, eq } from 'drizzle-orm';
-import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { commentAttachments } from '../db/schema.js';
 import { getStorage } from '../integrations/index.js';
@@ -14,6 +13,7 @@ import {
 } from '../lib/attachment-mime.js';
 import { lockAttachmentName, type NameCheckExecutor } from '../lib/attachment-name-lock.js';
 import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
+import { env } from '../lib/env.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 
 export { safeName };

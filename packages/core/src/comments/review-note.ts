@@ -2,7 +2,7 @@ import { and, eq, like } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, issues, projects } from '../db/schema.js';
 import { resolveIssueForHeadRef } from '../issues/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { insertComment } from './service.js';
 

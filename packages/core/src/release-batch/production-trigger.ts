@@ -1,4 +1,4 @@
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { productionOf, readProjectDocument } from '../project-config/index.js';
 
 /** Whether the release sweep alone cuts releases here: production deploys `on-land`. */

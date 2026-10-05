@@ -33,7 +33,7 @@ import {
   strandRuleFor,
 } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import {
   clearRecovered,
   graceSpent,

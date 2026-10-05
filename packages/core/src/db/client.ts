@@ -1,8 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { env } from '../config/env.js';
-import { logger } from '../observability/logger.js';
+import { env } from '../lib/env.js';
+import { logger } from '../lib/logger.js';
 import * as baseSchema from './schema.js';
 import * as activitySchema from './schema-activity.js';
 import * as agentSelvesSchema from './schema-agent-selves.js';

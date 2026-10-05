@@ -7,7 +7,7 @@ import {
   createDeriveState,
   type DeriveState,
 } from '../lib/agent-stream-parser.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { broadcastSession, broadcastTurnSync } from './broadcast.js';
 import {
   applyCarrierRows,

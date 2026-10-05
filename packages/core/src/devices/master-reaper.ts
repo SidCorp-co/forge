@@ -4,7 +4,7 @@ import { transitionSessions } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
 import { releaseHoldsOf, releaseHoldsOfDeadMasters } from '../jobs/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { masterSilentSql } from './master-silence.js';
 import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 

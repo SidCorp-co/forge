@@ -7,8 +7,8 @@ import {
   publishPipelineHealthChanged,
   type TransitionIssueRow,
 } from '../issues/index.js';
+import { logger } from '../lib/logger.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
-import { logger } from '../observability/logger.js';
 import {
   classifyFailure,
   classifyVerdict,

@@ -4,7 +4,7 @@ import {
   type OutboundDispatchJob,
   runOutboundDispatch,
 } from '../integrations/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import {
   deployHoldsIdle,
   deployHoldsLocks,

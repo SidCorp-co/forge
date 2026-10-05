@@ -15,7 +15,7 @@ import { postIssueNotice } from '../comments/index.js';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { transitionIssueStatus } from '../issues/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
 import type { DesignDecision } from './design.js';
 import type { WorkflowWriter } from './service.js';

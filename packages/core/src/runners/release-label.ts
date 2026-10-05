@@ -1,6 +1,6 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { claimCapableSql } from './device-cap.js';
 import { runnerLive } from './liveness-sql.js';
 

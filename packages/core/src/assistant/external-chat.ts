@@ -8,7 +8,6 @@
 import { contentLanguageBlock } from '@forge/contracts/content-language';
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import { eq } from 'drizzle-orm';
-import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { appConfig, projects } from '../db/schema.js';
 import type { ConversationAdapter } from '../db/schema-conversations.js';
@@ -25,7 +24,8 @@ import {
   type ProjectProgress,
 } from '../issues/index.js';
 import { dataPolicyOf, EgressRefused, egressAt, egressText } from '../lib/data-egress.js';
-import { logger } from '../observability/logger.js';
+import { env } from '../lib/env.js';
+import { logger } from '../lib/logger.js';
 import { readContentLanguage } from '../project-config/index.js';
 import { detectStateConfab } from './confab.js';
 import { PROVIDER_HISTORY_WINDOW } from './context-budget.js';

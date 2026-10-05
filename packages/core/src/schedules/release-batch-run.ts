@@ -9,9 +9,9 @@
 // a quiet night trains everyone to ignore it.
 
 import { RELEASE_BLOCKER_CODES, RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
+import { logger } from '../lib/logger.js';
 import { counted } from '../lib/plural.js';
 import { RefusalError } from '../lib/refusal.js';
-import { logger } from '../observability/logger.js';
 import { schedulesPorts } from './ports.js';
 
 interface ScheduledCutOutcome {

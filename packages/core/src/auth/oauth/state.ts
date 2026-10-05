@@ -1,8 +1,8 @@
 import type { Context } from 'hono';
 import { deleteCookie, setCookie } from 'hono/cookie';
 import { jwtVerify, SignJWT } from 'jose';
-import { env } from '../../config/env.js';
 import type { ProviderId } from '../../integrations/identity/index.js';
+import { env } from '../../lib/env.js';
 
 const COOKIE_NAME = 'forge_oauth_state';
 const COOKIE_TTL_SECONDS = 300; // 5 min — generous for slow auth screens

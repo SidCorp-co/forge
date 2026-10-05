@@ -8,7 +8,7 @@
  * back when the turn ends however it ends (ISS-1088).
  */
 
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import type { ConversationTransport, ConversationVenue } from './ports.js';
 
 /** How old a request must be before it is marked received. */

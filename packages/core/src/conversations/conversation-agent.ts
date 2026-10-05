@@ -18,7 +18,7 @@ import { db } from '../db/client.js';
 import { agentSessions, type MemberLens } from '../db/schema.js';
 import { buildProgressFactsBlock, computeProjectProgress } from '../issues/index.js';
 import { egressShown } from '../lib/data-egress.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { scheduleAck } from './conversation-agent-ack.js';
 import { carryImagesToSession } from './conversation-agent-images.js';
 import {

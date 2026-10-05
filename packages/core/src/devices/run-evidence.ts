@@ -23,7 +23,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions, devices, issues, pipelineRuns } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { devicesPorts } from './ports.js';
 import { BOX_RUN_ID_METADATA_KEY } from './run-session.js';
 

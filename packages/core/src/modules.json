@@ -54,7 +54,9 @@
     "(root)": {
       "kind": "door",
       "context": "platform",
-      "serves": ["core-components#door-rest"]
+      "serves": [
+        "core-components#door-rest"
+      ]
     },
     "admin": {
       "kind": "read-model",
@@ -77,13 +79,23 @@
         "usageRecords",
         "users"
       ],
-      "serves": ["REQ-22"]
+      "serves": [
+        "REQ-22"
+      ]
     },
     "agent-reports": {
       "kind": "domain",
       "context": "execution",
-      "owns": ["agentReports"],
-      "serves": ["REQ-16", "automation#report", "automation#triage", "automation#promote", "REQ-7"]
+      "owns": [
+        "agentReports"
+      ],
+      "serves": [
+        "REQ-16",
+        "automation#report",
+        "automation#triage",
+        "automation#promote",
+        "REQ-7"
+      ]
     },
     "agent-sessions": {
       "kind": "kernel",
@@ -107,12 +119,18 @@
     "api-contract": {
       "kind": "door",
       "context": "platform",
-      "serves": ["core-components#door-rest"]
+      "serves": [
+        "core-components#door-rest"
+      ]
     },
     "assistant": {
       "kind": "domain",
       "context": "conversations",
-      "owns": ["assistantSpeakerLinks", "conversationPins", "rocketchatQuestionDeliveries"],
+      "owns": [
+        "assistantSpeakerLinks",
+        "conversationPins",
+        "rocketchatQuestionDeliveries"
+      ],
       "serves": [
         "REQ-8",
         "REQ-10",
@@ -125,8 +143,17 @@
     "auth": {
       "kind": "domain",
       "context": "access",
-      "owns": ["emailVerificationTokens", "oauthAccounts", "refreshTokens", "users"],
-      "serves": ["personal-data-flow#pr-signin", "personal-data-flow#ds-users", "REQ-27"]
+      "owns": [
+        "emailVerificationTokens",
+        "oauthAccounts",
+        "refreshTokens",
+        "users"
+      ],
+      "serves": [
+        "personal-data-flow#pr-signin",
+        "personal-data-flow#ds-users",
+        "REQ-27"
+      ]
     },
     "automation": {
       "kind": "read-model",
@@ -140,44 +167,34 @@
         "scheduleRuns",
         "schedules"
       ],
-      "serves": ["REQ-16", "automation"]
+      "serves": [
+        "REQ-16",
+        "automation"
+      ]
     },
     "body": {
       "kind": "platform",
       "context": "platform",
-      "serves": ["via:comments", "via:issues", "via:memory"]
+      "serves": [
+        "via:comments",
+        "via:issues",
+        "via:memory"
+      ]
     },
     "comments": {
       "kind": "domain",
       "context": "work",
-      "owns": ["commentAttachments", "commentEvents", "commentMentions", "comments"],
+      "owns": [
+        "commentAttachments",
+        "commentEvents",
+        "commentMentions",
+        "comments"
+      ],
       "serves": [
         "workflow-step-health#in-node-decisions",
         "design-reconciliation#decision",
         "personal-data-flow#ds-issues",
         "personal-data-flow#pr-chat-out"
-      ]
-    },
-    "config": {
-      "kind": "platform",
-      "context": "platform",
-      "serves": [
-        "via:agent-reports",
-        "via:agent-sessions",
-        "via:assistant",
-        "via:auth",
-        "via:comments",
-        "via:credentials",
-        "via:devices",
-        "via:integrations",
-        "via:integrations/llm",
-        "via:integrations/identity",
-        "via:issues",
-        "via:knowledge",
-        "via:memory",
-        "via:orgs",
-        "via:projects",
-        "via:uploads"
       ]
     },
     "conversations": {
@@ -202,7 +219,10 @@
     "credentials": {
       "kind": "platform",
       "context": "platform",
-      "owns": ["mcpAuditLog", "personalAccessTokens"],
+      "owns": [
+        "mcpAuditLog",
+        "personalAccessTokens"
+      ],
       "serves": [
         "REQ-27",
         "github-merge-sequence#m-verify",
@@ -215,7 +235,9 @@
     "db": {
       "kind": "platform",
       "context": "platform",
-      "owns": ["backfillMarkers"],
+      "owns": [
+        "backfillMarkers"
+      ],
       "serves": [
         "via:agent-reports",
         "via:agent-sessions",
@@ -285,12 +307,20 @@
         "releaseApprovals",
         "requirements"
       ],
-      "serves": ["REQ-11", "REQ-14"]
+      "serves": [
+        "REQ-11",
+        "REQ-14"
+      ]
     },
     "devices": {
       "kind": "kernel",
       "context": "execution",
-      "owns": ["deviceLoginCodes", "deviceRunLedger", "devices", "pairingCodes"],
+      "owns": [
+        "deviceLoginCodes",
+        "deviceRunLedger",
+        "devices",
+        "pairingCodes"
+      ],
       "serves": [
         "issue-delivery#box",
         "issue-delivery#rule-dispatch",
@@ -330,12 +360,20 @@
     "error-intake": {
       "kind": "domain",
       "context": "work",
-      "serves": ["personal-data-flow#src-sentry", "automation#inline"]
+      "serves": [
+        "personal-data-flow#src-sentry",
+        "automation#inline"
+      ]
     },
     "feedback": {
       "kind": "domain",
       "context": "design",
-      "owns": ["feedback", "feedbackAttachments", "feedbackCases", "feedbackDecisions"],
+      "owns": [
+        "feedback",
+        "feedbackAttachments",
+        "feedbackCases",
+        "feedbackDecisions"
+      ],
       "serves": [
         "REQ-7",
         "feedback-lifecycle",
@@ -346,8 +384,12 @@
     "guides": {
       "kind": "domain",
       "context": "knowledge",
-      "owns": ["integrationGuides"],
-      "serves": ["REQ-23"]
+      "owns": [
+        "integrationGuides"
+      ],
+      "serves": [
+        "REQ-23"
+      ]
     },
     "health": {
       "kind": "read-model",
@@ -363,12 +405,16 @@
         "runners",
         "users"
       ],
-      "serves": ["REQ-22"]
+      "serves": [
+        "REQ-22"
+      ]
     },
     "install": {
       "kind": "door",
       "context": "access",
-      "serves": ["REQ-25"]
+      "serves": [
+        "REQ-25"
+      ]
     },
     "integration-door": {
       "kind": "door",
@@ -382,7 +428,10 @@
     "integrations": {
       "kind": "adapter",
       "context": "adapters",
-      "owns": ["integrationConnections", "integrationDeliveries"],
+      "owns": [
+        "integrationConnections",
+        "integrationDeliveries"
+      ],
       "serves": [
         "github-merge-sequence#p-integrations",
         "github-merge-sequence#m-delivery",
@@ -393,17 +442,24 @@
     "integrations/autoflow": {
       "kind": "adapter",
       "context": "adapters",
-      "serves": ["REQ-21"]
+      "serves": [
+        "REQ-21"
+      ]
     },
     "integrations/deploy": {
       "kind": "adapter",
       "context": "adapters",
-      "serves": ["issue-delivery#task-release", "issue-delivery#act-release"]
+      "serves": [
+        "issue-delivery#task-release",
+        "issue-delivery#act-release"
+      ]
     },
     "integrations/epodsystem": {
       "kind": "adapter",
       "context": "adapters",
-      "serves": ["REQ-21"]
+      "serves": [
+        "REQ-21"
+      ]
     },
     "integrations/github": {
       "kind": "adapter",
@@ -418,7 +474,9 @@
     "integrations/gitlab": {
       "kind": "adapter",
       "context": "adapters",
-      "serves": ["github-merge-sequence#p-github"]
+      "serves": [
+        "github-merge-sequence#p-github"
+      ]
     },
     "integrations/identity": {
       "kind": "adapter",
@@ -444,8 +502,14 @@
     "integrations/rocketchat": {
       "kind": "adapter",
       "context": "adapters",
-      "owns": ["rocketchatThreads"],
-      "serves": ["personal-data-flow#src-rocketchat", "personal-data-flow#pr-chat-out", "REQ-20"]
+      "owns": [
+        "rocketchatThreads"
+      ],
+      "serves": [
+        "personal-data-flow#src-rocketchat",
+        "personal-data-flow#pr-chat-out",
+        "REQ-20"
+      ]
     },
     "integrations/sentry": {
       "kind": "adapter",
@@ -459,7 +523,9 @@
     "integrations/source-host": {
       "kind": "adapter",
       "context": "adapters",
-      "owns": ["repoPullRequests"],
+      "owns": [
+        "repoPullRequests"
+      ],
       "serves": [
         "github-merge-sequence#m-host-merge",
         "issue-delivery#github",
@@ -497,7 +563,11 @@
     "jobs": {
       "kind": "kernel",
       "context": "execution",
-      "owns": ["jobEvents", "jobs", "promptBlobs"],
+      "owns": [
+        "jobEvents",
+        "jobs",
+        "promptBlobs"
+      ],
       "serves": [
         "REQ-15",
         "agent-run-standing#claimed",
@@ -509,7 +579,10 @@
     "knowledge": {
       "kind": "domain",
       "context": "knowledge",
-      "owns": ["itemEmbeddings", "knowledgeEntries"],
+      "owns": [
+        "itemEmbeddings",
+        "knowledgeEntries"
+      ],
       "serves": [
         "REQ-13",
         "project-onboarding#mapped",
@@ -523,8 +596,12 @@
     "labels": {
       "kind": "domain",
       "context": "work",
-      "owns": ["labels"],
-      "serves": ["REQ-11"]
+      "owns": [
+        "labels"
+      ],
+      "serves": [
+        "REQ-11"
+      ]
     },
     "lib": {
       "kind": "platform",
@@ -532,6 +609,9 @@
       "serves": [
         "REQ-22",
         "REQ-26",
+        "feedback-triage#scrubber",
+        "personal-data-flow#pr-errors",
+        "personal-data-flow#pr-ingest",
         "via:agent-reports",
         "via:agent-sessions",
         "via:assistant",
@@ -543,10 +623,12 @@
         "via:devices",
         "via:ecosystem",
         "via:feedback",
-        "via:integrations/source-host",
         "via:integration-door",
+        "via:integrations",
+        "via:integrations/identity",
         "via:integrations/llm",
         "via:integrations/sentry",
+        "via:integrations/source-host",
         "via:issues",
         "via:jobs",
         "via:knowledge",
@@ -557,7 +639,6 @@
         "via:memory",
         "via:mockups",
         "via:notifications",
-        "via:observability",
         "via:onboarding",
         "via:orgs",
         "via:outbox",
@@ -583,19 +664,35 @@
     "lifecycle": {
       "kind": "kernel",
       "context": "work",
-      "owns": ["kernelTransitions", "unauditedTransitions"],
-      "serves": ["issue-lifecycle", "requirement-lifecycle", "issue-delivery#rule-close"]
+      "owns": [
+        "kernelTransitions",
+        "unauditedTransitions"
+      ],
+      "serves": [
+        "issue-lifecycle",
+        "requirement-lifecycle",
+        "issue-delivery#rule-close"
+      ]
     },
     "masters": {
       "kind": "domain",
       "context": "execution",
-      "owns": ["masterPasses"],
-      "serves": ["REQ-15", "agent-run-standing#master", "issue-delivery#rule-dispatch"]
+      "owns": [
+        "masterPasses"
+      ],
+      "serves": [
+        "REQ-15",
+        "agent-run-standing#master",
+        "issue-delivery#rule-dispatch"
+      ]
     },
     "mcp": {
       "kind": "door",
       "context": "platform",
-      "serves": ["personal-data-flow#src-mcp", "personal-data-flow#pr-api"]
+      "serves": [
+        "personal-data-flow#src-mcp",
+        "personal-data-flow#pr-api"
+      ]
     },
     "me": {
       "kind": "read-model",
@@ -616,18 +713,31 @@
         "projects",
         "runners"
       ],
-      "serves": ["REQ-11", "REQ-16", "automation#needs_you"]
+      "serves": [
+        "REQ-11",
+        "REQ-16",
+        "automation#needs_you"
+      ]
     },
     "memory": {
       "kind": "domain",
       "context": "knowledge",
-      "owns": ["memories", "memoryRevisions", "retrievalAnalytics"],
-      "serves": ["personal-data-flow#pr-memory", "personal-data-flow#ds-memory"]
+      "owns": [
+        "memories",
+        "memoryRevisions",
+        "retrievalAnalytics"
+      ],
+      "serves": [
+        "personal-data-flow#pr-memory",
+        "personal-data-flow#ds-memory"
+      ]
     },
     "messaging": {
       "kind": "platform",
       "context": "platform",
-      "serves": ["personal-data-flow#pr-chat-out"]
+      "serves": [
+        "personal-data-flow#pr-chat-out"
+      ]
     },
     "metrics": {
       "kind": "read-model",
@@ -642,7 +752,9 @@
         "runnerEvents",
         "usageRecords"
       ],
-      "serves": ["REQ-24"]
+      "serves": [
+        "REQ-24"
+      ]
     },
     "middleware": {
       "kind": "platform",
@@ -696,46 +808,72 @@
     "mockups": {
       "kind": "domain",
       "context": "design",
-      "owns": ["mockups"],
-      "serves": ["REQ-12", "REQ-17", "personal-data-flow#pr-api"]
+      "owns": [
+        "mockups"
+      ],
+      "serves": [
+        "REQ-12",
+        "REQ-17",
+        "personal-data-flow#pr-api"
+      ]
     },
     "notifications": {
       "kind": "domain",
       "context": "conversations",
-      "owns": ["notificationDeliveries", "notificationDeliveryMembers", "notifications"],
-      "serves": ["REQ-11", "REQ-14", "personal-data-flow#pr-chat-out"]
-    },
-    "observability": {
-      "kind": "platform",
-      "context": "platform",
+      "owns": [
+        "notificationDeliveries",
+        "notificationDeliveryMembers",
+        "notifications"
+      ],
       "serves": [
-        "feedback-triage#scrubber",
-        "personal-data-flow#pr-ingest",
-        "personal-data-flow#pr-errors"
+        "REQ-11",
+        "REQ-14",
+        "personal-data-flow#pr-chat-out"
       ]
     },
     "onboarding": {
       "kind": "domain",
       "context": "conversations",
-      "owns": ["onboardings"],
-      "serves": ["REQ-10", "project-onboarding"]
+      "owns": [
+        "onboardings"
+      ],
+      "serves": [
+        "REQ-10",
+        "project-onboarding"
+      ]
     },
     "orgs": {
       "kind": "domain",
       "context": "access",
-      "owns": ["agentSelves", "orgInvitations", "organizations"],
-      "serves": ["personal-data-flow#ds-users", "REQ-27"]
+      "owns": [
+        "agentSelves",
+        "orgInvitations",
+        "organizations"
+      ],
+      "serves": [
+        "personal-data-flow#ds-users",
+        "REQ-27"
+      ]
     },
     "outbox": {
       "kind": "kernel",
       "context": "platform",
-      "owns": ["pipelineOutbox"],
-      "serves": ["issue-delivery#core", "issue-delivery#ev-transition", "automation#file"]
+      "owns": [
+        "pipelineOutbox"
+      ],
+      "serves": [
+        "issue-delivery#core",
+        "issue-delivery#ev-transition",
+        "automation#file"
+      ]
     },
     "permissions": {
       "kind": "kernel",
       "context": "access",
-      "owns": ["organizationMembers", "projectMembers"],
+      "owns": [
+        "organizationMembers",
+        "projectMembers"
+      ],
       "serves": [
         "issue-lifecycle#start",
         "requirement-lifecycle#agreed",
@@ -762,8 +900,13 @@
     "preferences": {
       "kind": "domain",
       "context": "project-config",
-      "owns": ["preferenceChanges", "userPreferences"],
-      "serves": ["REQ-19"]
+      "owns": [
+        "preferenceChanges",
+        "userPreferences"
+      ],
+      "serves": [
+        "REQ-19"
+      ]
     },
     "project-config": {
       "kind": "domain",
@@ -776,23 +919,39 @@
         "projectSecrets",
         "projectTestingProfiles"
       ],
-      "serves": ["issue-delivery#policy", "workflow-step-health#in-threshold", "REQ-13"]
+      "serves": [
+        "issue-delivery#policy",
+        "workflow-step-health#in-threshold",
+        "REQ-13"
+      ]
     },
     "projects": {
       "kind": "domain",
       "context": "project-config",
-      "owns": ["projectInvitations", "projectMasterCharters", "projects"],
-      "serves": ["issue-delivery#issue", "project-onboarding#created"]
+      "owns": [
+        "projectInvitations",
+        "projectMasterCharters",
+        "projects"
+      ],
+      "serves": [
+        "issue-delivery#issue",
+        "project-onboarding#created"
+      ]
     },
     "prompt": {
       "kind": "domain",
       "context": "execution",
-      "serves": ["REQ-1", "REQ-13"]
+      "serves": [
+        "REQ-1",
+        "REQ-13"
+      ]
     },
     "questionnaires": {
       "kind": "domain",
       "context": "work",
-      "owns": ["questionnaireBatches"],
+      "owns": [
+        "questionnaireBatches"
+      ],
       "serves": [
         "REQ-10",
         "project-onboarding#ask",
@@ -803,8 +962,15 @@
     "questions": {
       "kind": "domain",
       "context": "work",
-      "owns": ["agentQuestions", "questionWaiters"],
-      "serves": ["REQ-2", "agent-run-standing#waiting_person", "feedback-triage#ask"]
+      "owns": [
+        "agentQuestions",
+        "questionWaiters"
+      ],
+      "serves": [
+        "REQ-2",
+        "agent-run-standing#waiting_person",
+        "feedback-triage#ask"
+      ]
     },
     "queue": {
       "kind": "platform",
@@ -821,7 +987,11 @@
     "release-batch": {
       "kind": "domain",
       "context": "release",
-      "owns": ["releaseApprovals", "releaseAttempts", "releaseHolds"],
+      "owns": [
+        "releaseApprovals",
+        "releaseAttempts",
+        "releaseHolds"
+      ],
       "serves": [
         "issue-delivery#case-release",
         "issue-delivery#task-release",
@@ -855,8 +1025,14 @@
     "runners": {
       "kind": "kernel",
       "context": "execution",
-      "owns": ["runnerEvents", "runners"],
-      "serves": ["issue-delivery#box", "REQ-15"]
+      "owns": [
+        "runnerEvents",
+        "runners"
+      ],
+      "serves": [
+        "issue-delivery#box",
+        "REQ-15"
+      ]
     },
     "runs": {
       "kind": "read-model",
@@ -879,24 +1055,44 @@
         "releaseApprovals",
         "releaseAttempts"
       ],
-      "serves": ["REQ-15", "agent-run-standing#queued", "agent-run-standing#stuck"]
+      "serves": [
+        "REQ-15",
+        "agent-run-standing#queued",
+        "agent-run-standing#stuck"
+      ]
     },
     "schedules": {
       "kind": "domain",
       "context": "execution",
-      "owns": ["scheduleRuns", "schedules"],
-      "serves": ["REQ-16", "automation#declare", "automation#tick", "automation#route"]
+      "owns": [
+        "scheduleRuns",
+        "schedules"
+      ],
+      "serves": [
+        "REQ-16",
+        "automation#declare",
+        "automation#tick",
+        "automation#route"
+      ]
     },
     "skills": {
       "kind": "domain",
       "context": "execution",
-      "owns": ["skillActivityEvents", "skills"],
-      "serves": ["REQ-1", "REQ-13"]
+      "owns": [
+        "skillActivityEvents",
+        "skills"
+      ],
+      "serves": [
+        "REQ-1",
+        "REQ-13"
+      ]
     },
     "suggestions": {
       "kind": "domain",
       "context": "design",
-      "owns": ["suggestions"],
+      "owns": [
+        "suggestions"
+      ],
       "serves": [
         "REQ-8",
         "suggestion-lifecycle",
@@ -907,8 +1103,14 @@
     "uploads": {
       "kind": "domain",
       "context": "work",
-      "owns": ["downloadTickets", "uploadTickets"],
-      "serves": ["personal-data-flow#ds-uploads", "feedback-triage#ask"]
+      "owns": [
+        "downloadTickets",
+        "uploadTickets"
+      ],
+      "serves": [
+        "personal-data-flow#ds-uploads",
+        "feedback-triage#ask"
+      ]
     },
     "workflows": {
       "kind": "domain",
@@ -919,154 +1121,280 @@
         "projectWorkflows",
         "workflowBuilds"
       ],
-      "serves": ["REQ-17", "REQ-18", "workflow-step-health", "design-reconciliation"]
+      "serves": [
+        "REQ-17",
+        "REQ-18",
+        "workflow-step-health",
+        "design-reconciliation"
+      ]
     },
     "ws": {
       "kind": "door",
       "context": "platform",
-      "serves": ["REQ-11"]
+      "serves": [
+        "REQ-11"
+      ]
     }
   },
   "web": {
     "agent-accounts": {
-      "serves": ["REQ-27"]
+      "serves": [
+        "REQ-27"
+      ]
     },
     "agent-reports": {
-      "serves": ["REQ-16"]
+      "serves": [
+        "REQ-16"
+      ]
     },
     "agents": {
-      "serves": ["REQ-15"]
+      "serves": [
+        "REQ-15"
+      ]
     },
     "attention": {
-      "serves": ["REQ-11"]
+      "serves": [
+        "REQ-11"
+      ]
     },
     "auth": {
-      "serves": ["personal-data-flow#pr-signin"]
+      "serves": [
+        "personal-data-flow#pr-signin"
+      ]
     },
     "automation": {
-      "serves": ["REQ-16", "automation#screen"]
+      "serves": [
+        "REQ-16",
+        "automation#screen"
+      ]
     },
     "chat": {
-      "serves": ["project-onboarding#card", "REQ-19"]
+      "serves": [
+        "project-onboarding#card",
+        "REQ-19"
+      ]
     },
     "comments": {
-      "serves": ["REQ-3"]
+      "serves": [
+        "REQ-3"
+      ]
     },
     "contracts": {
-      "serves": ["REQ-5", "REQ-11"]
+      "serves": [
+        "REQ-5",
+        "REQ-11"
+      ]
     },
     "conversations": {
-      "serves": ["project-onboarding#card", "REQ-19"]
+      "serves": [
+        "project-onboarding#card",
+        "REQ-19"
+      ]
     },
     "development": {
-      "serves": ["REQ-11", "REQ-14"]
+      "serves": [
+        "REQ-11",
+        "REQ-14"
+      ]
     },
     "docs": {
-      "serves": ["REQ-23"]
+      "serves": [
+        "REQ-23"
+      ]
     },
     "ecosystem": {
-      "serves": ["REQ-5", "REQ-9"]
+      "serves": [
+        "REQ-5",
+        "REQ-9"
+      ]
     },
     "feedback": {
-      "serves": ["REQ-7", "feedback-triage"]
+      "serves": [
+        "REQ-7",
+        "feedback-triage"
+      ]
     },
     "guides": {
-      "serves": ["REQ-23"]
+      "serves": [
+        "REQ-23"
+      ]
     },
     "integrations": {
-      "serves": ["github-merge-sequence#p-integrations"]
+      "serves": [
+        "github-merge-sequence#p-integrations"
+      ]
     },
     "issues": {
-      "serves": ["REQ-11", "REQ-2"]
+      "serves": [
+        "REQ-11",
+        "REQ-2"
+      ]
     },
     "mockups": {
-      "serves": ["REQ-12"]
+      "serves": [
+        "REQ-12"
+      ]
     },
     "modules": {
-      "serves": ["REQ-11"]
+      "serves": [
+        "REQ-11"
+      ]
     },
     "needs-you": {
-      "serves": ["REQ-11", "REQ-16", "automation#needs_you"]
+      "serves": [
+        "REQ-11",
+        "REQ-16",
+        "automation#needs_you"
+      ]
     },
     "notifications": {
-      "serves": ["REQ-11", "REQ-14"]
+      "serves": [
+        "REQ-11",
+        "REQ-14"
+      ]
     },
     "onboarding": {
-      "serves": ["REQ-10", "project-onboarding#running"]
+      "serves": [
+        "REQ-10",
+        "project-onboarding#running"
+      ]
     },
     "operator": {
-      "serves": ["REQ-22"]
+      "serves": [
+        "REQ-22"
+      ]
     },
     "orgs": {
-      "serves": ["personal-data-flow#ds-users", "REQ-27"]
+      "serves": [
+        "personal-data-flow#ds-users",
+        "REQ-27"
+      ]
     },
     "overview": {
-      "serves": ["REQ-11"]
+      "serves": [
+        "REQ-11"
+      ]
     },
     "pairing": {
-      "serves": ["personal-data-flow#ds-box-creds", "issue-delivery#box"]
+      "serves": [
+        "personal-data-flow#ds-box-creds",
+        "issue-delivery#box"
+      ]
     },
     "pipeline": {
-      "serves": ["REQ-1", "issue-delivery#act-build"]
+      "serves": [
+        "REQ-1",
+        "issue-delivery#act-build"
+      ]
     },
     "project-dashboard": {
-      "serves": ["REQ-11", "project-onboarding#running"]
+      "serves": [
+        "REQ-11",
+        "project-onboarding#running"
+      ]
     },
     "project-settings": {
-      "serves": ["issue-delivery#policy", "REQ-13"]
+      "serves": [
+        "issue-delivery#policy",
+        "REQ-13"
+      ]
     },
     "projects": {
-      "serves": ["project-onboarding#created"]
+      "serves": [
+        "project-onboarding#created"
+      ]
     },
     "questions": {
-      "serves": ["REQ-2", "agent-run-standing#waiting_person"]
+      "serves": [
+        "REQ-2",
+        "agent-run-standing#waiting_person"
+      ]
     },
     "releases": {
-      "serves": ["REQ-11", "REQ-14", "issue-delivery#case-release"]
+      "serves": [
+        "REQ-11",
+        "REQ-14",
+        "issue-delivery#case-release"
+      ]
     },
     "requirements": {
-      "serves": ["REQ-4", "REQ-12"]
+      "serves": [
+        "REQ-4",
+        "REQ-12"
+      ]
     },
     "runners": {
-      "serves": ["REQ-15", "issue-delivery#box"]
+      "serves": [
+        "REQ-15",
+        "issue-delivery#box"
+      ]
     },
     "schedules": {
-      "serves": ["REQ-16"]
+      "serves": [
+        "REQ-16"
+      ]
     },
     "session": {
-      "serves": ["REQ-15", "personal-data-flow#ds-transcripts"]
+      "serves": [
+        "REQ-15",
+        "personal-data-flow#ds-transcripts"
+      ]
     },
     "sessions": {
-      "serves": ["REQ-15", "agent-run-standing"]
+      "serves": [
+        "REQ-15",
+        "agent-run-standing"
+      ]
     },
     "settings": {
-      "serves": ["REQ-27"]
+      "serves": [
+        "REQ-27"
+      ]
     },
     "shell": {
-      "serves": ["REQ-12"]
+      "serves": [
+        "REQ-12"
+      ]
     },
     "suggestions": {
-      "serves": ["REQ-8"]
+      "serves": [
+        "REQ-8"
+      ]
     },
     "version": {
-      "serves": ["REQ-12"]
+      "serves": [
+        "REQ-12"
+      ]
     },
     "workflows": {
-      "serves": ["REQ-17", "REQ-18", "design-reconciliation#marked-canvas"]
+      "serves": [
+        "REQ-17",
+        "REQ-18",
+        "design-reconciliation#marked-canvas"
+      ]
     }
   },
   "runner": {
     "crates/forge-runner": {
-      "serves": ["personal-data-flow#ds-box-creds"]
+      "serves": [
+        "personal-data-flow#ds-box-creds"
+      ]
     },
     "crates/runner-platform": {
-      "serves": ["personal-data-flow#ds-box-creds"]
+      "serves": [
+        "personal-data-flow#ds-box-creds"
+      ]
     },
     "crates/runner-proto": {
-      "serves": ["REQ-15", "agent-run-standing#master"]
+      "serves": [
+        "REQ-15",
+        "agent-run-standing#master"
+      ]
     },
     "crates/runner-update": {
-      "serves": ["via:crates/runner-daemon"]
+      "serves": [
+        "via:crates/runner-daemon"
+      ]
     },
     "crates/runner-transport": {
       "serves": [
@@ -1093,10 +1421,17 @@
       ]
     },
     "crates/runner-agent": {
-      "serves": ["issue-delivery#act-build", "design-reconciliation#build"]
+      "serves": [
+        "issue-delivery#act-build",
+        "design-reconciliation#build"
+      ]
     },
     "crates/runner-daemon": {
-      "serves": ["REQ-15", "agent-run-standing#master", "issue-delivery#rule-dispatch"]
+      "serves": [
+        "REQ-15",
+        "agent-run-standing#master",
+        "issue-delivery#rule-dispatch"
+      ]
     }
   }
 }

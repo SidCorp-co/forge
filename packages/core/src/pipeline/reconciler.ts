@@ -2,8 +2,8 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { transitionIssueStatus } from '../issues/index.js';
-import { logger } from '../observability/logger.js';
-import { traceStep } from '../observability/sentry.js';
+import { logger } from '../lib/logger.js';
+import { traceStep } from '../lib/sentry.js';
 import { countOverdueDeliveries } from '../outbox/index.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,

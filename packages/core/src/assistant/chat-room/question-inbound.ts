@@ -19,9 +19,9 @@ import {
   type ReplyTransport,
   sendFixedReply,
 } from '../../integrations/rocketchat/index.js';
+import { logger } from '../../lib/logger.js';
 import { isRefusal } from '../../lib/refusal.js';
 import { screenForDoor } from '../../messaging/proven.js';
-import { logger } from '../../observability/logger.js';
 import { answerAs } from '../../questions/index.js';
 import { resolveSpeaker } from '../identity/speaker-link.js';
 import {

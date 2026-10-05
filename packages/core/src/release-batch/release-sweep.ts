@@ -9,8 +9,8 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/index.js';
+import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
-import { logger } from '../observability/logger.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from '../pipeline/index.js';
 import { cutWaitingRelease, loadCreatedBy } from '../schedules/index.js';
 import { resolveReleaseGate } from './gate.js';

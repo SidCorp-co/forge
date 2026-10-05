@@ -2,10 +2,10 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import pg from 'pg';
 import { RateLimiterPostgres, RateLimiterRes } from 'rate-limiter-flexible';
-import { env } from '../config/env.js';
-import type { RateLimitRule } from '../config/rate-limits.js';
 import { RATE_LIMIT_POINTS_TABLE } from '../db/schema-rate-limits.js';
-import { logger } from '../observability/logger.js';
+import { env } from '../lib/env.js';
+import { logger } from '../lib/logger.js';
+import type { RateLimitRule } from '../lib/rate-limits.js';
 
 let pool: pg.Pool | undefined;
 

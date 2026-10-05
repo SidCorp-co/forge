@@ -1,5 +1,5 @@
 import { settleSentryDelivery } from '../integrations/sentry/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { intakeSentryIssue, projectCreatedById, readSentryThresholds } from './service.js';
 

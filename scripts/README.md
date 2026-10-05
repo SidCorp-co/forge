@@ -1042,7 +1042,7 @@ CI cannot be bypassed — translate the offending strings or add an `i18n-allow:
 
 ## check-lazy-module-init.mjs — importing a core module does no work
 
-`packages/core/src/config/env.ts` validates the whole environment on the first READ of `env`, and
+`packages/core/src/lib/env.ts` validates the whole environment on the first READ of `env`, and
 `packages/core/src/db/client.ts` constructs the postgres pool on the first read of `db`. Both used
 to do it at module scope, so importing anything whose graph reached either did that work — and on a
 missing variable, threw inside the import.
@@ -1055,14 +1055,14 @@ CI on PR #457 reported `1 file failed` with the file itself reading
 `packages/core/vitest.setup.ts`; `packages/core/vitest.integration.config.ts` carries no
 `setupFiles`, which is where it bit.
 
-A third export joined them with ISS-18: `RULES` in `packages/core/src/config/rate-limits.ts` reads
+A third export joined them with ISS-18: `RULES` in `packages/core/src/lib/rate-limits.ts` reads
 `env` on every read, so a route file writing `rateLimit(RULES.x)` at module scope validated the
 environment when imported. A caller now hands `rateLimit` a function returning the rule.
 
 **An import is matched by where it resolves, not by how it is spelled.**
 <!-- doc-citation: unchecked `config/env.js` `./env.js` — import specifiers as written in source, not paths in this tree. -->
-Matching the specifier's tail — `config/env.js` — missed `packages/core/src/config/rate-limits.ts`
-for as long as it existed, because it sits beside `packages/core/src/config/env.ts` and imports
+Matching the specifier's tail — `config/env.js` — missed `packages/core/src/lib/rate-limits.ts`
+for as long as it existed, because it sits beside `packages/core/src/lib/env.ts` and imports
 `./env.js`; 22 import-time reads went unreported while this gate was green.
 Resolving each relative specifier from the importing file closes that, and the lazy modules
 themselves are scanned too rather than skipped.

@@ -1,8 +1,8 @@
 import { and, eq, isNotNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { runners } from '../db/schema.js';
+import { logger } from '../lib/logger.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
-import { logger } from '../observability/logger.js';
 import { emitPipelineWedge, resolvePipelineWedge } from '../pipeline/index.js';
 import type { RunnerLimit } from './limit-detect.js';
 

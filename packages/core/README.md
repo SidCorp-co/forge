@@ -19,7 +19,7 @@ Install from the repo root, not from inside `packages/core/`. The pnpm workspace
 
 ## Environment
 
-The env schema lives in [`src/config/env.ts`](./src/config/env.ts) and is validated by Zod at startup. If anything is missing or malformed, the process throws with a bulleted list pointing at the offending keys — copy-paste from that error to find what's wrong.
+The env schema lives in [`src/lib/env.ts`](./src/lib/env.ts) and is validated by Zod at startup. If anything is missing or malformed, the process throws with a bulleted list pointing at the offending keys — copy-paste from that error to find what's wrong.
 
 | Variable | Example | Notes |
 |---|---|---|

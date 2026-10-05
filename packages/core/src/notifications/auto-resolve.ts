@@ -5,7 +5,7 @@ import {
   notificationDeliveryMembers,
   notifications,
 } from '../db/schema.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
 
 /**

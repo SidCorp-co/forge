@@ -1,6 +1,6 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import { env } from '../config/env.js';
+import { env } from './env.js';
 
 export function uploadBodyLimit(
   onError: (c: Context) => Response | Promise<Response>,

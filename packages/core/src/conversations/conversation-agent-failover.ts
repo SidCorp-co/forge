@@ -11,7 +11,7 @@ import {
 } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { type agentSessions, type MemberLens, projects } from '../db/schema.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import {
   createAgentSession,
   dispatchAgentTurn,

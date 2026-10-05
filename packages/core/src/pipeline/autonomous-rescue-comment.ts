@@ -1,5 +1,5 @@
 import type { IssueStatus } from '../db/schema.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { postIssueNoticeOnce } from './ports.js';
 
 function buildCapReachedCommentBody(args: {

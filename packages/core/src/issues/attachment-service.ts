@@ -1,7 +1,6 @@
 import type { IssueAttachmentRefusalCode } from '@forge/contracts/issues';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, asc, eq, inArray } from 'drizzle-orm';
-import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { issueAttachments } from '../db/schema.js';
 import {
@@ -14,6 +13,7 @@ import {
 } from '../lib/attachment-mime.js';
 import { lockAttachmentName, type NameCheckExecutor } from '../lib/attachment-name-lock.js';
 import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
+import { env } from '../lib/env.js';
 import { isRefusal, type RefusalError, refuser } from '../lib/refusal.js';
 import { safeRecordActivity } from './activity.js';
 import { getStorage } from './ports.js';

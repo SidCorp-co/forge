@@ -1,8 +1,8 @@
 import { sql } from 'drizzle-orm';
 import { fromDrizzle, type JobWithMetadata } from 'pg-boss';
 import { db } from '../db/client.js';
-import { logger } from '../observability/logger.js';
-import { traceStep } from '../observability/sentry.js';
+import { logger } from '../lib/logger.js';
+import { traceStep } from '../lib/sentry.js';
 import { affectedBy, boss } from '../queue/boss.js';
 import { consumerOf, type Delivery, registryMismatches } from './consumers.js';
 import { CONSUMER_NAMES, type DeliveryJob, queueOf } from './queues.js';

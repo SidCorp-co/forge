@@ -17,7 +17,7 @@ import {
 import { embeddingsConfigured, embedWithModel } from '../integrations/llm/index.js';
 import { EMBEDDING_PROVIDER_NOT_CONFIGURED, writeItemEmbedding } from '../knowledge/index.js';
 import { dataPolicyOf, type EgressSurface, egressAt, egressText } from '../lib/data-egress.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 
 interface HeadText {
   projectId: string;

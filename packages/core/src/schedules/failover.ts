@@ -15,7 +15,7 @@ import {
 } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { agentSessions, projects } from '../db/schema.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { handFireToRetry, recordFireDisposition, scheduleRunIdOf } from './fires.js';
 import { schedulesPorts } from './ports.js';
 import { authorizeScheduledRun, failUndeliveredRun } from './scheduled-session.js';

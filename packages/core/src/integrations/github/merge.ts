@@ -1,4 +1,4 @@
-import { logger } from '../../observability/logger.js';
+import { logger } from '../../lib/logger.js';
 import type { HostMergeArgs, HostMergeResult } from '../source-host/index.js';
 import type { GitHubRepoClient } from './client.js';
 import { decideMerge } from './merge-eligibility.js';

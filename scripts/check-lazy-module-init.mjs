@@ -12,9 +12,9 @@ const SKIP_DIRS = new Set(['node_modules', 'dist', 'coverage', '.next', '.turbo'
 
 /** The modules whose exports must not be read at import time, and the export each owns. */
 const LAZY_EXPORTS = [
-  { file: 'config/env.ts', name: 'env' },
+  { file: 'lib/env.ts', name: 'env' },
   { file: 'db/client.ts', name: 'db' },
-  { file: 'config/rate-limits.ts', name: 'RULES' },
+  { file: 'lib/rate-limits.ts', name: 'RULES' },
 ];
 
 /** The lazy module an import names, resolved from the importing file rather than matched by spelling. */
@@ -222,7 +222,7 @@ function main() {
       '\n' +
       'Move the read to the moment the value is needed. The three shapes already in the tree:\n' +
       '  a request callback   packages/core/src/index.ts, the cors `origin` callback\n' +
-      '  a memoised function  packages/core/src/config/web-base-url.ts:webBaseUrl\n' +
+      '  a memoised function  packages/core/src/lib/web-base-url.ts:webBaseUrl\n' +
       '  a lazy middleware    packages/core/src/lib/upload-body-limit.ts\n',
   );
   process.exit(1);

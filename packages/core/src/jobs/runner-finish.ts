@@ -7,8 +7,8 @@
 import { deriveSessionFinal, materializeJobUsage } from '../agent-sessions/index.js';
 import type { jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/index.js';
+import { logger } from '../lib/logger.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
-import { logger } from '../observability/logger.js';
 import { clearRunnerLimit, clearRunnerQuarantine } from '../runners/index.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { finalizeFailedJob } from './finalize-failure.js';

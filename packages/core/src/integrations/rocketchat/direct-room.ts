@@ -6,7 +6,7 @@
 // open — and every step of it can answer "no" for a reason the operator needs
 // told (ISS-1091 outcome 2).
 
-import { logger } from '../../observability/logger.js';
+import { logger } from '../../lib/logger.js';
 import { fetchUserProfile, type RocketChatRestAuth } from './rest-client.js';
 
 /**

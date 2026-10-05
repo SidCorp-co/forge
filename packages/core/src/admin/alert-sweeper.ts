@@ -5,6 +5,7 @@
  * when one crosses into warn/crit.
  */
 
+import { logger } from '../lib/logger.js';
 import {
   claimOpsAlert,
   deliverExisting,
@@ -12,7 +13,6 @@ import {
   resolveNotifications,
   unreadAlertDeliveries,
 } from '../notifications/index.js';
-import { logger } from '../observability/logger.js';
 import { computeAlerts, opsAlertResolutionKey } from './alert-queries.js';
 import type { AdminAlert } from './types.js';
 

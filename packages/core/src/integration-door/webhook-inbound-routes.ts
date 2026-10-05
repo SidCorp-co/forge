@@ -11,9 +11,9 @@ import {
   recordTurnedAwayInboundCall,
 } from '../integrations/index.js';
 import { verifyHmacSignature, verifySharedToken } from '../lib/hmac.js';
+import { logger } from '../lib/logger.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { rawBody } from '../middleware/zod-validator.js';
-import { logger } from '../observability/logger.js';
 import { emitEvents } from '../outbox/index.js';
 import { findProjectIdBySlug } from '../projects/index.js';
 

@@ -1,8 +1,8 @@
 import type { MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { env } from '../../config/env.js';
 import type { ProviderId } from '../../integrations/identity/index.js';
+import { env } from '../../lib/env.js';
 import { type AuthVars, requireAuth } from '../../middleware/auth.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { hasOauthLink } from '../read.js';

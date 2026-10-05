@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { leaseHolderOf } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import type { CandidateRow, StrandRecord } from './idle-issues.js';
 import { emitNotification } from './ports.js';
 import { sweepGroupKey } from './stranded-issues.js';

@@ -9,7 +9,7 @@
 
 import type { Context } from 'hono';
 import type { SSEStreamingApi } from 'hono/streaming';
-import { getLogger } from '../../observability/logger.js';
+import { getLogger } from '../../lib/logger.js';
 import type { Cancellation } from './cancellation.js';
 import { startBudget } from './cancellation.js';
 import {

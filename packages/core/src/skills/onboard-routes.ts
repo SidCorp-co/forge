@@ -10,9 +10,9 @@ import {
 } from '../agent-sessions/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { resolveSessionRepoPathForDevice } from '../lib/device-pool.js';
+import { logger } from '../lib/logger.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { logger } from '../observability/logger.js';
 import { requireHeld } from '../permissions/index.js';
 import { projectHead } from '../projects/index.js';
 import { installBuiltinSkill, requestSkillSync } from './service.js';

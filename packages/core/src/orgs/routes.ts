@@ -1,14 +1,14 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { env } from '../config/env.js';
 import { memberLenses, orgMemberRoles } from '../db/schema.js';
 import { mailDeliveryEnabled, sendMail } from '../integrations/identity/index.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
+import { env } from '../lib/env.js';
 import { buildInvitationLink, escapeInvitationHtml } from '../lib/invitation.js';
+import { logger } from '../lib/logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { logger } from '../observability/logger.js';
 import { actorFor, orgResource, requireOrgCan, requireOrgHeld } from '../permissions/index.js';
 import { agentAccountRoutes } from './agent-accounts-routes.js';
 import { issueOrgInvitationToken } from './invitations.js';

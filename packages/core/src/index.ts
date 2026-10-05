@@ -1,6 +1,6 @@
 // The composition root: run the start sequence, mount the route registry, serve, wind down.
 
-import './observability/sentry-init.js';
+import './lib/sentry-init.js';
 import type { Server as HttpServer } from 'node:http';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
@@ -14,7 +14,6 @@ import {
   registerWebConversationAdapter,
 } from './assistant/index.js';
 import { runOnceBackfills } from './boot-backfills.js';
-import { env } from './config/env.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { interfaceContractsOf, provideEcosystemSignals } from './ecosystem/index.js';
@@ -39,6 +38,8 @@ import {
 import { recordSecretResolve, rememberHandedOut, resolvePipelineContext } from './jobs/index.js';
 import { provideProjectOrg } from './lib/authz.js';
 import { provideDataPolicy } from './lib/data-egress.js';
+import { env } from './lib/env.js';
+import { logger } from './lib/logger.js';
 import { CHAT_READ_MODEL_TOOLS } from './mcp/index.js';
 import { provideMemoryIssueReads, registerMemoryReconcileWorker } from './memory/index.js';
 import { provideIssueFactReads } from './messaging/gather.js';
@@ -52,7 +53,6 @@ import {
   projectAdminUserIdsFor,
   resolveNotifications,
 } from './notifications/index.js';
-import { logger } from './observability/logger.js';
 import {
   declareOutboxQueues,
   emitEvents,

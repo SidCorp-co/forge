@@ -4,7 +4,7 @@
  * rules import nothing that needs a database, and from the doors so both bind it the same way.
  */
 
-import { logger } from '../../observability/logger.js';
+import { logger } from '../../lib/logger.js';
 import type { PreCall } from '../run-turn-core.js';
 import { EXISTING_TOP_K, memoryNotePreCall } from './memory-note-gate.js';
 

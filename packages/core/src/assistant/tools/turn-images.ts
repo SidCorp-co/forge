@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { env } from '../../config/env.js';
+import { env } from '../../lib/env.js';
 import type { CallToolResult } from '../../lib/tool-result.js';
 import { base64Bytes, type TurnImage } from '../vision.js';
 import type { ChatToolset } from './mcp-adapter.js';

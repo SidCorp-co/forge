@@ -3,7 +3,7 @@ import { bodyText } from '../body/prepare.js';
 import { db } from '../db/client.js';
 import { type MemorySource, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../integrations/llm/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { searchMemories } from './search.js';
 import { NEAR_DUPLICATE_THRESHOLD } from './thresholds.js';
