@@ -16,9 +16,9 @@ export function useModuleRollup(projectId: string | undefined) {
   });
 }
 
-/** The build's requirement trace: which requirements and workflow steps each code module serves. */
-export function useCodeTrace() {
-  return useQuery({ queryKey: ["code-trace"], queryFn: modulesApi.trace, staleTime: Infinity });
+/** Forge's own requirement trace, empty for a project not built from Forge's repository. */
+export function useCodeTrace(projectId: string) {
+  return useQuery({ queryKey: ["code-trace", projectId], queryFn: () => modulesApi.trace(projectId), staleTime: Infinity });
 }
 
 export function useModuleDetail(projectId: string | undefined, module: string | undefined) {

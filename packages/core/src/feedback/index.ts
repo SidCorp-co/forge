@@ -5,7 +5,7 @@ export type { ReadDoor } from './egress.js';
 export { embedFeedback, embedFeedbackLater, nearestFeedbackOf } from './embeddings.js';
 export { listFeedbackAs } from './list-read.js';
 export { rowIn } from './read.js';
-export { issueRefIn, requirementRefIn } from './refs.js';
+export { feedbackRefIn, issueRefIn, requirementRefIn } from './refs.js';
 export { requirementFeedbackAs } from './requirement-feedback.js';
 export { lockFeedback } from './service.js';
 export { triageIn } from './triage.js';

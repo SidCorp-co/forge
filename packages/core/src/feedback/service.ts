@@ -16,7 +16,7 @@ import {
 import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import type { NodeRef } from '@forge/contracts/workflow-health';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
@@ -332,6 +332,9 @@ export const reopenFeedback = (input: {
  * mockups with their bytes, the embedding, the clarification answers and the suggestion payloads
  * quoting it — and keeps the keyed row as a tombstone so every link to it still resolves.
  */
+/** What stands in for a reporter's words once they are deleted; where_seen stays non-null for a screen item. */
+const REDACTED = 'reporter data deleted';
+
 export async function redactReporterData(input: {
   projectId: string;
   ref: string;
@@ -363,10 +366,24 @@ export async function redactReporterData(input: {
       actor: feedbackKernelActor(actor),
     });
     await tx
+      .update(feedbackDecisions)
+      .set({ reason: REDACTED })
+      .where(
+        and(
+          eq(feedbackDecisions.feedbackId, row.id),
+          sql`${feedbackDecisions.reason} IS NOT NULL`,
+          or(
+            eq(feedbackDecisions.decidedBy, row.reportedBy),
+            inArray(feedbackDecisions.decision, ['verified', 'reopened']),
+          ),
+        ),
+      );
+    await tx
       .update(feedback)
       .set({
-        title: `${feedbackKey(row.fbSeq)} (reporter data deleted)`,
+        title: `${feedbackKey(row.fbSeq)} (${REDACTED})`,
         body: null,
+        whereSeen: row.whereSeen === null ? null : REDACTED,
         redactedAt: now,
         redactedBy: actor.userId,
         updatedAt: now,

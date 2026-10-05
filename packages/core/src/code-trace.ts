@@ -1,6 +1,13 @@
 import type { CodeTraceResponse, CodeTraceScope, CodeTraceUnit } from '@forge/contracts/modules';
 import { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
+import { type AuthVars, requireAuth } from './middleware/auth.js';
 import declaration from './modules.json' with { type: 'json' };
+import { actorFor, projectResource, requireCan } from './permissions/index.js';
+import { readDeclaredSource } from './project-config/index.js';
+
+/** The repository this trace declares; only a project built from it reads the trace as its own. */
+const THIS_REPOSITORY = 'github.com/SidCorp-co/forge';
 
 const SECTIONS: Record<CodeTraceScope, 'modules' | 'web' | 'runner'> = {
   core: 'modules',
@@ -8,10 +15,7 @@ const SECTIONS: Record<CodeTraceScope, 'modules' | 'web' | 'runner'> = {
   runner: 'runner',
 };
 
-/**
- * The requirement trace this build declares (ISS-221). It describes the shipped source, not any
- * project's data, so it is served without a session, as the build's version is.
- */
+/** The requirement trace this build declares (ISS-221): Forge's own modules and what they serve. */
 export function codeTrace(): CodeTraceResponse {
   const units: CodeTraceUnit[] = [];
   for (const [scope, section] of Object.entries(SECTIONS) as [CodeTraceScope, string][]) {
@@ -28,5 +32,19 @@ export function codeTrace(): CodeTraceResponse {
   };
 }
 
-export const codeTraceRoutes = new Hono();
-codeTraceRoutes.get('/code-trace', (c) => c.json(codeTrace()));
+const NONE: CodeTraceResponse = { units: [], total: 0, untraced: 0 };
+
+/** A project reads this trace only when its declared repository is the one the trace describes. */
+export const codeTraceRoutes = new Hono<{ Variables: AuthVars }>();
+codeTraceRoutes.get('/projects/:id/code-trace', requireAuth(), async (c) => {
+  const id = c.req.param('id');
+  if (!/^[0-9a-f-]{36}$/i.test(id)) {
+    throw new HTTPException(400, {
+      message: 'invalid path: the project id is a uuid',
+      cause: { code: 'BAD_REQUEST' },
+    });
+  }
+  await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
+  const { repository } = await readDeclaredSource(id);
+  return c.json(repository === THIS_REPOSITORY ? codeTrace() : NONE);
+});

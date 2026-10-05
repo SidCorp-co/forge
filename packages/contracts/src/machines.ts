@@ -18,6 +18,7 @@ import { SCHEDULE_RUN_MACHINE } from "./schedule-run-machine.js";
 import { SESSION_MACHINE } from "./session-machine.js";
 import type { StatusMachine } from "./state-machine.js";
 import { SUGGESTION_MACHINE } from "./suggestion-machine.js";
+import { WORKFLOW_DESIGN_MACHINE } from "./design-status.js";
 
 export const MACHINE_ENTITIES = [
 	"issue",
@@ -35,6 +36,7 @@ export const MACHINE_ENTITIES = [
 	"runner_provision",
 	"device",
 	"question_delivery",
+	"workflow_design",
 ] as const;
 export type MachineEntity = (typeof MACHINE_ENTITIES)[number];
 
@@ -54,6 +56,7 @@ export const MACHINES = {
 	runner_provision: RUNNER_PROVISION_MACHINE,
 	device: DEVICE_MACHINE,
 	question_delivery: QUESTION_DELIVERY_MACHINE,
+	workflow_design: WORKFLOW_DESIGN_MACHINE,
 } as const satisfies { readonly [E in MachineEntity]: StatusMachine<E> };
 
 export type MachineOf<E extends MachineEntity> = (typeof MACHINES)[E];

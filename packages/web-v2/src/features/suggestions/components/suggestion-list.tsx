@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { AGENT_TINT, Button, Input } from "@/design";
+import { RefusalLine } from "@/lib/api/refusal-line";
 import { formatRelativeTime } from "@/lib/utils/format";
-import { RefusalLine } from "@/features/requirements/components/refusal";
-import { useSuggestionDecision, useWaitingSuggestions } from "../hooks";
+import { requirementAffected, useSuggestionDecision, useWaitingSuggestions } from "../hooks";
 import type { SuggestionKind, SuggestionProducer, SuggestionView as Suggestion } from "../types";
 
 export const KIND_LABEL: Record<SuggestionKind, string> = {
@@ -89,7 +89,7 @@ export function PendingBadge() {
 }
 
 function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKey: string }) {
-  const decide = useSuggestionDecision(projectId, reqKey);
+  const decide = useSuggestionDecision(projectId, requirementAffected(projectId, reqKey));
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const details = detailLines(s);
@@ -159,7 +159,7 @@ function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKe
 
 /** The suggestions waiting on this requirement, each an accent bar with Accept and Reject; nothing when none wait. */
 export function RequirementSuggestions({ projectId, reqKey }: { projectId: string; reqKey: string }) {
-  const q = useWaitingSuggestions(projectId, reqKey);
+  const q = useWaitingSuggestions(projectId, { requirement: reqKey });
   const rows = q.data?.suggestions ?? [];
   if (rows.length === 0) return null;
   return (

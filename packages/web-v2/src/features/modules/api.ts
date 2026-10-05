@@ -7,5 +7,5 @@ export const modulesApi = {
   rollup: (projectId: string) => apiClient<ModuleRollupResponse>(`${base(projectId)}/rollup`),
   detail: (projectId: string, module: string) =>
     apiClient<ModuleDetail>(`${base(projectId)}/${encodeURIComponent(module)}/detail`),
-  trace: () => apiClient<CodeTraceResponse>("/code-trace"),
+  trace: (projectId: string) => apiClient<CodeTraceResponse>(`/projects/${projectId}/code-trace`),
 };

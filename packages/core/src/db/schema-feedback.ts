@@ -162,7 +162,7 @@ export const feedback = pgTable(
     ),
     redactedChk: check(
       'feedback_redacted_chk',
-      sql`${t.redactedAt} IS NULL OR (${t.body} IS NULL AND ${t.redactedBy} IS NOT NULL)`,
+      sql`${t.redactedAt} IS NULL OR (${t.body} IS NULL AND ${t.redactedBy} IS NOT NULL AND (${t.whereSeen} IS NULL OR ${t.whereSeen} = 'reporter data deleted'))`,
     ),
     agencyChk: check(
       'feedback_reporter_agency_chk',

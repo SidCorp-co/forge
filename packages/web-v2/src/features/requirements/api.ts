@@ -11,13 +11,14 @@ const one = (projectId: string, req: string) => `${base(projectId)}/${encodeURIC
 const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
 
 function actionPath(projectId: string, req: string, a: RequirementAction): string {
-  if (a.kind === "agree" || a.kind === "repin" || a.kind === "undefer") return `${one(projectId, req)}/${a.kind}`;
+  if (a.kind === "agree" || a.kind === "repin" || a.kind === "defer" || a.kind === "undefer") return `${one(projectId, req)}/${a.kind}`;
   return `${one(projectId, req)}/revisions/${a.revision}/${a.kind}`;
 }
 
 function actionBody(a: RequirementAction): unknown {
   if (a.kind === "agree" || a.kind === "repin") return { revision: a.revision };
   if (a.kind === "return") return { reason: a.reason };
+  if (a.kind === "defer") return { reason: a.reason, ...(a.targetPhase ? { targetPhase: a.targetPhase } : {}) };
   return {};
 }
 

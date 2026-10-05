@@ -49,6 +49,27 @@ interface StandingViewer {
   canSignOff: boolean;
 }
 
+/** Rows a caller already holds for these requirements (the detail does), so they are not read twice. */
+export interface StandingPreload {
+  revisions: readonly (typeof requirementRevisions.$inferSelect)[];
+  criteria: readonly (typeof requirementCriteria.$inferSelect)[];
+  linked: readonly Pick<
+    typeof issues.$inferSelect,
+    | 'requirementId'
+    | 'id'
+    | 'issSeq'
+    | 'title'
+    | 'status'
+    | 'updatedAt'
+    | 'plan'
+    | 'plannedRevision'
+    | 'plannedBaselineSeq'
+  >[];
+  baselines: readonly (typeof requirementBaselines.$inferSelect)[];
+  prefix: string | null;
+  releaseApproval: boolean;
+}
+
 const latestSeqAt = (
   rows: readonly { requirementId: string; revision: number; seq: number }[],
   id: string,
@@ -80,9 +101,10 @@ export async function standingsOf(
   projectId: string,
   rows: readonly StandingRow[],
   viewer: StandingViewer | null,
-  now: Date = new Date(),
+  held?: StandingPreload,
 ): Promise<Map<string, RequirementStanding>> {
   if (rows.length === 0) return new Map();
+  const now = new Date();
   const ids = rows.map((r) => r.id);
   const [
     revisions,
@@ -96,61 +118,65 @@ export async function standingsOf(
     contracts,
     contractPins,
   ] = await Promise.all([
-    db
-      .select({
-        requirementId: requirementRevisions.requirementId,
-        revision: requirementRevisions.revision,
-        state: requirementRevisions.state,
-        authorId: requirementRevisions.authorId,
-        createdAt: requirementRevisions.createdAt,
-        proposedAt: requirementRevisions.proposedAt,
-        decidedAt: requirementRevisions.decidedAt,
-      })
-      .from(requirementRevisions)
-      .where(inArray(requirementRevisions.requirementId, ids))
-      .orderBy(desc(requirementRevisions.revision)),
-    db
-      .select({
-        requirementId: requirementCriteria.requirementId,
-        id: requirementCriteria.id,
-        code: requirementCriteria.code,
-        body: requirementCriteria.body,
-        sinceRevision: requirementCriteria.sinceRevision,
-        retiredRevision: requirementCriteria.retiredRevision,
-      })
-      .from(requirementCriteria)
-      .where(inArray(requirementCriteria.requirementId, ids)),
-    db
-      .select({
-        requirementId: issues.requirementId,
-        id: issues.id,
-        issSeq: issues.issSeq,
-        title: issues.title,
-        status: issues.status,
-        updatedAt: issues.updatedAt,
-        plan: issues.plan,
-        plannedRevision: issues.plannedRevision,
-        plannedBaselineSeq: issues.plannedBaselineSeq,
-      })
-      .from(issues)
-      .where(inArray(issues.requirementId, ids))
-      .orderBy(issues.issSeq),
+    held?.revisions ??
+      db
+        .select({
+          requirementId: requirementRevisions.requirementId,
+          revision: requirementRevisions.revision,
+          state: requirementRevisions.state,
+          authorId: requirementRevisions.authorId,
+          createdAt: requirementRevisions.createdAt,
+          proposedAt: requirementRevisions.proposedAt,
+          decidedAt: requirementRevisions.decidedAt,
+        })
+        .from(requirementRevisions)
+        .where(inArray(requirementRevisions.requirementId, ids))
+        .orderBy(desc(requirementRevisions.revision)),
+    held?.criteria ??
+      db
+        .select({
+          requirementId: requirementCriteria.requirementId,
+          id: requirementCriteria.id,
+          code: requirementCriteria.code,
+          body: requirementCriteria.body,
+          sinceRevision: requirementCriteria.sinceRevision,
+          retiredRevision: requirementCriteria.retiredRevision,
+        })
+        .from(requirementCriteria)
+        .where(inArray(requirementCriteria.requirementId, ids)),
+    held?.linked ??
+      db
+        .select({
+          requirementId: issues.requirementId,
+          id: issues.id,
+          issSeq: issues.issSeq,
+          title: issues.title,
+          status: issues.status,
+          updatedAt: issues.updatedAt,
+          plan: issues.plan,
+          plannedRevision: issues.plannedRevision,
+          plannedBaselineSeq: issues.plannedBaselineSeq,
+        })
+        .from(issues)
+        .where(inArray(issues.requirementId, ids))
+        .orderBy(issues.issSeq),
     db
       .select({ requirementId: suggestions.requirementId, kind: suggestions.kind })
       .from(suggestions)
       .where(and(inArray(suggestions.requirementId, ids), eq(suggestions.status, 'proposed'))),
-    activeIssuePrefix(projectId),
+    held ? held.prefix : activeIssuePrefix(projectId),
     latestPinsOf(ids),
-    db
-      .select({
-        requirementId: requirementBaselines.requirementId,
-        revision: requirementBaselines.revision,
-        seq: requirementBaselines.seq,
-        agreedAt: requirementBaselines.agreedAt,
-      })
-      .from(requirementBaselines)
-      .where(inArray(requirementBaselines.requirementId, ids)),
-    approvalRequiredIn(projectId),
+    held?.baselines ??
+      db
+        .select({
+          requirementId: requirementBaselines.requirementId,
+          revision: requirementBaselines.revision,
+          seq: requirementBaselines.seq,
+          agreedAt: requirementBaselines.agreedAt,
+        })
+        .from(requirementBaselines)
+        .where(inArray(requirementBaselines.requirementId, ids)),
+    held ? held.releaseApproval : approvalRequiredIn(projectId),
     linkedContractsOf(db, ids),
     latestContractPinsOf(ids),
   ]);

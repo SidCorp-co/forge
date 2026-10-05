@@ -3840,24 +3840,6 @@
         ]
       }
     },
-    "/api/code-trace": {
-      "get": {
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [],
-        "x-forge-input": "none",
-        "x-forge-validated": []
-      }
-    },
     "/api/comments/attachments/{id}": {
       "get": {
         "parameters": [
@@ -17391,6 +17373,35 @@
         ]
       }
     },
+    "/api/projects/{id}/code-trace": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth"
+        ],
+        "x-forge-validated": []
+      }
+    },
     "/api/projects/{id}/config": {
       "get": {
         "parameters": [
@@ -19764,165 +19775,6 @@
                 },
                 "required": [
                   "route"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireAuth",
-          "assertEmailVerified"
-        ],
-        "x-forge-validated": [
-          "json",
-          "param"
-        ]
-      }
-    },
-    "/api/projects/{id}/feedback/{fb}/triage-suggestions": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "fb",
-            "required": true,
-            "schema": {
-              "maxLength": 64,
-              "minLength": 1,
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "model": {
-                    "anyOf": [
-                      {
-                        "maxLength": 200,
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "triage": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "answer": {
-                        "maxLength": 10000,
-                        "type": "string"
-                      },
-                      "createIssue": {
-                        "additionalProperties": false,
-                        "properties": {
-                          "description": {
-                            "maxLength": 20000,
-                            "type": "string"
-                          },
-                          "title": {
-                            "maxLength": 300,
-                            "minLength": 1,
-                            "type": "string"
-                          }
-                        },
-                        "type": "object"
-                      },
-                      "duplicateOf": {
-                        "maxLength": 200,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "issue": {
-                        "maxLength": 200,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "kind": {
-                        "enum": [
-                          "bug",
-                          "change_request",
-                          "question",
-                          "idea",
-                          "contract_change"
-                        ],
-                        "type": "string"
-                      },
-                      "note": {
-                        "maxLength": 4000,
-                        "type": "string"
-                      },
-                      "requirement": {
-                        "maxLength": 200,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "route": {
-                        "enum": [
-                          "issue",
-                          "revision",
-                          "new_requirement",
-                          "answer",
-                          "duplicate",
-                          "decline"
-                        ],
-                        "type": "string"
-                      },
-                      "severity": {
-                        "enum": [
-                          "low",
-                          "medium",
-                          "high",
-                          "critical"
-                        ],
-                        "type": "string"
-                      },
-                      "suggestion": {
-                        "format": "uuid",
-                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-                        "type": "string"
-                      },
-                      "title": {
-                        "maxLength": 300,
-                        "minLength": 1,
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "route"
-                    ],
-                    "type": "object"
-                  }
-                },
-                "required": [
-                  "triage"
                 ],
                 "type": "object"
               }

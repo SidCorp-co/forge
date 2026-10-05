@@ -3,6 +3,7 @@
 // hint per value.
 
 import type { IssueStatusTone } from "./issue-vocabulary.js";
+import { defineMachine } from "./state-machine.js";
 
 export const DESIGN_STATUSES = [
 	"draft",
@@ -85,3 +86,21 @@ export const DESIGN_REVISION_STATE_HINTS: Record<DesignRevisionState, string> =
 		superseded:
 			"superseded: a later revision replaced it, approved or proposed in its place",
 	};
+
+/** The approval lifecycle of a workflow design (`project_workflows.design_status`), moved only by the kernel. */
+export const WORKFLOW_DESIGN_MACHINE = defineMachine({
+	entity: "workflow_design",
+	shapes: ["c3f92a74"],
+	design: null,
+	states: DESIGN_STATUSES,
+	initial: ["draft"],
+	terminal: [],
+	reasonRequired: ["returned"],
+	edges: [
+		{ from: "draft", to: "proposed", act: "workflow_design.proposed", permission: "workflow-designs.write", guards: [] },
+		{ from: "approved", to: "proposed", act: "workflow_design.proposed", permission: "workflow-designs.write", guards: [] },
+		{ from: "returned", to: "proposed", act: "workflow_design.proposed", permission: "workflow-designs.write", guards: [] },
+		{ from: "proposed", to: "approved", act: "workflow_design.approved", permission: "workflow-designs.approve", guards: [] },
+		{ from: "proposed", to: "returned", act: "workflow_design.returned", permission: "workflow-designs.approve", guards: [] },
+	],
+});

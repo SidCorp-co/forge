@@ -13,7 +13,7 @@ export const FEEDBACK_TRIAGE_GUIDE: CoreGuide = {
 A feedback item (FB-n) is what a reporter says is wrong or wanted in the product. The door is
 \`/api/projects/:id/feedback\`: \`POST\` files one (\`create\` below) and \`GET\` lists them,
 \`GET …/feedback/:fb\` reads one, and each act below is \`POST …/feedback/:fb/<act>\` (\`triage\`,
-\`triage-suggestions\`, \`route\`, \`verify\`, \`reopen\`, \`clarification\`). It is not an agent report,
+\`route\`, \`verify\`, \`reopen\`, \`clarification\`). It is not an agent report,
 an agent's report about its own run: \`POST …/feedback/promote\` turns one of this project's reports
 into FB-n when it is product feedback after all.
 
@@ -70,8 +70,8 @@ Nothing ever reads an item as \`verified\` on its own.
   (\`FEEDBACK_DECLINE_REASON_REQUIRED\`); it moves the item to \`declined\` and closes its case.
 - **Triage is an approval.** Triage and writing a case's route take \`feedback.approve\` on the project
   (project admin, or an org owner or admin), person or agent alike; without it the call is refused
-  \`PERMISSION_FORBIDDEN\` naming the permission. Without it, send \`POST …/feedback/:fb/triage-suggestions\`
-  \`{ triage }\`, which writes a \`feedback_triage\` suggestion stamped by core with the nearest
+  \`PERMISSION_FORBIDDEN\` naming the permission. Without it, send \`POST /api/projects/:id/suggestions\`
+  \`{ kind: 'feedback_triage', feedback, payload }\`, which writes a \`feedback_triage\` suggestion stamped by core with the nearest
   item (\`dedup\`, or why dedup did not run); a holder accepts it (\`POST /api/projects/:id/suggestions/:sid/accept\`), and the
   accept is the triage (${guideRef('suggestions')}).
 - Triage is picked while the item is \`new\`, \`reopened\`, or \`triaged\` with nothing carrying it; any

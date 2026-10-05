@@ -56,7 +56,7 @@ function Overview({ d, projectId }: { d: RequirementDetail; projectId: string })
   const spec = shown?.spec ?? {};
   const summary = shown?.tldr ?? spec.goal;
   const goalBeyond = shown?.tldr && spec.goal && spec.goal !== shown.tldr ? spec.goal : null;
-  const sug = useWaitingSuggestions(projectId, d.key);
+  const sug = useWaitingSuggestions(projectId, { requirement: d.key });
   const waiting = d.canSignOff && (sug.data?.suggestions.length ?? 0) > 0;
   return (
     <div className="grid gap-8" data-testid="view-overview">
@@ -102,7 +102,7 @@ function Overview({ d, projectId }: { d: RequirementDetail; projectId: string })
 }
 
 function Criteria({ d, projectId, slug }: { d: RequirementDetail; projectId: string; slug: string }) {
-  const sug = useWaitingSuggestions(projectId, d.key);
+  const sug = useWaitingSuggestions(projectId, { requirement: d.key });
   const f = d.standing.facts;
   return (
     <section data-testid="view-criteria">
