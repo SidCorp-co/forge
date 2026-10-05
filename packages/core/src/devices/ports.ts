@@ -7,12 +7,6 @@ import type { Tx } from '../db/client.js';
 import { portSlot } from '../lib/port-slot.js';
 import type { RefusalError } from '../lib/refusal.js';
 
-/** The runner build this deployment publishes. */
-export interface PublishedRunnerBuild {
-  version: string;
-  commit: string | null;
-}
-
 /** A question a box asks on behalf of its master, as the device route validated it. */
 interface DeviceQuestion {
   id: string;
@@ -52,7 +46,6 @@ interface DevicesPorts {
   >;
   projectsWithHostCredential(projectIds: string[]): Promise<Set<string>>;
   isHttpsGitUrl(url: string | null | undefined): boolean;
-  publishedRunnerBuild(): Promise<PublishedRunnerBuild | null>;
   mainRunnerHead(): string | null;
   cmpVersion(a: string, b: string): number;
   questions: {

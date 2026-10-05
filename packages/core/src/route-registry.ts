@@ -44,6 +44,7 @@ import {
   devicePoolRoutes,
   devicePublicRoutes,
   deviceUserRoutes,
+  installRoutes,
   runLedgerRoutes,
 } from './devices/routes.js';
 import { ecosystemJsonSchemas } from './ecosystem/index.js';
@@ -65,7 +66,6 @@ import {
   projectHealthRoutes,
   publicHealthRoutes,
 } from './health/routes.js';
-import { installRoutes } from './install/routes.js';
 import {
   deviceGitCredentialRoutes,
   githubCallbackRoutes,

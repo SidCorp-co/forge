@@ -2,199 +2,70 @@
   "version": 1,
   "tsConfig": ".arch-tsconfig.json",
   "modules": {
-    "core-admin": [
-      "packages/core/src/admin/**"
-    ],
-    "core-agent-sessions": [
-      "packages/core/src/agent-sessions/**"
-    ],
-    "core-app-config": [
-      "packages/core/src/app-config/**"
-    ],
-    "core-assistant": [
-      "packages/core/src/assistant/**"
-    ],
-    "core-auth": [
-      "packages/core/src/auth/**"
-    ],
-    "core-body": [
-      "packages/core/src/body/**"
-    ],
-    "core-branches": [
-      "packages/core/src/branches/**"
-    ],
-    "core-comments": [
-      "packages/core/src/comments/**"
-    ],
-    "core-conversations": [
-      "packages/core/src/conversations/**"
-    ],
-    "core-credentials": [
-      "packages/core/src/credentials/**"
-    ],
-    "core-db": [
-      "packages/core/src/db/**"
-    ],
-    "core-devices": [
-      "packages/core/src/devices/**"
-    ],
-    "core-masters": [
-      "packages/core/src/masters/**"
-    ],
-    "core-runs": [
-      "packages/core/src/runs/**"
-    ],
-    "core-feedback": [
-      "packages/core/src/feedback/**"
-    ],
-    "core-guides": [
-      "packages/core/src/guides/**"
-    ],
-    "core-improvement-messages": [
-      "packages/core/src/improvement-messages/**"
-    ],
-    "core-install": [
-      "packages/core/src/install/**"
-    ],
-    "core-integrations": [
-      "packages/core/src/integrations/**"
-    ],
-    "core-issues": [
-      "packages/core/src/issues/**"
-    ],
-    "core-jobs": [
-      "packages/core/src/jobs/**"
-    ],
-    "core-knowledge": [
-      "packages/core/src/knowledge/**"
-    ],
-    "core-knowledge-edges": [
-      "packages/core/src/knowledge-edges/**"
-    ],
-    "core-labels": [
-      "packages/core/src/labels/**"
-    ],
-    "core-lib": [
-      "packages/core/src/lib/**"
-    ],
-    "core-lifecycle": [
-      "packages/core/src/lifecycle/**"
-    ],
-    "core-mcp": [
-      "packages/core/src/mcp/**"
-    ],
-    "core-me": [
-      "packages/core/src/me/**"
-    ],
-    "core-memory": [
-      "packages/core/src/memory/**"
-    ],
-    "core-messaging": [
-      "packages/core/src/messaging/**"
-    ],
-    "core-metrics": [
-      "packages/core/src/metrics/**"
-    ],
-    "core-middleware": [
-      "packages/core/src/middleware/**"
-    ],
-    "core-notifications": [
-      "packages/core/src/notifications/**"
-    ],
-    "core-orgs": [
-      "packages/core/src/orgs/**"
-    ],
-    "core-pat": [
-      "packages/core/src/pat/**"
-    ],
-    "core-pipeline": [
-      "packages/core/src/pipeline/**"
-    ],
-    "core-plugins": [
-      "packages/core/src/plugins/**"
-    ],
-    "core-pm": [
-      "packages/core/src/pm/**"
-    ],
-    "core-preferences": [
-      "packages/core/src/preferences/**"
-    ],
-    "core-projects": [
-      "packages/core/src/projects/**"
-    ],
-    "core-prompt": [
-      "packages/core/src/prompt/**"
-    ],
-    "core-queue": [
-      "packages/core/src/queue/**"
-    ],
-    "core-release-batch": [
-      "packages/core/src/release-batch/**"
-    ],
-    "core-runners": [
-      "packages/core/src/runners/**"
-    ],
-    "core-schedules": [
-      "packages/core/src/schedules/**"
-    ],
-    "core-security": [
-      "packages/core/src/security/**"
-    ],
-    "core-skill-facts": [
-      "packages/core/src/skill-facts/**"
-    ],
-    "core-skills": [
-      "packages/core/src/skills/**"
-    ],
-    "core-tasks": [
-      "packages/core/src/tasks/**"
-    ],
-    "core-uploads": [
-      "packages/core/src/uploads/**"
-    ],
-    "core-ws": [
-      "packages/core/src/ws/**"
-    ],
-    "web-app": [
-      "packages/web-v2/src/app/**"
-    ],
-    "web-design": [
-      "packages/web-v2/src/design/**"
-    ],
-    "web-features": [
-      "packages/web-v2/src/features/**"
-    ],
-    "web-lib": [
-      "packages/web-v2/src/lib/**"
-    ],
-    "web-lib-api": [
-      "packages/web-v2/src/lib/api/**"
-    ],
-    "web-providers": [
-      "packages/web-v2/src/providers/**"
-    ],
-    "web-styles": [
-      "packages/web-v2/src/styles/**"
-    ]
+    "core-admin": ["packages/core/src/admin/**"],
+    "core-agent-sessions": ["packages/core/src/agent-sessions/**"],
+    "core-app-config": ["packages/core/src/app-config/**"],
+    "core-assistant": ["packages/core/src/assistant/**"],
+    "core-auth": ["packages/core/src/auth/**"],
+    "core-body": ["packages/core/src/body/**"],
+    "core-branches": ["packages/core/src/branches/**"],
+    "core-comments": ["packages/core/src/comments/**"],
+    "core-conversations": ["packages/core/src/conversations/**"],
+    "core-credentials": ["packages/core/src/credentials/**"],
+    "core-db": ["packages/core/src/db/**"],
+    "core-devices": ["packages/core/src/devices/**"],
+    "core-masters": ["packages/core/src/masters/**"],
+    "core-runs": ["packages/core/src/runs/**"],
+    "core-feedback": ["packages/core/src/feedback/**"],
+    "core-guides": ["packages/core/src/guides/**"],
+    "core-improvement-messages": ["packages/core/src/improvement-messages/**"],
+    "core-integrations": ["packages/core/src/integrations/**"],
+    "core-issues": ["packages/core/src/issues/**"],
+    "core-jobs": ["packages/core/src/jobs/**"],
+    "core-knowledge": ["packages/core/src/knowledge/**"],
+    "core-knowledge-edges": ["packages/core/src/knowledge-edges/**"],
+    "core-labels": ["packages/core/src/labels/**"],
+    "core-lib": ["packages/core/src/lib/**"],
+    "core-lifecycle": ["packages/core/src/lifecycle/**"],
+    "core-mcp": ["packages/core/src/mcp/**"],
+    "core-me": ["packages/core/src/me/**"],
+    "core-memory": ["packages/core/src/memory/**"],
+    "core-messaging": ["packages/core/src/messaging/**"],
+    "core-metrics": ["packages/core/src/metrics/**"],
+    "core-middleware": ["packages/core/src/middleware/**"],
+    "core-notifications": ["packages/core/src/notifications/**"],
+    "core-orgs": ["packages/core/src/orgs/**"],
+    "core-pat": ["packages/core/src/pat/**"],
+    "core-pipeline": ["packages/core/src/pipeline/**"],
+    "core-plugins": ["packages/core/src/plugins/**"],
+    "core-pm": ["packages/core/src/pm/**"],
+    "core-preferences": ["packages/core/src/preferences/**"],
+    "core-projects": ["packages/core/src/projects/**"],
+    "core-prompt": ["packages/core/src/prompt/**"],
+    "core-queue": ["packages/core/src/queue/**"],
+    "core-release-batch": ["packages/core/src/release-batch/**"],
+    "core-runners": ["packages/core/src/runners/**"],
+    "core-schedules": ["packages/core/src/schedules/**"],
+    "core-security": ["packages/core/src/security/**"],
+    "core-skill-facts": ["packages/core/src/skill-facts/**"],
+    "core-skills": ["packages/core/src/skills/**"],
+    "core-tasks": ["packages/core/src/tasks/**"],
+    "core-uploads": ["packages/core/src/uploads/**"],
+    "core-ws": ["packages/core/src/ws/**"],
+    "web-app": ["packages/web-v2/src/app/**"],
+    "web-design": ["packages/web-v2/src/design/**"],
+    "web-features": ["packages/web-v2/src/features/**"],
+    "web-lib": ["packages/web-v2/src/lib/**"],
+    "web-lib-api": ["packages/web-v2/src/lib/api/**"],
+    "web-providers": ["packages/web-v2/src/providers/**"],
+    "web-styles": ["packages/web-v2/src/styles/**"]
   },
   "tests": {
-    "globs": [
-      "**/*.test.ts",
-      "**/*.test.tsx",
-      "**/tests/**",
-      "**/__tests__/**"
-    ],
-    "relax": [
-      "boundary",
-      "forbidden"
-    ]
+    "globs": ["**/*.test.ts", "**/*.test.tsx", "**/tests/**", "**/__tests__/**"],
+    "relax": ["boundary", "forbidden"]
   },
   "generated": {
-    "globs": [
-      "**/*.gen.ts",
-      "**/*.generated.*",
-      "**/drizzle/**"
-    ]
+    "globs": ["**/*.gen.ts", "**/*.generated.*", "**/drizzle/**"]
   },
   "exclude": [
     "**/node_modules/**",
@@ -226,14 +97,6 @@
       "to": "*",
       "status": "locked",
       "description": "branch naming and lookup answers from its inputs alone Measured: 0 outgoing cross-module edges today."
-    },
-    {
-      "id": "install-is-pure",
-      "type": "forbidden",
-      "from": "core-install",
-      "to": "*",
-      "status": "locked",
-      "description": "install describes a target; reaching outward would make it a second dispatcher Measured: 0 outgoing cross-module edges today."
     },
     {
       "id": "plugins-is-pure",
