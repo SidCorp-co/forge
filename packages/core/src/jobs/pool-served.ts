@@ -1,8 +1,9 @@
 import { JOB_MACHINE } from '@forge/contracts/job-machine';
 import { noPromptMessage, POOL_JOB_NO_PROMPT } from '@forge/contracts/jobs';
 /**
- * A pool job is briefed with its own `payload.promptString` and nothing else
- * (`prepare-claimed-job.ts:prepareClaimedJob`); a box hands back a job without
+ * A pool job is briefed with its own `payload.promptString`, headed only by who dispatched it
+ * (`prepare-claimed-job.ts:prepareClaimedJob`, `dispatch-header.ts:renderDispatchHeader`); its
+ * system prompt reaches the pane on a resume alone. A box hands back a job without
  * one on every pass, so it heads its project's pool forever. Lanes that cannot
  * supply one are refused where they would mint, and such a row that reached the
  * pool anyway is refused and settled at the claim.

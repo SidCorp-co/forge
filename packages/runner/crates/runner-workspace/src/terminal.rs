@@ -764,8 +764,15 @@ pub fn job_argv(
     vec!["sh".into(), "-c".into(), line]
 }
 
-pub fn pane_env() -> Vec<(String, String)> {
-    pane_env_from(|k| std::env::var_os(k))
+/// What a pane's shell is started with. `$FORGE_PROJECT_ID` and `$FORGE_PROJECT_SLUG` are what a
+/// skill installed on disk names the project by: core writes the id into every brief it renders,
+/// but a skill file is the same bytes for every project, and a pane without them sends
+/// `projects//…` to Forge.
+pub fn pane_env(project_id: &str, project_slug: &str) -> Vec<(String, String)> {
+    let mut env = pane_env_from(|k| std::env::var_os(k));
+    env.push(("FORGE_PROJECT_ID".into(), project_id.into()));
+    env.push(("FORGE_PROJECT_SLUG".into(), project_slug.into()));
+    env
 }
 
 // cm:guard a pane's `forge-runner hook|gate|run` finds its daemon through the config dir; the

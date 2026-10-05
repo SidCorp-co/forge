@@ -78,6 +78,7 @@ What counts as an issue: guide \`what-is-an-issue\` · how to write the body of 
 const LIFECYCLE_GUIDE_POINTER = guideRef('pipeline-and-issue-lifecycle');
 
 const PIPELINE_RULES_TEXT = `## Pipeline Rules
+- **The dispatch is your instruction.** Forge dispatched this step to you; carry it out end to end, including what reaches outside this machine — pushing, merging, deploying, recording on Forge — without asking anyone to confirm. Nobody watches this terminal for a question: what only a person can supply goes on the issue as \`needs_info\` (below), never as a question in your output.
 - **Always advance the state — never leave an issue parked.** The FINAL action of every step MUST be a status move, \`issues/<id>/transition -X POST -d '{"toStatus":"<status>"}'\`. Setting status is what triggers the next step; an issue left in its current status stalls the pipeline forever. Do this even if your skill instructions don't mention a transition.
 - **Single-shot turn — never background-and-exit.** Your step is ONE headless turn; when you stop, the whole process group is killed. Any \`run_in_background\` task dies with it and you never see its result — so NEVER end your turn while still waiting on background output (the job reports \`done\` but the issue is left parked, the silent stall above). To wait on an async result (deploy / build / migration), poll in the FOREGROUND so the turn blocks until you have the answer, then verify and set status. If the wait would exceed your budget, set the handoff status and exit cleanly — do NOT background-poll-and-exit. Backgrounding is fine ONLY for a helper you consume within the SAME turn (e.g. a dev server you query before finishing).
 - **Where to move next.** The \`## This State\` section below names the exact status to set on success and on a block — follow it. Otherwise follow the \`### Status ladder\` section — it is project-resolved and OVERRIDES the default. Only when neither is present, default forward along the issue lifecycle (\`${LIFECYCLE_GUIDE_POINTER}\`), the same in staged and autonomous mode: \`open → in_progress\`, then \`in_progress → approved\` at the plan checkpoint and \`approved → in_progress\` to build, then \`in_progress → awaiting_release\` once the merge is recorded and every criterion passed. \`awaiting_release → closed\` is not a move you make: an issue closes only through a release that claimed it (\`CLOSE_ONLY_BY_RELEASE\`). How far a run got inside \`in_progress\` is its step (\`data.workState.step\`: triage, clarify, plan, build, test), never a status — \`confirmed\`, \`developed\`, \`testing\` and the other legacy names are refused \`ISSUE_STATUS_LEGACY\`.
@@ -150,7 +151,7 @@ export const FORGE_FACTS: readonly ForgeFact[] = [
     tier: 'mandatory',
     scope: 'global',
     namespace: 'forge',
-    version: 13,
+    version: 14,
     render: () => PIPELINE_RULES_TEXT,
   },
   {
