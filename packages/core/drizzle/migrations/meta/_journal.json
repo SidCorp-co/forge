@@ -2668,6 +2668,20 @@
       "when": 1818547200000,
       "tag": "0412_the_unread_plan_baseline_the_ws_publish_cause_and_the_retrieval_log_are_dropped",
       "breakpoints": true
+    },
+    {
+      "idx": 416,
+      "version": "7",
+      "when": 1818892800000,
+      "tag": "0416_the_agent_report_token_grant_is_named_agent_reports",
+      "breakpoints": true
+    },
+    {
+      "idx": 417,
+      "version": "7",
+      "when": 1818979200000,
+      "tag": "0417_every_notification_carries_its_severity",
+      "breakpoints": true
     }
   ]
 }

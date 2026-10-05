@@ -22,8 +22,6 @@ const OUTPUT_CAP = 200_000;
 
 const require = createRequire(import.meta.url);
 function bundledCli(): { bin: string; argv0: string[] } {
-  const override = process.env.FORGE_CLI_PATH;
-  if (override) return { bin: override, argv0: [] };
   const pkg = require.resolve('forge-plugin/package.json');
   return { bin: process.execPath, argv0: [join(dirname(pkg), 'plugin', 'src', 'cli.mjs')] };
 }
@@ -70,7 +68,7 @@ function run(bin: string, argv: readonly string[], cwd: string, env: NodeJS.Proc
  */
 export async function runForgeCli(input: ForgeCliRun): Promise<ForgeCliResult> {
   const cli = bundledCli();
-  const url = process.env.FORGE_CLI_URL ?? `http://127.0.0.1:${process.env.PORT ?? '3000'}/mcp`;
+  const url = `http://127.0.0.1:${process.env.PORT ?? '3000'}/mcp`;
   const dir = await mkdtemp(join(tmpdir(), 'forge-chat-'));
   try {
     await writeFile(join(dir, '.forge.json'), JSON.stringify({ slug: input.projectSlug }));

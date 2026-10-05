@@ -47,7 +47,7 @@ export async function listDeliveries(
       tier: sql<string>`min(${notifications.tier})`,
       title: sql<string>`coalesce(${notificationDeliveries.title}, min(${notifications.title}))`,
       body: sql<string | null>`min(${notifications.body})`,
-      severity: sql<string | null>`min(${notifications.severity})`,
+      severity: sql<string>`min(${notifications.severity})`,
       projectId: sql<string | null>`min(${notifications.projectId}::text)`,
       issueId: sql<string | null>`min(${notifications.issueId}::text)`,
       secondaryIssueId: sql<string | null>`min(${notifications.secondaryIssueId}::text)`,

@@ -10,8 +10,8 @@ import { CONSUMER_NAMES, type DeliveryJob, queueOf } from './queues.js';
 /** The backstop poll: a commit wakes its consumers in-process, so polling only covers the rest. */
 const POLL_SECONDS = 10;
 
-/** pg-boss handed this attempt to another worker (its heartbeat lapsed), or it is settled. */
-class LeaseLost extends Error {}
+/** The `cause` of the error an inbox throws when pg-boss handed this attempt to another worker (its heartbeat lapsed), or it is settled. */
+const LEASE_LOST = Symbol('lease-lost');
 
 const workers = new Map<string, string>();
 
@@ -29,7 +29,7 @@ async function runDelivery(consumerName: string, job: JobWithMetadata<DeliveryJo
         const out = await write(tx);
         const completed = await boss.complete(queue, attempt, null, { db: fromDrizzle(tx, sql) });
         if (affectedBy(completed) !== 1)
-          throw new LeaseLost(`delivery ${job.id} is no longer this worker's`);
+          throw new Error(`delivery ${job.id} is no longer this worker's`, { cause: LEASE_LOST });
         return out;
       }),
   };
@@ -39,7 +39,7 @@ async function runDelivery(consumerName: string, job: JobWithMetadata<DeliveryJo
     if (!consumer) throw new Error(`no consumer \`${consumerName}\` is registered for \`${type}\``);
     await consumer.handle(payload, delivery);
   } catch (err) {
-    if (err instanceof LeaseLost) {
+    if (err instanceof Error && err.cause === LEASE_LOST) {
       logger.warn({ deliveryId: job.id, consumer: consumerName }, err.message);
       throw err;
     }

@@ -8,7 +8,6 @@ import type { MockupTargetType, MockupView } from '@forge/contracts/mockups';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { requirementKey } from '@forge/contracts/requirements';
 import { and, asc, desc, eq, inArray, isNotNull } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
@@ -23,6 +22,7 @@ import { effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf, egressReading } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
+import { notFound } from '../middleware/route-errors.js';
 import { holds } from '../permissions/index.js';
 
 export type MockupRow = typeof mockups.$inferSelect;
@@ -37,9 +37,6 @@ export interface MockupDoor {
 }
 
 export const mockupKey = (seq: number) => `MK-${seq}`;
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 /** A mockup of `projectId` by uuid, `MK-n` or `n`; 404 otherwise. */
 export async function rowIn(tx: Tx, projectId: string, ref: string): Promise<MockupRow> {

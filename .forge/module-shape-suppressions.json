@@ -9,11 +9,6 @@
       "count": 1
     }
   },
-  "packages/core/src/outbox/worker.ts": {
-    "module-shape/refusal": {
-      "count": 1
-    }
-  },
   "packages/core/src/queue/v10-carry-over.ts": {
     "module-shape/table-writer": {
       "count": 1

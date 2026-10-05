@@ -70,7 +70,7 @@ export function registerWsBroadcastSubscribers(): void {
       // ISS-510 — body + severity drive the realtime toast (description +
       // tone) and the browser-notification body without a follow-up fetch.
       body: p.body ?? null,
-      severity: p.severity ?? null,
+      severity: p.severity,
       issueId: p.issueId,
       secondaryIssueId: p.secondaryIssueId ?? null,
       agentSessionId: p.agentSessionId,

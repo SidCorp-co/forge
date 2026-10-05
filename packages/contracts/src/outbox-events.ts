@@ -229,7 +229,7 @@ export interface OutboxEventPayloads {
 		type: string;
 		title: string;
 		body?: string | null;
-		severity?: string | null;
+		severity: string;
 		resolutionKey?: string | null;
 		issueId: string | null;
 		/** The actionable blocker or child of a dependency-stall wedge, beside the wedged `issueId`. */

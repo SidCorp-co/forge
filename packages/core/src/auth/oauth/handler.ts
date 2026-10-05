@@ -45,7 +45,7 @@ const providerImpls: Record<ProviderId, OAuthProvider> = {
 
 function safeRedirect(raw: string | undefined | null): string {
   // Only allow same-origin relative paths to defeat open-redirect attacks.
-  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/projects';
+  if (!raw?.startsWith('/') || raw.startsWith('//')) return '/projects';
   return raw;
 }
 

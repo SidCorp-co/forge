@@ -9,6 +9,7 @@ import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { declareGate } from '../middleware/declared-gate.js';
 import { forgetPatThrottle } from '../middleware/require-pat.js';
+import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import {
   countActivePatsForUser,
@@ -48,9 +49,6 @@ const createBodySchema = z
   })
   .strict();
 const idParamSchema = z.object({ id: z.uuid() }).strict();
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
 const notFound = () =>
   new HTTPException(404, { message: 'not found', cause: { code: 'NOT_FOUND' } });
 

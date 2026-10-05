@@ -19,7 +19,7 @@ export interface NotificationRow {
   /** How many records this delivery carries, and how many are still true. */
   members: number;
   openMembers: number;
-  severity: NotificationSeverity | null;
+  severity: NotificationSeverity;
   issueId: string | null;
   secondaryIssueId: string | null;
   agentSessionId: string | null;
@@ -36,7 +36,7 @@ export interface NotificationMember {
   state: string;
   title: string;
   body: string | null;
-  severity: NotificationSeverity | null;
+  severity: NotificationSeverity;
   projectId: string | null;
   issueId: string | null;
   secondaryIssueId: string | null;

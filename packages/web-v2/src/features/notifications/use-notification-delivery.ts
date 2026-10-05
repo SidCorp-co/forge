@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { type NotificationSeverity, channelsFor, defaultSeverityForType } from "@forge/contracts/notifications";
+import { type NotificationSeverity, channelsFor } from "@forge/contracts/notifications";
 import type { ToastTone } from "@/design/primitives/toast";
 import { fireBrowserNotification } from "@/lib/notifications/browser";
 import { installGesturePrimer, playNotificationSound } from "@/lib/notifications/sound";
@@ -28,14 +28,13 @@ export function severityToTone(severity: NotificationSeverity): ToastTone {
  *  invalidation), so it is not part of this decision. Exported for tests. */
 export function planNotificationDelivery(input: {
   type: string;
-  severity?: NotificationSeverity | null;
+  severity: NotificationSeverity;
 }): { toast: boolean; browser: boolean; tone: ToastTone } {
   const channels = channelsFor(input.type);
-  const severity = input.severity ?? defaultSeverityForType(input.type);
   return {
     toast: channels.includes("toast"),
     browser: channels.includes("browser"),
-    tone: severityToTone(severity),
+    tone: severityToTone(input.severity),
   };
 }
 
@@ -50,7 +49,7 @@ export interface DeliveryNotification {
   type: string;
   title: string;
   body?: string | null;
-  severity?: NotificationSeverity | null;
+  severity: NotificationSeverity;
   issueId: string | null;
   projectId: string | null;
 }

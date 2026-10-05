@@ -55,8 +55,8 @@ export const notifications = pgTable(
     title: text('title').notNull(),
     body: text('body'),
     // ISS-510 — per-event severity (from the `@forge/contracts` notification
-    // contract) drives toast tone + bell hue. Nullable: legacy rows predate it.
-    severity: text('severity'),
+    // contract) drives toast tone + bell hue.
+    severity: text('severity').notNull(),
     resolutionKey: text('resolution_key'),
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
     issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'set null' }),

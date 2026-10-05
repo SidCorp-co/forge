@@ -34,7 +34,7 @@ interface DeliverInput {
   secondaryIssueId?: string | null;
   agentSessionId?: string | null;
   scheduleRunId?: string | null;
-  severity?: string | null;
+  severity: string;
   /** The condition's identity. Two emissions sharing it are one condition. */
   resolutionKey?: string | null;
   /** A redelivery of the same emission: a record already carrying it is not written or delivered again. */
@@ -157,7 +157,7 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
         type: input.type,
         title: input.groupKey ? (input.groupTitle ?? input.title) : input.title,
         body: input.body ?? null,
-        severity: input.severity ?? null,
+        severity: input.severity,
         resolutionKey: input.resolutionKey ?? null,
         issueId: input.issueId ?? null,
         secondaryIssueId: input.secondaryIssueId ?? null,
@@ -281,7 +281,7 @@ export async function recordAndDeliver(
       state,
       title: input.title,
       body: input.body ?? null,
-      severity: input.severity ?? null,
+      severity: input.severity,
       resolutionKey: input.resolutionKey ?? null,
       dedupeKey: input.dedupeKey ?? null,
       issueId: input.issueId ?? null,

@@ -1,10 +1,10 @@
 import type { NotificationRefusalCode } from '@forge/contracts/notifications';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { listDeliveries } from './deliveries-read.js';
 import { deliveryMembers, openNotificationCount } from './read.js';
@@ -25,9 +25,6 @@ const listQuerySchema = z.object({
 const openCountQuerySchema = z.object({ projectId: z.uuid().optional() });
 const markAllReadBodySchema = z.object({ projectId: z.uuid().optional() }).strict();
 const patchBodySchema = z.object({ read: z.boolean() }).strict();
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 const refuse = refuser<NotificationRefusalCode>('NOTIFICATION_REFUSED');
 

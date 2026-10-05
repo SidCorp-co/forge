@@ -187,11 +187,6 @@ export function channelsFor(type: string): NotificationChannel[] {
 	return NOTIFICATION_CONTRACT[type as NotificationType]?.channels ?? ["bell"];
 }
 
-/** Contract default severity; `info` for an unknown/legacy type. */
-export function defaultSeverityForType(type: string): NotificationSeverity {
-	return NOTIFICATION_CONTRACT[type as NotificationType]?.severity ?? "info";
-}
-
 export const NOTIFICATION_REFUSAL_CODES = [
 	"NOTIFICATION_REFUSED",
 	"CONDITION_STILL_TRUE",

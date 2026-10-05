@@ -5,17 +5,13 @@
 // routers ask the same ones rather than each keeping a copy (ISS-1011).
 
 import { eq } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../db/client.js';
 import { conversations } from '../db/schema-conversations.js';
-import { forbidden } from '../middleware/route-errors.js';
+import { forbidden, notFound } from '../middleware/route-errors.js';
 import type { Executor } from './db-executor.js';
 import { listParticipants } from './participants.js';
 import { assertConversationReadable, assertConversationWritable } from './scope.js';
 import { type ConversationRow, getConversation } from './store.js';
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 /**
  * A one-to-one room is read by the people IN it, whatever roles its scope would grant.

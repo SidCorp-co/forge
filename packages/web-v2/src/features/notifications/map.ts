@@ -8,9 +8,8 @@ export function toMemberItem(m: NotificationMember): NotificationGroupMember {
   return { id: m.id, text: m.title, time: formatRelativeTime(m.createdAt), open: m.open };
 }
 
-/** Red for trouble, amber for review gates, green for done, cobalt otherwise. */
+/** The bell hue a row's severity reads as. */
 function hueFor(row: NotificationRow): NotificationItem["hue"] {
-  // ISS-510 — derive from the explicit contract severity when present.
   switch (row.severity) {
     case "error":
       return "red";
@@ -20,15 +19,7 @@ function hueFor(row: NotificationRow): NotificationItem["hue"] {
       return "green";
     case "info":
       return "cobalt";
-    default:
-      break;
   }
-  // Fallback for legacy rows (pre-ISS-510) with no severity: sniff title/type.
-  const t = `${row.title} ${row.type}`.toLowerCase();
-  if (row.type === "pipeline_wedge" || t.includes("reopen") || t.includes("fail")) return "red";
-  if (t.includes("tested") || t.includes("waiting") || t.includes("review")) return "amber";
-  if (t.includes("closed") || t.includes("released") || t.includes("complete")) return "green";
-  return "cobalt";
 }
 
 /**

@@ -131,7 +131,6 @@ export type {
 export {
   declareIntegration,
   type GitCredentialMint,
-  INTEGRATION_PROVIDERS,
   type IntegrationDeclaration,
   type StorefrontDraftReading,
 } from './types.js';

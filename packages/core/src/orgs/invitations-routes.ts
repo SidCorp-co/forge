@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { INVITATION_REF, type InvitationKey } from '../lib/invitation.js';
+import { badRequest, gone, invitationKeyOf, notFound } from '../lib/invitation.js';
 import { type AuthVars, readAuthUser, requireAuth } from '../middleware/auth.js';
 import { consumeOrgInvitationToken } from './invitations.js';
 import { orgInvitationByToken } from './read.js';
@@ -10,30 +10,6 @@ import { declineOrgInvitation } from './service.js';
 // Mirror of projects/invitations-routes.ts for the org tier. Mounted at
 // /api/org-invitations; the shared /invite/accept web page picks this
 // endpoint when the email link carries `kind=org`.
-
-const badRequest = (code: string, message: string) =>
-  new HTTPException(400, { message, cause: { code } });
-
-const gone = (code: string, message: string) =>
-  new HTTPException(410, { message, cause: { code } });
-
-const notFound = (code: string, message: string) =>
-  new HTTPException(404, { message, cause: { code } });
-
-/** The emailed token from `/:token/...`, or the inbox's digest ref from `/ref/:ref/...`, refused by name when malformed. */
-function invitationKeyOf(params: Record<string, string>): InvitationKey {
-  if (params.ref !== undefined) {
-    if (!INVITATION_REF.test(params.ref)) {
-      throw badRequest(
-        'INVALID_INVITATION_REF',
-        'an invitation ref is the 64-character hex digest GET /api/invitations/pending lists',
-      );
-    }
-    return { ref: params.ref };
-  }
-  if (!params.token) throw badRequest('INVALID_TOKEN', 'invalid invitation token');
-  return { token: params.token };
-}
 
 export const orgInvitationRoutes = new Hono<{ Variables: AuthVars }>();
 
