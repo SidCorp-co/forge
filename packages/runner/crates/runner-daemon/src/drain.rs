@@ -245,16 +245,6 @@ impl Drain {
         drain
     }
 
-    /// Put this drain inside a handover's closing window, for a test of a
-    /// reader that has to refuse there. Its readers are the control socket's
-    /// and the master sweep's, which exist on unix only.
-    #[cfg(all(test, unix))]
-    pub(crate) fn close_for_test(&self, cause: &str) -> Attempt {
-        let attempt = self.begin(cause).expect("no attempt is under way");
-        self.close_window(&attempt);
-        attempt
-    }
-
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         self.inner.lock().unwrap_or_else(|p| p.into_inner())
     }
@@ -425,7 +415,10 @@ impl Drain {
         if inner.attempt.is_none() {
             return;
         }
-        Self::defer(&mut inner, cause, vec![why.to_string()], next);
+        Self::defer(&mut inner, cause, Vec::new(), next);
+        if let Some(DrainState::Deferred { failed, .. }) = &mut inner.state {
+            *failed = Some(why.to_string());
+        }
         let state = inner.state.clone();
         drop(inner);
         self.socket.set_accepting(true);
@@ -444,6 +437,7 @@ impl Drain {
             outstanding,
             next_attempt: next.by.clone(),
             next_attempt_at_ms: now + due_in.as_millis() as i64,
+            failed: None,
         });
     }
 

@@ -52,6 +52,10 @@ pub enum DrainState {
         outstanding: Vec<String>,
         next_attempt: String,
         next_attempt_at_ms: i64,
+        /// Why the exec did not happen, where that and not the bound is what
+        /// deferred it. Absent from a record an older build wrote.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        failed: Option<String>,
     },
 }
 

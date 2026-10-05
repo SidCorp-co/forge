@@ -116,11 +116,78 @@ impl Ledger {
         Ok(keys)
     }
 
+    /// Record that this box placed `pane_name` for `project_id` under `build`
+    /// with `plugins` installed, which is the pane's whole claim to being
+    /// current (ISS-1379). Written at placement, before the pane's own
+    /// `SessionStart` hook writes the rest of its row, so it creates the row
+    /// where there is none yet; a placement clears any outdated verdict.
+    pub fn note_master_placed(
+        &self,
+        project_id: &str,
+        pane_name: &str,
+        boot_id: &str,
+        build: &str,
+        plugins: Option<&str>,
+    ) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO masters (project_id, pane_name, boot_id, cold_started_at, last_seen_at,
+                                      placed_build, placed_plugins, placed_at)
+                 VALUES (?1, ?2, ?3, ?6, ?6, ?4, ?5, ?6)
+                 ON CONFLICT(project_id) DO UPDATE SET
+                   pane_name      = excluded.pane_name,
+                   boot_id        = excluded.boot_id,
+                   last_seen_at   = excluded.last_seen_at,
+                   placed_build   = excluded.placed_build,
+                   placed_plugins = excluded.placed_plugins,
+                   placed_at      = excluded.placed_at,
+                   outdated       = NULL",
+                params![project_id, pane_name, boot_id, build, plugins, now()],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// Name `session_id` on the project's `masters` row as the session its
+    /// pane answers to — the one this box serves it as, which its runs are
+    /// recorded under — with what a carry onto it left `unattributed`. Answers
+    /// whether the row moved; a project with no row gets none, since nothing
+    /// here knows when its pane was started.
+    pub fn note_master_session(
+        &self,
+        project_id: &str,
+        session_id: &str,
+        unattributed: Option<&str>,
+    ) -> Result<bool> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE masters SET session_id = ?2, unattributed = ?3
+                  WHERE project_id = ?1 AND (session_id IS NOT ?2 OR unattributed IS NOT ?3)",
+                params![project_id, session_id, unattributed],
+            )
+            .map_err(sql_err)?;
+        Ok(changed == 1)
+    }
+
+    /// Record the daemon's verdict on whether a project's resident pane is
+    /// outdated: why it is, or `None` for current.
+    pub fn note_master_outdated(&self, project_id: &str, why: Option<&str>) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE masters SET outdated = ?2 WHERE project_id = ?1",
+                params![project_id, why],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
     /// What this box knows about one project's master pane.
     pub fn master_for_project(&self, project_id: &str) -> Result<Option<MasterRow>> {
         self.conn
             .query_row(
-                "SELECT project_id, pane_name, conversation_id, session_id, boot_id, cold_started_at, last_seen_at
+                "SELECT project_id, pane_name, conversation_id, session_id, boot_id, cold_started_at, last_seen_at,
+                        placed_build, placed_plugins, placed_at, outdated, unattributed
                  FROM masters WHERE project_id = ?1",
                 params![project_id],
                 map_master,
@@ -134,7 +201,8 @@ impl Ledger {
     pub fn master_for_pane(&self, pane_name: &str) -> Result<Option<MasterRow>> {
         self.conn
             .query_row(
-                "SELECT project_id, pane_name, conversation_id, session_id, boot_id, cold_started_at, last_seen_at
+                "SELECT project_id, pane_name, conversation_id, session_id, boot_id, cold_started_at, last_seen_at,
+                        placed_build, placed_plugins, placed_at, outdated, unattributed
                  FROM masters WHERE pane_name = ?1",
                 params![pane_name],
                 map_master,

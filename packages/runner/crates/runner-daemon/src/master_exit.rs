@@ -150,6 +150,12 @@ pub fn holding(ledger: &Ledger, row: Option<&MasterRow>) -> Result<Holding> {
             row.pane_name
         )));
     };
+    if let Some(why) = row.unattributed.as_deref() {
+        return Ok(Holding::Unknown(format!(
+            "{why}, so which runs {} holds cannot be established on this box until each ends or is read",
+            row.pane_name
+        )));
+    }
     let mut held = Vec::new();
     for run in ledger.runs_for_master(session)? {
         if close_loop::state(ledger, &run.run_id)?.is_closed() {

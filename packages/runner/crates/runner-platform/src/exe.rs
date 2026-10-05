@@ -113,3 +113,8 @@ fn strip_deleted(raw: &Path) -> Option<PathBuf> {
     }
     Some(raw.with_file_name(bare))
 }
+
+/// The variable naming the control listener a replaced image hands on
+/// (ISS-1379): read by the daemon that takes it, and cleared from a build's
+/// `--version` preflight, which must not take it.
+pub const HANDOVER_LISTENER_ENV: &str = "FORGE_RUNNER_CONTROL_FD";

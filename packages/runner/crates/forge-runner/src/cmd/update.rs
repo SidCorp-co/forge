@@ -48,7 +48,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    match update::apply(&manifest).await? {
+    match update::apply(&manifest, None).await? {
         Some(o) => {
             println!("✔ updated {} → {}", o.from, o.to);
             if args.restart {
