@@ -35,6 +35,32 @@ async function liveMasterOn(
 }
 
 /**
+ * Whether `sessionId` is a master session core issued to this box (of `projectId` where given),
+ * and, with `live`, one that has not ended.
+ */
+export async function masterSessionOnDevice(args: {
+  deviceId: string;
+  sessionId: string;
+  projectId?: string;
+  live: boolean;
+}): Promise<boolean> {
+  const [row] = await db
+    .select({ id: agentSessions.id })
+    .from(agentSessions)
+    .where(
+      and(
+        eq(agentSessions.id, args.sessionId),
+        eq(agentSessions.deviceId, args.deviceId),
+        eq(agentSessions.kind, MASTER_SESSION_KIND),
+        args.projectId ? eq(agentSessions.projectId, args.projectId) : undefined,
+        args.live ? notInArray(agentSessions.status, [...terminalAgentSessionStatuses]) : undefined,
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
  * The live master session for one (device, project), creating it if there is
  * none.
  *

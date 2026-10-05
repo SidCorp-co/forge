@@ -32,6 +32,8 @@ export async function issueDeviceCredential(args: {
   holderIsAgent?: boolean;
   /** The epoch of whoever authorised the pairing: see `mintPat`. */
   grantEpoch?: number;
+  /** The transaction the pairing that asked for it runs in, so the credential commits with it. */
+  tx?: Tx;
 }): Promise<string> {
   const name = deviceTokenNameFor(args.deviceId);
   const common = {
@@ -48,8 +50,9 @@ export async function issueDeviceCredential(args: {
     await supersedeNamedToken(tx, name, { deviceId: args.deviceId, userId: args.holderUserId });
   };
 
+  const outer = args.tx ?? db;
   if (!args.holderIsAgent) {
-    return db.transaction(async (tx) => {
+    return outer.transaction(async (tx) => {
       await supersede(tx);
       const { plaintext } = await mintPat(
         { ...common, permissions: PAT_GRANT_ALL, projectIds: [], onBehalfOf: args.holderUserId },
@@ -58,16 +61,23 @@ export async function issueDeviceCredential(args: {
       return plaintext;
     });
   }
-  return withAgentFenceLock(args.holderUserId, async (tx) => {
-    await supersede(tx);
-    const fence = await agentCredentialFence(args.holderUserId, tx);
-    const permissions = await agentCredentialGrant(args.holderUserId, tx);
-    const { plaintext } = await mintPat({ ...common, permissions, ...fence }, tx);
-    return plaintext;
-  });
+  return withAgentFenceLock(
+    args.holderUserId,
+    async (tx) => {
+      await supersede(tx);
+      const fence = await agentCredentialFence(args.holderUserId, tx);
+      const permissions = await agentCredentialGrant(args.holderUserId, tx);
+      const { plaintext } = await mintPat({ ...common, permissions, ...fence }, tx);
+      return plaintext;
+    },
+    outer,
+  );
 }
 
-/** Revoke every live credential issued to a box, so unpairing takes its reach with it. */
-export async function revokeDeviceCredentials(deviceId: string): Promise<number> {
-  return revokeLiveTokens({ deviceId });
+/** Revoke every live credential issued to these boxes, so unpairing takes their reach with them. */
+export async function revokeDeviceCredentials(
+  tx: Tx,
+  deviceIds: readonly string[],
+): Promise<number> {
+  return revokeLiveTokens({ deviceIds }, tx);
 }

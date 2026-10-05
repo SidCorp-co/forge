@@ -40,7 +40,6 @@ pub(crate) async fn ledger_snapshot(
     tx: watch::Sender<Option<String>>,
     cancel: watch::Receiver<bool>,
 ) {
-    let boot_id = runner_core::inflight::boot_identity().unwrap_or_default();
     let mut ticks = Ticks::new(SESSION_LEDGER_INTERVAL, cancel);
     while ticks.next().await.is_some() {
         let snapshot = runner_core::ledger::Ledger::default_path()
@@ -48,7 +47,7 @@ pub(crate) async fn ledger_snapshot(
             .and_then(|led| crate::session_ledger::snapshot(&led));
         match snapshot {
             Ok(runs) => {
-                let _ = tx.send(Some(crate::session_ledger::frame(&boot_id, &runs)));
+                let _ = tx.send(Some(crate::session_ledger::frame(&runs)));
             }
             Err(e) => tracing::warn!("[ledger] snapshot unavailable: {e}"),
         }
@@ -580,6 +579,11 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
                 tracing::debug!("[ws] catch-up read coalesced — a sweep is already pending");
             }
         }
+        // Core stored the rest of the snapshot; these runs it would not, and says why.
+        "runner:sessions.refused" => tracing::warn!(
+            "[ledger] core refused runs of this box's snapshot, and keeps their last stored rows: {}",
+            frame.data
+        ),
         other => tracing::debug!("[ws] ignored event {other}"),
     }
 }

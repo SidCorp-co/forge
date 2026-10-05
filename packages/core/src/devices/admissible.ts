@@ -23,7 +23,7 @@ import {
 } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { AUTONOMOUS_ENTRY_STATUS, isEntryGateClosed } from '../pipeline/index.js';
-import type { PoolRelation } from './pool.js';
+import { type PoolRelation, relationsFor } from './pool.js';
 import { devicesPorts } from './ports.js';
 
 const DEFAULT_ADMISSIBLE_LIMIT = 20;
@@ -107,22 +107,6 @@ async function readAdmissions(args: {
   return { admissions, refused };
 }
 
-const RELATIONS = sql`
-  COALESCE((
-    SELECT json_agg(json_build_object(
-      'kind', d.kind,
-      'dependsOnKey', coalesce(bp.issue_prefix, 'ISS') || '-' || b.iss_seq,
-      'blockerStatus', b.status,
-      'blockerMergedAt', b.merged_at,
-      'edgeValidUntil', d.valid_until
-    ))
-    FROM issue_dependencies d
-    JOIN issues b ON b.id = d.from_issue_id
-    JOIN projects bp ON bp.id = b.project_id
-    WHERE d.to_issue_id = i.id
-  ), '[]'::json) AS relations
-`;
-
 /**
  * The admissible issues for one device, across every project it serves.
  *
@@ -146,7 +130,7 @@ export async function readAdmissibleIssues(args: {
              (SELECT w.branch FROM issue_work_state w WHERE w.issue_id = i.id) AS branch,
              EXTRACT(EPOCH FROM (now() - i.created_at)) / 60 AS age_minutes,
              ip.issue_prefix,
-             ${RELATIONS}
+             ${relationsFor(sql.raw('i.id'))}
       FROM issues i
       JOIN projects ip ON ip.id = i.project_id
       WHERE i.project_id = ${a.projectId}

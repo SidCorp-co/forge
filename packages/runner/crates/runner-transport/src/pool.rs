@@ -272,6 +272,23 @@ pub async fn release(client: &CoreClient, job_id: Option<&str>, session_id: &str
     Ok(())
 }
 
+/// A claim core refused under a `POOL_*` code, read as the reason the code names
+/// (`POOL_ALREADY_HELD` → `already_held`); `None` for any other refusal.
+fn refused_claim(text: &str) -> Option<ClaimResponse> {
+    let body: serde_json::Value = serde_json::from_str(text).ok()?;
+    let code = body.pointer("/error/code")?.as_str()?;
+    let reason = code.strip_prefix("POOL_")?.to_ascii_lowercase();
+    Some(ClaimResponse {
+        ok: false,
+        reason: Some(reason),
+        detail: body
+            .get("detail")
+            .and_then(|d| d.as_str())
+            .map(str::to_string),
+        prepared: None,
+    })
+}
+
 async fn post(
     client: &CoreClient,
     path: &str,
@@ -285,6 +302,18 @@ async fn post(
         .send()
         .await
         .map_err(|e| Error::Other(format!("pool {path}: {}", status::unanswered(&e, deadline))))?;
+    let code = resp.status().as_u16();
+    if (400..500).contains(&code) && code != 401 {
+        let text = resp.text().await.unwrap_or_default();
+        return match refused_claim(&text) {
+            Some(refused) => Ok(refused),
+            None => Err(Error::Other(status::refused(
+                &format!("pool {path}"),
+                code,
+                &text,
+            ))),
+        };
+    }
     let resp = status::checked(resp, &format!("pool {path}")).await?;
     resp.json().await.map_err(|e| {
         Error::Other(format!(
@@ -292,4 +321,28 @@ async fn post(
             status::unanswered(&e, deadline)
         ))
     })
+}
+
+#[cfg(test)]
+mod refused_claim_tests {
+    use super::*;
+
+    #[test]
+    fn a_pool_refusal_reads_back_as_its_reason() {
+        let body = r#"{"status":409,"detail":"job j was taken","error":{"code":"POOL_ALREADY_HELD"}}"#;
+        let refused = refused_claim(body).expect("a POOL_ code is a claim refusal");
+        assert!(!refused.ok);
+        assert_eq!(
+            Refusal::of(refused.reason.as_deref().unwrap(), refused.detail.as_deref()),
+            Refusal::AlreadyHeld
+        );
+        assert_eq!(refused.detail.as_deref(), Some("job j was taken"));
+    }
+
+    #[test]
+    fn a_refusal_outside_the_pool_codes_is_not_a_claim_answer() {
+        let body = r#"{"status":404,"detail":"not yours","error":{"code":"MASTER_SESSION_NOT_HELD"}}"#;
+        assert!(refused_claim(body).is_none());
+        assert!(refused_claim("not json").is_none());
+    }
 }

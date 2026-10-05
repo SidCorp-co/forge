@@ -11,7 +11,11 @@ import { eq, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, devices, terminalAgentSessionStatuses } from '../db/schema.js';
-import { ensureMasterSession, setMaxJobPanes } from '../devices/index.js';
+import {
+  assertDeviceBoundToProject,
+  ensureMasterSession,
+  setMaxJobPanes,
+} from '../devices/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { closedPassOf, openPassOf, readClosedPass, readOpenPass } from './read.js';
 import {
@@ -41,6 +45,7 @@ export async function declareMasterSession(args: {
     .where(eq(devices.id, args.deviceId))
     .limit(1);
   if (!device) throw new Error(`declareMasterSession: device ${args.deviceId} has no row`);
+  await assertDeviceBoundToProject(args.deviceId, args.projectId);
   const refusal = slotsUndeclaredRefusal({
     maxJobPanes: args.maxJobPanes,
     agentVersion: device.agentVersion,

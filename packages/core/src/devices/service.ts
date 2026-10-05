@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { DEVICE_MACHINE, RUNNER_PROVISION_MACHINE } from '@forge/contracts/runner-machine';
-import { and, eq, gt, isNull, sql } from 'drizzle-orm';
+import { and, eq, gt, isNull, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   deviceLoginCodes,
@@ -10,6 +10,7 @@ import {
   runners,
 } from '../db/schema.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
+import { deviceRoom, roomManager, userRoom } from '../lib/rooms.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
 import {
@@ -36,19 +37,49 @@ export async function updateDevice(id: string, patch: { name?: string; disabledA
   return updated ?? null;
 }
 
-/** A device is revoked: its status, its runners and its credentials go together. */
-export async function revokeDevice(id: string, actor: KernelActor): Promise<void> {
-  await db.transaction(async (tx) => {
-    await transition(tx, DEVICE_MACHINE, {
+/**
+ * The one revoke path: the boxes `where` names move to `revoked`, and their runners and every live
+ * credential issued to them go in the same transaction, so no revoked box keeps a token that
+ * answers. Each box and its owner are told once it commits. `credentialsOf` names boxes whose
+ * credentials go even when they already stood revoked. Answers the ids that moved.
+ */
+export async function revokeDevices(args: {
+  where: SQL;
+  actor: KernelActor;
+  source: string;
+  reason?: string;
+  credentialsOf?: readonly string[];
+}): Promise<string[]> {
+  const moved = await db.transaction(async (tx) => {
+    const { rows } = await transition(tx, DEVICE_MACHINE, {
       to: 'revoked',
-      where: eq(devices.id, id),
-      actor,
-      source: 'device-revoke',
-      returning: ['id'],
+      where: args.where,
+      reason: args.reason ?? null,
+      actor: args.actor,
+      source: args.source,
+      returning: ['id', 'ownerId'],
     });
-    await deleteDeviceRunners(tx, [id]);
+    const ids = rows.map((r) => r.id);
+    await deleteDeviceRunners(tx, ids);
+    await revokeDeviceCredentials(tx, [...new Set([...ids, ...(args.credentialsOf ?? [])])]);
+    return rows;
   });
-  await revokeDeviceCredentials(id);
+  for (const { id, ownerId } of moved) {
+    const event = { event: 'device.revoked', data: { deviceId: id } };
+    roomManager.publish(userRoom(ownerId), event);
+    roomManager.publish(deviceRoom(id), event);
+  }
+  return moved.map((r) => r.id);
+}
+
+/** A device is revoked by its owner: its status, its runners and its credentials go together. */
+export async function revokeDevice(id: string, actor: KernelActor): Promise<void> {
+  await revokeDevices({
+    where: eq(devices.id, id),
+    actor,
+    source: 'device-revoke',
+    credentialsOf: [id],
+  });
 }
 
 const CROCKFORD_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';

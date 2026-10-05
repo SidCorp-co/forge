@@ -5,7 +5,7 @@
  * "what exists and what is true about it"; the master answers "what to run".
  */
 
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { runnerMayTakeJob } from '../runners/index.js';
@@ -35,21 +35,27 @@ export type PoolEntry = {
   heldBy: string | null;
 };
 
-const RELATIONS = sql`
+/**
+ * The relations column every surface a master reads carries, for the issue `issueId` names: the
+ * one definition of the shape `PoolRelation` types.
+ */
+export function relationsFor(issueId: SQL): SQL {
+  return sql`
   COALESCE((
     SELECT json_agg(json_build_object(
       'kind', d.kind,
-      'dependsOnKey', coalesce(pp.issue_prefix, 'ISS') || '-' || p.iss_seq,
-      'blockerStatus', p.status,
-      'blockerMergedAt', p.merged_at,
+      'dependsOnKey', coalesce(bp.issue_prefix, 'ISS') || '-' || b.iss_seq,
+      'blockerStatus', b.status,
+      'blockerMergedAt', b.merged_at,
       'edgeValidUntil', d.valid_until
     ))
     FROM issue_dependencies d
-    JOIN issues p ON p.id = d.from_issue_id
-    JOIN projects pp ON pp.id = p.project_id
-    WHERE d.to_issue_id = j.issue_id
+    JOIN issues b ON b.id = d.from_issue_id
+    JOIN projects bp ON bp.id = b.project_id
+    WHERE d.to_issue_id = ${issueId}
   ), '[]'::json) AS relations
 `;
+}
 
 /**
  * Claimable work for one device, newest-blocking-facts included.
@@ -68,7 +74,7 @@ export async function readPool(args: {
            EXTRACT(EPOCH FROM (now() - j.queued_at)) / 60 AS age_minutes,
            i.iss_seq, i.title, i.description, i.priority, i.category, i.status,
            ipj.issue_prefix,
-           ${RELATIONS}
+           ${relationsFor(sql.raw('j.issue_id'))}
     FROM jobs j
     JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
     JOIN runners r ON r.project_id = j.project_id AND r.device_id = ${args.deviceId}
@@ -77,7 +83,7 @@ export async function readPool(args: {
     WHERE j.status = 'queued'
       AND ${ADMITTED_RUNNER}
       AND ${runnerMayTakeJob()}
-      AND pr.status IN ('running', 'paused')
+      AND pr.status = 'running'
       AND j.held_by IS NULL
       AND (j.retry_after_at IS NULL OR j.retry_after_at <= now())
       AND NOT EXISTS (

@@ -20,8 +20,9 @@ export function fenceFor(projectIds: string[]): AgentCredentialFence {
 export async function withAgentFenceLock<T>(
   agentUserId: string,
   run: (tx: Tx) => Promise<T>,
+  outer: Tx = db,
 ): Promise<T> {
-  return db.transaction(async (tx) => {
+  return outer.transaction(async (tx) => {
     await lockXact(tx, 'agentFence', agentUserId);
     return run(tx);
   });

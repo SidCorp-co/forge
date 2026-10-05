@@ -43,6 +43,8 @@ const fromEpochSeconds = (s: number | null | undefined): Date | null =>
 export async function applyRunLedgerSnapshot(args: {
   deviceId: string;
   entries: RunLedgerEntry[];
+  /** Runs the box still reports but core refused this frame: their rows stand as they were. */
+  keep?: readonly string[];
 }): Promise<void> {
   const claimed = [...new Set(args.entries.map((e) => e.projectId))];
   const bound = new Set(
@@ -103,7 +105,7 @@ export async function applyRunLedgerSnapshot(args: {
 
   const observedAt = new Date();
   await db.transaction(async (tx) => {
-    const keep = entries.map((e) => e.runId);
+    const keep = [...entries.map((e) => e.runId), ...(args.keep ?? [])];
     await tx
       .delete(deviceRunLedger)
       .where(

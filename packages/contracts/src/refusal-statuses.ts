@@ -1,6 +1,7 @@
 // Every module's non-422 refusal codes in one table, read by both doors of core.
 import { AGENT_SESSION_REFUSAL_STATUSES } from "./agent-sessions.js";
 import { AUTH_REFUSAL_STATUSES } from "./auth.js";
+import { DEVICE_REFUSAL_STATUSES } from "./devices.js";
 import { ECOSYSTEM_REFUSAL_STATUSES } from "./ecosystem.js";
 import { ISSUE_TRANSITION_REFUSAL_STATUSES } from "./issue-machine.js";
 import { ISSUE_TAKE_REFUSAL_STATUSES } from "./issues.js";
@@ -22,6 +23,7 @@ const DECLARED: ReadonlyArray<Readonly<Record<string, Exclude<RefusalStatus, 422
 	REQUEST_REFUSAL_STATUSES,
 	AGENT_SESSION_REFUSAL_STATUSES,
 	AUTH_REFUSAL_STATUSES,
+	DEVICE_REFUSAL_STATUSES,
 	ECOSYSTEM_REFUSAL_STATUSES,
 	ISSUE_TRANSITION_REFUSAL_STATUSES,
 	ISSUE_TAKE_REFUSAL_STATUSES,

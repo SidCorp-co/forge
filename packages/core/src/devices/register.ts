@@ -1,6 +1,6 @@
 import { DEVICE_MACHINE } from '@forge/contracts/runner-machine';
 import { and, eq, ne } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { type Device, type DevicePlatform, devices } from '../db/schema.js';
 import { transition } from '../lifecycle/index.js';
 import { hashMachineId } from './credential.js';
@@ -22,11 +22,11 @@ export interface RegisterDeviceInput {
  * identity, so the row's id — and therefore every `runners` binding, `jobs`
  * and `agent_sessions` reference to it — survives a re-pair.
  */
-export async function registerDevice(input: RegisterDeviceInput): Promise<Device> {
+export async function registerDevice(input: RegisterDeviceInput, tx: Tx = db): Promise<Device> {
   const machineIdHash = input.machineId ? hashMachineId(input.machineId) : null;
 
   if (machineIdHash) {
-    const [existing] = await db
+    const [existing] = await tx
       .select({ id: devices.id })
       .from(devices)
       .where(
@@ -39,7 +39,7 @@ export async function registerDevice(input: RegisterDeviceInput): Promise<Device
       .limit(1);
 
     if (existing) {
-      const rotated = await db.transaction(async (tx) => {
+      const rotated = await tx.transaction(async (tx) => {
         await transition(tx, DEVICE_MACHINE, {
           to: 'offline',
           from: 'online',
@@ -66,7 +66,7 @@ export async function registerDevice(input: RegisterDeviceInput): Promise<Device
     }
   }
 
-  const [device] = await db
+  const [device] = await tx
     .insert(devices)
     .values({
       ownerId: input.ownerId,

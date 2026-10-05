@@ -73,7 +73,9 @@ pub fn snapshot(ledger: &Ledger) -> Result<Vec<RunEntry>> {
             incarnation: run.incarnation.wire().to_string(),
             work: run.work.wire().to_string(),
             blocker_kind: run.blocker_kind.map(|b| b.wire().to_string()),
-            waiting_on: run.waiting_on,
+            waiting_on: run
+                .waiting_on
+                .map(|w| within_utf16(w, WAITING_ON_MAX_UTF16)),
             session_terminal_at_epoch_s: run.session_terminal_at,
             worktree_gone_at_epoch_s: run.worktree_gone_at,
             issues,
@@ -90,11 +92,58 @@ fn non_empty(s: String) -> Option<String> {
     }
 }
 
-/// The frame text, ready for the socket.
-pub fn frame(boot_id: &str, runs: &[RunEntry]) -> String {
+/// The longest `waitingOn` core stores, in UTF-16 units as core measures a string
+/// (`devices/run-ledger-ws.ts:runSchema`). Longer text is cut here, where it is
+/// written, so one long sentence cannot get its run refused.
+pub const WAITING_ON_MAX_UTF16: usize = 1024;
+
+/// `text` cut to at most `max` UTF-16 units, on a character boundary.
+fn within_utf16(text: String, max: usize) -> String {
+    if text.encode_utf16().count() <= max {
+        return text;
+    }
+    let mut used = 0;
+    text.chars()
+        .take_while(|c| {
+            used += c.len_utf16();
+            used <= max
+        })
+        .collect()
+}
+
+/// The frame text, ready for the socket. Each run carries its own boot id.
+pub fn frame(runs: &[RunEntry]) -> String {
     serde_json::json!({
         "type": FRAME_TYPE,
-        "data": { "bootId": boot_id, "runs": runs },
+        "data": { "runs": runs },
     })
     .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn waiting_on_within_the_cap_is_kept_whole() {
+        let text = "a".repeat(WAITING_ON_MAX_UTF16);
+        assert_eq!(within_utf16(text.clone(), WAITING_ON_MAX_UTF16), text);
+    }
+
+    #[test]
+    fn waiting_on_past_the_cap_is_cut_on_a_character_boundary() {
+        // Each of these is two UTF-16 units, so an odd cap cannot split one.
+        let text = "😀".repeat(600);
+        let cut = within_utf16(text, 1023);
+        assert_eq!(cut.encode_utf16().count(), 1022);
+        assert!(cut.chars().all(|c| c == '😀'));
+    }
+
+    #[test]
+    fn the_frame_carries_no_top_level_boot_id() {
+        let frame: serde_json::Value = serde_json::from_str(&frame(&[])).unwrap();
+        assert_eq!(frame["type"], FRAME_TYPE);
+        assert!(frame["data"].get("bootId").is_none());
+        assert_eq!(frame["data"]["runs"], serde_json::json!([]));
+    }
 }

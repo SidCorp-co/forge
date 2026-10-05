@@ -1,5 +1,4 @@
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { logger } from '../lib/logger.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { devicesPorts } from './ports.js';
@@ -16,12 +15,8 @@ import { deviceHolderUserId, issueCheckoutCredential } from './workspace-credent
 
 export const deviceProvisionRoutes = new Hono<{ Variables: DeviceVars }>();
 
-const unauth = () =>
-  new HTTPException(401, { message: 'device revoked', cause: { code: 'UNAUTHENTICATED' } });
-
 deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
   const device = c.get('device');
-  if (device.status === 'revoked') throw unauth();
 
   const rows = await queuedProvisionRows(device.id);
   const credentialed = await devicesPorts().projectsWithHostCredential(

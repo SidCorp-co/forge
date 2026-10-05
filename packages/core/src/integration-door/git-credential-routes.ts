@@ -35,8 +35,6 @@ deviceGitCredentialRoutes.post(
   }),
   async (c) => {
     const device = c.get('device');
-    if (device.status === 'revoked')
-      throw new HTTPException(401, { message: 'this device is revoked' });
     const { host, path, protocol } = c.req.valid('json');
 
     if (protocol && protocol !== 'https') {

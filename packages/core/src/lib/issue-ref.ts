@@ -15,6 +15,19 @@ export function canonicalIssueKey(issSeq: number): string {
   return `${LEGACY_ISSUE_PREFIX}-${issSeq}`;
 }
 
+const CANONICAL_KEY_SHAPE = /^ISS-([1-9]\d{0,9})$/;
+
+/** The sequence number of a key {@link canonicalIssueKey} wrote; anything else is thrown by name. */
+export function seqOfCanonicalIssueKey(key: string): number {
+  const seq = Number(CANONICAL_KEY_SHAPE.exec(key)?.[1]);
+  if (!Number.isInteger(seq) || seq > ISS_SEQ_MAX) {
+    throw new Error(
+      `\`${key}\` is not a canonical issue key: core stores run issues as \`ISS-<seq>\` (canonicalIssueKey), so this row was written by something else`,
+    );
+  }
+  return seq;
+}
+
 export type IssuePrefixShapeError = { ok: false; reason: 'shape' | 'reserved'; message: string };
 
 export function validateIssuePrefix(
