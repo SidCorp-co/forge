@@ -22,15 +22,14 @@ export function usePersistedState<T>(
 ): [T, (value: T | ((prev: T) => T)) => void] {
   const syncTabs = opts?.syncTabs ?? true;
   const [value, setValue] = useState<T>(initial);
-  // Keep the freshest value in a ref so the functional updater can read it
-  // without re-subscribing the storage listener.
-  const valueRef = useRef(value);
-  valueRef.current = value;
+  // A caller's `initial` is often a fresh literal each render; reading it through a ref keeps the
+  // effects keyed on `key` alone.
+  const initialRef = useRef(initial);
+  initialRef.current = initial;
 
   // Hydrate after mount (localStorage is unavailable during SSR).
   useEffect(() => {
-    const stored = read(key, initial);
-    setValue(stored);
+    setValue(read(key, initialRef.current));
   }, [key]);
 
   // Cross-tab sync: adopt writes made to the same key in other tabs.
@@ -40,7 +39,7 @@ export function usePersistedState<T>(
     function onStorage(e: StorageEvent) {
       if (e.key !== key) return;
       if (e.newValue == null) {
-        setValue(initial);
+        setValue(initialRef.current);
         return;
       }
       try {
@@ -97,10 +96,12 @@ export function usePerTabState<T>(
   initial: T,
 ): [T, (value: T | ((prev: T) => T)) => void] {
   const [value, setValue] = useState<T>(initial);
+  const initialRef = useRef(initial);
+  initialRef.current = initial;
 
   // Hydrate after mount (storage is unavailable during SSR).
   useEffect(() => {
-    setValue(readPerTab(key, initial));
+    setValue(readPerTab(key, initialRef.current));
   }, [key]);
 
   const set = useCallback(

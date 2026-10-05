@@ -40,6 +40,7 @@ export function PasswordMeter({ password }: { password: string }) {
       <div className="flex gap-1">
         {Array.from({ length: 5 }).map((_, i) => (
           <span
+            // biome-ignore lint/suspicious/noArrayIndexKey: five fixed meter segments that never reorder
             key={i}
             className="h-1 flex-1 rounded-pill transition-colors duration-200"
             style={{ background: i < filled ? RAMP[score] : 'var(--border-strong)' }}

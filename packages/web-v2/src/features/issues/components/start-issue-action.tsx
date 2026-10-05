@@ -10,7 +10,7 @@ import type { IssueStatus } from "../types";
 
 type Role = ProjectMember["role"] | null | undefined;
 
-type StartReading =
+export type StartReading =
   | { kind: "none" }
   | { kind: "start" }
   | { kind: "started"; startedAt: string }

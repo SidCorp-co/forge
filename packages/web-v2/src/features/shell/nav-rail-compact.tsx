@@ -274,6 +274,7 @@ export function NavRailCompact({
   return (
     <nav className="flex h-full w-[88px] flex-none flex-col items-center border-r border-line bg-surface pb-3 pt-[14px]">
       <div data-testid="brand-row" className="mb-4 flex items-center gap-1.5">
+        {/* biome-ignore lint/performance/noImgElement: a fixed-size brand mark under the base path; next/image would lazy-load and wrap it */}
         <img
           src={assetPath('/forge-mark-32.png')}
           width={30}

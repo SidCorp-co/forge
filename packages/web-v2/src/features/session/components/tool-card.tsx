@@ -29,15 +29,19 @@ export function InlineDiff({ diff }: { diff: FileDiff }) {
             {i > 0 && <div className="py-0.5 text-center text-subtle" style={{ fontSize: "var(--text-10)" }}>···</div>}
             <pre className="font-mono leading-relaxed-1-6" style={{ fontSize: "var(--text-11)" }}>
               {prefix.map((l, j) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: a hunk's lines are positional and the hunk never changes once rendered
                 <div key={`c0-${j}`} className="px-2 text-subtle">{`  ${l}`}</div>
               ))}
               {removed.map((l, j) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: a hunk's lines are positional and the hunk never changes once rendered
                 <div key={`r-${j}`} className="px-2" style={{ color: "var(--red-600)", background: "var(--red-50)" }}>{`- ${l}`}</div>
               ))}
               {added.map((l, j) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: a hunk's lines are positional and the hunk never changes once rendered
                 <div key={`a-${j}`} className="px-2" style={{ color: "var(--green-600)", background: "var(--green-50)" }}>{`+ ${l}`}</div>
               ))}
               {suffix.map((l, j) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: a hunk's lines are positional and the hunk never changes once rendered
                 <div key={`c1-${j}`} className="px-2 text-subtle">{`  ${l}`}</div>
               ))}
             </pre>
@@ -48,7 +52,7 @@ export function InlineDiff({ diff }: { diff: FileDiff }) {
   );
 }
 
-function EditCard({ tool, diff, blockKey }: { tool: ToolCallData; diff: FileDiff; blockKey?: string }) {
+function EditCard({ diff, blockKey }: { diff: FileDiff; blockKey?: string }) {
   const [open, toggle] = useDisclosure(blockKey);
   return (
     <div className="rounded-md border border-line bg-surface">
@@ -134,6 +138,6 @@ function SimpleCard({ tool, live, blockKey }: { tool: ToolCallData; live?: boole
  */
 export function ToolCard({ tool, live, blockKey }: { tool: ToolCallData; live?: boolean; blockKey?: string }) {
   const diff = buildFileDiff(tool);
-  if (diff && diff.hunks.length > 0) return <EditCard tool={tool} diff={diff} blockKey={blockKey} />;
+  if (diff && diff.hunks.length > 0) return <EditCard diff={diff} blockKey={blockKey} />;
   return <SimpleCard tool={tool} live={live} blockKey={blockKey} />;
 }

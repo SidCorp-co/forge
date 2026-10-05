@@ -8,7 +8,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import { useToast } from "@/providers/toast-provider";
 import { useCreateIssue } from "../hooks";
-import type { IssueComplexity, IssuePriority } from "../types";
+import type { CreatedIssue, IssueComplexity, IssuePriority } from "../types";
 import { BodyEditor } from "./body-editor";
 import { MAX_FILES, StagedFileList, useStagedFiles } from "./staged-files";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
@@ -66,6 +66,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
   const [errors, setErrors] = useState<{ title?: string; form?: string }>({});
   const staged = useStagedFiles({ unit: "issue", video: true, uniqueNames: true });
   const resetStaged = staged.reset;
+  const resetCreate = create.reset;
 
   useEffect(() => {
     if (open) {
@@ -78,11 +79,10 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
       setComplexity("");
       setErrors({});
       resetStaged();
-      create.reset();
+      resetCreate();
       submitting.release();
     }
-    // `create` is stable from React Query; resetting only on `open` is intended.
-  }, [open, submitting, resetStaged]);
+  }, [open, submitting, resetStaged, resetCreate]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -99,7 +99,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
     if (!submitting.claim()) return;
 
     try {
-      let created;
+      let created: CreatedIssue;
       if (mode === "quick") {
         const trimmedContext = context.trim();
         created = await create.mutateAsync({

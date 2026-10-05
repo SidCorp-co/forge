@@ -52,6 +52,7 @@ function TodoList({ todos }: { todos: AgentTodo[] }) {
         {todos.map((t, i) => {
           const ic = TODO_ICON[t.status];
           return (
+            // biome-ignore lint/suspicious/noArrayIndexKey: the agent rewrites the whole list each turn, and two todos may share a content
             <li key={`${t.content}-${i}`} className="flex items-start gap-2">
               <Icon name={ic.name} size={13} className="mt-0.5 flex-none" style={{ color: ic.color }} />
               <span

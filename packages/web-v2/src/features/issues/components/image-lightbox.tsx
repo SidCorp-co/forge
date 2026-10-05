@@ -208,6 +208,7 @@ export function ImageLightbox({
   if (!current) return null;
 
   return createPortal(
+    // biome-ignore lint/a11y/useKeyWithClickEvents: Escape closes through the document keydown listener above
     <div
       ref={panelRef}
       role="dialog"
@@ -216,13 +217,14 @@ export function ImageLightbox({
       tabIndex={-1}
       className="fixed inset-0 z-[60] flex flex-col outline-none"
       style={{ background: "var(--scrim-media)", backdropFilter: "blur(6px)" }}
-      onClick={onClose}
+      // A click on the backdrop itself closes; a click inside the content goes no further.
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+        else e.stopPropagation();
+      }}
     >
       {/* Top bar: name, counter, zoom controls, open-original, close. */}
-      <header
-        className="flex flex-none items-center justify-between gap-2 px-3 py-2 text-white sm:px-4 sm:py-3"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <header className="flex flex-none items-center justify-between gap-2 px-3 py-2 text-white sm:px-4 sm:py-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className="fg-body-sm truncate" title={current.name}>
             {current.name}
@@ -281,10 +283,7 @@ export function ImageLightbox({
       </header>
 
       {/* Stage. */}
-      <div
-        className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden px-2 pb-2 sm:px-4"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden px-2 pb-2 sm:px-4">
         {count > 1 && (
           <button
             type="button"
@@ -295,6 +294,7 @@ export function ImageLightbox({
             &lsaquo;
           </button>
         )}
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: the pointer pan and zoom surface; the header's zoom buttons are its keyboard equivalent */}
         <div
           className="flex h-full w-full touch-none select-none items-center justify-center"
           onPointerDown={onPointerDown}
@@ -304,6 +304,7 @@ export function ImageLightbox({
           onWheel={onWheel}
           onDoubleClick={toggleZoom}
         >
+          {/* biome-ignore lint/performance/noImgElement: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
           <img
             src={current.href}
             alt={current.name}
@@ -330,10 +331,7 @@ export function ImageLightbox({
 
       {/* Thumbnail strip — only when there is more than one image. */}
       {count > 1 && (
-        <div
-          className="flex flex-none justify-start gap-2 overflow-x-auto px-3 py-2 sm:justify-center sm:px-4 sm:py-3"
-          onClick={(e) => e.stopPropagation()}
-        >
+        <div className="flex flex-none justify-start gap-2 overflow-x-auto px-3 py-2 sm:justify-center sm:px-4 sm:py-3">
           {images.map((img, i) => (
             <button
               key={img.id}
@@ -347,6 +345,7 @@ export function ImageLightbox({
                   : "border-transparent opacity-60 hover:opacity-100"
               }`}
             >
+              {/* biome-ignore lint/performance/noImgElement: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
               <img
                 src={img.href}
                 alt={img.name}
