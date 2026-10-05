@@ -3,7 +3,6 @@ export {
   firstRequirementsJourneys,
   firstRequirementsOnboardingOf,
   firstRequirementsStarterOf,
-  readFirstRequirements,
   registerFirstRequirementsCase,
 } from './first-requirements.js';
 export { afterOnboardingSubmit } from './job.js';

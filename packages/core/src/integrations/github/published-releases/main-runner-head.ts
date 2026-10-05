@@ -6,7 +6,7 @@
 import { latestCommitUnder } from './public-releases.js';
 
 const REPO = process.env.RUNNER_RELEASE_REPO ?? 'SidCorp-co/forge';
-const BRANCH = process.env.RUNNER_RELEASE_BRANCH ?? 'main';
+const BRANCH = 'main';
 const RUNNER_PATH = 'packages/runner';
 
 let cached: string | null = null;

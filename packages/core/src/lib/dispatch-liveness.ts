@@ -8,12 +8,6 @@ const BOX_HEARTBEAT_MS = 30_000;
  */
 export const BOX_STALE_MS = 3 * BOX_HEARTBEAT_MS;
 
-const DEFAULT_MS = BOX_STALE_MS;
-const MIN_MS = 10_000;
-
 export function dispatchLivenessMs(): number {
-  const raw = process.env.DISPATCH_LIVENESS_MS;
-  if (!raw) return DEFAULT_MS;
-  const n = Number(raw);
-  return Number.isFinite(n) && n >= MIN_MS ? n : DEFAULT_MS;
+  return BOX_STALE_MS;
 }

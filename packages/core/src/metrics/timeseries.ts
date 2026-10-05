@@ -28,7 +28,7 @@ function num(x: unknown): number {
   return typeof x === 'number' ? x : Number(x);
 }
 
-export function windowCutoff(days: number): SQL {
+function windowCutoff(days: number): SQL {
   return sql`now() - (${days}::int * interval '1 day')`;
 }
 

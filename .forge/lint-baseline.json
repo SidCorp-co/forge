@@ -5,28 +5,15 @@
     "packages/core": 280
   },
   "files": {
-    "packages/core/src/agent-sessions/chat-turn.test.ts": {
-      "lint/correctness/noUnsafeOptionalChaining": 5
-    },
-    "packages/core/src/agent-sessions/lifecycle-routes.test.ts": {
-      "lint/style/noNonNullAssertion": 4,
-      "lint/suspicious/noExplicitAny": 12
-    },
     "packages/core/src/auth/oauth/handler.ts": {
       "lint/complexity/useOptionalChain": 1,
       "lint/style/noNonNullAssertion": 2
-    },
-    "packages/core/src/auth/pat-format.test.ts": {
-      "lint/style/noNonNullAssertion": 1
     },
     "packages/core/src/auth/reauth.ts": {
       "lint/complexity/useOptionalChain": 1
     },
     "packages/core/src/devices/login-routes.ts": {
       "lint/style/noNonNullAssertion": 5
-    },
-    "packages/core/src/improvement-messages/routes.ts": {
-      "lint/style/noNonNullAssertion": 1
     },
     "packages/core/src/integrations/deploy/coolify/circuit-breaker.ts": {
       "lint/complexity/useOptionalChain": 1
@@ -44,45 +31,8 @@
     "packages/core/src/issues/extras-routes.ts": {
       "lint/style/noNonNullAssertion": 3
     },
-    "packages/core/src/jobs/agent-session-link.test.ts": {
-      "lint/correctness/noUnusedFunctionParameters": 1,
-      "lint/style/noNonNullAssertion": 1
-    },
-    "packages/core/src/jobs/retry.test.ts": {
-      "lint/correctness/noUnsafeOptionalChaining": 2
-    },
     "packages/core/src/metrics/queries.ts": {
       "lint/complexity/useOptionalChain": 1
-    },
-    "packages/core/src/pipeline/registry.test.ts": {
-      "lint/suspicious/noTemplateCurlyInString": 1
-    },
-    "packages/core/src/pipeline/release-coolify.test.ts": {
-      "lint/correctness/noUnsafeOptionalChaining": 2
-    },
-    "packages/core/src/pipeline/runs-control.test.ts": {
-      "lint/correctness/noUnsafeOptionalChaining": 1
-    },
-    "packages/core/src/pipeline/runs-read-routes.test.ts": {
-      "lint/style/noNonNullAssertion": 3
-    },
-    "packages/core/src/pipeline/runs-rollup.test.ts": {
-      "lint/style/noNonNullAssertion": 9
-    },
-    "packages/core/src/pipeline/subscribers.test.ts": {
-      "lint/correctness/noUnsafeOptionalChaining": 1
-    },
-    "packages/core/src/projects/routes.test.ts": {
-      "lint/style/noNonNullAssertion": 2
-    },
-    "packages/core/src/runners/adapters/claude-code.test.ts": {
-      "lint/correctness/noUnsafeOptionalChaining": 7
-    },
-    "packages/core/src/runners/heartbeat-ws.ts": {
-      "lint/complexity/useOptionalChain": 2
-    },
-    "packages/core/src/runners/limit-detect.test.ts": {
-      "lint/style/noNonNullAssertion": 22
     },
     "packages/core/src/runners/limit-detect.ts": {
       "lint/complexity/noUselessStringRaw": 1,
@@ -97,29 +47,8 @@
     "packages/core/src/skills/service.ts": {
       "lint/complexity/useOptionalChain": 1
     },
-    "packages/core/src/ws/broadcast-subscribers.test.ts": {
-      "lint/correctness/noUnsafeOptionalChaining": 1
-    },
-    "packages/core/tests/integration/coolify-e2e.test.ts": {
-      "lint/style/noNonNullAssertion": 5
-    },
-    "packages/core/tests/integration/issues-job-history-route.test.ts": {
-      "lint/style/noNonNullAssertion": 14
-    },
-    "packages/core/tests/integration/jobs-prompt-route.test.ts": {
-      "lint/style/noNonNullAssertion": 1
-    },
-    "packages/core/tests/integration/pipeline-health-e2e.test.ts": {
-      "lint/style/noNonNullAssertion": 1
-    },
-    "packages/core/tests/integration/runners-active-route.test.ts": {
-      "lint/suspicious/noExplicitAny": 3
-    },
     "packages/web-v2/src/app/(workspace)/layout.tsx": {
       "lint/correctness/useExhaustiveDependencies": 2
-    },
-    "packages/web-v2/src/design/hooks/use-animated-number.ts": {
-      "lint/style/useExponentiationOperator": 1
     },
     "packages/web-v2/src/design/patterns/command-palette.tsx": {
       "lint/a11y/noStaticElementInteractions": 1,
@@ -130,9 +59,6 @@
       "lint/a11y/noSvgWithoutTitle": 1,
       "lint/performance/noImgElement": 3,
       "lint/suspicious/noArrayIndexKey": 1
-    },
-    "packages/web-v2/src/design/patterns/highlight.tsx": {
-      "lint/correctness/useExhaustiveDependencies": 1
     },
     "packages/web-v2/src/design/patterns/markdown.tsx": {
       "lint/performance/noImgElement": 1
@@ -272,9 +198,6 @@
     "packages/web-v2/src/features/runners/components/project-runners-screen.tsx": {
       "lint/correctness/noUnusedImports": 1
     },
-    "packages/web-v2/src/features/runners/derive.test.ts": {
-      "lint/style/noNonNullAssertion": 10
-    },
     "packages/web-v2/src/features/session/components/context-rail.tsx": {
       "lint/style/noNonNullAssertion": 1,
       "lint/suspicious/noArrayIndexKey": 1
@@ -303,12 +226,6 @@
     },
     "packages/web-v2/src/features/shell/nav-rail-compact.tsx": {
       "lint/performance/noImgElement": 1
-    },
-    "packages/web-v2/src/features/skills/types.ts": {
-      "lint/style/noNonNullAssertion": 1
-    },
-    "packages/web-v2/src/features/whats-new/components/whats-new-screen.tsx": {
-      "lint/correctness/useExhaustiveDependencies": 1
     },
     "packages/web-v2/src/lib/utils/use-persisted-state.ts": {
       "lint/correctness/useExhaustiveDependencies": 3

@@ -83,7 +83,7 @@ export {
   statusAfterThrow,
   withTerminalStatus,
 } from './request-status.js';
-export { assertConversationReadable, assertConversationWritable, derivedScope } from './scope.js';
+export { assertConversationReadable, derivedScope } from './scope.js';
 export { linkedSpeakerOf } from './speaker.js';
 export {
   appendMessages,
@@ -107,7 +107,6 @@ export {
   setConversationArchived,
   setConversationPresence,
   settleConversationMode,
-  toCanonicalEntry,
 } from './store.js';
 export { recordDeliveredReply, recordDeliveredReplyToVenue, recordSilence } from './transcript.js';
 export { conversationsNeedingIndex, indexConversationOnce } from './transcript-index.js';

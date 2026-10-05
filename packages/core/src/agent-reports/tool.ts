@@ -124,13 +124,12 @@ const DESCRIPTION =
   'A bulk act moves the reports it applies to (file, dismiss and duplicate move the new ones, reopen the triaged ones) and lists the others under `untouched`; N reports of one defect fold into ONE issue in a single call. ' +
   'Returns { effect: { act, triage, reports, issue: { id, key, created } | null, untouched } }.';
 
-// The grant strings keep the `feedback` resource name issued tokens store (credentials/pat-permissions.ts).
 const GRANT = {
   byAction: {
-    submit: 'feedback:write',
-    list: 'feedback:read',
-    triage: 'feedback:write',
-    get: 'feedback:read',
+    submit: 'agent-reports:write',
+    list: 'agent-reports:read',
+    triage: 'agent-reports:write',
+    get: 'agent-reports:read',
   },
 } as const;
 

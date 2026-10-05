@@ -66,14 +66,10 @@ export const PAT_PERMISSION_RESOURCES = {
     reach: 'project',
     prefixes: { '/api/conversations': 2 },
   },
-  // `feedback:read`/`feedback:write` keep meaning agent reports (ISS-59 decided): product feedback
-  // FB-n mounts under `/api/projects/:id/feedback`, so `projects:*` grants it as it grants
-  // requirements and suggestions. Repointing these grants at FB-n would hand every issued token a
-  // reach its owner never chose, and renaming them would strip it in silence. cm:hack ISS-59
-  // until:a migration rewrites the stored `feedback:*` grants to `agent-reports:*` — the grant word
-  // `feedback` names agent reports, not FB-n, which a token-settings reader can misread. `/api/agent-reports` is `/api/feedback-reports` renamed — the same rows — so it
-  // takes that prefix's epoch rather than the next.
-  feedback: {
+  // Product feedback FB-n mounts under `/api/projects/:id/feedback`, so `projects:*` grants it as it
+  // grants requirements and suggestions. `/api/agent-reports` is `/api/feedback-reports` renamed — the
+  // same rows — so it takes that prefix's epoch rather than the next.
+  'agent-reports': {
     reach: 'project',
     prefixes: {
       '/api/agent-reports': 2,

@@ -8,6 +8,7 @@ import {
   type ProjectMemberRole,
   projectMembers,
 } from '../db/schema.js';
+import { notFound } from '../middleware/route-errors.js';
 
 /**
  * Who the caller is on a project or org: the effective role, the membership's grant and the
@@ -24,9 +25,6 @@ import {
  * Project roles: admin > member > viewer (viewer is read-only).
  * Org roles:     owner > admin > member.
  */
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 const PROJECT_ROLE_RANK: Record<ProjectMemberRole, number> = { viewer: 1, member: 2, admin: 3 };
 

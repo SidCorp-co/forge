@@ -11,7 +11,6 @@ import {
   conversationPins,
   conversations,
 } from '../db/schema-conversations.js';
-import { assistantSpeakerLinks } from '../db/schema-speaker-links.js';
 import { isActiveMember } from '../ecosystem/index.js';
 
 /** Whether the home project is an active member of the ecosystem. */
@@ -71,15 +70,6 @@ export async function speakerLabelOf(userId: string): Promise<string | null> {
     .where(eq(users.id, userId))
     .limit(1);
   return me?.displayName ?? me?.email ?? null;
-}
-
-/** A person's speaker links, newest first. */
-export async function listSpeakerLinks(userId: string) {
-  return db
-    .select()
-    .from(assistantSpeakerLinks)
-    .where(eq(assistantSpeakerLinks.userId, userId))
-    .orderBy(desc(assistantSpeakerLinks.confirmedAt));
 }
 
 /** How many of a room's latest messages, and of its windows, a read carries. */

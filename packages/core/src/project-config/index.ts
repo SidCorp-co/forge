@@ -2,7 +2,6 @@ export { encryptPlaintextBindingSecrets, setBindingInboundSecret } from './bindi
 export { readContentLanguage } from './content-language.js';
 export {
   dispatchStateOf,
-  type PolicyGap,
   policyGapOf,
   policyGapsOf,
   policyRefusal,
@@ -46,10 +45,7 @@ export {
 export {
   listTestingProfiles,
   readPolicy as readEffectivePolicy,
-  readProjectConfig,
   readProjectDocument,
-  type WriteOutcome,
-  writeProjectConfig,
 } from './service.js';
 export {
   readDeclaredSource,

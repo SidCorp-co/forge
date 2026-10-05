@@ -1,4 +1,4 @@
-import { defaultSeverityForType } from '@forge/contracts/notifications';
+import { notificationContractOf } from '@forge/contracts/notifications';
 import type { NotificationType } from '../db/schema.js';
 import { recordAndDeliver } from './deliver.js';
 
@@ -32,6 +32,6 @@ export async function emitNotification(
   return recordAndDeliver({
     ...input,
     recipients: input.recipients ?? (input.userId ? [input.userId] : []),
-    severity: input.severity ?? defaultSeverityForType(input.type),
+    severity: input.severity ?? notificationContractOf(input.type).severity,
   });
 }

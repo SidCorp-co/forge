@@ -206,24 +206,3 @@ export async function confirmSpeakerLink(
     .limit(1);
   return { ok: false, heldBy: held?.userId ?? null };
 }
-
-/** Delete a person's link for one speaker; answers how many rows went. */
-export async function unlinkSpeaker(
-  userId: string,
-  source: SpeakerLinkRow['source'],
-  namespace: string,
-  externalId: string,
-): Promise<number> {
-  const deleted = await db
-    .delete(assistantSpeakerLinks)
-    .where(
-      and(
-        eq(assistantSpeakerLinks.userId, userId),
-        eq(assistantSpeakerLinks.source, source),
-        eq(assistantSpeakerLinks.externalNamespace, namespace),
-        eq(assistantSpeakerLinks.externalId, externalId),
-      ),
-    )
-    .returning({ id: assistantSpeakerLinks.id });
-  return deleted.length;
-}

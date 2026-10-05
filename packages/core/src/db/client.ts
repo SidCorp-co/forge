@@ -56,7 +56,6 @@ const schema = {
   ...repoProjectionSchema,
 };
 
-let queryCount = 0;
 let queryClient: ReturnType<typeof postgres> | undefined;
 
 function buildDb() {
@@ -68,22 +67,7 @@ function buildDb() {
     },
   });
 
-  const queryLog =
-    process.env.DB_QUERY_LOG === '1'
-      ? {
-          logger: {
-            logQuery(query: string) {
-              queryCount += 1;
-              logger.info(
-                { n: queryCount, sql: query.replace(/\s+/g, ' ').slice(0, 220) },
-                'db.query',
-              );
-            },
-          },
-        }
-      : {};
-
-  const built = drizzle(queryClient, { schema, ...queryLog });
+  const built = drizzle(queryClient, { schema });
   refuseBareDates(queryClient);
   return built;
 }

@@ -1,7 +1,7 @@
 export type { KnowledgeObligation } from './autonomous-contract.js';
 export { missingProjectKnowledge } from './autonomous-contract.js';
 export { registerLiveReadingInvalidation } from './live-reading.js';
-export { type AssignPrefixResult, type PrefixWriter, provideProjectsPorts } from './ports.js';
+export { provideProjectsPorts } from './ports.js';
 export type { RESERVED_PROJECT_FACT_KEYS } from './project-facts.js';
 export { unreservedProjectKeyRefusal } from './project-facts.js';
 export { resolveEffectiveProjectId, resolveProjectIdFromSlug } from './project-scope.js';
