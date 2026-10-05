@@ -27,7 +27,7 @@ export function AgentsScreen({ access }: { access: AgentsAccess }) {
       </div>
       {tab === "runs" ? <RunsList access={access} /> : null}
       {tab === "questions" ? <QuestionsPane scope={access} focusQuestionId={focusQuestionId} /> : null}
-      {tab === "sessions" ? <SessionsScreen scope={{ projectId: access.projectId }} /> : null}
+      {tab === "sessions" ? <SessionsScreen projectId={access.projectId} /> : null}
     </div>
   );
 }

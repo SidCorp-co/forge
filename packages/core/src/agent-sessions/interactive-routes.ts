@@ -112,7 +112,7 @@ agentSessionInteractiveRoutes.post('/start', zValidator('json', startBodySchema)
 
   const client = await resolveInteractiveClient(
     { projectId: project.id, deviceId: null, metadata: null },
-    { origin: input.origin, scope: 'project' },
+    { scope: 'project' },
   );
   const authority = await authorizeInteractiveTurn({
     client,
@@ -140,7 +140,6 @@ agentSessionInteractiveRoutes.post('/start', zValidator('json', startBodySchema)
     client,
     authority,
     message: rawPrompt,
-    origin: input.origin ?? null,
     pageContext: input.pageContext ?? null,
     preBuilt: input.preBuilt ?? false,
     attachmentIds: input.attachmentIds,
@@ -172,7 +171,6 @@ agentSessionInteractiveRoutes.post('/send', zValidator('json', sendBodySchema), 
   // 409'd forever). No online remote client → 409; a rejected explicit pick
   // gets the 'picked' wording so the user knows their choice was unavailable.
   const client = await resolveInteractiveClient(session, {
-    origin: input.origin,
     overrideDeviceId: input.deviceId,
     scope: input.deviceId ? 'picked' : 'session',
   });
@@ -191,7 +189,6 @@ agentSessionInteractiveRoutes.post('/send', zValidator('json', sendBodySchema), 
     client,
     authority,
     message: input.message,
-    origin: input.origin ?? null,
     pageContext: input.pageContext ?? null,
     claudeSessionId: input.claudeSessionId ?? null,
     attachmentIds: input.attachmentIds,

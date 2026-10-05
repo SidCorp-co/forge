@@ -153,25 +153,6 @@ export async function rebindSessionRunner(
   return row ?? null;
 }
 
-/** A desktop client's status report, moved through the session machine; null on no edge. */
-export async function setDesktopSessionStatus(
-  sessionId: string,
-  move: { expect: AgentSessionStatus; to: AgentSessionStatus },
-  columns: Omit<AgentSessionPatch, 'status'>,
-  actor: KernelActor,
-) {
-  return movedRow(
-    await transitionSessions(db, {
-      to: move.to,
-      expect: move.expect,
-      set: columns,
-      where: eq(agentSessions.id, sessionId),
-      actor,
-      source: 'desktop-status',
-    }),
-    sessionGone,
-  );
-}
 type ChatLine = {
   seq: number;
   kind: 'stdout';

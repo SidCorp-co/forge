@@ -85,25 +85,23 @@ export function assertMayRunSession(facts: PermissionFacts): void {
 export async function resolveInteractiveClient(
   session: Pick<AgentSessionRow, 'projectId' | 'deviceId' | 'metadata'>,
   opts: {
-    origin?: string | null | undefined;
     overrideDeviceId?: string | null | undefined;
     scope: 'project' | 'session' | 'picked';
   },
 ): Promise<ChatClient> {
   const client = await resolveChatDevice(
     session,
-    opts.origin,
     opts.overrideDeviceId,
     FOLLOW_UP_CREDENTIAL_CAPABILITY,
   );
-  if (client.isLocal || client.deviceId) return client;
-  const anyBox = await resolveChatDevice(session, opts.origin, opts.overrideDeviceId);
+  if (client.deviceId) return client;
+  const anyBox = await resolveChatDevice(session, opts.overrideDeviceId);
   if (!anyBox.deviceId) throw noClaudeClient(opts.scope);
   throw refusalError(RUNNER_OUTDATED_REFUSAL);
 }
 
-/** Who a web turn acts as, read when the turn is dispatched; `null` for a local turn, which no box runs. */
-export type InteractiveAuthority = { deviceId: string; value: SessionAuthority } | null;
+/** Who a web turn acts as, read when the turn is dispatched. */
+export type InteractiveAuthority = { deviceId: string; value: SessionAuthority };
 
 /**
  * Whether `asker` may be acted as on `deviceId`, read now: a role that went away since the
@@ -114,8 +112,7 @@ export async function readBoxAuthority(args: {
   projectId: string;
   asker: SessionAsker;
 }): Promise<
-  | { ok: true; authority: NonNullable<InteractiveAuthority> }
-  | { ok: false; refusal: SessionRefusal }
+  { ok: true; authority: InteractiveAuthority } | { ok: false; refusal: SessionRefusal }
 > {
   const roleRefusal = sessionRoleRefusal(
     await effectiveProjectRole(args.asker.userId, args.projectId),
@@ -131,7 +128,6 @@ export async function authorizeInteractiveTurn(args: {
   projectId: string;
   asker: SessionAsker;
 }): Promise<InteractiveAuthority> {
-  if (args.client.isLocal) return null;
   const deviceId = args.client.deviceId;
   if (!deviceId)
     throw new Error('authorizeInteractiveTurn: a remote turn reached here with no box');
@@ -148,14 +144,6 @@ export async function dispatchInteractiveTurn(
   args: Omit<DispatchChatTurnArgs, 'credential'> & { authority: InteractiveAuthority },
 ): Promise<AgentSessionRow> {
   const { authority, ...turn } = args;
-  if (!authority) {
-    if (!turn.client.isLocal) {
-      throw new Error(
-        `dispatchInteractiveTurn: session ${turn.session.id} is dispatched to a box with no authority to act under`,
-      );
-    }
-    return dispatchChatTurn(turn);
-  }
   if (turn.client.deviceId !== authority.deviceId) {
     throw new Error(
       `dispatchInteractiveTurn: session ${turn.session.id} was authorised for box ${authority.deviceId} and dispatched to ${turn.client.deviceId}; the token is tied to the box it was minted for`,

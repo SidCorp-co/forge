@@ -9,8 +9,9 @@ type JobRow = typeof jobs.$inferSelect;
 const TERMINAL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(', '));
 
 /**
- * A master session takes a queued job off the pool: only while nobody holds it and no other job
- * of its issue is under way. Null when it could not be taken.
+ * A master session takes a queued job off the pool: only while nobody holds it, no other job of
+ * its issue is under way, and its run is `running` (a paused run dispatches nothing). Null when
+ * it could not be taken.
  */
 export async function holdQueuedJob(
   tx: Tx,
@@ -30,6 +31,9 @@ export async function holdQueuedJob(
           WHERE other.issue_id = jobs.issue_id
             AND other.id <> jobs.id
             AND other.status IN ('dispatched','running','held')
+        )`,
+        sql`NOT EXISTS (
+          SELECT 1 FROM pipeline_runs r WHERE r.id = jobs.pipeline_run_id AND r.status <> 'running'
         )`,
       ),
     )

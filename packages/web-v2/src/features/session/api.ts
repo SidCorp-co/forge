@@ -76,10 +76,6 @@ export const sessionApi = {
       body: JSON.stringify({ content, ...(expectedEditedAt !== undefined ? { expectedEditedAt } : {}) }),
     }),
 
-  /** `POST /:id/cancel` — stop the in-flight turn. */
-  cancel: (id: string) => apiClient<SessionRow>(`/agent-sessions/${id}/cancel`, { method: "POST" }),
 
-  /** `POST /:id/rerun` — clone into a fresh session. */
-  rerun: (id: string) => apiClient<{ id: string }>(`/agent-sessions/${id}/rerun`, { method: "POST" }),
 
 };

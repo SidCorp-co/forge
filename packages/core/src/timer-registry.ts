@@ -2,6 +2,7 @@
 // (`schedules/timers.ts:startTimers`). A cluster timer keeps the pg-boss queue name it always had.
 
 import { runAlertSweep } from './admin/index.js';
+import { retryOwedHandBacks } from './agent-sessions/index.js';
 import {
   drainRoomQuestions,
   drainRoomWindows,
@@ -18,7 +19,7 @@ import {
 } from './devices/index.js';
 import { refetchRunnerRelease, servesRunnerReleases } from './integrations/github/index.js';
 import { runIntegrationsHealthSweep } from './integrations/index.js';
-import { probePgBossBackstop, runStaleSweep } from './jobs/index.js';
+import { probePgBossBackstop, releaseHeldJobs, runStaleSweep } from './jobs/index.js';
 import { logger } from './lib/logger.js';
 import { runConsolidationSweep, runEmbeddingBackfill, runMemoryDecay } from './memory/index.js';
 import { pruneOutbox } from './outbox/index.js';
@@ -72,6 +73,24 @@ export function coreTimers(): Timer[] {
       run: logged('outbox-retention: pruned', pruneOutbox, (r) => {
         const { deliveries, events } = r as { deliveries: number; events: number };
         return deliveries > 0 || events > 0;
+      }),
+    },
+    {
+      kind: 'cluster',
+      name: 'hold-release',
+      cron: '* * * * *',
+      run: logged(
+        'hold-release: released',
+        releaseHeldJobs,
+        (r) => (r as { released: number }).released > 0,
+      ),
+    },
+    {
+      kind: 'cluster',
+      name: 'run-hand-back-retry',
+      cron: '* * * * *',
+      run: logged('run-hand-back-retry: owed hand-backs repeated', retryOwedHandBacks, (r) => {
+        return (r as { owed: number }).owed > 0;
       }),
     },
     {

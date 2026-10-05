@@ -43,6 +43,7 @@ function useSessionMutation<TArgs, TData>(
     mutationFn: fn,
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["agent-sessions"] });
+      qc.invalidateQueries({ queryKey: ["agent-session"] });
       if (opts.alsoInvalidateQueueStats) {
         qc.invalidateQueries({ queryKey: ["agent-sessions", "queue-stats"] });
       }

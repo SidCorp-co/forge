@@ -17,7 +17,6 @@ export interface ScheduleRow {
   nextRunAt: string | null;
   lastStatus: ScheduleLastStatus;
   lastSessionId: string | null;
-  metadata: Record<string, unknown> | null;
   params: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;

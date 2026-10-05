@@ -1,4 +1,3 @@
-import type { SessionRow } from "../types";
 
 /**
  * The sessions index as a tree: `parentSessionId` is core's own record of which
@@ -65,4 +64,3 @@ export function orderByOwner<T extends { id: string; parentSessionId?: string | 
 
 export const OWNER_INDENT_PX = 18;
 
-export type SessionTreeRow = TreeRow<SessionRow>;

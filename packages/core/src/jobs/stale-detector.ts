@@ -25,7 +25,7 @@ function staleAlarmQuery(now: Date = new Date()): SQL {
 }
 
 export async function runStaleSweep(now: Date = new Date()): Promise<{
-  failed: number;
+  alarmed: number;
   durationMs: number;
 }> {
   const t0 = Date.now();
@@ -49,7 +49,5 @@ export async function runStaleSweep(now: Date = new Date()): Promise<{
     }
   }
 
-  // `failed` retains its name for the result-shape consumers (logs/tests) but
-  // now counts ALARMED loop misses — this pass performs no terminal writes.
-  return { failed: stale.length, durationMs: Date.now() - t0 };
+  return { alarmed: stale.length, durationMs: Date.now() - t0 };
 }

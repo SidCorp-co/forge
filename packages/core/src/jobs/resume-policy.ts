@@ -5,8 +5,6 @@ import { agentSessions, jobs } from '../db/schema.js';
 import { recordResumeDrop } from '../lib/hold-metrics.js';
 import { logger } from '../lib/logger.js';
 import { traceStep } from '../lib/sentry.js';
-import { getTrippedDeviceIds } from '../runners/index.js';
-import { readAutoRetryPayload } from './retry.js';
 import { estimateIssueContextTokens, MAX_RESUME_TOKENS } from './session-resume.js';
 
 /** What this attempt did with the prior session, durable on `agent_sessions.metadata.resume`. */
@@ -25,8 +23,6 @@ export interface ResumeRecord {
 interface ResumePolicy {
   priorClaudeSessionId: string | null;
   pinDeviceId: string | null;
-  excludeDeviceIds: string[];
-  skipPrimary: boolean;
   isRetry: boolean;
   record: ResumeRecord;
 }
@@ -109,37 +105,19 @@ export async function resolveResumePolicy(args: {
   let pinDeviceId: string | null = null;
 
   const isRetry = job.retryOf != null;
-
-  const autoRetry = readAutoRetryPayload(job.payload);
-  let excludeDeviceIds: string[];
-  let skipPrimary: boolean;
-
+  // A retry may continue its parent's CLI session only on the box holding that session's file and
+  // only after a plain `retry` failure. Nothing routes the retry there: whichever box claims it
+  // decides, and finalizeResumeForDevice records `pin_stale` when it is another one.
   if (isRetry) {
-    skipPrimary = true;
-    excludeDeviceIds = autoRetry.done;
-    pinDeviceId = autoRetry.target;
     const parent = await loadParentAttempt(job);
     offeredClaudeSessionId = parent?.claudeSessionId ?? null;
     offeredDeviceId = parent?.deviceId ?? null;
     parentFailureAction = parent?.failureAction ?? null;
-    dropReason = null;
-    if (parent) {
-      if (pinDeviceId === null || pinDeviceId !== parent.deviceId) dropReason = 'rotation';
-      else if (parent.failureAction !== 'retry') dropReason = 'failure_action';
-    }
+    pinDeviceId = offeredDeviceId;
+    if (parent && parent.failureAction !== 'retry') dropReason = 'failure_action';
     if (!dropReason && offeredClaudeSessionId && job.issueId) {
       dropReason = await exceedsResumeBounds({ job, issueId: job.issueId });
       if (dropReason) pinDeviceId = null;
-    }
-  } else {
-    skipPrimary = false;
-    const trippedDeviceIds = await getTrippedDeviceIds(job.projectId);
-    excludeDeviceIds = trippedDeviceIds;
-    if (trippedDeviceIds.length > 0) {
-      logger.warn(
-        { jobId: job.id, projectId: job.projectId, trippedDeviceIds },
-        'resume-policy: device circuit breaker tripped — rotating away from failing device(s)',
-      );
     }
   }
 
@@ -148,8 +126,6 @@ export async function resolveResumePolicy(args: {
   return {
     priorClaudeSessionId,
     pinDeviceId,
-    excludeDeviceIds,
-    skipPrimary,
     isRetry,
     record: {
       resumed: priorClaudeSessionId !== null,
