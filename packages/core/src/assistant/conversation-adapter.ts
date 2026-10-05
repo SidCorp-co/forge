@@ -13,9 +13,9 @@ import {
 } from '../conversations/index.js';
 import { db } from '../db/client.js';
 import type { ConversationShape } from '../db/schema-conversations.js';
+import { publishEphemeral } from '../lib/ephemeral.js';
 import { emitEvent } from '../outbox/index.js';
 import type { SpeakerResolution } from './identity/speaker-link.js';
-import { publishEphemeral } from '../lib/ephemeral.js';
 
 /** What the Forge UI hands the ports: the room it already read, and who is typing in it. */
 export interface WebConversationFrame {

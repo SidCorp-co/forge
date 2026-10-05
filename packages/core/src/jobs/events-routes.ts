@@ -3,7 +3,6 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { maybeDeriveIncremental, setSessionRuntimeState } from '../agent-sessions/index.js';
-import { db } from '../db/client.js';
 import type { JobStatus } from '../db/schema.js';
 import {
   DEVICE_POSTED_JOB_EVENT_KINDS,
@@ -11,6 +10,7 @@ import {
   sessionRuntimeStates,
 } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { publishEphemeral } from '../lib/ephemeral.js';
 import { logger } from '../lib/logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
@@ -23,7 +23,6 @@ import { scrubJobOutput } from './job-secret-scrub.js';
 import { listJobEvents } from './read.js';
 import { refuseJob } from './refusals.js';
 import { appendJobEvents, beatLinkedSession, stampJobAckFromEvents } from './service.js';
-import { publishEphemeral } from '../lib/ephemeral.js';
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });

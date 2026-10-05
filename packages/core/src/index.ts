@@ -60,10 +60,10 @@ import {
 } from './jobs/index.js';
 import { provideKnowledgePorts } from './knowledge/index.js';
 import { provideProjectOrg, provideVisibleProjects } from './lib/authz.js';
-import { provideEphemeralPublisher } from './lib/ephemeral.js';
 import { provideContractVersionReads } from './lib/contract-versions.js';
 import { provideDataPolicy } from './lib/data-egress.js';
 import { env } from './lib/env.js';
+import { provideEphemeralPublisher } from './lib/ephemeral.js';
 import { logger } from './lib/logger.js';
 import { CHAT_READ_MODEL_TOOLS } from './mcp/index.js';
 import {

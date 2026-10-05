@@ -1,7 +1,7 @@
 import type { AgentSessionTurnRole } from '../db/schema.js';
+import { publishEphemeral } from '../lib/ephemeral.js';
 import { logger } from '../lib/logger.js';
 import { pushSession } from './push.js';
-import { publishEphemeral } from '../lib/ephemeral.js';
 
 interface SessionLite {
   id: string;
