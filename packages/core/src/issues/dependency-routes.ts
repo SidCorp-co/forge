@@ -6,22 +6,15 @@
  * the envelope. What stays here is transport: authz against the project role.
  */
 
-import type { DependencyRefusalCode } from '@forge/contracts/issues';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { issueDependencyKinds } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { safeRecordActivity } from './activity.js';
-import {
-  dependencyEdgeById,
-  issueProjectsOf,
-  loadIssueDependencyEdges,
-} from './dependency-read.js';
+import { dependencyEdgeById, loadIssueDependencyEdges } from './dependency-read.js';
 import {
   deleteIssueDependency,
   type SetIssueDependencyInput,
@@ -33,8 +26,6 @@ import {
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
 import { issueScopeOf } from './read-service.js';
-
-const refuse = refuser<DependencyRefusalCode>('DEPENDENCY_REFUSED');
 
 const edgeParamSchema = z.object({ id: z.uuid(), edgeId: z.uuid() });
 
@@ -134,29 +125,7 @@ issueDependencyRoutes.delete(
       throw badRequest({ message: 'edge does not involve this issue' }, 'EDGE_MISMATCH');
     }
 
-    await deleteIssueDependency(edge);
-
-    const removedPayload = {
-      edgeId,
-      fromIssueId: edge.fromIssueId,
-      toIssueId: edge.toIssueId,
-      kind: edge.kind,
-    };
-    const actor = restActor(c);
-    await Promise.all([
-      safeRecordActivity({
-        issueId: edge.fromIssueId,
-        actor,
-        action: 'issue.dependency.removed',
-        payload: removedPayload,
-      }),
-      safeRecordActivity({
-        issueId: edge.toIssueId,
-        actor,
-        action: 'issue.dependency.removed',
-        payload: removedPayload,
-      }),
-    ]);
+    await deleteIssueDependency(edge, restActor(c));
 
     return c.json({ deleted: true });
   },

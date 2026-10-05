@@ -9,8 +9,9 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueDependencies, type issueDependencyKinds, issues } from '../db/schema.js';
 import { refuser } from '../lib/refusal.js';
+import { projectRoom, roomManager } from '../lib/rooms.js';
 import { notFound } from '../middleware/route-errors.js';
-import { type Actor, safeRecordActivity } from './activity.js';
+import { type Actor, recordActivityTx, safeRecordActivity } from './activity.js';
 import { archivedAmong } from './archive.js';
 import { detectCycle } from './cycle-detect.js';
 import { type DependencyKindEffect, describeDependencyKind } from './dependency-effects.js';
@@ -199,6 +200,7 @@ export async function emitIssueDependencyEffects(
     await recordOnBothSides(input, written.id, writer.actor, 'issue.dependency.added', {
       ...(input.reason ? { reason: input.reason } : {}),
     });
+    announceEdge(input);
     await refreshDependentHealth(input, opts);
     return;
   }
@@ -208,6 +210,7 @@ export async function emitIssueDependencyEffects(
       ...(input.validUntil ? { validUntil: input.validUntil } : {}),
       ...(input.reason ? { reason: input.reason } : {}),
     });
+    announceEdge(input);
     await refreshDependentHealth(input, opts);
   }
 }
@@ -233,7 +236,7 @@ async function recordOnBothSides(
 }
 
 async function refreshDependentHealth(
-  input: SetIssueDependencyInput,
+  input: { projectId: string; toIssueId: string; kind: IssueDependencyKind },
   opts?: { deferHealthPublish?: boolean },
 ): Promise<void> {
   if (opts?.deferHealthPublish) return;
@@ -242,12 +245,36 @@ async function refreshDependentHealth(
 }
 
 /** Removes one dependency edge. */
-export async function deleteIssueDependency(edge: {
-  id: string;
-  projectId: string;
-  fromIssueId: string;
-  toIssueId: string;
-  kind: IssueDependencyKind;
-}): Promise<void> {
-  await db.delete(issueDependencies).where(eq(issueDependencies.id, edge.id));
+export async function deleteIssueDependency(
+  edge: {
+    id: string;
+    projectId: string;
+    fromIssueId: string;
+    toIssueId: string;
+    kind: IssueDependencyKind;
+  },
+  actor: Actor,
+): Promise<void> {
+  const payload = {
+    edgeId: edge.id,
+    fromIssueId: edge.fromIssueId,
+    toIssueId: edge.toIssueId,
+    kind: edge.kind,
+  };
+  await db.transaction(async (tx) => {
+    await tx.delete(issueDependencies).where(eq(issueDependencies.id, edge.id));
+    for (const issueId of [edge.fromIssueId, edge.toIssueId]) {
+      await recordActivityTx(tx, { issueId, actor, action: 'issue.dependency.removed', payload });
+    }
+  });
+  announceEdge(edge);
+  await refreshDependentHealth(edge);
+}
+
+/** Tells the project room an edge moved, so every open view of either side refetches it. */
+function announceEdge(edge: { projectId: string; fromIssueId: string; toIssueId: string }): void {
+  roomManager.publish(projectRoom(edge.projectId), {
+    event: 'dependencyChanged',
+    data: { fromIssueId: edge.fromIssueId, toIssueId: edge.toIssueId },
+  });
 }

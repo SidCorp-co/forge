@@ -9,7 +9,6 @@ import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth
 import { forbidden, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
-import { safeRecordActivity } from './activity.js';
 import { deleteIssueAttachment, persistIssueAttachment } from './attachment-service.js';
 import {
   issueRouteIdParamSchema,
@@ -159,14 +158,7 @@ attachmentRoutes.delete(
     if (!isUploader && !isAdmin) throw forbidden('only the uploader or a project admin may delete');
 
     await getStorage().delete(row.path);
-    await deleteIssueAttachment(id);
-
-    void safeRecordActivity({
-      issueId: row.issueId,
-      actor: restActor(c),
-      action: 'issue.attachment.deleted',
-      payload: { attachmentId: row.id, name: row.name },
-    });
+    await deleteIssueAttachment(row, restActor(c));
 
     return c.body(null, 204);
   },

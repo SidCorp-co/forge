@@ -5,7 +5,7 @@ import {
   type IssueTransitionRefusalCode,
   PARK_STATUSES,
 } from '@forge/contracts/issue-machine';
-import { edgeBetween, type staleTransitionRefusal } from '@forge/contracts/state-machine';
+import { type staleTransitionRefusal } from '@forge/contracts/state-machine';
 import { eq, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import { type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
@@ -16,13 +16,14 @@ import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agen
 import { archivedAmong, archiveRefusalForTransition } from './archive.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { recordDropUnblock } from './drop-unblock.js';
-import { mintParkQuestion } from './park-question.js';
+import { mintParkQuestion, needsNotApplicable } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import {
   closeOpenRunForIssue,
   settleOpenQuestions,
 } from './ports.js';
 import { moveOf, recordMove } from './record-events/kernel-records.js';
+import { refuseOffRecoveryEdge } from './recovery-move.js';
 import { edgeFault, reasonFault } from './transition-faults.js';
 import { type GuardCode, issueGuards, readIssueMoveFacts } from './transition-guards.js';
 import {
@@ -31,8 +32,6 @@ import {
   requiresAuthoredReason,
 } from './transition-reason.js';
 import { readWorkState, setLeftStatus, setWorkStep } from './work-state.js';
-import { needsNotApplicable } from './park-question.js';
-import { refuseOffRecoveryEdge } from './recovery-move.js';
 
 const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(ISSUE_DISPATCH_TERMINAL_STATUSES);
 

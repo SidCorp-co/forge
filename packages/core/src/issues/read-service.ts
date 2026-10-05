@@ -1,13 +1,6 @@
 import { and, asc, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import {
-  issueAttachments,
-  issues,
-  type JobType,
-  jobs,
-  projectMembers,
-  usageRecords,
-} from '../db/schema.js';
+import { issueAttachments, issues, jobs, projectMembers, usageRecords } from '../db/schema.js';
 import { emptyUsageTotals, usageSessionMatch, usageTotalsSelection } from './ports.js';
 import { type WorkStateView, workStateViewSql } from './work-state.js';
 
@@ -63,27 +56,6 @@ export async function isProjectMember(projectId: string, userId: string): Promis
     .limit(1);
   return row !== undefined;
 }
-
-/** Every job an issue ran at one step, newest first, with the tokens and cost its session used. */
-export async function jobHistoryForStep(issueId: string, step: JobType) {
-  return db
-    .select({
-      jobId: jobs.id,
-      status: jobs.status,
-      model: jobs.modelUsed,
-      startedAt: jobs.dispatchedAt,
-      finishedAt: jobs.finishedAt,
-      estTokens: jobs.promptInputTokenEst,
-      tokens: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
-      cost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
-    })
-    .from(jobs)
-    .leftJoin(usageRecords, usageSessionMatch(sql`= ${jobs.agentSessionId}::text`))
-    .where(and(eq(jobs.issueId, issueId), eq(jobs.type, step)))
-    .groupBy(jobs.id)
-    .orderBy(sql`coalesce(${jobs.dispatchedAt}, ${jobs.queuedAt}) desc`);
-}
-
 type IssueScope = Pick<IssueRow, 'id' | 'projectId' | 'status' | 'mergedAt'>;
 
 /** The few columns a route needs to gate on an issue before acting on it. */

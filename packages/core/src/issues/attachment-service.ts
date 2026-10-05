@@ -15,7 +15,7 @@ import { lockAttachmentName, type NameCheckExecutor } from '../lib/attachment-na
 import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
 import { env } from '../lib/env.js';
 import { isRefusal, type RefusalError, refuser } from '../lib/refusal.js';
-import { safeRecordActivity } from './activity.js';
+import { type Actor, recordActivityTx } from './activity.js';
 import { getStorage } from './ports.js';
 
 export { safeName };
@@ -140,20 +140,14 @@ export async function persistIssueAttachment(
         size: issueAttachments.size,
         createdAt: issueAttachments.createdAt,
       });
+    if (!row) throw new Error('issue_attachments: insert returned no row');
+    await recordActivityTx(tx, {
+      issueId,
+      actor: { type: 'user', id: uploaderId, agency: input.uploaderAgency },
+      action: 'issue.attachment.uploaded',
+      payload: { attachmentId: row.id, name: row.name, mime: row.mime, size: row.size },
+    });
     return row;
-  });
-  if (!inserted) throw new Error('issue_attachments: insert returned no row');
-
-  void safeRecordActivity({
-    issueId,
-    actor: { type: 'user', id: uploaderId, agency: input.uploaderAgency },
-    action: 'issue.attachment.uploaded',
-    payload: {
-      attachmentId: inserted.id,
-      name: inserted.name,
-      mime: inserted.mime,
-      size: inserted.size,
-    },
   });
 
   return { ...inserted, url: `/api/attachments/${inserted.id}/download` };
@@ -323,6 +317,18 @@ export async function persistDecodedIssueAttachments(
 }
 
 /** Removes one attachment's row; its stored file is the caller's to delete first. */
-export async function deleteIssueAttachment(attachmentId: string): Promise<void> {
-  await db.delete(issueAttachments).where(eq(issueAttachments.id, attachmentId));
+/** Deletes the row and writes its activity line in one transaction. */
+export async function deleteIssueAttachment(
+  row: { id: string; issueId: string; name: string },
+  actor: Actor,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.delete(issueAttachments).where(eq(issueAttachments.id, row.id));
+    await recordActivityTx(tx, {
+      issueId: row.issueId,
+      actor,
+      action: 'issue.attachment.deleted',
+      payload: { attachmentId: row.id, name: row.name },
+    });
+  });
 }

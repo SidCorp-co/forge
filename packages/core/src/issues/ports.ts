@@ -6,7 +6,6 @@
 // pattern).
 
 import type { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
-import type { ActorAgency } from '@forge/contracts/permissions';
 import type { SQL, SQLWrapper } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
@@ -61,7 +60,7 @@ export interface RunnerAvailability {
 
 export type DispatchGateCode = 'WORKFLOW_DESIGN_NOT_APPROVED';
 
-export interface DispatchGateError extends Error {
+interface DispatchGateError extends Error {
   readonly code: DispatchGateCode;
   readonly blocked: readonly unknown[];
 }

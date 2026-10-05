@@ -280,8 +280,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			}
 			return;
 		}
-		case "issue.unblockCascade":
-		case "dependency.unblocked": {
+		case "issue.unblockCascade": {
 			return;
 		}
 		case "integration.changed": {

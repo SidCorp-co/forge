@@ -1,7 +1,5 @@
 import { diffFieldValue } from '@forge/contracts/field-changes';
 import { Hono } from 'hono';
-import { z } from 'zod';
-import { jobTypes } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
@@ -24,7 +22,7 @@ import { readLandingShape } from './landing-evidence.js';
 import { isSelfReferentialBranch } from './metadata.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
 import { issueDetailOf } from './project-issue-routes.js';
-import { findIssueById, type IssueRow, jobHistoryForStep } from './read-service.js';
+import { findIssueById, type IssueRow } from './read-service.js';
 import { issuePatchSchema } from './request-schemas.js';
 import { deleteIssue } from './service.js';
 import { updateIssueFields } from './update-service.js';

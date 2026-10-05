@@ -285,25 +285,29 @@ async function writeMarkTrail(
         parentId: audit.parentId,
       },
     },
-    {
-      type: 'issue.updated',
-      payload: {
-        issueId,
-        projectId,
-        actor,
-        fields: ['mergedAt', 'mergedCommitSha', 'mergedLanding'],
-        before: {
-          mergedAt: prior.mergedAt,
-          mergedCommitSha: prior.mergedCommitSha,
-          mergedLanding: prior.mergedLanding,
-        },
-        after: {
-          mergedAt: result.mergedAt,
-          mergedCommitSha: result.commitSha,
-          mergedLanding: result.landing,
-        },
-      },
-    },
+    ...(marking && !result.wrote
+      ? []
+      : [
+          {
+            type: 'issue.updated' as const,
+            payload: {
+              issueId,
+              projectId,
+              actor,
+              fields: ['mergedAt', 'mergedCommitSha', 'mergedLanding'],
+              before: {
+                mergedAt: prior.mergedAt,
+                mergedCommitSha: prior.mergedCommitSha,
+                mergedLanding: prior.mergedLanding,
+              },
+              after: {
+                mergedAt: result.mergedAt,
+                mergedCommitSha: result.commitSha,
+                mergedLanding: result.landing,
+              },
+            },
+          },
+        ]),
   ]);
   return { mark, markDetail };
 }

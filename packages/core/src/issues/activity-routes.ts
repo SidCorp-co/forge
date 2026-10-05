@@ -1,23 +1,11 @@
-import {
-  KERNEL_RECORD_KINDS,
-  type RecordEventRefusalCode,
-  recordAction,
-} from '@forge/contracts/record-events';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
-import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { idParamSchema, notFound } from '../middleware/route-errors.js';
+import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { deleteActivity, setActivityPayload } from './activity-log.js';
-import {
-  type ActivityRow,
-  listIssueActivity,
-  listProjectActivity,
-  loadActivity,
-} from './activity-read.js';
+import { type ActivityRow, listIssueActivity, listProjectActivity } from './activity-read.js';
 import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './actor-identity.js';
 import { resolveActors } from './actor-resolution.js';
 import {
@@ -91,21 +79,6 @@ issueActivityRoutes.get(
     return c.json(envelope(withActors, limit));
   },
 );
-
-const verdictSchema = z.enum(['approve', 'reject']);
-const evaluateBodySchema = z
-  .object({
-    verdict: verdictSchema,
-    note: z.string().trim().max(2000).optional(),
-  })
-  .strict();
-
-const activityIdParamSchema = z.object({ id: z.uuid(), activityId: z.uuid() });
-
-const refuseRecord = refuser<RecordEventRefusalCode>('EVENT_REFUSED');
-
-const KERNEL_RECORD_ACTIONS: ReadonlySet<string> = new Set(KERNEL_RECORD_KINDS.map(recordAction));
-
 // cm:guard ISS-96 — kernel evidence is kept as written for as long as its issue is: the activity
 
 export const projectActivityRoutes = new Hono<{ Variables: AuthVars }>();

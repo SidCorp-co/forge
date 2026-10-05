@@ -1,15 +1,12 @@
-import { noPromptMessage, POOL_JOB_NO_PROMPT } from '@forge/contracts/jobs';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { issuePriorities, issueStatuses } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { RefusalError } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { triggerPipelineStepManual } from '../pipeline/index.js';
-import { statusChangeRows } from './activity-read.js';
 import { patchIssueBatch } from './batch-patch.js';
 import {
   issueRouteIdParamSchema,
@@ -33,16 +30,6 @@ const batchPatchBodySchema = z
       .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' }),
   })
   .strict();
-
-const pipelineTimingQuerySchema = z
-  .object({
-    projectId: z.uuid(),
-    from: z.coerce.date().optional(),
-    to: z.coerce.date().optional(),
-    limit: z.coerce.number().int().min(1).max(5000).default(1000),
-  })
-  .strict();
-
 export const issueExtrasRoutes = new Hono<{ Variables: AuthVars }>();
 issueExtrasRoutes.use('*', requireAuth(), assertEmailVerified());
 
