@@ -2591,6 +2591,20 @@
       "when": 1817596800000,
       "tag": "0401_ecosystem_signals_ride_the_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 402,
+      "version": "7",
+      "when": 1817683200000,
+      "tag": "0402_a_notice_is_delivered_once_the_onboard_skill_goes_and_a_job_is_live_without_running",
+      "breakpoints": true
+    },
+    {
+      "idx": 403,
+      "version": "7",
+      "when": 1817769600000,
+      "tag": "0403_an_active_child_under_a_terminal_run_is_refused_not_rewritten",
+      "breakpoints": true
     }
   ]
 }

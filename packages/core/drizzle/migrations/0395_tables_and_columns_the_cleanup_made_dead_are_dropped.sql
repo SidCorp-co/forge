@@ -11,31 +11,34 @@
 --
 -- contract waits, change requests and land measurements (ISS-214)
 -- LOCKS. Drizzle applies every pending file in ONE transaction, so a lock taken here is held until
--- the batch commits. Every table that this file and the later files of its batch (0396)
--- touch is locked up front, in one fixed order (alphabetical), before any statement holds a lock a
--- live session could be waiting behind; a table that stays busy past lock_timeout fails the deploy
--- loudly instead of deadlocking mid-file. A table this database never had (pgboss_v12 on a fresh
--- one) is skipped.
+-- the batch commits. Every table touched by this file and the later files of its batch (0396-0403)
+-- is locked up front, in one fixed order (alphabetical), before any statement holds a lock a live
+-- session could be waiting behind; a table that stays busy past lock_timeout fails the deploy loudly
+-- instead of deadlocking mid-file. A table this database never had is skipped.
 SET LOCAL lock_timeout = '10s';--> statement-breakpoint
 DO $$
 DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY[
     'agent_sessions', 'app_config', 'channel_documents', 'contract_measurements',
-    'contract_requests', 'contract_versions', 'ecosystem_revisions', 'ecosystems',
-    'integration_bindings', 'integration_connections', 'integration_guides',
-    'issue_contract_waits', 'issues', 'jobs', 'knowledge_edges', 'memories', 'memory_chunks',
-    'organizations', 'pat_fence_changes', 'personal_access_tokens', 'pgboss_v12.job',
-    'pgboss_v12.job_common', 'pgboss_v12.queue', 'pgboss_v12.schedule', 'pgboss_v12.subscription',
-    'pipeline_outbox', 'pipeline_runs', 'preference_changes', 'project_git_credentials',
-    'project_workflow_designs', 'project_workflows', 'projects', 'release_attempts',
-    'requirements', 'schedules', 'tasks', 'user_preferences', 'users', 'workspace_ssh_keys'
+    'contract_requests', 'contract_versions', 'device_skills', 'ecosystem_revisions', 'ecosystems',
+    'feedback', 'feedback_decisions', 'integration_bindings', 'integration_connections',
+    'integration_guides', 'issue_contract_waits', 'issues', 'jobs', 'knowledge_edges', 'memories',
+    'memory_chunks', 'notifications', 'organizations', 'pat_fence_changes',
+    'personal_access_tokens', 'pgboss_v12.job', 'pgboss_v12.job_common', 'pgboss_v12.queue',
+    'pgboss_v12.schedule', 'pgboss_v12.subscription', 'phase_journal', 'pipeline_outbox',
+    'pipeline_runs', 'preference_changes', 'project_config_revisions', 'project_git_credentials',
+    'project_workflow_designs', 'project_workflows', 'projects', 'reconcile_runs',
+    'release_attempts', 'requirements', 'schedules', 'skill_activity_events',
+    'skill_registrations', 'skills', 'tasks', 'usage_records', 'user_preferences', 'users',
+    'workspace_ssh_keys'
   ] LOOP
     IF to_regclass(t) IS NOT NULL THEN
       EXECUTE format('LOCK TABLE %s IN ACCESS EXCLUSIVE MODE', to_regclass(t));
     END IF;
   END LOOP;
 END $$;--> statement-breakpoint
+
 DROP TABLE IF EXISTS "issue_contract_waits" CASCADE;--> statement-breakpoint
 DROP TABLE IF EXISTS "contract_requests" CASCADE;--> statement-breakpoint
 DROP FUNCTION IF EXISTS issue_contract_wait_guard();--> statement-breakpoint
