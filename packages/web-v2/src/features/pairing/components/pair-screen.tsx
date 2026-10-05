@@ -21,6 +21,7 @@ import {
 import { useAgentAccounts } from "@/features/agent-accounts/hooks";
 import { agentAddress, agentLabel } from "@/features/agent-accounts/label";
 import { useActiveOrg } from "@/features/orgs/active-org";
+import { isOrgAdmin } from "@/features/projects/write-access";
 import { formatApiError } from "@/lib/api/error";
 import { useAuth } from "@/providers/auth-provider";
 import { useApproveDevice } from "../hooks";
@@ -51,8 +52,8 @@ export function PairScreen() {
 
   const { user } = useAuth();
   const { activeOrg } = useActiveOrg();
-  const isOrgAdmin = activeOrg?.role === "owner" || activeOrg?.role === "admin";
-  const agentsQ = useAgentAccounts(isOrgAdmin ? (activeOrg?.id ?? null) : null);
+  const orgAdmin = isOrgAdmin(activeOrg?.role);
+  const agentsQ = useAgentAccounts(orgAdmin ? (activeOrg?.id ?? null) : null);
   const agents = agentsQ.data ?? [];
 
   const approved = approve.data?.approved === true;
@@ -62,7 +63,7 @@ export function PairScreen() {
   const identity = chosen?.userId ?? null;
 
   const orgResolved = activeOrg != null;
-  const waiting = !orgResolved || (isOrgAdmin && agentsQ.isLoading);
+  const waiting = !orgResolved || (orgAdmin && agentsQ.isLoading);
 
   return (
     <div className="mx-auto flex w-full max-w-[560px] flex-col gap-4 px-6 py-8">
@@ -145,7 +146,7 @@ export function PairScreen() {
                 </span>
               </div>
 
-              {isOrgAdmin && (
+              {orgAdmin && (
                 <Field
                   label="Pair this device as"
                   hint="Paired as an agent, the box reaches that agent's projects. Paired as you, it reaches none — it can run the daemon and nothing project-scoped."
@@ -171,7 +172,7 @@ export function PairScreen() {
                   choice is on screen.
                 </Banner>
               )}
-              {isOrgAdmin && agentsQ.isError && (
+              {orgAdmin && agentsQ.isError && (
                 <Banner
                   tone="danger"
                   action={
@@ -184,7 +185,7 @@ export function PairScreen() {
                   from yet. Approving now pairs the box as you.
                 </Banner>
               )}
-              {isOrgAdmin && !agentsQ.isLoading && !agentsQ.isError && agents.length === 0 && (
+              {orgAdmin && !agentsQ.isLoading && !agentsQ.isError && agents.length === 0 && (
                 <Banner tone="info">
                   This organization has no agents yet. Make one in Settings → Agents to give a box
                   an identity of its own.

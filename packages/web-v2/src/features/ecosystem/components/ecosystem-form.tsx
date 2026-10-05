@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Button, Input, NativeSelect } from "@/design";
 import { useOrgs } from "@/features/orgs/hooks";
 import { useProjects } from "@/features/projects/hooks";
+import { isOrgAdmin } from "@/features/projects/write-access";
 import { readingOf, refusalsOf, type Refusal } from "@/lib/api/refusals";
 import { ecosystemApi } from "../api";
 import { useChannelWrite, useEcosystemDocument } from "../hooks";
@@ -178,7 +179,7 @@ function Form({ held }: { held: HeldEcosystem | null }) {
   const [doc, setDoc] = useState<EcosystemDocument>(held?.document ?? BLANK);
   const [members, setMembers] = useState<string[]>([]);
   const orgs = useOrgs().data ?? [];
-  const stewards = orgs.filter((o) => o.role === "owner" || o.role === "admin");
+  const stewards = orgs.filter((o) => isOrgAdmin(o.role));
   const projects = (useProjects().data ?? []).filter((p) => !p.archivedAt);
   const steward = doc.ecosystem.steward || stewards[0]?.id || "";
   const set: Patch = (patch) => setDoc((d) => patch(structuredClone(d)));

@@ -12,6 +12,7 @@ import { useState } from "react";
 import { Button, Card, CardContent, Field, Input, SectionTitle, Select } from "@/design";
 import { useOrgs } from "@/features/orgs/hooks";
 import type { ProjectDetail } from "@/features/projects/types";
+import { isOrgAdmin } from "@/features/projects/write-access";
 import { useArchiveProject, useUnarchiveProject, useUpdateProject } from "../hooks";
 
 export function AdvancedTab({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
@@ -103,7 +104,7 @@ function MoveToOrgCard({ project }: { project: ProjectDetail }) {
   const update = useUpdateProject(project.id);
   const [targetOrgId, setTargetOrgId] = useState("");
   const targets = (orgsQ.data ?? []).filter(
-    (o) => (o.role === "owner" || o.role === "admin") && o.id !== project.orgId,
+    (o) => isOrgAdmin(o.role) && o.id !== project.orgId,
   );
 
   if (targets.length === 0) return null;
