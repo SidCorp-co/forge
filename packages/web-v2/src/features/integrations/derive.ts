@@ -1,18 +1,10 @@
 
-import type { IntegrationCapabilities } from "@forge/contracts";
+import type { ConnectionDirectoryStatus, IntegrationCapabilities } from "@forge/contracts";
 import type { IconName } from "@/design";
 import { isDrillableProvider } from "./providers/registry";
 import type { StatusCard } from "./types";
 
-export type DirectoryStatus =
-  | "connected"
-  | "degraded"
-  | "error"
-  | "not_connected"
-  | "needs_reauth"
-  | "needs_scope"
-  | "disabled"
-  | "unverified";
+export type DirectoryStatus = ConnectionDirectoryStatus;
 
 /** The part of a declaration that survives the wire onto a status card. */
 export type CardCapabilities = Omit<IntegrationCapabilities, "agentPath">;
@@ -88,28 +80,6 @@ export function deriveDirectoryStatus(card: Pick<StatusCard, "status" | "meta">)
     default:
       return "not_connected";
   }
-}
-
-/**
- * Directory state for an OWNER-SCOPED connection row (the workspace
- * connections directory, ISS-429) — the server's card bucketing applied
- * client-side, since connection summaries carry raw health fields rather than
- * a pre-bucketed status.
- */
-export function deriveConnectionStatus(connection: {
-  active: boolean;
-  lastHealthStatus: string | null;
-  breakerOpenedAt: string | null;
-}): DirectoryStatus {
-  if (!connection.active) return "disabled";
-  if (connection.lastHealthStatus === "needs_reauth") return "needs_reauth";
-  if (connection.lastHealthStatus === "needs_scope") return "needs_scope";
-  if (connection.breakerOpenedAt !== null) return "degraded";
-  if (!connection.lastHealthStatus) return "unverified";
-  const s = connection.lastHealthStatus.toLowerCase();
-  if (s === "ok" || s === "healthy" || s === "success") return "connected";
-  if (s === "degraded" || s === "pending" || s === "unknown") return "degraded";
-  return "error";
 }
 
 /** Icon + text + tinted-pill metadata for each directory state. Never

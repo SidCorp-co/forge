@@ -422,7 +422,11 @@ export type ServingReading =
 			readonly unread: readonly string[];
 			readonly readAt: string;
 	  }
-	| { readonly kind: "undeclared"; readonly missing: string; readonly route: string }
+	| {
+			readonly kind: "undeclared";
+			readonly missing: string;
+			readonly route: string;
+	  }
 	| {
 			readonly kind: "unreadable";
 			readonly why: string;
@@ -447,3 +451,8 @@ export function releaseApprovalRequired(
 
 /** How many issues one release batch carries at most. */
 export const RELEASE_ROSTER_LIMIT = 50;
+
+/** A release runtime path's own spelling, as a prefix that owns the files under it (ISS-1368). */
+export function runtimePathPrefix(path: string): string {
+	return path.endsWith("/") ? path : `${path}/`;
+}

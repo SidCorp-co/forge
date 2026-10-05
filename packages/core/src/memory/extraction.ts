@@ -1,11 +1,12 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, issues, type JobType, jobs, memories } from '../db/schema.js';
+import { type JobType, memories } from '../db/schema.js';
 import { callFastModel, fastModelConfigured } from '../integrations/llm/index.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { indexMemory } from './indexer.js';
 import { factCategory, parseFencedJson, shortHash } from './model-output.js';
+import { memoryIssueReads } from './ports.js';
 import { foreignScriptChars } from './script-guard.js';
 
 const EXTRACTION_JOB_TYPES: ReadonlySet<JobType> = new Set(['review', 'test', 'fix']);
@@ -185,18 +186,9 @@ async function runExtractionForIssue(
 ): Promise<ExtractionResult> {
   if (!fastModelConfigured()) return { facts: 0, refused: 0, skipped: 'disabled' };
 
-  const [issue] = await db
-    .select({ title: issues.title })
-    .from(issues)
-    .where(eq(issues.id, issueId))
-    .limit(1);
-  const recentComments = await db
-    .select({ body: comments.body })
-    .from(comments)
-    .where(eq(comments.issueId, issueId))
-    .orderBy(desc(comments.createdAt))
-    .limit(MAX_COMMENTS);
-  const bodies = recentComments.map((c) => c.body);
+  const reads = memoryIssueReads();
+  const issue = await reads.head(issueId);
+  const bodies = await reads.recentCommentBodies(issueId, MAX_COMMENTS);
   if (bodies.length === 0) return { facts: 0, refused: 0, skipped: 'no-signal' };
   if (!hasMemoryWorthyContent(bodies)) return { facts: 0, refused: 0, skipped: 'gated' };
 
@@ -237,12 +229,8 @@ export function registerMemoryExtraction(): void {
     name: 'memory-extraction',
     handle: async (p) => {
       if (p.to !== 'done' || !p.issueId) return;
-      const [job] = await db
-        .select({ type: jobs.type })
-        .from(jobs)
-        .where(eq(jobs.id, p.id))
-        .limit(1);
-      if (!job || !EXTRACTION_JOB_TYPES.has(job.type)) return;
+      const type = await memoryIssueReads().jobType(p.id);
+      if (!type || !EXTRACTION_JOB_TYPES.has(type)) return;
       const { projectId, issueId, id: jobId } = p;
       queueMicrotask(() => {
         runExtractionForIssue(projectId, issueId).catch((err) => {

@@ -38,7 +38,8 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.{ts,tsx}'],
     testTimeout: 20_000,
-    // The guard fails a test that lists the repository root without declaring it (ISS-1314).
-    setupFiles: ['./src/vitest.setup.ts', '../../scripts/lib/whole-tree-guard.mjs'],
+    // The guard fails a test that lists the repository root without declaring it (ISS-1314), and
+    // runs first, so no setup file takes a listing function before it is watched.
+    setupFiles: ['../../scripts/lib/whole-tree-guard.mjs', './src/vitest.setup.ts'],
   },
 });

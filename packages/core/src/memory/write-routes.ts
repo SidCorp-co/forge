@@ -1,6 +1,4 @@
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
-import { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from '../integrations/llm/index.js';
 import { RULES } from '../lib/rate-limits.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -23,18 +21,7 @@ memoryWriteRoutes.post('/', zValidator('json', writeMemoryInputSchema), async (c
   const userId = c.get('userId');
   await requireCan(actorFor(userId), 'project.write', projectResource(body.projectId));
 
-  try {
-    const result = await runMemoryWrite(body);
-    return c.json(result, 201);
-  } catch (err) {
-    if (err instanceof EmbeddingUnavailableError) {
-      throw new HTTPException(503, {
-        message: 'embeddings service unavailable',
-        cause: { code: EMBEDDING_UNAVAILABLE },
-      });
-    }
-    throw err;
-  }
+  return c.json(await runMemoryWrite(body), 201);
 });
 
 // Recall-feedback loop (ISS-603): where agents report the outcome of

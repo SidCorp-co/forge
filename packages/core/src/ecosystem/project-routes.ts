@@ -9,16 +9,10 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { readApiPage } from './api-page.js';
 import { heldEcosystem } from './ecosystem-service.js';
-import {
-  commitmentsSetter,
-  type HeldInterface,
-  loadInterface,
-  writeInterface,
-} from './interface-service.js';
+import { interfaceView, loadInterface, writeInterface } from './interface-service.js';
 import { listInterfaceRevisions } from './interface-store.js';
 import { membershipDocument } from './membership-rules.js';
 import { membershipsWhere } from './membership-store.js';
-import type { CommitmentsSetter } from './provider-writer-rules.js';
 import { serialiseRevisions } from './routes.js';
 import { readEcosystems } from './store.js';
 
@@ -37,24 +31,10 @@ const idParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
   }
 });
 
-const serialise = (held: HeldInterface, setBy: CommitmentsSetter | null) => ({
-  declared: true as const,
-  revision: held.revision,
-  document: held.document,
-  updatedBy: held.updatedBy,
-  updatedAt: held.updatedAt.toISOString(),
-  commitmentsSetBy: setBy,
-});
-
 ecosystemProjectRoutes.get('/:id/interface', idParam, async (c) => {
   const { id } = c.req.valid('param');
   await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
-  const held = await loadInterface(id);
-  return c.json(
-    held
-      ? serialise(held, await commitmentsSetter(id))
-      : { declared: false, revision: null, document: null },
-  );
+  return c.json(await interfaceView(id, await loadInterface(id)));
 });
 
 ecosystemProjectRoutes.put(
@@ -72,8 +52,7 @@ ecosystemProjectRoutes.put(
       raw: document,
     });
     if (!outcome.ok) return refused(c, outcome.refusals, 'ECOSYSTEM_REFUSED');
-    const setBy = await commitmentsSetter(id);
-    return c.json({ ...serialise(outcome.held, setBy), created: outcome.created });
+    return c.json({ ...(await interfaceView(id, outcome.held)), created: outcome.created });
   },
 );
 

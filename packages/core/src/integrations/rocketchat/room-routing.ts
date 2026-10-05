@@ -6,8 +6,7 @@
  */
 
 import { logger } from '../../lib/logger.js';
-import { listBindingsForConnection } from '../index.js';
-import { projectNamesOf } from './read.js';
+import { forgeReads, listBindingsForConnection } from '../index.js';
 import type { RocketChatBindingConfig } from './types.js';
 
 /** One bound room, and the project whose handle answers in it. */
@@ -28,7 +27,9 @@ export async function buildRoutes(connectionId: string): Promise<Map<string, Rou
     .filter(({ b, rids }) => b.active && rids.length > 0);
   if (active.length === 0) return routes;
 
-  const projectRows = await projectNamesOf([...new Set(active.map(({ b }) => b.projectId))]);
+  const projectRows = await forgeReads().projectsByIds([
+    ...new Set(active.map(({ b }) => b.projectId)),
+  ]);
   const projectById = new Map(projectRows.map((p) => [p.id, p]));
 
   for (const { b, rids } of active) {

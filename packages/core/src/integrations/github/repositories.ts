@@ -7,11 +7,13 @@
  * an account, and never something a person should be retyping into a text box.
  */
 
+import { SourceHostCallError } from '../source-host/index.js';
 import {
   appOctokit,
   type GitHubOctokit,
   installationOctokit,
   mintInstallationToken,
+  responseOf,
 } from './octokit.js';
 
 interface InstallationRepo {
@@ -25,11 +27,18 @@ interface InstallationRepo {
 const MAX_PAGES_PER_INSTALLATION = 5;
 const PER_PAGE = 100;
 
-async function githubJson<T>(octokit: GitHubOctokit, url: string): Promise<T | null> {
+/** A GitHub refusal is thrown with GitHub's status, never read as an empty answer. */
+async function githubJson<T>(octokit: GitHubOctokit, url: string): Promise<T> {
   try {
     return (await octokit.request({ method: 'GET', url })).data as T;
-  } catch {
-    return null;
+  } catch (err) {
+    const answered = responseOf(err);
+    if (!answered) throw err;
+    throw new SourceHostCallError(
+      answered.status,
+      `GitHub answered HTTP ${answered.status} for ${url}`,
+      err instanceof Error ? err.message : null,
+    );
   }
 }
 
@@ -44,7 +53,7 @@ async function reposForInstallation(
       total_count?: number;
       repositories?: Array<{ name?: string; full_name?: string; owner?: { login?: string } }>;
     }>(octokit, `/installation/repositories?per_page=${PER_PAGE}&page=${page}`);
-    const batch = body?.repositories ?? [];
+    const batch = body.repositories ?? [];
     for (const r of batch) {
       const owner = r.owner?.login;
       const repo = r.name;
@@ -72,21 +81,32 @@ export async function listInstallationRepositories(args: {
   appId: string;
   privateKey: string;
   fetchImpl?: typeof fetch;
-}): Promise<{ repositories: InstallationRepo[]; truncated: boolean }> {
+}): Promise<{
+  repositories: InstallationRepo[];
+  truncated: boolean;
+  failedInstallations: Array<{ installationId: number; account: string; reason: string }>;
+}> {
   const installations = await githubJson<Array<{ id?: number; account?: { login?: string } }>>(
     appOctokit(args),
     '/app/installations',
   );
-  if (!Array.isArray(installations)) return { repositories: [], truncated: false };
-
   const out: InstallationRepo[] = [];
+  const failedInstallations: Array<{ installationId: number; account: string; reason: string }> =
+    [];
   let truncated = false;
   for (const inst of installations) {
     if (typeof inst.id !== 'number') continue;
     const cred = { ...args, installationId: inst.id };
     try {
       await mintInstallationToken(cred);
-    } catch {
+    } catch (err) {
+      // One installation the App cannot act for is named in the answer, not dropped from it.
+      const reason = err instanceof Error ? err.message : String(err);
+      failedInstallations.push({
+        installationId: inst.id,
+        account: inst.account?.login ?? '',
+        reason,
+      });
       continue;
     }
     const page = await reposForInstallation(
@@ -98,5 +118,5 @@ export async function listInstallationRepositories(args: {
     truncated = truncated || page.truncated;
   }
 
-  return { repositories: out, truncated };
+  return { repositories: out, truncated, failedInstallations };
 }

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   deviceLoginCodes,
@@ -148,4 +148,23 @@ export async function loginCodeState(codeHash: string) {
     .where(eq(deviceLoginCodes.codeHash, codeHash))
     .limit(1);
   return row ?? null;
+}
+
+/** The build each online, enabled runner device of this project reports, one row per device name
+ *  (ISS-1368: a declared `project-runners` release runtime is weighed against these). */
+export async function projectRunnerBuilds(
+  projectId: string,
+): Promise<Array<{ name: string; commit: string | null }>> {
+  return db
+    .selectDistinct({ name: devices.name, commit: devices.agentCommit })
+    .from(runners)
+    .innerJoin(devices, eq(devices.id, runners.deviceId))
+    .where(
+      and(
+        eq(runners.projectId, projectId),
+        eq(devices.status, 'online'),
+        isNull(devices.disabledAt),
+      ),
+    )
+    .orderBy(devices.name);
 }

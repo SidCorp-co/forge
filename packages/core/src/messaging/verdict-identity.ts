@@ -98,7 +98,7 @@ const EXAMPLE = [
 ].join('\n');
 
 /** Whether a value is written as an identity at all. Every door asks this one question. */
-function recognisableIdentity(value: string | null | undefined): boolean {
+export function recognisableIdentity(value: string | null | undefined): boolean {
   const trimmed = String(value ?? '').trim();
   return trimmed.length >= SHORTEST_ABBREVIATION && HEXADECIMAL.test(trimmed);
 }

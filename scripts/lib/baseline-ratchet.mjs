@@ -14,68 +14,110 @@ function git(args, cwd) {
   }).trim();
 }
 
+const COMMIT = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 const NO_COMMIT = /^0+$/;
 
 /**
  * The tip a push event moved its branch from, read from `$GITHUB_EVENT_PATH`. A push carrying
- * several commits is judged as one change against it: `HEAD~1` would see only the last commit, so
- * an entry withdrawn earlier in the push passed, and one rewritten inside it read as withdrawn.
- * Null for any other event and for a push that created its branch.
+ * several commits is one change and is judged against that tip: `HEAD~1` sees only the last of
+ * them, so an entry withdrawn earlier in the push passed and one reworded inside it read as
+ * withdrawn. Null for any other event, and for a push that created its branch.
  */
 export function pushedFrom(root, env, head) {
   if (env.GITHUB_EVENT_NAME !== 'push') return null;
-  let before;
+  const path = String(env.GITHUB_EVENT_PATH ?? '').trim();
+  let payload;
   try {
-    before = String(JSON.parse(readFileSync(String(env.GITHUB_EVENT_PATH), 'utf8')).before ?? '');
+    if (!path) throw new Error('$GITHUB_EVENT_PATH is unset');
+    payload = JSON.parse(readFileSync(path, 'utf8'));
   } catch (err) {
     throw new Error(
-      `baseRev: a push event's payload at $GITHUB_EVENT_PATH could not be read (${err.message}), ` +
-        'so the tip this push moved from is unknown and no base can be taken from it.',
+      `a push event's payload at ${path || '$GITHUB_EVENT_PATH'} could not be read (${err.message}), ` +
+        'so the tip this push moved its branch from is unknown and no base can be taken from it',
     );
   }
-  if (!before || NO_COMMIT.test(before) || before === head) return null;
+  const before = payload?.before;
+  if (typeof before !== 'string' || !COMMIT.test(before)) {
+    throw new Error(
+      `a push event's payload at ${path} names no commit as \`before\` ` +
+        `(${JSON.stringify(before ?? null)}), so the tip this push moved its branch from is unknown`,
+    );
+  }
+  if (NO_COMMIT.test(before) || before === head) return null;
   try {
     git(['merge-base', '--is-ancestor', before, 'HEAD'], root);
   } catch {
     throw new Error(
-      `baseRev: this push moved its branch from ${before}, which is not an ancestor of HEAD ` +
-        `${head} or is absent from this clone. A rewritten gated branch has no base to measure ` +
-        'against; fetch with depth 0, and never force-push a gated branch.',
+      `this push moved its branch from ${before}, which is not an ancestor of HEAD ${head} or is ` +
+        'absent from this clone. A shallow clone is fixed by checking out with `fetch-depth: 0`. ' +
+        'A force-push has no base to measure it against, and re-running will not give it one; the ' +
+        'next ordinary push to this branch carries a `before` that is its ancestor',
     );
   }
   return before;
 }
 
+const NONE = Object.freeze({ rev: null, basis: null, refusal: null });
+
+function refused(refusal) {
+  return { rev: null, basis: null, refusal };
+}
+
+/** What each `basis` is, in the words a reader of a gate's log needs. */
+export const BASIS = Object.freeze({
+  'merge-base': 'the merge-base with the merge target',
+  push: "the tip this push moved its branch from (the payload's `before`)",
+  parent: 'HEAD~1, the commit before this one',
+});
+
 /**
  * The revision this baseline is judged against: the merge-base with the branch this work will land
- * on.
+ * on, or, where that is `HEAD` itself, the tip a push moved the branch from.
  *
- * Not that branch's tip directly: on a feature branch the merge-base is what the diff is measured
- * from, but a commit pushed STRAIGHT to the base branch has the tip equal to HEAD, and comparing a
- * file to itself passes everything. A push event is judged from the tip it moved its branch from
- * (`pushedFrom`); `HEAD~1` is the answer for a local commit on that branch, and for a checkout
- * whose merge target no ref here names.
+ * Not that branch's tip directly: a commit pushed STRAIGHT to the base branch has the tip equal to
+ * HEAD, and comparing a file to itself passes everything. `HEAD~1` is left only for a checkout
+ * standing on its merge target's tip outside a push, whose last commit was judged when it landed,
+ * and for the push that creates its branch, whose commits were judged where they were cut from.
+ * A merge target that cannot be derived or names no ref here, and a push whose base cannot be
+ * read, are a refusal: `HEAD~1` there would judge one commit of a branch of many and say nothing.
+ *
+ * No form returns the revision alone: a reader holding only that cannot tell a refused base from a
+ * shallow clone, and says the wrong one.
+ *
+ * @returns {{ rev: string | null, basis: 'merge-base' | 'push' | 'parent' | null,
+ *   refusal: string | null }} `basis` names the rung `rev` came from; `rev` null with no refusal
+ *   only where HEAD or its parent does not exist
  */
-export function baseRev(root, env = process.env) {
+export function baseRevision(root, env = process.env) {
   let head;
   try {
     head = git(['rev-parse', 'HEAD'], root);
   } catch {
-    return null;
+    return NONE;
   }
-  const target = baseRef(root);
-  if (target.ref) {
-    try {
-      const mb = git(['merge-base', target.ref, 'HEAD'], root);
-      if (mb && mb !== head) return mb;
-    } catch {}
-  }
-  const pushed = pushedFrom(root, env, head);
-  if (pushed) return pushed;
+  const target = baseRef(root, env);
+  if (target.refusal) return refused(target.refusal);
+  let mb;
   try {
-    return git(['rev-parse', 'HEAD~1'], root);
+    mb = git(['merge-base', target.ref, 'HEAD'], root);
   } catch {
-    return null;
+    return refused(
+      `\`git merge-base ${target.ref} HEAD\` found no common ancestor, so this checkout holds no ` +
+        `revision where the change began. Fetch the history: \`git fetch origin ${target.branch}\`, ` +
+        'or check out with `fetch-depth: 0`',
+    );
+  }
+  if (mb !== head) return { rev: mb, basis: 'merge-base', refusal: null };
+  try {
+    const pushed = pushedFrom(root, env, head);
+    if (pushed) return { rev: pushed, basis: 'push', refusal: null };
+  } catch (err) {
+    return refused(err.message);
+  }
+  try {
+    return { rev: git(['rev-parse', 'HEAD~1'], root), basis: 'parent', refusal: null };
+  } catch {
+    return NONE;
   }
 }
 

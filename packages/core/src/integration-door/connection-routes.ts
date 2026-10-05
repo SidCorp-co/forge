@@ -95,7 +95,7 @@ integrationConnectionsRoutes.get('/:id/bindings', async (c) => {
   await loadConnection(id, userId, 'read');
   const pairs = await listBindingsForConnection(id);
   const bindings = pairs.map(summarizeBinding);
-  return c.json({ bindings, items: bindings });
+  return c.json({ items: bindings });
 });
 
 integrationConnectionsRoutes.post('/:id/test', async (c) => {

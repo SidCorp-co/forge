@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
-import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { activityLog, comments, issues, memories, projects } from '../db/schema.js';
+import { memories } from '../db/schema.js';
 import {
   callFastModel,
   EmbeddingUnavailableError,
@@ -20,6 +20,7 @@ import {
   scriptRefuser,
   shortHash,
 } from './model-output.js';
+import { memoryIssueReads } from './ports.js';
 import { searchMemories } from './search.js';
 import { NEAR_DUPLICATE_THRESHOLD } from './thresholds.js';
 
@@ -256,29 +257,9 @@ function bullets<T>(rows: readonly T[], line: (row: T) => string): string {
 /** The last day's pipeline comments and status changes, archived issues left out. */
 async function readSignal(projectId: string) {
   const since = new Date(Date.now() - SIGNAL_WINDOW_MS);
-
-  const recentComments = await db
-    .select({ body: comments.body, issueTitle: issues.title })
-    .from(comments)
-    .innerJoin(issues, and(eq(comments.issueId, issues.id), isNull(issues.archivedAt)))
-    .where(and(eq(issues.projectId, projectId), gte(comments.createdAt, since)))
-    .orderBy(desc(comments.createdAt))
-    .limit(MAX_SIGNAL_COMMENTS);
-
-  const statusChanges = await db
-    .select({ payload: activityLog.payload, issueTitle: issues.title })
-    .from(activityLog)
-    .innerJoin(issues, and(eq(activityLog.issueId, issues.id), isNull(issues.archivedAt)))
-    .where(
-      and(
-        eq(issues.projectId, projectId),
-        eq(activityLog.action, 'issue.statusChanged'),
-        gte(activityLog.createdAt, since),
-      ),
-    )
-    .orderBy(desc(activityLog.createdAt))
-    .limit(MAX_SIGNAL_STATUS_CHANGES);
-
+  const reads = memoryIssueReads();
+  const recentComments = await reads.commentsSince(projectId, since, MAX_SIGNAL_COMMENTS);
+  const statusChanges = await reads.statusChangesSince(projectId, since, MAX_SIGNAL_STATUS_CHANGES);
   return { recentComments, statusChanges };
 }
 
@@ -402,20 +383,12 @@ export async function runConsolidationSweep(): Promise<{
   durationMs: number;
 }> {
   const t0 = Date.now();
+  // cm:why every memories row's project exists (cascading foreign key), so the distinct
+  // project ids of the consolidatable rows are the projects that hold any.
   const projectRows = await db
-    .select({ projectId: projects.id })
-    .from(projects)
-    .where(
-      sql`EXISTS (
-        SELECT 1 FROM memories m
-        WHERE m.project_id = "projects"."id"
-          AND m.archived_at IS NULL
-          AND m.source IN (${sql.join(
-            CONSOLIDATABLE_SOURCES.map((source) => sql`${source}`),
-            sql`, `,
-          )})
-      )`,
-    );
+    .selectDistinct({ projectId: memories.projectId })
+    .from(memories)
+    .where(and(isNull(memories.archivedAt), inArray(memories.source, [...CONSOLIDATABLE_SOURCES])));
 
   for (const { projectId } of projectRows) {
     try {

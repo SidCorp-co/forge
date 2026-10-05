@@ -21,11 +21,9 @@ import type { Context, Hono, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
-  CoolifyApiError,
   type CoolifyConfig,
   type CoolifySecrets,
   credentialFromSecrets,
-  describeCoolifyForbidden,
   fetchCoolifyApplications,
 } from '../integrations/deploy/index.js';
 import {
@@ -47,7 +45,7 @@ import {
   runCoolifyDeploy,
   runCoolifyRollback,
 } from '../release-batch/index.js';
-import { given, requireCoolifyRun } from './coolify-access.js';
+import { coolifyRefusal, given, requireCoolifyRun } from './coolify-access.js';
 
 const deployBodySchema = z
   .object({
@@ -115,11 +113,8 @@ async function answer(c: Context, run: () => Promise<unknown>): Promise<Response
   try {
     return c.json(await run());
   } catch (err) {
-    if (!(err instanceof CoolifyApiError)) throw err;
-    const said =
-      err.status === 403
-        ? describeCoolifyForbidden(err)
-        : `Coolify answered HTTP ${err.status} to ${err.route ?? 'the request Forge made'}`;
+    const said = coolifyRefusal(err);
+    if (said === null) throw err;
     throw new HTTPException(502, { message: said, cause: { code: 'COOLIFY_API_ERROR' } });
   }
 }

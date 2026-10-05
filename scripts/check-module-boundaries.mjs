@@ -16,7 +16,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { baseRev } from './lib/baseline-ratchet.mjs';
+import { baseRevision } from './lib/baseline-ratchet.mjs';
 import { dieAs, ROOT } from './lib/gate.mjs';
 import {
   BOUNDARY_RULES,
@@ -123,7 +123,8 @@ const baseline = existsSync(join(ROOT, BASELINE))
   : null;
 
 let before = null;
-const rev = baseRev(ROOT);
+const { rev, refusal } = baseRevision(ROOT);
+if (refusal && !update) die(`no base revision can be taken: ${refusal}`);
 if (!rev && !update)
   die(
     'no base revision to compare the baseline against (a shallow or single-commit checkout); fetch history and re-run',

@@ -40,7 +40,6 @@ export const OUTBOX_CONSUMERS = {
 	"source.pushed": ["ecosystem-land", "ecosystem-builder", "live-reading"],
 	"source.merged": ["issue-merge-stamp"],
 	"source.reviewed": ["review-note"],
-	"error.sighted": ["error-intake"],
 	"integration.changed": ["ws-broadcast"],
 	"workflow.designDecided": ["master-wake"],
 } as const satisfies {

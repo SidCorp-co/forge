@@ -9,6 +9,7 @@ export {
 export { listAgentGrantedBindings } from './agent-access-store.js';
 export { agentIntegration } from './agent-declaration.js';
 export {
+  applyClaimedInbound,
   findDeliveryById,
   findDeliveryByRequestId,
   findLastOutbound,
@@ -30,6 +31,13 @@ export {
   recordTurnedAwayInboundCall,
   resolveApiBaseUrl,
 } from './inbound-door.js';
+export {
+  dropPreviousHeldInboundSecret,
+  heldInboundSecret,
+  mintInboundSecret,
+  previousHeldInboundSecret,
+  rotateHeldInboundSecret,
+} from './inbound-secret.js';
 export { applyGrantedMcpServers } from './mcp-resolver.js';
 export { raceWithTimeout } from './probe.js';
 export {
@@ -62,6 +70,7 @@ export {
   adapterOrRefuse,
   assertVaultConfigured,
   bindingWriteMoved,
+  connectionHealthStatus,
   defaultConnectionDisplayName,
   notFound,
   notifyConnectionChanged,

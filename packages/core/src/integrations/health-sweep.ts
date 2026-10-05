@@ -4,7 +4,7 @@ import { integrationBindings, integrationConnections } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { raceWithTimeout } from './probe.js';
 import { getAdapter } from './registry.js';
-import { type BindingWithConnection, buildContextFromBinding } from './store.js';
+import { type BindingWithConnection, buildContextFromBinding, updateConnection } from './store.js';
 
 /** Skip connections probed more recently than this (fresh deploy/test wins). */
 const MIN_PROBE_AGE_MS = 30 * 60 * 1000;
@@ -60,29 +60,31 @@ export async function runIntegrationsHealthSweep(): Promise<{
     }
     const adapter = getAdapter(pair.binding.provider);
     if (!adapter) continue;
+    // A probe that hangs or crashes records why, so the card never keeps a stale `ok`.
+    let fault: string | null = null;
     try {
       const result = await raceWithTimeout(
         adapter.healthcheck(buildContextFromBinding(pair)),
         PROBE_TIMEOUT_MS,
       );
-      if (result === null) {
-        failed++;
-        logger.warn(
-          { connectionId: pair.connection.id, provider: pair.binding.provider },
-          'integrations-health-sweep: probe timed out',
-        );
-        continue;
-      }
-      probed++;
+      if (result === null) fault = `healthcheck timed out after ${PROBE_TIMEOUT_MS / 1000}s`;
     } catch (err) {
-      // The adapter persists its own failure states; a transport-level crash
-      // here just means this connection keeps its previous health this round.
-      failed++;
-      logger.warn(
-        { err, connectionId: pair.connection.id, provider: pair.binding.provider },
-        'integrations-health-sweep: probe crashed',
-      );
+      fault = `healthcheck crashed: ${err instanceof Error ? err.message : String(err)}`;
     }
+    if (fault === null) {
+      probed++;
+      continue;
+    }
+    failed++;
+    logger.warn(
+      { connectionId: pair.connection.id, provider: pair.binding.provider, fault },
+      'integrations-health-sweep: probe failed',
+    );
+    await updateConnection(pair.connection.id, {
+      lastHealthStatus: 'degraded',
+      lastHealthDetail: fault,
+      lastHealthAt: new Date(),
+    });
   }
 
   return { probed, skippedFresh, failed, durationMs: Date.now() - t0 };

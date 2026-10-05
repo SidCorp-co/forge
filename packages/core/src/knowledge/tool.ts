@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { EmbeddingUnavailableError } from '../integrations/llm/index.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import {
@@ -86,12 +85,7 @@ const actions: Record<Input['action'], (userId: string, input: Input) => Promise
   search: async (userId, { projectId, query, scope, topK, strategy }) => {
     const text = required(query, 'query', 'search');
     await can(userId, 'project.read', projectId);
-    try {
-      return await runUnifiedSearch({ projectId, query: text, scope, topK, strategy });
-    } catch (err) {
-      if (err instanceof EmbeddingUnavailableError) throw new Error(`UNAVAILABLE: ${err.message}`);
-      throw err;
-    }
+    return runUnifiedSearch({ projectId, query: text, scope, topK, strategy });
   },
 };
 

@@ -28,6 +28,17 @@ export type IntegrationDeliveryStatus = schema.IntegrationDeliveryStatus;
  * Owner-facing connection summary — the credential, owned by a principal.
  * Projection of `summarizeConnection`; never echoes the encrypted secret bytes.
  */
+/** A connection's health bucketed for display, computed by core (`integrations/route-helpers.ts:connectionHealthStatus`). */
+export type ConnectionDirectoryStatus =
+  | 'connected'
+  | 'degraded'
+  | 'error'
+  | 'not_connected'
+  | 'needs_reauth'
+  | 'needs_scope'
+  | 'disabled'
+  | 'unverified';
+
 export interface ConnectionSummary {
   id: string;
   ownerType: IntegrationOwnerType;
@@ -42,6 +53,8 @@ export interface ConnectionSummary {
   lastHealthDetail?: string | null;
   lastHealthAt: string | null;
   breakerOpenedAt: string | null;
+  /** The health above, bucketed by core's one rule; readers show this rather than re-deriving it. */
+  directoryStatus: ConnectionDirectoryStatus;
   /** True when an encrypted credential is stored — the bytes are never returned. */
   hasSecrets: boolean;
   createdAt: string;
@@ -295,9 +308,8 @@ export interface BindingListResponse {
   items: BindingSummary[];
 }
 
-/** A connection's bindings (`GET /integration-connections/:id/bindings`), keyed as {@link BindingListResponse}. */
+/** A connection's bindings (`GET /integration-connections/:id/bindings`). */
 export interface ConnectionBindingsResponse {
-  bindings: BindingSummary[];
   items: BindingSummary[];
 }
 
@@ -347,6 +359,8 @@ export const INTEGRATION_REFUSAL_CODES = [
   'INTEGRATION_REFUSED',
   'MISSING_CREDENTIALS',
   'NOT_RETRYABLE',
+  'BINDING_INACTIVE',
+  'HOST_UNAVAILABLE',
   'ORG_MISMATCH',
   'MCP_PREVIEW_UNCLAIMED',
 ] as const;

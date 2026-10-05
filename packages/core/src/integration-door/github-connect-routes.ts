@@ -16,7 +16,6 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
   buildAppManifest,
-  connectProjectOf,
   convertManifestCode,
   findConnectionOwningInstallation,
   listInstallationRepositories,
@@ -34,6 +33,7 @@ import {
   notFound,
   resolveApiBaseUrl,
 } from '../integrations/index.js';
+import { SourceHostCallError } from '../integrations/source-host/index.js';
 import { loadOrgRole } from '../lib/authz.js';
 import { logger } from '../lib/logger.js';
 import { refuser } from '../lib/refusal.js';
@@ -41,6 +41,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan, requireOrgHeld } from '../permissions/index.js';
+import { projectOrgHead } from '../projects/index.js';
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 
@@ -143,7 +144,7 @@ githubConnectRoutes.post(
     const userId = c.get('userId');
     assertVaultConfigured();
 
-    const project = await connectProjectOf(projectId);
+    const project = await projectOrgHead(projectId);
     if (!project) throw notFound('project');
 
     const query = c.req.valid('query');
@@ -226,7 +227,15 @@ githubConnectRoutes.get(
     }>(connection);
     if (!appId || !privateKey) throw badRequest({ connectionId: 'the App was never converted' });
 
-    return c.json(await listInstallationRepositories({ appId, privateKey }));
+    try {
+      return c.json(await listInstallationRepositories({ appId, privateKey }));
+    } catch (err) {
+      if (!(err instanceof SourceHostCallError)) throw err;
+      throw new HTTPException(502, {
+        message: `${err.message}, so the repositories this App can see are unknown${err.detail ? `: ${err.detail}` : ''}`,
+        cause: { code: 'GITHUB_REFUSED', details: { httpStatus: err.status } },
+      });
+    }
   },
 );
 

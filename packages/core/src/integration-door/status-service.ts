@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import { projects, runners } from '../db/schema.js';
 import {
   type BindingWithConnection,
+  connectionHealthStatus,
   effectiveConfig,
   getIntegration,
   type IntegrationCapabilities,
@@ -33,17 +34,14 @@ interface StatusCard {
   meta?: Record<string, unknown>;
 }
 
+/** The card's coarser bucket over the connection rule: every state that wants a look is `attention`. */
 function healthToStatus(lastHealthStatus: string | null, active: boolean): CardStatus {
-  // The binding/connection exists but is switched off — distinct from
-  // not_configured (nothing set up at all). ISS-429.
-  if (!active) return 'disabled';
-  // Active but never health-checked: no signal is not the same as degraded.
-  if (!lastHealthStatus) return 'unverified';
-  const s = lastHealthStatus.toLowerCase();
-  if (s === 'ok' || s === 'healthy' || s === 'success') return 'connected';
-  if (s === 'degraded' || s === 'pending' || s === 'unknown') return 'attention';
-  if (s === 'needs_reauth' || s === 'needs_scope') return 'attention';
-  return 'error';
+  const status = connectionHealthStatus({ active, lastHealthStatus, breakerOpenedAt: null });
+  return status === 'degraded' || status === 'needs_reauth' || status === 'needs_scope'
+    ? 'attention'
+    : status === 'not_connected'
+      ? 'not_configured'
+      : status;
 }
 
 /** Declared capabilities for a provider, for capability-aware card rendering. */
