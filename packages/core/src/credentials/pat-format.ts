@@ -6,9 +6,6 @@ type PatEnv = (typeof PAT_ENVS)[number];
 /** Anchored — full match for token validation. */
 const PAT_PATTERN = /^forge_pat_(dev|stg|prd)_[A-Fa-f0-9]{64}$/;
 
-/** Unanchored, global — for redaction inside larger strings (Sentry scrubber). */
-export const PAT_STRING_PATTERN = /forge_pat_(?:dev|stg|prd)_[A-Fa-f0-9]+/g;
-
 /** Loose prefix detector — used by the auth dispatcher to choose the PAT path. */
 const PAT_PREFIX_PATTERN = /^forge_pat_(dev|stg|prd)_/;
 
