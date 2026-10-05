@@ -5,16 +5,12 @@ export const CHECKS = [
   {
     axis: 'language',
     label: 'source-language',
-    layer: 'entry',
-    reads: "each source file's own strings, judged file by file",
     cmd: ['node', 'scripts/check-source-language.mjs', '--all'],
     scanned: /across (\d+) files/,
   },
   {
     axis: 'record',
     label: 'release-record',
-    layer: 'entry',
-    reads: 'CHANGELOG.md against its base revision, one fixed file',
     cmd: ['node', 'scripts/check-release-record.mjs'],
     scanned: /^release-record: (\d+) entr/m,
     unit: 'release entries',
@@ -22,8 +18,6 @@ export const CHECKS = [
   {
     axis: 'behaviour',
     label: 'test-signal',
-    layer: 'entry',
-    reads: "each test file's own assertions, judged file by file",
     cmd: ['node', 'scripts/check-test-signal.mjs', '--all'],
     scopeMayBeEmpty: true, // cm:hack ISS-172 until:QA phase on dev
     scanned: /^test-signal: (\d+) test file/m,
@@ -31,8 +25,6 @@ export const CHECKS = [
   {
     axis: 'behaviour',
     label: 'test-reachability',
-    layer: 'shared',
-    reads: "every tracked test file against every runner's include globs",
     cmd: ['node', 'scripts/check-test-reachability.mjs'],
     scopeMayBeEmpty: true, // cm:hack ISS-172 until:QA phase on dev
     scanned: /^test-reachability: (\d+) tracked test file/m,
@@ -42,8 +34,6 @@ export const CHECKS = [
   {
     axis: 'behaviour',
     label: 'whole-tree-gates',
-    layer: 'shared',
-    reads: 'every test file for whole-tree declarations, across packages',
     cmd: ['node', 'scripts/check-whole-tree-gates.mjs'],
     scopeMayBeEmpty: true, // cm:hack ISS-172 until:QA phase on dev
     scanned: /^whole-tree-gates: (\d+) test file\(s\) read/m,
@@ -52,8 +42,6 @@ export const CHECKS = [
   {
     axis: 'knowledge',
     label: 'pat-surface',
-    layer: 'shared',
-    reads: "every route the running app serves against the PAT fence, one route's calls at a time",
     cmd: ['node', 'scripts/check-pat-surface.mjs'],
     needs: ['deps', 'observability-build', 'contracts-build'],
     scanned:
@@ -63,8 +51,6 @@ export const CHECKS = [
   {
     axis: 'knowledge',
     label: 'api-contracts',
-    layer: 'shared',
-    reads: 'every route the core app mounts and every MCP tool, against the committed contracts',
     cmd: ['node', 'scripts/check-api-contracts.mjs'],
     scanned: /^api-contracts: (\d+) route\(s\)/m,
     needs: ['deps', 'observability-build', 'contracts-build'],
@@ -73,8 +59,6 @@ export const CHECKS = [
   {
     axis: 'knowledge',
     label: 'retired-model',
-    layer: 'entry',
-    reads: "each file's own model literals, judged file by file",
     cmd: ['node', 'scripts/check-retired-model.mjs'],
     scanned: /^check-retired-model: (\d+) files scanned/m,
     unit: 'files',
@@ -82,9 +66,6 @@ export const CHECKS = [
   {
     axis: 'knowledge',
     label: 'status-tuples',
-    layer: 'shared',
-    reads:
-      'status vocabularies across three packages; a subset reports clean on a tree that is not',
     cmd: ['node', 'scripts/check-status-tuples.mjs', '--all'],
     scanned: /^status-tuples: (\d+) file\(s\) scanned/m,
     unit: 'files',
@@ -92,8 +73,6 @@ export const CHECKS = [
   {
     axis: 'knowledge',
     label: 'doc-citations',
-    layer: 'shared',
-    reads: "every document's citations against the files and symbols they name",
     cmd: ['node', 'scripts/check-doc-citations.mjs', '--all'],
     scanned: /^doc-citations: (\d+) document\(s\) scanned/m,
     carries: /^doc-citations worklist: (.+)$/m,
@@ -102,8 +81,6 @@ export const CHECKS = [
   {
     axis: 'knowledge',
     label: 'honest-costs',
-    layer: 'entry',
-    reads: "each proposal document's own costs table, judged document by document",
     cmd: ['node', 'scripts/check-honest-costs.mjs'],
     scanned: /^honest-costs: (\d+) document/m,
     unit: 'documents',
@@ -111,8 +88,6 @@ export const CHECKS = [
   {
     axis: 'relations',
     label: 'archmap',
-    layer: 'shared',
-    reads: 'the whole import graph against the declared architecture',
     cmd: ['./.forge/archmap/archmap', 'check'],
     exclusive: 'archmap',
     scanned: /archmap · (\d+) files/,
@@ -121,8 +96,6 @@ export const CHECKS = [
   {
     axis: 'relations',
     label: 'module-boundaries',
-    layer: 'shared',
-    reads: "packages/core's whole import graph against the rules modules.json generates",
     cmd: ['node', 'scripts/check-module-boundaries.mjs'],
     scanned: /^module-boundaries: (\d+) file\(s\) cruised/m,
     needs: ['deps'],
@@ -130,9 +103,6 @@ export const CHECKS = [
   {
     axis: 'relations',
     label: 'module-shape',
-    layer: 'shared',
-    reads:
-      "packages/core's files, type-checked, against the table owners and kinds modules.json declares",
     cmd: ['node', 'scripts/check-module-shape.mjs'],
     scanned: /^module-shape: (\d+) file\(s\) linted/m,
     needs: ['deps'],
@@ -140,8 +110,6 @@ export const CHECKS = [
   {
     axis: 'form',
     label: 'core lint',
-    layer: 'entry',
-    reads: "each file in packages/core by biome's per-file rules",
     cmd: ['pnpm', '--filter', '@forge/core', 'lint'],
     scanned: /Checked (\d+)/,
     needs: ['deps'],
@@ -149,8 +117,6 @@ export const CHECKS = [
   {
     axis: 'form',
     label: 'lint-budget',
-    layer: 'entry',
-    reads: "each file's lint findings against its own frozen baseline entry",
     cmd: ['node', 'scripts/check-lint-budget.mjs', '--all'],
     scanned: /^lint-budget: (\d+) file/m,
     needs: ['deps'],
@@ -158,8 +124,6 @@ export const CHECKS = [
   {
     axis: 'form',
     label: 'size-budget',
-    layer: 'entry',
-    reads: "each file's and function's length against its own frozen baseline entry",
     cmd: ['node', 'scripts/check-size-budget.mjs', '--all'],
     scanned: /^size-budget: (\d+) file/m,
     needs: ['deps'],
@@ -167,8 +131,6 @@ export const CHECKS = [
   {
     axis: 'form',
     label: 'provider-literals',
-    layer: 'entry',
-    reads: "each file's own provider literals and external calls, judged file by file",
     cmd: ['node', 'scripts/check-provider-literals.mjs', '--all'],
     scanned: /^provider-literals: (\d+) file\(s\) scanned/m,
     unit: 'files',
@@ -176,8 +138,6 @@ export const CHECKS = [
   {
     axis: 'form',
     label: 'integration-declarations',
-    layer: 'shared',
-    reads: 'every provider declaration against every module that implements one',
     cmd: ['node', 'scripts/check-integration-declarations.mjs', '--all'],
     scanned: /^integration-declarations: (\d+) provider\(s\) declared/m,
     needs: ['deps'],
@@ -186,17 +146,12 @@ export const CHECKS = [
   {
     axis: 'relations',
     label: 'merged-at-writers',
-    layer: 'shared',
-    reads:
-      'every writer of merged_at across the tree; a subset reports clean on a tree that is not',
     cmd: ['node', 'scripts/check-merged-at-writers.mjs', '--all'],
     scanned: /^merged-at-writers: (\d+) file\(s\) scanned/m,
   },
   {
     axis: 'form',
     label: 'lazy-module-init',
-    layer: 'shared',
-    reads: 'module initialisation across the import graph; the property is repo-wide',
     cmd: ['node', 'scripts/check-lazy-module-init.mjs', '--all'],
     scanned: /^lazy-module-init: (\d+) file\(s\) scanned/m,
     needs: ['deps'],
@@ -204,8 +159,6 @@ export const CHECKS = [
   {
     axis: 'form',
     label: 'scripts lint',
-    layer: 'entry',
-    reads: "each file in scripts/ by biome's per-file rules",
     cmd: ['pnpm', 'exec', 'biome', 'check', 'scripts'],
     scanned: /^Checked (\d+) files/m,
     needs: ['deps'],
@@ -213,8 +166,6 @@ export const CHECKS = [
   {
     axis: 'form',
     label: 'core typecheck',
-    layer: 'shared',
-    reads: 'the whole packages/core program, every file typed against every other',
     cmd: ['pnpm', '--filter', '@forge/core', 'exec', 'tsc', '--noEmit', '--extendedDiagnostics'],
     scanned: /^Files:\s+(\d+)/m,
     needs: ['deps', 'observability-build', 'contracts-build'],
@@ -222,8 +173,6 @@ export const CHECKS = [
   {
     axis: 'runner',
     label: 'cargo gates',
-    layer: 'entry',
-    reads: 'the runner crates, and only when this change touched packages/runner',
     cmd: ['node', 'scripts/check-runner-gates.mjs'],
     scanned: /^runner-gates: (\d+) crate file\(s\) in scope/m,
     unit: 'crate files',
@@ -232,8 +181,6 @@ export const CHECKS = [
   {
     axis: 'meta',
     label: 'lockfile-transport',
-    layer: 'entry',
-    reads: 'pnpm-lock.yaml, one fixed file',
     cmd: ['node', 'scripts/check-lockfile-transport.mjs'],
     scanned: /^lockfile-transport: (\d+) resolution\(s\), none over SSH/m,
     unit: 'resolutions',
@@ -241,8 +188,6 @@ export const CHECKS = [
   {
     axis: 'meta',
     label: 'migration-order',
-    layer: 'shared',
-    reads: "every open branch's migration journal; the subject is the set, not this branch",
     cmd: ['node', 'scripts/check-migration-order.mjs'],
     scanned: /^migration-order: (\d+) migration\(s\) landing/m,
     unit: 'migrations landing',
@@ -253,8 +198,6 @@ export const CHECKS = [
   {
     axis: 'meta',
     label: 'conformance levels',
-    layer: 'shared',
-    reads: "every axis's gates and baselines against origin/main",
     cmd: ['node', 'scripts/conformance-status.mjs'],
     scanned: /^conformance-status: (\d+) axes measured/m,
     unit: 'axes',
@@ -262,8 +205,6 @@ export const CHECKS = [
   {
     axis: 'meta',
     label: 'conformance audit',
-    layer: 'shared',
-    reads: 'every conformance rule across the whole tree',
     cmd: ['node', 'scripts/conformance-audit.mjs'],
     exclusive: 'archmap',
     scanned: /^conformance-audit: (\d+) rules evaluated/m,
@@ -271,11 +212,9 @@ export const CHECKS = [
   },
 ];
 
-/** The parity proof every mode runs last; its layer and its scan proof are declared like any check's. */
+/** The parity proof verify runs last; its scan proof is declared like any check's. */
 export const CI_PARITY = {
   label: 'ci-parity',
-  layer: 'entry',
-  reads: 'ci.yml and the setup-workspace composite, two fixed files',
   scanned: /^ci-parity: (\d+) CI step\(s\) declared/m,
   unit: 'CI steps',
 };

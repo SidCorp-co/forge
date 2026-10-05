@@ -15,7 +15,6 @@ export function floorOf(entries) {
 
 /**
  * A drizzle journal read from `text`: `{ doc }`, or `{ problem }` naming `where` and what is wrong.
- * The one reading of the journal's shape, for the checker and the verify window alike.
  */
 export function readJournal(text, where) {
   let doc;
@@ -179,41 +178,27 @@ export function checkSet({ base, baseRef, self, siblings }) {
  * Every open remote branch's entries above the base's journal; `null` where the remote could not be
  * read, a `hole` where one branch's ancestry, tree or journal would not — an unknown, never an absence, which
  * is why absence is read off `ls-tree` and not `cat-file -e`. `afterFetch` re-reads the base.
- * `baseRef` is the ref skipped as the base itself; `baseCommit` is what a branch already landed is
- * judged against, which a replay pins to the window's base rather than wherever the ref has moved.
+ * `baseRef` is the ref skipped as the base itself, and the one a branch already landed is judged
+ * against.
  */
-export function readOpenSet({
-  git,
-  isAncestor,
-  journal,
-  baseRef,
-  baseCommit,
-  isOurs,
-  parse,
-  afterFetch,
-  fetch = true,
-}) {
-  if (!baseCommit)
-    throw new TypeError('readOpenSet needs the baseCommit it judges ancestry against');
+export function readOpenSet({ git, isAncestor, journal, baseRef, isOurs, parse, afterFetch }) {
   if (typeof isAncestor !== 'function')
     throw new TypeError('readOpenSet needs isAncestor, answering true, false or null for unknown');
-  if (fetch) {
-    const fetched = git([
-      'fetch',
-      '--no-tags',
-      '--prune',
-      'origin',
-      '+refs/heads/*:refs/remotes/origin/*',
-    ]);
-    if (fetched === null) return null;
-  }
+  const fetched = git([
+    'fetch',
+    '--no-tags',
+    '--prune',
+    'origin',
+    '+refs/heads/*:refs/remotes/origin/*',
+  ]);
+  if (fetched === null) return null;
   const refs = git(['for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin']);
   if (refs === null) return null;
   const base = afterFetch();
   const open = [];
   for (const ref of refs.split('\n').filter(Boolean)) {
     if (ref === 'origin/HEAD' || ref === baseRef || isOurs(ref)) continue;
-    const landed = isAncestor(ref, baseCommit);
+    const landed = isAncestor(ref, baseRef);
     if (landed === null) return { hole: { ref, kind: 'ancestry' } };
     if (landed) continue;
     const listed = git(['ls-tree', '--name-only', ref, '--', journal]);

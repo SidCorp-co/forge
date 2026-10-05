@@ -104,7 +104,6 @@ function readOpenBranches() {
     },
     journal: JOURNAL,
     baseRef,
-    baseCommit: baseRef,
     isOurs,
     parse: entriesOf,
     // The fetch may have moved the base under us, and the floor was read before it. Re-read rather
