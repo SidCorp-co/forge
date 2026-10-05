@@ -232,7 +232,12 @@ async fn finish_workspace(client: &CoreClient, _cfg: &Config, p: &Provision, rep
         }
     }
     if let Err(e) = orientation::write_orientation(repo_path, &p.project_id, &p.slug) {
-        tracing::warn!("[provision] write orientation failed: {e}");
+        tracing::warn!("[provision] {}: orientation: {e}", p.slug);
+        let said = format!("orientation: {e}");
+        ready_detail = Some(match ready_detail {
+            Some(d) => format!("{d}; {said}"),
+            None => said,
+        });
     }
     trust::pre_trust_logged(repo_path, &p.slug);
     record_binding(p, repo_path);

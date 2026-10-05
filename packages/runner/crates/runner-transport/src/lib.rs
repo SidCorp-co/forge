@@ -7,6 +7,7 @@
 //! - `runners`        — GET `/api/devices/me/runners` discovery + self PATCH (ISS-271)
 //! - `skills`         — device skill sync: manifest/content pull + install report (ISS-278)
 //! - `agent_sessions` — GET/PATCH `/api/agent-sessions/:id` for interactive chat (ISS-321)
+//! - `checkout_head`  — POST `/me/checkout-heads/:id`: a project's default-branch head, read here
 //! - `git_credential` — POST `/api/devices/me/git-credential`: one git ask, one token
 //! - `pool`           — GET `/me/pool` and the prepare/start/release claim (ISS-1080)
 //! - `channel_inbox`  — GET `/me/channel/unanswered`: what a project's channel owes (ISS-38)
@@ -16,6 +17,7 @@ pub mod admissible;
 pub mod agent_sessions;
 pub mod api;
 pub mod channel_inbox;
+pub mod checkout_head;
 pub mod comment_inbox;
 pub mod events;
 pub mod git_credential;

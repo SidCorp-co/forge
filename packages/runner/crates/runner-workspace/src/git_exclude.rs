@@ -32,9 +32,13 @@ pub enum Refused {
     Tracked,
     /// The exclude file holds `.claude/` and git still does not ignore the
     /// path, so a rule of the checkout's own (a `!` pattern) un-ignores it.
-    StillNotIgnored { exclude: PathBuf },
+    StillNotIgnored { exclude: PathBuf, line: String },
     /// The exclude file could not be read or written.
-    Exclude { exclude: PathBuf, error: String },
+    Exclude {
+        exclude: PathBuf,
+        error: String,
+        line: String,
+    },
     /// Git could not be asked, or its answer could not be read.
     Git(String),
 }
@@ -43,14 +47,14 @@ impl std::fmt::Display for Refused {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Refused::Tracked => write!(f, "the checkout's git tracks it"),
-            Refused::StillNotIgnored { exclude } => write!(
+            Refused::StillNotIgnored { exclude, line } => write!(
                 f,
-                "{} holds `{LINE}` and the checkout's git still does not ignore it, so a rule of its own (a `!` pattern in a .gitignore) un-ignores it",
+                "{} holds `{line}` and the checkout's git still does not ignore it, so a rule of its own (a `!` pattern in a .gitignore) un-ignores it",
                 exclude.display()
             ),
-            Refused::Exclude { exclude, error } => write!(
+            Refused::Exclude { exclude, error, line } => write!(
                 f,
-                "`{LINE}` could not be added to {} ({error}), so nothing is written under .claude/ unignored",
+                "`{line}` could not be added to {} ({error}), so nothing is written there unignored",
                 exclude.display()
             ),
             Refused::Git(detail) => f.write_str(detail),
@@ -69,6 +73,17 @@ pub fn ensure_ignored(repo: &Path, target: &str) -> Result<Ignored, Refused> {
 /// where its directory form (`dir/`) is, while it is the one file in it that
 /// counts as the checkout's own when tracked.
 pub fn ensure_ignored_as(repo: &Path, tracked: &str, target: &str) -> Result<Ignored, Refused> {
+    ensure_ignored_by(repo, tracked, target, LINE)
+}
+
+/// The same, adding `line` rather than [`LINE`]: for a per-checkout file
+/// outside `.claude/`, such as Forge's orientation.
+pub fn ensure_ignored_by(
+    repo: &Path,
+    tracked: &str,
+    target: &str,
+    line: &str,
+) -> Result<Ignored, Refused> {
     let inside = git(repo, &["rev-parse", "--is-inside-work-tree"])?;
     if !inside.status.success() {
         let err = String::from_utf8_lossy(&inside.stderr);
@@ -98,13 +113,16 @@ pub fn ensure_ignored_as(repo: &Path, tracked: &str, target: &str) -> Result<Ign
         return Ok(Ignored::Yes { added: None });
     }
     let exclude = exclude_file(repo)?;
-    let added = append_line(&exclude)?;
+    let added = append_line(&exclude, line)?;
     if check_ignore(repo, target)? {
         return Ok(Ignored::Yes {
             added: added.then_some(exclude),
         });
     }
-    Err(Refused::StillNotIgnored { exclude })
+    Err(Refused::StillNotIgnored {
+        exclude,
+        line: line.to_string(),
+    })
 }
 
 /// By the rules alone (`--no-index`): tracking is asked separately and first,
@@ -145,21 +163,22 @@ fn exclude_file(repo: &Path) -> Result<PathBuf, Refused> {
     Ok(common.join("info").join("exclude"))
 }
 
-/// Append [`LINE`] unless a line already reads it, keeping every byte the
+/// Append `line` unless a line already reads it, keeping every byte the
 /// file held. Opened for append rather than replaced through a rename, so a
 /// file its owner made read-only is refused rather than swapped out, and read
 /// again under [`ExcludeLock`] through the same handle, so two installs at
 /// once — a `bind` and the daemon's start sweep — add one line between them.
 /// Whether this call added the line.
-fn append_line(exclude: &Path) -> Result<bool, Refused> {
+fn append_line(exclude: &Path, line: &str) -> Result<bool, Refused> {
     let refused = |error: std::io::Error| Refused::Exclude {
         exclude: exclude.to_path_buf(),
         error: error.to_string(),
+        line: line.to_string(),
     };
     // cm:why fast path only: a peer's mandatory Windows lock fails this read (os error 33), so any
     // failure defers to the locked read below, which refuses a real one by name
     if let Ok(held) = std::fs::read(exclude) {
-        if holds_line(&held) {
+        if holds_line(&held, line) {
             return Ok(false);
         }
     }
@@ -175,18 +194,18 @@ fn append_line(exclude: &Path) -> Result<bool, Refused> {
     let _lock = ExcludeLock::take(&file).map_err(refused)?;
     let mut held = Vec::new();
     (&file).read_to_end(&mut held).map_err(refused)?;
-    if holds_line(&held) {
+    if holds_line(&held, line) {
         return Ok(false);
     }
     let mut body = String::new();
     if !held.is_empty() && !held.ends_with(b"\n") {
         body.push('\n');
     }
-    body.push_str(LINE);
+    body.push_str(line);
     body.push('\n');
     (&file).write_all(body.as_bytes()).map_err(refused)?;
     tracing::info!(
-        "[git] added `{LINE}` to {}, so what this daemon writes under .claude/ is ignored there",
+        "[git] added `{line}` to {}, so what this daemon writes there is ignored",
         exclude.display()
     );
     Ok(true)
@@ -264,10 +283,10 @@ fn overlapped_at(offset: u64) -> windows_sys::Win32::System::IO::OVERLAPPED {
     }
 }
 
-fn holds_line(held: &[u8]) -> bool {
+fn holds_line(held: &[u8], line: &str) -> bool {
     String::from_utf8_lossy(held)
         .lines()
-        .any(|l| l.trim_end_matches('\r') == LINE)
+        .any(|l| l.trim_end_matches('\r') == line)
 }
 
 fn git(repo: &Path, args: &[&str]) -> Result<std::process::Output, Refused> {
