@@ -9,11 +9,10 @@
 -- migrations have shipped everywhere.
 
 -- LOCKS. Drizzle applies every pending file in ONE transaction, so a lock taken here is held until
--- the batch commits. Every table that this file and the later files of its batch (0395, 0396)
--- touch is locked up front, in one fixed order (alphabetical), before any statement holds a lock a
--- live session could be waiting behind; a table that stays busy past lock_timeout fails the deploy
--- loudly instead of deadlocking mid-file. A table this database never had (pgboss_v12 on a fresh
--- one) is skipped.
+-- the batch commits. Every table touched by this file and the later files of its batch (0395-0402)
+-- is locked up front, in one fixed order (alphabetical), before any statement holds a lock a live
+-- session could be waiting behind; a table that stays busy past lock_timeout fails the deploy loudly
+-- instead of deadlocking mid-file. A table this database never had is skipped.
 SET LOCAL lock_timeout = '10s';--> statement-breakpoint
 DO $$
 DECLARE t text;
@@ -22,25 +21,28 @@ BEGIN
     'admin_thresholds', 'agent_sessions', 'agents', 'app_config', 'channel_documents', 'chat_logs',
     'comments', 'contract_measurements', 'contract_requests', 'contract_versions', 'device_skills',
     'devices', 'divergence_charters', 'domain_templates', 'ecosystem_revisions', 'ecosystems',
-    'integration_bindings', 'integration_connections', 'integration_guides',
-    'iss1071_agent_access_set', 'iss1071_removed_mcp_sentinels', 'issue_contract_waits', 'issues',
-    'jobs', 'knowledge_edges', 'memories', 'memory_chunks', 'notification_silences',
-    'organizations', 'pat_fence_changes', 'personal_access_tokens', 'pgboss_v12.job',
-    'pgboss_v12.job_common', 'pgboss_v12.queue', 'pgboss_v12.schedule', 'pgboss_v12.subscription',
-    'pipeline_outbox', 'pipeline_runs', 'pm_config', 'pm_decisions', 'pm_policies',
-    'preference_changes', 'project_facts_migration_backup', 'project_git_credentials',
+    'feedback', 'feedback_decisions', 'integration_bindings', 'integration_connections',
+    'integration_guides', 'iss1071_agent_access_set', 'iss1071_removed_mcp_sentinels',
+    'issue_contract_waits', 'issues', 'jobs', 'knowledge_edges', 'memories', 'memory_chunks',
+    'notification_silences', 'notifications', 'organizations', 'pat_fence_changes',
+    'personal_access_tokens', 'pgboss_v12.job', 'pgboss_v12.job_common', 'pgboss_v12.queue',
+    'pgboss_v12.schedule', 'pgboss_v12.subscription', 'phase_journal', 'pipeline_outbox',
+    'pipeline_runs', 'pm_config', 'pm_decisions', 'pm_policies', 'preference_changes',
+    'project_config_revisions', 'project_facts_migration_backup', 'project_git_credentials',
     'project_webhooks', 'project_workflow_designs', 'project_workflows', 'projects',
     'reconcile_runs', 'release_attempts', 'requirements', 'rocketchat_comment_mirror_state',
     'rocketchat_comment_mirrors', 'rocketchat_question_threads', 'rocketchat_thread_openings',
     'runner_releases', 'schedules', 'skill_activity_events', 'skill_registrations', 'skills',
-    'tasks', 'update_packets', 'user_preferences', 'users', 'ux_contract_retirement_backup',
-    'ux_contract_retirement_backup_schedules', 'workspace_ssh_keys'
+    'tasks', 'update_packets', 'usage_records', 'user_preferences', 'users',
+    'ux_contract_retirement_backup', 'ux_contract_retirement_backup_schedules',
+    'workspace_ssh_keys'
   ] LOOP
     IF to_regclass(t) IS NOT NULL THEN
       EXECUTE format('LOCK TABLE %s IN ACCESS EXCLUSIVE MODE', to_regclass(t));
     END IF;
   END LOOP;
 END $$;--> statement-breakpoint
+
 DROP TABLE IF EXISTS "chat_logs" CASCADE;--> statement-breakpoint
 DROP TABLE IF EXISTS "rocketchat_comment_mirrors" CASCADE;--> statement-breakpoint
 DROP TABLE IF EXISTS "rocketchat_comment_mirror_state" CASCADE;--> statement-breakpoint

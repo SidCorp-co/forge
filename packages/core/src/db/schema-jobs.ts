@@ -134,7 +134,7 @@ export const jobs = pgTable(
       .where(sql`kill_requested_at IS NOT NULL`),
     activeUniqueIdx: uniqueIndex('jobs_active_unique')
       .on(t.issueId, t.type)
-      .where(sql`status IN ('queued','dispatched','running','held') AND issue_id IS NOT NULL`),
+      .where(sql`status IN ('queued','dispatched','held') AND issue_id IS NOT NULL`),
     pipelineRunIdx: index('jobs_pipeline_run_idx').on(t.pipelineRunId),
     finishedArchiveIdx: index('jobs_finished_archive_idx')
       .on(t.finishedAt)

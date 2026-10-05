@@ -9,6 +9,27 @@
 -- `project_workflows.design_status` is the `workflow_design` machine (`@forge/contracts/design-status`):
 -- like every other machine's status it is written only by the kernel transition.
 
+-- LOCKS. Drizzle applies every pending file in ONE transaction, so a lock taken here is held until
+-- the batch commits. Every table touched by this file and the later files of its batch (0398-0402)
+-- is locked up front, in one fixed order (alphabetical), before any statement holds a lock a live
+-- session could be waiting behind; a table that stays busy past lock_timeout fails the deploy loudly
+-- instead of deadlocking mid-file. A table this database never had is skipped.
+SET LOCAL lock_timeout = '10s';--> statement-breakpoint
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'app_config', 'device_skills', 'feedback', 'feedback_decisions', 'jobs', 'notifications',
+    'phase_journal', 'pipeline_outbox', 'project_config_revisions', 'project_workflows',
+    'projects', 'reconcile_runs', 'release_attempts', 'schedules', 'skill_activity_events',
+    'skill_registrations', 'skills', 'usage_records', 'users'
+  ] LOOP
+    IF to_regclass(t) IS NOT NULL THEN
+      EXECUTE format('LOCK TABLE %s IN ACCESS EXCLUSIVE MODE', to_regclass(t));
+    END IF;
+  END LOOP;
+END $$;--> statement-breakpoint
+
 CREATE OR REPLACE FUNCTION "feedback_decision_guard"() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF TG_OP = 'DELETE' AND NOT EXISTS (SELECT 1 FROM "feedback" WHERE "id" = OLD."feedback_id") THEN

@@ -10,15 +10,18 @@
 -- migration naming that row, and is never deleted or relabelled here.
 
 -- LOCKS. Drizzle applies every pending file in ONE transaction, so a lock taken here is held until
--- the batch commits. Every table this file touches is locked up front, in one fixed order
--- (alphabetical), before any statement holds a lock a live session could be waiting behind; a
--- table that stays busy past lock_timeout fails the deploy loudly instead of deadlocking mid-file.
+-- the batch commits. Every table touched by this file and the later files of its batch (0399-0402)
+-- is locked up front, in one fixed order (alphabetical), before any statement holds a lock a live
+-- session could be waiting behind; a table that stays busy past lock_timeout fails the deploy loudly
+-- instead of deadlocking mid-file. A table this database never had is skipped.
 SET LOCAL lock_timeout = '10s';--> statement-breakpoint
 DO $$
 DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY[
-    'project_config_revisions', 'release_attempts', 'schedules', 'usage_records'
+    'app_config', 'device_skills', 'jobs', 'notifications', 'phase_journal', 'pipeline_outbox',
+    'project_config_revisions', 'projects', 'reconcile_runs', 'release_attempts', 'schedules',
+    'skill_activity_events', 'skill_registrations', 'skills', 'usage_records', 'users'
   ] LOOP
     IF to_regclass(t) IS NOT NULL THEN
       EXECUTE format('LOCK TABLE %s IN ACCESS EXCLUSIVE MODE', to_regclass(t));
