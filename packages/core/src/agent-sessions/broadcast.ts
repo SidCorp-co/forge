@@ -1,5 +1,6 @@
 import type { AgentSessionTurnRole } from '../db/schema.js';
-import { deviceRoom, projectRoom, roomManager } from '../lib/rooms.js';
+import { logger } from '../lib/logger.js';
+import { pushSession } from './push.js';
 
 interface SessionLite {
   id: string;
@@ -18,7 +19,9 @@ export function broadcastSession(
   event: string,
   extra: Record<string, unknown> = {},
 ): void {
-  const payload = {
+  void pushSession({
+    projectId: session.projectId,
+    deviceId: session.deviceId,
     event,
     data: {
       sessionId: session.id,
@@ -27,9 +30,9 @@ export function broadcastSession(
       status: session.status,
       ...extra,
     },
-  };
-  roomManager.publish(projectRoom(session.projectId), payload);
-  if (session.deviceId) roomManager.publish(deviceRoom(session.deviceId), payload);
+  }).catch((err: unknown) =>
+    logger.warn({ err, sessionId: session.id, event }, 'session push: the event was not written'),
+  );
 }
 
 interface AppendedTurn {

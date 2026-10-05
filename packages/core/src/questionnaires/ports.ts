@@ -36,7 +36,7 @@ interface QuestionnairePorts {
   announceConversationChange: (
     conversationId: string,
     data: { conversationId: string; messageId: string | null; role: string; content: string },
-  ) => Promise<number>;
+  ) => Promise<void>;
   /** The thread owner's write inside the submit transaction (an onboarding round touches its onboarding). */
   onSubmittedIn: (tx: TxOnly, batch: BatchRow) => Promise<void>;
   /** The thread owner's step after a submit commits (an onboarding round enqueues its revise job). */

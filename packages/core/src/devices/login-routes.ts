@@ -24,7 +24,6 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { logger } from '../lib/logger.js';
 import { RULES } from '../lib/rate-limits.js';
-import { roomManager, userRoom } from '../lib/rooms.js';
 import { digestToken } from '../lib/token-digest.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
@@ -32,6 +31,7 @@ import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import { issueDeviceCredential } from './credential.js';
+import { pushDevice } from './push.js';
 import { loginCodeState, userExists, userKindAndOrg } from './read.js';
 import { registerDevice } from './register.js';
 import { approveLoginCode, consumeLoginCode, insertLoginCode } from './service.js';
@@ -112,9 +112,9 @@ async function publishLoginEvent(
   data: Record<string, unknown>,
 ): Promise<void> {
   try {
-    roomManager.publish(userRoom(userId), { event, data });
+    await pushDevice({ deviceId: null, userId, event, data });
   } catch (err) {
-    logger.error({ err, userId, event }, 'device-login: WS publish failed (non-fatal)');
+    logger.error({ err, userId, event }, 'device-login: the push was not written (non-fatal)');
   }
 }
 

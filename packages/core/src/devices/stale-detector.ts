@@ -2,8 +2,8 @@ import { DEVICE_MACHINE } from '@forge/contracts/runner-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { BOX_STALE_MS } from '../lib/dispatch-liveness.js';
-import { deviceRoom, roomManager } from '../lib/rooms.js';
 import { transition } from '../lifecycle/index.js';
+import { pushDevice } from './push.js';
 
 export async function runDeviceStaleSweep(): Promise<{
   markedOffline: number;
@@ -21,7 +21,9 @@ export async function runDeviceStaleSweep(): Promise<{
   });
 
   for (const row of rows) {
-    roomManager.publish(deviceRoom(row.id), {
+    await pushDevice({
+      deviceId: row.id,
+      userId: null,
       event: 'device.status',
       data: { deviceId: row.id, status: 'offline', reason: 'stale' },
     });

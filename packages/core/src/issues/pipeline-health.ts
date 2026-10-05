@@ -24,7 +24,6 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
-import { projectRoom, roomManager } from '../lib/rooms.js';
 import { classifyIssueWorker, type SessionWorkerLane, unreadableWorker } from './issue-worker.js';
 import { holderFanout, readClaim } from './lease-fanout.js';
 import { loadActiveJobsByIssue, loadPausedRunsByIssue } from './pipeline-health-loaders.js';
@@ -64,6 +63,7 @@ export type {
   WaitingCause,
 } from './pipeline-health-types.js';
 
+import { emitEvent } from '../outbox/index.js';
 import { freshRunnerAvailability } from './ports.js';
 
 /**
@@ -290,7 +290,8 @@ export async function publishPipelineHealthChanged(
   try {
     const map = await hydratePipelineHealthForIssues(projectId, issueIds);
     for (const [issueId, pipelineHealth] of map) {
-      roomManager.publish(projectRoom(projectId), {
+      await emitEvent(db, 'issue.pushed', {
+        projectId,
         event: 'issue.pipelineHealth.changed',
         data: { issueId, projectId, pipelineHealth },
       });

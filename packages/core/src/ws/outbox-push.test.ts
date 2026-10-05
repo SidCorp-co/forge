@@ -32,6 +32,7 @@ vi.mock('../pipeline/index.js', () => ({
 
 const { registerWsBroadcastSubscribers } = await import('./broadcast-subscribers.js');
 const { broadcastRunnerChanged } = await import('../runners/apply-runner-limit.js');
+const { pushDevice } = await import('../devices/push.js');
 
 /** Hands every event written so far to the consumer registered for its type, as the worker would. */
 async function deliver(): Promise<void> {
@@ -118,6 +119,21 @@ describe('a runner push reaches its room only through the outbox', () => {
         event: 'pat.revoked',
         data: { tokenId: 't-1', userId: 'u-1', ts: '2026-10-05T00:00:00.000Z' },
       },
+    ]);
+  });
+
+  it('tells a revoked device to its owner first, then to the box, only once delivered', async () => {
+    await pushDevice({
+      deviceId: 'd-1',
+      userId: 'u-1',
+      event: 'device.revoked',
+      data: { deviceId: 'd-1' },
+    });
+    expect(published).toEqual([]);
+    await deliver();
+    expect(published).toEqual([
+      { room: 'user:u-1', event: 'device.revoked', data: { deviceId: 'd-1' } },
+      { room: 'device:d-1', event: 'device.revoked', data: { deviceId: 'd-1' } },
     ]);
   });
 });

@@ -3,7 +3,6 @@ import { scrubSecretsDeep } from '@forge/observability';
 import { and, eq, gt, isNull, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { deviceLoginCodes, devices, type RunnerProvisionStatus, runners } from '../db/schema.js';
-import { deviceRoom, roomManager, userRoom } from '../lib/rooms.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
 import {
@@ -15,6 +14,7 @@ import {
 import { revokeDeviceCredentials } from './credential.js';
 import type { DevicePatch } from './heartbeat-patch.js';
 import { heartbeatPool } from './pool-read-report.js';
+import { pushDevice } from './push.js';
 
 /** A device's name or disabled switch; null when the device is gone. */
 export async function updateDevice(id: string, patch: { name?: string; disabledAt?: Date | null }) {
@@ -53,15 +53,16 @@ export async function revokeDevices(args: {
       returning: ['id', 'ownerId'],
     });
     const ids = rows.map((r) => r.id);
+    for (const { id, ownerId } of rows) {
+      await pushDevice(
+        { deviceId: id, userId: ownerId, event: 'device.revoked', data: { deviceId: id } },
+        tx,
+      );
+    }
     await deleteDeviceRunners(tx, ids);
     await revokeDeviceCredentials(tx, [...new Set([...ids, ...(args.credentialsOf ?? [])])]);
     return rows;
   });
-  for (const { id, ownerId } of moved) {
-    const event = { event: 'device.revoked', data: { deviceId: id } };
-    roomManager.publish(userRoom(ownerId), event);
-    roomManager.publish(deviceRoom(id), event);
-  }
   return moved.map((r) => r.id);
 }
 

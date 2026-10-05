@@ -89,6 +89,7 @@ import {
   renderIssueMockups,
   renderPinnedContracts,
 } from './workflows/index.js';
+import { boxIsListening, sendToBoxNow } from './ws/index.js';
 
 export function provideExecutionPorts(): void {
   provideJobsPorts({
@@ -131,6 +132,8 @@ export function provideExecutionPorts(): void {
     deviceHolderUserId,
     insertInterventionEvent,
     resolveSessionMcpServers,
+    boxIsListening,
+    sendToBoxNow,
     scrubSessionOutput: async (sessionId, data) =>
       scrubJobOutput(await jobsOfSession(sessionId), data),
     postSteerComment: async ({ issueId, authorId, body }) =>

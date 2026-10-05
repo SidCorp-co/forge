@@ -2,6 +2,7 @@ import type { ConsumedBy, OutboxConsumerOf } from '@forge/contracts/outbox-consu
 import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
 import { deviceRoom, projectRoom, roomManager, runnerRoom, userRoom } from '../lib/rooms.js';
 import { consume } from '../outbox/index.js';
+import { runStatusView } from '../pipeline/index.js';
 
 const pub = (room: string, event: string, data: unknown) =>
   roomManager.publish(room, { event, data });
@@ -153,6 +154,33 @@ export function registerWsBroadcastSubscribers(): void {
 
   on('job.eventsAppended', (p) => {
     for (const e of p.events) pub(projectRoom(p.projectId), 'job.event', { jobId: p.jobId, ...e });
+  });
+
+  on('device.pushed', (p) => {
+    if (p.userId) pub(userRoom(p.userId), p.event, p.data);
+    if (p.deviceId) pub(deviceRoom(p.deviceId), p.event, p.data);
+  });
+
+  on('session.pushed', (p) => {
+    if (p.projectId) pub(projectRoom(p.projectId), p.event, p.data);
+    if (p.deviceId) pub(deviceRoom(p.deviceId), p.event, p.data);
+  });
+
+  on('issue.pushed', (p) => {
+    pub(projectRoom(p.projectId), p.event, p.data);
+  });
+
+  on('conversation.pushed', (p) => {
+    for (const userId of p.userIds) pub(userRoom(userId), p.event, p.data);
+  });
+
+  // a pause, a resume, a cancel and a close all reach the project room through the run's own move
+  consume('run.transitioned', {
+    name: 'run-status-broadcast',
+    handle: async (p) => {
+      const run = await runStatusView(p.id);
+      if (run) pub(projectRoom(run.projectId), 'pipeline_run.status_changed', run);
+    },
   });
 
   on('session.changed', (p) => {

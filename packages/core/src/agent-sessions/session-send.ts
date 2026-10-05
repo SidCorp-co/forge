@@ -23,8 +23,8 @@ import {
   sessionInbox,
 } from '../db/schema-session-inbox.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
-import { deviceRoom, roomManager } from '../lib/rooms.js';
 import { agentSessionsPorts } from './ports.js';
+import { pushSession } from './push.js';
 import { refuseSession } from './refusals.js';
 
 type SessionInboxRow = typeof sessionInbox.$inferSelect;
@@ -172,7 +172,9 @@ export async function requestSessionSend(
 
   if (!session.deviceId) return { row, published: false, duplicate };
 
-  roomManager.publish(deviceRoom(session.deviceId), {
+  await pushSession({
+    projectId: null,
+    deviceId: session.deviceId,
     event: 'session.send',
     data: {
       sessionId: req.agentSessionId,

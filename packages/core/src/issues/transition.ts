@@ -1,13 +1,14 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { db } from '../db/client.js';
 import { type IssueStatus, issueStatuses, waitingKinds } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
-import { projectRoom, roomManager } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
+import { emitEvent } from '../outbox/index.js';
 import { requireHeld } from '../permissions/index.js';
 import {
   type StatusTransitionResult,
@@ -120,7 +121,8 @@ export async function publishUnblockCascade(
   for (const t of terminal) {
     const list = byBlocker.get(t.issueId);
     if (!list || list.length === 0) continue;
-    roomManager.publish(projectRoom(t.projectId), {
+    await emitEvent(db, 'issue.pushed', {
+      projectId: t.projectId,
       event: 'issue.unblockCascade',
       data: {
         blockerId: t.issueId,

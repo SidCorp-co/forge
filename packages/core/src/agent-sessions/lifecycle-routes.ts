@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
-import { deviceRoom, roomManager } from '../lib/rooms.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { closeRunIfOneShot } from '../pipeline/index.js';
 import { broadcastSession } from './broadcast.js';
 import { abortBodySchema } from './lifecycle-schemas.js';
+import { pushSession } from './push.js';
 import { abortSession, cancelSession } from './service.js';
 import { ensureSessionOwnerOrAdmin, idParamSchema, loadSessionOr404 } from './session-access.js';
 
@@ -29,7 +29,9 @@ agentSessionLifecycleRoutes.post('/abort', zValidator('json', abortBodySchema), 
 
   const targetDeviceId = meta.deviceId ?? updated.deviceId ?? null;
   if (targetDeviceId) {
-    roomManager.publish(deviceRoom(targetDeviceId), {
+    await pushSession({
+      projectId: null,
+      deviceId: targetDeviceId,
       event: 'agent:abort',
       data: { sessionId: updated.id },
     });
@@ -66,7 +68,9 @@ agentSessionLifecycleRoutes.post('/:id/cancel', zValidator('param', idParamSchem
   const meta = (updated.metadata ?? {}) as { deviceId?: string };
   const targetDeviceId = meta.deviceId ?? updated.deviceId ?? null;
   if (targetDeviceId) {
-    roomManager.publish(deviceRoom(targetDeviceId), {
+    await pushSession({
+      projectId: null,
+      deviceId: targetDeviceId,
       event: 'agent:abort',
       data: { sessionId: updated.id, reason: 'user_cancelled' },
     });

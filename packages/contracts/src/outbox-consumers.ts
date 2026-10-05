@@ -59,6 +59,10 @@ export const OUTBOX_CONSUMERS = {
 	"job.changed": ["ws-broadcast"],
 	"job.eventsAppended": ["ws-broadcast"],
 	"session.changed": ["ws-broadcast"],
+	"device.pushed": ["ws-broadcast"],
+	"session.pushed": ["ws-broadcast"],
+	"issue.pushed": ["ws-broadcast"],
+	"conversation.pushed": ["ws-broadcast"],
 } as const satisfies {
 	readonly [T in OutboxEventType]: readonly string[];
 };
