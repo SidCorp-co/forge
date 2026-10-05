@@ -30,7 +30,7 @@ export const users = pgTable('users', {
    */
   lastFreshAuthAt: timestamp('last_fresh_auth_at', { withTimezone: true }),
   /**
-   * Set at logout, to the whole second (0398): a session JWT issued before it is refused, so a
+   * Set at logout, to the whole second (0399): a session JWT issued before it is refused, so a
    * logout ends every session token already handed out, not only the refresh tokens.
    */
   tokensValidAfter: timestamp('tokens_valid_after', { withTimezone: true }),

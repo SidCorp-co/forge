@@ -2558,10 +2558,10 @@
       "breakpoints": true
     },
     {
-      "idx": 398,
+      "idx": 399,
       "version": "7",
-      "when": 1817337600000,
-      "tag": "0398_app_config_is_dropped_and_logout_ends_session_tokens",
+      "when": 1817424000000,
+      "tag": "0399_app_config_is_dropped_and_logout_ends_session_tokens",
       "breakpoints": true
     }
   ]
