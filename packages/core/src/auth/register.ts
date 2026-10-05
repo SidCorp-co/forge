@@ -6,7 +6,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { env } from '../config/env.js';
 import { RULES } from '../config/rate-limits.js';
-import { mailDeliveryEnabled, sendMail } from '../integrations/mail/index.js';
+import { mailDeliveryEnabled, sendMail } from '../integrations/identity/index.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { refuser } from '../lib/refusal.js';
 import { rateLimit } from '../middleware/rate-limit.js';
