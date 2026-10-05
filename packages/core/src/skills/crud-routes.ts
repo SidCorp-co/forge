@@ -61,10 +61,6 @@ const listQuerySchema = z
   .strict();
 const bulkPushSchema = z
   .object({
-    // `targets` is kept for API back-compat with the web client; its values
-    // ('dev'/'cloud') are no longer interpreted — an explicit push always
-    // signals every device-bound runner of the project (or one `deviceId`).
-    targets: z.array(z.string().min(1)).min(1).max(10).optional(),
     projectId: z.uuid(),
     deviceId: z.uuid().optional(),
     skillNames: z.array(z.string().min(1)).optional(),
