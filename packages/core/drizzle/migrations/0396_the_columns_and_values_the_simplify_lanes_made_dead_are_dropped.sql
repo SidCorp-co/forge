@@ -7,6 +7,25 @@
 -- A value narrowed out of a CHECK or a vocabulary is checked against the rows first: a row holding it
 -- aborts this migration naming that row, and is never deleted or relabelled here.
 
+-- LOCKS. Drizzle applies every pending file in ONE transaction, so a lock taken here is held until
+-- the batch commits. Every table that this file
+-- touch is locked up front, in one fixed order (alphabetical), before any statement holds a lock a
+-- live session could be waiting behind; a table that stays busy past lock_timeout fails the deploy
+-- loudly instead of deadlocking mid-file. A table this database never had (pgboss_v12 on a fresh
+-- one) is skipped.
+SET LOCAL lock_timeout = '10s';--> statement-breakpoint
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'agent_sessions', 'pipeline_runs', 'preference_changes', 'release_attempts'
+  ] LOOP
+    IF to_regclass(t) IS NOT NULL THEN
+      EXECUTE format('LOCK TABLE %s IN ACCESS EXCLUSIVE MODE', to_regclass(t));
+    END IF;
+  END LOOP;
+END $$;--> statement-breakpoint
+
 -- The PM agent is gone (ISS-220): 'pm' leaves the run and session kind CHECKs, as it already left
 -- `pipelineRunKinds` and `agentSessionKinds`.
 DO $$
