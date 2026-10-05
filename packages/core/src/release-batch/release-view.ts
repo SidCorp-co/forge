@@ -33,7 +33,6 @@ interface TurnFacts {
   viewer: ViewerFacts | null;
   gates: readonly { title: string }[];
   inFlight: ReleaseAttemptStage | null;
-  crossedBounds: readonly string[];
 }
 
 type Turn = Standing<ReleaseAttentionGroup, ReleaseWaitingKind>;
@@ -41,10 +40,8 @@ type Turn = Standing<ReleaseAttentionGroup, ReleaseWaitingKind>;
 const NOBODY = nobodyWaits('the release has ended');
 
 const IN_FLIGHT_ACT: Record<ReleaseAttemptStage, string> = {
-  promote: 'promoting',
   deploy: 'deploying',
   verify: 'verifying',
-  repair: 'repairing',
 };
 
 const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
@@ -160,19 +157,6 @@ export function turnOf(f: TurnFacts): Turn {
         },
       };
     case 'in_progress':
-      if (f.crossedBounds.length > 0) {
-        return {
-          attentionGroup: 'stuck',
-          waitingOn: {
-            kind: 'system',
-            who: 'Release run',
-            act: `crossed its ${f.crossedBounds.join(' and ')} bound`,
-            rule: 'a bound on the run is crossed, so it no longer reads as moving',
-            ref: null,
-            dueAt: null,
-          },
-        };
-      }
       return {
         attentionGroup: 'moving',
         waitingOn: {
@@ -186,7 +170,6 @@ export function turnOf(f: TurnFacts): Turn {
       };
     case 'shipped':
       return { attentionGroup: 'done', waitingOn: NOBODY };
-    case 'rolled_back':
     case 'failed':
     case 'aborted':
       return { attentionGroup: 'stopped', waitingOn: NOBODY };

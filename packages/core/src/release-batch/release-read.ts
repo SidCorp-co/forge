@@ -10,7 +10,6 @@ import { notFound } from '../middleware/route-errors.js';
 import { approvalRequired, readReleasePath } from '../project-config/index.js';
 import { type ApprovalView, approvalsOfRuns, approvalViews } from './approvals.js';
 import { collectReleaseBlockers } from './blockers.js';
-import { readBounds } from './bounds.js';
 import { waitingIssueIds } from './queries.js';
 import { refuseRelease } from './refuse.js';
 import { approversOf, loadReleaseFacts } from './release-facts.js';
@@ -44,7 +43,6 @@ async function draftPart(projectId: string): Promise<Part | null> {
     attempts: [],
     approvals: [],
     gates: gateViews(report.blockers, report.warnings),
-    bounds: null,
   };
 }
 
@@ -54,18 +52,16 @@ function runPart(
   approvals: ApprovalView[],
   required: boolean,
 ): Part {
-  const state = versionStatus(run, attempts, approvals[0] ?? null, required);
   return {
     version: run.version,
     runId: run.id,
-    state,
+    state: versionStatus(run, approvals[0] ?? null, required),
     issueIds: issueIdsOf(run.metadata),
     openedAt: run.startedAt,
     releasedAt: run.releasedAt,
     attempts,
     approvals,
     gates: [],
-    bounds: state === 'in_progress' ? readBounds(attempts) : null,
   };
 }
 

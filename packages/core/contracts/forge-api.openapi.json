@@ -3519,26 +3519,11 @@
                         "type": "null"
                       }
                     ]
-                  },
-                  "language": {
-                    "enum": [
-                      "en",
-                      "vi"
-                    ],
-                    "type": "string"
-                  },
-                  "theme": {
-                    "enum": [
-                      "system",
-                      "light",
-                      "dark"
-                    ],
-                    "type": "string"
                   }
                 },
                 "type": "object",
                 "x-forge-refinements": [
-                  "at least one of theme/language/answerStyle/assistantInstructions is required"
+                  "at least one of answerStyle/assistantInstructions is required; theme and language are set with PATCH /api/auth/me/preferences"
                 ]
               }
             }
@@ -32966,20 +32951,6 @@
                     ],
                     "type": "string"
                   },
-                  "metadata": {
-                    "anyOf": [
-                      {
-                        "additionalProperties": {},
-                        "propertyNames": {
-                          "type": "string"
-                        },
-                        "type": "object"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
                   "name": {
                     "maxLength": 200,
                     "minLength": 1,
@@ -33161,20 +33132,6 @@
                       "sentry_pull"
                     ],
                     "type": "string"
-                  },
-                  "metadata": {
-                    "anyOf": [
-                      {
-                        "additionalProperties": {},
-                        "propertyNames": {
-                          "type": "string"
-                        },
-                        "type": "object"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
                   },
                   "name": {
                     "maxLength": 200,

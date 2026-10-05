@@ -28,7 +28,6 @@ import {
   updateProjectMember,
 } from '../permissions/index.js';
 import { seedProjectPolicy } from '../project-config/index.js';
-import { type AgentConfigKeyPatch, patchAgentConfigKeys } from './agent-config.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { PATCHED_PROJECT } from './projections.js';
 import { refuse } from './refuse.js';
@@ -220,20 +219,17 @@ export async function declineProjectInvitation(token: string, email: string): Pr
 }
 
 /**
- * The settings patch in one transaction: agent-config keys, the issue prefix, and a move to
- * another org. Answers the patched project, or null when it is gone.
+ * The settings patch in one transaction: the issue prefix and a move to another org. Answers the patched project, or null when it is gone.
  */
 export async function updateProjectSettings(
   projectId: string,
   userId: string,
   patch: {
     orgId?: string | undefined;
-    agentConfig: AgentConfigKeyPatch;
     issuePrefix?: string | null | undefined;
   },
 ) {
   const [updated] = await db.transaction(async (tx) => {
-    await patchAgentConfigKeys(projectId, patch.agentConfig, tx);
     if (patch.issuePrefix !== undefined) {
       await applyIssuePrefixPatch(projectId, patch.issuePrefix, userId, tx);
     }

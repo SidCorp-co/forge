@@ -20,7 +20,7 @@ import {
   requireOrgHeld,
 } from '../permissions/index.js';
 import { readDeclaredSource } from '../project-config/index.js';
-import { type AgentConfigKeyPatch, patchAgentConfigKeys, readAgentConfig } from './agent-config.js';
+import { patchAgentConfigKeys, readAgentConfig } from './agent-config.js';
 import { listVisibleProjectRows, projectDetail } from './read.js';
 import { createProjectBodySchema, updateProjectPatchSchema } from './request-schemas.js';
 import {
@@ -136,11 +136,8 @@ projectRoutes.patch(
       orgId = patch.orgId;
     }
 
-    const agentConfigPatch: AgentConfigKeyPatch = {};
-
     const updated = await updateProjectSettings(id, userId, {
       orgId,
-      agentConfig: agentConfigPatch,
       issuePrefix: patch.issuePrefix,
     });
     if (!updated) throw notFound();

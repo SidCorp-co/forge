@@ -10,7 +10,6 @@ import {
   listPreferenceChanges,
   restorePreferenceChange,
   writeAssistantPreferences,
-  writeDisplayPreferences,
   writeMePreferences,
 } from './service.js';
 
@@ -19,22 +18,14 @@ const PREF_LANGUAGES = ['en', 'vi'] as const;
 
 const patchBodySchema = z
   .object({
-    theme: z.enum(PREF_THEMES).optional(),
-    language: z.enum(PREF_LANGUAGES).optional(),
     answerStyle: z.enum(answerStyles).optional(),
     assistantInstructions: z.string().trim().max(2000).nullable().optional(),
   })
   .strict()
-  .refine(
-    (v) =>
-      v.theme !== undefined ||
-      v.language !== undefined ||
-      v.answerStyle !== undefined ||
-      v.assistantInstructions !== undefined,
-    {
-      message: 'at least one of theme/language/answerStyle/assistantInstructions is required',
-    },
-  );
+  .refine((v) => v.answerStyle !== undefined || v.assistantInstructions !== undefined, {
+    message:
+      'at least one of answerStyle/assistantInstructions is required; theme and language are set with PATCH /api/auth/me/preferences',
+  });
 
 const changeParamSchema = z.object({ id: z.uuid() });
 
@@ -71,19 +62,14 @@ preferenceRoutes.post(
 );
 
 preferenceRoutes.patch('/preferences', zValidator('json', patchBodySchema), async (c) => {
-  const { theme, language, answerStyle, assistantInstructions } = c.req.valid('json');
+  const { answerStyle, assistantInstructions } = c.req.valid('json');
   const userId = c.get('userId');
-
-  if (answerStyle !== undefined || assistantInstructions !== undefined) {
-    await writeAssistantPreferences({
-      userId,
-      patch: { answerStyle, assistantInstructions },
-      actor: { kind: 'person', userId },
-    });
-  }
-  if (theme === undefined && language === undefined) return c.json(await readPreferences(userId));
-
-  return c.json(await writeDisplayPreferences(userId, { theme, language }));
+  await writeAssistantPreferences({
+    userId,
+    patch: { answerStyle, assistantInstructions },
+    actor: { kind: 'person', userId },
+  });
+  return c.json(await readPreferences(userId));
 });
 
 const preferencesSchema = z

@@ -1,3 +1,6 @@
+import { and, eq, isNull } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import { releaseAttempts } from '../db/schema-release-ledger.js';
 import {
   buildClient,
   type CoolifyConfig,
@@ -125,7 +128,7 @@ export async function runCoolifyConfirm(data: CoolifyConfirmJob): Promise<Confir
       return { settled: null, closedRun: false, handedToHealthGate: true };
     }
     if (healthGate.kind === 'window-too-short') {
-      detail = `health gate skipped: ${Math.max(0, Math.round(healthGate.remainingMs / 1000))}s left on the confirmation deadline, too short to give the container its grace period — this deploy is NOT proven to serve`;
+      const left = Math.max(0, Math.round(healthGate.remainingMs / 1000));
       logger.error(
         {
           bindingId: data.bindingId,
@@ -134,7 +137,12 @@ export async function runCoolifyConfirm(data: CoolifyConfirmJob): Promise<Confir
           targetLabel: data.targetLabel,
           remainingMs: healthGate.remainingMs,
         },
-        "coolify confirm: the build finished too close to its confirmation deadline to health-check it — settling on Coolify's verdict, this deploy is NOT proven to serve",
+        'coolify confirm: the build finished too close to its confirmation deadline to health-check it — settling it failed, since nothing proved it serves',
+      );
+      return settle(
+        data,
+        'failed',
+        `health gate could not run: ${left}s left on the confirmation deadline, too short for the container's grace period, so this deploy is not proven to serve`,
       );
     }
   }
@@ -222,6 +230,20 @@ export async function applyDeploySettlement(
     status: verdict,
     ...(detail ? { detail } : {}),
   });
+  await db
+    .update(releaseAttempts)
+    .set({
+      settledAt: new Date(),
+      verdict: verdict === 'succeeded' ? 'ok' : 'failed',
+      verdictReason: detail ?? null,
+    })
+    .where(
+      and(
+        eq(releaseAttempts.runId, data.runId),
+        eq(releaseAttempts.idempotencyKey, data.deliveryId),
+        isNull(releaseAttempts.settledAt),
+      ),
+    );
 
   // ISS-1279 — the environment is free once nothing of this run is still reaching it, and this
   // target's own recorded hold is the evidence that the record can answer that at all. Absent, the

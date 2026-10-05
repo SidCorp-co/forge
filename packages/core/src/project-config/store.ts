@@ -5,7 +5,6 @@ import type { BindingRole } from '../db/release-axes.js';
 import { integrationBindings, projects, runners } from '../db/schema.js';
 import {
   projectConfigDocuments,
-  projectConfigRevisions,
   projectPolicies,
   projectSecrets,
   projectTestingProfiles,
@@ -114,9 +113,6 @@ export const drizzleConfigStore = {
             set: { revision, document, updatedBy: userId, updatedAt: now },
           })
           .returning();
-        await tx
-          .insert(projectConfigRevisions)
-          .values({ projectId, revision, document, writtenBy: userId, writtenAt: now });
         if (!row) throw new Error('project-config: document upsert returned no row');
         if (!(await projectConfigPorts().projectDocumentNames(tx, projectId, { slug, name }))) {
           throw new Error(

@@ -5,7 +5,7 @@ import { TERMINAL_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
-import { claimIssuesForRelease } from '../issues/index.js';
+import { claimIssuesForRelease, releaseRunClaims } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { agrees, counted } from '../lib/plural.js';
 import { closeRunIfOneShot } from '../pipeline/index.js';
@@ -213,6 +213,7 @@ export async function claimRoster(
   const gateStatus = RELEASE_GATE_STATUS;
   const claimed = await claimIssuesForRelease({ projectId, issueIds, gateStatus, runId });
   if (claimed.length === issueIds.length) return claimed;
+  await releaseRunClaims(runId);
   await closeRunIfOneShot(runId, 'cancelled');
   const lost = issueIds.filter((id) => !claimed.some((r) => r.id === id));
   const conflicts = await readClaimConflicts(projectId, gateStatus, lost);

@@ -3,7 +3,6 @@ import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import { isRefusal } from '../lib/refusal.js';
-import { type BoundsReading, readBounds } from './bounds.js';
 import { closeVerification, type ReleaseChannel, resolveReleaseChannels } from './channel.js';
 import { type ReleaseFinishRecord, readFinishRecord } from './finish-job.js';
 import { type ReleaseMethod, readMethod } from './method.js';
@@ -27,7 +26,6 @@ interface ReleaseRunState {
    * so an open run's value is its opening forecast. `null` on a run that recorded none.
    */
   verification: ReleaseVerification | null;
-  bounds: BoundsReading;
   /** `null` when the run never announced one. */
   method: ReleaseMethod | null;
   /** True when the agent announced that it could not load its method. */
@@ -104,7 +102,6 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
     attempts,
     live,
     verification: recordedVerification(meta, runId),
-    bounds: readBounds(attempts),
     method,
     methodUnloaded: method !== null && !method.loaded,
     finish: readFinishRecord(meta),

@@ -8,7 +8,7 @@ export const ASSISTANT_PREFERENCE_DEFAULTS = {
 };
 
 /** The columns `/preferences` answers. */
-export const FULL_PREFERENCES = {
+const FULL_PREFERENCES = {
   userId: userPreferences.userId,
   theme: userPreferences.theme,
   language: userPreferences.language,

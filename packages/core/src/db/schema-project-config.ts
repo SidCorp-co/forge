@@ -98,25 +98,6 @@ export const projectConfigDocuments = pgTable(
   }),
 );
 
-export const projectConfigRevisions = pgTable(
-  'project_config_revisions',
-  {
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    revision: integer('revision').notNull(),
-    document: jsonb('document').notNull(),
-    writtenBy: uuid('written_by')
-      .notNull()
-      .references(() => users.id, { onDelete: 'restrict' }),
-    writtenAt: timestamp('written_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    pk: primaryKey({ columns: [t.projectId, t.revision] }),
-    revisionPositiveChk: check('project_config_revisions_revision_chk', sql`${t.revision} >= 1`),
-  }),
-);
-
 export const projectPolicies = pgTable(
   'project_policies',
   {

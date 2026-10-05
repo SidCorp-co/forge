@@ -740,7 +740,6 @@
       "owns": [
         "integrationBindings",
         "projectConfigDocuments",
-        "projectConfigRevisions",
         "projectPolicies",
         "projectSecrets",
         "projectTestingProfiles"
