@@ -4,11 +4,10 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { issueStatuses } from '../db/schema.js';
 import { masterVerbs } from '../db/schema-master-charter.js';
-import { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from '../integrations/llm/index.js';
 import { RULES } from '../lib/rate-limits.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import {
   knowledgeInjectionEnum,
@@ -74,19 +73,15 @@ knowledgeRoutes.use('*', requireAuth(), assertEmailVerified());
 
 knowledgeRoutes.get(
   '/:id/knowledge',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid project id');
-  }),
-  zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest('invalid query params');
-  }),
+  zValidator('param', idParamSchema, invalid('invalid project id')),
+  zValidator('query', listQuerySchema, invalid('invalid query params')),
   async (c) => {
     const { id } = c.req.valid('param');
     const { kind, injection, verb: verbRaw, status: statusRaw } = c.req.valid('query');
     const verb = parseVerbQuery(verbRaw);
     const status = parseStatusQuery(statusRaw);
     const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'project.write', projectResource(id));
+    await requireCan(actorFor(userId), 'project.read', projectResource(id));
 
     const result = await listKnowledgeEntries({ projectId: id, kind, injection, verb, status });
     return c.json({
@@ -107,30 +102,15 @@ const searchBodySchema = z.object({
 knowledgeRoutes.post(
   '/:id/knowledge/search',
   rateLimit(() => RULES.knowledgeSearch, { name: 'knowledge-search' }),
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest('invalid project id');
-  }),
-  zValidator('json', searchBodySchema, (r) => {
-    if (!r.success) throw badRequest('invalid body');
-  }),
+  zValidator('param', idParamSchema, invalid('invalid project id')),
+  zValidator('json', searchBodySchema, invalid('invalid body')),
   async (c) => {
     const { id } = c.req.valid('param');
     const body = c.req.valid('json');
     const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'project.write', projectResource(id));
+    await requireCan(actorFor(userId), 'project.read', projectResource(id));
 
-    try {
-      const result = await runUnifiedSearch({ projectId: id, ...body });
-      return c.json(result);
-    } catch (err) {
-      if (err instanceof EmbeddingUnavailableError) {
-        throw new HTTPException(503, {
-          message: 'embeddings service unavailable',
-          cause: { code: EMBEDDING_UNAVAILABLE },
-        });
-      }
-      throw err;
-    }
+    return c.json(await runUnifiedSearch({ projectId: id, ...body }));
   },
 );
 
@@ -142,7 +122,7 @@ knowledgeRoutes.get(
   async (c) => {
     const { id, slug } = c.req.valid('param');
     const userId = c.get('userId');
-    await requireCan(actorFor(userId), 'project.write', projectResource(id));
+    await requireCan(actorFor(userId), 'project.read', projectResource(id));
 
     const entry = await getKnowledgeEntry(id, slug);
     if (!entry) throw notFound();
@@ -157,9 +137,7 @@ knowledgeRoutes.put(
   zValidator('param', slugParamSchema, (r, c) => {
     if (!r.success) throw badSlug(c.req.param('slug') ?? '');
   }),
-  zValidator('json', upsertBodySchema, (r) => {
-    if (!r.success) throw badRequest('invalid body');
-  }),
+  zValidator('json', upsertBodySchema, invalid('invalid body')),
   async (c) => {
     const { id, slug } = c.req.valid('param');
     const body = c.req.valid('json');
@@ -184,5 +162,3 @@ knowledgeRoutes.delete(
     return c.json({ deleted: removed > 0 });
   },
 );
-
-export { knowledgeIngestRoutes } from './ingest-routes.js';

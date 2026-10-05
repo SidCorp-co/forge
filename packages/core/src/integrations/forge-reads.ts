@@ -8,6 +8,14 @@ interface ForgeReads {
   declaredRepository(projectId: string): Promise<string | null>;
   /** The issue a branch name refers to on a project, or null. */
   issueForHeadRef(projectId: string, headRef: string): Promise<string | null>;
+  /** A project's slug, or null when no such project exists. */
+  projectSlug(projectId: string): Promise<string | null>;
+  /** Id, slug and name of each project in `ids` that exists. */
+  projectsByIds(ids: readonly string[]): Promise<{ id: string; slug: string; name: string }[]>;
+  /** The project a pipeline run belongs to, or null when no such run exists. */
+  runProjectOf(runId: string): Promise<string | null>;
+  /** Every project a device runs a runner for, whatever the runner's type. */
+  deviceProjects(deviceId: string): Promise<string[]>;
 }
 
 const slot = portSlot<ForgeReads>('integrations', 'provideForgeReads');

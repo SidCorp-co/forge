@@ -13,7 +13,6 @@ import { buildSentryMcpEntry } from './resolver.js';
 import { SENTRY_BINDING_CONFIG_KEYS, sentryConfigBase, sentrySecretsSchema } from './schemas.js';
 import { readTargets, renderSentryTargetsLine } from './targets.js';
 import type { SentryConfig, SentrySecrets } from './types.js';
-import { handleSentryWebhook, SENTRY_RESOURCE_HEADER, SENTRY_SIGNATURE_HEADER } from './webhook.js';
 
 /** Minimal shape of a Sentry org returned by `GET /api/0/organizations/`. */
 interface SentryOrg {
@@ -73,7 +72,10 @@ const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecret
   // file stays the declaration rather than becoming the client.
   dispatchOutbound: dispatchSentryOutbound,
 
-  handleInbound: handleSentryWebhook,
+  // Sentry is an error source read by `error-intake/pull.ts`; it has no inbound door.
+  async handleInbound() {
+    throw new Error('sentry: handleInbound is not supported — errors are pulled on a schedule');
+  },
 };
 
 /**
@@ -86,16 +88,12 @@ export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>
   provider: 'sentry',
   capabilities: {
     canDispatch: true,
-    canReceiveWebhook: true,
-    // Sentry calls when an error happens. A project with no errors has correctly received
-    // nothing, so silence on this door is good news and never a fault.
+    canReceiveWebhook: false,
     inboundUnprompted: false,
     canDeploy: false,
     liveConfirmGate: false,
     hasDeliveryLog: true,
     multiBinding: false,
-    webhookHeader: SENTRY_RESOURCE_HEADER,
-    webhookSignatureHeader: SENTRY_SIGNATURE_HEADER,
     structuredRollback: false,
     agentPath: {
       kind: 'direct-mcp',

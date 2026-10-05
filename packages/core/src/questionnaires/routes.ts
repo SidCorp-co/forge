@@ -4,12 +4,11 @@ import {
   submitAnswersRequestSchema,
 } from '@forge/contracts/onboarding';
 import { type Context, Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { type Refusal, refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { strictBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { afterSubmit, onSubmittedIn } from './ports.js';
 import { batchIn, batchView, questionnairesAs } from './read.js';
@@ -31,13 +30,11 @@ function refusedOnboarding(c: Context, refusals: readonly Refusal[]) {
 
 questionnaireRoutes.use('/:id/questionnaires/*', requireAuth(), assertEmailVerified());
 
-const batchParam = zValidator('param', z.object({ id: z.uuid(), bid: z.uuid() }), (r) => {
-  if (!r.success)
-    throw new HTTPException(400, {
-      message: 'invalid path: a project uuid and a questionnaire uuid',
-      cause: { code: 'BAD_REQUEST' },
-    });
-});
+const batchParam = zValidator(
+  'param',
+  z.object({ id: z.uuid(), bid: z.uuid() }),
+  invalid('invalid path: a project uuid and a questionnaire uuid'),
+);
 
 questionnaireRoutes.get('/:id/questionnaires/:bid', batchParam, async (c) => {
   const { id, bid } = c.req.valid('param');

@@ -58,10 +58,11 @@ export const integrationsApi = {
       { method: "PATCH", body: JSON.stringify(body) },
     ),
 
-  /** `POST .../integrations/:id/rotate-secret` — mint a new inbound secret, returned this once and
-   *  never readable again; the one it replaces stops being accepted. */
+  /** `POST .../integrations/:id/rotate-secret` — mint a new inbound secret, returned this once with
+   *  `pasteInto` naming where it goes. A provider-held secret (GitHub's App webhook secret) keeps the
+   *  old one verifying until the first delivery signed with the new; a minted one replaces it. */
   rotateSecret: (projectId: string, id: string) =>
-    apiClient<{ integration: IntegrationSummary; integrationSecret: string }>(
+    apiClient<{ integration: IntegrationSummary; integrationSecret: string; pasteInto: string | null }>(
       `/projects/${projectId}/integrations/${id}/rotate-secret`,
       { method: "POST" },
     ),

@@ -17,7 +17,6 @@ export type {
   FeedbackTriage,
   FeedbackView,
   PromoteAgentReportRequest,
-  SimilarFeedbackResponse,
 } from "@forge/contracts/feedback";
 
 /** One act a person takes on an item from its page; each answers the item as it reads next. */

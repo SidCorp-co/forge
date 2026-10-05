@@ -22,10 +22,14 @@ import {
   enqueueOutboundDispatch,
   findBindingWithConnectionById,
   findDeliveryById,
+  getAdapter,
   listBindingDeliveries,
+  listBindingsForConnection,
   listBindingsForProject,
+  mintInboundSecret,
   notFound,
   notifyConnectionChanged,
+  rotateHeldInboundSecret,
   splitProviderConfig,
   summarizeBinding,
   updateConnection,
@@ -229,17 +233,25 @@ integrationsRoutes.post('/:projectId/integrations/:id/rotate-secret', async (c) 
   const id = c.req.param('id');
   const existing = await projectBinding(projectId, id, c.get('userId'), 'admin');
 
-  // The inbound HMAC secret is per-binding (an inbound webhook is project+env
-  // scoped), so rotation targets the binding.
-  const newSecret = `whsec_${randomBytes(24).toString('hex')}`;
-  await setBindingInboundSecret(id, newSecret);
+  // A provider-held secret is the connection's, so every binding of it takes the new one and the
+  // old keeps verifying until the first delivery signed with the new. A minted one is this binding's.
+  const held = await rotateHeldInboundSecret(existing.connection.id);
+  const newSecret = held ?? mintInboundSecret();
+  const bindings = held ? await listBindingsForConnection(existing.connection.id) : [existing];
+  for (const { binding } of bindings) {
+    await setBindingInboundSecret(binding.id, newSecret);
+    await announceIntegrationChanged(binding.projectId, {
+      bindingId: binding.id,
+      connectionId: existing.connection.id,
+    });
+  }
   const refreshed = await findBindingWithConnectionById(id);
   if (!refreshed) throw notFound();
-  await announceIntegrationChanged(projectId, {
-    bindingId: id,
-    connectionId: existing.connection.id,
+  return c.json({
+    integration: summarizeBinding(refreshed),
+    integrationSecret: newSecret,
+    pasteInto: getAdapter(existing.binding.provider)?.inboundSecretHome ?? null,
   });
-  return c.json({ integration: summarizeBinding(refreshed), integrationSecret: newSecret });
 });
 
 integrationsRoutes.get('/:projectId/integrations/:id/deliveries', async (c) => {
@@ -275,6 +287,12 @@ integrationsRoutes.post('/:projectId/integrations/:id/deliveries/:deliveryId/ret
     );
   }
 
+  if (!existing.binding.active || !existing.connection.active) {
+    throw refuse(
+      'BINDING_INACTIVE',
+      `delivery ${deliveryId} is not re-sent: its ${existing.binding.active ? 'connection' : 'binding'} is switched off${existing.binding.active ? ' (the breaker may have opened it)' : ''}; switch it back on, then retry`,
+    );
+  }
   const p = (delivery.payload ?? {}) as { runId?: string | null; issueId?: string | null };
   const requestId = `retry_${randomBytes(12).toString('hex')}`;
   await enqueueOutboundDispatch({

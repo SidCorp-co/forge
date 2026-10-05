@@ -1,9 +1,8 @@
 import { type Context, Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { uuid } from '../project-config/index.js';
 import { openGateQuestionsOf } from '../questions/index.js';
 import { forbidden, refusedBy } from './access.js';
@@ -21,31 +20,28 @@ export const channelProjectRoutes = new Hono<{ Variables: AuthVars }>();
 
 channelProjectRoutes.use('/:id/channel/*', requireAuth(), assertEmailVerified());
 
-const badRequest = (message: string) =>
-  new HTTPException(400, { message, cause: { code: 'BAD_REQUEST' } });
+const projectParam = zValidator(
+  'param',
+  z.object({ id: z.uuid() }),
+  invalid('invalid path: the project id is a uuid'),
+);
 
-const projectParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
-  if (!r.success) throw badRequest('invalid path: the project id is a uuid');
-});
-
-const docParam = zValidator('param', z.object({ id: z.uuid(), doc: z.uuid() }), (r) => {
-  if (!r.success) throw badRequest('invalid path: the project and the document are uuids');
-});
+const docParam = zValidator(
+  'param',
+  z.object({ id: z.uuid(), doc: z.uuid() }),
+  invalid('invalid path: the project and the document are uuids'),
+);
 
 const refParam = zValidator(
   'param',
   z.object({ id: z.uuid(), ref: z.union([z.uuid(), z.string().regex(NUMBER_PATTERN)]) }),
-  (r) => {
-    if (!r.success) throw badRequest('invalid path: a document is named by its uuid or its number');
-  },
+  invalid('invalid path: a document is named by its uuid or its number'),
 );
 
 const threadParam = zValidator(
   'param',
   z.object({ id: z.uuid(), number: z.string().regex(NUMBER_PATTERN) }),
-  (r) => {
-    if (!r.success) throw badRequest('invalid path: a conversation is named by its number');
-  },
+  invalid('invalid path: a conversation is named by its number'),
 );
 
 const draftFields = {
@@ -60,30 +56,27 @@ const draftFields = {
 const DRAFT_SHAPE =
   '{ type, to, subject, dueBy?, inReplyTo?, body }; core sets id, from, number, state, gate and the author';
 
-const draftBody = zValidator('json', z.strictObject({ ecosystem: uuid(), ...draftFields }), (r) => {
-  if (!r.success) throw badRequest(`a draft is { ecosystem: <uuid>, ...${DRAFT_SHAPE} }`);
-});
+const draftBody = zValidator(
+  'json',
+  z.strictObject({ ecosystem: uuid(), ...draftFields }),
+  invalid(`a draft is { ecosystem: <uuid>, ...${DRAFT_SHAPE} }`),
+);
 
-const editBody = zValidator('json', z.strictObject(draftFields), (r) => {
-  if (!r.success) throw badRequest(`an edit is ${DRAFT_SHAPE}`);
-});
+const editBody = zValidator(
+  'json',
+  z.strictObject(draftFields),
+  invalid(`an edit is ${DRAFT_SHAPE}`),
+);
 
 const reasonBody = (code: ChannelRefusalCode, act: string) =>
-  zValidator('json', z.strictObject({ reason: z.string().trim().min(1).max(500) }), (r, c) => {
-    if (!r.success) {
-      return refused(
-        c,
-        [
-          {
-            code,
-            path: '/reason',
-            detail: `${act} says why: the body is { "reason": 1 to 500 characters }, and both sides read it.`,
-          },
-        ],
-        'ECOSYSTEM_REFUSED',
-      );
-    }
-  });
+  zValidator(
+    'json',
+    z.strictObject({ reason: z.string().trim().min(1).max(500) }),
+    invalid(
+      `${act} says why: the body is { "reason": 1 to 500 characters }, and both sides read it.`,
+      code,
+    ),
+  );
 
 const supersedeBody = zValidator(
   'json',
@@ -91,27 +84,17 @@ const supersedeBody = zValidator(
     by: z.string().regex(NUMBER_PATTERN),
     reason: z.string().trim().min(1).max(500),
   }),
-  (r, c) => {
-    if (!r.success) {
-      return refused(
-        c,
-        [
-          {
-            code: 'SUPERSEDE_WITHOUT_REASON',
-            path: '/reason',
-            detail:
-              'a supersession names its replacement and says why: the body is { "by": <the number of the published replacement>, "reason": 1 to 500 characters }.',
-          },
-        ],
-        'ECOSYSTEM_REFUSED',
-      );
-    }
-  },
+  invalid(
+    'a supersession names its replacement and says why: the body is { "by": <the number of the published replacement>, "reason": 1 to 500 characters }.',
+    'SUPERSEDE_WITHOUT_REASON',
+  ),
 );
 
-const holdBody = zValidator('json', z.strictObject({ reason: z.string().optional() }), (r) => {
-  if (!r.success) throw badRequest('a hold is { reason }, and a release is { reason? }');
-});
+const holdBody = zValidator(
+  'json',
+  z.strictObject({ reason: z.string().optional() }),
+  invalid('a hold is { reason }, and a release is { reason? }'),
+);
 
 function answer(c: Context, outcome: ChannelOutcome) {
   if (!outcome.ok) return refused(c, outcome.refusals, 'ECOSYSTEM_REFUSED');

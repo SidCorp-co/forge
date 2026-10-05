@@ -42,7 +42,7 @@ export async function releaseRunClaims(
 
 /**
  * Clear the claims of release runs that ended, so their issues can join another batch. A roster
- * whose run recorded a promotion and is still held at its release step stays claimed: a person
+ * whose run recorded a production deploy and is still held at its release step stays claimed: a person
  * settles it, and its claims are the only index a `return-to-gate` abort reads it back by.
  */
 export async function releaseEndedRunClaims(): Promise<number> {
@@ -60,7 +60,7 @@ export async function releaseEndedRunClaims(): Promise<number> {
         AND EXISTS (SELECT 1 FROM issue_work_state w WHERE w.issue_id = issues.id AND w.step = 'release')
         AND EXISTS (
           SELECT 1 FROM release_attempts a
-          WHERE a.run_id = issues.release_batch_run_id AND a.stage = 'promote'
+          WHERE a.run_id = issues.release_batch_run_id AND a.stage = 'deploy'
         )
       )
     RETURNING id

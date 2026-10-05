@@ -1,9 +1,13 @@
 import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import { conversationParticipants } from '../db/schema-conversations.js';
-import { effectiveProjectRole } from '../lib/authz.js';
 import { forbidden } from '../middleware/route-errors.js';
-import { type ProjectPermission, requireHeld } from '../permissions/index.js';
+import {
+  actorFor,
+  type ProjectPermission,
+  projectResource,
+  requireCan,
+} from '../permissions/index.js';
 import type { Executor } from './db-executor.js';
 
 /**
@@ -69,13 +73,12 @@ async function assertConversationHeld(
     );
   }
   for (const projectId of scope) {
-    const access = await effectiveProjectRole(userId, projectId);
-    if (!access?.role) {
-      throw forbidden(
-        `conversation ${conversationId} is about project ${projectId} and you hold no role on it; a room is reached only by someone who holds ${permission} on every project in it`,
-      );
-    }
-    requireHeld(access, permission, `conversation ${conversationId}`);
+    await requireCan(
+      actorFor(userId),
+      permission,
+      projectResource(projectId),
+      `conversation ${conversationId}`,
+    );
   }
   return scope;
 }

@@ -28,7 +28,6 @@ const scheduleFields = {
   script: z.string().trim().min(1).max(50_000).optional(),
   enabled: z.boolean().optional(),
   targetProjectSlug: z.string().trim().min(1).max(200).nullable().optional(),
-  metadata: z.record(z.string(), z.unknown()).nullable().optional(),
   params: z.record(z.string(), z.unknown()).nullable().optional(),
 };
 

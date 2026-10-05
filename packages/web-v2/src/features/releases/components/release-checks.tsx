@@ -7,10 +7,8 @@ import type { ReleaseApprovalView, ReleaseAttemptView, ReleaseDetail } from "../
 import { DisclosureToggle, shortSha } from "./release-bits";
 
 const STAGE_LABEL: Record<ReleaseAttemptView["stage"], string> = {
-  promote: "Promote",
   deploy: "Deploy",
   verify: "Verify",
-  repair: "Repair",
 };
 
 function verdictBadge(a: ReleaseAttemptView) {
@@ -85,22 +83,11 @@ function Approval({ a }: { a: ReleaseApprovalView }) {
 }
 
 export function ChecksPane({ r }: { r: ReleaseDetail }) {
-  const crossed = r.bounds.bounds.filter((b) => b.crossed);
   if (r.attempts.length === 0 && r.approvals.length === 0) {
     return <p className="text-13 text-subtle">No run has recorded a check on this release yet.</p>;
   }
   return (
     <div className="grid gap-8" data-testid="view-checks">
-      {crossed.length > 0 ? (
-        <section aria-label="Bounds">
-          <ViewHeading>Bounds crossed</ViewHeading>
-          <ul className="grid gap-1 text-13">
-            {crossed.map((b) => (
-              <li key={b.name}>{b.why}</li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
       {r.approvals.length > 0 ? (
         <section aria-label="Approvals">
           <ViewHeading>Approval</ViewHeading>

@@ -19,7 +19,6 @@ export const VERSION_STATUSES = [
 	"awaiting_approval",
 	"returned",
 	"shipped",
-	"rolled_back",
 	"failed",
 	"aborted",
 ] as const;
@@ -34,7 +33,6 @@ export const RELEASE_STATE_LABELS: Record<ReleaseState, string> = {
 	awaiting_approval: "Awaiting approval",
 	returned: "Returned",
 	shipped: "Shipped",
-	rolled_back: "Rolled back",
 	failed: "Failed",
 	aborted: "Aborted",
 };
@@ -45,7 +43,6 @@ export const RELEASE_STATE_TONES: Record<ReleaseState, IssueStatusTone> = {
 	awaiting_approval: "you",
 	returned: "err",
 	shipped: "ready",
-	rolled_back: "err",
 	failed: "err",
 	aborted: "neutral",
 };
@@ -56,7 +53,6 @@ export const RELEASE_STATE_GLYPHS: Record<ReleaseState, string> = {
 	awaiting_approval: "↑",
 	returned: "↺",
 	shipped: "✓",
-	rolled_back: "↺",
 	failed: "×",
 	aborted: "–",
 };
@@ -71,8 +67,6 @@ export const RELEASE_STATE_HINTS: Record<ReleaseState, string> = {
 	returned:
 		"returned: an admin sent it back with a reason; the master answers before it asks again",
 	shipped: "shipped: the release run stamped the version released",
-	rolled_back:
-		"rolled_back: production was repaired back to the previous version",
 	failed: "failed: the release run ended without shipping",
 	aborted: "aborted: the release run was stopped on purpose",
 };
@@ -302,12 +296,8 @@ export interface ReleaseHoldView {
 	heldAt: string;
 }
 
-export const RELEASE_ATTEMPT_STAGES = [
-	"promote",
-	"deploy",
-	"verify",
-	"repair",
-] as const;
+/** `deploy`: a production deploy a release run dispatched (`release-coolify.ts`); `verify`: a recorded release's reading (`recorded.ts`). */
+export const RELEASE_ATTEMPT_STAGES = ["deploy", "verify"] as const;
 export type ReleaseAttemptStage = (typeof RELEASE_ATTEMPT_STAGES)[number];
 
 export interface ReleaseAttemptView {
@@ -325,14 +315,6 @@ export interface ReleaseAttemptView {
 	settledAt: string | null;
 }
 
-export interface ReleaseBoundView {
-	name: "total" | "stall" | "regression";
-	crossed: boolean;
-	measuredMs: number | null;
-	thresholdMs: number | null;
-	why: string;
-}
-
 export interface ReleaseDetail extends ReleaseSummary {
 	issues: ReleaseIssueView[];
 	requirementsCompleted: ReleaseRequirementView[];
@@ -347,7 +329,6 @@ export interface ReleaseDetail extends ReleaseSummary {
 	approvers: ReleasePerson[];
 	approvalRequired: boolean;
 	attempts: ReleaseAttemptView[];
-	bounds: { holding: boolean; bounds: ReleaseBoundView[] };
 	production: { name: string | null; url: string | null } | null;
 	head: string | null;
 }
@@ -441,7 +422,11 @@ export type ServingReading =
 			readonly unread: readonly string[];
 			readonly readAt: string;
 	  }
-	| { readonly kind: "undeclared"; readonly missing: string; readonly route: string }
+	| {
+			readonly kind: "undeclared";
+			readonly missing: string;
+			readonly route: string;
+	  }
 	| {
 			readonly kind: "unreadable";
 			readonly why: string;
@@ -466,3 +451,8 @@ export function releaseApprovalRequired(
 
 /** How many issues one release batch carries at most. */
 export const RELEASE_ROSTER_LIMIT = 50;
+
+/** A release runtime path's own spelling, as a prefix that owns the files under it (ISS-1368). */
+export function runtimePathPrefix(path: string): string {
+	return path.endsWith("/") ? path : `${path}/`;
+}

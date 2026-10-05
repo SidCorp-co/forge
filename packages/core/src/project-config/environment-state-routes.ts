@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { readEnvironmentState } from './environment-state.js';
 import { readProjectDocument } from './service.js';
@@ -13,14 +13,9 @@ const environmentParam = z.object({
   name: z.string().regex(/^[a-z][a-z0-9-]{0,62}$/),
 });
 
-const refuseParam = (r: { success: boolean }) => {
-  if (!r.success) {
-    throw new HTTPException(400, {
-      message: 'a project id is a uuid and an environment name matches ^[a-z][a-z0-9-]{0,62}$',
-      cause: { code: 'BAD_REQUEST' },
-    });
-  }
-};
+const refuseParam = invalid(
+  'a project id is a uuid and an environment name matches ^[a-z][a-z0-9-]{0,62}$',
+);
 
 async function storedDocument(projectId: string) {
   const stored = await readProjectDocument(projectId);

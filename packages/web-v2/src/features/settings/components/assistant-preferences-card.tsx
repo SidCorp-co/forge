@@ -4,7 +4,7 @@
 // standing instructions save through the same preferences route as the theme;
 // the trail underneath is every write anybody made to them, each restorable.
 import { useEffect, useState } from "react";
-import type { AnswerStyle, PreferenceChange } from "@forge/contracts";
+import type { AnswerStyle, PreferenceChange } from "@forge/contracts/assistant-self";
 import {
   Button,
   Card,

@@ -4,7 +4,11 @@
  * rather than a 404, because a target is a body field, not the path.
  */
 
-import type { FeedbackRefusal, FeedbackTargetType } from '@forge/contracts/feedback';
+import {
+  type FeedbackRefusal,
+  type FeedbackTargetType,
+  feedbackKey,
+} from '@forge/contracts/feedback';
 import { requirementKey } from '@forge/contracts/requirements';
 import { and, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -14,7 +18,7 @@ import { requirements } from '../db/schema-requirements.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import { activeIssuePrefix, isUuid, resolveIssueRouteRef } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import type { Row } from './read.js';
+import { type Row, rowIn } from './read.js';
 import type { TargetFields } from './rules.js';
 
 interface ResolvedTarget {
@@ -60,6 +64,23 @@ export async function issueRefIn(
   } catch (err) {
     if (err instanceof HTTPException && err.status !== 500) {
       return unknownTarget(path, `${ref} names no issue of this project (${err.message}).`);
+    }
+    throw err;
+  }
+}
+
+/** A feedback item of `projectId` by key or uuid, or the refusal naming why it is not one. */
+export async function feedbackRefIn(
+  projectId: string,
+  ref: string,
+  path: string,
+): Promise<{ id: string; key: string } | FeedbackRefusal> {
+  try {
+    const row = await rowIn(db, projectId, ref);
+    return { id: row.id, key: feedbackKey(row.fbSeq) };
+  } catch (err) {
+    if (err instanceof HTTPException && err.status === 404) {
+      return unknownTarget(path, `${ref} names no feedback item of this project.`);
     }
     throw err;
   }

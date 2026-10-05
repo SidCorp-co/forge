@@ -13,7 +13,7 @@ import {
 import { canonicalUuidText } from './column-checks.js';
 import { projects } from './schema-projects.js';
 
-export const usageSources = ['cli', 'api', 'desktop'] as const;
+export const usageSources = ['cli', 'api'] as const;
 
 export type UsageSource = (typeof usageSources)[number];
 
@@ -41,6 +41,10 @@ export const usageRecords = pgTable(
     recordedAtIdx: index('usage_records_recorded_at_idx').on(t.recordedAt),
     sessionIdIdx: index('usage_records_session_id_idx').on(t.sessionId),
     sessionIdChk: check('usage_records_session_id_uuid_chk', canonicalUuidText(t.sessionId)),
+    sourceChk: check(
+      'usage_records_source_chk',
+      sql`${t.source} IN (${sql.raw(usageSources.map((s) => `'${s}'`).join(', '))})`,
+    ),
     jobIdUq: uniqueIndex('usage_records_job_id_key').on(t.jobId).where(sql`job_id IS NOT NULL`),
   }),
 );

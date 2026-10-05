@@ -15,7 +15,7 @@ import { z } from 'zod';
 import { mintGitCredentialForDevice } from '../integrations/source-host/index.js';
 import { logger } from '../lib/logger.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 
 export const deviceGitCredentialRoutes = new Hono<{ Variables: DeviceVars }>();
 
@@ -30,9 +30,7 @@ const askBody = z
 deviceGitCredentialRoutes.post(
   '/me/git-credential',
   requireDevice(),
-  zValidator('json', askBody, (result) => {
-    if (!result.success) throw new HTTPException(400, { message: 'host and path are required' });
-  }),
+  zValidator('json', askBody, invalid('host and path are required')),
   async (c) => {
     const device = c.get('device');
     if (device.status === 'revoked')

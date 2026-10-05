@@ -20,7 +20,7 @@ import { conversationMessages } from '../../db/schema-conversations.js';
 import { itemEmbeddings } from '../../db/schema-item-embeddings.js';
 import { questionnaireBatches } from '../../db/schema-onboarding.js';
 import { agentQuestions } from '../../db/schema-questions.js';
-import { defaultChatProviderId, resolveForProject } from '../../integrations/llm/index.js';
+import { defaultChatProviderId, resolveChatProvider } from '../../integrations/llm/index.js';
 import { principalAgency, resolveIssueRouteRef } from '../../issues/index.js';
 import { lockXact } from '../../lib/advisory-lock.js';
 import { dataPolicyOf, egressAt, egressDeep, egressOr, MCP_DOOR } from '../../lib/data-egress.js';
@@ -221,10 +221,9 @@ async function latestMessageId(conversationId: string | null | undefined): Promi
   return m?.id ?? null;
 }
 
-async function modelFor(projectId: string): Promise<string | null> {
+function chatModel(): string | null {
   try {
-    return (await resolveForProject(projectId, { fallbackProviderId: defaultChatProviderId(), db }))
-      .model;
+    return resolveChatProvider(defaultChatProviderId()).model;
   } catch {
     return null;
   }
@@ -251,7 +250,7 @@ const suggest =
         target: input.issue ? { issue: input.issue } : { requirement: room.requirementId },
         baseRevision: input.baseRevision,
         payload: input.payload,
-        model: await modelFor(room.projectId),
+        model: chatModel(),
         conversationMessageId: await latestMessageId(ctx.turn?.conversationId),
       });
       if (!outcome.ok) {

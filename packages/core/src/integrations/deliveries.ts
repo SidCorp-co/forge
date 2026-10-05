@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNotNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type IntegrationDeliveryDirection,
@@ -13,6 +13,7 @@ interface RecordDeliveryInput {
   payload: unknown;
   requestId?: string;
   status?: IntegrationDeliveryStatus;
+  errorMessage?: string;
 }
 
 interface UpdateDeliveryInput {
@@ -33,10 +34,83 @@ export async function recordDelivery(input: RecordDeliveryInput): Promise<string
       payload: (input.payload ?? {}) as Record<string, unknown>,
       requestId: input.requestId ?? null,
       status: input.status ?? 'pending',
+      errorMessage: input.errorMessage ?? null,
     })
     .returning({ id: integrationDeliveries.id });
   if (!row) throw new Error('recordDelivery: insert returned no row');
   return row.id;
+}
+
+/**
+ * Claim an inbound delivery's row BEFORE applying it, keyed by the provider's delivery id: a first
+ * arrival inserts it, a redelivery of a FAILED attempt takes that row over, and a redelivery of one
+ * that succeeded or is still in flight is not applied again. The partial unique index on
+ * (binding_id, request_id) is what makes the claim one writer's.
+ */
+async function claimInbound(input: Omit<RecordDeliveryInput, 'direction' | 'status'>) {
+  const values = {
+    bindingId: input.bindingId,
+    direction: 'inbound' as const,
+    eventName: input.eventName,
+    payload: (input.payload ?? {}) as Record<string, unknown>,
+    requestId: input.requestId ?? null,
+    status: 'pending' as const,
+  };
+  const target = [integrationDeliveries.bindingId, integrationDeliveries.requestId];
+  const [row] = await db
+    .insert(integrationDeliveries)
+    .values(values)
+    .onConflictDoNothing({ target, where: isNotNull(integrationDeliveries.requestId) })
+    .returning({ id: integrationDeliveries.id });
+  if (row || !input.requestId || !input.bindingId)
+    return row ? { id: row.id, claimed: true } : null;
+  const sameDelivery = and(
+    eq(integrationDeliveries.bindingId, input.bindingId),
+    eq(integrationDeliveries.requestId, input.requestId),
+  );
+  const [taken] = await db
+    .update(integrationDeliveries)
+    .set({ ...values, errorMessage: null, completedAt: null })
+    .where(and(sameDelivery, eq(integrationDeliveries.status, 'failed')))
+    .returning({ id: integrationDeliveries.id });
+  if (taken) return { id: taken.id, claimed: true };
+  const [held] = await db
+    .select({ id: integrationDeliveries.id })
+    .from(integrationDeliveries)
+    .where(sameDelivery)
+    .limit(1);
+  return held ? { id: held.id, claimed: false } : null;
+}
+
+/**
+ * Apply one inbound event under its claimed row, then settle the row with what happened: `ok`, or
+ * `failed` with the throw or the refusal the event answered. `result` is null for a redelivery whose
+ * first attempt already succeeded or is in flight, which is not applied twice.
+ */
+export async function applyClaimedInbound<
+  R extends { actions: number; refusal?: string | null | undefined },
+>(
+  input: Omit<RecordDeliveryInput, 'direction' | 'status'>,
+  apply: () => Promise<R>,
+): Promise<{ deliveryId: string; result: R | null }> {
+  const claim = await claimInbound(input);
+  if (!claim)
+    throw new Error(`inbound delivery ${input.requestId}: no row could be claimed or found`);
+  if (!claim.claimed) return { deliveryId: claim.id, result: null };
+  let result: R;
+  try {
+    result = await apply();
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    await updateDelivery(claim.id, { status: 'failed', errorMessage, completedAt: new Date() });
+    throw err;
+  }
+  await updateDelivery(claim.id, {
+    status: result.refusal ? 'failed' : 'ok',
+    ...(result.refusal ? { errorMessage: result.refusal } : {}),
+    completedAt: new Date(),
+  });
+  return { deliveryId: claim.id, result };
 }
 
 export async function updateDelivery(id: string, patch: UpdateDeliveryInput): Promise<void> {

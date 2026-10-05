@@ -10,7 +10,7 @@ import {
 import { pluginDesignationsPatchSchema } from '../lib/plugin-designation.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { findPersonalOrgId } from '../orgs/index.js';
 import {
   actorFor,
@@ -20,7 +20,7 @@ import {
   requireOrgHeld,
 } from '../permissions/index.js';
 import { readDeclaredSource } from '../project-config/index.js';
-import { type AgentConfigKeyPatch, patchAgentConfigKeys, readAgentConfig } from './agent-config.js';
+import { patchAgentConfigKeys, readAgentConfig } from './agent-config.js';
 import { listVisibleProjectRows, projectDetail } from './read.js';
 import { createProjectBodySchema, updateProjectPatchSchema } from './request-schemas.js';
 import {
@@ -66,14 +66,11 @@ projectRoutes.post('/', zValidator('json', createProjectBodySchema), async (c) =
   return c.json(created, 201);
 });
 
-const listQuery = zValidator('query', z.object({ archived: z.string().optional() }), (result) => {
-  if (!result.success) {
-    throw new HTTPException(400, {
-      message: 'archived takes one value: 1 or true lists archived projects too',
-      cause: { code: 'BAD_REQUEST' },
-    });
-  }
-});
+const listQuery = zValidator(
+  'query',
+  z.object({ archived: z.string().optional() }),
+  invalid('archived takes one value: 1 or true lists archived projects too'),
+);
 
 projectRoutes.get('/', listQuery, async (c) => {
   const userId = c.get('userId');
@@ -136,11 +133,8 @@ projectRoutes.patch(
       orgId = patch.orgId;
     }
 
-    const agentConfigPatch: AgentConfigKeyPatch = {};
-
     const updated = await updateProjectSettings(id, userId, {
       orgId,
-      agentConfig: agentConfigPatch,
       issuePrefix: patch.issuePrefix,
     });
     if (!updated) throw notFound();

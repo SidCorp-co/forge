@@ -1,5 +1,5 @@
 
-import type { BodyNode } from "@forge/contracts";
+import type { BodyNode } from "@forge/contracts/body-components";
 import { apiClient } from "@/lib/api/client";
 
 interface BodyPreview {

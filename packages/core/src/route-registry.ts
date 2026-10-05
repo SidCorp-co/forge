@@ -103,17 +103,12 @@ import {
   jobProjectRoutes,
   jobRoutes,
 } from './jobs/routes.js';
-import { knowledgeIngestRoutes, knowledgeRoutes } from './knowledge/routes.js';
+import { knowledgeRoutes } from './knowledge/routes.js';
 import { labelProjectRoutes, labelRoutes, moduleDiagramRoutes } from './labels/routes.js';
 import { deviceMasterRoutes, masterStandingRoutes } from './masters/routes.js';
 import { mcpHandler, mcpRequestClass } from './mcp/index.js';
 import { meAttentionRoutes, mePulseRoutes } from './me/routes.js';
-import {
-  memoryListRoutes,
-  memoryMineRoutes,
-  memorySearchRoutes,
-  memoryWriteRoutes,
-} from './memory/routes.js';
+import { memoryListRoutes, memorySearchRoutes, memoryWriteRoutes } from './memory/routes.js';
 import { projectMetricsRoutes } from './metrics/routes.js';
 import type { RequestIdVars } from './middleware/request-id.js';
 import { requirePat } from './middleware/require-pat.js';
@@ -308,7 +303,6 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/jobs', jobTestingSecretsRoutes);
   app.route('/api/webhooks', webhookInboundRoutes);
   app.route('/api/memory', memorySearchRoutes);
-  app.route('/api/memory', memoryMineRoutes);
   app.route('/api/memory', memoryListRoutes);
   app.route('/api/memory', memoryWriteRoutes);
 }
@@ -357,7 +351,6 @@ function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', projectCostAnalyticsRoutes);
   app.route('/api/schedules', scheduleRoutes);
   app.route('/api/agent-reports', agentReportRoutes);
-  app.route('/api/knowledge', knowledgeIngestRoutes);
   app.route('/api/projects', knowledgeRoutes);
   app.route('/api/skills', skillCrudRoutes);
   app.route('/api/runners', runnerRoutes);

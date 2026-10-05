@@ -72,7 +72,9 @@ async function headText(requirementId: string): Promise<HeadText | null> {
 }
 
 /** Embeds the requirement's head revision, replacing whatever vector it held; returns the row status. */
-async function embedRequirementHead(requirementId: string): Promise<ItemEmbeddingStatus | null> {
+export async function embedRequirementHead(
+  requirementId: string,
+): Promise<ItemEmbeddingStatus | null> {
   const head = await headText(requirementId);
   if (!head) return null;
   const [req] = await db

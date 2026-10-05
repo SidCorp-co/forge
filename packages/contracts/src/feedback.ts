@@ -410,13 +410,6 @@ export const feedbackVerifyRequestSchema = z.strictObject({
 });
 export const FEEDBACK_VERIFY_SHAPE = "{ note? }";
 
-/** `POST …/feedback/:fb/triage-suggestions`: what an agent proposes for a person to accept. */
-export const proposeFeedbackTriageRequestSchema = z.strictObject({
-	triage: feedbackTriageSchema,
-	model: z.string().max(200).nullable().optional(),
-});
-export const PROPOSE_FEEDBACK_TRIAGE_SHAPE = `{ triage: ${FEEDBACK_TRIAGE_SHAPE}, model? }`;
-
 /** `POST …/feedback/:fb/clarification`: one open question to the reporter (Q5). */
 export const feedbackClarificationRequestSchema = z.strictObject({
 	prompt: z.string().trim().min(5).max(2_000),

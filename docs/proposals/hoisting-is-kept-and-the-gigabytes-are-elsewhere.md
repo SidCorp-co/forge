@@ -166,7 +166,6 @@ hoisting put them in. ISS-207 declared each in the manifest of the code that use
 | `.forge/archmap/src/providers/ts.mjs`, walking the root for its bin | `dependency-cruiser` | root |
 | `.arch-tsconfig.json`, mapping `hono/*` to `node_modules/hono/dist/*` | `hono` | `@forge/core` only |
 | `scripts/check-lazy-module-init.mjs`, its opening `import ts from 'typescript'` | `typescript` | root |
-| `packages/web-v2/src/vitest.setup.ts`, its `import { configure } from '@testing-library/dom'` | `@testing-library/dom` | `web-v2` |
 
 The census behind that table is every bare specifier imported by a file under `scripts/` or
 `.forge/`, every binary those files spawn, and `.arch-tsconfig.json`'s `paths`, each checked for

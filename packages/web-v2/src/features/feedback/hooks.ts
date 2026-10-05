@@ -22,21 +22,12 @@ export function useFeedbackItem(projectId: string | undefined, key: string | und
   });
 }
 
-export function useFeedbackProposals(projectId: string, feedbackId: string | undefined, enabled: boolean) {
-  return useQuery({
-    queryKey: ["feedback-proposals", projectId, feedbackId ?? ""],
-    queryFn: () => feedbackApi.proposals(projectId, feedbackId as string),
-    enabled: Boolean(feedbackId) && enabled,
-    staleTime: 15_000,
-  });
-}
-
 function useInvalidate(projectId: string) {
   const qc = useQueryClient();
   return () => {
     qc.invalidateQueries({ queryKey: ["feedback", projectId] });
     qc.invalidateQueries({ queryKey: ["feedback-item", projectId] });
-    qc.invalidateQueries({ queryKey: ["feedback-proposals", projectId] });
+    qc.invalidateQueries({ queryKey: ["suggestions", projectId] });
   };
 }
 
@@ -67,15 +58,6 @@ export function useFeedbackAction(projectId: string, key: string) {
   return useMutation({
     mutationFn: (a: FeedbackAction) => feedbackApi.act(projectId, key, a),
     onSuccess: (r: FeedbackResponse) => qc.setQueryData(["feedback-item", projectId, key], r),
-    onSettled: invalidate,
-  });
-}
-
-export function useDecideProposal(projectId: string) {
-  const invalidate = useInvalidate(projectId);
-  return useMutation({
-    mutationFn: (d: { id: string; decision: "accept" | "reject"; reason?: string }) =>
-      feedbackApi.decide(projectId, d.id, d.decision, d.reason),
     onSettled: invalidate,
   });
 }

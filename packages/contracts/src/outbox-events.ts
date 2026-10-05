@@ -26,7 +26,6 @@ export const OUTBOX_EVENT_TYPES = [
 	"source.pushed",
 	"source.merged",
 	"source.reviewed",
-	"error.sighted",
 	"integration.changed",
 	"workflow.designDecided",
 	"channel.documentPublished",
@@ -267,14 +266,6 @@ export interface OutboxEventPayloads {
 			url: string | null;
 			body: string | null;
 		};
-	};
-	/** An error tracker delivered an issue; the inbound delivery row waits on its intake. */
-	"error.sighted": {
-		projectId: string;
-		bindingId: string;
-		deliveryId: string;
-		issue: ErrorTrackerIssue;
-		target: ErrorTrackerTarget;
 	};
 	/** A project's integration binding or connection changed; open views refetch them. */
 	"integration.changed": {

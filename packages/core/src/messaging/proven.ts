@@ -1,14 +1,9 @@
+import type { ProvenMessage } from '@forge/contracts/messaging';
 import type { DoorId, MessageVerdict } from './contract.js';
 import type { MessageFacts } from './facts.js';
 import { judgedSegments, screenAtDoor } from './screen.js';
 
-declare const admittedByADoor: unique symbol;
-
-export interface ProvenMessage {
-  readonly [admittedByADoor]: true;
-  readonly text: string;
-  readonly door: DoorId;
-}
+export type { ProvenMessage };
 
 export interface RoomMessage {
   /** Exactly what goes out. */

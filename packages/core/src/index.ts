@@ -14,11 +14,16 @@ import {
   registerWebConversationAdapter,
 } from './assistant/index.js';
 import { runOnceBackfills } from './boot-backfills.js';
+import { commentsSince, recentCommentBodies } from './comments/index.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
 import { contractVersionReads, interfaceContractsOf } from './ecosystem/index.js';
 import { provideExecutionPorts } from './execution-ports.js';
-import { provideFeedbackDependents, requirementFeedbackAs } from './feedback/index.js';
+import {
+  embedFeedback,
+  provideFeedbackDependents,
+  requirementFeedbackAs,
+} from './feedback/index.js';
 import { provideAssistantMethod } from './guides/index.js';
 import { registerAllIntegrations } from './integration-registry.js';
 import { refreshMainRunnerHead, servesRunnerReleases } from './integrations/github/index.js';
@@ -28,21 +33,35 @@ import { startRocketChatManager, stopRocketChatManager } from './integrations/ro
 import {
   activeIssuePrefix,
   allRelationDigests,
+  archivedIssueIdsSql,
   claimIssuePrefix,
   closeBacklogStreams,
   heldIssuePrefixes,
   issueDisplayIds,
+  issueHead,
   loadIssueRelationsForIssues,
+  releasedIssueOf,
   resolveIssueForHeadRef,
+  statusChangesSince,
 } from './issues/index.js';
-import { recordSecretResolve, rememberHandedOut, resolvePipelineContext } from './jobs/index.js';
+import {
+  jobTypeOf,
+  recordSecretResolve,
+  rememberHandedOut,
+  resolvePipelineContext,
+} from './jobs/index.js';
+import { provideKnowledgePorts } from './knowledge/index.js';
 import { provideProjectOrg } from './lib/authz.js';
 import { provideContractVersionReads } from './lib/contract-versions.js';
 import { provideDataPolicy } from './lib/data-egress.js';
 import { env } from './lib/env.js';
 import { logger } from './lib/logger.js';
 import { CHAT_READ_MODEL_TOOLS } from './mcp/index.js';
-import { provideMemoryIssueReads, registerMemoryReconcileWorker } from './memory/index.js';
+import {
+  provideMemoryIssueReads,
+  registerMemoryReconcileWorker,
+  runMemorySearch,
+} from './memory/index.js';
 import { provideIssueFactReads } from './messaging/gather.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
@@ -57,17 +76,28 @@ import {
   stopOutboxWorker,
 } from './outbox/index.js';
 import { registerOutboxConsumers } from './outbox-consumers.js';
+import { pipelineRunProjectId } from './pipeline/index.js';
 import {
   provideProjectConfigPorts,
   readDeclaredSource,
   readProjectDocument,
 } from './project-config/index.js';
-import { findProjectOrgId, projectDocumentNames, provideProjectsPorts } from './projects/index.js';
+import {
+  findProjectOrgId,
+  listProjectHeads,
+  projectDocumentNames,
+  projectHead,
+  provideProjectsPorts,
+} from './projects/index.js';
 import { startBoss, stopBoss } from './queue/boss.js';
 import { registerDeployWorker, registerReleaseBatchFinish } from './release-batch/index.js';
-import { provideInterfaceContracts, provideRequirementDependents } from './requirements/index.js';
+import {
+  embedRequirementHead,
+  provideInterfaceContracts,
+  provideRequirementDependents,
+} from './requirements/index.js';
 import { mountRoutes } from './route-registry.js';
-import { bootstrapRunnerAdapters } from './runners/index.js';
+import { bootstrapRunnerAdapters, deviceProjectIds } from './runners/index.js';
 import { startTimers, stopTimers } from './schedules/index.js';
 import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
 import { redactFeedbackSuggestions, staleOnTargetRevised } from './suggestions/index.js';
@@ -79,12 +109,24 @@ provideProjectOrg(findProjectOrgId);
 provideWorkPorts();
 provideExecutionPorts();
 provideAssistantMethod(composeLayers(METHOD_LAYERS));
+provideKnowledgePorts({
+  searchMemory: runMemorySearch,
+  reembedRequirement: embedRequirementHead,
+  reembedFeedback: embedFeedback,
+});
 provideMemoryIssueReads({
   displayIds: (issueIds) => issueDisplayIds(issueIds),
   relationEdges: async (issueIds, projectId) => {
     const relations = await loadIssueRelationsForIssues(issueIds, projectId);
     return new Map([...relations].map(([id, r]) => [id, allRelationDigests(r)]));
   },
+  head: issueHead,
+  releasedIssue: releasedIssueOf,
+  recentCommentBodies,
+  commentsSince,
+  statusChangesSince,
+  jobType: jobTypeOf,
+  archivedIssueIds: archivedIssueIdsSql,
 });
 provideProjectsPorts({
   claimIssuePrefix,
@@ -106,6 +148,10 @@ provideIssueFactReads({ activeIssuePrefix, heldIssuePrefixes });
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,
   issueForHeadRef: (projectId, headRef) => resolveIssueForHeadRef({ projectId, headRef }),
+  projectSlug: async (projectId) => (await projectHead(projectId))?.slug ?? null,
+  projectsByIds: listProjectHeads,
+  runProjectOf: pipelineRunProjectId,
+  deviceProjects: deviceProjectIds,
 });
 provideInterfaceContracts(interfaceContractsOf);
 provideContractVersionReads(contractVersionReads);

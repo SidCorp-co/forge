@@ -23,7 +23,6 @@ export const schedules = pgTable(
     enabled: boolean('enabled').notNull().default(true),
     targetProjectSlug: text('target_project_slug'),
     nextRunAt: timestamp('next_run_at', { withTimezone: true }),
-    metadata: jsonb('metadata'),
     params: jsonb('params'),
     kind: text('kind', { enum: scheduleKinds }).notNull().default('prompt'),
     script: text('script'),

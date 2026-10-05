@@ -5,7 +5,7 @@ import { setAuthCookie, setRefreshCookie } from '../credentials/cookie.js';
 import { signUserToken } from '../credentials/jwt.js';
 import { RULES } from '../lib/rate-limits.js';
 import { rateLimit } from '../middleware/rate-limit.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { getDummyPasswordHash, verifyPassword } from './password.js';
 import { userByEmail } from './read.js';
 import { loginSchema } from './request-schemas.js';
@@ -20,14 +20,7 @@ loginRoutes.use(
 
 loginRoutes.post(
   '/local',
-  zValidator('json', loginSchema, (result) => {
-    if (!result.success) {
-      throw new HTTPException(400, {
-        message: 'Invalid login input',
-        cause: { code: 'BAD_REQUEST', details: result.error },
-      });
-    }
-  }),
+  zValidator('json', loginSchema, invalid('Invalid login input')),
   async (c) => {
     const { email, password } = c.req.valid('json');
 

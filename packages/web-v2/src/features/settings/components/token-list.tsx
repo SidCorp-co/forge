@@ -122,7 +122,7 @@ function ScopeBadges({ scopes }: { scopes: PatToken["scopes"] }) {
   return (
     <div className="flex flex-wrap gap-1">
       {scopes.map((s) => (
-        <Badge key={s} tone={s === "admin" ? "red" : s === "write" ? "amber" : "neutral"}>
+        <Badge key={s} tone={s === "write" ? "amber" : "neutral"}>
           {s}
         </Badge>
       ))}

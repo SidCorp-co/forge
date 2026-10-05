@@ -25,6 +25,22 @@ export async function projectHead(projectId: string) {
   return row ?? null;
 }
 
+/** A project's slug, name and org, and whether that org is personal; null when there is none. */
+export async function projectOrgHead(projectId: string) {
+  const [row] = await db
+    .select({
+      slug: projects.slug,
+      name: projects.name,
+      orgId: projects.orgId,
+      orgIsPersonal: organizations.isPersonal,
+    })
+    .from(projects)
+    .innerJoin(organizations, eq(organizations.id, projects.orgId))
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  return row ?? null;
+}
+
 /** The name of a project, or null. */
 export async function projectName(projectId: string): Promise<string | null> {
   const [row] = await db

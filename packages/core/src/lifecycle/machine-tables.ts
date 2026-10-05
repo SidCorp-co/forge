@@ -8,6 +8,7 @@ import { requirements } from '../db/schema-requirements.js';
 import { rocketchatQuestionDeliveries } from '../db/schema-rocketchat.js';
 import { scheduleRuns } from '../db/schema-schedule-runs.js';
 import { suggestions } from '../db/schema-suggestions.js';
+import { projectWorkflows } from '../db/schema-workflows.js';
 
 /** The table each machine's status lives on. */
 interface MachineTables {
@@ -26,6 +27,7 @@ interface MachineTables {
   runner_provision: typeof runners;
   device: typeof devices;
   question_delivery: typeof rocketchatQuestionDeliveries;
+  workflow_design: typeof projectWorkflows;
 }
 
 export type MachineRow<E extends MachineEntity> = MachineTables[E]['$inferSelect'];
@@ -73,6 +75,8 @@ export function machineTable<E extends MachineEntity>(entity: E): MachineTable<E
       return at(devices);
     case 'question_delivery':
       return at(rocketchatQuestionDeliveries);
+    case 'workflow_design':
+      return at(projectWorkflows, 'designStatus');
     default:
       throw new Error(`lifecycle: no table holds the status of machine \`${entity}\``);
   }

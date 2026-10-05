@@ -7,15 +7,10 @@ import { memoryFeedbackInputSchema, runMemoryFeedback } from './feedback-service
 import { getMemoryInputSchema, runMemoryGet } from './get-service.js';
 import { deleteMemory } from './indexer.js';
 import { runMemorySearch, memorySearchInputSchema as searchInputSchema } from './search-service.js';
+import { deleteMemoryInputSchema } from './service.js';
 import { runMemoryWrite, writeMemoryInputSchema } from './write-service.js';
 
 const ACTIONS = ['search', 'write', 'get', 'delete', 'feedback'] as const;
-
-const deleteInputSchema = z.object({
-  projectId: z.uuid(),
-  source: z.enum(memorySources),
-  sourceRef: z.string().trim().min(1).max(512),
-});
 
 /** What the tool lists: every field any action takes, each optional but `action` and `projectId`. */
 const listedSchema = z
@@ -52,7 +47,7 @@ const DESCRIPTION =
   '`search` { query, topK?, sourceFilter?, strategy? }: semantic (default, cosine scores), keyword (Postgres FTS — exact identifiers, error codes) or hybrid (RRF fusion; scores are fused ranks). A semantic or hybrid search costs one embedding call (`embedMs`). When the question names an issue key, a status or a count, answer from the tracker (`forge issue …`) and do not search. Rows carrying `via` are one-hop neighbours of an issue hit (score 0, context, not matches); a hit with `stale: true` was superseded (`supersededBy`). Hits are point-in-time: verify, then report with `feedback`. ' +
   '`write` { source, sourceRef, textContent, metadata? }: upsert under (projectId, source, sourceRef) — the ref you name is the ref written, and a rewrite REPLACES its body (the old one stays readable at `GET /api/memory/revisions`). Answers {id, embeddedAt, truncated, degraded, nearDuplicateOf?, dedupeScore?}; nearDuplicateOf is advisory — refine that record by writing under its sourceRef. Agent-authored sources (note/knowledge/policy): textContent ≤8192 chars and no fenced code block over 5 lines. ' +
   '`get` { source?, sourceRef?, metadataFilter?, includeArchived?, limit?, offset?, orderBy?, orderDir? }: natural-key lookup, no embedding; includeArchived also answers soft-deleted rows, each carrying archivedAt. ' +
-  '`delete` { source, sourceRef }: idempotent, answers {deleted}. ' +
+  '`delete` { source, sourceRef }: idempotent, answers {deleted: the number of rows removed}. ' +
   '`feedback` { source, sourceRef, verdict: confirmed | outdated, evidence? }: confirmed protects the row from usage decay; outdated archives it now and needs evidence. note/knowledge only. ' +
   'search and get need project membership; write, delete and feedback need writer access.';
 
@@ -96,14 +91,13 @@ export const forgeMemoryTool: ContextScopedMcpToolFactory = ({ principal }) => (
     }
 
     if (action === 'delete') {
-      const input = deleteInputSchema.parse(rest);
+      const input = deleteMemoryInputSchema.parse(rest);
       await requireCan(
         actorFor(principal.userId),
         'project.write',
         projectResource(input.projectId),
       );
-      const removed = await deleteMemory(input.projectId, input.source, input.sourceRef);
-      return { deleted: removed > 0 };
+      return { deleted: await deleteMemory(input.projectId, input.source, input.sourceRef) };
     }
 
     if (action === 'feedback') {
@@ -118,6 +112,6 @@ export const forgeMemoryTool: ContextScopedMcpToolFactory = ({ principal }) => (
 
     const input = writeMemoryInputSchema.parse(rest);
     await requireCan(actorFor(principal.userId), 'project.write', projectResource(input.projectId));
-    return orUnavailable(() => runMemoryWrite(input));
+    return runMemoryWrite(input);
   },
 });

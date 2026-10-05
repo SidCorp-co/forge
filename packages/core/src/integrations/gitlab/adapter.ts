@@ -1,9 +1,8 @@
-import { eq } from 'drizzle-orm';
-import { db } from '../../db/client.js';
-import { projects } from '../../db/schema.js';
 import {
   type AdapterContext,
+  applyClaimedInbound,
   declareIntegration,
+  forgeReads,
   type HealthCheckResult,
   type InboundDispatchInput,
   type InboundDispatchResult,
@@ -11,10 +10,8 @@ import {
   type IntegrationAdapterMethods,
   inboundWebhookUrl,
   isPreviousCredentialValid,
-  recordDelivery,
   resolveApiBaseUrl,
   updateConnection,
-  updateDelivery,
 } from '../index.js';
 import { sourceHostMismatch } from '../source-host/index.js';
 import { gitlabGitCredential } from './git-credential.js';
@@ -52,13 +49,9 @@ async function probe(base: string, path: string, token: string): Promise<Probe> 
 }
 
 async function expectedHookUrl(projectId: string): Promise<string | null> {
-  const [project] = await db
-    .select({ slug: projects.slug })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
+  const slug = await forgeReads().projectSlug(projectId);
   const apiBase = resolveApiBaseUrl();
-  return apiBase && project?.slug ? inboundWebhookUrl(apiBase, project.slug) : null;
+  return apiBase && slug ? inboundWebhookUrl(apiBase, slug) : null;
 }
 
 /**
@@ -97,6 +90,7 @@ async function observeHooks(
 }
 
 const gitlabAdapterMethods: IntegrationAdapterMethods<GitLabConfig, GitLabSecrets> = {
+  inboundSecretHome: "the GitLab project's webhook (Settings → Webhooks), as its Secret token",
   verifyBindingTarget: ({ projectId, connection, config }) =>
     sourceHostMismatch({
       projectId,
@@ -191,43 +185,31 @@ const gitlabAdapterMethods: IntegrationAdapterMethods<GitLabConfig, GitLabSecret
       throw new Error(`gitlab webhook: delivery is for ${arrived}, this binding is ${expected}`);
     }
     const uuid = input.headers['x-gitlab-event-uuid'] ?? input.headers['x-gitlab-webhook-uuid'];
-    const logged = {
-      bindingId: ctx.bindingId,
-      direction: 'inbound' as const,
-      eventName: eventType,
-      payload,
-      ...(uuid ? { requestId: uuid } : {}),
-    };
     const facts: InboundFact[] = [];
-    let result: Awaited<ReturnType<typeof handleGitLabEvent>>;
-    try {
-      result = await handleGitLabEvent(
-        {
-          projectId: ctx.projectId,
-          bindingId: ctx.bindingId,
-          config: ctx.config ?? {},
-          secrets: ctx.secrets ?? {},
-          facts,
-        },
-        eventType,
+    const { deliveryId, result } = await applyClaimedInbound(
+      {
+        bindingId: ctx.bindingId,
+        eventName: eventType,
         payload,
-      );
-    } catch (err) {
-      const failedId = await recordDelivery({ ...logged, status: 'failed' });
-      await updateDelivery(failedId, {
-        errorMessage: err instanceof Error ? err.message : String(err),
-      });
-      throw err;
-    }
-    const deliveryId = await recordDelivery({
-      ...logged,
-      status: result.refusal ? 'failed' : 'ok',
-    });
-    if (result.refusal) await updateDelivery(deliveryId, { errorMessage: result.refusal });
+        ...(uuid ? { requestId: uuid } : {}),
+      },
+      () =>
+        handleGitLabEvent(
+          {
+            projectId: ctx.projectId,
+            bindingId: ctx.bindingId,
+            config: ctx.config ?? {},
+            secrets: ctx.secrets ?? {},
+            facts,
+          },
+          eventType,
+          payload,
+        ),
+    );
     return {
       deliveryId,
-      actions: result.actions,
-      ...(result.refusal ? { refusal: result.refusal } : {}),
+      actions: result?.actions ?? 0,
+      ...(result?.refusal ? { refusal: result.refusal } : {}),
       facts,
     };
   },

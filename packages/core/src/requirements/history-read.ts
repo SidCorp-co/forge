@@ -285,7 +285,8 @@ async function historyRows(requirementId: string, projectId: string) {
 // The history is assembled from the rows that already record each act — revisions (written,
 // proposed, accepted, returned), baselines (agreed), suggestions (proposed, decided) and the linked
 // issues' activity (decisions, questions, answers, status moves) — because requirement writes emit
-// no events of their own; feedback (FB-n, ISS-59) does not exist yet and is not faked
+// no events of their own. Feedback acts are left out on purpose: the detail lists the requirement's
+// feedback with its own phase, so the history does not repeat them
 export async function historyOf(
   requirementId: string,
   projectId: string,

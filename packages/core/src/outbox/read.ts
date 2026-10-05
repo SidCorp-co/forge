@@ -32,28 +32,20 @@ function viewOf(copy: JobWithMetadata<DeliveryJob>): DeadOutboxDelivery {
 
 /**
  * Every dead delivery, newest first: pg-boss copies a consumer's job into `DEAD_QUEUE` when it runs
- * out of attempts, and replay deletes the copy. `projectId` null reads every project's and the
- * project-less ones.
+ * out of attempts, and replay deletes the copy.
  */
-async function readAllDead(projectId: string | null): Promise<DeadOutboxDelivery[]> {
-  const copies = await boss.findJobs<DeliveryJob>(
-    DEAD_QUEUE,
-    projectId === null ? {} : { data: { projectId } },
-  );
+async function readAllDead(): Promise<DeadOutboxDelivery[]> {
+  const copies = await boss.findJobs<DeliveryJob>(DEAD_QUEUE, {});
   return copies.map(viewOf).sort((a, b) => b.deadAt.localeCompare(a.deadAt));
 }
 
-async function readDead(
-  projectId: string | null,
+/** Every dead delivery, for the platform admin door. */
+export async function listAllDeadDeliveries(
   limit: number,
   offset: number,
 ): Promise<DeadOutboxDeliveriesResponse> {
-  const all = await readAllDead(projectId);
+  const all = await readAllDead();
   return { deliveries: all.slice(offset, offset + limit), total: all.length };
-}
-/** Every dead delivery, for the platform admin door. */
-export function listAllDeadDeliveries(limit: number, offset: number) {
-  return readDead(null, limit, offset);
 }
 
 interface DeadDeliveryTally {
@@ -64,7 +56,7 @@ interface DeadDeliveryTally {
 
 /** How many deliveries are dead, the oldest, and the newest few: what the ops alert reads. */
 export async function tallyDeadDeliveries(sampleSize: number): Promise<DeadDeliveryTally> {
-  const all = await readAllDead(null);
+  const all = await readAllDead();
   return {
     count: all.length,
     oldestDeadAt: all.at(-1)?.deadAt ?? null,

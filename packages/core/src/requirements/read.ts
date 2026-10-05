@@ -3,7 +3,10 @@ import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import {
   changedSincePlan,
+  type RequirementDetail,
+  type RequirementSpec,
   type RequirementStanding,
+  type RequirementSummary,
   requirementKey,
 } from '@forge/contracts/requirements';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
@@ -39,13 +42,6 @@ import { approvalRequiredIn, standingsOf } from './standing-read.js';
 export interface RequirementActor {
   userId: string;
   agency: ActorAgency;
-}
-
-export interface RequirementSpec {
-  goal?: string | undefined;
-  personas?: string[] | undefined;
-  scopeIn?: string[] | undefined;
-  scopeOut?: string[] | undefined;
 }
 
 export type Row = typeof requirements.$inferSelect;
@@ -109,7 +105,7 @@ export function summaryOf(
   row: Row,
   latest: { revision: number; state: RevisionState } | null,
   delivery: RequirementStanding['delivery'],
-) {
+): Omit<RequirementSummary, 'standing'> {
   return {
     id: row.id,
     key: requirementKey(row.reqSeq),
@@ -129,7 +125,10 @@ export async function standingViewer(viewer: RequirementActor | null, projectId:
   return { userId: viewer.userId, canSignOff: refusal === null };
 }
 
-export async function listRequirementsAs(viewer: RequirementActor, projectId: string) {
+export async function listRequirementsAs(
+  viewer: RequirementActor,
+  projectId: string,
+): Promise<RequirementSummary[]> {
   await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
   const rows = await db
     .select()
@@ -238,6 +237,8 @@ function detailRowsOf(requirementId: string) {
         issSeq: issues.issSeq,
         title: issues.title,
         status: issues.status,
+        updatedAt: issues.updatedAt,
+        requirementId: issues.requirementId,
         plan: issues.plan,
         plannedRevision: issues.plannedRevision,
         plannedBaselineSeq: issues.plannedBaselineSeq,
@@ -306,12 +307,15 @@ function issueViews(
   }));
 }
 
-export async function detailOf(row: Row, viewer: RequirementActor | null, door: ReadDoor = {}) {
-  const viewerFacts = standingViewer(viewer, row.projectId);
+export async function detailOf(
+  row: Row,
+  viewer: RequirementActor | null,
+  door: ReadDoor = {},
+): Promise<RequirementDetail> {
   const [
     [revisions, criteria, designs, baselines, pins, linked],
     prefix,
-    standing,
+    viewerFacts,
     history,
     readiness,
     deferral,
@@ -322,9 +326,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null, door: 
   ] = await Promise.all([
     detailRowsOf(row.id),
     activeIssuePrefix(row.projectId),
-    viewerFacts
-      .then((v) => standingsOf(row.projectId, [row], v))
-      .then((m) => m.get(row.id) as RequirementStanding),
+    standingViewer(viewer, row.projectId),
     historyOf(row.id, row.projectId),
     readinessOf(row),
     deferralOf(row.id, row.status),
@@ -333,10 +335,21 @@ export async function detailOf(row: Row, viewer: RequirementActor | null, door: 
     tracesOf(db, row.id),
     linkedContracts(db, row.id),
   ]);
-  const people = await peopleOf([
-    ...revisions.flatMap((r) => [r.authorId, r.decidedBy]),
-    ...baselines.map((b) => b.agreedBy),
+  const [people, standings] = await Promise.all([
+    peopleOf([
+      ...revisions.flatMap((r) => [r.authorId, r.decidedBy]),
+      ...baselines.map((b) => b.agreedBy),
+    ]),
+    standingsOf(row.projectId, [row], viewerFacts, {
+      revisions,
+      criteria,
+      linked,
+      baselines,
+      prefix,
+      releaseApproval,
+    }),
   ]);
+  const standing = standings.get(row.id) as RequirementStanding;
   const name = (id: string | null) => (id === null ? null : (people.get(id)?.name ?? null));
   const latest = revisions[0];
   return {
@@ -353,7 +366,7 @@ export async function detailOf(row: Row, viewer: RequirementActor | null, door: 
     traces,
     baselines: baselineViews(baselines, pins, name),
     issues: issueViews(row, linked, baselines, prefix, releaseApproval),
-    canSignOff: (await viewerFacts)?.canSignOff ?? false,
+    canSignOff: viewerFacts?.canSignOff ?? false,
     standing,
     history,
     readiness,
@@ -403,8 +416,6 @@ async function readinessOf(row: Row) {
     decidedAt: s.decidedAt?.toISOString() ?? null,
   };
 }
-
-export type RequirementDetail = Awaited<ReturnType<typeof detailOf>>;
 
 export async function readRequirementAs(
   viewer: RequirementActor,

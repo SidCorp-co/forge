@@ -1,4 +1,4 @@
-import type { DesignStatus } from '@forge/contracts/design-status';
+import { type DesignStatus, WORKFLOW_DESIGN_MACHINE } from '@forge/contracts/design-status';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -8,8 +8,10 @@ import {
   workflowBuilds,
 } from '../db/schema-workflows.js';
 import { lockXact } from '../lib/advisory-lock.js';
+import { movedRow, transition } from '../lifecycle/index.js';
 import type { DesignDecision } from './design.js';
 import type { WorkflowWrite } from './schema.js';
+import type { WorkflowWriter } from './service.js';
 
 export interface StoredWorkflow {
   id: string;
@@ -105,7 +107,7 @@ export async function replaceWorkflow(
     revision: number;
     doc: WorkflowWrite;
     userId: string;
-    design: DesignState;
+    design: Omit<DesignState, 'designStatus'>;
   },
 ): Promise<StoredWorkflow> {
   const [row] = await tx
@@ -123,15 +125,25 @@ export async function replaceWorkflow(
   return row;
 }
 
-export async function setDesignState(
+/** A design's approval state moves only through the kernel, recorded in kernel_transitions. */
+export async function moveDesign(
   tx: Tx,
   id: string,
-  state: { designStatus: DesignStatus; approvedRevision?: number | null },
+  from: DesignStatus | null,
+  to: DesignStatus,
+  how: { writer: WorkflowWriter; reason?: string | null; approvedRevision?: number },
 ): Promise<void> {
-  await tx
-    .update(projectWorkflows)
-    .set({ ...state, updatedAt: sql`now()` })
-    .where(eq(projectWorkflows.id, id));
+  const moved = await transition(tx, WORKFLOW_DESIGN_MACHINE, {
+    to,
+    ...(from === null ? {} : { expect: from }),
+    set: { approvedRevision: how.approvedRevision, updatedAt: sql`now()` },
+    where: eq(projectWorkflows.id, id),
+    reason: how.reason ?? null,
+    actor: { type: 'user', id: how.writer.userId, agency: how.writer.agency },
+    source: 'workflows',
+    returning: ['id'],
+  });
+  movedRow(moved);
 }
 
 interface StoredDesign {

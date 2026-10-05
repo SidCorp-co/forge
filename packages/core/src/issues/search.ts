@@ -3,7 +3,6 @@ import { z } from 'zod';
 import type { IssueStatus } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse } from '../lib/pagination.js';
-import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -49,7 +48,6 @@ searchRoutes.get(
   zValidator('query', searchQuerySchema, (r) => {
     if (!r.success) {
       refuseLegacyStatusFields(r.data, 'query', ['status', 'statusNot']);
-      throw queryBadRequest(searchQuerySchema, r.error);
     }
   }),
   async (c) => {

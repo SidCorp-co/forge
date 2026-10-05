@@ -740,7 +740,6 @@
       "owns": [
         "integrationBindings",
         "projectConfigDocuments",
-        "projectConfigRevisions",
         "projectPolicies",
         "projectSecrets",
         "projectTestingProfiles"
@@ -888,7 +887,18 @@
         "projectWorkflows",
         "workflowBuilds"
       ],
-      "serves": ["REQ-17", "REQ-18", "workflow-step-health", "design-reconciliation"]
+      "serves": [
+        "REQ-18",
+        "workflow-step-health#in-design",
+        "workflow-step-health#in-builds",
+        "workflow-step-health#in-pins",
+        "workflow-step-health#in-observation",
+        "design-reconciliation#observation",
+        "design-reconciliation#cited",
+        "design-reconciliation#decision",
+        "design-reconciliation#decide",
+        "design-reconciliation#revise-design"
+      ]
     },
     "ws": {
       "kind": "door",
@@ -1021,7 +1031,7 @@
       "serves": ["REQ-12"]
     },
     "workflows": {
-      "serves": ["REQ-17", "REQ-18", "design-reconciliation#marked-canvas"]
+      "serves": ["REQ-18", "design-reconciliation#decision"]
     }
   },
   "runner": {

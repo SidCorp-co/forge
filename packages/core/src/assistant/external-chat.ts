@@ -9,14 +9,13 @@ import { contentLanguageBlock } from '@forge/contracts/content-language';
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { appConfig, projects } from '../db/schema.js';
+import { projects } from '../db/schema.js';
 import type { ConversationAdapter } from '../db/schema-conversations.js';
 import {
   type ChatMessage,
   type ChatStreamEvent,
-  type ChatTurnKind,
   defaultChatProviderId,
-  resolveForProject,
+  resolveChatProvider,
 } from '../integrations/llm/index.js';
 import {
   buildProgressFactsBlock,
@@ -81,8 +80,6 @@ export interface ExternalChatTurnArgs {
    * Called for each event the turn loop yields, as it yields it.
    */
   onTurnEvent?: ((event: ChatStreamEvent) => void) | undefined;
-  /** Picks `app_config.chat_model_by_kind[kind]`; defaults to `'agentic'`. */
-  turnKind?: ChatTurnKind | undefined;
   /** What this turn WRITES to the room it reads; the screened answer is recorded by its deliverer. Default: nothing. */
   record?: 'question-only' | 'silence-only' | 'nothing';
   /**
@@ -144,9 +141,8 @@ async function setUpTurn(
   args: ExternalChatTurnArgs,
 ): Promise<TurnSetup & { level: SensitiveDataLevel }> {
   const [project] = await db
-    .select({ name: projects.name, systemPromptOverride: appConfig.systemPromptOverride })
+    .select({ name: projects.name })
     .from(projects)
-    .leftJoin(appConfig, eq(appConfig.projectId, projects.id))
     .where(eq(projects.id, args.projectId))
     .limit(1);
   if (!project) throw new Error(`project not found: ${args.projectId}`);
@@ -179,7 +175,6 @@ async function setUpTurn(
   const systemPrompt = buildSystemPrompt({
     project: { name: project.name },
     self,
-    appConfig: { systemPromptOverride: project.systemPromptOverride },
     persona: args.persona ?? null,
     progressFacts: progress ? buildProgressFactsBlock(progress) : null,
     contentLanguage: contentLanguageBlock(language, 'chat'),
@@ -210,11 +205,7 @@ export async function runExternalChatTurn(
   args: ExternalChatTurnArgs,
 ): Promise<ExternalChatTurnResult> {
   const { turn, messages, progress, what, level } = await setUpTurn(args);
-  const resolved = await resolveForProject(args.projectId, {
-    fallbackProviderId: defaultChatProviderId(),
-    kind: args.turnKind,
-    db,
-  });
+  const resolved = resolveChatProvider(defaultChatProviderId());
   const gen = runTurnEvents({
     provider: resolved.provider,
     model: resolved.model,

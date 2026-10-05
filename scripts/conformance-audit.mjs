@@ -26,6 +26,7 @@ import { branchSetFaults, ciBranches, mergeTarget } from './lib/base-branch.mjs'
 import { dieAs, ROOT } from './lib/gate.mjs';
 import { SIZE_RULES } from './lib/lint-budget.mjs';
 import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequisite.mjs';
+import { CHECKS, CI_PARITY } from './lib/verify-checks.mjs';
 
 const die = dieAs('conformance-audit');
 
@@ -70,11 +71,9 @@ const claimed = manifest.profile ?? null;
 if (Object.keys(axes).length === 0)
   die('the manifest declares no axis — an audit over an empty set is not a pass');
 
-const verifySrc = read('scripts/verify.mjs') ?? '';
-const labels = [...verifySrc.matchAll(/label:\s*'([^']+)'/g)].map((m) => m[1]);
-const proven = [...verifySrc.matchAll(/label:\s*'([^']+)'[\s\S]{0,400}?scanned:/g)].map(
-  (m) => m[1],
-);
+const declaredChecks = [...CHECKS, CI_PARITY];
+const labels = declaredChecks.map((c) => c.label);
+const proven = declaredChecks.filter((c) => c.scanned instanceof RegExp).map((c) => c.label);
 const unproven = labels.filter((l) => !proven.includes(l));
 
 const CI_DIR = '.github/workflows';
@@ -86,17 +85,26 @@ const ciText = has(CI_DIR)
   : (read('.gitlab-ci.yml') ?? '');
 const hasCI = ciText.length > 0;
 
-const needsM = /ci-passed:[\s\S]*?needs:\s*\[([^\]]*)\]/.exec(ciText);
-const needs = needsM
-  ? needsM[1]
+/** ci-passed's `needs`, written as a flow list (`[a, b]`) or a block list (`- a` lines); null when
+ *  there is no ci-passed job or its needs cannot be read, which R4 refuses rather than reading as none. */
+function ciPassedNeeds(text) {
+  const job = /^( *)ci-passed:\s*\n((?:\1 +.*\n?|\s*\n)*)/m.exec(text);
+  if (!job) return null;
+  const flow = /^\s*needs:\s*\[([^\]]*)\]/m.exec(job[2]);
+  if (flow)
+    return flow[1]
       .split(',')
       .map((s) => s.trim())
-      .filter(Boolean)
-  : [];
+      .filter(Boolean);
+  const block = /^( *)needs:\s*\n((?:\1 +- .*\n?)+)/m.exec(job[2]);
+  if (block) return [...block[2].matchAll(/- *([^\s#]+)/g)].map((m) => m[1]);
+  return null;
+}
+const needs = ciPassedNeeds(ciText);
 const asserted = [...ciText.matchAll(/"([a-z0-9-]+):\$\{\{\s*needs\.[a-z0-9-]+\.result/g)].map(
   (m) => m[1],
 );
-const unasserted = needs.filter((j) => j !== 'changes' && !asserted.includes(j));
+const unasserted = (needs ?? []).filter((j) => j !== 'changes' && !asserted.includes(j));
 
 const badBaselines = [];
 for (const [name, spec] of Object.entries(axes)) {
@@ -148,12 +156,7 @@ function workflowJobs(text) {
 // R12: every ci.yml job either gates the merge or is declared as running after it, never both.
 const postMerge = manifest.$postMerge?.jobs ?? [];
 const ciJobs = ciYml === null ? null : workflowJobs(ciYml);
-const gateNeeds =
-  /ci-passed:[\s\S]*?needs:\s*\[([^\]]*)\]/
-    .exec(ciYml ?? '')?.[1]
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean) ?? [];
+const gateNeeds = ciPassedNeeds(ciYml ?? '') ?? [];
 const partitionFaults =
   ciJobs === null
     ? null
@@ -236,8 +239,9 @@ const overclaimed = Object.entries(axes)
   .filter(([, s]) => (s.level ?? 0) > 1 && !hasCI)
   .map(([a]) => a);
 
-const metaStatus = /conformance-status/.test(verifySrc) || /conformance-status/.test(ciText);
-const metaParity = /ci-parity/.test(verifySrc) || /ci-parity/.test(ciText);
+const metaStatus =
+  CHECKS.some((c) => c.label === 'conformance levels') || /conformance-status/.test(ciText);
+const metaParity = CI_PARITY.label === 'ci-parity' || /ci-parity/.test(ciText);
 const lvl = (n) => Object.values(axes).filter((s) => (s.level ?? 0) >= n).length;
 
 function unresolvableEdges() {
@@ -278,8 +282,8 @@ const RULES = [
     text: 'an entrypoint exists — one command runs every check',
     pass: labels.length > 0,
     detail: labels.length
-      ? `scripts/verify.mjs, ${labels.length} checks`
-      : 'no scripts/verify.mjs, or it declares no check',
+      ? `scripts/lib/verify-checks.mjs, ${labels.length} checks`
+      : 'scripts/lib/verify-checks.mjs declares no check',
     why: 'a rule with no command to run it is not a rule; this repo had none for months',
   },
   {
@@ -303,12 +307,14 @@ const RULES = [
   {
     id: 'R4',
     text: 'every job the merge gate needs is also asserted by it',
-    pass: hasCI ? unasserted.length === 0 : null,
+    pass: hasCI ? needs !== null && needs.length > 0 && unasserted.length === 0 : null,
     detail: !hasCI
       ? 'no CI'
-      : unasserted.length
-        ? `listed, never asserted: ${unasserted.join(', ')}`
-        : `${needs.length} jobs, all asserted`,
+      : needs === null || needs.length === 0
+        ? 'no ci-passed job with a readable needs list, so no job it gates is checked'
+        : unasserted.length
+          ? `listed, never asserted: ${unasserted.join(', ')}`
+          : `${needs.length} jobs, all asserted`,
     why: 'ci-passed runs if:always() — a listed-but-unasserted job cannot fail the gate',
   },
   {

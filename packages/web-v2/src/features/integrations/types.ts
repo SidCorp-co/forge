@@ -1,34 +1,7 @@
 
-import type { IntegrationHealthResult } from "@forge/contracts";
+import type { IntegrationHealthResult } from "@forge/contracts/integrations";
 
-export type {
-  IntegrationCardStatus as CardStatus,
-  IntegrationStatusCard as StatusCard,
-  IntegrationsStatus,
-  IntegrationDeliveryRow as IntegrationDelivery,
-  ConfirmProdDeployResult,
-  BindingRole,
-  CoolifyConfigInput,
-  CoolifyTargetInput,
-  CoolifySecretsInput,
-  EpodsystemConfigInput,
-  EpodsystemSecretsInput,
-  SentryConfigInput,
-  SentrySecretsInput,
-  RocketchatConfigInput,
-  RocketchatSecretsInput,
-  BindingSummary,
-  ConnectionSummary,
-  ConnectionCreateInput,
-  ConnectionUpdateInput,
-  ConnectionResponse,
-  ConnectionListResponse,
-  BindingListResponse,
-  ConnectionBindingsResponse,
-  DeliveryRetryResponse,
-    McpServerPreviewEntry,
-  McpPreviewResponse,
-} from "@forge/contracts";
+export type { IntegrationCardStatus as CardStatus, IntegrationStatusCard as StatusCard, IntegrationsStatus, IntegrationDeliveryRow as IntegrationDelivery, ConfirmProdDeployResult, BindingRole, CoolifyConfigInput, CoolifyTargetInput, CoolifySecretsInput, EpodsystemConfigInput, EpodsystemSecretsInput, SentryConfigInput, SentrySecretsInput, RocketchatConfigInput, RocketchatSecretsInput, BindingSummary, ConnectionSummary, ConnectionCreateInput, ConnectionUpdateInput, ConnectionResponse, ConnectionListResponse, BindingListResponse, ConnectionBindingsResponse, DeliveryRetryResponse, McpServerPreviewEntry, McpPreviewResponse } from "@forge/contracts/integrations";
 
 // === ISS-524 / ISS-526 — Sentry integration config shape ===
 
@@ -48,7 +21,7 @@ export interface SentryConfig {
   targets?: SentryTarget[];
 }
 
-export type { BindingSummary as IntegrationSummary } from "@forge/contracts";
+export type { BindingSummary as IntegrationSummary } from "@forge/contracts/integrations";
 
 export interface InstallationRepo {
   installationId: number;
@@ -114,8 +87,4 @@ export interface RocketchatRoom {
   type: "c" | "p";
 }
 
-export type {
-  IntegrationBindingUpdateInput as UpdateIntegrationInput,
-  AgentAccess,
-  AgentPathKind,
-} from "@forge/contracts";
+export type { IntegrationBindingUpdateInput as UpdateIntegrationInput, AgentAccess, AgentPathKind } from "@forge/contracts/integrations";

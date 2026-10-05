@@ -23,11 +23,12 @@ export function onAdminList(email: string): boolean {
  * HTTP response to throw into — the WS `canSubscribe` gate.
  *
  * A user id that resolves to no row answers `false`: outside a request there
- * is no session to invalidate, and "not an admin" is the safe reading.
+ * is no session to invalidate, and "not an admin" is the safe reading. An
+ * unverified address answers `false`, as the REST admin doors refuse it.
  */
 export async function isPlatformAdmin(userId: string): Promise<boolean> {
   const row = await readAuthUser(userId);
-  return row !== null && onAdminList(row.email);
+  return row !== null && row.emailVerifiedAt !== null && onAdminList(row.email);
 }
 
 export async function assertPlatformAdmin(c: Context<{ Variables: AuthVars }>): Promise<void> {

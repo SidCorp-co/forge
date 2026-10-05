@@ -1,6 +1,5 @@
 import { registerReviewNotes } from './comments/index.js';
 import { registerSourcePushReactions } from './ecosystem/index.js';
-import { registerErrorSightings } from './error-intake/index.js';
 import { registerHostMergeStamp } from './issues/index.js';
 import {
   registerMemoryExtraction,
@@ -47,5 +46,4 @@ export function registerOutboxConsumers(): void {
   registerReviewNotes();
   registerSourcePushReactions();
   registerLiveReadingInvalidation();
-  registerErrorSightings();
 }

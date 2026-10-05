@@ -14,7 +14,7 @@ export function actorAgency(actor: {
 /** A user actor carried no agency, so who acted cannot be recorded without a guess: an invariant. */
 export function agencyUndetermined(): Error {
   return new Error(
-    'a user actor reached the audit with no agency, so whether a person or an agent acted is not known; the door that admitted the request sets it (requireAuth, requireUserOrDevice, requireAnyAuth or the MCP principal)',
+    'a user actor reached the audit with no agency, so whether a person or an agent acted is not known; the door that admitted the request sets it (requireAuth, requireUserOrDevice or the MCP principal)',
   );
 }
 

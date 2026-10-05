@@ -1,7 +1,7 @@
 
-import type { ConnectionDirectoryItem } from "@forge/contracts";
+import type { ConnectionDirectoryItem } from "@forge/contracts/integrations";
 import { providerLabel } from "./providers/registry";
-import { type DirectoryStatus, deriveConnectionStatus } from "./derive";
+import type { DirectoryStatus } from "./derive";
 
 /** Which of the header's two tallies a directory state counts toward, if either. */
 export type GroupTally = "attention" | "off" | null;
@@ -62,7 +62,7 @@ export function groupConnectionsByApp(items: ConnectionDirectoryItem[]): Connect
       byProvider.set(connection.provider, group);
     }
     group.connections.push(connection);
-    const tally = tallyOf(deriveConnectionStatus(connection));
+    const tally = tallyOf(connection.directoryStatus);
     if (tally === "attention") group.needsAttention += 1;
     if (tally === "off") group.off += 1;
   }

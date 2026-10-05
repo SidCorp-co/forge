@@ -114,7 +114,7 @@ export function ModuleLevel({
   const fold = useGroupFold("web-v2:modules-fold");
   const keys = useMemo(() => rows.map(keyOf), [rows]);
   const peek = usePeek(keys);
-  const traceQ = useCodeTrace();
+  const traceQ = useCodeTrace(projectId);
   const trace = useMemo(() => traceByModule(traceQ.data), [traceQ.data]);
   const row = useMemo(() => rowOf(slug, max, trace, data.modules), [slug, max, trace, data.modules]);
 

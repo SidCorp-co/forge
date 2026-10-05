@@ -22,7 +22,7 @@ import { phaseOfRow } from './list-read.js';
 import { type FeedbackActor, rowIn } from './read.js';
 
 /** Embeds the item's text, replacing whatever row it held; a redacted item holds none. */
-async function embedFeedback(feedbackId: string) {
+export async function embedFeedback(feedbackId: string) {
   const [row] = await db.select().from(feedback).where(eq(feedback.id, feedbackId));
   if (!row || row.redactedAt) return null;
   return writeItemEmbedding({

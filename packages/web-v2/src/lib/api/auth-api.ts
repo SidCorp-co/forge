@@ -1,12 +1,6 @@
 // Ported verbatim from `packages/web/src/lib/api/auth-api.ts` (ISS-288).
-import type {
-  LoginInput,
-  LoginResponse,
-  MeResponse,
-  RefreshResponse,
-  RegisterInput,
-  RegisterResponse,
-} from '@forge/contracts';
+import type { LoginInput, RegisterInput } from '@forge/contracts/requests';
+import type { LoginResponse, MeResponse, RefreshResponse, RegisterResponse } from '@forge/contracts/responses';
 import { apiClient } from './client';
 
 export const authApi = {

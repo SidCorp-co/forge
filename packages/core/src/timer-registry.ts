@@ -19,6 +19,7 @@ import {
 import { refetchRunnerRelease, servesRunnerReleases } from './integrations/github/index.js';
 import { runIntegrationsHealthSweep } from './integrations/index.js';
 import { probePgBossBackstop, runStaleSweep } from './jobs/index.js';
+import { runKnowledgeEmbeddingBackfill } from './knowledge/index.js';
 import { logger } from './lib/logger.js';
 import { runConsolidationSweep, runEmbeddingBackfill, runMemoryDecay } from './memory/index.js';
 import { pruneOutbox } from './outbox/index.js';
@@ -28,6 +29,30 @@ import { recoverUnstartedReleaseBatches, resumeStrandedFinishes } from './releas
 import { reapGhostRunners, runRunnerStaleSweep } from './runners/index.js';
 import type { Timer } from './schedules/index.js';
 import { sweepSuggestions } from './suggestions/index.js';
+
+/** The memory half of the re-embed sweep, then the knowledge half unless the provider is down. */
+async function embeddingBackfillTick(): Promise<void> {
+  const t0 = Date.now();
+  const memory = await runEmbeddingBackfill();
+  const knowledge = memory.aborted
+    ? { reembedded: 0, itemsReembedded: 0, aborted: true }
+    : await runKnowledgeEmbeddingBackfill();
+  const result = {
+    reembedded: memory.reembedded,
+    knowledgeReembedded: knowledge.reembedded,
+    itemsReembedded: knowledge.itemsReembedded,
+    aborted: memory.aborted || knowledge.aborted,
+    durationMs: Date.now() - t0,
+  };
+  if (
+    result.reembedded > 0 ||
+    result.knowledgeReembedded > 0 ||
+    result.itemsReembedded > 0 ||
+    result.aborted
+  ) {
+    logger.info(result, 'memory.backfill: sweep complete');
+  }
+}
 
 /** The nightly retention pass, and the suggestions it stales and purges beside it (ISS-58). */
 async function retentionTick(): Promise<object> {
@@ -161,12 +186,7 @@ export function coreTimers(): Timer[] {
       kind: 'cluster',
       name: 'memory-embedding-backfill',
       cron: '*/5 * * * *',
-      run: async () => {
-        const result = await runEmbeddingBackfill();
-        if (result.reembedded > 0 || result.knowledgeReembedded > 0 || result.aborted) {
-          logger.info(result, 'memory.backfill: sweep complete');
-        }
-      },
+      run: embeddingBackfillTick,
     },
     {
       kind: 'cluster',

@@ -2,6 +2,7 @@ import { zValidator as honoZodValidator } from '@hono/zod-validator';
 import type { Context, MiddlewareHandler, Next } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { z } from 'zod';
+import { jsonPointer, type Refusal } from '../lib/refusal.js';
 
 type Args = Parameters<typeof honoZodValidator>;
 
@@ -15,24 +16,74 @@ const declaredRaw = new WeakMap<object, DeclaredRawBody>();
 export const declaredInputs: Pick<WeakMap<object, DeclaredInput>, 'get'> = declared;
 export const declaredRawBodies: Pick<WeakMap<object, DeclaredRawBody>, 'get'> = declaredRaw;
 
+type Hook = NonNullable<Args[2]>;
+type Failed = { success: boolean; error?: z.core.$ZodError };
+type Shape = { hint?: string | undefined; code: string };
+
+const shapes = new WeakMap<object, Shape>();
+
+function unknownQueryKeys(schema: unknown, error: z.core.$ZodError): HTTPException | null {
+  const unknown = [
+    ...new Set(error.issues.flatMap((i) => (i.code === 'unrecognized_keys' ? i.keys : []))),
+  ];
+  if (unknown.length === 0) return null;
+  const shape = (schema as { shape?: Record<string, unknown> }).shape;
+  const takes = shape ? ` This route takes: ${Object.keys(shape).sort().join(', ')}.` : '';
+  const rows: Refusal[] = [
+    ...unknown.map((key) => ({
+      code: 'UNKNOWN_QUERY_PARAMETER',
+      path: jsonPointer([key]),
+      detail: `\`${key}\` is not a query parameter of this route.${takes}`,
+    })),
+    ...error.issues
+      .filter((i) => i.code !== 'unrecognized_keys')
+      .map((i) => ({ code: 'BAD_REQUEST', path: jsonPointer(i.path), detail: i.message })),
+  ];
+  const named = unknown.map((key) => `\`${key}\``).join(', ');
+  return new HTTPException(400, {
+    message: `Unknown query parameter${unknown.length > 1 ? 's' : ''}: ${named}.${takes}`,
+    cause: { code: 'UNKNOWN_QUERY_PARAMETER', details: rows },
+  });
+}
+
+function inputRefusal(error: unknown, { hint, code }: Shape): HTTPException {
+  return new HTTPException(400, {
+    message: hint ?? 'Invalid input',
+    cause: { code, details: error },
+  });
+}
+
+/**
+ * The one answer to an input its schema refuses: 400, a refusal row per failing field, and `hint`
+ * (the valid shape, in words) as the envelope's detail where the route gives one. A query naming a
+ * key its strict schema does not take is refused by that key, with the keys the route takes.
+ * `code` stays BAD_REQUEST unless the route answers this shape under a code of its own.
+ */
+export function invalid(hint?: string, code = 'BAD_REQUEST'): Hook {
+  const shape = { hint, code };
+  const hook = ((r: Failed) => {
+    if (!r.success) throw inputRefusal(r.error, shape);
+  }) as Hook;
+  shapes.set(hook, shape);
+  return hook;
+}
+
 // cm:why the API contract reads a route's inputs off its middleware, not off a second description
 export const zValidator = ((...args: Args) => {
   const [target, schema, hook, ...rest] = args;
-  const middleware = honoZodValidator(target, schema, hook ?? refuseInvalid, ...rest);
+  const shape = (hook && shapes.get(hook)) ?? (hook ? null : { code: 'BAD_REQUEST' });
+  // a route's own hook answers first; one that lets a failure through gets the shared answer
+  const answer = (async (r: Failed, c: Context) => {
+    const own = shape ? undefined : await (hook as (r: Failed, c: Context) => unknown)(r, c);
+    if (own !== undefined || r.success) return own;
+    const unknown = target === 'query' && r.error ? unknownQueryKeys(schema, r.error) : null;
+    throw unknown ?? inputRefusal(r.error, shape ?? { code: 'BAD_REQUEST' });
+  }) as Hook;
+  const middleware = honoZodValidator(target, schema, answer, ...rest);
   const guarded = args[0] === 'json' ? refuseUndeclaredBodyType(middleware) : middleware;
   declared.set(guarded, { target: args[0], schema: args[1] });
   return guarded;
 }) as typeof honoZodValidator;
-
-// hono's own default answers `{ success, error }`; a validator with no hook answers refusal rows
-const refuseInvalid = ((r: { success: boolean; error?: unknown }) => {
-  if (!r.success) {
-    throw new HTTPException(400, {
-      message: 'Invalid input',
-      cause: { code: 'BAD_REQUEST', details: r.error },
-    });
-  }
-}) as NonNullable<Args[2]>;
 
 const JSON_TYPE = /^application\/([a-z0-9.+-]*\+)?json(\s*;|$)/i;
 
@@ -70,12 +121,5 @@ export function rawBody(
 
 /** A bad body is 400 naming both the valid shape (`hint`) and each field that broke it. */
 export function strictBody<T extends z.ZodType>(schema: T, hint: string) {
-  return zValidator('json', schema, (r) => {
-    if (!r.success) {
-      throw new HTTPException(400, {
-        message: `invalid body: ${hint}`,
-        cause: { code: 'BAD_REQUEST', details: r.error },
-      });
-    }
-  });
+  return zValidator('json', schema, invalid(`invalid body: ${hint}`));
 }

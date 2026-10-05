@@ -26,7 +26,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
-import { baseRev } from './lib/baseline-ratchet.mjs';
+import { baseRevision } from './lib/baseline-ratchet.mjs';
 import { dieAs, ROOT } from './lib/gate.mjs';
 import {
   kindFindings,
@@ -112,7 +112,8 @@ if (faults.length) {
   process.exit(1);
 }
 
-const rev = baseRev(ROOT);
+const { rev, refusal } = baseRevision(ROOT);
+if (refusal) die(`no base revision can be taken: ${refusal}`);
 if (!rev) die('no base revision to compare the baselines against; fetch history and re-run');
 const atBase = (path) => {
   try {

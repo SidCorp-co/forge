@@ -15,14 +15,15 @@
  * has no runner dependency.
  */
 
+import type { CoolifyRefusalCode } from '@forge/contracts/integrations';
 import { z } from 'zod';
 import {
-  CoolifyApiError,
   type CoolifyConfig,
   fetchCoolifyDeploymentLogs,
   fetchCoolifyRuntimeLogs,
 } from '../integrations/deploy/index.js';
 import { findLastOutbound } from '../integrations/index.js';
+import { refuser } from '../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { resolveEffectiveProjectId } from '../projects/index.js';
@@ -38,7 +39,9 @@ import {
   runCoolifyDeploy,
   runCoolifyRollback,
 } from '../release-batch/index.js';
-import { given, requireCoolifyRun } from './coolify-access.js';
+import { coolifyRefusal, given, requireCoolifyRun } from './coolify-access.js';
+
+const refuseCoolify = refuser<CoolifyRefusalCode>('COOLIFY_REFUSED');
 
 const inputSchema = z
   .object({
@@ -184,7 +187,15 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Project scope comes from the X-Forge-Project-Slug header (or an explicit projectId). ' +
     'Authorization: project membership; deploy, cancel and rollback need deploys.run.',
   inputSchema: zodToMcpSchema(inputSchema),
-  handler: (args) => dispatchAction(inputSchema.parse(args), ctx),
+  // Coolify's own refusal is refused by name, never folded into a success-shaped answer.
+  handler: async (args) => {
+    try {
+      return await dispatchAction(inputSchema.parse(args), ctx);
+    } catch (err) {
+      const said = coolifyRefusal(err);
+      throw said === null ? err : refuseCoolify('COOLIFY_REFUSED', said);
+    }
+  },
 });
 
 async function dispatchAction(input: Input, ctx: McpContext): Promise<unknown> {
@@ -256,21 +267,10 @@ async function deploymentLogs(projectId: string, input: Input) {
   if (!deploymentUuid) {
     return { integrationId: row.id, deploymentUuid: null, logs: null, reason: 'no-deployment' };
   }
-  try {
-    return {
-      integrationId: row.id,
-      ...(await fetchCoolifyDeploymentLogs(row.pair, deploymentUuid, input.lines)),
-    };
-  } catch (err) {
-    if (!(err instanceof CoolifyApiError)) throw err;
-    return {
-      integrationId: row.id,
-      deploymentUuid,
-      logs: null,
-      error: 'coolify API error',
-      httpStatus: err.status,
-    };
-  }
+  return {
+    integrationId: row.id,
+    ...(await fetchCoolifyDeploymentLogs(row.pair, deploymentUuid, input.lines)),
+  };
 }
 
 /**
@@ -291,19 +291,8 @@ async function runtimeLogs(projectId: string, input: Input) {
       'BAD_REQUEST: integration has multiple targets — pass resourceUuid (see list action)',
     );
   }
-  try {
-    return {
-      integrationId: row.id,
-      ...(await fetchCoolifyRuntimeLogs(row.pair, resourceUuid, input.lines)),
-    };
-  } catch (err) {
-    if (!(err instanceof CoolifyApiError)) throw err;
-    return {
-      integrationId: row.id,
-      resourceUuid,
-      logs: null,
-      error: 'coolify API error',
-      httpStatus: err.status,
-    };
-  }
+  return {
+    integrationId: row.id,
+    ...(await fetchCoolifyRuntimeLogs(row.pair, resourceUuid, input.lines)),
+  };
 }

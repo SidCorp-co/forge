@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
+import { releaseAttempts } from '../db/schema-release-ledger.js';
 import { coolifyIntegration } from '../integrations/deploy/index.js';
 import {
   enqueueOutboundDispatch,
@@ -170,13 +171,27 @@ async function prodConfirmed(bindingId: string, runId: string): Promise<boolean>
   return gateState !== null && gateState.confirmedAt !== null;
 }
 
-/** One queued deploy per armed binding; `dispatched` grows as each lands, so a throw shows how far. */
+/**
+ * One queued deploy per armed binding; `dispatched` grows as each lands, so a throw shows how far.
+ * A production deploy records its `deploy` attempt BEFORE it is queued: an abort reads that row as
+ * "this run's code may be serving" (`releasing-recovery.ts:runRecordedPromotion`).
+ */
 async function enqueueArmed(
-  armed: ReadonlyArray<{ binding: { id: string; config: unknown }; requestId: string }>,
+  armed: ReadonlyArray<{
+    binding: { id: string; config: unknown };
+    requestId: string;
+    live: boolean;
+  }>,
   ctx: { runId: string; issueId: string | null; envOf: (binding: { id: string }) => string | null },
   dispatched: string[],
 ): Promise<void> {
-  for (const { binding, requestId } of armed) {
+  for (const { binding, requestId, live } of armed) {
+    if (live) {
+      await db
+        .insert(releaseAttempts)
+        .values({ runId: ctx.runId, stage: 'deploy', idempotencyKey: requestId })
+        .onConflictDoNothing();
+    }
     await enqueueOutboundDispatch({
       jobKind: 'coolify.dispatch',
       bindingId: binding.id,
@@ -237,7 +252,11 @@ export async function tryDispatchCoolifyRelease(args: {
   // EVERY hold before the FIRST enqueue: opened beside its own enqueue, the holds registered so
   // far read as the whole set, and a target settling there closes the run and frees the
   // environment while a binding this loop has not reached is still to be dispatched.
-  const armed: Array<{ binding: (typeof pairs)[number]['binding']; requestId: string }> = [];
+  const armed: Array<{
+    binding: (typeof pairs)[number]['binding'];
+    requestId: string;
+    live: boolean;
+  }> = [];
   let witnessed = 0;
   try {
     for (const { binding } of pairs) {
@@ -266,7 +285,7 @@ export async function tryDispatchCoolifyRelease(args: {
       });
       if (held) witnessed += 1;
       else reportUnwitnessedDeploy(runId, issueId, binding.id);
-      armed.push({ binding, requestId });
+      armed.push({ binding, requestId, live: reachesLive(binding) });
     }
 
     await enqueueArmed(armed, { runId, issueId, envOf }, dispatched);

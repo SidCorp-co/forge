@@ -6,8 +6,7 @@ import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { readBearerToken } from '../middleware/bearer.js';
-import { badRequest } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { listBindings, readBinding, removeBinding, writeBinding } from './bindings.js';
 import { buildEffectiveConfig } from './effective.js';
@@ -55,14 +54,13 @@ const secretParam = z.object({
 const secretBody = z.strictObject({ value: z.string().min(1).max(SECRET_VALUE_MAX) });
 
 const paramOf = <T extends z.ZodType>(schema: T) =>
-  zValidator('param', schema, (r) => {
-    if (!r.success) {
-      throw badRequest({
-        message:
-          'invalid path: the project id is a uuid, and a profile id, secret scope or name matches ^[a-z][a-z0-9-]{0,62}$',
-      });
-    }
-  });
+  zValidator(
+    'param',
+    schema,
+    invalid(
+      'invalid path: the project id is a uuid, and a profile id, secret scope or name matches ^[a-z][a-z0-9-]{0,62}$',
+    ),
+  );
 
 const UNDECLARED = { declared: false as const, revision: null, document: null };
 
@@ -201,14 +199,14 @@ projectConfigRoutes.get('/:id/secrets', paramOf(idParam), async (c) => {
 projectConfigRoutes.put(
   '/:id/secrets/:scope/:name',
   paramOf(secretParam),
-  zValidator('json', secretBody, (r) => {
-    if (!r.success) {
-      throw new HTTPException(400, {
-        message: `the body is { "value": string }, 1 to ${SECRET_VALUE_MAX} characters, and nothing else`,
-        cause: { code: 'SECRET_WRITE_SHAPE' },
-      });
-    }
-  }),
+  zValidator(
+    'json',
+    secretBody,
+    invalid(
+      `the body is { "value": string }, 1 to ${SECRET_VALUE_MAX} characters, and nothing else`,
+      'SECRET_WRITE_SHAPE',
+    ),
+  ),
   async (c) => {
     const { id, scope, name } = c.req.valid('param');
     await requireCan(actorFor(c.get('userId')), 'project.admin', projectResource(id));

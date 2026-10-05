@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { mergeTarget } from './lib/base-branch.mjs';
-import { baseRev, ratchetFault } from './lib/baseline-ratchet.mjs';
+import { baseRevision, ratchetFault } from './lib/baseline-ratchet.mjs';
 import { readManifest } from './lib/debt-ratchet.mjs';
 import { ROOT } from './lib/gate.mjs';
 import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequisite.mjs';
@@ -70,7 +70,7 @@ const PROBES = {
 };
 
 const IMPROVES = ['down', 'shrink', 'tighten'];
-const BASE_REV = baseRev(ROOT);
+const { rev: BASE_REV, refusal: BASE_REFUSAL } = baseRevision(ROOT);
 
 function declaredBaselines(decl) {
   return [decl.baseline, decl.alsoBaseline].filter((b) => b !== undefined);
@@ -141,8 +141,17 @@ function ciGates() {
 function whereFrom() {
   const target = mergeTarget(ROOT);
   return target.branch
-    ? `nothing resolves for the merge target \`${target.branch}\``
-    : target.summary;
+    ? `the merge target \`${target.branch}\``
+    : 'a merge target that could not be established';
+}
+
+/** Why no revision was taken: `baseRevision`'s refusal, or the one case it returns none for. */
+function whyNoBase() {
+  return (
+    BASE_REFUSAL ??
+    'HEAD has no parent here — a single-commit checkout, or a shallow one of depth 1. Fetch\n' +
+      'history (actions/checkout with fetch-depth: 0) and re-run.'
+  );
 }
 
 const { manifest, error } = readManifest(ROOT);
@@ -160,9 +169,8 @@ const ratchetable = Object.values(declared)
 if (ratchetable.length > 0 && BASE_REV === null) {
   console.error(
     `conformance-status: ${ratchetable.length} axis/axes declare a baseline direction, and there is\n` +
-      `no revision to compare against — ${whereFrom()} and no HEAD~1. That is a shallow or\n` +
-      'single-commit checkout, so the direction check would silently pass on nothing.\n' +
-      'Fetch history (actions/checkout with fetch-depth: 0) and re-run.\n',
+      `no revision to compare against for ${whereFrom()},\n` +
+      `so the direction check would silently pass on nothing:\n${whyNoBase()}\n`,
   );
   process.exit(2);
 }

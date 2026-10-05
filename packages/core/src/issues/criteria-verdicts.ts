@@ -4,7 +4,7 @@
 
 import { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
 import type { ServingReading } from '@forge/contracts/releases';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issueAttachments, issues } from '../db/schema.js';
 import { type ForgeRecord, parseForgeRecord } from '../messaging/forge-record.js';
@@ -12,6 +12,7 @@ import {
   criterionBlocksIn,
   longestSpelling,
   parseStorefrontDraftRuntime,
+  recognisableIdentity,
 } from '../messaging/verdict-identity.js';
 import { type CriterionWithVerdict, type LatestVerdict, listCriteria } from './criteria/store.js';
 import { withCurrentDrafts } from './criteria/storefront-draft.js';
@@ -19,19 +20,23 @@ import { currentContracts, designRevisions, pinnedAnchorsOf } from './criteria-a
 import { type CitationReport, citationSentence, unresolvedCitations } from './evidence-standing.js';
 import { readProjectDocument } from './ports.js';
 import {
+  type OwedRuntimes,
+  owedRuntimes,
+  type WeighedVerdict,
+  weighVerdict,
+} from './runtime-standing.js';
+import {
+  EARNED_STANDINGS,
   type IssueIdentities,
   issueIdentities,
   standingSentence,
   type VerdictIdentity,
   type VerdictStanding,
-  verdictStanding,
 } from './verdict-standing.js';
+import { type RuntimeReading, UNWEIGHED, type Weighing } from './weighing.js';
 
 // `short` is the CLI's own "met short of its wording, judged not to block" — a real judgement.
 const EARNED_VERDICTS: ReadonlySet<string> = new Set(['pass', 'short']);
-
-// A verdict nothing could re-read is weaker evidence, not a refusal, so it earns (ISS-1286).
-const EARNED_STANDINGS: ReadonlySet<VerdictStanding> = new Set(['stands', 'uncorroborated']);
 
 export interface CriterionVerdict {
   readonly criterion: number;
@@ -149,6 +154,8 @@ export interface IssueCriteriaReport {
   readonly broken: readonly BrokenCitations[];
   /** What the project's declared probes answered when these verdicts were weighed. */
   readonly serving: ServingReading;
+  /** Each release runtime the project declares beside its deployment, as read then (ISS-1368). */
+  readonly runtimes: readonly RuntimeReading[];
   /** Criteria earned on a runtime nothing could re-read: earned, and weaker than a checked one. */
   readonly uncorroborated: readonly number[];
 }
@@ -177,16 +184,17 @@ const unconfirmedDraft = (pair: CriterionVerdict, standing: VerdictStanding) =>
 /** Every reason this criterion is not shown earned, in the order they are read. */
 function reasonsAgainst(
   pair: CriterionVerdict,
-  standing: VerdictStanding,
-  serving: ServingReading,
+  weighed: WeighedVerdict,
   identities: IssueIdentities,
   unresolved: readonly CitationReport[],
 ): string[] {
   const out: string[] = [];
+  const { standing, serving, runtime, beside } = weighed;
   if (!EARNED_VERDICTS.has(pair.verdict)) {
     out.push(`its verdict is \`${pair.verdict}\`, which is not earned`);
   } else if (!EARNED_STANDINGS.has(standing) || unconfirmedDraft(pair, standing)) {
-    out.push(standingSentence(standing, pair.at, serving, identities));
+    const said = standingSentence(standing, pair.at, serving, identities, runtime);
+    out.push(beside.length === 0 ? said : `${said} — ${beside.join('; ')}`);
   }
   if (unresolved.length > 0) out.push(citationSentence(unresolved));
   return out;
@@ -222,38 +230,49 @@ function spokenAt(
   };
 }
 
+interface Weighed {
+  readonly serving: ServingReading;
+  readonly owed: OwedRuntimes;
+  readonly weighing: Weighing;
+}
+
 function findingsFor(
   numbers: readonly number[],
   latest: ReadonlyMap<number, CriterionVerdict>,
-  serving: ServingReading,
+  weigh: Weighed,
   identities: IssueIdentities,
   held: ReadonlySet<string>,
 ): CriteriaFindings {
   const unearned: UnearnedCriterion[] = [];
   const broken: BrokenCitations[] = [];
   const uncorroborated: number[] = [];
-  const standings = new Map<number, VerdictStanding>();
+  const weighed = new Map<number, WeighedVerdict>();
   for (const criterion of numbers) {
     const pair = latest.get(criterion);
-    if (pair) standings.set(criterion, verdictStanding(pair.at, serving, identities));
+    if (!pair) continue;
+    weighed.set(
+      criterion,
+      weighVerdict(pair.at, weigh.serving, identities, weigh.owed, weigh.weighing),
+    );
   }
   const spoken = spokenAt(
-    [...standings].map(([criterion, standing]) => ({
+    [...weighed].map(([criterion, w]) => ({
       pair: latest.get(criterion) as CriterionVerdict,
-      standing,
+      standing: w.standing,
     })),
   );
   for (const criterion of numbers) {
     const pair = latest.get(criterion);
-    const standing = standings.get(criterion);
-    if (!pair || !standing) {
+    const w = weighed.get(criterion);
+    if (!pair || !w) {
       unearned.push({ criterion, verdict: null, standing: null, why: NEVER_JUDGED });
       continue;
     }
+    const { standing } = w;
     const unresolved = unresolvedCitations(pair.cited, held);
     if (unresolved.length > 0) broken.push({ criterion, unresolved });
     const said = { ...pair, at: spoken(pair, standing) };
-    const reasons = reasonsAgainst(said, standing, serving, identities, unresolved);
+    const reasons = reasonsAgainst(said, w, identities, unresolved);
     if (standing === 'uncorroborated' && reasons.length === 0) uncorroborated.push(criterion);
     if (reasons.length === 0) continue;
     unearned.push({ criterion, verdict: pair.verdict, standing, why: reasons.join('; and ') });
@@ -281,23 +300,27 @@ function byMerge(a: CriteriaRow, b: CriteriaRow): number {
 async function reportFor(
   row: CriteriaRow,
   serving: ServingReading,
+  weighing: Weighing,
   anchors: Pick<IssueIdentities, 'designs' | 'contracts' | 'pinnedBy'>,
 ): Promise<IssueCriteriaReport> {
+  const { runtimes } = weighing;
   // No parseable criteria is a different, already-owned gap, not this check's to refuse.
   const identities = { ...issueIdentities(row), ...anchors };
   const criteria = await withCurrentDrafts(row.projectId, await listCriteria(db, row.id));
   const numbers = criteria.map((c) => c.n);
   if (numbers.length === 0) {
-    return { issueId: row.id, unearned: [], broken: [], serving, uncorroborated: [] };
+    return { issueId: row.id, unearned: [], broken: [], serving, runtimes, uncorroborated: [] };
   }
   const latest = latestByNumber(criteria);
   const held = await heldAttachmentNames(row.id);
-  const found = findingsFor(numbers, latest, serving, identities, held);
+  const owed = owedRuntimes(row.id, weighing);
+  const found = findingsFor(numbers, latest, { serving, owed, weighing }, identities, held);
   return {
     issueId: row.id,
     unearned: found.unearned,
     broken: found.broken,
     serving,
+    runtimes,
     uncorroborated: found.uncorroborated,
   };
 }
@@ -310,10 +333,14 @@ async function reportFor(
  * `serving` is ONE reading the caller took, shared by every issue here: one project, one answer
  * about it, one moment. It is required rather than defaulted, because a missing reading earns every
  * runtime verdict exactly as a project with no probe does, and the two must not look alike.
+ *
+ * `weighing` (ISS-1368) is read by the caller beside it. It may be left out, because without it a
+ * verdict is weighed by equality alone against the deployment, which can hold one and never earn one.
  */
 export async function unearnedCriteriaReports(
   issueIds: string[],
   serving: ServingReading,
+  weighing: Weighing = UNWEIGHED,
 ): Promise<IssueCriteriaReport[]> {
   if (issueIds.length === 0) return [];
   const rows = (await db
@@ -341,7 +368,14 @@ export async function unearnedCriteriaReports(
   const out: IssueCriteriaReport[] = [];
   for (const row of [...rows].sort(byMerge)) {
     if (required.get(row.projectId) === false) {
-      out.push({ issueId: row.id, unearned: [], broken: [], serving, uncorroborated: [] });
+      out.push({
+        issueId: row.id,
+        unearned: [],
+        broken: [],
+        serving,
+        runtimes: weighing.runtimes,
+        uncorroborated: [],
+      });
       continue;
     }
     const pin = pinned.get(row.id);
@@ -349,6 +383,7 @@ export async function unearnedCriteriaReports(
       await reportFor(
         row,
         serving,
+        weighing,
         pin
           ? { designs: pin.designs, contracts: pin.contracts, pinnedBy: pin.key }
           : {
@@ -359,4 +394,36 @@ export async function unearnedCriteriaReports(
     );
   }
   return out;
+}
+
+/** What `release-batch/runtime-weighing.ts` weighs for these issues — the project's unclaimed
+ *  `awaiting_release` rows where none are named: each one's landing commit, oldest merge first,
+ *  and every commit any of their latest verdicts was judged at (ISS-1368). */
+export async function verdictWeighingInputs(
+  projectId: string,
+  issueIds?: readonly string[],
+): Promise<{ rows: Array<{ id: string; landing: string | null }>; judged: string[] }> {
+  if (issueIds && issueIds.length === 0) return { rows: [], judged: [] };
+  const scope = issueIds
+    ? inArray(issues.id, [...issueIds])
+    : and(eq(issues.status, 'awaiting_release'), isNull(issues.releaseBatchRunId));
+  const rows = await db
+    .select({
+      id: issues.id,
+      sessionContext: issues.sessionContext,
+      mergedCommitSha: issues.mergedCommitSha,
+    })
+    .from(issues)
+    .where(and(eq(issues.projectId, projectId), scope))
+    .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`, issues.id);
+  const judged = new Set<string>();
+  for (const row of rows) {
+    for (const verdict of latestByNumber(await listCriteria(db, row.id)).values()) {
+      if (verdict.at && recognisableIdentity(verdict.at.value)) judged.add(verdict.at.value.trim());
+    }
+  }
+  return {
+    rows: rows.map((row) => ({ id: row.id, landing: issueIdentities(row).source })),
+    judged: [...judged],
+  };
 }

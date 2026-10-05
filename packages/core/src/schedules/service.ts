@@ -92,10 +92,8 @@ interface CreateScheduleInput {
   prompt?: string | undefined;
   kind?: ScheduleKind | undefined;
   script?: string | undefined;
-  runner?: 'desktop' | undefined;
   enabled?: boolean | undefined;
   targetProjectSlug?: string | null | undefined;
-  metadata?: Record<string, unknown> | null | undefined;
   params?: Record<string, unknown> | null | undefined;
 }
 
@@ -132,9 +130,6 @@ export async function createSchedule(input: CreateScheduleInput, actorUserId: st
   const enabled = input.enabled ?? true;
   const nextRunAt = enabled ? nextRunFor(input.cron) : null;
 
-  // ISS-244 — desktop is the only runner supported on the new interactive
-  // dispatch path. Pin to 'desktop' so newly-created schedules are dispatchable.
-  // (Irrelevant for kind='script', which never touches the runner/device path.)
   const [inserted] = await db
     .insert(schedules)
     .values({
@@ -146,7 +141,6 @@ export async function createSchedule(input: CreateScheduleInput, actorUserId: st
       script: kind === 'script' ? (input.script ?? null) : null,
       enabled,
       targetProjectSlug: input.targetProjectSlug ?? null,
-      metadata: (input.metadata as never) ?? null,
       nextRunAt,
       params: (input.params as never) ?? null,
       ownerId: actorUserId,
@@ -163,10 +157,8 @@ interface UpdateSchedulePatch {
   prompt?: string | undefined;
   kind?: ScheduleKind | undefined;
   script?: string | undefined;
-  runner?: 'desktop' | undefined;
   enabled?: boolean | undefined;
   targetProjectSlug?: string | null | undefined;
-  metadata?: Record<string, unknown> | null | undefined;
   params?: Record<string, unknown> | null | undefined;
 }
 
@@ -201,7 +193,6 @@ export async function updateSchedule(id: string, patch: UpdateSchedulePatch, act
   if (patch.kind !== undefined) updates.kind = patch.kind;
   if (patch.script !== undefined) updates.script = patch.script;
   if (patch.targetProjectSlug !== undefined) updates.targetProjectSlug = patch.targetProjectSlug;
-  if (patch.metadata !== undefined) updates.metadata = patch.metadata;
   if (patch.params !== undefined) updates.params = patch.params;
 
   const cron = patch.cron ?? row.cron;

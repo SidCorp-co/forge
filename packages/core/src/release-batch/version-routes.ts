@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { notFound } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
 import {
   approvalRequestSchema,
@@ -12,7 +12,6 @@ import {
   requestApproval,
 } from './approvals.js';
 import { findReleaseBatchRun } from './queries.js';
-import { refuseRelease } from './refuse.js';
 import { listReleases, readRelease } from './release-read.js';
 import type { ViewerFacts } from './release-view.js';
 
@@ -40,16 +39,14 @@ const approvalParam = zValidator(
   'param',
   z.object({ projectId: z.uuid(), runId: z.uuid(), approvalId: z.uuid() }),
 );
-const requestBody = zValidator('json', approvalRequestSchema, (r) => {
-  if (!r.success) {
-    throw refuseRelease(
-      'RELEASE_APPROVAL_SHAPE',
-      `the request is { evidence: { environment, commit, reading }, note? }: ${r.error.issues
-        .map((i) => `${i.path.join('.') || '(body)'} ${i.message}`)
-        .join('; ')}`,
-    );
-  }
-});
+const requestBody = zValidator(
+  'json',
+  approvalRequestSchema,
+  invalid(
+    'the request is { evidence: { environment, commit, reading }, note? }',
+    'RELEASE_APPROVAL_SHAPE',
+  ),
+);
 const decisionBody = zValidator('json', z.unknown());
 
 async function assertRunOfProject(runId: string, projectId: string): Promise<void> {

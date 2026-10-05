@@ -63,20 +63,3 @@ export function stepsWithRemoved(proposed: WorkflowBody, diff: DesignDiff | null
   const ids = new Set([...proposed.steps.map((s) => s.id), ...diff.removed.map((s) => s.id)]);
   return [...proposed.steps, ...diff.removed.map((s) => ({ ...s, after: s.after.filter((a) => ids.has(a)) }))];
 }
-
-export function contractText(e: WorkflowEdgeContract): string {
-  const lines = [
-    e.condition ? `when ${e.condition}` : null,
-    e.action ? `do ${e.action}` : null,
-    e.mapping && Object.keys(e.mapping).length > 0
-      ? `map ${Object.entries(e.mapping)
-          .map(([k, v]) => `${k} ← ${v}`)
-          .join(", ")}`
-      : null,
-    e.idempotency ? `once: ${e.idempotency}` : null,
-    e.onFailure ? `on failure: ${e.onFailure}` : null,
-  ];
-  const head = e.kind ? `${e.from} → ${e.to} (${e.kind})` : `${e.from} → ${e.to}`;
-  const back = e.reevaluates ? [`re-evaluates ${e.reevaluates}`] : [];
-  return [head, ...back, ...lines.filter((l): l is string => l !== null)].join("\n");
-}

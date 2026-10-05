@@ -5,10 +5,9 @@ import {
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { egressForRequest } from '../lib/data-egress.js';
-import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { badRequest, forbidden, idParamSchema, notFound } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { forbidden, idParamSchema, notFound } from '../middleware/route-errors.js';
+import { invalid, zValidator } from '../middleware/zod-validator.js';
 import {
   automationViewerOf,
   readAutomationStanding,
@@ -41,13 +40,12 @@ async function viewerOf(projectId: string, userId: string) {
 
 automationRoutes.get(
   '/:id/automation/standing',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success)
-      throw badRequest('invalid path: /api/projects/<project uuid>/automation/standing');
-  }),
-  zValidator('query', firesQuery, (r) => {
-    if (!r.success) throw queryBadRequest(firesQuery, r.error);
-  }),
+  zValidator(
+    'param',
+    idParamSchema,
+    invalid('invalid path: /api/projects/<project uuid>/automation/standing'),
+  ),
+  zValidator('query', firesQuery),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const viewer = await viewerOf(projectId, c.get('userId'));
@@ -60,16 +58,12 @@ automationRoutes.get(
 
 automationRoutes.get(
   '/:id/automation/schedules/:scheduleId',
-  zValidator('param', scheduleParam, (r) => {
-    if (!r.success) {
-      throw badRequest(
-        'invalid path: /api/projects/<project uuid>/automation/schedules/<schedule uuid>',
-      );
-    }
-  }),
-  zValidator('query', firesQuery, (r) => {
-    if (!r.success) throw queryBadRequest(firesQuery, r.error);
-  }),
+  zValidator(
+    'param',
+    scheduleParam,
+    invalid('invalid path: /api/projects/<project uuid>/automation/schedules/<schedule uuid>'),
+  ),
+  zValidator('query', firesQuery),
   async (c) => {
     const { id: projectId, scheduleId } = c.req.valid('param');
     const viewer = await viewerOf(projectId, c.get('userId'));
@@ -89,14 +83,12 @@ automationRoutes.get(
 
 automationRoutes.get(
   '/:id/automation/fires/:fireId',
-  zValidator('param', fireParam, (r) => {
-    if (!r.success) {
-      throw badRequest('invalid path: /api/projects/<project uuid>/automation/fires/<fire uuid>');
-    }
-  }),
-  zValidator('query', noQuery, (r) => {
-    if (!r.success) throw queryBadRequest(noQuery, r.error);
-  }),
+  zValidator(
+    'param',
+    fireParam,
+    invalid('invalid path: /api/projects/<project uuid>/automation/fires/<fire uuid>'),
+  ),
+  zValidator('query', noQuery),
   async (c) => {
     const { id: projectId, fireId } = c.req.valid('param');
     const viewer = await viewerOf(projectId, c.get('userId'));
@@ -110,16 +102,12 @@ automationRoutes.get(
 
 automationRoutes.get(
   '/:id/automation/reports/:reportId',
-  zValidator('param', reportParam, (r) => {
-    if (!r.success) {
-      throw badRequest(
-        'invalid path: /api/projects/<project uuid>/automation/reports/<report uuid>',
-      );
-    }
-  }),
-  zValidator('query', noQuery, (r) => {
-    if (!r.success) throw queryBadRequest(noQuery, r.error);
-  }),
+  zValidator(
+    'param',
+    reportParam,
+    invalid('invalid path: /api/projects/<project uuid>/automation/reports/<report uuid>'),
+  ),
+  zValidator('query', noQuery),
   async (c) => {
     const { id: projectId, reportId } = c.req.valid('param');
     const viewer = await viewerOf(projectId, c.get('userId'));

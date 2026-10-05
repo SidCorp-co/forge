@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { EmbeddingUnavailableError } from '../integrations/llm/index.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import {
@@ -42,17 +41,20 @@ const required = (value: string | undefined, field: string, action: Input['actio
   return value;
 };
 
-const can = (userId: string, permission: Parameters<typeof requireCan>[1], projectId: string) =>
-  requireCan(actorFor(userId), permission, projectResource(projectId));
+const requireOn = (
+  userId: string,
+  permission: Parameters<typeof requireCan>[1],
+  projectId: string,
+) => requireCan(actorFor(userId), permission, projectResource(projectId));
 
 const actions: Record<Input['action'], (userId: string, input: Input) => Promise<unknown>> = {
   list: async (userId, { projectId, kindFilter, injectionFilter }) => {
-    await can(userId, 'project.read', projectId);
+    await requireOn(userId, 'project.read', projectId);
     return listKnowledgeEntries({ projectId, kind: kindFilter, injection: injectionFilter });
   },
   get: async (userId, input) => {
     const slug = required(input.slug, 'slug', 'get');
-    await can(userId, 'project.read', input.projectId);
+    await requireOn(userId, 'project.read', input.projectId);
     const entry = await getKnowledgeEntry(input.projectId, slug);
     if (!entry) throw new Error('NOT_FOUND: knowledge entry not found');
     return entry;
@@ -61,7 +63,7 @@ const actions: Record<Input['action'], (userId: string, input: Input) => Promise
     const slug = required(input.slug, 'slug', 'upsert');
     const title = required(input.title, 'title', 'upsert');
     const body = required(input.body, 'body', 'upsert');
-    await can(userId, 'project.write', input.projectId);
+    await requireOn(userId, 'project.write', input.projectId);
     const { projectId, kind, injection, confidence, authoredBy, orderIndex, metadata } = input;
     return upsertKnowledgeEntry(
       upsertKnowledgeInputSchema.parse({
@@ -80,18 +82,13 @@ const actions: Record<Input['action'], (userId: string, input: Input) => Promise
   },
   delete: async (userId, input) => {
     const slug = required(input.slug, 'slug', 'delete');
-    await can(userId, 'project.write', input.projectId);
+    await requireOn(userId, 'project.write', input.projectId);
     return { deleted: (await deleteKnowledgeEntry(input.projectId, slug)) > 0 };
   },
   search: async (userId, { projectId, query, scope, topK, strategy }) => {
     const text = required(query, 'query', 'search');
-    await can(userId, 'project.read', projectId);
-    try {
-      return await runUnifiedSearch({ projectId, query: text, scope, topK, strategy });
-    } catch (err) {
-      if (err instanceof EmbeddingUnavailableError) throw new Error(`UNAVAILABLE: ${err.message}`);
-      throw err;
-    }
+    await requireOn(userId, 'project.read', projectId);
+    return runUnifiedSearch({ projectId, query: text, scope, topK, strategy });
   },
 };
 

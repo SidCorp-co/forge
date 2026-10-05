@@ -38,6 +38,15 @@ export async function invalidateRefreshTokens(userId: string): Promise<void> {
     .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.usedAt)));
 }
 
+/** Logout: refresh tokens are spent and every session JWT issued before this second is refused. */
+export async function endSessions(userId: string): Promise<void> {
+  await invalidateRefreshTokens(userId);
+  await db
+    .update(users)
+    .set({ tokensValidAfter: sql`date_trunc('second', now())` })
+    .where(eq(users.id, userId));
+}
+
 export type RefreshOutcome =
   | { kind: 'ok'; userId: string; refreshToken: string }
   | { kind: 'invalid' }

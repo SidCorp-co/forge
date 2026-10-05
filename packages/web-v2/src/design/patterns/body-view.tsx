@@ -8,7 +8,8 @@
 // each, and every other `forge-*` draws the same block, so a build meeting a
 // component it has never heard of is ordinary rather than broken (ISS-967).
 
-import type { BodyNode, ForgeRecordView, RecordLens } from "@forge/contracts";
+import type { BodyNode } from "@forge/contracts/body-components";
+import type { ForgeRecordView, RecordLens } from "@forge/contracts/forge-record";
 import { createElement, type ReactNode } from "react";
 import { cn } from "@/lib/utils/cn";
 import { BodyImage, BodyLink } from "./body-link";

@@ -37,7 +37,9 @@ export async function askClarification(input: {
     .select({ id: agentQuestions.id })
     .from(agentQuestions)
     .where(and(eq(agentQuestions.feedbackId, row.id), eq(agentQuestions.status, 'open')));
-  const refused = clarificationRefusal(await phaseOfRow(projectId, row), open?.id ?? null);
+  const refused =
+    redactedRefusal(row.redactedAt) ??
+    clarificationRefusal(await phaseOfRow(projectId, row), open?.id ?? null);
   if (refused) return { ok: false, refusals: [refused] };
   try {
     await askQuestion({
@@ -106,6 +108,8 @@ export async function addAttachment(input: {
   const stored = await getStorage().put(key, bytes, mime.mime);
   const refusals = await inTx(async (tx) => {
     await lockFeedback(tx, projectId);
+    const gone = redactedRefusal((await rowIn(tx, projectId, row.id, true)).redactedAt);
+    if (gone) return [gone];
     const held = await tx
       .select({ id: feedbackAttachments.id })
       .from(feedbackAttachments)

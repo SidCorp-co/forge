@@ -349,13 +349,6 @@ export const ENUM_LABELS = {
 		supersede: "Superseded",
 		invite: "Invited",
 	},
-	/** One act of a release run (contracts `releases.ts:RELEASE_ATTEMPT_STAGES`). */
-	attemptStage: {
-		promote: "Promote",
-		deploy: "Deploy",
-		verify: "Verify",
-		repair: "Repair",
-	},
 	/** Why an agent session failed (contracts `failure-causes.ts:FAILURE_CAUSES`). */
 	failureCause: {
 		provider_spend_cap: "Provider spend cap",

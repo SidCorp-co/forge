@@ -1,3 +1,4 @@
+import type { RequirementDetail } from '@forge/contracts/requirements';
 import { requirementKey } from '@forge/contracts/requirements';
 import { and, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -9,7 +10,6 @@ import {
   detailOf,
   notFound,
   type RequirementActor,
-  type RequirementDetail,
   type RevisionRow,
   type Row,
   rowIn,

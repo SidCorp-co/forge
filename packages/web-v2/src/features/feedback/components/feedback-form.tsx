@@ -3,9 +3,9 @@
 import { FEEDBACK_KINDS, FEEDBACK_SEVERITIES, FEEDBACK_TARGET_TYPES } from "@forge/contracts/feedback";
 import { useState } from "react";
 import { Button, enumLabel, Field, Input, NativeSelect, statusReading, Textarea } from "@/design";
+import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCreateFeedback, usePromoteFeedback } from "../hooks";
 import type { CreateFeedbackRequest, FeedbackKind, FeedbackSeverity, FeedbackTargetType } from "../types";
-import { RefusalLine } from "./feedback-actions";
 
 export interface FeedbackDraft {
   kind: FeedbackKind;

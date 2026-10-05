@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import type {
+  HostCommitFiles,
   HostCompare,
+  HostFileCompare,
   LiveDivergence,
   SourceHost,
   SourceHostFactory,
@@ -24,6 +26,7 @@ interface CommitBody {
 
 interface CompareBody {
   commits?: CommitBody[];
+  diffs?: Array<{ old_path?: string; new_path?: string }>;
 }
 
 const enc = encodeURIComponent;
@@ -50,6 +53,34 @@ function gitlabSourceHostOf(client: GitLabClient): SourceHost {
     if (!sha)
       throw new SourceHostCallError(200, `${client.fullName} answered no commit for ${branch}`);
     return sha;
+  };
+
+  const compare = async (base: string, head: string): Promise<HostCompare> => {
+    const [ahead, behind] = await Promise.all([
+      commitsBetween(base, head),
+      commitsBetween(head, base),
+    ]);
+    if (ahead.length === 0 && behind.length === 0) return 'identical';
+    if (behind.length === 0) return 'ahead';
+    if (ahead.length === 0) return 'behind';
+    return 'diverged';
+  };
+  const compareFiles = async (base: string, head: string): Promise<HostFileCompare> => {
+    const [status, read] = await Promise.all([
+      compare(base, head),
+      client.json<CompareBody>(
+        'GET',
+        client.project(`/repository/compare?from=${enc(base)}&to=${enc(head)}`),
+      ),
+    ]);
+    if (!Array.isArray(read.diffs)) return { why: `${client.fullName} answered no file list` };
+    const named = (p: unknown): p is string => typeof p === 'string' && p !== '';
+    if (read.diffs.some((d) => !named(d.new_path) || !named(d.old_path)))
+      return { why: 'the compare answered a file entry with no name' };
+    return {
+      status,
+      files: [...new Set(read.diffs.flatMap((d) => [d.new_path, d.old_path].filter(named)))],
+    };
   };
 
   return {
@@ -81,15 +112,19 @@ function gitlabSourceHostOf(client: GitLabClient): SourceHost {
 
     branchHead,
 
-    async compare(base, head): Promise<HostCompare> {
-      const [ahead, behind] = await Promise.all([
-        commitsBetween(base, head),
-        commitsBetween(head, base),
-      ]);
-      if (ahead.length === 0 && behind.length === 0) return 'identical';
-      if (behind.length === 0) return 'ahead';
-      if (ahead.length === 0) return 'behind';
-      return 'diverged';
+    compare,
+
+    compareFiles,
+
+    async commitFiles(sha): Promise<HostCommitFiles> {
+      const commit = await client.json<CommitBody>(
+        'GET',
+        client.project(`/repository/commits/${enc(sha)}`),
+      );
+      const parent = commit.parent_ids?.[0];
+      if (!parent) return { why: `${sha} has no parent to diff it against` };
+      const read = await compareFiles(parent, sha);
+      return 'why' in read ? read : { files: read.files };
     },
 
     async branchContains(branch, sha) {

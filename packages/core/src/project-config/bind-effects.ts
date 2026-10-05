@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import type { BindingRole } from '../db/release-axes.js';
 import {
   AGENT_ACCESS_CLOSED,
@@ -9,6 +8,8 @@ import {
   findConnectionById,
   getAdapter,
   getIntegration,
+  heldInboundSecret,
+  mintInboundSecret,
   notifyConnectionChanged,
   runInitialHealthcheck,
 } from '../integrations/index.js';
@@ -78,9 +79,7 @@ export const bindEffects: BindEffects = {
 
   async inboundSecret(connectionId) {
     const connection = await findConnectionById(connectionId);
-    const provider = connection?.provider;
-    const own = connection && provider ? getAdapter(provider)?.inboundSecret?.(connection) : null;
-    return own ?? `whsec_${randomBytes(24).toString('hex')}`;
+    return (connection && heldInboundSecret(connection)) ?? mintInboundSecret();
   },
 
   async targetRefusals({ projectId, connectionId, provider, config, held }) {

@@ -8,7 +8,7 @@ import { egressForRequest } from '../lib/data-egress.js';
 import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { strictBody, zValidator } from '../middleware/zod-validator.js';
+import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { DESIGN_DECISIONS, DESIGN_REASON_MAX } from './design.js';
 import {
@@ -49,22 +49,24 @@ for (const path of [
 const badRequest = (message: string) =>
   new HTTPException(400, { message, cause: { code: 'BAD_REQUEST' } });
 
-const idParam = zValidator('param', z.object({ id: z.uuid() }), (r) => {
-  if (!r.success) throw badRequest('invalid path: the project id is a uuid');
-});
+const idParam = zValidator(
+  'param',
+  z.object({ id: z.uuid() }),
+  invalid('invalid path: the project id is a uuid'),
+);
 
-const workflowParam = zValidator('param', z.object({ id: z.uuid(), workflow: z.uuid() }), (r) => {
-  if (!r.success) throw badRequest('invalid path: the project and the workflow are uuids');
-});
+const workflowParam = zValidator(
+  'param',
+  z.object({ id: z.uuid(), workflow: z.uuid() }),
+  invalid('invalid path: the project and the workflow are uuids'),
+);
 
 const envelope = zValidator('json', z.unknown());
 
 const listView = zValidator(
   'query',
   z.strictObject({ view: z.enum(ANSWER_VIEWS).optional() }),
-  (r) => {
-    if (!r.success) throw badRequest('invalid query: view? (summary | full, full by default)');
-  },
+  invalid('invalid query: view? (summary | full, full by default)'),
 );
 
 const designView = zValidator(
@@ -75,13 +77,9 @@ const designView = zValidator(
     stepFrom: z.coerce.number().int().min(1).optional(),
     stepTo: z.coerce.number().int().min(1).optional(),
   }),
-  (r) => {
-    if (!r.success) {
-      throw badRequest(
-        'invalid query: view? (summary | steps | full, full by default), and with view=steps revision?, stepFrom?, stepTo? (whole numbers from 1)',
-      );
-    }
-  },
+  invalid(
+    'invalid query: view? (summary | steps | full, full by default), and with view=steps revision?, stepFrom?, stepTo? (whole numbers from 1)',
+  ),
 );
 
 function writerOf(c: Context<{ Variables: AuthVars }>): WorkflowWriter {
@@ -191,13 +189,9 @@ const graphQuery = zValidator(
     revision: z.coerce.number().int().min(1).optional(),
     against: z.coerce.number().int().min(1).optional(),
   }),
-  (r) => {
-    if (!r.success) {
-      throw badRequest(
-        'invalid query: revision? (the revision to read, the current one by default) and against? (a revision whose removed steps are drawn too), whole numbers from 1',
-      );
-    }
-  },
+  invalid(
+    'invalid query: revision? (the revision to read, the current one by default) and against? (a revision whose removed steps are drawn too), whole numbers from 1',
+  ),
 );
 
 workflowRoutes.get(
@@ -331,9 +325,7 @@ workflowRoutes.get('/:id/workflow-templates/:templateId/:version', async (c) => 
 const workflowRefParam = zValidator(
   'param',
   z.object({ id: z.uuid(), workflow: z.string().trim().min(1).max(200) }),
-  (r) => {
-    if (!r.success) throw badRequest('invalid path: a project uuid and a workflow uuid or flow');
-  },
+  invalid('invalid path: a project uuid and a workflow uuid or flow'),
 );
 
 workflowRoutes.post(
@@ -368,12 +360,9 @@ workflowRoutes.get(
       workflow: z.string().trim().min(1).max(200),
       at: z.string().trim().min(1).max(64),
     }),
-    (r) => {
-      if (!r.success)
-        throw badRequest(
-          'invalid path: a project uuid, a workflow uuid or flow, and latest, a commit sha or an observation id',
-        );
-    },
+    invalid(
+      'invalid path: a project uuid, a workflow uuid or flow, and latest, a commit sha or an observation id',
+    ),
   ),
   async (c) => {
     const { id, workflow, at } = c.req.valid('param');

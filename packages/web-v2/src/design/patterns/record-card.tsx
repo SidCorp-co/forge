@@ -9,7 +9,7 @@
 // is FOLDED and never cut. Nothing is hidden from anybody: the lens the card is
 // given decides only which of those rows are open before a reader touches them.
 
-import type { ForgeRecordFieldView, ForgeRecordView, RecordLens } from "@forge/contracts";
+import type { ForgeRecordFieldView, ForgeRecordView, RecordLens } from "@forge/contracts/forge-record";
 import { type ReactNode, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 

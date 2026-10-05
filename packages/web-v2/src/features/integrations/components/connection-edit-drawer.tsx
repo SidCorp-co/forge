@@ -36,7 +36,6 @@ import {
   useTestConnection,
   useUpdateConnection,
 } from "../hooks";
-import { deriveConnectionStatus } from "../derive";
 import { ConnectionReleaseRunnerField } from "./release-runner-field";
 import { PROVIDER_MODULES, providerIcon, providerLabel, providerModule } from "../providers/registry";
 import type { BindingSummary, ConnectionSummary, IntegrationTestResult } from "../types";
@@ -110,7 +109,7 @@ function HeaderTitle({
           )}
         </>
       )}
-      <DirectoryStatusPill status={deriveConnectionStatus(connection)} />
+      <DirectoryStatusPill status={connection.directoryStatus} />
       {connection.ownerType === "org" && (
         <span className="fg-body-sm shrink-0 rounded-pill bg-sunken px-2 py-0.5 text-subtle">
           org-shared

@@ -15,7 +15,7 @@ import { z } from 'zod';
 import type { ConversationAdapter } from '../../db/schema-conversations.js';
 import { type RefusalError, refuser } from '../../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
-import { zValidator } from '../../middleware/zod-validator.js';
+import { invalid, zValidator } from '../../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
 import { listSpeakerLinks } from '../read.js';
 import { confirmSpeakerLink, unlinkSpeaker } from '../service.js';
@@ -40,14 +40,11 @@ const SPEAKER_BODY_REQUIRED: SpeakerRefusal = {
     'both "source" and "externalId" are required. "source" is the chat channel, "externalId" is that channel\'s own user id for the speaker — never their display name.',
 };
 
-const speakerBody = zValidator('json', speakerBodySchema, (result) => {
-  if (!result.success) {
-    throw new HTTPException(400, {
-      message: `invalid body: ${SPEAKER_BODY_REQUIRED.message}`,
-      cause: { code: 'BAD_REQUEST' },
-    });
-  }
-});
+const speakerBody = zValidator(
+  'json',
+  speakerBodySchema,
+  invalid(`invalid body: ${SPEAKER_BODY_REQUIRED.message}`),
+);
 
 const refuseSpeaker = refuser<SpeakerRefusalCode>('SPEAKER_SOURCE_UNKNOWN');
 

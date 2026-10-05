@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button, Textarea } from "@/design";
-import { formatApiError } from "@/lib/api/error";
+import { RefusalLine } from "@/lib/api/refusal-line";
 import type { useDesignDecision } from "../hooks";
 import type { WorkflowDesign } from "../types";
 
@@ -62,10 +62,5 @@ export function ReturnControl({ revision, decide }: { revision: number | null; d
 }
 
 export function DecisionError({ decide }: { decide: Decide }) {
-  if (!decide.isError) return null;
-  return (
-    <span role="alert" className="block basis-full text-12-5 text-red" data-testid="design-decision-error">
-      {formatApiError(decide.error)}
-    </span>
-  );
+  return <RefusalLine error={decide.isError ? decide.error : null} testid="design-decision-error" />;
 }
