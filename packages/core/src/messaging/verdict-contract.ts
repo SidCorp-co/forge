@@ -15,15 +15,13 @@ import type { ForgeRecord } from './forge-record.js';
 import {
   CONTRACT_FIELD,
   type ContractIdentity,
-  type CriterionBlock,
-  criterionBlocksIn,
+  listed,
+  type NamedIdentityRule,
+  namedIdentityRefusals,
   parseContractIdentity,
 } from './verdict-identity.js';
 
-const RULE = 'verdict-contract';
-
-const SHAPE =
-  "a `contract:` identity names a contract of this issue's own project, as `<project slug>/<contract slug>@<version>`, and a version core recorded for it";
+("a `contract:` identity names a contract of this issue's own project, as `<project slug>/<contract slug>@<version>`, and a version core recorded for it");
 
 const EXAMPLE = [
   '```forge-record: verdict · contract 1',
@@ -79,46 +77,28 @@ export function dbContractLookup(executor?: Tx): ContractLookup {
   };
 }
 
-function refusal(why: string, quote: string): MessageRefusal {
-  return { rule: RULE, why, quote, shape: SHAPE, example: EXAMPLE };
-}
-
-/** The refusal one block earns for the contract version it names, or null where it was recorded here. */
-function contractRefusal(
-  block: CriterionBlock,
-  named: ContractIdentity,
-  held: ContractHolding,
-): MessageRefusal | null {
-  if (held.named) return null;
-  const quote = `${CONTRACT_FIELD}: ${block.contract ?? ''}`;
-  const at = `criterion ${block.criterion} names contract \`${named.project}/${named.contract}\` at version \`${named.version}\``;
-  if (held.projectSlug !== named.project) {
-    return refusal(
-      `${at}, which is project \`${named.project}\`'s contract, and this issue's project is \`${held.projectSlug}\` — a verdict is judged against a contract version of its own issue's project`,
-      quote,
-    );
-  }
-  const listed =
-    held.versions.length === 0 ? 'none' : held.versions.map((v) => `\`${v}\``).join(', ');
-  return refusal(
-    `${at}, and this project recorded no such version of it. The versions it recorded, newest first: ${listed}`,
-    quote,
-  );
-}
+const CONTRACT_RULE: NamedIdentityRule<ContractIdentity, ContractHolding> = {
+  rule: 'verdict-contract',
+  shape:
+    "a `contract:` identity names a contract of this issue's own project, as `<project slug>/<contract slug>@<version>`, and a version core recorded for it",
+  example: EXAMPLE,
+  field: CONTRACT_FIELD,
+  parse: parseContractIdentity,
+  why: (block, named, held) => {
+    if (held.named) return null;
+    const at = `criterion ${block.criterion} names contract \`${named.project}/${named.contract}\` at version \`${named.version}\``;
+    if (held.projectSlug !== named.project) {
+      return `${at}, which is project \`${named.project}\`'s contract, and this issue's project is \`${held.projectSlug}\` — a verdict is judged against a contract version of its own issue's project`;
+    }
+    return `${at}, and this project recorded no such version of it. The versions it recorded, newest first: ${listed(held.versions)}`;
+  },
+};
 
 /** Everything a `verdict` record is refused for about the contract versions its blocks name. */
-export async function verdictContractRefusals(
+export function verdictContractRefusals(
   projectId: string,
   record: ForgeRecord | null,
   lookup: ContractLookup,
 ): Promise<MessageRefusal[]> {
-  const out: MessageRefusal[] = [];
-  for (const block of criterionBlocksIn(record)) {
-    if (block.verdict === null || block.contract === null) continue;
-    const named = parseContractIdentity(block.contract);
-    if (!named) continue;
-    const refused = contractRefusal(block, named, await lookup(projectId, named));
-    if (refused) out.push(refused);
-  }
-  return out;
+  return namedIdentityRefusals(record, CONTRACT_RULE, (named) => lookup(projectId, named));
 }

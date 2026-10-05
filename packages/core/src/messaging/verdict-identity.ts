@@ -164,17 +164,18 @@ export interface CriterionBlock {
   readonly cited: readonly string[];
 }
 
-interface OpenBlock {
-  criterion: number;
-  verdict: string | null;
-  runtime: string | null;
-  source: string | null;
-  design: string | null;
-  why: string | null;
-  contract: string | null;
-  environment: string | null;
-  cited: string[];
-}
+type OpenBlock = { -readonly [K in keyof CriterionBlock]: CriterionBlock[K] } & { cited: string[] };
+
+/** The one-value fields a block keeps the first of; `why` keeps the first that is not empty. */
+const SINGLE_FIELDS = {
+  verdict: 'verdict',
+  [RUNTIME_FIELD]: 'runtime',
+  [SOURCE_FIELD]: 'source',
+  [DESIGN_FIELD]: 'design',
+  why: 'why',
+  [CONTRACT_FIELD]: 'contract',
+  [ENVIRONMENT_FIELD]: 'environment',
+} as const satisfies Record<string, Exclude<keyof CriterionBlock, 'criterion' | 'cited'>>;
 
 /**
  * The criterion blocks a `verdict`-kind record holds, in the order written.
@@ -211,15 +212,10 @@ export function criterionBlocksIn(record: ForgeRecord | null): CriterionBlock[] 
       continue;
     }
     if (!block) continue;
-    if (field.key === 'verdict' && block.verdict === null) block.verdict = value;
-    else if (field.key === RUNTIME_FIELD && block.runtime === null) block.runtime = value;
-    else if (field.key === SOURCE_FIELD && block.source === null) block.source = value;
-    else if (field.key === DESIGN_FIELD && block.design === null) block.design = value;
-    else if (field.key === 'why' && block.why === null && value !== '') block.why = value;
-    else if (field.key === CONTRACT_FIELD && block.contract === null) block.contract = value;
-    else if (field.key === ENVIRONMENT_FIELD && block.environment === null)
-      block.environment = value;
-    else if (field.key === EVIDENCE_FIELD && value !== '') block.cited.push(value);
+    const single = SINGLE_FIELDS[field.key as keyof typeof SINGLE_FIELDS];
+    if (single) {
+      if (block[single] === null && (single !== 'why' || value !== '')) block[single] = value;
+    } else if (field.key === EVIDENCE_FIELD && value !== '') block.cited.push(value);
   }
   close();
   return out;
@@ -291,6 +287,43 @@ function refusalsForBlock(block: CriterionBlock): MessageRefusal[] {
           `${RUNTIME_FIELD}: ${value}`,
         ),
       );
+    }
+  }
+  return out;
+}
+
+export function listed(values: readonly (string | number)[]): string {
+  return values.length === 0 ? 'none' : values.map((v) => `\`${v}\``).join(', ');
+}
+
+/** A rule that looks up what a block's well-written `design:` or `contract:` identity names. */
+export interface NamedIdentityRule<N, F> {
+  readonly rule: string;
+  readonly shape: string;
+  readonly example: string;
+  readonly field: typeof DESIGN_FIELD | typeof CONTRACT_FIELD;
+  readonly parse: (value: string) => N | null;
+  /** Why the block is refused for what the lookup found, or null where it names something real. */
+  readonly why: (block: CriterionBlock, named: N, found: F) => string | null;
+}
+
+/** One lookup per verdict block whose identity is written as one; a malformed value is this file's
+ *  own rule to refuse and is not looked up. */
+export async function namedIdentityRefusals<N, F>(
+  record: ForgeRecord | null,
+  spec: NamedIdentityRule<N, F>,
+  lookup: (named: N) => Promise<F>,
+): Promise<MessageRefusal[]> {
+  const out: MessageRefusal[] = [];
+  for (const block of criterionBlocksIn(record)) {
+    const value = block[spec.field];
+    if (block.verdict === null || value === null) continue;
+    const named = spec.parse(value);
+    if (!named) continue;
+    const why = spec.why(block, named, await lookup(named));
+    if (why) {
+      const quote = `${spec.field}: ${value}`;
+      out.push({ rule: spec.rule, why, quote, shape: spec.shape, example: spec.example });
     }
   }
   return out;
