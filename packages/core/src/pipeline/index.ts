@@ -99,7 +99,7 @@ export {
   reapStaleReleaseBatchClaims,
   type StaleReleaseBatchClaimsResult,
 } from './stale-release-claims.js';
-export { type StepHandoffPayload } from './step-handoff-schema.js';
+export type { StepHandoffPayload } from './step-handoff-schema.js';
 export {
   detectOwedCloses,
   detectStrandedIssues,

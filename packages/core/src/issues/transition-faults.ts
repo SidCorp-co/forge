@@ -4,7 +4,7 @@
 import { ISSUE_MACHINE, PARK_STATUSES } from '@forge/contracts/issue-machine';
 import { edgeBetween } from '@forge/contracts/state-machine';
 import type { IssueStatus } from '../db/schema.js';
-import { type GuardContext, type GuardFault } from './transition-guards.js';
+import type { GuardContext, GuardFault } from './transition-guards.js';
 
 export const quote = (s: string) => `\`${s}\``;
 

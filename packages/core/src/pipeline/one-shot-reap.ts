@@ -17,7 +17,7 @@ import {
   transitionSessions,
 } from './ports.js';
 import { closeRunIfOneShot } from './runs.js';
-import { type SweepScope } from './sweeper.js';
+import type { SweepScope } from './sweeper.js';
 
 export interface OneShotRunReapResult {
   reaped: number;

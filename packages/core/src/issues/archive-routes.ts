@@ -5,7 +5,7 @@
  */
 
 import { type Context, Hono } from 'hono';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';

@@ -19,9 +19,14 @@
       "count": 1
     }
   },
-  "packages/core/src/pipeline/idle-issues.ts": {
+  "packages/core/src/pipeline/idle-recovered.ts": {
     "module-shape/table-writer": {
-      "count": 3
+      "count": 1
+    }
+  },
+  "packages/core/src/pipeline/idle-strand-write.ts": {
+    "module-shape/table-writer": {
+      "count": 2
     }
   },
   "packages/core/src/queue/v10-carry-over.ts": {

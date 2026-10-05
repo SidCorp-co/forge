@@ -5,7 +5,7 @@
 // what was accepted here.
 
 import { Banner, Icon, IconButton } from "@/design";
-import { type ClipboardEvent, type DragEvent, useRef, useState } from "react";
+import { type ClipboardEvent, type DragEvent, useCallback, useRef, useState } from "react";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 export const MAX_FILES = 10;
@@ -32,6 +32,14 @@ export function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
+
+// A staged file's list key: two staged files may share a name, so the File itself is the identity.
+const fileKeys = new WeakMap<File, number>();
+let nextFileKey = 0;
+const keyOf = (file: File): number => {
+  if (!fileKeys.has(file)) fileKeys.set(file, ++nextFileKey);
+  return fileKeys.get(file) as number;
+};
 
 function nameKey(name: string): string {
   return name
@@ -133,6 +141,12 @@ export function useStagedFiles({
     }
   };
 
+  const reset = useCallback(() => {
+    setFiles([]);
+    setWarnings([]);
+    setDragOver(false);
+  }, []);
+
   const input = (
     <input
       ref={inputRef}
@@ -159,11 +173,7 @@ export function useStagedFiles({
       setFiles((prev) => prev.filter((_, i) => i !== index));
       setWarnings([]);
     },
-    reset: () => {
-      setFiles([]);
-      setWarnings([]);
-      setDragOver(false);
-    },
+    reset,
   };
 }
 
@@ -181,8 +191,8 @@ export function StagedFileList({
   const banner = warnings.length > 0 && (
     <Banner tone="attention">
       <ul className="space-y-0.5">
-        {warnings.map((w, i) => (
-          <li key={i}>{w}</li>
+        {[...new Set(warnings)].map((w) => (
+          <li key={w}>{w}</li>
         ))}
       </ul>
     </Banner>
@@ -194,7 +204,7 @@ export function StagedFileList({
         <ul className={`${spaced ? "mt-2.5 " : ""}flex flex-col gap-1.5`}>
           {files.map((f, i) => (
             <li
-              key={`${f.name}-${i}`}
+              key={keyOf(f)}
               className="flex items-center gap-2.5 rounded-md border border-line-subtle bg-surface px-2.5 py-1.5"
             >
               <Icon

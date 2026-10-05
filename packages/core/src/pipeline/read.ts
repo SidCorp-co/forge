@@ -2,7 +2,7 @@ import { and, count, desc, eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type JobType, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
 import { listItemsFromRows } from './runs-rollup.js';
-import { type PipelineRunListItem } from './runs-rollup-types.js';
+import type { PipelineRunListItem } from './runs-rollup-types.js';
 
 /** The last `days` of finished step durations, newest first, at most 1000. */
 export async function readStepDurations(

@@ -1,6 +1,6 @@
 // Reading an issue's comment thread a page at a time.
 
-import { type CommentIntent } from '@forge/contracts/record-events';
+import type { CommentIntent } from '@forge/contracts/record-events';
 import { and, asc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments } from '../db/schema.js';

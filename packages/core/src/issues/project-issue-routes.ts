@@ -2,7 +2,7 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { type IssueStatus } from '../db/schema.js';
+import type { IssueStatus } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';

@@ -65,6 +65,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
   const [complexity, setComplexity] = useState("");
   const [errors, setErrors] = useState<{ title?: string; form?: string }>({});
   const staged = useStagedFiles({ unit: "issue", video: true, uniqueNames: true });
+  const resetStaged = staged.reset;
 
   useEffect(() => {
     if (open) {
@@ -76,12 +77,12 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
       setCategory("");
       setComplexity("");
       setErrors({});
-      staged.reset();
+      resetStaged();
       create.reset();
       submitting.release();
     }
     // `create` is stable from React Query; resetting only on `open` is intended.
-  }, [open, submitting]);
+  }, [open, submitting, resetStaged]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();

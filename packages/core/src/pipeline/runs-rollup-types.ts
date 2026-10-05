@@ -1,12 +1,12 @@
 // The shapes a pipeline run summary and list item answer.
 
-import { type PipelineRunKind, type PipelineRunStatus } from '../db/schema.js';
-import { type RunGateReading } from './ports.js';
-import {
-  type PipelineRunGroup,
-  type PipelineRunLane,
-  type PipelineRunStep,
-  type ResidentMaster,
+import type { PipelineRunKind, PipelineRunStatus } from '../db/schema.js';
+import type { RunGateReading } from './ports.js';
+import type {
+  PipelineRunGroup,
+  PipelineRunLane,
+  PipelineRunStep,
+  ResidentMaster,
 } from './runs-lane.js';
 
 export type PipelineStepStatus =

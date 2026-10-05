@@ -1,6 +1,6 @@
 // Notices: comments the system posts on an issue, once or every time, and the latest one carrying a marker.
 
-import { type CommentIntent } from '@forge/contracts/record-events';
+import type { CommentIntent } from '@forge/contracts/record-events';
 import { and, desc, eq, or, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { comments } from '../db/schema.js';

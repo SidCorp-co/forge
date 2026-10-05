@@ -19,7 +19,7 @@ import type { IssueTakeRefusalCode } from '@forge/contracts/issues';
 import { TERMINAL_JOB_STATUSES, UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { LIVE_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { type SQL, sql } from 'drizzle-orm';
-import { type Tx } from '../db/client.js';
+import type { Tx } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { refuser } from '../lib/refusal.js';
 

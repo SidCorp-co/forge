@@ -41,14 +41,14 @@ export type {
 } from './runs-lane.js';
 
 import { readRunGate, usageSessionMatch } from './ports.js';
-import {
-  type PipelineRunAttempt,
-  type PipelineRunCostSummary,
-  type PipelineRunListItem,
-  type PipelineRunRetrySummary,
-  type PipelineRunStepSummary,
-  type PipelineRunSummary,
-  type PipelineStepStatus,
+import type {
+  PipelineRunAttempt,
+  PipelineRunCostSummary,
+  PipelineRunListItem,
+  PipelineRunRetrySummary,
+  PipelineRunStepSummary,
+  PipelineRunSummary,
+  PipelineStepStatus,
 } from './runs-rollup-types.js';
 
 const EMPTY_COST: PipelineRunCostSummary = {
