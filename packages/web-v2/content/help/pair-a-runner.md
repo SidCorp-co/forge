@@ -56,12 +56,7 @@ your repo. There is no desktop app — pairing is done from the command line.
    it on any device where you're signed in and **approve this device**. Approve
    **promptly**: the code expires after a couple of minutes.
 
-   On a desktop, `--open` launches the browser for you. Or paste a code you
-   generated under **Runners → Pair a device**:
-
-   ```bash
-   forge-runner login --code <code>
-   ```
+   On a desktop, `--open` launches the browser for you.
 
 3. **Assign the device to your project** — from the dashboard: **Runners** →
    **Manage** the device → assign it to your project (or **Project → Settings →

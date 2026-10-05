@@ -35,7 +35,7 @@ docker compose up -d
 ```
 
 API <http://localhost:8080> · dashboard <http://localhost:3000>. Then pair a device:
-`curl <core-url>/install.sh | sh` and `forge-runner login --code <code>`.
+`curl <core-url>/install.sh | sh` and `forge-runner login`, then approve the device in the browser.
 
 Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
 

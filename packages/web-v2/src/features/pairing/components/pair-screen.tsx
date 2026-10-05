@@ -82,7 +82,7 @@ export function PairScreen() {
           <CardContent>
             <EmptyState
               title="No pairing code"
-              message="Open this page from the link printed by `forge-runner setup`, or paste a code into the CLI."
+              message="Open this page from the link printed by `forge-runner setup` or `forge-runner login`."
             />
           </CardContent>
         </Card>

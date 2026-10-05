@@ -23,7 +23,6 @@ const PER_SESSION_READ_BUDGET = 300;
 const DEFAULTS = {
   authLocal: { windowMs: 15 * 60_000, max: 5, by: 'ip' },
   authRegister: { windowMs: 60 * 60_000, max: 3, by: 'ip' },
-  devicesPair: { windowMs: 60 * 60_000, max: 10, by: 'ip' },
   patRead: { windowMs: 60_000, max: SESSIONS_PER_TOKEN * PER_SESSION_READ_BUDGET, by: 'token' },
   patWrite: { windowMs: 60_000, max: 600, by: 'token' },
   deviceLoginInit: { windowMs: 60 * 60_000, max: 20, by: 'ip' },
@@ -44,7 +43,6 @@ type RuleName = keyof typeof DEFAULTS;
 const OVERRIDES: Record<RuleName, () => [max: number | undefined, windowMs: number | undefined]> = {
   authLocal: () => [env.RATE_LIMIT_AUTH_LOCAL_MAX, env.RATE_LIMIT_AUTH_LOCAL_WINDOW_MS],
   authRegister: () => [env.RATE_LIMIT_AUTH_REGISTER_MAX, env.RATE_LIMIT_AUTH_REGISTER_WINDOW_MS],
-  devicesPair: () => [env.RATE_LIMIT_DEVICES_PAIR_MAX, env.RATE_LIMIT_DEVICES_PAIR_WINDOW_MS],
   patRead: () => [env.RATE_LIMIT_PAT_READ_MAX, env.RATE_LIMIT_PAT_READ_WINDOW_MS],
   patWrite: () => [env.RATE_LIMIT_PAT_WRITE_MAX, env.RATE_LIMIT_PAT_WRITE_WINDOW_MS],
   deviceLoginInit: () => [

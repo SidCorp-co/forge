@@ -4,7 +4,6 @@ import { check, index, integer, jsonb, pgTable, text, timestamp, uuid } from 'dr
 import { devicePlatforms, deviceStatuses } from './device-vocabulary.js';
 import { users } from './schema-auth.js';
 import { jobs } from './schema-jobs.js';
-import { projects } from './schema-projects.js';
 
 export const deviceLoginCodes = pgTable(
   'device_login_codes',
@@ -73,34 +72,10 @@ export const devices = pgTable(
   }),
 );
 
-export const pairingCodes = pgTable(
-  'pairing_codes',
-  {
-    codeHash: text('code_hash').primaryKey(),
-    userId: uuid('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
-    grantEpoch: integer('grant_epoch').notNull().default(1),
-    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    usedAt: timestamp('used_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    userIdIdx: index('pairing_codes_user_id_idx').on(t.userId),
-    projectIdIdx: index('pairing_codes_project_id_idx').on(t.projectId),
-    expiresAtIdx: index('pairing_codes_expires_at_idx').on(t.expiresAt),
-  }),
-);
-
 /** A registered box, as every device-authenticated surface reads it. */
 export type Device = InferSelectModel<typeof devices>;
 
 export const devicesRelations = relations(devices, ({ one, many }) => ({
   owner: one(users, { fields: [devices.ownerId], references: [users.id] }),
   jobs: many(jobs),
-}));
-
-export const pairingCodesRelations = relations(pairingCodes, ({ one }) => ({
-  user: one(users, { fields: [pairingCodes.userId], references: [users.id] }),
 }));

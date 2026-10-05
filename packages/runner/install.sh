@@ -56,4 +56,4 @@ case ":$PATH:" in
   *":$dest:"*) ;;
   *) echo "Add to PATH:  export PATH=\"$dest:\$PATH\"";;
 esac
-echo "Next:  forge-runner login --core-url $BASE --code <CODE>"
+echo "Next:  forge-runner login --core-url $BASE"

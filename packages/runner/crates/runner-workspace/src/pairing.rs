@@ -1,17 +1,8 @@
-//! Device pairing against core: `POST /api/devices/pair` (paste-code).
+//! Device pairing against core: the browser-approve device login (`/api/devices/login/{init,poll}`).
 
 use serde::Deserialize;
 
 use runner_platform::error::{Error, Result};
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PairResponse {
-    pub device_id: String,
-    pub device_token: String,
-    #[serde(default)]
-    pub project_id: Option<String>,
-}
 
 pub fn detected_platform() -> &'static str {
     #[cfg(target_os = "macos")]
@@ -69,10 +60,9 @@ pub fn machine_id() -> Option<String> {
 
 // === ISS-305 — browser-approve device login (OAuth device-authorization) ===
 //
-// Mirrors the desktop pairing flow but mints a *device token* and (optionally)
-// returns a git push credential. Endpoints: `POST /api/devices/login/init`,
+// Mints a *device token* and (optionally) returns a git push credential. Endpoints: `POST /api/devices/login/init`,
 // `GET /api/devices/login/poll`. The `/login/approve` step happens in the
-// browser, not here. Response bodies are snake_case (unlike `/pair`).
+// browser, not here. Response bodies are snake_case.
 
 /// `POST /api/devices/login/init` response.
 #[derive(Debug, Clone, Deserialize)]
@@ -207,31 +197,4 @@ fn urlencoding(s: &str) -> String {
         }
     }
     out
-}
-
-pub async fn pair(core_url: &str, code: &str, name: &str) -> Result<PairResponse> {
-    let mut body = serde_json::json!({
-        "code": code,
-        "name": name,
-        "platform": detected_platform(),
-        "agentVersion": runner_update::CURRENT_VERSION,
-    });
-    if let Some(mid) = machine_id() {
-        body["machineId"] = serde_json::Value::String(mid);
-    }
-    let url = format!("{}/api/devices/pair", core_url.trim_end_matches('/'));
-    let resp = reqwest::Client::new()
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| Error::Other(format!("pair request: {e}")))?;
-    let status = resp.status();
-    if !status.is_success() {
-        let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(format!("pair failed ({status}): {text}")));
-    }
-    resp.json::<PairResponse>()
-        .await
-        .map_err(|e| Error::Other(format!("pair decode: {e}")))
 }

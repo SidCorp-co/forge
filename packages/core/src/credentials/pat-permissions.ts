@@ -119,8 +119,8 @@ const SESSION =
   "the browser session's own lifecycle — signing up, signing in, refreshing, verifying, " +
   're-authenticating and signing out — which a token is not';
 const DEVICE =
-  "the paired box's own plane, admitted by the device credential minted at pairing or by a " +
-  'pairing code; a personal or agent token is not a device';
+  "the paired box's own plane, admitted by the device credential minted at pairing; " +
+  'a personal or agent token is not a device';
 
 const JOB =
   "a running job's own testing secrets, admitted by the job credential and decided by the job " +
@@ -170,7 +170,6 @@ export const PAT_UNGRANTABLE: Readonly<Record<string, string>> = Object.freeze({
   '/api/webhooks': 'signed by the sender: the HMAC over the body is the credential',
   '/api/devices/me': DEVICE,
   '/api/devices/heartbeat': DEVICE,
-  '/api/devices/pair': DEVICE,
   '/api/devices/login/init': DEVICE,
   '/api/devices/login/poll': DEVICE,
   'GET /api/jobs/:id/testing-profiles': JOB,
