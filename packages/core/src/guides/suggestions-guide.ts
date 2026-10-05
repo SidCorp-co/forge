@@ -27,7 +27,7 @@ effect is written in the accept's own transaction and points back at it. The doo
 | Kind | Target | Accepting it writes |
 |---|---|---|
 | \`revision_diff\` | a requirement | a new **draft** revision on that requirement, authored by the producer; never a current one, so the requirement's own propose and accept still follow |
-| \`requirement_draft\` | an issue | a new requirement at revision 1, a draft |
+| \`requirement_draft\` | an issue, or an approved journey design (a first requirement) | a new requirement at revision 1, a draft; on a journey it is linked to that design and the approved \`designs\` it names. A design not approved is \`SUGGESTION_DESIGN_NOT_APPROVED\`, one the project lacks \`SUGGESTION_DESIGN_UNKNOWN\`, and a second on a journey \`SUGGESTION_JOURNEY_SUGGESTED\` |
 | \`readiness\` | a requirement | the readiness result at its base revision, which an agree reads when the project gates on readiness |
 | \`breakdown\` | a requirement | every proposed issue, filed at **draft** with its complexity, priority and category, linked to the requirement, traced to its BCs, edged by \`blockedBy\` and linked as the build of the pinned design it builds, in one transaction; nothing dispatches until they are promoted, and the build gate holds each until its design is approved |
 | \`triage\` | an issue | the issue's priority, category and complexity; a free-text \`route\` is kept as a note comment on the issue |

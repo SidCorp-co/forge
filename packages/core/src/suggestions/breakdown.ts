@@ -26,7 +26,7 @@ import {
 import { formatIssueRef, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import type { Refusal } from '../lib/refusal.js';
 import { latestBaselineIn, linkIssueRefusal, rowIn } from '../requirements/index.js';
-import { designNodesIn, linkBuild, nodeSetRefusals } from '../workflows/index.js';
+import { designNodesIn, linkBuild, nodeSetRefusals, observedNodesIn } from '../workflows/index.js';
 import type { AcceptChannel, EffectWritten } from './effects.js';
 import { type Row, type SuggestionActor, targetOfRow } from './read.js';
 import {
@@ -174,9 +174,30 @@ async function buildStepRefusals(
   const out: Refusal[] = [];
   for (const [i, issue] of p.issues.entries()) {
     const design = builds[i];
-    if (!issue.steps || !design) continue;
-    const nodes = await designNodesIn(tx, projectId, design.workflowId);
-    if (nodes) out.push(...nodeSetRefusals(nodes, { steps: issue.steps }, `/payload/issues/${i}`));
+    if (!design) continue;
+    if (issue.steps) {
+      const nodes = await designNodesIn(tx, projectId, design.workflowId);
+      if (nodes)
+        out.push(...nodeSetRefusals(nodes, { steps: issue.steps }, `/payload/issues/${i}`));
+    }
+    if (issue.observedSteps) {
+      const base = `/payload/issues/${i}/observedSteps`;
+      const nodes = await observedNodesIn(tx, projectId, design.workflowId);
+      out.push(
+        ...(nodes
+          ? nodeSetRefusals(nodes, { steps: issue.observedSteps }, base).map((r) => ({
+              ...r,
+              path: r.path.replace(`${base}/steps/`, `${base}/`),
+            }))
+          : [
+              {
+                code: 'WORKFLOW_NODE_UNKNOWN',
+                path: base,
+                detail: `workflow ${design.flow} has no observation yet, so a breakdown issue can name no observed step; name planned steps under steps.`,
+              },
+            ]),
+      );
+    }
   }
   return out;
 }
@@ -258,6 +279,7 @@ export async function breakdownEffect(
         projectId,
         userId: actor.userId,
         stepIds: item.steps ? [...new Set(item.steps)] : null,
+        observedStepIds: item.observedSteps ? [...new Set(item.observedSteps)] : null,
       });
     }
     filed.push({

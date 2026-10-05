@@ -16,7 +16,10 @@ import {
 } from "./pipeline-registry.js";
 import { ANSWER_VIEWS, pickFields } from "./projection.js";
 import type { RefusalStatuses } from "./refusal.js";
-import { designChangePayloadSchema, WORKFLOW_STEP_ID } from "./workflow-health.js";
+import {
+	designChangePayloadSchema,
+	WORKFLOW_STEP_ID,
+} from "./workflow-health.js";
 
 /** The six kinds rev 2 names, feedback_triage (workflow feedback-triage, ISS-59) and design_change (workflow step-health, REQ-17 BC-12); cluster, stale_requirement, conflict, verify and ask_reporter are deferred. */
 export const SUGGESTION_KINDS = [
@@ -124,6 +127,9 @@ const SUGGESTION_REFUSAL_CODES = [
 	"CLARIFICATION_ALREADY_OPEN",
 	"WORKFLOW_NODE_UNKNOWN",
 	"WORKFLOW_NODE_AMBIGUOUS",
+	"SUGGESTION_DESIGN_UNKNOWN",
+	"SUGGESTION_DESIGN_NOT_APPROVED",
+	"SUGGESTION_JOURNEY_SUGGESTED",
 	"SUGGESTION_REFUSED",
 ] as const;
 export type SuggestionRefusalCode = (typeof SUGGESTION_REFUSAL_CODES)[number];
@@ -185,10 +191,13 @@ export const BREAKDOWN_ISSUE_DEFAULTS = {
 /** Each kind's payload and the targets it may name; a payload that does not parse is refused. */
 export const SUGGESTION_PAYLOADS = {
 	requirement_draft: {
-		targets: ["issue"],
+		targets: ["issue", "workflow"],
 		schema: z.strictObject({
 			title: z.string().trim().min(1).max(500),
 			...revisionWrite,
+			/** On a workflow target (a first requirement, project-onboarding `requirements`): the
+			 *  other approved designs it serves beside the journey it targets. */
+			designs: z.array(z.uuid()).max(20).optional(),
 		}),
 	},
 	revision_diff: {
@@ -233,7 +242,17 @@ export const SUGGESTION_PAYLOADS = {
 						category: z.string().trim().min(1).max(100).optional(),
 						builds: z.string().trim().min(1).max(200).nullable().optional(),
 						/** The steps of the design it builds that the issue builds, named on its build link. */
-						steps: z.array(z.string().regex(WORKFLOW_STEP_ID)).min(1).max(40).optional(),
+						steps: z
+							.array(z.string().regex(WORKFLOW_STEP_ID))
+							.min(1)
+							.max(40)
+							.optional(),
+						/** The observed steps (nodes of the design's latest observation) the issue removes or rebuilds. */
+						observedSteps: z
+							.array(z.string().regex(WORKFLOW_STEP_ID))
+							.min(1)
+							.max(40)
+							.optional(),
 					}),
 				)
 				.min(1)
@@ -355,6 +374,8 @@ export interface SuggestionRevisionEffect {
 	requirementId: string;
 	requirement: string;
 	revision: number;
+	/** A first requirement's accept: the approved designs the new requirement was linked to. */
+	designs?: string[];
 }
 
 /** One issue a breakdown accept filed: the fields written, the pinned design it builds, and which

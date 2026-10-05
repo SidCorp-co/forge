@@ -302,6 +302,7 @@ export async function linkBuild(
     projectId: string;
     userId: string;
     stepIds?: string[] | null;
+    observedStepIds?: string[] | null;
   },
 ): Promise<void> {
   await tx.insert(workflowBuilds).values({
@@ -310,11 +311,16 @@ export async function linkBuild(
     projectId: input.projectId,
     linkedByUser: input.userId,
     stepIds: input.stepIds ?? null,
+    observedStepIds: input.observedStepIds ?? null,
   });
 }
 
-export async function setBuildSteps(tx: Tx, issueId: string, stepIds: string[] | null) {
-  await tx.update(workflowBuilds).set({ stepIds }).where(eq(workflowBuilds.issueId, issueId));
+export async function setBuildSteps(
+  tx: Tx,
+  issueId: string,
+  set: { stepIds?: string[] | null; observedStepIds?: string[] | null },
+) {
+  await tx.update(workflowBuilds).set(set).where(eq(workflowBuilds.issueId, issueId));
 }
 
 export async function unlinkBuild(tx: Tx, issueId: string): Promise<void> {

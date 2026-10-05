@@ -15,6 +15,7 @@ export {
   designNodesIn,
   nodeRefRefusal,
   nodeSetRefusals,
+  observedNodesIn,
 } from './node-refs.js';
 export { loadPinnedContracts, renderPinnedContracts } from './pinned-contracts.js';
 export { provideWorkflowPorts } from './ports.js';

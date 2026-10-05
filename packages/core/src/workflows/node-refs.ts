@@ -190,6 +190,16 @@ async function observedNodesOf(
   };
 }
 
+/** The nodes of the latest observation of a workflow of `projectId`; null when it has none. */
+export async function observedNodesIn(
+  tx: Tx,
+  projectId: string,
+  ref: string,
+): Promise<DesignNodes | null> {
+  const wf = await workflowIn(tx, projectId, ref);
+  return wf ? observedNodesOf(tx, wf) : null;
+}
+
 /**
  * Why a node decision names no node it may decide (design-reconciliation `decision`): a planned node
  * is a step or edge of the approved revision, an observed one a node of the latest observation, so a

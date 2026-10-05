@@ -128,6 +128,15 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
       rule: `the job is held (${job.hold.reason}), a hold that does not resume itself`,
     });
   }
+  if (job?.status === 'queued' && ctx.queuedGates.get(job.id) === 'checkout_unbound') {
+    return person(ctx, {
+      need: 'write',
+      act: 'bind a checkout on the box',
+      ref: 'pipeline health reads checkout_unbound (POOL_CHECKOUT_UNBOUND)',
+      since: job.queuedAt,
+      rule: "every box serving this project is bound with no checkout, so its claim is refused: `forge-runner bind <slug> --path <dir>` on the box, or PATCH the runner's repoPath, and dispatch takes it",
+    });
+  }
   if (f.ledger?.work === 'blocked' && f.ledger.blockerKind === 'human') {
     return person(ctx, {
       need: 'write',

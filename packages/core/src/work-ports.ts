@@ -75,7 +75,11 @@ import {
   projectAdminUserIdsFor,
   resolveNotifications,
 } from './notifications/index.js';
-import { afterOnboardingSubmit, onboardingSubmittedIn } from './onboarding/index.js';
+import {
+  afterOnboardingSubmit,
+  onboardingSubmittedIn,
+  provideOnboardingPorts,
+} from './onboarding/index.js';
 import { closeOpenRunForIssue, getIssueContexts, providePipelinePorts } from './pipeline/index.js';
 import {
   policyRefusal,
@@ -108,7 +112,7 @@ import {
   rowIn as requirementRowIn,
 } from './requirements/index.js';
 import { runnerEventsRetention } from './runners/index.js';
-import { latestRunsOfIssues } from './runs/index.js';
+import { latestRunsOfIssues, runWaitingOf } from './runs/index.js';
 import { lastFires, readScheduleStreaks, streakFails } from './schedules/index.js';
 import { provideUploadPorts } from './uploads/index.js';
 import {
@@ -280,6 +284,8 @@ export function provideWorkPorts(): void {
   });
 
   provideLabelPorts({ listFeedbackAs: (viewer, projectId) => listFeedbackAs(viewer, projectId) });
+
+  provideOnboardingPorts({ runWaitingOf });
 
   provideQuestionnairePorts({
     appendMessagesIn,

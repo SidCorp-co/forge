@@ -104,6 +104,28 @@ function useDesigns(projectId: string, enabled: boolean) {
   }, [q.data]);
 }
 
+// The items that shaped a design and, once every round is sent, its open questions: both read by
+// core from the item records (designs, what-next).
+function LinkedItemsNote({ design }: { design: OnboardingDesignView }) {
+  const open = design.openQuestions.length;
+  return (
+    <HoverNote
+      className="flex-none text-[11.5px] text-subtle"
+      label={open ? `${design.linkedItems.length} items · ${open} open` : `${design.linkedItems.length} items`}
+    >
+      <span className="flex flex-col gap-0.5">
+        {design.linkedItems.map((i) => (
+          <span key={i.questionId}>
+            {i.prompt} · {i.state}
+            {i.citedRevision !== null ? ` · rev ${i.citedRevision}` : ""}
+          </span>
+        ))}
+        {open > 0 && <span>Open questions stay on the design; no fourth round is asked.</span>}
+      </span>
+    </HoverNote>
+  );
+}
+
 function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["designs"]>; first: boolean }) {
   const data = useContext(ThreadDataContext);
   const projectsQ = useProjects();
@@ -136,6 +158,7 @@ function DesignsBlock({ block, first }: { block: NonNullable<ThreadBlock["design
                 <span className="min-w-0 flex-1 truncate font-semibold text-muted">{design?.title ?? id}</span>
               )}
               <ToneChip tone="neutral" glyph="⌂" label="As-built" title="Drawn from the code; steps without file:symbol evidence are asked about" />
+              {design && design.linkedItems.length > 0 && <LinkedItemsNote design={design} />}
               <DesignStatusChip status={design?.designStatus ?? null} />
               {block.approve && href && design?.designStatus === "proposed" && (
                 <Link

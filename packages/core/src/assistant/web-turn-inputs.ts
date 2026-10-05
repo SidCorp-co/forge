@@ -15,14 +15,17 @@ import type { TurnAuthority } from '../credentials/turn-credential.js';
 import { db } from '../db/client.js';
 import type { ConversationMode } from '../db/schema-conversations.js';
 import { requirements } from '../db/schema-requirements.js';
+import { firstRequirementsOnboardingOf } from '../onboarding/index.js';
 import { makeConversationImageResolver } from './conversation-images.js';
 import type { ConversationProgress } from './conversation-progress.js';
 import {
   baDoorPersona,
+  baFirstRequirementsPersona,
   webAgentConversationPersona,
   webConversationPersona,
 } from './door-persona.js';
 import type { WindowTurnInputs } from './route-window.js';
+import { buildBaFirstRequirementsToolset } from './tools/ba-first-tools.js';
 import { buildBaToolset } from './tools/ba-tools.js';
 import { mergeToolsets } from './tools/mcp-adapter.js';
 import { buildChatToolContext } from './tools/principal.js';
@@ -166,6 +169,13 @@ async function prepareWebTurn(
       persona: baDoorPersona(args.project.name, key, args.askedBy),
       resolveImage: makeConversationImageResolver(conversationId),
       tools: buildBaToolset(ctx, { projectId: args.project.id, requirementId: room.requirementId }),
+    };
+  }
+  if (firstRequirementsOnboardingOf(room?.externalId)) {
+    return {
+      persona: baFirstRequirementsPersona(args.project.name, args.askedBy),
+      resolveImage: makeConversationImageResolver(conversationId),
+      tools: buildBaFirstRequirementsToolset(ctx, { projectId: args.project.id }),
     };
   }
   return {

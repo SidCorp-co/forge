@@ -13,6 +13,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { appendMessagesIn, type TxOnly } from '../conversations/index.js';
 import { db } from '../db/client.js';
 import { onboardings } from '../db/schema-onboarding.js';
+import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import type { Refusal } from '../lib/refusal.js';
 import {
@@ -24,6 +25,7 @@ import {
   postQuestionnaireIn,
   roundsRefusal,
 } from '../questionnaires/index.js';
+import { recordItemLandings } from '../questions/index.js';
 import {
   lockOnboarding,
   type OnboardingActor,
@@ -31,8 +33,9 @@ import {
   refusalFor,
   settled,
 } from './act.js';
+import { citeRefusals, landingsOf } from './design-items.js';
 import { settlePhaseJob } from './job.js';
-import { designsOf, onboardingOf, projectHoldsSensitiveData } from './read.js';
+import { designsOf, onboardingOf, projectHoldsSensitiveData, seriesItemsOf } from './read.js';
 import {
   agentWriteRefusal,
   closeRefusal,
@@ -122,6 +125,25 @@ export async function postOnboardingUpdate(input: {
       const have = new Set(found.map((f) => f.id));
       const missing = designUnknownRefusals(ids.filter((id) => !have.has(id)));
       if (missing.length) return missing;
+    }
+    const cites = body.cites ?? [];
+    if (cites.length) {
+      const series = await seriesItemsOf(tx, row);
+      const named = cites.flatMap((c) => ('suggestionId' in c ? [c.suggestionId] : []));
+      const found = named.length
+        ? await tx
+            .select({ id: suggestions.id })
+            .from(suggestions)
+            .where(and(eq(suggestions.projectId, projectId), inArray(suggestions.id, named)))
+        : [];
+      const refusals = citeRefusals(
+        cites,
+        series,
+        await designsOf(tx, projectId, [...new Set([...row.designs, ...ids])]),
+        new Set(found.map((f) => f.id)),
+      );
+      if (refusals.length) return refusals;
+      await recordItemLandings(tx, landingsOf(cites, series, actor.userId, new Date()));
     }
     const [message] = await appendMessagesIn(tx, {
       conversationId: row.conversationId,

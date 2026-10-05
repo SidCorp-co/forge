@@ -127,6 +127,7 @@
         "REQ-8",
         "REQ-10",
         "project-onboarding#card",
+        "project-onboarding#requirements",
         "suggestion-lifecycle#start",
         "personal-data-flow#pr-assistant",
         "personal-data-flow#pr-chat-out"
@@ -751,7 +752,9 @@
         "project-onboarding#mapped",
         "project-onboarding#revised",
         "project-onboarding#map-result",
-        "project-onboarding#draft-result"
+        "project-onboarding#draft-result",
+        "project-onboarding#req-case",
+        "project-onboarding#req-result"
       ]
     },
     "orgs": {
@@ -971,7 +974,8 @@
         "REQ-8",
         "suggestion-lifecycle",
         "requirement-to-delivery#approve",
-        "feedback-triage#suggest"
+        "feedback-triage#suggest",
+        "project-onboarding#suggested"
       ]
     },
     "uploads": {
@@ -1021,6 +1025,8 @@
         "design-reconciliation#decision",
         "design-reconciliation#revise-design",
         "design-reconciliation#closed",
+        "design-reconciliation#build",
+        "design-reconciliation#release",
         "project-onboarding#decided",
         "project-onboarding#approve",
         "project-onboarding#proposed",
@@ -1110,7 +1116,9 @@
         "REQ-10",
         "project-onboarding#running",
         "project-onboarding#card",
-        "project-onboarding#approved"
+        "project-onboarding#approved",
+        "project-onboarding#reanalyze",
+        "project-onboarding#unanswered"
       ]
     },
     "operator": {

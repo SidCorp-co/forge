@@ -24,6 +24,7 @@ import {
 } from '../permissions/index.js';
 import { designNodesIn, nodeSetRefusals } from '../workflows/index.js';
 import { breakdownGuardIn } from './breakdown.js';
+import { firstRequirementRefusalsIn } from './first-requirement.js';
 import {
   headOf,
   onTarget,
@@ -98,6 +99,16 @@ async function proposeIn(
           '/payload',
         )
       : [];
+    if (wrong.length) return { refusals: wrong };
+  }
+  if (p.kind === 'requirement_draft') {
+    const wrong = await firstRequirementRefusalsIn(
+      tx,
+      p.projectId,
+      p.target,
+      p.payload,
+      p.revisesId,
+    );
     if (wrong.length) return { refusals: wrong };
   }
   const open = await tx

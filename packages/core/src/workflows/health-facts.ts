@@ -5,6 +5,7 @@
  */
 
 import { WAITING_KIND_MARKS, type WaitingOn } from '@forge/contracts/standing';
+import type { VERDICT_VALUES } from '@forge/contracts/verdict-identity';
 import {
   type HealthMarker,
   type HealthMarkerKind,
@@ -48,6 +49,8 @@ export interface HealthFacts {
     sinceRevision: number;
     sinceAcceptedAt: Date | null;
     targets: PlannedTarget[];
+    /** The latest verdict any issue criterion carrying it was judged; null when none was judged. */
+    proof: (typeof VERDICT_VALUES)[number] | null;
   }[];
   contractPins: {
     provider: string;
@@ -79,6 +82,10 @@ export interface HealthFacts {
     linkedAt: Date;
     closedAt: Date | null;
     targets: PlannedTarget[];
+    /** The observed steps it removes or rebuilds (`workflow_builds.observed_step_ids`). */
+    observedSteps: string[];
+    /** The release that carried it; null until a release run takes it. */
+    release: { version: string; releasedAt: Date | null } | null;
     failing: { n: number; reason: string | null; at: Date }[];
     /** The design revisions the latest verdicts of its live criteria were judged against. */
     judgedAgainst: { revision: number; at: Date }[];

@@ -10,6 +10,7 @@ import {
   type NodePhase,
   type RewriteRule,
   type WorkflowHealth,
+  type WorkflowReconciliation,
 } from '@forge/contracts/workflow-health';
 import { type DesignDiff, designDiff, edgeKey } from './design-diff.js';
 import {
@@ -48,28 +49,94 @@ function diffView(
   };
 }
 
+/** The steps a node reads as built by: a planned target its planned steps, an observed one its observed steps. */
+function buildNames(b: HealthFacts['builds'][number], target: NodeTarget): boolean {
+  const steps = target.kind === 'step' ? [target.step] : [target.from, target.to];
+  const named =
+    target.layer === 'planned'
+      ? b.targets.flatMap((t) => (t.kind === 'step' ? [t.step] : []))
+      : b.observedSteps;
+  return named.some((s) => steps.includes(s));
+}
+
+type Decision = HealthFacts['decisions'][number];
+
+/** The builds naming the node that were linked after its decision: the issues that carry it to reconciled. */
+const buildsAfter = (f: HealthFacts, target: NodeTarget, decision: Decision) =>
+  f.builds.filter((b) => b.linkedAt > decision.at && buildNames(b, target));
+
 function lifecycleOf(
   f: HealthFacts,
   target: NodeTarget,
   kinds: readonly HealthMarkerKind[],
-  decision: HealthFacts['decisions'][number] | undefined,
+  decision: Decision | undefined,
 ): NodePhase | null {
   if (!decision) return kinds.length > 0 ? 'marked' : null;
-  const steps = target.kind === 'step' ? [target.step] : [target.from, target.to];
-  const after = f.builds.filter(
-    (b) =>
-      target.layer === 'planned' &&
-      b.linkedAt > decision.at &&
-      b.targets.some((t) => t.kind === 'step' && steps.includes(t.step)),
-  );
+  const after = buildsAfter(f, target, decision);
+  if (after.length === 0) return 'decided';
   if (after.some((b) => OPEN_ISSUE(b.status))) return 'cleaning';
-  const settled = Math.max(
-    decision.at.getTime(),
-    ...after.map((b) => (b.closedAt ?? b.updatedAt).getTime()),
-  );
+  const settled = Math.max(...after.map((b) => (b.closedAt ?? b.updatedAt).getTime()));
   const obs = f.observation;
   if (!obs || obs.createdAt.getTime() <= settled) return 'decided';
   return kinds.some((k) => PROVENANCE.has(k)) ? 'marked' : 'reconciled';
+}
+
+function reconciliationOf(
+  f: HealthFacts,
+  nodes: readonly HealthNode[],
+  latestDecision: ReadonlyMap<string, Decision>,
+): WorkflowReconciliation {
+  const undecided = nodes.filter(
+    (n) => !n.decision && n.kinds.some((k) => PROVENANCE.has(k)),
+  ).length;
+  const cleaning = nodes.filter((n) => n.phase === 'cleaning').length;
+  const carried = new Map<string, HealthFacts['builds'][number]>();
+  for (const d of latestDecision.values()) {
+    for (const b of buildsAfter(f, decisionTarget(d.node), d)) carried.set(b.issueKey, b);
+  }
+  const builds = [...carried.values()];
+  const unreleased = builds.filter((b) => !b.release?.releasedAt);
+  const newest = builds
+    .map((b) => b.release)
+    .filter((r): r is { version: string; releasedAt: Date } => r?.releasedAt != null)
+    .sort((a, b) => b.releasedAt.getTime() - a.releasedAt.getTime())[0];
+  const version =
+    builds.length > 0 && unreleased.length === 0 && newest
+      ? { version: newest.version, releasedAt: newest.releasedAt.toISOString() }
+      : null;
+  const criteria = {
+    total: f.criteria.length,
+    proven: f.criteria.filter((c) => c.proof === 'pass').length,
+  };
+  const why = !f.observation
+    ? 'the code has not been observed against this design'
+    : undecided > 0
+      ? `${undecided} marked node(s) wait on a keep, rewrite or delete decision`
+      : cleaning > 0
+        ? `${cleaning} decided node(s) wait on their build issue to close`
+        : builds.length === 0
+          ? f.decisions.length === 0
+            ? 'no node is marked or decided, so nothing waits on a reconciliation'
+            : 'no build issue was linked after a node decision, so no version carries one'
+          : unreleased.length > 0
+            ? `${unreleased.map((b) => b.issueKey).join(', ')} is not in a released version yet`
+            : null;
+  const reconciled =
+    f.observation !== null &&
+    undecided === 0 &&
+    cleaning === 0 &&
+    (builds.length === 0 ? f.decisions.length === 0 : version !== null);
+  return {
+    state: reconciled ? 'reconciled' : 'open',
+    undecided,
+    cleaning,
+    issues: builds.map((b) => b.issueKey).sort(),
+    version,
+    criteria,
+    rule:
+      why ??
+      `every marked node is decided and ${version?.version ?? 'the version'} carried its builds`,
+  };
 }
 
 function rewriteOf(
@@ -140,7 +207,7 @@ export function deriveHealth(f: HealthFacts): WorkflowHealth {
     }
   }
 
-  const latestDecision = new Map<string, HealthFacts['decisions'][number]>();
+  const latestDecision = new Map<string, Decision>();
   for (const d of f.decisions) {
     const key = targetKey(decisionTarget(d.node));
     if (!latestDecision.has(key)) latestDecision.set(key, d);
@@ -254,6 +321,7 @@ export function deriveHealth(f: HealthFacts): WorkflowHealth {
         }
       : null,
     threshold: f.threshold,
+    reconciliation: reconciliationOf(f, nodes, latestDecision),
   };
 }
 

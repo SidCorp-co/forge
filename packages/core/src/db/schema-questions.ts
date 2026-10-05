@@ -13,6 +13,7 @@ import { QUESTION_STATUSES } from '@forge/contracts/question-machine';
 // registered in `drizzle.config.ts` and the client's schema map beside it.
 
 import type { QuestionnaireItem } from '@forge/contracts/onboarding';
+
 import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
@@ -114,6 +115,10 @@ export type QuestionOrigin =
   | { kind: 'channel_gate'; documentId: string; number: string }
   | { kind: 'unresolved'; reason: string };
 
+export type QuestionnaireLanding =
+  | { workflowId: string; revision: number; by: string; at: string }
+  | { suggestionId: string; by: string; at: string };
+
 export const agentQuestions = pgTable(
   'agent_questions',
   {
@@ -137,6 +142,8 @@ export const agentQuestions = pgTable(
     batchId: uuid('batch_id').references(() => questionnaireBatches.id, { onDelete: 'cascade' }),
     /** The item as posted: group, control, options, inferred default, evidence, the designs it shapes. */
     item: jsonb('item').$type<QuestionnaireItem>(),
+    /** Where the answered item landed: the proposed revisions and suggestions an onboarding update cites it from. */
+    landedIn: jsonb('landed_in').$type<QuestionnaireLanding[]>(),
     status: text('status', { enum: questionStatuses }).notNull().default('open'),
     blockerKind: text('blocker_kind', { enum: questionBlockerKinds }).notNull(),
     steps: jsonb('steps').$type<QuestionStep[]>().notNull(),

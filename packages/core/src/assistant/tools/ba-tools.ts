@@ -191,7 +191,7 @@ const suggest =
     route: '/api/projects',
     grant: 'projects:write',
     description:
-      'Propose a change for a person to accept or reject. kind revision_diff: payload { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } — the whole criteria list of the new revision (a live code keeps it, no code takes the next, one left out is retired). readiness: { checks: [{ check, passed, detail? }] }. A breakdown takes suggestions.write (PERMISSION_FORBIDDEN without it). duplicate: { duplicateOf, similarity?, note? }. requirement_draft / triage target an issue (pass `issue`). baseRevision is the currentRevision you read (null when there is none).',
+      'Propose a change for a person to accept or reject. kind revision_diff: payload { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } — the whole criteria list of the new revision (a live code keeps it, no code takes the next, one left out is retired). readiness: { checks: [{ check, passed, detail? }] }. A breakdown takes suggestions.write (PERMISSION_FORBIDDEN without it). duplicate: { duplicateOf, similarity?, note? }. requirement_draft / triage target an issue (pass `issue`); a first requirement for a journey is drafted in its case room. baseRevision is the currentRevision you read (null when there is none).',
     inputSchema: schema(suggestInput),
     handler: async (args) => {
       const input = suggestInput.parse(args);

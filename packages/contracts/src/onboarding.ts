@@ -10,6 +10,7 @@ import type {
 } from "./data-policy.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import type { PermissionRefusalCode } from "./permissions.js";
+import type { WaitingOn } from "./standing.js";
 
 /** The onboarding thread's status, as the conversation list and the dashboard hint show it. */
 export const ONBOARDING_STATUSES = [
@@ -91,6 +92,10 @@ const ONBOARDING_REFUSAL_CODES = [
 	"ONBOARDING_DONE",
 	"ONBOARDING_DESIGN_UNKNOWN",
 	"ONBOARDING_DATA_FLOW_MISSING",
+	"ONBOARDING_CITE_UNANSWERED",
+	"ONBOARDING_CITE_REVISION_UNKNOWN",
+	"ONBOARDING_CITE_REVISION_TWICE",
+	"ONBOARDING_CITE_SUGGESTION_UNKNOWN",
 ] as const;
 export type OnboardingRefusalCode = (typeof ONBOARDING_REFUSAL_CODES)[number];
 
@@ -190,6 +195,20 @@ export const reanalyzeRequestSchema = z.strictObject({
 });
 export const REANALYZE_SHAPE = "{ reason? }";
 
+/**
+ * Where an answered item landed: the proposed design revision that cites it, or, for an accepted
+ * recommendation, the suggestion it became. Recorded on the item, never applied to a design.
+ */
+export const onboardingCiteSchema = z.union([
+	z.strictObject({
+		itemId,
+		workflowId: z.uuid(),
+		revision: z.number().int().min(1),
+	}),
+	z.strictObject({ itemId, suggestionId: z.uuid() }),
+]);
+export type OnboardingCite = z.infer<typeof onboardingCiteSchema>;
+
 /** An agent's message in the thread: prose, and the designs it names with live status. */
 export const postUpdateRequestSchema = z.strictObject({
 	text: z.string().trim().min(1).max(8_000),
@@ -201,10 +220,12 @@ export const postUpdateRequestSchema = z.strictObject({
 			approve: z.boolean().optional(),
 		})
 		.optional(),
+	/** The items each revision or suggestion of this update came from (answer-lands, revise). */
+	cites: z.array(onboardingCiteSchema).max(60).optional(),
 });
 export type PostUpdateRequest = z.infer<typeof postUpdateRequestSchema>;
 export const POST_UPDATE_SHAPE =
-	"{ text, designs?: { heading, workflowIds: [uuid], approve? } }";
+	"{ text, designs?: { heading, workflowIds: [uuid], approve? }, cites?: [{ itemId, workflowId, revision } | { itemId, suggestionId }] }";
 
 export const markDoneRequestSchema = z.strictObject({
 	text: z.string().trim().min(1).max(8_000).optional(),
@@ -250,6 +271,17 @@ export interface QuestionnaireResponse {
 	questionnaire: QuestionnaireView;
 }
 
+/** A questionnaire item that shaped a design: it names the design in `affects`, or a revision cites it. */
+export interface OnboardingLinkedItem {
+	itemId: string;
+	questionId: string;
+	group: QuestionnaireGroup;
+	prompt: string;
+	state: QuestionnaireItemState;
+	/** The revision of this design that cites the item, if one does. */
+	citedRevision: number | null;
+}
+
 export interface OnboardingDesignView {
 	workflowId: string;
 	flow: string;
@@ -258,6 +290,10 @@ export interface OnboardingDesignView {
 	designStatus: string | null;
 	revision: number;
 	approvedRevision: number | null;
+	/** Each item's latest round only. */
+	linkedItems: OnboardingLinkedItem[];
+	/** Once every round is sent: the linked items still open, listed on the design as open questions. */
+	openQuestions: OnboardingLinkedItem[];
 }
 
 export interface OnboardingJobView {
@@ -267,6 +303,8 @@ export interface OnboardingJobView {
 	queuedAt: string;
 	dispatchedAt: string | null;
 	finishedAt: string | null;
+	/** The job's run as the run read model reads it while it is live; null once it is over. */
+	waitingOn: WaitingOn | null;
 }
 
 export interface OnboardingView {
@@ -286,6 +324,11 @@ export interface OnboardingView {
 		round: number;
 		open: number;
 		postedAt: string;
+		/** postedAt plus QUESTIONNAIRE_DUE_DAYS. */
+		dueAt: string;
+		/** Past dueAt: one line on the dashboard and on the chat, never a blocker. */
+		overdue: boolean;
+		waitingDays: number;
 	} | null;
 	job: OnboardingJobView | null;
 	sensitiveData: boolean;
@@ -296,13 +339,26 @@ export interface OnboardingHint {
 	tone: IssueStatusTone | "attention";
 	lead: string;
 	text: string;
-	action: "start" | "continue" | "open";
+	action: "start" | "continue" | "open" | "reanalyze";
 	actionLabel: string;
+	/** Whether a person may ask for a re-analysis now: an onboarding exists and no job of it is live. */
+	mayReanalyze: boolean;
+}
+
+/** project-onboarding `req-result`: whether the BA assistant suggested first requirements; `pending` while it has not answered. */
+export interface OnboardingFirstRequirements {
+	status: "pending" | "suggested" | "none";
+	/** The first-requirements room the BA assistant works in. */
+	conversationId: string;
+	/** Live requirement drafts (proposed or accepted) on the onboarding's designs. */
+	suggested: number;
 }
 
 export interface OnboardingStateResponse {
 	onboarding: OnboardingView | null;
 	hint: OnboardingHint | null;
+	/** Null until every onboarding design is approved and the first-requirements case is open. */
+	firstRequirements: OnboardingFirstRequirements | null;
 }
 
 export interface OnboardingResponse {

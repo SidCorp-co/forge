@@ -24,6 +24,8 @@ import {
   rowIn,
 } from '../requirements/index.js';
 import { breakdownEffect } from './breakdown.js';
+import { firstRequirementRefusalsIn } from './first-requirement.js';
+import { linkedDesignIds } from './first-requirement-rules.js';
 import { authorOf, issueTriageEffect } from './issue-triage-effect.js';
 import { type Row, type SuggestionActor, suggestionKernelActor, targetOfRow } from './read.js';
 
@@ -119,19 +121,33 @@ export async function writeEffect(
     };
   }
   if (row.kind === 'requirement_draft') {
-    const { title, ...write } = SUGGESTION_PAYLOADS.requirement_draft.schema.parse(row.payload);
+    const {
+      title,
+      designs: named,
+      ...write
+    } = SUGGESTION_PAYLOADS.requirement_draft.schema.parse(row.payload);
+    // a design returned or replaced since the proposal no longer roots a first requirement
+    const wrong = await firstRequirementRefusalsIn(tx, projectId, target, row.payload, row.id);
+    if (wrong.length) return { refusals: wrong };
+    const designs = target.type === 'workflow' ? linkedDesignIds(target.id, named) : [];
     const created = await createRequirementIn(tx, {
       projectId,
       actor,
       authorId: authorOf(row, actor).userId,
       title,
       write: { ...(write as RevisionWrite), fromSuggestionId: row.id },
+      designs,
     });
     if (created.refusals?.length) return { refusals: created.refusals };
     const req = await rowIn(tx, projectId, created.id);
     return {
       refusals: null,
-      effect: { requirementId: created.id, requirement: requirementKey(req.reqSeq), revision: 1 },
+      effect: {
+        requirementId: created.id,
+        requirement: requirementKey(req.reqSeq),
+        revision: 1,
+        ...(designs.length ? { designs } : {}),
+      },
     };
   }
   if (row.kind === 'breakdown' && target.type === 'requirement') {

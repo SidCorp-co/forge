@@ -282,8 +282,9 @@ workflowRoutes.post(
     z.strictObject({
       issue: z.string().trim().min(1).max(200),
       steps: z.array(z.string().regex(WORKFLOW_STEP_ID)).max(40).optional(),
+      observedSteps: z.array(z.string().regex(WORKFLOW_STEP_ID)).max(40).optional(),
     }),
-    '{ issue, steps? } names the issue that builds this workflow, by uuid or key, and the steps it builds when its criteria trace none',
+    '{ issue, steps?, observedSteps? } names the issue that builds this workflow, by uuid or key, the steps it builds when its criteria trace none, and the observed steps (nodes of the latest observation) it removes or rebuilds',
   ),
   async (c) => {
     const { id, workflow } = c.req.valid('param');
@@ -296,6 +297,7 @@ workflowRoutes.post(
         actor: writerOf(c),
         issue: body.issue,
         steps: body.steps,
+        observedSteps: body.observedSteps,
       }),
     );
   },

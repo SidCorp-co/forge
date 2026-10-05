@@ -208,18 +208,20 @@ export interface RewriteThresholdView {
 	defaults: Record<RewriteThresholdKey, boolean>;
 }
 
-export function rewriteThresholdOf(set: RewriteThresholdSetting | undefined): RewriteThresholdView {
+export function rewriteThresholdOf(
+	set: RewriteThresholdSetting | undefined,
+): RewriteThresholdView {
 	const keys = Object.keys(REWRITE_THRESHOLD_DEFAULTS) as RewriteThresholdKey[];
-	const value = (k: RewriteThresholdKey) => set?.[k] ?? REWRITE_THRESHOLD_DEFAULTS[k];
+	const value = (k: RewriteThresholdKey) =>
+		set?.[k] ?? REWRITE_THRESHOLD_DEFAULTS[k];
 	return {
 		aspects: value("aspects"),
 		markers: value("markers"),
 		problemIssues: value("problemIssues"),
 		problemWindowDays: value("problemWindowDays"),
-		defaults: Object.fromEntries(keys.map((k) => [k, set?.[k] === undefined])) as Record<
-			RewriteThresholdKey,
-			boolean
-		>,
+		defaults: Object.fromEntries(
+			keys.map((k) => [k, set?.[k] === undefined]),
+		) as Record<RewriteThresholdKey, boolean>,
 	};
 }
 
@@ -269,7 +271,13 @@ export interface MarkerSource {
 /** What a marker is on: a step or an edge of one layer, or the workflow when its source names no step. */
 export type HealthTarget =
 	| { kind: "step"; step: string; layer: NodeLayer }
-	| { kind: "edge"; from: string; to: string; label: string | null; layer: NodeLayer }
+	| {
+			kind: "edge";
+			from: string;
+			to: string;
+			label: string | null;
+			layer: NodeLayer;
+	  }
 	| { kind: "workflow" };
 
 export interface HealthMarker {
@@ -307,7 +315,12 @@ export const REWRITE_RULES = [
 ] as const;
 export type RewriteRule = (typeof REWRITE_RULES)[number];
 
-export const NODE_PHASES = ["marked", "decided", "cleaning", "reconciled"] as const;
+export const NODE_PHASES = [
+	"marked",
+	"decided",
+	"cleaning",
+	"reconciled",
+] as const;
 export type NodePhase = (typeof NODE_PHASES)[number];
 
 export interface HealthNodeDecision {
@@ -388,6 +401,30 @@ export interface HealthObservedEdge {
 	label: string | null;
 }
 
+export const RECONCILIATION_STATES = ["reconciled", "open"] as const;
+export type ReconciliationState = (typeof RECONCILIATION_STATES)[number];
+
+/**
+ * Whether a design is reconciled with its code (design-reconciliation `release`, `reconciled-view`):
+ * the dev version that shipped its reconciliation builds is out, and no node carries a provenance
+ * marker without a recorded decision. Derived on read; nothing writes it.
+ */
+export interface WorkflowReconciliation {
+	state: ReconciliationState;
+	/** Nodes carrying an Upcoming, Not in design or Wrong marker that no decision names. */
+	undecided: number;
+	/** Decided nodes whose build issue, linked after the decision, is still open. */
+	cleaning: number;
+	/** The build issues linked after a node decision, by key. */
+	issues: string[];
+	/** The newest release that carried those issues; null while any of them is unreleased, or none exists. */
+	version: { version: string; releasedAt: string | null } | null;
+	/** Business criteria tracing this design, and how many of them the latest verdict passed. */
+	criteria: { total: number; proven: number };
+	/** Why the state is what it is, in a sentence. */
+	rule: string;
+}
+
 /** `GET /api/projects/:id/workflows/:workflow/health`: every marker, node reading and count of one design. */
 export interface WorkflowHealth {
 	workflowId: string;
@@ -418,6 +455,7 @@ export interface WorkflowHealth {
 	/** The observed layer, for the canvas: every observed step and edge, matched or not. */
 	observed: { steps: HealthObservedStep[]; edges: HealthObservedEdge[] } | null;
 	threshold: RewriteThresholdView;
+	reconciliation: WorkflowReconciliation;
 }
 
 /** `WorkflowSummaryView.health`: what the workflows list and Needs you read, from the same read model. */
@@ -427,6 +465,7 @@ export interface WorkflowHealthSummary {
 	/** True when every marker is workflow-level: its records name no step yet. */
 	workflowLevelOnly: boolean;
 	observed: boolean;
+	reconciled: boolean;
 }
 
 export const emptyHealthCounts = (): HealthCounts =>

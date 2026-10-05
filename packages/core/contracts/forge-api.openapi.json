@@ -21806,6 +21806,58 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "cites": {
+                    "items": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "itemId": {
+                              "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$",
+                              "type": "string"
+                            },
+                            "revision": {
+                              "maximum": 9007199254740991,
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "workflowId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "itemId",
+                            "workflowId",
+                            "revision"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "itemId": {
+                              "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$",
+                              "type": "string"
+                            },
+                            "suggestionId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "itemId",
+                            "suggestionId"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "maxItems": 60,
+                    "type": "array"
+                  },
                   "designs": {
                     "additionalProperties": false,
                     "properties": {
@@ -26141,6 +26193,14 @@
                     "maxLength": 200,
                     "minLength": 1,
                     "type": "string"
+                  },
+                  "observedSteps": {
+                    "items": {
+                      "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                      "type": "string"
+                    },
+                    "maxItems": 40,
+                    "type": "array"
                   },
                   "steps": {
                     "items": {

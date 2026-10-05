@@ -23,4 +23,5 @@ export {
   insertAskedQuestion,
   insertBatchQuestions,
   mayChoose,
+  recordItemLandings,
 } from './write.js';

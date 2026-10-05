@@ -6,15 +6,15 @@
 import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import {
   ONBOARDING_JOB_PHASES,
-  type OnboardingHint,
+  type OnboardingDesignView,
   type OnboardingJobPhase,
   type OnboardingStateResponse,
   type OnboardingStatus,
   type OnboardingView,
-  QUESTIONNAIRE_DUE_DAYS,
   QUESTIONNAIRE_MAX_ROUNDS,
+  type QuestionnaireItem,
 } from '@forge/contracts/onboarding';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { onboardings, questionnaireBatches } from '../db/schema-onboarding.js';
@@ -22,6 +22,9 @@ import { agentQuestions } from '../db/schema-questions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { linkItems, type SeriesItem } from './design-items.js';
+import { batchDue, hintOf, type SystemContextState } from './hint.js';
+import { runWaitingOf } from './ports.js';
 import type { LiveJob } from './rules.js';
 
 type Executor = typeof db | Tx;
@@ -133,6 +136,57 @@ export async function designsOf(tx: Executor, projectId: string, ids: readonly s
   });
 }
 
+/**
+ * The questionnaire items of the onboarding's current series (since its start or last
+ * re-analysis), with the round they were asked in, their state and where they landed.
+ */
+export async function seriesItemsOf(
+  tx: Executor,
+  row: Pick<OnboardingRow, 'id' | 'startedAt' | 'reanalyzedAt'>,
+): Promise<SeriesItem[]> {
+  const rows = await tx
+    .select({
+      questionId: agentQuestions.id,
+      status: agentQuestions.status,
+      item: agentQuestions.item,
+      steps: agentQuestions.steps,
+      landedIn: agentQuestions.landedIn,
+      round: questionnaireBatches.round,
+      createdAt: questionnaireBatches.createdAt,
+    })
+    .from(agentQuestions)
+    .innerJoin(questionnaireBatches, eq(questionnaireBatches.id, agentQuestions.batchId))
+    .where(
+      and(
+        eq(questionnaireBatches.onboardingId, row.id),
+        gte(questionnaireBatches.createdAt, row.reanalyzedAt ?? row.startedAt),
+      ),
+    );
+  return rows.flatMap((r) => {
+    if (!r.item) return [];
+    const chosen = (r.steps.at(-1) as { chosenOptionId?: string } | undefined)?.chosenOptionId;
+    const item = r.item as QuestionnaireItem;
+    return [
+      {
+        questionId: r.questionId,
+        round: r.round,
+        createdAt: r.createdAt,
+        state: r.status === 'open' ? 'open' : r.status === 'answered' ? 'answered' : 'void',
+        decision:
+          item.control === 'accept_reject' && r.status === 'answered'
+            ? chosen === 'accept'
+              ? 'accept'
+              : 'reject'
+            : null,
+        item,
+        landedIn: r.landedIn ?? null,
+      } satisfies SeriesItem,
+    ];
+  });
+}
+
+const LIVE = new Set<string>(LIVE_JOB_STATUSES);
+
 const phaseOf = (payload: unknown): OnboardingJobPhase => {
   const p = (payload as { onboardingPhase?: unknown } | null)?.onboardingPhase;
   return (ONBOARDING_JOB_PHASES as readonly unknown[]).includes(p)
@@ -140,9 +194,14 @@ const phaseOf = (payload: unknown): OnboardingJobPhase => {
     : 'analyse';
 };
 
-export async function onboardingView(tx: Executor, row: OnboardingRow): Promise<OnboardingView> {
-  const [designs, open, job, sensitive] = await Promise.all([
+export async function onboardingView(
+  tx: Executor,
+  row: OnboardingRow,
+  now = new Date(),
+): Promise<OnboardingView> {
+  const [drafted, series, open, job, sensitive] = await Promise.all([
     designsOf(tx, row.projectId, row.designs),
+    seriesItemsOf(tx, row),
     tx
       .select({
         id: questionnaireBatches.id,
@@ -163,6 +222,7 @@ export async function onboardingView(tx: Executor, row: OnboardingRow): Promise<
             id: jobs.id,
             status: jobs.status,
             payload: jobs.payload,
+            pipelineRunId: jobs.pipelineRunId,
             queuedAt: jobs.queuedAt,
             dispatchedAt: jobs.dispatchedAt,
             finishedAt: jobs.finishedAt,
@@ -182,6 +242,14 @@ export async function onboardingView(tx: Executor, row: OnboardingRow): Promise<
       ).length
     : 0;
   const j = job[0];
+  const designs: OnboardingDesignView[] = drafted.map((d) => ({
+    ...d,
+    ...linkItems(d, series, row.roundsSent),
+  }));
+  const waitingOn =
+    j && LIVE.has(j.status) && j.pipelineRunId
+      ? await runWaitingOf(row.projectId, j.pipelineRunId)
+      : null;
   return {
     id: row.id,
     projectId: row.projectId,
@@ -200,6 +268,7 @@ export async function onboardingView(tx: Executor, row: OnboardingRow): Promise<
           round: batch.round,
           open: openItems,
           postedAt: batch.createdAt.toISOString(),
+          ...batchDue(batch.createdAt, now),
         }
       : null,
     job: j
@@ -210,126 +279,23 @@ export async function onboardingView(tx: Executor, row: OnboardingRow): Promise<
           queuedAt: j.queuedAt.toISOString(),
           dispatchedAt: j.dispatchedAt?.toISOString() ?? null,
           finishedAt: j.finishedAt?.toISOString() ?? null,
+          waitingOn,
         }
       : null,
     sensitiveData: sensitive,
   };
 }
 
-const LIVE = new Set<string>(LIVE_JOB_STATUSES);
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
-const OPEN = { action: 'open', actionLabel: 'Open onboarding' } as const;
-const START = { action: 'start', actionLabel: 'Start onboarding' } as const;
-
-/** The project's system-context design, by its template: none, drafted but not approved, or approved. */
-type SystemContextState = 'none' | 'unapproved' | 'approved';
-
-function noOnboardingHint(systemContext: SystemContextState): OnboardingHint | null {
-  if (systemContext === 'approved') return null;
-  if (systemContext === 'unapproved') {
-    return {
-      tone: 'you',
-      lead: 'System context not approved yet.',
-      text: 'A system-context design is drafted; approve it in Workflows, or let the agent draft the rest.',
-      ...START,
-    };
-  }
-  return {
-    tone: 'you',
-    lead: 'No system context yet.',
-    text: 'The agent can read the code, draft the key designs and ask what it cannot tell.',
-    ...START,
-  };
-}
-
-function openBatchHint(
-  batch: NonNullable<OnboardingView['openBatch']>,
-  drafted: number,
-  now: Date,
-): OnboardingHint {
-  const ageDays = (now.getTime() - Date.parse(batch.postedAt)) / 86_400_000;
-  const late = ageDays >= QUESTIONNAIRE_DUE_DAYS;
-  const tone = late ? 'attention' : 'you';
-  const tail = `Open questions ${batch.open}${late ? ` · waiting ${Math.floor(ageDays)} days` : ''}`;
-  return batch.round === 1
-    ? {
-        tone,
-        lead: 'No system context yet.',
-        text: `The agent read the code and drafted ${plural(drafted, 'design')} · ${tail}`,
-        action: 'continue',
-        actionLabel: 'Start onboarding',
-      }
-    : {
-        tone,
-        lead: 'Onboarding:',
-        text: `follow-up round waits on you · ${tail}`,
-        action: 'continue',
-        actionLabel: 'Continue onboarding',
-      };
-}
-
-// cm:why the hint is derived, never stored: it says what the onboarding's own rows say now, and it
-// leaves the dashboard once every onboarding design is approved (state `onboarded`). With no
-// onboarding it reads the project's system-context design, so a project that has one approved is
-// never told it has no system context (e2e D9)
-function hintOf(
-  view: OnboardingView | null,
-  now: Date,
-  systemContext: SystemContextState,
-): OnboardingHint | null {
-  if (!view) return noOnboardingHint(systemContext);
-  const drafted = view.designs.length;
-  const approved = view.designs.filter((d) => d.designStatus === 'approved').length;
-  if (view.status === 'done') {
-    if (drafted > 0 && approved === drafted) return null;
-    return {
-      tone: 'ready',
-      lead: 'Onboarding done.',
-      text: `${plural(drafted - approved, 'design')} wait on your approval.`,
-      ...OPEN,
-    };
-  }
-  if (view.job && LIVE.has(view.job.status)) {
-    return {
-      tone: 'run',
-      lead:
-        view.job.phase === 'revise'
-          ? 'Onboarding: updating designs.'
-          : 'Onboarding: reading the code.',
-      text:
-        view.job.status === 'queued'
-          ? 'Onboarding waits on a runner checkout; the project works meanwhile.'
-          : 'One analysis job is running; the project works meanwhile.',
-      ...OPEN,
-    };
-  }
-  if (view.openBatch) return openBatchHint(view.openBatch, drafted, now);
-  if (view.job?.status === 'failed') {
-    return {
-      tone: 'err',
-      lead: 'Onboarding analysis failed.',
-      text: 'The last code map stays; ask for a re-analysis from the thread.',
-      ...OPEN,
-    };
-  }
-  return {
-    tone: 'run',
-    lead: 'Onboarding in progress.',
-    text: drafted ? `${plural(drafted, 'design')} drafted.` : 'Waiting for the analysis.',
-    ...OPEN,
-  };
-}
-
 export async function readOnboardingState(
   projectId: string,
   userId: string,
-): Promise<OnboardingStateResponse> {
+): Promise<Omit<OnboardingStateResponse, 'firstRequirements'>> {
   await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
   const row = await onboardingOf(db, projectId);
   const view = row ? await onboardingView(db, row) : null;
   return {
     onboarding: view,
-    hint: hintOf(view, new Date(), view ? 'none' : await systemContextOf(projectId)),
+    hint: hintOf(view, view ? 'none' : await systemContextOf(projectId)),
   };
 }
 

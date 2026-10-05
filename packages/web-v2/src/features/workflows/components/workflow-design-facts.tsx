@@ -83,6 +83,48 @@ function HealthGroup({ health, slug }: { health: WorkflowHealth; slug: string })
   );
 }
 
+/** design-reconciliation `reconciled-view`: the state, the dev version that carried it, and the BCs proven, read from core. */
+function ReconciliationGroup({ health, slug }: { health: WorkflowHealth; slug: string }) {
+  const r = health.reconciliation;
+  return (
+    <FactsGroup title="Reconciliation" testId="facts-reconciliation">
+      <p className="mb-2 flex min-w-0 items-start gap-2 text-12-5 text-muted" data-testid="reconciliation-state" data-state={r.state}>
+        <span className="flex-none">
+          <StatusBadge family="reconciliation" value={r.state} />
+        </span>
+        <span className="min-w-0">{r.rule.charAt(0).toUpperCase() + r.rule.slice(1)}.</span>
+      </p>
+      <Fact label="Version" testId="reconciliation-version">
+        {r.version ? (
+          <span className="font-mono text-12-5" title={r.version.releasedAt ? `Released ${formatStamp(r.version.releasedAt)}` : undefined}>
+            {r.version.version}
+          </span>
+        ) : (
+          <span className="text-muted">No released version carries it yet</span>
+        )}
+      </Fact>
+      <Fact label="BCs proven" testId="reconciliation-criteria">
+        {r.criteria.total === 0 ? (
+          <span className="text-muted">No business criterion traces this design</span>
+        ) : (
+          <span className="font-mono tabular-nums text-12-5" title="Business criteria tracing this design whose latest verdict passed">
+            {r.criteria.proven} of {r.criteria.total}
+          </span>
+        )}
+      </Fact>
+      {r.issues.length ? (
+        <Fact label="Carried by" testId="reconciliation-issues">
+          {r.issues.map((k) => (
+            <Link key={k} href={issueHref(slug, k)} className="font-mono text-12 font-semibold text-link hover:underline">
+              {k}
+            </Link>
+          ))}
+        </Fact>
+      ) : null}
+    </FactsGroup>
+  );
+}
+
 function Requirements({ d, slug }: { d: WorkflowDesign; slug: string }) {
   return (
     <FactsGroup title="Requirement" count={d.requirements.length > 1 ? `Linked ${d.requirements.length}` : undefined} testId="facts-requirement">
@@ -169,6 +211,7 @@ export function WorkflowDesignFacts({ d, record, shown, shownRevision, template,
         </FactsGroup>
       ) : null}
       {health ? <HealthGroup health={health} slug={slug} /> : null}
+      {health ? <ReconciliationGroup health={health} slug={slug} /> : null}
       <Requirements d={d} slug={slug} />
       <BuildGate d={d} slug={slug} />
       <FactsGroup title="Properties" testId="facts-properties">

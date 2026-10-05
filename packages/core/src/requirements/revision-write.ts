@@ -15,6 +15,7 @@ import {
   requirementCriteria,
   requirementRevisions,
   requirements,
+  requirementWorkflows,
 } from '../db/schema-requirements.js';
 import { dataPolicyOf, storedDeep, storedText } from '../lib/data-egress.js';
 import type { RequirementActor } from './read.js';
@@ -127,6 +128,8 @@ export async function createRequirementIn(
     ownerId?: string | null;
     /** Who wrote revision 1's content when not the actor: an accepted suggestion's producer. */
     authorId?: string | undefined;
+    /** The designs it is drawn with from the start; the next agree pins their approved revisions. */
+    designs?: readonly string[] | undefined;
   },
 ): Promise<{ id: string; refusals: RequirementRefusal[] | null }> {
   const { projectId, actor } = input;
@@ -156,6 +159,15 @@ export async function createRequirementIn(
     authorId: input.authorId ?? actor.userId,
     fromSuggestionId: write.fromSuggestionId ?? null,
   });
+  if (input.designs?.length) {
+    await tx.insert(requirementWorkflows).values(
+      input.designs.map((workflowId) => ({
+        requirementId: row.id,
+        workflowId,
+        linkedBy: actor.userId,
+      })),
+    );
+  }
   return { id: row.id, refusals: await writeCriteria(tx, row.id, 1, write.criteria) };
 }
 

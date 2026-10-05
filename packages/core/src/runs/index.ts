@@ -1,1 +1,1 @@
-export { latestRunsOfIssues } from './read.js';
+export { latestRunsOfIssues, runWaitingOf } from './read.js';

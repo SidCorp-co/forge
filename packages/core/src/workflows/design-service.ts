@@ -1,6 +1,6 @@
 import { approvalPermission } from '@forge/contracts/permissions';
 import { HTTPException } from 'hono/http-exception';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { activeIssuePrefix, resolveIssueRouteRef } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
@@ -17,7 +17,7 @@ import { baseApprovalRefusal, basesOfStored, readBases } from './design-bases.js
 import { type DesignIssueOutcome, settleDesignIssue } from './design-issue.js';
 import { designRequirementsOf } from './design-requirements.js';
 import { buildGateOf, designWaitingOn, revisionStateOf } from './design-standing.js';
-import { nodeSetRefusals, nodesOfDocument } from './node-refs.js';
+import { nodeSetRefusals, nodesOfDocument, observedNodesIn } from './node-refs.js';
 import { readStoredWorkflow } from './schema.js';
 import { assertWriter, storedWorkflow, type WorkflowWriter } from './service.js';
 import {
@@ -249,6 +249,26 @@ async function designIssueIn(projectId: string, ref: string, userId: string): Pr
   return issue.id;
 }
 
+/** A build may name only nodes of the latest observation as the observed steps it removes or rebuilds. */
+async function observedStepsRefusal(
+  tx: Tx,
+  projectId: string,
+  workflowId: string,
+  flow: string,
+  steps: string[],
+): Promise<DesignRefusal | null> {
+  const nodes = await observedNodesIn(tx, projectId, workflowId);
+  if (!nodes) {
+    return {
+      code: 'WORKFLOW_NODE_UNKNOWN',
+      path: '/observedSteps',
+      detail: `workflow ${flow} has no observation yet, so a build can name no observed step; name planned steps under steps, or wait for the code to be observed.`,
+    };
+  }
+  const [wrong] = nodeSetRefusals(nodes, { steps }, '/observedSteps');
+  return (wrong as DesignRefusal | undefined) ?? null;
+}
+
 /** An issue names the workflow it builds; any project member may say so, the gate is what it buys. */
 export async function linkBuildAs(input: {
   projectId: string;
@@ -256,6 +276,7 @@ export async function linkBuildAs(input: {
   actor: WorkflowWriter;
   issue: string;
   steps?: string[] | undefined;
+  observedSteps?: string[] | undefined;
 }): Promise<DesignOutcome> {
   const { projectId, id, actor } = input;
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
@@ -280,9 +301,19 @@ export async function linkBuildAs(input: {
       const [wrong] = nodeSetRefusals(nodes, { steps }, '');
       if (wrong) return wrong as DesignRefusal;
     }
+    const observedSteps = input.observedSteps ? [...new Set(input.observedSteps)] : null;
+    if (observedSteps) {
+      const wrong = await observedStepsRefusal(tx, projectId, row.id, row.flow, observedSteps);
+      if (wrong) return wrong;
+    }
     const held = await buildOfIssue(tx, issue.id);
     if (held?.workflowId === id) {
-      if (steps) await setBuildSteps(tx, issue.id, steps);
+      if (steps || observedSteps) {
+        await setBuildSteps(tx, issue.id, {
+          ...(steps ? { stepIds: steps } : {}),
+          ...(observedSteps ? { observedStepIds: observedSteps } : {}),
+        });
+      }
       return null;
     }
     if ((await designsOf(tx, id))[0]?.designIssueId === issue.id) {
@@ -305,6 +336,7 @@ export async function linkBuildAs(input: {
       projectId,
       userId: actor.userId,
       stepIds: steps,
+      observedStepIds: observedSteps,
     });
     return null;
   });

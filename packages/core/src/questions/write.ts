@@ -15,6 +15,7 @@ import {
   agentQuestions,
   isChoiceStep,
   type QuestionBlockerKind,
+  type QuestionnaireLanding,
   type QuestionOption,
   type QuestionOrigin,
   type QuestionStep,
@@ -259,4 +260,16 @@ export async function insertBatchQuestions(
 ): Promise<void> {
   if (rows.length === 0) return;
   await tx.insert(agentQuestions).values(rows);
+}
+
+/** Records where answered questionnaire items landed: each row's whole landing list, as read and extended. */
+export async function recordItemLandings(
+  tx: Tx,
+  landings: ReadonlyMap<string, QuestionnaireLanding[]>,
+): Promise<void> {
+  for (const [questionId, landedIn] of landings)
+    await tx
+      .update(agentQuestions)
+      .set({ landedIn, updatedAt: new Date() })
+      .where(eq(agentQuestions.id, questionId));
 }
