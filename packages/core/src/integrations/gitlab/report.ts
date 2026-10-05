@@ -1,9 +1,7 @@
-import { eq } from 'drizzle-orm';
-import { db } from '../../db/client.js';
-import { projects } from '../../db/schema.js';
 import {
   describeInboundDoor,
   effectiveConfig,
+  forgeReads,
   getIntegration,
   grantHolds,
   healthWithInboundDoor,
@@ -27,13 +25,9 @@ export async function gitlabBindingReports(
     .filter((p) => p.binding.provider === 'gitlab')
     .sort((a, b) => a.binding.createdAt.getTime() - b.binding.createdAt.getTime());
   if (pairs.length === 0) return [];
-  const [project] = await db
-    .select({ slug: projects.slug })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
+  const slug = await forgeReads().projectSlug(projectId);
   const apiBase = resolveApiBaseUrl();
-  const expectedUrl = apiBase && project?.slug ? inboundWebhookUrl(apiBase, project.slug) : null;
+  const expectedUrl = apiBase && slug ? inboundWebhookUrl(apiBase, slug) : null;
   return Promise.all(
     pairs.map(async (pair) => {
       const config = effectiveConfig<GitLabConfig>(pair);

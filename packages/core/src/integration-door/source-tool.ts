@@ -12,6 +12,7 @@
  * the host. On top of that every action but `list` asks the binding's `agent_access`.
  */
 
+import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
 import { z } from 'zod';
 import { noteReviewOnIssue } from '../comments/index.js';
 import { listIntegrations } from '../integrations/index.js';
@@ -26,9 +27,12 @@ import {
   SourceHostUnavailable,
 } from '../integrations/source-host/index.js';
 import { logger } from '../lib/logger.js';
+import { refuser } from '../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { resolveEffectiveProjectId } from '../projects/index.js';
+
+const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');
 
 /**
  * The verbs this face refuses BY NAME rather than by schema. Nothing an agent does through it can
@@ -170,9 +174,10 @@ async function run(args: unknown, ctx: McpContext): Promise<unknown> {
     if (err instanceof SourceHostUnavailable || err instanceof SourceHostInputRefusal) {
       throw new Error(`BAD_REQUEST: ${err.message}`);
     }
+    // The host failing is not the caller's fault: HOST_UNAVAILABLE says a retry may succeed.
     if (err instanceof SourceHostCallError) {
       const said = err.detail ? ` The host said: ${err.detail}` : '';
-      throw new Error(`BAD_REQUEST: ${err.message}.${said}`);
+      throw refuse('HOST_UNAVAILABLE', `${err.message}.${said}`);
     }
     throw err;
   }

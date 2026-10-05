@@ -126,7 +126,7 @@ export interface InboundDispatchInput {
 }
 
 /** The facts a vendor delivery reports to Forge's own modules, written to the outbox by the door. */
-type InboundFactType = 'source.pushed' | 'source.merged' | 'source.reviewed' | 'error.sighted';
+type InboundFactType = 'source.pushed' | 'source.merged' | 'source.reviewed';
 export type InboundFact = {
   [T in InboundFactType]: { type: T; payload: OutboxEventPayload<T> };
 }[InboundFactType];
@@ -319,7 +319,7 @@ interface IntegrationPresentation {
 }
 
 /** The short router hint and forward pointer injected into the preamble when this is reachable. */
-/** The connection row shape `inboundSecret` reads — kept structural so `types.ts` imports no db. */
+/** The connection row shape a binding-target check reads — kept structural so `types.ts` imports no db. */
 interface IntegrationConnectionLike {
   secretsEnc: Buffer | null;
 }
@@ -384,14 +384,14 @@ export interface IntegrationAdapterMethods<
   TSecrets extends Record<string, unknown> = Record<string, unknown>,
 > {
   /**
-   * The signing secret this provider will actually use for inbound deliveries, when it is the
-   * provider — not Forge — that generated it.
-   *
-   * GitHub signs every delivery with the secret created with the App, so a binding that mints its
-   * own fails EVERY signature check while the hub renders it configured: no delivery row, no error
-   * anyone sees. Absent = Forge mints one, which is the normal case.
+   * The connection secret field holding the inbound signing secret, when it is the provider — not
+   * Forge — that generated it (`inbound-secret.ts`). GitHub signs every delivery with the secret
+   * created with the App, so a binding that minted its own would fail EVERY signature check.
+   * Absent = Forge mints one, which is the normal case.
    */
-  inboundSecret?(connection: IntegrationConnectionLike): string | null;
+  inboundSecretField?: string;
+  /** Where a person pastes a rotated inbound secret, said once in the rotation's answer. */
+  inboundSecretHome?: string;
   /**
    * Called after this provider's CONNECTION is created or changed, for a provider holding a live
    * process that must be rebuilt against the new credential.

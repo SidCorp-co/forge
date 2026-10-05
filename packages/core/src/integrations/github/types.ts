@@ -12,6 +12,8 @@ export interface GitHubSecrets extends Record<string, unknown> {
   previousTokenExpiresAt?: string;
   /** The App's own webhook secret, as returned by the manifest conversion. */
   webhookSecret?: string;
+  /** The webhook secret a rotation replaced; it verifies until a delivery verifies with the new one. */
+  previousWebhookSecret?: string;
 }
 
 export const GITHUB_API_BASE = 'https://api.github.com';

@@ -1,6 +1,7 @@
 import { logger } from '../lib/logger.js';
 import { boss } from '../queue/boss.js';
 import { INTEGRATIONS_QUEUE_NAME } from '../queue/names.js';
+import { recordDelivery } from './deliveries.js';
 import { dispatchThrough } from './registry.js';
 import { buildContextFromBinding, findBindingById, findConnectionById } from './store.js';
 import { NonRetryableDispatchError, type OutboundDispatchInput } from './types.js';
@@ -37,19 +38,24 @@ export async function runOutboundDispatch(
   hooks: Pick<OutboundDispatchInput, 'onDeployOutcome'> = {},
 ): Promise<void> {
   const binding = await findBindingById(data.bindingId);
-  if (!binding?.active) {
-    logger.warn(
-      { bindingId: data.bindingId },
-      'integrations dispatch worker: binding missing or inactive — dropping job',
-    );
-    return;
-  }
-  const connection = await findConnectionById(binding.connectionId);
-  if (!connection?.active) {
-    logger.warn(
-      { bindingId: data.bindingId, connectionId: binding.connectionId },
-      'integrations dispatch worker: connection missing or inactive (breaker open?) — dropping job',
-    );
+  const connection = binding ? await findConnectionById(binding.connectionId) : null;
+  if (!binding?.active || !connection?.active) {
+    // A dropped job leaves a failed row under the requestId it was queued with, saying why.
+    const why = !binding?.active
+      ? 'the binding is missing or switched off'
+      : 'the connection is missing or switched off (the breaker may have opened it)';
+    logger.warn({ bindingId: data.bindingId, why }, 'integrations dispatch worker: dropping job');
+    if (binding) {
+      await recordDelivery({
+        bindingId: binding.id,
+        direction: 'outbound',
+        eventName: data.eventName,
+        payload: data.payload ?? { runId: data.runId, issueId: data.issueId },
+        ...(data.requestId ? { requestId: data.requestId } : {}),
+        status: 'failed',
+        errorMessage: `not dispatched: ${why}`,
+      });
+    }
     return;
   }
   const ctx = buildContextFromBinding({ binding, connection });

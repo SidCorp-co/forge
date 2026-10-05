@@ -118,7 +118,7 @@ export async function recordTurnedAwayInboundCall(args: {
 
 /**
  * `inboundUnprompted` is the provider's declaration that a bound resource makes it call in by
- * itself. Not `canReceiveWebhook`, which Sentry declares while calling only on an error.
+ * itself, which is narrower than `canReceiveWebhook`.
  */
 export function inboundDoorState(args: {
   inboundUnprompted: boolean;

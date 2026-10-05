@@ -16,7 +16,7 @@ protocol and nothing else:
 - What a vendor delivers is reported, not acted on. `handleInbound` returns `facts` (`types.ts:InboundFact`),
   the webhook door (`integration-door/webhook-inbound-routes.ts`) writes them to the outbox, and the module that owns
   each effect consumes them: `source.pushed` (ecosystem, projects), `source.merged` (issues),
-  `source.reviewed` (comments), `error.sighted` (error-intake).
+  `source.reviewed` (comments).
 - What an adapter must know about Forge's own rows (a project's declared repository, the issue a branch
   names) is handed in at boot through `forge-reads.ts:provideForgeReads`, never imported.
 - A write that must share a transaction with a Forge row takes the caller's writer: the merge verb
@@ -38,7 +38,7 @@ protocol and nothing else:
 |---|---|---|---|---|
 | source hosting | `source-host/` over `github/`, `gitlab/`; the change request projection (`repo_pull_requests`) is the port's | GitHub, GitLab | project | `ecosystem/builder-head.ts`, `execution-ports.ts`, `integration-door/issue-merge-routes.ts`, `integration-door/source-tool.ts`, `integration-door/status-service.ts`, `projects/commit-owners.ts`, `projects/live-reach.ts`, `projects/live-reading.ts`, `projects/live-source.ts`, `work-ports.ts` |
 | deploy | `deploy/` (the record contract in `deploy/records.ts`, the runtime probe), `deploy/coolify/` | Coolify; a deployed app's runtime probe | project | `project-config/environment-state.ts`, `release-batch/verify.ts`, `release-batch/coolify-*.ts`, `release-batch/deploy-worker.ts`, `integration-door/coolify-*.ts` |
-| error tracking | `sentry/` | Sentry | project | `error-intake/pull.ts`, `error-intake/sightings.ts`, `integration-door/sentry-tool.ts` |
+| error tracking | `sentry/` | Sentry | project | `error-intake/pull.ts`, `integration-door/sentry-tool.ts` |
 | storefront | `epodsystem/`, `autoflow/` | ePodSystem, Autoflow | project | the registry only |
 | chat | `rocketchat/` (the REST and DDP clients, the connection owner, room routing, the thread registry) | Rocket.Chat | project | `assistant/chat-room/*`, `assistant/identity/directory.ts`, `integration-door/routes.ts`, `index.ts` |
 | LLM | `llm/`, over the AI SDK (`ai`, `@ai-sdk/openai-compatible`, `@ai-sdk/anthropic`) behind `ChatProvider` | OpenAI-compatible endpoints (LiteLLM), Anthropic Messages | deployment | `assistant/*` (the chat turn and its runner, BA tools, bench judge, catalog cost), `memory/extraction.ts`, `memory/consolidation.ts`, `memory/rerank.ts`, `agent-sessions/auto-title.ts` |
