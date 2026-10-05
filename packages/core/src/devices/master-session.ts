@@ -150,6 +150,7 @@ export async function closeMasterSession(args: {
       where: and(
         eq(agentSessions.id, args.sessionId),
         eq(agentSessions.deviceId, args.deviceId),
+        eq(agentSessions.kind, MASTER_SESSION_KIND),
         notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
       ),
       reason: 'master_session_ended',

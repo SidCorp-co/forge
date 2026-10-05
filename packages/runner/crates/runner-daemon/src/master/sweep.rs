@@ -269,7 +269,7 @@ pub(crate) async fn sweep(
             continue;
         }
         supervise(client, masters, tokens, &runner.project_id, &runner.slug).await;
-        take_pool_job(client, cfg, shared, adopted, tokens, runner).await;
+        let pool_waits = take_pool_job(client, cfg, shared, adopted, tokens, runner).await;
 
         // The owner's veto, read off the ledger this sweep already holds and
         // decided before anything is asked of core. A stand-down governs the
@@ -302,7 +302,13 @@ pub(crate) async fn sweep(
             .await
             .unwrap_or_default();
         let inbox = read_inbox(client, masters, &runner.project_id, &runner.slug).await;
-        let placement = placement_for(&admissible, &inbox);
+        // A waiting pool job is work: it is taken under this project's master
+        // session, so the master is placed for it (ISS-219).
+        let placement = if pool_waits {
+            Placement::AdoptOrStart
+        } else {
+            placement_for(&admissible, &inbox)
+        };
         if placement == Placement::AdoptOnly {
             if retire_if_idle(
                 client,
@@ -739,6 +745,8 @@ pub(crate) fn report_job_capacity(
     );
 }
 
+/// Take one pool job for `runner`'s project under the master session core
+/// issued this box for it, answering whether a job waits for that session.
 pub(crate) async fn take_pool_job(
     client: &CoreClient,
     cfg: &Config,
@@ -746,15 +754,17 @@ pub(crate) async fn take_pool_job(
     adopted: &tokio::sync::watch::Receiver<bool>,
     tokens: Option<&session_tokens::SessionTokens>,
     runner: &runners::MeRunner,
-) {
+) -> bool {
     let SweepShared {
+        masters,
         job_panes,
         job_records,
         ..
     } = *shared;
     if !*adopted.borrow() {
-        return;
+        return false;
     }
+    let master_session = masters.get(&runner.project_id).map(|(session, _)| session);
     let bound = cfg.runner.max_job_panes.max(1) as usize;
     let took = pool_jobs::take_one(
         &pool_jobs::JobPorts {
@@ -772,7 +782,7 @@ pub(crate) async fn take_pool_job(
             id: &runner.project_id,
             slug: &runner.slug,
         },
-        job_panes.session_id(),
+        master_session.as_deref(),
         bound,
         tokens,
     )
@@ -781,6 +791,25 @@ pub(crate) async fn take_pool_job(
     // heartbeat and a restart all find it (ISS-1234).
     if let Some(dir) = runner_platform::config::config_dir() {
         pool_reads::note(&dir, &runner.project_id, &took, agent_activity::now_ms());
+    }
+    match (&took, master_session.as_deref()) {
+        (pool_jobs::Took::NoMasterSession(job), _) => {
+            if job_panes.note_master_session(&runner.project_id, false) {
+                tracing::warn!(
+                    "[pool] {}: job {job} waits and no master session is registered with core for project {} on this box — core holds a pool job only under that session, so none is taken until the project's master is placed",
+                    runner.slug,
+                    runner.project_id
+                );
+            }
+            return true;
+        }
+        (_, Some(session)) if job_panes.note_master_session(&runner.project_id, true) => {
+            tracing::info!(
+                "[pool] {}: master session {session} registered — pool jobs are taken under it",
+                runner.slug
+            );
+        }
+        _ => {}
     }
     if let pool_jobs::Took::AtBound = took {
         // Per project and per pass, which is eight projects times six passes a
@@ -792,4 +821,5 @@ pub(crate) async fn take_pool_job(
             job_panes.count()
         );
     }
+    false
 }
