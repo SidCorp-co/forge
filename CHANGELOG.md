@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.29] - 2026-10-05
+
+Issues wait on contract versions, and job panes never stop for a person
+
+
 ### Changed
 
 - **An issue can wait on a contract version (ISS-228).** It is not dispatched until an approved
