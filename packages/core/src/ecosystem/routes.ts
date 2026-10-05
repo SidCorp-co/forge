@@ -12,7 +12,6 @@ import {
   writeEcosystem,
 } from './ecosystem-service.js';
 import { type MembershipRow, type MembershipVerb, membershipDocument } from './membership-rules.js';
-import { membershipHistory } from './membership-store.js';
 import {
   invite,
   type MembershipOutcome,
@@ -21,6 +20,7 @@ import {
   transition,
   visibleMemberships,
 } from './membership-service.js';
+import { membershipHistory } from './membership-store.js';
 import { DOCUMENT_TYPES } from './schema.js';
 import { listEcosystemRevisions, type StoredRevision } from './store.js';
 import { readWorkspace } from './workspace-read.js';
