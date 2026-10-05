@@ -12,8 +12,8 @@ import { type MessageRefusal, MessageRefusedError } from '../../messaging/contra
 import type { ForgeRecord } from '../../messaging/forge-record.js';
 import { criterionBlocksIn } from '../../messaging/verdict-identity.js';
 import type { Actor } from '../activity.js';
-import { recordVerdict, type VerdictAuthor } from './store.js';
 import { draftFromBlock } from './verdict-input.js';
+import { recordVerdict, type VerdictAuthor } from './verdict-record.js';
 
 const SHAPE =
   'a verdict block names a criterion this issue carries, a verdict (pass | short | fail | skipped; skipped with a `why`), and what it was judged against: `commit: <the whole 40-character sha>`, `runtime: <whole object id>`, `runtime: <workflow id>@draft:<draft version>` with `environment: <key>`, or `design: <flow> rev <n>`';

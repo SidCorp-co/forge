@@ -13,7 +13,7 @@ import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { afterSubmit, onSubmittedIn } from './ports.js';
 import { batchIn, batchView, questionnairesAs } from './read.js';
-import { submitAnswers } from './service.js';
+import { submitAnswers } from './submit.js';
 
 export const questionnaireRoutes = new Hono<{ Variables: AuthVars }>();
 

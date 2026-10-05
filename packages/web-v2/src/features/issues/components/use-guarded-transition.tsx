@@ -16,7 +16,7 @@ import {
   TransitionReasonDialog,
 } from "./transition-reason-dialog";
 
-export const REASON_REQUIRED = new Set<string>(REASON_REQUIRED_STATUSES);
+const REASON_REQUIRED = new Set<string>(REASON_REQUIRED_STATUSES);
 
 const REASON_TOAST: Record<ReasonStatus, string> = {
   reopen: "Issue reopened",
@@ -30,7 +30,7 @@ interface RequestOptions {
   onSuccess?: () => void;
 }
 
-export interface GuardedTransition {
+interface GuardedTransition {
   requestTransition: (id: string, toStatus: IssueStatus, opts?: RequestOptions) => void;
   /** ISS-1310 — Move anyway (pick from `targets`) or Not needed (void, then resume at `targets[0]`); both ask why. */
   requestParkLeave: (

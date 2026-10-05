@@ -76,7 +76,7 @@ function applyTool(tool: Tool, v: EditorView): void {
   v.focus();
 }
 
-export interface BodyEditorProps {
+interface BodyEditorProps {
   value: string;
   onChange: (next: string) => void;
   rows?: number;

@@ -3,6 +3,7 @@
 
 import type { FeedbackListResponse, FeedbackRefusal } from '@forge/contracts/feedback';
 import type { ActorAgency } from '@forge/contracts/permissions';
+import { portSlot } from '../lib/port-slot.js';
 
 interface LabelPorts {
   listFeedbackAs: (
@@ -13,20 +14,8 @@ interface LabelPorts {
   >;
 }
 
-let provided: LabelPorts | null = null;
+const slot = portSlot<LabelPorts>('labels', 'provideLabelPorts');
+export const provideLabelPorts = slot.provide;
+const { port } = slot;
 
-export function provideLabelPorts(given: LabelPorts): void {
-  provided = given;
-}
-
-function labelPorts(): LabelPorts {
-  if (!provided) {
-    throw new Error(
-      'labels: no ports were provided; the process entry calls provideLabelPorts before it serves',
-    );
-  }
-  return provided;
-}
-
-export const listFeedbackAs: LabelPorts['listFeedbackAs'] = (viewer, projectId) =>
-  labelPorts().listFeedbackAs(viewer, projectId);
+export const listFeedbackAs = port('listFeedbackAs');

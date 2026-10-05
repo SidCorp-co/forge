@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
+import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { deleteActivity, setActivityPayload } from './activity-log.js';
@@ -76,12 +76,8 @@ issueActivityRoutes.use('*', requireAuth(), assertEmailVerified());
 
 issueActivityRoutes.get(
   '/:id/activity',
-  zValidator('param', issueRouteIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', perIssueQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', issueRouteIdParamSchema),
+  zValidator('query', perIssueQuerySchema),
   async (c) => {
     const { id: rawId } = c.req.valid('param');
     const { limit, before, projectId: projectIdQuery } = c.req.valid('query');
@@ -122,12 +118,8 @@ function assertActivityMutable(action: string): void {
 
 issueActivityRoutes.patch(
   '/:id/activity/:activityId/evaluate',
-  zValidator('param', activityIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', evaluateBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', activityIdParamSchema),
+  zValidator('json', evaluateBodySchema),
   async (c) => {
     const { id: issueId, activityId } = c.req.valid('param');
     const { verdict, note } = c.req.valid('json');
@@ -160,9 +152,7 @@ issueActivityRoutes.patch(
 
 issueActivityRoutes.delete(
   '/:id/activity/:activityId',
-  zValidator('param', activityIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', activityIdParamSchema),
   async (c) => {
     const { id: issueId, activityId } = c.req.valid('param');
     const userId = c.get('userId');
@@ -184,12 +174,8 @@ projectActivityRoutes.use('*', requireAuth(), assertEmailVerified());
 
 projectActivityRoutes.get(
   '/:id/activity',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', activityQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('query', activityQuerySchema),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const { limit, before, type } = c.req.valid('query');
@@ -203,5 +189,3 @@ projectActivityRoutes.get(
     return c.json(envelope(withActors, limit));
   },
 );
-
-export const __testing = { attachActors };

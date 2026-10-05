@@ -25,7 +25,7 @@ export const openSegments = (s: ModuleStanding): CoverageSegment[] =>
     hint: ISSUE_ATTENTION_LABELS[k].hint ?? undefined,
   }));
 
-export function landingAge(l: ModuleLanding, now: number = Date.now()): number {
+function landingAge(l: ModuleLanding, now: number = Date.now()): number {
   return Math.max(0, Math.floor((now - new Date(l.landedAt).getTime()) / DAY_MS));
 }
 

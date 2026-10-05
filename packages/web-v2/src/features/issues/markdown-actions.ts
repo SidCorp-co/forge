@@ -5,7 +5,7 @@
 // assert a button exists and cannot assert what pressing it wrote. These are
 // the assertions that can fail.
 
-export interface Span {
+interface Span {
   doc: string;
   from: number;
   to: number;

@@ -192,7 +192,7 @@ function FreeTextAnswer({
   );
 }
 
-export function isAnswerable(question: AgentQuestion): boolean {
+function isAnswerable(question: AgentQuestion): boolean {
   return question.status === "open" && question.blockerKind === "human";
 }
 
@@ -223,7 +223,7 @@ export function outcomeOf(question: AgentQuestion): string | null {
   return null;
 }
 
-export interface QuestionCardProps {
+interface QuestionCardProps {
   question: AgentQuestion;
   /** Send one answer. The card builds the whole input; the caller only transports it. */
   onAnswer: (input: AnswerInput) => void;

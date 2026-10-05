@@ -20,10 +20,8 @@ import type { WorkStep } from '../db/schema-issue-work-state.js';
 import {
   heldReleaseWait,
   holderFanout,
-  issueWorkInFlightSql,
   type LeaseReading,
   landedWait,
-  leaseHolderOf,
   leaseIsReleasable,
   leaseIsWorkInProgress,
   leaseShowsHolderGone,
@@ -36,28 +34,18 @@ import {
 } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../observability/logger.js';
-import { admittedRunner, emitNotification, projectAdminUserIdsFor } from './ports.js';
+import {
+  clearRecovered,
+  graceSpent,
+  IDLE_SCAN_LIMIT,
+  NOTHING_LIVE_ON_THIS_ISSUE,
+} from './idle-recovered.js';
+import { surface, unchangedStrand, writeStrand } from './idle-strand-write.js';
+import { admittedRunner, projectAdminUserIdsFor } from './ports.js';
 import { isTerminalPlacement } from './status-assertions.js';
-import { sweepGroupKey } from './stranded-issues.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
 
 type ReleaseHold = Omit<ReleaseHoldView, 'heldAt'>;
-
-/** A USE of the fleet-wide predicate, never a second copy: `issues/issue-lease.ts` is the only
- *  place that SQL is written (ISS-1109), and a sweep answering it another way reports as stranded
- *  exactly the issues a box is holding. This binding only carries the `issues i` alias in. */
-const NOTHING_LIVE_ON_THIS_ISSUE = sql`NOT ${issueWorkInFlightSql({
-  issueId: sql`i.id`,
-  projectId: sql`i.project_id`,
-  issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
-})}`;
-
-/** How many rows one arm reads per pass, matching the other sweep axes. */
-const IDLE_SCAN_LIMIT = 200;
-
-function strandResolutionKey(issueId: string): string {
-  return `issue:${issueId}:idle`;
-}
 
 export interface IdleIssuesResult {
   /** Rows read as stranded this pass. */
@@ -73,7 +61,7 @@ export interface IdleIssuesResult {
 }
 
 /** What this pass writes onto the row, at `session_context.strand`. */
-interface StrandRecord {
+export interface StrandRecord {
   at: string;
   status: string;
   since: string;
@@ -84,7 +72,7 @@ interface StrandRecord {
   evidence: { merged: boolean; everRan: boolean; poolHasRunner: boolean; leaseFanout: number };
 }
 
-interface CandidateRow {
+export interface CandidateRow {
   id: string;
   project_id: string;
   iss_seq: number;
@@ -155,31 +143,6 @@ export async function reconcileIdleIssues(
 
   result.cleared = await clearRecovered(now, scope);
   return result;
-}
-
-/**
- * Whether the finding already on the row says the same thing as the one just built.
- *
- * `at` is the only field that moves on its own, and it is what makes the record say how long the
- * row has been reported rather than how long ago the last tick was — so an unchanged finding is
- * left exactly as it was written.
- */
-function unchangedStrand(held: unknown, next: StrandRecord): boolean {
-  if (held === null || typeof held !== 'object') return false;
-  const { at: _next, ...rest } = next;
-  const { at: _held, ...heldRest } = held as StrandRecord;
-  return canonical(heldRest) === canonical(rest);
-}
-
-/** Key order, which `jsonb` normalises on the way in and an object literal does not. */
-function canonical(value: unknown): string {
-  return JSON.stringify(value, (_key, v) =>
-    v !== null && typeof v === 'object' && !Array.isArray(v)
-      ? Object.fromEntries(
-          Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : 1)),
-        )
-      : v,
-  );
 }
 
 /** Whether this row is stranded, and what to write on it if it is. */
@@ -333,216 +296,4 @@ async function projectsWithAdmittedRunner(
        AND ${admittedRunner()}
   `)) as unknown as Array<{ project_id: string }>;
   return new Set(rows.map((r) => r.project_id));
-}
-
-/**
- * Write the finding onto the row, and release a lapsed lease. Guarded on the lease value read, under
- * the row lock, so a claim landing between read and write wins and this pass skips the row. The
- * finding goes through `jsonb_set` on its own key, so a concurrent write to another key survives;
- * the release goes to the lease's home, `issue_work_state` (ISS-54). `updated_at` is left alone:
- * it has no trigger, and a swept row must not read as freshly worked.
- */
-async function writeStrand(args: {
-  row: CandidateRow;
-  record: StrandRecord;
-  release: boolean;
-  now: Date;
-}): Promise<boolean> {
-  const { row, record, release, now } = args;
-  const entry = JSON.stringify({
-    at: now.toISOString(),
-    how: 'swept',
-    holder: leaseHolderOf(row.lease),
-    status: row.status,
-  });
-  const read = row.lease === null || row.lease === undefined ? null : JSON.stringify(row.lease);
-  return db.transaction(async (tx) => {
-    const held = (await tx.execute(sql`
-      SELECT 1 FROM issues i
-       WHERE i.id = ${row.id}
-         AND coalesce((SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id), 'null'::jsonb)
-             IS NOT DISTINCT FROM coalesce(${read}::jsonb, 'null'::jsonb)
-       FOR UPDATE OF i
-    `)) as unknown as Array<unknown>;
-    if (held.length === 0) {
-      logger.info(
-        { issueId: row.id },
-        'idle-issues: the lease moved between the read and the write — the row is left as the other writer left it',
-      );
-      return false;
-    }
-    await tx.execute(sql`
-      UPDATE issues i
-         SET session_context = jsonb_set(coalesce(i.session_context, '{}'::jsonb), '{strand}', ${JSON.stringify(record)}::jsonb, true)
-       WHERE i.id = ${row.id}
-    `);
-    if (release) {
-      await tx.execute(sql`
-        UPDATE issue_work_state w
-           SET lease = jsonb_set(
-                 jsonb_set(w.lease, '{stopped}', to_jsonb(${now.toISOString()}::text), true),
-                 '{history}',
-                 (CASE WHEN jsonb_typeof(w.lease -> 'history') = 'array'
-                       THEN w.lease -> 'history' ELSE '[]'::jsonb END) || ${entry}::jsonb,
-                 true),
-               updated_at = now()
-         WHERE w.issue_id = ${row.id} AND jsonb_typeof(w.lease) = 'object'
-      `);
-    }
-    return true;
-  });
-}
-
-/**
- * Clear a finding that has stopped holding.
- *
- * Without it the first strand a row is given is the last thing it ever says about itself, and a
- * recovered issue goes on claiming to be stuck — the same defect this pass exists to close, written
- * by the pass itself.
- */
-async function clearRecovered(now: Date, scope: { projectId?: string }): Promise<number> {
-  const scoped = scope.projectId ? sql`AND i.project_id = ${scope.projectId}` : sql``;
-  // This arm writes only to the rows it clears, so a page full of rows that are STILL stranded
-  // would be re-read every tick and hide every row behind them for ever. The cursor is what walks
-  // past them; it resumes after the last row read and wraps when a page comes back short.
-  const cursorKey = `idle-recovered:${scope.projectId ?? '*'}`;
-  const window = sweepWindow(cursorKey, now.toISOString());
-  const resume = window.after
-    ? sql`AND (i.updated_at, i.id) > (${window.after.ts}::timestamptz, ${window.after.id}::uuid)`
-    : sql``;
-  const rows = (await db.execute(sql`
-    SELECT i.id, i.status, i.updated_at,
-           i.updated_at::text AS cursor_ts,
-           (SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id)  AS lease,
-           i.session_context -> 'strand' AS strand,
-           (${NOTHING_LIVE_ON_THIS_ISSUE}) AS nothing_running
-      FROM issues i
-     WHERE i.session_context ? 'strand'
-       AND i.updated_at <= ${window.until}::timestamptz
-       ${scoped}
-       ${resume}
-     ORDER BY i.updated_at ASC, i.id ASC
-     LIMIT ${IDLE_SCAN_LIMIT}
-  `)) as unknown as Array<{
-    id: string;
-    status: string;
-    updated_at: string;
-    cursor_ts: string;
-    lease: unknown;
-    strand: unknown;
-    nothing_running: boolean;
-  }>;
-  const lastRow = rows.at(-1);
-  advanceSweep(
-    cursorKey,
-    window,
-    lastRow ? { ts: lastRow.cursor_ts, id: lastRow.id } : null,
-    rows.length === IDLE_SCAN_LIMIT,
-  );
-  if (rows.length === 0) return 0;
-
-  const fanout = await holderFanout(
-    rows.map((r) => r.lease),
-    now,
-  );
-  let cleared = 0;
-  for (const row of rows) {
-    if (stillStranded(row, now, fanout)) continue;
-    const held =
-      row.strand === null || row.strand === undefined ? null : JSON.stringify(row.strand);
-    const done = (await db.execute(sql`
-      UPDATE issues i
-         SET session_context = i.session_context - 'strand'
-       WHERE i.id = ${row.id}
-         AND coalesce(i.session_context -> 'strand', 'null'::jsonb)
-             IS NOT DISTINCT FROM coalesce(${held}::jsonb, 'null'::jsonb)
-      RETURNING i.id
-    `)) as unknown as Array<{ id: string }>;
-    if (done.length > 0) cleared += 1;
-  }
-  if (cleared > 0) logger.info({ cleared }, 'idle-issues: findings cleared on rows that recovered');
-  return cleared;
-}
-
-function stillStranded(
-  row: {
-    status: string;
-    updated_at: string;
-    lease: unknown;
-    strand: unknown;
-    nothing_running: boolean;
-  },
-  now: Date,
-  fanout: ReadonlyMap<string, number>,
-): boolean {
-  if (!row.nothing_running) return false;
-  const rule = strandRuleFor(row.status);
-  if (rule !== null && !rule.watch) return false;
-  const lease = readClaim(row.lease, now, fanout);
-  // A row that has MOVED carries a finding written at the status it left, whose new clock has not
-  // run out; holding the old finding through it shows progress as a standing failure. Asked of a
-  // row standing still, or of one whose holder is gone, it reads progress that never happened.
-  if (
-    hasMoved(row.status, row.strand) &&
-    !leaseShowsHolderGone(lease.verdict) &&
-    rule?.watch &&
-    !graceSpent(row.updated_at, rule.graceMs, now)
-  ) {
-    return false;
-  }
-  return !leaseIsWorkInProgress(lease.verdict);
-}
-
-/** Left the status its finding was written at; unreadable reads as moved, as this arm did before. */
-function hasMoved(status: string, strand: unknown): boolean {
-  if (strand === null || typeof strand !== 'object' || Array.isArray(strand)) return true;
-  const written = (strand as Record<string, unknown>).status;
-  return typeof written !== 'string' || written !== status;
-}
-
-/** Whether a row has stood at its status long enough for that status's own clock to say anything. */
-function graceSpent(updatedAt: string, graceMs: number, now: Date): boolean {
-  return now.getTime() - Date.parse(updatedAt) >= graceMs;
-}
-
-/** A reason closed by one full stop: a release hold's reason already ends in its own. */
-function asSentence(reason: string): string {
-  return /[.!?]$/.test(reason.trimEnd()) ? reason.trimEnd() : `${reason}.`;
-}
-
-async function surface(args: {
-  row: CandidateRow;
-  record: StrandRecord;
-  admins: ReadonlyMap<string, string[]>;
-  now: Date;
-}): Promise<number> {
-  const { row, record, admins, now } = args;
-  const recipients = admins.get(row.project_id) ?? [];
-  if (recipients.length === 0) return 0;
-  const ref = formatIssueRef(row.issue_prefix, row.iss_seq);
-  // `shared` and `malformed` are the two readings the classifier refuses to draw a conclusion
-  // from, so the headline may not draw one either: what was established there is that no live work
-  // could be confirmed, which is a different sentence from nobody working it.
-  const unconfirmed = record.lease === 'shared' || record.lease === 'malformed';
-  const headline = unconfirmed
-    ? `${ref} reads \`${record.status}\` and no live work could be confirmed — ${row.project_name}`
-    : `${ref} reads \`${record.status}\` and nothing is working it — ${row.project_name}`;
-  const opening = unconfirmed
-    ? `${ref} has read \`${record.status}\` since ${record.since} with no live job or run behind it, and a lease that establishes nothing either way.`
-    : `${ref} has read \`${record.status}\` since ${record.since} with no live job, run or lease behind it.`;
-  const sent = await emitNotification({
-    recipients,
-    projectId: row.project_id,
-    issueId: row.id,
-    type: 'issue_stranded',
-    resolutionKey: strandResolutionKey(row.id),
-    groupKey: sweepGroupKey('idle-issues', now),
-    groupTitle: 'Issues in a live status with no live work behind them',
-    title: headline,
-    body:
-      `${opening} ${asSentence(record.reason)} ` +
-      `It is waiting for ${record.waitingFor}, and ${record.owes === 'human' ? 'a person' : 'an agent'} owes the next move. ` +
-      'Nothing was moved: the finding is on the issue itself, under `strand`.',
-  });
-  return sent?.delivered ?? 0;
 }

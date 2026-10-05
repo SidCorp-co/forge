@@ -4,14 +4,6 @@
     "packages/core/src/agent-sessions/routes.ts": {
       "fileLines": 598,
       "maxFunctionLines": 0
-    },
-    "packages/core/src/issues/criteria/store.ts": {
-      "fileLines": 502,
-      "maxFunctionLines": 0
-    },
-    "packages/core/src/issues/standing.ts": {
-      "fileLines": 639,
-      "maxFunctionLines": 0
     }
   }
 }

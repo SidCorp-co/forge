@@ -1,28 +1,22 @@
 import { noPromptMessage, POOL_JOB_NO_PROMPT } from '@forge/contracts/jobs';
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { type IssueStatus, issuePriorities, issueStatuses } from '../db/schema.js';
+import { issuePriorities, issueStatuses } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
+import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { holds, requireHeld } from '../permissions/index.js';
+import { requireHeld } from '../permissions/index.js';
 import { triggerPipelineStepManual } from '../pipeline/index.js';
 import { statusChangeRows } from './activity-read.js';
-import { TransitionError, transitionIssueStatus } from './apply-transition.js';
-import { BATCH_SKIP_BY_CODE, type BatchSkipReason } from './batch-skip-reason.js';
-import { applyBatchFieldEdit, type IssueTriage } from './field-writes.js';
-import { activeIssuePrefix } from './issue-prefix-read.js';
+import { patchIssueBatch } from './batch-patch.js';
 import {
   issueRouteIdParamSchema,
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
-import { batchIssueRows, issueScopeOf, issueUsageTotals } from './read-service.js';
-import { triggerTerminalDispatch } from './transition.js';
+import { issueScopeOf, issueUsageTotals } from './read-service.js';
 
 const runPipelineStepBodySchema = z.object({}).strict();
 
@@ -52,210 +46,33 @@ const pipelineTimingQuerySchema = z
 export const issueExtrasRoutes = new Hono<{ Variables: AuthVars }>();
 issueExtrasRoutes.use('*', requireAuth(), assertEmailVerified());
 
-type BatchResult = {
-  updated: Array<{
-    id: string;
-    displayId: string;
-    skipReason?: BatchSkipReason;
-  }>;
-  skipped: Array<{ id: string; reason: BatchSkipReason }>;
-  failed: Array<{ id: string; error: string }>;
-};
+issueExtrasRoutes.patch('/batch', zValidator('json', batchPatchBodySchema), async (c) => {
+  const { ids, data } = c.req.valid('json');
+  return c.json(await patchIssueBatch(ids, data, c.get('userId'), restActor(c)));
+});
 
-issueExtrasRoutes.patch(
-  '/batch',
-  zValidator('json', batchPatchBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { ids, data } = c.req.valid('json');
-    const userId = c.get('userId');
-    const actor = restActor(c);
+issueExtrasRoutes.post('/:id/enrich', zValidator('param', idParamSchema), async (c) => {
+  const { id: issueId } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    const result: BatchResult = { updated: [], skipped: [], failed: [] };
+  const issue = await issueScopeOf(issueId);
+  if (!issue) throw notFound('issue not found');
 
-    const rows = await batchIssueRows(ids);
+  const access = await loadProjectAccess(issue.projectId, userId);
+  requireHeld(access, 'project.write');
 
-    const foundIds = new Set(rows.map((r) => r.id));
-    for (const id of ids) {
-      if (!foundIds.has(id)) result.skipped.push({ id, reason: 'not_found' });
-    }
-
-    const distinctProjects = [...new Set(rows.map((r) => r.projectId))];
-    type ProjectAccessState = { allowed: boolean; missing?: boolean };
-    const accessMap = new Map<string, ProjectAccessState>();
-    const accessResolutions = await Promise.all(
-      distinctProjects.map(async (projectId): Promise<[string, ProjectAccessState]> => {
-        try {
-          const access = await loadProjectAccess(projectId, userId);
-          return [projectId, { allowed: holds(access, 'project.write') }];
-        } catch (err) {
-          if (err instanceof HTTPException && err.status === 404) {
-            return [projectId, { allowed: false, missing: true }];
-          }
-          throw err;
-        }
-      }),
-    );
-    for (const [projectId, state] of accessResolutions) {
-      accessMap.set(projectId, state);
-    }
-
-    const prefixMap = new Map<string, string | null>(
-      await Promise.all(
-        distinctProjects.map(
-          async (projectId): Promise<[string, string | null]> => [
-            projectId,
-            await activeIssuePrefix(projectId),
-          ],
-        ),
-      ),
-    );
-
-    const terminalTransitions: Parameters<typeof triggerTerminalDispatch>[0] = [];
-
-    for (const row of rows) {
-      const access = accessMap.get(row.projectId);
-      if (access?.missing) {
-        result.skipped.push({ id: row.id, reason: 'not_found' });
-        continue;
-      }
-      if (!access?.allowed) {
-        result.skipped.push({ id: row.id, reason: 'forbidden' });
-        continue;
-      }
-
-      let touched = false;
-      let skipReason: BatchSkipReason | null = null;
-
-      try {
-        if (data.status !== undefined) {
-          const fromStatus = row.status as IssueStatus;
-          const toStatus = data.status;
-          try {
-            const transitioned = await transitionIssueStatus(
-              {
-                id: row.id,
-                projectId: row.projectId,
-                status: fromStatus,
-                reopenCount: row.reopenCount,
-              },
-              toStatus,
-              actor,
-            );
-            touched = true;
-            row.status = toStatus;
-            row.reopenCount = transitioned.reopenCount;
-            if (transitioned.terminal) {
-              terminalTransitions.push({
-                issueId: row.id,
-                projectId: row.projectId,
-                issSeq: row.issSeq,
-                at: transitioned.updatedAt,
-                ...(toStatus === 'dropped' ? { dependents: transitioned.unblockedDependents } : {}),
-              });
-            }
-          } catch (err) {
-            if (!(err instanceof TransitionError)) throw err;
-            // Single-issue `/transition` refuses these in the envelope. The batch
-            // surfaces them via skipReason instead so callers can see that
-            // the status request was rejected even when other fields
-            // succeeded.
-            skipReason = BATCH_SKIP_BY_CODE[err.code];
-          }
-        }
-
-        const plainUpdates: Record<string, unknown> = {};
-        const before: Record<string, unknown> = {};
-        const after: Record<string, unknown> = {};
-        const changedFields: string[] = [];
-        const plainFields = [
-          { key: 'priority' as const, next: data.priority, current: row.priority },
-          { key: 'category' as const, next: data.category, current: row.category },
-        ];
-        for (const f of plainFields) {
-          if (f.next !== undefined && f.next !== f.current) {
-            plainUpdates[f.key] = f.next;
-            before[f.key] = f.current;
-            after[f.key] = f.next;
-            changedFields.push(f.key);
-          }
-        }
-        if (changedFields.length > 0) {
-          await applyBatchFieldEdit(row, plainUpdates as IssueTriage, {
-            actor,
-            fields: changedFields,
-            before,
-            after,
-          });
-          touched = true;
-        }
-      } catch (err) {
-        result.failed.push({
-          id: row.id,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        continue;
-      }
-
-      if (touched) {
-        const entry: { id: string; displayId: string; skipReason?: BatchSkipReason } = {
-          id: row.id,
-          displayId: formatIssueRef(prefixMap.get(row.projectId) ?? null, row.issSeq),
-        };
-        // A status request that was rejected for this issue (no_op, illegal,
-        // reopen-cap, stale) must not be silently swallowed when other fields
-        // (priority/category) succeeded. Surface it on the updated
-        // entry so the caller can show a partial-success diagnostic.
-        if (skipReason) entry.skipReason = skipReason;
-        result.updated.push(entry);
-      } else if (skipReason) {
-        result.skipped.push({ id: row.id, reason: skipReason });
-      } else {
-        result.skipped.push({ id: row.id, reason: 'no_op' });
-      }
-    }
-
-    if (terminalTransitions.length > 0) {
-      await triggerTerminalDispatch(terminalTransitions);
-    }
-
-    return c.json(result);
-  },
-);
-
-issueExtrasRoutes.post(
-  '/:id/enrich',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id: issueId } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const issue = await issueScopeOf(issueId);
-    if (!issue) throw notFound('issue not found');
-
-    const access = await loadProjectAccess(issue.projectId, userId);
-    requireHeld(access, 'project.write');
-
-    // No enrich prompt is built anywhere, and the job pool runs only the prompt a
-    // job is minted with (ISS-1135).
-    throw new RefusalError(
-      [{ code: POOL_JOB_NO_PROMPT, path: '', detail: noPromptMessage('custom') }],
-      POOL_JOB_NO_PROMPT,
-    );
-  },
-);
+  // No enrich prompt is built anywhere, and the job pool runs only the prompt a
+  // job is minted with (ISS-1135).
+  throw new RefusalError(
+    [{ code: POOL_JOB_NO_PROMPT, path: '', detail: noPromptMessage('custom') }],
+    POOL_JOB_NO_PROMPT,
+  );
+});
 
 issueExtrasRoutes.post(
   '/:id/run-pipeline-step',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', runPipelineStepBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', runPipelineStepBodySchema),
   async (c) => {
     const { id: issueId } = c.req.valid('param');
     const userId = c.get('userId');
@@ -283,9 +100,7 @@ issueExtrasRoutes.post(
 // as the dwell time of `current.from` status. Returns avg/median/p90 per status.
 issueExtrasRoutes.get(
   '/pipeline-timing',
-  zValidator('query', pipelineTimingQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('query', pipelineTimingQuerySchema),
   async (c) => {
     const { projectId, from, to, limit } = c.req.valid('query');
     const userId = c.get('userId');
@@ -351,12 +166,8 @@ issueExtrasRoutes.get(
 
 issueExtrasRoutes.get(
   '/:id/cost-summary',
-  zValidator('param', issueRouteIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', projectScopeQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', issueRouteIdParamSchema),
+  zValidator('query', projectScopeQuerySchema),
   async (c) => {
     const { id: rawId } = c.req.valid('param');
     const { projectId: projectIdQuery } = c.req.valid('query');

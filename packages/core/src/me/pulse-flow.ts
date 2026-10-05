@@ -1,9 +1,9 @@
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { idList } from '../db/raw-sql.js';
 import { utcDateTrunc, utcDayText } from '../lib/time-buckets.js';
 import { walkFlow, weekStartsEnding } from './pulse-folds.js';
-import { idList } from './pulse-sql.js';
 import type { PulseFlowWeek } from './pulse-types.js';
 
 const toMap = (rows: Array<{ week: string; n: number }>) =>

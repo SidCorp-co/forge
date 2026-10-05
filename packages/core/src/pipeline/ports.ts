@@ -11,6 +11,7 @@ import type { RetentionStatements } from '../db/retention-shape.js';
 import type { IssueStatus, jobs, NotificationType } from '../db/schema.js';
 import type { sessionInbox } from '../db/schema-session-inbox.js';
 import type { Actor } from '../issues/index.js';
+import { portSlot } from '../lib/port-slot.js';
 import type { RefusalError } from '../lib/refusal.js';
 import type {
   KernelExecutor,
@@ -137,20 +138,10 @@ interface PipelinePorts {
   ) => RefusalError;
 }
 
-let ports: PipelinePorts | null = null;
-
-export function providePipelinePorts(given: PipelinePorts): void {
-  ports = given;
-}
-
-function pipelinePorts(): PipelinePorts {
-  if (!ports) {
-    throw new Error(
-      'pipeline: no ports were provided; the process entry calls providePipelinePorts before it serves',
-    );
-  }
-  return ports;
-}
+const slot = portSlot<PipelinePorts>('pipeline', 'providePipelinePorts');
+export const providePipelinePorts = slot.provide;
+const pipelinePorts = slot.get;
+const { port } = slot;
 
 export const SWEEP_SESSION_COLUMNS = [
   'id',
@@ -160,68 +151,38 @@ export const SWEEP_SESSION_COLUMNS = [
   'status',
 ] as const satisfies readonly (keyof SessionRow)[];
 
-export const insertJobRow: PipelinePorts['insertJobRow'] = (tx, values) =>
-  pipelinePorts().insertJobRow(tx, values);
-export const wakeMastersForProject: PipelinePorts['wakeMastersForProject'] = (args) =>
-  pipelinePorts().wakeMastersForProject(args);
-export const requestSessionSend: PipelinePorts['requestSessionSend'] = (req) =>
-  pipelinePorts().requestSessionSend(req);
-export const resolveSessionSend: PipelinePorts['resolveSessionSend'] = (row, now) =>
-  pipelinePorts().resolveSessionSend(row, now);
-export const transitionSessions: PipelinePorts['transitionSessions'] = (exec, args) =>
-  pipelinePorts().transitionSessions(exec, args);
-export const broadcastSessionEvent: PipelinePorts['broadcastSessionEvent'] = (...args) =>
-  pipelinePorts().broadcastSessionEvent(...args);
-export const getLoopThresholds: PipelinePorts['getLoopThresholds'] = () =>
-  pipelinePorts().getLoopThresholds();
-export const killGraceMs: PipelinePorts['killGraceMs'] = () => pipelinePorts().killGraceMs();
-export const parkedOnAHuman: PipelinePorts['parkedOnAHuman'] = (sessionId) =>
-  pipelinePorts().parkedOnAHuman(sessionId);
-export const requestJobKill: PipelinePorts['requestJobKill'] = (job, reason) =>
-  pipelinePorts().requestJobKill(job, reason);
-export const gateReasonsForQueuedJobsIn: PipelinePorts['gateReasonsForQueuedJobsIn'] = (ids) =>
-  pipelinePorts().gateReasonsForQueuedJobsIn(ids);
-export const readRunGate: PipelinePorts['readRunGate'] = (metadata, runId) =>
-  pipelinePorts().readRunGate(metadata, runId);
+export const insertJobRow = port('insertJobRow');
+export const wakeMastersForProject = port('wakeMastersForProject');
+export const requestSessionSend = port('requestSessionSend');
+export const resolveSessionSend = port('resolveSessionSend');
+export const transitionSessions = port('transitionSessions');
+export const broadcastSessionEvent = port('broadcastSessionEvent');
+export const getLoopThresholds = port('getLoopThresholds');
+export const killGraceMs = port('killGraceMs');
+export const parkedOnAHuman = port('parkedOnAHuman');
+export const requestJobKill = port('requestJobKill');
+export const gateReasonsForQueuedJobsIn = port('gateReasonsForQueuedJobsIn');
+export const readRunGate = port('readRunGate');
 export const admittedRunner = (): SQL => pipelinePorts().admittedRunner;
-export const usageSessionMatch: PipelinePorts['usageSessionMatch'] = (target) =>
-  pipelinePorts().usageSessionMatch(target);
-export const deriveSessionFinal: PipelinePorts['deriveSessionFinal'] = (jobId, sessionId) =>
-  pipelinePorts().deriveSessionFinal(jobId, sessionId);
-export const stampFinalizeAttempt: PipelinePorts['stampFinalizeAttempt'] = (sessionId, at) =>
-  pipelinePorts().stampFinalizeAttempt(sessionId, at);
+export const usageSessionMatch = port('usageSessionMatch');
+export const deriveSessionFinal = port('deriveSessionFinal');
+export const stampFinalizeAttempt = port('stampFinalizeAttempt');
 export const retentionStatements = (): RetentionStatements => pipelinePorts().retentionStatements;
 
-export const emitNotification: PipelinePorts['emitNotification'] = (input) =>
-  pipelinePorts().emitNotification(input);
-export const createNotification: PipelinePorts['createNotification'] = (input) =>
-  pipelinePorts().createNotification(input);
-export const resolveNotifications: PipelinePorts['resolveNotifications'] = (key, outcome) =>
-  pipelinePorts().resolveNotifications(key, outcome);
-export const projectAdminUserIds: PipelinePorts['projectAdminUserIds'] = (projectId) =>
-  pipelinePorts().projectAdminUserIds(projectId);
-export const projectAdminUserIdsFor: PipelinePorts['projectAdminUserIdsFor'] = (projectIds) =>
-  pipelinePorts().projectAdminUserIdsFor(projectIds);
-export const existingProjectHandle: PipelinePorts['existingProjectHandle'] = (tx, projectId) =>
-  pipelinePorts().existingProjectHandle(tx, projectId);
-export const resolveProjectHandle: PipelinePorts['resolveProjectHandle'] = (tx, projectId, as) =>
-  pipelinePorts().resolveProjectHandle(tx, projectId, as);
-export const retryRescuesSince: PipelinePorts['retryRescuesSince'] = (projectIds, since) =>
-  pipelinePorts().retryRescuesSince(projectIds, since);
+export const emitNotification = port('emitNotification');
+export const createNotification = port('createNotification');
+export const resolveNotifications = port('resolveNotifications');
+export const projectAdminUserIds = port('projectAdminUserIds');
+export const projectAdminUserIdsFor = port('projectAdminUserIdsFor');
+export const existingProjectHandle = port('existingProjectHandle');
+export const resolveProjectHandle = port('resolveProjectHandle');
+export const retryRescuesSince = port('retryRescuesSince');
 
-export const postIssueNotice: PipelinePorts['postIssueNotice'] = (notice, tx) =>
-  pipelinePorts().postIssueNotice(notice, tx);
-export const postIssueNoticeOnce: PipelinePorts['postIssueNoticeOnce'] = (notice) =>
-  pipelinePorts().postIssueNoticeOnce(notice);
-export const holdsOpenHumanQuestion: PipelinePorts['holdsOpenHumanQuestion'] = (issueId) =>
-  pipelinePorts().holdsOpenHumanQuestion(issueId);
-export const personOwesAnAnswer: PipelinePorts['personOwesAnAnswer'] = (executor, issueId) =>
-  pipelinePorts().personOwesAnAnswer(executor, issueId);
-export const refreshModuleKnowledgeForIssue: PipelinePorts['refreshModuleKnowledgeForIssue'] = (
-  input,
-) => pipelinePorts().refreshModuleKnowledgeForIssue(input);
+export const postIssueNotice = port('postIssueNotice');
+export const postIssueNoticeOnce = port('postIssueNoticeOnce');
+export const holdsOpenHumanQuestion = port('holdsOpenHumanQuestion');
+export const personOwesAnAnswer = port('personOwesAnAnswer');
+export const refreshModuleKnowledgeForIssue = port('refreshModuleKnowledgeForIssue');
 
-export const readEffectivePolicy: PipelinePorts['readEffectivePolicy'] = (projectId) =>
-  pipelinePorts().readEffectivePolicy(projectId);
-export const policyRefusal: PipelinePorts['policyRefusal'] = (code, projectId, status) =>
-  pipelinePorts().policyRefusal(code, projectId, status);
+export const readEffectivePolicy = port('readEffectivePolicy');
+export const policyRefusal = port('policyRefusal');

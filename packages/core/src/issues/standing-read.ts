@@ -19,14 +19,14 @@ import type { WorkStep } from '@forge/contracts/issue-vocabulary';
 import { changedSincePlan } from '@forge/contracts/requirements';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { rowsOf } from '../db/raw-sql.js';
 import type { WorkStepEntry } from '../db/schema-issue-work-state.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { holds } from '../permissions/index.js';
 import { type BlockingEdge, blockerUnsettledSql, blockingEdgesIn } from './blocked-by.js';
-import { readCurrentDrafts } from './criteria/storefront-draft.js';
-import { type DesignHold, designHoldPhrase } from './design-delivery.js';
+import { designHoldPhrase } from './design-delivery.js';
 import { issueWorkMovingSql } from './issue-lease.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { loadIssuePark } from './park-view.js';
@@ -36,12 +36,18 @@ import { classifyLease } from './session-claim.js';
 import {
   deriveIssueStanding,
   type IssueStandingInput,
-  issueBlockerOf,
   type StandingEdge,
-  type StepDurationFact,
-  stepOutcomesOf,
   wavesOf,
 } from './standing.js';
+import { issueBlockerOf } from './standing-blocker.js';
+import {
+  criteriaOf,
+  feedbackOf,
+  modulesOf,
+  type RequirementRaw,
+  requirementsOf,
+} from './standing-facts-read.js';
+import { type StepDurationFact, stepOutcomesOf } from './step-outcomes.js';
 
 /** The most rows one read answers; the list says so when a scope holds more. */
 export const STANDING_LIMIT = 500;
@@ -80,13 +86,6 @@ interface IssueRowRaw {
   holds_dependents: boolean;
 }
 
-const rowsOf = <T>(r: unknown) => [...(r as Iterable<T>)];
-const idList = (ids: readonly string[]) =>
-  sql.join(
-    ids.map((id) => sql`${id}`),
-    sql`, `,
-  );
-
 function scopeSql(scope: IssueStandingScope | 'one', key: number | null): SQL {
   if (scope === 'one') return sql`AND i.iss_seq = ${key}`;
   if (scope === 'open') return sql`AND i.status NOT IN ${DONE_SQL}`;
@@ -118,131 +117,6 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
        ORDER BY i.updated_at DESC
        LIMIT ${limit}`),
   );
-}
-
-interface CriteriaRaw {
-  issue_id: string;
-  verdict: 'pass' | 'short' | 'fail' | 'skipped' | null;
-  bc_code: string | null;
-  identity_kind: string | null;
-  storefront_workflow_id: string | null;
-  storefront_draft_version: string | null;
-  stands: boolean;
-}
-
-// cm:guard a passing verdict on a storefront draft passes only while the source still holds that
-// draft: one the source moved past, or cannot be read back, is not counted passing, so the list
-// never says every criterion passed of an issue the release hold keeps (FB-56)
-async function criteriaOf(projectId: string, ids: readonly string[]): Promise<CriteriaRaw[]> {
-  if (ids.length === 0) return [];
-  const rows = rowsOf<Omit<CriteriaRaw, 'stands'>>(
-    await db.execute(sql`
-      SELECT c.issue_id, v.verdict, rc.code AS bc_code, v.identity_kind,
-             v.storefront_workflow_id, v.storefront_draft_version
-        FROM issue_criteria c
-        LEFT JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id
-        LEFT JOIN LATERAL (
-          SELECT cv.verdict, cv.identity_kind, cv.storefront_workflow_id, cv.storefront_draft_version
-            FROM criterion_verdicts cv
-           WHERE cv.criterion_id = c.id
-           ORDER BY cv.created_at DESC, cv.id DESC
-           LIMIT 1
-        ) v ON true
-       WHERE c.issue_id IN (${idList(ids)}) AND c.retired_at IS NULL
-       ORDER BY c.issue_id, c.position, c.n`),
-  );
-  const drafts = rows.flatMap((r) =>
-    r.identity_kind === 'storefront_draft' && r.storefront_workflow_id
-      ? [r.storefront_workflow_id]
-      : [],
-  );
-  const current = await readCurrentDrafts(projectId, drafts);
-  return rows.map((r) => ({
-    ...r,
-    stands:
-      r.identity_kind !== 'storefront_draft' ||
-      (!!r.storefront_workflow_id &&
-        current({
-          workflowId: r.storefront_workflow_id,
-          draftVersion: r.storefront_draft_version ?? '',
-        }).corroboration === 'corroborated'),
-  }));
-}
-
-interface RequirementRaw {
-  id: string;
-  req_seq: number;
-  title: string;
-  current_revision: number | null;
-  latest_baseline_seq: number | null;
-}
-
-async function requirementsOf(ids: readonly string[]): Promise<Map<string, RequirementRaw>> {
-  if (ids.length === 0) return new Map();
-  const rows = rowsOf<RequirementRaw>(
-    await db.execute(
-      sql`SELECT r.id, r.req_seq, r.title, r.current_revision,
-                 (SELECT max(b.seq) FROM requirement_baselines b
-                   WHERE b.requirement_id = r.id AND b.revision = r.current_revision) AS latest_baseline_seq
-            FROM requirements r WHERE r.id IN (${idList(ids)})`,
-    ),
-  );
-  return new Map(rows.map((r) => [r.id, r]));
-}
-
-interface ModuleRaw {
-  issue_id: string | null;
-  id: string;
-  name: string;
-  slug: string;
-  parent_id: string | null;
-  is_primary: boolean | null;
-}
-
-/** Each issue's module: its primary module label, else its first; the path runs from the root. */
-async function modulesOf(projectId: string, ids: readonly string[]) {
-  const out = new Map<string, { id: string; path: string; name: string }>();
-  if (ids.length === 0) return out;
-  const [all, links] = await Promise.all([
-    db.execute(sql`
-      SELECT NULL::uuid AS issue_id, id, name, slug, parent_id, NULL::boolean AS is_primary
-        FROM labels WHERE project_id = ${projectId} AND kind = 'module'`),
-    db.execute(sql`
-      SELECT il.issue_id, l.id, l.name, l.slug, l.parent_id, il.is_primary
-        FROM issue_labels il JOIN labels l ON l.id = il.label_id
-       WHERE il.issue_id IN (${idList(ids)}) AND l.kind = 'module'
-       ORDER BY il.is_primary DESC, l.name`),
-  ]);
-  const byId = new Map(rowsOf<ModuleRaw>(all).map((m) => [m.id, m]));
-  const pathOf = (m: ModuleRaw) => {
-    const parts = [m.slug];
-    const seen = new Set([m.id]);
-    let at = m.parent_id ? byId.get(m.parent_id) : undefined;
-    while (at && !seen.has(at.id)) {
-      parts.unshift(at.slug);
-      seen.add(at.id);
-      at = at.parent_id ? byId.get(at.parent_id) : undefined;
-    }
-    return parts.join('/');
-  };
-  for (const l of rowsOf<ModuleRaw>(links)) {
-    if (!l.issue_id || out.has(l.issue_id)) continue;
-    out.set(l.issue_id, { id: l.id, path: pathOf(l), name: l.name });
-  }
-  return out;
-}
-
-async function feedbackOf(ids: readonly string[]): Promise<Map<string, string[]>> {
-  const out = new Map<string, string[]>();
-  if (ids.length === 0) return out;
-  const rows = rowsOf<{ routed_issue_id: string; fb_seq: number }>(
-    await db.execute(sql`
-      SELECT routed_issue_id, fb_seq FROM feedback
-       WHERE routed_issue_id IN (${idList(ids)}) ORDER BY fb_seq`),
-  );
-  for (const r of rows)
-    out.set(r.routed_issue_id, [...(out.get(r.routed_issue_id) ?? []), `FB-${r.fb_seq}`]);
-  return out;
 }
 
 function leaseOf(raw: unknown, now: Date): IssueLeaseView | null {
@@ -279,6 +153,101 @@ async function viewerOf(viewer: StandingViewer | null, projectId: string) {
   };
 }
 
+type Facts = {
+  key: (seq: number) => string;
+  edges: BlockingEdge[];
+  criteria: Awaited<ReturnType<typeof criteriaOf>>;
+  requirements: Awaited<ReturnType<typeof requirementsOf>>;
+  modules: Awaited<ReturnType<typeof modulesOf>>;
+  feedback: Awaited<ReturnType<typeof feedbackOf>>;
+  people: Awaited<ReturnType<typeof peopleOf>>;
+  releaseApproval: boolean;
+  viewer: Awaited<ReturnType<typeof viewerOf>>;
+  now: Date;
+};
+
+/** One end of a live `blocks` edge, as the standing reads it: the blocker or the dependent. */
+function edgeEnd(e: BlockingEdge, side: 'from' | 'to', key: Facts['key']): StandingEdge {
+  const design = side === 'from' ? e.fromDesign : e.toDesign;
+  return {
+    id: side === 'from' ? e.fromId : e.toId,
+    key: key(side === 'from' ? e.fromSeq : e.toSeq),
+    title: side === 'from' ? e.fromTitle : e.toTitle,
+    status: side === 'from' ? e.fromStatus : e.toStatus,
+    merged: side === 'from' ? e.fromMerged : e.toMerged,
+    step: side === 'from' ? e.fromStep : e.toStep,
+    designHold: design?.length ? designHoldPhrase(design) : null,
+    holds: e.holds,
+  };
+}
+
+function requirementRef(
+  r: IssueRowRaw,
+  req: RequirementRaw | undefined,
+  mine: Facts['criteria'],
+): IssueStandingInput['requirement'] {
+  if (!req) return null;
+  return {
+    key: `REQ-${req.req_seq}`,
+    title: req.title,
+    criteria: [...new Set(mine.map((c) => c.bc_code).filter((c): c is string => !!c))].sort(
+      (a, b) => Number(a.slice(3)) - Number(b.slice(3)),
+    ),
+    plannedRevision: r.planned_revision,
+    currentRevision: req.current_revision,
+    changedSincePlan: changedSincePlan({
+      plan: r.plan,
+      plannedRevision: r.planned_revision,
+      currentRevision: req.current_revision,
+      plannedBaselineSeq: r.planned_baseline_seq,
+      latestBaselineSeq: req.latest_baseline_seq,
+    }),
+  };
+}
+
+function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
+  const mine = f.criteria.filter((c) => c.issue_id === r.id);
+  const ownerId = r.assignee_id ?? r.created_by_id;
+  const owner = ownerId ? f.people.get(ownerId) : undefined;
+  return {
+    status: r.status,
+    leftStatus: r.left_status,
+    holdsDependents: r.holds_dependents,
+    waitingKind: r.waiting_kind,
+    merged: r.merged_at !== null,
+    step: r.step,
+    stepStartedAt: r.step_started_at ? new Date(r.step_started_at) : null,
+    lease: leaseOf(r.lease, f.now),
+    inFlight: r.moving,
+    owesAnswer: r.owes_answer,
+    blockedBy: f.edges.filter((e) => e.toId === r.id).map((e) => edgeEnd(e, 'from', f.key)),
+    blocks: f.edges.filter((e) => e.fromId === r.id).map((e) => edgeEnd(e, 'to', f.key)),
+    criteria: {
+      total: mine.length,
+      passing: mine.filter((c) => c.stands && (c.verdict === 'pass' || c.verdict === 'short'))
+        .length,
+      failing: mine.filter((c) => c.verdict === 'fail').length,
+      skipped: mine.filter((c) => c.verdict === 'skipped').length,
+    },
+    requirement: requirementRef(
+      r,
+      r.requirement_id ? f.requirements.get(r.requirement_id) : undefined,
+      mine,
+    ),
+    module: f.modules.get(r.id) ?? null,
+    feedback: f.feedback.get(r.id) ?? [],
+    branch: r.branch,
+    headSha: r.head_sha,
+    owner: ownerId
+      ? { id: ownerId, name: owner?.name ?? null, kind: owner?.kind ?? 'human' }
+      : null,
+    touchedAt: latest(r.updated_at, r.ws_updated_at, r.last_activity),
+    releaseApproval: f.releaseApproval,
+    viewer: f.viewer,
+    now: f.now,
+  };
+}
+
 async function standingRows(
   projectId: string,
   raws: readonly IssueRowRaw[],
@@ -300,89 +269,20 @@ async function standingRows(
     requirementsOf([...new Set(raws.map((r) => r.requirement_id).filter((x): x is string => !!x))]),
     peopleOf(raws.flatMap((r) => [r.assignee_id, r.created_by_id])),
   ]);
-  const phrase = (holds: readonly DesignHold[] | undefined) =>
-    holds?.length ? designHoldPhrase(holds) : null;
   const key = (seq: number) => formatIssueRef(prefix, seq);
-  const blocker = (e: BlockingEdge): StandingEdge => ({
-    id: e.fromId,
-    key: key(e.fromSeq),
-    title: e.fromTitle,
-    status: e.fromStatus,
-    merged: e.fromMerged,
-    step: e.fromStep,
-    designHold: phrase(e.fromDesign),
-    holds: e.holds,
-  });
-  const dependent = (e: BlockingEdge): StandingEdge => ({
-    id: e.toId,
-    key: key(e.toSeq),
-    title: e.toTitle,
-    status: e.toStatus,
-    merged: e.toMerged,
-    step: e.toStep,
-    designHold: phrase(e.toDesign),
-    holds: e.holds,
-  });
-
-  const inputs = raws.map((r): [IssueRowRaw, IssueStandingInput] => {
-    const mine = criteria.filter((c) => c.issue_id === r.id);
-    const req = r.requirement_id ? requirements.get(r.requirement_id) : undefined;
-    const ownerId = r.assignee_id ?? r.created_by_id;
-    const owner = ownerId ? people.get(ownerId) : undefined;
-    return [
-      r,
-      {
-        status: r.status,
-        leftStatus: r.left_status,
-        holdsDependents: r.holds_dependents,
-        waitingKind: r.waiting_kind,
-        merged: r.merged_at !== null,
-        step: r.step,
-        stepStartedAt: r.step_started_at ? new Date(r.step_started_at) : null,
-        lease: leaseOf(r.lease, now),
-        inFlight: r.moving,
-        owesAnswer: r.owes_answer,
-        blockedBy: edges.filter((e) => e.toId === r.id).map(blocker),
-        blocks: edges.filter((e) => e.fromId === r.id).map(dependent),
-        criteria: {
-          total: mine.length,
-          passing: mine.filter((c) => c.stands && (c.verdict === 'pass' || c.verdict === 'short'))
-            .length,
-          failing: mine.filter((c) => c.verdict === 'fail').length,
-          skipped: mine.filter((c) => c.verdict === 'skipped').length,
-        },
-        requirement: req
-          ? {
-              key: `REQ-${req.req_seq}`,
-              title: req.title,
-              criteria: [
-                ...new Set(mine.map((c) => c.bc_code).filter((c): c is string => !!c)),
-              ].sort((a, b) => Number(a.slice(3)) - Number(b.slice(3))),
-              plannedRevision: r.planned_revision,
-              currentRevision: req.current_revision,
-              changedSincePlan: changedSincePlan({
-                plan: r.plan,
-                plannedRevision: r.planned_revision,
-                currentRevision: req.current_revision,
-                plannedBaselineSeq: r.planned_baseline_seq,
-                latestBaselineSeq: req.latest_baseline_seq,
-              }),
-            }
-          : null,
-        module: modules.get(r.id) ?? null,
-        feedback: feedback.get(r.id) ?? [],
-        branch: r.branch,
-        headSha: r.head_sha,
-        owner: ownerId
-          ? { id: ownerId, name: owner?.name ?? null, kind: owner?.kind ?? 'human' }
-          : null,
-        touchedAt: latest(r.updated_at, r.ws_updated_at, r.last_activity),
-        releaseApproval,
-        viewer: who,
-        now,
-      },
-    ];
-  });
+  const facts: Facts = {
+    key,
+    edges,
+    criteria,
+    requirements,
+    modules,
+    feedback,
+    people,
+    releaseApproval,
+    viewer: who,
+    now,
+  };
+  const inputs = raws.map((r): [IssueRowRaw, IssueStandingInput] => [r, standingInputOf(r, facts)]);
   const groups = new Map<string, IssueAttentionGroup>(
     inputs.map(([r, input]) => [r.id, deriveIssueStanding(input).attentionGroup]),
   );

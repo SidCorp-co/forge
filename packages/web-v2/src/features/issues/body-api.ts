@@ -2,7 +2,7 @@
 import type { BodyNode } from "@forge/contracts";
 import { apiClient } from "@/lib/api/client";
 
-export interface BodyPreview {
+interface BodyPreview {
   body: string;
   format: string;
   template: string | null;

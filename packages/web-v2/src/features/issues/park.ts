@@ -14,7 +14,7 @@ import type { IssuePark, IssueStatus } from "./types";
  * Keyed under the issue's comments, so a park record posted after the move is read when the thread
  * refreshes, and on the status, so a move reads the park it lands in.
  */
-export const parkQueryKey = (issueId: string | undefined, status: IssueStatus | undefined) =>
+const parkQueryKey = (issueId: string | undefined, status: IssueStatus | undefined) =>
 	["comments", issueId, "park", status] as const;
 
 export function useIssuePark(
@@ -31,12 +31,12 @@ export function useIssuePark(
 	return { state: "ready", park: q.data.park };
 }
 
-export const ANSWER_LABEL = "Answer the question";
-export const NOT_NEEDED_LABEL = "The question is not needed any more…";
-export const MOVE_ANYWAY_LABEL = "Move anyway…";
-export const NO_RUNG_LABEL = "Nothing says where this issue picks up again";
-export const PARK_LOADING_LABEL = "Reading what this issue is waiting on…";
-export const PARK_ERROR_LABEL = "Couldn't read what this issue is waiting on, so no resume is offered";
+const ANSWER_LABEL = "Answer the question";
+const NOT_NEEDED_LABEL = "The question is not needed any more…";
+const MOVE_ANYWAY_LABEL = "Move anyway…";
+const NO_RUNG_LABEL = "Nothing says where this issue picks up again";
+const PARK_LOADING_LABEL = "Reading what this issue is waiting on…";
+const PARK_ERROR_LABEL = "Couldn't read what this issue is waiting on, so no resume is offered";
 
 export interface ParkMenuActions {
 	answer: () => void;

@@ -102,7 +102,7 @@ export interface IssueWorkStateRow {
 }
 
 /** The detail read's work state: the list row's, plus the step log. */
-export interface IssueWorkState extends IssueWorkStateRow {
+interface IssueWorkState extends IssueWorkStateRow {
   steps: WorkStepEntry[];
 }
 

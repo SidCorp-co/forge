@@ -6,7 +6,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { restActor } from '../middleware/auth.js';
 import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth.js';
-import { forbidden, notFound } from '../middleware/route-errors.js';
+import { forbidden, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
 import { safeRecordActivity } from './activity.js';
@@ -22,7 +22,6 @@ import { attachmentWithProject, issueScopeOf, listIssueAttachments } from './rea
 const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
   new HTTPException(400, { message, cause: { code, details } });
 
-const issueIdParamSchema = z.object({ id: z.uuid() });
 const attachmentIdParamSchema = z.object({ id: z.uuid() });
 
 /**
@@ -45,7 +44,7 @@ issueAttachmentRoutes.post(
   uploadBodyLimit(() => {
     throw badRequest('file too large', 'FILE_TOO_LARGE');
   }),
-  zValidator('param', issueIdParamSchema, (r) => {
+  zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', r.error);
   }),
   rawBody(

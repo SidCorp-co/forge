@@ -6,11 +6,7 @@
  * nothing written. The guards are `rules.ts`, the reads `read.ts`.
  */
 
-import type {
-  QuestionnaireAnswer,
-  QuestionnaireItem,
-  QuestionnaireView,
-} from '@forge/contracts/onboarding';
+import type { QuestionnaireItem, QuestionnaireView } from '@forge/contracts/onboarding';
 import { QUESTIONNAIRE_MACHINE } from '@forge/contracts/onboarding-machine';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
@@ -19,48 +15,29 @@ import { db } from '../db/client.js';
 import { conversations } from '../db/schema-conversations.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions, type QuestionOrigin, type QuestionStep } from '../db/schema-questions.js';
-import { dataPolicyOf, storedAnswers } from '../lib/data-egress.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
-import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';
-import { permissionFactsOf } from '../permissions/index.js';
+import { type KernelActor, transition } from '../lifecycle/index.js';
 import { insertBatchQuestions } from '../questions/index.js';
 import {
   announceConversationChange,
   appendMessagesIn,
   handleForProject,
-  openOrExtendWindow,
   type TxOnly,
 } from './ports.js';
-import {
-  type BatchRow,
-  batchIn,
-  batchView,
-  type Executor,
-  itemsOf,
-  openBatchOf,
-  priorAnswers,
-  type StoredItem,
-} from './read.js';
-import {
-  alreadyOpenRefusal,
-  answerRefusals,
-  itemRefusals,
-  repeatRefusals,
-  submitStateRefusal,
-  submitterRefusal,
-} from './rules.js';
-import { answersText, questionnaireText } from './text.js';
+import { openBatchOf, priorAnswers, type StoredItem } from './read.js';
+import { alreadyOpenRefusal, itemRefusals, repeatRefusals } from './rules.js';
+import { questionnaireText } from './text.js';
 
-function questionnaireKernelActor(actor: QuestionnaireActor): KernelActor {
+export function questionnaireKernelActor(actor: QuestionnaireActor): KernelActor {
   return { type: 'user', id: actor.userId, agency: actor.agency };
 }
 
-interface QuestionnaireActor {
+export interface QuestionnaireActor {
   userId: string;
   agency: ActorAgency;
 }
 
-type QuestionnaireOutcome =
+export type QuestionnaireOutcome =
   | { ok: true; questionnaire: QuestionnaireView; created?: boolean }
   | { ok: false; refusals: Refusal[] };
 
@@ -133,40 +110,83 @@ interface PostInput {
   items: readonly QuestionnaireItem[];
 }
 
+/** Why this batch may not be posted now: a malformed item, a batch already open, an item answered
+ *  or rejected in this series, or a requirement already holding an open ask. */
+async function postRefusals(tx: TxOnly, input: PostInput): Promise<Refusal[]> {
+  const shape = itemRefusals(input.items);
+  if (shape.length) return shape;
+  const busy = alreadyOpenRefusal(await openBatchOf(tx, input.conversationId));
+  if (busy) return [busy];
+  const prior = await priorAnswers(tx, input.conversationId, input.seriesSince);
+  const repeats = repeatRefusals(input.items, prior.answered, prior.rejected);
+  if (repeats.length || !input.requirementId) return repeats;
+  const [single] = await tx
+    .select({ id: agentQuestions.id })
+    .from(agentQuestions)
+    .where(
+      and(eq(agentQuestions.requirementId, input.requirementId), eq(agentQuestions.status, 'open')),
+    )
+    .limit(1);
+  if (!single) return [];
+  return [
+    {
+      code: 'CLARIFICATION_ALREADY_OPEN',
+      path: '',
+      detail: `question ${single.id} is still open on this requirement; at most one ask is open per item (Q5), and a batch is one. Wait for its answer.`,
+    },
+  ];
+}
+
+/**
+ * What a new batch settles in the thread before it. What stayed open in an answered batch is asked
+ * again here or not at all, so its rows close as carried and no decision is open twice; and an
+ * answer to a superseded batch is refused naming its replacement, which is this one.
+ */
+async function settleEarlierBatches(tx: TxOnly, input: PostInput, batchId: string): Promise<void> {
+  const answeredBefore = await tx
+    .select({ id: questionnaireBatches.id })
+    .from(questionnaireBatches)
+    .where(
+      and(
+        eq(questionnaireBatches.conversationId, input.conversationId),
+        eq(questionnaireBatches.status, 'submitted'),
+      ),
+    );
+  if (answeredBefore.length) {
+    const why = `carried into questionnaire ${batchId}`;
+    await transition(tx, QUESTION_MACHINE, {
+      to: 'void',
+      from: 'open',
+      set: { voidReason: why, updatedAt: new Date() },
+      where: inArray(
+        agentQuestions.batchId,
+        answeredBefore.map((b) => b.id),
+      ),
+      reason: why,
+      actor: questionnaireKernelActor(input.actor),
+      source: 'questionnaire',
+      returning: ['id'],
+    });
+  }
+  await tx
+    .update(questionnaireBatches)
+    .set({ supersededBy: batchId })
+    .where(
+      and(
+        eq(questionnaireBatches.conversationId, input.conversationId),
+        eq(questionnaireBatches.status, 'superseded'),
+        isNull(questionnaireBatches.supersededBy),
+      ),
+    );
+}
+
 /** Posts one batch in the caller's transaction; the caller holds the thread's lock and checked who may. */
 export async function postQuestionnaireIn(
   tx: TxOnly,
   input: PostInput,
 ): Promise<Refusal[] | { batchId: string; messageId: string }> {
-  const shape = itemRefusals(input.items);
-  if (shape.length) return shape;
-  const open = await openBatchOf(tx, input.conversationId);
-  const busy = alreadyOpenRefusal(open);
-  if (busy) return [busy];
-  const prior = await priorAnswers(tx, input.conversationId, input.seriesSince);
-  const repeats = repeatRefusals(input.items, prior.answered, prior.rejected);
-  if (repeats.length) return repeats;
-  if (input.requirementId) {
-    const [single] = await tx
-      .select({ id: agentQuestions.id })
-      .from(agentQuestions)
-      .where(
-        and(
-          eq(agentQuestions.requirementId, input.requirementId),
-          eq(agentQuestions.status, 'open'),
-        ),
-      )
-      .limit(1);
-    if (single) {
-      return [
-        {
-          code: 'CLARIFICATION_ALREADY_OPEN',
-          path: '',
-          detail: `question ${single.id} is still open on this requirement; at most one ask is open per item (Q5), and a batch is one. Wait for its answer.`,
-        },
-      ];
-    }
-  }
+  const refusals = await postRefusals(tx, input);
+  if (refusals.length) return refusals;
   const [room] = await tx
     .select({ externalId: conversations.externalId, adapter: conversations.adapter })
     .from(conversations)
@@ -233,45 +253,7 @@ export async function postQuestionnaireIn(
     .update(questionnaireBatches)
     .set({ messageId: message.id })
     .where(eq(questionnaireBatches.id, batch.id));
-  // cm:why what stayed open in an answered batch is asked again here or not at all: its rows close
-  // as carried, so no decision is open twice
-  const answeredBefore = await tx
-    .select({ id: questionnaireBatches.id })
-    .from(questionnaireBatches)
-    .where(
-      and(
-        eq(questionnaireBatches.conversationId, input.conversationId),
-        eq(questionnaireBatches.status, 'submitted'),
-      ),
-    );
-  if (answeredBefore.length) {
-    const why = `carried into questionnaire ${batch.id}`;
-    await transition(tx, QUESTION_MACHINE, {
-      to: 'void',
-      from: 'open',
-      set: { voidReason: why, updatedAt: new Date() },
-      where: inArray(
-        agentQuestions.batchId,
-        answeredBefore.map((b) => b.id),
-      ),
-      reason: why,
-      actor: questionnaireKernelActor(input.actor),
-      source: 'questionnaire',
-      returning: ['id'],
-    });
-  }
-  // cm:why an answer to a superseded batch is refused naming the batch that replaced it: the next
-  // batch posted in the thread is that replacement
-  await tx
-    .update(questionnaireBatches)
-    .set({ supersededBy: batch.id })
-    .where(
-      and(
-        eq(questionnaireBatches.conversationId, input.conversationId),
-        eq(questionnaireBatches.status, 'superseded'),
-        isNull(questionnaireBatches.supersededBy),
-      ),
-    );
+  await settleEarlierBatches(tx, input, batch.id);
   return { batchId: batch.id, messageId: message.id };
 }
 
@@ -302,158 +284,4 @@ export async function supersedeOpenIn(tx: TxOnly, onboardingId: string, reason: 
     returning: ['id'],
   });
   return open.map((b) => b.id);
-}
-
-function answeredStep(
-  step: QuestionStep,
-  item: QuestionnaireItem,
-  a: QuestionnaireAnswer,
-  by: string,
-  at: string,
-): QuestionStep {
-  const stamp = { answeredAt: at, answeredBy: by };
-  if (step.answerShape === 'free_text') return { ...step, ...stamp, answerText: a.text ?? '' };
-  const chosen =
-    item.control === 'accept_reject'
-      ? a.decision
-      : item.control === 'multi'
-        ? a.choices?.[0]
-        : a.choice;
-  const choice = { ...step, ...stamp, chosenOptionId: chosen ?? '' };
-  // cm:why a multi item keeps every pick beside the first; the step type names one chosen option
-  return item.control === 'multi'
-    ? ({ ...choice, chosenOptionIds: a.choices ?? [] } as QuestionStep)
-    : choice;
-}
-
-interface SubmitInput {
-  projectId: string;
-  batchId: string;
-  actor: QuestionnaireActor;
-  answers: readonly QuestionnaireAnswer[];
-  skip?: boolean | undefined;
-  /** What the thread's owner writes in the same transaction: an onboarding goes back to the agent. */
-  onSubmittedIn?: ((tx: TxOnly, batch: BatchRow, skipped: boolean) => Promise<void>) | undefined;
-}
-
-// cm:why one submit for the whole batch (BC-7): every answer, the user's answers message and the
-// batch's state land in one write or none does, and an unanswered item stays open
-export async function submitAnswers(input: SubmitInput): Promise<QuestionnaireOutcome> {
-  const who = submitterRefusal(await permissionFactsOf(input.actor.userId, input.projectId));
-  if (who) return { ok: false, refusals: [who] };
-  const skip = input.skip === true;
-  const answers = storedAnswers(await dataPolicyOf(input.projectId), input.answers);
-  let conversationId = '';
-  let messageId: string | null = null;
-  const refused = await inTx(async (tx) => {
-    const batch = await batchIn(tx, input.projectId, input.batchId, true);
-    conversationId = batch.conversationId;
-    const state = submitStateRefusal(batch, skip);
-    if (state) return [state];
-    if (skip && answers.length > 0) {
-      return [
-        {
-          code: 'QUESTIONNAIRE_ANSWER_INVALID',
-          path: '/skip',
-          detail:
-            'Skip for now sends no answers; send the answers without skip to answer some now.',
-        },
-      ];
-    }
-    const rows = await itemsOf(tx, [batch.id]);
-    const byId = new Map(
-      rows.map((r) => [
-        (r.item as StoredItem).id,
-        { item: r.item as StoredItem, open: r.status === 'open', row: r },
-      ]),
-    );
-    const refusals = answerRefusals(byId, answers, skip);
-    if (refusals.length) return refusals;
-    const now = new Date();
-    if (skip) {
-      const skipped = await transition(tx, QUESTIONNAIRE_MACHINE, {
-        to: 'skipped',
-        expect: batch.status,
-        set: { skippedBy: input.actor.userId, skippedAt: now },
-        where: eq(questionnaireBatches.id, batch.id),
-        actor: questionnaireKernelActor(input.actor),
-        source: 'questionnaire-submit',
-        returning: ['id'],
-      });
-      movedRow(skipped);
-      await input.onSubmittedIn?.(tx, batch, true);
-      return null;
-    }
-    const at = now.toISOString();
-    const given = new Map<string, Omit<QuestionnaireAnswer, 'itemId'>>();
-    for (const a of answers) {
-      const entry = byId.get(a.itemId);
-      if (!entry) continue;
-      const { itemId: _id, ...answer } = a;
-      given.set(a.itemId, answer);
-      const steps = entry.row.steps;
-      const last = steps.at(-1);
-      if (!last) throw new Error(`questionnaires: item ${a.itemId} has no step`);
-      const answered = await transition(tx, QUESTION_MACHINE, {
-        to: 'answered',
-        expect: entry.row.status,
-        set: {
-          steps: [...steps.slice(0, -1), answeredStep(last, entry.item, a, input.actor.userId, at)],
-          updatedAt: now,
-        },
-        where: eq(agentQuestions.id, entry.row.id),
-        actor: questionnaireKernelActor(input.actor),
-        source: 'questionnaire-submit',
-        returning: ['id'],
-      });
-      movedRow(answered);
-    }
-    const items = [...byId.values()]
-      .filter((e) => e.open)
-      .sort((x, y) => x.item.position - y.item.position)
-      .map((e) => e.item);
-    const [message] = await appendMessagesIn(tx, {
-      conversationId: batch.conversationId,
-      messages: [
-        {
-          role: 'user',
-          authorUserId: input.actor.userId,
-          content: answersText({ title: batch.title, round: batch.round, items, answers: given }),
-          blocks: [{ type: 'questionnaire_answers', batchId: batch.id }],
-        },
-      ],
-    });
-    messageId = message?.id ?? null;
-    // cm:why in a BA requirement room the answers are the person's turn: a window opens on them, so the
-    // BA assistant answers as it would a typed message; an onboarding thread hands back through a job
-    if (batch.requirementId && message) {
-      await openOrExtendWindow(
-        {
-          conversationId: batch.conversationId,
-          projectId: input.projectId,
-          adapter: 'web',
-          seq: message.seq,
-        },
-        tx as never,
-      );
-    }
-    const submitted = await transition(tx, QUESTIONNAIRE_MACHINE, {
-      to: 'submitted',
-      expect: batch.status,
-      set: { submittedBy: input.actor.userId, submittedAt: now, answersMessageId: messageId },
-      where: eq(questionnaireBatches.id, batch.id),
-      actor: questionnaireKernelActor(input.actor),
-      source: 'questionnaire-submit',
-      returning: ['id'],
-    });
-    movedRow(submitted);
-    await input.onSubmittedIn?.(tx, batch, false);
-    return null;
-  });
-  if (refused) return { ok: false, refusals: refused };
-  await announce(conversationId, messageId, 'user');
-  return {
-    ok: true,
-    questionnaire: await batchView(db as Executor, input.projectId, input.batchId),
-  };
 }

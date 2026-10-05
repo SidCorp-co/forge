@@ -16,14 +16,14 @@ import { db } from '../db/client.js';
 import { issueLabels, issues, labels } from '../db/schema.js';
 import { issueArchiveSide } from '../issues/index.js';
 
-export interface ModuleDriftNode {
+interface ModuleDriftNode {
   labelId: string;
   name: string;
   slug: string | null;
   knowledgeEntryId: string | null;
 }
 
-export interface ModuleDriftEdge {
+interface ModuleDriftEdge {
   a: ModuleDriftNode;
   b: ModuleDriftNode;
   issueCount: number;
@@ -38,7 +38,7 @@ interface ModuleDriftDeclaredEdge {
   issueCount: number;
 }
 
-export interface ModuleDriftResponse {
+interface ModuleDriftResponse {
   generatedAt: string;
   layer: 'module-taxonomy';
   minCoOccurrence: number;

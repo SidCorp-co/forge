@@ -20,7 +20,7 @@ interface UnblockCascadePayload {
 	overflow: number;
 }
 
-export function describeCascade(d: UnblockCascadePayload): string {
+function describeCascade(d: UnblockCascadePayload): string {
 	const names = d.dependents.map((x) => x.displayId);
 	const shown = names.join(", ");
 	return d.overflow > 0 ? `${shown} +${d.overflow} more` : shown;

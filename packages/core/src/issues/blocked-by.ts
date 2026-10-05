@@ -14,10 +14,10 @@ import {
   designHoldsOf,
 } from './design-delivery.js';
 import {
-  assertDispatchGatesForIssue,
-  assertDispatchGatesForSeqs,
+  assertDesignApprovedForIssue,
+  assertDesignsApprovedForSeqs,
   isDispatchGateError,
-} from './dispatch-gates.js';
+} from './ports.js';
 
 const DROPPED: IssueStatus = 'dropped';
 
@@ -239,7 +239,7 @@ export async function refuseBlockedTake(
 
 // cm:guard a door that hands out work and does not already ask the dispatch gates asks everything the
 // admissible set holds an unstarted issue out for: an unsettled blocks edge, then the design gate
-// (issues/dispatch-gates.ts), each refused by its own name
+// (workflows/build-gate.ts), each refused by its own name
 export async function refuseHeldTake(
   executor: Pick<Tx, 'execute' | 'select'>,
   issueId: string,
@@ -249,7 +249,7 @@ export async function refuseHeldTake(
   if (!issue || !isTakeable(issue.status)) return;
   const held = await blockedOf(executor, issue);
   if (held) throw issueBlocked([held], door);
-  await assertDispatchGatesForIssue(issue.projectId, issue.id, executor);
+  await assertDesignApprovedForIssue(issue.projectId, issue.id, executor);
 }
 
 async function refuseBlockedTakeForSeqs(
@@ -280,7 +280,7 @@ export async function refuseHeldTakeForSeqs(
   seqs: readonly number[],
 ): Promise<void> {
   await refuseBlockedTakeForSeqs(db, projectId, seqs, 'a run session over these issues');
-  await assertDispatchGatesForSeqs(projectId, seqs);
+  await assertDesignsApprovedForSeqs(projectId, seqs);
 }
 
 /** A refused take in the envelope: a blocked issue as thrown, a dispatch gate's refusal named. */

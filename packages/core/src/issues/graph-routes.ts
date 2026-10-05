@@ -1,18 +1,13 @@
 // `GET /api/projects/:id/pm/graph`, the issue graph the forge CLI's `forge_project_pm` reads.
 
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { PM_GRAPH_DEFAULT_DEPTH, PM_GRAPH_MAX_DEPTH, readPmGraph } from './graph-read.js';
-
-const paramSchema = z.object({ id: z.uuid() });
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 async function assertMember(projectId: string, userId: string): Promise<void> {
   const access = await loadProjectAccess(projectId, userId);
@@ -29,12 +24,8 @@ issueGraphRoutes.use('/:id/pm/graph', requireAuth(), assertEmailVerified());
 
 issueGraphRoutes.get(
   '/:id/pm/graph',
-  zValidator('param', paramSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', graphQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('query', graphQuerySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { rootIssueId, depth } = c.req.valid('query');

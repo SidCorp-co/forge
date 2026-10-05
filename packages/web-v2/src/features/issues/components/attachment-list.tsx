@@ -6,19 +6,14 @@ import { coreFileUrl } from "@/lib/utils/core-url";
 import { useMemo, useState } from "react";
 import { HtmlAttachmentCard } from "./html-attachment-card";
 import { ImageLightbox, type LightboxImage } from "./image-lightbox";
+import { formatSize } from "./staged-files";
 
-export interface AttachmentListItem {
+interface AttachmentListItem {
   id: string;
   name: string;
   mime: string;
   size: number;
   url: string;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 export function AttachmentList({ rows }: { rows: AttachmentListItem[] }) {
@@ -56,7 +51,7 @@ export function AttachmentList({ rows }: { rows: AttachmentListItem[] }) {
                 <button
                   type="button"
                   onClick={() => setLightboxIndex(galleryIndex)}
-                  title={`${a.name} · ${formatBytes(a.size)}`}
+                  title={`${a.name} · ${formatSize(a.size)}`}
                   className="block overflow-hidden rounded-md border border-line transition-colors hover:border-line-strong focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
                 >
                   <img src={href} alt={a.name} className="h-28 w-28 object-cover" loading="lazy" />
@@ -72,7 +67,7 @@ export function AttachmentList({ rows }: { rows: AttachmentListItem[] }) {
                   <span className="fg-body-sm max-w-[14rem] truncate text-fg" title={a.name}>
                     {a.name}
                   </span>
-                  <span className="fg-caption flex-none">{formatBytes(a.size)}</span>
+                  <span className="fg-caption flex-none">{formatSize(a.size)}</span>
                 </a>
               )}
             </li>

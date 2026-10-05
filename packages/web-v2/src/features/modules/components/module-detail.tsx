@@ -24,8 +24,8 @@ import type { ModuleCoupling, ModuleDetail, ModuleLanding } from "../types";
 import { ActivityBars, AttentionBadge, ModuleBanner, openSegments } from "./module-bits";
 import { ModuleFacts } from "./module-facts";
 
-export const MODULE_TABS = ["overview", "code", "landings"] as const;
-export type ModuleTab = (typeof MODULE_TABS)[number];
+const MODULE_TABS = ["overview", "code", "landings"] as const;
+type ModuleTab = (typeof MODULE_TABS)[number];
 
 export const useModuleTab = () => useUrlTab(MODULE_TABS);
 

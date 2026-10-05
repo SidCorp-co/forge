@@ -164,158 +164,168 @@ async function birthStatus(
   );
 }
 
+type Deduped = Extract<CreateIssueResult, { deduped: true }>;
+
+function refuseBirthStatus(status: string | undefined): void {
+  if (status === undefined || (CREATE_ENTRY_STATUSES as readonly string[]).includes(status)) return;
+  throw refuse(
+    'INVALID_STATUS',
+    `an issue is born at ${CREATE_ENTRY_STATUSES.map((st) => `\`${st}\``).join(' or ')}, not \`${status}\`; every other status is reached by a transition`,
+    '/status',
+  );
+}
+
+/** A detector key already claimed answers the issue holding it instead of filing a second. */
+async function dedupeByDetectorKey(
+  projectId: string,
+  detectorKey: string,
+): Promise<Deduped | null> {
+  if (!isValidDetectorKey(detectorKey)) {
+    throw refuse(
+      'INVALID_DETECTOR_KEY',
+      `detectorKey \`${detectorKey}\` is not a detector key: lowercase slash-separated slugs, at most 120 characters (e.g. \`doc-drift/architecture\`)`,
+      '/detectorKey',
+    );
+  }
+  const { existingIssueId } = await claimDetectorKey(projectId, detectorKey);
+  if (!existingIssueId) return null;
+  const [live] = await db
+    .select({ issSeq: issues.issSeq, status: issues.status })
+    .from(issues)
+    .where(eq(issues.id, existingIssueId))
+    .limit(1);
+  return {
+    deduped: true,
+    detectorKey,
+    existingIssueId,
+    existingIssueDisplayId: live
+      ? formatIssueRef(await activeIssuePrefix(projectId), live.issSeq)
+      : null,
+    existingIssueStatus: live?.status ?? null,
+  };
+}
+
+type Birth = {
+  input: CreateIssueInput;
+  writer: IssueCreateWriter;
+  status: CreateEntryStatus;
+  labelIds: ResolvedLabelAttach[];
+  prepared: ReturnType<typeof prepareBody> | null;
+  detectorKey: string | null;
+};
+
+/** The row, its criteria, work state, labels and relations, in one transaction. */
+async function writeBirth(tx: Tx, birth: Birth) {
+  const { input, writer, labelIds, prepared } = birth;
+  const split =
+    input.sessionContext === undefined ? null : splitSessionContext(input.sessionContext);
+  const inserted = await insertIssueRow(
+    tx,
+    {
+      projectId: input.projectId,
+      title: input.title,
+      description: prepared ? prepared.body : (input.description ?? null),
+      descriptionFormat: prepared?.format ?? 'markdown',
+      status: birth.status as IssueStatus,
+      priority: (input.priority ?? 'medium') as IssueCreateRow['priority'],
+      category: input.category ?? null,
+      complexity: (input.complexity ?? null) as IssueCreateRow['complexity'],
+      reportedBy: input.reportedBy ?? null,
+      assigneeId: input.assigneeId ?? null,
+      createdById: writer.createdById,
+      createdByDeviceId: writer.createdByDeviceId,
+      createdVia: writer.createdVia,
+      scheduleRunId: writer.scheduleRunId ?? null,
+      detectorKey: birth.detectorKey,
+      plan: input.plan ?? null,
+      acceptanceCriteria: input.acceptanceCriteria ?? null,
+      sessionContext: (split?.rest ?? null) as IssueCreateRow['sessionContext'],
+      releaseNotes: (input.releaseNotes ?? null) as IssueCreateRow['releaseNotes'],
+    },
+    { actor: writer.actor, labelIds: labelIds.map((l) => l.labelId) },
+  );
+  if (inserted.acceptanceCriteria) {
+    await syncCriteriaFromText(tx, inserted.id, inserted.acceptanceCriteria);
+  }
+  // ISS-54 — the lease, branch and head a `sessionContext` names belong to the work state
+  // (`work-state.ts:splitSessionContext`), until forge-plugin moves to the 10-status model.
+  if (split && (split.lease.present || split.branch !== null || split.headSha !== null)) {
+    await writeSplitSessionContext(tx, inserted.id, split);
+  }
+  if (labelIds.length > 0) {
+    await tx
+      .insert(issueLabels)
+      .values(
+        labelIds.map((l) => ({ issueId: inserted.id, labelId: l.labelId, isPrimary: l.isPrimary })),
+      );
+  }
+  const pendingRelations = await writeIssueRelations(
+    { actor: writer.actor, createdById: writer.createdById },
+    input.projectId,
+    inserted.id,
+    input.relations,
+    tx,
+  );
+  // An issue filed with a live lease is claimed at birth, so the edges filed with it are read
+  // before the claim stands (issues/blocked-by.ts:refuseHeldTake).
+  if (split?.lease.present && leaseWriteTakes(null, split.lease.value, new Date())) {
+    await refuseHeldTake(tx, inserted.id, 'filing it with a live lease');
+  }
+  return { created: inserted, pendingRelations };
+}
+
 export async function createIssue(
   input: CreateIssueInput,
   writer: IssueCreateWriter,
 ): Promise<CreateIssueResult> {
-  if (
-    input.status !== undefined &&
-    !(CREATE_ENTRY_STATUSES as readonly string[]).includes(input.status)
-  ) {
-    throw refuse(
-      'INVALID_STATUS',
-      `an issue is born at ${CREATE_ENTRY_STATUSES.map((st) => `\`${st}\``).join(' or ')}, not \`${input.status}\`; every other status is reached by a transition`,
-      '/status',
-    );
-  }
-  const requestedStatus = await birthStatus(
+  refuseBirthStatus(input.status);
+  const status = await birthStatus(
     input.projectId,
     writer.createdById,
     input.status as CreateEntryStatus | undefined,
   );
-
-  let decodedAttachments: DecodedAttachment[] = [];
-  if (input.attachments && input.attachments.length > 0) {
-    decodedAttachments = decodeAndValidateAttachments([...input.attachments]);
-  }
-
-  const labelIds =
-    input.labels && input.labels.length > 0
-      ? await resolveLabelIdsForWrite(input.projectId, input.labels)
-      : [];
-
+  const decodedAttachments: DecodedAttachment[] = input.attachments?.length
+    ? decodeAndValidateAttachments([...input.attachments])
+    : [];
+  const labelIds = input.labels?.length
+    ? await resolveLabelIdsForWrite(input.projectId, input.labels)
+    : [];
   const prepared =
     typeof input.description === 'string' && input.description.trim().length > 0
       ? prepareBody({ raw: input.description, format: input.descriptionFormat })
       : null;
-
   const detectorKey = input.detectorKey ?? null;
   if (detectorKey) {
-    if (!isValidDetectorKey(detectorKey)) {
-      throw refuse(
-        'INVALID_DETECTOR_KEY',
-        `detectorKey \`${detectorKey}\` is not a detector key: lowercase slash-separated slugs, at most 120 characters (e.g. \`doc-drift/architecture\`)`,
-        '/detectorKey',
-      );
-    }
-    const { existingIssueId } = await claimDetectorKey(input.projectId, detectorKey);
-    if (existingIssueId) {
-      const [live] = await db
-        .select({ issSeq: issues.issSeq, status: issues.status })
-        .from(issues)
-        .where(eq(issues.id, existingIssueId))
-        .limit(1);
-      return {
-        deduped: true,
-        detectorKey,
-        existingIssueId,
-        existingIssueDisplayId: live
-          ? formatIssueRef(await activeIssuePrefix(input.projectId), live.issSeq)
-          : null,
-        existingIssueStatus: live?.status ?? null,
-      };
-    }
+    const deduped = await dedupeByDetectorKey(input.projectId, detectorKey);
+    if (deduped) return deduped;
   }
 
-  const split =
-    input.sessionContext === undefined ? null : splitSessionContext(input.sessionContext);
-  const { created, pendingRelations } = await db.transaction(async (tx) => {
-    const inserted = await insertIssueRow(
-      tx,
-      {
-        projectId: input.projectId,
-        title: input.title,
-        description: prepared ? prepared.body : (input.description ?? null),
-        descriptionFormat: prepared?.format ?? 'markdown',
-        status: requestedStatus as IssueStatus,
-        priority: (input.priority ?? 'medium') as IssueCreateRow['priority'],
-        category: input.category ?? null,
-        complexity: (input.complexity ?? null) as IssueCreateRow['complexity'],
-        reportedBy: input.reportedBy ?? null,
-        assigneeId: input.assigneeId ?? null,
-        createdById: writer.createdById,
-        createdByDeviceId: writer.createdByDeviceId,
-        createdVia: writer.createdVia,
-        scheduleRunId: writer.scheduleRunId ?? null,
-        detectorKey,
-        plan: input.plan ?? null,
-        acceptanceCriteria: input.acceptanceCriteria ?? null,
-        sessionContext: (split?.rest ?? null) as IssueCreateRow['sessionContext'],
-        releaseNotes: (input.releaseNotes ?? null) as IssueCreateRow['releaseNotes'],
-      },
-      { actor: writer.actor, labelIds: labelIds.map((l) => l.labelId) },
-    );
-    if (inserted.acceptanceCriteria) {
-      await syncCriteriaFromText(tx, inserted.id, inserted.acceptanceCriteria);
-    }
-    // ISS-54 cm:hack — the lease, branch and head a `sessionContext` names belong to the work
-    // state (`work-state.ts:splitSessionContext`). Exit: until forge-plugin moves to the 10-status
-    // model (plugin-followups.md).
-    if (split && (split.lease.present || split.branch !== null || split.headSha !== null)) {
-      await writeSplitSessionContext(tx, inserted.id, split);
-    }
+  const { created, pendingRelations } = await db.transaction((tx) =>
+    writeBirth(tx, { input, writer, status, labelIds, prepared, detectorKey }),
+  );
 
-    if (labelIds.length > 0) {
-      await tx.insert(issueLabels).values(
-        labelIds.map((l) => ({
-          issueId: inserted.id,
-          labelId: l.labelId,
-          isPrimary: l.isPrimary,
-        })),
-      );
-    }
-    const pendingRelations = await writeIssueRelations(
-      { actor: writer.actor, createdById: writer.createdById },
-      input.projectId,
-      inserted.id,
-      input.relations,
-      tx,
-    );
-    // cm:guard an issue filed with a live lease is claimed at birth, so the edges filed with it are
-    // read before the claim stands (issues/blocked-by.ts:refuseHeldTake)
-    if (split?.lease.present && leaseWriteTakes(null, split.lease.value, new Date())) {
-      await refuseHeldTake(tx, inserted.id, 'filing it with a live lease');
-    }
-    return { created: inserted, pendingRelations };
-  });
-
-  let attachments: PersistedIssueAttachment[] = [];
-  let attachmentErrors: AttachmentErrorEntry[] = [];
-  if (decodedAttachments.length > 0) {
-    const result = await persistDecodedIssueAttachments(
-      created.id,
-      decodedAttachments,
-      writer.createdById,
-      writer.actor.agency,
-    );
-    attachments = result.persisted;
-    attachmentErrors = result.errors;
-  }
+  const persisted = decodedAttachments.length
+    ? await persistDecodedIssueAttachments(
+        created.id,
+        decodedAttachments,
+        writer.createdById,
+        writer.actor.agency,
+      )
+    : { persisted: [], errors: [] };
 
   await flushIssueRelationEffects(
     { actor: writer.actor, createdById: writer.createdById },
     input.projectId,
     pendingRelations,
   );
-  const relations = pendingRelations.map((p: PendingIssueRelation) => p.applied);
 
   return {
     deduped: false,
     issue: created,
     labelIds,
-    relations,
-    attachments,
-    attachmentErrors,
+    relations: pendingRelations.map((p: PendingIssueRelation) => p.applied),
+    attachments: persisted.persisted,
+    attachmentErrors: persisted.errors,
     bodyWarnings: prepared?.warnings ?? [],
   };
 }

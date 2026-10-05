@@ -27,7 +27,6 @@ import {
   readQuestionFor,
   readQuestionsForIssue,
 } from './read.js';
-import { voidQuestion } from './write.js';
 
 const uuid = z.uuid();
 
@@ -102,8 +101,6 @@ const answerBody = z.object({
     .max(1000, { error: 'note is at most 1000 characters' })
     .optional(),
 });
-
-const voidBody = z.object({ reason: z.string().optional() });
 
 type Parsed = { success: true } | { success: false; error: z.core.$ZodError };
 
@@ -271,22 +268,5 @@ questionRoutes.post(
         ...(body.note === undefined ? {} : { note: body.note }),
       }),
     );
-  },
-);
-
-questionRoutes.post(
-  '/:id/void',
-  async (c, next) => {
-    if (c.get('principal') === 'pat') throw sessionOnly('voided');
-    await next();
-  },
-  zValidator('json', voidBody, refuseBody),
-  async (c) => {
-    const body = c.req.valid('json');
-    const id = questionId(c);
-    const seen = await readQuestionFor(id, c.get('userId'));
-    if (!seen) throw notFound();
-    await voidQuestion({ questionId: id, reason: body.reason ?? '', actor: restActor(c) });
-    return c.json({ ok: true });
   },
 );

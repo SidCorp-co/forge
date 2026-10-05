@@ -82,6 +82,74 @@ async function surfaceOnce(args: {
   return sent?.delivered ?? 0;
 }
 
+interface SweptRow {
+  id: string;
+  projectId: string;
+  issuePrefix: string | null;
+  issSeq: number | null;
+  projectName: string;
+  cursorTs: string;
+}
+
+/** Days (or "hours") since `since`, as a notice says it. */
+function ageSince(now: Date, since: number): string {
+  const days = Math.floor((now.getTime() - since) / 86_400_000);
+  return days >= 1 ? `${days} day${days === 1 ? '' : 's'}` : 'hours';
+}
+
+/** Advances the pass's cursor past `rows` and surfaces each one to its project's admins. */
+async function surfacePage<R extends SweptRow>(args: {
+  now: Date;
+  rows: R[];
+  cursorKey: string;
+  window: ReturnType<typeof sweepWindow>;
+  detector: 'stranded' | 'owed-close';
+  scan: string;
+  groupTitle: string;
+  found: string;
+  resolutionKey: (issueId: string) => string;
+  notice: (row: R, ref: string) => { title: string; body: string };
+}): Promise<StrandedIssuesResult> {
+  const { now, rows } = args;
+  const filled = rows.length === STRANDED_SCAN_LIMIT;
+  const lastRow = rows.at(-1);
+  const last: SweepPosition | null = lastRow ? { ts: lastRow.cursorTs, id: lastRow.id } : null;
+  advanceSweep(args.cursorKey, args.window, last, filled);
+
+  const admins = await projectAdminUserIdsFor(rows.map((r) => r.projectId));
+  let notified = 0;
+  let unreachable = 0;
+  for (const row of rows) {
+    const ref = row.issSeq !== null ? formatIssueRef(row.issuePrefix, row.issSeq) : 'An issue';
+    const sent = await surfaceOnce({
+      now,
+      admins,
+      groupKey: sweepGroupKey(args.detector, now),
+      groupTitle: args.groupTitle,
+      projectId: row.projectId,
+      issueId: row.id,
+      resolutionKey: args.resolutionKey(row.id),
+      ...args.notice(row, ref),
+    });
+    if (sent < 0) unreachable += 1;
+    else notified += sent;
+  }
+
+  if (notified > 0 || unreachable > 0) {
+    logger.warn(
+      { detected: rows.length, notified, unreachable, issueIds: rows.map((r) => r.id) },
+      `stranded-issues: ${args.found}`,
+    );
+  }
+  if (filled) {
+    logger.warn(
+      { limit: STRANDED_SCAN_LIMIT, examined: rows.length, resumesAfter: last?.ts ?? null },
+      `stranded-issues: the ${args.scan} scan filled its page — the rest is read on later passes`,
+    );
+  }
+  return { detected: rows.length, notified };
+}
+
 /**
  * Surface every decision or resource park (`needs_info`) past {@link STRANDED_GRACE_MS} that has
  * nothing coming for it. Best-effort: never throws — a failure here must not
@@ -106,7 +174,6 @@ export async function detectStrandedIssues(
         projectId: issues.projectId,
         issuePrefix: projects.issuePrefix,
         issSeq: issues.issSeq,
-        title: issues.title,
         mergedAt: issues.mergedAt,
         updatedAt: issues.updatedAt,
         cursorTs: sql<string>`"issues"."updated_at"::text`,
@@ -132,54 +199,27 @@ export async function detectStrandedIssues(
       .orderBy(asc(issues.updatedAt), asc(issues.id))
       .limit(STRANDED_SCAN_LIMIT);
 
-    const filled = rows.length === STRANDED_SCAN_LIMIT;
-    const lastRow = rows.at(-1);
-    const last: SweepPosition | null = lastRow ? { ts: lastRow.cursorTs, id: lastRow.id } : null;
-    advanceSweep(cursorKey, window, last, filled);
-
-    const admins = await projectAdminUserIdsFor(rows.map((r) => r.projectId));
-
-    let notified = 0;
-    let unreachable = 0;
-    for (const row of rows) {
-      const ref = row.issSeq !== null ? formatIssueRef(row.issuePrefix, row.issSeq) : 'An issue';
-      const since = row.mergedAt ?? row.updatedAt;
-      const days = Math.floor((now.getTime() - since.getTime()) / 86_400_000);
-      const age = days >= 1 ? `${days} day${days === 1 ? '' : 's'}` : 'hours';
-      const lead = row.mergedAt
-        ? `Its code merged ${age} ago but the issue is still parked`
-        : `It has been parked ${age}`;
-
-      const sent = await surfaceOnce({
-        now,
-        admins,
-        groupKey: sweepGroupKey('stranded', now),
-        groupTitle: 'Issues are parked with nothing coming for them',
-        projectId: row.projectId,
-        issueId: row.id,
-        resolutionKey: strandedResolutionKey(row.id),
-        title: `${ref} is waiting on you — ${row.projectName}`,
-        body: `${lead}, so nothing will move it forward until you decide. Open it and read the last comment: a step that could not finish its checks leaves the decision here.`,
-      });
-      if (sent < 0) unreachable += 1;
-      else notified += sent;
-    }
-
-    if (notified > 0 || unreachable > 0) {
-      logger.warn(
-        { detected: rows.length, notified, unreachable, issueIds: rows.map((r) => r.id) },
-        'stranded-issues: a waiting park with nothing coming for it',
-      );
-    }
-
-    if (filled) {
-      logger.warn(
-        { limit: STRANDED_SCAN_LIMIT, examined: rows.length, resumesAfter: last?.ts ?? null },
-        'stranded-issues: the waiting-park scan filled its page — the rest is read on later passes',
-      );
-    }
-
-    return { detected: rows.length, notified };
+    return await surfacePage({
+      now,
+      rows,
+      cursorKey,
+      window,
+      detector: 'stranded',
+      scan: 'waiting-park',
+      groupTitle: 'Issues are parked with nothing coming for them',
+      found: 'a waiting park with nothing coming for it',
+      resolutionKey: strandedResolutionKey,
+      notice: (row, ref) => {
+        const age = ageSince(now, (row.mergedAt ?? row.updatedAt).getTime());
+        const lead = row.mergedAt
+          ? `Its code merged ${age} ago but the issue is still parked`
+          : `It has been parked ${age}`;
+        return {
+          title: `${ref} is waiting on you — ${row.projectName}`,
+          body: `${lead}, so nothing will move it forward until you decide. Open it and read the last comment: a step that could not finish its checks leaves the decision here.`,
+        };
+      },
+    });
   } catch (err) {
     logger.error({ err }, 'stranded-issues: detection failed');
     return { detected: 0, notified: 0 };
@@ -228,49 +268,21 @@ export async function detectOwedCloses(
       .orderBy(asc(issues.mergedAt), asc(issues.id))
       .limit(STRANDED_SCAN_LIMIT);
 
-    const filled = rows.length === STRANDED_SCAN_LIMIT;
-    const lastRow = rows.at(-1);
-    const last: SweepPosition | null = lastRow ? { ts: lastRow.cursorTs, id: lastRow.id } : null;
-    advanceSweep(cursorKey, window, last, filled);
-
-    const admins = await projectAdminUserIdsFor(rows.map((r) => r.projectId));
-
-    let notified = 0;
-    let unreachable = 0;
-    for (const row of rows) {
-      const ref = row.issSeq !== null ? formatIssueRef(row.issuePrefix, row.issSeq) : 'An issue';
-      const days = Math.floor((now.getTime() - (row.mergedAt?.getTime() ?? 0)) / 86_400_000);
-      const age = days >= 1 ? `${days} day${days === 1 ? '' : 's'}` : 'hours';
-      const sent = await surfaceOnce({
-        now,
-        admins,
-        groupKey: sweepGroupKey('owed-close', now),
-        groupTitle: 'Issues whose code shipped and whose close was never written',
-        projectId: row.projectId,
-        issueId: row.id,
-        resolutionKey: owedCloseResolutionKey(row.id),
+    return await surfacePage({
+      now,
+      rows,
+      cursorKey,
+      window,
+      detector: 'owed-close',
+      scan: 'owed-close',
+      groupTitle: 'Issues whose code shipped and whose close was never written',
+      found: 'merged code under a live status with nothing running',
+      resolutionKey: owedCloseResolutionKey,
+      notice: (row, ref) => ({
         title: `${ref} shipped but never closed — ${row.projectName}`,
-        body: `Its code has carried a merge mark for ${age} while the issue still reads \`${row.status}\`, and nothing is running on it. The step that owed the close did not write it. Read the branch, then close it — or, if it never landed, clear the mark with \`unmark\` and move the issue to \`dropped\`.`,
-      });
-      if (sent < 0) unreachable += 1;
-      else notified += sent;
-    }
-
-    if (notified > 0 || unreachable > 0) {
-      logger.warn(
-        { detected: rows.length, notified, unreachable, issueIds: rows.map((r) => r.id) },
-        'stranded-issues: merged code under a live status with nothing running',
-      );
-    }
-
-    if (filled) {
-      logger.warn(
-        { limit: STRANDED_SCAN_LIMIT, examined: rows.length, resumesAfter: last?.ts ?? null },
-        'stranded-issues: the owed-close scan filled its page — the rest is read on later passes',
-      );
-    }
-
-    return { detected: rows.length, notified };
+        body: `Its code has carried a merge mark for ${ageSince(now, row.mergedAt?.getTime() ?? 0)} while the issue still reads \`${row.status}\`, and nothing is running on it. The step that owed the close did not write it. Read the branch, then close it — or, if it never landed, clear the mark with \`unmark\` and move the issue to \`dropped\`.`,
+      }),
+    });
   } catch (err) {
     logger.error({ err }, 'stranded-issues: owed-close detection failed');
     return { detected: 0, notified: 0 };

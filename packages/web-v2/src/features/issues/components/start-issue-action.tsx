@@ -10,7 +10,7 @@ import type { IssueStatus } from "../types";
 
 type Role = ProjectMember["role"] | null | undefined;
 
-export type StartReading =
+type StartReading =
   | { kind: "none" }
   | { kind: "start" }
   | { kind: "started"; startedAt: string }
@@ -18,7 +18,7 @@ export type StartReading =
   | { kind: "unread"; reason: string };
 
 
-export function intakeIsManual(policy: V1Read | undefined): boolean {
+function intakeIsManual(policy: V1Read | undefined): boolean {
   if (!policy?.declared) return false;
   const intake = policy.document.intake as { mode?: unknown } | undefined;
   return intake?.mode === "manual";

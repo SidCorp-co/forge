@@ -17,7 +17,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useAnsweringQuestions, useAnswerQuestion, useIssueQuestions } from "../hooks";
 import { QuestionCard } from "./question-card";
 
-export const DECISION_PANEL_ANCHOR = "issue-decisions";
+const DECISION_PANEL_ANCHOR = "issue-decisions";
 
 /** The gap left between a sticky header and the question it would otherwise cover. */
 const BELOW_HEADER_PX = 12;

@@ -174,9 +174,7 @@ transitionRoutes.route('/', recordEventRoutes);
 
 transitionRoutes.post(
   '/:id/transition',
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', idParamSchema),
   zValidator('json', transitionBodySchema, (result) => {
     if (!result.success) {
       refuseLegacyStatusFields(result.data, 'json', ['toStatus']);

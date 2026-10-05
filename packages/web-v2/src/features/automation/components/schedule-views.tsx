@@ -106,7 +106,7 @@ export function RunNow({ s, access }: { s: ScheduleStanding; access: AutomationA
   );
 }
 
-export function ScheduleBanner({ s, className }: { s: ScheduleStanding; className?: string }) {
+function ScheduleBanner({ s, className }: { s: ScheduleStanding; className?: string }) {
   if (s.waitingOn.kind === "none") return null;
   const w = s.waitingOn;
   const head = w.kind === "you" ? "Waiting on you:" : `Waiting on ${w.who}:`;
@@ -204,8 +204,8 @@ export function SchedulePeek({
   );
 }
 
-export const SCHEDULE_TABS = ["overview", "fires", "reports"] as const;
-export const useScheduleTab = () => useUrlTab(SCHEDULE_TABS);
+const SCHEDULE_TABS = ["overview", "fires", "reports"] as const;
+const useScheduleTab = () => useUrlTab(SCHEDULE_TABS);
 
 function Controls({ s, access }: { s: ScheduleStanding; access: AutomationAccess }) {
   const setEnabled = useSetScheduleEnabled(access.projectId);

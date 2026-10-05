@@ -3,7 +3,7 @@ import { ISSUE_TERMINAL_STATUSES } from "@forge/contracts/issue-machine";
 import { formatCountdown, formatElapsed } from "@/lib/utils/format";
 import type { IssueStatus, PipelineHealth, PipelineReading, WaitingReason } from "./types";
 
-export const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
 const SETTLED: ReadonlySet<IssueStatus> = new Set<IssueStatus>(ISSUE_TERMINAL_STATUSES);
 
@@ -25,7 +25,7 @@ export function sinceLastWrite(
 }
 
 /** A queued step's gate: core's reason and its reading (`issues/pipeline-health-reasons.ts`). */
-export interface QueuedStepGate extends PipelineReading {
+interface QueuedStepGate extends PipelineReading {
 	reason: WaitingReason;
 }
 

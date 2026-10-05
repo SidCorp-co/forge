@@ -729,7 +729,7 @@ tells you which migrations are pinned by live policy.
 <tbody>
 <tr><td>nothing to extract</td><td><code>dyn Runner</code> appears <b>0</b> times; 7 call sites hold the concrete type and reach for <code>send_resident</code>, <code>checkpoint_and_close</code>, <code>note_head</code> — methods the trait does not have</td></tr>
 <tr><td>the wire schema churns</td><td><code>runner/mod.rs</code> changed <b>24 times in 113 days</b>, one breaking. No third party versions a contract that moves every 4.7 days. rustc carried its plugin API as perma-unstable for 8 years and then deleted it</td></tr>
-<tr><td>it removes zero clocks</td><td><code>runnerTypes</code> is a Postgres enum feeding <code>RUNNER_CAPABILITIES</code> — a new vendor costs a migration + core deploy under <b>both</b> options, and B adds a fourth artifact</td></tr>
+<tr><td>it removes zero clocks</td><td><code>runnerTypes</code> is a Postgres enum — a new vendor costs a migration + core deploy under <b>both</b> options, and B adds a fourth artifact</td></tr>
 <tr><td>ACP is real but not a drop-in</td><td>registry since Jan 2026, native in Zed/JetBrains, carries turn boundaries and resident sessions — but <b>no subagent primitive, no failure taxonomy, no rate-limit signal</b>. Claude Code is not native ACP; routing it through a third-party bridge would delete the usage-limit classification</td></tr>
 <tr><td>the box ceiling breaks</td><td><code>session_sem</code> lives inside the adapter; two vendor plugin processes would each admit <code>session_cap</code> with neither able to see the other</td></tr>
 </tbody>

@@ -25,16 +25,8 @@ import { effectiveProjectRole } from '../lib/authz.js';
 import type { EgressSurface } from '../lib/data-egress.js';
 import { notFound } from '../middleware/route-errors.js';
 import { type PermissionFacts, requireHeld } from '../permissions/index.js';
-import {
-  type AskAnswer,
-  type AskInput,
-  answerQuestion,
-  askQuestion,
-  type GivenAnswer,
-  mayAnswerFreeText,
-  mayChoose,
-  refuseQuestion,
-} from './write.js';
+import { answerQuestion, type GivenAnswer, mayAnswerFreeText } from './answer.js';
+import { type AskAnswer, type AskInput, askQuestion, mayChoose, refuseQuestion } from './write.js';
 
 export type VisibleOption = QuestionOption & { locked: boolean };
 

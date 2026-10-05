@@ -2,13 +2,13 @@ import { PARK_STATUSES } from '@forge/contracts/issue-machine';
 import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { and, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { idList } from '../db/raw-sql.js';
 import { issues } from '../db/schema.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { issueWorkInFlightSql } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { ageSeconds, emptyBuckets, foldBuckets } from './pulse-folds.js';
 import { readPulseLive } from './pulse-live.js';
-import { idList } from './pulse-sql.js';
 import type {
   PulseIssueIdentity,
   PulseProjectIdentity,

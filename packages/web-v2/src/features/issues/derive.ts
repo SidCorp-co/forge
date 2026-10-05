@@ -3,40 +3,15 @@ import {
 	ISSUE_STATUSES,
 	ISSUE_TERMINAL_STATUSES,
 } from "@forge/contracts/issue-machine";
-import {
-	ISSUE_PRIORITY_LABELS,
-	ISSUE_STATUS_HINTS,
-	ISSUE_STATUS_LABELS,
-	ISSUE_STATUS_TONES,
-	type IssueStatusTone,
-	WORK_STEP_LABELS,
-	type WorkStep,
-} from "@forge/contracts/issue-vocabulary";
+import { ISSUE_PRIORITY_LABELS, ISSUE_STATUS_LABELS, ISSUE_STATUS_TONES, type IssueStatusTone, WORK_STEP_LABELS, type WorkStep } from "@forge/contracts/issue-vocabulary";
 import {
 	type SemanticTone,
 	STATUS_KEY_TONE,
 	type StatusKey,
 } from "@/design/status";
-import type {
-	CommentKind,
-	FreshReason,
-	GroupBy,
-	IssueAgentSession,
-	IssueAgentStatus,
-	IssueComplexity,
-	IssueDependencies,
-	IssueDependencyEdge,
-	IssueFilter,
-	IssuePark,
-	IssuePriority,
-	IssueRow,
-	IssueStatus,
-	IssueWorkStateRow,
-	PipelineHealth,
-	SessionContinuity,
-} from "./types";
+import type { CommentKind, FreshReason, GroupBy, IssueAgentSession, IssueAgentStatus, IssueComplexity, IssueDependencies, IssueFilter, IssuePark, IssuePriority, IssueRow, IssueStatus, IssueWorkStateRow, PipelineHealth, SessionContinuity } from "./types";
 
-export const STATUS_LABELS: Record<IssueStatus, string> = ISSUE_STATUS_LABELS;
+const STATUS_LABELS: Record<IssueStatus, string> = ISSUE_STATUS_LABELS;
 
 export const PRIORITY_LABELS: Record<IssuePriority, string> = ISSUE_PRIORITY_LABELS;
 
@@ -55,9 +30,6 @@ export const priorityLabel = (p: IssuePriority): string =>
 export const complexityLabel = (
 	c: IssueComplexity | null | undefined,
 ): string => (c ? (COMPLEXITY_LABELS[c] ?? c) : "—");
-
-export const statusHint = (s: IssueStatus): string => ISSUE_STATUS_HINTS[s] ?? s;
-
 /** `in_progress` at step `test` reads "In progress · Test"; a step is never guessed from a status. */
 export function statusStepLabel(
 	status: IssueStatus,
@@ -71,7 +43,7 @@ export const workStepOf = (row: {
 	workState?: Pick<IssueWorkStateRow, "step"> | null;
 }): WorkStep | null => row.workState?.step ?? null;
 
-export const TONE_CHIP: Record<IssueStatusTone, StatusKey> = {
+const TONE_CHIP: Record<IssueStatusTone, StatusKey> = {
 	neutral: "queued",
 	ready: "passed",
 	run: "running",
@@ -80,18 +52,13 @@ export const TONE_CHIP: Record<IssueStatusTone, StatusKey> = {
 	done: "archived",
 	err: "failed",
 };
-
-export function toneChip(tone: IssueStatusTone): StatusKey {
-	return TONE_CHIP[tone];
-}
-
 /** The issue's lifecycle status as a design-kit `StatusKey`. The agent run's state is a different fact with its own chip: `runStatusChip`. */
 export function statusToChip(status: IssueStatus): StatusKey {
 	return TONE_CHIP[ISSUE_STATUS_TONES[status]] ?? "queued";
 }
 
 /** What an issue carries about its run: the sessions' verdict and the pipeline's queued job. */
-export interface RunReadingSource {
+interface RunReadingSource {
 	agentStatus?: IssueAgentStatus;
 	pipelineHealth?: PipelineHealth;
 }
@@ -122,16 +89,6 @@ export function statusToTone(status: IssueStatus): SemanticTone {
 export function transitionLabels(targets: IssueStatus[]): string[] {
 	return targets.map(statusLabel);
 }
-
-export interface DepCounts {
-	blockedBy: number;
-	blocks: number;
-	/** Outgoing `decomposes` edges — this issue is an epic with N subtasks. */
-	subtasks: number;
-	/** Any incoming `decomposes` edge — this issue is a subtask of an epic. */
-	hasParent: boolean;
-}
-
 /** The edges still in force. A retracted (expired) edge is shown greyed where relations are
  *  listed, and is never counted, badged or called blocking. */
 export function liveDependencies(deps: IssueDependencies | undefined): IssueDependencies {
@@ -141,19 +98,6 @@ export function liveDependencies(deps: IssueDependencies | undefined): IssueDepe
 		outgoing: deps.outgoing.filter((e) => !e.expired),
 	};
 }
-
-export function depCounts(deps: IssueDependencies | undefined): DepCounts {
-	if (!deps) return { blockedBy: 0, blocks: 0, subtasks: 0, hasParent: false };
-	const live = liveDependencies(deps);
-	const blockedBy = live.incoming.filter((e) => e.kind === "blocks").length;
-	const blocks = live.outgoing.filter((e) => e.kind === "blocks").length;
-	const isParentEdge = (k: IssueDependencyEdge["kind"]) =>
-		k === "decomposes" || k === "parent";
-	const subtasks = live.outgoing.filter((e) => isParentEdge(e.kind)).length;
-	const hasParent = live.incoming.some((e) => isParentEdge(e.kind));
-	return { blockedBy, blocks, subtasks, hasParent };
-}
-
 /* The toolbar's Closed segment is the two statuses an issue is over at: the release gate
    (`awaiting_release`) is still open work to the person reading the list. */
 const CLOSED_STATUSES: IssueStatus[] = [...ISSUE_TERMINAL_STATUSES];
@@ -202,7 +146,7 @@ export function statusesFromParam(
 	return out.length > 0 ? out : undefined;
 }
 
-export interface IssueGroup {
+interface IssueGroup {
 	key: string;
 	label: string;
 	rows: IssueRow[];
@@ -318,9 +262,9 @@ function prefixKind(body: string): CommentKind {
  * than deleted because callers report it, and a field that silently stops
  * being reported is harder to notice than one that reports the same thing.
  */
-export type CommentBodyForm = "prefix";
+type CommentBodyForm = "prefix";
 
-export interface DerivedCommentKind {
+interface DerivedCommentKind {
 	kind: CommentKind;
 	form: CommentBodyForm;
 }
@@ -329,7 +273,7 @@ export function deriveCommentKind(comment: { body: string }): DerivedCommentKind
 	return { kind: prefixKind(comment.body), form: "prefix" };
 }
 
-export interface ChecklistItem {
+interface ChecklistItem {
 	text: string;
 	checked: boolean;
 }
@@ -374,9 +318,6 @@ export type ParkReading =
 	| { state: "loading" }
 	| { state: "error" }
 	| { state: "ready"; park: IssuePark | null };
-
-export const NO_PARK: ParkReading = { state: "ready", park: null };
-
 /** Known session-group keys → humanized labels. The label set is data-driven:
  *  any unknown key (a project may define its own groups) gets a Title-Case
  *  fallback so the raw `sessionGroup` value never reaches the UI (AC8). */
@@ -395,7 +336,7 @@ function titleCase(key: string): string {
 		.join(" ");
 }
 
-export function humanizeSessionGroup(key: string | null | undefined): string {
+function humanizeSessionGroup(key: string | null | undefined): string {
 	if (!key) return "Session";
 	return SESSION_GROUP_LABELS[key] ?? titleCase(key);
 }
