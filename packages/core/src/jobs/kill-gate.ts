@@ -16,17 +16,11 @@ export interface KillableJobRef {
   killOutcome: JobRow['killOutcome'];
 }
 
-const KILL_CONFIRM_MS_DEFAULT = 90_000;
-const KILL_CONFIRM_MS_FLOOR = 30_000;
+const KILL_CONFIRM_MS = 90_000;
 
-/** `PIPELINE_KILL_CONFIRM_MS` — grace between requesting a kill and treating
- *  silence as unconfirmed. Floored so a low env override can't race the
- *  runner's own WS round-trip. */
+/** Grace between requesting a kill and treating silence as unconfirmed; longer than the runner's own WS round-trip. */
 export function killGraceMs(): number {
-  const raw = process.env.PIPELINE_KILL_CONFIRM_MS;
-  if (!raw) return KILL_CONFIRM_MS_DEFAULT;
-  const n = Number(raw);
-  return Number.isFinite(n) && n >= KILL_CONFIRM_MS_FLOOR ? n : KILL_CONFIRM_MS_DEFAULT;
+  return KILL_CONFIRM_MS;
 }
 
 /** How long a kill request stays the CURRENT episode. Two grace windows: the

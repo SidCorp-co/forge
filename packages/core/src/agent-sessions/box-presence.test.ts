@@ -13,7 +13,7 @@ vi.mock('./ports.js', () => ({
   }),
 }));
 
-const { requireListeningBox } = await import('./chat-turn.js');
+const { requireListeningBox } = await import('./chat-device.js');
 
 describe('a chat turn asks the WebSocket door whether its box is listening', () => {
   beforeEach(() => {

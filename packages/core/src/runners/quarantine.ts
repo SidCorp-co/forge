@@ -6,23 +6,14 @@ import { emitPipelineWedge, resolvePipelineWedge } from '../pipeline/index.js';
 import { broadcastRunnerChanged } from './apply-runner-limit.js';
 import { classifyBoxFault } from './attribute-failure.js';
 
-/**
- * Consecutive identical box-scoped failures on one runner that trip
- * quarantine. Override via `RUNNER_QUARANTINE_STREAK` env. Default 3.
- */
-const RUNNER_QUARANTINE_STREAK = (() => {
-  const n = Number.parseInt(process.env.RUNNER_QUARANTINE_STREAK ?? '', 10);
-  return Number.isFinite(n) && n > 0 ? n : 3;
-})();
+/** Consecutive identical box-scoped failures on one runner that trip quarantine. */
+const RUNNER_QUARANTINE_STREAK = 3;
 
 /**
  * FIRST quarantine's length — the base of {@link QUARANTINE_BACKOFF}, not the
- * whole story. Override via `RUNNER_QUARANTINE_TTL_MS` env. Default 60 minutes.
+ * whole story: 60 minutes.
  */
-const RUNNER_QUARANTINE_TTL_MS = (() => {
-  const n = Number.parseInt(process.env.RUNNER_QUARANTINE_TTL_MS ?? '', 10);
-  return Number.isFinite(n) && n > 0 ? n : 60 * 60_000;
-})();
+const RUNNER_QUARANTINE_TTL_MS = 60 * 60_000;
 
 const QUARANTINE_BACKOFF = [1, 2, 4, 8, 24] as const;
 

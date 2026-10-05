@@ -92,6 +92,8 @@ export interface RunFacts {
     /** The newest job event or run phase, else the dispatch: what the result hop measures quiet from. */
     lastProgressAt: Date | null;
     sessionHeartbeatReaped: boolean;
+    /** `heartbeatBeatSql`: the beat the heartbeat reaper measures silence from. */
+    sessionHeartbeatBeat: Date | null;
     hasEvents: boolean;
     hasResult: boolean;
   } | null;

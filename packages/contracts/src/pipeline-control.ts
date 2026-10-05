@@ -45,12 +45,6 @@ export type RecoveryStats = z.infer<typeof recoveryStatsSchema>;
 
 export const pipelineHealthSchema = z
 	.object({
-		/**
-		 * @deprecated Use `recoveryStats.autoRetries`. Retained on the row for
-		 * one release so legacy readers don't break; the retry engine no longer
-		 * writes to it.
-		 */
-		retryCount: z.number().int().min(0),
 		recoveryStats: recoveryStatsSchema,
 		lastError: z
 			.object({

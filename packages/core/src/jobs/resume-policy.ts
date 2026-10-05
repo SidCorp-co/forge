@@ -3,7 +3,6 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
 import { traceStep } from '../lib/error-tracking.js';
-import { recordResumeDrop } from '../lib/hold-metrics.js';
 import { logger } from '../lib/logger.js';
 import { estimateIssueContextTokens, MAX_RESUME_TOKENS } from './session-resume.js';
 
@@ -154,12 +153,10 @@ export function finalizeResumeForDevice(
 ): ResumePolicy {
   const reachable = policy.pinDeviceId !== null && selectedDeviceId === policy.pinDeviceId;
   const pinMissed = policy.priorClaudeSessionId !== null && !reachable;
-  const dropReason: ResumeDropReason | null = pinMissed ? 'pin_stale' : policy.record.dropReason;
-  if (dropReason) recordResumeDrop(dropReason);
   if (!pinMissed) return policy;
   return {
     ...policy,
     priorClaudeSessionId: null,
-    record: { ...policy.record, resumed: false, dropReason },
+    record: { ...policy.record, resumed: false, dropReason: 'pin_stale' },
   };
 }

@@ -1,22 +1,15 @@
 import { eq } from 'drizzle-orm';
 import type { Context } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
-import { forbidden } from '../middleware/route-errors.js';
+import { forbidden, notFound } from '../middleware/route-errors.js';
 import { holds, type ProjectPermission, requireHeld } from '../permissions/index.js';
 import { refuseSession } from './refusals.js';
 
 export const idParamSchema = z.object({ id: z.uuid() });
-
-export const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-export const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 /** Load the session row or 404 — the shared first step of every per-session guard. */
 export async function loadSessionOr404(sessionId: string) {

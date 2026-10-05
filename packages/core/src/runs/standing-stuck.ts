@@ -125,7 +125,7 @@ interface Sign {
   column: string;
 }
 
-// cm: mirrors devices/run-session-reaper.ts: a run session's beat falls back to its start, then its creation.
+// As devices/run-session-reaper.ts reads it: a run session's beat falls back to its start, then its creation.
 function lastSignOf(f: RunFacts): Sign {
   const signs: Sign[] = [];
   const s = f.session;

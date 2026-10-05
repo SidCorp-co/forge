@@ -3,7 +3,7 @@ export { broadcastSessionEvent, syncAgentSessionLifecycle } from './agent-sessio
 export { finalizeJobDone } from './finalize-done.js';
 export { type HoldState, holdReleasesItself, readHoldState, releaseHeldJobs } from './hold.js';
 export { countInFlightByRunner } from './in-flight.js';
-export { type InterventionEventInput, insertInterventionEvent } from './intervention-event.js';
+export { insertInterventionEvent } from './intervention-event.js';
 export { extractStageStatus, resolveJobPolicy } from './job-policy.js';
 export {
   jobsOfSession,
@@ -13,7 +13,7 @@ export {
 } from './job-secret-scrub.js';
 export { jobTypeOf } from './job-type-read.js';
 export { killGraceMs, requestJobKill } from './kill-gate.js';
-export { type LoopMonitorResult, reapZombieSessions, runLoopMonitor } from './loop-monitor.js';
+export { type LoopMonitorResult, runLoopMonitor } from './loop-monitor.js';
 export {
   countClaimHeldIssuesByProject,
   type LoopMonitorCoverage,
@@ -50,8 +50,9 @@ export {
   gateReasonsForQueuedJobsIn,
 } from './queued-gates.js';
 export { NOT_PARKED } from './resident-session.js';
-export { type ResolvedJobMcpServers, resolveSessionMcpServers } from './resolve-job-mcp-servers.js';
+export { resolveSessionMcpServers } from './resolve-job-mcp-servers.js';
 export { jobEventsRetention } from './retention.js';
-export { heartbeatReapedSql } from './session-kinds.js';
+export { heartbeatBeatSql, heartbeatReapedSql } from './session-kinds.js';
 export { runStaleSweep } from './stale-detector.js';
 export { insertJobRow } from './writes.js';
+export { reapZombieSessions } from './zombie-session-reaper.js';

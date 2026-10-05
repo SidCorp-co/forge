@@ -6,7 +6,7 @@ import { type AgentSessionStatus, agentSessions, agentSessionTurns } from '../db
 import { agentSessionEvents } from '../db/schema-agent-session-events.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { type KernelActor, movedRow } from '../lifecycle/index.js';
-import { notFound } from './session-access.js';
+import { notFound } from '../middleware/route-errors.js';
 import { recordReportedTranscript } from './session-events.js';
 import type { AgentSessionPatch } from './session-failure.js';
 import { transitionSessions } from './session-transition.js';

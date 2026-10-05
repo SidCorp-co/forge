@@ -14,6 +14,10 @@
   REST route, contract-change filings wake masters, onboarding drafts read "Plan from code",
   and the retrieval log, plan-baseline column and build unlink are gone.
 
+- **Execution sheds its legacy paths.** Six timing env overrides become constants, a skill's body
+  is only `skill_md`, transcripts no longer convert `contentBlocks`, `pipelineHealth.retryCount`
+  is gone, and the heartbeat reaper and the run standing read one beat expression.
+
 ## [0.4.0-dev.32] - 2026-10-05
 
 Wave 2 closes: reconciled kept nodes, a proactive BA, and lighter live updates
