@@ -1444,10 +1444,12 @@ name = "runner-update"
 version = "0.18.0"
 dependencies = [
  "hex",
+ "nix",
  "reqwest",
  "runner-platform",
  "serde",
  "sha2",
+ "tokio",
  "tracing",
 ]
 

@@ -19,19 +19,14 @@ use std::ffi::OsString;
 use std::path::Path;
 
 /// The variable naming the control listener a replaced image hands on.
-pub const LISTENER_ENV: &str = "FORGE_RUNNER_CONTROL_FD";
+pub const LISTENER_ENV: &str = runner_platform::exe::HANDOVER_LISTENER_ENV;
 
-/// Where this platform has no exec to replace an image by: exit, so the
-/// service manager starts the build installed on disk in a process of its
-/// own, as an update always did here. The pid changes and the control socket
-/// is not carried, which on this platform hosts no hooks to refuse.
-#[cfg(not(unix))]
-pub fn exit_for_service_manager(what: &str, cause: &str) -> ! {
-    tracing::warn!(
-        "[{what}] handing over for {cause}: exiting for the service manager to start the build installed on disk"
-    );
-    std::process::exit(0)
-}
+/// Why a handover is refused where this platform has no exec to replace an
+/// image by. Windows is the one such platform this builds for, and there
+/// `forge-runner service` installs no service manager to start a new process,
+/// so exiting for one would leave the box offline; the daemon goes on serving
+/// and says so instead.
+pub const NO_HANDOVER_HERE: &str = "this platform has no exec to replace the running image by, and no service manager is installed to start a fresh process, so the daemon does not restart itself here";
 
 /// Replace this process's image with `exe`, run with `args`, carrying
 /// `listener`. Returns only where the exec did not happen, with why, and with

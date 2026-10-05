@@ -415,7 +415,10 @@ impl Drain {
         if inner.attempt.is_none() {
             return;
         }
-        Self::defer(&mut inner, cause, vec![why.to_string()], next);
+        Self::defer(&mut inner, cause, Vec::new(), next);
+        if let Some(DrainState::Deferred { failed, .. }) = &mut inner.state {
+            *failed = Some(why.to_string());
+        }
         let state = inner.state.clone();
         drop(inner);
         self.socket.set_accepting(true);
@@ -434,6 +437,7 @@ impl Drain {
             outstanding,
             next_attempt: next.by.clone(),
             next_attempt_at_ms: now + due_in.as_millis() as i64,
+            failed: None,
         });
     }
 

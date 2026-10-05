@@ -64,6 +64,7 @@ pub(crate) struct Updates {
     pub(crate) runner: Arc<ClaudeCodeRunner>,
     pub(crate) bound: Config,
     pub(crate) assignments: Arc<CoreClient>,
+    pub(crate) carry: HandOver,
 }
 
 /// Warn when a newer release exists; with `update.auto`, apply it and restart
@@ -85,6 +86,7 @@ async fn check_update(u: &Updates, checked_at: tokio::time::Instant) {
         runner,
         bound,
         assignments,
+        carry,
     } = u;
     let auto = *auto;
     match runner_update::fetch_manifest(url).await {
@@ -95,7 +97,7 @@ async fn check_update(u: &Updates, checked_at: tokio::time::Instant) {
                 m.version
             );
             if auto {
-                match runner_update::apply(&m).await {
+                match runner_update::apply(&m, Some(&carry.served)).await {
                     Ok(Some(o)) => {
                         // The new binary is already swapped on disk; this
                         // process hands over to it once its own in-process
@@ -139,7 +141,7 @@ async fn check_update(u: &Updates, checked_at: tokio::time::Instant) {
                             ),
                             drain::Drained::GaveUp => {}
                             drain::Drained::Idle => {
-                                hand_over(drain, "update", &cause, next());
+                                hand_over(drain, carry, "update", &cause, next());
                             }
                         }
                     }
@@ -164,6 +166,7 @@ pub(crate) async fn cred_watch(
     inflight: Arc<AtomicUsize>,
     drain: Arc<drain::Drain>,
     runner: Arc<ClaudeCodeRunner>,
+    carry: HandOver,
     cancel: watch::Receiver<bool>,
 ) {
     tokio::time::sleep(std::time::Duration::from_secs(30)).await;
@@ -177,6 +180,16 @@ pub(crate) async fn cred_watch(
         // alone so a blip never triggers a restart.
         if let Ok(Some(current)) = runner_platform::cred_store::load_device_token() {
             if current != startup_token {
+                if cfg!(not(unix)) {
+                    if said.is_none() {
+                        tracing::error!(
+                            "[cred] the device token changed (re-login detected), and this daemon cannot take it: {}. Restart forge-runner by hand so it reads the new token; until then it goes on with the token it started with",
+                            handover::NO_HANDOVER_HERE
+                        );
+                    }
+                    said = Some("no handover here".into());
+                    continue;
+                }
                 if said.is_none() {
                     tracing::warn!(
                                 "[cred] device token changed (re-login detected) — handing over to a fresh image of this build once this process's own work ends, which reads the new token"
@@ -217,7 +230,7 @@ pub(crate) async fn cred_watch(
                         continue;
                     }
                 }
-                hand_over(&drain, "cred", "a new device token", next());
+                hand_over(&drain, &carry, "cred", "a new device token", next());
                 said = Some("handover failed".into());
             }
         }

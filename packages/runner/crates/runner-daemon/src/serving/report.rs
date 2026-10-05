@@ -302,12 +302,19 @@ pub(crate) fn drain_lines(drain: &DrainState, now_ms: i64) -> Vec<String> {
             outstanding,
             next_attempt,
             next_attempt_at_ms,
+            failed,
         } => {
             let due = if *next_attempt_at_ms >= now_ms {
                 format!("due in {}", ago(*next_attempt_at_ms, now_ms))
             } else {
                 format!("due {} ago", ago(now_ms, *next_attempt_at_ms))
             };
+            if let Some(why) = failed {
+                return vec![format!(
+                    "{INDENT}the handover for {cause} did not happen {} ago — {why}. Nothing was outstanding; admission is open, this process serves the build it started with, and the next attempt is {next_attempt}, {due}",
+                    ago(now_ms, *gave_up_at_ms)
+                )];
+            }
             vec![format!(
                 "{INDENT}the handover for {cause} was deferred {} ago with {} outstanding{}; admission is open, and the next attempt is {next_attempt}, {due}",
                 ago(now_ms, *gave_up_at_ms),

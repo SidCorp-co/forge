@@ -334,6 +334,22 @@ pub(crate) async fn sweep(
             }
         };
 
+        // A pane an update left on the build it was placed under is judged
+        // before the placement below, so one that may be replaced is ended in
+        // time for this same sweep to place its successor (ISS-1379).
+        let outdated_left = outdated_resident(
+            client,
+            masters,
+            ledger,
+            tokens,
+            activity,
+            &pane_name,
+            &resolved,
+            &runner.project_id,
+            placement,
+        )
+        .await;
+
         let stored_conversation = ledger
             .as_ref()
             .and_then(|led| led.master_for_project(&runner.project_id).ok().flatten())
@@ -404,7 +420,7 @@ pub(crate) async fn sweep(
         ) {
             let pane_pid = terminal::pane_pid(&name).await;
             if let Some(led) = ledger.as_mut() {
-                carried_across(
+                carry_and_record(
                     led,
                     &runner.project_id,
                     &name,
@@ -418,6 +434,9 @@ pub(crate) async fn sweep(
         let placed = started.load(std::sync::atomic::Ordering::Relaxed)
             && matches!(pane, PaneState::ColdStarted | PaneState::Resumed);
         if placed {
+            if let Some(led) = ledger.as_ref() {
+                note_placement(led, &runner.project_id, &pane_name, &resolved);
+            }
             if let (Some(led), Some((successor, _))) =
                 (ledger.as_mut(), masters.get(&runner.project_id))
             {
@@ -565,6 +584,12 @@ pub(crate) async fn sweep(
             continue;
         }
 
+        // An outdated pane left running is not driven: the work it would take
+        // up waits for the successor placed once it holds nothing (ISS-1379).
+        if outdated_left && pane == PaneState::Adopted {
+            continue;
+        }
+
         let digest = work_digest(&admissible).wrapping_add(master_inbox::inbox_digest(&inbox));
         let pass = NudgePass {
             client,
@@ -572,14 +597,17 @@ pub(crate) async fn sweep(
             project_id: &runner.project_id,
             issue_key: master_pass::nudged_issue(&admissible, inbox.is_empty()),
         };
-        if masters.claim_nudge(
+        let claimed = masters.claim_nudge(
             &runner.project_id,
             digest,
             reported.as_ref(),
             held.is_some(),
-        ) {
-            let slug = &resolved.slug;
+        );
+        if claimed {
             pass.open(ledger).await;
+        }
+        if types_nudge(pane, claimed) {
+            let slug = &resolved.slug;
             nudge_master(masters, &runner.project_id, slug, held.as_ref(), &inbox).await;
         }
     }

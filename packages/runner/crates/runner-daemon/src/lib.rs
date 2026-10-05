@@ -18,7 +18,9 @@ pub mod drain;
 pub mod handover;
 pub mod inbox;
 pub mod master;
+pub mod master_build;
 pub mod master_exit;
+pub mod master_handed;
 pub mod master_inbox;
 pub mod master_limit;
 pub mod master_pass;
@@ -81,11 +83,30 @@ const SESSION_LEDGER_INTERVAL: std::time::Duration = std::time::Duration::from_s
 /// How often the update loop asks whether a newer release exists.
 const UPDATE_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(6 * 3600);
 
+/// What a handover carries across its exec besides the control listener.
+#[cfg_attr(not(unix), allow(dead_code))]
+pub(crate) struct HandOver {
+    /// The build this process serves, kept beside the install path once an
+    /// update installed another there, which a handover that does not happen
+    /// puts back.
+    pub(crate) served: Arc<runner_update::ServedBuild>,
+    /// The master panes declarations are checked against, which the next
+    /// image serves at once rather than after its first sweep.
+    pub(crate) masters: Arc<master::Masters>,
+}
+
 /// Replace this process's image with the build installed on disk, the control
 /// listener carried, once `drain_to_idle` has closed the window for it.
-/// Returns only where the exec did not happen: admission then opens again and
-/// this process goes on serving the build it started with, until `next`.
-fn hand_over(drain: &drain::Drain, what: &str, cause: &str, next: drain::NextAttempt) {
+/// Returns only where the exec did not happen: the build this process serves
+/// goes back on disk where an update had replaced it, admission opens again
+/// and this process goes on serving that build, until `next`.
+fn hand_over(
+    drain: &drain::Drain,
+    carry: &HandOver,
+    what: &str,
+    cause: &str,
+    next: drain::NextAttempt,
+) {
     #[cfg(unix)]
     {
         let why = match runner_platform::exe::own() {
@@ -96,22 +117,103 @@ fn hand_over(drain: &drain::Drain, what: &str, cause: &str, next: drain::NextAtt
                     own.path.display(),
                     std::process::id()
                 );
+                let dir = runner_platform::config::config_dir();
+                if let Some(dir) = &dir {
+                    write_handed_masters(dir, &carry.masters, what);
+                }
                 let err = handover::replace_image(&own.path, &args, drain.socket().listener());
+                if let Some(dir) = &dir {
+                    master_handed::withdraw(dir);
+                }
                 format!("could not exec {}: {err}", own.path.display())
             }
             Err(e) => format!("could not name the build installed on disk: {e}"),
         };
-        tracing::error!(
-            "[{what}] the handover for {cause} did not happen — {why}. Admission is open again and this process goes on serving the build it started with; the next attempt is {}",
-            next.by
-        );
-        drain.handover_failed(&why, &next);
+        handover_did_not_happen(drain, &carry.served, what, cause, why, &next);
     }
     #[cfg(not(unix))]
     {
-        let _ = (drain, next);
-        handover::exit_for_service_manager(what, cause);
+        let _ = carry;
+        let why = handover::NO_HANDOVER_HERE.to_string();
+        tracing::error!(
+            "[{what}] the handover for {cause} did not happen — {why}. Admission is open again and this process goes on serving the build it started with"
+        );
+        drain.handover_failed(&why, &next);
     }
+}
+
+/// Write the master panes this process serves for the image that follows.
+#[cfg(unix)]
+fn write_handed_masters(dir: &std::path::Path, masters: &master::Masters, what: &str) {
+    let (served, masters) = masters.hand_on();
+    let handed = master_handed::Handed {
+        pid: std::process::id(),
+        boot_id: runner_core::inflight::boot_identity(),
+        written_at_ms: agent_activity::now_ms(),
+        served,
+        masters,
+    };
+    if let Err(e) = master_handed::write(dir, &handed) {
+        tracing::warn!(
+            "[{what}] the master panes this process serves could not be written for the image that follows ({e}); it serves them from its first sweep, refusing their declarations until then"
+        );
+    }
+}
+
+/// Serve the master panes the image before this one handed on, where this
+/// process is that image's exec, and say what was found.
+fn take_handed_masters(masters: &master::Masters) {
+    let Some(dir) = runner_platform::config::config_dir() else {
+        return;
+    };
+    let boot = runner_core::inflight::boot_identity();
+    match master_handed::take(
+        &dir,
+        std::process::id(),
+        boot.as_deref(),
+        agent_activity::now_ms(),
+    ) {
+        master_handed::Taken::Nothing => {}
+        master_handed::Taken::Handed(handed) => {
+            let n = masters.take_handed(handed);
+            tracing::info!(
+                "[master] serving the {n} master pane(s) the build before this one handed over, so their declarations are answered from now rather than from this image's first sweep"
+            );
+        }
+        master_handed::Taken::Refused(why) => tracing::warn!(
+            "[master] a handed-over masters registry was found and not taken: {why}. This image serves its master panes from its first sweep"
+        ),
+    }
+}
+
+/// The exec did not happen: put the build this process serves back on the path
+/// an update installed another at, so every hook and command on the box runs
+/// it again, then reopen admission naming why.
+#[cfg(unix)]
+fn handover_did_not_happen(
+    drain: &drain::Drain,
+    served: &runner_update::ServedBuild,
+    what: &str,
+    cause: &str,
+    mut why: String,
+    next: &drain::NextAttempt,
+) {
+    match served.restore() {
+        Ok(Some(kept)) => why.push_str(&format!(
+            "; the build this process serves is back at {} from {}, so every hook and command on this box runs it again",
+            kept.exe.display(),
+            kept.at.display()
+        )),
+        Ok(None) => {}
+        Err(e) => why.push_str(&format!(
+            "; {e}, so every hook and command on this box runs a build that did not start until one that runs is installed there"
+        )),
+    }
+    tracing::error!(
+        "[{what}] the handover for {cause} did not happen — {why}. Admission is open again and this process goes on serving the build it started with; the next attempt is {}",
+        next.by
+    );
+    drain.handover_failed(&why, next);
 }
 
 /// Rewrite the hook commands of every project bound on this box that name a
@@ -378,6 +480,12 @@ pub async fn run(
     // it, and the record `forge-runner status` reads of the build it serves.
     let drain = Arc::new(drain::Drain::new(runner_platform::config::config_dir()));
 
+    // The build this process serves, kept where an update installs another,
+    // and the master panes it serves, both carried by a handover's exec.
+    let served = Arc::new(runner_update::ServedBuild::new());
+    let masters = Arc::new(master::Masters::new());
+    take_handed_masters(&masters);
+
     // Update check loop: warn when a newer release exists; auto-apply +
     // restart when `update.auto` is set.
     if let Some(url) =
@@ -391,6 +499,10 @@ pub async fn run(
             runner: runner.clone(),
             bound: cfg.clone(),
             assignments: client.clone(),
+            carry: HandOver {
+                served: served.clone(),
+                masters: masters.clone(),
+            },
         };
         tokio::spawn(actors::updates(u, cancel_rx.clone()));
     }
@@ -400,6 +512,10 @@ pub async fn run(
         inflight.clone(),
         drain.clone(),
         runner.clone(),
+        HandOver {
+            served: served.clone(),
+            masters: masters.clone(),
+        },
         cancel_rx.clone(),
     ));
     tokio::spawn(actors::heartbeat(client.clone(), cancel_rx.clone()));
@@ -447,8 +563,6 @@ pub async fn run(
         cfg.clone(),
         cancel_rx.clone(),
     ));
-
-    let masters = Arc::new(master::Masters::new());
 
     let activity = Arc::new(agent_activity::Activities::new());
 

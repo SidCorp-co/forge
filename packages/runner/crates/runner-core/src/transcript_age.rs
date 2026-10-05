@@ -112,24 +112,7 @@ pub enum Newest {
 /// written beside a `user` entry. `None` where the file cannot be opened or
 /// read, which says nothing about what was written.
 pub fn newest_entry(path: &Path) -> Option<Newest> {
-    use std::io::{Read, Seek, SeekFrom};
-    let mut file = std::fs::File::open(path).ok()?;
-    let len = file.metadata().ok()?.len();
-    let mut window = TAIL_BYTES;
-    loop {
-        let start = len.saturating_sub(window);
-        file.seek(SeekFrom::Start(start)).ok()?;
-        let mut tail = Vec::new();
-        file.read_to_end(&mut tail).ok()?;
-        let whole = start == 0;
-        if let Some(newest) = decide(&String::from_utf8_lossy(&tail), whole) {
-            return Some(newest);
-        }
-        if whole || window >= TAIL_CAP {
-            return Some(Newest::Turn);
-        }
-        window = (window * 4).min(TAIL_CAP);
-    }
+    read_back(path, decide, Newest::Turn)
 }
 
 /// What `tail` says the newest entry is, or `None` where the entry that
@@ -177,4 +160,78 @@ fn modified_ms(path: &Path) -> Option<i64> {
         .ok()?
         .as_millis();
     i64::try_from(ms).ok()
+}
+
+/// Read the end of the transcript at `path` in widening windows until
+/// `decide` answers, or answer `fallback` once the whole file or
+/// [`TAIL_CAP`] has been read without one. `None` where the file cannot be
+/// opened or read.
+fn read_back<T>(path: &Path, decide: fn(&str, bool) -> Option<T>, fallback: T) -> Option<T> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    let mut window = TAIL_BYTES;
+    loop {
+        let start = len.saturating_sub(window);
+        file.seek(SeekFrom::Start(start)).ok()?;
+        let mut tail = Vec::new();
+        file.read_to_end(&mut tail).ok()?;
+        let whole = start == 0;
+        if let Some(found) = decide(&String::from_utf8_lossy(&tail), whole) {
+            return Some(found);
+        }
+        if whole || window >= TAIL_CAP {
+            return Some(fallback);
+        }
+        window = (window * 4).min(TAIL_CAP);
+    }
+}
+
+/// The entry kinds a lead's conversation is made of. Claude Code also writes
+/// records about the session into the same file — `last-prompt`,
+/// `cost-state`, `queue-operation`, `permission-mode`, `mode`, `atis-latch`,
+/// `ai-title` and more, 331 of them standing after the newest conversation
+/// entry of the 153 lead transcripts on this box read 2026-10-01 — and none of those
+/// is written by a turn or begins one, so they are read past.
+const CONVERSATION_KINDS: [&str; 5] = ["user", "assistant", "system", "attachment", "progress"];
+
+/// The `system` entries Claude Code writes once a lead's turn is over: the
+/// summary of its `Stop` hooks, then the turn's duration, and later, while
+/// the session sits at its prompt, a summary of the time away. Of those 153
+/// transcripts, 57 ended on `turn_duration`, 18 on `stop_hook_summary` and 2
+/// on `away_summary`, each `away_summary` after a `turn_duration` (ISS-1379).
+const TURN_OVER: [&str; 3] = ["turn_duration", "stop_hook_summary", "away_summary"];
+
+/// Whether the newest conversation entry in a lead's transcript at `path`
+/// says its turn is over. `Some(false)` is anything else — a message, a
+/// tool's result, a tool call waiting on a permission, an input queued — and
+/// an entry that does not parse; `None` is a transcript that cannot be read.
+///
+/// For a session whose hooks this box has not heard since it started, which
+/// is every pane an update handed over (ISS-1379): only an affirmative end
+/// says the session is at its prompt.
+pub fn lead_turn_ended(path: &Path) -> Option<bool> {
+    read_back(path, decide_lead, false)
+}
+
+fn decide_lead(tail: &str, whole: bool) -> Option<bool> {
+    let mut lines = tail.lines();
+    if !whole {
+        lines.next();
+    }
+    for line in lines.rev().filter(|l| !l.trim().is_empty()) {
+        let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) else {
+            return Some(false);
+        };
+        let kind = entry["type"].as_str().unwrap_or("");
+        if !CONVERSATION_KINDS.contains(&kind) {
+            continue;
+        }
+        let subtype = entry["subtype"].as_str().unwrap_or("");
+        return Some(
+            (kind == "system" && TURN_OVER.contains(&subtype))
+                || (kind == "attachment" && entry["attachment"]["hookEvent"] == "Stop"),
+        );
+    }
+    whole.then_some(false)
 }
