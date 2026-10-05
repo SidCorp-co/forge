@@ -1,8 +1,6 @@
 // Writing what the idle-issues pass found onto the row, and raising it to a person when it needs one.
 
-import { sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { leaseHolderOf } from '../issues/index.js';
+import { leaseHolderOf, writeIssueStrand } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../lib/logger.js';
 import type { CandidateRow, StrandRecord } from './idle-issues.js';
@@ -39,11 +37,9 @@ function canonical(value: unknown): string {
 }
 
 /**
- * Write the finding onto the row, and release a lapsed lease. Guarded on the lease value read, under
- * the row lock, so a claim landing between read and write wins and this pass skips the row. The
- * finding goes through `jsonb_set` on its own key, so a concurrent write to another key survives;
- * the release goes to the lease's home, `issue_work_state` (ISS-54). `updated_at` is left alone:
- * it has no trigger, and a swept row must not read as freshly worked.
+ * Write the finding onto the row, and release a lapsed lease, through the issues kernel's writer.
+ * Guarded on the lease value read, so a claim landing between read and write wins and this pass
+ * skips the row.
  */
 export async function writeStrand(args: {
   row: CandidateRow;
@@ -52,48 +48,22 @@ export async function writeStrand(args: {
   now: Date;
 }): Promise<boolean> {
   const { row, record, release, now } = args;
-  const entry = JSON.stringify({
-    at: now.toISOString(),
-    how: 'swept',
-    holder: leaseHolderOf(row.lease),
-    status: row.status,
+  const at = now.toISOString();
+  const written = await writeIssueStrand({
+    issueId: row.id,
+    leaseRead: row.lease,
+    record,
+    release: release
+      ? { at, entry: { at, how: 'swept', holder: leaseHolderOf(row.lease), status: row.status } }
+      : null,
   });
-  const read = row.lease === null || row.lease === undefined ? null : JSON.stringify(row.lease);
-  return db.transaction(async (tx) => {
-    const held = (await tx.execute(sql`
-      SELECT 1 FROM issues i
-       WHERE i.id = ${row.id}
-         AND coalesce((SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id), 'null'::jsonb)
-             IS NOT DISTINCT FROM coalesce(${read}::jsonb, 'null'::jsonb)
-       FOR UPDATE OF i
-    `)) as unknown as Array<unknown>;
-    if (held.length === 0) {
-      logger.info(
-        { issueId: row.id },
-        'idle-issues: the lease moved between the read and the write — the row is left as the other writer left it',
-      );
-      return false;
-    }
-    await tx.execute(sql`
-      UPDATE issues i
-         SET session_context = jsonb_set(coalesce(i.session_context, '{}'::jsonb), '{strand}', ${JSON.stringify(record)}::jsonb, true)
-       WHERE i.id = ${row.id}
-    `);
-    if (release) {
-      await tx.execute(sql`
-        UPDATE issue_work_state w
-           SET lease = jsonb_set(
-                 jsonb_set(w.lease, '{stopped}', to_jsonb(${now.toISOString()}::text), true),
-                 '{history}',
-                 (CASE WHEN jsonb_typeof(w.lease -> 'history') = 'array'
-                       THEN w.lease -> 'history' ELSE '[]'::jsonb END) || ${entry}::jsonb,
-                 true),
-               updated_at = now()
-         WHERE w.issue_id = ${row.id} AND jsonb_typeof(w.lease) = 'object'
-      `);
-    }
-    return true;
-  });
+  if (!written) {
+    logger.info(
+      { issueId: row.id },
+      'idle-issues: the lease moved between the read and the write — the row is left as the other writer left it',
+    );
+  }
+  return written;
 }
 
 /** A reason closed by one full stop: a release hold's reason already ends in its own. */

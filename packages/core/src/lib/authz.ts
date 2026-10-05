@@ -1,7 +1,7 @@
 import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { fencedProjectIds } from '../credentials/pat-scope.js';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import {
   type OrgMemberRole,
   organizationMembers,
@@ -57,7 +57,7 @@ export function maxProjectRole(
 }
 
 /** Where a project sits: its org, or null when the project does not exist. */
-type ProjectOrgSource = (projectId: string) => Promise<string | null>;
+type ProjectOrgSource = (projectId: string, executor?: Tx) => Promise<string | null>;
 
 let projectOrgSource: ProjectOrgSource | null = null;
 
@@ -70,13 +70,13 @@ export function provideProjectOrg(source: ProjectOrgSource): void {
   projectOrgSource = source;
 }
 
-export function projectOrgOf(projectId: string): Promise<string | null> {
+export function projectOrgOf(projectId: string, executor?: Tx): Promise<string | null> {
   if (!projectOrgSource) {
     throw new Error(
       'permission check: no project org source was provided, so where a project sits cannot be read; the process entry calls provideProjectOrg(findProjectOrgId) from projects/service.ts before it serves',
     );
   }
-  return projectOrgSource(projectId);
+  return projectOrgSource(projectId, executor);
 }
 
 /**

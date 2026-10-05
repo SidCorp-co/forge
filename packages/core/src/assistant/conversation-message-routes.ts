@@ -16,7 +16,7 @@ import {
   writableConversation,
 } from '../conversations/index.js';
 import { conversationModes } from '../db/schema-conversations.js';
-import { defaultChatProviderId, resolveChatProvider } from '../integrations/llm/index.js';
+import { chatModelName } from '../integrations/llm/index.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -109,7 +109,7 @@ conversationMessageRoutes.post(
     // cm:guard Assistant mode with no chat model is refused here by name (503), never taken in and
     // answered with an "overloaded" apology the person would retry for ever (REQ-19)
     if (asking === 'assistant') {
-      resolveChatProvider(defaultChatProviderId());
+      chatModelName();
     }
     const unavailable =
       asking === 'agent' ? await conversationAgentUnavailableReason(projectId) : null;

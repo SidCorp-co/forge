@@ -1,22 +1,19 @@
 import { and, eq, inArray, isNotNull, or } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
-import { organizationMembers, projectMembers, projects, users } from '../db/schema.js';
+import { organizationMembers, projectMembers } from '../db/schema.js';
+import { projectOrgOf } from '../lib/authz.js';
+import { permissionsPort } from './ports.js';
 
 /**
  * Whether a human who reads this project's records reads code: a project member, or an owner or
  * admin of its organization, holding the `technical` lens.
  */
 export async function readsTechnical(projectId: string, tx: Tx): Promise<boolean> {
-  const [project] = await tx
-    .select({ orgId: projects.orgId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project?.orgId) return false;
+  const orgId = await projectOrgOf(projectId, tx);
+  if (!orgId) return false;
   const rows = await tx
-    .select({ lenses: organizationMembers.lenses })
+    .select({ userId: organizationMembers.userId, lenses: organizationMembers.lenses })
     .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
     .leftJoin(
       projectMembers,
       and(
@@ -26,10 +23,15 @@ export async function readsTechnical(projectId: string, tx: Tx): Promise<boolean
     )
     .where(
       and(
-        eq(organizationMembers.orgId, project.orgId),
-        eq(users.kind, 'human'),
+        eq(organizationMembers.orgId, orgId),
         or(isNotNull(projectMembers.userId), inArray(organizationMembers.role, ['owner', 'admin'])),
       ),
     );
-  return rows.some((r) => ((r.lenses ?? []) as string[]).includes('technical'));
+  const technical = rows.filter((r) => ((r.lenses ?? []) as string[]).includes('technical'));
+  if (technical.length === 0) return false;
+  const agents = await permissionsPort('agentAccountsAmong')(
+    technical.map((r) => r.userId),
+    tx,
+  );
+  return technical.some((r) => !agents.has(r.userId));
 }

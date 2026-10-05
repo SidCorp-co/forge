@@ -13,6 +13,7 @@ import {
   registerRoomChat,
   registerWebConversationAdapter,
 } from './assistant/index.js';
+import { agentAccountsAmong } from './auth/index.js';
 import { runOnceBackfills } from './boot-backfills.js';
 import { commentsSince, recentCommentBodies } from './comments/index.js';
 import { logUnprovenPatPeppers } from './credentials/pat.js';
@@ -77,7 +78,7 @@ import { deleteFeedbackMockups } from './mockups/index.js';
 import { emitNotification } from './notifications/index.js';
 import { declareOutboxQueues, startOutboxWorker, stopOutboxWorker } from './outbox/index.js';
 import { registerOutboxConsumers } from './outbox-consumers.js';
-import { readsTechnical } from './permissions/index.js';
+import { providePermissionsPorts, readsTechnical } from './permissions/index.js';
 import { pipelineRunProjectId } from './pipeline/index.js';
 import {
   encryptPlaintextBindingSecrets,
@@ -87,9 +88,11 @@ import {
 } from './project-config/index.js';
 import {
   findProjectOrgId,
+  findProjectOrgIds,
   listProjectHeads,
   projectDocumentNames,
   projectHead,
+  projectOrgIdSql,
   provideProjectsPorts,
 } from './projects/index.js';
 import { startBoss, stopBoss } from './queue/boss.js';
@@ -114,6 +117,11 @@ import { workflowDesign } from './workflows/index.js';
 import { attachWs, closeWs } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
+providePermissionsPorts({
+  projectOrgIdSql,
+  projectOrgIds: findProjectOrgIds,
+  agentAccountsAmong,
+});
 provideWorkPorts();
 provideExecutionPorts();
 provideAssistantMethod(composeLayers(METHOD_LAYERS));

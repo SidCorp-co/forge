@@ -1,5 +1,5 @@
 import type { AgentSessionKind } from '../db/schema.js';
-import { AGENT_SESSION_KIND_LIST, isAgentSessionKind } from '../jobs/index.js';
+import { AGENT_SESSION_KIND_LIST, isAgentSessionKind } from './session-kinds.js';
 
 export function kindFromQuery(value: string, refuse: (message: string) => Error): AgentSessionKind {
   if (isAgentSessionKind(value)) return value;

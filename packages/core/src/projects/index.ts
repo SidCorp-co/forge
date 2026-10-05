@@ -15,8 +15,10 @@ export {
 export {
   findProjectIdBySlug,
   findProjectOrgId,
+  findProjectOrgIds,
   listVisibleProjectsWithRole,
   projectDocumentNames,
+  projectOrgIdSql,
   type VisibleProjectWithRole,
 } from './service.js';
 // Loaded on call: the live reading reaches git and the release path, and both import this face back.

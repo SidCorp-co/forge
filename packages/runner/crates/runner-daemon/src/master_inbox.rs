@@ -143,7 +143,7 @@ pub fn inbox_line(inbox: &[UnansweredDocument]) -> String {
             .map(|d| d.number.as_deref().unwrap_or(d.id.as_str()))
             .collect();
         line.push_str(&format!(
-            " The ecosystem channel owes {} repl{} ({}): `forge_channel action=unanswered` lists them, and `forge-runner api guides/ecosystem-inbox.md` is how to work them.",
+            " The ecosystem channel owes {} repl{} ({}): read each (`forge-runner api projects/<projectId>/channel/documents/<number>`), and `forge-runner api guides/ecosystem-inbox.md` is how to work them.",
             docs.len(),
             if docs.len() == 1 { "y" } else { "ies" },
             numbers.join(", ")
@@ -152,7 +152,7 @@ pub fn inbox_line(inbox: &[UnansweredDocument]) -> String {
     if !runs.is_empty() {
         let ids: Vec<&str> = runs.iter().map(|d| d.id.as_str()).collect();
         line.push_str(&format!(
-            " {} ecosystem builder run{} open ({}): `forge_ecosystem action=builder_runs` lists them, and `forge-runner api guides/ecosystem-inbox.md` is how to work one.",
+            " {} ecosystem builder run{} open ({}): `forge-runner api projects/<projectId>/builder-runs` lists them, and `forge-runner api guides/ecosystem-inbox.md` is how to work one.",
             runs.len(),
             if runs.len() == 1 { " is" } else { "s are" },
             ids.join(", ")

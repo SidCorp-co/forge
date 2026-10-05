@@ -1,13 +1,13 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { readRunnerPoolRead } from '../devices/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { clearRunnerFaultFlags } from './clear-fault-flags.js';
+import { runnersPorts } from './ports.js';
 import {
   bindDeviceRunner,
   listProjectRunnerPools,
@@ -47,7 +47,7 @@ projectRunnerRoutes.get('/:id/runners', zValidator('param', idParamSchema), asyn
 
   const rows = await listProjectRunnerPools(id);
 
-  return c.json(rows.map((r) => ({ ...r, poolRead: readRunnerPoolRead(r.poolRead) })));
+  return c.json(rows.map((r) => ({ ...r, poolRead: runnersPorts().readRunnerPoolRead(r.poolRead) })));
 });
 
 projectRunnerRoutes.post(

@@ -8,7 +8,7 @@
  */
 
 import type { ProjectPermission } from '@forge/contracts/permissions';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import {
@@ -44,13 +44,34 @@ export async function findProjectIdBySlug(slug: string): Promise<string | null> 
 }
 
 /** The org a project belongs to, or `null` when the project is gone. */
-export async function findProjectOrgId(projectId: string): Promise<string | null> {
-  const [row] = await db
+export async function findProjectOrgId(
+  projectId: string,
+  executor: Tx = db,
+): Promise<string | null> {
+  const [row] = await executor
     .select({ orgId: projects.orgId })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
   return row?.orgId ?? null;
+}
+
+/** The org of each of these projects that exists, keyed by project id. */
+export async function findProjectOrgIds(
+  projectIds: readonly string[],
+): Promise<Map<string, string>> {
+  const ids = [...new Set(projectIds)];
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select({ id: projects.id, orgId: projects.orgId })
+    .from(projects)
+    .where(inArray(projects.id, ids));
+  return new Map(rows.map((r) => [r.id, r.orgId]));
+}
+
+/** A project's org as a scalar SQL subquery over a project id expression; null when it is gone. */
+export function projectOrgIdSql(projectId: SQLWrapper): SQL {
+  return sql`(SELECT ${projects.orgId} FROM ${projects} WHERE ${projects.id} = ${projectId})`;
 }
 
 type NewProject = {

@@ -1,3 +1,4 @@
+import type { Column, SQL } from 'drizzle-orm';
 import { portSlot } from '../lib/port-slot.js';
 
 // What the runners kernel needs from the modules above it, handed in by the process entry at boot
@@ -6,6 +7,13 @@ import { portSlot } from '../lib/port-slot.js';
 interface RunnersPorts {
   /** The live jobs occupying each runner, from the job ledger. */
   countInFlightByRunner(runnerIds: string[]): Promise<Map<string, number>>;
+  /** The live resident master a device holds for a project, as a subquery over the outer row. */
+  residentMasterSql(
+    deviceIdColumn: Column,
+    projectIdColumn: Column,
+  ): SQL<{ sessionId: string; name: string; lastHeartbeatAt: string | null } | null>;
+  /** A runner's stored pool read as every surface shows it; null when none is readable. */
+  readRunnerPoolRead(stored: unknown): object | null;
 }
 
 const slot = portSlot<RunnersPorts>('runners', 'provideRunnersPorts');

@@ -17,7 +17,6 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
-import { jobsOfSession, scrubJobOutput } from '../jobs/index.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -25,6 +24,7 @@ import { refuseSession } from './refusals.js';
 import { appendChatLines } from './service.js';
 import { assertDeviceOwnsSession, idParamSchema, loadSessionOr404 } from './session-access.js';
 import { maybeDeriveIncrementalFor } from './session-transcript.js';
+import { agentSessionsPorts } from './ports.js';
 
 /** How many lines one POST may carry, matching the runner's own chunking. */
 const MAX_BATCH = 100;
@@ -116,7 +116,7 @@ agentSessionEventsRoutes.post(
       });
     }
 
-    const lines = await scrubJobOutput(await jobsOfSession(sessionId), events);
+    const lines = await agentSessionsPorts().scrubSessionOutput(sessionId, events);
 
     const appended = await appendChatLines(sessionId, lines);
     if (!appended.ok) {

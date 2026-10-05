@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Kernels reach each other only through their faces.** Strand findings use the issues writer,
+  permissions and the WebSocket door read no foreign table, chat egress is gated in the LLM
+  adapter, and prompts name REST over three MCP tools.
+
 ## [0.4.0-dev.30] - 2026-10-05
 
 Workflow design health, requirement accept/drop, and job briefs as launch prompts

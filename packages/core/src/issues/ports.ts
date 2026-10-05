@@ -13,6 +13,7 @@ import type { EgressScope } from '../lib/data-egress.js';
 import { portSlot } from '../lib/port-slot.js';
 import type { Refusal, RefusalError } from '../lib/refusal.js';
 import type { KernelActor } from '../lifecycle/index.js';
+import type { Actor } from './activity.js';
 
 /** The project document as the issue kernel reads it. */
 export interface IssueProjectDocument {
@@ -226,6 +227,13 @@ interface IssuePorts {
     issueId: string,
     outcome: 'completed' | 'cancelled',
   ) => Promise<'settled' | 'deferred'>;
+  triggerPipelineStepManual: (args: {
+    projectId: string;
+    issueId: string;
+    status: IssueStatus;
+    actor: Actor;
+    reason: Record<string, unknown>;
+  }) => Promise<{ startedAt: string }>;
 }
 
 const slot = portSlot<IssuePorts>('issues', 'provideIssuePorts');
@@ -284,3 +292,4 @@ export const isSourceHostUnavailable = port('isSourceHostUnavailable');
 export const readStorefrontDraft = port('readStorefrontDraft');
 export const handoffContextsOf = port('handoffContextsOf');
 export const closeOpenRunForIssue = port('closeOpenRunForIssue');
+export const triggerPipelineStepManual = port('triggerPipelineStepManual');

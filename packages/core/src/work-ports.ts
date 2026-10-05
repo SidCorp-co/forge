@@ -76,7 +76,12 @@ import {
   resolveNotifications,
 } from './notifications/index.js';
 import { afterOnboardingSubmit, onboardingSubmittedIn } from './onboarding/index.js';
-import { closeOpenRunForIssue, getIssueContexts, providePipelinePorts } from './pipeline/index.js';
+import {
+  closeOpenRunForIssue,
+  getIssueContexts,
+  providePipelinePorts,
+  triggerPipelineStepManual,
+} from './pipeline/index.js';
 import {
   policyRefusal,
   readEffectivePolicy,
@@ -221,6 +226,7 @@ export function provideWorkPorts(): void {
     handoffContextsOf: (projectId, issueId) =>
       getIssueContexts({ projectId, issueId, kind: 'handoff', limit: 200, orderDir: 'asc' }),
     closeOpenRunForIssue,
+    triggerPipelineStepManual,
   });
 
   provideAutomationPorts({

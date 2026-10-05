@@ -442,7 +442,8 @@
         "personal-data-flow#pr-assistant",
         "REQ-19",
         "personal-data-flow#ext-embeddings",
-        "feedback-triage#vectors"
+        "feedback-triage#vectors",
+        "core-components#ad-llm"
       ]
     },
     "integrations/rocketchat": {
@@ -610,7 +611,11 @@
     "mcp": {
       "kind": "door",
       "context": "platform",
-      "serves": ["personal-data-flow#src-mcp", "personal-data-flow#pr-api"]
+      "serves": [
+        "personal-data-flow#src-mcp",
+        "personal-data-flow#pr-api",
+        "core-components#door-mcp"
+      ]
     },
     "me": {
       "kind": "read-model",
@@ -773,7 +778,8 @@
       "serves": [
         "issue-lifecycle#start",
         "requirement-lifecycle#agreed",
-        "project-onboarding#approve-guard"
+        "project-onboarding#approve-guard",
+        "core-components#k-permissions"
       ]
     },
     "pipeline": {
@@ -790,7 +796,8 @@
         "REQ-1",
         "issue-delivery#act-build",
         "issue-delivery#rule-dispatch",
-        "issue-delivery#rule-wedge"
+        "issue-delivery#rule-wedge",
+        "core-components#k-pipeline"
       ]
     },
     "preferences": {
@@ -1031,7 +1038,12 @@
     "ws": {
       "kind": "door",
       "context": "platform",
-      "serves": ["REQ-11", "issue-delivery#rule-dispatch", "requirement-to-delivery#delivery"]
+      "serves": [
+        "REQ-11",
+        "issue-delivery#rule-dispatch",
+        "requirement-to-delivery#delivery",
+        "core-components#door-ws"
+      ]
     }
   },
   "web": {

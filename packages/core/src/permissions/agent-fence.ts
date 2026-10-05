@@ -3,8 +3,9 @@ import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { grantNaming, regrantLiveTokens } from '../credentials/pat.js';
 import { db, type Tx } from '../db/client.js';
-import { projectMembers, users } from '../db/schema.js';
+import { projectMembers } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
+import { permissionsPort } from './ports.js';
 
 export interface AgentCredentialFence {
   boundProjectId: string | null;
@@ -64,12 +65,7 @@ async function agentExplicitGrant(agentUserId: string, tx: Tx = db): Promise<str
 }
 
 async function isAgent(tx: Tx, userId: string): Promise<boolean> {
-  const [holder] = await tx
-    .select({ kind: users.kind })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  return holder?.kind === 'agent';
+  return (await permissionsPort('agentAccountsAmong')([userId], tx)).has(userId);
 }
 
 /**

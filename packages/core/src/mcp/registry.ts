@@ -22,14 +22,15 @@ import { forgeUploadsTool } from '../uploads/tool.js';
 
 // Each entry defers to its factory, so reading this table never touches a module still loading.
 export const MCP_TOOLS = {
-  // POST /api/agent-reports is its REST twin; kept while the drive prompt (prompt/facts/drive-rules.ts)
-  // and the forge-skills skill still send agents here.
+  // Every action has a REST twin under /api/agent-reports, and every prompt in this repo names the
+  // route; kept only for forge-plugin clients, until mcp_audit_log shows no call (reported there).
   forge_agent_report: (ctx) => forgeAgentReportTool(ctx),
   // An image attachment comes back as a viewable block; `forge-runner api` prints text only.
   forge_uploads: (ctx) => forgeUploadsTool(ctx),
-  // Most actions have REST twins under /api/projects/:id/channel|interface|links|builder-runs; kept
-  // because masters still work the inbox through these tools and the forge CLI has no REST verbs for
-  // them yet (reported to forge-plugin). The channel's unanswered read is device-only over REST.
+  // Every action but forge_ecosystem `context` has a REST twin under
+  // /api/projects/:id/channel|interface|links|builder-runs|contracts and /api/ecosystems, and every
+  // prompt in this repo names the route; kept only for forge-plugin clients, whose CLI has no REST
+  // verbs for them, until mcp_audit_log shows no call (reported there). `context` is MCP-only.
   forge_channel: (ctx) => forgeChannelTool(ctx),
   forge_ecosystem: (ctx) => forgeEcosystemTool(ctx),
   // A core-mediated integration's agent path: the provider credential stays in core. forge_source,

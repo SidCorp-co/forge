@@ -186,12 +186,13 @@ function publicGuidesUrl(): string {
 function forgeMcpInstructions(): string {
   return `You are connected to a Forge-managed project — Forge is the control plane for this repo's issues, pipeline, and durable memory. The REST API (\`<host>/api/...\`, a personal access token as \`Authorization: Bearer\`) is the primary door and the \`forge\` CLI sits on it; this server carries only what neither covers:
 
-- \`forge_agent_report\` — report friction, a skill gap or a learning mid-run (\`submit\` reads your live job or session context).
 - \`forge_uploads\` — read an issue, comment or session attachment; an image comes back as a viewable block.
-- \`forge_channel\` and \`forge_ecosystem\` — a project's channel inside its ecosystem: what it owes a reply to (\`forge_channel action=unanswered\`), gates, and the contract context. How a master works the inbox: \`GET <host>/api/guides/ecosystem-inbox.md\`.
+- \`forge_ecosystem action=context\` — the contracts a set of repository paths calls, recorded on a session; no REST route serves it.
 - \`forge_source\`, \`forge_coolify_deploy\`, \`forge_sentry\`, \`forge_storefront_target\` — a connected integration whose credential stays in core.
 
 Everything else is REST or the CLI:
+- Friction, a skill gap or a learning mid-run: \`POST /api/agent-reports\` \`{ projectId, kind, target, summary, severity?, targetRef?, detail?, suggestion? }\`, which reads your live job from the token; \`GET /api/agent-reports\` reads the feed and \`POST /api/agent-reports/:id/triage\` decides one.
+- A project's ecosystem channel, interface, links and builder runs: \`/api/projects/:id/channel/…\`, \`/api/projects/:id/interface\`, \`/api/projects/:id/links\`, \`/api/projects/:id/builder-runs\`. How a master works the inbox: \`GET <host>/api/guides/ecosystem-inbox.md\`. \`forge_agent_report\`, \`forge_channel\` and \`forge_ecosystem\` still answer the same actions here for forge-plugin clients; prefer the routes.
 - Project memory is NOT auto-loaded. At the start of any task needing project context, recall it first: \`POST /api/memory/search\` \`{ projectId, query, topK: 5 }\`. Hits are point-in-time — verify against live code/git before trusting, then report it at \`POST /api/memory/feedback\`.
 - Project prose (build commands, rules, guides): \`/api/projects/:id/knowledge\` or \`forge knowledge\`. Settings: \`GET /api/projects/:id/config\` → \`document\`, the project document (environments, their URLs, promotions and the testing profile each names; a testing profile holds \`secret://\` references, never a credential).
 - Issues, comments, status and dependencies: \`/api/projects/:id/issues\`, \`/api/issues/:id\`, \`/api/issues/:id/comments\`, or \`forge issue\` / \`forge new\` / \`forge comment\`. A person's question comment on an issue (\`intent: question\`) is owed a reply, at any status but closed or dropped, until an agent replies in its thread.

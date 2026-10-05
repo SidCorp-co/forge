@@ -4,6 +4,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
+  clearIssueStrand,
   holderFanout,
   issueWorkInFlightSql,
   leaseIsWorkInProgress,
@@ -69,17 +70,7 @@ export async function clearRecovered(now: Date, scope: { projectId?: string }): 
   let cleared = 0;
   for (const row of rows) {
     if (stillStranded(row, now, fanout)) continue;
-    const held =
-      row.strand === null || row.strand === undefined ? null : JSON.stringify(row.strand);
-    const done = (await db.execute(sql`
-      UPDATE issues i
-         SET session_context = i.session_context - 'strand'
-       WHERE i.id = ${row.id}
-         AND coalesce(i.session_context -> 'strand', 'null'::jsonb)
-             IS NOT DISTINCT FROM coalesce(${held}::jsonb, 'null'::jsonb)
-      RETURNING i.id
-    `)) as unknown as Array<{ id: string }>;
-    if (done.length > 0) cleared += 1;
+    if (await clearIssueStrand(row.id, row.strand)) cleared += 1;
   }
   if (cleared > 0) logger.info({ cleared }, 'idle-issues: findings cleared on rows that recovered');
   return cleared;

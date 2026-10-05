@@ -20,6 +20,16 @@ export async function deviceOwnership(id: string) {
   return device ?? null;
 }
 
+/** Whether a user owns a device. */
+export async function deviceOwnedBy(deviceId: string, userId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: devices.id })
+    .from(devices)
+    .where(and(eq(devices.id, deviceId), eq(devices.ownerId, userId)))
+    .limit(1);
+  return !!row;
+}
+
 /** The devices a user owns, newest pairing first; narrowed to those running in `orgId` when given. */
 export async function listOwnedDevices(userId: string, orgId: string | undefined) {
   return orgId

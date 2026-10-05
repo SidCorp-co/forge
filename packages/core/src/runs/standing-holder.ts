@@ -7,7 +7,7 @@ import type {
   RunState,
 } from '@forge/contracts/run-standing';
 import { classifyLease } from '../issues/index.js';
-import { isPipelineSessionKind } from '../jobs/index.js';
+import { isPipelineSessionKind } from '../agent-sessions/index.js';
 import { after, iso, none, type RunFacts, type StandingContext } from './standing-types.js';
 
 function verdictAt(at: Date, now: Date, lapsed: IssueLeaseVerdict): IssueLeaseVerdict {

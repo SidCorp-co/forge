@@ -1,28 +1,8 @@
+import type { RunnerBuildComparison, RunnerBuildState } from '../runners/index.js';
 import { devicesPorts } from './ports.js';
 import { getPublishedRunnerBuild } from './published-build.js';
 
-/**
- * Whether a box is running the runner `main` holds. Two questions, each between
- * like things, because conflating them is how one of them lies:
- * - is this box on the PUBLISHED release? version and commit, both release stamps.
- * - is the published release the runner that LANDED? two runner-head commits.
- *
- * Only the second catches a release that was never cut, which is the shape that
- * left seven runner commits on no box while everything read healthy (ISS-1165).
- * Three answers rather than two, because "we cannot tell" is not "it is fine".
- */
-export type RunnerBuildState = 'current' | 'behind' | 'unknown';
-
-export interface RunnerBuildComparison {
-  /** This box against the published release. */
-  state: RunnerBuildState;
-  /** The published release against the runner on the default branch. */
-  releaseState: RunnerBuildState;
-  /** True when either question answered `behind`. */
-  outdated: boolean;
-  /** One sentence naming what was compared and what it found. */
-  detail: string;
-}
+export type { RunnerBuildComparison };
 
 interface DeviceBuild {
   version: string | null;

@@ -1,5 +1,5 @@
 import { and, eq, inArray } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { oauthAccounts, users } from '../db/schema.js';
 
 /** The whole user row for a sign-in address, or undefined. */
@@ -53,9 +53,12 @@ export async function hasOauthLink(userId: string, provider: string): Promise<bo
 }
 
 /** Which of these accounts are agent accounts. */
-export async function agentAccountsAmong(userIds: readonly string[]): Promise<Set<string>> {
+export async function agentAccountsAmong(
+  userIds: readonly string[],
+  executor: Tx = db,
+): Promise<Set<string>> {
   if (userIds.length === 0) return new Set();
-  const rows = await db
+  const rows = await executor
     .select({ id: users.id })
     .from(users)
     .where(and(inArray(users.id, [...new Set(userIds)]), eq(users.kind, 'agent')));

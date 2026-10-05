@@ -52,11 +52,6 @@ export {
 export { NOT_PARKED } from './resident-session.js';
 export { type ResolvedJobMcpServers, resolveSessionMcpServers } from './resolve-job-mcp-servers.js';
 export { jobEventsRetention } from './retention.js';
-export {
-  AGENT_SESSION_KIND_LIST,
-  heartbeatReapedSql,
-  isAgentSessionKind,
-  isPipelineSessionKind,
-} from './session-kinds.js';
+export { heartbeatReapedSql } from './session-kinds.js';
 export { runStaleSweep } from './stale-detector.js';
 export { insertJobRow } from './writes.js';

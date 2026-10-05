@@ -1,13 +1,11 @@
 import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import { masterCharterPath } from '@forge/contracts/master-standing';
-import { eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
-import { runners } from '../db/schema.js';
 import { issuesSettledBy } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { deviceRoom, roomManager } from '../lib/rooms.js';
 import { consume } from '../outbox/index.js';
+import { projectDeviceIds } from '../runners/index.js';
 
 /** Every status a master can take work from, plus the two it reads to decide (promote, release). */
 const MASTER_WAKE_STATUSES: readonly IssueStatus[] = [
@@ -30,21 +28,6 @@ type MasterWakeSource = (typeof MASTER_WAKE_SOURCES)[number];
 
 function isMasterWakeStatus(status: IssueStatus): boolean {
   return MASTER_WAKE_STATUSES.includes(status);
-}
-
-/**
- * Every paired box bound to this project, deduplicated.
- *
- * One device may serve a project through more than one runner row, and each
- * box has exactly one device room — so a device listed twice would be woken
- * twice for one issue.
- */
-async function devicesServing(projectId: string): Promise<string[]> {
-  const rows = await db
-    .selectDistinct({ deviceId: runners.deviceId })
-    .from(runners)
-    .where(eq(runners.projectId, projectId));
-  return rows.map((r) => r.deviceId);
 }
 
 export async function wakeMastersForProject(args: {
@@ -142,7 +125,7 @@ async function publishWake(
   data: { projectId: string; source: MasterWakeSource } & Record<string, unknown>,
 ): Promise<{ boxes: number; delivered: number }> {
   try {
-    const deviceIds = await devicesServing(projectId);
+    const deviceIds = await projectDeviceIds(projectId);
     let delivered = 0;
     for (const id of deviceIds) {
       delivered += roomManager.publish(deviceRoom(id), { event: 'master.wake', data });

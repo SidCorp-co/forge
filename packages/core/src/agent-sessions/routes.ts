@@ -7,7 +7,6 @@ import {
   sessionRuntimeStates,
   terminalAgentSessionStatuses,
 } from '../db/schema.js';
-import { isPipelineSessionKind } from '../jobs/index.js';
 import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { logger } from '../lib/logger.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
@@ -59,6 +58,7 @@ import {
   finalizeScheduleSessionFailure,
 } from './session-failure.js';
 import { agentSessionTurnsRoutes } from './turns-routes.js';
+import { isPipelineSessionKind } from './session-kinds.js';
 
 const listQuerySchema = z
   .object({

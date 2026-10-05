@@ -29,7 +29,7 @@ import {
 import { and, exists, inArray, or, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import { currentPatScope, fencedProjectIds } from '../credentials/pat-scope.js';
 import { db } from '../db/client.js';
-import { type OrgMemberRole, organizationMembers, projectMembers, projects } from '../db/schema.js';
+import { type OrgMemberRole, organizationMembers, projectMembers } from '../db/schema.js';
 import {
   effectiveProjectRole,
   loadOrgRole,
@@ -39,6 +39,7 @@ import {
 import { RefusalError } from '../lib/refusal.js';
 import { forbidden } from '../middleware/route-errors.js';
 import type { Actor } from './actor.js';
+import { permissionsPort } from './ports.js';
 
 /** What a project decision reads: the effective role and the membership's grant. */
 export type PermissionFacts = Pick<ProjectAccess, 'projectId' | 'role' | 'grants'>;
@@ -240,18 +241,31 @@ export async function holdersOf(
           ),
         ),
       ),
-    ROLE_PERMISSIONS.admin.includes(permission)
-      ? db
-          .select({ projectId: projects.id, userId: organizationMembers.userId })
-          .from(projects)
-          .innerJoin(organizationMembers, sql`${organizationMembers.orgId} = ${projects.orgId}`)
-          .where(
-            and(inArray(projects.id, ids), inArray(organizationMembers.role, ['owner', 'admin'])),
-          )
-      : Promise.resolve([]),
+    ROLE_PERMISSIONS.admin.includes(permission) ? orgAdminsOf(ids) : Promise.resolve([]),
   ]);
   for (const row of [...members, ...orgAdmins]) out.get(row.projectId)?.add(row.userId);
   return new Map([...out].map(([id, people]) => [id, [...people]]));
+}
+
+/** The owners and admins of each project's org, one row per project and person. */
+async function orgAdminsOf(
+  projectIds: readonly string[],
+): Promise<Array<{ projectId: string; userId: string }>> {
+  const orgOf = await permissionsPort('projectOrgIds')(projectIds);
+  const orgIds = [...new Set(orgOf.values())];
+  if (orgIds.length === 0) return [];
+  const admins = await db
+    .select({ orgId: organizationMembers.orgId, userId: organizationMembers.userId })
+    .from(organizationMembers)
+    .where(
+      and(
+        inArray(organizationMembers.orgId, orgIds),
+        inArray(organizationMembers.role, ['owner', 'admin']),
+      ),
+    );
+  return [...orgOf].flatMap(([projectId, orgId]) =>
+    admins.filter((a) => a.orgId === orgId).map((a) => ({ projectId, userId: a.userId })),
+  );
 }
 
 /**
@@ -282,15 +296,15 @@ export function visibleFilter(
         ),
       ),
   );
+  const projectOrg = permissionsPort('projectOrgIdSql');
   const orgAdmin = ROLE_PERMISSIONS.admin.includes(permission)
     ? exists(
         db
           .select({ one: sql`1` })
-          .from(projects)
-          .innerJoin(organizationMembers, sql`${organizationMembers.orgId} = ${projects.orgId}`)
+          .from(organizationMembers)
           .where(
             and(
-              sql`${projects.id} = ${resource.projectId}`,
+              sql`${organizationMembers.orgId} = ${projectOrg(resource.projectId)}`,
               sql`${organizationMembers.userId} = ${userId}`,
               inArray(organizationMembers.role, ['owner', 'admin']),
             ),

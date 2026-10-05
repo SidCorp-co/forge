@@ -18,14 +18,18 @@ export {
 } from './liveness-sql.js';
 export { provideRunnersPorts } from './ports.js';
 export { clearRunnerQuarantine, maybeQuarantineRunner } from './quarantine.js';
-export { deviceProjectIds } from './read.js';
+export { deviceProjectIds, projectDeviceIds, runnerPlacement } from './read.js';
 export { releaseLabelAllows, runnerMayTakeJob } from './release-label.js';
 export { runnerEventsRetention } from './retention.js';
 export { insertRunnerEvent } from './runner-events.js';
 export { readRunnerLoad } from './runner-load-read.js';
 export { onlineCapableDeviceIds } from './select.js';
 export { runRunnerStaleSweep } from './stale-detector.js';
-export type { RequiredCapabilities } from './types.js';
+export type {
+  RequiredCapabilities,
+  RunnerBuildComparison,
+  RunnerBuildState,
+} from './types.js';
 export {
   deleteDeviceRunners,
   patchDeviceRunnerCheckout,

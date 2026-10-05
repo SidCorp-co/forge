@@ -26,6 +26,30 @@ export async function deviceProjectIds(deviceId: string): Promise<string[]> {
   return rows.map((r) => r.projectId);
 }
 
+/** The device and project a runner belongs to; null when there is no such runner. */
+export async function runnerPlacement(
+  id: string,
+): Promise<{ deviceId: string; projectId: string } | null> {
+  const [row] = await db
+    .select({ deviceId: runners.deviceId, projectId: runners.projectId })
+    .from(runners)
+    .where(eq(runners.id, id))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Every device that runs a runner for a project, each listed once: one device may serve a project
+ * through more than one runner row, and a device listed twice would be woken twice for one issue.
+ */
+export async function projectDeviceIds(projectId: string): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ deviceId: runners.deviceId })
+    .from(runners)
+    .where(eq(runners.projectId, projectId));
+  return rows.map((r) => r.deviceId);
+}
+
 /** A project's runners, narrowed by type and status when given. */
 export async function listProjectRunners(
   projectId: string,
