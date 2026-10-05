@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+## [0.4.0-dev.30] - 2026-10-05
+
+Workflow design health, requirement accept/drop, and job briefs as launch prompts
+
+
 ### Added
 
 - **A delivered requirement can be accepted or dropped.** The BA is notified on delivery; the accept
