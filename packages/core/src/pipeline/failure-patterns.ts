@@ -69,6 +69,9 @@ export const TRANSIENT_PATTERNS: ReadonlyArray<RegExp> = [
   /pg-?boss[ _-]?(error|timeout)/i,
 ];
 
+/** The runner's words for a job pane ended on a question (`job_exit::STOPPED_ON_A_QUESTION`). */
+export const STOPPED_ON_QUESTION_PATTERNS: ReadonlyArray<RegExp> = [/\bstopped on a question\b/i];
+
 export const CC_STARTUP_PATTERNS: ReadonlyArray<RegExp> = [
   /\bunknown command\b/i,
   /skill[ _-]?registration/i,
@@ -85,6 +88,10 @@ const re =
     pattern.test(text);
 
 export const CAUSE_RULES: ReadonlyArray<CauseRule> = [
+  {
+    cause: 'agent_stopped_on_question',
+    test: (t) => STOPPED_ON_QUESTION_PATTERNS.some((p) => p.test(t)),
+  },
   { cause: 'agent_startup_failed', test: (t) => t.includes('[MCP_INIT_FAILED]') },
   { cause: 'agent_killed', test: (t) => t.includes('[SIGNAL_KILLED]') },
   {

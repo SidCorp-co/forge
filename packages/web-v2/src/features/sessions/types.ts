@@ -201,6 +201,7 @@ export const FAILURE_REASON_LABEL: Record<SessionFailureReason, string> = {
   agent_skill_missing: "Skill missing on runner",
   agent_exited_without_result: "Agent exited with no result",
   agent_killed: "Agent killed",
+  agent_stopped_on_question: "Stopped on a question",
   workspace_preflight_failed: "Checkout not usable",
   workspace_disk_full: "Runner disk full",
   repo_root_contention: "Runner repo busy",
@@ -251,6 +252,8 @@ export const FAILURE_REASON_ACTION: Record<SessionFailureReason, string> = {
   agent_skill_missing: "The skill hasn't reached this runner — sync it, then Retry.",
   agent_exited_without_result: "The agent exited before reporting — Retry to re-dispatch.",
   agent_killed: "Something killed the agent process — check the runner logs.",
+  agent_stopped_on_question:
+    "The agent stopped to ask a question nobody answers in a job pane — make the prompt say what to do, then Retry.",
   workspace_preflight_failed: "The runner's checkout is unusable — fix the repo path or remote.",
   workspace_disk_full: "The runner is out of disk — free space, then Retry.",
   repo_root_contention:

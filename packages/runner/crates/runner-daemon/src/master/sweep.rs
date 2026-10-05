@@ -309,7 +309,11 @@ pub(crate) async fn sweep(
         } else {
             placement_for(&admissible, &inbox)
         };
-        if placement == Placement::AdoptOnly {
+        // A job pane taken under this master is its work until it ends: the
+        // master retiring over it closed the job's session in core, which then
+        // killed a release that was still running.
+        let runs_jobs = job_panes.holds_for(&runner.project_id) > 0;
+        if placement == Placement::AdoptOnly && !runs_jobs {
             if retire_if_idle(
                 client,
                 masters,

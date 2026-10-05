@@ -239,6 +239,7 @@ pub async fn take_one(
                 // slot and the record stay: the next tick asks core again,
                 // hears the job is not this box's, and closes it then.
                 registry.hold(&prepared.job_id, &pane, watch, None, None, opened.opened_at);
+                registry.note_project(&prepared.job_id, project_id);
                 tracing::warn!(
                     "[pool] {project_id}: start refused for job {} ({}) but {pane} would not close: {e} — kept under supervision, and the next tick closes it",
                     prepared.job_id,
@@ -257,6 +258,7 @@ pub async fn take_one(
         }
         Err(e) => {
             registry.hold(&prepared.job_id, &pane, watch, None, None, opened.opened_at);
+            registry.note_project(&prepared.job_id, project_id);
             tracing::error!(
                 "[pool] {project_id}: start for job {} did not answer ({e}) — pane {pane} kept, and the next tick asks core whose job it is",
                 prepared.job_id
@@ -266,6 +268,7 @@ pub async fn take_one(
     }
 
     registry.hold(&prepared.job_id, &pane, watch, None, None, opened.opened_at);
+    registry.note_project(&prepared.job_id, project_id);
     if let Err(e) = report.ack(&prepared.job_id).await {
         tracing::warn!("[pool] ack for job {} failed: {e}", prepared.job_id);
     }
