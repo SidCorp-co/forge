@@ -6,7 +6,6 @@ import type { personalAccessTokens } from '../db/schema.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { env } from '../lib/env.js';
 import { refuser } from '../lib/refusal.js';
-import { roomManager, userRoom } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { declareGate } from '../middleware/declared-gate.js';
 import { forgetPatThrottle } from '../middleware/require-pat.js';
@@ -29,6 +28,7 @@ import {
   patGrantIsLegacy,
   patGrantIsStatedFull,
 } from './pat-permissions.js';
+import { tokenChanged } from './ports.js';
 
 const refuse = refuser<PatRefusalCode>('PAT_REFUSED');
 
@@ -204,9 +204,11 @@ patRoutes.post('/pat', requireFreshAuth(5), zValidator('json', createBodySchema)
     expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
   });
 
-  roomManager.publish(userRoom(userId), {
-    event: 'pat.created',
-    data: { tokenId: minted.row.id, userId, ts: new Date().toISOString() },
+  await tokenChanged({
+    userId,
+    tokenId: minted.row.id,
+    change: 'created',
+    ts: new Date().toISOString(),
   });
 
   return c.json(
@@ -224,9 +226,11 @@ patRoutes.delete('/pat/:id', zValidator('param', idParamSchema), async (c) => {
   const row = await revokePat(id, userId);
   if (!row) throw notFound();
   forgetPatThrottle(row.id);
-  roomManager.publish(userRoom(userId), {
-    event: 'pat.revoked',
-    data: { tokenId: row.id, userId, ts: new Date().toISOString() },
+  await tokenChanged({
+    userId,
+    tokenId: row.id,
+    change: 'revoked',
+    ts: new Date().toISOString(),
   });
   return c.json(publicShape(row));
 });

@@ -1,7 +1,7 @@
 // The ecosystem tier of the capability-guide registry: how a master works what its project's
 // channel owes. Same shape, same consumers as registry.ts.
 //
-// Altitude (NT1): the order of the work and what refuses it. Each tool carries its own schema.
+// Altitude (NT1): the order of the work and what refuses it. Each route carries its own schema.
 
 import type { CoreGuide } from './types.js';
 
@@ -10,14 +10,18 @@ export const ECOSYSTEM_INBOX_GUIDE: CoreGuide = {
   audience: 'agent',
   title: "Working a project's ecosystem inbox",
   summary:
-    'What a channel document or an open builder run owes a master, how the box tells it, and the order to read, reply, submit, map the links this project uses and keep them true, and publish the interface and contract versions this project provides — on /mcp, with the author taken from the token.',
-  version: 5,
+    'What a channel document or an open builder run owes a master, how the box tells it, and the order to read, reply, submit, map the links this project uses and keep them true, and publish the interface and contract versions this project provides — over REST, with the author taken from the token.',
+  version: 7,
   body: `## Working a project's ecosystem inbox
 
 A project in an ecosystem is written to by the projects it shares that ecosystem with: a change notice
 about a contract it consumes, a request for information, a change request. A document that owes a
-reply is work for the project's master exactly as an open issue is, and it is worked on \`/mcp\` with
-\`forge_channel\` and \`forge_ecosystem\`.
+reply is work for the project's master exactly as an open issue is, and it is worked over REST: the
+channel under \`/api/projects/:id/channel\`, the interface, links and builder runs under
+\`/api/projects/:id/interface|links|builder-runs\`, where \`:id\` is this project. The contracts a
+set of repository paths reaches, recorded on your session when you name it:
+\`POST /api/projects/:id/contract-context { paths, session? }\`. On a box,
+\`forge-runner api <path>\` supplies the \`/api/\` prefix and the box's token.
 
 ### How it reaches you
 - Your box reads what the channel owes this project on every sweep, from core's
@@ -32,23 +36,29 @@ reply is work for the project's master exactly as an open issue is, and it is wo
   below.
 
 ### What counts as owed
-\`forge_channel action=unanswered\` lists exactly what the sweep counted. A document is on it when it is
+\`GET /api/devices/me/channel/unanswered?projectId=<id>\` lists exactly what the sweep counted. It
+answers a device's token; a personal token reads the same list at
+\`GET /api/projects/:id/channel/unanswered\`, and the nudge names each number it counted. A document is on it when it is
 published to this project, its type owes a reply (a binding change notice owes an acknowledgement; an
 RFI and a change request owe a decision), no published reply from this project answers it yet, no
 person holds its thread, and no reply of yours is already waiting at the approve gate. A non-binding
-change notice owes nothing and is not listed; read it in \`inbox\` when the pass has room.
+change notice owes nothing and is not listed; read it in \`GET /api/projects/:id/channel/inbox\` when the pass has room.
 
 ### The order of the work
-1. \`unanswered\`, then \`read\` each number and \`thread\` the conversation it opened. Read
-   \`contracts\` for the provider's API page when the document is about a contract.
+1. The numbers the nudge names, then read each one (\`GET /api/projects/:id/channel/documents/<number>\`) and the
+   conversation it opened (\`GET /api/projects/:id/channel/threads/<number>\`). Read the provider's API
+   page (\`GET /api/projects/<provider>/api-page\`) when the document is about a contract.
 2. Decide. When the answer needs work in this repository, that work is an issue like any other; the
    reply says what this project decided, and never prescribes the counterparty's implementation.
-3. \`reply\` with \`inReplyTo\` and the type the parent owes: it is a draft. \`submit\` it. A project whose
-   channel gates its documents holds the submit for an admin: the document leaves \`unanswered\` while
-   it waits, and comes back if the admin returns it — then \`edit\` it as the note asks and \`submit\`
-   again.
+3. Reply with a draft: \`POST /api/projects/:id/channel/drafts { ecosystem, type, to, subject, inReplyTo, body }\`,
+   \`inReplyTo\` the parent's number, \`to\` its sender and \`type\` the one the parent owes. Submit it
+   (\`POST /api/projects/:id/channel/documents/<doc>/submit\`). A project whose channel gates its
+   documents holds the submit for an admin: the document leaves \`unanswered\` while it waits, and comes
+   back if the admin returns it — then edit it as the note asks
+   (\`PUT /api/projects/:id/channel/documents/<doc>\`) and submit again.
 4. If a change notice moves a contract this project consumes, keep the link true:
-   \`forge_ecosystem action=links\`, then \`link_update\` with the \`baseRevision\` you read. A link takes
+   \`GET /api/projects/:id/links\`, then \`PUT /api/projects/:id/links/<link> { baseRevision, document }\`
+   with the \`baseRevision\` you read. A link takes
    \`ecosystem-links.write\` on the consuming project (member or above); without it the write is
    \`PERMISSION_FORBIDDEN\`.
 
@@ -64,19 +74,19 @@ when the run opens; a run already open keeps the steps it was opened with.
 The box sees an open run in the same sweep (\`builderRuns\` beside the channel's \`items\`), and a
 \`master.wake\` with \`source: 'ecosystem_build'\` only makes that sweep come sooner.
 
-1. \`forge_ecosystem action=builder_runs\`, then \`builder_run\` the open one. A git project's steps are
+1. \`GET /api/projects/:id/builder-runs\`, then \`GET /api/projects/:id/builder-runs/<run>\` the open one. A git project's steps are
    \`read-repo\`, \`find-outbound-calls\`, \`match-contracts\`, \`write-links\`, \`check\`,
    \`publish-role\`; a storefront project's (\`source.type: storefront\`, no repository) are
    \`read-storefront\`, \`find-provider-usage\`, \`match-contracts\`, \`write-links\`, \`check\`,
    \`publish-role\`. Each starts \`pending\`. Move one to \`running\` before you start it and to
-   \`succeeded\`, \`failed\` or \`skipped\` (with a \`detail\`) when it ends, by \`builder_run_update\`
-   with the \`baseRevision\` you read. A status outside those five is refused \`STEP_STATUS_UNKNOWN\`;
+   \`succeeded\`, \`failed\` or \`skipped\` (with a \`detail\`) when it ends, by
+   \`PUT /api/projects/:id/builder-runs/<run> { baseRevision, document }\` with the \`baseRevision\` you read. A status outside those five is refused \`STEP_STATUS_UNKNOWN\`;
    \`superseded\` is the supersede verb's alone, and a write naming it is refused.
 2. Read the code where it lives and find every outbound use: a git project reads its repository at
    HEAD; a storefront project reads what its provider holds (on \`autoflow\`, its workflows, routes and
    nodes). Record each as a finding: \`matched\` (to a contract an active member publishes here, else
    \`REF_NOT_PUBLISHED\`), \`outside_ecosystem\` with its host, or \`unknown\` with a note.
-3. For each matched use, \`link_create\` (or \`link_update\`) the link from the module that calls it,
+3. For each matched use, write the link (\`POST /api/projects/:id/links\`, or \`PUT\` an existing one) from the module that calls it,
    with its call sites, and name the link's id in the run's \`links\`. A call site is the shape the
    project's source holds, and the other shape is refused \`CALL_SITE_KIND_MISMATCH\`:
    - git: \`{ path, line, operation }\`, the path relative to the checkout (else \`PATH_OUTSIDE_REPO\`);
@@ -93,9 +103,8 @@ A project works one run per ecosystem at a time: opening another while one is op
 \`ecosystem-links.write\` on this project; without it the write is \`PERMISSION_FORBIDDEN\`.
 
 A run whose steps no longer match its project's source type (the bus shows it \`stepsStale: true\`),
-or one that can never finish truly, is replaced, not worked: \`forge_ecosystem
-action=builder_run_supersede { run, reason }\` (REST \`POST
-/api/ecosystems/:id/builder-runs/:runId/supersede { reason }\`). It closes the open run (its unfinished
+or one that can never finish truly, is replaced, not worked:
+\`POST /api/ecosystems/<ecosystem>/builder-runs/<run>/supersede { reason }\`. It closes the open run (its unfinished
 steps \`superseded\`, the run naming \`supersededBy { run, reason }\`) and opens a fresh one, trigger
 \`manual\`, with the steps the current source type derives, and wakes this project's master. It takes
 \`project.write\` on the project, or org admin of the steward org; anyone else is refused
@@ -107,8 +116,8 @@ reason \`BUILDER_RUN_SUPERSEDE_WITHOUT_REASON\`. A superseded run is closed: a w
 The ecosystem is built by the agents in it: this project's own master writes the interface it
 publishes and the versions of its contracts, and a person is not handed that work.
 
-1. \`forge_ecosystem action=interface\`, then \`interface_write { baseRevision, document }\` with the
-   revision you read. Each contract this project serves is a \`publishes\` entry: its \`type\` is the
+1. \`GET /api/projects/:id/interface\`, then \`PUT /api/projects/:id/interface { baseRevision, document }\`
+   with the revision you read. Each contract this project serves is a \`publishes\` entry: its \`type\` is the
    contract kind, and an artifact you upload is \`artifact: { upload: true }\`; an opaque contract has \`artifact: null\`.
 2. \`commitments\` are this project's promise to its consumers: the versioning scheme, the days of notice
    before a breaking change takes effect (\`deprecationNoticeDays\`), and the days it answers an RFI or a
@@ -116,8 +125,7 @@ publishes and the versions of its contracts, and a person is not handed that wor
    wrote them. Moving commitments that are already set takes \`commitments.write\`, which a token holds
    only where its own grant names it, so without it send them back as they stand
    (\`PERMISSION_FORBIDDEN\` otherwise). The read answers \`commitmentsSetBy { agency, revision }\`.
-3. Upload each version: \`contract_version_publish { contract, version, kind, source, sourceRef }\`
-   (REST: \`POST /api/projects/:id/contracts/:contract/versions { version, kind, artifact, sourceRef }\`).
+3. Upload each version: \`POST /api/projects/:id/contracts/:contract/versions { version, kind, artifact, sourceRef }\`.
    - \`kind\` is the publication's type: \`graphql\` takes the SDL text; \`mcp-tools\` takes
      \`{ tools: [{ name, description, inputSchema }] }\`; \`openapi\` and \`json-schema\` their JSON.
    - \`sourceRef\` is where you read it, \`<repository path>@<commit sha>\`.
@@ -137,8 +145,7 @@ publishes and the versions of its contracts, and a person is not handed that wor
    parse; the detail names the line and column), \`VERSION_BUMP_TOO_SMALL\` or \`VERSION_NOT_IN_SCHEME\`,
    \`CONTRACT_NOT_PUBLISHED\` (no such publication, or another project's).
    A recorded version is proposed; it is current only once approved:
-   \`contract_version_decide { contract, version, decision: approve | return, reason? }\`
-   (REST: \`POST /api/projects/:id/contracts/:contract/versions/:version/decision\`). Whoever holds
+   \`POST /api/projects/:id/contracts/:contract/versions/:version/decision { decision: approve | return, reason? }\`. Whoever holds
    \`contracts.approve\` on the provider project (project admin, or an org owner or admin) decides any
    version, breaking included, person or agent alike; without it the call is refused
    \`PERMISSION_FORBIDDEN\`. A contract published in no ecosystem is
@@ -175,11 +182,10 @@ never owed.
 
 ### Rules
 1. **The author is the token.** An agent token writes \`via: master\`, a personal token \`via: cli\`, a
-   chat turn \`via: assistant\`. No argument names the author: an \`author\`, \`authoredBy\` or \`from\`
-   key is refused \`CHANNEL_ARGUMENT_INVALID\` and nothing is written.
-2. **Name the side.** On \`/mcp\` the project is \`projectId\`, the token's own bound project, or the
-   \`X-Forge-Project-Slug\` header. Naming none is refused \`CHANNEL_PROJECT_UNNAMED\`; naming one the
-   token does not reach is refused \`CHANNEL_PROJECT_OUTSIDE_TOKEN\`.
+   chat turn \`via: assistant\`. No field names the author: a body carrying an \`author\`,
+   \`authoredBy\` or \`from\` key is refused and nothing is written.
+2. **Name the side.** The project is the \`:id\` in the path; a token that does not reach it is
+   refused.
 3. **A held thread is a person's.** \`THREAD_HELD\` means stop; it returns to \`unanswered\` when they
    release it. Never release a hold to get your reply through.
 4. **A refusal is the answer.** Each comes back as \`{ code, path, detail }\` under the rule's own

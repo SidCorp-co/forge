@@ -41,6 +41,11 @@ export const OUTBOX_EVENT_TYPES = [
 	"feedback.filed",
 	"feedback.verifyAsked",
 	"feedback.verifySettled",
+	"credential.tokenChanged",
+	"runner.changed",
+	"job.changed",
+	"job.eventsAppended",
+	"session.changed",
 ] as const;
 export type OutboxEventType = (typeof OUTBOX_EVENT_TYPES)[number];
 
@@ -402,6 +407,54 @@ export interface OutboxEventPayloads {
 		key: string;
 		revision: number;
 		acceptedBy: string;
+	};
+	/** A personal access token of `userId` was minted, revoked, or used (at most once a minute). */
+	"credential.tokenChanged": {
+		userId: string;
+		tokenId: string;
+		change: "created" | "revoked" | "used";
+		ts: string;
+	};
+	/** A runner row changed; `data` is what its rooms are told, `runnerRoom` whether the runner's own room is too. */
+	"runner.changed": {
+		projectId: string;
+		runnerId: string;
+		event:
+			| "runner.created"
+			| "runner.updated"
+			| "runner.deleted"
+			| "runner.status";
+		data: Record<string, unknown>;
+		runnerRoom: boolean;
+	};
+	/** A job moved, or its box is asked to stop it; `rooms` names who is told. */
+	"job.changed": {
+		projectId: string;
+		jobId: string;
+		deviceId: string | null;
+		event:
+			| "job.cancelled"
+			| "job.cancel"
+			| "job.cancelRequested"
+			| "job.failed"
+			| "job.completed"
+			| "job.resumed";
+		data: Record<string, unknown>;
+		rooms: ReadonlyArray<"project" | "device">;
+	};
+	/** One batch of a job's event lines was stored, scrubbed, in seq order. */
+	"job.eventsAppended": {
+		projectId: string;
+		jobId: string;
+		events: Array<{ seq: number; kind: string; ts: string; data: unknown }>;
+	};
+	/** An agent session was opened or changed status; told to its project's room and its box's. */
+	"session.changed": {
+		sessionId: string;
+		projectId: string;
+		deviceId: string | null;
+		event: string;
+		extra: Record<string, unknown>;
 	};
 }
 

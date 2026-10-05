@@ -102,7 +102,10 @@ export async function listVisibleProjectRows(userId: string, includeArchived: bo
         and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
       )
       .where(
-        and(...visibleProjectsWhere(), ...(includeArchived ? [] : [isNull(projects.archivedAt)])),
+        and(
+          ...visibleProjectsWhere(projects.id),
+          ...(includeArchived ? [] : [isNull(projects.archivedAt)]),
+        ),
       )
       // DISTINCT ON needs its leading ORDER BY to match the distinct column; without it the order
       // varied run to run and the rail's raw-order fallback (ISS-734) jumped tabs on a refetch.

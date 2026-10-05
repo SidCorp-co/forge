@@ -159,6 +159,7 @@ export {
   strandReason,
   strandRuleFor,
 } from './strand-rules.js';
+export { clearIssueStrand, writeIssueStrand } from './strand-write.js';
 export { emitIssueFieldUpdate } from './update-hook.js';
 export {
   type Carriage,

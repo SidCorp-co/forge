@@ -35,5 +35,6 @@ export {
   updateOrgMember,
   updateProjectMember,
 } from './memberships.js';
+export { providePermissionsPorts } from './ports.js';
 export { readsTechnical } from './project-lens.js';
 export { resolveTurnAuthority } from './turn-authority.js';

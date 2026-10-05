@@ -7,10 +7,10 @@ import { and, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
-import { residentMasterSql } from '../devices/index.js';
 import { refuser } from '../lib/refusal.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
+import { runnersPorts } from './ports.js';
 import { insertRunnerEvent } from './runner-events.js';
 import { upsertDeviceRunner } from './writes.js';
 
@@ -42,7 +42,7 @@ export async function listProjectRunnerPools(projectId: string) {
       provisionedAt: runners.provisionedAt,
       poolRead: runners.poolRead,
       // ISS-1118 — whether a resident master for this project runs on the box.
-      residentMaster: residentMasterSql(runners.deviceId, runners.projectId),
+      residentMaster: runnersPorts().residentMasterSql(runners.deviceId, runners.projectId),
     })
     .from(runners)
     .leftJoin(devices, eq(devices.id, runners.deviceId))

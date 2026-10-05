@@ -10,10 +10,17 @@ import type { ChannelOutcome } from './channel-act.js';
 import { type ChannelNeed, channelRoleRefusal, writerOf } from './channel-author.js';
 import { supersede, withdraw } from './channel-ends.js';
 import { holdOrRelease } from './channel-holds.js';
-import { inbox, outbox, readAs, standingOf, threadAs } from './channel-read.js';
+import { inbox, outbox, readAs, standingOf, threadAs, unanswered } from './channel-read.js';
 import { NUMBER_PATTERN } from './channel-schema.js';
 import { createDraft, editDraft, submit } from './channel-service.js';
-import { holdView, inboxView, outboxView, threadView, viewOf } from './channel-view.js';
+import {
+  holdView,
+  inboxView,
+  outboxView,
+  threadView,
+  unansweredView,
+  viewOf,
+} from './channel-view.js';
 import type { ChannelRefusalCode } from './refusals.js';
 
 export const channelProjectRoutes = new Hono<{ Variables: AuthVars }>();
@@ -206,6 +213,15 @@ channelProjectRoutes.get('/:id/channel/inbox', projectParam, async (c) => {
   await mayAct(c, id, 'read');
   const entries = await inbox(id);
   return c.json({ documents: inboxView(entries), returned: entries.length });
+});
+
+// What this side owes a reply to, the read `GET /api/devices/me/channel/unanswered` gives a box,
+// reachable by a person's session or token holding the channel read.
+channelProjectRoutes.get('/:id/channel/unanswered', projectParam, async (c) => {
+  const { id } = c.req.valid('param');
+  await mayAct(c, id, 'read');
+  const documents = unansweredView(await unanswered(id));
+  return c.json({ project: id, documents, returned: documents.length });
 });
 
 channelProjectRoutes.get('/:id/channel/outbox', projectParam, async (c) => {

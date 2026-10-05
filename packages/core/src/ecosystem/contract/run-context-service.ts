@@ -6,6 +6,7 @@ import { heldInterface } from '../interface-service.js';
 import { readInterfaces } from '../interface-store.js';
 import { storedLink } from '../link-service.js';
 import { linksWhere } from '../link-store.js';
+import type { EcosystemRefusal } from '../refusals.js';
 import {
   type ContextLink,
   type ContextVersion,
@@ -70,6 +71,35 @@ export async function recordContractContext(
   await mergeSessionMetadata(agentSessionId, {
     [CONTRACT_CONTEXT_KEY]: contractContextRecord(loaded, source),
   });
+}
+
+/**
+ * The context load both doors answer: refused by name when `session` is not this project's, else the
+ * contracts `paths` reach, recorded on the session when one is named and anything loaded.
+ */
+export async function readContractContext(
+  projectId: string,
+  paths: readonly string[],
+  session: string | null,
+): Promise<
+  | { ok: true; loaded: LoadedContract[]; returned: number; recorded: boolean }
+  | { ok: false; refusals: EcosystemRefusal[] }
+> {
+  if (session && !(await sessionInProject(projectId, session))) {
+    return {
+      ok: false,
+      refusals: [
+        {
+          code: 'ECOSYSTEM_RECORD_NOT_FOUND',
+          path: '/session',
+          detail: `project ${projectId} holds no agent session ${session}`,
+        },
+      ],
+    };
+  }
+  const loaded = await loadContractContext(projectId, paths);
+  if (session && loaded.length) await recordContractContext(session, loaded, 'agent');
+  return { ok: true, loaded, returned: loaded.length, recorded: Boolean(session && loaded.length) };
 }
 
 /** Whether `projectId` holds the agent session `id`, so a load is recorded only on its own project's session. */

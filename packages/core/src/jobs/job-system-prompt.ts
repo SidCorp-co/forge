@@ -43,7 +43,7 @@ const errText = (err: unknown) =>
       ? err.message
       : String(err);
 
-// a run is given the contracts its issue's named paths reach before it starts, since the paths it will change are not known yet; it asks forge_ecosystem action=context for paths it finds later
+// a run is given the contracts its issue's named paths reach before it starts, since the paths it will change are not known yet; it asks POST /api/projects/:id/contract-context for paths it finds later
 async function contractsNamedBy(
   projectId: string,
   issue: IssueText | undefined,

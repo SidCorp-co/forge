@@ -2,16 +2,19 @@ import { and, eq, isNotNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { runners } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
-import { projectRoom, roomManager } from '../lib/rooms.js';
+import { emitEvent } from '../outbox/index.js';
 import { emitPipelineWedge, resolvePipelineWedge } from '../pipeline/index.js';
 import type { RunnerLimit } from './limit-detect.js';
 
-export function broadcastRunnerChanged(projectId: string, runnerId: string): void {
-  roomManager.publish(projectRoom(projectId), {
+export async function broadcastRunnerChanged(projectId: string, runnerId: string): Promise<void> {
+  await emitEvent(db, 'runner.changed', {
+    projectId,
+    runnerId,
     event: 'runner.status',
     // projectId lets the web event-router refresh the project's runner list
     // (dashboard card + Runners screen), not just the runner activity feed.
     data: { runnerId, projectId },
+    runnerRoom: false,
   });
 }
 
@@ -63,8 +66,8 @@ export async function stampRunnerLimit(
       },
       'runner limit stamped',
     );
-    for (const row of stamped) broadcastRunnerChanged(row.projectId, row.id);
-    if (!stamped.some((r) => r.id === runnerId)) broadcastRunnerChanged(projectId, runnerId);
+    for (const row of stamped) await broadcastRunnerChanged(row.projectId, row.id);
+    if (!stamped.some((r) => r.id === runnerId)) await broadcastRunnerChanged(projectId, runnerId);
     if (limit.reason === 'auth') await alarmAuthDeadRunner(runnerId, projectId, limit.detail);
   } catch (err) {
     logger.warn({ err, runnerId }, 'stampRunnerLimit failed, continuing');
@@ -128,7 +131,7 @@ export async function clearRunnerLimit(
         { runnerId, projectId, bindings: cleared.length },
         'runner limit / lastError cleared',
       );
-      for (const row of cleared) broadcastRunnerChanged(row.projectId, row.id);
+      for (const row of cleared) await broadcastRunnerChanged(row.projectId, row.id);
       await resolvePipelineWedge(runnerId);
     }
   } catch (err) {

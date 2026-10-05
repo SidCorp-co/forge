@@ -3,7 +3,6 @@ import { db } from '../db/client.js';
 import { issues, type jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
-import { projectRoom, roomManager } from '../lib/rooms.js';
 import { classifyFailure, closeOpenRunForIssue, emitPipelineWedge } from '../pipeline/index.js';
 import {
   attributeFailureToRunner,
@@ -14,6 +13,7 @@ import {
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 import { finalizeJobDone, hasTerminalHandoffForAttempt } from './finalize-done.js';
 import { holdAutoReleases, holdJobForReason, RUN_CLOSED } from './hold.js';
+import { pushJobChanged } from './job-push.js';
 import type { RetryOutcome } from './retry.js';
 import { scheduleAutoRetryWithVerify } from './retry.js';
 
@@ -175,8 +175,12 @@ export async function finalizeFailedJob(
     retryPending: retry.scheduled === true,
   });
 
-  roomManager.publish(projectRoom(updated.projectId), {
+  await pushJobChanged({
+    projectId: updated.projectId,
+    jobId: updated.id,
+    deviceId: updated.deviceId,
     event: 'job.failed',
+    rooms: ['project'],
     data: {
       jobId: updated.id,
       status: 'failed',

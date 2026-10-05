@@ -89,7 +89,7 @@ export async function maybeQuarantineRunner(
       { runnerId, fault: fault.key, streak: matching + 1, level, ttlMs },
       'runner: quarantined after repeated identical box-scoped failure',
     );
-    broadcastRunnerChanged(projectId, runnerId);
+    await broadcastRunnerChanged(projectId, runnerId);
     await alarmQuarantine(runnerId, projectId, fault.key, matching + 1, ttlMs);
     return true;
   } catch (err) {
@@ -145,7 +145,7 @@ export async function clearRunnerQuarantine(
       .returning({ id: runners.id });
     if (cleared) {
       logger.info({ runnerId }, 'runner quarantine cleared');
-      broadcastRunnerChanged(projectId, runnerId);
+      await broadcastRunnerChanged(projectId, runnerId);
       await resolvePipelineWedge(runnerId);
     }
   } catch (err) {

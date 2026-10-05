@@ -1,4 +1,5 @@
-export { bootstrapChatProviders, defaultChatProviderId } from './bootstrap.js';
+export { bootstrapChatProviders } from './bootstrap.js';
+export { chatModelName, openChat } from './chat.js';
 export {
   EMBEDDING_UNAVAILABLE,
   EmbeddingUnavailableError,
@@ -15,7 +16,6 @@ export {
   fastModelConfigured,
   fastModelName,
 } from './fast-model.js';
-export { resolveChatProvider } from './registry.js';
 export type {
   ChatContentPart,
   ChatMessage,

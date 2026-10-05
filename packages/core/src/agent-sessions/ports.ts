@@ -6,7 +6,6 @@ import type { ContentLanguageView } from '@forge/contracts/content-language';
 import type { Tx } from '../db/client.js';
 import type { KernelExecutor } from '../db/kernel-marker.js';
 import type { MemberLens } from '../db/schema.js';
-import type { InterventionEventInput, ResolvedJobMcpServers } from '../jobs/index.js';
 import type { EgressScope } from '../lib/data-egress.js';
 import { portSlot } from '../lib/port-slot.js';
 import type { KernelActor } from '../lifecycle/index.js';
@@ -65,9 +64,24 @@ interface AgentSessionsPorts {
   /** The user holding the box's live personal access token, or null when none is live. */
   deviceHolderUserId(deviceId: string): Promise<string | null>;
   /** Records an intervention on the job's event history, inside the caller's transaction. */
-  insertInterventionEvent(tx: Tx, input: InterventionEventInput): Promise<void>;
+  insertInterventionEvent(
+    tx: Tx,
+    input: {
+      jobId: string;
+      issueId: string | null;
+      action: 'cancel' | 'resume' | 'answer' | 'inject';
+      actorUserId: string;
+      reason: string;
+      source: 'rest' | 'mcp';
+      previousStatus: string;
+    },
+  ): Promise<void>;
   /** The MCP servers a chat turn on this project hands its box. */
-  resolveSessionMcpServers(projectId: string): Promise<ResolvedJobMcpServers>;
+  resolveSessionMcpServers(
+    projectId: string,
+  ): Promise<{ mcpServers: Record<string, unknown> | null }>;
+  /** `data` with every secret handed out to the session's jobs replaced. */
+  scrubSessionOutput<T>(sessionId: string, data: T): Promise<T>;
   /** Posts the steer text as a comment on the issue the session works. */
   postSteerComment(input: {
     issueId: string;

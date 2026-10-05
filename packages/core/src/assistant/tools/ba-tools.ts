@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { conversationMessages } from '../../db/schema-conversations.js';
 import { itemEmbeddings } from '../../db/schema-item-embeddings.js';
-import { defaultChatProviderId, resolveChatProvider } from '../../integrations/llm/index.js';
+import { chatModelName } from '../../integrations/llm/index.js';
 import { resolveIssueRouteRef } from '../../issues/index.js';
 import { dataPolicyOf, egressAt, egressDeep, egressOr, MCP_DOOR } from '../../lib/data-egress.js';
 import {
@@ -177,7 +177,7 @@ async function latestMessageId(conversationId: string | null | undefined): Promi
 
 function chatModel(): string | null {
   try {
-    return resolveChatProvider(defaultChatProviderId()).model;
+    return chatModelName();
   } catch {
     return null;
   }

@@ -80,7 +80,12 @@ import {
   onboardingSubmittedIn,
   provideOnboardingPorts,
 } from './onboarding/index.js';
-import { closeOpenRunForIssue, getIssueContexts, providePipelinePorts } from './pipeline/index.js';
+import {
+  closeOpenRunForIssue,
+  getIssueContexts,
+  providePipelinePorts,
+  triggerPipelineStepManual,
+} from './pipeline/index.js';
 import {
   policyGapsOf,
   policyRefusal,
@@ -229,6 +234,7 @@ export function provideWorkPorts(): void {
     handoffContextsOf: (projectId, issueId) =>
       getIssueContexts({ projectId, issueId, kind: 'handoff', limit: 200, orderDir: 'asc' }),
     closeOpenRunForIssue,
+    triggerPipelineStepManual,
   });
 
   provideAutomationPorts({

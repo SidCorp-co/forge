@@ -8,7 +8,7 @@
  */
 
 import type { ProjectPermission } from '@forge/contracts/permissions';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import {
@@ -44,13 +44,34 @@ export async function findProjectIdBySlug(slug: string): Promise<string | null> 
 }
 
 /** The org a project belongs to, or `null` when the project is gone. */
-export async function findProjectOrgId(projectId: string): Promise<string | null> {
-  const [row] = await db
+export async function findProjectOrgId(
+  projectId: string,
+  executor: Tx = db,
+): Promise<string | null> {
+  const [row] = await executor
     .select({ orgId: projects.orgId })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
   return row?.orgId ?? null;
+}
+
+/** The org of each of these projects that exists, keyed by project id. */
+export async function findProjectOrgIds(
+  projectIds: readonly string[],
+): Promise<Map<string, string>> {
+  const ids = [...new Set(projectIds)];
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select({ id: projects.id, orgId: projects.orgId })
+    .from(projects)
+    .where(inArray(projects.id, ids));
+  return new Map(rows.map((r) => [r.id, r.orgId]));
+}
+
+/** A project's org as a scalar SQL subquery over a project id expression; null when it is gone. */
+export function projectOrgIdSql(projectId: SQLWrapper): SQL {
+  return sql`(SELECT ${projects.orgId} FROM ${projects} WHERE ${projects.id} = ${projectId})`;
 }
 
 type NewProject = {
@@ -138,7 +159,27 @@ export async function listVisibleProjectsWithRole(
       organizationMembers,
       and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
     )
-    .where(and(...visibleProjectsWhere()));
+    .where(and(...visibleProjectsWhere(projects.id)));
+}
+
+/** The ids of every project `userId` can see, under the request's PAT fence. */
+export async function findVisibleProjectIds(
+  userId: string,
+  fence: readonly string[] | null,
+): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ id: projects.id })
+    .from(projects)
+    .leftJoin(
+      projectMembers,
+      and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId)),
+    )
+    .leftJoin(
+      organizationMembers,
+      and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
+    )
+    .where(and(...visibleProjectsWhere(projects.id, fence)));
+  return rows.map((r) => r.id);
 }
 
 /** The slug and name the project document declares, projected onto the row; false when no row. */

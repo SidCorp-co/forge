@@ -1,6 +1,6 @@
 import type { ConsumedBy, OutboxConsumerOf } from '@forge/contracts/outbox-consumers';
 import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
-import { deviceRoom, projectRoom, roomManager, userRoom } from '../lib/rooms.js';
+import { deviceRoom, projectRoom, roomManager, runnerRoom, userRoom } from '../lib/rooms.js';
 import { consume } from '../outbox/index.js';
 
 const pub = (room: string, event: string, data: unknown) =>
@@ -135,5 +135,34 @@ export function registerWsBroadcastSubscribers(): void {
 
   on('integration.changed', (p) => {
     pub(projectRoom(p.projectId), 'integration.changed', p);
+  });
+
+  on('credential.tokenChanged', (p) => {
+    pub(userRoom(p.userId), `pat.${p.change}`, { tokenId: p.tokenId, userId: p.userId, ts: p.ts });
+  });
+
+  on('runner.changed', (p) => {
+    if (p.runnerRoom) pub(runnerRoom(p.runnerId), p.event, p.data);
+    pub(projectRoom(p.projectId), p.event, p.data);
+  });
+
+  on('job.changed', (p) => {
+    if (p.rooms.includes('device') && p.deviceId) pub(deviceRoom(p.deviceId), p.event, p.data);
+    if (p.rooms.includes('project')) pub(projectRoom(p.projectId), p.event, p.data);
+  });
+
+  on('job.eventsAppended', (p) => {
+    for (const e of p.events) pub(projectRoom(p.projectId), 'job.event', { jobId: p.jobId, ...e });
+  });
+
+  on('session.changed', (p) => {
+    const data = {
+      sessionId: p.sessionId,
+      projectId: p.projectId,
+      deviceId: p.deviceId,
+      ...p.extra,
+    };
+    pub(projectRoom(p.projectId), p.event, data);
+    if (p.deviceId) pub(deviceRoom(p.deviceId), p.event, data);
   });
 }

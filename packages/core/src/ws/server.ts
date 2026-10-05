@@ -1,19 +1,17 @@
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Server as HttpsServer } from 'node:https';
-import { and, eq } from 'drizzle-orm';
 import { parse as parseCookies } from 'hono/utils/cookie';
 import { type WebSocket, WebSocketServer } from 'ws';
 import { AUTH_COOKIE_NAME } from '../credentials/cookie.js';
 import { verifyDeviceToken } from '../credentials/device-credential.js';
 import { verifyUserToken } from '../credentials/jwt.js';
 import { type PatScope, runWithPatScope } from '../credentials/pat-scope.js';
-import { db } from '../db/client.js';
-import { devices, runners } from '../db/schema.js';
-import { handleRunnerSessions } from '../devices/index.js';
-import { GLOBAL_ROOM, roomManager } from '../lib/rooms.js';
+import { deviceOwnedBy, handleRunnerSessions } from '../devices/index.js';
+import { roomManager } from '../lib/rooms.js';
 import { markWsListening } from '../lib/ws-listening.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
 import { actorFor, can, projectResource } from '../permissions/index.js';
+import { runnerPlacement } from '../runners/index.js';
 
 type AnyServer = HttpServer | HttpsServer;
 
@@ -131,10 +129,6 @@ async function readsProject(principal: Principal, projectId: string): Promise<bo
 }
 
 async function canSubscribe(principal: Principal, room: string): Promise<boolean> {
-  // Global broadcast room — server-emitted cross-tenant events (e.g. builtin
-  // skill seeding). Any authenticated principal may join; the upgrade
-  // handler has already established authentication.
-  if (room === GLOBAL_ROOM) return true;
   if (room.startsWith('project:')) {
     const projectId = room.slice('project:'.length);
     if (await readsProject(principal, projectId)) return true;
@@ -143,23 +137,14 @@ async function canSubscribe(principal: Principal, room: string): Promise<boolean
   if (room.startsWith('device:')) {
     const deviceId = room.slice('device:'.length);
     if (principal.type === 'device') return principal.deviceId === deviceId;
-    const [row] = await db
-      .select({ id: devices.id })
-      .from(devices)
-      .where(and(eq(devices.id, deviceId), eq(devices.ownerId, principal.userId)))
-      .limit(1);
-    return !!row;
+    return deviceOwnedBy(deviceId, principal.userId);
   }
   if (room.startsWith('user:')) {
     return userOf(principal) === room.slice('user:'.length);
   }
   if (room.startsWith('runner:')) {
     const runnerId = room.slice('runner:'.length);
-    const [row] = await db
-      .select({ deviceId: runners.deviceId, projectId: runners.projectId })
-      .from(runners)
-      .where(eq(runners.id, runnerId))
-      .limit(1);
+    const row = await runnerPlacement(runnerId);
     if (!row) return false;
     if (principal.type === 'device') {
       return row.deviceId === principal.deviceId;

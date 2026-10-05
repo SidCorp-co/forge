@@ -72,6 +72,7 @@ export type RunGateReading =
 
 interface KillableJob {
   id: string;
+  projectId: string;
   deviceId: string | null;
   runnerId: string | null;
   killRequestedAt: Date | null;
@@ -106,7 +107,7 @@ interface PipelinePorts {
     deviceId: string | null,
     event: string,
     extra: Record<string, unknown>,
-  ) => void;
+  ) => Promise<void>;
   getLoopThresholds: () => { queueMs: number; heartbeatMs: number; ackMs: number };
   killGraceMs: () => number;
   parkedOnAHuman: (sessionId: SQL) => SQL;

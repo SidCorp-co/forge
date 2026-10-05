@@ -14,10 +14,10 @@ import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
-import { projectRoom, roomManager } from '../lib/rooms.js';
 import { transition } from '../lifecycle/index.js';
 import { CLASSIFIER_VERSION } from '../pipeline/index.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
+import { pushJobChanged } from './job-push.js';
 
 export { noPromptMessage, POOL_JOB_NO_PROMPT } from '@forge/contracts/jobs';
 
@@ -67,9 +67,13 @@ export async function settleNoPromptJob(job: { id: string; type: string }): Prom
   );
   // the publish finalizeFailedJob ends with, without its retry or hold: there is nothing to retry
   await syncAgentSessionLifecycle(settled, 'failed');
-  roomManager.publish(projectRoom(settled.projectId), {
+  await pushJobChanged({
+    projectId: settled.projectId,
+    jobId: settled.id,
+    deviceId: settled.deviceId,
     event: 'job.failed',
     data: { jobId: settled.id, status: 'failed', exitCode: settled.exitCode, error: settled.error },
+    rooms: ['project'],
   });
   if (settled.issueId) await publishPipelineHealthChanged(settled.projectId, [settled.issueId]);
   return true;

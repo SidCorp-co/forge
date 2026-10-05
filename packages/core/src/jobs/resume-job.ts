@@ -2,11 +2,11 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/index.js';
-import { projectRoom, roomManager } from '../lib/rooms.js';
 import type { KernelActor } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
 import { readHoldState, requeueHeldJob } from './hold.js';
 import { insertInterventionEvent } from './intervention-event.js';
+import { pushJobChanged } from './job-push.js';
 import { refuseJob } from './refusals.js';
 
 /**
@@ -43,9 +43,13 @@ export async function resumeHeldJob(
   });
   if (!updated) throw refuseJob('NOT_HELD', 'job state changed mid-request');
 
-  roomManager.publish(projectRoom(job.projectId), {
+  await pushJobChanged({
+    projectId: job.projectId,
+    jobId: updated.id,
+    deviceId: job.deviceId,
     event: 'job.resumed',
     data: { jobId: updated.id, status: 'queued' },
+    rooms: ['project'],
   });
   if (updated.issueId) await publishPipelineHealthChanged(job.projectId, [updated.issueId]);
   return { jobId: updated.id, status: 'queued', heldReason };

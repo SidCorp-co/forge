@@ -7,7 +7,7 @@ import {
 import { db } from '../db/client.js';
 import { type AgentSessionStatus, agentSessions, issues, jobs } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
-import { deviceRoom, projectRoom, roomManager } from '../lib/rooms.js';
+import { emitEvent } from '../outbox/index.js';
 import type { FailureCause, RunFailureCause } from '../pipeline/index.js';
 import { assertRunAcceptsWork, classifyFailure, closeRunIfOneShot } from '../pipeline/index.js';
 import type { ResumeRecord } from './resume-policy.js';
@@ -172,7 +172,7 @@ export async function ensureAgentSessionForJob(
     return row;
   });
 
-  broadcastSessionEvent(inserted.id, job.projectId, job.deviceId, 'agent-session.created', {
+  await broadcastSessionEvent(inserted.id, job.projectId, job.deviceId, 'agent-session.created', {
     title,
     issueId: job.issueId,
   });
@@ -282,7 +282,7 @@ export async function syncAgentSessionLifecycle(
       actor: { type: 'system' },
       source: 'lifecycle-sync',
     });
-    broadcastSessionStatus(job.agentSessionId, job.projectId, job.deviceId, status);
+    await broadcastSessionStatus(job.agentSessionId, job.projectId, job.deviceId, status);
 
     if (!options?.retryPending) {
       const runOutcome =
@@ -297,26 +297,21 @@ export async function syncAgentSessionLifecycle(
   }
 }
 
-export function broadcastSessionEvent(
+export async function broadcastSessionEvent(
   sessionId: string,
   projectId: string,
   deviceId: string | null,
   event: string,
   extra: Record<string, unknown>,
-): void {
-  const payload = {
-    event,
-    data: { sessionId, projectId, deviceId, ...extra },
-  };
-  roomManager.publish(projectRoom(projectId), payload);
-  if (deviceId) roomManager.publish(deviceRoom(deviceId), payload);
+): Promise<void> {
+  await emitEvent(db, 'session.changed', { sessionId, projectId, deviceId, event, extra });
 }
 
-function broadcastSessionStatus(
+async function broadcastSessionStatus(
   sessionId: string,
   projectId: string,
   deviceId: string | null,
   status: string,
-): void {
-  broadcastSessionEvent(sessionId, projectId, deviceId, 'agent-session.status', { status });
+): Promise<void> {
+  await broadcastSessionEvent(sessionId, projectId, deviceId, 'agent-session.status', { status });
 }

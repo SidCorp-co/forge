@@ -7,6 +7,7 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { readApiPage } from './api-page.js';
+import { readContractContext } from './contract/run-context-service.js';
 import { heldEcosystem } from './ecosystem-service.js';
 import { interfaceView, loadInterface, writeInterface } from './interface-service.js';
 import { listInterfaceRevisions } from './interface-store.js';
@@ -14,10 +15,17 @@ import { membershipDocument } from './membership-rules.js';
 import { membershipsWhere } from './membership-store.js';
 import { serialiseRevisions } from './routes.js';
 import { readEcosystems } from './store.js';
+import { CONTEXT_ARGS, CONTEXT_SHAPE } from './tool-args.js';
 
 export const ecosystemProjectRoutes = new Hono<{ Variables: AuthVars }>();
 
-for (const path of ['/:id/interface', '/:id/interface/*', '/:id/api-page', '/:id/ecosystems']) {
+for (const path of [
+  '/:id/interface',
+  '/:id/interface/*',
+  '/:id/api-page',
+  '/:id/ecosystems',
+  '/:id/contract-context',
+]) {
   ecosystemProjectRoutes.use(path, requireAuth(), assertEmailVerified());
 }
 
@@ -57,6 +65,26 @@ ecosystemProjectRoutes.get('/:id/interface/revisions', idParam, async (c) => {
   await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
   return c.json(serialiseRevisions(await listInterfaceRevisions(id)));
 });
+
+// The REST twin of `forge_ecosystem action=context`: the contracts a run touching `paths` reaches.
+ecosystemProjectRoutes.post(
+  '/:id/contract-context',
+  idParam,
+  zValidator(
+    'json',
+    CONTEXT_ARGS,
+    invalid(`the body is ${CONTEXT_SHAPE}`, 'ECOSYSTEM_ARGUMENT_INVALID'),
+  ),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    await requireCan(actorFor(c.get('userId')), 'project.read', projectResource(id));
+    const { paths, session } = c.req.valid('json');
+    const read = await readContractContext(id, paths, session ?? null);
+    if (!read.ok) return refused(c, read.refusals, 'ECOSYSTEM_REFUSED');
+    const { ok: _ok, ...answer } = read;
+    return c.json(answer);
+  },
+);
 
 ecosystemProjectRoutes.get('/:id/api-page', idParam, async (c) =>
   c.json(await readApiPage(c.get('userId'), c.req.valid('param').id)),

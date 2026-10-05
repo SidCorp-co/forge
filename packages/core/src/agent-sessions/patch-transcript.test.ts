@@ -9,11 +9,12 @@ vi.mock('./session-events.js', () => ({
   }),
 }));
 vi.mock('./session-transcript.js', () => ({ deriveChatTurnFinal: vi.fn(async () => false) }));
-vi.mock('../jobs/index.js', () => ({
-  jobsOfSession: vi.fn(async () => ['job-1']),
-  scrubJobOutput: vi.fn(async (_ids: readonly string[], data: unknown) =>
-    scrubSecretsDeep(data, ['held-testing-secret-value']),
-  ),
+vi.mock('./ports.js', () => ({
+  agentSessionsPorts: () => ({
+    scrubSessionOutput: vi.fn(async (_sessionId: string, data: unknown) =>
+      scrubSecretsDeep(data, ['held-testing-secret-value']),
+    ),
+  }),
 }));
 
 const { applyTranscriptPatch } = await import('./patch-transcript.js');

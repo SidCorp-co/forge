@@ -3,13 +3,13 @@ import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { triggerPipelineStepManual } from '../pipeline/index.js';
 import {
   heldIssue,
   issueRouteIdParamSchema,
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
+import { triggerPipelineStepManual } from './ports.js';
 import { issueUsageTotals } from './read-service.js';
 
 const runPipelineStepBodySchema = z.object({}).strict();

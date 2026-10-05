@@ -11,12 +11,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import type { ConversationAdapter } from '../db/schema-conversations.js';
-import {
-  type ChatMessage,
-  type ChatStreamEvent,
-  defaultChatProviderId,
-  resolveChatProvider,
-} from '../integrations/llm/index.js';
+import { type ChatMessage, type ChatStreamEvent, openChat } from '../integrations/llm/index.js';
 import {
   buildProgressFactsBlock,
   computeProjectProgress,
@@ -204,7 +199,9 @@ export async function runExternalChatTurn(
   args: ExternalChatTurnArgs,
 ): Promise<ExternalChatTurnResult> {
   const { turn, messages, progress, what, level } = await setUpTurn(args);
-  const resolved = resolveChatProvider(defaultChatProviderId());
+  // The adapter gates every request on its way out as well; scrubbing is idempotent, so what was
+  // already egressed above leaves unchanged.
+  const resolved = await openChat({ surface: 'conversation', projectId: args.projectId, what });
   const gen = runTurnEvents({
     provider: resolved.provider,
     model: resolved.model,

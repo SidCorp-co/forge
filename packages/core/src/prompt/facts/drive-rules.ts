@@ -40,13 +40,17 @@ const SETTINGS_KNOWLEDGE_MERGE = `- **project settings** — \`projects/<project
 - **the merge marker** — \`issues/<id>/merge\` (\`-X POST\` to stamp, \`-X DELETE\` to retract). On a project whose \`source.type\` is not \`git\` the stamp carries \`landing\`, where the work landed, and no \`target\`. The stamp records the merge and moves no status: once it stands and the verdicts hold, move the issue to \`awaiting_release\` yourself (\`issues/<id>/transition\`). Only a release closes it.
 - **guides** — \`guides\` lists them and \`guides/<slug>.md\` reads one.`;
 
-const MCP_TAIL = `What stays on the Forge MCP server is what no shell command can do: \`forge_uploads\` reads an attachment as a viewable image block, \`forge_agent_report\` files friction against your live job, and a connected integration's block below names the tools it needs — those are correct as written.`;
+const REPORTS_AND_ECOSYSTEM = `- **friction reports** — \`agent-reports -X POST -d '{"projectId":"<projectId>","kind":"friction","target":"skill","summary":"..."}'\` files friction, a skill gap or a learning against your live job (\`severity\`, \`targetRef\`, \`detail\` and \`suggestion\` are optional); \`agent-reports?projectId=<projectId>\` reads the feed.
+- **the ecosystem channel and builder runs** — \`projects/<projectId>/channel/…\`, \`projects/<projectId>/links\`, \`projects/<projectId>/builder-runs\` and \`projects/<projectId>/interface\`; \`guides/ecosystem-inbox.md\` is the order of the work.`;
+
+const MCP_TAIL = `What stays on the Forge MCP server is what no shell command can do: \`forge_uploads\` reads an attachment as a viewable image block, and a connected integration's block below names the tools it needs — those are correct as written.`;
 
 export const DRIVE_TOOL_REFERENCE_TEXT = `${REACHING_FORGE_HEAD}
 
 ${ISSUE_AND_COMMENTS}
 - **your run and its phase journal** — \`projects/<projectId>/pipeline-runs?issueId=<id>&status=running\` finds the run; \`pipeline-runs/<run>/phases -X POST\` declares a phase and \`pipeline-runs/<run>/phases/end -X POST\` closes it. \`pipeline-runs/<run>/resume-point\` answers the one phase you are to restart at, or \`null\`; \`GET pipeline-runs/<run>/phases\` lists the whole journal in order, which is what a session reads to see what the ones before it did.
 ${SETTINGS_KNOWLEDGE_MERGE}
+${REPORTS_AND_ECOSYSTEM}
 
 ${MCP_TAIL}`;
 
@@ -55,5 +59,6 @@ export const STEP_TOOL_REFERENCE_TEXT = `${REACHING_FORGE_HEAD}
 ${ISSUE_AND_COMMENTS}
 - **step handoffs** — \`issue-step-contexts?projectId=<projectId>&issueId=<id>\` reads the prior steps' handoffs; \`issue-step-contexts -X POST\` writes yours.
 ${SETTINGS_KNOWLEDGE_MERGE}
+${REPORTS_AND_ECOSYSTEM}
 
 ${MCP_TAIL}`;

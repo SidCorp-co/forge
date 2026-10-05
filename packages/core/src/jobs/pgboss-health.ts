@@ -1,6 +1,5 @@
 import { traceStep } from '../lib/error-tracking.js';
 import { logger } from '../lib/logger.js';
-import { globalRoom, roomManager } from '../lib/rooms.js';
 
 /** One missed `* * * * *` tick + 30s grace → 90s gap classes as desync. */
 const MISSED_TICK_THRESHOLD_MS = 90_000;
@@ -52,11 +51,6 @@ function fireAlert(now: number, lastTickAtMs: number | null, gapMs: number): boo
     category: 'dispatcher.tick_missing',
     level: 'warning',
     message: 'pg-boss backstop tick missing',
-    data: { lastTickAt, gapSeconds },
-  });
-
-  roomManager.publish(globalRoom(), {
-    event: 'dispatcher.tick_missing',
     data: { lastTickAt, gapSeconds },
   });
 

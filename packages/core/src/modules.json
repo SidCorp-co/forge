@@ -208,7 +208,8 @@
         "REQ-27",
         "personal-data-flow#ds-audit",
         "personal-data-flow#pr-provision",
-        "personal-data-flow#src-mcp"
+        "personal-data-flow#src-mcp",
+        "core-components#door-ws"
       ]
     },
     "db": {
@@ -326,7 +327,8 @@
         "requirement-to-delivery#contract-first",
         "feedback-triage#breaking",
         "requirement-to-delivery#provider-live",
-        "feedback-triage#upgrade"
+        "feedback-triage#upgrade",
+        "core-components#door-mcp"
       ]
     },
     "error-intake": {
@@ -444,7 +446,8 @@
         "personal-data-flow#pr-assistant",
         "REQ-19",
         "personal-data-flow#ext-embeddings",
-        "feedback-triage#vectors"
+        "feedback-triage#vectors",
+        "core-components#ad-llm"
       ]
     },
     "integrations/rocketchat": {
@@ -612,7 +615,11 @@
     "mcp": {
       "kind": "door",
       "context": "platform",
-      "serves": ["personal-data-flow#src-mcp", "personal-data-flow#pr-api"]
+      "serves": [
+        "personal-data-flow#src-mcp",
+        "personal-data-flow#pr-api",
+        "core-components#door-mcp"
+      ]
     },
     "me": {
       "kind": "read-model",
@@ -782,7 +789,8 @@
       "serves": [
         "issue-lifecycle#start",
         "requirement-lifecycle#agreed",
-        "project-onboarding#approve-guard"
+        "project-onboarding#approve-guard",
+        "core-components#k-permissions"
       ]
     },
     "pipeline": {
@@ -799,7 +807,8 @@
         "REQ-1",
         "issue-delivery#act-build",
         "issue-delivery#rule-dispatch",
-        "issue-delivery#rule-wedge"
+        "issue-delivery#rule-wedge",
+        "core-components#k-pipeline"
       ]
     },
     "preferences": {
@@ -1050,7 +1059,8 @@
         "REQ-11",
         "issue-delivery#rule-dispatch",
         "requirement-to-delivery#delivery",
-        "feedback-lifecycle#start"
+        "feedback-lifecycle#start",
+        "core-components#door-ws"
       ]
     }
   },

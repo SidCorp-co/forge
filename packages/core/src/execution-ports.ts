@@ -11,7 +11,12 @@ import {
   postIssueNoticeOnce,
 } from './comments/index.js';
 import { registerConversationAgentBridge, resolveProjectHandle } from './conversations/index.js';
-import { deviceHolderUserId, provideDevicesPorts } from './devices/index.js';
+import {
+  deviceHolderUserId,
+  provideDevicesPorts,
+  readRunnerPoolRead,
+  residentMasterSql,
+} from './devices/index.js';
 import {
   loadContractContext,
   pathsNamedIn,
@@ -35,8 +40,10 @@ import {
 import {
   countInFlightByRunner,
   insertInterventionEvent,
+  jobsOfSession,
   provideJobsPorts,
   resolveSessionMcpServers,
+  scrubJobOutput,
 } from './jobs/index.js';
 import { foreignScriptChars } from './memory/index.js';
 import { emitNotification } from './notifications/index.js';
@@ -125,6 +132,8 @@ export function provideExecutionPorts(): void {
     deviceHolderUserId,
     insertInterventionEvent,
     resolveSessionMcpServers,
+    scrubSessionOutput: async (sessionId, data) =>
+      scrubJobOutput(await jobsOfSession(sessionId), data),
     postSteerComment: async ({ issueId, authorId, body }) =>
       (await insertComment({ issueId, authorId, authorDeviceId: null, body, parentId: null })).row,
   });
@@ -155,7 +164,7 @@ export function provideExecutionPorts(): void {
       (await resolveProjectHandle(tx, projectId)).userId,
   });
 
-  provideRunnersPorts({ countInFlightByRunner });
+  provideRunnersPorts({ countInFlightByRunner, residentMasterSql, readRunnerPoolRead });
 
   provideSchedulesPorts({
     emitNotification,

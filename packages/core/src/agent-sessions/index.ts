@@ -30,6 +30,11 @@ export {
   resolveSessionAuthority,
   type SessionAsker,
 } from './session-credential.js';
+export {
+  AGENT_SESSION_KIND_LIST,
+  isAgentSessionKind,
+  isPipelineSessionKind,
+} from './session-kinds.js';
 export { requestSessionSend, resolveSessionSend } from './session-send.js';
 export {
   deriveSessionFinal,
