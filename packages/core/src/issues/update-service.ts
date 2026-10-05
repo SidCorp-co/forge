@@ -10,7 +10,7 @@ import { refuseHeldTake } from './blocked-by.js';
 import { syncCriteriaFromText } from './criteria/store.js';
 import type { ResolvedLabelAttach } from './label-service.js';
 import { plannedRevisionFor } from './ports.js';
-import { ISSUE_READ_COLUMNS, type IssueRow } from './read-service.js';
+import { ISSUE_READ_COLUMNS, type IssueRow, issueScopeOf } from './read-service.js';
 import { leaseWriteTakes } from './session-claim.js';
 import type { SessionContextExpect } from './session-context.js';
 import {
@@ -19,6 +19,8 @@ import {
   writeSplitSessionContext,
   writeWorkStateFields,
 } from './work-state.js';
+import { dataPolicyOf } from '../lib/data-egress.js';
+import { scrubIssueText } from './patch-fields.js';
 
 const refuse = refuser<IssueUpdateRefusalCode>('ISSUE_UPDATE_REFUSED');
 
@@ -62,7 +64,11 @@ type UpdateTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
  * forge-plugin moves to the 10-status model (plugin-followups.md).
  */
 async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
-  const { issueId, updates, labelIds, expect, workState, actor, changes } = input;
+  const { issueId, labelIds, expect, workState, actor } = input;
+  const scope = await issueScopeOf(issueId);
+  const level = scope ? await dataPolicyOf(scope.projectId) : 'off';
+  const updates = scrubIssueText(level, input.updates);
+  const changes = input.changes && { ...input.changes, after: scrubIssueText(level, input.changes.after) };
 
   return db.transaction(async (tx) => {
     const current = await lockComposedSessionContext(tx, issueId);

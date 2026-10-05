@@ -27,6 +27,7 @@ import {
 import { openBatchOf, priorAnswers, type StoredItem } from './read.js';
 import { alreadyOpenRefusal, itemRefusals, repeatRefusals } from './rules.js';
 import { questionnaireText } from './text.js';
+import { logger } from '../lib/logger.js';
 
 export function questionnaireKernelActor(actor: QuestionnaireActor): KernelActor {
   return { type: 'user', id: actor.userId, agency: actor.agency };
@@ -64,7 +65,9 @@ export async function announce(conversationId: string, messageId: string | null,
     messageId,
     role,
     content: '',
-  }).catch(() => 0);
+  }).catch((err: unknown) => {
+    logger.warn({ err, conversationId }, 'questionnaire: the room was not told of the change');
+  });
 }
 
 function stepOf(item: QuestionnaireItem): QuestionStep {

@@ -20,7 +20,6 @@ import { mintParkQuestion } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import {
   closeOpenRunForIssue,
-  setCurrentStepForOpenIssueRun,
   settleOpenQuestions,
 } from './ports.js';
 import { moveOf, recordMove } from './record-events/kernel-records.js';
@@ -32,6 +31,8 @@ import {
   requiresAuthoredReason,
 } from './transition-reason.js';
 import { readWorkState, setLeftStatus, setWorkStep } from './work-state.js';
+import { needsNotApplicable } from './park-question.js';
+import { refuseOffRecoveryEdge } from './recovery-move.js';
 
 const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(ISSUE_DISPATCH_TERMINAL_STATUSES);
 
@@ -106,7 +107,7 @@ export interface StatusTransitionResult {
   /**
    * Dependents whose `blocks` edge this transition expired, collected before
    * the expiry ran. Non-empty only on a `dropped` transition. The caller hands
-   * this to `triggerTerminalDispatch` — it cannot be re-derived, because every
+   * this to `publishUnblockCascade` — it cannot be re-derived, because every
    * dependent query filters expired edges out.
    */
   unblockedDependents: UnblockedDependent[];
@@ -159,8 +160,8 @@ export async function transitionIssueStatus(
     });
   }
 
-  const recovering =
-    options.recovery === true && edgeBetween(ISSUE_MACHINE, fromStatus, toStatus, true) !== null;
+  if (options.recovery === true) refuseOffRecoveryEdge(fromStatus, toStatus);
+  const recovering = options.recovery === true;
   if (!recovering) {
     const edge = edgeFault({ from: fromStatus, to: toStatus, leftStatus });
     if (edge) throw new TransitionError(edge.code, edge.detail, edge.details);
@@ -172,6 +173,14 @@ export async function transitionIssueStatus(
       `\`waitingKind\` is stored only for a \`needs_info\` park, and \`${toStatus}\` cannot hold it. Say what the issue is waiting for in \`reason\` instead — that is posted as a comment before the status flips and is kept.`,
       { from: fromStatus, to: toStatus, waitingKind: options.waitingKind },
     );
+  }
+
+  const needsRefused = needsNotApplicable({ issue, toStatus, actor, options });
+  if (needsRefused) {
+    throw new TransitionError('NEEDS_NOT_APPLICABLE', needsRefused, {
+      from: fromStatus,
+      to: toStatus,
+    });
   }
 
   const reasonMissing = reasonFault({
@@ -204,7 +213,6 @@ export async function transitionIssueStatus(
 
   await publishPipelineHealthChanged(issue.projectId, [updated.id]);
 
-  await setCurrentStepForOpenIssueRun(issue.id, toStatus);
   const terminal = TERMINAL_FOR_DISPATCH.has(toStatus);
   if (ISSUE_TERMINAL_STATUSES.includes(toStatus)) {
     await closeOpenRunForIssue(issue.id, 'completed');

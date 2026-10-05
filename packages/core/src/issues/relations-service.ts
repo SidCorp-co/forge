@@ -74,12 +74,9 @@ export async function writeIssueRelations(
 ): Promise<PendingIssueRelation[]> {
   const pending: PendingIssueRelation[] = [];
   for (const rel of relations ?? []) {
-    if ((rel.dependsOnId == null) === (rel.blocksId == null)) {
-      throw new Error('BAD_REQUEST: relation needs exactly one of dependsOnId or blocksId');
-    }
     const fromIssueId = rel.dependsOnId ?? issueId;
-    const toIssueId = rel.dependsOnId != null ? issueId : rel.blocksId;
-    if (!toIssueId) throw new Error('BAD_REQUEST: relation needs dependsOnId or blocksId');
+    // issueRelationInputSchema guarantees exactly one of the two
+    const toIssueId = rel.dependsOnId != null ? issueId : (rel.blocksId as string);
     const input: SetIssueDependencyInput = {
       projectId,
       fromIssueId,

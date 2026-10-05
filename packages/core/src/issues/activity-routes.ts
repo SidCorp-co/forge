@@ -107,67 +107,6 @@ const refuseRecord = refuser<RecordEventRefusalCode>('EVENT_REFUSED');
 const KERNEL_RECORD_ACTIONS: ReadonlySet<string> = new Set(KERNEL_RECORD_KINDS.map(recordAction));
 
 // cm:guard ISS-96 — kernel evidence is kept as written for as long as its issue is: the activity
-// routes neither evaluate nor delete a verdict, transition, landing, park or correction row
-function assertActivityMutable(action: string): void {
-  if (!KERNEL_RECORD_ACTIONS.has(action)) return;
-  throw refuseRecord(
-    'KERNEL_RECORD_IMMUTABLE',
-    `\`${action}\` is kernel evidence, kept as written for as long as its issue is, so it cannot be evaluated or deleted. Say what is wrong with it in a comment, or record a \`correction\` (\`POST /api/issues/:id/events\`).`,
-  );
-}
-
-issueActivityRoutes.patch(
-  '/:id/activity/:activityId/evaluate',
-  zValidator('param', activityIdParamSchema),
-  zValidator('json', evaluateBodySchema),
-  async (c) => {
-    const { id: issueId, activityId } = c.req.valid('param');
-    const { verdict, note } = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const activity = await loadActivity(activityId);
-    if (!activity || activity.issueId !== issueId) throw notFound('activity not found');
-
-    const access = await loadProjectAccess(activity.projectId, userId);
-    requireHeld(access, 'project.write');
-    assertActivityMutable(activity.action);
-
-    const previous = (activity.payload as Record<string, unknown> | null) ?? {};
-    const nextPayload = {
-      ...previous,
-      evaluation: {
-        verdict,
-        note: note ?? null,
-        evaluatedAt: new Date().toISOString(),
-        evaluatedBy: userId,
-      },
-    };
-
-    const updated = await setActivityPayload(activityId, nextPayload);
-    if (!updated) throw notFound('activity not found');
-    const [withActor] = await attachActors([updated]);
-    return c.json(withActor);
-  },
-);
-
-issueActivityRoutes.delete(
-  '/:id/activity/:activityId',
-  zValidator('param', activityIdParamSchema),
-  async (c) => {
-    const { id: issueId, activityId } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const activity = await loadActivity(activityId);
-    if (!activity || activity.issueId !== issueId) throw notFound('activity not found');
-
-    const access = await loadProjectAccess(activity.projectId, userId);
-    requireHeld(access, 'project.admin');
-    assertActivityMutable(activity.action);
-
-    await deleteActivity(activityId);
-    return c.body(null, 204);
-  },
-);
 
 export const projectActivityRoutes = new Hono<{ Variables: AuthVars }>();
 projectActivityRoutes.use('*', requireAuth(), assertEmailVerified());

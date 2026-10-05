@@ -1,4 +1,19 @@
+import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import { prepareBody } from '../body/prepare.js';
+import { storedText } from '../lib/data-egress.js';
+
+// personal-data-flow#ds-issues: on a redact or no_egress project an issue's free text is scrubbed on write
+const SCRUBBED_ISSUE_FIELDS = ['title', 'description', 'plan', 'acceptanceCriteria', 'releaseNotes'];
+
+export function scrubIssueText<T extends Record<string, unknown>>(level: SensitiveDataLevel, fields: T): T {
+  if (level === 'off') return fields;
+  const out: Record<string, unknown> = { ...fields };
+  for (const key of SCRUBBED_ISSUE_FIELDS) {
+    const value = out[key];
+    if (typeof value === 'string') out[key] = storedText(level, value).text;
+  }
+  return out as T;
+}
 
 export const SHARED_ISSUE_PATCH_FIELDS = [
   'title',

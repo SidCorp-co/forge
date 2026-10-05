@@ -19,7 +19,11 @@ async function stampHostMerge(
   },
   executor: MergeRecordExecutor = db,
 ): Promise<boolean> {
-  if (Number.isNaN(args.mergedAt.getTime())) return false;
+  if (Number.isNaN(args.mergedAt.getTime())) {
+    throw new Error(
+      `source.merged for ${args.headRef} carries a mergedAt that is not a time; the merge stamp is kernel evidence and is not written without one`,
+    );
+  }
   const issueId = await resolveIssueForHeadRef({
     projectId: args.projectId,
     headRef: args.headRef,
@@ -31,7 +35,6 @@ async function stampHostMerge(
       kind: 'observed',
       commitSha: args.commitSha,
       mergedAt: args.mergedAt,
-      via: 'event',
     },
   });
   return stamp.wrote;

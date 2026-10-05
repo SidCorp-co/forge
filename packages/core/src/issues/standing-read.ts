@@ -48,11 +48,15 @@ import {
   requirementsOf,
 } from './standing-facts-read.js';
 import { type StepDurationFact, stepOutcomesOf } from './step-outcomes.js';
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 
 /** The most rows one read answers; the list says so when a scope holds more. */
 export const STANDING_LIMIT = 500;
 
-const DONE_SQL = sql`('closed', 'dropped')`;
+const DONE_SQL = sql`(${sql.join(
+  ISSUE_TERMINAL_STATUSES.map((s) => sql`${s}`),
+  sql`, `,
+)})`;
 
 interface IssueRowRaw {
   id: string;

@@ -15,7 +15,6 @@ import {
   requestSessionSend,
   resolveSessionSend,
   stampFinalizeAttempt,
-  steerIssue,
   transitionSessions,
   usageSessionMatch,
   usageTotalsSelection,
@@ -79,7 +78,6 @@ import {
   closeOpenRunForIssue,
   getIssueContexts,
   providePipelinePorts,
-  setCurrentStepForOpenIssueRun,
 } from './pipeline/index.js';
 import {
   policyRefusal,
@@ -188,7 +186,6 @@ export function provideWorkPorts(): void {
     emptyUsageTotals: EMPTY_USAGE_TOTALS,
     fireOfCaller,
     issueDeleteRefusal,
-    steerIssue,
     designUnapprovedSql,
     assertDesignsApprovedForSeqs,
     assertDesignApprovedForIssue,
@@ -213,7 +210,6 @@ export function provideWorkPorts(): void {
     readStorefrontDraft,
     handoffContextsOf: (projectId, issueId) =>
       getIssueContexts({ projectId, issueId, kind: 'handoff', limit: 200, orderDir: 'asc' }),
-    setCurrentStepForOpenIssueRun,
     closeOpenRunForIssue,
   });
 

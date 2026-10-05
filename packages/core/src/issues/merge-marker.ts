@@ -55,12 +55,7 @@ export const mergedCommitShaSchema = z
  * arrive without every client learning it first.
  */
 async function resolveRecordedCommit(issueId: string): Promise<string | null> {
-  try {
-    const evidence = await collectWorkEvidence(issueId);
-    return evidence.handoffCommitSha;
-  } catch {
-    return null;
-  }
+  return (await collectWorkEvidence(issueId)).handoffCommitSha;
 }
 
 async function writeAuditComment(
@@ -164,7 +159,6 @@ async function stampMark(
           kind: 'observed',
           commitSha: observed.commitSha,
           mergedAt: observed.mergedAt,
-          via: 'event',
           landing,
         },
       }),
@@ -180,7 +174,6 @@ async function stampMark(
           kind: 'observed',
           commitSha: fromRepository.sha,
           mergedAt: fromRepository.committedAt,
-          via: 'repository',
         },
       }),
       claimedCommit: null,
@@ -190,7 +183,7 @@ async function stampMark(
     stamp = {
       result: await recordIssueMerge(tx, {
         issueId,
-        evidence: { kind: 'landed', landing, at: args.mergedAt ?? null, via: 'mark' },
+        evidence: { kind: 'landed', landing, at: args.mergedAt ?? null },
       }),
       claimedCommit: args.commit ?? null,
       readFrom: null,
@@ -199,7 +192,7 @@ async function stampMark(
     stamp = {
       result: await recordIssueMerge(tx, {
         issueId,
-        evidence: { kind: 'asserted', at: args.mergedAt ?? null, via: 'mark' },
+        evidence: { kind: 'asserted', at: args.mergedAt ?? null },
       }),
       claimedCommit: args.commit ?? (await resolveRecordedCommit(issueId)),
       readFrom: null,

@@ -32,6 +32,7 @@ import {
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
+import { issueScopeOf } from './read-service.js';
 
 const refuse = refuser<DependencyRefusalCode>('DEPENDENCY_REFUSED');
 
@@ -86,31 +87,14 @@ issueDependencyRoutes.post(
     const { dependsOnId: fromIssueId, kind, reason, validUntil } = c.req.valid('json');
     const userId = c.get('userId');
 
-    if (fromIssueId === toIssueId) {
-      throw refuse(
-        'SELF_DEP',
-        'an issue cannot depend on itself: name two different issues',
-        '/dependsOnId',
-      );
-    }
-
-    const sides = await issueProjectsOf([fromIssueId, toIssueId]);
-    if (sides.length !== 2) throw notFound('one or both issues not found');
-    const [a, b] = sides;
-    if (!a || !b) throw notFound('one or both issues not found');
-    if (a.projectId !== b.projectId) {
-      throw refuse(
-        'CROSS_PROJECT',
-        'both issues of an edge are in one project; cross-project edges are not supported',
-        '/dependsOnId',
-      );
-    }
-
-    const access = await loadProjectAccess(a.projectId, userId);
+    // the service refuses a self edge, a missing side and a cross-project pair under its lock
+    const target = await issueScopeOf(toIssueId);
+    if (!target) throw notFound('issue not found');
+    const access = await loadProjectAccess(target.projectId, userId);
     requireHeld(access, 'project.write');
 
     const input: SetIssueDependencyInput = {
-      projectId: a.projectId,
+      projectId: target.projectId,
       fromIssueId,
       toIssueId,
       kind,

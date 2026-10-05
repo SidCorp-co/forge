@@ -148,11 +148,6 @@ interface IssuePorts {
     projectId: string;
     issSeq: number;
   }) => Promise<Refusal | null>;
-  steerIssue: (
-    issueId: string,
-    body: string,
-    opts: { actorUserId: string; actorAgency: ActorAgency; reason: string; source: 'rest' },
-  ) => Promise<object>;
 
   designUnapprovedSql: (issueId: SQL) => SQL;
   assertDesignsApprovedForSeqs: (projectId: string, seqs: readonly number[]) => Promise<void>;
@@ -220,7 +215,6 @@ interface IssuePorts {
       updatedAt: Date;
     }>
   >;
-  setCurrentStepForOpenIssueRun: (issueId: string, step: string) => Promise<void>;
   closeOpenRunForIssue: (
     issueId: string,
     outcome: 'completed' | 'failed' | 'cancelled',
@@ -256,7 +250,6 @@ export const usageTotalsSelection = port('usageTotalsSelection');
 export const emptyUsageTotals = (): UsageTotals => issuePorts().emptyUsageTotals;
 export const fireOfCaller = port('fireOfCaller');
 export const issueDeleteRefusal = port('issueDeleteRefusal');
-export const steerIssue = port('steerIssue');
 
 export const designUnapprovedSql = port('designUnapprovedSql');
 export const assertDesignsApprovedForSeqs = port('assertDesignsApprovedForSeqs');
@@ -280,5 +273,4 @@ export const resolveSourceHost = port('resolveSourceHost');
 export const isSourceHostUnavailable = port('isSourceHostUnavailable');
 export const readStorefrontDraft = port('readStorefrontDraft');
 export const handoffContextsOf = port('handoffContextsOf');
-export const setCurrentStepForOpenIssueRun = port('setCurrentStepForOpenIssueRun');
 export const closeOpenRunForIssue = port('closeOpenRunForIssue');

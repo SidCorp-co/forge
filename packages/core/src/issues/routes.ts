@@ -81,27 +81,6 @@ issueRoutes.get(
   },
 );
 
-const jobHistoryQuerySchema = z.object({
-  step: z.enum(jobTypes),
-});
-
-issueRoutes.get(
-  '/:id/job-history',
-  zValidator('param', idParamSchema),
-  zValidator('query', jobHistoryQuerySchema),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const { step } = c.req.valid('query');
-    const userId = c.get('userId');
-
-    const issue = await loadIssue(id);
-    const access = await loadProjectAccess(issue.projectId, userId);
-    requireHeld(access, 'project.read');
-
-    return c.json(await jobHistoryForStep(id, step));
-  },
-);
-
 issueRoutes.patch(
   '/:id',
   zValidator('param', idParamSchema),
@@ -226,5 +205,4 @@ export { issueMergeRoutes } from './merge-routes.js';
 export { issueProjectRoutes } from './project-issue-routes.js';
 export { searchRoutes } from './search.js';
 export { issueStandingRoutes } from './standing-routes.js';
-export { issueSteerRoutes } from './steer-routes.js';
 export { transitionRoutes } from './transition.js';

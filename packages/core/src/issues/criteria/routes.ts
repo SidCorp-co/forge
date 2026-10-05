@@ -46,20 +46,21 @@ export const issueCriteriaRoutes = new Hono<{ Variables: AuthVars }>();
 issueCriteriaRoutes.use('/:id/criteria', requireAuth(), assertEmailVerified());
 issueCriteriaRoutes.use('/:id/verdicts', requireAuth(), assertEmailVerified());
 
+/** An issue's criteria as this caller may read them: every answer passes the same egress. */
+async function criteriaShown(
+  agency: Parameters<typeof egressForRequest>[0],
+  issue: Parameters<typeof readCriteria>[0] & { projectId: string; id: string },
+) {
+  return egressForRequest(agency, issue.projectId, 'issue.criteria', await readCriteria(issue), `the criteria of ${issue.id}`);
+}
+
 issueCriteriaRoutes.get(
   '/:id/criteria',
   zValidator('param', idParamSchema, badInput),
   async (c) => {
     const { id } = c.req.valid('param');
     const issue = await issueFor(id, c.get('userId'), 'project.read');
-    const criteria = await egressForRequest(
-      c.get('agency'),
-      issue.projectId,
-      'issue.criteria',
-      await readCriteria(issue),
-      `the criteria of ${issue.id}`,
-    );
-    return c.json({ criteria });
+    return c.json({ criteria: await criteriaShown(c.get('agency'), issue) });
   },
 );
 
@@ -72,7 +73,7 @@ issueCriteriaRoutes.put(
     const { criteria } = c.req.valid('json');
     const issue = await issueFor(id, c.get('userId'), 'project.write');
     await replaceCriteria(id, criteria);
-    return c.json({ criteria: await readCriteria(issue) });
+    return c.json({ criteria: await criteriaShown(c.get('agency'), issue) });
   },
 );
 

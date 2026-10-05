@@ -12,12 +12,11 @@ type MergeEvidence =
       kind: 'observed';
       commitSha: string;
       mergedAt: Date;
-      via: 'kernel' | 'event' | 'repository';
       /** Where the work also landed outside git, on a project whose landing is named. */
       landing?: string | null;
     }
-  | { kind: 'landed'; landing: string; at?: Date | null; via: 'mark' }
-  | { kind: 'asserted'; at?: Date | null; via: 'mark' | 'close' };
+  | { kind: 'landed'; landing: string; at?: Date | null }
+  | { kind: 'asserted'; at?: Date | null };
 
 export interface MergeRecord {
   /** Whether THIS call moved the row. Every caller has to pass this on. */

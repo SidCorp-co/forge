@@ -12,7 +12,7 @@ import { BATCH_SKIP_BY_CODE, type BatchSkipReason } from './batch-skip-reason.js
 import { applyBatchFieldEdit, type IssueTriage } from './field-writes.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { batchIssueRows } from './read-service.js';
-import { triggerTerminalDispatch } from './transition.js';
+import { publishUnblockCascade } from './transition.js';
 
 type BatchResult = {
   updated: Array<{
@@ -31,7 +31,7 @@ type BatchData = {
 };
 
 type BatchRow = Awaited<ReturnType<typeof batchIssueRows>>[number];
-type TerminalMove = Parameters<typeof triggerTerminalDispatch>[0][number];
+type TerminalMove = Parameters<typeof publishUnblockCascade>[0][number];
 /** The account acting: a REST batch is always a user's. */
 type BatchActor = { type: 'user'; id: string; agency: ActorAgency };
 
@@ -165,6 +165,6 @@ export async function patchIssueBatch(
     }
   }
 
-  if (terminal.length > 0) await triggerTerminalDispatch(terminal);
+  if (terminal.length > 0) await publishUnblockCascade(terminal);
   return result;
 }

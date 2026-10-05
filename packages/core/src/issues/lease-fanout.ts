@@ -6,6 +6,7 @@ import {
   leaseHolderOf,
   leaseIsUnexpired,
 } from './session-claim.js';
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 
 /**
  * How many open issues each holder holds an unexpired claim on — `classifyLease`'s `shared` test.
@@ -22,7 +23,10 @@ export async function holderFanout(
   const rows = (await db.execute(sql`
     SELECT (SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id) AS lease
       FROM issues i
-     WHERE i.status NOT IN ('closed', 'dropped')
+     WHERE i.status NOT IN (${sql.join(
+       ISSUE_TERMINAL_STATUSES.map((s) => sql`${s}`),
+       sql`, `,
+     )})
        AND (SELECT w.lease ->> 'holder' FROM issue_work_state w WHERE w.issue_id = i.id) IN (${sql.join(
          holders.map((h) => sql`${h}`),
          sql`, `,

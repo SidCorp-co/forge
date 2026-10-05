@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { LIVE_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 
 /**
  * A release run claims the named issues of a project waiting at its gate, only where no other run
@@ -53,7 +54,10 @@ export async function releaseEndedRunClaims(): Promise<number> {
       AND EXISTS (
         SELECT 1 FROM pipeline_runs r
         WHERE r.id = issues.release_batch_run_id
-          AND r.status NOT IN ('running', 'paused')
+          AND r.status NOT IN (${sql.join(
+            LIVE_PIPELINE_RUN_STATUSES.map((s) => sql`${s}`),
+            sql`, `,
+          )})
       )
       AND NOT (
         issues.status = 'awaiting_release'
@@ -65,5 +69,5 @@ export async function releaseEndedRunClaims(): Promise<number> {
       )
     RETURNING id
   `);
-  return Array.isArray(released) ? released.length : 0;
+  return (released as unknown as unknown[]).length;
 }

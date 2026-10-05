@@ -18,6 +18,7 @@ import { emitEvent } from '../outbox/index.js';
 import { parseMentions, resolveMentions } from './mentions.js';
 import { screenAgentComment, screenRecordFence } from './screen.js';
 import { onIssue } from './thread-read.js';
+import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 
 const refuse = refuser<CommentRefusalCode>('COMMENT_REFUSED');
 
@@ -171,6 +172,7 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
   if (context && byAnAgent) {
     await screenAgentComment(context.projectId, input.body, tx);
   }
+  const level = context ? await dataPolicyOf(context.projectId) : 'off';
 
   const {
     format: _ignored,
@@ -185,7 +187,7 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
       .insert(comments)
       .values({
         ...rest,
-        body: prepared.body,
+        body: storedText(level, prepared.body).text,
         format: prepared.format,
         stage: context?.stage ?? null,
         intent,
@@ -274,16 +276,15 @@ export async function updateCommentBody(
   if (issueId === null)
     throw new Error(`comment ${commentId} sits on no issue; edit it at its own target`);
   const byAnAgent = await writtenByAnAgent(existing, db);
-  if (byAnAgent) {
-    const context = await loadStageContext(issueId);
-    if (context) await screenAgentComment(context.projectId, input.body, db);
-  }
+  const context = await loadStageContext(issueId);
+  if (byAnAgent && context) await screenAgentComment(context.projectId, input.body, db);
+  const level = context ? await dataPolicyOf(context.projectId) : 'off';
 
   return db.transaction(async (t) => {
     const [row] = await t
       .update(comments)
       .set({
-        body: prepared.body,
+        body: storedText(level, prepared.body).text,
         format: prepared.format,
         updatedAt: new Date(),
       })

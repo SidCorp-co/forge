@@ -36,6 +36,9 @@ import {
 } from './relations-service.js';
 import { leaseWriteTakes } from './session-claim.js';
 import { splitSessionContext, writeSplitSessionContext } from './work-state.js';
+import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
+import { scrubIssueText } from './patch-fields.js';
+import { dataPolicyOf } from '../lib/data-egress.js';
 
 const refuse = refuser<IssueCreateRefusalCode>('ISSUE_CREATE_REFUSED');
 
@@ -212,6 +215,7 @@ type Birth = {
   labelIds: ResolvedLabelAttach[];
   prepared: ReturnType<typeof prepareBody> | null;
   detectorKey: string | null;
+  level: SensitiveDataLevel;
 };
 
 /** The row, its criteria, work state, labels and relations, in one transaction. */
@@ -223,8 +227,10 @@ async function writeBirth(tx: Tx, birth: Birth) {
     tx,
     {
       projectId: input.projectId,
-      title: input.title,
-      description: prepared ? prepared.body : (input.description ?? null),
+      ...scrubIssueText(birth.level, {
+        title: input.title,
+        description: prepared ? prepared.body : (input.description ?? null),
+      }),
       descriptionFormat: prepared?.format ?? 'markdown',
       status: birth.status as IssueStatus,
       priority: (input.priority ?? 'medium') as IssueCreateRow['priority'],
@@ -295,13 +301,14 @@ export async function createIssue(
       ? prepareBody({ raw: input.description, format: input.descriptionFormat })
       : null;
   const detectorKey = input.detectorKey ?? null;
+  const level = await dataPolicyOf(input.projectId);
   if (detectorKey) {
     const deduped = await dedupeByDetectorKey(input.projectId, detectorKey);
     if (deduped) return deduped;
   }
 
   const { created, pendingRelations } = await db.transaction((tx) =>
-    writeBirth(tx, { input, writer, status, labelIds, prepared, detectorKey }),
+    writeBirth(tx, { input, writer, status, labelIds, prepared, detectorKey, level }),
   );
 
   const persisted = decodedAttachments.length

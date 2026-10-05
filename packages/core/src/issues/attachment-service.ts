@@ -208,7 +208,8 @@ export interface DecodedAttachment {
  * or oversized payloads keeps the parent row (issue/comment) from being
  * committed when the attachments are unusable.
  *
- * Refuses INVALID_BASE64 or PAYLOAD_TOO_LARGE.
+ * Refuses INVALID_BASE64, PAYLOAD_TOO_LARGE, a name or type the attachment rules refuse, and a
+ * name the batch carries twice — so a create refuses whole before its issue is written.
  */
 export function decodeAndValidateAttachments(
   items: readonly Base64AttachmentInput[],
@@ -225,6 +226,19 @@ export function decodeAndValidateAttachments(
       );
     }
     decoded.push({ name: a.name, mime: a.mime, bytes: buf });
+  }
+  const seen = new Set<string>();
+  for (const [i, d] of decoded.entries()) {
+    const name = safeName(d.name || 'file');
+    validateIssueAttachment({ name, mime: d.mime, bytes: d.bytes });
+    if (seen.has(name)) {
+      throw refuse(
+        'ATTACHMENT_NAME_TAKEN',
+        `this batch carries "${name}" more than once — an attachment name is one document`,
+        `/attachments/${i}/name`,
+      );
+    }
+    seen.add(name);
   }
   const limit = env.UPLOADS_MAX_BYTES;
   const sizes = decoded.map((d) => d.bytes.byteLength);
@@ -276,19 +290,9 @@ export async function persistDecodedIssueAttachments(
   uploaderAgency: ActorAgency,
 ): Promise<{ persisted: PersistedIssueAttachment[]; errors: AttachmentErrorEntry[] }> {
   const errors: AttachmentErrorEntry[] = [];
-  const seen = new Set<string>();
   for (const [i, d] of decoded.entries()) {
     const name = safeName(d.name || 'file');
     try {
-      validateIssueAttachment({ name, mime: d.mime, bytes: d.bytes });
-      if (seen.has(name)) {
-        throw refuse(
-          'ATTACHMENT_NAME_TAKEN',
-          `this batch carries "${name}" more than once — an attachment name is one document`,
-          `/attachments/${i}/name`,
-        );
-      }
-      seen.add(name);
       const taken = await findIssueAttachmentByName(issueId, name);
       if (taken) throw nameTakenError(taken, 'issue');
     } catch (err) {

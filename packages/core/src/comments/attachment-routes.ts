@@ -96,7 +96,7 @@ commentAttachmentRoutes.get(
     if (!row) throw notFound('attachment not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
-    if (!access.role) throw forbidden('not a project member');
+    requireHeld(access, 'project.read');
 
     let buffer: Buffer;
     try {
