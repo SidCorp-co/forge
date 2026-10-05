@@ -16,7 +16,6 @@ import type {
 import { nobodyWaits } from '@forge/contracts/standing';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import type { ApprovalView } from './approvals.js';
-import type { BoundsReading } from './bounds.js';
 import type { ReleaseFacts } from './release-facts.js';
 import {
   completionOf,
@@ -41,7 +40,6 @@ export interface Part {
   attempts: ReleaseAttemptRow[];
   approvals: ApprovalView[];
   gates: ReleaseGateView[];
-  bounds: BoundsReading | null;
 }
 
 export interface Shared {
@@ -74,7 +72,6 @@ function turnFor(p: Part, s: Shared) {
     viewer: s.viewer,
     gates: p.gates.filter((g) => g.kind === 'blocker'),
     inFlight: inFlightStage(p.attempts),
-    crossedBounds: p.bounds?.crossedNames ?? [],
   });
 }
 
@@ -262,10 +259,6 @@ export function detailOf(
     approvers: s.approvers,
     approvalRequired: s.required,
     attempts: p.attempts.map(attemptView),
-    bounds: {
-      holding: p.bounds?.holding ?? false,
-      bounds: p.bounds?.bounds ?? [],
-    },
     production,
     head:
       latest?.evidence.commit ?? [...p.attempts].reverse().find((a) => a.commit)?.commit ?? null,

@@ -65,11 +65,10 @@ export const issueIdsOf = (meta: Record<string, unknown>): string[] =>
     ? meta.issueIds.filter((x): x is string => typeof x === 'string')
     : [];
 
-// cm:why a version's status is read from what the run recorded, in this order: a ship stamp is final, an open run is waiting on its approval or still at work, and a concluded run that repaired was rolled back
+// cm:why a version's status is read from what the run recorded, in this order: a ship stamp is final, an open run is waiting on its approval or still at work, and a concluded run was aborted or failed
 // cm:why on a project that requires approval, an open run nobody has asked for approval yet waits on it too: no production act is taken before one
 export function versionStatus(
   run: Pick<RunRow, 'status' | 'releasedAt' | 'metadata'>,
-  attempts: readonly Pick<ReleaseAttemptRow, 'stage' | 'settledAt'>[],
   latest: Pick<ApprovalView, 'decision'> | null,
   required = false,
 ): VersionStatus {
@@ -80,7 +79,6 @@ export function versionStatus(
     if (latest?.decision === 'returned') return 'returned';
     return 'in_progress';
   }
-  if (attempts.some((a) => a.stage === 'repair' && a.settledAt !== null)) return 'rolled_back';
   if (run.metadata.abort) return 'aborted';
   return 'failed';
 }

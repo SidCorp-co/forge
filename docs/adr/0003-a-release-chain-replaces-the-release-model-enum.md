@@ -13,8 +13,9 @@ one of the four that stays, is under *`base_branch` is the fourth column and it 
 Three readings say the three are one fact spelled three ways.
 
 **The ledger already models a release as a sequence.**
-`packages/core/src/db/schema-release-ledger.ts:RELEASE_ATTEMPT_STAGES` is
-`['promote', 'deploy', 'verify', 'repair']`. A project with no second environment simply writes no
+`packages/core/src/db/schema-release-ledger.ts:RELEASE_ATTEMPT_STAGES` was
+`['promote', 'deploy', 'verify', 'repair']` when this was decided (it now holds only the stages a
+writer produces). A project with no second environment simply writes no
 `promote` row. The ledger does not run a different algorithm; the config layer above it claims two
 exist.
 

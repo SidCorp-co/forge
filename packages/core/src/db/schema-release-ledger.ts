@@ -36,7 +36,7 @@ export const releaseAttempts = pgTable(
     health: text('health').$type<'up' | 'down'>(),
     identity: text('identity'),
     /** Core's verdict. NULL until the act reports back; `unverified` where no probe was declared
-     *  to read, which is neither a pass nor a red (ISS-1321). A text column, so no migration. */
+     *  to read, which is neither a pass nor a red (ISS-1321). */
     verdict: text('verdict').$type<'ok' | 'failed' | 'unverified'>(),
     /** Why the verdict, in core's words. */
     verdictReason: text('verdict_reason'),
@@ -52,6 +52,18 @@ export const releaseAttempts = pgTable(
   (t) => ({
     runKeyUq: unique('release_attempts_run_key_uq').on(t.runId, t.idempotencyKey),
     runIdx: index('release_attempts_run_idx').on(t.runId, t.startedAt),
+    stageChk: check(
+      'release_attempts_stage_chk',
+      sql`${t.stage} IN (${sql.raw(RELEASE_ATTEMPT_STAGES.map((s) => `'${s}'`).join(', '))})`,
+    ),
+    verdictChk: check(
+      'release_attempts_verdict_chk',
+      sql`${t.verdict} IS NULL OR ${t.verdict} IN ('ok', 'failed', 'unverified')`,
+    ),
+    healthChk: check(
+      'release_attempts_health_chk',
+      sql`${t.health} IS NULL OR ${t.health} IN ('up', 'down')`,
+    ),
   }),
 );
 

@@ -247,45 +247,6 @@ export async function restorePreferenceChange(args: {
 
 type PreferenceValues = typeof userPreferences.$inferInsert;
 
-/**
- * A person's theme and language, upserted: on a first write the column defaults fill whichever
- * field was not sent. Emits `userPreferencesChanged`.
- */
-export async function writeDisplayPreferences(
-  userId: string,
-  patch: {
-    theme?: PreferenceValues['theme'] | undefined;
-    language?: PreferenceValues['language'] | undefined;
-  },
-) {
-  const { theme, language } = patch;
-  return defaultDb.transaction(async (tx) => {
-    const [row] = await tx
-      .insert(userPreferences)
-      .values({
-        userId,
-        ...(theme !== undefined ? { theme } : {}),
-        ...(language !== undefined ? { language } : {}),
-      })
-      .onConflictDoUpdate({
-        target: userPreferences.userId,
-        set: {
-          ...(theme !== undefined ? { theme } : {}),
-          ...(language !== undefined ? { language } : {}),
-          updatedAt: sql`now()`,
-        },
-      })
-      .returning(FULL_PREFERENCES);
-    if (!row) throw new Error('user_preferences: upsert returned no row');
-    await emitEvent(tx, 'user.preferencesChanged', {
-      userId: row.userId,
-      theme: row.theme,
-      language: row.language,
-    });
-    return row;
-  });
-}
-
 interface MePreferencePatch {
   theme?: PreferenceValues['theme'] | undefined;
   language?: PreferenceValues['language'] | undefined;
@@ -293,27 +254,40 @@ interface MePreferencePatch {
   activeOrgId?: string | null | undefined;
 }
 
-/** A person's `/me/preferences`, upserted: only the keys sent change on an existing row. */
+/**
+ * A person's `/me/preferences`, upserted: only the keys sent change on an existing row. The one door
+ * for theme and language, so it emits `user.preferencesChanged` when either is sent.
+ */
 export async function writeMePreferences(userId: string, patch: MePreferencePatch) {
-  const [row] = await defaultDb
-    .insert(userPreferences)
-    .values({
-      userId,
-      theme: patch.theme ?? ME_PREFERENCE_DEFAULTS.theme,
-      language: patch.language ?? ME_PREFERENCE_DEFAULTS.language,
-      notifyOnMention: patch.notifyOnMention ?? ME_PREFERENCE_DEFAULTS.notifyOnMention,
-      activeOrgId: patch.activeOrgId ?? ME_PREFERENCE_DEFAULTS.activeOrgId,
-    })
-    .onConflictDoUpdate({
-      target: userPreferences.userId,
-      set: {
-        ...(patch.theme !== undefined ? { theme: patch.theme } : {}),
-        ...(patch.language !== undefined ? { language: patch.language } : {}),
-        ...(patch.notifyOnMention !== undefined ? { notifyOnMention: patch.notifyOnMention } : {}),
-        ...(patch.activeOrgId !== undefined ? { activeOrgId: patch.activeOrgId } : {}),
-        updatedAt: new Date(),
-      },
-    })
-    .returning(ME_PREFERENCES);
-  return row;
+  return defaultDb.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(userPreferences)
+      .values({
+        userId,
+        theme: patch.theme ?? ME_PREFERENCE_DEFAULTS.theme,
+        language: patch.language ?? ME_PREFERENCE_DEFAULTS.language,
+        notifyOnMention: patch.notifyOnMention ?? ME_PREFERENCE_DEFAULTS.notifyOnMention,
+        activeOrgId: patch.activeOrgId ?? ME_PREFERENCE_DEFAULTS.activeOrgId,
+      })
+      .onConflictDoUpdate({
+        target: userPreferences.userId,
+        set: {
+          ...(patch.theme !== undefined ? { theme: patch.theme } : {}),
+          ...(patch.language !== undefined ? { language: patch.language } : {}),
+          ...(patch.notifyOnMention !== undefined ? { notifyOnMention: patch.notifyOnMention } : {}),
+          ...(patch.activeOrgId !== undefined ? { activeOrgId: patch.activeOrgId } : {}),
+          updatedAt: new Date(),
+        },
+      })
+      .returning(ME_PREFERENCES);
+    if (!row) throw new Error('user_preferences: upsert returned no row');
+    if (patch.theme !== undefined || patch.language !== undefined) {
+      await emitEvent(tx, 'user.preferencesChanged', {
+        userId,
+        theme: row.theme,
+        language: row.language,
+      });
+    }
+    return row;
+  });
 }

@@ -249,7 +249,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			return;
 		}
 		case "user.preferencesChanged": {
-			scheduleInvalidation(qc, ["user-prefs"]);
+			scheduleInvalidation(qc, ["settings", "preferences"]);
 			return;
 		}
 		case "notification.created":

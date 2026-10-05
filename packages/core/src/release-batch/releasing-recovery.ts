@@ -35,8 +35,8 @@ export interface RecoverStrandedReleasingResult {
 /**
  * Did this run put anything on production?
  *
- * A `promote` attempt EXISTS is the question, not whether it succeeded: an act
- * that was declared and never reported back is exactly the one that may have
+ * A production `deploy` attempt EXISTS is the question, not whether it succeeded:
+ * an act that was declared and never reported back is exactly the one that may have
  * landed, and reading an unsettled promotion as "nothing happened" is how a
  * roster gets walked back over code that is serving.
  */
@@ -44,7 +44,7 @@ export async function runRecordedPromotion(runId: string): Promise<boolean> {
   const [row] = await db
     .select({ id: releaseAttempts.id })
     .from(releaseAttempts)
-    .where(and(eq(releaseAttempts.runId, runId), eq(releaseAttempts.stage, 'promote')))
+    .where(and(eq(releaseAttempts.runId, runId), eq(releaseAttempts.stage, 'deploy')))
     .limit(1);
   return row !== undefined;
 }
