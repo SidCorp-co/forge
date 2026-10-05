@@ -8,6 +8,23 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Secrets rest digested or encrypted, and core refuses to boot without `PAT_PEPPER` (ISS-227).**
+  Access tokens are stored as digests and inbound webhook secrets as ciphertext, and ingest and
+  Sentry run the full secret scrubber.
+
+- **Pool jobs are taken again after the 0.4.0-dev.26 deploy (ISS-227).** The runner prepares,
+  starts and gives back a pool job under the master session core issued it, and a pool brief names
+  its project literally.
+
+- **A Coolify failure report no longer fails a release whose target serves its commit (ISS-227).**
+  A contested report is re-read against what the target serves, and no run goes failed without a
+  named cause.
+
+- **About 35 unused routes and the paste-code pairing flow are gone (ISS-227).** Pair a box with
+  `forge-runner setup`.
+
 ## [0.4.0-dev.27] - 2026-10-05
 
 Forge sheds features nobody used, and an independent review's fixes land
