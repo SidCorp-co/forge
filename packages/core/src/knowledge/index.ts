@@ -1,12 +1,12 @@
-export { knowledgeEmbedInput } from './entry-input.js';
+export { runKnowledgeEmbeddingBackfill } from './embedding-backfill.js';
 export {
   deleteFeedbackEmbedding,
   EMBEDDING_PROVIDER_NOT_CONFIGURED,
   writeItemEmbedding,
 } from './item-embeddings.js';
-export { clampTopK, fuseHybrid, searchKnowledge } from './search.js';
+export { provideKnowledgePorts } from './ports.js';
+export { searchKnowledge } from './search.js';
 export {
-  fillKnowledgeEmbedding,
   getKnowledgeEntry,
   selectAllSlugsFromKnowledge,
   selectAlwaysInjectFromKnowledge,

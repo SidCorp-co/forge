@@ -11,6 +11,7 @@ export {
   rememberHandedOut,
   scrubJobOutput,
 } from './job-secret-scrub.js';
+export { jobTypeOf } from './job-type-read.js';
 export { killGraceMs, requestJobKill } from './kill-gate.js';
 export { type LoopMonitorResult, reapZombieSessions, runLoopMonitor } from './loop-monitor.js';
 export {

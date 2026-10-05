@@ -228,3 +228,16 @@ export async function writeInterface(input: {
     return { ok: true, held: heldInterface(row, projectId), created: current === null };
   });
 }
+
+/** The one view of a project's interface every door answers: REST GET and PUT, MCP interface and interface_write. */
+export async function interfaceView(projectId: string, held: HeldInterface | null) {
+  if (!held) return { declared: false as const, revision: null, document: null };
+  return {
+    declared: true as const,
+    revision: held.revision,
+    document: held.document,
+    updatedBy: held.updatedBy,
+    updatedAt: held.updatedAt.toISOString(),
+    commitmentsSetBy: await commitmentsSetter(projectId),
+  };
+}

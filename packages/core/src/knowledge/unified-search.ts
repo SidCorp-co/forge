@@ -1,7 +1,6 @@
 import { EmbeddingUnavailableError, embed } from '../integrations/llm/index.js';
 import { logger } from '../lib/logger.js';
-import type { MemoryHit } from '../memory/index.js';
-import { runMemorySearch } from '../memory/index.js';
+import { knowledgePort } from './ports.js';
 import type { KnowledgeHit } from './search.js';
 import { hybridSearchKnowledge, keywordSearchKnowledge, searchKnowledge } from './search.js';
 
@@ -12,9 +11,7 @@ interface KnowledgeHitLabeled extends KnowledgeHit {
   origin: 'knowledge';
 }
 
-interface MemoryHitLabeled extends MemoryHit {
-  origin: 'memory';
-}
+type MemoryHitLabeled = { id: string; origin: 'memory' };
 
 interface UnifiedSearchResult {
   knowledge: KnowledgeHitLabeled[];
@@ -32,7 +29,8 @@ type Needs = {
 
 const labelKnowledge = (hits: KnowledgeHit[]) =>
   hits.map((h) => ({ ...h, origin: 'knowledge' as const }));
-const labelMemory = (hits: MemoryHit[]) => hits.map((h) => ({ ...h, origin: 'memory' as const }));
+const labelMemory = (hits: { id: string }[]) =>
+  hits.map((h) => ({ ...h, origin: 'memory' as const }));
 
 /** Both stores by keyword alone — the `keyword` strategy, and what the others degrade to. */
 async function keywordOnly(needs: Needs): Promise<UnifiedSearchResult> {
@@ -42,8 +40,15 @@ async function keywordOnly(needs: Needs): Promise<UnifiedSearchResult> {
     : [];
   const memory = needs.memory
     ? labelMemory(
-        (await runMemorySearch({ projectId, query, topK, strategy: 'keyword', surface: 'agent' }))
-          .hits,
+        (
+          await knowledgePort('searchMemory')({
+            projectId,
+            query,
+            topK,
+            strategy: 'keyword',
+            surface: 'agent',
+          })
+        ).hits,
       )
     : [];
   return { knowledge, memory };
@@ -91,7 +96,14 @@ export async function runUnifiedSearch(input: {
         ).then(labelKnowledge)
       : [],
     needs.memory
-      ? runMemorySearch({ projectId, query, queryVec, topK, strategy, surface: 'agent' })
+      ? knowledgePort('searchMemory')({
+          projectId,
+          query,
+          queryVec,
+          topK,
+          strategy,
+          surface: 'agent',
+        })
       : undefined,
   ]);
   return {
