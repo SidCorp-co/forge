@@ -20,12 +20,7 @@ import {
 import { lockXact } from '../lib/advisory-lock.js';
 import { refuser } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
-import {
-  ASSISTANT_PREFERENCE_DEFAULTS,
-  FULL_PREFERENCES,
-  ME_PREFERENCE_DEFAULTS,
-  ME_PREFERENCES,
-} from './read.js';
+import { ASSISTANT_PREFERENCE_DEFAULTS, ME_PREFERENCE_DEFAULTS, ME_PREFERENCES } from './read.js';
 
 const refuse = refuser<AuthRefusalCode>('AUTH_REFUSED');
 
@@ -274,7 +269,9 @@ export async function writeMePreferences(userId: string, patch: MePreferencePatc
         set: {
           ...(patch.theme !== undefined ? { theme: patch.theme } : {}),
           ...(patch.language !== undefined ? { language: patch.language } : {}),
-          ...(patch.notifyOnMention !== undefined ? { notifyOnMention: patch.notifyOnMention } : {}),
+          ...(patch.notifyOnMention !== undefined
+            ? { notifyOnMention: patch.notifyOnMention }
+            : {}),
           ...(patch.activeOrgId !== undefined ? { activeOrgId: patch.activeOrgId } : {}),
           updatedAt: new Date(),
         },

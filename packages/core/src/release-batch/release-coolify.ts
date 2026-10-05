@@ -177,7 +177,11 @@ async function prodConfirmed(bindingId: string, runId: string): Promise<boolean>
  * "this run's code may be serving" (`releasing-recovery.ts:runRecordedPromotion`).
  */
 async function enqueueArmed(
-  armed: ReadonlyArray<{ binding: { id: string; config: unknown }; requestId: string; live: boolean }>,
+  armed: ReadonlyArray<{
+    binding: { id: string; config: unknown };
+    requestId: string;
+    live: boolean;
+  }>,
   ctx: { runId: string; issueId: string | null; envOf: (binding: { id: string }) => string | null },
   dispatched: string[],
 ): Promise<void> {

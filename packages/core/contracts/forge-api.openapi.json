@@ -33287,20 +33287,6 @@
                     ],
                     "type": "string"
                   },
-                  "metadata": {
-                    "anyOf": [
-                      {
-                        "additionalProperties": {},
-                        "propertyNames": {
-                          "type": "string"
-                        },
-                        "type": "object"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
                   "name": {
                     "maxLength": 200,
                     "minLength": 1,
@@ -33482,20 +33468,6 @@
                       "sentry_pull"
                     ],
                     "type": "string"
-                  },
-                  "metadata": {
-                    "anyOf": [
-                      {
-                        "additionalProperties": {},
-                        "propertyNames": {
-                          "type": "string"
-                        },
-                        "type": "object"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
                   },
                   "name": {
                     "maxLength": 200,

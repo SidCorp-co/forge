@@ -22,13 +22,10 @@ const patchBodySchema = z
     assistantInstructions: z.string().trim().max(2000).nullable().optional(),
   })
   .strict()
-  .refine(
-    (v) => v.answerStyle !== undefined || v.assistantInstructions !== undefined,
-    {
-      message:
-        'at least one of answerStyle/assistantInstructions is required; theme and language are set with PATCH /api/auth/me/preferences',
-    },
-  );
+  .refine((v) => v.answerStyle !== undefined || v.assistantInstructions !== undefined, {
+    message:
+      'at least one of answerStyle/assistantInstructions is required; theme and language are set with PATCH /api/auth/me/preferences',
+  });
 
 const changeParamSchema = z.object({ id: z.uuid() });
 
