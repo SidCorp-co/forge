@@ -14,6 +14,7 @@ import type { Actor } from '../issues/index.js';
 import { portSlot } from '../lib/port-slot.js';
 import type { RefusalError } from '../lib/refusal.js';
 import type {
+  KernelActor,
   KernelExecutor,
   MachineRow,
   TransitionArgs,
@@ -134,6 +135,16 @@ interface PipelinePorts {
   postIssueNotice: (notice: IssueNoticeInput, tx?: Tx) => Promise<unknown>;
   postIssueNoticeOnce: (notice: IssueNoticeInput & { marker: string }) => Promise<unknown>;
   holdsOpenHumanQuestion: (issueId: SQLWrapper) => SQL;
+  voidCancelledRunQuestions: (
+    tx: Tx,
+    args: {
+      issueId: string | null;
+      sessionIds: readonly string[];
+      reason: string;
+      actor: KernelActor;
+      source: string;
+    },
+  ) => Promise<string[]>;
   personOwesAnAnswer: (executor: Tx, issueId: string) => Promise<boolean>;
   refreshModuleKnowledgeForIssue: (input: {
     issueId: string;
@@ -171,6 +182,7 @@ export const broadcastSessionEvent = port('broadcastSessionEvent');
 export const getLoopThresholds = port('getLoopThresholds');
 export const killGraceMs = port('killGraceMs');
 export const parkedOnAHuman = port('parkedOnAHuman');
+export const voidCancelledRunQuestions = port('voidCancelledRunQuestions');
 export const requestJobKill = port('requestJobKill');
 export const gateReasonsForQueuedJobsIn = port('gateReasonsForQueuedJobsIn');
 export const readRunGate = port('readRunGate');

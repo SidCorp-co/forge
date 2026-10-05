@@ -4,6 +4,10 @@ import type {
   RunNone,
   RunReturned,
 } from '@forge/contracts/run-standing';
+import {
+  type AgentSessionStatus,
+  CANCELLED_AGENT_SESSION_STATUSES,
+} from '@forge/contracts/session-machine';
 import { resolveFailureCause } from '../pipeline/index.js';
 import {
   type Derived,
@@ -125,7 +129,7 @@ export function finalOf(f: RunFacts): Derived | null {
   const sessionEnded = s !== null && TERMINAL_SESSION.includes(s.status);
   if (s && sessionEnded) {
     if (
-      ['cancelled', 'cancelled_stale'].includes(s.status) ||
+      CANCELLED_AGENT_SESSION_STATUSES.includes(s.status as AgentSessionStatus) ||
       CANCEL_CAUSES.includes(s.failureReason ?? '')
     ) {
       return cancelledOutcome(f, f.sessionFlip, `its session ended ${s.failureReason ?? s.status}`);

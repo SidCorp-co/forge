@@ -1,4 +1,4 @@
-import type { OutboxActor } from '@forge/contracts/outbox-events';
+import type { MergeStampVia, OutboxActor } from '@forge/contracts/outbox-events';
 import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import type { Db, Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -110,7 +110,13 @@ async function readBack(
  */
 export async function recordIssueMerge(
   executor: Tx,
-  args: { issueId: string; evidence: MergeEvidence; actor: OutboxActor | null },
+  args: {
+    issueId: string;
+    evidence: MergeEvidence;
+    actor: OutboxActor | null;
+    /** The route the merge arrived by, carried on the stamp's `issue.updated`. */
+    via: MergeStampVia;
+  },
 ): Promise<MergeRecord> {
   const { issueId, evidence } = args;
   const [prior] = await executor
@@ -157,6 +163,7 @@ export async function recordIssueMerge(
       projectId,
       actor: args.actor,
       fields: ['mergedAt', 'mergedCommitSha', 'mergedLanding'],
+      via: args.via,
       before,
       after: {
         mergedAt: wrote.mergedAt,

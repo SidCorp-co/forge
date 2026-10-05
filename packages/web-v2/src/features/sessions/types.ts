@@ -6,7 +6,7 @@ import {
 } from "@forge/contracts/failure-causes";
 import {
   JOB_HEARTBEAT_REAP_DEFAULT_MS,
-  RUN_STUCK_AFTER_MS,
+  type RunStanding,
   SESSION_SILENCE_REAP_MS,
 } from "@forge/contracts/run-standing";
 import type { AgentSessionStatus } from "@forge/contracts/session-machine";
@@ -15,11 +15,28 @@ import type { StatusKey } from "@/design/status";
 export type { AgentSessionStatus };
 
 
-/** Synthetic UI-only state derived from heartbeat freshness. The backend only
- *  persists `running`; the `stalled` distinction is presentational. */
+/** A `running` session whose run core's read model reads as stuck (`runs/standing`, `state: stuck`)
+ *  shows as `stalled`. The browser never decides it from a heartbeat clock of its own. */
 export type AgentSessionDisplayStatus = AgentSessionStatus | "stalled";
 
-export const STALLED_THRESHOLD_MS = RUN_STUCK_AFTER_MS;
+/** The run ids and session ids of the runs core reads as stuck. */
+export type StuckRuns = ReadonlySet<string>;
+
+export const NO_STUCK_RUNS: StuckRuns = new Set<string>();
+
+export function stuckRunsOf(items: readonly Pick<RunStanding, "id" | "sessionId" | "state">[] | undefined): StuckRuns {
+  const stuck = new Set<string>();
+  for (const run of items ?? []) {
+    if (run.state !== "stuck") continue;
+    stuck.add(run.id);
+    if (run.sessionId) stuck.add(run.sessionId);
+  }
+  return stuck;
+}
+
+function isStuck(session: Pick<SessionRow, "id" | "pipelineRunId">, stuck: StuckRuns): boolean {
+  return stuck.has(session.id) || (session.pipelineRunId !== null && stuck.has(session.pipelineRunId));
+}
 
 export type Liveness = "alive" | "stale" | "reaping" | "na";
 
@@ -308,8 +325,9 @@ export function heartbeatReapMs(
 export function deriveLiveness(
   session: Pick<
     SessionRow,
-    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata" | "kind"
+    "id" | "pipelineRunId" | "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata" | "kind"
   >,
+  stuck: StuckRuns,
   nowMs: number = Date.now(),
 ): LivenessResult {
   const naResult: LivenessResult = { state: "na", sinceHeartbeatMs: null, reapInMs: null };
@@ -317,13 +335,11 @@ export function deriveLiveness(
   if (isInteractiveSession(session)) return naResult;
 
   const lastSignal = session.lastHeartbeatAt ?? session.startedAt ?? session.updatedAt;
-  if (!lastSignal) return { state: "alive", sinceHeartbeatMs: null, reapInMs: null };
-  const lastMs = new Date(lastSignal).getTime();
-  if (Number.isNaN(lastMs)) return { state: "alive", sinceHeartbeatMs: null, reapInMs: null };
-
-  const since = nowMs - lastMs;
+  const lastMs = lastSignal ? new Date(lastSignal).getTime() : Number.NaN;
+  const since = Number.isNaN(lastMs) ? null : nowMs - lastMs;
+  if (!isStuck(session, stuck)) return { state: "alive", sinceHeartbeatMs: since, reapInMs: null };
+  if (since === null) return { state: "stale", sinceHeartbeatMs: null, reapInMs: null };
   const reapMs = heartbeatReapMs(session);
-  if (since <= STALLED_THRESHOLD_MS) return { state: "alive", sinceHeartbeatMs: since, reapInMs: null };
   if (since <= reapMs) {
     return { state: "stale", sinceHeartbeatMs: since, reapInMs: reapMs - since };
   }
@@ -331,15 +347,12 @@ export function deriveLiveness(
 }
 
 export function deriveSessionDisplayStatus(
-  session: Pick<
-    SessionRow,
-    "status" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "metadata" | "kind"
-  >,
-  nowMs: number = Date.now(),
+  session: Pick<SessionRow, "id" | "pipelineRunId" | "status" | "metadata" | "kind">,
+  stuck: StuckRuns,
 ): AgentSessionDisplayStatus {
   if (session.status !== "running") return session.status;
-  const { state } = deriveLiveness(session, nowMs);
-  return state === "stale" || state === "reaping" ? "stalled" : "running";
+  if (isInteractiveSession(session)) return "running";
+  return isStuck(session, stuck) ? "stalled" : "running";
 }
 
 export function statusToChip(display: AgentSessionDisplayStatus): StatusKey {

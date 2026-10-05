@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { db } from '../db/client.js';
 import {
   type BindingWithConnection,
   bindingInboundSecret,
@@ -157,10 +156,11 @@ webhookInboundRoutes.post(
         headers: Object.fromEntries(c.req.raw.headers),
         rawBody: raw,
         payload: parsed,
+        // The adapter performs no effect on Forge's modules: what the delivery reports goes to the
+        // outbox in the transaction that settles the delivery, and the module owning each effect
+        // consumes it.
+        emitFacts: (tx, facts) => emitEvents(tx, facts),
       });
-      // The adapter performs no effect on Forge's modules: what the delivery reports goes to the
-      // outbox, and the module that owns each effect consumes it.
-      if (result.facts?.length) await emitEvents(db, result.facts);
       return c.json({
         accepted: true,
         handler: map.provider,

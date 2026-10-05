@@ -46,6 +46,17 @@ interface AgentSessionsPorts {
       source: string;
     },
   ): Promise<void>;
+  /** Voids the open questions of a cancelled run, inside the cancel's own transaction. */
+  voidCancelledRunQuestions(
+    exec: KernelExecutor,
+    args: {
+      issueId: string | null;
+      sessionIds: readonly string[];
+      reason: string;
+      actor: KernelActor;
+      source: string;
+    },
+  ): Promise<string[]>;
   /** Re-dispatches a schedule's session on another box after a failover-class failure. */
   redispatchScheduleSessionOnFailover(
     sessionId: string,

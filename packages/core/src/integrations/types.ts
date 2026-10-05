@@ -1,6 +1,7 @@
 import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
 import type { ProjectPermission } from '@forge/contracts/permissions';
 import type { z } from 'zod';
+import type { Tx } from '../db/client.js';
 import type { BindingRole } from '../db/schema.js';
 import type { TargetedDeployAdapter } from './deploy/index.js';
 import type { SourceHostFactory } from './source-host/index.js';
@@ -123,6 +124,11 @@ export interface InboundDispatchInput {
   headers: Record<string, string | undefined>;
   rawBody: string;
   payload: unknown;
+  /**
+   * Writes the delivery's facts on the transaction that settles its row `ok`: a fact that cannot be
+   * written rolls the settle back, and the delivery stays `failed` and is applied again on redelivery.
+   */
+  emitFacts: (tx: Tx, facts: readonly InboundFact[]) => Promise<void>;
 }
 
 /** The facts a vendor delivery reports to Forge's own modules, written to the outbox by the door. */
@@ -135,8 +141,6 @@ export interface InboundDispatchResult {
   deliveryId: string;
   actions: number;
   refusal?: string;
-  /** What the door emits for the modules that own the effects; the adapter performs none of them. */
-  facts?: readonly InboundFact[];
 }
 
 export type AgentPath =

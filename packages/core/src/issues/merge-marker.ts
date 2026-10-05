@@ -155,6 +155,7 @@ async function stampMark(
     stamp = {
       result: await recordIssueMerge(tx, {
         issueId,
+        via: 'repository',
         actor: args.actor.hookActor,
         evidence: {
           kind: 'observed',
@@ -171,6 +172,7 @@ async function stampMark(
     stamp = {
       result: await recordIssueMerge(tx, {
         issueId,
+        via: 'repository',
         actor: args.actor.hookActor,
         evidence: {
           kind: 'observed',
@@ -185,6 +187,7 @@ async function stampMark(
     stamp = {
       result: await recordIssueMerge(tx, {
         issueId,
+        via: 'mark',
         actor: args.actor.hookActor,
         evidence: { kind: 'landed', landing, at: args.mergedAt ?? null },
       }),
@@ -195,6 +198,7 @@ async function stampMark(
     stamp = {
       result: await recordIssueMerge(tx, {
         issueId,
+        via: 'mark',
         actor: args.actor.hookActor,
         evidence: { kind: 'asserted', at: args.mergedAt ?? null },
       }),

@@ -6,7 +6,7 @@ import { type Actor, stampRunStarted } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
-  autonomousStepFor,
+  isAutonomousEntry,
   isEntryGateClosed,
 } from './autonomous-mode.js';
 import {
@@ -63,7 +63,7 @@ export async function triggerPipelineStepManual(args: {
 }): Promise<{ startedAt: string }> {
   const policy = await loadProjectPolicy(args.projectId);
   if (!isEntryGateClosed(policy)) throw intakeNotManual(args.projectId);
-  if (!autonomousStepFor(args.status)) throw notAtEntry(args.status);
+  if (!isAutonomousEntry(args.status)) throw notAtEntry(args.status);
   const startedAt = await stampRunStarted(args.issueId);
   if (!startedAt) throw new Error(`issue ${args.issueId} vanished while it was being started`);
   await wakeMastersForProject({
@@ -89,7 +89,7 @@ export async function retryIssueDispatch(args: {
   status: IssueStatus;
 }): Promise<{ boxes: number; delivered: number; startedAt: string | null }> {
   const policy = await loadProjectPolicy(args.projectId);
-  if (!autonomousStepFor(args.status)) throw notAtEntry(args.status);
+  if (!isAutonomousEntry(args.status)) throw notAtEntry(args.status);
 
   const [active] = await db
     .select({ id: jobs.id, status: jobs.status })

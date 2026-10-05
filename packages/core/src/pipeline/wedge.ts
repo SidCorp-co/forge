@@ -33,8 +33,8 @@ export function pausedRunWedgeEntityId(runId: string): string {
 }
 
 /** Entity id for a run whose rescues ran out and whose hand-off to a person was refused. */
-export function rescueCapWedgeEntityId(runId: string): string {
-  return `rescue-cap:${runId}`;
+export function rescueCapWedgeEntityId(issueId: string): string {
+  return `rescue-cap:${issueId}`;
 }
 
 export async function resolvePipelineWedge(entityId: string): Promise<number> {

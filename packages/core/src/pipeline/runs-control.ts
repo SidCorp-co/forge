@@ -16,6 +16,7 @@ import { transitionIssueStatus } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { RefusalError } from '../lib/refusal.js';
 import type { KernelActor } from '../lifecycle/index.js';
+import { voidCancelledRunQuestions } from './ports.js';
 import { refusePipeline } from './refuse.js';
 import { pauseRun, resumeRun } from './run-pause.js';
 import { closeRunsInTx, type JobRow, requestKillsForCascade } from './runs-cascade.js';
@@ -213,6 +214,17 @@ export async function cancelPipelineRun(
     }
 
     const cascade = closed.result;
+    await voidCancelledRunQuestions(tx, {
+      issueId: updatedRun.kind === 'issue' ? updatedRun.issueId : null,
+      sessionIds: cascade.abortedSessionIds,
+      reason: FAILURE_REASON_PIPELINE_CANCELLED,
+      actor: {
+        type: 'user',
+        agency: opts.actorAgency,
+        ...(opts.actorUserId ? { id: opts.actorUserId } : {}),
+      },
+      source: 'runs-control',
+    });
 
     return {
       run: updatedRun,

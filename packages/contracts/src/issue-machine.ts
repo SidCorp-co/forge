@@ -35,6 +35,7 @@ type LegacyIssueStatus = (typeof LEGACY_ISSUE_STATUSES)[number];
 export const ISSUE_TRANSITION_REFUSAL_CODES = [
 	"ILLEGAL_TRANSITION",
 	"NO_HOLDER",
+	"NOT_THE_HOLDER",
 	"ISSUE_BLOCKED",
 	"WORKFLOW_DESIGN_NOT_APPROVED",
 	"PLAN_REQUIRED",
@@ -62,6 +63,7 @@ export const ISSUE_TRANSITION_REFUSAL_CODES = [
 export type IssueTransitionRefusalCode = (typeof ISSUE_TRANSITION_REFUSAL_CODES)[number];
 export const ISSUE_TRANSITION_REFUSAL_STATUSES = {
 	NO_HOLDER: 409,
+	NOT_THE_HOLDER: 403,
 	STALE_TRANSITION: 409,
 } as const satisfies RefusalStatuses<IssueTransitionRefusalCode>;
 
@@ -165,6 +167,7 @@ export const ISSUE_GUARDS = [
 	"released",
 	"left_status",
 	"unheld",
+	"run_holder",
 ] as const;
 export type IssueGuard = (typeof ISSUE_GUARDS)[number];
 
@@ -197,7 +200,7 @@ const recovery = (to: IssueStatus, guards: readonly IssueGuard[]): IssueEdge => 
 
 export const ISSUE_MACHINE = defineMachine({
 	entity: "issue",
-	shapes: ["853ac6ba"],
+	shapes: ["853ac6ba", "23991d04"],
 	design: { flow: "issue-lifecycle", revision: 8 },
 	states: ISSUE_STATUSES,
 	initial: ISSUE_INITIAL_STATUSES,
@@ -214,7 +217,7 @@ export const ISSUE_MACHINE = defineMachine({
 		...sideExits("reopen"),
 
 		{ from: "in_progress", to: "approved", act: "plan.recorded", permission: MOVE, guards: ["plan_checkpoint"] },
-		{ from: "in_progress", to: "awaiting_release", act: "merged.and.proven", permission: MOVE, guards: ["merged", "verdicts"] },
+		{ from: "in_progress", to: "awaiting_release", act: "merged.and.proven", permission: MOVE, guards: ["run_holder", "merged", "verdicts"] },
 		...sideExits("in_progress"),
 
 		{ from: "approved", to: "in_progress", act: "run.claimed", permission: MOVE, guards: ["holder"] },

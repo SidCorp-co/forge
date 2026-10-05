@@ -1,110 +1,105 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { RUN_ISSUES_METADATA_KEY, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
+import { TERMINAL_AGENT_SESSION_STATUSES } from '@forge/contracts/session-machine';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, jobs, pipelineRuns } from '../db/schema.js';
+import type { IssueStatus } from '../db/schema.js';
 import { applyStatusTransition } from '../issues/index.js';
 import { traceStep } from '../lib/error-tracking.js';
 import { logger } from '../lib/logger.js';
-import { AUTONOMOUS_JOB_TYPE, AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
+import { AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
 import { postCapReachedComment } from './autonomous-rescue-comment.js';
 import { projectCreatorOf } from './ports.js';
 import { emitPipelineWedge, rescueCapWedgeEntityId } from './wedge.js';
 
 /**
- * Rescues of one run before the issue is handed to a human. Matches
- * `STAGE_STALL_CAP` deliberately — same question, same tolerance — but counts a
- * different thing, so it is declared separately rather than imported.
+ * Run sessions an issue may spend without moving on before it is handed to a person. Matches
+ * `STAGE_STALL_CAP` deliberately — same question, same tolerance — but counts a different thing.
  */
 const AUTONOMOUS_RESCUE_CAP = 3;
 
-const METADATA_KEY = 'autonomousRescue';
+/**
+ * Where an issue last moved on: a person decided (a park), it was delivered (awaiting release,
+ * closed) or sent back (reopen). Run sessions before that are not charged to it.
+ */
+const MOVED_ON_STATUSES = [
+  'needs_info',
+  'on_hold',
+  'awaiting_release',
+  'closed',
+  'reopen',
+] as const;
 
-interface RescueState {
-  count: number;
-  doneDriveJobs: number;
-}
+const terminalSessionList = sql.join(
+  TERMINAL_AGENT_SESSION_STATUSES.map((s) => sql`${s}`),
+  sql`, `,
+);
+const movedOnList = sql.join(
+  MOVED_ON_STATUSES.map((s) => sql`${s}`),
+  sql`, `,
+);
 
-function readState(metadata: unknown): RescueState | null {
-  const raw = (metadata as Record<string, unknown> | null)?.[METADATA_KEY];
-  if (typeof raw !== 'object' || raw === null) return null;
-  const { count, doneDriveJobs } = raw as Record<string, unknown>;
-  if (typeof count !== 'number' || typeof doneDriveJobs !== 'number') return null;
-  return { count, doneDriveJobs };
-}
-
-async function countDoneDriveJobs(runId: string): Promise<number> {
-  const [row] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(jobs)
-    .where(
-      and(
-        eq(jobs.pipelineRunId, runId),
-        eq(jobs.type, AUTONOMOUS_JOB_TYPE),
-        eq(jobs.status, 'done'),
-      ),
-    );
-  return row?.n ?? 0;
+/** Run sessions over this issue that ended since it last moved on (issue-lifecycle `needs_info`). */
+async function countSpentRunSessions(projectId: string, issueId: string): Promise<number> {
+  const rows = (await db.execute(sql`
+    SELECT count(*)::int AS n
+      FROM issues i
+      JOIN pipeline_runs r ON r.project_id = i.project_id
+       AND r.metadata -> ${RUN_ISSUES_METADATA_KEY} ? ('ISS-' || i.iss_seq)
+      JOIN agent_sessions s ON s.pipeline_run_id = r.id
+     WHERE i.id = ${issueId}
+       AND i.project_id = ${projectId}
+       AND s.kind = ${RUN_SESSION_KIND}
+       AND s.status IN (${terminalSessionList})
+       AND s.created_at > COALESCE((
+             SELECT max(k.created_at) FROM kernel_transitions k
+              WHERE k.entity = 'issue' AND k.entity_id = i.id
+                AND k.to_status IN (${movedOnList})
+           ), '-infinity'::timestamptz)
+  `)) as unknown as Array<{ n: number }>;
+  return rows[0]?.n ?? 0;
 }
 
 /**
- * Has this run spent its rescues? Parks the issue at
- * `AUTONOMOUS_QUESTION_STATUS` and comments when it has, so the caller only has
- * to skip. A failed check or a refused park throws, so the caller skips the row
- * rather than rescuing past the cap; a refused park is also raised as a wedge.
+ * Has this issue spent its run sessions? Parks it at `AUTONOMOUS_QUESTION_STATUS` and comments
+ * when it has, so the caller only has to skip. A failed check or a refused park throws, so the
+ * caller skips the row rather than rescuing past the cap; a refused park is also raised as a wedge.
  */
 export async function checkAutonomousRescueCap(args: {
   projectId: string;
   issueId: string;
   status: IssueStatus;
   reopenCount: number;
-}): Promise<{ capped: boolean; runId: string | null }> {
-  const [run] = await db
-    .select({ id: pipelineRuns.id, metadata: pipelineRuns.metadata })
-    .from(pipelineRuns)
-    .where(
-      and(
-        eq(pipelineRuns.issueId, args.issueId),
-        eq(pipelineRuns.kind, 'issue'),
-        eq(pipelineRuns.status, 'running'),
-      ),
-    )
-    .limit(1);
-  if (!run) return { capped: false, runId: null };
-
-  const state = readState(run.metadata);
-  if (!state) return { capped: false, runId: run.id };
-
-  const doneDriveJobs = await countDoneDriveJobs(run.id);
-  if (doneDriveJobs - state.doneDriveJobs > 1) return { capped: false, runId: run.id };
-  if (state.count < AUTONOMOUS_RESCUE_CAP) return { capped: false, runId: run.id };
+}): Promise<{ capped: boolean }> {
+  const spent = await countSpentRunSessions(args.projectId, args.issueId);
+  if (spent < AUTONOMOUS_RESCUE_CAP) return { capped: false };
 
   try {
-    await parkForHuman({ ...args, runId: run.id, doneDriveJobs });
+    await parkForHuman({ ...args, spent });
   } catch (err) {
     const why = err instanceof Error ? err.message : String(err);
     await emitPipelineWedge({
       projectId: args.projectId,
       issueId: args.issueId,
       hop: 'result',
-      entity: 'run',
-      entityId: rescueCapWedgeEntityId(run.id),
+      entity: 'issue',
+      entityId: rescueCapWedgeEntityId(args.issueId),
       reason: `rescue_cap_park_refused:${why}`,
-      title: 'An issue used its rescues and could not be handed to a person',
-      summary: `The driver was rescued ${AUTONOMOUS_RESCUE_CAP} times on this run without progress, and moving the issue to \`${AUTONOMOUS_QUESTION_STATUS}\` was refused: ${why}. It is no longer rescued; it waits here.`,
+      title: 'An issue spent its run sessions and could not be handed to a person',
+      summary: `${spent} run sessions ended on this issue without it moving on, and moving it to \`${AUTONOMOUS_QUESTION_STATUS}\` was refused: ${why}. It is no longer rescued; it waits here.`,
       nextStep: 'Read the refusal, settle what it names, then move the issue on by hand.',
       action: 'Settle the refused move; the issue is not being rescued.',
     });
     throw err;
   }
-  return { capped: true, runId: run.id };
+  return { capped: true };
 }
 
 async function parkForHuman(args: {
   projectId: string;
   issueId: string;
-  runId: string;
   status: IssueStatus;
   reopenCount: number;
-  doneDriveJobs: number;
+  spent: number;
 }): Promise<void> {
   const actorId = await projectCreatorOf(args.projectId);
   if (!actorId) throw new Error(`the project of issue ${args.issueId} has no owner to act as`);
@@ -120,7 +115,7 @@ async function parkForHuman(args: {
     { id: actorId, ownerId: actorId },
     {
       reason: 'autonomous_rescue_cap_reached',
-      transitionReason: `The driver was rescued ${AUTONOMOUS_RESCUE_CAP} times on this run without progress, so it has stopped rather than try a fourth.`,
+      transitionReason: `${args.spent} run sessions ended on this issue without it moving on, so it has stopped rather than open another.`,
       needs:
         'Whether to send it back to the driver as it stands, or what to change first — answering returns the issue to the status it left.',
       waitingKind: 'needs_decision',
@@ -132,37 +127,16 @@ async function parkForHuman(args: {
     authorId: actorId,
     fromStatus: args.status,
     cap: AUTONOMOUS_RESCUE_CAP,
-    driveSessions: args.doneDriveJobs,
+    runSessions: args.spent,
   });
 
   logger.warn(
-    { issueId: args.issueId, runId: args.runId, from: args.status, cap: AUTONOMOUS_RESCUE_CAP },
-    'autonomous-rescue-cap: rescues exhausted — parked the issue for a human',
+    { issueId: args.issueId, spent: args.spent, from: args.status, cap: AUTONOMOUS_RESCUE_CAP },
+    'autonomous-rescue-cap: run sessions spent — parked the issue for a human',
   );
   traceStep({
     category: 'pipeline.autonomous.rescue_cap_reached',
     level: 'warning',
-    data: { issueId: args.issueId, runId: args.runId, from: args.status },
+    data: { issueId: args.issueId, spent: args.spent, from: args.status },
   });
-}
-
-/** Charge one rescue to the run. Called only once a rescue actually happened. */
-export async function recordAutonomousRescue(runId: string): Promise<void> {
-  const [run] = await db
-    .select({ metadata: pipelineRuns.metadata })
-    .from(pipelineRuns)
-    .where(eq(pipelineRuns.id, runId))
-    .limit(1);
-
-  const state = readState(run?.metadata);
-  const doneDriveJobs = await countDoneDriveJobs(runId);
-  const progressed = state !== null && doneDriveJobs - state.doneDriveJobs > 1;
-  const count = state === null || progressed ? 1 : state.count + 1;
-
-  await db
-    .update(pipelineRuns)
-    .set({
-      metadata: sql`COALESCE(${pipelineRuns.metadata}, '{}'::jsonb) || jsonb_build_object(${METADATA_KEY}::text, jsonb_build_object('count', ${count}::int, 'doneDriveJobs', ${doneDriveJobs}::int))`,
-    })
-    .where(eq(pipelineRuns.id, runId));
 }

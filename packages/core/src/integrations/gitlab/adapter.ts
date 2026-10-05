@@ -205,12 +205,12 @@ const gitlabAdapterMethods: IntegrationAdapterMethods<GitLabConfig, GitLabSecret
           eventType,
           payload,
         ),
+      (tx) => input.emitFacts(tx, facts),
     );
     return {
       deliveryId,
       actions: result?.actions ?? 0,
       ...(result?.refusal ? { refusal: result.refusal } : {}),
-      facts,
     };
   },
 };

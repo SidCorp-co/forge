@@ -34,7 +34,7 @@ import { useRouter } from "next/navigation";
 // Subscribes to the project WS room so persisted-turn invalidations stream the
 // caret + live updates (ISS-291 model — no client-side stream reducer).
 import { useEffect, useMemo, useState } from "react";
-import { useCancelSession, useRerunSession } from "@/features/sessions/hooks";
+import { useCancelSession, useRerunSession, useStuckRuns } from "@/features/sessions/hooks";
 import {
   useEditTurn,
   useForkSession,
@@ -130,7 +130,8 @@ export function SessionScreen({ sessionId, projectSlug }: SessionScreenProps) {
 
   const streamedChars = useMemo(() => tailOutputSize(items), [items]);
 
-  const display = session ? deriveSessionDisplayStatus(session) : "queued";
+  const stuck = useStuckRuns(session?.projectId);
+  const display = session ? deriveSessionDisplayStatus(session, stuck) : "queued";
   const live = display === "running" || display === "stalled";
   const startMs = session?.startedAt
     ? new Date(session.startedAt).getTime()

@@ -96,6 +96,7 @@ import {
   personOwesAnAnswer,
   provideQuestionPorts,
   settleOpenQuestions,
+  voidCancelledRunQuestions,
 } from './questions/index.js';
 import { approvalRequired } from './release-batch/index.js';
 import {
@@ -156,6 +157,7 @@ export function provideWorkPorts(): void {
     postIssueNoticeOnce,
     holdsOpenHumanQuestion,
     personOwesAnAnswer,
+    voidCancelledRunQuestions,
     refreshModuleKnowledgeForIssue,
     readEffectivePolicy,
     policyRefusal,

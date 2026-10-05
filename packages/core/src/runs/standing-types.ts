@@ -126,6 +126,9 @@ export interface StandingContext {
   viewer: { canWrite: boolean; isAdmin: boolean } | null;
   slots: { inUse: number; max: number } | null;
   stuckAfterMs: number;
+  /** Why dispatch skips each queued job of the project now (`jobs:gateReasonsForQueuedJobsIn`), by job id:
+   *  the same reading pipeline health's `waitingOn.reason` comes from. */
+  queuedGates: ReadonlyMap<string, string>;
   silenceReapMs: number;
   jobHeartbeatMs: number;
   jobAckMs: number;

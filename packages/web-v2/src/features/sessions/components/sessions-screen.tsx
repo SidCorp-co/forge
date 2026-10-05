@@ -46,9 +46,11 @@ import {
   useRerunSession,
   useRetrySession,
   useSessions,
+  useStuckRuns,
   useSweepZombies,
 } from "../hooks";
 import {
+  type StuckRuns,
   deriveLiveness,
   deriveSessionDisplayStatus,
   sessionStep,
@@ -132,6 +134,7 @@ export function SessionsScreen({ projectId }: { projectId: string }) {
   // say which page, so a tab never claims to cover sessions it was not given.
   const [page, setPage] = useState(1);
   const sessionsQ = useSessions({ projectId, page });
+  const stuck = useStuckRuns(projectId);
   const total = sessionsQ.data?.totalCount ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / SESSIONS_PAGE_SIZE));
   const [filter, setFilter] = useState<SessionFilter>("all");
@@ -161,8 +164,8 @@ export function SessionsScreen({ projectId }: { projectId: string }) {
 
   const now = Date.now();
   const displays = useMemo(
-    () => rows.map((r) => deriveSessionDisplayStatus(r, now)),
-    [rows, now],
+    () => rows.map((r) => deriveSessionDisplayStatus(r, stuck)),
+    [rows, stuck],
   );
 
   const stats = useMemo(() => {
@@ -274,7 +277,7 @@ export function SessionsScreen({ projectId }: { projectId: string }) {
 
       {/* Fleet-runner rollup (ISS-378) — per-device chips + the no-runner banner. */}
       <div className="mb-4">
-        <FleetStrip projectId={projectId} rows={rows} displays={displays} now={now} />
+        <FleetStrip projectId={projectId} rows={rows} displays={displays} now={now} stuck={stuck} />
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3 overflow-x-auto">
@@ -357,6 +360,7 @@ export function SessionsScreen({ projectId }: { projectId: string }) {
                     slug={slug}
                     deviceName={row.deviceId ? deviceNameById.get(row.deviceId) : undefined}
                     now={now}
+                    stuck={stuck}
                     actions={actions}
                   />
                 ))}
@@ -374,6 +378,7 @@ export function SessionsScreen({ projectId }: { projectId: string }) {
                 slug={slug}
                 deviceName={row.deviceId ? deviceNameById.get(row.deviceId) : undefined}
                 now={now}
+                stuck={stuck}
                 actions={actions}
               />
             ))}
@@ -389,15 +394,16 @@ interface RowProps {
   slug?: string;
   deviceName?: string;
   now: number;
+  stuck: StuckRuns;
   actions: RowActions;
   /** How far under its owner this row sits, in the list as filtered. */
   depth: number;
 }
 
 /** A row's display state, its duration and the route it opens. */
-function useRowView({ row, slug, now }: RowProps) {
+function useRowView({ row, slug, stuck }: RowProps) {
   const router = useRouter();
-  const display = deriveSessionDisplayStatus(row, now);
+  const display = deriveSessionDisplayStatus(row, stuck);
   const live = display === "running" || display === "stalled";
   const startMs = row.startedAt ? new Date(row.startedAt).getTime() : undefined;
   const elapsed = useElapsed(startMs, live);
@@ -567,15 +573,17 @@ function RunnerCell({
   deviceName,
   display,
   now,
+  stuck,
 }: {
   row: SessionRow;
   deviceName?: string;
   display: AgentSessionDisplayStatus;
   now: number;
+  stuck: StuckRuns;
 }) {
   if (!row.deviceId) return <span className="fg-caption text-subtle">—</span>;
   const live = display === "running" || display === "stalled";
-  const liveness = live ? deriveLiveness(row, now) : null;
+  const liveness = live ? deriveLiveness(row, stuck, now) : null;
   const health =
     liveness?.state === "stale" || liveness?.state === "reaping"
       ? "attention"
@@ -601,13 +609,15 @@ function StatusCell({
   display,
   stage,
   now,
+  stuck,
 }: {
   row: SessionRow;
   display: AgentSessionDisplayStatus;
   stage: string | undefined;
   now: number;
+  stuck: StuckRuns;
 }) {
-  const liveness = deriveLiveness(row, now);
+  const liveness = deriveLiveness(row, stuck, now);
   // ISS-664 — a finished interactive chat awaiting the owner's reply gets its
   // own distinct chip (the `waiting` StatusKey — amber "a human must act"),
   // taking priority over the generic idle→paused mapping used everywhere else
@@ -655,7 +665,7 @@ function SessionTableRow(props: RowProps & {
   /** Whether anything in this list is owned by it. */
   hasChildren: boolean;
 }) {
-  const { row, slug, deviceName, now, actions, depth, hasChildren } = props;
+  const { row, slug, deviceName, now, stuck, actions, depth, hasChildren } = props;
   const { display, duration, stage, open } = useRowView(props);
   return (
     <TR>
@@ -688,14 +698,14 @@ function SessionTableRow(props: RowProps & {
         <SessionIdentity row={row} slug={slug} onOpen={open} />
       </TD>
       <TD className="max-w-[160px]">
-        <RunnerCell row={row} deviceName={deviceName} display={display} now={now} />
+        <RunnerCell row={row} deviceName={deviceName} display={display} now={now} stuck={stuck} />
       </TD>
       <TD className="whitespace-nowrap font-mono text-muted">{formatShortTime(row.startedAt ?? row.dispatchedAt)}</TD>
       <TD className="text-right font-mono text-muted">{row.usage?.turns ?? "—"}</TD>
       <TD className="text-right font-mono text-muted">{duration}</TD>
       <TD className="text-right font-mono text-muted">{formatCost(row.estimatedCost)}</TD>
       <TD>
-        <StatusCell row={row} display={display} stage={stage} now={now} />
+        <StatusCell row={row} display={display} stage={stage} now={now} stuck={stuck} />
       </TD>
       <TD className="text-right">
         <RowActionsMenu row={row} display={display} actions={actions} />
@@ -718,7 +728,7 @@ function SessionKindTag({ row }: { row: SessionRow }) {
 }
 
 function SessionMobileCard(props: RowProps) {
-  const { row, slug, deviceName, now, actions, depth } = props;
+  const { row, slug, deviceName, now, stuck, actions, depth } = props;
   const { display, duration, stage, open } = useRowView(props);
   return (
     // The same edge the table shows, at a width a phone can carry: the nesting
@@ -743,7 +753,7 @@ function SessionMobileCard(props: RowProps) {
           <RowActionsMenu row={row} display={display} actions={actions} />
         </div>
         <div className="mt-3 flex items-center justify-between gap-3">
-          <StatusCell row={row} display={display} stage={stage} now={now} />
+          <StatusCell row={row} display={display} stage={stage} now={now} stuck={stuck} />
           <div className="flex items-center gap-3">
             <Badge tone="neutral">{row.usage?.turns ?? 0} turns</Badge>
             <span className="fg-mono text-muted">{duration}</span>
@@ -753,7 +763,7 @@ function SessionMobileCard(props: RowProps) {
         <div className="fg-caption mt-1.5 text-subtle">Started {formatShortTime(row.startedAt ?? row.dispatchedAt)}</div>
         {row.deviceId && (
           <div className="mt-2.5">
-            <RunnerCell row={row} deviceName={deviceName} display={display} now={now} />
+            <RunnerCell row={row} deviceName={deviceName} display={display} now={now} stuck={stuck} />
           </div>
         )}
       </CardContent>

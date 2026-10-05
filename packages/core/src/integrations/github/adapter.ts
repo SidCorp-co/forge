@@ -225,8 +225,9 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
           payload,
         ),
       }),
+      (tx) => input.emitFacts(tx, facts),
     );
-    return { deliveryId, actions: (result?.actions ?? 0) + facts.length, facts };
+    return { deliveryId, actions: (result?.actions ?? 0) + facts.length };
   },
 };
 

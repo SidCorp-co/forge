@@ -139,6 +139,15 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
   return null;
 }
 
+/** The dispatch barriers pipeline health names that clear without a person (agent-run-standing,
+ *  `waiting_gate`): the issue's other work ends, or a fresh, new-enough box comes online. */
+const DISPATCH_GATES: Record<string, string> = {
+  issue_busy: 'another session or job is live on this issue: dispatch takes this one once it ends',
+  runner_stale: 'no box serving this project has beaten recently: dispatch takes it once one does',
+  runner_too_old:
+    'no box serving this project runs a build that can take it: dispatch takes it once one is updated',
+};
+
 function gateWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
   const job = f.job;
   if (job?.status === 'held' && job.hold && holdReleasesItself(job.hold)) {
@@ -162,6 +171,15 @@ function gateWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
       resumesAt: job.retryAfterAt,
       since: job.queuedAt,
       rule: 'jobs.retry_after_at is in the future: dispatch skips the job until then',
+    });
+  }
+  const barrier = job?.status === 'queued' ? ctx.queuedGates.get(job.id) : undefined;
+  if (job && barrier && DISPATCH_GATES[barrier]) {
+    return gate({
+      gate: barrier,
+      resumesAt: null,
+      since: job.queuedAt,
+      rule: `pipeline health reads ${barrier}: ${DISPATCH_GATES[barrier]}, which has no deadline`,
     });
   }
   if (f.ledger?.work === 'blocked' && f.ledger.blockerKind && f.ledger.blockerKind !== 'human') {

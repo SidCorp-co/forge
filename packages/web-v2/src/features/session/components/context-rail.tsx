@@ -34,7 +34,7 @@ import {
   statusToChip,
   type SessionRow,
 } from "@/features/sessions/types";
-import { useSessionCost, useSessions } from "@/features/sessions/hooks";
+import { useSessionCost, useSessions, useStuckRuns } from "@/features/sessions/hooks";
 import { isJobDriven, sessionKind } from "@/features/sessions/types";
 import { type RunGateNote, runGateNote, runGateUnfetched } from "@/features/pipeline/derive";
 import { useRun } from "@/features/pipeline/hooks";
@@ -80,7 +80,8 @@ export function ContextRail({
   projectSlug?: string;
 }) {
   const router = useRouter();
-  const display = deriveSessionDisplayStatus(session);
+  const stuck = useStuckRuns(session.projectId);
+  const display = deriveSessionDisplayStatus(session, stuck);
   const stage = sessionStep(session.metadata) ?? undefined;
   const live = display === "running" || display === "stalled";
   const startMs = session.startedAt ? new Date(session.startedAt).getTime() : undefined;
@@ -329,7 +330,8 @@ export function ContextRail({
 /** One sibling-session row in "Sessions for this issue" — step label + status
  *  chip, links to its own detail when a project slug is known. */
 function SiblingRow({ row, onOpen }: { row: SessionRow; onOpen?: () => void }) {
-  const display = deriveSessionDisplayStatus(row);
+  const stuck = useStuckRuns(row.projectId);
+  const display = deriveSessionDisplayStatus(row, stuck);
   const stage = sessionStep(row.metadata) ?? undefined;
   const label =
     (row.metadata?.step as string | undefined) ??

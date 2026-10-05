@@ -27,6 +27,12 @@ export const TERMINAL_AGENT_SESSION_STATUSES = [
 	"cancelled",
 ] as const satisfies readonly AgentSessionStatus[];
 
+/** The ends that stop a session on purpose rather than finish or fail it. */
+export const CANCELLED_AGENT_SESSION_STATUSES: readonly AgentSessionStatus[] = [
+	"cancelled",
+	"cancelled_stale",
+];
+
 const ENDED: readonly AgentSessionStatus[] = TERMINAL_AGENT_SESSION_STATUSES;
 const move = (act: string) => ({ act, permission: null, guards: [] as const });
 

@@ -32,7 +32,12 @@ const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
 const stampKernelMerge =
   (actor: OutboxActor): IssueMergeStamp =>
   (tx, { issueId, commitSha, mergedAt }) =>
-    recordIssueMerge(tx, { issueId, actor, evidence: { kind: 'observed', commitSha, mergedAt } });
+    recordIssueMerge(tx, {
+      issueId,
+      actor,
+      via: 'kernel',
+      evidence: { kind: 'observed', commitSha, mergedAt },
+    });
 
 export const issueMergePullRequestRoutes = new Hono<{ Variables: AuthVars }>();
 

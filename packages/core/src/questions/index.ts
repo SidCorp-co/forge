@@ -3,6 +3,7 @@ export {
   openHumanQuestionIdsOn,
   personOwesAnAnswer,
   settleOpenQuestions,
+  voidCancelledRunQuestions,
 } from './issue-coupling.js';
 export { provideQuestionPorts } from './ports.js';
 export {
