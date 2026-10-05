@@ -30,11 +30,8 @@
 
 ### Fixed
 
-- **The size budget refuses a scope that scanned no files, not one that is clean.** It read zero
-  diagnostics as "the scope matched nothing", so once `packages/core` drained to no file over budget
-  every verify refused. It now counts the files biome scanned, and only a count of zero is refused.
-  `packages/core` lint debt drained to zero (280 at the original freeze) and the baseline records
-  that with `--accept-emptied-scope`.
+- **The size budget refuses only a scope that scanned no files.** A clean scope, like
+  `packages/core` now that its lint debt drained to zero, passes instead of refusing every verify.
 
 ## [0.4.0-dev.33] - 2026-10-05
 
