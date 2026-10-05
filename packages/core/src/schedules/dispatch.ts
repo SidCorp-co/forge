@@ -6,7 +6,7 @@ import {
 } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { type agentSessions, projects } from '../db/schema.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
 import type {
   DispatchScheduleInput,

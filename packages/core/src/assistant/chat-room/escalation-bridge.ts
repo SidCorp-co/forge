@@ -13,7 +13,7 @@ import {
   roomStillBoundTo,
   sendFixedReply,
 } from '../../integrations/rocketchat/index.js';
-import { logger } from '../../observability/logger.js';
+import { logger } from '../../lib/logger.js';
 import { ESCALATION_FALLBACK_REPLY } from './escalation.js';
 import { parseEscalationPayload, synthesizeViaBao } from './escalation-synthesis.js';
 import { rocketChatVenueId } from './port.js';

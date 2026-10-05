@@ -1,5 +1,5 @@
-import { env } from '../../config/env.js';
 import { EgressRefused, type EgressScope, egressScoped } from '../../lib/data-egress.js';
+import { env } from '../../lib/env.js';
 import {
   type EmbedDetailed,
   EmbeddingsClient,

@@ -7,7 +7,7 @@ import {
   kindTuple,
   PIPELINE_SESSION_KINDS,
 } from '../db/session-vocabulary.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import {
   broadcastSessionEvent,
   getLoopThresholds,

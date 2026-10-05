@@ -12,9 +12,9 @@ import {
   sendFixedReply,
 } from '../../integrations/rocketchat/index.js';
 import { issueDisplayIds } from '../../issues/index.js';
+import { logger } from '../../lib/logger.js';
 import { refusalsOf } from '../../messaging/contract.js';
 import { type ProvenMessage, screenForDoor } from '../../messaging/proven.js';
-import { logger } from '../../observability/logger.js';
 import {
   isUnreachableRoom,
   type QuestionDestination,

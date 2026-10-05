@@ -12,9 +12,9 @@ import { TURN_AUTHORITY_REFUSAL_CODES, type TurnAuthorityRefusalCode } from '@fo
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { personalAccessTokens, users } from '../db/schema.js';
+import { logger } from '../lib/logger.js';
 import { isRefusal, refuser } from '../lib/refusal.js';
 import type { PatPrincipal } from '../middleware/require-pat.js';
-import { logger } from '../observability/logger.js';
 import { mintPat, revokePat } from './pat.js';
 import { turnTokenDefaultName } from './pat-format.js';
 import { patIsLive } from './pat-live.js';

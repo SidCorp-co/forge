@@ -2,7 +2,6 @@
 // hands over is collected into its conversation here, and a reply in a thread Forge opened goes
 // to the question that owns it.
 
-import { webBaseUrl } from '../../config/web-base-url.js';
 import { collectInboundMessage, registerConversationTransport } from '../../conversations/index.js';
 import {
   FIXED_REPLY_CONSTANT,
@@ -10,7 +9,8 @@ import {
   rocketChatManager,
   sendFixedReply,
 } from '../../integrations/rocketchat/index.js';
-import { logger } from '../../observability/logger.js';
+import { logger } from '../../lib/logger.js';
+import { webBaseUrl } from '../../lib/web-base-url.js';
 import { type RocketChatFrame, rocketChatConversationPorts } from './port.js';
 import { consumeQuestionThreadReply } from './question-inbound.js';
 import { drainConversationWindows } from './window-drain.js';

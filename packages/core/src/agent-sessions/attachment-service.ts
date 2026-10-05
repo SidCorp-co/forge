@@ -1,6 +1,5 @@
 import type { AttachmentRefusalCode } from '@forge/contracts/attachments';
 import { eq, inArray } from 'drizzle-orm';
-import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { sessionAttachments } from '../db/schema.js';
 import {
@@ -11,6 +10,7 @@ import {
   resolveAttachmentMime,
   safeName,
 } from '../lib/attachment-mime.js';
+import { env } from '../lib/env.js';
 import { refuser } from '../lib/refusal.js';
 import { agentSessionsPorts } from './ports.js';
 

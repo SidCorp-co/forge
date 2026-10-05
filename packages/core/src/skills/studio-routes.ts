@@ -34,9 +34,7 @@ skillStudioRoutes.use('/:projectId/skills/apply-default', requireAuth(), assertE
 
 skillStudioRoutes.get(
   '/:projectId/skills/effective',
-  zValidator('param', projectParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', projectParamSchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
     const userId = c.get('userId');
@@ -75,12 +73,8 @@ skillStudioRoutes.get(
 
 skillStudioRoutes.post(
   '/:projectId/skills/apply-default',
-  zValidator('param', projectParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', applyDefaultBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', projectParamSchema),
+  zValidator('json', applyDefaultBodySchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
     const { globalSkillId } = c.req.valid('json');

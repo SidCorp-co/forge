@@ -12,7 +12,7 @@ import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, devices, runners } from '../db/schema.js';
 import { deviceRunLedger } from '../db/schema-run-ledger.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 
 interface RunLedgerIssue {
   issueKey: string;

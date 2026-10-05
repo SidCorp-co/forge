@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { env } from './config/env.js';
+import { env } from './lib/env.js';
 import { rawBody, zValidator } from './middleware/zod-validator.js';
 
 export const mcpMessageBody = rawBody(

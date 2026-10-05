@@ -5,7 +5,7 @@ import { desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { enqueueOutboundDispatch, findDeliveryByRequestId } from '../integrations/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import {
   acquireDeployLocks,
   type DeployLockHeld,

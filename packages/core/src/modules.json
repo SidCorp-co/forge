@@ -158,28 +158,6 @@
         "personal-data-flow#pr-chat-out"
       ]
     },
-    "config": {
-      "kind": "platform",
-      "context": "platform",
-      "serves": [
-        "via:agent-reports",
-        "via:agent-sessions",
-        "via:assistant",
-        "via:auth",
-        "via:comments",
-        "via:credentials",
-        "via:devices",
-        "via:integrations",
-        "via:integrations/llm",
-        "via:integrations/identity",
-        "via:issues",
-        "via:knowledge",
-        "via:memory",
-        "via:orgs",
-        "via:projects",
-        "via:uploads"
-      ]
-    },
     "conversations": {
       "kind": "domain",
       "context": "conversations",
@@ -296,7 +274,8 @@
         "issue-delivery#rule-dispatch",
         "agent-run-standing#master",
         "personal-data-flow#ds-box-creds",
-        "personal-data-flow#pr-provision"
+        "personal-data-flow#pr-provision",
+        "REQ-25"
       ]
     },
     "ecosystem": {
@@ -364,11 +343,6 @@
         "users"
       ],
       "serves": ["REQ-22"]
-    },
-    "install": {
-      "kind": "door",
-      "context": "access",
-      "serves": ["REQ-25"]
     },
     "integration-door": {
       "kind": "door",
@@ -532,6 +506,9 @@
       "serves": [
         "REQ-22",
         "REQ-26",
+        "feedback-triage#scrubber",
+        "personal-data-flow#pr-errors",
+        "personal-data-flow#pr-ingest",
         "via:agent-reports",
         "via:agent-sessions",
         "via:assistant",
@@ -543,10 +520,12 @@
         "via:devices",
         "via:ecosystem",
         "via:feedback",
-        "via:integrations/source-host",
         "via:integration-door",
+        "via:integrations",
+        "via:integrations/identity",
         "via:integrations/llm",
         "via:integrations/sentry",
+        "via:integrations/source-host",
         "via:issues",
         "via:jobs",
         "via:knowledge",
@@ -557,7 +536,6 @@
         "via:memory",
         "via:mockups",
         "via:notifications",
-        "via:observability",
         "via:onboarding",
         "via:orgs",
         "via:outbox",
@@ -704,15 +682,6 @@
       "context": "conversations",
       "owns": ["notificationDeliveries", "notificationDeliveryMembers", "notifications"],
       "serves": ["REQ-11", "REQ-14", "personal-data-flow#pr-chat-out"]
-    },
-    "observability": {
-      "kind": "platform",
-      "context": "platform",
-      "serves": [
-        "feedback-triage#scrubber",
-        "personal-data-flow#pr-ingest",
-        "personal-data-flow#pr-errors"
-      ]
     },
     "onboarding": {
       "kind": "domain",

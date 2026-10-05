@@ -19,8 +19,8 @@ import {
 import { refetchRunnerRelease, servesRunnerReleases } from './integrations/github/index.js';
 import { runIntegrationsHealthSweep } from './integrations/index.js';
 import { probePgBossBackstop, runStaleSweep } from './jobs/index.js';
+import { logger } from './lib/logger.js';
 import { runConsolidationSweep, runEmbeddingBackfill, runMemoryDecay } from './memory/index.js';
-import { logger } from './observability/logger.js';
 import { pruneOutbox } from './outbox/index.js';
 import { backfillPhaseJournal, runReconcilerOnce, runRetentionSweep } from './pipeline/index.js';
 import { runPipelineSweep } from './pipeline-sweep.js';

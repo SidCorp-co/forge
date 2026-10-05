@@ -6,9 +6,9 @@
  */
 
 import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
-import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { integrationDeliveries, type ObservedEndpoint } from '../db/schema.js';
+import { env } from '../lib/env.js';
 
 /**
  * `not_expected`: silence is not a fault here. `open`: something came through. `elsewhere`: an

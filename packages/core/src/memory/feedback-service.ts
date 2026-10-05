@@ -3,8 +3,8 @@ import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { memories } from '../db/schema.js';
+import { logger } from '../lib/logger.js';
 import { refuser } from '../lib/refusal.js';
-import { logger } from '../observability/logger.js';
 
 const FEEDBACK_SOURCES = ['note', 'knowledge'] as const;
 

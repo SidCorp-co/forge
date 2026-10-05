@@ -16,8 +16,8 @@ import {
   organizationMembers,
   projects,
 } from '../db/schema.js';
+import { logger } from '../lib/logger.js';
 import { estimateTokens } from '../lib/token-estimator.js';
-import { logger } from '../observability/logger.js';
 import { NO_PROGRESS_ROUNDS } from '../pipeline/index.js';
 import { promotedBranch, readProjectDocument, readReleasePath } from '../project-config/index.js';
 import { mandatoryPreambleBlocks } from './facts/mandatory-blocks.js';

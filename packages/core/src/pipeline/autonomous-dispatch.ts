@@ -1,7 +1,7 @@
 import type { IssueStatus } from '../db/schema.js';
 import type { Actor } from '../issues/index.js';
 import { stampRunStarted } from '../issues/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { AUTONOMOUS_ENTRY_STATUS, autonomousStepFor, isAutonomous } from './autonomous-mode.js';
 import { refusePipeline } from './refuse.js';
 

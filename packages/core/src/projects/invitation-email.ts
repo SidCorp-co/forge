@@ -1,6 +1,6 @@
 import { mailDeliveryEnabled, sendMail } from '../integrations/identity/index.js';
 import { buildInvitationLink, escapeInvitationHtml } from '../lib/invitation.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 
 interface InvitationEmailContext {
   projectName: string;

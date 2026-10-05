@@ -1,4 +1,4 @@
-import { env } from '../../config/env.js';
+import { env } from '../../lib/env.js';
 import { LocalFsStorage } from './local-fs.js';
 import type { StorageAdapter } from './types.js';
 

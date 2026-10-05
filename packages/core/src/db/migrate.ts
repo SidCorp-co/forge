@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
-import { flushReports, initSentry, reportCondition } from '../observability/sentry.js';
+import { flushReports, initSentry, reportCondition } from '../lib/sentry.js';
 import { closeDb } from './client.js';
 import {
   describeUnrecorded,

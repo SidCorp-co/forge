@@ -27,7 +27,9 @@
       "packages/core/src/comments/**"
     ],
     "core-config": [
-      "packages/core/src/config/**"
+      "packages/core/src/lib/env.ts",
+      "packages/core/src/lib/rate-limits.ts",
+      "packages/core/src/lib/web-base-url.ts"
     ],
     "core-conversations": [
       "packages/core/src/conversations/**"
@@ -57,7 +59,8 @@
       "packages/core/src/improvement-messages/**"
     ],
     "core-install": [
-      "packages/core/src/install/**"
+      "packages/core/src/devices/install-routes.ts",
+      "packages/core/src/devices/published-build.ts"
     ],
     "core-integrations": [
       "packages/core/src/integrations/**"
@@ -103,9 +106,6 @@
     ],
     "core-notifications": [
       "packages/core/src/notifications/**"
-    ],
-    "core-observability": [
-      "packages/core/src/observability/**"
     ],
     "core-orgs": [
       "packages/core/src/orgs/**"

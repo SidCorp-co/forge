@@ -2,8 +2,8 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, jobs, pipelineRuns, projects } from '../db/schema.js';
 import { applyStatusTransition } from '../issues/index.js';
-import { logger } from '../observability/logger.js';
-import { traceStep } from '../observability/sentry.js';
+import { logger } from '../lib/logger.js';
+import { traceStep } from '../lib/sentry.js';
 import { AUTONOMOUS_JOB_TYPE, AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
 import { postCapReachedComment } from './autonomous-rescue-comment.js';
 

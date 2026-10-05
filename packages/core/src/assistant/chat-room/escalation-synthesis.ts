@@ -5,7 +5,6 @@
  */
 
 import { eq } from 'drizzle-orm';
-import { webBaseUrl } from '../../config/web-base-url.js';
 import {
   CHAT_TURN_MENU,
   mintTurnCredential,
@@ -14,11 +13,12 @@ import {
 import { db } from '../../db/client.js';
 import { type agentSessions as agentSessionsTable, projects } from '../../db/schema.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof } from '../../integrations/rocketchat/index.js';
+import { logger } from '../../lib/logger.js';
+import { webBaseUrl } from '../../lib/web-base-url.js';
 import { type MessageRefusal, type MessageVerdict, refusalsOf } from '../../messaging/contract.js';
 import { proven, wholeAgentText } from '../../messaging/proven.js';
 import { withRepairs } from '../../messaging/repairs.js';
 import { screenReplyAtDoor } from '../../messaging/reply-screen.js';
-import { logger } from '../../observability/logger.js';
 import { resolveTurnAuthority } from '../../permissions/index.js';
 import { correctFalseClaims } from '../confab.js';
 import { runExternalChatTurn } from '../external-chat.js';

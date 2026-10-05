@@ -6,8 +6,8 @@ import {
 } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { type AgentSessionStatus, agentSessions, issues, jobs } from '../db/schema.js';
+import { logger } from '../lib/logger.js';
 import { deviceRoom, projectRoom, roomManager } from '../lib/rooms.js';
-import { logger } from '../observability/logger.js';
 import type { FailureCause } from '../pipeline/index.js';
 import { classifyFailure, closeRunIfOneShot } from '../pipeline/index.js';
 import type { ResumeRecord } from './resume-policy.js';

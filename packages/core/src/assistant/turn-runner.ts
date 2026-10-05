@@ -20,8 +20,8 @@ import {
   type TurnAuthority,
   type TurnCredential,
 } from '../credentials/turn-credential.js';
-import { logger } from '../observability/logger.js';
-import { reportFailure } from '../observability/sentry.js';
+import { logger } from '../lib/logger.js';
+import { reportFailure } from '../lib/sentry.js';
 import { STOPPED_BY_A_PERSON } from './conversation-stops.js';
 import { assertAnswerableDoor } from './screened-reply.js';
 import { composeReply, silence } from './turn-compose.js';

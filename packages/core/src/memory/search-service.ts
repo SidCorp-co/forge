@@ -1,6 +1,5 @@
 import type { RerankReport } from '@forge/contracts/memory';
 import { z } from 'zod';
-import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { type MemorySource, memorySources, retrievalAnalytics } from '../db/schema.js';
 import {
@@ -9,7 +8,8 @@ import {
   fastModelConfigured,
 } from '../integrations/llm/index.js';
 import { clampTopK } from '../knowledge/index.js';
-import { logger } from '../observability/logger.js';
+import { env } from '../lib/env.js';
+import { logger } from '../lib/logger.js';
 import { expandIssueRelations } from './expand-relations.js';
 import { inRerankHoldout, rerankHits, rerankPoolSize } from './rerank.js';
 import { loadRetrievalFlags, type RetrievalFlags } from './retrieval-flags.js';

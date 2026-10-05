@@ -13,7 +13,7 @@ import { createAppAuth } from '@octokit/auth-app';
 import { Octokit } from '@octokit/core';
 import { retry } from '@octokit/plugin-retry';
 import { throttling } from '@octokit/plugin-throttling';
-import { logger } from '../../observability/logger.js';
+import { logger } from '../../lib/logger.js';
 import { GITHUB_API_BASE, type HeadersLike } from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 8000;

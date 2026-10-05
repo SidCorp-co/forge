@@ -1,7 +1,7 @@
 import { and, eq, isNotNull, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { runners } from '../db/schema.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { resolvePipelineWedge } from '../pipeline/index.js';
 import { broadcastRunnerChanged } from './apply-runner-limit.js';
 

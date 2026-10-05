@@ -8,7 +8,6 @@
  */
 
 import { and, eq, inArray } from 'drizzle-orm';
-import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { conversationAttachments } from '../db/schema-conversations.js';
 import { getStorage } from '../integrations/index.js';
@@ -20,6 +19,7 @@ import {
   resolveAttachmentMime,
   safeName,
 } from '../lib/attachment-mime.js';
+import { env } from '../lib/env.js';
 import { refuseConversation } from './refusals.js';
 
 export interface PersistConversationAttachmentInput {

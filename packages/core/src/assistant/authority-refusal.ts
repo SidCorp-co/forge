@@ -15,7 +15,7 @@ import {
   reserveDelivery,
   type WindowClaim,
 } from '../conversations/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import type { RoutedWindow, RouteWindowArgs } from './route-window.js';
 
 const AUTHORITY_REFUSED_REPLY =

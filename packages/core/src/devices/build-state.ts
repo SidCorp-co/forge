@@ -1,4 +1,5 @@
 import { devicesPorts } from './ports.js';
+import { getPublishedRunnerBuild } from './published-build.js';
 
 /**
  * Whether a box is running the runner `main` holds. Two questions, each between
@@ -129,7 +130,7 @@ interface DeviceRowBuild {
  * against. One read of the release and the branch head serves the whole list.
  */
 export async function annotateDeviceBuilds<T extends DeviceRowBuild>(rows: T[]) {
-  const published = await devicesPorts().publishedRunnerBuild();
+  const published = await getPublishedRunnerBuild();
   const head = devicesPorts().mainRunnerHead();
   return rows.map((r) => {
     const build = compareRunnerBuild(

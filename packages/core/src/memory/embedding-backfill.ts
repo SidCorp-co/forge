@@ -3,7 +3,7 @@ import { db } from '../db/client.js';
 import { knowledgeEntries, memories } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../integrations/llm/index.js';
 import { fillKnowledgeEmbedding, knowledgeEmbedInput } from '../knowledge/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { MAX_EMBED_CHARS } from './indexer.js';
 
 /**

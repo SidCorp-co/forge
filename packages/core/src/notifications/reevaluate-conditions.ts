@@ -2,7 +2,7 @@ import { and, eq, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications } from '../db/schema.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { resolveNotifications } from './auto-resolve.js';
 import { PENDING_STALE_MS } from './deliver.js';
 

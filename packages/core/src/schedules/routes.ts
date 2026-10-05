@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { scheduleKinds } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest, idParamSchema } from '../middleware/route-errors.js';
+import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import {
   createSchedule,
@@ -111,54 +111,32 @@ const updateSchema = z
 export const scheduleRoutes = new Hono<{ Variables: AuthVars }>();
 scheduleRoutes.use('*', requireAuth(), assertEmailVerified());
 
-scheduleRoutes.get(
-  '/',
-  zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { projectId, enabled } = c.req.valid('query');
-    const rows = await listSchedules(
-      projectId,
-      c.get('userId'),
-      enabled === 'true' ? true : enabled === 'false' ? false : undefined,
-    );
-    return c.json(rows);
-  },
-);
+scheduleRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
+  const { projectId, enabled } = c.req.valid('query');
+  const rows = await listSchedules(
+    projectId,
+    c.get('userId'),
+    enabled === 'true' ? true : enabled === 'false' ? false : undefined,
+  );
+  return c.json(rows);
+});
 
-scheduleRoutes.get(
-  '/:id',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const row = await getSchedule(id, c.get('userId'));
-    return c.json(row);
-  },
-);
+scheduleRoutes.get('/:id', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const row = await getSchedule(id, c.get('userId'));
+  return c.json(row);
+});
 
-scheduleRoutes.post(
-  '/',
-  zValidator('json', createSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const input = c.req.valid('json');
-    const inserted = await createSchedule(input, c.get('userId'));
-    return c.json(inserted, 201);
-  },
-);
+scheduleRoutes.post('/', zValidator('json', createSchema), async (c) => {
+  const input = c.req.valid('json');
+  const inserted = await createSchedule(input, c.get('userId'));
+  return c.json(inserted, 201);
+});
 
 scheduleRoutes.put(
   '/:id',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', updateSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', updateSchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const patch = c.req.valid('json');
@@ -167,29 +145,17 @@ scheduleRoutes.put(
   },
 );
 
-scheduleRoutes.delete(
-  '/:id',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    await deleteSchedule(id, c.get('userId'));
-    return c.body(null, 204);
-  },
-);
+scheduleRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  await deleteSchedule(id, c.get('userId'));
+  return c.body(null, 204);
+});
 
-scheduleRoutes.post(
-  '/:id/run',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const result = await runScheduleNow(id, {
-      userId: c.get('userId'),
-      viaTokenId: c.get('patTokenId') ?? null,
-    });
-    return c.json(result, 202);
-  },
-);
+scheduleRoutes.post('/:id/run', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const result = await runScheduleNow(id, {
+    userId: c.get('userId'),
+    viaTokenId: c.get('patTokenId') ?? null,
+  });
+  return c.json(result, 202);
+});

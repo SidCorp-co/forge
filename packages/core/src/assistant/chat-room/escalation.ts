@@ -17,7 +17,7 @@ import {
 } from '../../agent-sessions/index.js';
 import { db } from '../../db/client.js';
 import { agentSessions } from '../../db/schema.js';
-import { logger } from '../../observability/logger.js';
+import { logger } from '../../lib/logger.js';
 import { hasInFlightRoomSession } from './room-replies.js';
 
 const ESCALATION_TITLE_MAX = 80;

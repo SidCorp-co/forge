@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from 'hono';
-import { getLogger } from '../observability/logger.js';
+import { getLogger } from '../lib/logger.js';
 import type { RequestIdVars } from './request-id.js';
 
 export const requestLogger = (): MiddlewareHandler<{ Variables: RequestIdVars }> => {

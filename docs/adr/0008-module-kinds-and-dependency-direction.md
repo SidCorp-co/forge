@@ -204,7 +204,7 @@ excluded.
 - **The technical layers are defined by kind.** A platform-kind module is in `platform` and an
   adapter in `adapters`; neither holds a domain or a read model. That moved, against the label
   grouping: `config`, `credentials`, `pat`, `security`, `branches`, `embeddings` and
-  `observability` to platform (every layer reads `packages/core/src/config/env.ts`, and middleware reads the
+  `observability` to platform (every layer reads `packages/core/src/lib/env.ts`, and middleware reads the
   credential helpers, so in a business context each was a false back edge); `git`,
   `integrations/coolify`, `integrations/deploy`, `integrations/published-releases` and `storage` to
   adapters (the registry imports them), since folded into the ports that own their concept

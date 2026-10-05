@@ -2,6 +2,7 @@
 // socket, the room routing and the dedupe; deciding what a message means is the assistant's and
 // the conversations' work, handed in at boot so this directory imports neither.
 
+import { portSlot } from '../../lib/port-slot.js';
 import type { ActiveConnection } from './connection-manager.js';
 import type { RocketChatIncomingMessage } from './ddp-client.js';
 import type { Route } from './room-routing.js';
@@ -26,18 +27,6 @@ interface RoomHandlers {
   }): Promise<void>;
 }
 
-let handlers: RoomHandlers | null = null;
-
-export function provideRoomHandlers(h: RoomHandlers): void {
-  handlers = h;
-}
-
-/** The handlers, refused by name when boot started the connections without providing them. */
-export function roomHandlers(): RoomHandlers {
-  if (!handlers) {
-    throw new Error(
-      'rocketchat: no room handlers were provided at boot, so a message the connection took in has nowhere to go',
-    );
-  }
-  return handlers;
-}
+const slot = portSlot<RoomHandlers>('rocketchat', 'provideRoomHandlers');
+export const provideRoomHandlers = slot.provide;
+export const roomHandlers = slot.get;

@@ -11,7 +11,7 @@ import {
   SentryListingFailed,
   type SentryTarget,
 } from '../integrations/sentry/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import {
   intakeSentryIssue,
   projectCreatedById,

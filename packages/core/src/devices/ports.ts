@@ -4,13 +4,8 @@
 
 import type { PolicyRefusalCode } from '@forge/contracts/project-config';
 import type { Tx } from '../db/client.js';
+import { portSlot } from '../lib/port-slot.js';
 import type { RefusalError } from '../lib/refusal.js';
-
-/** The runner build this deployment publishes. */
-export interface PublishedRunnerBuild {
-  version: string;
-  commit: string | null;
-}
 
 /** A question a box asks on behalf of its master, as the device route validated it. */
 interface DeviceQuestion {
@@ -51,7 +46,6 @@ interface DevicesPorts {
   >;
   projectsWithHostCredential(projectIds: string[]): Promise<Set<string>>;
   isHttpsGitUrl(url: string | null | undefined): boolean;
-  publishedRunnerBuild(): Promise<PublishedRunnerBuild | null>;
   mainRunnerHead(): string | null;
   cmpVersion(a: string, b: string): number;
   questions: {
@@ -73,17 +67,6 @@ interface DevicesPorts {
   projectHandleUserId(tx: Tx, projectId: string): Promise<string>;
 }
 
-let provided: DevicesPorts | null = null;
-
-export function provideDevicesPorts(ports: DevicesPorts): void {
-  provided = ports;
-}
-
-export function devicesPorts(): DevicesPorts {
-  if (!provided) {
-    throw new Error(
-      'devices: no ports were provided, so a box cannot reach the policy, source, git, question or comment modules it needs; the process entry calls provideDevicesPorts before it serves',
-    );
-  }
-  return provided;
-}
+const slot = portSlot<DevicesPorts>('devices', 'provideDevicesPorts');
+export const provideDevicesPorts = slot.provide;
+export const devicesPorts = slot.get;

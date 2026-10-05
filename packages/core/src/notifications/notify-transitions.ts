@@ -7,7 +7,7 @@ import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { issues, notifications } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { resolveNotifications } from './auto-resolve.js';
 import { emitNotification } from './emit.js';

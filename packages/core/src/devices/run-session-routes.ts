@@ -14,7 +14,6 @@ import { isDispatchGateError } from '../issues/index.js';
 import { RefusalError } from '../lib/refusal.js';
 import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { gateConditionSchema } from './gate-report.js';
 import { notFound, sessionParamsSchema } from './route-errors.js';
@@ -45,9 +44,7 @@ const runSessionBodySchema = z.object({
 deviceRunSessionRoutes.post(
   '/me/run-sessions',
   requireDevice(),
-  zValidator('json', runSessionBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('json', runSessionBodySchema),
   async (c) => {
     const body = c.req.valid('json');
     try {
@@ -83,12 +80,8 @@ const closeBodySchema = z.object({
 deviceRunSessionRoutes.post(
   '/me/run-sessions/:sessionId/close',
   requireDevice(),
-  zValidator('param', sessionParamsSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', closeBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', sessionParamsSchema),
+  zValidator('json', closeBodySchema),
   async (c) => {
     const { sessionId } = c.req.valid('param');
     const body = c.req.valid('json');
@@ -112,12 +105,8 @@ deviceRunSessionRoutes.post(
 deviceRunSessionRoutes.post(
   '/me/run-sessions/:sessionId/held-worktree',
   requireDevice(),
-  zValidator('param', sessionParamsSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', heldWorktreeSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', sessionParamsSchema),
+  zValidator('json', heldWorktreeSchema),
   async (c) => {
     const { sessionId } = c.req.valid('param');
     const reported = await writeHeldWorktreeReport({
@@ -133,12 +122,8 @@ deviceRunSessionRoutes.post(
 deviceRunSessionRoutes.post(
   '/me/run-sessions/:sessionId/resume-choice',
   requireDevice(),
-  zValidator('param', sessionParamsSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', resumeChoiceSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', sessionParamsSchema),
+  zValidator('json', resumeChoiceSchema),
   async (c) => {
     const { sessionId } = c.req.valid('param');
     const written = await writeResumeChoice({

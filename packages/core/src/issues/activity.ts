@@ -2,7 +2,7 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import type { Context } from 'hono';
 import type { Db } from '../db/client.js';
 import type { ActorType } from '../db/schema.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { insertActivityRow } from './activity-log.js';
 import { agencyUndetermined } from './actor-agency.js';
 

@@ -21,7 +21,7 @@ import { issueScopeOf, mergedCommitShaSchema, recordIssueMerge } from '../issues
 import { loadProjectAccess } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
-import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
+import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 
@@ -100,12 +100,8 @@ async function resolveStoredPullRequest(
 
 issueMergePullRequestRoutes.post(
   '/:id/merge-pull-request',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', kernelMergeBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', kernelMergeBodySchema),
   async (c) => {
     const { id: issueId } = c.req.valid('param' as never) as { id: string };
     const body = c.req.valid('json' as never) as z.infer<typeof kernelMergeBodySchema>;

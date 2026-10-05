@@ -10,12 +10,12 @@ import {
   sessionRuntimeStates,
 } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { logger } from '../lib/logger.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { logger } from '../observability/logger.js';
 import { requireHeld } from '../permissions/index.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { readJobGate } from './job-queries.js';
@@ -23,9 +23,6 @@ import { scrubJobOutput } from './job-secret-scrub.js';
 import { listJobEvents } from './read.js';
 import { refuseJob } from './refusals.js';
 import { appendJobEvents, beatLinkedSession, stampJobAckFromEvents } from './service.js';
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
@@ -60,12 +57,8 @@ jobEventsListRoutes.get(
   '/:id/events',
   requireAuth(),
   assertEmailVerified(),
-  zValidator('param', jobIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', eventsListQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', jobIdParamSchema),
+  zValidator('query', eventsListQuerySchema),
   async (c) => {
     const { id: jobId } = c.req.valid('param');
     const { sinceSeq, limit } = c.req.valid('query');
@@ -176,12 +169,8 @@ async function syncLinkedSession(
 jobEventsRoutes.post(
   '/:id/events',
   requireDevice(),
-  zValidator('param', jobIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', eventBatchSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', jobIdParamSchema),
+  zValidator('json', eventBatchSchema),
   async (c) => {
     const { id: jobId } = c.req.valid('param');
     const { events } = c.req.valid('json');

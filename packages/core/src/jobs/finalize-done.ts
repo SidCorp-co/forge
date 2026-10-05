@@ -4,9 +4,9 @@ import { deriveSessionFinal, materializeJobUsage } from '../agent-sessions/index
 import { db } from '../db/client.js';
 import { issueStepContexts, jobs } from '../db/schema.js';
 import { publishPipelineHealthChanged } from '../issues/index.js';
+import { logger } from '../lib/logger.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
 import { transition } from '../lifecycle/index.js';
-import { logger } from '../observability/logger.js';
 import { syncAgentSessionLifecycle } from './agent-session-link.js';
 
 type JobRow = typeof jobs.$inferSelect;

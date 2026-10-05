@@ -1,4 +1,4 @@
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { listAgentGrantedBindings } from './agent-access-store.js';
 import { directMcpIntegrations, mcpServerNameFor } from './registry.js';
 import { decryptConnectionSecrets, effectiveConfig } from './store.js';

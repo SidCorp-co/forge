@@ -1,4 +1,5 @@
 import type { NotificationType } from '../db/schema.js';
+import { portSlot } from '../lib/port-slot.js';
 
 /** One bell notice an ecosystem write raises on a side's project. */
 export interface EcosystemNotice {
@@ -30,17 +31,6 @@ export interface EcosystemSignals {
   wakeForBuild(projectId: string): Promise<unknown>;
 }
 
-let provided: EcosystemSignals | null = null;
-
-export function provideEcosystemSignals(signals: EcosystemSignals): void {
-  provided = signals;
-}
-
-export function ecosystemSignals(): EcosystemSignals {
-  if (!provided) {
-    throw new Error(
-      'ecosystem: no signals were provided, so a notice or a master wake cannot be sent; the process entry calls provideEcosystemSignals before it serves',
-    );
-  }
-  return provided;
-}
+const slot = portSlot<EcosystemSignals>('ecosystem', 'provideEcosystemSignals');
+export const provideEcosystemSignals = slot.provide;
+export const ecosystemSignals = slot.get;

@@ -11,8 +11,8 @@ import { noPromptMessage, POOL_JOB_NO_PROMPT } from '@forge/contracts/jobs';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
+import { logger } from '../lib/logger.js';
 import { transition } from '../lifecycle/index.js';
-import { logger } from '../observability/logger.js';
 import { CLASSIFIER_VERSION } from '../pipeline/index.js';
 
 export { noPromptMessage, POOL_JOB_NO_PROMPT } from '@forge/contracts/jobs';

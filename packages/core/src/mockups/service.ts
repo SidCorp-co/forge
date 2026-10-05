@@ -18,8 +18,8 @@ import { rowIn as feedbackRowIn, issueRefIn, requirementRefIn } from '../feedbac
 import { getStorage } from '../integrations/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
+import { logger } from '../lib/logger.js';
 import { movedRow, transition } from '../lifecycle/index.js';
-import { logger } from '../observability/logger.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { mockupContent } from './content.js';
 import { type MockupActor, type MockupRow, mockupKey, mockupViews, rowIn } from './read.js';

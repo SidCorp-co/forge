@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { env } from '../config/env.js';
 import { lockPatName, mintPat, revokeLiveTokens, supersedeNamedToken } from '../credentials/pat.js';
 import { deviceTokenNameFor } from '../credentials/pat-format.js';
 import { PAT_GRANT_ALL } from '../credentials/pat-permissions.js';
 import { db, type Tx } from '../db/client.js';
+import { env } from '../lib/env.js';
 import {
   agentCredentialFence,
   agentCredentialGrant,

@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { env } from '../config/env.js';
 import { INTEGRATION_PROVIDERS } from '../integrations/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { env } from '../lib/env.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, orgResource, requireHeld, requireOrgCan } from '../permissions/index.js';

@@ -18,7 +18,7 @@ import {
   landingShortfall,
   requireLandingShape,
 } from '../issues/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { onlineCapableDeviceIds, releaseIneligibleRunners } from '../runners/index.js';
 import { attempt, blocker, evaluate } from './blocker-kit.js';
 import {

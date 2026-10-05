@@ -13,7 +13,7 @@ import { db } from '../db/client.js';
 import { releaseHolds } from '../db/schema-release-ledger.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import type { IssueCriteriaReport } from '../issues/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { type ServingReading, servingClause } from './serving-reading.js';
 
 /** What holds a row back, as the sweep decided it. */

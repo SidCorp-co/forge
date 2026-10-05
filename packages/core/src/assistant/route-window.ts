@@ -27,7 +27,7 @@ import type {
   ConversationWindowCutReason,
   ConversationWindowDecision,
 } from '../db/schema-conversations.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import type { ConversationTurnRequest } from './turn-runner.js';
 import { decide } from './window-decision.js';
 

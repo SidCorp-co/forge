@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { broadcastSession } from './broadcast.js';
 import { isSystemNoise, stripSystemNoise } from './content-filter.js';
 import { agentSessionsPorts } from './ports.js';

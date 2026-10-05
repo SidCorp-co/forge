@@ -3,6 +3,7 @@
 // (ADR 0008). Read only inside a call.
 
 import type { NotificationType } from '../db/schema.js';
+import { portSlot } from '../lib/port-slot.js';
 
 /** One notification a schedule raises for a person. */
 interface ScheduleNotice {
@@ -30,17 +31,6 @@ interface SchedulesPorts {
   }): Promise<{ runId: string; issueIds: string[] }>;
 }
 
-let provided: SchedulesPorts | null = null;
-
-export function provideSchedulesPorts(ports: SchedulesPorts): void {
-  provided = ports;
-}
-
-export function schedulesPorts(): SchedulesPorts {
-  if (!provided) {
-    throw new Error(
-      'schedules: no ports were provided, so a schedule cannot notify or cut a release; the process entry calls provideSchedulesPorts before it serves',
-    );
-  }
-  return provided;
-}
+const slot = portSlot<SchedulesPorts>('schedules', 'provideSchedulesPorts');
+export const provideSchedulesPorts = slot.provide;
+export const schedulesPorts = slot.get;

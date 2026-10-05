@@ -66,35 +66,28 @@ integrationConnectionsRoutes.get('/', async (c) => {
   });
 });
 
-integrationConnectionsRoutes.post(
-  '/',
-  zValidator('json', connectionCreateSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const userId = c.get('userId');
-    assertVaultConfigured();
-    const body = c.req.valid('json');
-    // orgId present = an org-owned connection (shared across the org's
-    // projects); requires org admin. Absent = personal (user-owned).
-    if (body.orgId) {
-      const orgRole = await loadOrgRole(body.orgId, userId);
-      if (!orgRole) throw notFound('org');
-      requireOrgHeld(body.orgId, orgRole, 'org.admin');
-    }
-    const connection = await createConnection({
-      ownerType: body.orgId ? 'org' : 'user',
-      ownerId: body.orgId ?? userId,
-      provider: body.provider,
-      displayName:
-        body.displayName ?? defaultConnectionDisplayName(body.provider, body.config ?? {}),
-      config: body.config,
-      secrets: body.secrets,
-    });
-    notifyConnectionChanged(body.provider, connection.id);
-    return c.json({ connection: summarizeConnection(connection) }, 201);
-  },
-);
+integrationConnectionsRoutes.post('/', zValidator('json', connectionCreateSchema), async (c) => {
+  const userId = c.get('userId');
+  assertVaultConfigured();
+  const body = c.req.valid('json');
+  // orgId present = an org-owned connection (shared across the org's
+  // projects); requires org admin. Absent = personal (user-owned).
+  if (body.orgId) {
+    const orgRole = await loadOrgRole(body.orgId, userId);
+    if (!orgRole) throw notFound('org');
+    requireOrgHeld(body.orgId, orgRole, 'org.admin');
+  }
+  const connection = await createConnection({
+    ownerType: body.orgId ? 'org' : 'user',
+    ownerId: body.orgId ?? userId,
+    provider: body.provider,
+    displayName: body.displayName ?? defaultConnectionDisplayName(body.provider, body.config ?? {}),
+    config: body.config,
+    secrets: body.secrets,
+  });
+  notifyConnectionChanged(body.provider, connection.id);
+  return c.json({ connection: summarizeConnection(connection) }, 201);
+});
 
 integrationConnectionsRoutes.get('/:id/bindings', async (c) => {
   const id = c.req.param('id');
@@ -137,9 +130,7 @@ integrationConnectionsRoutes.post('/:id/test', async (c) => {
 
 integrationConnectionsRoutes.patch(
   '/:id',
-  zValidator('json', connectionUpdateSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('json', connectionUpdateSchema),
   async (c) => {
     const id = c.req.param('id');
     const userId = c.get('userId');

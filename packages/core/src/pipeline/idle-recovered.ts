@@ -11,7 +11,7 @@ import {
   readClaim,
   strandRuleFor,
 } from '../issues/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { advanceSweep, sweepWindow } from './sweep-cursor.js';
 
 /**

@@ -43,24 +43,13 @@ const profileSchema = z
   .object({ displayName: z.string().trim().min(1).max(200).nullable() })
   .strict();
 
-meRoutes.patch(
-  '/me',
-  zValidator('json', profileSchema, (r) => {
-    if (!r.success) {
-      throw new HTTPException(400, {
-        message: 'Invalid input',
-        cause: { code: 'BAD_REQUEST', details: r.error },
-      });
-    }
-  }),
-  async (c) => {
-    const row = await setOwnDisplayName(c.get('userId'), c.req.valid('json').displayName);
-    if (!row) {
-      throw new HTTPException(401, {
-        message: 'user not found',
-        cause: { code: 'UNAUTHENTICATED' },
-      });
-    }
-    return c.json(row);
-  },
-);
+meRoutes.patch('/me', zValidator('json', profileSchema), async (c) => {
+  const row = await setOwnDisplayName(c.get('userId'), c.req.valid('json').displayName);
+  if (!row) {
+    throw new HTTPException(401, {
+      message: 'user not found',
+      cause: { code: 'UNAUTHENTICATED' },
+    });
+  }
+  return c.json(row);
+});

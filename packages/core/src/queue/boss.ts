@@ -1,5 +1,5 @@
 import { type CommandResponse, PgBoss, type Queue } from 'pg-boss';
-import { env } from '../config/env.js';
+import { env } from '../lib/env.js';
 import { carryOverV10Jobs } from './v10-carry-over.js';
 
 /**

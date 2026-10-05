@@ -12,7 +12,6 @@
  */
 
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
-import { env } from '../config/env.js';
 import { db as defaultDb } from '../db/client.js';
 import type { ConversationAdapter, ConversationShape } from '../db/schema-conversations.js';
 import {
@@ -23,6 +22,7 @@ import {
   conversationWindows,
 } from '../db/schema-conversations.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
+import { env } from '../lib/env.js';
 import type { Executor } from './db-executor.js';
 
 /** How long a window waits for the next message before it settles. */

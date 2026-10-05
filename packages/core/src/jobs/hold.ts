@@ -7,7 +7,7 @@ import {
 } from '@forge/contracts/jobs';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 
 export {
   AUTO_RELEASE_REASONS,

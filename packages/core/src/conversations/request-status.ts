@@ -8,8 +8,8 @@
  */
 
 import type { ConversationWindowDecision } from '../db/schema-conversations.js';
-import { logger } from '../observability/logger.js';
-import { reportFailure } from '../observability/sentry.js';
+import { logger } from '../lib/logger.js';
+import { reportFailure } from '../lib/sentry.js';
 import { nothingPostedStatus, uncertainStatus } from './fallback-replies.js';
 import {
   type ConversationTransport,

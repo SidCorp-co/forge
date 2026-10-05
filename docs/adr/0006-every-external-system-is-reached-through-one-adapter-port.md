@@ -28,7 +28,7 @@ call sits now.
 | the download in ecosystem/contract/oasdiff.ts | `packages/core/src/integrations/github/published-releases/public-releases.ts` | a pinned binary download from `github.com` — not a remote spec |
 | lib/runtime-probe.ts, and the global `fetch` the environment-state read handed it | `packages/core/src/integrations/deploy/runtime-probe.ts` | a project's deployed app, through its declared runtime probe — found by the rule below, not by the hand list |
 | schedules/script/worker-entry.ts | unchanged: an exception | whatever URL a user's sandboxed script names |
-| observability/sentry.ts | unchanged: an exception | Forge's own crash reports, through `@sentry/node` |
+| lib/sentry.ts | unchanged: an exception | Forge's own crash reports, through `@sentry/node` |
 
 The dev and prod compose files name the same set from the deployment side: `SMTP_*`, `LITELLM_*`,
 `ANTHROPIC_*`, `EMBEDDINGS_*`, `GITHUB_OAUTH_*`, `GOOGLE_OIDC_*`, `OIDC_*`, `SENTRY_DSN` and
@@ -84,7 +84,7 @@ sentence that justifies it, and an exception with no reason is refused.
 - **`packages/core/src/schedules/script/worker-entry.ts`** — the sandboxed schedule script's `ctx.http.fetch`. That is
   user code calling a URL the user wrote, held to `https:` and a timeout by the sandbox; there is no
   system for a port to name, and the sandbox is the boundary.
-- **`packages/core/src/observability/sentry.ts`** — Forge's own crash reporting, initialised at boot before any domain
+- **`packages/core/src/lib/sentry.ts`** — Forge's own crash reporting, initialised at boot before any domain
   loads. It is the one module importing `@sentry/node`.
 - **The runner protocol** (the `ws`, `devices` and `runners` modules of core) is not under `integrations`: the paired box
   dials in to Forge over Forge's own contract in `packages/contracts`, so nothing there reaches out.
@@ -98,7 +98,7 @@ sentence that justifies it, and an exception with no reason is refused.
 
 - Every bypass in the table above now sits behind its port; the scan reads zero offenders.
 - **Two priced amnesties were left**, each with the condition that ended it:
-  - Callers of `packages/core/src/observability/sentry.ts` took the vendor's `Sentry` namespace from it (18 core
+  - Callers of `packages/core/src/lib/sentry.ts` took the vendor's `Sentry` namespace from it (18 core
     files outside `integrations`, read on 2026-10-04). Closed by ISS-167: the module exports role-typed
     functions (`reportFailure`, `reportCondition`, `traceStep`, `flushReports`) and no caller names `Sentry`.
   - Three domain files called a vendor directory where a source-hosting port exists (and by

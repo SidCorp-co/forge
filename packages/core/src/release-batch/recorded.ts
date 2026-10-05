@@ -21,7 +21,7 @@ import {
   TransitionError,
   transitionIssueStatus,
 } from '../issues/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/index.js';
 import { admitRoster } from './blockers.js';
 import { closeVerification, type ReleaseVerification } from './channel.js';

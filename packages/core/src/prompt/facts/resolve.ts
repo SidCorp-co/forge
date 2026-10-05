@@ -21,7 +21,7 @@ import {
   selectAlwaysInjectFromKnowledge,
   selectOnDemandSlugsFromKnowledge,
 } from '../../knowledge/index.js';
-import { logger } from '../../observability/logger.js';
+import { logger } from '../../lib/logger.js';
 import type { ProjectDocument, TestingProfile } from '../../project-config/index.js';
 import {
   listTestingProfiles,

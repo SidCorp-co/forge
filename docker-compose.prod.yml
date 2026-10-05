@@ -169,7 +169,7 @@ services:
       GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
       GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
       # Google uses full OIDC; env names follow the schema in
-      # packages/core/src/config/env.ts (GOOGLE_OIDC_*, not GOOGLE_OAUTH_*).
+      # packages/core/src/lib/env.ts (GOOGLE_OIDC_*, not GOOGLE_OAUTH_*).
       GOOGLE_OIDC_CLIENT_ID: ${GOOGLE_OIDC_CLIENT_ID:-}
       GOOGLE_OIDC_CLIENT_SECRET: ${GOOGLE_OIDC_CLIENT_SECRET:-}
       OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
@@ -185,7 +185,7 @@ services:
       EMBEDDINGS_API_KEY: ${EMBEDDINGS_API_KEY:-}
       EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL:-}
       EMBEDDINGS_DIM: ${EMBEDDINGS_DIM:-}
-      # config/env.ts reads these two as well; without a line here Coolify's
+      # lib/env.ts reads these two as well; without a line here Coolify's
       # ${VAR} injection cannot reach them and setting either in the UI is a
       # silent no-op — the same defect 8ff505af fixed for the PAT limit knobs below.
       EMBEDDINGS_FALLBACK_MODEL: ${EMBEDDINGS_FALLBACK_MODEL:-}
@@ -194,7 +194,7 @@ services:
       # SENTRY_DSN) so core and web can route to separate Sentry projects
       # — they share the same compose interpolation namespace. Empty =
       # SDK no-op; @sentry/node never attaches. See packages/core/src/
-      # observability/sentry.ts for the opt-in contract.
+      # lib/sentry.ts for the opt-in contract.
       SENTRY_DSN: ${SENTRY_DSN_CORE:-}
       # forge-runner distribution (ISS-310). Where boot-time fetch-release.js
       # stores the runner binaries + VERSION and the install routes read them.

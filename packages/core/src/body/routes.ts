@@ -1,5 +1,4 @@
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -17,25 +16,14 @@ const previewSchema = z
   })
   .strict();
 
-bodyRoutes.post(
-  '/preview',
-  zValidator('json', previewSchema, (r) => {
-    if (!r.success) {
-      throw new HTTPException(400, {
-        message: 'Invalid input',
-        cause: { code: 'BAD_REQUEST', details: r.error },
-      });
-    }
-  }),
-  (c) => {
-    const { raw, format } = c.req.valid('json');
-    const prepared = prepareBodyOrThrow({ raw, format });
-    return c.json({
-      body: prepared.body,
-      format: prepared.format,
-      warnings: prepared.warnings,
-      text: prepared.text,
-      nodes: prepared.format === 'html' ? parseBody(prepared.body) : null,
-    });
-  },
-);
+bodyRoutes.post('/preview', zValidator('json', previewSchema), (c) => {
+  const { raw, format } = c.req.valid('json');
+  const prepared = prepareBodyOrThrow({ raw, format });
+  return c.json({
+    body: prepared.body,
+    format: prepared.format,
+    warnings: prepared.warnings,
+    text: prepared.text,
+    nodes: prepared.format === 'html' ? parseBody(prepared.body) : null,
+  });
+});

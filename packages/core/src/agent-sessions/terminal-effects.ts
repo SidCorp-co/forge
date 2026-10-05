@@ -1,5 +1,5 @@
 import type { agentSessions } from '../db/schema.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
 

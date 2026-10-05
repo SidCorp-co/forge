@@ -1,4 +1,4 @@
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { boss } from '../queue/boss.js';
 import { INTEGRATIONS_QUEUE_NAME } from '../queue/names.js';
 import { dispatchThrough } from './registry.js';

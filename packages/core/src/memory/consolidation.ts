@@ -9,7 +9,7 @@ import {
   fastModelConfigured,
 } from '../integrations/llm/index.js';
 import { searchKnowledge } from '../knowledge/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { indexMemory, indexMemoryBestEffort, MAX_EMBED_CHARS } from './indexer.js';
 import { memoryOfLiveIssue } from './live-issue.js';
 import {

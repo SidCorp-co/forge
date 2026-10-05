@@ -15,7 +15,7 @@ import {
   TransitionError,
   transitionIssueStatus,
 } from '../issues/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
 import { isAutonomousProject } from './autonomous-project.js';

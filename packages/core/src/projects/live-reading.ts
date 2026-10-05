@@ -1,4 +1,4 @@
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { crossesByCherryPick, promotedBranch, readReleasePath } from '../project-config/index.js';
 import type { LiveReading } from './live-reach.js';

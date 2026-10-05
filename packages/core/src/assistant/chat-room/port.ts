@@ -40,8 +40,8 @@ import {
   resolveRoomShape,
   sendFixedReply,
 } from '../../integrations/rocketchat/index.js';
+import { logger } from '../../lib/logger.js';
 import { reframed } from '../../messaging/proven.js';
-import { logger } from '../../observability/logger.js';
 import {
   resolveSpeaker as resolveForgeSpeaker,
   type SpeakerResolution,

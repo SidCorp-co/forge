@@ -26,9 +26,6 @@ const openCountQuerySchema = z.object({ projectId: z.uuid().optional() });
 const markAllReadBodySchema = z.object({ projectId: z.uuid().optional() }).strict();
 const patchBodySchema = z.object({ read: z.boolean() }).strict();
 
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
@@ -46,43 +43,25 @@ notificationRoutes.use('*', requireAuth(), assertEmailVerified());
  * through the caller's deliveries, not over deliveries — a grouped delivery carrying
  * fifteen firing parks reads fifteen, and resolving one of them reads fourteen.
  */
-notificationRoutes.get(
-  '/open-count',
-  zValidator('query', openCountQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { projectId } = c.req.valid('query');
-    const userId = c.get('userId');
+notificationRoutes.get('/open-count', zValidator('query', openCountQuerySchema), async (c) => {
+  const { projectId } = c.req.valid('query');
+  const userId = c.get('userId');
 
-    return c.json({ count: await openNotificationCount(userId, projectId) });
-  },
-);
+  return c.json({ count: await openNotificationCount(userId, projectId) });
+});
 
-notificationRoutes.post(
-  '/mark-all-read',
-  zValidator('json', markAllReadBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const userId = c.get('userId');
-    return c.json({ updated: await markAllDeliveriesRead(userId) });
-  },
-);
+notificationRoutes.post('/mark-all-read', zValidator('json', markAllReadBodySchema), async (c) => {
+  const userId = c.get('userId');
+  return c.json({ updated: await markAllDeliveriesRead(userId) });
+});
 
-notificationRoutes.get(
-  '/',
-  zValidator('query', listQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { projectId, openOnly, page, pageSize } = c.req.valid('query');
-    const userId = c.get('userId');
+notificationRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
+  const { projectId, openOnly, page, pageSize } = c.req.valid('query');
+  const userId = c.get('userId');
 
-    const { items, total } = await listDeliveries(userId, { projectId, openOnly, page, pageSize });
-    return c.json(listResponse(c, items, total, fromPage(page, pageSize)));
-  },
-);
+  const { items, total } = await listDeliveries(userId, { projectId, openOnly, page, pageSize });
+  return c.json(listResponse(c, items, total, fromPage(page, pageSize)));
+});
 
 /**
  * Mark one delivery read, or unread.
@@ -93,12 +72,8 @@ notificationRoutes.get(
  */
 notificationRoutes.patch(
   '/:id',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', patchBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', patchBodySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { read } = c.req.valid('json');
@@ -118,40 +93,28 @@ notificationRoutes.patch(
  * of them. The list route answers the counts; this answers the members, newest first,
  * still-open ones first.
  */
-notificationRoutes.get(
-  '/:id/members',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
+notificationRoutes.get('/:id/members', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    const rows = await deliveryMembers(id, userId);
-    if (!rows) throw notFound('notification not found');
-    return c.json(rows);
-  },
-);
+  const rows = await deliveryMembers(id, userId);
+  if (!rows) throw notFound('notification not found');
+  return c.json(rows);
+});
 
-notificationRoutes.delete(
-  '/:id',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
-    const outcome = await deleteDelivery(id, userId);
-    if (!outcome.ok && outcome.code === 'NOT_FOUND') throw notFound('notification not found');
-    if (!outcome.ok && outcome.code === 'CONDITION_STILL_TRUE') {
-      const { live } = outcome;
-      throw refuse(
-        'CONDITION_STILL_TRUE',
-        `This notification carries a condition that is still true — '${live.title}' ` +
-          `(${live.type}) — and deleting it would only mean being told again on the next ` +
-          'sweep. A condition ends when the system sees it end.',
-      );
-    }
-    return c.body(null, 204);
-  },
-);
+notificationRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const userId = c.get('userId');
+  const outcome = await deleteDelivery(id, userId);
+  if (!outcome.ok && outcome.code === 'NOT_FOUND') throw notFound('notification not found');
+  if (!outcome.ok && outcome.code === 'CONDITION_STILL_TRUE') {
+    const { live } = outcome;
+    throw refuse(
+      'CONDITION_STILL_TRUE',
+      `This notification carries a condition that is still true — '${live.title}' ` +
+        `(${live.type}) — and deleting it would only mean being told again on the next ` +
+        'sweep. A condition ends when the system sees it end.',
+    );
+  }
+  return c.body(null, 204);
+});

@@ -21,7 +21,7 @@ import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import {
   activeIssuePrefix,
-  assertDispatchGatesForIssue,
+  assertDesignApprovedForIssue,
   type DispatchGateCode,
   heldTakeRefusal,
   refuseBlockedTake,
@@ -40,8 +40,8 @@ import {
   settleNoPromptJob,
 } from '../jobs/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { logger } from '../lib/logger.js';
 import { refusalCodeOf } from '../lib/refusal.js';
-import { logger } from '../observability/logger.js';
 import { releaseLabelAllows } from '../runners/index.js';
 import { runnerAdmission } from './pool-admission.js';
 import { devicesPorts } from './ports.js';
@@ -204,7 +204,7 @@ async function designGateFor(job: JobRow): Promise<Extract<PrepareResult, { ok: 
   if (!job.issueId) return null;
   try {
     await refuseBlockedTake(db, job.issueId, 'a pool job for it');
-    await assertDispatchGatesForIssue(job.projectId, job.issueId);
+    await assertDesignApprovedForIssue(job.projectId, job.issueId);
     return null;
   } catch (err) {
     const refused = heldTakeRefusal(err);

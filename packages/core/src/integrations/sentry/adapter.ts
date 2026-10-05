@@ -1,4 +1,4 @@
-import { logger } from '../../observability/logger.js';
+import { logger } from '../../lib/logger.js';
 import {
   declareIntegration,
   type HealthCheckResult,

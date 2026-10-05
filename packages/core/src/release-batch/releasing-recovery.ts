@@ -12,8 +12,8 @@ import {
   TransitionError,
   transitionIssueStatus,
 } from '../issues/index.js';
+import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
-import { logger } from '../observability/logger.js';
 import { writeRunMetadata } from '../pipeline/index.js';
 import { resolveReleaseGate } from './gate.js';
 import { FENCE_LOST } from './refuse.js';

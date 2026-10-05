@@ -12,17 +12,12 @@ import { projectWorkflowDesigns, projectWorkflows } from '../db/schema-workflows
 import type { MessageRefusal } from './contract.js';
 import type { ForgeRecord } from './forge-record.js';
 import {
-  type CriterionBlock,
-  criterionBlocksIn,
   DESIGN_FIELD,
   type DesignIdentity,
+  listed,
+  namedIdentityRefusals,
   parseDesignIdentity,
 } from './verdict-identity.js';
-
-const RULE = 'verdict-design';
-
-const SHAPE =
-  "a `design:` identity names a workflow of this issue's own project, by its flow or its id, and a revision that workflow holds: its current revision or one put in front of its approver";
 
 const EXAMPLE = [
   '```forge-record: verdict · contract 1',
@@ -106,60 +101,34 @@ export function dbDesignLookup(executor?: Tx): DesignLookup {
   };
 }
 
-function refusal(why: string, quote: string): MessageRefusal {
-  return { rule: RULE, why, quote, shape: SHAPE, example: EXAMPLE };
-}
-
-function listed(values: readonly (string | number)[]): string {
-  return values.length === 0 ? 'none' : values.map((v) => `\`${v}\``).join(', ');
-}
-
-/** The refusal one block earns for the design it names, or null where that design exists here. */
-function designRefusal(
-  block: CriterionBlock,
-  named: DesignIdentity,
-  found: DesignLookupResult,
-  projectId: string,
-): MessageRefusal | null {
-  const quote = `${DESIGN_FIELD}: ${block.design ?? ''}`;
-  const at = `criterion ${block.criterion} names design \`${named.workflow}\` rev ${named.revision}`;
-  if (found.kind === 'missing') {
-    return refusal(
-      `${at}, and this issue's project holds no workflow with that flow or id. The flows it holds: ${listed(found.flows)}`,
-      quote,
-    );
-  }
-  const { design } = found;
-  if (design.projectId !== projectId) {
-    return refusal(
-      `${at}, which is workflow \`${design.flow}\` of another project — a verdict is judged against a design of its own issue's project`,
-      quote,
-    );
-  }
-  if (!design.revisions.includes(named.revision)) {
-    return refusal(
-      `${at}, and workflow \`${design.flow}\` holds no revision ${named.revision}. The revisions it holds: ${listed([...design.revisions].sort((a, b) => a - b))}`,
-      quote,
-    );
-  }
-  return null;
-}
-
-/** Everything a `verdict` record is refused for about the designs its blocks name. A value not
- *  written as a design identity is `verdict-identity`'s to refuse, and is not looked up here. */
-export async function verdictDesignRefusals(
+/** Everything a `verdict` record is refused for about the designs its blocks name. */
+export function verdictDesignRefusals(
   projectId: string,
   record: ForgeRecord | null,
   lookup: DesignLookup,
 ): Promise<MessageRefusal[]> {
-  const out: MessageRefusal[] = [];
-  for (const block of criterionBlocksIn(record)) {
-    if (block.verdict === null || block.design === null) continue;
-    const named = parseDesignIdentity(block.design);
-    if (!named) continue;
-    const found = await lookup(projectId, named.workflow);
-    const refused = designRefusal(block, named, found, projectId);
-    if (refused) out.push(refused);
-  }
-  return out;
+  return namedIdentityRefusals(
+    record,
+    {
+      rule: 'verdict-design',
+      shape:
+        "a `design:` identity names a workflow of this issue's own project, by its flow or its id, and a revision that workflow holds: its current revision or one put in front of its approver",
+      example: EXAMPLE,
+      field: DESIGN_FIELD,
+      parse: parseDesignIdentity,
+      why: (block, named: DesignIdentity, found: DesignLookupResult) => {
+        const at = `criterion ${block.criterion} names design \`${named.workflow}\` rev ${named.revision}`;
+        if (found.kind === 'missing') {
+          return `${at}, and this issue's project holds no workflow with that flow or id. The flows it holds: ${listed(found.flows)}`;
+        }
+        const { design } = found;
+        if (design.projectId !== projectId) {
+          return `${at}, which is workflow \`${design.flow}\` of another project — a verdict is judged against a design of its own issue's project`;
+        }
+        if (design.revisions.includes(named.revision)) return null;
+        return `${at}, and workflow \`${design.flow}\` holds no revision ${named.revision}. The revisions it holds: ${listed([...design.revisions].sort((a, b) => a - b))}`;
+      },
+    },
+    (named) => lookup(projectId, named.workflow),
+  );
 }

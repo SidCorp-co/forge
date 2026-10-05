@@ -7,8 +7,8 @@ import {
   enqueueOutboundDispatch,
   listActiveDeployBindingsForProvider,
 } from '../integrations/index.js';
-import { logger } from '../observability/logger.js';
-import { traceStep } from '../observability/sentry.js';
+import { logger } from '../lib/logger.js';
+import { traceStep } from '../lib/sentry.js';
 import {
   abandonDeployDispatchHold,
   acquireDeployLocks,

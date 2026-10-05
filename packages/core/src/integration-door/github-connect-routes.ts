@@ -35,11 +35,11 @@ import {
   resolveApiBaseUrl,
 } from '../integrations/index.js';
 import { loadOrgRole } from '../lib/authz.js';
+import { logger } from '../lib/logger.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { logger } from '../observability/logger.js';
 import { actorFor, projectResource, requireCan, requireOrgHeld } from '../permissions/index.js';
 
 const refuse = refuser<IntegrationRefusalCode>('INTEGRATION_REFUSED');

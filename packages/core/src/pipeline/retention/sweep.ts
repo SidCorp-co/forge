@@ -3,7 +3,7 @@ import { db } from '../../db/client.js';
 import { agentSessions } from '../../db/schema.js';
 import { TRANSCRIPT_FINALIZED_KEY } from '../../db/transcript-marker.js';
 import { type CollapseResult, collapseNarration } from '../../issues/index.js';
-import { logger } from '../../observability/logger.js';
+import { logger } from '../../lib/logger.js';
 import { deriveSessionFinal, stampFinalizeAttempt } from '../ports.js';
 import {
   finalizeRepairMax,

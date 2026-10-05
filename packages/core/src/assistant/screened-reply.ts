@@ -7,6 +7,7 @@ import {
   screened,
   unverifiedFallbackReply,
 } from '../conversations/index.js';
+import { logger } from '../lib/logger.js';
 import {
   type DoorId,
   type MessageRefusal,
@@ -16,7 +17,6 @@ import {
 import { doorPolicy } from '../messaging/doors.js';
 import { withRepairs } from '../messaging/repairs.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
-import { logger } from '../observability/logger.js';
 import type { ExternalChatTurnResult } from './external-chat.js';
 
 /**

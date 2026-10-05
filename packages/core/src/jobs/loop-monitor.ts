@@ -3,8 +3,8 @@ import { and, eq, inArray, isNotNull, lt, or, type SQL, sql } from 'drizzle-orm'
 import { SWEEP_SESSION_COLUMNS, transitionSessions } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
+import { logger } from '../lib/logger.js';
 import { transition } from '../lifecycle/index.js';
-import { logger } from '../observability/logger.js';
 import {
   CLASSIFIER_VERSION,
   emitPipelineWedge,

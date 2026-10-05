@@ -7,8 +7,8 @@ import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/index.js';
 import { TransitionError, transitionIssueStatus } from '../issues/index.js';
+import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
-import { logger } from '../observability/logger.js';
 import { cancelConcludedRun, closeRunIfOneShot, stampReleaseShipped } from '../pipeline/index.js';
 import {
   abortedError,

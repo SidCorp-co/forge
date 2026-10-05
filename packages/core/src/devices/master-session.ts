@@ -4,7 +4,7 @@ import { beatSession, insertSessionRow, transitionSessions } from '../agent-sess
 import { db, type Tx } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { insertOneShotRun, type OneShotRunSpec } from '../pipeline/index.js';
 
 export interface MasterSession {

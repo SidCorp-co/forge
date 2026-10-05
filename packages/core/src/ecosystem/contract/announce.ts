@@ -2,7 +2,7 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import type { Tx } from '../../db/client.js';
 import { embedFeedbackLater, fileContractChangeIn } from '../../feedback/index.js';
 import { dataPolicyOf } from '../../lib/data-egress.js';
-import { logger } from '../../observability/logger.js';
+import { logger } from '../../lib/logger.js';
 import { tellEachSide } from '../channel-signals.js';
 import { consumersOf } from '../interface-store.js';
 import { ecosystemSignals } from '../ports.js';

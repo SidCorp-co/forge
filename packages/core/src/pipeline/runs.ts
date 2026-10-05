@@ -11,8 +11,8 @@ import { RUN_MACHINE } from '@forge/contracts/run-machine';
 import { and, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { jobs, type PipelineRunKind, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
+import { logger } from '../lib/logger.js';
 import { transition } from '../lifecycle/index.js';
-import { logger } from '../observability/logger.js';
 import { markCloseDeferred, readDeployHolds, resolveDeployGate } from './deploy-confirmations.js';
 import {
   cascadeCancelChildJobs,

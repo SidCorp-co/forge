@@ -1,17 +1,17 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { RULES } from '../config/rate-limits.js';
 import { devicePlatforms, runnerProvisionStatuses } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { readPluginDesignations, unionPluginDesignations } from '../lib/plugin-designation.js';
+import { RULES } from '../lib/rate-limits.js';
 import { RefusalError } from '../lib/refusal.js';
 import { deviceRoom, roomManager, userRoom } from '../lib/rooms.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { badRequest, forbidden, notFound } from '../middleware/route-errors.js';
+import { forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, orgResource, requireHeld, requireOrgCan } from '../permissions/index.js';
 import { patchDeviceRunnerCheckout } from '../runners/index.js';
@@ -77,9 +77,7 @@ export const devicePublicRoutes = new Hono();
 devicePublicRoutes.post(
   '/pair',
   rateLimit(() => RULES.devicesPair, { name: 'devices:pair' }),
-  zValidator('json', pairBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('json', pairBodySchema),
   async (c) => {
     const input = c.req.valid('json');
     const result = await redeemPairingCode({
@@ -113,31 +111,25 @@ deviceOwnerRoutes.use('*', requireAuth(), assertEmailVerified());
 
 const ownerDevicesQuery = z.object({ orgId: z.uuid().optional() });
 
-deviceOwnerRoutes.get(
-  '/me/devices',
-  zValidator('query', ownerDevicesQuery, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const userId = c.get('userId');
-    // ISS-477 — optional org scope, NARROWING this owner-scoped list: the filter
-    // sits on top of `devices.ownerId`, so the answer is always a subset of the
-    // caller's own, and an unassigned box has no runner row and so falls under no
-    // org scope at all. The organisation's devices are a different population,
-    // served by `/api/orgs/:orgId/devices` in `devices/org-routes.ts` (ISS-1162).
-    const { orgId } = c.req.valid('query');
-    if (orgId !== undefined) await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
+deviceOwnerRoutes.get('/me/devices', zValidator('query', ownerDevicesQuery), async (c) => {
+  const userId = c.get('userId');
+  // ISS-477 — optional org scope, NARROWING this owner-scoped list: the filter
+  // sits on top of `devices.ownerId`, so the answer is always a subset of the
+  // caller's own, and an unassigned box has no runner row and so falls under no
+  // org scope at all. The organisation's devices are a different population,
+  // served by `/api/orgs/:orgId/devices` in `devices/org-routes.ts` (ISS-1162).
+  const { orgId } = c.req.valid('query');
+  if (orgId !== undefined) await requireOrgCan(actorFor(userId), 'org.read', orgResource(orgId));
 
-    const rows = await listOwnedDevices(userId, orgId);
-    // ISS-392, widened by ISS-1165 — each box is compared against the published
-    // release AND the runner head on the default branch. The second is what catches
-    // a release that was never cut, where every box reports the number the last one
-    // carried and nothing reads as behind.
-    const annotated = withDeviceGate(await annotateDeviceBuilds(rows));
-    // Literally true, not defaulted: the WHERE above filters on `devices.ownerId`.
-    return c.json(annotated.map((d) => ({ ...d, ownedByMe: true })));
-  },
-);
+  const rows = await listOwnedDevices(userId, orgId);
+  // ISS-392, widened by ISS-1165 — each box is compared against the published
+  // release AND the runner head on the default branch. The second is what catches
+  // a release that was never cut, where every box reports the number the last one
+  // carried and nothing reads as behind.
+  const annotated = withDeviceGate(await annotateDeviceBuilds(rows));
+  // Literally true, not defaulted: the WHERE above filters on `devices.ownerId`.
+  return c.json(annotated.map((d) => ({ ...d, ownedByMe: true })));
+});
 
 const deviceIdParamSchema = z.object({ id: z.uuid() });
 
@@ -155,12 +147,8 @@ const updateDeviceSchema = z
 
 deviceOwnerRoutes.patch(
   '/devices/:id',
-  zValidator('param', deviceIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', updateDeviceSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', deviceIdParamSchema),
+  zValidator('json', updateDeviceSchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { name, disabled } = c.req.valid('json');
@@ -202,33 +190,27 @@ deviceOwnerRoutes.patch(
   },
 );
 
-deviceOwnerRoutes.delete(
-  '/devices/:id',
-  zValidator('param', deviceIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
+deviceOwnerRoutes.delete('/devices/:id', zValidator('param', deviceIdParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    await ownedDevice(id, userId);
+  await ownedDevice(id, userId);
 
-    await revokeDevice(id, restActor(c));
+  await revokeDevice(id, restActor(c));
 
-    try {
-      roomManager.publish(userRoom(userId), {
-        event: 'device.revoked',
-        data: { deviceId: id },
-      });
-      roomManager.publish(deviceRoom(id), {
-        event: 'device.revoked',
-        data: { deviceId: id },
-      });
-    } catch {}
+  try {
+    roomManager.publish(userRoom(userId), {
+      event: 'device.revoked',
+      data: { deviceId: id },
+    });
+    roomManager.publish(deviceRoom(id), {
+      event: 'device.revoked',
+      data: { deviceId: id },
+    });
+  } catch {}
 
-    return c.body(null, 204);
-  },
-);
+  return c.body(null, 204);
+});
 
 // ISS-273 — owner-scoped runner discovery for the web device-management page.
 // Mirrors the device-token `GET /me/runners` (above) but authed by the user
@@ -237,9 +219,7 @@ deviceOwnerRoutes.delete(
 // online/offline status.
 deviceOwnerRoutes.get(
   '/devices/:id/runners',
-  zValidator('param', deviceIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', deviceIdParamSchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
@@ -258,9 +238,7 @@ deviceUserRoutes.use('*', requireAuth(), assertEmailVerified());
 
 deviceUserRoutes.post(
   '/:id/devices/pairing-codes',
-  zValidator('param', mintCodeParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', mintCodeParamSchema),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const userId = c.get('userId');
@@ -283,9 +261,7 @@ deviceAuthRoutes.route('/', deviceProvisionRoutes);
 deviceAuthRoutes.post(
   '/heartbeat',
   requireDevice(),
-  zValidator('json', heartbeatBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('json', heartbeatBodySchema),
   async (c) => {
     const device = c.get('device');
     const input = c.req.valid('json');
@@ -357,12 +333,8 @@ const meRunnerPatchSchema = z
 deviceAuthRoutes.patch(
   '/me/runners/:runnerId',
   requireDevice(),
-  zValidator('param', z.object({ runnerId: z.uuid() }), (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', meRunnerPatchSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', z.object({ runnerId: z.uuid() })),
+  zValidator('json', meRunnerPatchSchema),
   async (c) => {
     const device = c.get('device');
     if (device.status === 'revoked') throw unauth();
@@ -394,12 +366,8 @@ const provisionStatusSchema = z
 deviceAuthRoutes.post(
   '/me/runners/:runnerId/provision-status',
   requireDevice(),
-  zValidator('param', z.object({ runnerId: z.uuid() }), (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', provisionStatusSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', z.object({ runnerId: z.uuid() })),
+  zValidator('json', provisionStatusSchema),
   async (c) => {
     const device = c.get('device');
     if (device.status === 'revoked') throw unauth();
@@ -424,6 +392,7 @@ deviceAuthRoutes.post(
   },
 );
 
+export { installRoutes } from './install-routes.js';
 export { deviceLoginRoutes } from './login-routes.js';
 export { deviceMcpServerRoutes } from './mcp-servers-routes.js';
 export { deviceOrgRoutes } from './org-routes.js';

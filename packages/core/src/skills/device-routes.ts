@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { assertDeviceBoundToProject } from '../devices/index.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { badRequest, notFound } from '../middleware/route-errors.js';
+import { notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { resolveRegisteredEffectiveSkills } from './effective.js';
 
@@ -33,9 +33,7 @@ export const deviceSkillRoutes = new Hono<{ Variables: DeviceVars }>();
 deviceSkillRoutes.get(
   '/me/skills',
   requireDevice(),
-  zValidator('query', projectQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('query', projectQuerySchema),
   async (c) => {
     const device = c.get('device');
     if (device.status === 'revoked') throw unauth();
@@ -73,12 +71,8 @@ deviceSkillRoutes.get(
 deviceSkillRoutes.get(
   '/me/skills/:skillId/content',
   requireDevice(),
-  zValidator('param', contentParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', contentQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', contentParamSchema),
+  zValidator('query', contentQuerySchema),
   async (c) => {
     const device = c.get('device');
     if (device.status === 'revoked') throw unauth();

@@ -1,11 +1,11 @@
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { type PatRequestClass, patRuleFor } from '../config/rate-limits.js';
 import { writeMcpAudit } from '../credentials/mcp-audit.js';
 import { touchPatUsage, verifyPat } from '../credentials/pat.js';
 import { isPatLike } from '../credentials/pat-format.js';
 import { patPrincipalOf } from '../credentials/pat-principal.js';
+import { type PatRequestClass, patRuleFor } from '../lib/rate-limits.js';
 import { roomManager, userRoom } from '../lib/rooms.js';
 import { parseBearerHeader } from './bearer.js';
 import { declareGate } from './declared-gate.js';

@@ -2,9 +2,10 @@ import { PROJECT_PERMISSIONS, type ProjectPermission } from '@forge/contracts/pe
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { env } from '../config/env.js';
 import { projectMemberRoles } from '../db/schema.js';
 import { loadOrgRole, loadProjectAccess } from '../lib/authz.js';
+import { env } from '../lib/env.js';
+import { logger } from '../lib/logger.js';
 import { RefusalError } from '../lib/refusal.js';
 import {
   type AuthVars,
@@ -14,7 +15,6 @@ import {
 } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { logger } from '../observability/logger.js';
 import { requireHeld } from '../permissions/index.js';
 import { sendInvitationEmail } from './invitation-email.js';
 import { issueInvitationToken } from './invitation-token.js';

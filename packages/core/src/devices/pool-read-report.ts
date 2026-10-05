@@ -9,7 +9,7 @@
  */
 
 import { z } from 'zod';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { storeRunnerPoolReads } from '../runners/index.js';
 import { WIRE_UNITS } from './gate-report.js';
 

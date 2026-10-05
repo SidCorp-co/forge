@@ -23,8 +23,8 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
+import { logger } from '../lib/logger.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
-import { logger } from '../observability/logger.js';
 import { classifyIssueWorker, type SessionWorkerLane, unreadableWorker } from './issue-worker.js';
 import { holderFanout, readClaim } from './lease-fanout.js';
 import { loadActiveJobsByIssue, loadPausedRunsByIssue } from './pipeline-health-loaders.js';

@@ -1,7 +1,7 @@
 import { EmbeddingUnavailableError, embed } from '../integrations/llm/index.js';
+import { logger } from '../lib/logger.js';
 import type { MemoryHit } from '../memory/index.js';
 import { runMemorySearch } from '../memory/index.js';
-import { logger } from '../observability/logger.js';
 import type { KnowledgeHit } from './search.js';
 import { hybridSearchKnowledge, keywordSearchKnowledge, searchKnowledge } from './search.js';
 

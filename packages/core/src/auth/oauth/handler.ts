@@ -10,7 +10,6 @@ import type { Context } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { env } from '../../config/env.js';
 import { setAuthCookie } from '../../credentials/cookie.js';
 import { signUserToken } from '../../credentials/jwt.js';
 import { db } from '../../db/client.js';
@@ -24,7 +23,8 @@ import {
   type ProviderConfig,
   type ProviderId,
 } from '../../integrations/identity/index.js';
-import { logger } from '../../observability/logger.js';
+import { env } from '../../lib/env.js';
+import { logger } from '../../lib/logger.js';
 import { ensurePersonalOrg } from '../../orgs/index.js';
 import { assertNotAgentUser } from '../agent-login-gate.js';
 import { getCallbackUrl, getProvider } from './providers.js';

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { readRunnerPoolRead } from '../devices/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
-import { badRequest, idParamSchema } from '../middleware/route-errors.js';
+import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { clearRunnerFaultFlags } from './clear-fault-flags.js';
@@ -40,31 +40,21 @@ export const projectRunnerRoutes = new Hono<{ Variables: AuthVars }>();
 // Project-centric runner list — the device pools serving THIS project, with
 // device identity + live provision status. Powers the project Runners screen
 // (the inverse of the device-centric GET /api/devices/:id/runners). Any member.
-projectRunnerRoutes.get(
-  '/:id/runners',
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
-    const access = await loadProjectAccess(id, userId);
-    requireHeld(access, 'project.read');
+projectRunnerRoutes.get('/:id/runners', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const userId = c.get('userId');
+  const access = await loadProjectAccess(id, userId);
+  requireHeld(access, 'project.read');
 
-    const rows = await listProjectRunnerPools(id);
+  const rows = await listProjectRunnerPools(id);
 
-    return c.json(rows.map((r) => ({ ...r, poolRead: readRunnerPoolRead(r.poolRead) })));
-  },
-);
+  return c.json(rows.map((r) => ({ ...r, poolRead: readRunnerPoolRead(r.poolRead) })));
+});
 
 projectRunnerRoutes.post(
   '/:id/runners',
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  zValidator('json', createRunnerBodySchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', createRunnerBodySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { deviceId, capabilities, repoPath, branch } = c.req.valid('json');
@@ -116,12 +106,8 @@ const patchRunnerBodySchema = z
 
 projectRunnerRoutes.patch(
   '/:id/runners/:runnerId',
-  zValidator('param', runnerParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  zValidator('json', patchRunnerBodySchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', runnerParamSchema),
+  zValidator('json', patchRunnerBodySchema),
   async (c) => {
     const { id, runnerId } = c.req.valid('param');
     const { repoPath, branch, capabilities, labels } = c.req.valid('json');
@@ -150,9 +136,7 @@ projectRunnerRoutes.patch(
 
 projectRunnerRoutes.post(
   '/:id/runners/:runnerId/clear-error',
-  zValidator('param', runnerParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', runnerParamSchema),
   async (c) => {
     const { id, runnerId } = c.req.valid('param');
     const userId = c.get('userId');
@@ -174,9 +158,7 @@ projectRunnerRoutes.post(
 
 projectRunnerRoutes.delete(
   '/:id/runners/:runnerId',
-  zValidator('param', runnerParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', runnerParamSchema),
   async (c) => {
     const { id, runnerId } = c.req.valid('param');
     const userId = c.get('userId');

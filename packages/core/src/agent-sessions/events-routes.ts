@@ -23,12 +23,7 @@ import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { refuseSession } from './refusals.js';
 import { appendChatLines } from './service.js';
-import {
-  assertDeviceOwnsSession,
-  badRequest,
-  idParamSchema,
-  loadSessionOr404,
-} from './session-access.js';
+import { assertDeviceOwnsSession, idParamSchema, loadSessionOr404 } from './session-access.js';
 import { maybeDeriveIncrementalFor } from './session-transcript.js';
 
 /** How many lines one POST may carry, matching the runner's own chunking. */
@@ -98,12 +93,8 @@ export const agentSessionEventsRoutes = new Hono<{ Variables: AuthVars }>();
 
 agentSessionEventsRoutes.post(
   '/:id/events',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', eventBatchSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', eventBatchSchema),
   async (c) => {
     const { id: sessionId } = c.req.valid('param');
     const { events } = c.req.valid('json');

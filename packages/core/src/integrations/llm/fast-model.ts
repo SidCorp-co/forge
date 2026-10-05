@@ -10,10 +10,10 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText, NoObjectGeneratedError, NoOutputGeneratedError, Output } from 'ai';
 import type { z } from 'zod';
-import { env } from '../../config/env.js';
 import { type EgressScope, egressScoped } from '../../lib/data-egress.js';
+import { env } from '../../lib/env.js';
+import { logger } from '../../lib/logger.js';
 import { openAiCompatBaseUrl } from '../../lib/openai-compat-url.js';
-import { logger } from '../../observability/logger.js';
 import { badRequestBody, errorText } from './ai-sdk.js';
 
 /** Hard cap so a hung endpoint can never wedge a pg-boss worker. */

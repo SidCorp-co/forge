@@ -9,7 +9,7 @@ import {
   fastModelConfigured,
 } from '../integrations/llm/index.js';
 import { canonicalIssueKey, formatIssueRef } from '../lib/issue-ref.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { boss } from '../queue/boss.js';
 import { runMemoryFeedback } from './feedback-service.js';

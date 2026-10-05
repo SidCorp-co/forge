@@ -35,7 +35,7 @@ import {
 } from '../issues/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { canonicalIssueKey, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { closeRunIfOneShot, insertOneShotRun, type OneShotRunSpec } from '../pipeline/index.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { projectAdmission, runnerNotAdmitted } from './pool-admission.js';

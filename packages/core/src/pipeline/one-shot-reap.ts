@@ -8,7 +8,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { kindTuple } from '../db/session-vocabulary.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import {
   broadcastSessionEvent,
   getLoopThresholds,

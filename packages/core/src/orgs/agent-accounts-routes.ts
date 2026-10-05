@@ -25,9 +25,6 @@ import { agentSelfPatchSchema, readAgentSelf, writeAgentSelf } from './agent-sel
 
 export const agentAccountRoutes = new Hono<{ Variables: AuthVars }>();
 
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
 const notFound = (message = 'not found') =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
@@ -48,26 +45,16 @@ const createAgentSchema = z
     projectRole: z.enum(projectMemberRoles).optional(),
   })
   .strict();
-agentAccountRoutes.get(
-  '/:orgId/agents',
-  zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  async (c) => {
-    const { orgId } = c.req.valid('param');
-    await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
-    return c.json({ agents: await listAgentAccounts(orgId) });
-  },
-);
+agentAccountRoutes.get('/:orgId/agents', zValidator('param', orgParamSchema), async (c) => {
+  const { orgId } = c.req.valid('param');
+  await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
+  return c.json({ agents: await listAgentAccounts(orgId) });
+});
 
 agentAccountRoutes.post(
   '/:orgId/agents',
-  zValidator('param', orgParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  zValidator('json', createAgentSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', orgParamSchema),
+  zValidator('json', createAgentSchema),
   async (c) => {
     const { orgId } = c.req.valid('param');
     const body = c.req.valid('json');
@@ -87,9 +74,7 @@ agentAccountRoutes.post(
 
 agentAccountRoutes.post(
   '/:orgId/agents/:agentUserId/tokens',
-  zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', agentParamSchema),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
     await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
@@ -102,9 +87,7 @@ agentAccountRoutes.post(
 
 agentAccountRoutes.delete(
   '/:orgId/agents/:agentUserId/tokens',
-  zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', agentParamSchema),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
     await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
@@ -116,12 +99,8 @@ agentAccountRoutes.delete(
 
 agentAccountRoutes.patch(
   '/:orgId/agents/:agentUserId',
-  zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  zValidator('json', displayNameSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', agentParamSchema),
+  zValidator('json', displayNameSchema),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
     await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
@@ -141,9 +120,7 @@ agentAccountRoutes.patch(
 
 agentAccountRoutes.get(
   '/:orgId/agents/:agentUserId/self',
-  zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', agentParamSchema),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
     await requireOrgCan(actorFor(c.get('userId')), 'org.admin', orgResource(orgId));
@@ -155,12 +132,8 @@ agentAccountRoutes.get(
 
 agentAccountRoutes.patch(
   '/:orgId/agents/:agentUserId/self',
-  zValidator('param', agentParamSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
-  zValidator('json', agentSelfPatchSchema, (result) => {
-    if (!result.success) throw badRequest(result.error);
-  }),
+  zValidator('param', agentParamSchema),
+  zValidator('json', agentSelfPatchSchema),
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
     const actor = c.get('userId');

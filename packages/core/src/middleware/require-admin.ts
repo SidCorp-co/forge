@@ -1,6 +1,6 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { env } from '../config/env.js';
+import { env } from '../lib/env.js';
 import { type AuthVars, authUserRow, readAuthUser } from './auth.js';
 import { declareGate } from './declared-gate.js';
 

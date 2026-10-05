@@ -4,8 +4,8 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { runners } from '../db/schema.js';
+import { logger } from '../lib/logger.js';
 import { deviceRoom, roomManager } from '../lib/rooms.js';
-import { logger } from '../observability/logger.js';
 import { consume } from '../outbox/index.js';
 
 /** Every status a master can take work from, plus the two it reads to decide (promote, release). */

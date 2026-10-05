@@ -7,7 +7,7 @@ import {
   notifications,
   userPreferences,
 } from '../db/schema.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
 import { INITIAL_STATE, inhibitorsOf, kindOf, pendingEvaluationsFor, tierOf } from './kinds.js';
 

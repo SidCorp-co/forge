@@ -1,3 +1,4 @@
+import { portSlot } from '../lib/port-slot.js';
 /** One dependency edge of an issue, as relation expansion reads it. */
 export interface IssueRelationEdge {
   otherIssueId: string;
@@ -16,17 +17,6 @@ export interface MemoryIssueReads {
   relationEdges(issueIds: string[], projectId: string): Promise<Map<string, IssueRelationEdge[]>>;
 }
 
-let provided: MemoryIssueReads | null = null;
-
-export function provideMemoryIssueReads(reads: MemoryIssueReads): void {
-  provided = reads;
-}
-
-export function memoryIssueReads(): MemoryIssueReads {
-  if (!provided) {
-    throw new Error(
-      'memory: no issue reads were provided, so relation expansion cannot read an issue; the process entry calls provideMemoryIssueReads before it serves',
-    );
-  }
-  return provided;
-}
+const slot = portSlot<MemoryIssueReads>('memory', 'provideMemoryIssueReads');
+export const provideMemoryIssueReads = slot.provide;
+export const memoryIssueReads = slot.get;

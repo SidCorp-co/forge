@@ -19,7 +19,6 @@ import {
   renderContractContext,
 } from './ecosystem/index.js';
 import { reportLinksOf } from './feedback/index.js';
-import { getPublishedRunnerBuild } from './install/index.js';
 import { cmpVersion, mainRunnerHead } from './integrations/github/index.js';
 import {
   applyGrantedMcpServers,
@@ -138,7 +137,6 @@ export function provideExecutionPorts(): void {
     withDeclaredSource,
     projectsWithHostCredential,
     isHttpsGitUrl,
-    publishedRunnerBuild: getPublishedRunnerBuild,
     mainRunnerHead,
     cmpVersion,
     questions: {

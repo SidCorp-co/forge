@@ -14,14 +14,14 @@ import {
   type RerankReport,
 } from '@forge/contracts/memory';
 import { z } from 'zod';
-import { env } from '../config/env.js';
 import {
   callFastModelObject,
   type FastModelMiss,
   fastModelName,
 } from '../integrations/llm/index.js';
 import { createLimiter } from '../lib/bounded-concurrency.js';
-import { logger } from '../observability/logger.js';
+import { env } from '../lib/env.js';
+import { logger } from '../lib/logger.js';
 import type { MemoryHit } from './search.js';
 
 const RERANK_POOL_FACTOR = 3;

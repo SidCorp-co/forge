@@ -25,8 +25,8 @@ import {
   SourceHostInputRefusal,
   SourceHostUnavailable,
 } from '../integrations/source-host/index.js';
+import { logger } from '../lib/logger.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
-import { logger } from '../observability/logger.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { resolveEffectiveProjectId } from '../projects/index.js';
 

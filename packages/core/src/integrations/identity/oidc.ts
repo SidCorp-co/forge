@@ -1,5 +1,5 @@
 import * as client from 'openid-client';
-import { env } from '../../config/env.js';
+import { env } from '../../lib/env.js';
 import type {
   LoginFinish,
   LoginStart,

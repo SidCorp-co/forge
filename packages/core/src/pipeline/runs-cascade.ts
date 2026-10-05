@@ -3,8 +3,8 @@ import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import { and, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
+import { logger } from '../lib/logger.js';
 import { transition } from '../lifecycle/index.js';
-import { logger } from '../observability/logger.js';
 import { requestJobKill, transitionSessions } from './ports.js';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];

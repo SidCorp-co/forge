@@ -1,4 +1,4 @@
-import { env } from '../../config/env.js';
+import { env } from '../../lib/env.js';
 
 function appBaseUrl(): string {
   return env.APP_BASE_URL.replace(/\/+$/, '');

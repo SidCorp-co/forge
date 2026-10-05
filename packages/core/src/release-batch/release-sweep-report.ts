@@ -6,7 +6,7 @@ import { postIssueNoticeOnce } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import type { IssueCriteriaReport } from '../issues/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { servingClause, whyUncorroborated } from './serving-reading.js';
 

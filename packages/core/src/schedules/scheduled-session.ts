@@ -27,7 +27,7 @@ import { turnAuthorityRefusalOf } from '../credentials/turn-credential.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 
 type AgentSessionRow = typeof agentSessions.$inferSelect;
 

@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { env } from '../config/env.js';
+import { env } from './env.js';
 
 /** How long a project or org invitation stays open. */
 export const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;

@@ -3,9 +3,9 @@ import { isLivePauseReason } from '@forge/contracts/run-standing';
 import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
+import { logger } from '../lib/logger.js';
 import { projectRoom, roomManager } from '../lib/rooms.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
-import { logger } from '../observability/logger.js';
 
 export {
   describePause,

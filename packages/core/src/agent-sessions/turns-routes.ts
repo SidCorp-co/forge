@@ -22,7 +22,6 @@ import { editUserTurn, insertForkedSession, requeueForRegeneration } from './ser
 import {
   assertAgentChatOwner,
   assertSessionOwnerOrAdmin,
-  badRequest,
   ensureSessionMember,
   ensureSessionOwnerOrAdmin,
   idParamSchema,
@@ -69,12 +68,8 @@ export const agentSessionTurnsRoutes = new Hono<{ Variables: AuthVars }>();
 
 agentSessionTurnsRoutes.get(
   '/:id/turns',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('query', turnsQuerySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('query', turnsQuerySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { after, limit } = c.req.valid('query');
@@ -97,12 +92,8 @@ agentSessionTurnsRoutes.get(
 
 agentSessionTurnsRoutes.patch(
   '/:id/turns/:turnId',
-  zValidator('param', turnIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', editTurnBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', turnIdParamSchema),
+  zValidator('json', editTurnBodySchema),
   async (c) => {
     const { id, turnId } = c.req.valid('param');
     const { content, expectedEditedAt } = c.req.valid('json');
@@ -168,9 +159,7 @@ agentSessionTurnsRoutes.patch(
 
 agentSessionTurnsRoutes.post(
   '/:id/turns/:turnId/regenerate',
-  zValidator('param', turnIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', turnIdParamSchema),
   async (c) => {
     const { id, turnId } = c.req.valid('param');
     const userId = c.get('userId');
@@ -234,12 +223,8 @@ agentSessionTurnsRoutes.post(
 
 agentSessionTurnsRoutes.post(
   '/:id/fork',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  zValidator('json', forkBodySchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', forkBodySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { fromTurnId, title } = c.req.valid('json');
@@ -295,58 +280,52 @@ agentSessionTurnsRoutes.post(
   },
 );
 
-agentSessionTurnsRoutes.post(
-  '/:id/rerun',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(r.error);
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
+agentSessionTurnsRoutes.post('/:id/rerun', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const userId = c.get('userId');
 
-    const { session } = await ensureSessionOwnerOrAdmin(id, userId);
-    if (session.status === 'running' || session.status === 'queued') {
-      throw refuseSession('SESSION_RUNNING', 'wait for the in-flight turn before rerunning');
-    }
+  const { session } = await ensureSessionOwnerOrAdmin(id, userId);
+  if (session.status === 'running' || session.status === 'queued') {
+    throw refuseSession('SESSION_RUNNING', 'wait for the in-flight turn before rerunning');
+  }
 
-    const messages = Array.isArray(session.messages) ? session.messages : [];
-    const firstUser = messages.find(isUserEntry) as { content?: unknown } | undefined;
-    const prompt = extractPromptString(firstUser?.content);
-    if (!prompt) {
-      throw refuseSession('NO_PROMPT', 'no user prompt to rerun');
-    }
+  const messages = Array.isArray(session.messages) ? session.messages : [];
+  const firstUser = messages.find(isUserEntry) as { content?: unknown } | undefined;
+  const prompt = extractPromptString(firstUser?.content);
+  if (!prompt) {
+    throw refuseSession('NO_PROMPT', 'no user prompt to rerun');
+  }
 
-    const client = await resolveInteractiveClient(session, { scope: 'session' });
-    const authority = await authorizeInteractiveTurn({
-      client,
-      projectId: session.projectId,
-      asker: { userId, viaTokenId: c.get('patTokenId') ?? null },
-    });
+  const client = await resolveInteractiveClient(session, { scope: 'session' });
+  const authority = await authorizeInteractiveTurn({
+    client,
+    projectId: session.projectId,
+    asker: { userId, viaTokenId: c.get('patTokenId') ?? null },
+  });
 
-    const project = await projectHandle(session.projectId);
-    if (!project) throw notFound('project not found');
+  const project = await projectHandle(session.projectId);
+  if (!project) throw notFound('project not found');
 
-    const inserted = await createChatSessionRow({
-      projectId: session.projectId,
-      userId,
-      title: session.title ? `${session.title} (rerun)` : null,
-      parentSessionId: id,
-      metadata: {
-        ...((session.metadata ?? {}) as Record<string, unknown>),
-        rerunOfSessionId: id,
-      },
-    });
-    const updated = await dispatchInteractiveTurn({
-      session: inserted,
-      project,
-      client,
-      authority,
-      message: prompt,
-      broadcastEvent: 'agent-session.created',
-    });
+  const inserted = await createChatSessionRow({
+    projectId: session.projectId,
+    userId,
+    title: session.title ? `${session.title} (rerun)` : null,
+    parentSessionId: id,
+    metadata: {
+      ...((session.metadata ?? {}) as Record<string, unknown>),
+      rerunOfSessionId: id,
+    },
+  });
+  const updated = await dispatchInteractiveTurn({
+    session: inserted,
+    project,
+    client,
+    authority,
+    message: prompt,
+    broadcastEvent: 'agent-session.created',
+  });
 
-    await recordSessionCreatedActivity(updated, restActor(c));
+  await recordSessionCreatedActivity(updated, restActor(c));
 
-    return c.json(updated, 201);
-  },
-);
+  return c.json(updated, 201);
+});

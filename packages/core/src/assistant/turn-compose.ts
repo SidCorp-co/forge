@@ -3,7 +3,7 @@
 import { codeAuthored, recordSilence } from '../conversations/index.js';
 import { type TurnCredential, turnAuthorityRefusalOf } from '../credentials/turn-credential.js';
 import { egressDeep } from '../lib/data-egress.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { correctFalseClaims } from './confab.js';
 import { STOPPED_BY_A_PERSON } from './conversation-stops.js';
 import {

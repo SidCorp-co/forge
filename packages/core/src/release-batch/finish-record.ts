@@ -4,7 +4,7 @@
 import { and, sql } from 'drizzle-orm';
 import { pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { writeRunMetadata } from '../pipeline/index.js';
 import { RUN_NOT_ABORTED } from './abort-stamp.js';
 import type { ReleaseVerification } from './plan.js';

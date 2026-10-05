@@ -8,6 +8,7 @@ import type { KernelExecutor } from '../db/kernel-marker.js';
 import type { MemberLens } from '../db/schema.js';
 import type { InterventionEventInput, ResolvedJobMcpServers } from '../jobs/index.js';
 import type { EgressScope } from '../lib/data-egress.js';
+import { portSlot } from '../lib/port-slot.js';
 import type { KernelActor } from '../lifecycle/index.js';
 
 /** The blob store attachment bytes live in. */
@@ -64,17 +65,6 @@ interface AgentSessionsPorts {
   }): Promise<{ id: string }>;
 }
 
-let provided: AgentSessionsPorts | null = null;
-
-export function provideAgentSessionsPorts(ports: AgentSessionsPorts): void {
-  provided = ports;
-}
-
-export function agentSessionsPorts(): AgentSessionsPorts {
-  if (!provided) {
-    throw new Error(
-      'agent-sessions: no ports were provided, so a session cannot reach storage, the fast model, skills, schedules or comments; the process entry calls provideAgentSessionsPorts before it serves',
-    );
-  }
-  return provided;
-}
+const slot = portSlot<AgentSessionsPorts>('agent-sessions', 'provideAgentSessionsPorts');
+export const provideAgentSessionsPorts = slot.provide;
+export const agentSessionsPorts = slot.get;

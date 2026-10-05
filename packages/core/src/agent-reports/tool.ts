@@ -8,7 +8,6 @@ import {
 } from '@forge/contracts/agent-reports';
 import { eq, inArray, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
-import { env } from '../config/env.js';
 import {
   agentReportKinds,
   agentReportSeverities,
@@ -17,6 +16,7 @@ import {
 } from '../db/schema.js';
 import { principalAgency } from '../issues/index.js';
 import { resolvePipelineContext } from '../jobs/index.js';
+import { env } from '../lib/env.js';
 import { buildListEnvelope, overfetch } from '../lib/list-envelope.js';
 import {
   type ContextScopedMcpToolFactory,

@@ -1,6 +1,6 @@
 import { persistSessionAttachment } from '../agent-sessions/index.js';
 import { getStorage } from '../integrations/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { attachmentIdFromRef, loadConversationAttachment } from './attachment-service.js';
 import type { ConversationImage } from './store.js';
 

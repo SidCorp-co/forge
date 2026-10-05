@@ -5,8 +5,8 @@ import {
   type RocketChatImageRef,
   type RocketChatRestAuth,
 } from '../../integrations/rocketchat/index.js';
+import { logger } from '../../lib/logger.js';
 import type { ChatTurnFacts } from '../../lib/tool.js';
-import { logger } from '../../observability/logger.js';
 import { buildEscalationToolset } from '../tools/escalate.js';
 import { type ChatToolset, mergeToolsets } from '../tools/mcp-adapter.js';
 import { buildChatToolContext } from '../tools/principal.js';

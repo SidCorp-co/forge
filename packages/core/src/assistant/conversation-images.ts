@@ -11,7 +11,7 @@ import {
   loadConversationAttachment,
 } from '../conversations/index.js';
 import { getStorage } from '../integrations/index.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import type { ImageResolver } from './vision.js';
 
 /** The ids a send named that are not this room's, for a refusal that names them. */

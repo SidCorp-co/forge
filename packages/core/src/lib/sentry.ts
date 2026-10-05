@@ -1,6 +1,6 @@
 import { scrubSentryEvent } from '@forge/observability';
 import * as Sentry from '@sentry/node';
-import { withoutQueryParams } from '../lib/db-errors.js';
+import { withoutQueryParams } from './db-errors.js';
 import { sourceCommit } from './source-commit.js';
 
 let initialized = false;

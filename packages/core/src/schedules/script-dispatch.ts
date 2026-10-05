@@ -1,5 +1,5 @@
 import { db } from '../db/client.js';
-import { logger } from '../observability/logger.js';
+import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
 import type { DispatchScheduleInput, RoutedFire } from './dispatch-types.js';
 import { schedulesPorts } from './ports.js';

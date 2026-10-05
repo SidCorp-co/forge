@@ -1,6 +1,6 @@
 import type { Context } from 'hono';
 import { deleteCookie, setCookie } from 'hono/cookie';
-import { env } from '../config/env.js';
+import { env } from '../lib/env.js';
 import { AUTH_COOKIE_NAME, REFRESH_COOKIE_NAME } from './cookie-names.js';
 import { USER_JWT_TTL_SECONDS } from './jwt.js';
 import { REFRESH_TOKEN_TTL_SECONDS } from './refresh-token.js';

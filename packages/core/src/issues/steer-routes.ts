@@ -31,20 +31,8 @@ issueSteerRoutes.use('/:id/steer', requireAuth(), assertEmailVerified());
 
 issueSteerRoutes.post(
   '/:id/steer',
-  zValidator('param', idParamSchema, (r) => {
-    if (!r.success)
-      throw new HTTPException(400, {
-        message: 'Invalid input',
-        cause: { code: 'BAD_REQUEST', details: r.error },
-      });
-  }),
-  zValidator('json', steerBodySchema, (r) => {
-    if (!r.success)
-      throw new HTTPException(400, {
-        message: 'Invalid input',
-        cause: { code: 'BAD_REQUEST', details: r.error },
-      });
-  }),
+  zValidator('param', idParamSchema),
+  zValidator('json', steerBodySchema),
   async (c) => {
     const { id } = c.req.valid('param');
     const { body, reason } = c.req.valid('json');
