@@ -86,6 +86,7 @@ function batchViewOf(
     conversationId: batch.conversationId,
     onboardingId: batch.onboardingId,
     requirementId: batch.requirementId,
+    firstRequirementsOf: batch.firstRequirementsOf,
     title: batch.title,
     intro: batch.intro,
     round: batch.round,

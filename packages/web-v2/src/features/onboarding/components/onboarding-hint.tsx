@@ -45,7 +45,7 @@ export function refusalLine(error: unknown): string | null {
 }
 
 const FIRST_WORDS: Record<NonNullable<OnboardingStateResponse["firstRequirements"]>["status"], (n: number) => string> = {
-  pending: () => "the BA assistant drafts them from the approved designs once you say go",
+  pending: () => "the BA assistant is drafting them from the approved designs",
   suggested: (n) => `${n} suggested from the approved designs, waiting on your review`,
   none: () => "the BA assistant suggested none",
 };
@@ -53,14 +53,15 @@ const FIRST_WORDS: Record<NonNullable<OnboardingStateResponse["firstRequirements
 /** project-onboarding `req-result`, read from core once the designs are approved: one line, never a blocker. */
 function FirstRequirementsLine({ projectId, first }: { projectId: string; first: OnboardingStateResponse["firstRequirements"] }) {
   const dock = useChatDock();
-  if (!first || first.status === "none") return null;
-  const t = TONE[first.status === "suggested" ? "you" : "ready"];
+  if (!first || (first.status === "none" && !first.openBatch)) return null;
+  const t = TONE[first.openBatch?.overdue ? "attention" : first.status === "suggested" || first.openBatch ? "you" : "ready"];
   return (
     <div className="px-4 py-2.5 sm:px-6" style={{ background: t.bg }} data-testid="first-requirements-line" data-status={first.status}>
       <p className="flex items-baseline gap-2 text-[13.5px] text-fg">
         <span aria-hidden className="size-2 flex-none translate-y-[-1px] rounded-full" style={{ background: t.dot }} />
         <span className="min-w-0">
-          <span className="font-bold">First requirements</span> {FIRST_WORDS[first.status](first.suggested)} ·{" "}
+          <span className="font-bold">First requirements</span> {FIRST_WORDS[first.status](first.suggested)}
+          {first.openBatch && ` · Open questions ${first.openBatch.open}${first.openBatch.overdue ? ` · waiting ${first.openBatch.waitingDays} days` : ""}`} ·{" "}
           <button type="button" className="font-medium text-link hover:underline" onClick={() => dock?.show({ kind: "room", projectId, conversationId: first.conversationId })}>
             Open the BA room
           </button>

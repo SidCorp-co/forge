@@ -239,3 +239,28 @@ export const submitterRefusal = (facts: PermissionFacts): QuestionnaireRefusal |
 
 export const posterRefusal = (facts: PermissionFacts): QuestionnaireRefusal | null =>
   permissionRefusal(facts, 'questionnaires.write', 'posting a questionnaire');
+
+/** The thread a batch belongs to: an onboarding round, a requirement ask, or a first-requirements ask. */
+export interface QuestionnaireArm {
+  onboardingId: string | null;
+  requirementId: string | null;
+  firstRequirementsOf: string | null;
+}
+
+// cm:guard a batch names exactly one thread (QUESTIONNAIRE_THREAD_INVALID), the rule the
+// questionnaire_batches_arc_chk constraint holds at the row
+export function questionnaireArmRefusal(arm: QuestionnaireArm): QuestionnaireRefusal | null {
+  const named = [arm.onboardingId, arm.requirementId, arm.firstRequirementsOf].filter(
+    (v) => v !== null,
+  ).length;
+  if (named === 1) return null;
+  return {
+    code: 'QUESTIONNAIRE_THREAD_INVALID',
+    path: '',
+    detail: `a batch belongs to exactly one thread (an onboarding round, a requirement, or a first-requirements room); this one names ${named}.`,
+  };
+}
+
+/** A BA room's answers come back to the BA as the person's next message; an onboarding round's go to its revise job. */
+export const batchReopensRoom = (arm: QuestionnaireArm): boolean =>
+  arm.requirementId !== null || arm.firstRequirementsOf !== null;

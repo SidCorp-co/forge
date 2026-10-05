@@ -67,6 +67,7 @@ contractWaitRoutes.post(
       contract: body.contract,
       minVersion: body.minVersion,
       reason: body.reason ?? null,
+      dueAt: body.dueAt,
       userId,
     });
     if (!out.ok) return refused(c, out.refusals, 'CONTRACT_WAIT_REFUSED');

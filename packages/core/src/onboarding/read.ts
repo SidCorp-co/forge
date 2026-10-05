@@ -11,10 +11,11 @@ import {
   type OnboardingStateResponse,
   type OnboardingStatus,
   type OnboardingView,
+  type OpenQuestionnaireBatch,
   QUESTIONNAIRE_MAX_ROUNDS,
   type QuestionnaireItem,
 } from '@forge/contracts/onboarding';
-import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import { onboardings, questionnaireBatches } from '../db/schema-onboarding.js';
@@ -194,6 +195,38 @@ const phaseOf = (payload: unknown): OnboardingJobPhase => {
     : 'analyse';
 };
 
+/**
+ * The thread's answerable batch with its due rule (project-onboarding `expect-answers`,
+ * `unanswered`): one read for the onboarding thread and the first-requirements room.
+ */
+export async function openBatchView(
+  tx: Executor,
+  arm: SQL,
+  now: Date,
+): Promise<OpenQuestionnaireBatch | null> {
+  const [batch] = await tx
+    .select({
+      id: questionnaireBatches.id,
+      round: questionnaireBatches.round,
+      createdAt: questionnaireBatches.createdAt,
+    })
+    .from(questionnaireBatches)
+    .where(and(arm, inArray(questionnaireBatches.status, [...ANSWERABLE])))
+    .limit(1);
+  if (!batch) return null;
+  const [items] = await tx
+    .select({ n: count() })
+    .from(agentQuestions)
+    .where(and(eq(agentQuestions.batchId, batch.id), eq(agentQuestions.status, 'open')));
+  return {
+    id: batch.id,
+    round: batch.round,
+    open: Number(items?.n ?? 0),
+    postedAt: batch.createdAt.toISOString(),
+    ...batchDue(batch.createdAt, now),
+  };
+}
+
 export async function onboardingView(
   tx: Executor,
   row: OnboardingRow,
@@ -202,20 +235,7 @@ export async function onboardingView(
   const [drafted, series, open, job, sensitive] = await Promise.all([
     designsOf(tx, row.projectId, row.designs),
     seriesItemsOf(tx, row),
-    tx
-      .select({
-        id: questionnaireBatches.id,
-        round: questionnaireBatches.round,
-        createdAt: questionnaireBatches.createdAt,
-      })
-      .from(questionnaireBatches)
-      .where(
-        and(
-          eq(questionnaireBatches.onboardingId, row.id),
-          inArray(questionnaireBatches.status, [...ANSWERABLE]),
-        ),
-      )
-      .limit(1),
+    openBatchView(tx, eq(questionnaireBatches.onboardingId, row.id), now),
     row.lastJobId
       ? tx
           .select({
@@ -232,15 +252,6 @@ export async function onboardingView(
       : Promise.resolve([]),
     projectHoldsSensitiveData(row.projectId),
   ]);
-  const batch = open[0];
-  const openItems = batch
-    ? (
-        await tx
-          .select({ id: agentQuestions.id })
-          .from(agentQuestions)
-          .where(and(eq(agentQuestions.batchId, batch.id), eq(agentQuestions.status, 'open')))
-      ).length
-    : 0;
   const j = job[0];
   const designs: OnboardingDesignView[] = drafted.map((d) => ({
     ...d,
@@ -254,7 +265,7 @@ export async function onboardingView(
     id: row.id,
     projectId: row.projectId,
     conversationId: row.conversationId,
-    status: onboardingStatusOf(row, batch !== undefined),
+    status: onboardingStatusOf(row, open !== null),
     roundsSent: row.roundsSent,
     maxRounds: QUESTIONNAIRE_MAX_ROUNDS,
     startedBy: row.startedBy,
@@ -262,15 +273,7 @@ export async function onboardingView(
     reanalyzedAt: row.reanalyzedAt?.toISOString() ?? null,
     doneAt: row.doneAt?.toISOString() ?? null,
     designs,
-    openBatch: batch
-      ? {
-          id: batch.id,
-          round: batch.round,
-          open: openItems,
-          postedAt: batch.createdAt.toISOString(),
-          ...batchDue(batch.createdAt, now),
-        }
-      : null,
+    openBatch: open,
     job: j
       ? {
           id: j.id,

@@ -57,6 +57,8 @@ export interface ConversationWindowRow {
   closedAt: Date | null;
   decision: ConversationWindowDecision | null;
   decisionDetail: unknown;
+  /** What opened it, and so whose turn it is: the record of a turn's origin. */
+  origin: ConversationWindowOrigin;
 }
 
 /** Which claim a write belongs to. */
@@ -93,6 +95,7 @@ export const windowSelection = {
   closedAt: conversationWindows.closedAt,
   decision: conversationWindows.decision,
   decisionDetail: conversationWindows.decisionDetail,
+  origin: conversationWindows.origin,
 };
 
 interface OpenOrExtendArgs {

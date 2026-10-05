@@ -63,10 +63,17 @@ export function turnAuthorityRefusalOf(
   return hit ? { code: hit.code as TurnAuthorityRefusalCode, message: hit.detail } : null;
 }
 
+/**
+ * Why a turn runs: a person's message, or the onboarding hand-off, which acts for the onboarding's
+ * starter with nothing but the suggestion acts (`assistant/turn-origin.ts`).
+ */
+export type TurnOrigin = 'message' | 'onboarding_handoff';
+
 /** The person a turn acts as, and the bounds their own credential sets. */
 export interface TurnAuthority {
   userId: string;
   projectId: string;
+  origin: TurnOrigin;
   /** The token the person reached Forge with; null for a browser session or a linked chat account. */
   viaTokenId: string | null;
   /** That token's grant, null where the person's project role is the whole bound. */

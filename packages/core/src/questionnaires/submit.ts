@@ -19,7 +19,7 @@ import {
   itemsOf,
   type StoredItem,
 } from './read.js';
-import { answerRefusals, submitStateRefusal, submitterRefusal } from './rules.js';
+import { answerRefusals, batchReopensRoom, submitStateRefusal, submitterRefusal } from './rules.js';
 import {
   announce,
   inTx,
@@ -130,7 +130,7 @@ async function postAnswers(
       },
     ],
   });
-  if (batch.requirementId && message) {
+  if (batchReopensRoom(batch) && message) {
     await openOrExtendWindow(
       {
         conversationId: batch.conversationId,

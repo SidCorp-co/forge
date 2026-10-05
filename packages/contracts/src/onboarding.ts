@@ -111,6 +111,7 @@ export const QUESTIONNAIRE_REFUSAL_CODES = [
 	"QUESTIONNAIRE_ANSWER_INVALID",
 	"QUESTIONNAIRE_NOTHING_ANSWERED",
 	"CLARIFICATION_ALREADY_OPEN",
+	"QUESTIONNAIRE_THREAD_INVALID",
 	"QUESTIONNAIRE_REFUSED",
 ] as const;
 export type QuestionnaireRefusalCode =
@@ -246,6 +247,8 @@ export interface QuestionnaireView {
 	conversationId: string;
 	onboardingId: string | null;
 	requirementId: string | null;
+	/** The onboarding whose first-requirements room asked; the third arm of a batch's thread. */
+	firstRequirementsOf: string | null;
 	title: string;
 	intro: string | null;
 	round: number;
@@ -307,6 +310,19 @@ export interface OnboardingJobView {
 	waitingOn: RunWaitingOn | null;
 }
 
+/** A thread's answerable batch and its due rule (project-onboarding `expect-answers`, `unanswered`). */
+export interface OpenQuestionnaireBatch {
+	id: string;
+	round: number;
+	open: number;
+	postedAt: string;
+	/** postedAt plus QUESTIONNAIRE_DUE_DAYS. */
+	dueAt: string;
+	/** Past dueAt: one line on the dashboard and on the chat, never a blocker. */
+	overdue: boolean;
+	waitingDays: number;
+}
+
 export interface OnboardingView {
 	id: string;
 	projectId: string;
@@ -319,17 +335,7 @@ export interface OnboardingView {
 	reanalyzedAt: string | null;
 	doneAt: string | null;
 	designs: OnboardingDesignView[];
-	openBatch: {
-		id: string;
-		round: number;
-		open: number;
-		postedAt: string;
-		/** postedAt plus QUESTIONNAIRE_DUE_DAYS. */
-		dueAt: string;
-		/** Past dueAt: one line on the dashboard and on the chat, never a blocker. */
-		overdue: boolean;
-		waitingDays: number;
-	} | null;
+	openBatch: OpenQuestionnaireBatch | null;
 	job: OnboardingJobView | null;
 	sensitiveData: boolean;
 }
@@ -352,6 +358,8 @@ export interface OnboardingFirstRequirements {
 	conversationId: string;
 	/** Live requirement drafts (proposed or accepted) on the onboarding's designs. */
 	suggested: number;
+	/** The BA's answerable questionnaire in the room, due QUESTIONNAIRE_DUE_DAYS after it was sent. */
+	openBatch: OpenQuestionnaireBatch | null;
 }
 
 export interface OnboardingStateResponse {

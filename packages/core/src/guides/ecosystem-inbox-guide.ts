@@ -152,8 +152,10 @@ publishes and the versions of its contracts, and a person is not handed that wor
    in-project: the project's own modules consume it (a \`consumes\` entry or a link naming no
    ecosystem), and naming an ecosystem for it is refused \`SELF_CONSUMPTION\`.
    An issue that needs a contract version waits on the version, never on the provider's issue:
-   \`POST /api/issues/:id/contract-waits { contract, minVersion, reason? }\` names a contract this
-   project publishes (written first, inside it) or consumes. Until an approved version at or above it
+   \`POST /api/issues/:id/contract-waits { contract, minVersion, reason?, dueAt? }\` names a contract this
+   project publishes (written first, inside it) or consumes; \`dueAt\`, an ISO date-time with its zone,
+   is the deadline it is worked to (\`CONTRACT_WAIT_DUE_MALFORMED\`, \`CONTRACT_WAIT_DUE_PAST\`), and the
+   issue read names it. Until an approved version at or above it
    exists the issue is left out of the admissible read, and a run session, a pool job or a move to
    \`in_progress\` over it is refused \`CONTRACT_WAIT_UNSETTLED\`; the approval settles the wait in its
    own transaction and wakes the issue's master. A contract-change feedback routed to an issue, filed

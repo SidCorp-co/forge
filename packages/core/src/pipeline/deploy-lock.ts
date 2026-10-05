@@ -105,6 +105,7 @@ export async function acquireDeployLocks(
   if (wanted.length === 0) return [];
   const taken: DeployLockHeld[] = [];
   let waitedOn = wanted[0] as string;
+  let refused: { environment: string; holder: DeployLockHolder | null } | null = null;
   try {
     await db.transaction(async (tx) => {
       await tx.execute(sql.raw(`SET LOCAL lock_timeout = ${DEPLOY_LOCK_WAIT_MS}`));
@@ -130,17 +131,52 @@ export async function acquireDeployLocks(
           taken.push({ environment: row.environment, acquiredAt: row.acquired_at });
           continue;
         }
-        throw environmentLocked(
-          environment,
-          await readLockWith(tx, request.projectId, environment),
-        );
+        const holder = await readLockWith(tx, request.projectId, environment);
+        refused = { environment, holder };
+        throw environmentLocked(environment, holder);
       }
+      await tx.execute(sql`
+        DELETE FROM deploy_lock_refusals
+         WHERE run_id = ${request.runId} AND environment IN (${sql.join(
+           wanted.map((e) => sql`${e}`),
+           sql`, `,
+         )})
+      `);
     });
   } catch (err) {
-    if (isLockWaitTimeout(err)) throw environmentLocked(waitedOn, null);
-    throw err;
+    if (isLockWaitTimeout(err)) refused = { environment: waitedOn, holder: null };
+    if (!refused) throw err;
+    await recordRefusal(request, wanted, refused);
+    throw isLockWaitTimeout(err) ? environmentLocked(waitedOn, null) : err;
   }
   return taken;
+}
+
+/** Written after the refused transaction rolled back, so the record survives it. The run's other
+ *  refusals over the environments it asked for go: only the one that refused it now stands. */
+async function recordRefusal(
+  request: DeployLockRequest,
+  wanted: readonly string[],
+  refused: { environment: string; holder: DeployLockHolder | null },
+): Promise<void> {
+  const h = refused.holder;
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`
+      DELETE FROM deploy_lock_refusals
+       WHERE run_id = ${request.runId} AND environment IN (${sql.join(
+         wanted.map((e) => sql`${e}`),
+         sql`, `,
+       )})
+    `);
+    await tx.execute(sql`
+      INSERT INTO deploy_lock_refusals
+        (run_id, environment, project_id, holder_run_id, holder_subject, holder_acquired_at,
+         refused_until, refused_at)
+      VALUES (${request.runId}, ${refused.environment}, ${request.projectId}, ${h?.runId ?? null},
+              ${h?.subject ?? null}, ${h?.acquiredAt ?? null}::timestamptz,
+              ${h?.expiresAt ?? null}::timestamptz, now())
+    `);
+  });
 }
 
 /** Drizzle keeps the driver's error on `cause`: reading the outer one alone is how this refusal

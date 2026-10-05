@@ -222,3 +222,149 @@ describe('d-node-lifecycle on the observed layer, and the reconciliation read', 
     expect(deriveHealth(facts()).reconciliation.state).toBe('open');
   });
 });
+
+describe('d-node-lifecycle: a keep settled by an approved revision that adopts the code', () => {
+  const T3 = new Date('2026-10-04T00:00:00Z');
+  const extra = observed([
+    { id: 'o-intake', matches: 'intake' },
+    { id: 'o-check', matches: 'check', after: ['o-intake'] },
+    { id: 'o-ship', matches: 'ship', after: ['o-check'] },
+    { id: 'o-extra', matches: null, after: ['o-check'] },
+  ]);
+  const adopted = design([
+    step('intake'),
+    step('check', ['intake']),
+    step('ship', ['check']),
+    step('extra', ['check']),
+  ]);
+  const keepIt: HealthFacts['decisions'][number] = {
+    commentId: 'c3',
+    node: { step: 'o-extra', verdict: 'keep', layer: 'observed', marker: 'not_in_design' },
+    reason: 'the code is right; the plan adopts it',
+    by: 'u1',
+    byName: 'Owner',
+    at: T1,
+  };
+  const afterAdoption = observed([
+    { id: 'o-intake', matches: 'intake' },
+    { id: 'o-check', matches: 'check', after: ['o-intake'] },
+    { id: 'o-ship', matches: 'ship', after: ['o-check'] },
+    { id: 'o-extra', matches: 'extra', after: ['o-check'] },
+  ]);
+  const adoptedFacts = (
+    observation: HealthFacts['observation'],
+    decisions: HealthFacts['decisions'] = [keepIt],
+  ) =>
+    facts({
+      head: { revision: 3, document: adopted },
+      approvedRevision: 3,
+      revisions: [
+        { revision: 2, document: plan, decidedAt: T0 },
+        { revision: 3, document: adopted, decidedAt: T2 },
+      ],
+      observation,
+      decisions,
+    });
+
+  it('reads the design reconciled once the adopting revision is approved and a later observation still holds the node', () => {
+    const h = deriveHealth(adoptedFacts(obsOf(afterAdoption, T3)));
+    expect(node(h, 'observed:o-extra')).toBeUndefined();
+    expect(node(h, 'planned:extra')?.provenance).toBe('matched');
+    expect(h.reconciliation).toMatchObject({ state: 'reconciled', undecided: 0, cleaning: 0 });
+  });
+
+  it('reads a kept planned node reconciled once the adopting revision holds it and a later observation matches', () => {
+    const keepCheck: HealthFacts['decisions'][number] = {
+      ...keepIt,
+      node: { step: 'check', verdict: 'keep', layer: 'planned' },
+    };
+    const h = deriveHealth(
+      facts({
+        head: { revision: 3, document: plan },
+        approvedRevision: 3,
+        revisions: [
+          { revision: 2, document: plan, decidedAt: T0 },
+          { revision: 3, document: plan, decidedAt: T2 },
+        ],
+        observation: obsOf(fullMatch, T3),
+        decisions: [keepCheck],
+      }),
+    );
+    expect(node(h, 'planned:check')?.phase).toBe('reconciled');
+    expect(h.reconciliation.state).toBe('reconciled');
+  });
+
+  it('stays decided while the only observation predates the adopting approval', () => {
+    const h = deriveHealth(adoptedFacts(obsOf(extra, T1)));
+    expect(node(h, 'observed:o-extra')?.phase).toBe('decided');
+    expect(h.reconciliation.state).toBe('open');
+  });
+
+  it('stays decided while no later observation links the kept code to a step of an approved revision', () => {
+    const h = deriveHealth(adoptedFacts(obsOf(extra, T3)));
+    expect(node(h, 'observed:o-extra')?.phase).toBe('decided');
+    expect(h.reconciliation.state).toBe('open');
+  });
+
+  it('reads a kept planned node marked again when the observation after the adopting approval still diverges', () => {
+    const diverged = observed([
+      { id: 'o-intake', matches: 'intake' },
+      { id: 'o-check', matches: 'check', after: ['o-intake'], does: 'check does something else' },
+      { id: 'o-ship', matches: 'ship', after: ['o-check'] },
+    ]);
+    const h = deriveHealth(
+      facts({
+        head: { revision: 3, document: plan },
+        approvedRevision: 3,
+        revisions: [
+          { revision: 2, document: plan, decidedAt: T0 },
+          { revision: 3, document: plan, decidedAt: T2 },
+        ],
+        observation: obsOf(diverged, T3),
+        decisions: [{ ...keepIt, node: { step: 'check', verdict: 'keep', layer: 'planned' } }],
+      }),
+    );
+    expect(node(h, 'planned:check')?.phase).toBe('marked');
+    expect(h.reconciliation.state).toBe('open');
+  });
+
+  it('stays decided when no revision approved after the keep holds the node', () => {
+    const h = deriveHealth(
+      facts({
+        head: { revision: 3, document: plan },
+        approvedRevision: 3,
+        revisions: [
+          { revision: 2, document: plan, decidedAt: T0 },
+          { revision: 3, document: plan, decidedAt: T2 },
+        ],
+        observation: obsOf(extra, T3),
+        decisions: [keepIt],
+      }),
+    );
+    expect(node(h, 'observed:o-extra')?.phase).toBe('decided');
+    expect(h.reconciliation.state).toBe('open');
+  });
+
+  it('never settles a delete by a revision: only its build carries it', () => {
+    const del = deriveHealth(
+      adoptedFacts(obsOf(afterAdoption, T3), [
+        { ...keepIt, node: { ...keepIt.node, verdict: 'delete' } },
+      ]),
+    );
+    expect(del.reconciliation.state).toBe('open');
+  });
+
+  it('stays open while one decision has no build even though the other is settled', () => {
+    const del: HealthFacts['decisions'][number] = {
+      commentId: 'c4',
+      node: { step: 'ship', verdict: 'delete', layer: 'planned' },
+      reason: 'drop it',
+      by: 'u1',
+      byName: 'Owner',
+      at: T1,
+    };
+    const h = deriveHealth(adoptedFacts(obsOf(afterAdoption, T3), [keepIt, del]));
+    expect(h.reconciliation.state).toBe('open');
+    expect(h.reconciliation.rule).toContain('no build');
+  });
+});

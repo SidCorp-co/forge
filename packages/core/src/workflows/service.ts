@@ -9,6 +9,7 @@ import { db, type Tx } from '../db/client.js';
 import { userNames } from '../lib/people.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { readProjectDocument, staleBase } from '../project-config/index.js';
+import { bindRefusalsIn } from './bind-check.js';
 import { designApproverRefusal, designFingerprint, designStatusAfterWrite } from './design.js';
 import { baseRefusals } from './design-bases.js';
 import { designListReadingOf } from './design-standing.js';
@@ -144,6 +145,7 @@ export async function createWorkflow(input: {
         designs: await designsOf(tx, projectId, doc.flow, facts.templates),
       }),
       ...baseRefusals(doc, await workflowsOf(tx, projectId)),
+      ...(await bindRefusalsIn(tx, doc)),
     ];
     if (refusals.length > 0) return { ok: false, refusals };
     const holding = await workflowHolding(tx, projectId, doc.flow);
@@ -187,6 +189,7 @@ export async function updateWorkflow(input: {
         designs: await designsOf(tx, projectId, doc.flow, facts.templates),
       }),
       ...baseRefusals(doc, await workflowsOf(tx, projectId)),
+      ...(await bindRefusalsIn(tx, doc)),
     ];
     if (refusals.length > 0) return { ok: false, refusals };
     if (JSON.stringify(stored) === JSON.stringify(doc)) {

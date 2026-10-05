@@ -2,6 +2,7 @@ export { onboardingSubmittedIn } from './agent-writes.js';
 export {
   firstRequirementsJourneys,
   firstRequirementsOnboardingOf,
+  firstRequirementsStarterOf,
   readFirstRequirements,
   registerFirstRequirementsCase,
 } from './first-requirements.js';

@@ -1,7 +1,8 @@
 /**
  * The BA door's tool set in a first-requirements case room (workflow project-onboarding steps
  * `requirements` and `suggested`): read the approved onboarding journeys, look for similar
- * requirements, and suggest one requirement per journey. Accepting a suggestion is a person's act.
+ * requirements, suggest one requirement per journey, and ask through the questionnaire card.
+ * Accepting a suggestion is a person's act.
  */
 
 import { requirementCriterionSchema, requirementSpecSchema } from '@forge/contracts/suggestions';
@@ -14,11 +15,13 @@ import {
 import { firstRequirementsJourneys } from '../../onboarding/index.js';
 import { similarRequirements } from '../../requirements/index.js';
 import { createSuggestion } from '../../suggestions/index.js';
+import { sendFirstRequirementsQuestionnaire } from './ba-ask-tools.js';
 import { actorOf, schema } from './ba-room.js';
 import { buildToolset, type ChatToolset } from './mcp-adapter.js';
 
 interface CaseRoom {
   projectId: string;
+  onboardingId: string;
 }
 
 const readJourneys =
@@ -100,5 +103,6 @@ export function buildBaFirstRequirementsToolset(ctx: McpContext, room: CaseRoom)
     { factory: readJourneys(room) },
     { factory: findSimilar(room) },
     { factory: suggestRequirement(room) },
+    { factory: sendFirstRequirementsQuestionnaire(room) },
   ]);
 }

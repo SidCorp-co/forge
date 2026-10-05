@@ -20,7 +20,12 @@ import { readProjectDocument } from '../project-config/index.js';
 import { linkedContracts, writePinsIn } from './baselines.js';
 import { requirementDependents } from './dependents.js';
 import { embedRequirementHeadLater } from './embeddings.js';
-import { nearDuplicateRefusal, nearDuplicatesOf } from './near-duplicate.js';
+import {
+  fileUndecidedDuplicates,
+  type NearDuplicate,
+  nearDuplicateRefusal,
+  nearDuplicatesOf,
+} from './near-duplicate.js';
 import { linkedDesigns, type RequirementActor, readinessAt, rowIn, signerRefusal } from './read.js';
 import {
   agreeRefusals,
@@ -188,6 +193,7 @@ export async function agreeRequirement(input: {
   const signer = await signerRefusal(actor, projectId, 'agreeing a requirement', row);
   if (signer) return { ok: false, refusals: [signer] };
   const gate = await readinessGateOf(projectId);
+  let undecided: { near: NearDuplicate[]; currentRevision: number | null } | null = null;
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
     const current = await rowIn(tx, projectId, row.id);
@@ -219,11 +225,12 @@ export async function agreeRequirement(input: {
     );
     const notReady = readinessRefusal(readiness, current.currentRevision);
     if (notReady) return [notReady];
-    const duplicate = nearDuplicateRefusal(
-      requirementKey(current.reqSeq),
-      await nearDuplicatesOf(current),
-    );
-    if (duplicate) return [duplicate];
+    const near = await nearDuplicatesOf(current);
+    const duplicate = nearDuplicateRefusal(requirementKey(current.reqSeq), near);
+    if (duplicate) {
+      undecided = { near, currentRevision: current.currentRevision };
+      return [duplicate];
+    }
     const seq = await writeBaseline(
       tx,
       row.id,
@@ -247,5 +254,17 @@ export async function agreeRequirement(input: {
     await announceAgreed(tx, row, input.revision, seq);
     return null;
   });
+  const held = undecided as { near: NearDuplicate[]; currentRevision: number | null } | null;
+  if (held) {
+    // filed after the refusal rolled the agree back, so the suggestion outlives it
+    const near = await fileUndecidedDuplicates(
+      { id: row.id, projectId, currentRevision: held.currentRevision },
+      actor,
+      held.near,
+      requirementDependents().proposeDuplicate,
+    );
+    const named = nearDuplicateRefusal(requirementKey(row.reqSeq), near);
+    return answer(projectId, row.id, actor, named ? [named] : refusals);
+  }
   return answer(projectId, row.id, actor, refusals);
 }

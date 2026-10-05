@@ -31,6 +31,7 @@ import { mergeToolsets } from './tools/mcp-adapter.js';
 import { buildChatToolContext } from './tools/principal.js';
 import { buildProjectToolset } from './tools/registry.js';
 import { buildUiActionToolset } from './tools/ui-actions-tool.js';
+import { fenceToolsetToOrigin, handoffVenueRefusal, turnOriginRefused } from './turn-origin.js';
 import type { TurnHookContext, TurnInputs, TurnReply } from './turn-request.js';
 import { uiSnapshotPageContext } from './ui-snapshot.js';
 
@@ -112,7 +113,7 @@ async function divertToAgent(
   setPhase: (phase: string) => void,
   authority: TurnAuthority,
 ): Promise<TurnReply | null> {
-  if (args.window.mode !== 'agent') return null;
+  if (args.window.mode !== 'agent' || authority.origin === 'onboarding_handoff') return null;
   setPhase('agent-turn');
   if (!(await args.window.reserve()))
     return { send: false, reason: 'superseded-before-agent-turn', ended: 'superseded' };
@@ -153,9 +154,13 @@ async function divertToAgent(
 /** Assistant mode: the persona and toolset the room's subject calls for. */
 async function prepareWebTurn(
   args: WebTurnArgs,
-  { credential, speakerUserId, conversationId, handleUserId }: TurnHookContext,
+  { credential, speakerUserId, conversationId, handleUserId, authority }: TurnHookContext,
 ): Promise<TurnInputs> {
   const room = await getConversation(conversationId);
+  // cm:guard a hand-off turn acts only in its first-requirements room; anywhere else it is refused
+  const venueRefusal =
+    authority.origin === 'onboarding_handoff' ? handoffVenueRefusal(room?.externalId) : null;
+  if (venueRefusal) throw turnOriginRefused(venueRefusal);
   const ctx = buildChatToolContext({
     credential: await credential(),
     projectSlug: args.project.slug,
@@ -171,11 +176,15 @@ async function prepareWebTurn(
       tools: buildBaToolset(ctx, { projectId: args.project.id, requirementId: room.requirementId }),
     };
   }
-  if (firstRequirementsOnboardingOf(room?.externalId)) {
+  const onboardingId = firstRequirementsOnboardingOf(room?.externalId);
+  if (onboardingId) {
     return {
       persona: baFirstRequirementsPersona(args.project.name, args.askedBy),
       resolveImage: makeConversationImageResolver(conversationId),
-      tools: buildBaFirstRequirementsToolset(ctx, { projectId: args.project.id }),
+      tools: fenceToolsetToOrigin(
+        buildBaFirstRequirementsToolset(ctx, { projectId: args.project.id, onboardingId }),
+        authority.origin,
+      ),
     };
   }
   return {

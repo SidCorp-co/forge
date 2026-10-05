@@ -52,7 +52,7 @@ export interface ConversationRow {
   pinned?: boolean;
   requirementId?: string | null;
   /** The thread's kind and badge (ISS-63). */
-  kind?: "onboarding" | "requirement" | null;
+  kind?: "onboarding" | "requirement" | "first_requirements" | null;
   threadStatus?: OnboardingStatus | null;
   subjectKey?: string | null;
 }

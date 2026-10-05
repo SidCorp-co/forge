@@ -26,10 +26,13 @@ export interface UnsettledWait {
   issue: string;
   contract: string;
   minVersion: string;
+  /** The deadline the wait is worked to, where one was set. */
+  dueAt?: Date | null;
 }
 
 export function unsettledDetail(w: UnsettledWait): string {
-  return `${w.issue} waits on ${w.contract} >= ${w.minVersion}, which no approved version settles yet; it is dispatched once the provider approves a version at or above it.`;
+  const due = w.dueAt ? ` It is due by ${w.dueAt.toISOString()}.` : '';
+  return `${w.issue} waits on ${w.contract} >= ${w.minVersion}, which no approved version settles yet; it is dispatched once the provider approves a version at or above it.${due}`;
 }
 
 /** The dispatch doors' refusal, one per held wait, in the envelope every door answers with. */
@@ -46,7 +49,7 @@ async function heldWhere(
   executor: GateReader = db,
 ): Promise<UnsettledWait[]> {
   const rows = (await executor.execute(sql`
-    SELECT i.iss_seq, p.slug AS provider_slug, cw.contract_slug, cw.min_version
+    SELECT i.iss_seq, p.slug AS provider_slug, cw.contract_slug, cw.min_version, cw.due_at
     FROM issue_contract_waits cw
     JOIN issues i ON i.id = cw.issue_id
     JOIN projects p ON p.id = cw.provider_project_id
@@ -62,6 +65,7 @@ async function heldWhere(
     issue: formatIssueRef(prefix, Number(r.iss_seq)),
     contract: `${String(r.provider_slug)}/${String(r.contract_slug)}`,
     minVersion: String(r.min_version),
+    dueAt: r.due_at ? new Date(r.due_at as string | Date) : null,
   }));
 }
 

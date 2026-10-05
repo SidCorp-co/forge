@@ -117,7 +117,11 @@ import { mountRoutes } from './route-registry.js';
 import { bootstrapRunnerAdapters, deviceProjectIds } from './runners/index.js';
 import { startTimers, stopTimers } from './schedules/index.js';
 import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
-import { redactFeedbackSuggestions, staleOnTargetRevised } from './suggestions/index.js';
+import {
+  proposeRequirementDuplicate,
+  redactFeedbackSuggestions,
+  staleOnTargetRevised,
+} from './suggestions/index.js';
 import { coreTimers } from './timer-registry.js';
 import { provideWorkPorts } from './work-ports.js';
 import { workflowDesign } from './workflows/index.js';
@@ -190,7 +194,11 @@ provideForgeReads({
 provideInterfaceContracts(interfaceContractsOf);
 provideContractVersionReads(contractVersionReads);
 provideReleaseBatchPorts({ contractProviderGate });
-provideRequirementDependents({ feedbackOf: requirementFeedbackAs, revised: staleOnTargetRevised });
+provideRequirementDependents({
+  feedbackOf: requirementFeedbackAs,
+  revised: staleOnTargetRevised,
+  proposeDuplicate: proposeRequirementDuplicate,
+});
 provideFeedbackDependents({
   redactSuggestions: redactFeedbackSuggestions,
   deleteMockups: deleteFeedbackMockups,

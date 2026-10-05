@@ -17,6 +17,8 @@ export const CONTRACT_WAIT_REFUSAL_CODES = [
 	"CONTRACT_WAIT_DUPLICATE",
 	"CONTRACT_WAIT_RETRACTED",
 	"CONTRACT_WAIT_ISSUE_FINISHED",
+	"CONTRACT_WAIT_DUE_MALFORMED",
+	"CONTRACT_WAIT_DUE_PAST",
 	...PERMISSION_REFUSAL_CODES,
 ] as const;
 export type ContractWaitRefusalCode =
@@ -42,12 +44,14 @@ export const addContractWaitRequestSchema = z.strictObject({
 	contract: z.string().trim().regex(CONTRACT_REF_PATTERN),
 	minVersion: z.string().trim().min(1).max(CONTRACT_WAIT_LIMITS.version),
 	reason: z.string().trim().min(1).max(CONTRACT_WAIT_LIMITS.reason).optional(),
+	/** The deadline the wait is worked to; checked by core, so a malformed or past one is refused by name. */
+	dueAt: z.string().trim().min(1).max(40).optional(),
 });
 export type AddContractWaitRequest = z.infer<
 	typeof addContractWaitRequestSchema
 >;
 export const ADD_CONTRACT_WAIT_SHAPE =
-	"{ contract: <provider slug>/<contract slug>, a contract this project publishes or consumes; minVersion: the version this issue needs, in the provider's versioning scheme; reason? }";
+	"{ contract: <provider slug>/<contract slug>, a contract this project publishes or consumes; minVersion: the version this issue needs, in the provider's versioning scheme; reason?; dueAt?: an ISO 8601 date-time with its zone, in the future }";
 
 export const retractContractWaitRequestSchema = z.strictObject({
 	reason: z.string().trim().min(1).max(CONTRACT_WAIT_LIMITS.reason),
@@ -85,7 +89,7 @@ export interface ContractWaitView {
 	createdAt: string;
 	retractedAt: string | null;
 	retractReason: string | null;
-	/** The end of the provider's commitment window, where a breaking version's feedback wrote the wait. */
+	/** The deadline the wait is worked to: the provider's commitment window where a breaking version's feedback wrote it, or the one it was added with. */
 	dueAt: string | null;
 	/** Null for an in-project or retracted wait, which no release gate reads. */
 	providerLive: ProviderLiveView | null;

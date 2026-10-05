@@ -24,7 +24,7 @@ export interface ThreadBlock {
 interface ThreadData {
   projectId: string;
   conversationId: string;
-  kind: "onboarding" | "requirement" | null;
+  kind: "onboarding" | "requirement" | "first_requirements" | null;
   questionnaires: QuestionnaireView[];
 }
 
@@ -214,7 +214,7 @@ export function StructuredMessage({
   const batchOf = (id?: string) => data?.questionnaires.find((q) => q.id === id);
   const { byId } = useDesigns(data?.projectId ?? "", data?.kind === "onboarding");
   const designTitle = (ref: string) => byId.get(ref)?.title ?? ref;
-  const name = message.authorLabel ?? (data?.kind === "requirement" ? "BA assistant" : "Agent");
+  const name = message.authorLabel ?? (data?.kind === "requirement" || data?.kind === "first_requirements" ? "BA assistant" : "Agent");
   const answers = blocks.find((b) => b.type === "questionnaire_answers");
   if (message.role === "user" && answers) {
     const batch = batchOf(answers.batchId);

@@ -16,6 +16,11 @@
 
 ### Changed
 
+- **Wave 2's gaps close.** A kept node reconciles by an adopting revision; the BA drafts first
+  requirements unprompted, with a questionnaire; design writes refuse unindexed binds; contract
+  waits take deadlines; agree files duplicate suggestion; deploy-lock waits read a recorded
+  refusal.
+
 - **Feedback closes its loop.** High or critical feedback wakes the master; reporters verify their
   own items and can be asked to; declined items lose attachments after 180 days. GitLab refuses
   foreign projects by name.
