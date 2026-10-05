@@ -53,7 +53,21 @@ type MergeOutcome =
     }
   | { kind: 'refused'; deliveryId: string; reason: string; detail: string };
 
-export class MergeInputError extends Error {}
+/** The caller-input faults a merge refuses before anything is read; the route answers each by name. */
+export type MergeInputCode =
+  | 'MERGE_REQUESTER_MISSING'
+  | 'MERGE_RUN_NOT_FOUND'
+  | 'MERGE_RUN_OF_ANOTHER_PROJECT';
+
+export class MergeInputError extends Error {
+  constructor(
+    readonly code: MergeInputCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'MergeInputError';
+  }
+}
 
 interface StoredRow {
   id: string;
@@ -88,6 +102,7 @@ async function storedRow(pullRequestId: string): Promise<StoredRow | null> {
 async function assertCaller(req: MergeRequest, projectId: string): Promise<void> {
   if (!req.requestedBy.trim()) {
     throw new MergeInputError(
+      'MERGE_REQUESTER_MISSING',
       'merge: a merge needs `requestedBy` — the identity this merge is made for. Forge merges as ' +
         'its own credential and records who asked; a merge with nobody on it is refused rather ' +
         'than attributed to the credential alone.',
@@ -97,11 +112,13 @@ async function assertCaller(req: MergeRequest, projectId: string): Promise<void>
   const runProjectId = await forgeReads().runProjectOf(req.runId);
   if (runProjectId === null) {
     throw new MergeInputError(
+      'MERGE_RUN_NOT_FOUND',
       `merge: \`runId\` ${req.runId} names no pipeline run, so there is no run this merge is made for`,
     );
   }
   if (runProjectId !== projectId) {
     throw new MergeInputError(
+      'MERGE_RUN_OF_ANOTHER_PROJECT',
       `merge: \`runId\` ${req.runId} belongs to another project than the change request it was sent with — a merge is authorised by a run on its own project, and Forge will not record one project's run as the authority for another's merge`,
     );
   }
@@ -137,7 +154,7 @@ async function writeEvidence(args: {
 
 async function refuse(deliveryId: string, reason: string, detail: string): Promise<MergeOutcome> {
   await updateDelivery(deliveryId, {
-    status: 'failed',
+    status: 'refused',
     errorMessage: detail,
     response: { reason },
     completedAt: new Date(),
@@ -183,8 +200,9 @@ export async function mergeStoredChangeRequest(
     status: 'pending',
   });
 
-  // A throw past this point — the host unreachable, a 5xx, evidence that failed to write — settles
-  // the delivery as failed with its message; a merge delivery is never left pending.
+  // A refusal settles the delivery `refused` with its reason. A throw past this point — the host
+  // unreachable, a 5xx, evidence that failed to write — settles it `failed` with its message; a merge
+  // delivery is never left pending.
   try {
     let host: SourceHost;
     try {
