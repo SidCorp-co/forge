@@ -9,13 +9,11 @@
 import { z } from 'zod';
 import type { IssueDependencyExecutor } from './dependency-executor.js';
 import {
-  emitIssueDependencyEffects,
   type IssueDependencyWrite,
   type IssueDependencyWriter,
   type SetIssueDependencyInput,
   writeIssueDependency,
 } from './dependency-service.js';
-import { publishPipelineHealthChanged } from './pipeline-health.js';
 
 export type IssueRelationInput = {
   kind: 'blocks' | 'relates';
@@ -100,24 +98,4 @@ export async function writeIssueRelations(
     });
   }
   return pending;
-}
-
-/**
- * The EFFECTS half: announce every edge the write landed, then publish the
- * dependents' health once for the whole array.
- */
-export async function flushIssueRelationEffects(
-  projectId: string,
-  pending: readonly PendingIssueRelation[],
-): Promise<void> {
-  const refreshHealthFor: string[] = [];
-  for (const p of pending) {
-    await emitIssueDependencyEffects(p.input, p.written, { deferHealthPublish: true });
-    if (p.applied.kind === 'blocks' && (p.applied.created || p.applied.updated)) {
-      refreshHealthFor.push(p.applied.toIssueId);
-    }
-  }
-  if (refreshHealthFor.length > 0) {
-    await publishPipelineHealthChanged(projectId, refreshHealthFor);
-  }
 }

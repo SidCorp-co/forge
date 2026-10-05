@@ -41,6 +41,7 @@ export {
   emptyIssueRelations,
   loadIssueRelationsForIssues,
 } from './dependency-read.js';
+export { registerDependencyHealth } from './dependency-service.js';
 export { isValidDetectorKey } from './detector-key.js';
 export { issueDisplayIds } from './display-ids.js';
 export { registerIssueMoveReactions } from './drop-unblock.js';
@@ -111,7 +112,7 @@ export {
 export type { RecordEvent } from './record-events/store.js';
 export { mirroredEventsFor, recordOfEvent, writeRecordEvent } from './record-events/store.js';
 export type { PendingIssueRelation } from './relations-service.js';
-export { flushIssueRelationEffects, writeIssueRelations } from './relations-service.js';
+export { writeIssueRelations } from './relations-service.js';
 export { claimIssuesForRelease, releaseEndedRunClaims, releaseRunClaims } from './release-claim.js';
 export { reopenedAtOf } from './release-evidence.js';
 export { issuesMissingReleaseRecord } from './release-record-required.js';

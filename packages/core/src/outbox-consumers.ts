@@ -2,6 +2,7 @@ import { registerReviewNotes } from './comments/index.js';
 import { registerSourcePushReactions } from './ecosystem/index.js';
 import {
   registerActivitySubscribers,
+  registerDependencyHealth,
   registerHostMergeStamp,
   registerIssueMoveReactions,
 } from './issues/index.js';
@@ -47,6 +48,7 @@ export function registerOutboxConsumers(): void {
   registerMemoryExtraction();
   registerHostMergeStamp();
   registerIssueMoveReactions();
+  registerDependencyHealth();
   registerReviewNotes();
   registerSourcePushReactions();
   registerLiveReadingInvalidation();

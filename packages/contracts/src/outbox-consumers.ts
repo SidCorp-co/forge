@@ -21,6 +21,7 @@ export const OUTBOX_CONSUMERS = {
 		"memory-reconcile",
 		"issue-move-reactions",
 	],
+	"issue.dependency.changed": ["ws-broadcast", "dependency-health"],
 	"job.transitioned": ["phase-journal-close", "memory-extraction"],
 	"run.transitioned": ["paused-run-wedge-resolve", "release-batch-claims", "run-status-broadcast"],
 	"comment.created": ["activity-feed", "master-wake"],
