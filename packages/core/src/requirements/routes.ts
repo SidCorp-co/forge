@@ -1,6 +1,10 @@
 import {
+  ACCEPT_REQUIREMENT_SHAPE,
+  acceptRequirementRequestSchema,
   DEFER_REQUIREMENT_SHAPE,
+  DROP_REQUIREMENT_SHAPE,
   deferRequirementRequestSchema,
+  dropRequirementRequestSchema,
   REPIN_REQUIREMENT_SHAPE,
   repinRequirementRequestSchema,
   UNDEFER_REQUIREMENT_SHAPE,
@@ -11,6 +15,7 @@ import { z } from 'zod';
 import { egressForRequest } from '../lib/data-egress.js';
 import { assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { strictBody } from '../middleware/zod-validator.js';
+import { acceptDelivery, dropRequirement } from './acceptance.js';
 import { agreeRequirement } from './agree.js';
 import { deferRequirement, undeferRequirement } from './deferral.js';
 import { requirementLinkRoutes } from './link-routes.js';
@@ -169,4 +174,44 @@ requirementRoutes.post(
   },
 );
 
+requirementRoutes.post(
+  '/:id/requirements/:req/accept',
+  reqParam,
+  strictBody(acceptRequirementRequestSchema, ACCEPT_REQUIREMENT_SHAPE),
+  async (c) => {
+    const { id, req } = c.req.valid('param');
+    const body = c.req.valid('json');
+    return answer(
+      c,
+      await acceptDelivery({
+        projectId: id,
+        ref: req,
+        actor: actorOf(c),
+        revision: body.revision,
+        reason: body.reason,
+      }),
+    );
+  },
+);
+
+requirementRoutes.post(
+  '/:id/requirements/:req/drop',
+  reqParam,
+  strictBody(dropRequirementRequestSchema, DROP_REQUIREMENT_SHAPE),
+  async (c) => {
+    const { id, req } = c.req.valid('param');
+    return answer(
+      c,
+      await dropRequirement({
+        projectId: id,
+        ref: req,
+        actor: actorOf(c),
+        reason: c.req.valid('json').reason,
+      }),
+    );
+  },
+);
+
 requirementRoutes.route('/', requirementLinkRoutes);
+
+export { deviceRequirementInboxRoutes } from './device-owed-routes.js';

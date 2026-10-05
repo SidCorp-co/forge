@@ -395,6 +395,19 @@ export const undeferRequirementRequestSchema = z.strictObject({
 export const UNDEFER_REQUIREMENT_SHAPE =
 	"{ reason? } — puts it back at the status it was deferred from";
 
+export const acceptRequirementRequestSchema = z.strictObject({
+	revision: z.number().int().min(1),
+	reason: z.string().max(4_000).nullable().optional(),
+});
+export const ACCEPT_REQUIREMENT_SHAPE =
+	"{ revision, reason? } — names the head revision whose delivery is accepted";
+
+export const dropRequirementRequestSchema = z.strictObject({
+	reason: z.string().max(4_000),
+});
+export const DROP_REQUIREMENT_SHAPE =
+	"{ reason } — why it is not going to be built";
+
 export const repinRequirementRequestSchema = z.strictObject({
 	revision: z.number().int().min(1),
 	reason: z.string().max(4_000).nullable().optional(),
@@ -448,6 +461,11 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"REQUIREMENT_NOT_DEFERRABLE",
 	"REQUIREMENT_NOT_DEFERRED",
 	"REQUIREMENT_HAS_LIVE_ISSUES",
+	"REQUIREMENT_NOT_DELIVERED",
+	"REQUIREMENT_CRITERIA_UNPROVEN",
+	"REQUIREMENT_ALREADY_ACCEPTED",
+	"REQUIREMENT_DROP_REASON_REQUIRED",
+	"REQUIREMENT_NOT_DROPPABLE",
 	"REQUIREMENT_PINS_CURRENT",
 	"REQUIREMENT_CONTRACT_UNKNOWN",
 	"REQUIREMENT_DESIGN_UNLINKED",

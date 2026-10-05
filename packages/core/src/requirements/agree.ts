@@ -3,6 +3,7 @@ import {
   type BaselineReadiness,
   REQUIREMENT_READINESS_GATE_DEFAULT,
   type RequirementReadinessGate,
+  requirementKey,
 } from '@forge/contracts/requirements';
 import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -14,6 +15,7 @@ import {
   requirements,
 } from '../db/schema-requirements.js';
 import { movedRow, transition } from '../lifecycle/index.js';
+import { emitEvent } from '../outbox/index.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { linkedContracts, writePinsIn } from './baselines.js';
 import { requirementDependents } from './dependents.js';
@@ -43,7 +45,7 @@ async function readinessGateOf(projectId: string): Promise<RequirementReadinessG
   return doc?.document.requirements?.readinessGate ?? REQUIREMENT_READINESS_GATE_DEFAULT;
 }
 
-/** Writes the agree's baseline of `revision` (seq 1) and its pins. */
+/** Writes the agree's baseline of `revision` and its pins; answers the baseline's seq. */
 async function writeBaseline(
   tx: Tx,
   requirementId: string,
@@ -52,7 +54,7 @@ async function writeBaseline(
   actor: RequirementActor,
   reason: string | null,
   readiness: BaselineReadiness | null = null,
-) {
+): Promise<number> {
   const [baseline] = await tx
     .insert(requirementBaselines)
     .values({ requirementId, revision, agreedBy: actor.userId, reason, readiness })
@@ -64,6 +66,23 @@ async function writeBaseline(
     designs,
     await linkedContracts(tx, requirementId),
   );
+  return baseline.seq;
+}
+
+/** The agree, or a re-agree at a new head, is told on the outbox: it wakes the master that owes the breakdown. */
+function announceAgreed(
+  tx: Tx,
+  row: { projectId: string; id: string; reqSeq: number },
+  revision: number,
+  baselineSeq: number,
+) {
+  return emitEvent(tx, 'requirement.agreed', {
+    projectId: row.projectId,
+    requirementId: row.id,
+    key: requirementKey(row.reqSeq),
+    revision,
+    baselineSeq,
+  });
 }
 
 /**
@@ -82,6 +101,7 @@ export async function acceptRevision(input: {
   const row = await rowIn(db, projectId, input.ref);
   const signer = await signerRefusal(actor, projectId, 'accepting a revision');
   if (signer) return { ok: false, refusals: [signer] };
+  const gate = await readinessGateOf(projectId);
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
     const current = await rowIn(tx, projectId, row.id);
@@ -93,6 +113,7 @@ export async function acceptRevision(input: {
     if (refusal) return [refusal];
     const rebaseline = current.status === 'agreed' || current.status === 'accepted';
     const designs = rebaseline ? await linkedDesigns(tx, row.id) : [];
+    let readiness: BaselineReadiness | null = null;
     if (rebaseline) {
       const guards = agreeRefusals({
         status: current.status as RequirementStatus,
@@ -103,6 +124,9 @@ export async function acceptRevision(input: {
         rebaseline: true,
       });
       if (guards.length) return guards;
+      readiness = baselineReadiness(gate, await readinessAt(tx, row.id, target.revision));
+      const notReady = readinessRefusal(readiness, target.revision);
+      if (notReady) return [notReady];
     }
     if (current.currentRevision !== null) {
       await tx
@@ -132,7 +156,16 @@ export async function acceptRevision(input: {
       });
       // The baseline records who re-agreed and in their own words; the revision's reason is its
       // author's, already on the revision row.
-      await writeBaseline(tx, row.id, target.revision, designs, actor, acceptReason);
+      const seq = await writeBaseline(
+        tx,
+        row.id,
+        target.revision,
+        designs,
+        actor,
+        acceptReason,
+        readiness,
+      );
+      await announceAgreed(tx, row, target.revision, seq);
     }
     await requirementDependents().revised(tx, row.id, target.revision);
     return null;
@@ -185,7 +218,7 @@ export async function agreeRequirement(input: {
     );
     const notReady = readinessRefusal(readiness, current.currentRevision);
     if (notReady) return [notReady];
-    await writeBaseline(
+    const seq = await writeBaseline(
       tx,
       row.id,
       input.revision,
@@ -205,6 +238,7 @@ export async function agreeRequirement(input: {
       returning: ['id'],
     });
     movedRow(agreed);
+    await announceAgreed(tx, row, input.revision, seq);
     return null;
   });
   return answer(projectId, row.id, actor, refusals);

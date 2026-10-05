@@ -20,6 +20,7 @@ export const OUTBOX_CONSUMERS = {
 		"notify-transitions",
 		"memory-reconcile",
 		"issue-move-reactions",
+		"requirement-delivery",
 	],
 	"issue.dependency.changed": ["ws-broadcast", "dependency-health"],
 	"job.transitioned": ["phase-journal-close", "memory-extraction"],
@@ -46,6 +47,9 @@ export const OUTBOX_CONSUMERS = {
 	"channel.threadHeld": ["notify-ecosystem", "master-wake"],
 	"contract.versionApproved": ["notify-ecosystem", "master-wake"],
 	"ecosystem.buildOwed": ["master-wake"],
+	"requirement.agreed": ["master-wake"],
+	"requirement.delivered": ["notify-requirements"],
+	"requirement.accepted": ["notify-requirements"],
 } as const satisfies {
 	readonly [T in OutboxEventType]: readonly string[];
 };

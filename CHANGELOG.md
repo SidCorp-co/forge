@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- **A delivered requirement can be accepted or dropped.** The BA is notified on delivery; the accept
+  is refused until every issue shipped and every criterion is proven. An agree wakes the master;
+  an overdue breakdown shows on its pass.
+
 ### Fixed
 
 - **A pool job's brief is its agent's first turn, not a paste.** The runner starts the job's agent

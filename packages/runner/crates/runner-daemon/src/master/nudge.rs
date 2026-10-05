@@ -186,7 +186,35 @@ pub(crate) async fn read_inbox(
 ) -> Vec<UnansweredDocument> {
     let mut owed = read_channel_inbox(client, masters, project_id, slug).await;
     owed.extend(read_comment_inbox(client, masters, project_id, slug).await);
+    owed.extend(read_requirement_inbox(client, masters, project_id, slug).await);
     owed
+}
+
+/// Which agreed requirements owe this project's master a breakdown, due or overdue.
+pub(crate) async fn read_requirement_inbox(
+    client: &CoreClient,
+    masters: &Arc<Masters>,
+    project_id: &str,
+    slug: &str,
+) -> Vec<UnansweredDocument> {
+    let key = format!("{project_id}#requirements");
+    match requirement_inbox::owed(client, project_id).await {
+        Ok(owed) => {
+            if masters.note_inbox_read(&key, None) {
+                tracing::info!("[master] {slug}: the requirement inbox reads again");
+            }
+            owed
+        }
+        Err(e) => {
+            let why = e.to_string();
+            if masters.note_inbox_read(&key, Some(why.clone())) {
+                tracing::warn!(
+                    "[master] {slug}: cannot read which agreed requirements owe a breakdown ({why}) — this pass is decided without them, and an agreed requirement is not broken down until the read succeeds"
+                );
+            }
+            Vec::new()
+        }
+    }
 }
 
 /// What a person is owed a reply to on this project's issues, at any status.

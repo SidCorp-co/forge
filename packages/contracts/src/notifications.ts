@@ -12,6 +12,7 @@ export const NOTIFICATION_TYPES = [
 	"channel_thread_held",
 	"channel_gate_pending",
 	"contract_version_published",
+	"requirement_delivered",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -30,6 +31,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
 	channel_thread_held: "Thread held",
 	channel_gate_pending: "Approval",
 	contract_version_published: "Contract version",
+	requirement_delivered: "Delivered",
 };
 
 /** What a delivery names, read from the record's references by core, never from its text. */
@@ -156,6 +158,12 @@ const NOTIFICATION_CONTRACT: Record<
 		channels: ["bell"],
 		kind: "signal",
 		tier: "log",
+	},
+	requirement_delivered: {
+		severity: "info",
+		channels: ["bell", "toast"],
+		kind: "task",
+		tier: "ticket",
 	},
 };
 

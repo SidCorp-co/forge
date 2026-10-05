@@ -33,6 +33,9 @@ export const OUTBOX_EVENT_TYPES = [
 	"channel.threadHeld",
 	"contract.versionApproved",
 	"ecosystem.buildOwed",
+	"requirement.agreed",
+	"requirement.delivered",
+	"requirement.accepted",
 ] as const;
 export type OutboxEventType = (typeof OUTBOX_EVENT_TYPES)[number];
 
@@ -336,6 +339,30 @@ export interface OutboxEventPayloads {
 	};
 	/** A builder run of this project is open (a join, a push, a supersede), and its master owes it. */
 	"ecosystem.buildOwed": { projectId: string };
+	/** A requirement was agreed, or re-agreed at a new head, and its master owes the breakdown. */
+	"requirement.agreed": {
+		projectId: string;
+		requirementId: string;
+		key: string;
+		revision: number;
+		baselineSeq: number;
+	};
+	/** A linked issue's move left the requirement reading delivered at `revision`; its BA owes the check. */
+	"requirement.delivered": {
+		projectId: string;
+		requirementId: string;
+		key: string;
+		title: string;
+		revision: number;
+	};
+	/** A holder of requirements.approve accepted the delivered revision. */
+	"requirement.accepted": {
+		projectId: string;
+		requirementId: string;
+		key: string;
+		revision: number;
+		acceptedBy: string;
+	};
 }
 
 export type OutboxEventPayload<T extends OutboxEventType> =

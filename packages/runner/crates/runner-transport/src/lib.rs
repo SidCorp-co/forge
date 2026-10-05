@@ -11,6 +11,7 @@
 //! - `pool`           — GET `/me/pool` and the prepare/start/release claim (ISS-1080)
 //! - `channel_inbox`  — GET `/me/channel/unanswered`: what a project's channel owes (ISS-38)
 //! - `comment_inbox`  — GET `/me/comments/unanswered`: what a project's issue threads owe a person
+//! - `requirement_inbox` — GET `/me/requirements/owed`: which agreed requirements owe a breakdown
 pub mod admissible;
 pub mod agent_sessions;
 pub mod api;
@@ -27,6 +28,7 @@ pub mod plugins;
 pub mod pool;
 pub mod provision;
 pub mod questions;
+pub mod requirement_inbox;
 pub mod run_sessions;
 pub mod runners;
 pub mod skills;

@@ -24,6 +24,7 @@ export const MASTER_WAKE_SOURCES = [
   'ecosystem_build',
   'workflow_design',
   'comment',
+  'requirement',
 ] as const;
 type MasterWakeSource = (typeof MASTER_WAKE_SOURCES)[number];
 
@@ -117,6 +118,22 @@ async function wakeMastersForComment(args: {
     source: 'comment',
     issueId: args.issueId,
     commentId: args.commentId,
+  });
+}
+
+/** A requirement was agreed, or re-agreed at a new head, and its master owes the breakdown. */
+async function wakeMastersForRequirement(args: {
+  projectId: string;
+  requirementId: string;
+  key: string;
+  revision: number;
+}): Promise<{ boxes: number; delivered: number }> {
+  return publishWake(args.projectId, {
+    projectId: args.projectId,
+    source: 'requirement',
+    requirementId: args.requirementId,
+    key: args.key,
+    revision: args.revision,
   });
 }
 
@@ -215,6 +232,13 @@ export function registerMasterWakeSubscribers(): void {
           status: r.status as IssueStatus,
         });
       }
+    },
+  });
+
+  consume('requirement.agreed', {
+    name: 'master-wake',
+    handle: async (p) => {
+      await wakeMastersForRequirement(p);
     },
   });
 

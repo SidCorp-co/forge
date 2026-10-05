@@ -1,7 +1,7 @@
 "use client";
 
 // The acts a requirement offers where it stands — review a proposal, propose a draft, agree the
-// head, accept a delivery — and the BA assistant door (ISS-58) that "Propose change" and the top
+// head, accept a delivery, defer or drop it — and the BA assistant door (ISS-58) that "Propose change" and the top
 // bar's Ask Agent open. The peek and the full page's header draw the same one primary act from the
 // same rules; "Propose change" sits with the revisions, Accept / Reject beside the diff.
 
@@ -120,23 +120,57 @@ export function PrimaryActions({
         Agree r{head.revision}
       </Button>
     );
-  } else if (s.state === "delivered" && d.canSignOff) {
+  } else if (s.state === "delivered" && d.canSignOff && head) {
     primary = (
-      <Tooltip label="Accepting a delivery has no door yet: delivered → accepted was left out of ISS-57" multiline>
-        <Button type="button" size="sm" variant="primary" disabled>
-          Accept delivery
+      <Tooltip label={`Every linked issue shipped and every business criterion is proven at r${head.revision}; accepting stores it as accepted`} multiline>
+        <Button type="button" size="sm" variant="primary" loading={busy} onClick={() => act.mutate({ kind: "accept-delivery", revision: head.revision })}>
+          Accept r{head.revision}
         </Button>
       </Tooltip>
     );
   }
   const deferrable = d.canSignOff && (d.status === "draft" || d.status === "agreed");
-  if (!primary && !deferrable) return null;
+  const droppable = d.canSignOff && (d.status === "draft" || d.status === "agreed" || d.status === "deferred");
+  if (!primary && !deferrable && !droppable) return null;
   return (
     <div className="flex flex-wrap items-center gap-2">
       {primary}
       {deferrable ? <DeferAct projectId={projectId} reqKey={d.key} /> : null}
+      {droppable ? <DropAct projectId={projectId} reqKey={d.key} /> : null}
       <RefusalLine error={act.error} />
     </div>
+  );
+}
+
+/** Drops a requirement that is not going to be built, saying why; core refuses it while a live issue links to it. */
+function DropAct({ projectId, reqKey }: { projectId: string; reqKey: string }) {
+  const act = useRequirementAction(projectId, reqKey);
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  if (!open) {
+    return (
+      <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(true)}>
+        Drop
+      </Button>
+    );
+  }
+  return (
+    <form
+      className="flex flex-wrap items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        act.mutate({ kind: "drop", reason: reason.trim() }, { onSuccess: () => setOpen(false) });
+      }}
+    >
+      <Input aria-label="Why it is dropped" placeholder="Why it is not going to be built" value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
+      <Button type="submit" size="sm" variant="danger" disabled={!reason.trim()} loading={act.isPending}>
+        Drop
+      </Button>
+      <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>
+        Cancel
+      </Button>
+      <RefusalLine error={act.error} />
+    </form>
   );
 }
 
