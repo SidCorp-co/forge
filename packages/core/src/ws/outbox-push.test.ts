@@ -83,29 +83,6 @@ describe('a runner push reaches its room only through the outbox', () => {
     expect(published.map((p) => p.room)).toEqual(['runner:r-1', 'project:p-1']);
   });
 
-  it('turns one stored batch of job lines into one job.event per line, in seq order', async () => {
-    await handlers.get('job.eventsAppended')?.({
-      projectId: 'p-1',
-      jobId: 'j-1',
-      events: [
-        { seq: 1, kind: 'stdout', ts: '2026-10-05T00:00:00.000Z', data: 'a' },
-        { seq: 2, kind: 'stdout', ts: '2026-10-05T00:00:01.000Z', data: 'b' },
-      ],
-    });
-    expect(published).toEqual([
-      {
-        room: 'project:p-1',
-        event: 'job.event',
-        data: { jobId: 'j-1', seq: 1, kind: 'stdout', ts: '2026-10-05T00:00:00.000Z', data: 'a' },
-      },
-      {
-        room: 'project:p-1',
-        event: 'job.event',
-        data: { jobId: 'j-1', seq: 2, kind: 'stdout', ts: '2026-10-05T00:00:01.000Z', data: 'b' },
-      },
-    ]);
-  });
-
   it('names a token change as the pat.* event web listens for', async () => {
     await handlers.get('credential.tokenChanged')?.({
       userId: 'u-1',

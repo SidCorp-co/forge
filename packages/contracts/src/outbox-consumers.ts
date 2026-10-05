@@ -57,7 +57,6 @@ export const OUTBOX_CONSUMERS = {
 	"credential.tokenChanged": ["ws-broadcast"],
 	"runner.changed": ["ws-broadcast"],
 	"job.changed": ["ws-broadcast"],
-	"job.eventsAppended": ["ws-broadcast"],
 	"session.changed": ["ws-broadcast"],
 	"device.pushed": ["ws-broadcast"],
 	"session.pushed": ["ws-broadcast"],

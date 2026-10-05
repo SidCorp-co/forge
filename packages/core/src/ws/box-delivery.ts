@@ -1,7 +1,8 @@
 // The two socket questions a kernel may ask the WebSocket door synchronously, handed to it through
 // a port at boot: whether a box is listening, and the one frame that must reach it now.
 
-import { deviceRoom, roomManager } from '../lib/rooms.js';
+import type { EphemeralFrame, EphemeralTarget } from '../lib/ephemeral.js';
+import { deviceRoom, projectRoom, roomManager, userRoom } from '../lib/rooms.js';
 
 /** Whether any socket reads this box's room right now. */
 export function boxIsListening(deviceId: string): boolean {
@@ -14,4 +15,11 @@ export function boxIsListening(deviceId: string): boolean {
  */
 export function sendToBoxNow(deviceId: string, envelope: { event: string; data: unknown }): number {
   return roomManager.publish(deviceRoom(deviceId), envelope);
+}
+
+/** The ephemeral-frame publisher `lib/ephemeral.ts` is given at boot: project, then box, then people. */
+export function publishEphemeralFrame(target: EphemeralTarget, frame: EphemeralFrame): void {
+  if (target.projectId) roomManager.publish(projectRoom(target.projectId), frame);
+  if (target.deviceId) roomManager.publish(deviceRoom(target.deviceId), frame);
+  for (const userId of target.userIds ?? []) roomManager.publish(userRoom(userId), frame);
 }

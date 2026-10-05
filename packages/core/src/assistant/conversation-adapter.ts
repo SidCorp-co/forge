@@ -15,6 +15,7 @@ import { db } from '../db/client.js';
 import type { ConversationShape } from '../db/schema-conversations.js';
 import { emitEvent } from '../outbox/index.js';
 import type { SpeakerResolution } from './identity/speaker-link.js';
+import { publishEphemeral } from '../lib/ephemeral.js';
 
 /** What the Forge UI hands the ports: the room it already read, and who is typing in it. */
 export interface WebConversationFrame {
@@ -58,6 +59,15 @@ async function readersOf(conversationId: string): Promise<string[]> {
     } catch {}
   }
   return out;
+}
+
+/** An ephemeral frame (lib/ephemeral.ts) for every person who may currently see this room. */
+export async function publishEphemeralToConversationReaders(
+  conversationId: string,
+  frame: { event: string; data: unknown },
+): Promise<void> {
+  const userIds = await readersOf(conversationId);
+  if (userIds.length > 0) publishEphemeral({ userIds }, frame);
 }
 
 /** Push to every person who may currently see this room, through the outbox. */

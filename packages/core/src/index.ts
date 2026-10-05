@@ -60,6 +60,7 @@ import {
 } from './jobs/index.js';
 import { provideKnowledgePorts } from './knowledge/index.js';
 import { provideProjectOrg, provideVisibleProjects } from './lib/authz.js';
+import { provideEphemeralPublisher } from './lib/ephemeral.js';
 import { provideContractVersionReads } from './lib/contract-versions.js';
 import { provideDataPolicy } from './lib/data-egress.js';
 import { env } from './lib/env.js';
@@ -121,10 +122,11 @@ import { redactFeedbackSuggestions, staleOnTargetRevised } from './suggestions/i
 import { coreTimers } from './timer-registry.js';
 import { provideWorkPorts } from './work-ports.js';
 import { workflowDesign } from './workflows/index.js';
-import { attachWs, closeWs } from './ws/index.js';
+import { attachWs, closeWs, publishEphemeralFrame } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
 provideVisibleProjects(findVisibleProjectIds);
+provideEphemeralPublisher(publishEphemeralFrame);
 provideCredentialsPorts({
   tokenChanged: (change) => emitEvent(db, 'credential.tokenChanged', change),
 });

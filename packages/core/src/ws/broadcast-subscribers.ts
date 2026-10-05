@@ -152,10 +152,6 @@ export function registerWsBroadcastSubscribers(): void {
     if (p.rooms.includes('project')) pub(projectRoom(p.projectId), p.event, p.data);
   });
 
-  on('job.eventsAppended', (p) => {
-    for (const e of p.events) pub(projectRoom(p.projectId), 'job.event', { jobId: p.jobId, ...e });
-  });
-
   on('device.pushed', (p) => {
     if (p.userId) pub(userRoom(p.userId), p.event, p.data);
     if (p.deviceId) pub(deviceRoom(p.deviceId), p.event, p.data);

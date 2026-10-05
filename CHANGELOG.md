@@ -13,9 +13,9 @@
 - **Kernels reach each other only through their faces.** Strand findings use the issues writer,
   permissions and the WebSocket door read no foreign table, chat egress is gated in the LLM
   adapter, and prompts name REST over three MCP tools.
-- **Every live push but a chat turn's frame to its box goes through the outbox.** A project's
-  unanswered channel documents and its contract context now have REST routes a personal token can
-  call.
+- **Live pushes that change state go through the outbox; streaming frames go straight to
+  sockets.** A project's unanswered channel documents and its contract context now have REST routes
+  a personal token can call.
 
 ## [0.4.0-dev.30] - 2026-10-05
 

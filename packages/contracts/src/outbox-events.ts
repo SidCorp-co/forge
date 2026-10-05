@@ -39,7 +39,6 @@ export const OUTBOX_EVENT_TYPES = [
 	"credential.tokenChanged",
 	"runner.changed",
 	"job.changed",
-	"job.eventsAppended",
 	"session.changed",
 	"device.pushed",
 	"session.pushed",
@@ -410,12 +409,6 @@ export interface OutboxEventPayloads {
 			| "job.resumed";
 		data: Record<string, unknown>;
 		rooms: ReadonlyArray<"project" | "device">;
-	};
-	/** One batch of a job's event lines was stored, scrubbed, in seq order. */
-	"job.eventsAppended": {
-		projectId: string;
-		jobId: string;
-		events: Array<{ seq: number; kind: string; ts: string; data: unknown }>;
 	};
 	/** An agent session was opened or changed status; told to its project's room and its box's. */
 	"session.changed": {

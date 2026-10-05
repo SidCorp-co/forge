@@ -16,7 +16,6 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { emitEvent } from '../outbox/index.js';
 import { requireHeld } from '../permissions/index.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { readJobGate } from './job-queries.js';
@@ -24,6 +23,7 @@ import { scrubJobOutput } from './job-secret-scrub.js';
 import { listJobEvents } from './read.js';
 import { refuseJob } from './refusals.js';
 import { appendJobEvents, beatLinkedSession, stampJobAckFromEvents } from './service.js';
+import { publishEphemeral } from '../lib/ephemeral.js';
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
@@ -187,18 +187,15 @@ jobEventsRoutes.post(
 
     const inserted = await appendJobEvents(jobId, persisted);
 
-    // Post-commit push, one outbox event per stored batch; failures bubble (fail-fast).
-    if (inserted.length > 0) {
-      await emitEvent(db, 'job.eventsAppended', {
-        projectId: job.projectId,
-        jobId,
-        events: inserted.map((row) => ({
-          seq: row.seq,
-          kind: row.kind,
-          ts: row.ts.toISOString(),
-          data: row.data,
-        })),
-      });
+    // Live log lines are ephemeral (lib/ephemeral.ts): stored above, announced without the outbox.
+    for (const row of inserted) {
+      publishEphemeral(
+        { projectId: job.projectId },
+        {
+          event: 'job.event',
+          data: { jobId, seq: row.seq, kind: row.kind, ts: row.ts, data: row.data },
+        },
+      );
     }
 
     if (job.ackedAt === null) {
