@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, enumLabel, StatusBadge, Tooltip } from "@/design";
+import { Badge, enumLabel, ProjectMark, StatusBadge, Tooltip } from "@/design";
 import { contractHref, contractsHref } from "@/features/contracts/routes";
 import {
   type Bus,
@@ -9,13 +9,14 @@ import {
   type BusRow,
   impactLine,
   impactOf,
+  projectMarkProps,
   STATE_MEANING,
   slugsOf,
 } from "../bus";
 import { ecosystemRoutes } from "../routes";
 import { BuilderDetail } from "./bus-builder-detail";
 import { BuilderSummary, Caption, Group, Head, PageLink } from "./bus-detail-kit";
-import { ProjectMark, type Selection } from "./bus-diagram";
+import type { Selection } from "./bus-diagram";
 import { LinkDetail } from "./bus-link-detail";
 
 type Names = ReadonlyMap<string, string>;
@@ -23,7 +24,7 @@ type Names = ReadonlyMap<string, string>;
 function ProjectHead({ p, bus, mine }: { p: BusProject; bus: Bus; mine: Names }) {
   return (
     <Head>
-      <ProjectMark slug={p.slug} size={22} />
+      <ProjectMark {...projectMarkProps(p.slug)} size={22} />
       <h2 className="text-15 font-semibold">{p.slug}</h2>
       <Tooltip label={`${p.name} · a member of ${bus.ecosystem.name}`}>
         <span className="fg-caption">{p.name}</span>
@@ -149,7 +150,7 @@ function ContractDetail({ bus, rows, k, mine, onSelect }: { bus: Bus; rows: BusR
   return (
     <>
       <Head>
-        <ProjectMark slug={provider} size={22} />
+        <ProjectMark {...projectMarkProps(provider)} size={22} />
         <h2 className="font-mono text-15 font-semibold">{row.ref.slug}</h2>
         {c ? (
           <Tooltip label={`${c.title} · ${c.type}`}>

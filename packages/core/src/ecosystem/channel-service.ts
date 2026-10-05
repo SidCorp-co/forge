@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { isPlainObject as isRecord } from '@forge/contracts/document-patch';
 import { db, type Tx } from '../db/client.js';
+import { emitEvent } from '../outbox/index.js';
 import { type ChannelOutcome, lockedSender, notIn, refuse, served, settle } from './channel-act.js';
 import type { Writer } from './channel-author.js';
 import { checked, parsedOrRefused } from './channel-checks.js';
 import { askGate } from './channel-gate-ask.js';
 import { addDays, today } from './channel-rules.js';
 import { DOCUMENT_SCHEMA_ID, type Gate, TYPE_ABBREVIATIONS } from './channel-schema.js';
-import { announceGatePending, announcePublished } from './channel-signals.js';
+import { emitPublished } from './channel-signals.js';
 import { insertDraft, insertEvent, reserveNumber, rewriteDocument } from './channel-store.js';
 import { serve } from './channel-world.js';
 import { heldEcosystem } from './ecosystem-service.js';
@@ -189,7 +190,7 @@ export async function submit(args: {
   documentId: string;
   writer: Writer;
 }): Promise<ChannelOutcome> {
-  const outcome = await settle(() =>
+  return settle(() =>
     db.transaction(async (tx) => {
       const row = await lockedSender(tx, args.projectId, args.documentId);
       notIn(row, ['draft'], 'submit');
@@ -237,16 +238,18 @@ export async function submit(args: {
           toState: 'published',
           ...actor,
         });
+        await emitPublished(tx, row.id, doc);
       } else {
         await askGate(tx, row.id, doc);
+        await emitEvent(tx, 'channel.gateAsked', {
+          projectId: doc.from,
+          documentId: row.id,
+          number: doc.number ?? null,
+          subject: doc.subject,
+          type: doc.type,
+        });
       }
       return served(tx, row.id);
     }),
   );
-  if (outcome.ok) {
-    const { id, document } = outcome.served;
-    if (document.state === 'published') await announcePublished(id, document);
-    else await announceGatePending(id, document);
-  }
-  return outcome;
 }

@@ -1,5 +1,7 @@
 // cm:edge contract -> packages/core/src/ecosystem/link-read.ts:readBus — the bus, link and builder-run shapes here are core's reads of link-v1 and builder-run-v1 (packages/core/src/ecosystem/link-schema.ts), so a field added or renamed there changes here in the same change
 
+import { projectGlyph } from "@/features/projects/glyph";
+
 export type LinkState = "building" | "current" | "behind" | "breaking" | "unverified";
 
 export type StepStatus = "pending" | "running" | "succeeded" | "failed" | "skipped" | "superseded";
@@ -252,6 +254,9 @@ export const initials = (slug: string) => {
   const two = parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : slug.slice(0, 2);
   return two.toUpperCase();
 };
+
+/** The design ProjectMark's props for a member, hashed from its slug so it reads the same tile on every ecosystem screen. */
+export const projectMarkProps = (slug: string) => ({ ...projectGlyph(slug), initials: initials(slug), radius: "var(--r-sm)" });
 
 export const shortSha = (sha: string) => sha.slice(0, 7);
 

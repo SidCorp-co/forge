@@ -8,14 +8,17 @@ import { openPushedRuns } from './builder-trigger.js';
 export function registerSourcePushReactions(): void {
   consume('source.pushed', {
     name: 'ecosystem-builder',
-    handle: async (p) => {
-      if (p.branch === null) return;
-      await openPushedRuns({
-        projectId: p.projectId,
-        branch: p.branch,
-        defaultBranch: p.defaultBranch,
-        commit: p.commit ?? undefined,
-      });
+    handle: async (p, d) => {
+      const branch = p.branch;
+      if (branch === null) return;
+      await d.inbox((tx) =>
+        openPushedRuns(tx, {
+          projectId: p.projectId,
+          branch,
+          defaultBranch: p.defaultBranch,
+          commit: p.commit ?? undefined,
+        }),
+      );
     },
   });
 }

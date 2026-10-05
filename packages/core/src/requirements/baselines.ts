@@ -1,13 +1,13 @@
 import { and, asc, desc, eq, inArray, lte } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { projects } from '../db/schema.js';
-import { contractVersions } from '../db/schema-ecosystem.js';
 import { mockups } from '../db/schema-mockups.js';
 import {
   requirementBaselinePins,
   requirementBaselines,
   requirementContracts,
 } from '../db/schema-requirements.js';
+import { contractVersionReads } from '../lib/contract-versions.js';
 import type { LinkedContract, LinkedDesign } from './rules.js';
 
 // An agree writes seq 1 and each re-pin a further seq of the same revision, so the latest
@@ -125,22 +125,9 @@ export async function linkedContractsOf(
     .where(inArray(requirementContracts.requirementId, [...requirementIds]))
     .orderBy(asc(projects.slug), asc(requirementContracts.contractSlug));
   if (links.length === 0) return [];
-  const approved = await tx
-    .select({
-      providerProjectId: contractVersions.providerProjectId,
-      contractSlug: contractVersions.contractSlug,
-      version: contractVersions.version,
-    })
-    .from(contractVersions)
-    .where(
-      and(
-        inArray(contractVersions.providerProjectId, [
-          ...new Set(links.map((l) => l.providerProjectId)),
-        ]),
-        eq(contractVersions.approval, 'approved'),
-      ),
-    )
-    .orderBy(desc(contractVersions.recordedAt));
+  const approved = await contractVersionReads().currentVersionsOf(tx, [
+    ...new Set(links.map((l) => l.providerProjectId)),
+  ]);
   return links.map((l) => ({
     requirementId: l.requirementId,
     providerProjectId: l.providerProjectId,

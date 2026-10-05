@@ -77,7 +77,7 @@ export async function providerWriterMiss(
 
 /** Who set the commitments the interface makes now, so a reader can tell an agent's proposal from a person's decision. */
 export async function commitmentsSetter(projectId: string): Promise<CommitmentsSetter | null> {
-  return commitmentsSetterOf(await interfaceRevisionsBy(db, projectId));
+  return commitmentsSetterOf(await interfaceRevisionsBy(projectId));
 }
 
 export async function loadInterface(projectId: string): Promise<HeldInterface | null> {

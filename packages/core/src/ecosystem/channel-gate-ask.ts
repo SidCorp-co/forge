@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { inArray } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
-import { projects } from '../db/schema.js';
+import { listProjectHeads } from '../projects/index.js';
 import { insertAskedQuestion } from '../questions/index.js';
 import { GATE_OPTIONS } from './channel-gate.js';
 import type { ChannelDocument } from './channel-schema.js';
@@ -9,11 +8,7 @@ import type { ChannelDocument } from './channel-schema.js';
 // cm:why the approve gate is a question on the sending project with no issue and no session, so it parks no run and holds no lease while it waits
 export async function askGate(tx: Tx, documentId: string, d: ChannelDocument): Promise<string> {
   if (!d.number) throw new Error(`channel: ${documentId} reached the gate without a number`);
-  const rows = await tx
-    .select({ id: projects.id, slug: projects.slug })
-    .from(projects)
-    .where(inArray(projects.id, d.to));
-  const slug = new Map(rows.map((r) => [r.id, r.slug]));
+  const slug = new Map((await listProjectHeads(d.to)).map((r) => [r.id, r.slug]));
   const to = d.to.map((p) => slug.get(p) ?? p).join(', ');
   const fingerprint = `channel-gate:${documentId}`;
   const option = {

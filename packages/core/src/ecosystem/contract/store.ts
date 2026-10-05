@@ -104,7 +104,7 @@ export async function currentVersion(
 }
 
 /** The current version from a newest-first list `versionsOf` read: the first approved one. */
-export const currentOf = (versions: readonly StoredVersion[]): StoredVersion | null =>
+export const currentOf = <V extends { approval: string }>(versions: readonly V[]): V | null =>
   versions.find((v) => v.approval === 'approved') ?? null;
 
 /** Writes a decision on a version that is still proposed; false where another decision got there first. */

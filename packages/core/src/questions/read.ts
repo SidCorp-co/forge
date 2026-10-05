@@ -7,7 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import type { PersonVia } from '@forge/contracts/ecosystem';
 import type { ActorAgency } from '@forge/contracts/permissions';
-import { and, count, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
@@ -303,6 +303,41 @@ export async function answerAs(args: {
     facts: access,
     ...(args.note === undefined ? {} : { note: args.note }),
   });
+}
+
+/** The open approve-gate question on each of these channel documents, asked of the project that sent it, keyed by document id. */
+export async function openGateQuestionsOf(
+  on: readonly { projectId: string; documentId: string }[],
+): Promise<Map<string, { id: string; round: number }>> {
+  const out = new Map<string, { id: string; round: number }>();
+  if (on.length === 0) return out;
+  const rows = await db
+    .select({
+      id: agentQuestions.id,
+      projectId: agentQuestions.projectId,
+      origin: agentQuestions.origin,
+      steps: agentQuestions.steps,
+    })
+    .from(agentQuestions)
+    .where(
+      and(
+        inArray(agentQuestions.projectId, [...new Set(on.map((o) => o.projectId))]),
+        eq(agentQuestions.status, 'open'),
+        sql`${agentQuestions.origin}->>'kind' = 'channel_gate'`,
+        inArray(
+          sql`${agentQuestions.origin}->>'documentId'`,
+          on.map((o) => o.documentId),
+        ),
+      ),
+    );
+  for (const r of rows) {
+    const round = r.steps.at(-1)?.round;
+    if (r.origin?.kind !== 'channel_gate' || round === undefined) continue;
+    const { documentId } = r.origin;
+    if (on.some((o) => o.projectId === r.projectId && o.documentId === documentId))
+      out.set(documentId, { id: r.id, round });
+  }
+  return out;
 }
 
 /**

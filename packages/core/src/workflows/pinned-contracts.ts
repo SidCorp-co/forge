@@ -5,10 +5,10 @@
  */
 
 import type { ArtifactContextRefusalCode } from '@forge/contracts/workflows';
-import { and, desc, inArray } from 'drizzle-orm';
+import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
-import { contractArtifacts, contractVersions } from '../db/schema-ecosystem.js';
+import { contractVersionReads } from '../lib/contract-versions.js';
 import { RefusalError } from '../lib/refusal.js';
 import type { RequirementPinRow } from './requirement-context.js';
 
@@ -92,24 +92,9 @@ export async function loadPinnedContracts(
   if (wanted.length === 0) return [];
   const providers = [...new Set(wanted.map((w) => w.providerProjectId))];
   const [rows, slugs] = await Promise.all([
-    db
-      .select({
-        providerProjectId: contractVersions.providerProjectId,
-        contractSlug: contractVersions.contractSlug,
-        version: contractVersions.version,
-        approval: contractVersions.approval,
-        contractType: contractVersions.contractType,
-        elements: contractVersions.elements,
-        artifactSha256: contractVersions.artifactSha256,
-      })
-      .from(contractVersions)
-      .where(
-        and(
-          inArray(contractVersions.providerProjectId, providers),
-          inArray(contractVersions.contractSlug, [...new Set(wanted.map((w) => w.contractSlug))]),
-        ),
-      )
-      .orderBy(desc(contractVersions.recordedAt)),
+    contractVersionReads().versionsOf(db, providers, [
+      ...new Set(wanted.map((w) => w.contractSlug)),
+    ]),
     db
       .select({ id: projects.id, slug: projects.slug })
       .from(projects)
@@ -135,17 +120,10 @@ export async function loadPinnedContracts(
       sha256: hit.artifactSha256,
     });
   }
-  const artifacts = await artifactsOf(out.flatMap((c) => (c.sha256 ? [c.sha256] : [])));
+  const artifacts = await contractVersionReads().artifactsOf(
+    out.flatMap((c) => (c.sha256 ? [c.sha256] : [])),
+  );
   return out.map((c) => (c.sha256 ? { ...c, artifact: artifacts.get(c.sha256) ?? null } : c));
-}
-
-async function artifactsOf(shas: readonly string[]): Promise<Map<string, string>> {
-  if (shas.length === 0) return new Map();
-  const rows = await db
-    .select({ sha256: contractArtifacts.sha256, content: contractArtifacts.content })
-    .from(contractArtifacts)
-    .where(inArray(contractArtifacts.sha256, [...new Set(shas)]));
-  return new Map(rows.map((r) => [r.sha256, r.content]));
 }
 
 /** The prompt block: each pinned version, its elements and its text. */

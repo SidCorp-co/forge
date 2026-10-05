@@ -82,14 +82,14 @@ function refuseAnswerTo(row: QuestionRow, args: AnswerInput, now: Date): Questio
   return current;
 }
 
-/** The answered round, and what a channel gate's decision does once the answer commits. */
+/** The answered round; a channel gate's question decides its gate in the answer's transaction. */
 async function answerRound(
   tx: Tx,
   row: QuestionRow,
   current: QuestionStep,
   args: AnswerInput,
   now: Date,
-): Promise<{ answered: QuestionStep; effect: (() => Promise<void>) | null }> {
+): Promise<QuestionStep> {
   const note = args.note?.trim() || undefined;
   if (isChoiceStep(current) && args.answer.kind === 'option') {
     const optionId = args.answer.optionId;
@@ -101,25 +101,23 @@ async function answerRound(
       );
     }
     requireHeld(args.facts, optionPermission(option), `choosing option ${option.id}`);
-    const answered = {
+    if (row.origin?.kind === 'channel_gate') {
+      await decideChannelGate(tx, {
+        documentId: row.origin.documentId,
+        projectId: row.projectId,
+        optionId: option.id,
+        note,
+        by: args.by,
+        via: args.via,
+      });
+    }
+    return {
       ...current,
       answeredAt: now.toISOString(),
       chosenOptionId: option.id,
       answeredBy: args.by,
       ...(note ? { note } : {}),
     };
-    const effect =
-      row.origin?.kind === 'channel_gate'
-        ? await decideChannelGate(tx, {
-            documentId: row.origin.documentId,
-            projectId: row.projectId,
-            optionId: option.id,
-            note,
-            by: args.by,
-            via: args.via,
-          })
-        : null;
-    return { answered, effect };
   }
   if (!isChoiceStep(current) && args.answer.kind === 'text') {
     const text = args.answer.text.trim();
@@ -131,13 +129,10 @@ async function answerRound(
     }
     requireHeld(args.facts, 'project.write', 'answering a free-text round');
     return {
-      answered: {
-        ...current,
-        answeredAt: now.toISOString(),
-        answerText: text,
-        answeredBy: args.by,
-      },
-      effect: null,
+      ...current,
+      answeredAt: now.toISOString(),
+      answerText: text,
+      answeredBy: args.by,
     };
   }
   throw refuseQuestion(
@@ -150,7 +145,7 @@ async function answerRound(
  * Record one answer, or refuse and leave the row exactly as it was.
  */
 export async function answerQuestion(args: AnswerInput) {
-  const { committed, effect } = await db.transaction(async (tx) => {
+  const committed = await db.transaction(async (tx) => {
     const [row] = await tx
       .select()
       .from(agentQuestions)
@@ -160,7 +155,7 @@ export async function answerQuestion(args: AnswerInput) {
     if (!row) throw notFound(`no question ${args.questionId}`);
     const now = new Date();
     const current = refuseAnswerTo(row, args, now);
-    const { answered, effect } = await answerRound(tx, row, current, args, now);
+    const answered = await answerRound(tx, row, current, args, now);
     const steps = row.steps.map((s, i) => (i === row.steps.length - 1 ? answered : s));
     await transition(tx, QUESTION_MACHINE, {
       to: 'answered',
@@ -178,9 +173,8 @@ export async function answerQuestion(args: AnswerInput) {
       answeredBy: args.by,
       body: answeredBody(answered),
     });
-    return { committed: { ...row, steps, status: 'answered' as const }, effect };
+    return { ...row, steps, status: 'answered' as const };
   });
   void wakeMastersForAnswer({ projectId: committed.projectId, questionId: args.questionId });
-  if (effect) await effect();
   return view(committed);
 }

@@ -1,8 +1,9 @@
 import type { Tx } from '../db/client.js';
+import { emitEvent } from '../outbox/index.js';
 import { notIn, refuse } from './channel-act.js';
 import { checked, parsedOrRefused } from './channel-checks.js';
 import type { Author, Gate, PersonVia } from './channel-schema.js';
-import { announceGateDecided } from './channel-signals.js';
+import { emitPublished } from './channel-signals.js';
 import { insertEvent, readDocument, rewriteDocument } from './channel-store.js';
 import { serve } from './channel-world.js';
 import { lockKeys } from './store.js';
@@ -69,7 +70,7 @@ async function recordDecided(
 }
 
 // cm:why the gate is decided only by answering its question, inside the answer's transaction, so an approval that the checks refuse leaves the question open and nothing published
-export async function decideChannelGate(tx: Tx, args: GateArgs): Promise<() => Promise<void>> {
+export async function decideChannelGate(tx: Tx, args: GateArgs): Promise<void> {
   await lockKeys(tx, [`channel-doc:${args.documentId}`]);
   const row = await readDocument(tx, args.documentId);
   if (!row || row.fromProjectId !== args.projectId) {
@@ -108,5 +109,14 @@ export async function decideChannelGate(tx: Tx, args: GateArgs): Promise<() => P
     publishedAt: state === 'published' ? now : null,
   });
   await recordDecided(tx, row.id, state === 'published', args, now);
-  return () => announceGateDecided(row.id, doc);
+  await emitEvent(tx, 'channel.gateDecided', {
+    projectId: doc.from,
+    documentId: row.id,
+    number: doc.number ?? null,
+    subject: doc.subject,
+    published: state === 'published',
+    decidedBy: args.by,
+    note: args.note ?? null,
+  });
+  if (state === 'published') await emitPublished(tx, row.id, doc);
 }

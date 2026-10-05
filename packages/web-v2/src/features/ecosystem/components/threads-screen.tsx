@@ -1,17 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { Button, Input, NativeSelect, PageTitle, Tooltip } from "@/design";
-import { currentRoundOf } from "@/features/questions/types";
+import { Badge, type BadgeProps, Button, NativeSelect, PageTitle, ProjectMark, SegmentedControl, Tooltip } from "@/design";
 import { readingOf, refusalsOf } from "@/lib/api/refusals";
 import { cn } from "@/lib/utils/cn";
 import { ecosystemApi } from "../api";
-import { useAnswerGate, useChannelWrite, useGateQuestion, useMyEcosystems } from "../hooks";
+import { useChannelWrite, useMyEcosystems } from "../hooks";
 import { daysUntil, INBOX_LABEL, INBOX_TIP, type InboxRow, inView, replyDraft } from "../inbox";
 import { ecosystemRoutes, INBOX_VIEWS, type InboxView } from "../routes";
 import { DOCUMENT_TYPES, TYPE_LABEL, type WorkspaceDraft, type WorkspaceRead } from "../types";
+import { projectMarkProps } from "../bus";
 import { ReasonAction } from "./document-actions";
+import { InlineGate } from "./gate-panel";
 import { Loading, RefusalNotice, UnreadNotice } from "./notices";
 
 export interface ThreadsFilters {
@@ -41,22 +41,10 @@ const WRITE_LABEL: Record<string, string> = {
   "change-request": "Decide",
 };
 
-type Pill = { text: string; tone: "bad" | "warn" | "info" | "mut" | "ok"; tip?: string };
-
-const PILL_STYLE: Record<Pill["tone"], { background: string; color: string }> = {
-  bad: { background: "var(--red-50)", color: "var(--red-600)" },
-  warn: { background: "var(--amberw-50)", color: "var(--amberw-600)" },
-  info: { background: "var(--cobalt-50)", color: "var(--cobalt-700)" },
-  mut: { background: "var(--bg-sunken)", color: "var(--fg-muted)" },
-  ok: { background: "var(--green-50)", color: "var(--green-600)" },
-};
+type Pill = { text: string; tone: NonNullable<BadgeProps["tone"]>; tip?: string };
 
 function StatusPill({ pill }: { pill: Pill }) {
-  const el = (
-    <span className="inline-flex whitespace-nowrap rounded-pill px-2 py-px text-11-5 font-semibold" style={PILL_STYLE[pill.tone]}>
-      {pill.text}
-    </span>
-  );
+  const el = <Badge tone={pill.tone}>{pill.text}</Badge>;
   return pill.tip ? <Tooltip label={pill.tip}>{el}</Tooltip> : el;
 }
 
@@ -71,54 +59,17 @@ interface Ctx {
 
 function pillOf(row: InboxRow, draft: WorkspaceDraft | null, ctx: Ctx): Pill {
   const owesMine = row.owner.some((o) => ctx.mine.has(o));
-  if (row.hold?.action === "hold") return { text: "Held", tone: "warn", tip: row.hold.reason ?? "Held: the masters on this thread stop until it is released" };
-  if (row.state !== "published") return { text: row.state === "withdrawn" ? "Withdrawn" : "Superseded", tone: "mut" };
-  if (owesMine && draft?.state === "submitted") return { text: "Needs approval", tone: "warn", tip: "The reply waits at your project's approve gate" };
+  if (row.hold?.action === "hold") return { text: "Held", tone: "amber", tip: row.hold.reason ?? "Held: the masters on this thread stop until it is released" };
+  if (row.state !== "published") return { text: row.state === "withdrawn" ? "Withdrawn" : "Superseded", tone: "neutral" };
+  if (owesMine && draft?.state === "submitted") return { text: "Needs approval", tone: "amber", tip: "The reply waits at your project's approve gate" };
   if (row.overdue && row.dueBy) {
     const late = -daysUntil(row.dueBy);
-    return { text: `Overdue · ${late} day${late === 1 ? "" : "s"}`, tone: "bad", tip: `Due ${row.dueBy}` };
+    return { text: `Overdue · ${late} day${late === 1 ? "" : "s"}`, tone: "red", tip: `Due ${row.dueBy}` };
   }
-  if (row.open && owesMine) return row.dueBy ? { text: `Due ${shortDate(row.dueBy)}`, tone: "info", tip: row.dueBy } : { text: "Owed", tone: "info" };
-  if (row.open) return { text: `Waiting on ${row.owner.map(ctx.slug).join(", ")}`, tone: "mut" };
-  if (row.recipients.some((r) => r.status === "answered")) return { text: "Answered", tone: "ok" };
-  return { text: "Notice", tone: "mut", tip: "Owes no reply" };
-}
-
-function InlineGate({ projectId, draftId }: { projectId: string; draftId: string }) {
-  const reading = readingOf(useGateQuestion(projectId, draftId));
-  const answer = useAnswerGate(projectId);
-  const [returning, setReturning] = useState(false);
-  const [note, setNote] = useState("");
-  if (reading.kind === "loading") return <Loading what="the approve gate" />;
-  if (reading.kind === "unread") return <UnreadNotice what="The approve gate" refusals={reading.refusals} />;
-  const q = reading.value;
-  const round = q ? currentRoundOf(q)?.round : undefined;
-  if (!q || round === undefined) return <span className="fg-caption">No open gate question waits on it</span>;
-  const option = (id: string) => q.options.find((o) => o.id === id);
-  const decide = (optionId: string) =>
-    answer.mutate({ questionId: q.id, round, optionId, ...(note.trim() ? { note: note.trim() } : {}) });
-  return (
-    <span className="grid justify-items-end gap-1.5">
-      {returning ? (
-        <span className="flex gap-1.5">
-          <Input aria-label="Why it goes back" placeholder="Why it goes back" value={note} onChange={(e) => setNote(e.target.value)} />
-          <Button size="sm" disabled={!note.trim() || option("return")?.locked} loading={answer.isPending} onClick={() => decide("return")}>
-            Return
-          </Button>
-        </span>
-      ) : (
-        <span className="flex gap-1.5">
-          <Button size="sm" disabled={option("return")?.locked} onClick={() => setReturning(true)}>
-            Return…
-          </Button>
-          <Button size="sm" variant="primary" disabled={option("approve")?.locked} loading={answer.isPending} onClick={() => decide("approve")}>
-            Approve
-          </Button>
-        </span>
-      )}
-      {answer.isError ? <RefusalNotice title="The gate refused that answer" refusals={refusalsOf(answer.error)} /> : null}
-    </span>
-  );
+  if (row.open && owesMine) return row.dueBy ? { text: `Due ${shortDate(row.dueBy)}`, tone: "cobalt", tip: row.dueBy } : { text: "Owed", tone: "cobalt" };
+  if (row.open) return { text: `Waiting on ${row.owner.map(ctx.slug).join(", ")}`, tone: "neutral" };
+  if (row.recipients.some((r) => r.status === "answered")) return { text: "Answered", tone: "green" };
+  return { text: "Notice", tone: "neutral", tip: "Owes no reply" };
 }
 
 function SendDraft({ projectId, draft, label }: { projectId: string; draft: WorkspaceDraft; label: string }) {
@@ -164,7 +115,7 @@ function Actions({ row, draft, ctx }: { row: InboxRow; draft: WorkspaceDraft | n
         </span>
       );
     }
-    if (draft?.state === "submitted") return <InlineGate projectId={owing} draftId={draft.id} />;
+    if (draft?.state === "submitted") return <InlineGate projectId={owing} questionId={draft.gateQuestionId} />;
     return (
       <Link
         href={ecosystemRoutes.compose(slug, { inReplyTo: row.number, ecosystem: row.ecosystem })}
@@ -192,13 +143,7 @@ function MasterLine({ row, draft, ctx }: { row: InboxRow; draft: WorkspaceDraft 
   const state = draft.state === "submitted" ? " · at the approve gate" : draft.state === "returned" ? " · returned to the writer" : "";
   return (
     <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-12 text-muted">
-      <span
-        aria-hidden
-        className="grid h-[18px] min-w-[18px] flex-none place-items-center rounded-[5px] px-0.5 text-[8.5px] font-bold"
-        style={{ background: "var(--cobalt-50)", color: "var(--cobalt-700)" }}
-      >
-        {ctx.slug(draft.from).slice(0, 2).toUpperCase()}
-      </span>
+      <ProjectMark {...projectMarkProps(ctx.slug(draft.from))} size={18} />
       {draft.state === "draft" && draft.authoredBy.kind === "agent" ? (
         <i className="forge-pulse inline-block h-[7px] w-[7px] flex-none rounded-full" style={{ background: "var(--green-500)" }} />
       ) : null}
@@ -293,22 +238,11 @@ function ViewBar({
 }) {
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2">
-      {INBOX_VIEWS.map((v) => (
-        <Tooltip key={v} label={INBOX_TIP[v]} multiline>
-          <button
-            type="button"
-            aria-pressed={view === v}
-            onClick={() => onParam("view", v === "needs-me" ? null : v)}
-            className={cn(
-              "rounded-pill border px-[11px] py-[3px] text-12-5 font-semibold",
-              view === v ? "border-[var(--fg-default)] bg-[var(--fg-default)] text-[var(--bg-surface)]" : "border-line bg-surface text-muted",
-            )}
-          >
-            {INBOX_LABEL[v]}
-            {COUNTED.has(v) ? <span className="ml-[3px] tabular-nums opacity-75">{count(v)}</span> : null}
-          </button>
-        </Tooltip>
-      ))}
+      <SegmentedControl<InboxView | "">
+        value={view ?? ""}
+        onChange={(v) => onParam("view", v === "needs-me" ? null : v)}
+        options={INBOX_VIEWS.map((v) => ({ value: v, label: INBOX_LABEL[v], title: INBOX_TIP[v], ...(COUNTED.has(v) ? { count: count(v) } : {}) }))}
+      />
       <span className="ml-auto flex flex-wrap gap-2">
         <Select label="Type" value={filters.type ?? ""} onChange={(v) => onParam("type", v)} options={DOCUMENT_TYPES.map((t) => ({ value: t, label: TYPE_LABEL[t] }))} />
         <Select

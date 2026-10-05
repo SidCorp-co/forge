@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { db } from '../db/client.js';
+import { emitEvent } from '../outbox/index.js';
 import { channelRoleRefusal, type Writer } from './channel-author.js';
 import { holdRefusals, parseHold } from './channel-hold-rules.js';
 import { HOLD_SCHEMA_ID, type HoldAction, type ThreadHold } from './channel-schema.js';
-import { announceHold } from './channel-signals.js';
 import { holdsOn, insertHold, readNumbered } from './channel-store.js';
 import { holdOf, serveAll } from './channel-world.js';
 import type { EcosystemRefusal } from './refusals.js';
@@ -22,7 +22,7 @@ export async function holdOrRelease(args: {
   reason: string | undefined;
 }): Promise<HoldOutcome> {
   const { writer } = args;
-  const outcome: HoldOutcome = await db.transaction(async (tx) => {
+  return db.transaction(async (tx): Promise<HoldOutcome> => {
     await lockKeys(tx, [`channel-thread:${args.thread}`]);
     const row = await readNumbered(tx, args.thread);
     if (row?.state !== 'published') {
@@ -78,8 +78,16 @@ export async function holdOrRelease(args: {
     });
     const thread = documents.get(args.thread);
     if (!thread) throw new Error(`channel: ${args.thread} was held without its document in hand`);
-    return { ok: true, hold, held: hold.action === 'hold', parties: [thread.from, ...thread.to] };
+    const parties = [thread.from, ...thread.to];
+    await emitEvent(tx, 'channel.threadHeld', {
+      projectId: hold.side,
+      ecosystemId: hold.ecosystem,
+      thread: hold.thread,
+      action: hold.action,
+      byId: hold.by.id,
+      reason: hold.reason ?? null,
+      parties,
+    });
+    return { ok: true, hold, held: hold.action === 'hold', parties };
   });
-  if (outcome.ok) await announceHold(outcome.hold, outcome.parties);
-  return outcome;
 }

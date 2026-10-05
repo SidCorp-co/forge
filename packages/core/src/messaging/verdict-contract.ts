@@ -6,10 +6,10 @@
  * read as earned on nothing, so the write door asks while the writer is there (ISS-60).
  */
 
-import { and, desc, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { projects } from '../db/schema.js';
-import { contractVersions } from '../db/schema-ecosystem.js';
+import { contractVersionReads } from '../lib/contract-versions.js';
 import type { MessageRefusal } from './contract.js';
 import type { ForgeRecord } from './forge-record.js';
 import {
@@ -58,17 +58,9 @@ export function dbContractLookup(executor?: Tx): ContractLookup {
       .limit(1);
     const projectSlug = project?.slug ?? '';
     if (projectSlug !== named.project) return { projectSlug, versions: [], named: false };
-    const rows = await handle
-      .select({ version: contractVersions.version })
-      .from(contractVersions)
-      .where(
-        and(
-          eq(contractVersions.providerProjectId, projectId),
-          eq(contractVersions.contractSlug, named.contract),
-        ),
-      )
-      .orderBy(desc(contractVersions.recordedAt));
-    const versions = rows.map((r) => r.version);
+    const versions = (
+      await contractVersionReads().versionsOf(handle, [projectId], [named.contract])
+    ).map((r) => r.version);
     return {
       projectSlug,
       versions: versions.slice(0, VERSIONS_LISTED),

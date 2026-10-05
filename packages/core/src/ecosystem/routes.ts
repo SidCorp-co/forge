@@ -13,6 +13,7 @@ import {
   writeEcosystem,
 } from './ecosystem-service.js';
 import { type MembershipRow, type MembershipVerb, membershipDocument } from './membership-rules.js';
+import { membershipHistory } from './membership-store.js';
 import {
   invite,
   type MembershipOutcome,
@@ -148,9 +149,10 @@ ecosystemRoutes.post(
     ),
 );
 
-membershipRoutes.get('/:id', idParam, async (c) =>
-  c.json(serialiseMembership(await readableMembership(c.get('userId'), c.req.valid('param').id))),
-);
+membershipRoutes.get('/:id', idParam, async (c) => {
+  const row = await readableMembership(c.get('userId'), c.req.valid('param').id);
+  return c.json({ ...serialiseMembership(row), history: await membershipHistory(row.id) });
+});
 
 const reasonBody = zValidator(
   'json',

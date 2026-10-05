@@ -6,6 +6,9 @@
  * never publishes a version on a person's behalf. A landing that implemented a version that is not
  * current would record "merged" against a contract nobody approved as current, so the mark is held
  * until the version is approved or the work is rebuilt against the current one.
+ *
+ * A ref is weighed against the project it names, not the issue's: a consumer issue built against
+ * another project's contract lands naming that provider's current version (ISS-219).
  */
 
 import { LANDED_CONTRACT } from '@forge/contracts/ecosystem';
@@ -43,11 +46,11 @@ export interface DriftRefusal {
 }
 
 export interface LandingWorld {
-  projectSlug: string;
   /** The contracts the issue names, from its description, plan and acceptance criteria. */
   named: readonly NamedContract[];
-  /** Per contract slug of the issue's project: the versions recorded and the current one. */
-  contracts: ReadonlyMap<string, { recorded: ReadonlySet<string>; current: string | null }>;
+  /** Per `<project>/<contract>` ref: the provider's recorded versions and its current one, or
+   *  `null` when no project holds that slug. */
+  contracts: ReadonlyMap<string, { recorded: ReadonlySet<string>; current: string | null } | null>;
 }
 
 const parsed = (landed: string): NamedContract | null => {
@@ -73,14 +76,15 @@ export function landingDriftRefusal(
   const drifted = claims.flatMap(({ text, contract }) => {
     if (!contract)
       return [{ landed: text, why: 'is not written as <project>/<contract>@<version>' }];
-    if (!contract.ref.startsWith(`${world.projectSlug}/`)) {
+    const held = world.contracts.get(contract.ref);
+    if (!held) {
+      const project = contract.ref.slice(0, contract.ref.indexOf('/'));
       return [
-        { landed: text, why: `is not a contract of this issue's project ${world.projectSlug}` },
+        { landed: text, why: `names project ${project}, which no project holds as its slug` },
       ];
     }
-    const held = world.contracts.get(contract.contract);
-    if (!held?.recorded.has(contract.version)) {
-      return [{ landed: text, why: 'names a version this project never recorded' }];
+    if (!held.recorded.has(contract.version)) {
+      return [{ landed: text, why: `names a version ${contract.ref} never recorded` }];
     }
     if (held.current !== contract.version) {
       return [
@@ -100,11 +104,11 @@ export function landingDriftRefusal(
   };
 }
 
-/** Reads what the drift check weighs for one issue: what its text names, and each contract's
- *  versions. An issue naming no contract, landed naming none, reads nothing. */
+/** Reads what the drift check weighs for one issue: what its text names, and each named or landed
+ *  contract's versions in the project that provides it. An issue naming no contract, landed naming
+ *  none, reads nothing. */
 export async function landingWorld(
   issue: {
-    projectId: string;
     description: string | null;
     plan: string | null;
     acceptanceCriteria: string | null;
@@ -113,22 +117,25 @@ export async function landingWorld(
 ): Promise<LandingWorld> {
   const text = [issue.description, issue.plan, issue.acceptanceCriteria].filter(Boolean).join('\n');
   const named = contractsNamedIn(text);
-  const slugs = new Set([
-    ...named.map((n) => n.contract),
-    ...landed.flatMap((l) => {
-      const p = parsed(l);
-      return p ? [p.contract] : [];
-    }),
-  ]);
-  const contracts = new Map<string, { recorded: Set<string>; current: string | null }>();
-  if (named.length === 0 && landed.length === 0) return { projectSlug: '', named, contracts };
-  const [project] = await projectsWhere(db, { ids: [issue.projectId] });
-  for (const slug of slugs) {
-    const versions = await versionsOf(db, [issue.projectId], slug);
-    contracts.set(slug, {
+  const refs = new Map<string, NamedContract>();
+  for (const n of [...named, ...landed.flatMap((l) => parsed(l) ?? [])]) refs.set(n.ref, n);
+  const contracts = new Map<string, { recorded: Set<string>; current: string | null } | null>();
+  if (refs.size === 0) return { named, contracts };
+  const providerSlugs = [...new Set([...refs.keys()].map((ref) => ref.slice(0, ref.indexOf('/'))))];
+  const providers = new Map(
+    (await projectsWhere(db, { slugs: providerSlugs })).map((p) => [p.slug, p.id]),
+  );
+  for (const [ref, n] of refs) {
+    const providerId = providers.get(ref.slice(0, ref.indexOf('/')));
+    if (!providerId) {
+      contracts.set(ref, null);
+      continue;
+    }
+    const versions = await versionsOf(db, [providerId], n.contract);
+    contracts.set(ref, {
       recorded: new Set(versions.map((v) => v.version)),
       current: currentOf(versions)?.version ?? null,
     });
   }
-  return { projectSlug: project?.slug ?? '', named, contracts };
+  return { named, contracts };
 }

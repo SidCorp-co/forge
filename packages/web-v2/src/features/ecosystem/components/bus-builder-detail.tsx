@@ -1,11 +1,10 @@
 "use client";
 
-import { enumLabel, StatusBadge, Tooltip } from "@/design";
+import { enumLabel, ProjectMark, StatusBadge, Tooltip } from "@/design";
 import { readingOf } from "@/lib/api/refusals";
 import { formatRelativeTime } from "@/lib/utils/format";
-import { type Bus, callSiteAt, triggerRef } from "../bus";
+import { type Bus, callSiteAt, triggerRef, projectMarkProps } from "../bus";
 import { useBuilderRun } from "../hooks";
-import { ProjectMark } from "./bus-diagram";
 import { Caption, Group, Head, Steps } from "./bus-detail-kit";
 import { Loading, UnreadNotice } from "./notices";
 
@@ -16,7 +15,7 @@ export function BuilderDetail({ bus, id }: { bus: Bus; id: string }) {
   return (
     <>
       <Head>
-        <ProjectMark slug={p.slug} size={22} />
+        <ProjectMark {...projectMarkProps(p.slug)} size={22} />
         <h2 className="text-15 font-semibold">{p.slug} ecosystem builder</h2>
         <Tooltip label={`Run ${p.builder.id}`}>
           <span className="fg-caption">

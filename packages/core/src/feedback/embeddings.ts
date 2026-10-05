@@ -10,12 +10,10 @@ import {
   feedbackKey,
   type SimilarFeedbackResponse,
 } from '@forge/contracts/feedback';
-import { and, eq, ne, sql } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { cosineDistance } from '../db/pgvector.js';
 import { feedback } from '../db/schema-feedback.js';
-import { itemEmbeddings } from '../db/schema-item-embeddings.js';
-import { writeItemEmbedding } from '../knowledge/index.js';
+import { itemEmbeddingOf, nearestItems, writeItemEmbedding } from '../knowledge/index.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
@@ -57,10 +55,7 @@ export async function nearestFeedbackOf(
   projectId: string,
   feedbackId: string,
 ): Promise<FeedbackDedup> {
-  const [own] = await db
-    .select()
-    .from(itemEmbeddings)
-    .where(eq(itemEmbeddings.feedbackId, feedbackId));
+  const own = await itemEmbeddingOf({ feedbackId });
   if (own?.status !== 'embedded' || !own.embedding || !own.model) {
     return {
       ran: false,
@@ -68,27 +63,19 @@ export async function nearestFeedbackOf(
       why: `triage without dedup: the item's vector is ${own ? own.status : 'not written yet'}`,
     };
   }
-  const distance = cosineDistance(itemEmbeddings.embedding, own.embedding);
-  const [hit] = await db
-    .select({ seq: feedback.fbSeq, distance: sql<number>`${distance}` })
-    .from(itemEmbeddings)
-    .innerJoin(feedback, eq(feedback.id, itemEmbeddings.feedbackId))
-    .where(
-      and(
-        eq(itemEmbeddings.projectId, projectId),
-        eq(itemEmbeddings.status, 'embedded'),
-        eq(itemEmbeddings.model, own.model),
-        ne(feedback.id, feedbackId),
-      ),
-    )
-    .orderBy(distance)
-    .limit(1);
-  if (!hit) return { ran: true, nearest: null };
-  return {
-    ran: true,
-    nearest: feedbackKey(hit.seq),
-    similarity: Math.round((1 - Number(hit.distance)) * 1000) / 1000,
-  };
+  const [near] = await nearestItems({
+    projectId,
+    kind: 'feedback',
+    vector: own.embedding,
+    model: own.model,
+    exclude: feedbackId,
+    limit: 1,
+  });
+  const [hit] = near
+    ? await db.select({ seq: feedback.fbSeq }).from(feedback).where(eq(feedback.id, near.itemId))
+    : [];
+  if (!near || !hit) return { ran: true, nearest: null };
+  return { ran: true, nearest: feedbackKey(hit.seq), similarity: near.similarity };
 }
 
 export async function similarFeedbackAs(
@@ -101,7 +88,7 @@ export async function similarFeedbackAs(
   await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
   const { withhold, shown } = feedbackEgress(await dataPolicyOf(projectId), viewer.agency, door);
   const row = await rowIn(db, projectId, ref);
-  const [own] = await db.select().from(itemEmbeddings).where(eq(itemEmbeddings.feedbackId, row.id));
+  const own = await itemEmbeddingOf({ feedbackId: row.id });
   if (own?.status !== 'embedded' || !own.embedding || !own.model) {
     // The item's own row status is answered as it is: withheld_by_policy (a no_egress
     // project), provider_not_configured or failed each say why, and only a missing row reads not_embedded
@@ -114,28 +101,40 @@ export async function similarFeedbackAs(
       hits: [],
     };
   }
-  const distance = cosineDistance(itemEmbeddings.embedding, own.embedding);
-  const rows = await db
-    .select({ row: feedback, distance: sql<number>`${distance}` })
-    .from(itemEmbeddings)
-    .innerJoin(feedback, eq(feedback.id, itemEmbeddings.feedbackId))
-    .where(
-      and(
-        eq(itemEmbeddings.projectId, projectId),
-        eq(itemEmbeddings.status, 'embedded'),
-        eq(itemEmbeddings.model, own.model),
-        ne(feedback.id, row.id),
-      ),
-    )
-    .orderBy(distance)
-    .limit(limit);
+  const nearest = await nearestItems({
+    projectId,
+    kind: 'feedback',
+    vector: own.embedding,
+    model: own.model,
+    exclude: row.id,
+    limit,
+  });
+  const rows =
+    nearest.length === 0
+      ? []
+      : await db
+          .select()
+          .from(feedback)
+          .where(
+            inArray(
+              feedback.id,
+              nearest.map((n) => n.itemId),
+            ),
+          );
+  const byId = new Map(rows.map((r) => [r.id, r]));
   const hits = await Promise.all(
-    rows.map(async (r) => ({
-      key: feedbackKey(r.row.fbSeq),
-      title: withhold ? feedbackKey(r.row.fbSeq) : r.row.title,
-      phase: await phaseOfRow(projectId, r.row),
-      similarity: Math.round((1 - Number(r.distance)) * 1000) / 1000,
-    })),
+    nearest.flatMap((n) => {
+      const item = byId.get(n.itemId);
+      if (!item) return [];
+      return [
+        (async () => ({
+          key: feedbackKey(item.fbSeq),
+          title: withhold ? feedbackKey(item.fbSeq) : item.title,
+          phase: await phaseOfRow(projectId, item),
+          similarity: n.similarity,
+        }))(),
+      ];
+    }),
   );
   return { status: 'ok', model: own.model, hits: shown(hits, 'the similar feedback') };
 }

@@ -2,6 +2,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { organizationMembers, organizations } from '../db/schema.js';
 import { ecosystems as ecosystemTable } from '../db/schema-ecosystem.js';
+import { openGateQuestionsOf } from '../questions/index.js';
 import { readerProjects } from './access.js';
 import { type RegisterRow, registerRowsOver } from './channel-register.js';
 import type { ChannelDocument } from './channel-schema.js';
@@ -43,6 +44,8 @@ export interface WorkspaceDraft {
   state: ChannelDocument['state'];
   authoredBy: ChannelDocument['authoredBy'];
   gate: ChannelDocument['gate'] | null;
+  /** The open approve-gate question a submitted draft waits on, or null. */
+  gateQuestionId: string | null;
 }
 
 export interface WorkspaceRead {
@@ -99,7 +102,15 @@ async function draftsOf(
   const pending = (await Promise.all(senders.map((p) => documentsWhere(db, { from: p })))).flatMap(
     (rows) => rows.filter((r) => r.state !== 'published' && r.inReplyTo && ids.has(r.ecosystemId)),
   );
-  return (await serveAll(db, pending)).map(({ id, document: d }) => ({
+  const [gates, served] = await Promise.all([
+    openGateQuestionsOf(
+      pending
+        .filter((r) => r.state === 'submitted')
+        .map((r) => ({ projectId: r.fromProjectId, documentId: r.id })),
+    ),
+    serveAll(db, pending),
+  ]);
+  return served.map(({ id, document: d }) => ({
     id,
     ecosystem: d.ecosystem,
     from: d.from,
@@ -108,6 +119,7 @@ async function draftsOf(
     state: d.state,
     authoredBy: d.authoredBy,
     gate: d.gate ?? null,
+    gateQuestionId: gates.get(id)?.id ?? null,
   }));
 }
 

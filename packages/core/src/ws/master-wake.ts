@@ -76,14 +76,14 @@ export async function wakeMastersForAnswer(args: {
   });
 }
 
-export async function wakeMastersForChannel(
+async function wakeMastersForChannel(
   projectId: string,
 ): Promise<{ boxes: number; delivered: number }> {
   return publishWake(projectId, { projectId, source: 'channel' });
 }
 
 /** A builder run was opened for this project (a join or a push), and its master owes it (ISS-39). */
-export async function wakeMastersForBuild(
+async function wakeMastersForBuild(
   projectId: string,
 ): Promise<{ boxes: number; delivered: number }> {
   return publishWake(projectId, { projectId, source: 'ecosystem_build' });
@@ -172,6 +172,27 @@ export function registerMasterWakeSubscribers(): void {
     name: 'master-wake',
     handle: async (p) => {
       await wakeMastersForDesign(p);
+    },
+  });
+
+  consume('channel.documentPublished', {
+    name: 'master-wake',
+    handle: async (p) => {
+      for (const side of p.to) await wakeMastersForChannel(side);
+    },
+  });
+
+  consume('channel.threadHeld', {
+    name: 'master-wake',
+    handle: async (p) => {
+      for (const side of p.parties) await wakeMastersForChannel(side);
+    },
+  });
+
+  consume('ecosystem.buildOwed', {
+    name: 'master-wake',
+    handle: async (p) => {
+      await wakeMastersForBuild(p.projectId);
     },
   });
 

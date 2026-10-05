@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Button, Icon, Input, PageTitle, Tooltip } from "@/design";
+import { Badge, Button, Icon, Input, MonoTag, PageTitle, SegmentedControl, Tooltip } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
 import { readingOf, refusalsOf } from "@/lib/api/refusals";
 import { cn } from "@/lib/utils/cn";
@@ -78,27 +78,24 @@ function AddProject({ ecosystemId, bus }: { ecosystemId: string; bus: Bus }) {
 }
 
 function LensBar({ lens, onLens }: { lens: Lens; onLens: (l: Lens) => void }) {
-  const opt = (value: Lens, label: string, tip: string) => (
-    <Tooltip label={tip} multiline>
-      <button
-        type="button"
-        aria-pressed={lens === value}
-        onClick={() => onLens(value)}
-        className={cn(
-          "flex items-center gap-1.5 rounded-pill border px-3 py-1 text-12-5 font-semibold",
-          lens === value ? "border-[var(--fg-default)] bg-[var(--fg-default)] text-[var(--bg-surface)]" : "border-line bg-surface text-muted",
-        )}
-      >
-        {value === "live" ? <i className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: "var(--green-500)" }} /> : null}
-        {label}
-      </button>
-    </Tooltip>
-  );
   return (
-    <div className="flex gap-1.5">
-      {opt("live", "Live", "Each link as its master last recorded it, refreshed every 15 seconds; a chip whose project's builder is running rings")}
-      {opt("impact", "Impact", "Pick a contract to see which consumers its latest version breaks, checked against the fields and surface each one uses")}
-    </div>
+    <SegmentedControl<Lens>
+      value={lens}
+      onChange={onLens}
+      options={[
+        {
+          value: "live",
+          label: "Live",
+          icon: "activity",
+          title: "Each link as its master last recorded it, refreshed every 15 seconds; a chip whose project's builder is running rings",
+        },
+        {
+          value: "impact",
+          label: "Impact",
+          title: "Pick a contract to see which consumers its latest version breaks, checked against the fields and surface each one uses",
+        },
+      ]}
+    />
   );
 }
 
@@ -137,16 +134,12 @@ function EcosystemHeader({ eco, bus }: { eco: WorkspaceEcosystem | undefined; bu
       <PageTitle className="truncate text-[22px] font-bold">{name}</PageTitle>
       {eco ? (
         <Tooltip label={`Document code: every document in ${name} is numbered ${eco.code}-…`}>
-          <span className="rounded-[5px] px-[7px] py-px font-mono text-12" style={{ background: "var(--cobalt-50)", color: "var(--cobalt-700)" }}>
-            {eco.code}
-          </span>
+          <MonoTag hue="cobalt">{eco.code}</MonoTag>
         </Tooltip>
       ) : null}
       {eco?.steward.name ? (
         <Tooltip label={`${eco.steward.name} stewards ${name}: it invites members and sets the reply windows and the approve gates`} multiline>
-          <span className="rounded-pill px-2 py-px text-11-5 font-semibold" style={{ background: "var(--cobalt-50)", color: "var(--cobalt-700)" }}>
-            Steward · {eco.steward.name}
-          </span>
+          <Badge tone="cobalt">Steward · {eco.steward.name}</Badge>
         </Tooltip>
       ) : null}
       {eco?.steward.mine && bus ? (

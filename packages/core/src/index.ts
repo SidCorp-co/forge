@@ -16,7 +16,7 @@ import {
 import { runOnceBackfills } from './boot-backfills.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
-import { interfaceContractsOf, provideEcosystemSignals } from './ecosystem/index.js';
+import { contractVersionReads, interfaceContractsOf } from './ecosystem/index.js';
 import { provideExecutionPorts } from './execution-ports.js';
 import { provideFeedbackDependents, requirementFeedbackAs } from './feedback/index.js';
 import { provideAssistantMethod } from './guides/index.js';
@@ -37,6 +37,7 @@ import {
 } from './issues/index.js';
 import { recordSecretResolve, rememberHandedOut, resolvePipelineContext } from './jobs/index.js';
 import { provideProjectOrg } from './lib/authz.js';
+import { provideContractVersionReads } from './lib/contract-versions.js';
 import { provideDataPolicy } from './lib/data-egress.js';
 import { env } from './lib/env.js';
 import { logger } from './lib/logger.js';
@@ -48,11 +49,7 @@ import { requestLogger } from './middleware/logger.js';
 import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import { deleteFeedbackMockups } from './mockups/index.js';
-import {
-  emitNotification,
-  projectAdminUserIdsFor,
-  resolveNotifications,
-} from './notifications/index.js';
+import { emitNotification } from './notifications/index.js';
 import {
   declareOutboxQueues,
   emitEvents,
@@ -76,7 +73,7 @@ import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
 import { redactFeedbackSuggestions, staleOnTargetRevised } from './suggestions/index.js';
 import { coreTimers } from './timer-registry.js';
 import { provideWorkPorts } from './work-ports.js';
-import { attachWs, closeWs, wakeMastersForBuild, wakeMastersForChannel } from './ws/index.js';
+import { attachWs, closeWs } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
 provideWorkPorts();
@@ -110,14 +107,8 @@ provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,
   issueForHeadRef: (projectId, headRef) => resolveIssueForHeadRef({ projectId, headRef }),
 });
-provideEcosystemSignals({
-  notify: emitNotification,
-  resolve: resolveNotifications,
-  projectAdmins: projectAdminUserIdsFor,
-  wakeForChannel: wakeMastersForChannel,
-  wakeForBuild: wakeMastersForBuild,
-});
 provideInterfaceContracts(interfaceContractsOf);
+provideContractVersionReads(contractVersionReads);
 provideRequirementDependents({ feedbackOf: requirementFeedbackAs, revised: staleOnTargetRevised });
 provideFeedbackDependents({
   redactSuggestions: redactFeedbackSuggestions,

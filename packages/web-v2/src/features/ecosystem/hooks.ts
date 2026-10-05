@@ -73,22 +73,11 @@ export function useThread(projectId: string, number: string | null | undefined) 
   });
 }
 
-/** The open approve-gate question waiting on one of this project's documents, if any. */
-export function useGateQuestion(projectId: string, documentId: string) {
+/** The open approve-gate question the document view or the draft names by `gateQuestionId`, if any. */
+export function useGateQuestion(projectId: string, questionId: string | null) {
   return useQuery({
-    queryKey: gateQuestionKey(projectId, documentId),
-    queryFn: async () => {
-      let cursor: string | undefined;
-      do {
-        const page = await questionsApi.listOpenWithoutIssue(projectId, cursor, 200);
-        const hit = page.questions.find(
-          (q) => q.origin?.kind === "channel_gate" && q.origin.documentId === documentId,
-        );
-        if (hit) return hit;
-        cursor = page.nextCursor ?? undefined;
-      } while (cursor);
-      return null;
-    },
+    queryKey: gateQuestionKey(projectId, questionId ?? ""),
+    queryFn: () => (questionId ? questionsApi.get(questionId) : null),
   });
 }
 

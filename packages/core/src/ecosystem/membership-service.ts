@@ -1,5 +1,6 @@
 import { db } from '../db/client.js';
 import { jsonPointer as pointer } from '../lib/refusal.js';
+import { emitEvent } from '../outbox/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { assertStewardAdmin, forbidden, notFound, readerProjects, stewardRole } from './access.js';
 import { owedTrigger } from './builder-head.js';
@@ -17,7 +18,6 @@ import {
   readMembership,
 } from './membership-store.js';
 import { visibleMembers } from './party.js';
-import { ecosystemSignals } from './ports.js';
 import type { EcosystemRefusal } from './refusals.js';
 import { type InterfaceDocument, interfaceDocumentSchema } from './schema.js';
 import { lockKeys, projectsWhere } from './store.js';
@@ -124,7 +124,7 @@ export async function transition(input: {
     if (!trigger.ok) return trigger;
     joined = trigger.value;
   }
-  const outcome = await db.transaction(async (tx): Promise<MembershipOutcome> => {
+  return db.transaction(async (tx): Promise<MembershipOutcome> => {
     await lockKeys(tx, [
       `project:${row.projectId}`,
       `membership:${row.ecosystemId}:${row.projectId}`,
@@ -158,11 +158,10 @@ export async function transition(input: {
         trigger: joined,
         userId,
       });
+      await emitEvent(tx, 'ecosystem.buildOwed', { projectId: row.projectId });
     }
     return { ok: true, membership: moved } as MembershipOutcome;
   });
-  if (outcome.ok && verb === 'accept') await ecosystemSignals().wakeForBuild(row.projectId);
-  return outcome;
 }
 
 export async function readableMembership(userId: string, membershipId: string) {

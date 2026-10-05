@@ -164,7 +164,7 @@ export function DocumentScreen({ projectId, slug, role, docRef }: { projectId: s
         <StateNotes view={view} slug={slug} held={held} names={names} />
 
         {view.side === "sender" && d.state === "submitted" ? (
-          <GatePanel projectId={projectId} slug={slug} documentId={view.id} />
+          <GatePanel projectId={projectId} slug={slug} questionId={view.gateQuestionId} />
         ) : null}
 
         <DocumentActions view={view} projectId={projectId} slug={slug} role={role} />
