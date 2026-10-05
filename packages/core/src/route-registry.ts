@@ -58,7 +58,6 @@ import {
   membershipRoutes,
 } from './ecosystem/routes.js';
 import { feedbackRoutes } from './feedback/routes.js';
-import { deviceGitCredentialRoutes } from './git/routes.js';
 import { guideRoutes } from './guides/routes.js';
 import {
   opsHealthProjectRoutes,
@@ -67,11 +66,13 @@ import {
 } from './health/routes.js';
 import { installRoutes } from './install/routes.js';
 import {
+  deviceGitCredentialRoutes,
   githubCallbackRoutes,
   githubConnectRoutes,
   integrationConnectionsRoutes,
   integrationsRoutes,
   issueMergePullRequestRoutes,
+  webhookInboundRoutes,
 } from './integration-door/routes.js';
 import {
   attachmentRoutes,
@@ -161,7 +162,6 @@ import {
 } from './skills/routes.js';
 import { suggestionRoutes } from './suggestions/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
-import { webhookInboundRoutes } from './webhooks/routes.js';
 import { workflowJsonSchemas } from './workflows/index.js';
 import { workflowRoutes, workflowTemplateCatalogueRoutes } from './workflows/routes.js';
 

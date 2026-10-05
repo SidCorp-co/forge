@@ -1,5 +1,5 @@
 import { DEPLOY_CONFIRM_WINDOW_MS } from '@forge/contracts/pipeline';
-import { probeHealth } from '../integrations/coolify/index.js';
+import { probeHealth } from '../integrations/deploy/index.js';
 import {
   type DeployDispatchOutcome,
   type OutboundDispatchJob,

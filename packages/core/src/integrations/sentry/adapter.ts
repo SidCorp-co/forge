@@ -3,18 +3,17 @@ import {
   declareIntegration,
   type HealthCheckResult,
   type IntegrationAdapterMethods,
-  isPreviousCredentialValid,
   updateConnection,
 } from '../index.js';
+import { callSentry, sentryRefusalHealth } from './call.js';
 import { sentryRestBase } from './endpoints.js';
 import { dispatchSentryOutbound } from './issues.js';
+import { SentryRefusal } from './refusals.js';
 import { buildSentryMcpEntry } from './resolver.js';
 import { SENTRY_BINDING_CONFIG_KEYS, sentryConfigBase, sentrySecretsSchema } from './schemas.js';
 import { readTargets, renderSentryTargetsLine } from './targets.js';
 import type { SentryConfig, SentrySecrets } from './types.js';
 import { handleSentryWebhook, SENTRY_RESOURCE_HEADER, SENTRY_SIGNATURE_HEADER } from './webhook.js';
-
-const PROBE_TIMEOUT_MS = 15_000;
 
 /** Minimal shape of a Sentry org returned by `GET /api/0/organizations/`. */
 interface SentryOrg {
@@ -26,89 +25,24 @@ interface SentryOrg {
 const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecrets> = {
   async healthcheck(ctx): Promise<HealthCheckResult> {
     const authToken = ctx.secrets?.authToken;
-    if (!authToken) {
+    if (!authToken || !ctx.config?.host) {
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: 'error',
         lastHealthAt: new Date(),
       });
-      return { status: 'error', message: 'no Sentry auth token configured' };
+      return {
+        status: 'error',
+        message: authToken ? 'no Sentry host configured' : 'no Sentry auth token configured',
+      };
     }
-    if (!ctx.config?.host) {
-      await updateConnection(ctx.connectionId, {
-        lastHealthStatus: 'error',
-        lastHealthAt: new Date(),
-      });
-      return { status: 'error', message: 'no Sentry host configured' };
-    }
-
-    const base = sentryRestBase(ctx.config.host);
-
-    // One attempt with a given token. Returns the parsed result OR a 401/403
-    // sentinel so the caller can fall back to the previous token (ISS-405 dual-
-    // token rotation).
-    type AttemptResult =
-      | { kind: 'ok'; body: SentryOrg[] }
-      | { kind: 'unauthorized'; status: number }
-      | { kind: 'http-error'; status: number };
-    async function attempt(token: string): Promise<AttemptResult> {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
-      try {
-        const res = await fetch(`${base}/api/0/organizations/`, {
-          method: 'GET',
-          headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-          signal: controller.signal,
-        });
-        if (!res.ok) {
-          if (res.status === 401 || res.status === 403) {
-            return { kind: 'unauthorized', status: res.status };
-          }
-          return { kind: 'http-error', status: res.status };
-        }
-        const body = (await res.json()) as SentryOrg[];
-        return { kind: 'ok', body: Array.isArray(body) ? body : [] };
-      } finally {
-        clearTimeout(timer);
-      }
-    }
-
+    // `callSentry` makes the previous-token retry and writes the connection's health either way.
     try {
-      let result = await attempt(authToken);
-      // If the primary token is rejected AND the operator just rotated within
-      // the overlap window, retry once with the retained previous token.
-      if (
-        result.kind === 'unauthorized' &&
-        ctx.secrets.previousAuthToken &&
-        isPreviousCredentialValid(ctx.secrets)
-      ) {
-        result = await attempt(ctx.secrets.previousAuthToken);
-      }
-
-      if (result.kind !== 'ok') {
-        // unauthorized = token rejected even after the ISS-405 previous-token
-        // retry → the operator must re-enter it → needs_reauth (ISS-409). A
-        // non-auth HTTP error stays a generic error.
-        const healthStatus = result.kind === 'unauthorized' ? 'needs_reauth' : 'error';
-        await updateConnection(ctx.connectionId, {
-          lastHealthStatus: healthStatus,
-          lastHealthAt: new Date(),
-        });
-        const reason =
-          result.kind === 'unauthorized'
-            ? 'invalid Sentry auth token'
-            : `Sentry API error (HTTP ${result.status})`;
-        return {
-          status: healthStatus,
-          message: reason,
-          diagnostics: { httpStatus: result.status },
-        };
-      }
-
-      const orgs = result.body;
-      await updateConnection(ctx.connectionId, {
-        lastHealthStatus: 'ok',
-        lastHealthAt: new Date(),
-      });
+      const body = await callSentry(
+        ctx,
+        `${sentryRestBase(ctx.config.host)}/api/0/organizations/`,
+        'GET',
+      );
+      const orgs = Array.isArray(body) ? (body as SentryOrg[]) : [];
       return {
         status: 'ok',
         message: orgs.length
@@ -116,24 +50,22 @@ const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecret
           : 'Sentry auth token is valid',
         // Only non-secret identity fields — never the token.
         diagnostics: {
-          organizations: orgs.slice(0, 10).map((o) => ({
-            id: o.id ?? null,
-            slug: o.slug ?? null,
-            name: o.name ?? null,
-          })),
+          organizations: orgs
+            .slice(0, 10)
+            .map((o) => ({ id: o.id ?? null, slug: o.slug ?? null, name: o.name ?? null })),
         },
       };
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'unknown error';
-      await updateConnection(ctx.connectionId, {
-        lastHealthStatus: 'error',
-        lastHealthAt: new Date(),
-      });
+      if (!(err instanceof SentryRefusal)) throw err;
       logger.warn(
-        { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: message },
+        { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: err.message },
         'sentry: healthcheck failed',
       );
-      return { status: 'error', message };
+      return {
+        status: sentryRefusalHealth(err.reason),
+        message: err.message,
+        ...(err.httpStatus !== null ? { diagnostics: { httpStatus: err.httpStatus } } : {}),
+      };
     }
   },
 

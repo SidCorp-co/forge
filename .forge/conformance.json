@@ -168,7 +168,7 @@
       ],
       "allowed": [
         {
-          "glob": "packages/core/src/integrations/coolify/**",
+          "glob": "packages/core/src/integrations/deploy/coolify/**",
           "why": "The provider's own directory \u2014 the one place ISS-1071 puts a provider's name. Everything here is ABOUT coolify and no generic path reads it."
         },
         {

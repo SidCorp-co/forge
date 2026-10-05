@@ -1,0 +1,128 @@
+import { logger } from '../../../observability/logger.js';
+import { reportCondition } from '../../../observability/sentry.js';
+import {
+  findBindingById,
+  findConnectionById,
+  recentOutboundDeliveries,
+  updateConnection,
+} from '../../index.js';
+
+/** Per the issue's AC: 3 consecutive failed outbound deliveries within 5 minutes trips the breaker. */
+const BREAKER_FAILURE_THRESHOLD = 3;
+const BREAKER_WINDOW_MS = 5 * 60_000;
+const BREAKER_COOLDOWN_MS = 10 * 60_000;
+
+interface BreakerEvaluation {
+  tripped: boolean;
+  consecutiveFailures: number;
+}
+
+/**
+ * Counts recent failures for a single binding. Breaker STATE lives on the
+ * owning connection (so a shared credential trips once). For the 1:1 backfill
+ * one binding maps to one connection, so per-binding counting == per-connection;
+ * aggregating failures across sibling bindings of a shared connection is a
+ * future concern.
+ */
+async function evaluateBreaker(bindingId: string): Promise<BreakerEvaluation> {
+  const recent = await recentOutboundDeliveries(
+    bindingId,
+    BREAKER_FAILURE_THRESHOLD,
+    BREAKER_WINDOW_MS,
+  );
+  if (recent.length < BREAKER_FAILURE_THRESHOLD) {
+    return {
+      tripped: false,
+      consecutiveFailures: recent.filter((r) => r.status === 'failed').length,
+    };
+  }
+  const allFailed = recent.every((r) => r.status === 'failed');
+  return {
+    tripped: allFailed,
+    consecutiveFailures: allFailed ? recent.length : 0,
+  };
+}
+
+/**
+ * Called after a `failed` outbound delivery is recorded. Evaluates the binding's
+ * recent failures; if the threshold is met, flips active=false on the owning
+ * CONNECTION, stamps breaker_opened_at, and emits a Sentry event.
+ *
+ * Returns true if the breaker was tripped by this call (caller uses this to
+ * decide whether to auto-create a Forge issue for ops follow-up).
+ */
+export async function maybeTripBreaker(args: {
+  bindingId: string;
+  connectionId: string;
+}): Promise<boolean> {
+  const evaluation = await evaluateBreaker(args.bindingId);
+  if (!evaluation.tripped) return false;
+
+  const connection = await findConnectionById(args.connectionId);
+  if (!connection?.active) {
+    return false;
+  }
+
+  await updateConnection(args.connectionId, {
+    active: false,
+    breakerOpenedAt: new Date(),
+  });
+
+  const binding = await findBindingById(args.bindingId);
+  logger.error(
+    {
+      connectionId: args.connectionId,
+      bindingId: args.bindingId,
+      provider: connection.provider,
+      role: binding?.role ?? null,
+      consecutiveFailures: evaluation.consecutiveFailures,
+    },
+    'integration: circuit breaker tripped',
+  );
+
+  reportCondition('integration.coolify.breaker_tripped', {
+    level: 'error',
+    tags: {
+      provider: connection.provider,
+      role: binding?.role ?? 'unknown',
+      projectId: binding?.projectId ?? 'unknown',
+    },
+    extra: {
+      connectionId: args.connectionId,
+      bindingId: args.bindingId,
+      consecutiveFailures: evaluation.consecutiveFailures,
+    },
+  });
+
+  return true;
+}
+
+export async function breakerAllowsDispatch(connection: {
+  id: string;
+  active: boolean;
+  breakerOpenedAt: Date | null;
+}): Promise<{ allow: boolean; halfOpen: boolean }> {
+  if (connection.active) return { allow: true, halfOpen: false };
+  const openedAtMs = connection.breakerOpenedAt
+    ? new Date(connection.breakerOpenedAt).getTime()
+    : null;
+  if (openedAtMs !== null && Date.now() - openedAtMs >= BREAKER_COOLDOWN_MS) {
+    // Re-stamp BEFORE the trial: if the trial fails, maybeTripBreaker is a no-op
+    // on an already-open connection, so this timestamp is what re-arms the next
+    // cooldown window. A successful trial clears it via maybeResetBreaker.
+    await updateConnection(connection.id, { breakerOpenedAt: new Date() });
+    logger.info({ connectionId: connection.id }, 'integration: circuit breaker half-open trial');
+    return { allow: true, halfOpen: true };
+  }
+  return { allow: false, halfOpen: false };
+}
+
+export async function maybeResetBreaker(connectionId: string): Promise<void> {
+  const connection = await findConnectionById(connectionId);
+  if (!connection || connection.active) return;
+  await updateConnection(connectionId, {
+    active: true,
+    breakerOpenedAt: null,
+  });
+  logger.info({ connectionId }, 'integration: circuit breaker reset');
+}

@@ -20,12 +20,20 @@ import {
   renderContractContext,
 } from './ecosystem/index.js';
 import { reportLinksOf } from './feedback/index.js';
-import { isHttpsGitUrl, projectsWithHostCredential } from './git/index.js';
 import { getPublishedRunnerBuild } from './install/index.js';
-import { applyGrantedMcpServers, decryptSecret, isVaultConfigured } from './integrations/index.js';
+import { cmpVersion, mainRunnerHead } from './integrations/github/index.js';
+import {
+  applyGrantedMcpServers,
+  decryptSecret,
+  getStorage,
+  isVaultConfigured,
+} from './integrations/index.js';
 import { callFastModel } from './integrations/llm/index.js';
-import { cmpVersion, mainRunnerHead } from './integrations/published-releases/index.js';
-import { readPullRequestsForIssues } from './integrations/source-host/index.js';
+import {
+  isHttpsGitUrl,
+  projectsWithHostCredential,
+  readPullRequestsForIssues,
+} from './integrations/source-host/index.js';
 import {
   countInFlightByRunner,
   insertInterventionEvent,
@@ -65,7 +73,6 @@ import {
   settleSessionFires,
 } from './schedules/index.js';
 import { recordSkillActivityEvent, resolveRegisteredEffectiveSkills } from './skills/index.js';
-import { getStorage } from './storage/index.js';
 import {
   issueMockupsOf,
   loadArtifactContext,

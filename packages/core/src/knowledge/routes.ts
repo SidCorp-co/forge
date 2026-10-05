@@ -5,10 +5,7 @@ import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { issueStatuses } from '../db/schema.js';
 import { masterVerbs } from '../db/schema-master-charter.js';
-import {
-  EMBEDDING_UNAVAILABLE,
-  EmbeddingUnavailableError,
-} from '../integrations/embeddings/index.js';
+import { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from '../integrations/llm/index.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';

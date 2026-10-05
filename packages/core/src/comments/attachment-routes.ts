@@ -10,6 +10,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { getStorage, isEnoent } from '../integrations/index.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
@@ -18,7 +19,6 @@ import { requireAnyAuth } from '../middleware/require-any-auth.js';
 import { forbidden } from '../middleware/route-errors.js';
 import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { getStorage, isEnoent } from '../storage/index.js';
 import { persistCommentAttachment } from './attachment-service.js';
 import { commentAttachmentFile, issueCommentForAttachment } from './read.js';
 

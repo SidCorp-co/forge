@@ -2,8 +2,12 @@ import crypto from 'node:crypto';
 import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activityLog, comments, issues, memories, projects } from '../db/schema.js';
-import { EmbeddingUnavailableError, embed } from '../integrations/embeddings/index.js';
-import { callFastModel, fastModelConfigured } from '../integrations/llm/index.js';
+import {
+  callFastModel,
+  EmbeddingUnavailableError,
+  embed,
+  fastModelConfigured,
+} from '../integrations/llm/index.js';
 import { searchKnowledge } from '../knowledge/index.js';
 import { logger } from '../observability/logger.js';
 import { indexMemory, indexMemoryBestEffort, MAX_EMBED_CHARS } from './indexer.js';

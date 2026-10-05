@@ -207,7 +207,8 @@ excluded.
   `observability` to platform (every layer reads `packages/core/src/config/env.ts`, and middleware reads the
   credential helpers, so in a business context each was a false back edge); `git`,
   `integrations/coolify`, `integrations/deploy`, `integrations/published-releases` and `storage` to
-  adapters (the registry imports them); `uploads`, a domain, to work. The integration door joins
+  adapters (the registry imports them), since folded into the ports that own their concept
+  (`integrations/source-host`, `integrations/deploy`, `integrations/github`, `integrations`); `uploads`, a domain, to work. The integration door joins
   adapters. A door is exempt from context direction because it composes contexts; its kind still
   lets only a door import it.
 - **modules.json agrees with its own kinds.** `auth` owned `users` and the sign-in tokens as a

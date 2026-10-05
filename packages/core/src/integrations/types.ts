@@ -126,11 +126,7 @@ export interface InboundDispatchInput {
 }
 
 /** The facts a vendor delivery reports to Forge's own modules, written to the outbox by the door. */
-export type InboundFactType =
-  | 'source.pushed'
-  | 'source.merged'
-  | 'source.reviewed'
-  | 'error.sighted';
+type InboundFactType = 'source.pushed' | 'source.merged' | 'source.reviewed' | 'error.sighted';
 export type InboundFact = {
   [T in InboundFactType]: { type: T; payload: OutboxEventPayload<T> };
 }[InboundFactType];
@@ -235,7 +231,7 @@ export interface IntegrationCapabilities {
    * The request header that identifies an inbound webhook as this provider's.
    *
    * Declared rather than mapped, because the map it replaced lived in
-   * `webhooks/inbound-routes.ts` — a file with no other reason to know a provider exists, and one
+   * `integration-door/webhook-inbound-routes.ts` — a file with no other reason to know a provider exists, and one
    * that would keep routing correctly for the providers it already listed while silently dropping a
    * new one on the floor. Only meaningful where `canReceiveWebhook` is true.
    */
@@ -261,7 +257,7 @@ export interface IntegrationCapabilities {
  * Everything the generic request paths need to validate a caller's body for this provider, in the
  * provider's own directory rather than in a discriminated union that repeats the provider list.
  */
-export interface IntegrationSchemas {
+interface IntegrationSchemas {
   /** Owner-scoped connection create: the credential tier's config. */
   connectionConfig: z.ZodTypeAny;
   /**
@@ -309,7 +305,7 @@ export interface IntegrationSchemas {
  * one existed. `github` declares `null` because its card is built from the project's repository
  * rather than from a binding, and `agent` because a release channel is not an integration to show.
  */
-export interface IntegrationPresentation {
+interface IntegrationPresentation {
   /** Human label on the card. */
   label: string;
   /** Key every card by stage even where there is one binding, because the provider is stage-split
@@ -324,7 +320,7 @@ export interface IntegrationPresentation {
 
 /** The short router hint and forward pointer injected into the preamble when this is reachable. */
 /** The connection row shape `inboundSecret` reads — kept structural so `types.ts` imports no db. */
-export interface IntegrationConnectionLike {
+interface IntegrationConnectionLike {
   secretsEnc: Buffer | null;
 }
 
@@ -485,7 +481,7 @@ export interface IntegrationDeclaration<
   readonly gitCredential?: GitCredentialMint;
 }
 
-/** What `git/host-credential.ts` asks of a provider for one repository git is fetching. */
+/** What `source-host/host-credential.ts` asks of a provider for one repository git is fetching. */
 export interface GitCredentialMint {
   /** Whether this binding is complete enough to mint for at all — the provision flag reads it. */
   serves(config: Record<string, unknown>): boolean;

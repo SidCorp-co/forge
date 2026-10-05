@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { knowledgeEntries } from '../db/schema.js';
-import { EmbeddingUnavailableError, embedBatch } from '../integrations/embeddings/index.js';
+import { EmbeddingUnavailableError, embedBatch } from '../integrations/llm/index.js';
 import { logger } from '../observability/logger.js';
 import {
   knowledgeEmbedInput,

@@ -15,12 +15,12 @@ import {
   refuseConversation,
   writableConversation,
 } from '../conversations/index.js';
+import { getStorage } from '../integrations/index.js';
 import { contentDisposition } from '../lib/attachment-headers.js';
 import type { RefusalError } from '../lib/refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { getStorage } from '../storage/index.js';
 import { createUploadTicket, UPLOAD_TICKET_TTL_MS } from '../uploads/index.js';
 import { isTurnRunning, stopConversationTurns } from './conversation-stops.js';
 

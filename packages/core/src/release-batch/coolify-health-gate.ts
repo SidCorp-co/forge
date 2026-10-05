@@ -1,4 +1,4 @@
-import type { CoolifyConfig, HealthReading } from '../integrations/coolify/index.js';
+import type { CoolifyConfig, HealthReading } from '../integrations/deploy/index.js';
 import { recordDelivery } from '../integrations/index.js';
 import { logger } from '../observability/logger.js';
 import { boss } from '../queue/boss.js';

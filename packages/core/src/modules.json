@@ -180,10 +180,8 @@
         "via:credentials",
         "via:devices",
         "via:integrations",
-        "via:integrations/embeddings",
-        "via:integrations/identity",
         "via:integrations/llm",
-        "via:integrations/mail",
+        "via:integrations/identity",
         "via:issues",
         "via:knowledge",
         "via:memory",
@@ -239,13 +237,12 @@
         "via:ecosystem",
         "via:error-intake",
         "via:feedback",
-        "via:git",
+        "via:integrations/source-host",
         "via:integration-door",
         "via:integrations",
         "via:integrations/github",
         "via:integrations/gitlab",
         "via:integrations/llm",
-        "via:integrations/source-host",
         "via:issues",
         "via:jobs",
         "via:knowledge",
@@ -275,7 +272,6 @@
         "via:skills",
         "via:suggestions",
         "via:uploads",
-        "via:webhooks",
         "via:workflows",
         "via:ws"
       ]
@@ -356,11 +352,6 @@
         "requirement-to-delivery#fb-filed"
       ]
     },
-    "git": {
-      "kind": "adapter",
-      "context": "adapters",
-      "serves": ["github-merge-sequence#m-host-merge", "personal-data-flow#pr-provision"]
-    },
     "guides": {
       "kind": "domain",
       "context": "knowledge",
@@ -404,7 +395,8 @@
       "serves": [
         "github-merge-sequence#p-integrations",
         "github-merge-sequence#m-delivery",
-        "personal-data-flow#ds-vault"
+        "personal-data-flow#ds-vault",
+        "personal-data-flow#ds-uploads"
       ]
     },
     "integrations/autoflow": {
@@ -412,20 +404,10 @@
       "context": "adapters",
       "serves": ["REQ-21"]
     },
-    "integrations/coolify": {
-      "kind": "adapter",
-      "context": "adapters",
-      "serves": ["issue-delivery#task-release", "issue-delivery#act-release"]
-    },
     "integrations/deploy": {
       "kind": "adapter",
       "context": "adapters",
-      "serves": ["issue-delivery#task-release"]
-    },
-    "integrations/embeddings": {
-      "kind": "adapter",
-      "context": "adapters",
-      "serves": ["personal-data-flow#ext-embeddings", "feedback-triage#vectors"]
+      "serves": ["issue-delivery#task-release", "issue-delivery#act-release"]
     },
     "integrations/epodsystem": {
       "kind": "adapter",
@@ -438,7 +420,8 @@
       "serves": [
         "github-merge-sequence#p-github",
         "github-merge-sequence#m-project",
-        "personal-data-flow#src-identity"
+        "personal-data-flow#src-identity",
+        "REQ-25"
       ]
     },
     "integrations/gitlab": {
@@ -449,22 +432,23 @@
     "integrations/identity": {
       "kind": "adapter",
       "context": "adapters",
-      "serves": ["personal-data-flow#src-identity", "REQ-27"]
+      "serves": [
+        "personal-data-flow#src-identity",
+        "REQ-27",
+        "personal-data-flow#pr-mail",
+        "personal-data-flow#ext-smtp"
+      ]
     },
     "integrations/llm": {
       "kind": "adapter",
       "context": "adapters",
-      "serves": ["personal-data-flow#ext-llm", "personal-data-flow#pr-assistant", "REQ-19"]
-    },
-    "integrations/mail": {
-      "kind": "adapter",
-      "context": "adapters",
-      "serves": ["personal-data-flow#pr-mail", "personal-data-flow#ext-smtp", "REQ-27"]
-    },
-    "integrations/published-releases": {
-      "kind": "adapter",
-      "context": "adapters",
-      "serves": ["REQ-25"]
+      "serves": [
+        "personal-data-flow#ext-llm",
+        "personal-data-flow#pr-assistant",
+        "REQ-19",
+        "personal-data-flow#ext-embeddings",
+        "feedback-triage#vectors"
+      ]
     },
     "integrations/rocketchat": {
       "kind": "adapter",
@@ -485,7 +469,11 @@
       "kind": "adapter",
       "context": "adapters",
       "owns": ["repoPullRequests"],
-      "serves": ["github-merge-sequence#m-host-merge", "issue-delivery#github"]
+      "serves": [
+        "github-merge-sequence#m-host-merge",
+        "issue-delivery#github",
+        "personal-data-flow#pr-provision"
+      ]
     },
     "issues": {
       "kind": "kernel",
@@ -562,9 +550,8 @@
         "via:devices",
         "via:ecosystem",
         "via:feedback",
-        "via:git",
+        "via:integrations/source-host",
         "via:integration-door",
-        "via:integrations/embeddings",
         "via:integrations/llm",
         "via:integrations/sentry",
         "via:issues",
@@ -597,7 +584,6 @@
         "via:skills",
         "via:suggestions",
         "via:uploads",
-        "via:webhooks",
         "via:workflows",
         "via:ws"
       ]
@@ -681,7 +667,7 @@
         "via:devices",
         "via:ecosystem",
         "via:feedback",
-        "via:git",
+        "via:integrations/source-host",
         "via:integration-door",
         "via:integrations",
         "via:issues",
@@ -712,7 +698,6 @@
         "via:skills",
         "via:suggestions",
         "via:uploads",
-        "via:webhooks",
         "via:workflows",
         "via:ws"
       ]
@@ -933,11 +918,6 @@
       "owns": ["skillActivityEvents", "skills"],
       "serves": ["REQ-1", "REQ-13"]
     },
-    "storage": {
-      "kind": "adapter",
-      "context": "adapters",
-      "serves": ["personal-data-flow#ds-uploads"]
-    },
     "suggestions": {
       "kind": "domain",
       "context": "design",
@@ -954,11 +934,6 @@
       "context": "work",
       "owns": ["downloadTickets", "uploadTickets"],
       "serves": ["personal-data-flow#ds-uploads", "feedback-triage#ask"]
-    },
-    "webhooks": {
-      "kind": "door",
-      "context": "ecosystem",
-      "serves": ["github-merge-sequence#m-webhook", "github-merge-sequence#m-verify"]
     },
     "workflows": {
       "kind": "domain",

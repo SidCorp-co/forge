@@ -11,7 +11,7 @@ import { GitHubPublishError, type GitHubPublishOp } from './client.js';
  * map of operations rendered the check sentence for a merge and sent an
  * operator to grant a permission that could not unblock it (ISS-1151).
  */
-export interface PublishOpSubject {
+interface PublishOpSubject {
   /** What this op was doing, read into "… while <this> …". */
   where: string;
   /** After "GitHub refused Forge while <where> because ". The permission THIS op needs and the way to grant it. */
@@ -40,7 +40,7 @@ export type PublishSubject<Op extends GitHubPublishOp = GitHubPublishOp> = Reado
 /** Any path's subject, read by op at runtime. The lookup may miss, and says so when it does. */
 type SubjectLookup = Readonly<Partial<Record<GitHubPublishOp, PublishOpSubject>>>;
 
-export type RefusalCause =
+type RefusalCause =
   | 'timed-out-before-write'
   | 'timed-out-mid-write'
   | 'rate-limited'

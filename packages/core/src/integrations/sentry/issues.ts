@@ -235,16 +235,89 @@ async function setSentryIssueStatus(
   return { result, issue: value };
 }
 
+interface ListOutcome {
+  admitted: SentryIssueDetail[];
+  refused: SentryListRefusal[];
+  pages: number;
+  truncated: boolean;
+}
+
+/** One page of the listing; a failed or unreadable page carries what was gathered before it. */
+async function readListPage(
+  ctx: SentryAdapterContext,
+  url: string,
+  sofar: Pick<ListOutcome, 'pages' | 'refused'>,
+): Promise<{ body: unknown[]; link: string | null }> {
+  const out: { link: string | null } = { link: null };
+  let body: unknown;
+  try {
+    body = await callSentry(ctx, url, 'GET', undefined, out);
+  } catch (err) {
+    throw new SentryListingFailed(
+      err instanceof Error ? err.message : 'unknown error',
+      sofar,
+      err instanceof SentryRefusal ? err : null,
+    );
+  }
+  if (!Array.isArray(body)) {
+    const unreadable = `sentry: could not read Sentry's answer — ${url} answered ${typeof body}, and an issue listing has to be an array`;
+    throw new SentryListingFailed(
+      unreadable,
+      sofar,
+      new SentryRefusal('sentry_unreachable', unreadable),
+    );
+  }
+  return { body, link: out.link };
+}
+
+/**
+ * Page through the org's issues up to the page bound, admitting those the target holds. Reaching
+ * the bound while Sentry still has more is neither an error nor a success: it is a named
+ * incompleteness (`truncated`), and it is the caller's to report onward.
+ */
+async function collectListing(
+  ctx: SentryAdapterContext,
+  target: ResolvedSentryTarget,
+  params: { query: string; limit: number; statsPeriod?: string | undefined },
+): Promise<ListOutcome> {
+  const admitted: SentryIssueDetail[] = [];
+  const refused: SentryListRefusal[] = [];
+  let pages = 0;
+  let cursor: string | undefined;
+  while (pages < SENTRY_LIST_MAX_PAGES) {
+    const url = sentryOrgIssuesUrl(ctx.config.host, target.organizationSlug, {
+      query: params.query,
+      limit: params.limit,
+      ...(params.statsPeriod ? { statsPeriod: params.statsPeriod } : {}),
+      ...(cursor ? { cursor } : {}),
+    });
+    const { body, link } = await readListPage(ctx, url, { pages, refused });
+    pages += 1;
+    for (const raw of body) {
+      const issue = projectIssue(raw, '');
+      const why = confinementRefusal(issue, target);
+      if (why === null) admitted.push(issue);
+      else
+        refused.push({
+          issueId: issue.id,
+          shortId: issue.shortId,
+          belongsTo: issue.projectSlug,
+          reason: why,
+        });
+    }
+    cursor = nextSentryCursor(link) ?? undefined;
+    if (!cursor) return { admitted, refused, pages, truncated: false };
+  }
+  return { admitted, refused, pages, truncated: true };
+}
+
 export async function listSentryIssues(
   ctx: SentryAdapterContext,
   input: SentryListRequest,
   requestId?: string,
 ): Promise<SentryIssueListing> {
   let target!: ResolvedSentryTarget;
-  let asked = '';
-  let refused: SentryListRefusal[] = [];
-  let pages = 0;
-  let truncated = false;
+  let query = '';
   const { result, value } = await withDelivery(
     ctx,
     SENTRY_ISSUE_LIST,
@@ -254,90 +327,30 @@ export async function listSentryIssues(
       target = resolveSentryTarget(ctx.config, input.targetLabel);
       const limit = assertListLimit(input.limit);
       const statsPeriod = assertStatsPeriod(input.statsPeriod);
-      const query = listQuery(input.query, target);
-      asked = query;
-      const admitted: SentryIssueDetail[] = [];
-      const turnedAway: SentryListRefusal[] = [];
-      let cursor: string | undefined;
-
-      while (pages < SENTRY_LIST_MAX_PAGES) {
-        const url = sentryOrgIssuesUrl(ctx.config.host, target.organizationSlug, {
-          query,
-          limit,
-          ...(statsPeriod ? { statsPeriod } : {}),
-          ...(cursor ? { cursor } : {}),
-        });
-        const out: { link: string | null } = { link: null };
-        let body: unknown;
-        try {
-          body = await callSentry(ctx, url, 'GET', undefined, out);
-        } catch (err) {
-          refused = turnedAway;
-          throw new SentryListingFailed(
-            err instanceof Error ? err.message : 'unknown error',
-            { pages, refused: turnedAway },
-            err instanceof SentryRefusal ? err : null,
-          );
-        }
-        if (!Array.isArray(body)) {
-          refused = turnedAway;
-          const unreadable = `sentry: could not read Sentry's answer — ${url} answered ${typeof body}, and an issue listing has to be an array`;
-          throw new SentryListingFailed(
-            unreadable,
-            { pages, refused: turnedAway },
-            new SentryRefusal('sentry_unreachable', unreadable),
-          );
-        }
-        pages += 1;
-        for (const raw of body) {
-          const issue = projectIssue(raw, '');
-          const why = confinementRefusal(issue, target);
-          if (why === null) admitted.push(issue);
-          else {
-            turnedAway.push({
-              issueId: issue.id,
-              shortId: issue.shortId,
-              belongsTo: issue.projectSlug,
-              reason: why,
-            });
-          }
-        }
-        const next = nextSentryCursor(out.link);
-        if (!next) {
-          refused = turnedAway;
-          return {
-            value: admitted,
-            response: {
-              query,
-              limit,
-              pages,
-              truncated,
-              admitted: admitted.length,
-              refused: turnedAway,
-            },
-          };
-        }
-        cursor = next;
-      }
-
-      // The bound was reached and Sentry still had more. This is not an error and it is not a
-      // success either — it is a named incompleteness, and it is the caller's to report onward.
-      truncated = true;
-      refused = turnedAway;
+      query = listQuery(input.query, target);
+      const o = await collectListing(ctx, target, { query, limit, statsPeriod });
       return {
-        value: admitted,
+        value: o,
         response: {
           query,
           limit,
-          pages,
-          truncated,
-          admitted: admitted.length,
-          refused: turnedAway,
+          pages: o.pages,
+          truncated: o.truncated,
+          admitted: o.admitted.length,
+          refused: o.refused,
         },
       };
     },
   );
-  return { result, target, query: asked, issues: value, refused, pages, truncated };
+  return {
+    result,
+    target,
+    query,
+    issues: value.admitted,
+    refused: value.refused,
+    pages: value.pages,
+    truncated: value.truncated,
+  };
 }
 
 /**

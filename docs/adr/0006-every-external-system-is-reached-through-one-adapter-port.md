@@ -20,12 +20,12 @@ call sits now.
 |---|---|---|
 | memory/llm.ts | `packages/core/src/integrations/llm/fast-model.ts` | LiteLLM `chat/completions` with the global `fetch` — **outside the data-egress guard**. So did every memory and knowledge embedding; only `packages/core/src/knowledge/item-embeddings.ts` and `packages/core/src/requirements/embeddings.ts` gated their text |
 | assistant/providers/*, and the token counter in assistant/tool-catalog-cost.ts | `packages/core/src/integrations/llm/` | the chat model (OpenAI-compatible and Anthropic Messages) and Anthropic's `count_tokens` |
-| embeddings/client.ts, embeddings/index.ts | `packages/core/src/integrations/embeddings/` | the embeddings endpoint |
-| the transports in auth/email.ts and projects/invitation-email.ts | `packages/core/src/integrations/mail/smtp.ts` | two `nodemailer` transports, built twice from the same `SMTP_*` |
+| embeddings/client.ts, embeddings/index.ts | `packages/core/src/integrations/llm/embeddings.ts`, `packages/core/src/integrations/llm/embeddings-client.ts` | the embeddings endpoint |
+| the transports in auth/email.ts and projects/invitation-email.ts | `packages/core/src/integrations/identity/smtp.ts` | two `nodemailer` transports, built twice from the same `SMTP_*` |
 | auth/oauth/github.ts, oidc-discovery.ts, oidc-provider.ts | `packages/core/src/integrations/identity/` | GitHub OAuth, Google and generic OIDC |
 | webhooks/outbound.ts | deleted in ISS-220, with no subscriber left | a customer's webhook URL |
-| install/fetch-release.ts, install/main-runner-head.ts | `packages/core/src/integrations/published-releases/fetch-release.ts`, `packages/core/src/integrations/published-releases/main-runner-head.ts`, over `packages/core/src/integrations/published-releases/public-releases.ts` | `api.github.com` releases and commits |
-| the download in ecosystem/contract/oasdiff.ts | `packages/core/src/integrations/published-releases/public-releases.ts` | a pinned binary download from `github.com` — not a remote spec |
+| install/fetch-release.ts, install/main-runner-head.ts | `packages/core/src/integrations/github/published-releases/fetch-release.ts`, `packages/core/src/integrations/github/published-releases/main-runner-head.ts`, over `packages/core/src/integrations/github/published-releases/public-releases.ts` | `api.github.com` releases and commits |
+| the download in ecosystem/contract/oasdiff.ts | `packages/core/src/integrations/github/published-releases/public-releases.ts` | a pinned binary download from `github.com` — not a remote spec |
 | lib/runtime-probe.ts, and the global `fetch` project-config/environment-state-read.ts handed it | `packages/core/src/integrations/deploy/runtime-probe.ts` | a project's deployed app, through its declared runtime probe — found by the rule below, not by the hand list |
 | schedules/script/worker-entry.ts | unchanged: an exception | whatever URL a user's sandboxed script names |
 | observability/sentry.ts | unchanged: an exception | Forge's own crash reports, through `@sentry/node` |
@@ -90,7 +90,7 @@ sentence that justifies it, and an exception with no reason is refused.
   dials in to Forge over Forge's own contract in `packages/contracts`, so nothing there reaches out.
 - **The oasdiff binary** (`packages/core/src/ecosystem/contract/oasdiff.ts`) is a local process the
   contract differ runs over two specs it already holds; it reaches no system. Only its pinned
-  download crosses a boundary, and that sits in `packages/core/src/integrations/published-releases/public-releases.ts`.
+  download crosses a boundary, and that sits in `packages/core/src/integrations/github/published-releases/public-releases.ts`.
 - **Object storage** is not an external system today: `STORAGE_DRIVER` accepts only `local`, and `s3`
   is refused by name. A driver for an object store would be an `object-storage` port under `integrations`.
 

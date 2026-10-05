@@ -1,5 +1,5 @@
 import { env } from '../config/env.js';
-import { mailDeliveryEnabled, sendMail } from '../integrations/mail/index.js';
+import { mailDeliveryEnabled, sendMail } from '../integrations/identity/index.js';
 import { logger } from '../observability/logger.js';
 
 function buildVerificationLink(token: string): string {
