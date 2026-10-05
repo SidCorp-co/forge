@@ -11,7 +11,28 @@
 import type { IntegrationRefusalCode } from '@forge/contracts/integrations';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { adapterOrRefuse, applySecretsPatch, type BindingWithConnection, bindingWriteMoved, buildContextFromBinding, configSchemaForProvider, findBindingWithConnectionById, getAdapter, listBindingDeliveries, listBindingsForConnection, listBindingsForProject, mintInboundSecret, notFound, notifyConnectionChanged, rotateHeldInboundSecret, splitProviderConfig, summarizeBinding, updateConnection, updateSchema, withdrawNulls } from '../integrations/index.js';
+import {
+  adapterOrRefuse,
+  applySecretsPatch,
+  type BindingWithConnection,
+  bindingWriteMoved,
+  buildContextFromBinding,
+  configSchemaForProvider,
+  findBindingWithConnectionById,
+  getAdapter,
+  listBindingDeliveries,
+  listBindingsForConnection,
+  listBindingsForProject,
+  mintInboundSecret,
+  notFound,
+  notifyConnectionChanged,
+  rotateHeldInboundSecret,
+  splitProviderConfig,
+  summarizeBinding,
+  updateConnection,
+  updateSchema,
+  withdrawNulls,
+} from '../integrations/index.js';
 import { fetchBotRooms, rocketChatBindingOfProject } from '../integrations/rocketchat/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';

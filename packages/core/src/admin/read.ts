@@ -2,7 +2,18 @@ import { NON_OPEN_STATUSES } from '@forge/contracts/issue-machine';
 import { UNHELD_LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type DeviceStatus, devices, issues, jobs, organizations, pipelineRuns, projectMembers, projects, usageRecords, users } from '../db/schema.js';
+import {
+  type DeviceStatus,
+  devices,
+  issues,
+  jobs,
+  organizations,
+  pipelineRuns,
+  projectMembers,
+  projects,
+  usageRecords,
+  users,
+} from '../db/schema.js';
 import { buildIlikePattern } from '../issues/index.js';
 import { ADMIN_THRESHOLDS } from '../lib/admin-thresholds.js';
 import { type BucketUnit, bucketBoundaries, utcDateTrunc } from '../lib/time-buckets.js';

@@ -1,7 +1,22 @@
 import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
 import type { ReleaseNotes } from '@forge/contracts/release-notes';
 import { relations, type SQL, sql } from 'drizzle-orm';
-import { type AnyPgColumn, boolean, check, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  type AnyPgColumn,
+  boolean,
+  check,
+  foreignKey,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { BODY_FORMATS } from '../body/formats.js';
 import { activityLog } from './schema-activity.js';
 import { users } from './schema-auth.js';

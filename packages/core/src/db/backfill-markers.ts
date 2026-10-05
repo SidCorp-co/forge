@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import type { Tx } from './client.js';/** Whether a backfill already recorded its completion, inside a drizzle transaction. */
+import type { Tx } from './client.js'; /** Whether a backfill already recorded its completion, inside a drizzle transaction. */
 export async function backfillMarkedIn(tx: Tx, key: string): Promise<boolean> {
   const rows = (await tx.execute(
     sql`SELECT count(*)::int AS n FROM backfill_markers WHERE key = ${key}`,

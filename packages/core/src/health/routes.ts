@@ -37,5 +37,4 @@ publicHealthRoutes.get('/version', (c) =>
   }),
 );
 
-
 export { projectHealthRoutes } from './project-health-routes.js';

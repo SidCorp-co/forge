@@ -15,15 +15,7 @@ import type { IntegrationDelivery } from "../types";
 // ISS-1140: a call turned away AT the door — bad or missing signature — which never became a
 // delivery reads `refused` (contracts `ui-vocabulary.ts` `delivery`), never as work still in flight.
 
-function DeliveryRow({
-  row,
-  projectId,
-  bindingId,
-}: {
-  row: IntegrationDelivery;
-  projectId: string;
-  bindingId: string;
-}) {
+function DeliveryRow({ row }: { row: IntegrationDelivery }) {
   const dirIcon: IconName = row.direction === "inbound" ? "inbox" : "arrowRight";
   const duration = typeof row.durationMs === "number" ? `${row.durationMs}ms` : "—";
 
@@ -104,7 +96,7 @@ export function DeliveryLogViewer({
   return (
     <div className="flex flex-col gap-2">
       {items.map((row) => (
-        <DeliveryRow key={row.id} row={row} projectId={projectId} bindingId={bindingId} />
+        <DeliveryRow key={row.id} row={row} />
       ))}
     </div>
   );

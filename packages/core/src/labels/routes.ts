@@ -236,4 +236,3 @@ labelRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => {
   await deleteLabel(id);
   return c.body(null, 204);
 });
-

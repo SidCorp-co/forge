@@ -15,7 +15,7 @@
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { and, eq, inArray, isNotNull, isNull, or, type SQL, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { db } from '../db/client.js';
+import type { db } from '../db/client.js';
 import { type IssueStatus, issueDependencies, issues } from '../db/schema.js';
 import { issueRefFormatter } from './issue-prefix-read.js';
 

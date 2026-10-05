@@ -1,5 +1,5 @@
 import { defaultSeverityForType } from '@forge/contracts/notifications';
-import { type NotificationType } from '../db/schema.js';
+import type { NotificationType } from '../db/schema.js';
 import { recordAndDeliver } from './deliver.js';
 
 interface EmitNotificationInput {

@@ -10,11 +10,7 @@ import {
   agentSessionProjectReadRoutes,
   agentSessionRoutes,
 } from './agent-sessions/routes.js';
-import {
-  baDoorRoutes,
-  conversationRoutes,
-  speakerLinkProjectRoutes,
-} from './assistant/routes.js';
+import { baDoorRoutes, conversationRoutes, speakerLinkProjectRoutes } from './assistant/routes.js';
 import {
   authRoutes,
   loginRoutes,
@@ -59,10 +55,7 @@ import {
 } from './ecosystem/routes.js';
 import { feedbackRoutes } from './feedback/routes.js';
 import { guideRoutes } from './guides/routes.js';
-import {
-  projectHealthRoutes,
-  publicHealthRoutes,
-} from './health/routes.js';
+import { projectHealthRoutes, publicHealthRoutes } from './health/routes.js';
 import {
   deviceGitCredentialRoutes,
   githubCallbackRoutes,
@@ -141,11 +134,7 @@ import { mcpMessageBody, mcpNoBody, rootRoutes } from './root-routes.js';
 import { projectRunnerRoutes, runnerLoadRoutes, runnerRoutes } from './runners/routes.js';
 import { projectSnapshotRoutes, runStandingRoutes } from './runs/routes.js';
 import { scheduleRoutes } from './schedules/routes.js';
-import {
-  deviceSkillRoutes,
-  skillCrudRoutes,
-  skillStudioRoutes,
-} from './skills/routes.js';
+import { deviceSkillRoutes, skillCrudRoutes, skillStudioRoutes } from './skills/routes.js';
 import { suggestionRoutes } from './suggestions/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
 import { workflowJsonSchemas } from './workflows/index.js';

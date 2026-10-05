@@ -1,4 +1,8 @@
-import { TRIAGE_AGENT_REPORT_SHAPE, type TriageAgentReportRequest, triageAgentReportRequestSchema } from '@forge/contracts/agent-reports';
+import {
+  TRIAGE_AGENT_REPORT_SHAPE,
+  type TriageAgentReportRequest,
+  triageAgentReportRequestSchema,
+} from '@forge/contracts/agent-reports';
 import { eq } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';

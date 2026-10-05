@@ -275,7 +275,8 @@ export function documentRefusals(d: ChannelDocument, w: ChannelWorld): Ecosystem
     seen.add(key);
     return true;
   });
-}export function parseChannelDocument(raw: unknown): Checked<ChannelDocument> {
+}
+export function parseChannelDocument(raw: unknown): Checked<ChannelDocument> {
   const parsed = parseVersionedDocument(documentSchema, raw, 'channel');
   return parsed.ok
     ? { ok: true, value: parsed.value }

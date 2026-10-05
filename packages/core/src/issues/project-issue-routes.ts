@@ -22,7 +22,7 @@ import { listIssues } from './list-service.js';
 import { liveReachForIssue } from './live-reach-read.js';
 import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { buildsWorkflowOf, fireOfCaller, proposesWorkflowOf, requirementOfIssue } from './ports.js';
-import { type IssueRow } from './read-service.js';
+import type { IssueRow } from './read-service.js';
 import { issueCreateSchema, issueFiltersSchema } from './request-schemas.js';
 import { refuseLegacyStatusFields } from './status-input.js';
 

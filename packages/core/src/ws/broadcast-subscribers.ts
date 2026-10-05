@@ -136,5 +136,4 @@ export function registerWsBroadcastSubscribers(): void {
   on('integration.changed', (p) => {
     pub(projectRoom(p.projectId), 'integration.changed', p);
   });
-
 }
