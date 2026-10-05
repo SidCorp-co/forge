@@ -168,7 +168,7 @@ export const FAILURE_CAUSE_PRESENTATION: Record<
 	unclassified: "failure",
 };
 
-export const LEGACY_NEUTRAL_REASONS: ReadonlySet<string> = new Set([
+const LEGACY_NEUTRAL_REASON_NAMES = [
 	"issue_busy",
 	"waiting_on_dep",
 	"project_full",
@@ -176,4 +176,10 @@ export const LEGACY_NEUTRAL_REASONS: ReadonlySet<string> = new Set([
 	"no_worker_online",
 	"stale_trigger",
 	"staged_lane_removed",
-]);
+] as const;
+
+export type LegacyNeutralReason = (typeof LEGACY_NEUTRAL_REASON_NAMES)[number];
+
+export const LEGACY_NEUTRAL_REASONS: ReadonlySet<string> = new Set(
+	LEGACY_NEUTRAL_REASON_NAMES,
+);

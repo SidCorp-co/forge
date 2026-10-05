@@ -129,12 +129,12 @@ export function ContextRail({
   // itself carries no dollar cost/model.
   const costQ = useSessionCost(session.id);
   const cost = costQ.data;
-  const modelLabel =
-    cost && cost.models.length > 0
-      ? cost.models.length === 1
-        ? cost.models[0]!.model
-        : `${cost.models.length} models`
-      : null;
+  const [firstModel, ...otherModels] = cost?.models ?? [];
+  const modelLabel = !firstModel
+    ? null
+    : otherModels.length === 0
+      ? firstModel.model
+      : `${otherModels.length + 1} models`;
 
   // On-failure blocker-card: concrete reason + a one-line suggested next action.
   const failureReason = session.failureReason ?? null;
@@ -282,11 +282,7 @@ export function ContextRail({
 
       {issueId && siblings.length > 0 && (
         <Section title={`Sessions for this issue · ${siblings.length}`}>
-          {/* ISS-378 link-out stub: the session-group / resumed-fresh continuity
-              view is owned by ISS-376 and not yet built. Until it lands, this
-              existing sibling-session rail IS the "all sessions for this issue"
-              surface — do NOT reimplement the resumed/fresh badge here.
-              TODO(ISS-376): link each sibling to the session-group timeline. */}
+          {/* Resumed/fresh continuity is the issue detail's session-group timeline; not repeated here. */}
           <ul className="flex flex-col gap-1.5">
             {siblings.map((s) => (
               <SiblingRow

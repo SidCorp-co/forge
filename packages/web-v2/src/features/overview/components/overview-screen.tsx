@@ -43,6 +43,7 @@ export function OverviewScreen() {
     return (
       <PageContainer className="flex flex-col gap-4">
         {Array.from({ length: 5 }).map((_, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a fixed-length placeholder list that never reorders
           <Skeleton key={i} className="h-40 w-full rounded-lg" />
         ))}
       </PageContainer>

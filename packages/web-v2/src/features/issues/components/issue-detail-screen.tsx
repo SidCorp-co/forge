@@ -8,45 +8,32 @@
 // exactly those, so a query keyed anything else here stops updating and nothing reports it.
 
 import {
-  Button,
-  Checkbox,
   DetailHeader,
   DetailLayout,
   DetailMobileTitle,
   DetailPane,
   DetailTabs,
-  EmptyPanelLine,
   ErrorState,
   FactsGroup,
   FactsRail,
-  HelpButton,
-  IconButton,
-  Markdown,
-  Menu,
   ProjectLoader,
-  SegmentedControl,
-  Skeleton,
   StatusBadge,
   StatusChip,
   useListOrigin,
   useUrlTab,
-  type MenuItem,
-  ViewHeading,
 } from "@/design";
 import { useResumeRun } from "@/features/pipeline/hooks";
 import { usePolicyDocument } from "@/features/project-settings/config-hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { canWriteProject } from "@/features/projects/write-access";
 import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
-import { buildShareLink, useRecents } from "@/features/shell";
+import { useRecents } from "@/features/shell";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
 import { useMockups } from "@/features/mockups/hooks";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { useToast } from "@/providers/toast-provider";
 import { useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   canonicalIssueId,
@@ -58,7 +45,6 @@ import {
 } from "../derive";
 import { useCriteria } from "../criteria";
 import { deriveQueuedStep } from "../waiting";
-import { CriteriaList } from "./criteria-list";
 import {
   useActivity,
   useAttachments,
@@ -78,22 +64,22 @@ import { ReleaseApprovalProvider } from "../release-approval";
 import { IssueBanner, IssueStandingFacts } from "./issue-standing-bits";
 import { useIssuePark } from "../park";
 import type { IssueAgentSession, IssueStatus } from "../types";
-import { ActivityFeed } from "./activity-feed";
-import { AskAboutThis } from "@/features/conversations/components/ask-about-this";
 import { AwaitingReleaseBanner } from "./awaiting-release-banner";
 import { BlockerBanner } from "./blocker-banner";
 import { useGuardedTransition } from "./use-guarded-transition";
-import { CommentThread } from "./comment-thread";
-import { IssueDescription } from "./issue-description";
-import { ReleaseNoteCard } from "./release-note-card";
 import { type LiveAgentState, LiveAgentPanel } from "./live-agent-panel";
 import { ModulePicker } from "./module-picker";
 import { PropertiesRail } from "./properties-rail";
-import { SessionGroupTimeline } from "./session-group-timeline";
-import { readStart, StartIssueAction } from "./start-issue-action";
-import { StepArtifactCard } from "./step-artifact-card";
-
-
+import { readStart } from "./start-issue-action";
+import { IssueActions } from "./detail/issue-actions";
+import {
+  ActivityTab,
+  type ActivityThread,
+  CriteriaTab,
+  ISSUE_TABS,
+  OverviewTab,
+  RunsTab,
+} from "./detail/issue-tabs";
 
 interface IssueDetailScreenProps {
   projectId: string;
@@ -106,11 +92,9 @@ export function IssueDetailScreen({
   slug,
   id,
 }: IssueDetailScreenProps) {
-  const router = useRouter();
-  const { toast } = useToast();
   const { push: pushRecent } = useRecents();
   const [tab, setTab] = useUrlTab(ISSUE_TABS);
-  const [thread, setThread] = useState<"comments" | "activity">("comments");
+  const [thread, setThread] = useState<ActivityThread>("comments");
   const back = useListOrigin(ISSUES_LIST, issuesHref(slug));
   const [expandedStep, setExpandedStep] = useState<string | null>(null);
 
@@ -188,14 +172,6 @@ export function IssueDetailScreen({
     });
   }, [issueDisplayId, issueTitle, id, slug, pushRecent]);
 
-  function copyLink() {
-    const url = buildShareLink(`/projects/${slug}/issues/${id}`);
-    navigator.clipboard?.writeText(url).then(
-      () => toast({ title: "Link copied", description: url, tone: "success" }),
-      () => toast({ title: "Couldn't copy link", tone: "error" }),
-    );
-  }
-
   if (issueQ.isLoading) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
@@ -248,16 +224,11 @@ export function IssueDetailScreen({
   const statusPark = canWrite ? { reading: park, actions: parkActions } : undefined;
   const threadQuestion = park.state === "ready" && park.park ? park.park.threadQuestion : null;
 
-  const isTerminal = issue.status === "awaiting_release" || issue.status === "closed";
-  // The menu offers Pause and Reopen only where the issue machine draws them from this status.
+  // The moves the issue machine draws from this status.
   const moves = standingQ.data?.standing.moves ?? [];
-  const exitsHere = moves.map((m) => m.to);
   // The run's state is a session chip beside the issue's lifecycle chip, never merged into it (ISS-360, ISS-1150).
   const runChip = runStatusChip(issue);
   const isRunActive = isLiveRun(runChip) || issue.status === "in_progress" || issue.status === "reopen";
-  const openSessions = () =>
-    router.push(`/projects/${slug}/agents?issue=${issue.id}`);
-  const openPipeline = () => router.push(`/projects/${slug}/pipeline`);
   const start = readStart({
     status: issue.status,
     policy: policyQ.data,
@@ -266,30 +237,6 @@ export function IssueDetailScreen({
     sessionContext: issue.sessionContext,
   });
 
-  const moreItems: MenuItem[] = [
-    { label: "Open session", icon: "agent", onSelect: openSessions },
-    { label: "Open pipeline", icon: "pipeline", onSelect: openPipeline },
-    ...(!exitsHere.includes("on_hold") || !canWrite
-      ? []
-      : [
-          {
-            label: "Pause (hold)",
-            icon: "stop",
-            onSelect: () => onTransition("on_hold"),
-          } as MenuItem,
-        ]),
-    ...(!exitsHere.includes("reopen") || !canWrite
-      ? []
-      : [
-          {
-            label: "Reopen",
-            icon: "rerun",
-            onSelect: () => onTransition("reopen"),
-          } as MenuItem,
-        ]),
-    { label: "Copy link", icon: "link", onSelect: copyLink },
-  ];
-
   const tabs = [
     { value: "overview" as const, label: "Overview" },
     { value: "criteria" as const, label: "Criteria", count: criteriaQ.data?.criteria.length ?? checklist.length },
@@ -297,29 +244,6 @@ export function IssueDetailScreen({
     { value: "mockups" as const, label: "Mockups", count: mockupsQ.data?.returned },
     { value: "activity" as const, label: "Activity", count: commentsQ.data?.totalCount },
   ];
-
-  const primary =
-    start.kind !== "none" && !isRunActive ? (
-      <StartIssueAction issueId={issue.id} reading={start} onStarted={refreshIssue} />
-    ) : !canWrite || isTerminal ? (
-      canWrite ? (
-        <Button variant="primary" size="sm" icon="rerun" loading={pending} onClick={() => onTransition("reopen")}>
-          Reopen
-        </Button>
-      ) : (
-        <Button variant="primary" size="sm" icon="pipeline" onClick={openPipeline}>
-          View pipeline
-        </Button>
-      )
-    ) : isRunActive ? (
-      <Button variant="secondary" size="sm" icon="stop" loading={pending} onClick={() => onTransition("on_hold")}>
-        Pause
-      </Button>
-    ) : (
-      <Button variant="primary" size="sm" icon="pipeline" onClick={openPipeline}>
-        Run pipeline
-      </Button>
-    );
 
   const badge = (
     <>
@@ -354,23 +278,18 @@ export function IssueDetailScreen({
         title={issue.title}
         badge={badge}
         action={
-          <span className="flex items-center gap-1.5" data-testid="issue-actions">
-            {primary}
-            {/* below 768px the bar holds the back control, the one primary act and the menu; asking and help wait for the room */}
-            <span className="contents max-md:hidden">
-              <AskAboutThis kind="issue" refId={issue.displayId} />
-              <HelpButton
-              summary="The full record for one issue: whose turn it is, then Overview, Criteria, Runs and Activity as tabs beside its facts."
-              actions={[
-                "Edit properties (status, priority, complexity) in the rail",
-                "Start an open issue on a project that starts work by hand, or pause / reopen it, from the header",
-                "Jump to related sessions, pipeline, and runs from the actions menu",
-              ]}
-              shortcuts={[{ keys: "⌘K", desc: "Open the command palette" }]}
-              />
-            </span>
-            <Menu align="right" items={moreItems} trigger={<IconButton icon="more" aria-label="Issue actions" />} />
-          </span>
+          <IssueActions
+            issue={issue}
+            slug={slug}
+            linkId={id}
+            canWrite={canWrite}
+            pending={pending}
+            start={start}
+            isRunActive={isRunActive}
+            exitsHere={moves.map((m) => m.to)}
+            onTransition={onTransition}
+            onStarted={refreshIssue}
+          />
         }
       />
       <DetailLayout
@@ -411,102 +330,31 @@ export function IssueDetailScreen({
         <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="issue-tabs" />
         <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Overview"}>
           {tab === "overview" ? (
-            <div className="grid gap-8" data-testid="view-overview">
-              <ReleaseNoteCard issue={issue} />
-              <IssueDescription
-                issue={issue}
-                attachments={attachmentsQ.data ?? []}
-                attachmentsLoading={attachmentsQ.isLoading}
-                attachmentsError={attachmentsQ.isError ? attachmentsQ.error : null}
-                canWrite={canWrite}
-              />
-              <section aria-label="Plan">
-                <ViewHeading>Plan</ViewHeading>
-                {issue.plan ? (
-                  <Markdown>{issue.plan}</Markdown>
-                ) : (
-                  <p className="text-13 text-subtle">Not written yet; the plan step writes it once a master takes the issue.</p>
-                )}
-              </section>
-            </div>
+            <OverviewTab issue={issue} attachmentsQ={attachmentsQ} canWrite={canWrite} />
           ) : null}
           {tab === "criteria" ? (
-            <div data-testid="view-criteria">
-              {hasCriteriaRows ? (
-                <CriteriaList issueId={issue.id} />
-              ) : checklist.length > 0 ? (
-                <section aria-label="Acceptance criteria">
-                  <ViewHeading>Acceptance criteria</ViewHeading>
-                  <ul className="space-y-2">
-                    {checklist.map((item) => (
-                      <li key={item.key}>
-                        <Checkbox checked={item.checked} disabled label={item.text} />
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ) : (
-                <p className="text-13 text-subtle">No criteria yet; the plan step writes them.</p>
-              )}
-            </div>
+            <CriteriaTab issueId={issue.id} hasCriteriaRows={hasCriteriaRows} checklist={checklist} />
           ) : null}
           {tab === "runs" ? (
-            <div className="grid gap-6" data-testid="view-runs">
-              {/* Session-group continuity (ISS-376) — resumed/fresh per step. Self-hides when no session carries group metadata. */}
-              <SessionGroupTimeline sessions={issue.agentSessions ?? []} />
-              {standingQ.isLoading ? (
-                <EmptyPanelLine title="Steps" status="Loading…" />
-              ) : standingQ.isError ? (
-                <EmptyPanelLine title="Steps" status="Couldn't load" detail={formatApiError(standingQ.error)} />
-              ) : stepOutcomes.length === 0 ? (
-                <EmptyPanelLine title="Steps" status="None yet" detail="Steps appear here as agents record them." />
-              ) : (
-                <section aria-label="Steps">
-                  <ViewHeading>Steps</ViewHeading>
-                  <div className="space-y-2">
-                    {stepOutcomes.map((outcome) => (
-                      <StepArtifactCard
-                        key={outcome.step}
-                        outcome={outcome}
-                        open={expandedStep === outcome.step}
-                        onToggle={() => setExpandedStep((cur) => (cur === outcome.step ? null : outcome.step))}
-                      />
-                    ))}
-                  </div>
-                </section>
-              )}
-            </div>
+            <RunsTab
+              sessions={issue.agentSessions ?? []}
+              standingQ={standingQ}
+              stepOutcomes={stepOutcomes}
+              expandedStep={expandedStep}
+              onToggleStep={(step) => setExpandedStep((cur) => (cur === step ? null : step))}
+            />
           ) : null}
           {tab === "mockups" ? <MockupsPanel projectId={projectId} target={mockupTarget} /> : null}
           {tab === "activity" ? (
-            <section id="issue-comments" aria-label="Activity" data-testid="view-activity">
-              <SegmentedControl
-                options={[
-                  { value: "comments", label: "Comments", count: commentsQ.data?.totalCount },
-                  { value: "activity", label: "History", count: activityQ.data?.items.length },
-                ]}
-                value={thread}
-                onChange={setThread}
-              />
-              <div className="mt-4">
-                {thread === "comments" &&
-                  (commentsQ.isLoading ? (
-                    <TabLoading />
-                  ) : commentsQ.isError ? (
-                    <TabError query={commentsQ} what="comments" />
-                  ) : (
-                    <CommentThread issueId={issue.id} comments={commentsQ.data?.items ?? []} members={membersQ.data} readOnly={!canWrite} />
-                  ))}
-                {thread === "activity" &&
-                  (activityQ.isLoading ? (
-                    <TabLoading />
-                  ) : activityQ.isError ? (
-                    <TabError query={activityQ} what="history" />
-                  ) : (
-                    <ActivityFeed items={activityQ.data?.items ?? []} />
-                  ))}
-              </div>
-            </section>
+            <ActivityTab
+              issueId={issue.id}
+              thread={thread}
+              onThread={setThread}
+              commentsQ={commentsQ}
+              activityQ={activityQ}
+              members={membersQ.data}
+              canWrite={canWrite}
+            />
           ) : null}
         </DetailPane>
       </DetailLayout>
@@ -521,45 +369,6 @@ export function IssueDetailScreen({
       />
     </div>
     </ReleaseApprovalProvider>
-  );
-}
-
-const ISSUE_TABS = ["overview", "criteria", "runs", "mockups", "activity"] as const;
-
-/** Skeleton placeholder for the detail tab bodies (overview / runs / activity)
- *  while their queries load — replaces the bare "Loading …" text (ISS-308 F1). */
-function TabLoading() {
-  return (
-    <div className="space-y-3" aria-busy>
-      {[0, 1, 2].map((i) => (
-        <div key={i} className="flex items-start gap-2.5">
-          <Skeleton variant="circle" className="size-[26px] flex-none" />
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <Skeleton variant="text" className="w-32" />
-            <Skeleton variant="text" className="w-full max-w-[24rem]" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/** Error body for a detail tab whose query failed. Retry is offered only where
- *  retrying could change the answer (ISS-1160) — a refusal the same request
- *  will meet again gets no dead Retry button. */
-function TabError({
-  query,
-  what,
-}: {
-  query: { error: unknown; refetch: () => unknown };
-  what: string;
-}) {
-  return (
-    <ErrorState
-      title={`Couldn't load ${what}`}
-      message={formatApiError(query.error)}
-      onRetry={isRetryableApiError(query.error) ? () => query.refetch() : undefined}
-    />
   );
 }
 

@@ -71,6 +71,7 @@ export function useStickToBottom({
   }, [conversationKey, ready]);
 
   // Growth / stream: keep pinned to latest only when already near the bottom.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `live` is a trigger, so a session starting or ending re-pins the view
   useEffect(() => {
     const output = `${itemCount}:${streamedChars}`;
     const grew = output !== lastOutputRef.current;

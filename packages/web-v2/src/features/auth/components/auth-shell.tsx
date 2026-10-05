@@ -16,6 +16,7 @@ export function AuthShell({ title, subtitle, children, footer }: AuthShellProps)
       <div className="w-[380px] max-w-full">
         {/* Brand */}
         <div className="mb-7 flex flex-col items-center gap-4">
+          {/* biome-ignore lint/performance/noImgElement: a fixed-size brand mark under the base path; next/image would lazy-load and wrap it */}
           <img src={assetPath('/forge-mark-180.png')} alt="Forge" width={60} height={60} />
           <div className="text-center">
             <div className="fg-h2">Forge</div>

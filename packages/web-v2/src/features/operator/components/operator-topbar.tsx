@@ -11,6 +11,7 @@ function StatusPill({ pill }: { pill: string }) {
   return (
     <Tooltip label={note}>
       <span
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: focusable so a keyboard reaches the tooltip saying the check is not wired
         tabIndex={0}
         className="inline-flex items-center gap-1.5 rounded-pill border border-line px-2 py-1 focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none"
       >

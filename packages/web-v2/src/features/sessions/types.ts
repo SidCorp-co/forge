@@ -2,6 +2,7 @@ import {
   FAILURE_CAUSE_PRESENTATION,
   type FailureCause,
   LEGACY_NEUTRAL_REASONS,
+  type LegacyNeutralReason,
   resolveFailureCause,
 } from "@forge/contracts/failure-causes";
 import {
@@ -49,12 +50,10 @@ export interface LivenessResult {
   reapInMs: number | null;
 }
 
-export type SessionFailureReason = FailureCause | LegacyFailureReason;
+export type SessionFailureReason = FailureCause | LegacyNeutralReason;
 
-export type LegacyFailureReason =
-  | "issue_busy"
-  | "runner_full"
-  | "no_worker_online";
+/** Exhaustive over every cause; a legacy neutral reason carries its own copy only where it has one. */
+type ReasonCopy = Record<FailureCause, string> & Partial<Record<LegacyNeutralReason, string>>;
 
 /** Usage telemetry jsonb — every key is optional (older rows omit fields). */
 export interface SessionUsage {
@@ -190,7 +189,7 @@ export function isAwaitingReply(
 
 /** Operator-facing label for each terminal failure reason — surfaced on the
  *  list row + the detail blocker-card so "failed" is actionable (ISS-378). */
-export const FAILURE_REASON_LABEL: Record<SessionFailureReason, string> = {
+export const FAILURE_REASON_LABEL: ReasonCopy = {
   provider_spend_cap: "Spend limit reached",
   provider_usage_limit: "Usage limit reached",
   provider_subscription_disabled: "Subscription disabled",
@@ -240,7 +239,7 @@ export const FAILURE_REASON_LABEL: Record<SessionFailureReason, string> = {
 
 /** Suggested next action for a failed/stalled session — the one-line remedy on
  *  the detail blocker-card (ISS-378 AC#6). */
-export const FAILURE_REASON_ACTION: Record<SessionFailureReason, string> = {
+export const FAILURE_REASON_ACTION: ReasonCopy = {
   provider_spend_cap: "The account hit its spend cap — raise it, or wait for the window to reset.",
   provider_usage_limit: "The account hit its usage window — it retries once the window resets.",
   provider_subscription_disabled:
