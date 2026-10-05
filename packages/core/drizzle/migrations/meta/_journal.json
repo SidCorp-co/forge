@@ -2639,16 +2639,16 @@
       "version": "7",
       "when": 1818201600000,
       "tag": "0408_a_build_names_the_observed_nodes_it_deletes",
-        "breakpoints": true
-      },
-      {
+      "breakpoints": true
+    },
+    {
       "idx": 409,
       "version": "7",
       "when": 1818288000000,
       "tag": "0409_a_fire_is_never_skipped_as_already_applied",
-        "breakpoints": true
-      },
-      {
+      "breakpoints": true
+    },
+    {
       "idx": 410,
       "version": "7",
       "when": 1818374400000,
@@ -2670,24 +2670,24 @@
       "breakpoints": true
     },
     {
+      "idx": 413,
+      "version": "7",
+      "when": 1818633600000,
+      "tag": "0413_every_record_comment_written_before_record_events_is_given_its_event",
+      "breakpoints": true
+    },
+    {
+      "idx": 414,
+      "version": "7",
+      "when": 1818720000000,
+      "tag": "0414_the_agent_report_token_grant_is_named_agent_reports",
+      "breakpoints": true
+    },
+    {
       "idx": 415,
       "version": "7",
       "when": 1818806400000,
-      "tag": "0415_every_record_comment_written_before_record_events_is_given_its_event",
-      "breakpoints": true
-    },
-    {
-      "idx": 416,
-      "version": "7",
-      "when": 1818892800000,
-      "tag": "0416_the_agent_report_token_grant_is_named_agent_reports",
-      "breakpoints": true
-    },
-    {
-      "idx": 417,
-      "version": "7",
-      "when": 1818979200000,
-      "tag": "0417_every_notification_carries_its_severity",
+      "tag": "0415_every_notification_carries_its_severity",
       "breakpoints": true
     }
   ]

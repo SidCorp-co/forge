@@ -1,5 +1,5 @@
 // Every record an issue holds, in the order written. A record comment written before events existed
-// was given its event by migration 0415, so events are the only read (ISS-56).
+// was given its event by migration 0413, so events are the only read (ISS-56).
 
 import { isKernelOnlyRecordKind, type RecordEventKind } from '@forge/contracts/record-events';
 import { db, type Tx } from '../../db/client.js';

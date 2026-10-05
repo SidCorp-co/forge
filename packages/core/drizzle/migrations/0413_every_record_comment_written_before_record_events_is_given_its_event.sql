@@ -10,7 +10,7 @@
 -- read as history and stay prose. A typed record the event table cannot hold — no fields, more than
 -- 400, or a contract below 1 — aborts this migration naming the comment.
 --
--- ROLLBACK: DELETE FROM activity_log WHERE payload->>'backfill' = '0415'.
+-- ROLLBACK: DELETE FROM activity_log WHERE payload->>'backfill' = '0413'.
 
 SET LOCAL lock_timeout = '10s';--> statement-breakpoint
 LOCK TABLE "activity_log" IN ROW EXCLUSIVE MODE;--> statement-breakpoint
@@ -19,7 +19,7 @@ CREATE FUNCTION pg_temp.fence_closes(line text, fence text) RETURNS boolean LANG
   SELECT m IS NOT NULL AND left(m[1], 1) = left(fence, 1) AND length(m[1]) >= length(fence)
   FROM regexp_match(line, '^ {0,3}(`+|~+)[ \t]*$') AS m
 $$;--> statement-breakpoint
-CREATE FUNCTION pg_temp.forge_record_0415(body text) RETURNS jsonb LANGUAGE plpgsql IMMUTABLE AS $$
+CREATE FUNCTION pg_temp.forge_record_0413(body text) RETURNS jsonb LANGUAGE plpgsql IMMUTABLE AS $$
 DECLARE
   lines text[] := string_to_array(body, E'\n');
   n int := coalesce(array_length(lines, 1), 0);
@@ -127,7 +127,7 @@ BEGIN
       )
     ORDER BY c.created_at, c.id
   LOOP
-    rec := pg_temp.forge_record_0415(r.body);
+    rec := pg_temp.forge_record_0413(r.body);
     kind := rec->>'kind';
     CONTINUE WHEN kind IS NULL OR NOT kind = ANY (ARRAY[
       'landing', 'correction', 'fold', 'routed', 'gap', 'baseline', 'decision', 'question',
@@ -152,7 +152,7 @@ BEGIN
         'fields', rec->'fields',
         'lead', rec->'lead',
         'commentId', r.id::text,
-        'backfill', '0415'
+        'backfill', '0413'
       ),
       r.created_at,
       'record-comment:' || r.id::text
