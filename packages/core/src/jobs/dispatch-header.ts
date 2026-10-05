@@ -1,6 +1,7 @@
-// The head of every brief the job pool pastes into a pane: who dispatched it, and that the dispatch
-// is the instruction. Without it a pasted brief reads as text shared for review, and an agent asks
-// whether to run its outward-facing steps at a prompt nobody watches.
+// The head of every brief the job pool hands a pane as its agent's launch prompt: who dispatched it,
+// and that the dispatch is the instruction. The launch prompt is the session's own first turn, so
+// this says who stands behind it; without it an agent asks whether to run its outward-facing steps
+// at a prompt nobody watches.
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';

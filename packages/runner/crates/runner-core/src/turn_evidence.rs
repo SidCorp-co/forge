@@ -1,8 +1,10 @@
 /*
  * Whether a job's agent was ever asked anything.
  *
- * `terminal::send_line` pastes a prompt and sends `Enter` as a separate call.
- * tmux reports success for a keystroke it ACCEPTED, and a pane emits no turn
+ * A job's brief is its agent's launch prompt, and a master's is pasted by
+ * `terminal::send_line` with `Enter` sent as a separate call. Neither
+ * is a turn: tmux reports success for a keystroke it ACCEPTED, a started
+ * process says nothing about a prompt it read, and a pane emits no turn
  * boundary, so "delivered" has never been able to mean "a turn ran" — and the
  * beat in `pool_jobs::supervise` asserted `running` off nothing but that
  * delivery. Measured sid-desk 2026-09-18: a `release_batch` read `running` for

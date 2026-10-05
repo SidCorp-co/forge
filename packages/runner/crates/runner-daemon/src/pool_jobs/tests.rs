@@ -166,7 +166,7 @@ fn a_job_pane_denies_every_tool_that_waits_on_a_person_and_a_master_pane_none() 
         );
     }
     assert!(denied.contains(&"Bash(git push:*)".to_string()));
-    let job = job_argv(None, None, None, &ports::job_denied_tools(&[])).join(" ");
+    let job = job_argv(None, None, None, &ports::job_denied_tools(&[]), None).join(" ");
     assert!(
         job.contains("--disallowed-tools 'AskUserQuestion'"),
         "{job}"
@@ -174,4 +174,19 @@ fn a_job_pane_denies_every_tool_that_waits_on_a_person_and_a_master_pane_none() 
     assert!(!pane_argv(None, None)
         .join(" ")
         .contains("--disallowed-tools"));
+}
+
+#[test]
+fn a_job_brief_is_the_launch_prompt_after_the_variadic_tool_list_and_a_master_pane_has_none() {
+    use runner_workspace::terminal::{job_argv, pane_argv};
+    let brief = std::path::Path::new("/box/forge-job-mcp-x.brief.md");
+    let line = job_argv(None, None, None, &ports::job_denied_tools(&[]), Some(brief))
+        .pop()
+        .unwrap();
+    assert!(
+        line.starts_with("p=$(cat -- '/box/forge-job-mcp-x.brief.md')"),
+        "{line}"
+    );
+    assert!(line.ends_with("'ExitPlanMode' -- \"$p\""), "{line}");
+    assert!(!pane_argv(None, None).join(" ").contains("$p"));
 }

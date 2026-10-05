@@ -8,6 +8,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **A pool job's brief is its agent's first turn, not a paste.** The runner starts the job's agent
+  with the brief as its launch prompt, so release jobs no longer refuse a pasted brief and wait.
+
 ## [0.4.0-dev.29] - 2026-10-05
 
 Issues wait on contract versions, and job panes never stop for a person

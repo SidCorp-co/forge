@@ -134,12 +134,41 @@ pub fn clear_job_session(pane: &str) -> Result<()> {
 }
 
 pub(crate) fn clear_job_session_in(dir: &Path, pane: &str) -> Result<()> {
-    let path = job_session_path_in(dir, pane);
-    match std::fs::remove_file(&path) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(Error::Other(format!("{}: {e}", path.display()))),
+    for path in [job_session_path_in(dir, pane), job_brief_path_in(dir, pane)] {
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(Error::Other(format!("{}: {e}", path.display()))),
+        }
     }
+    Ok(())
+}
+
+/// Write the brief a job pane's agent is started with, owner-only, and answer where it is.
+///
+/// The pane's shell reads it into the agent's launch argument and removes it, so the brief is the
+/// session's first user turn rather than text pasted at its prompt; what is left behind by a pane
+/// that never started is removed by [`clear_job_session`] or the age sweep.
+pub fn write_job_brief_in(dir: &Path, pane: &str, brief: &str) -> Result<PathBuf> {
+    if brief.trim().is_empty() {
+        return Err(Error::Other(format!(
+            "{pane}: the job's brief is empty, and a pane started without one waits at its prompt \
+for an instruction nobody will type"
+        )));
+    }
+    std::fs::create_dir_all(dir)?;
+    let path = job_brief_path_in(dir, pane);
+    let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
+    write_owner_only(&tmp, brief)?;
+    std::fs::rename(&tmp, &path)?;
+    Ok(path)
+}
+
+pub(crate) fn job_brief_path_in(dir: &Path, pane: &str) -> PathBuf {
+    dir.join(format!(
+        "{JOB_SESSION_PREFIX}{}.brief.md",
+        sanitize_slug(pane)
+    ))
 }
 
 /// Where a job pane's config lives, off the pane name alone, which the job's record carries
@@ -268,5 +297,75 @@ pub(crate) fn sanitize_slug(slug: &str) -> String {
         "default".to_string()
     } else {
         trimmed.to_string()
+    }
+}
+
+#[cfg(test)]
+mod brief_tests {
+    use super::*;
+
+    struct Scratch(PathBuf);
+    impl Scratch {
+        fn new() -> Self {
+            static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let dir = std::env::temp_dir().join(format!("forge-brief-{}-{n}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_launch_prompt_carries_the_brief_byte_for_byte_and_removes_its_file() {
+        let dir = Scratch::new();
+        let brief = "## Dispatched\nquote ' double \" dollar $HOME tick `id` back \\ end";
+        let path = write_job_brief_in(dir.path(), "forge-job-x", brief).unwrap();
+        let prelude = crate::terminal::first_turn_prelude(&path);
+        let out = std::process::Command::new("sh")
+            .args(["-c", &format!("{prelude}printf %s \"$p\"")])
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{out:?}");
+        assert_eq!(String::from_utf8(out.stdout).unwrap(), brief);
+        assert!(!path.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_brief_that_cannot_be_read_ends_the_pane_naming_it_instead_of_starting_an_idle_agent() {
+        let dir = Scratch::new();
+        let path = dir.path().join("forge-job-mcp-gone.brief.md");
+        let prelude = crate::terminal::first_turn_prelude(&path);
+        let out = std::process::Command::new("sh")
+            .args(["-c", &format!("{prelude}echo started")])
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(66));
+        assert!(out.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&out.stderr).contains("forge-job-mcp-gone.brief.md"));
+    }
+
+    #[test]
+    fn an_empty_brief_is_refused_before_a_pane_is_started() {
+        let dir = Scratch::new();
+        let err = write_job_brief_in(dir.path(), "forge-job-x", "  \n").unwrap_err();
+        assert!(err.to_string().contains("brief is empty"), "{err}");
+    }
+
+    #[test]
+    fn a_released_job_takes_an_unread_brief_with_it() {
+        let dir = Scratch::new();
+        let path = write_job_brief_in(dir.path(), "forge-job-x", "go").unwrap();
+        clear_job_session_in(dir.path(), "forge-job-x").unwrap();
+        assert!(!path.exists());
     }
 }
