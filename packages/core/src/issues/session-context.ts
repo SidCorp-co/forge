@@ -106,12 +106,24 @@ export const sessionContextSchema = z
       string,
       unknown
     >;
-    if (typeof worklog.head === 'string' && worklog.head.trim() && !FULL_HEAD.test(worklog.head.trim())) {
-      ctx.addIssue({ code: 'custom', path: ['worklog', 'head'], message: 'a head is the full 40-hex commit sha' });
+    if (
+      typeof worklog.head === 'string' &&
+      worklog.head.trim() &&
+      !FULL_HEAD.test(worklog.head.trim())
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['worklog', 'head'],
+        message: 'a head is the full 40-hex commit sha',
+      });
     }
     for (const branch of [v.branch, worklog.branch]) {
       if (typeof branch === 'string' && branch.trim().length > 255) {
-        ctx.addIssue({ code: 'custom', path: ['branch'], message: 'a branch is at most 255 characters' });
+        ctx.addIssue({
+          code: 'custom',
+          path: ['branch'],
+          message: 'a branch is at most 255 characters',
+        });
       }
     }
   });

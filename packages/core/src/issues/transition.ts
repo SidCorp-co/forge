@@ -64,78 +64,75 @@ export async function publishUnblockCascade(
   }>,
 ): Promise<void> {
   if (terminal.length === 0) return;
-    const byBlocker = new Map<
-      string,
-      Array<{ issueId: string; issSeq: number; displayId: string }>
-    >();
-    const pending: Array<{
-      blockerId: string;
-      issueId: string;
-      issSeq: number;
-      projectId: string | null;
-    }> = [];
+  const byBlocker = new Map<
+    string,
+    Array<{ issueId: string; issSeq: number; displayId: string }>
+  >();
+  const pending: Array<{
+    blockerId: string;
+    issueId: string;
+    issSeq: number;
+    projectId: string | null;
+  }> = [];
 
-    for (const t of terminal) {
-      if (!t.dependents) continue;
-      for (const d of t.dependents) {
-        pending.push({
-          blockerId: t.issueId,
-          issueId: d.issueId,
-          issSeq: d.issSeq,
-          projectId: d.projectId,
-        });
-      }
-    }
-
-    const issueIds = terminal.filter((t) => !t.dependents).map((t) => t.issueId);
-    const dependents = await liveBlockedDependentsOf(issueIds);
-
-    for (const row of dependents) {
+  for (const t of terminal) {
+    if (!t.dependents) continue;
+    for (const d of t.dependents) {
       pending.push({
-        blockerId: row.fromIssueId,
-        issueId: row.toIssueId,
-        issSeq: row.toIssSeq,
-        projectId: row.depProjectId,
-      });
-    }
-
-    const prefixOf = new Map<string, string | null>(
-      await Promise.all(
-        [...new Set([...terminal.map((t) => t.projectId), ...pending.map((p) => p.projectId)])]
-          .filter((id): id is string => typeof id === 'string')
-          .map(async (id): Promise<[string, string | null]> => [id, await activeIssuePrefix(id)]),
-      ),
-    );
-
-    for (const d of pending) {
-      const list = byBlocker.get(d.blockerId) ?? [];
-      list.push({
+        blockerId: t.issueId,
         issueId: d.issueId,
         issSeq: d.issSeq,
-        displayId: formatIssueRef(
-          d.projectId ? (prefixOf.get(d.projectId) ?? null) : null,
-          d.issSeq,
-        ),
+        projectId: d.projectId,
       });
-      byBlocker.set(d.blockerId, list);
     }
+  }
 
-    for (const t of terminal) {
-      const list = byBlocker.get(t.issueId);
-      if (!list || list.length === 0) continue;
-      roomManager.publish(projectRoom(t.projectId), {
-        event: 'issue.unblockCascade',
-        data: {
-          blockerId: t.issueId,
-          blockerIssSeq: t.issSeq ?? null,
-          blockerDisplayId:
-            t.issSeq == null ? null : formatIssueRef(prefixOf.get(t.projectId) ?? null, t.issSeq),
-          dependents: list.slice(0, UNBLOCK_CASCADE_DEPENDENT_CAP),
-          overflow: Math.max(0, list.length - UNBLOCK_CASCADE_DEPENDENT_CAP),
-          at: (t.at ?? new Date()).toISOString(),
-        },
-      });
-    }
+  const issueIds = terminal.filter((t) => !t.dependents).map((t) => t.issueId);
+  const dependents = await liveBlockedDependentsOf(issueIds);
+
+  for (const row of dependents) {
+    pending.push({
+      blockerId: row.fromIssueId,
+      issueId: row.toIssueId,
+      issSeq: row.toIssSeq,
+      projectId: row.depProjectId,
+    });
+  }
+
+  const prefixOf = new Map<string, string | null>(
+    await Promise.all(
+      [...new Set([...terminal.map((t) => t.projectId), ...pending.map((p) => p.projectId)])]
+        .filter((id): id is string => typeof id === 'string')
+        .map(async (id): Promise<[string, string | null]> => [id, await activeIssuePrefix(id)]),
+    ),
+  );
+
+  for (const d of pending) {
+    const list = byBlocker.get(d.blockerId) ?? [];
+    list.push({
+      issueId: d.issueId,
+      issSeq: d.issSeq,
+      displayId: formatIssueRef(d.projectId ? (prefixOf.get(d.projectId) ?? null) : null, d.issSeq),
+    });
+    byBlocker.set(d.blockerId, list);
+  }
+
+  for (const t of terminal) {
+    const list = byBlocker.get(t.issueId);
+    if (!list || list.length === 0) continue;
+    roomManager.publish(projectRoom(t.projectId), {
+      event: 'issue.unblockCascade',
+      data: {
+        blockerId: t.issueId,
+        blockerIssSeq: t.issSeq ?? null,
+        blockerDisplayId:
+          t.issSeq == null ? null : formatIssueRef(prefixOf.get(t.projectId) ?? null, t.issSeq),
+        dependents: list.slice(0, UNBLOCK_CASCADE_DEPENDENT_CAP),
+        overflow: Math.max(0, list.length - UNBLOCK_CASCADE_DEPENDENT_CAP),
+        at: (t.at ?? new Date()).toISOString(),
+      },
+    });
+  }
 }
 
 export const transitionRoutes = new Hono<{ Variables: AuthVars }>();

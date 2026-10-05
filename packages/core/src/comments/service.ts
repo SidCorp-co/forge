@@ -11,6 +11,7 @@ import { db, type Tx } from '../db/client.js';
 import { commentMentions, comments, issues, users } from '../db/schema.js';
 import type { Actor } from '../issues/index.js';
 import { dropCommentMirror, mirrorCommentRecord, remirrorCommentRecord } from '../issues/index.js';
+import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
 import { parseForgeRecord } from '../messaging/forge-record.js';
@@ -18,7 +19,6 @@ import { emitEvent } from '../outbox/index.js';
 import { parseMentions, resolveMentions } from './mentions.js';
 import { screenAgentComment, screenRecordFence } from './screen.js';
 import { onIssue } from './thread-read.js';
-import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 
 const refuse = refuser<CommentRefusalCode>('COMMENT_REFUSED');
 

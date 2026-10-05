@@ -15,6 +15,7 @@ import { db } from '../db/client.js';
 import { conversations } from '../db/schema-conversations.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions, type QuestionOrigin, type QuestionStep } from '../db/schema-questions.js';
+import { logger } from '../lib/logger.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
 import { insertBatchQuestions } from '../questions/index.js';
@@ -27,7 +28,6 @@ import {
 import { openBatchOf, priorAnswers, type StoredItem } from './read.js';
 import { alreadyOpenRefusal, itemRefusals, repeatRefusals } from './rules.js';
 import { questionnaireText } from './text.js';
-import { logger } from '../lib/logger.js';
 
 export function questionnaireKernelActor(actor: QuestionnaireActor): KernelActor {
   return { type: 'user', id: actor.userId, agency: actor.agency };

@@ -6,6 +6,7 @@
  */
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import type {
   IssueAttentionGroup,
   IssueLeaseView,
@@ -48,7 +49,6 @@ import {
   requirementsOf,
 } from './standing-facts-read.js';
 import { type StepDurationFact, stepOutcomesOf } from './step-outcomes.js';
-import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 
 /** The most rows one read answers; the list says so when a scope holds more. */
 export const STANDING_LIMIT = 500;

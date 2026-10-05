@@ -3,9 +3,18 @@ import { prepareBody } from '../body/prepare.js';
 import { storedText } from '../lib/data-egress.js';
 
 // personal-data-flow#ds-issues: on a redact or no_egress project an issue's free text is scrubbed on write
-const SCRUBBED_ISSUE_FIELDS = ['title', 'description', 'plan', 'acceptanceCriteria', 'releaseNotes'];
+const SCRUBBED_ISSUE_FIELDS = [
+  'title',
+  'description',
+  'plan',
+  'acceptanceCriteria',
+  'releaseNotes',
+];
 
-export function scrubIssueText<T extends Record<string, unknown>>(level: SensitiveDataLevel, fields: T): T {
+export function scrubIssueText<T extends Record<string, unknown>>(
+  level: SensitiveDataLevel,
+  fields: T,
+): T {
   if (level === 'off') return fields;
   const out: Record<string, unknown> = { ...fields };
   for (const key of SCRUBBED_ISSUE_FIELDS) {

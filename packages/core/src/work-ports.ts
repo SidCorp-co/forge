@@ -74,11 +74,7 @@ import {
   resolveNotifications,
 } from './notifications/index.js';
 import { afterOnboardingSubmit, onboardingSubmittedIn } from './onboarding/index.js';
-import {
-  closeOpenRunForIssue,
-  getIssueContexts,
-  providePipelinePorts,
-} from './pipeline/index.js';
+import { closeOpenRunForIssue, getIssueContexts, providePipelinePorts } from './pipeline/index.js';
 import {
   policyRefusal,
   readEffectivePolicy,

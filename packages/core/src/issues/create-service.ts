@@ -1,3 +1,4 @@
+import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import { ISSUE_ADMIT_PERMISSION, ISSUE_INITIAL_STATUSES } from '@forge/contracts/issue-machine';
 import type { IssueCreateRefusalCode } from '@forge/contracts/issues';
 import { eq } from 'drizzle-orm';
@@ -5,6 +6,7 @@ import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issueLabels, issues } from '../db/schema.js';
+import { dataPolicyOf } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
@@ -27,6 +29,7 @@ import {
   type ResolvedLabelAttach,
   resolveLabelIdsForWrite,
 } from './label-service.js';
+import { scrubIssueText } from './patch-fields.js';
 import {
   type AppliedIssueRelation,
   flushIssueRelationEffects,
@@ -36,9 +39,6 @@ import {
 } from './relations-service.js';
 import { leaseWriteTakes } from './session-claim.js';
 import { splitSessionContext, writeSplitSessionContext } from './work-state.js';
-import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
-import { scrubIssueText } from './patch-fields.js';
-import { dataPolicyOf } from '../lib/data-egress.js';
 
 const refuse = refuser<IssueCreateRefusalCode>('ISSUE_CREATE_REFUSED');
 

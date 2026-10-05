@@ -51,7 +51,13 @@ async function criteriaShown(
   agency: Parameters<typeof egressForRequest>[0],
   issue: Parameters<typeof readCriteria>[0] & { projectId: string; id: string },
 ) {
-  return egressForRequest(agency, issue.projectId, 'issue.criteria', await readCriteria(issue), `the criteria of ${issue.id}`);
+  return egressForRequest(
+    agency,
+    issue.projectId,
+    'issue.criteria',
+    await readCriteria(issue),
+    `the criteria of ${issue.id}`,
+  );
 }
 
 issueCriteriaRoutes.get(

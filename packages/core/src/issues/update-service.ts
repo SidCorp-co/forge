@@ -2,6 +2,7 @@ import type { IssueUpdateRefusalCode } from '@forge/contracts/issues';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, issues } from '../db/schema.js';
+import { dataPolicyOf } from '../lib/data-egress.js';
 import { refuser } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
@@ -9,6 +10,7 @@ import { type Actor, recordActivityTx } from './activity.js';
 import { refuseHeldTake } from './blocked-by.js';
 import { syncCriteriaFromText } from './criteria/store.js';
 import type { ResolvedLabelAttach } from './label-service.js';
+import { scrubIssueText } from './patch-fields.js';
 import { plannedRevisionFor } from './ports.js';
 import { ISSUE_READ_COLUMNS, type IssueRow, issueScopeOf } from './read-service.js';
 import { leaseWriteTakes } from './session-claim.js';
@@ -19,8 +21,6 @@ import {
   writeSplitSessionContext,
   writeWorkStateFields,
 } from './work-state.js';
-import { dataPolicyOf } from '../lib/data-egress.js';
-import { scrubIssueText } from './patch-fields.js';
 
 const refuse = refuser<IssueUpdateRefusalCode>('ISSUE_UPDATE_REFUSED');
 
@@ -68,7 +68,10 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
   const scope = await issueScopeOf(issueId);
   const level = scope ? await dataPolicyOf(scope.projectId) : 'off';
   const updates = scrubIssueText(level, input.updates);
-  const changes = input.changes && { ...input.changes, after: scrubIssueText(level, input.changes.after) };
+  const changes = input.changes && {
+    ...input.changes,
+    after: scrubIssueText(level, input.changes.after),
+  };
 
   return db.transaction(async (tx) => {
     const current = await lockComposedSessionContext(tx, issueId);

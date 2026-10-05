@@ -5,7 +5,7 @@ import {
   type IssueTransitionRefusalCode,
   PARK_STATUSES,
 } from '@forge/contracts/issue-machine';
-import { type staleTransitionRefusal } from '@forge/contracts/state-machine';
+import type { staleTransitionRefusal } from '@forge/contracts/state-machine';
 import { eq, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import { type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
@@ -18,10 +18,7 @@ import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade
 import { recordDropUnblock } from './drop-unblock.js';
 import { mintParkQuestion, needsNotApplicable } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
-import {
-  closeOpenRunForIssue,
-  settleOpenQuestions,
-} from './ports.js';
+import { closeOpenRunForIssue, settleOpenQuestions } from './ports.js';
 import { moveOf, recordMove } from './record-events/kernel-records.js';
 import { refuseOffRecoveryEdge } from './recovery-move.js';
 import { edgeFault, reasonFault } from './transition-faults.js';

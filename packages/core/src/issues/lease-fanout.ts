@@ -1,3 +1,4 @@
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -6,7 +7,6 @@ import {
   leaseHolderOf,
   leaseIsUnexpired,
 } from './session-claim.js';
-import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 
 /**
  * How many open issues each holder holds an unexpired claim on — `classifyLease`'s `shared` test.

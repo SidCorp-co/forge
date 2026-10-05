@@ -59,12 +59,24 @@ function unparsedBlocks(record: ForgeRecord): MessageRefusal[] {
   const out: MessageRefusal[] = [];
   for (const field of record.kind === 'verdict' ? record.fields : []) {
     if (field.key === 'criterion' && !/^\d+$/.test(field.value.trim())) {
-      out.push(refusal('VERDICT_CRITERION_UNKNOWN', 'a criterion is named by its whole number', `criterion: ${field.value}`));
+      out.push(
+        refusal(
+          'VERDICT_CRITERION_UNKNOWN',
+          'a criterion is named by its whole number',
+          `criterion: ${field.value}`,
+        ),
+      );
     }
   }
   for (const block of criterionBlocksIn(record)) {
     if (block.verdict === null) {
-      out.push(refusal('VERDICT_VALUE_UNKNOWN', 'this block names no verdict, so nothing would be recorded for it', `criterion: ${block.criterion}`));
+      out.push(
+        refusal(
+          'VERDICT_VALUE_UNKNOWN',
+          'this block names no verdict, so nothing would be recorded for it',
+          `criterion: ${block.criterion}`,
+        ),
+      );
     }
   }
   return out;
@@ -77,7 +89,10 @@ export async function recordEventVerdicts(
 ): Promise<number> {
   const unparsed = unparsedBlocks(event.record);
   if (unparsed.length > 0) {
-    throw new MessageRefusedError(event.commentId ? 'comment-write' : 'record-event-write', unparsed);
+    throw new MessageRefusedError(
+      event.commentId ? 'comment-write' : 'record-event-write',
+      unparsed,
+    );
   }
   const blocks = criterionBlocksIn(event.record);
   if (blocks.length === 0) return 0;
