@@ -240,7 +240,7 @@ async function clearMark(tx: Tx, issueId: string): Promise<void> {
   throw refuse('UNMARK_REQUIRES_NOT_CLOSED', refusal.detail);
 }
 
-/** The audit comment and the two events a mark or unmark leaves, in the caller's transaction. */
+/** The audit comment a mark or unmark leaves, and an unmark's issue.updated, in the caller's transaction. */
 async function writeMarkTrail(
   tx: Tx,
   args: MergeMarkArgs,
@@ -293,7 +293,8 @@ async function writeMarkTrail(
         parentId: audit.parentId,
       },
     },
-    ...(marking && !result.wrote
+    // A mark's issue.updated is the stamp's own, emitted by recordIssueMerge with its via.
+    ...(marking
       ? []
       : [
           {
@@ -338,7 +339,7 @@ export async function applyMergeMarker(args: MergeMarkArgs): Promise<{
   if (!prior) throw notFound('issue not found');
   const preflight = args.op === 'mark' ? await preflightMark(args, prior) : null;
 
-  // The stamp, its audit comment and both events commit together or not at all.
+  // The stamp, its audit comment and their events commit together or not at all.
   const { stamp, mark, markDetail } = await db.transaction(async (tx) => {
     let stamp: Stamp = {
       result: { wrote: true, mergedAt: null, commitSha: null, landing: null },
