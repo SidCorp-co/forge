@@ -209,14 +209,41 @@ function compareShrink(before, now) {
   return n.size > b.size ? [`frozen entries grew ${b.size} -> ${n.size}`] : [];
 }
 
-function compareTighten(before, now) {
+/** `.arch.json` module id -> the directory roots its globs name (the part before the first wildcard). */
+function moduleRoots(doc) {
+  const out = new Map();
+  for (const [id, globs] of Object.entries(doc?.modules ?? {})) {
+    const list = Array.isArray(globs) ? globs : [];
+    out.set(id, list.map((g) => String(g).split('*')[0].replace(/\/$/, '')).filter(Boolean));
+  }
+  return out;
+}
+
+/** A contract may leave only with the code it governed: its `from` module is gone from `.arch.json` and from the tree at HEAD. */
+function governedCodeGone(root, contract, before, now) {
+  if (!contract?.from || contract.from === '*') return false;
+  if (moduleRoots(now).has(contract.from)) return false;
+  const roots = moduleRoots(before).get(contract.from) ?? [];
+  if (roots.length === 0) return false;
+  return roots.every((r) => {
+    try {
+      return git(['ls-tree', '-r', '--name-only', 'HEAD', '--', r], root) === '';
+    } catch {
+      return false;
+    }
+  });
+}
+
+function compareTighten(before, now, root) {
   const b = statuses(before);
   const n = statuses(now);
+  const byId = new Map((before?.contracts ?? []).map((c) => [c?.id, c]));
   const faults = [];
   for (const [id, was] of b) {
     const is = n.get(id);
     if (is === undefined) {
-      faults.push(`${id}: ${was} -> removed`);
+      if (!governedCodeGone(root, byId.get(id), before, now))
+        faults.push(`${id}: ${was} -> removed`);
     } else if (STRICTNESS.indexOf(is) < STRICTNESS.indexOf(was)) {
       faults.push(`${id}: ${was} -> ${is}`);
     }
@@ -239,7 +266,7 @@ export function ratchetFault(root, rev, decl) {
   if (before === null) return null;
   const now = readAt(root, 'HEAD', decl.path);
   if (now === null) return `${decl.path} is declared but unreadable at HEAD`;
-  const faults = COMPARE[decl.improves](before, now);
+  const faults = COMPARE[decl.improves](before, now, root);
   if (faults.length === 0) return null;
   const shown = faults.slice(0, 3).join(' · ');
   const more = faults.length > 3 ? ` (+${faults.length - 3} more)` : '';
